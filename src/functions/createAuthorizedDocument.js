@@ -97,8 +97,8 @@ function validateResult(result, input) {
 /**
  * Upload a File to private storage through the tenant-authorizing backend broker.
  *
- * This wrapper is deliberately unwired. Passing a File in the invoke payload
- * makes the Base44 SDK send multipart/form-data automatically; callers never
+ * Passing a File in the invoke payload makes the Base44 SDK send
+ * multipart/form-data automatically; callers never
  * receive or supply a storage pointer, uploader identity, Document category, or tenant stamp.
  */
 export async function createAuthorizedDocument(options = {}) {

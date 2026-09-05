@@ -35,6 +35,16 @@ export function createLiveReadinessCiReport(ledger, { evidencePacketSha256 = nul
         .filter((packet) => packet.missingRequiredProbeIds.length > 0)
         .map((packet) => [packet.capabilityId, packet.missingRequiredProbeIds]),
     ),
+    nonPassingProbes: Object.fromEntries(
+      ledger.packets
+        .filter((packet) => packet.nonPassingProbeIds.length > 0)
+        .map((packet) => [packet.capabilityId, packet.nonPassingProbeIds]),
+    ),
+    incompleteProbeAttestations: Object.fromEntries(
+      ledger.packets
+        .filter((packet) => packet.incompleteSuppliedProbeIds.length > 0)
+        .map((packet) => [packet.capabilityId, packet.incompleteSuppliedProbeIds]),
+    ),
   };
   const status = ledger.releaseComplete ? "pass" : "fail";
   const evaluatedCapabilityIds = ledger.packets.map((packet) => packet.capabilityId);
@@ -48,12 +58,24 @@ export function createLiveReadinessCiReport(ledger, { evidencePacketSha256 = nul
     stagingBackendOrigin: ledger.release.staging_backend_origin,
     candidateSourceCommitSha: ledger.release.candidate_source_commit_sha,
     candidateSourceTreeSha: ledger.release.candidate_source_tree_sha,
+    sourceAuthorityContractSha256:
+      ledger.release.source_authority_contract_sha256,
     hostedRuntimeCommitSha: ledger.release.hosted_runtime_commit_sha,
     hostedRuntimeTreeSha: ledger.release.hosted_runtime_tree_sha,
     hostedDeploymentId: ledger.release.hosted_deployment_id,
     candidateDeployableManifestSha256: ledger.release.candidate_deployable_manifest_sha256,
     hostedResourceManifestSha256: ledger.release.hosted_resource_manifest_sha256,
     evidencePacketSha256,
+    assurance: {
+      source_authority_contract_bound: Boolean(
+        ledger.release.source_authority_contract_sha256,
+      ),
+      authenticated_hosted_probe_attestations_required: ledger.packets.some(
+        (packet) => packet.requiredProbeIds.length > 0,
+      ),
+      cited_artifact_bytes_fetched_or_verified: false,
+      reviewer_identities_cryptographically_verified: false,
+    },
     evaluatedCapabilityIds,
     totalCapabilities: ledger.totalCapabilities,
     reviewCompleteCount: ledger.reviewCompleteCount,
@@ -74,7 +96,7 @@ export function createLiveReadinessCiReport(ledger, { evidencePacketSha256 = nul
 
 function buildMessages(status, blockers, evaluatedCapabilityIds) {
   if (status === "pass") {
-    return [`Evaluated readiness packet is structurally complete for ${evaluatedCapabilityIds.join(", ")}.`];
+    return [`Evaluated readiness packet meets its structural and digest-binding requirements for ${evaluatedCapabilityIds.join(", ")}; cited artifact contents and reviewer identities remain externally reviewed.`];
   }
   const messages = [];
   if (blockers.metadata.length > 0) {
@@ -90,7 +112,17 @@ function buildMessages(status, blockers, evaluatedCapabilityIds) {
     messages.push(`Capabilities missing reviewer approval: ${blockers.missingReviewers.join(", ")}.`);
   }
   if (Object.keys(blockers.missingRequiredProbes).length > 0) {
-    messages.push(`Capabilities missing required probe artifacts: ${Object.entries(blockers.missingRequiredProbes)
+    messages.push(`Capabilities missing complete required hosted probe attestations: ${Object.entries(blockers.missingRequiredProbes)
+      .map(([capabilityId, probeIds]) => `${capabilityId} (${probeIds.join(", ")})`)
+      .join("; ")}.`);
+  }
+  if (Object.keys(blockers.nonPassingProbes).length > 0) {
+    messages.push(`Capabilities with non-passing hosted probes: ${Object.entries(blockers.nonPassingProbes)
+      .map(([capabilityId, probeIds]) => `${capabilityId} (${probeIds.join(", ")})`)
+      .join("; ")}.`);
+  }
+  if (Object.keys(blockers.incompleteProbeAttestations).length > 0) {
+    messages.push(`Capabilities with incomplete hosted probe attestations: ${Object.entries(blockers.incompleteProbeAttestations)
       .map(([capabilityId, probeIds]) => `${capabilityId} (${probeIds.join(", ")})`)
       .join("; ")}.`);
   }

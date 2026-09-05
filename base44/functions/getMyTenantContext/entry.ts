@@ -1,25 +1,24 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
-const isDeactivatedUser = (u) => !!u && u.is_active === false;
-const DEACTIVATED_USER_RESPONSE = () => Response.json(
-  { error: 'Unauthorized - account is deactivated' },
-  { status: 403 },
-);
-// <<<END SHARED HELPER: requireActiveUser>>>
-
 /**
- * Resolve the authenticated user's server-owned agency membership.
+ * Resolve one exact, current, server-owned tenant context.
  *
- * This function deliberately ignores every custom User authorization claim.
- * The immutable built-in User id is the primary identity, with the normalized
- * built-in email used only as a corroborating integrity check.
+ * The caller may optionally bind an explicit selector choice to the observed
+ * membership id/version. This is optimistic read binding only: every authority
+ * and public Agency field is still re-read before a context is returned.
  */
 
-const MEMBERSHIP_SCAN_LIMIT = 100;
-const AGENCY_SCAN_LIMIT = 10;
+const MAX_BODY_BYTES = 2_000;
+const MAX_BODY_CHUNKS = 64;
+const MEMBERSHIP_QUERY_LIMIT = 51;
+const MAX_MEMBERSHIP_ROWS = 50;
+const MAX_ACTIVE_MEMBERSHIPS = 25;
+const AGENCY_EXACT_QUERY_LIMIT = 2;
 const MAX_IDENTIFIER_LENGTH = 200;
+const MAX_AGENCY_NAME_LENGTH = 200;
 const MAX_REASON_LENGTH = 500;
+const UNSAFE_AGENCY_NAME = /[\u0000-\u001F\u007F-\u009F\u061C\u200E\u200F\u202A-\u202E\u2066-\u2069]/u;
+
 const ACTIVE_AGENCY_STATUSES = new Set(['active', 'trial']);
 const MEMBERSHIP_STATUSES = new Set(['pending', 'active', 'suspended', 'revoked']);
 const TENANT_ROLES = new Set([
@@ -30,6 +29,19 @@ const TENANT_ROLES = new Set([
   'social_worker',
   'spiritual_care',
 ]);
+const REQUEST_KEYS = new Set([
+  'agency_id',
+  'expected_membership_id',
+  'expected_membership_version',
+]);
+
+// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
+const isDeactivatedUser = (u) => !!u && u.is_active === false;
+const DEACTIVATED_USER_RESPONSE = () => Response.json(
+  { error: 'Unauthorized - account is deactivated' },
+  { status: 403 },
+);
+// <<<END SHARED HELPER: requireActiveUser>>>
 
 class PublicError extends Error {
   status: number;
@@ -41,21 +53,87 @@ class PublicError extends Error {
   }
 }
 
-const normalizeEmail = (value: unknown) =>
-  typeof value === 'string' ? value.trim().toLowerCase() : '';
+const NO_STORE_HEADERS = {
+  'Cache-Control': 'no-store',
+  Pragma: 'no-cache',
+};
+
+function jsonResponse(
+  body: Record<string, unknown>,
+  status = 200,
+  headers: Record<string, string> = {},
+) {
+  return Response.json(body, {
+    status,
+    headers: { ...NO_STORE_HEADERS, ...headers },
+  });
+}
+
+function noStore(response: Response) {
+  for (const [name, value] of Object.entries(NO_STORE_HEADERS)) {
+    response.headers.set(name, value);
+  }
+  return response;
+}
+
+function exactIdentifier(value: unknown) {
+  if (typeof value !== 'string') return null;
+  if (
+    !value
+    || value.length > MAX_IDENTIFIER_LENGTH
+    || value.trim() !== value
+    || value.startsWith('$')
+  ) {
+    return null;
+  }
+  return value;
+}
 
 function canonicalEmail(value: unknown) {
-  const normalized = normalizeEmail(value);
-  if (!normalized || normalized.length > 320 || !normalized.includes('@') || /\s/.test(normalized)) {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  if (
+    !normalized
+    || normalized.length > 320
+    || !normalized.includes('@')
+    || /\s/.test(normalized)
+  ) {
     return null;
   }
   return normalized;
 }
 
-function exactIdentifier(value: unknown) {
+function canonicalInstant(value: unknown) {
+  if (typeof value !== 'string' || !value) return null;
+  const milliseconds = Date.parse(value);
+  if (!Number.isFinite(milliseconds)) return null;
+  return new Date(milliseconds).toISOString() === value ? value : null;
+}
+
+function exactReason(value: unknown) {
   if (typeof value !== 'string') return null;
-  if (!value || value.length > MAX_IDENTIFIER_LENGTH || value.trim() !== value) return null;
-  return value;
+  const reason = value.trim();
+  if (!reason || reason.length > MAX_REASON_LENGTH || reason !== value) return null;
+  return reason;
+}
+
+function exactAgencyName(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const name = value.trim();
+  if (
+    !name
+    || name.length > MAX_AGENCY_NAME_LENGTH
+    || name !== value
+    || UNSAFE_AGENCY_NAME.test(name)
+  ) {
+    return null;
+  }
+  return name;
+}
+
+function requireRows(value: unknown, label: string) {
+  if (!Array.isArray(value)) throw new Error(`${label} returned a non-array result`);
+  return value as Array<Record<string, unknown>>;
 }
 
 function isProtectedPlatformOwner(user: Record<string, unknown>) {
@@ -65,38 +143,136 @@ function isProtectedPlatformOwner(user: Record<string, unknown>) {
     && canonicalEmail(user.email) === configuredEmail;
 }
 
-function boundedReason(value: unknown) {
-  if (typeof value !== 'string') return null;
-  const reason = value.trim();
-  if (!reason || reason.length > MAX_REASON_LENGTH) return null;
-  return reason;
-}
-
-function requireRows(value: unknown, label: string) {
-  if (!Array.isArray(value)) {
-    throw new Error(`${label} returned a non-array result`);
+function callerSnapshot(user: Record<string, unknown>) {
+  const userId = exactIdentifier(user.id);
+  const userEmail = canonicalEmail(user.email);
+  if (
+    !userId
+    || !userEmail
+    || user.disabled === true
+    || user.is_service === true
+    || user.is_verified === false
+  ) {
+    throw new PublicError(403, 'Forbidden');
   }
-  return value as Array<Record<string, unknown>>;
+  return {
+    user_id: userId,
+    user_email: userEmail,
+    built_in_role: typeof user.role === 'string' ? user.role : null,
+    is_active: !isDeactivatedUser(user),
+    is_disabled: user.disabled === true,
+    is_service: user.is_service === true,
+    is_verified: user.is_verified !== false,
+    is_platform_owner: isProtectedPlatformOwner(user),
+  };
 }
 
-async function parseRequestedAgencyId(req: Request) {
+async function readBoundedBody(req: Request) {
+  const statedLength = req.headers.get('content-length');
+  if (statedLength !== null) {
+    if (!/^(0|[1-9]\d*)$/.test(statedLength)) {
+      throw new PublicError(400, 'Invalid Content-Length');
+    }
+    const contentLength = Number(statedLength);
+    if (!Number.isSafeInteger(contentLength) || contentLength < 0) {
+      throw new PublicError(400, 'Invalid Content-Length');
+    }
+    if (contentLength > MAX_BODY_BYTES) {
+      throw new PublicError(413, 'Request body is too large');
+    }
+  }
+
+  const reader = req.body?.getReader();
+  if (!reader) throw new PublicError(400, 'Invalid JSON body');
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  let chunkCount = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!(value instanceof Uint8Array)) {
+        throw new PublicError(400, 'Invalid request body');
+      }
+      chunkCount += 1;
+      if (chunkCount > MAX_BODY_CHUNKS) {
+        await reader.cancel().catch(() => {});
+        throw new PublicError(413, 'Request body has too many chunks');
+      }
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_BODY_BYTES) {
+        await reader.cancel().catch(() => {});
+        throw new PublicError(413, 'Request body is too large');
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (error instanceof PublicError) throw error;
+    throw new PublicError(400, 'Invalid request body');
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  } catch {
+    throw new PublicError(400, 'Invalid request body encoding');
+  }
+}
+
+async function parseRequest(req: Request) {
+  const raw = await readBoundedBody(req);
   let body: unknown;
   try {
-    body = await req.json();
+    body = JSON.parse(raw);
   } catch {
     throw new PublicError(400, 'Invalid JSON body');
   }
-
   if (body === null || typeof body !== 'object' || Array.isArray(body)) {
     throw new PublicError(400, 'Request body must be an object');
   }
+  const record = body as Record<string, unknown>;
+  if (Object.keys(record).some((key) => !REQUEST_KEYS.has(key))) {
+    throw new PublicError(400, 'Request contains unsupported fields');
+  }
 
-  const supplied = (body as Record<string, unknown>).agency_id;
-  if (supplied === undefined || supplied === null) return null;
+  const hasAgencyId = Object.hasOwn(record, 'agency_id');
+  const agencyId = hasAgencyId ? exactIdentifier(record.agency_id) : null;
+  if (hasAgencyId && !agencyId) throw new PublicError(400, 'agency_id is invalid');
 
-  const agencyId = exactIdentifier(supplied);
-  if (!agencyId) throw new PublicError(400, 'agency_id is invalid');
-  return agencyId;
+  const hasExpectedId = Object.hasOwn(record, 'expected_membership_id');
+  const hasExpectedVersion = Object.hasOwn(record, 'expected_membership_version');
+  if (hasExpectedId !== hasExpectedVersion) {
+    throw new PublicError(400, 'Expected membership id and version must be provided together');
+  }
+  if ((hasExpectedId || hasExpectedVersion) && !agencyId) {
+    throw new PublicError(400, 'agency_id is required for an expected membership');
+  }
+
+  let expectedMembership: Record<string, unknown> | null = null;
+  if (hasExpectedId && hasExpectedVersion) {
+    const membershipId = exactIdentifier(record.expected_membership_id);
+    const membershipVersion = record.expected_membership_version;
+    if (
+      !membershipId
+      || !Number.isSafeInteger(membershipVersion)
+      || Number(membershipVersion) < 1
+    ) {
+      throw new PublicError(400, 'Expected membership identity is invalid');
+    }
+    expectedMembership = {
+      id: membershipId,
+      version: membershipVersion,
+    };
+  }
+
+  return { agencyId, expectedMembership };
 }
 
 function validateMemberships(
@@ -104,36 +280,37 @@ function validateMemberships(
   userId: string,
   normalizedEmail: string,
 ) {
-  if (rawRows.length >= MEMBERSHIP_SCAN_LIMIT) {
-    throw new PublicError(409, 'Tenant membership is ambiguous');
+  if (rawRows.length > MAX_MEMBERSHIP_ROWS) {
+    throw new PublicError(409, 'Tenant membership list exceeds bounded capacity');
   }
-
-  // Recheck the service-role query in memory. Rows outside the requested user
-  // are ignored, but every lifecycle state for this exact immutable user id is
-  // validated before active memberships are selected. This prevents a hidden
-  // suspended/revoked duplicate from coexisting with an authorizing active row.
-  const candidates = rawRows.filter((row) => row?.user_id === userId);
+  if (rawRows.some((row) => !row || row.user_id !== userId)) {
+    throw new PublicError(409, 'Tenant membership query scope could not be verified');
+  }
 
   const memberships: Array<Record<string, unknown>> = [];
   const ids = new Set<string>();
   const keys = new Set<string>();
   const agencyIds = new Set<string>();
-
-  for (const row of candidates) {
+  for (const row of rawRows) {
     const id = exactIdentifier(row.id);
     const agencyId = exactIdentifier(row.agency_id);
     const membershipKey = exactIdentifier(row.membership_key);
     const storedEmail = canonicalEmail(row.user_email_normalized);
     const tenantRole = typeof row.tenant_role === 'string' ? row.tenant_role : '';
     const status = typeof row.status === 'string' ? row.status : '';
+    const invitationId = row.invitation_id == null
+      ? null
+      : exactIdentifier(row.invitation_id);
     const createdBy = exactIdentifier(row.created_by_user_id);
     const transitionedBy = exactIdentifier(row.last_transition_by_user_id);
     const transitionEmail = canonicalEmail(row.last_transition_by_email_normalized);
-    const transitionAt = Date.parse(String(row.last_transition_at || ''));
-    const transitionReason = boundedReason(row.last_transition_reason);
-    const activatedAt = Date.parse(String(row.activated_at || ''));
-    const revokedAt = Date.parse(String(row.revoked_at || ''));
-    const revocationReason = boundedReason(row.revocation_reason);
+    const transitionAt = canonicalInstant(row.last_transition_at);
+    const transitionReason = exactReason(row.last_transition_reason);
+    const activatedAt = row.activated_at == null ? null : canonicalInstant(row.activated_at);
+    const revokedAt = row.revoked_at == null ? null : canonicalInstant(row.revoked_at);
+    const revocationReason = row.revocation_reason == null
+      ? null
+      : exactReason(row.revocation_reason);
 
     if (
       !id
@@ -147,28 +324,21 @@ function validateMemberships(
       || !MEMBERSHIP_STATUSES.has(status)
       || !Number.isSafeInteger(row.version)
       || Number(row.version) < 1
+      || (row.invitation_id != null && !invitationId)
       || !createdBy
       || !transitionedBy
       || !transitionEmail
       || row.last_transition_by_email_normalized !== transitionEmail
-      || !Number.isFinite(transitionAt)
+      || !transitionAt
       || !transitionReason
-      || (
-        (status === 'active' || status === 'suspended')
-        && !Number.isFinite(activatedAt)
-      )
-      || (
-        status === 'revoked'
-        && (!Number.isFinite(revokedAt) || !revocationReason)
-      )
-      || (
-        status !== 'revoked'
-        && (row.revoked_at != null || row.revocation_reason != null)
-      )
+      || (row.activated_at != null && !activatedAt)
+      || ((status === 'active' || status === 'suspended') && !activatedAt)
+      || (status === 'pending' && row.activated_at != null)
+      || (status === 'revoked' && (!revokedAt || !revocationReason))
+      || (status !== 'revoked' && (row.revoked_at != null || row.revocation_reason != null))
     ) {
       throw new PublicError(409, 'Tenant membership integrity check failed');
     }
-
     if (ids.has(id) || keys.has(membershipKey) || agencyIds.has(agencyId)) {
       throw new PublicError(409, 'Tenant membership is ambiguous');
     }
@@ -176,145 +346,242 @@ function validateMemberships(
     ids.add(id);
     keys.add(membershipKey);
     agencyIds.add(agencyId);
-    memberships.push(row);
+    memberships.push({
+      id,
+      membership_key: membershipKey,
+      agency_id: agencyId,
+      user_id: userId,
+      user_email_normalized: storedEmail,
+      tenant_role: tenantRole,
+      status,
+      invitation_id: invitationId,
+      created_by_user_id: createdBy,
+      last_transition_by_user_id: transitionedBy,
+      last_transition_by_email_normalized: transitionEmail,
+      last_transition_at: transitionAt,
+      last_transition_reason: transitionReason,
+      activated_at: activatedAt,
+      revoked_at: revokedAt,
+      revocation_reason: revocationReason,
+      version: row.version,
+    });
   }
 
+  memberships.sort((left, right) => {
+    const leftKey = String(left.agency_id);
+    const rightKey = String(right.agency_id);
+    return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+  });
+  if (memberships.filter((row) => row.status === 'active').length > MAX_ACTIVE_MEMBERSHIPS) {
+    throw new PublicError(409, 'Active tenant membership list exceeds bounded capacity');
+  }
   return memberships;
 }
 
-async function loadExactAgency(entities: Record<string, any>, agencyId: string) {
+async function loadMembershipSnapshot(
+  entities: Record<string, any>,
+  userId: string,
+  normalizedEmail: string,
+) {
   const rawRows = requireRows(
-    await entities.Agency.filter({ id: agencyId }, undefined, AGENCY_SCAN_LIMIT),
-    'Agency.filter',
+    await entities.AgencyMembership.filter(
+      { user_id: userId },
+      'agency_id',
+      MEMBERSHIP_QUERY_LIMIT,
+    ),
+    'AgencyMembership.filter',
   );
-  if (rawRows.length >= AGENCY_SCAN_LIMIT) {
-    throw new PublicError(409, 'Agency is ambiguous');
-  }
-
-  const exactMatches = rawRows.filter((row) => row?.id === agencyId);
-  if (exactMatches.length === 0) throw new PublicError(403, 'Agency is unavailable');
-  if (exactMatches.length !== 1) throw new PublicError(409, 'Agency is ambiguous');
-
-  const agency = exactMatches[0];
-  if (!ACTIVE_AGENCY_STATUSES.has(String(agency.status || ''))) {
-    throw new PublicError(403, 'Agency is unavailable');
-  }
-  return agency;
+  return validateMemberships(rawRows, userId, normalizedEmail);
 }
 
-function publicAgency(agency: Record<string, unknown> | null) {
-  if (!agency) return null;
+async function loadExactAgency(entities: Record<string, any>, agencyId: string) {
+  const rows = requireRows(
+    await entities.Agency.filter(
+      { id: agencyId },
+      undefined,
+      AGENCY_EXACT_QUERY_LIMIT,
+    ),
+    'Agency.filter',
+  );
+  if (rows.length > 1) throw new PublicError(409, 'Agency is ambiguous');
+  if (rows.length === 0) throw new PublicError(403, 'Agency is unavailable');
+  const row = rows[0];
+  if (!row || row.id !== agencyId) {
+    throw new PublicError(409, 'Agency query scope could not be verified');
+  }
+  const id = exactIdentifier(row.id);
+  const name = exactAgencyName(row.agency_name);
+  const status = typeof row.status === 'string' ? row.status : '';
+  if (!id || !name) throw new PublicError(409, 'Agency integrity check failed');
+  if (!ACTIVE_AGENCY_STATUSES.has(status)) {
+    throw new PublicError(403, 'Agency is unavailable');
+  }
+  return { id, name, status };
+}
+
+function sameValue(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+function requireExpectedMembership(
+  selected: Record<string, unknown>,
+  expected: Record<string, unknown> | null,
+) {
+  if (!expected) return;
+  if (selected.id !== expected.id || selected.version !== expected.version) {
+    throw new PublicError(409, 'Selected tenant membership changed; refresh choices');
+  }
+}
+
+async function recheckCaller(base44: Record<string, any>, expected: Record<string, unknown>) {
+  const currentUser = await base44.auth.me().catch(() => null);
+  if (!currentUser || isDeactivatedUser(currentUser)) {
+    throw new PublicError(409, 'Caller identity changed during request');
+  }
+  let current;
+  try {
+    current = callerSnapshot(currentUser);
+  } catch {
+    throw new PublicError(409, 'Caller identity changed during request');
+  }
+  if (!sameValue(current, expected)) {
+    throw new PublicError(409, 'Caller identity changed during request');
+  }
+}
+
+function publicContext(
+  caller: Record<string, unknown>,
+  membership: Record<string, unknown> | null,
+  agency: Record<string, unknown> | null,
+) {
+  if (!membership) {
+    return {
+      user_id: caller.user_id,
+      user_email: caller.user_email,
+      membership_id: null,
+      membership_key: null,
+      membership_version: null,
+      agency_id: agency?.id ?? null,
+      tenant_role: 'platform_owner',
+      membership_status: null,
+      is_platform_owner: true,
+      agency,
+    };
+  }
   return {
-    id: agency.id,
-    name: typeof agency.agency_name === 'string' ? agency.agency_name : '',
-    status: agency.status,
+    user_id: caller.user_id,
+    user_email: caller.user_email,
+    membership_id: membership.id,
+    membership_key: membership.membership_key,
+    membership_version: membership.version,
+    agency_id: membership.agency_id,
+    tenant_role: membership.tenant_role,
+    membership_status: 'active',
+    is_platform_owner: false,
+    agency,
   };
 }
 
 Deno.serve(async (req) => {
+  if (req.method !== 'POST') {
+    return jsonResponse(
+      { error: 'Method not allowed' },
+      405,
+      { Allow: 'POST' },
+    );
+  }
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-
-    const userId = exactIdentifier(user.id);
-    if (user.disabled === true || user.is_service === true || user.is_verified === false) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const normalizedEmail = canonicalEmail(user.email);
-    if (!userId || !normalizedEmail) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
-    const requestedAgencyId = await parseRequestedAgencyId(req);
+    if (isDeactivatedUser(user)) return noStore(DEACTIVATED_USER_RESPONSE());
+    if (!user) return jsonResponse({ error: 'Unauthorized' }, 401);
+    const caller = callerSnapshot(user);
+    const input = await parseRequest(req);
     const entities = base44.asServiceRole.entities;
-    const isPlatformOwner = isProtectedPlatformOwner(user);
-    const rawMemberships = requireRows(
-      await entities.AgencyMembership.filter(
-        { user_id: userId },
-        '-updated_date',
-        MEMBERSHIP_SCAN_LIMIT,
-      ),
-      'AgencyMembership.filter',
+
+    const beforeMemberships = await loadMembershipSnapshot(
+      entities,
+      String(caller.user_id),
+      String(caller.user_email),
     );
 
-    if (isPlatformOwner) {
-      if (rawMemberships.length >= MEMBERSHIP_SCAN_LIMIT) {
-        throw new PublicError(409, 'Tenant membership is ambiguous');
-      }
-      if (rawMemberships.some((row) => row?.user_id !== userId)) {
-        throw new PublicError(409, 'Tenant membership query scope could not be verified');
-      }
-      if (rawMemberships.length !== 0) {
+    if (caller.is_platform_owner) {
+      if (beforeMemberships.length !== 0) {
         throw new PublicError(409, 'Platform owner tenant membership must not exist');
       }
-
-      // The protected owner is intentionally membership-free. Cross-tenant
-      // selection is authorized only by the exact built-in admin + configured
-      // email match above, never by an AgencyMembership row.
-      const agency = requestedAgencyId
-        ? await loadExactAgency(entities, requestedAgencyId)
+      if (input.expectedMembership) {
+        throw new PublicError(409, 'Platform owner cannot bind a tenant membership');
+      }
+      const beforeAgency = input.agencyId
+        ? await loadExactAgency(entities, input.agencyId)
         : null;
-      return Response.json({
-        tenant_context: {
-          user_id: userId,
-          user_email: normalizedEmail,
-          membership_id: null,
-          membership_key: null,
-          membership_version: null,
-          agency_id: requestedAgencyId,
-          tenant_role: 'platform_owner',
-          membership_status: null,
-          is_platform_owner: true,
-          agency: publicAgency(agency),
-        },
+      const afterMemberships = await loadMembershipSnapshot(
+        entities,
+        String(caller.user_id),
+        String(caller.user_email),
+      );
+      if (!sameValue(beforeMemberships, afterMemberships)) {
+        throw new PublicError(409, 'Tenant membership changed during request');
+      }
+      const afterAgency = input.agencyId
+        ? await loadExactAgency(entities, input.agencyId)
+        : null;
+      if (!sameValue(beforeAgency, afterAgency)) {
+        throw new PublicError(409, 'Agency changed during request');
+      }
+      await recheckCaller(base44, caller);
+      return jsonResponse({
+        tenant_context: publicContext(caller, null, beforeAgency),
       });
     }
 
-    const allMemberships = validateMemberships(
-      rawMemberships,
-      userId,
-      normalizedEmail,
-    );
-    const memberships = allMemberships.filter((row) => row.status === 'active');
-
-    if (memberships.length === 0) {
-      return Response.json({ error: 'No active tenant membership' }, { status: 403 });
+    const activeMemberships = beforeMemberships.filter((row) => row.status === 'active');
+    if (activeMemberships.length === 0) {
+      return jsonResponse({ error: 'No active tenant membership' }, 403);
     }
-
-    if (memberships.length > 1 && !requestedAgencyId) {
+    if (activeMemberships.length > 1 && !input.agencyId) {
       throw new PublicError(409, 'agency_id is required for multiple memberships');
     }
 
-    const selected = requestedAgencyId
-      ? memberships.find((row) => row.agency_id === requestedAgencyId)
-      : memberships[0];
+    const selected = input.agencyId
+      ? activeMemberships.find((row) => row.agency_id === input.agencyId)
+      : activeMemberships[0];
     if (!selected) throw new PublicError(403, 'No active membership for agency');
+    requireExpectedMembership(selected, input.expectedMembership);
 
-    const agencyId = selected.agency_id as string;
-    const agency = await loadExactAgency(entities, agencyId);
-    return Response.json({
-      tenant_context: {
-        user_id: userId,
-        user_email: normalizedEmail,
-        membership_id: selected.id,
-        membership_key: selected.membership_key,
-        membership_version: selected.version,
-        agency_id: agencyId,
-        tenant_role: selected.tenant_role,
-        membership_status: 'active',
-        is_platform_owner: false,
-        agency: publicAgency(agency),
-      },
+    const agencyId = String(selected.agency_id);
+    const beforeAgency = await loadExactAgency(entities, agencyId);
+    const afterMemberships = await loadMembershipSnapshot(
+      entities,
+      String(caller.user_id),
+      String(caller.user_email),
+    );
+    if (!sameValue(beforeMemberships, afterMemberships)) {
+      throw new PublicError(409, 'Tenant membership changed during request');
+    }
+    const selectedAfter = afterMemberships.find((row) => (
+      row.status === 'active' && row.agency_id === agencyId
+    ));
+    if (!selectedAfter || !sameValue(selected, selectedAfter)) {
+      throw new PublicError(409, 'Tenant membership changed during request');
+    }
+    requireExpectedMembership(selectedAfter, input.expectedMembership);
+
+    const afterAgency = await loadExactAgency(entities, agencyId);
+    if (!sameValue(beforeAgency, afterAgency)) {
+      throw new PublicError(409, 'Agency changed during request');
+    }
+    await recheckCaller(base44, caller);
+
+    return jsonResponse({
+      tenant_context: publicContext(caller, selected, beforeAgency),
     });
   } catch (error) {
     if (error instanceof PublicError) {
-      return Response.json({ error: error.message }, { status: error.status });
+      return jsonResponse({ error: error.message }, error.status);
     }
     // Never retain provider error objects: they may embed identity or tenant data.
     console.error('getMyTenantContext failed');
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonResponse({ error: 'Internal server error' }, 500);
   }
 });

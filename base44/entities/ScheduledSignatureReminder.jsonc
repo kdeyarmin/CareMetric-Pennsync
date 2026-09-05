@@ -77,42 +77,12 @@
     "document_id",
     "send_at"
   ],
+  // Signature scheduling and dispatch are quarantined. Direct access is denied;
+  // reviewed service-role offboarding may still cancel historical rows.
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "data.requested_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    },
-    // Write is ADMIN-ONLY: rows are created by scheduleSignatureReminders and
-    // consumed by dispatchScheduledSignatureReminders, both via service role
-    // (RLS-bypassing). An owner write rule would let a non-admin create a row
-    // for an ARBITRARY document_id directly, and the dispatcher would then
-    // notify that document's signers — bypassing scheduleSignatureReminders'
-    // ownership/role checks.
-    "create": {
-      "user_condition": {
-        "role": "admin"
-      }
-    },
-    "update": {
-      "user_condition": {
-        "role": "admin"
-      }
-    },
-    "delete": {
-      "user_condition": {
-        "role": "admin"
-      }
-    }
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

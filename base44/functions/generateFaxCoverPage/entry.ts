@@ -20,7 +20,6 @@ const TENANT_ROLES = new Set([
 const AGENCY_WIDE_FAX_ROLES = new Set(['agency_admin', 'manager', 'office_staff']);
 const FAX_COVER_FIELDS = new Set([
   'patient_id',
-  'document_id',
   'recipient_number',
   'recipient_name',
   'recipient_organization',
@@ -91,7 +90,7 @@ async function parseBody(req: Request) {
   if (Object.keys(record).some((field) => !FAX_COVER_FIELDS.has(field))) {
     throw new PublicError(400, 'Request contains unsupported fields');
   }
-  for (const field of ['patient_id', 'document_id']) {
+  for (const field of ['patient_id']) {
     const value = record[field];
     if (value !== undefined && value !== null && value !== '' && !exactIdentifier(value)) {
       throw new PublicError(400, `${field} is invalid`);
@@ -256,62 +255,25 @@ async function loadFaxContext(
   base44: Record<string, any>,
   user: Record<string, any>,
   requestedPatientId: string | null,
-  requestedDocumentId: string | null,
 ) {
   const entities = base44.asServiceRole.entities;
   const userId = exactIdentifier(user.id);
   const email = canonicalEmail(user.email);
   if (!userId || !email) throw new PublicError(403, 'Forbidden');
 
-  const document = requestedDocumentId
-    ? await exactRow(entities.Document, requestedDocumentId, 'Document', 404)
-    : null;
-  // Legacy Document relation fields are still browser-mutable. The immutable
-  // built-in creator must match before document metadata can enter an external
-  // AI prompt; patient/agency links only corroborate that owner boundary.
-  if (document && canonicalEmail(document.created_by) !== email) {
-    throw new PublicError(403, 'Document is unavailable');
-  }
-  const storedAgencyId = document?.agency_id === undefined
-    || document?.agency_id === null
-    || document?.agency_id === ''
-    ? null
-    : exactIdentifier(document.agency_id);
-  if (document && document.agency_id !== undefined && document.agency_id !== null
-    && document.agency_id !== '' && !storedAgencyId) {
-    throw new PublicError(409, 'Document tenant linkage is invalid');
-  }
-  const storedPatientId = document?.patient_id === undefined
-    || document?.patient_id === null
-    || document?.patient_id === ''
-    ? null
-    : exactIdentifier(document.patient_id);
-  const hasStoredPatientId = !!document
-    && document.patient_id !== undefined
-    && document.patient_id !== null
-    && document.patient_id !== '';
-  if (hasStoredPatientId && !storedPatientId) {
-    throw new PublicError(409, 'Document patient linkage is invalid');
-  }
-  if (requestedPatientId && document && storedPatientId !== requestedPatientId) {
-    throw new PublicError(409, 'Document is not linked to the requested patient');
-  }
-
-  const patientId = requestedPatientId || storedPatientId;
-  const patient = patientId
-    ? await exactRow(entities.Patient, patientId, 'Patient', 403)
+  // Document metadata is deliberately absent from this helper. Callers select
+  // private files through list/getAuthorizedDocuments and the cover generator
+  // accepts no document id, so a legacy Document row can never enter its prompt.
+  const patient = requestedPatientId
+    ? await exactRow(entities.Patient, requestedPatientId, 'Patient', 403)
     : null;
   if (patient) {
     const authority = await assertPatientAccess(base44, user, patient);
-    if (document?.agency_id !== undefined && document?.agency_id !== null
-      && document.agency_id !== authority.agencyId) {
-      throw new PublicError(409, 'Document tenant linkage is inconsistent');
-    }
-    return { patient, document, ...authority };
+    return { patient, ...authority };
   }
 
-  const authority = await loadTenantAuthority(entities, userId, email, storedAgencyId);
-  return { patient: null, document, ...authority };
+  const authority = await loadTenantAuthority(entities, userId, email, null);
+  return { patient: null, ...authority };
 }
 
 Deno.serve(async (req) => {
@@ -327,7 +289,6 @@ Deno.serve(async (req) => {
     const body = await parseBody(req);
     const {
       patient_id,
-      document_id,
       recipient_number,
       recipient_name,
       recipient_organization,
@@ -343,9 +304,8 @@ Deno.serve(async (req) => {
       base44,
       user,
       exactIdentifier(patient_id),
-      exactIdentifier(document_id),
     );
-    const { patient, document } = context;
+    const { patient } = context;
 
     const anthropicKey = Deno.env.get('ANTHROPIC_API_KEY');
     if (!anthropicKey) return Response.json({ error: 'Anthropic API key not configured' }, { status: 500 });
@@ -379,8 +339,7 @@ Patient Info (if provided):
   MRN: ${patient?.medical_record_number || 'N/A'}
   Primary Diagnosis: ${patient?.primary_diagnosis || 'N/A'}
 
-Document: ${document?.title || 'See attached'}
-Document Category: ${document?.category || ''}
+Document: See attached
 
 Generate a professional cover sheet with a HIPAA confidentiality disclaimer. Return only JSON.`;
 

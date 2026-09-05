@@ -297,12 +297,18 @@ test('Visit provenance fields exist, direct create is disabled, and the wrapper 
   for (const relative of [
     'components/dashboard/PatientQuickActions.jsx',
     'components/smartNote/persistVisitNote.js',
-    'components/telehealth/PatientTelehealthPanel.jsx',
     'lib/retiredOfflineQueue.js',
   ]) {
     const source = await readFile(new URL(`../../src/${relative}`, import.meta.url), 'utf8');
     assert.match(source, /createAuthorizedVisit\(/, relative);
   }
+
+  const telehealth = await readFile(
+    new URL('../../src/components/telehealth/PatientTelehealthPanel.jsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(telehealth, /TELEHEALTH_UNAVAILABLE_MESSAGE/);
+  assert.doesNotMatch(telehealth, /createAuthorizedVisit|base44\.entities\.TelehealthSession|useMutation|base44\./);
 });
 
 test('authorized creation stamps immutable tenant identity and returns a narrow row', async () => {

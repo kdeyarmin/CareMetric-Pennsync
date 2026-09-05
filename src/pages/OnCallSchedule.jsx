@@ -12,6 +12,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import OnCallCalendar from "@/components/oncall/OnCallCalendar";
 import AssignOnCallDialog from "@/components/oncall/AssignOnCallDialog";
 import { isAdminView } from "@/lib/roles";
+import { isAdminLike } from "@/lib/superAdmin";
 import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function OnCallSchedule() {
@@ -23,7 +24,10 @@ export default function OnCallSchedule() {
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
   });
-  const isAdmin = isAdminView(currentUser);
+  const adminView = isAdminView(currentUser);
+  // OnCallShift is readable by all signed-in staff, while create/update/delete
+  // RLS explicitly requires Base44's protected built-in admin role.
+  const canManageSchedule = isAdminLike(currentUser);
 
   // Load shifts for the visible month (plus a small buffer for grid spillover).
   const monthKey = format(cursor, "yyyy-MM");
@@ -51,7 +55,7 @@ export default function OnCallSchedule() {
       return filterUsersByCallerAgency(_rows, currentUser);
     },
     initialData: [],
-    enabled: isAdmin,
+    enabled: canManageSchedule,
   });
 
   const shiftsByDate = useMemo(() => {
@@ -63,6 +67,10 @@ export default function OnCallSchedule() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["onCallShifts"] });
 
   const handleSave = async ({ slot, assigned_user_email, assigned_user_name, notes }) => {
+    if (!canManageSchedule) {
+      toast.error("Protected administrator access is required to change on-call coverage.");
+      return;
+    }
     const payload = {
       shift_date: slot.iso,
       coverage_type: slot.coverage_type,
@@ -87,6 +95,10 @@ export default function OnCallSchedule() {
   };
 
   const handleDelete = async (slot) => {
+    if (!canManageSchedule) {
+      toast.error("Protected administrator access is required to clear on-call coverage.");
+      return;
+    }
     try {
       if (slot.shift?.id) await base44.entities.OnCallShift.delete(slot.shift.id);
       toast.success("On-call assignment cleared");
@@ -107,10 +119,12 @@ export default function OnCallSchedule() {
       />
 
       <EmbeddedPage>
-        {!isAdmin && (
+        {!canManageSchedule && (
           <Alert className="mb-4">
             <AlertDescription>
-              You're viewing the on-call schedule. Only administrators can assign or change coverage.
+              {adminView
+                ? "You have read-only facility-admin access to this schedule. Assigning or changing coverage requires protected administrator access."
+                : "You're viewing the on-call schedule. Assigning or changing coverage requires protected administrator access."}
             </AlertDescription>
           </Alert>
         )}
@@ -119,11 +133,11 @@ export default function OnCallSchedule() {
           cursor={cursor}
           setCursor={setCursor}
           shiftsByDate={shiftsByDate}
-          isAdmin={isAdmin}
+          isAdmin={canManageSchedule}
           onSelectSlot={setSelectedSlot}
         />
 
-        {isAdmin && (
+        {canManageSchedule && (
           <AssignOnCallDialog
             open={!!selectedSlot}
             slot={selectedSlot}

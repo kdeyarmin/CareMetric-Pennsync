@@ -36,7 +36,11 @@
     "e164"
   ],
   "rls": {
-    "read": true,
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
     "create": {
       "user_condition": {
         "role": "__service_role_only__"

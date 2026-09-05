@@ -22,10 +22,13 @@ import ClinicalPhraseSeeder from "./ClinicalPhraseSeeder";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { fetchAllClinicalTemplates } from "./fetchAllClinicalTemplates";
 import { isAdminView } from "@/lib/roles";
+import { isAdminLike } from "@/lib/superAdmin";
 
 export default function ClinicalLibraryManager() {
   const confirm = useConfirm();
   const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isFolderDialogOpen, setIsFolderDialogOpen] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
   const [editingTemplate, setEditingTemplate] = useState(null);
   const [showAIAssistant, setShowAIAssistant] = useState(false);
   const [aiMode, setAIMode] = useState('generate'); // 'generate', 'improve', 'refine'
@@ -51,6 +54,12 @@ export default function ClinicalLibraryManager() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me()
   });
+  const isAdmin = isAdminView(currentUser);
+  const isProtectedAdmin = isAdminLike(currentUser);
+  const canManageFolder = (folder) => Boolean(
+    folder
+    && (isProtectedAdmin || (currentUser?.email && folder.created_by === currentUser.email)),
+  );
 
   const { data: templates = [] } = useQuery({
     queryKey: ['clinical-templates'],
@@ -97,6 +106,8 @@ export default function ClinicalLibraryManager() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['clinical-folders'] });
       toast.success('Folder created');
+      setNewFolderName('');
+      setIsFolderDialogOpen(false);
     }
   });
 
@@ -201,28 +212,49 @@ export default function ClinicalLibraryManager() {
   };
 
   const handleCreateFolder = () => {
-    const name = prompt('Enter folder name:');
-    if (name?.trim()) {
-      createFolderMutation.mutate({
-        name: name.trim(),
-        parent_folder_id: selectedFolderId,
-        created_by: currentUser?.email,
-        color: 'blue'
-      });
-    }
+    setNewFolderName('');
+    setIsFolderDialogOpen(true);
+  };
+
+  const handleCreateFolderSubmit = (event) => {
+    event.preventDefault();
+    const name = newFolderName.trim();
+    if (!name || name.length > 200) return;
+    createFolderMutation.mutate({
+      name,
+      parent_folder_id: selectedFolderId,
+      created_by: currentUser?.email,
+      color: 'blue'
+    });
   };
 
   const handleRenameFolder = (folderId, newName) => {
+    if (!canManageFolder(folders.find((folder) => folder.id === folderId))) {
+      toast.error('This shared folder is read-only.');
+      return;
+    }
     updateFolderMutation.mutate({ id: folderId, data: { name: newName } });
   };
 
   const handleDeleteFolder = async (folderId) => {
+    if (!canManageFolder(folders.find((folder) => folder.id === folderId))) {
+      toast.error('This shared folder is read-only.');
+      return;
+    }
     const templatesInFolder = templates.filter(t => t.folder_id === folderId);
     // Child folders must be reparented, otherwise they (and any templates filed
     // in them) become permanently unreachable in the tree, which renders folders
     // strictly by parent_folder_id chained from null.
     const childFolders = folders.filter(f => f.parent_folder_id === folderId);
     const parentId = folders.find(f => f.id === folderId)?.parent_folder_id ?? null;
+    const hasReadOnlyContents = !isProtectedAdmin && (
+      templatesInFolder.some((template) => template.created_by !== currentUser?.email)
+      || childFolders.some((folder) => !canManageFolder(folder))
+    );
+    if (hasReadOnlyContents) {
+      toast.error('This folder contains shared items owned by another user and cannot be deleted.');
+      return;
+    }
 
     if (templatesInFolder.length > 0 || childFolders.length > 0) {
       const parts = [];
@@ -260,6 +292,10 @@ export default function ClinicalLibraryManager() {
   };
 
   const handleChangeColor = (folderId, color) => {
+    if (!canManageFolder(folders.find((folder) => folder.id === folderId))) {
+      toast.error('This shared folder is read-only.');
+      return;
+    }
     updateFolderMutation.mutate({ id: folderId, data: { color } });
   };
 
@@ -297,9 +333,10 @@ export default function ClinicalLibraryManager() {
     setSelectedTemplateIds(new Set());
   };
 
-  const isAdmin = isAdminView(currentUser);
   const userTemplates = templates.filter(t => t.created_by === currentUser?.email || t.is_agency_wide);
-  const userFolders = folders.filter(f => f.created_by === currentUser?.email || f.is_agency_wide);
+  const userFolders = isProtectedAdmin
+    ? folders
+    : folders.filter(f => f.created_by === currentUser?.email || f.is_agency_wide);
 
   const filteredTemplates = useMemo(() => {
     if (selectedFolderId === null) {
@@ -349,6 +386,7 @@ export default function ClinicalLibraryManager() {
               onRenameFolder={handleRenameFolder}
               onDeleteFolder={handleDeleteFolder}
               onChangeColor={handleChangeColor}
+              canEditFolder={canManageFolder}
               templatesCount={templatesCount}
             />
           </CardContent>
@@ -525,6 +563,42 @@ export default function ClinicalLibraryManager() {
         </CardContent>
         </Card>
       </div>
+
+      <Dialog open={isFolderDialogOpen} onOpenChange={(open) => {
+        setIsFolderDialogOpen(open);
+        if (!open) setNewFolderName('');
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Create folder</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleCreateFolderSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="clinical-folder-name">Folder name</Label>
+              <Input
+                id="clinical-folder-name"
+                value={newFolderName}
+                onChange={(event) => setNewFolderName(event.target.value)}
+                maxLength={200}
+                autoComplete="off"
+                autoFocus
+                required
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setIsFolderDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={!newFolderName.trim() || createFolderMutation.isPending}
+              >
+                Create folder
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isDialogOpen} onOpenChange={(open) => {
         setIsDialogOpen(open);

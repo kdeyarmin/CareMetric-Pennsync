@@ -6,10 +6,13 @@ import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import JSON5 from 'json5';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
+import './tenantMembershipSelectionContract.cases.js';
 
 const functionUrl = new URL('../functions/getMyTenantContext/entry.ts', import.meta.url);
 const entityUrl = new URL('../entities/AgencyMembership.jsonc', import.meta.url);
 const wrapperUrl = new URL('../../src/functions/getMyTenantContext.js', import.meta.url);
+
+const defaultUser = { id: 'user-1', email: 'Member@Example.com', role: 'user' };
 
 const membership = (overrides = {}) => {
   const row = {
@@ -49,9 +52,12 @@ const agency = (overrides = {}) => ({
 });
 
 async function loadHandler({
-  user = { id: 'user-1', email: 'Member@Example.com', role: 'user' },
+  user = defaultUser,
+  users,
   membershipRows = [membership()],
+  membershipResults,
   agencyRows = [agency()],
+  agencyResult,
   superAdminEmail = '',
 } = {}) {
   let source = await readFile(functionUrl, 'utf8');
@@ -67,22 +73,40 @@ async function loadHandler({
   await writeFile(temporaryModule, transpileTs(source).outputText);
 
   const calls = {
+    clientConstructions: 0,
+    auth: 0,
     membershipFilters: [],
     agencyFilters: [],
   };
+  const effectiveUsers = users || [user, user];
+  const effectiveMembershipResults = membershipResults || [membershipRows, membershipRows];
+  const agencyCallCounts = new Map();
   const client = {
-    auth: { me: async () => user },
+    auth: {
+      me: async () => {
+        const index = Math.min(calls.auth, effectiveUsers.length - 1);
+        calls.auth += 1;
+        return effectiveUsers[index];
+      },
+    },
     asServiceRole: {
       entities: {
         AgencyMembership: {
           filter: async (...args) => {
+            const index = calls.membershipFilters.length;
             calls.membershipFilters.push(args);
-            return membershipRows;
+            return effectiveMembershipResults[
+              Math.min(index, effectiveMembershipResults.length - 1)
+            ];
           },
         },
         Agency: {
           filter: async (...args) => {
             calls.agencyFilters.push(args);
+            const agencyId = args[0]?.id;
+            const count = (agencyCallCounts.get(agencyId) || 0) + 1;
+            agencyCallCounts.set(agencyId, count);
+            if (agencyResult) return agencyResult({ agencyId, count, args });
             return agencyRows;
           },
         },
@@ -91,7 +115,10 @@ async function loadHandler({
   };
 
   let handler;
-  globalThis.__tenantContextMakeClient = () => client;
+  globalThis.__tenantContextMakeClient = () => {
+    calls.clientConstructions += 1;
+    return client;
+  };
   globalThis.Deno = {
     serve: (candidate) => { handler = candidate; },
     env: {
@@ -108,7 +135,24 @@ async function loadHandler({
 }
 
 async function invoke(handler, body = {}) {
-  const response = await handler({ json: async () => body });
+  const response = await handler(new Request('http://local/getMyTenantContext', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }));
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal(response.headers.get('pragma'), 'no-cache');
+  return { response, json: await response.json() };
+}
+
+async function invokeRaw(handler, raw) {
+  const response = await handler(new Request('http://local/getMyTenantContext', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: raw,
+  }));
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal(response.headers.get('pragma'), 'no-cache');
   return { response, json: await response.json() };
 }
 
@@ -164,6 +208,16 @@ test('resolver source does not authorize from mutable custom User claims', async
   );
   assert.match(source, /console\.error\('getMyTenantContext failed'\)/);
   assert.doesNotMatch(source, /console\.error\([^)]*,\s*error\b/);
+  assert.ok(
+    source.indexOf("req.method !== 'POST'") < source.indexOf('createClientFromRequest(req)'),
+    'method gate must run before client construction',
+  );
+  assert.match(source, /req\.body\?\.getReader\(\)/);
+  assert.doesNotMatch(source, /req\.text\(\)|req\.json\(\)/);
+  assert.match(source, /'Cache-Control': 'no-store'/);
+  assert.match(source, /Tenant membership changed during request/);
+  assert.match(source, /Agency changed during request/);
+  assert.match(source, /Caller identity changed during request/);
 });
 
 test('an active exact membership resolves through exact Agency validation', async () => {
@@ -171,12 +225,14 @@ test('an active exact membership resolves through exact Agency validation', asyn
   const { response, json } = await invoke(handler);
 
   assert.equal(response.status, 200);
-  assert.deepEqual(calls.membershipFilters, [[
-    { user_id: 'user-1' },
-    '-updated_date',
-    100,
-  ]]);
-  assert.deepEqual(calls.agencyFilters, [[{ id: 'agency-a' }, undefined, 10]]);
+  assert.deepEqual(calls.membershipFilters, [
+    [{ user_id: 'user-1' }, 'agency_id', 51],
+    [{ user_id: 'user-1' }, 'agency_id', 51],
+  ]);
+  assert.deepEqual(calls.agencyFilters, [
+    [{ id: 'agency-a' }, undefined, 2],
+    [{ id: 'agency-a' }, undefined, 2],
+  ]);
   assert.deepEqual(json.tenant_context, {
     user_id: 'user-1',
     user_email: 'member@example.com',
@@ -247,7 +303,7 @@ test('disabled, service, and explicitly unverified callers fail before service-r
   }
 });
 
-test('inactive and service-filter-regression rows never authorize', async () => {
+test('inactive and foreign service-filter-regression rows never authorize', async () => {
   const { handler, calls } = await loadHandler({
     membershipRows: [
       membership({ status: 'revoked' }),
@@ -261,7 +317,7 @@ test('inactive and service-filter-regression rows never authorize', async () => 
   });
   const { response } = await invoke(handler);
 
-  assert.equal(response.status, 403);
+  assert.equal(response.status, 409);
   assert.deepEqual(calls.agencyFilters, []);
 });
 
@@ -403,12 +459,15 @@ test('multiple memberships require an explicit exact agency selection', async ()
   assert.equal(selected.response.status, 200);
   assert.equal(selected.json.tenant_context.agency_id, 'agency-b');
   assert.equal(selected.json.tenant_context.tenant_role, 'manager');
-  assert.deepEqual(selectedLoad.calls.agencyFilters, [[{ id: 'agency-b' }, undefined, 10]]);
+  assert.deepEqual(selectedLoad.calls.agencyFilters, [
+    [{ id: 'agency-b' }, undefined, 2],
+    [{ id: 'agency-b' }, undefined, 2],
+  ]);
 });
 
 test('unrelated, duplicate, and inactive Agency rows fail exact validation', async () => {
   const cases = [
-    { rows: [agency({ id: 'agency-b' })], status: 403 },
+    { rows: [agency({ id: 'agency-b' })], status: 409 },
     { rows: [agency(), agency()], status: 409 },
     { rows: [agency({ status: 'suspended' })], status: 403 },
   ];
@@ -470,7 +529,10 @@ test('membership-free owner agency selection is still exact and status validated
   assert.equal(response.status, 200);
   assert.equal(json.tenant_context.tenant_role, 'platform_owner');
   assert.equal(json.tenant_context.agency_id, 'agency-a');
-  assert.deepEqual(calls.agencyFilters, [[{ id: 'agency-a' }, undefined, 10]]);
+  assert.deepEqual(calls.agencyFilters, [
+    [{ id: 'agency-a' }, undefined, 2],
+    [{ id: 'agency-a' }, undefined, 2],
+  ]);
 });
 
 test('a protected owner fails closed when any tenant membership row exists', async () => {
@@ -493,18 +555,184 @@ test('a protected owner fails closed when any tenant membership row exists', asy
     const { response, json } = await invoke(handler, { agency_id: 'agency-a' });
 
     assert.equal(response.status, 409);
-    assert.equal(json.error, 'Platform owner tenant membership must not exist');
+    assert.match(json.error, /Platform owner tenant membership must not exist|ambiguous/);
     assert.deepEqual(calls.agencyFilters, []);
   }
 });
 
 test('operator-shaped and malformed agency selectors are rejected before service reads', async () => {
-  for (const agencyId of [{ $ne: null }, '', ' agency-a']) {
+  for (const agencyId of [{ $ne: null }, '', ' agency-a', '$ne', null]) {
     const { handler, calls } = await loadHandler();
     const { response } = await invoke(handler, { agency_id: agencyId });
 
     assert.equal(response.status, 400);
     assert.deepEqual(calls.membershipFilters, []);
     assert.deepEqual(calls.agencyFilters, []);
+  }
+});
+
+test('POST is required before client construction and body parsing follows authentication', async () => {
+  const methodLoaded = await loadHandler();
+  const methodResponse = await methodLoaded.handler(new Request(
+    'http://local/getMyTenantContext',
+    { method: 'GET' },
+  ));
+  assert.equal(methodResponse.status, 405);
+  assert.equal(methodResponse.headers.get('allow'), 'POST');
+  assert.equal(methodResponse.headers.get('cache-control'), 'no-store');
+  assert.equal(methodResponse.headers.get('pragma'), 'no-cache');
+  assert.equal(methodLoaded.calls.clientConstructions, 0);
+  assert.equal(methodLoaded.calls.auth, 0);
+
+  const authenticated = await loadHandler();
+  const emptyResponse = await authenticated.handler(new Request(
+    'http://local/getMyTenantContext',
+    { method: 'POST' },
+  ));
+  assert.equal(emptyResponse.status, 400);
+  assert.equal(emptyResponse.headers.get('cache-control'), 'no-store');
+  assert.equal(authenticated.calls.auth, 1);
+  assert.deepEqual(authenticated.calls.membershipFilters, []);
+
+  const unauthenticated = await loadHandler({ user: null });
+  const unauthenticatedResponse = await unauthenticated.handler(new Request(
+    'http://local/getMyTenantContext',
+    { method: 'POST' },
+  ));
+  assert.equal(unauthenticatedResponse.status, 401);
+  assert.equal(unauthenticatedResponse.headers.get('cache-control'), 'no-store');
+  assert.equal(unauthenticated.calls.auth, 1);
+});
+
+test('chunked bodies without Content-Length are cancelled at the byte cap', async () => {
+  let pulls = 0;
+  let cancelled = false;
+  const stream = new ReadableStream({
+    pull(controller) {
+      pulls += 1;
+      controller.enqueue(new Uint8Array(1_100).fill(0x20));
+    },
+    cancel() {
+      cancelled = true;
+    },
+  });
+  const request = new Request('http://local/getMyTenantContext', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: stream,
+    duplex: 'half',
+  });
+  assert.equal(request.headers.get('content-length'), null);
+  const loaded = await loadHandler();
+  const response = await loaded.handler(request);
+  assert.equal(response.status, 413);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal(cancelled, true);
+  assert.ok(pulls <= 3, `stream should stop promptly, observed ${pulls} pulls`);
+  assert.deepEqual(loaded.calls.membershipFilters, []);
+});
+
+test('request keys and optimistic membership identity are structurally exact', async () => {
+  const invalidBodies = [
+    { extra: true },
+    { agency_id: 'agency-a', expected_membership_id: 'membership-a' },
+    { agency_id: 'agency-a', expected_membership_version: 1 },
+    { expected_membership_id: 'membership-a', expected_membership_version: 1 },
+    {
+      agency_id: 'agency-a',
+      expected_membership_id: '$ne',
+      expected_membership_version: 1,
+    },
+    {
+      agency_id: 'agency-a',
+      expected_membership_id: 'membership-a',
+      expected_membership_version: 0,
+    },
+    {
+      agency_id: 'agency-a',
+      expected_membership_id: 'membership-a',
+      expected_membership_version: 1.5,
+    },
+  ];
+  for (const body of invalidBodies) {
+    const loaded = await loadHandler();
+    const result = await invoke(loaded.handler, body);
+    assert.equal(result.response.status, 400);
+    assert.deepEqual(loaded.calls.membershipFilters, []);
+  }
+  const invalidJson = await loadHandler();
+  const invalidJsonResult = await invokeRaw(invalidJson.handler, '{invalid');
+  assert.equal(invalidJsonResult.response.status, 400);
+  assert.deepEqual(invalidJson.calls.membershipFilters, []);
+});
+
+test('an explicit selector choice is bound to the exact membership id and version', async () => {
+  const selected = await loadHandler();
+  const selectedResult = await invoke(selected.handler, {
+    agency_id: 'agency-a',
+    expected_membership_id: 'membership-a',
+    expected_membership_version: 1,
+  });
+  assert.equal(selectedResult.response.status, 200);
+  assert.equal(selectedResult.json.tenant_context.membership_id, 'membership-a');
+  assert.equal(selectedResult.json.tenant_context.membership_version, 1);
+
+  for (const expectation of [
+    { expected_membership_id: 'membership-z', expected_membership_version: 1 },
+    { expected_membership_id: 'membership-a', expected_membership_version: 2 },
+  ]) {
+    const stale = await loadHandler();
+    const staleResult = await invoke(stale.handler, {
+      agency_id: 'agency-a',
+      ...expectation,
+    });
+    assert.equal(staleResult.response.status, 409);
+    assert.equal(
+      staleResult.json.error,
+      'Selected tenant membership changed; refresh choices',
+    );
+    assert.deepEqual(stale.calls.agencyFilters, []);
+  }
+});
+
+test('membership, Agency, and caller snapshots must remain stable through response', async () => {
+  const membershipDrift = await loadHandler({
+    membershipResults: [[membership()], [membership({ version: 2 })]],
+  });
+  const membershipResult = await invoke(membershipDrift.handler);
+  assert.equal(membershipResult.response.status, 409);
+  assert.equal(membershipResult.json.error, 'Tenant membership changed during request');
+
+  const agencyDrift = await loadHandler({
+    agencyResult: ({ count }) => [agency({
+      agency_name: count === 1 ? 'Agency A' : 'Agency A Renamed',
+    })],
+  });
+  const agencyResult = await invoke(agencyDrift.handler);
+  assert.equal(agencyResult.response.status, 409);
+  assert.equal(agencyResult.json.error, 'Agency changed during request');
+
+  const changedUser = { ...defaultUser, role: 'admin' };
+  const callerDrift = await loadHandler({ users: [defaultUser, changedUser] });
+  const callerResult = await invoke(callerDrift.handler);
+  assert.equal(callerResult.response.status, 409);
+  assert.equal(callerResult.json.error, 'Caller identity changed during request');
+});
+
+test('Agency labels reject whitespace, control, bidi, and overflow text', async () => {
+  const names = [
+    '',
+    ' Agency A ',
+    'Agency\nA',
+    'Agency\u202eA',
+    'A'.repeat(201),
+  ];
+  for (const agencyName of names) {
+    const loaded = await loadHandler({
+      agencyRows: [agency({ agency_name: agencyName })],
+    });
+    const result = await invoke(loaded.handler);
+    assert.equal(result.response.status, 409);
+    assert.equal(Object.hasOwn(result.json, 'tenant_context'), false);
   }
 });

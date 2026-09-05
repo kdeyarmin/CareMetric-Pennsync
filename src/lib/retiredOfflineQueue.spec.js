@@ -15,7 +15,16 @@ vi.mock('@/lib/offlineMigration', () => ({
 
 import { flushAndRetireOfflineQueue } from './retiredOfflineQueue';
 
-function harness(queue = [], { online = true, legacyRecoveryEnabled = false } = {}) {
+function harness(queue = [], {
+  online = true,
+  legacyRecoveryEnabled = false,
+  authenticatedUser = {
+    id: 'user-1',
+    email: 'nurse@example.com',
+    is_active: true,
+    is_verified: true,
+  },
+} = {}) {
   const created = { Visit: [], Task: [], Incident: [], NoteConversion: [], ComplianceAudit: [] };
   const order = [];
   const entities = {
@@ -26,7 +35,23 @@ function harness(queue = [], { online = true, legacyRecoveryEnabled = false } = 
     },
     Task: { create: vi.fn(async (p) => { created.Task.push(p); return p; }), filter: vi.fn(async () => []) },
     Incident: { filter: vi.fn(async () => []) },
-    NoteConversion: { create: vi.fn(async (p) => { created.NoteConversion.push(p); return p; }) },
+    NoteConversion: {
+      create: vi.fn(async (p) => {
+        const row = {
+          id: `conversion-${created.NoteConversion.length + 1}`,
+          created_by: authenticatedUser?.email,
+          ...p,
+        };
+        created.NoteConversion.push(row);
+        return row;
+      }),
+      filter: vi.fn(async (query, _sort, limit) => {
+        const rows = created.NoteConversion.filter((row) => (
+          Object.entries(query || {}).every(([key, value]) => row?.[key] === value)
+        ));
+        return Number.isFinite(limit) ? rows.slice(0, limit) : rows;
+      }),
+    },
     ComplianceAudit: {
       create: vi.fn(async (p) => { created.ComplianceAudit.push(p); return { id: 'audit-1' }; }),
       update: vi.fn(async () => ({})),
@@ -40,7 +65,13 @@ function harness(queue = [], { online = true, legacyRecoveryEnabled = false } = 
           ? created.Visit.find((row) => row.client_request_id === payload.client_request_id)
           : null;
         if (existing) return { data: { created: false, visit: existing } };
-        const visit = { id: `visit-${created.Visit.length + 1}`, ...payload };
+        const visit = {
+          id: `visit-${created.Visit.length + 1}`,
+          ...payload,
+          agency_id: payload.agency_id || 'agency-1',
+          created_by_user_id: authenticatedUser?.id,
+          created_by_user_email_normalized: authenticatedUser?.email?.trim().toLowerCase(),
+        };
         created.Visit.push(visit);
         return { data: { created: true, visit } };
       }
@@ -64,6 +95,7 @@ function harness(queue = [], { online = true, legacyRecoveryEnabled = false } = 
     order,
     entities,
     functions,
+    getAuthenticatedUser: vi.fn(async () => authenticatedUser),
     getQueue: vi.fn(async () => queue),
     deleteDatabase: vi.fn(async () => { order.push('delete'); }),
     unregisterWorker: vi.fn(async () => {}),
@@ -71,6 +103,47 @@ function harness(queue = [], { online = true, legacyRecoveryEnabled = false } = 
     isOnline: () => online,
   };
 }
+
+const noteVisit = ({
+  id = 'queue-1',
+  requestId = 'req-1',
+  noteConversion = { quality_score: 88 },
+  ...visitOverrides
+} = {}) => ({
+  id,
+  action: 'CREATE_VISIT',
+  payload: {
+    client_request_id: requestId,
+    patient_id: 'p1',
+    visit_date: '2026-09-03',
+    visit_type: 'routine_visit',
+    ...visitOverrides,
+    __noteConversion: noteConversion,
+  },
+});
+
+const recoveryRequestId = ({
+  userId = 'user-1',
+  email = 'nurse@example.com',
+  sourceRecordId = 'queue-1',
+  visitRequestId = 'req-1',
+  visitId = 'visit-1',
+  agencyId = 'agency-1',
+  patientId = 'p1',
+  visitDate = '2026-09-03',
+  visitType = 'routine_visit',
+} = {}) => JSON.stringify([
+  'legacy-note-conversion-v1',
+  userId,
+  email,
+  sourceRecordId,
+  visitRequestId,
+  visitId,
+  agencyId,
+  patientId,
+  visitDate,
+  visitType,
+]);
 
 describe('flushAndRetireOfflineQueue', () => {
   beforeEach(() => {
@@ -87,16 +160,52 @@ describe('flushAndRetireOfflineQueue', () => {
     expect(h.unregisterWorker).toHaveBeenCalled();
   });
 
+  it('keeps every retirement artifact while unresolved conflict work exists', async () => {
+    localStorage.setItem('offline_conflicts', JSON.stringify([
+      { id: 'conflict-1', localData: { nurse_notes: 'local' }, serverData: {} },
+    ]));
+    const h = harness([]);
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toEqual({ retired: false, flushed: 0, pending: 1 });
+    expect(h.getQueue).not.toHaveBeenCalled();
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    expect(h.unregisterWorker).not.toHaveBeenCalled();
+    expect(localStorage.getItem('pennsync_offline_retired')).toBeNull();
+  });
+
+  it('keeps unknown queued actions instead of counting them as flushed', async () => {
+    const h = harness([{ action: 'UNKNOWN_CLINICAL_WRITE', payload: { note: 'only copy' } }]);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toEqual({ retired: false, flushed: 0, pending: 1 });
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    expect(localStorage.getItem('pennsync_offline_retired')).toBeNull();
+    error.mockRestore();
+  });
+
+  it('does not mark retirement complete when legacy database deletion fails', async () => {
+    const h = harness([]);
+    h.deleteDatabase.mockRejectedValueOnce(new Error('delete blocked'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toEqual({ retired: false, flushed: 0, pending: 0 });
+    expect(mig.cleared).toBe(0);
+    expect(localStorage.getItem('pennsync_offline_retired')).toBeNull();
+    error.mockRestore();
+  });
+
   it('uploads a queued visit — with its audit, history and conversion — before deleting', async () => {
-    const h = harness([{
-      action: 'CREATE_VISIT',
-      payload: {
-        client_request_id: 'req-1', patient_id: 'p1', nurse_notes: 'documented in the field',
-        __audit: { status: 'pending_review' },
-        __history: { patient_id: 'p1', mode: 'append', clinical_notes: 'documented in the field', entry: { entry_id: 'h1' } },
-        __noteConversion: { quality_score: 88 },
-      },
-    }]);
+    const h = harness([noteVisit({
+      nurse_notes: 'documented in the field',
+      __audit: { status: 'pending_review' },
+      __history: { patient_id: 'p1', mode: 'append', clinical_notes: 'documented in the field', entry: { entry_id: 'h1' } },
+    })]);
 
     const result = await flushAndRetireOfflineQueue(h);
 
@@ -106,9 +215,260 @@ describe('flushAndRetireOfflineQueue', () => {
     expect(h.created.Visit[0].__audit).toBeUndefined();
     expect(h.created.Visit[0].__history).toBeUndefined();
     expect(h.created.NoteConversion).toHaveLength(1);
+    expect(h.created.NoteConversion[0]).toMatchObject({
+      nurse_email: 'nurse@example.com',
+      patient_id: 'p1',
+      quality_score: 88,
+      recovery_request_id: recoveryRequestId(),
+    });
+    expect(h.entities.NoteConversion.filter).toHaveBeenCalledWith(
+      { recovery_request_id: recoveryRequestId() },
+      '-created_date',
+      2,
+    );
     expect(h.created.ComplianceAudit[0]).toMatchObject({ visit_id: 'visit-1', status: 'pending_review' });
     expect(h.functions.invoke).toHaveBeenCalledWith('appendPatientNoteHistory', expect.objectContaining({ patient_id: 'p1' }));
     expect(h.deleteDatabase).toHaveBeenCalled();
+  });
+
+  it('keeps the queue and writes nothing when a queued conversion belongs to another user', async () => {
+    const h = harness([noteVisit({
+      id: 'queue-other-user',
+      requestId: 'req-other-user',
+      noteConversion: { nurse_email: 'other@example.com', quality_score: 88 },
+    })]);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(h.created.Visit).toHaveLength(0);
+    expect(h.created.NoteConversion).toHaveLength(0);
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    expect(localStorage.getItem('pennsync_offline_retired')).toBeNull();
+    error.mockRestore();
+  });
+
+  it('keeps the queue and writes nothing without an active authenticated identity', async () => {
+    const h = harness([noteVisit({
+      id: 'queue-no-auth',
+      requestId: 'req-no-auth',
+    })], { authenticatedUser: null });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(h.created.Visit).toHaveLength(0);
+    expect(h.created.NoteConversion).toHaveLength(0);
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('retries a protected NoteConversion create after an exact authorized Visit replay', async () => {
+    const queue = [noteVisit({
+      id: 'queue-protected-create',
+      requestId: 'req-protected-create',
+    })];
+    const h = harness(queue);
+    h.entities.NoteConversion.create.mockRejectedValueOnce(new Error('RLS create rejected'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const first = await flushAndRetireOfflineQueue(h);
+
+    expect(first).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(h.created.Visit).toHaveLength(1);
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    expect(localStorage.getItem('pennsync_offline_retired')).toBeNull();
+
+    const second = await flushAndRetireOfflineQueue(h);
+
+    expect(second).toMatchObject({ retired: true, flushed: 1, pending: 0 });
+    expect(h.created.Visit).toHaveLength(1);
+    expect(h.created.NoteConversion).toHaveLength(1);
+    expect(h.entities.NoteConversion.create).toHaveBeenCalledTimes(2);
+    expect(h.created.NoteConversion[0].recovery_request_id).toBe(recoveryRequestId({
+      sourceRecordId: 'queue-protected-create',
+      visitRequestId: 'req-protected-create',
+    }));
+    expect(h.deleteDatabase).toHaveBeenCalledOnce();
+    error.mockRestore();
+  });
+
+  it('dedupes a NoteConversion whose create committed before its response was lost', async () => {
+    const queue = [noteVisit({ id: 'queue-lost-response', requestId: 'req-lost-response' })];
+    const h = harness(queue);
+    h.entities.NoteConversion.create.mockImplementationOnce(async (payload) => {
+      h.created.NoteConversion.push({
+        id: 'conversion-lost-response',
+        created_by: 'nurse@example.com',
+        ...payload,
+      });
+      throw new Error('response lost after commit');
+    });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const first = await flushAndRetireOfflineQueue(h);
+    const second = await flushAndRetireOfflineQueue(h);
+
+    expect(first).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(second).toMatchObject({ retired: true, flushed: 1, pending: 0 });
+    expect(h.created.Visit).toHaveLength(1);
+    expect(h.created.NoteConversion).toHaveLength(1);
+    expect(h.entities.NoteConversion.create).toHaveBeenCalledOnce();
+    expect(h.entities.NoteConversion.filter).toHaveBeenLastCalledWith(
+      {
+        recovery_request_id: recoveryRequestId({
+          sourceRecordId: 'queue-lost-response',
+          visitRequestId: 'req-lost-response',
+        }),
+      },
+      '-created_date',
+      2,
+    );
+    error.mockRestore();
+  });
+
+  it('keeps the queue when a recovery key resolves to duplicate conversions', async () => {
+    const queue = [noteVisit({ id: 'queue-duplicate', requestId: 'req-duplicate' })];
+    const h = harness(queue);
+    const key = recoveryRequestId({
+      sourceRecordId: 'queue-duplicate',
+      visitRequestId: 'req-duplicate',
+    });
+    h.created.NoteConversion.push(
+      {
+        id: 'conversion-duplicate-1',
+        created_by: 'nurse@example.com',
+        nurse_email: 'nurse@example.com',
+        patient_id: 'p1',
+        recovery_request_id: key,
+      },
+      {
+        id: 'conversion-duplicate-2',
+        created_by: 'nurse@example.com',
+        nurse_email: 'nurse@example.com',
+        patient_id: 'p1',
+        recovery_request_id: key,
+      },
+    );
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(h.entities.NoteConversion.create).not.toHaveBeenCalled();
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('keeps the queue when a recovery key resolves to a foreign conversion', async () => {
+    const queue = [noteVisit({ id: 'queue-foreign', requestId: 'req-foreign' })];
+    const h = harness(queue);
+    h.created.NoteConversion.push({
+      id: 'conversion-foreign',
+      created_by: 'other@example.com',
+      nurse_email: 'other@example.com',
+      patient_id: 'p1',
+      recovery_request_id: recoveryRequestId({
+        sourceRecordId: 'queue-foreign',
+        visitRequestId: 'req-foreign',
+      }),
+    });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(h.entities.NoteConversion.create).not.toHaveBeenCalled();
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('keeps the queue before any write when its durable source record id is missing', async () => {
+    const queued = noteVisit({ id: 'queue-missing', requestId: 'req-missing-source' });
+    delete queued.id;
+    const h = harness([queued]);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(h.created.Visit).toHaveLength(0);
+    expect(h.entities.NoteConversion.filter).not.toHaveBeenCalled();
+    expect(h.entities.NoteConversion.create).not.toHaveBeenCalled();
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('keeps the queue when the Visit broker returns a wrong-owner replay', async () => {
+    const queue = [noteVisit({ id: 'queue-wrong-owner', requestId: 'req-wrong-owner' })];
+    const h = harness(queue);
+    h.created.Visit.push({
+      id: 'visit-foreign',
+      client_request_id: 'req-wrong-owner',
+      patient_id: 'p1',
+      visit_date: '2026-09-03',
+      visit_type: 'routine_visit',
+      agency_id: 'agency-1',
+      created_by_user_id: 'foreign-user',
+      created_by_user_email_normalized: 'other@example.com',
+    });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(h.created.Visit).toHaveLength(1);
+    expect(h.entities.NoteConversion.filter).not.toHaveBeenCalled();
+    expect(h.entities.NoteConversion.create).not.toHaveBeenCalled();
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('keeps the queue when the Visit broker response does not match the queued request', async () => {
+    const h = harness([noteVisit({
+      id: 'queue-wrong-request',
+      requestId: 'req-expected',
+    })]);
+    h.functions.invoke.mockResolvedValueOnce({
+      data: {
+        created: false,
+        visit: {
+          id: 'visit-foreign-request',
+          client_request_id: 'req-different',
+          patient_id: 'p1',
+          visit_date: '2026-09-03',
+          visit_type: 'routine_visit',
+          agency_id: 'agency-1',
+          created_by_user_id: 'user-1',
+          created_by_user_email_normalized: 'nurse@example.com',
+        },
+      },
+    });
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(h.entities.NoteConversion.filter).not.toHaveBeenCalled();
+    expect(h.entities.NoteConversion.create).not.toHaveBeenCalled();
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it('keeps the queue when the exact NoteConversion recovery lookup fails', async () => {
+    const h = harness([noteVisit({ id: 'queue-filter-failure', requestId: 'req-filter-failure' })]);
+    h.entities.NoteConversion.filter.mockRejectedValueOnce(new Error('RLS read rejected'));
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: false, flushed: 0, pending: 1 });
+    expect(h.created.Visit).toHaveLength(1);
+    expect(h.entities.NoteConversion.create).not.toHaveBeenCalled();
+    expect(h.deleteDatabase).not.toHaveBeenCalled();
+    error.mockRestore();
   });
 
   it('KEEPS the queue when the device is offline, so nothing is destroyed unsent', async () => {
@@ -266,6 +626,28 @@ describe('flushAndRetireOfflineQueue', () => {
     expect(h.created.Visit[0]).toMatchObject({ client_request_id: 'legacy-1', nurse_notes: 'field note' });
     expect(mig.cleared).toBe(1);
     expect(h.deleteDatabase).toHaveBeenCalled();
+  });
+
+  it('gives a migrated localStorage conversion a stable source-record binding', async () => {
+    mig.actions = [['CREATE_VISIT', {
+      client_request_id: 'legacy-sq:offline-note-1',
+      patient_id: 'p1',
+      visit_date: '2026-09-03',
+      visit_type: 'routine_visit',
+      status: 'completed',
+      __noteConversion: { nurse_email: 'nurse@example.com', quality_score: 91 },
+    }]];
+    const h = harness([]);
+
+    const result = await flushAndRetireOfflineQueue(h);
+
+    expect(result).toMatchObject({ retired: true, flushed: 1, pending: 0 });
+    expect(h.created.NoteConversion).toHaveLength(1);
+    expect(h.created.NoteConversion[0].recovery_request_id).toBe(recoveryRequestId({
+      sourceRecordId: 'legacy-local-storage:CREATE_VISIT:legacy-sq:offline-note-1',
+      visitRequestId: 'legacy-sq:offline-note-1',
+    }));
+    expect(mig.cleared).toBe(1);
   });
 
   // ── The legacy database is only destroyed when it can be read and drained ──

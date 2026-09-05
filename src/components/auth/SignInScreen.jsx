@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { base44 } from '@/api/base44Client';
 import {
@@ -47,6 +47,19 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [pendingToken, setPendingToken] = useState(() => peekPendingAccessToken());
+  const mountedRef = useRef(true);
+  const authOperationRef = useRef(0);
+  const loginAbortRef = useRef(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      authOperationRef.current += 1;
+      loginAbortRef.current?.abort();
+      loginAbortRef.current = null;
+    };
+  }, []);
 
   const switchMode = (nextMode) => {
     setMode(nextMode);
@@ -76,6 +89,10 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
     if (busy) return;
     setError('');
     setBusy(true);
+    const operation = ++authOperationRef.current;
+    loginAbortRef.current?.abort();
+    const controller = new AbortController();
+    loginAbortRef.current = controller;
     try {
       // Call the login endpoint directly rather than through
       // base44.auth.loginViaEmailPassword: the SDK helper reacts to a 401
@@ -86,10 +103,16 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
         headers: { 'X-App-Id': appParams.appId },
         interceptResponses: true,
       });
-      const result = await authClient.post(`/apps/${appParams.appId}/auth/login`, {
-        email: email.trim(),
-        password,
-      });
+      const result = await authClient.post(
+        `/apps/${appParams.appId}/auth/login`,
+        { email: email.trim(), password },
+        { signal: controller.signal },
+      );
+      if (
+        !mountedRef.current
+        || operation !== authOperationRef.current
+        || controller.signal.aborted
+      ) return;
       if (!result?.access_token) {
         // e.g. the account still needs OTP/email verification — that flow
         // lives on the hosted page.
@@ -102,6 +125,11 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
       base44.auth.setToken(result.access_token);
       onAuthenticated();
     } catch (err) {
+      if (
+        !mountedRef.current
+        || operation !== authOperationRef.current
+        || controller.signal.aborted
+      ) return;
       const status = err?.status;
       if (/turnstile|captcha/i.test(String(err?.message || ''))) {
         setError('Additional verification is required. Please continue on the standard sign-in page (link below).');
@@ -119,7 +147,8 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
           : msg);
       }
     } finally {
-      setBusy(false);
+      if (operation === authOperationRef.current) loginAbortRef.current = null;
+      if (mountedRef.current && operation === authOperationRef.current) setBusy(false);
     }
   };
 
@@ -128,13 +157,18 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
     if (busy) return;
     setError('');
     setBusy(true);
+    const operation = ++authOperationRef.current;
     try {
       await base44.auth.resetPasswordRequest(email.trim());
-      setMode('reset-sent');
+      if (mountedRef.current && operation === authOperationRef.current) {
+        setMode('reset-sent');
+      }
     } catch {
-      setError('Couldn’t send the reset email. Please try again, or use the standard sign-in page (link below).');
+      if (mountedRef.current && operation === authOperationRef.current) {
+        setError('Couldn’t send the reset email. Please try again, or use the standard sign-in page (link below).');
+      }
     } finally {
-      setBusy(false);
+      if (mountedRef.current && operation === authOperationRef.current) setBusy(false);
     }
   };
 

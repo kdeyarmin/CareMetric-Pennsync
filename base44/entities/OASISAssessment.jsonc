@@ -181,17 +181,14 @@
     "patient_id",
     "visit_type"
   ],
-  // PHI read-scoping: with no read rule, ANY authenticated user could bulk-
-  // .list() every row (an assessment row carries patient answers/scores).
-  // Reads retain the existing owner/admin policy for compatibility; this is
-  // not tenant-bound and must be replaced/proved before OASIS workflows return.
+  // Response-bearing assessment reads are service-role-only. The former
+  // owner/admin rule was not tenant-bound, so a platform admin could read every
+  // agency's assessment rows and owner identity alone could not prove current
+  // chart access. The reviewed browser consumers remain hard-paused; any future
+  // UI must use the finite readAuthorizedOASISAssessments broker after hosted
+  // two-agency proof rather than reopening direct entity access.
   "rls": {
-    "read": {
-      "$or": [
-        { "created_by": "{{user.email}}" },
-        { "user_condition": { "role": "admin" } }
-      ]
-    },
+    "read": false,
     // Response-bearing assessment writes are service-role-only. Owner/admin
     // direct writes bypassed the rollout flag, provenance validation, duplicate
     // rejection, and tenant/patient authorization. saveOasisResponses is also

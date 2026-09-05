@@ -175,92 +175,29 @@ async function loadHandler(functionName, client, {
 
 const request = (body) => ({ json: async () => body });
 
-test('analyzeDocument rejects non-exact identifiers and extra fields before entity access', async () => {
+test('analyzeDocument is a static fail-closed boundary until an authorized write broker exists', async () => {
   const fixture = makeDocumentClient();
   const handler = await loadHandler('analyzeDocument', fixture.client);
-  for (const body of [
-    { document_id: { $ne: null } },
-    { document_id: ' document-a' },
-    { document_id: 'document-a', agency_id: 'agency-a' },
-  ]) {
-    const response = await handler(request(body));
-    assert.equal(response.status, 400);
-  }
+  let bodyReads = 0;
+  const response = await handler({ json: async () => { bodyReads += 1; return {}; } });
+
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), {
+    error: 'Document analysis is temporarily unavailable',
+    code: 'document_analysis_private_write_broker_required',
+  });
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.equal(bodyReads, 0);
   assert.deepEqual(fixture.state.calls.documents, []);
+  assert.deepEqual(fixture.state.calls.patients, []);
   assert.deepEqual(fixture.state.calls.memberships, []);
+  assert.deepEqual(fixture.state.calls.agencies, []);
   assert.deepEqual(fixture.state.calls.llm, []);
   assert.deepEqual(fixture.state.calls.updates, []);
 });
 
-test('analyzeDocument exact-loads Document, Patient, membership and Agency before its write', async () => {
+test('generateFaxCoverPage rejects every legacy Document identifier before reads or AI', async () => {
   const fixture = makeDocumentClient();
-  const handler = await loadHandler('analyzeDocument', fixture.client);
-  const response = await handler(request({ document_id: 'document-a' }));
-
-  assert.equal(response.status, 200);
-  assert.equal(fixture.state.calls.llm.length, 1);
-  assert.equal(fixture.state.calls.documents.length, 2, 'authority must be re-proved after AI');
-  assert.equal(fixture.state.calls.patients.length, 2);
-  assert.equal(fixture.state.calls.memberships.length, 2);
-  assert.equal(fixture.state.calls.agencies.length, 2);
-  assert.deepEqual(fixture.state.calls.updates[0][0], 'document-a');
-  assert.equal(fixture.state.calls.updates[0][1].ai_analysis.analyzed, true);
-  assert.deepEqual(fixture.state.calls.documents[0], [
-    { id: 'document-a' },
-    undefined,
-    10,
-  ]);
-});
-
-test('analyzeDocument rejects wrong-row filter regressions and tenant changes without writing', async () => {
-  const fixture = makeDocumentClient({
-    documents: [document({ id: 'wrong-document' })],
-  });
-  const handler = await loadHandler('analyzeDocument', fixture.client);
-  let response = await handler(request({ document_id: 'document-a' }));
-  assert.equal(response.status, 404);
-  assert.deepEqual(fixture.state.calls.llm, []);
-  assert.deepEqual(fixture.state.calls.updates, []);
-
-  const crossTenant = makeDocumentClient({
-    patients: [patient({ agency_id: 'agency-b' })],
-  });
-  const crossHandler = await loadHandler('analyzeDocument', crossTenant.client);
-  response = await crossHandler(request({ document_id: 'document-a' }));
-  assert.equal(response.status, 403);
-  assert.deepEqual(crossTenant.state.calls.llm, []);
-  assert.deepEqual(crossTenant.state.calls.updates, []);
-
-  const relinkedForeignDocument = makeDocumentClient({
-    documents: [document({ created_by: 'other@example.com' })],
-  });
-  const relinkedHandler = await loadHandler('analyzeDocument', relinkedForeignDocument.client);
-  response = await relinkedHandler(request({ document_id: 'document-a' }));
-  assert.equal(response.status, 403);
-  assert.deepEqual(relinkedForeignDocument.state.calls.llm, []);
-  assert.deepEqual(relinkedForeignDocument.state.calls.updates, []);
-});
-
-test('analyzeDocument detects authority drift after the slow AI call', async () => {
-  const fixture = makeDocumentClient();
-  let reads = 0;
-  fixture.client.asServiceRole.entities.Document.filter = async (...args) => {
-    fixture.state.calls.documents.push(args);
-    reads += 1;
-    return [document(reads === 1 ? {} : { file_url: 'https://files.base44.app/replaced.pdf' })];
-  };
-  const handler = await loadHandler('analyzeDocument', fixture.client);
-  const response = await handler(request({ document_id: 'document-a' }));
-
-  assert.equal(response.status, 409);
-  assert.equal(fixture.state.calls.llm.length, 1);
-  assert.deepEqual(fixture.state.calls.updates, []);
-});
-
-test('generateFaxCoverPage rejects an orphan Document paired with an unrelated patient', async () => {
-  const fixture = makeDocumentClient({
-    documents: [document({ patient_id: null, created_by: 'member@example.com' })],
-  });
   const handler = await loadHandler('generateFaxCoverPage', fixture.client);
   let networkCalls = 0;
   const originalFetch = globalThis.fetch;
@@ -274,8 +211,10 @@ test('generateFaxCoverPage rejects an orphan Document paired with an unrelated p
       document_id: 'document-a',
       recipient_number: '+17245550101',
     }));
-    assert.equal(response.status, 409);
+    assert.equal(response.status, 400);
     assert.equal(networkCalls, 0);
+    assert.deepEqual(fixture.state.calls.documents, []);
+    assert.deepEqual(fixture.state.calls.patients, []);
     assert.deepEqual(fixture.state.calls.memberships, []);
   } finally {
     globalThis.fetch = originalFetch;
@@ -320,7 +259,6 @@ test('generateFaxCoverPage derives tenant only from exact immutable authority', 
   try {
     const response = await handler(request({
       patient_id: 'patient-a',
-      document_id: 'document-a',
       recipient_number: '+17245550101',
       recipient_name: 'Recipient',
       page_count: 1,
@@ -339,102 +277,31 @@ test('generateFaxCoverPage derives tenant only from exact immutable authority', 
   }
 });
 
-function makeMessageClient({ documents, patients = [patient()], users } = {}) {
-  const state = { creates: [] };
-  const rows = {
-    User: users || [{ email: 'recipient@example.com', is_active: true }],
-    Patient: patients,
-    Referral: [],
-    Document: documents || [],
-    Message: [],
-  };
-  const entities = Object.fromEntries(
-    Object.entries(rows).map(([name, values]) => [
-      name,
-      {
-        filter: async (query) => rowsMatching(values, query),
-        ...(name === 'Message' ? {
-          create: async (record) => {
-            state.creates.push(record);
-            return { id: 'message-1', ...record };
-          },
-        } : {}),
-      },
-    ]),
-  );
-  return {
-    client: {
-      auth: {
-        me: async () => ({
-          email: 'member@example.com',
-          full_name: 'Member',
-          role: 'user',
-          is_active: true,
-        }),
-      },
-      asServiceRole: { entities },
+test('sendMessage pauses before parsing legacy Document relations or accessing a client', async () => {
+  let serviceRoleTouched = false;
+  const client = {
+    get auth() {
+      throw new Error('Paused messaging must not access auth');
     },
-    state,
   };
-}
-
-test('sendMessage does not use an authorized patient to authorize an orphan Document', async () => {
-  const fixture = makeMessageClient({
-    documents: [document({
-      patient_id: null,
-      created_by: 'other@example.com',
-      // Legacy client-writable uploaded_by must not become authority.
-      uploaded_by: 'member@example.com',
-    })],
+  Object.defineProperty(client, 'asServiceRole', {
+    get() {
+      serviceRoleTouched = true;
+      throw new Error('Document rejection must happen first');
+    },
   });
-  const handler = await loadHandler('sendMessage', fixture.client);
-  const response = await handler(request({
-    recipients: ['recipient@example.com'],
-    patient_id: 'patient-a',
-    document_id: 'document-a',
-    message_text: 'Must not attach an orphan record to a chart',
+  const handler = await loadHandler('sendMessage', client);
+  const response = await handler(new Proxy({}, {
+    get(_target, property) {
+      throw new Error(`Paused messaging touched request.${String(property)}`);
+    },
   }));
 
-  assert.equal(response.status, 409);
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
   assert.deepEqual(await response.json(), {
-    error: 'Document is not linked to the requested patient',
+    error: 'Secure messaging is temporarily unavailable',
+    code: 'secure_message_tenant_broker_required',
   });
-  assert.deepEqual(fixture.state.creates, []);
-});
-
-test('sendMessage preserves the exact authorized Document-to-Patient path', async () => {
-  const fixture = makeMessageClient({
-    documents: [document()],
-  });
-  const handler = await loadHandler('sendMessage', fixture.client);
-  const response = await handler(request({
-    recipients: ['recipient@example.com'],
-    patient_id: 'patient-a',
-    document_id: 'document-a',
-    message_text: 'Authorized linked record',
-    attachments: ['https://files.base44.app/document-a.pdf'],
-  }));
-
-  assert.equal(response.status, 200);
-  assert.equal(fixture.state.creates.length, 1);
-  assert.equal(fixture.state.creates[0].patient_id, 'patient-a');
-  assert.deepEqual(fixture.state.creates[0].attachments, [
-    'https://files.base44.app/document-a.pdf',
-  ]);
-});
-
-test('sendMessage rejects malformed stored Document patient linkage', async () => {
-  const fixture = makeMessageClient({
-    documents: [document({ patient_id: { $ne: null }, created_by: 'member@example.com' })],
-  });
-  const handler = await loadHandler('sendMessage', fixture.client);
-  const response = await handler(request({
-    recipients: ['recipient@example.com'],
-    document_id: 'document-a',
-    message_text: 'Malformed linkage',
-  }));
-
-  assert.equal(response.status, 409);
-  assert.deepEqual(await response.json(), { error: 'Document patient linkage is invalid' });
-  assert.deepEqual(fixture.state.creates, []);
+  assert.equal(serviceRoleTouched, false);
 });

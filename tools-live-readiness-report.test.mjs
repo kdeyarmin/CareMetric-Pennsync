@@ -27,6 +27,7 @@ const release = Object.fromEntries(LIVE_RELEASE_METADATA.map((key) => {
   if (key === "staging_backend_origin") return [key, stagingBackendOrigin];
   if (key === "candidate_source_commit_sha") return [key, sourceCommitSha];
   if (key === "candidate_source_tree_sha") return [key, sourceTreeSha];
+  if (key === "source_authority_contract_sha256") return [key, "f".repeat(64)];
   if (key === "hosted_runtime_commit_sha") return [key, "c".repeat(40)];
   if (key === "hosted_runtime_tree_sha") return [key, "d".repeat(40)];
   if (key === "hosted_deployment_id") return [key, "base44-deploy-test-001"];
@@ -40,6 +41,8 @@ function buildLiveReadinessReportFromJson(raw) {
   return buildReport(raw, {
     expectedSourceCommit: checkoutIdentity.commit,
     expectedSourceTree: checkoutIdentity.tree,
+    expectedSourceAuthorityContractSha256:
+      release.source_authority_contract_sha256,
     expectedBackendOrigin: stagingBackendOrigin,
     expectedHostedRuntimeCommit: release.hosted_runtime_commit_sha,
     expectedHostedRuntimeTree: release.hosted_runtime_tree_sha,
@@ -61,6 +64,8 @@ function runLiveReadinessReportCli(options) {
     expectedCandidateDeployableManifestSha256:
       release.candidate_deployable_manifest_sha256,
     expectedHostedResourceManifestSha256: release.hosted_resource_manifest_sha256,
+    expectedSourceAuthorityContractSha256:
+      release.source_authority_contract_sha256,
   });
 }
 const reviewers = Object.fromEntries(LIVE_READINESS_REVIEWERS.map((reviewer) => [reviewer, "approved"]));
@@ -75,6 +80,10 @@ function completeCapabilityEvidence(capabilityId) {
     test_evidence: {
       ...evidenceEntries.test_evidence,
       probes: Object.fromEntries(requiredProbes.map((probeId) => [probeId, {
+        execution_context: "authenticated_hosted",
+        result: "pass",
+        captured_at: "2026-09-05T00:00:00.000Z",
+        artifact_sha256: "1".repeat(64),
         references: [`evidence/${capabilityId}/${probeId}.json`],
       }])),
     },
@@ -99,6 +108,10 @@ test("buildLiveReadinessReportFromJson emits a passing PHI-minimized report", ()
   assert.equal(report.stagingBackendOrigin, release.staging_backend_origin);
   assert.equal(report.candidateSourceCommitSha, sourceCommitSha);
   assert.equal(report.candidateSourceTreeSha, sourceTreeSha);
+  assert.equal(
+    report.sourceAuthorityContractSha256,
+    release.source_authority_contract_sha256,
+  );
   assert.equal(report.hostedRuntimeCommitSha, release.hosted_runtime_commit_sha);
   assert.equal(report.hostedRuntimeTreeSha, release.hosted_runtime_tree_sha);
   assert.equal(report.hostedDeploymentId, release.hosted_deployment_id);
@@ -116,6 +129,9 @@ test("buildLiveReadinessReportFromJson emits a passing PHI-minimized report", ()
     "LR-01": { required: 10, completed: 10 },
     "LR-02": { required: 4, completed: 4 },
   });
+  assert.equal(report.assurance.source_authority_contract_bound, true);
+  assert.equal(report.assurance.authenticated_hosted_probe_attestations_required, true);
+  assert.equal(report.assurance.cited_artifact_bytes_fetched_or_verified, false);
   assert.equal(JSON.stringify(report).includes("secret"), false);
 });
 
@@ -171,6 +187,22 @@ test("CLI returns 1 for a valid but blocked readiness report", () => {
     error: () => {},
   });
   assert.equal(code, 1);
+});
+
+test("CLI returns 1 and names a retained hosted probe that did not pass", () => {
+  const writes = [];
+  const input = JSON.parse(completeInput());
+  input.evidence["LR-01"].test_evidence.probes.V4.result = "fail";
+  const code = runLiveReadinessReportCli({
+    argv: ["node", "tool", "evidence.json"],
+    readFile: () => JSON.stringify(input),
+    write: (message) => writes.push(message),
+    error: () => {},
+  });
+  assert.equal(code, 1);
+  const report = JSON.parse(writes[0]);
+  assert.deepEqual(report.blockers.nonPassingProbes, { "LR-01": ["V4"] });
+  assert.deepEqual(report.blockers.missingRequiredProbes, { "LR-01": ["V4"] });
 });
 
 test("CLI returns 2 for missing input or invalid JSON", () => {
@@ -287,6 +319,8 @@ test("CLI cannot pass without independently configured hosted identity", () => {
     resolveCheckout: () => checkoutIdentity,
     env: {},
     expectedBackendOrigin: stagingBackendOrigin,
+    expectedSourceAuthorityContractSha256:
+      release.source_authority_contract_sha256,
   });
   assert.equal(code, 2);
   assert.match(errors[0], /configured hosted runtime identity/);
@@ -303,6 +337,8 @@ test("CLI uses an injected environment for deployment identity bindings", () => 
     write: (message) => writes.push(message),
     error: () => {},
     resolveCheckout: () => checkoutIdentity,
+    expectedSourceAuthorityContractSha256:
+      release.source_authority_contract_sha256,
     env: {
       READINESS_STAGING_BACKEND_ORIGIN: stagingBackendOrigin,
       READINESS_HOSTED_RUNTIME_COMMIT_SHA: release.hosted_runtime_commit_sha,
@@ -342,6 +378,8 @@ test("an explicitly empty CLI environment cannot fall back to ambient bindings",
       write: () => {},
       error: (message) => errors.push(message),
       resolveCheckout: () => checkoutIdentity,
+      expectedSourceAuthorityContractSha256:
+        release.source_authority_contract_sha256,
       env: {},
     });
     assert.equal(code, 2);
@@ -398,6 +436,46 @@ test("CLI rejects a packet for a source commit other than the checked-out revisi
   assert.equal(code, 2);
   assert.match(errors[0], /match the clean checked-out Git commit/);
   assert.match(errors[0], /match the clean checked-out Git tree/);
+});
+
+test("CLI rejects a packet bound to a different source authority contract", () => {
+  const errors = [];
+  const input = JSON.parse(completeInput());
+  input.release.source_authority_contract_sha256 = "0".repeat(64);
+  const code = runLiveReadinessReportCli({
+    argv: ["node", "tool", "stale-source-contract.json"],
+    readFile: () => JSON.stringify(input),
+    write: () => {},
+    error: (message) => errors.push(message),
+  });
+  assert.equal(code, 2);
+  assert.match(errors[0], /current readiness source check/);
+});
+
+test("CLI fails closed when the local source authority contract cannot be resolved", () => {
+  const errors = [];
+  const code = runReportCli({
+    argv: ["node", "tool", "invalid-source-contract.json"],
+    readFile: () => completeInput(),
+    write: () => {},
+    error: (message) => errors.push(message),
+    resolveCheckout: () => checkoutIdentity,
+    resolveSourceAuthorityContract: () => {
+      throw new Error("Checked-out readiness source authority contract is invalid.");
+    },
+    env: {
+      READINESS_STAGING_BACKEND_ORIGIN: stagingBackendOrigin,
+      READINESS_HOSTED_RUNTIME_COMMIT_SHA: release.hosted_runtime_commit_sha,
+      READINESS_HOSTED_RUNTIME_TREE_SHA: release.hosted_runtime_tree_sha,
+      READINESS_HOSTED_DEPLOYMENT_ID: release.hosted_deployment_id,
+      READINESS_CANDIDATE_DEPLOYABLE_MANIFEST_SHA256:
+        release.candidate_deployable_manifest_sha256,
+      READINESS_HOSTED_RESOURCE_MANIFEST_SHA256:
+        release.hosted_resource_manifest_sha256,
+    },
+  });
+  assert.equal(code, 2);
+  assert.match(errors[0], /source authority contract is invalid/);
 });
 
 test("checkout identity rejects a dirty tree without echoing changed paths", () => {

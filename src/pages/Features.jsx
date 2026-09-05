@@ -43,6 +43,7 @@ import {
   getFeatureEnhancementSuggestions,
   summarizeImprovementRoadmap
 } from '@/lib/featureImprovementRoadmap';
+import { openAuthorityBoundWindow } from '@/lib/authorityBoundWindows';
 
 export default function FeaturesPage() {
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -392,22 +393,22 @@ export default function FeaturesPage() {
       color: "green",
       items: [
         {
-          name: "AI Personalized Training Engine",
+          name: "AI Personalized Training Engine (Paused)",
           icon: Brain,
-          description: "Advanced AI analyzes your documentation patterns and recommends specific training to improve quality and compliance",
-          timeSaved: "Targeted improvement",
+          description: "Personalized skill-gap analysis is unavailable until performance inputs have immutable tenant provenance",
+          timeSaved: "Unavailable",
           impact: "critical",
-          details: "Real-time deficit detection, personalized micro-lessons, scenario-based learning, competency tracking",
-          howToUse: "System automatically analyzes your notes and recommends training. Complete micro-lessons in My Workflow."
+          details: "Required training, the course library, progress tracking, and documentation education remain available",
+          howToUse: "Use the non-personalized Training Hub tabs while performance-derived recommendations are paused."
         },
         {
-          name: "Personalized Training Plans",
+          name: "Personalized Training Plans (Paused)",
           icon: Target,
-          description: "AI generates custom learning paths based on individual nurse performance and documentation gaps",
-          timeSaved: "Targeted improvement",
+          description: "Performance-derived learning paths are unavailable pending a tenant-authorized analysis broker",
+          timeSaved: "Unavailable",
           impact: "high",
-          details: "Skill gap analysis, prioritized modules, progress tracking, micro-learning",
-          howToUse: "Go to Training Hub, view your personalized learning path, complete recommended modules."
+          details: "The app does not infer zero skill gaps when the source cohort cannot be verified",
+          howToUse: "Use required and library training modules until personalized analysis is restored."
         },
         {
           name: "Interactive Scenarios",
@@ -453,13 +454,13 @@ export default function FeaturesPage() {
           howToUse: "Navigate to Compliance Dashboard to review audit results and address flagged issues."
         },
         {
-          name: "User Activity Tracking",
+          name: "User Activity History (Paused)",
           icon: Users,
-          description: "Review previously stored user activity for historical audit and performance context",
-          timeSaved: "Regulatory compliance",
+          description: "User activity history is unavailable until audit rows have immutable tenant provenance",
+          timeSaved: "Unavailable",
           impact: "critical",
-          details: "Historical login records, note enhancement stats, and action-specific metrics; in-app collection is currently paused",
-          howToUse: "Admins: View User Activity Log for detailed action history and compliance reporting."
+          details: "The app does not load or summarize global UserActivity rows and does not treat unavailable history as zero events",
+          howToUse: "Wait for a hosted and verified tenant-authorized server broker before using in-app activity history."
         },
         {
           name: "Regulatory Updates",
@@ -473,11 +474,11 @@ export default function FeaturesPage() {
         {
           name: "Performance Analytics",
           icon: BarChart3,
-          description: "Comprehensive dashboards for nurse performance, documentation quality, and outcomes",
+          description: "Documentation and quality trends remain visible; activity-derived AI utilization and nurse performance conclusions are paused",
           timeSaved: "Strategic insight",
           impact: "high",
           details: "Quality metrics, time savings, compliance rates, trend analysis",
-          howToUse: "Admins: Access Analytics Dashboard for agency-wide performance insights and reporting."
+          howToUse: "Admins: Use the available Analytics Dashboard measures and treat paused measures as unavailable, not zero."
         }
       ]
     },
@@ -612,7 +613,7 @@ export default function FeaturesPage() {
 </body>
 </html>`;
 
-      const printWindow = window.open('', '_blank');
+      const printWindow = openAuthorityBoundWindow();
       if (!printWindow) {
         toast.error('Please allow pop-ups to generate the guide.');
         setIsGeneratingPDF(false);
@@ -914,17 +915,17 @@ export default function FeaturesPage() {
 
   <div class="section">
     <h2>6. Training & Development</h2>
-    <p><span class="role-badge nurse-badge">NURSE</span>Personalized learning and skill development</p>
+    <p><span class="role-badge nurse-badge">NURSE</span>Required courses, training library, progress, and documentation education</p>
 
-    <h3>6.1 Viewing Your Learning Path</h3>
+    <h3>6.1 Using the Training Catalog</h3>
     <div class="step">
       <span class="step-number">1</span>Click <strong>"Training Hub"</strong> in navigation
     </div>
     <div class="step">
-      <span class="step-number">2</span>View your personalized learning path
+      <span class="step-number">2</span>Choose Required, Library, Progress, or Documentation Training; personalized skill-gap analysis is currently unavailable
     </div>
     <div class="step">
-      <span class="step-number">3</span>Complete recommended modules in order
+      <span class="step-number">3</span>Complete assigned or selected modules and review recorded progress
     </div>
 
     <h3>6.2 Completing Training Scenarios</h3>
@@ -1039,18 +1040,9 @@ export default function FeaturesPage() {
     <h2>9. Compliance & Monitoring</h2>
     <p><span class="role-badge admin-badge">ADMIN</span>Monitor compliance and audit documentation quality</p>
 
-    <h3>9.1 Reviewing User Activity</h3>
+    <h3>9.1 User Activity History (Paused)</h3>
     <div class="step">
-      <span class="step-number">1</span>Navigate to <strong>"User Activity Log"</strong>
-    </div>
-    <div class="step">
-      <span class="step-number">2</span>Review previously stored login activity, note enhancements, and system usage
-    </div>
-    <div class="step">
-      <span class="step-number">3</span>Use filters to focus on specific users, actions, or date ranges
-    </div>
-    <div class="step">
-      <span class="step-number">4</span>Export activity logs for audits
+      <span class="step-number">1</span>In-app activity history, filters, summaries, and exports are unavailable until a tenant-authorized server broker can verify immutable agency provenance.
     </div>
 
     <h3>9.2 Compliance Auditing</h3>
@@ -1097,18 +1089,9 @@ export default function FeaturesPage() {
       <span class="step-number">4</span>Export reports for leadership
     </div>
 
-    <h3>10.2 Nurse Performance Dashboard</h3>
+    <h3>10.2 Nurse Performance Dashboard (Paused)</h3>
     <div class="step">
-      <span class="step-number">1</span>Navigate to <strong>"Nurse Performance Dashboard"</strong>
-    </div>
-    <div class="step">
-      <span class="step-number">2</span>Review individual nurse metrics
-    </div>
-    <div class="step">
-      <span class="step-number">3</span>Identify top performers and training needs
-    </div>
-    <div class="step">
-      <span class="step-number">4</span>Track improvement over time
+      <span class="step-number">1</span>Derived nurse scores and recommendations are unavailable until every source record has immutable tenant provenance and a tenant-authorized analysis broker is verified.
     </div>
   </div>
 
@@ -1192,7 +1175,7 @@ export default function FeaturesPage() {
 </body>
 </html>`;
 
-      const printWindow = window.open('', '_blank');
+      const printWindow = openAuthorityBoundWindow();
       if (!printWindow) {
         toast.error('Please allow pop-ups to generate the manual.');
         setIsGeneratingManual(false);

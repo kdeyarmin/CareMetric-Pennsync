@@ -8,6 +8,7 @@ import AnnouncementManager from "../components/admin/AnnouncementManager";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import { isAdminView } from "@/lib/roles";
+import { isAdminLike } from "@/lib/superAdmin";
 
 export default function NotificationSettings() {
   const { data: currentUser } = useQuery({
@@ -15,7 +16,9 @@ export default function NotificationSettings() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = isAdminView(currentUser);
+  const adminView = isAdminView(currentUser);
+  // Announcement CRUD is protected by Announcement RLS role === 'admin'.
+  const canManageAnnouncements = isAdminLike(currentUser);
 
   return (
     <PageContainer>
@@ -28,12 +31,12 @@ export default function NotificationSettings() {
       />
 
         <Tabs defaultValue="preferences" className="space-y-6">
-          <TabsList className={`grid ${isAdmin ? 'grid-cols-2' : 'grid-cols-1'} w-full max-w-md`}>
+          <TabsList className={`grid ${canManageAnnouncements ? 'grid-cols-2' : 'grid-cols-1'} w-full max-w-md`}>
             <TabsTrigger value="preferences" className="gap-2">
               <Mail className="w-4 h-4" />
               Email Preferences
             </TabsTrigger>
-            {isAdmin && (
+            {canManageAnnouncements && (
               <TabsTrigger value="announcements" className="gap-2">
                 <Megaphone className="w-4 h-4" />
                 Announcements
@@ -45,7 +48,7 @@ export default function NotificationSettings() {
             <NotificationPreferences currentUser={currentUser} />
           </TabsContent>
 
-          {isAdmin && (
+          {canManageAnnouncements && (
             <TabsContent value="announcements">
               <Card>
                 <CardHeader>
@@ -59,6 +62,14 @@ export default function NotificationSettings() {
                 </CardContent>
               </Card>
             </TabsContent>
+          )}
+
+          {adminView && !canManageAnnouncements && (
+            <Card className="border-blue-200 bg-blue-50">
+              <CardContent className="p-4 text-sm text-blue-900">
+                System-wide announcement management requires protected administrator access. Your personal notification preferences remain available.
+              </CardContent>
+            </Card>
           )}
         </Tabs>
     </PageContainer>

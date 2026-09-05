@@ -64,9 +64,8 @@ async function loadHandler({
     userLists: [],
     incidentCreates: [],
     incidentUpdates: [],
-    documentCreates: [],
+    documentBrokerInvokes: [],
     notificationCreates: [],
-    uploads: [],
     emails: [],
     llm: [],
   };
@@ -96,12 +95,6 @@ async function loadHandler({
             return {};
           },
         },
-        Document: {
-          create: async (row) => {
-            calls.documentCreates.push(row);
-            return { ...row, id: 'document-1' };
-          },
-        },
         Notification: {
           create: async (row) => {
             calls.notificationCreates.push(row);
@@ -111,10 +104,6 @@ async function loadHandler({
       },
       integrations: {
         Core: {
-          UploadFile: async (args) => {
-            calls.uploads.push(args);
-            return { file_url: 'https://files.example.com/state-report.pdf' };
-          },
           SendEmail: async (args) => {
             calls.emails.push(args);
             return { success: true };
@@ -124,6 +113,12 @@ async function loadHandler({
             throw new Error('submitStateReportableIncident must not invoke an LLM');
           },
         },
+      },
+    },
+    functions: {
+      invoke: async (name, payload) => {
+        calls.documentBrokerInvokes.push({ name, payload });
+        return { data: { success: true, document: { id: 'document-1' } } };
       },
     },
   };
@@ -168,15 +163,15 @@ async function invoke(handler, calls, body = validPayload()) {
 function writeCount(calls) {
   return calls.incidentCreates.length
     + calls.incidentUpdates.length
-    + calls.documentCreates.length
+    + calls.documentBrokerInvokes.length
     + calls.notificationCreates.length
-    + calls.uploads.length
     + calls.emails.length
     + calls.llm.length;
 }
 
 const patient = {
   id: 'patient-1',
+  agency_id: 'agency-a',
   created_by: 'owner@example.com',
   assigned_nurses: ['assigned@example.com', 'direct-admin@example.com'],
   first_name: 'Private',
@@ -312,8 +307,13 @@ test('an explicitly assigned clinician can submit and unrelated user rows are no
   assert.equal(calls.incidentCreates[0].patient_id, 'patient-1');
   assert.equal(calls.incidentCreates[0].patient_name, 'Private Patient');
   assert.equal(calls.incidentCreates[0].created_by, 'assigned@example.com');
-  assert.equal(calls.documentCreates[0].patient_id, 'patient-1');
-  assert.equal(calls.uploads.length, 1);
+  assert.equal(calls.documentBrokerInvokes.length, 1);
+  assert.equal(calls.documentBrokerInvokes[0].name, 'createAuthorizedDocument');
+  assert.equal(calls.documentBrokerInvokes[0].payload.agency_id, 'agency-a');
+  assert.equal(calls.documentBrokerInvokes[0].payload.patient_id, 'patient-1');
+  assert.equal(calls.documentBrokerInvokes[0].payload.purpose, 'patient_document');
+  assert.equal(calls.documentBrokerInvokes[0].payload.client_request_id, 'incident-1');
+  assert.ok(calls.documentBrokerInvokes[0].payload.file instanceof File);
   assert.deepEqual(
     calls.notificationCreates.map((row) => row.user_email).sort(),
     ['direct-admin@example.com', 'platform-owner@example.com'],
@@ -361,8 +361,7 @@ test('a non-scalar incident id stops related file, notification, and email write
   assert.equal(calls.incidentCreates.length, 1);
   assert.deepEqual(calls.incidentUpdates, []);
   assert.deepEqual(calls.userLists, []);
-  assert.deepEqual(calls.documentCreates, []);
+  assert.deepEqual(calls.documentBrokerInvokes, []);
   assert.deepEqual(calls.notificationCreates, []);
-  assert.deepEqual(calls.uploads, []);
   assert.deepEqual(calls.emails, []);
 });

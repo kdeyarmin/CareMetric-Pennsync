@@ -52,7 +52,7 @@ import {
 import PageHeader from "@/components/ui/PageHeader";
 import PageContainer from "@/components/ui/PageContainer";
 import { ALL_ROWS } from '@/lib/queryLimits';
-import { isAdminView } from "@/lib/roles";
+import { isAdminLike } from "@/lib/superAdmin";
 
 export default function AutomaticCarePlans() {
 
@@ -82,7 +82,10 @@ export default function AutomaticCarePlans() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = isAdminView(currentUser);
+  // This entity is global and its Base44 RLS intentionally trusts only the
+  // protected built-in admin role. Tenant agency_admin membership is not enough
+  // authority until triggers carry an immutable agency binding.
+  const isAdmin = isAdminLike(currentUser);
 
   // Fetch all automatic care plan triggers
   const { data: triggers = [], isLoading } = useQuery({

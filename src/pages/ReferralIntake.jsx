@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey, scopePatientsToCallerAgency } from '@/lib/agencyRoster';
-import { sendMessage } from '@/functions/sendMessage';
 import { createAuthorizedPatient } from '@/functions/createAuthorizedPatient';
 import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
 import { invokeLLM } from "@/lib/invokeLLM";
@@ -69,6 +68,8 @@ const safeDate = (value) => {
   const d = new Date(value);
   return isValid(d) ? format(d, "MM/dd/yyyy") : "N/A";
 };
+const REFERRAL_ASSIGNMENT_MESSAGE_UNAVAILABLE =
+  'New nurse assignments are unavailable until referral notification uses a tenant-authorized message broker.';
 import { toast } from "sonner";
 import { parseDob } from "@/components/patient/patientDuplicateUtils";
 import {
@@ -473,62 +474,7 @@ export default function ReferralIntake() {
       }
       return;
     }
-
-    try {
-      const referral = referrals.find(r => r.id === referralId);
-      if (!referral) return;
-      const nurse = users.find(u => u.email === nurseEmail);
-
-      // Send secure message to assigned nurse with PROCESSED PDF document (not original upload)
-      const attachmentUrl = referral.processed_document_url || referral.document_url;
-      const messageData = {
-        patient_id: referral.patient_id,
-        thread_id: `referral-${referralId}`,
-        subject: `New Referral Assignment: ${referral.patient_name || 'Unknown Patient'}`,
-        message_text: `You have been assigned a new referral.
-
-Patient: ${referral.patient_name || 'Unknown'}
-Referral Source: ${referral.referral_source || 'N/A'}
-Priority: ${referral.priority}
-Referral Date: ${safeDate(referral.referral_date)}
-
-${referral.extracted_data ? 'Referral has been processed with AI analysis and formatted into an admission packet.' : 'Please process this referral to extract patient information.'}
-
-Actions available:
-• View analyzed referral data
-• Create admission note in Smart Note (prepopulated with referral info)
-• Review patient information
-
-📎 ${referral.processed_document_url ? 'AI-processed admission packet PDF is attached.' : 'Referral document is attached.'}`,
-        recipients: [nurseEmail],
-        priority: referral.priority === 'urgent' ? 'urgent' : 'high',
-        attachments: attachmentUrl ? [attachmentUrl] : [],
-        related_event_id: referralId,
-        related_event_type: 'referral'
-      };
-
-      // These are two separate writes with no shared transaction. Persist the
-      // assignment first, then notify; if the notification fails, roll the
-      // assignment back to its prior value so the nurse is never left assigned to a
-      // referral they were never told about (the original silent-orphan bug). The
-      // operator then sees the error and can retry cleanly.
-      const priorAssignedTo = referral.assigned_to ?? null;
-      await base44.entities.Referral.update(referralId, { assigned_to: nurseEmail });
-      try {
-        await sendMessage(messageData);
-      } catch (notifyErr) {
-        await base44.entities.Referral.update(referralId, { assigned_to: priorAssignedTo }).catch(() => {});
-        throw notifyErr;
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['referrals'] });
-      queryClient.invalidateQueries({ queryKey: ['messages'] });
-      
-      toast.success(`Referral assigned to ${nurse?.full_name || nurseEmail}. Secure message sent.`);
-    } catch (error) {
-      console.error('Error assigning nurse:', error);
-      toast.error('Failed to assign nurse');
-    }
+    toast.error(REFERRAL_ASSIGNMENT_MESSAGE_UNAVAILABLE);
   };
 
   const handleProcessingComplete = async (referralId, extractedData, analysisResults, generatedPdfUrl = null) => {
@@ -1557,22 +1503,27 @@ Actions available:
                         </div>
                       </TableCell>
                       <TableCell className="text-xs sm:text-sm hidden xl:table-cell">
-                        <Select
-                          value={referral.assigned_to || "unassigned"}
-                          onValueChange={(value) => handleNurseAssignment(referral.id, value)}
-                        >
-                          <SelectTrigger className="w-full min-w-[140px] h-11 touch-target">
-                            <SelectValue placeholder="Assign nurse" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unassigned">Unassigned</SelectItem>
-                            {users.filter(u => u.role === 'user' || u.role === 'admin').map(u => (
-                              <SelectItem key={u.email} value={u.email}>
-                                {u.full_name || u.email}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="space-y-1">
+                          <Select
+                            value={referral.assigned_to || "unassigned"}
+                            onValueChange={(value) => handleNurseAssignment(referral.id, value)}
+                          >
+                            <SelectTrigger className="w-full min-w-[140px] h-11 touch-target">
+                              <SelectValue placeholder="Assign nurse" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {users.filter(u => u.role === 'user' || u.role === 'admin').map(u => (
+                                <SelectItem key={u.email} value={u.email} disabled>
+                                  {u.full_name || u.email}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          <p className="max-w-[180px] text-[11px] leading-tight text-amber-700">
+                            {REFERRAL_ASSIGNMENT_MESSAGE_UNAVAILABLE}
+                          </p>
+                        </div>
                       </TableCell>
                       <TableCell>
                        <div className="flex flex-col gap-2 min-w-[120px]">

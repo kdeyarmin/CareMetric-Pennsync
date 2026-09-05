@@ -20,10 +20,12 @@ const HIGH_RISK_ACCESS = [
   // Visit creation is service-owned. Its caller provenance is an explicit
   // server-stamped custom field; platform-managed created_by is incidental.
   { entity: 'Visit', owners: ['created_by_user_email_normalized'], adminReadable: true },
-  { entity: 'Document', owners: ['uploaded_by', 'created_by'], adminReadable: true },
-  // Message is participant-only. A global admin read arm would bypass the
-  // broker's immutable thread/clinical-context checks and expose PHI.
-  { entity: 'Message', owners: ['created_by'], adminReadable: false, arrayOwners: ['recipients'] },
+  // Document is stricter than owner-scoped RLS: every direct operation is
+  // disabled and tenant/patient access is mediated by finite brokers.
+  { entity: 'Document', brokerOnly: true },
+  // Message lacks immutable selected-tenant provenance. Every direct operation
+  // stays closed while the message-domain functions are statically paused.
+  { entity: 'Message', brokerOnly: true },
   { entity: 'TrainingAssignment', owners: ['assigned_to_user_id'], adminReadable: true },
   { entity: 'Timesheet', owners: ['employee_email'], adminReadable: true },
 ];
@@ -81,12 +83,21 @@ function assertField(schema, field) {
   assert.ok(schema.properties?.[field], `${schema.name} must define ${field}`);
 }
 
-test('P0-01 high-risk entities define scoped read RLS for patient/document/message/training/payroll records', () => {
+test('P0-01 high-risk entities define scoped or broker-only read boundaries', () => {
   for (const item of HIGH_RISK_ACCESS) {
     const raw = source(`base44/entities/${item.entity}.jsonc`);
-    const readRule = JSON.stringify(entity(item.entity).rls?.read);
+    const rls = entity(item.entity).rls;
     assert.match(raw, /"rls"\s*:/, `${item.entity} must define RLS`);
     assert.match(raw, /"read"\s*:/, `${item.entity} must define read RLS`);
+    if (item.brokerOnly) {
+      assert.deepEqual(
+        rls,
+        { read: false, create: false, update: false, delete: false },
+        `${item.entity} must deny all direct SDK operations`,
+      );
+      continue;
+    }
+    const readRule = JSON.stringify(rls?.read);
     for (const owner of item.owners) {
       const ruleField = owner === 'created_by' ? owner : `data.${owner}`;
       assert.ok(
@@ -149,12 +160,17 @@ test('P0-05 outbound delivery entities expose status fields and shared delivery-
   assert.match(deliverySrc, /createDeliveryAttemptEvent/);
 });
 
-test('P1-04 provider follow-up public token functions persist expired/submitted token statuses', () => {
-  const validate = source('base44/functions/validateFollowUpToken/entry.ts');
-  const submit = source('base44/functions/submitFollowUpResponse/entry.ts');
-  assert.match(validate, /status:\s*'expired'/, 'validateFollowUpToken must persist status=expired when expiring a token');
-  assert.match(submit, /status:\s*'expired'/, 'submitFollowUpResponse must persist status=expired when an expired token is presented');
-  assert.match(submit, /status:\s*'delivered'/, 'submitFollowUpResponse must persist status=delivered after successful single-use submission');
+test('P1-04 provider follow-up public token functions remain hard-paused before access', () => {
+  for (const functionName of ['validateFollowUpToken', 'submitFollowUpResponse']) {
+    const entry = source(`base44/functions/${functionName}/entry.ts`);
+    assert.match(entry, /Deno\.serve\(\(\)\s*=>\s*Response\.json/);
+    assert.match(entry, /status:\s*503/);
+    assert.match(entry, /['"]Cache-Control['"]:\s*['"]no-store['"]/);
+    assert.doesNotMatch(
+      entry,
+      /createClient(?:FromRequest)?|\breq\.(?:json|text|arrayBuffer|formData)\(|asServiceRole|entities\.|integrations\./,
+    );
+  }
 });
 
 test('hosted RLS proof worksheet exists and refuses to fake local proof', () => {

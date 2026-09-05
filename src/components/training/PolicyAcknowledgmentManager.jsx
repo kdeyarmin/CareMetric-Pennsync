@@ -18,6 +18,8 @@ import { escapeCsvField } from "@/components/admin/csvExport";
 import { toast } from "sonner";
 import { isPastLocalDueDate } from '@/lib/dateLocal';
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { isAdminLike } from "@/lib/superAdmin";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 export default function PolicyAcknowledgmentManager() {
   const queryClient = useQueryClient();
@@ -27,16 +29,15 @@ export default function PolicyAcknowledgmentManager() {
   const [result, setResult] = useState(null);
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const isAdminUser = currentUser?.role === "admin" || currentUser?.account_type === "agency_admin" || currentUser?.account_type === "super_admin";
-  // Base44 protects the built-in role; custom account_type fields are
-  // self-editable and cannot authorize access to draft/archived policies.
-  const isProtectedAdmin = currentUser?.role === "admin";
+  // Roster reads, acknowledgment status, distribution, and full policy history
+  // all require Base44's protected built-in admin role today.
+  const isProtectedAdmin = isAdminLike(currentUser);
 
   const { data: users = [] } = useQuery({ queryKey: ["policy-users", agencyQueryKey(currentUser)], queryFn: async () => {
       const _rows = await base44.entities.User.list("-created_date", 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
-    }, initialData: [], enabled: isAdminUser });
+    }, initialData: [], enabled: isProtectedAdmin });
   const { data: policies = [] } = useQuery({
     queryKey: ["policy-library", isProtectedAdmin ? "all" : "active"],
     queryFn: async () => {
@@ -44,10 +45,9 @@ export default function PolicyAcknowledgmentManager() {
       return (response?.data || response)?.policies || [];
     },
     initialData: [],
-    enabled: isAdminUser,
+    enabled: isProtectedAdmin,
   });
-  // Full policy history is returned only to the protected built-in admin role;
-  // the existing agency-admin view remains usable with active policies only.
+  // Full status is returned only to the protected built-in admin role.
   const { data: acks = [] } = useQuery({
     queryKey: ["policy-acks"],
     queryFn: async () => {
@@ -55,7 +55,7 @@ export default function PolicyAcknowledgmentManager() {
       return (res?.data || res)?.acknowledgments || [];
     },
     initialData: [],
-    enabled: isAdminUser,
+    enabled: isProtectedAdmin,
   });
 
   const activePolicies = useMemo(() => policies.filter((p) => p.status !== "archived"), [policies]);
@@ -122,8 +122,8 @@ export default function PolicyAcknowledgmentManager() {
     URL.revokeObjectURL(url);
   };
 
-  if (currentUser && !isAdminUser) {
-    return <AccessDeniedState description="Policy distribution is available to Agency Admin and Super Admin users only." />;
+  if (currentUser && !isProtectedAdmin) {
+    return <AccessDeniedState description="Policy distribution requires protected administrator access. Facility-admin distribution remains unavailable until policy and roster operations use immutable tenant-membership authorization." />;
   }
 
   return (
@@ -159,7 +159,18 @@ export default function PolicyAcknowledgmentManager() {
           {selectedPolicy && (
             <p className="text-sm text-slate-500">
               {selectedPolicy.policy_number ? `${selectedPolicy.policy_number} · ` : ""}Version {selectedPolicy.version || "1"}
-              {selectedPolicy.doc_url && isSafeExternalUrl(selectedPolicy.doc_url) ? <> · <a className="text-blue-600 underline hover:text-blue-700" href={selectedPolicy.doc_url} target="_blank" rel="noopener noreferrer">Document</a></> : null}
+              {selectedPolicy.doc_url && isSafeExternalUrl(selectedPolicy.doc_url) ? (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    className="text-blue-600 underline hover:text-blue-700"
+                    onClick={() => openAuthorityBoundWindow(selectedPolicy.doc_url)}
+                  >
+                    Document
+                  </button>
+                </>
+              ) : null}
             </p>
           )}
           {result && !result.error && (

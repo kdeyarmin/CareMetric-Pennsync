@@ -22,7 +22,10 @@ test("canonical two-agency fixture template is a local no-write plan", () => {
 
   const plan = createLiveReadinessFixturePlan(input);
   assert.equal(plan.status, "valid_fixture_plan");
-  assert.equal(plan.readiness_status, "blocked_until_hosted_identities_and_evidence_exist");
+  assert.equal(
+    plan.readiness_status,
+    "blocked_until_authenticated_hosted_evidence_and_reviews_exist",
+  );
   assert.deepEqual(plan.counts, {
     actors: 5,
     tenant_actors: 4,

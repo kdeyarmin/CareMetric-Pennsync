@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -46,6 +46,10 @@ vi.mock('@/components/ui/select', async () => {
 });
 
 import AdmissionBriefEmailCard from '@/components/referral/AdmissionBriefEmailCard';
+import {
+  bindTrustedTenantContext,
+  clearTrustedTenantContext,
+} from '@/lib/roles';
 
 const referralData = {
   demographics: { full_name: 'Jane Doe', insurance_primary: 'Medicare' },
@@ -53,7 +57,27 @@ const referralData = {
   diagnoses: { primary_diagnosis: 'CHF (I50.9)', primary_icd10: 'I50.9', allergies: 'Penicillin' },
 };
 
-const AGENCY_A = { email: 'intake@a.example', full_name: 'Dana Intake', agency_name: 'Agency A', account_type: 'agency_admin' };
+const AGENCY_A = {
+  id: 'intake-a',
+  email: 'intake@a.example',
+  full_name: 'Dana Intake',
+  role: 'admin',
+  agency_name: 'Agency A',
+  account_type: 'agency_admin',
+};
+
+const TENANT_CONTEXT = {
+  user_id: AGENCY_A.id,
+  user_email: AGENCY_A.email,
+  membership_id: 'membership-intake-a',
+  membership_key: 'agency-a:intake-a',
+  membership_version: 1,
+  agency_id: 'agency-a',
+  tenant_role: 'agency_admin',
+  membership_status: 'active',
+  is_platform_owner: false,
+  agency: { id: 'agency-a', name: 'Agency A', status: 'active' },
+};
 
 const roster = [
   { id: 'u1', email: 'kelly@a.example', full_name: 'Kelly Nurse', credential_type: 'RN', agency_name: 'Agency A', is_active: true },
@@ -70,10 +94,16 @@ const renderCard = (props = {}) =>
   );
 
 beforeEach(() => {
+  clearTrustedTenantContext();
+  bindTrustedTenantContext(AGENCY_A, TENANT_CONTEXT);
   authMe.mockReset().mockResolvedValue(AGENCY_A);
   userList.mockReset().mockResolvedValue(roster);
   sendEmail.mockReset().mockResolvedValue({});
   notificationCreate.mockReset().mockResolvedValue({});
+});
+
+afterEach(() => {
+  clearTrustedTenantContext();
 });
 
 describe('AdmissionBriefEmailCard', () => {

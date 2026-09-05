@@ -36,9 +36,9 @@ const factoryFor = (name) => pageModules[`./pages/${name}.jsx`];
 
 // Pages that are NOT authenticated, manifest-driven routes:
 //  - Dashboard is added eagerly above.
-//  - JoinTelehealth / SignerPortal are public, token-gated pages rendered
-//    without an app login directly in App.jsx, so they are intentionally absent
-//    from the manifest and handled there.
+//  - JoinTelehealth plus the static SignerPortal/ProviderFollowUpPortal
+//    containment pages render without an app login directly in App.jsx, so they
+//    are intentionally absent from the manifest and handled there.
 const NON_MANIFEST_ROUTES = new Set(['Dashboard']);
 
 /**

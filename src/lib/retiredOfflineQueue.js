@@ -5,6 +5,7 @@ import { OFFLINE_RETIRED_FLAG } from '@/lib/localPhiKeys';
 import { saveDraftNoteLocally, getDraftNoteLocally } from '@/lib/draftNotes';
 import { createAuthorizedVisit } from '@/functions/createAuthorizedVisit';
 import { recoverLegacyVisitUpdate } from '@/functions/updateAuthorizedVisit';
+import { retireLegacyBrowserCaches } from '@/lib/retiredBrowserCacheCleanup';
 
 /**
  * ONE-TIME migration for the retired offline feature. DELETE AFTER ONE RELEASE.
@@ -23,12 +24,15 @@ import { recoverLegacyVisitUpdate } from '@/functions/updateAuthorizedVisit';
  *
  * Deliberately self-contained: it reads IndexedDB directly rather than importing
  * the deleted offline modules, so nothing else in the app depends on the retired
- * feature. The drain preserves the idempotency the old worker had —
- * `client_request_id` for creates, `visit_id` for updates — so an interrupted
- * run cannot double-write a clinical record on the next attempt.
+ * feature. The drain preserves the Visit idempotency the old worker had —
+ * `client_request_id` for creates and `visit_id` for updates — and gives its
+ * nested NoteConversion a stable authority-bound recovery key, so an interrupted
+ * run cannot silently skip or double-write that conversion on the next attempt.
  *
- * Once every active device has loaded a build containing this module, the whole
- * file (and its call in App.jsx) can be removed.
+ * This recovery path is quarantined and has no production caller because its
+ * oldest records do not carry exact principal/tenant authority. Browser worker
+ * and cache cleanup lives in `retiredBrowserCacheCleanup.js` and never imports
+ * or invokes this module.
  */
 
 const LEGACY_DB_NAME = 'base44-offline-db';
@@ -41,8 +45,10 @@ const LEGACY_QUEUE_STORE = 'sync_queue';
 const DONE_FLAG = OFFLINE_RETIRED_FLAG;
 /** The legacy Smart Note autosave store, which lived in the same database. */
 const LEGACY_DRAFT_STORE = 'draft_notes';
-/** The cache the retired service worker created (see the deleted public/sw.js). */
-const LEGACY_CACHE_PREFIX = 'base44-offline';
+const MAX_IDENTIFIER_LENGTH = 200;
+const MAX_SOURCE_RECORD_ID_LENGTH = 512;
+const MAX_RECOVERY_REQUEST_ID_LENGTH = 2_000;
+const EXACT_RECOVERY_ROW_LIMIT = 2;
 
 const alreadyRetired = () => {
   try {
@@ -53,10 +59,22 @@ const alreadyRetired = () => {
 };
 
 const markRetired = () => {
+  localStorage.setItem(DONE_FLAG, '1');
+  if (localStorage.getItem(DONE_FLAG) !== '1') {
+    throw new Error('Offline retirement marker could not be persisted');
+  }
+};
+
+const hasQuarantinedConflicts = () => {
   try {
-    localStorage.setItem(DONE_FLAG, '1');
+    const raw = localStorage.getItem('offline_conflicts');
+    if (raw === null) return false;
+    const parsed = JSON.parse(raw);
+    return !Array.isArray(parsed) || parsed.length > 0;
   } catch {
-    /* storage unavailable — the drain is idempotent, so a repeat is harmless */
+    // Unreadable or malformed conflict data may still be the only copy of a
+    // clinician's manual resolution work. Treat it as present.
+    return true;
   }
 };
 
@@ -128,52 +146,240 @@ async function migrateLegacyDraftNotes({ saveDraft = saveDraftNoteLocally, getDr
 }
 
 function deleteLegacyDatabase() {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     if (typeof indexedDB === 'undefined') return resolve();
     let request;
     try {
       request = indexedDB.deleteDatabase(LEGACY_DB_NAME);
-    } catch {
-      return resolve();
+    } catch (error) {
+      return reject(error instanceof Error ? error : new Error('IndexedDB delete threw'));
     }
-    // `onblocked` fires when another tab still holds the database open. Resolve
-    // anyway: the delete is queued and completes when that tab closes, and the
-    // retirement flag stops us from retrying forever.
     request.onsuccess = () => resolve();
-    request.onerror = () => resolve();
-    request.onblocked = () => resolve();
+    request.onerror = () => reject(request.error || new Error('IndexedDB delete failed'));
+    request.onblocked = () => reject(new Error('IndexedDB delete blocked'));
   });
 }
 
+const canonicalEmail = (value) => {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim().toLowerCase();
+  return normalized && normalized.includes('@') && !/\s/.test(normalized)
+    ? normalized
+    : null;
+};
+
+const exactIdentifier = (value, maxLength = MAX_IDENTIFIER_LENGTH) => {
+  const normalized = typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
+    ? String(value)
+    : value;
+  if (typeof normalized !== 'string') return null;
+  if (
+    !normalized
+    || normalized.length > maxLength
+    || normalized.trim() !== normalized
+    || normalized.startsWith('$')
+  ) return null;
+  return normalized;
+};
+
+const requireRows = (value, label) => {
+  if (!Array.isArray(value)) throw new Error(`${label} returned an invalid result`);
+  return value;
+};
+
 /**
- * Unregister the retired offline service worker and drop its caches, so an
- * existing install stops serving the cached app shell. Without this a browser
- * that registered the old worker keeps it — and its stale shell — indefinitely,
- * because deleting sw.js from the build does not unregister anything.
+ * Bind a legacy NoteConversion to the authenticated principal before any Visit
+ * write starts. A queue can survive logout/account switching, so an email stored
+ * on the device is evidence to validate, never current authority to trust.
  */
-async function unregisterOfflineServiceWorker() {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.serviceWorker?.getRegistrations) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(registrations.map((registration) => registration.unregister()));
-    }
-  } catch {
-    /* unsupported or blocked — nothing further to do */
+async function bindNoteConversionToCaller(
+  noteConversion,
+  item,
+  visitFields,
+  getAuthenticatedUser,
+) {
+  if (!noteConversion || typeof noteConversion !== 'object' || Array.isArray(noteConversion)) {
+    throw new Error('Legacy NoteConversion recovery payload is invalid');
   }
-  try {
-    if (typeof caches !== 'undefined') {
-      const keys = await caches.keys();
-      await Promise.all(
-        keys.filter((key) => key.startsWith(LEGACY_CACHE_PREFIX)).map((key) => caches.delete(key)),
-      );
-    }
-  } catch {
-    /* Cache Storage unavailable */
+  if (typeof getAuthenticatedUser !== 'function') {
+    throw new Error('Legacy NoteConversion recovery requires authentication');
   }
+
+  const user = await getAuthenticatedUser();
+  const callerUserId = exactIdentifier(user?.id);
+  const callerEmail = canonicalEmail(user?.email);
+  if (
+    !callerUserId
+    || !callerEmail
+    || user?.is_active === false
+    || user?.disabled === true
+    || user?.is_service === true
+    || user?.is_verified === false
+  ) {
+    throw new Error('Legacy NoteConversion recovery requires an active authenticated user');
+  }
+
+  const sourceRecordId = exactIdentifier(item?.id, MAX_SOURCE_RECORD_ID_LENGTH);
+  const visitRequestId = exactIdentifier(visitFields?.client_request_id);
+  const patientId = exactIdentifier(visitFields?.patient_id);
+  const visitDate = exactIdentifier(visitFields?.visit_date);
+  const visitType = exactIdentifier(visitFields?.visit_type);
+  const requestedAgencyId = visitFields?.agency_id == null
+    ? null
+    : exactIdentifier(visitFields.agency_id);
+  if (!sourceRecordId || !visitRequestId || !patientId || !visitDate || !visitType) {
+    throw new Error('Legacy NoteConversion recovery binding is incomplete');
+  }
+  if (visitFields?.agency_id != null && !requestedAgencyId) {
+    throw new Error('Legacy NoteConversion recovery agency binding is invalid');
+  }
+
+  const queuedRaw = noteConversion.nurse_email;
+  const queuedEmail = canonicalEmail(queuedRaw);
+  if (queuedRaw != null && String(queuedRaw).trim() && !queuedEmail) {
+    throw new Error('Legacy NoteConversion nurse identity is invalid');
+  }
+  if (queuedEmail && queuedEmail !== callerEmail) {
+    throw new Error('Legacy NoteConversion belongs to a different authenticated user');
+  }
+
+  const queuedPatientId = noteConversion.patient_id == null
+    || noteConversion.patient_id === ''
+    ? null
+    : exactIdentifier(noteConversion.patient_id);
+  if (noteConversion.patient_id != null && noteConversion.patient_id !== '' && !queuedPatientId) {
+    throw new Error('Legacy NoteConversion patient binding is invalid');
+  }
+  if (queuedPatientId && queuedPatientId !== patientId) {
+    throw new Error('Legacy NoteConversion belongs to a different Visit request');
+  }
+  if (noteConversion.recovery_request_id != null) {
+    throw new Error('Legacy NoteConversion recovery binding is already populated');
+  }
+
+  return {
+    noteConversion: {
+      ...noteConversion,
+      patient_id: patientId,
+      // Preserve the authority's exact spelling after a canonical comparison so
+      // Base44's {{user.email}} create rule sees the authenticated value.
+      nurse_email: String(user.email).trim(),
+    },
+    authority: {
+      callerUserId,
+      callerEmail,
+      sourceRecordId,
+      visitRequestId,
+      patientId,
+      visitDate,
+      visitType,
+      requestedAgencyId,
+    },
+  };
+}
+
+function requireAuthorizedVisit(result, authority) {
+  if (result?.created !== true && result?.created !== false) {
+    throw new Error('Legacy NoteConversion Visit result is uncertain');
+  }
+  const visit = result?.visit;
+  const visitId = exactIdentifier(visit?.id);
+  const agencyId = exactIdentifier(visit?.agency_id);
+  if (
+    !visitId
+    || !agencyId
+    || visit?.patient_id !== authority.patientId
+    || visit?.client_request_id !== authority.visitRequestId
+    || visit?.created_by_user_id !== authority.callerUserId
+    || visit?.created_by_user_email_normalized !== authority.callerEmail
+    || visit?.visit_date !== authority.visitDate
+    || visit?.visit_type !== authority.visitType
+    || (authority.requestedAgencyId && agencyId !== authority.requestedAgencyId)
+  ) {
+    throw new Error('Legacy NoteConversion Visit authority binding did not match');
+  }
+  return { ...visit, id: visitId, agency_id: agencyId };
+}
+
+function buildRecoveryRequestId(authority, visit) {
+  // A loss of the NoteConversion.create response must produce the exact same key
+  // on the next app load. The tuple binds the authenticated principal, durable
+  // queue record, broker request, and the broker's tenant-stamped Visit result.
+  const recoveryRequestId = JSON.stringify([
+    'legacy-note-conversion-v1',
+    authority.callerUserId,
+    authority.callerEmail,
+    authority.sourceRecordId,
+    authority.visitRequestId,
+    visit.id,
+    visit.agency_id,
+    visit.patient_id,
+    visit.visit_date,
+    visit.visit_type,
+  ]);
+  if (recoveryRequestId.length > MAX_RECOVERY_REQUEST_ID_LENGTH) {
+    throw new Error('Legacy NoteConversion recovery binding is too large');
+  }
+  return recoveryRequestId;
+}
+
+function requireMatchingNoteConversion(row, expected, authority) {
+  if (
+    !row
+    || typeof row !== 'object'
+    || Array.isArray(row)
+    || !exactIdentifier(row.id)
+    || row.recovery_request_id !== expected.recovery_request_id
+    || canonicalEmail(row.nurse_email) !== authority.callerEmail
+    || row.patient_id !== authority.patientId
+    || canonicalEmail(row.created_by) !== authority.callerEmail
+  ) {
+    throw new Error('Legacy NoteConversion recovery row did not match its authority binding');
+  }
+  return row;
+}
+
+async function reconcileNoteConversion(entities, boundNoteConversion, authority, visit) {
+  if (
+    typeof entities?.NoteConversion?.filter !== 'function'
+    || typeof entities?.NoteConversion?.create !== 'function'
+  ) {
+    throw new Error('Legacy NoteConversion recovery is unavailable');
+  }
+
+  const recoveryRequestId = buildRecoveryRequestId(authority, visit);
+  const expected = {
+    ...boundNoteConversion,
+    recovery_request_id: recoveryRequestId,
+  };
+  const rows = requireRows(
+    await entities.NoteConversion.filter(
+      { recovery_request_id: recoveryRequestId },
+      '-created_date',
+      EXACT_RECOVERY_ROW_LIMIT,
+    ),
+    'NoteConversion.filter',
+  );
+  if (rows.length >= EXACT_RECOVERY_ROW_LIMIT) {
+    throw new Error('Legacy NoteConversion recovery request is ambiguous');
+  }
+  if (rows.some((row) => row?.recovery_request_id !== recoveryRequestId)) {
+    throw new Error('Legacy NoteConversion recovery lookup was not exact');
+  }
+  if (rows.length === 1) {
+    requireMatchingNoteConversion(rows[0], expected, authority);
+    return rows[0];
+  }
+
+  // If the SDK call commits but its response is lost, this throws and the queue
+  // remains. The next load performs the exact lookup above and does not duplicate
+  // the conversion. A malformed success response is likewise never retirement.
+  const created = await entities.NoteConversion.create(expected);
+  return requireMatchingNoteConversion(created, expected, authority);
 }
 
 /** Write one queued item to the server, reusing its original idempotency key. */
-async function flushItem(item, entities, functions) {
+async function flushItem(item, entities, functions, getAuthenticatedUser) {
   const payload = item?.payload || {};
   const {
     __audit: audit,
@@ -215,13 +421,41 @@ async function flushItem(item, entities, functions) {
 
   switch (item.action) {
     case 'CREATE_VISIT': {
+      let noteConversionRecovery = null;
+      if (noteConversion) {
+        if (
+          typeof entities.NoteConversion?.filter !== 'function'
+          || typeof entities.NoteConversion?.create !== 'function'
+        ) {
+          throw new Error('Legacy NoteConversion recovery is unavailable');
+        }
+        // Preflight identity before createAuthorizedVisit. If a different user
+        // signs into a device holding this queue, preserve it without writing
+        // any portion of the prior nurse's clinical record under the new user.
+        noteConversionRecovery = await bindNoteConversionToCaller(
+          noteConversion,
+          item,
+          fields,
+          getAuthenticatedUser,
+        );
+      }
       // The server broker owns tenant authorization, immutable provenance, and
       // client_request_id replay detection. Direct Visit create is intentionally
       // disabled, including for this one-release recovery path.
       const result = await createAuthorizedVisit(fields, functions);
-      const visit = result.visit;
-      if (result.created && noteConversion && entities.NoteConversion?.create) {
-        await entities.NoteConversion.create(noteConversion);
+      const visit = noteConversionRecovery
+        ? requireAuthorizedVisit(result, noteConversionRecovery.authority)
+        : result.visit;
+      if (noteConversionRecovery) {
+        // This runs for both a fresh Visit and an authorized Visit replay. A
+        // rejection or any ambiguous lookup aborts the drain; the queue stores
+        // and retirement flag remain intact for an exact subsequent retry.
+        await reconcileNoteConversion(
+          entities,
+          noteConversionRecovery.noteConversion,
+          noteConversionRecovery.authority,
+          visit,
+        );
       }
       await reconcileAudit(visit.id, fields.patient_id);
       await applyHistory(visit.id);
@@ -251,8 +485,9 @@ async function flushItem(item, entities, functions) {
       return;
     }
     default:
-      // Unknown action from an even older build — nothing can be done with it.
-      logger.debug('[offline-retire] skipping unknown queued action', item.action);
+      // Unknown work may be the only clinical copy. Never report it as flushed,
+      // because retirement would then delete the queue permanently.
+      throw new Error(`Unsupported retired queue action: ${String(item.action || '')}`);
   }
 }
 
@@ -269,12 +504,19 @@ async function flushItem(item, entities, functions) {
 export async function flushAndRetireOfflineQueue({
   entities = base44.entities,
   functions = base44.functions,
+  getAuthenticatedUser = () => base44.auth.me(),
   getQueue = readLegacyQueue,
   deleteDatabase = deleteLegacyDatabase,
-  unregisterWorker = unregisterOfflineServiceWorker,
+  unregisterWorker = retireLegacyBrowserCaches,
   rescueDrafts = migrateLegacyDraftNotes,
+  hasConflicts = hasQuarantinedConflicts,
   isOnline = () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false),
 } = {}) {
+  // Historical conflict records were created specifically for manual review
+  // and were never part of the replay mapper. Keep every retirement artifact in
+  // place until that review occurs; setting the completed flag would let a later
+  // PHI purge silently destroy the unresolved local/server payload pair.
+  if (hasConflicts()) return { retired: false, flushed: 0, pending: 1 };
   if (alreadyRetired()) return { retired: true, flushed: 0, pending: 0 };
 
   // Older localStorage queues predate the IndexedDB one; recover them into the
@@ -285,15 +527,38 @@ export async function flushAndRetireOfflineQueue({
   // skipped (device offline) or failed part-way.
   const pendingWrites = [];
   let clearLegacyStores = () => {};
+  let preservedLegacyStores = [];
   try {
     const migration = await migrateLegacyOfflineQueues({
-      enqueue: async (action, payload) => { pendingWrites.push({ action, payload }); },
+      enqueue: async (action, payload) => {
+        const stableKey = exactIdentifier(payload?.client_request_id)
+          || exactIdentifier(payload?.visit_id);
+        pendingWrites.push({
+          id: stableKey ? `legacy-local-storage:${action}:${stableKey}` : null,
+          action,
+          payload,
+        });
+      },
     });
     if (typeof migration?.clearMigratedStores === 'function') {
       clearLegacyStores = migration.clearMigratedStores;
     }
+    if (migration?.complete === false) {
+      preservedLegacyStores = Array.isArray(migration.preservedStores)
+        ? migration.preservedStores
+        : ['unknown'];
+    }
   } catch (error) {
     logger.debug('[offline-retire] could not read the legacy localStorage queues', error);
+    preservedLegacyStores = ['unreadable'];
+  }
+
+  if (preservedLegacyStores.length > 0) {
+    logger.debug(
+      '[offline-retire] legacy stores require supervised recovery; deferring retirement',
+      preservedLegacyStores,
+    );
+    return { retired: false, flushed: 0, pending: Math.max(1, pendingWrites.length) };
   }
 
   try {
@@ -319,11 +584,16 @@ export async function flushAndRetireOfflineQueue({
       logger.error('[offline-retire] could not rescue local note drafts; keeping the legacy storage', error);
       return false;
     }
-    await unregisterWorker();
-    await deleteDatabase();
-    clearLegacyStores();
-    markRetired();
-    return true;
+    try {
+      await unregisterWorker();
+      await deleteDatabase();
+      clearLegacyStores();
+      markRetired();
+      return true;
+    } catch (error) {
+      logger.error('[offline-retire] could not prove legacy storage deletion; keeping retirement incomplete', error);
+      return false;
+    }
   };
 
   // Nothing left to save: retire immediately, whatever the connection state.
@@ -338,7 +608,7 @@ export async function flushAndRetireOfflineQueue({
   let flushed = 0;
   for (const item of queue) {
     try {
-      await flushItem(item, entities, functions);
+      await flushItem(item, entities, functions, getAuthenticatedUser);
       flushed += 1;
     } catch (error) {
       logger.error('[offline-retire] could not sync queued offline work', error);

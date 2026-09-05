@@ -207,7 +207,6 @@ test('PDF and ADR activities never copy PHI, search text, or storage capabilitie
     ['saveAnnotatedPDF', 'pdf_annotated'],
     ['reorderDeletePDFPages', 'pdf_pages_modified'],
     ['searchPDFs', 'pdf_search'],
-    ['embedAnnotationsToPDF', 'document_signed'],
     ['generateAdrPacket', 'adr_packet_generated'],
     ['indexPDF', 'pdf_indexed'],
     ['mergePDFs', 'pdfs_merged'],

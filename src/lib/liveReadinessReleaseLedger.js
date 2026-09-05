@@ -12,6 +12,7 @@ export const LIVE_RELEASE_METADATA = Object.freeze([
   "staging_backend_origin",
   "candidate_source_commit_sha",
   "candidate_source_tree_sha",
+  "source_authority_contract_sha256",
   "hosted_runtime_commit_sha",
   "hosted_runtime_tree_sha",
   "hosted_deployment_id",
@@ -64,6 +65,8 @@ export function ledgerRowsForExport(ledger) {
     environment: ledger.release.environment,
     candidate_source_commit_sha: ledger.release.candidate_source_commit_sha,
     candidate_source_tree_sha: ledger.release.candidate_source_tree_sha,
+    source_authority_contract_sha256:
+      ledger.release.source_authority_contract_sha256,
     hosted_runtime_commit_sha: ledger.release.hosted_runtime_commit_sha,
     hosted_runtime_tree_sha: ledger.release.hosted_runtime_tree_sha,
     hosted_deployment_id: ledger.release.hosted_deployment_id,
@@ -80,6 +83,9 @@ export function ledgerRowsForExport(ledger) {
     missing_reference_count: packet.missingReferences.length,
     missing_reviewer_count: packet.missingReviewerDecisions.length,
     missing_required_probe_count: packet.missingRequiredProbeIds.length,
+    non_passing_probe_count: packet.nonPassingProbeIds.length,
+    incomplete_probe_attestation_count:
+      packet.incompleteSuppliedProbeIds.length,
     completed_probe_count: packet.completedProbeIds.length,
     evidence_reference_count: referenceCount(packet),
   }));

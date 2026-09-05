@@ -55,6 +55,7 @@ test("ledger export rows omit raw evidence values and expose counts only", () =>
     "environment",
     "candidate_source_commit_sha",
     "candidate_source_tree_sha",
+    "source_authority_contract_sha256",
     "hosted_runtime_commit_sha",
     "hosted_runtime_tree_sha",
     "hosted_deployment_id",
@@ -71,6 +72,8 @@ test("ledger export rows omit raw evidence values and expose counts only", () =>
     "missing_reference_count",
     "missing_reviewer_count",
     "missing_required_probe_count",
+    "non_passing_probe_count",
+    "incomplete_probe_attestation_count",
     "completed_probe_count",
     "evidence_reference_count",
   ]);

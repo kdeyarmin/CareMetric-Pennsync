@@ -38,7 +38,8 @@ const severityBadge = (severity) =>
  * Referral Follow-Up page already uses — this card covers the analyze-first
  * flow where no Referral record exists yet, so there is no portal link or
  * response tracking here (that lives on the Referral Follow-Up page once a
- * referral is saved). Deterministic content; NO dollar amounts leave the
+ * referral is saved). Online response links remain unavailable; deterministic
+ * content only, and NO dollar amounts leave the
  * building.
  */
 export default function ProviderFaxRequestCard({ referralData, analysis = null }) {
@@ -265,7 +266,7 @@ export default function ProviderFaxRequestCard({ referralData, analysis = null }
                 <ShieldAlert className="w-3.5 h-3.5" />
                 {sentAt
                   ? `Faxed ${sentAt.toLocaleTimeString()} — delivery tracked in the fax log.`
-                  : "For response tracking and the provider's secure online reply link, save the referral and use the Referral Follow-Up page."}
+                  : "Save the referral and use the Referral Follow-Up page for staff-recorded response tracking. Online reply links are unavailable."}
               </p>
               <div className="flex gap-2">
                 <Button type="button" variant="outline" onClick={downloadPdf} disabled={busy || included.length === 0}>

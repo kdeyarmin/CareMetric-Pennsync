@@ -42,5 +42,35 @@
   },
   "required": [
     "name"
-  ]
+  ],
+  // Match ClinicalLibraryTemplate exactly: shared folders are readable by the
+  // care team, but only their immutable creator (or a protected admin) may
+  // mutate them. A shared folder is not a shared write grant.
+  "rls": {
+    "read": {
+      "$or": [
+        { "data.is_agency_wide": true },
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "create": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "delete": {
+      "$or": [
+        { "created_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    }
+  }
 }

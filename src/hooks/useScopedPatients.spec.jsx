@@ -36,6 +36,10 @@ const {
   useScopedPatients, excludeArchived, onlyActive, activeAndNotArchived,
 } = await import('./useScopedPatients.js');
 const { resetAgencyRosterCache } = await import('@/lib/agencyRoster.js');
+const {
+  bindTrustedTenantContext,
+  clearTrustedTenantContext,
+} = await import('@/lib/roles.js');
 
 const ROWS = [
   { id: 'ours', created_by: 'a@x.com' },
@@ -43,15 +47,27 @@ const ROWS = [
   { id: 'orphan', created_by: 'importer@no-reply.base44.com' },
 ];
 const ROSTER = [
-  { email: 'a@x.com', agency_name: 'Acme' },
-  { email: 'b@x.com', agency_name: 'Other' },
+  { email: 'a@x.com', agency_id: 'agency-a', agency_name: 'Acme' },
+  { email: 'b@x.com', agency_id: 'agency-b', agency_name: 'Other' },
 ];
 const TENANT_CONTEXT = {
   user_id: 'user-a',
+  user_email: 'user-a@example.com',
   agency_id: 'agency-a',
   membership_id: 'membership-a',
+  membership_key: 'agency-a:user-a',
   membership_version: 4,
   tenant_role: 'clinician',
+  membership_status: 'active',
+  is_platform_owner: false,
+  agency: { id: 'agency-a', name: 'Acme', status: 'active' },
+};
+const AUTH_USER = {
+  id: 'user-a',
+  email: 'user-a@example.com',
+  role: 'admin',
+  agency_id: 'attacker-controlled-agency',
+  agency_name: 'Attacker Controlled',
 };
 
 function authorizedPage(patients, {
@@ -71,6 +87,16 @@ function authorizedPage(patients, {
   };
 }
 
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, resolve, reject };
+}
+
 /**
  * A test client WITHOUT the app's `initialDataUpdatedAt: 0` default, on purpose:
  * that is the environment the hook has to work in, and the combination of
@@ -86,18 +112,19 @@ function wrapper({ children }) {
 
 describe('useScopedPatients', () => {
   beforeEach(() => {
+    clearTrustedTenantContext();
     resetAgencyRosterCache();
     patientList.mockReset().mockResolvedValue(ROWS);
     patientFilter.mockReset().mockResolvedValue(ROWS);
     userList.mockReset().mockResolvedValue(ROSTER);
-    authMe.mockReset().mockResolvedValue({
-      id: 'user-a', role: 'admin', agency_id: 'agency-a', agency_name: 'Acme',
-    });
+    bindTrustedTenantContext(AUTH_USER, TENANT_CONTEXT);
+    authMe.mockReset().mockResolvedValue({ ...AUTH_USER });
     getTenantContext.mockReset().mockResolvedValue({ tenant_context: TENANT_CONTEXT });
     listAuthorized.mockReset().mockResolvedValue(authorizedPage([]));
   });
 
   afterEach(() => {
+    clearTrustedTenantContext();
     resetAgencyRosterCache();
   });
 
@@ -128,7 +155,7 @@ describe('useScopedPatients', () => {
     // an empty roster for the whole staleTime.
     await Promise.resolve();
     expect(patientList).not.toHaveBeenCalled();
-    resolveMe({ role: 'admin', agency_name: 'Acme' });
+    resolveMe({ ...AUTH_USER });
     await waitFor(() => expect(patientList).toHaveBeenCalled());
   });
 
@@ -254,7 +281,11 @@ describe('useScopedPatients', () => {
 
     await waitFor(() => expect(result.current.data).toHaveLength(2));
     expect(result.current.data.map((patient) => patient.id)).toEqual(['p1', 'p2']);
-    expect(getTenantContext).toHaveBeenCalledWith({ agencyId: 'agency-a' });
+    expect(getTenantContext).toHaveBeenCalledWith({
+      agencyId: 'agency-a',
+      expectedMembershipId: 'membership-a',
+      expectedMembershipVersion: 4,
+    });
     expect(listAuthorized).toHaveBeenCalledWith({
       agencyId: 'agency-a',
       mode: 'page',
@@ -269,16 +300,20 @@ describe('useScopedPatients', () => {
     expect(userList).not.toHaveBeenCalled();
   });
 
-  it('omits the selector for server resolution instead of trusting User.agency_id', async () => {
+  it('uses the trusted selection instead of mutable User.agency_id', async () => {
     authMe.mockResolvedValueOnce({
-      id: 'user-a', role: 'admin', agency_id: 'attacker-controlled-agency',
+      ...AUTH_USER, agency_id: 'attacker-controlled-agency',
     });
     listAuthorized.mockResolvedValueOnce(authorizedPage([]));
 
     renderHook(() => useScopedPatients({ readMode: 'authorized-roster' }), { wrapper });
 
     await waitFor(() => expect(listAuthorized).toHaveBeenCalled());
-    expect(getTenantContext).toHaveBeenCalledWith({});
+    expect(getTenantContext).toHaveBeenCalledWith({
+      agencyId: 'agency-a',
+      expectedMembershipId: 'membership-a',
+      expectedMembershipVersion: 4,
+    });
     expect(listAuthorized).toHaveBeenCalledWith(expect.objectContaining({
       agencyId: 'agency-a',
     }));
@@ -325,12 +360,88 @@ describe('useScopedPatients', () => {
     expect(patientList).not.toHaveBeenCalled();
   });
 
-  it('fails closed instead of falling back when no agency is selected', async () => {
-    authMe.mockResolvedValueOnce({
-      id: 'owner-a', role: 'admin', agency_id: 'mutable-owner-fallback',
+  it.each([
+    ['a 403 revocation', Object.assign(new Error('membership revoked'), { status: 403 })],
+    ['a transient verification failure', new Error('tenant broker unavailable')],
+  ])('withholds and evicts a cached roster through %s', async (_label, failure) => {
+    listAuthorized.mockResolvedValueOnce(authorizedPage([
+      { id: 'p1', first_name: 'Amy', last_name: 'Alpha', status: 'active' },
+    ]));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const shared = ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useScopedPatients({
+      readMode: 'authorized-roster',
+    }), { wrapper: shared });
+    await waitFor(() => expect(result.current.data.map((patient) => patient.id)).toEqual(['p1']));
+
+    const contextRecheck = deferred();
+    getTenantContext.mockReturnValueOnce(contextRecheck.promise);
+    let invalidation;
+    act(() => {
+      invalidation = client.invalidateQueries({
+        queryKey: ['tenant-context', 'patient-roster'],
+      });
     });
-    getTenantContext.mockResolvedValueOnce({
-      tenant_context: { ...TENANT_CONTEXT, agency_id: null },
+    await waitFor(() => expect(getTenantContext).toHaveBeenCalledTimes(2));
+    expect(result.current.data).toEqual([]);
+    expect(result.current.isSuccess).toBe(false);
+
+    await act(async () => {
+      contextRecheck.reject(failure);
+      await invalidation;
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.data).toEqual([]);
+    expect(listAuthorized).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(
+      client.getQueryCache().findAll({
+        queryKey: ['patients', 'authorized-roster'],
+      }),
+    ).toHaveLength(0));
+  });
+
+  it('withholds then evicts cached rows when assignment revalidation is denied', async () => {
+    listAuthorized.mockResolvedValueOnce(authorizedPage([
+      { id: 'p1', first_name: 'Amy', last_name: 'Alpha', status: 'active' },
+    ]));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const shared = ({ children }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    const { result } = renderHook(() => useScopedPatients({
+      readMode: 'authorized-roster',
+    }), { wrapper: shared });
+    await waitFor(() => expect(result.current.data.map((patient) => patient.id)).toEqual(['p1']));
+
+    const rosterRecheck = deferred();
+    listAuthorized.mockReturnValueOnce(rosterRecheck.promise);
+    let recheck;
+    act(() => {
+      recheck = result.current.refetch();
+    });
+    await waitFor(() => expect(listAuthorized).toHaveBeenCalledTimes(2));
+    expect(result.current.data).toEqual([]);
+    expect(result.current.isSuccess).toBe(false);
+
+    await act(async () => {
+      rosterRecheck.reject(Object.assign(new Error('assignment revoked'), { status: 403 }));
+      await recheck;
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.data).toEqual([]);
+    await waitFor(() => expect(
+      client.getQueryCache().findAll({
+        queryKey: ['patients', 'authorized-roster'],
+      }),
+    ).toHaveLength(0));
+  });
+
+  it('fails closed instead of falling back when no agency is selected', async () => {
+    clearTrustedTenantContext();
+    authMe.mockResolvedValueOnce({
+      id: 'owner-a', email: 'owner@example.com', role: 'admin', agency_id: 'mutable-owner-fallback',
     });
 
     const { result } = renderHook(() => useScopedPatients({
@@ -338,11 +449,44 @@ describe('useScopedPatients', () => {
     }), { wrapper });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(result.current.error.message).toMatch(/Select an agency/);
-    expect(getTenantContext).toHaveBeenCalledWith({});
+    expect(result.current.error.message).toMatch(/trusted tenant selection/);
+    expect(getTenantContext).not.toHaveBeenCalled();
     expect(result.current.data).toEqual([]);
     expect(listAuthorized).not.toHaveBeenCalled();
     expect(patientList).not.toHaveBeenCalled();
+  });
+
+  it('does not mount or manually refetch the legacy patient read for an unscoped owner', async () => {
+    clearTrustedTenantContext();
+    const owner = {
+      id: 'owner-a', email: 'owner@example.com', role: 'admin', account_type: 'super_admin',
+    };
+    bindTrustedTenantContext(owner, {
+      user_id: 'owner-a',
+      user_email: 'owner@example.com',
+      agency_id: null,
+      membership_id: null,
+      membership_key: null,
+      membership_version: null,
+      tenant_role: 'platform_owner',
+      membership_status: null,
+      is_platform_owner: true,
+      agency: null,
+    });
+    authMe.mockResolvedValueOnce(owner);
+
+    const { result } = renderHook(() => useScopedPatients(), { wrapper });
+    await waitFor(() => expect(result.current.fetchStatus).toBe('idle'));
+    expect(patientList).not.toHaveBeenCalled();
+    expect(patientFilter).not.toHaveBeenCalled();
+
+    let refetchResult;
+    await act(async () => {
+      refetchResult = await result.current.refetch();
+    });
+    expect(refetchResult.error?.message).toMatch(/exact trusted agency/);
+    expect(patientList).not.toHaveBeenCalled();
+    expect(patientFilter).not.toHaveBeenCalled();
   });
 
   it('keys the authorized roster by immutable membership identity', async () => {

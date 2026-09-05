@@ -115,8 +115,8 @@ targeted the CareMetric production app.
 | Runtime candidate | Deployed staging runtime commit `f4e41dc2d5481c7e23dd84e6e70464691bfdabd8`, tree `94888934ebf417071b286e3a74904c872bd70777`, from draft PR `#143`; the evidence-only documentation commit after this deployment does not change runtime resources |
 | Frontend | Clean-path, frozen-lockfile staging build serves `assets/index-D2D5VcVB.js` (450,726 bytes), SHA-256 `a27bd29cc0f1797e4769ec6b873248ae3c12d952f7547ce4a6f402a9a1955c13`. All 505 local build files matched their hosted counterparts byte-for-byte with zero errors; `/`, `/privacy`, `/privacypolicy`, the manifest, and all four icons return HTTP 200. The complete build contains the staging app id once, the production app id zero times, and `America/New_York` nine times |
 | PWA/native identity | Relative manifest `id`, `start_url`, and `scope`; four manifest icons retained; Apple bundle `com.caremetric.ai`; Google package `com.caremetic.ai`; iOS WebView origin `https://caremetricai.base44.app/` |
-| Entities | Hosted staging and the deployed checkpoint have the same 241 entity names. Canonical deployed-source-to-host comparison is exact for `Document`, `OutcomeComputationRun`, `PDGMRateConfig`, and `PatientPathwayAssignment`, including required `OutcomeComputationRun.lease_expires_at` and the reviewed operation-specific access rules. The newer source-only PR head has 242 names because it adds the private `AIContentAgreementAttestation` authority entity; it also changes Document/RLS definitions and is not hosted |
-| Functions | Hosted staging has 263 functions: the exact deployed 265-function PR checkpoint minus deliberately withheld `computeOutcomeMeasures` and `managePatientCareTeamAssignment`. The newer source-only PR head has 267 functions and is not hosted. Both withheld functions remain absent from hosted staging, and the hosted inventory contains zero automation entries |
+| Entities | Hosted staging and the deployed checkpoint have the same 241 entity names. Canonical deployed-source-to-host comparison is exact for `Document`, `OutcomeComputationRun`, `PDGMRateConfig`, and `PatientPathwayAssignment`, including required `OutcomeComputationRun.lease_expires_at` and the reviewed operation-specific access rules. The current source candidate has 243 names: it adds `AIContentAgreementAttestation` and `TelecomDestinationBinding` beyond the hosted inventory, and its newer Document, OASIS, audit, telecom, and RLS definitions are not hosted |
+| Functions | Hosted staging has 263 functions: the exact deployed 265-function PR checkpoint minus deliberately withheld `computeOutcomeMeasures` and `managePatientCareTeamAssignment`. The current source candidate has 268 functions, including `listMyTenantMemberships`, and is not hosted. Both withheld functions remain absent from hosted staging, and the hosted inventory contains zero automation entries |
 | Data | Post-deployment privileged rechecks found zero rows in OutcomeComputationRun, AgencyMembership, Agency, Patient, Visit, Document, PatientCareTeamAssignment, OASISAssessment, OASISUpload, PatientOutcomeMetric, AgencyKPI, PDGMRateConfig, and PatientPathwayAssignment; User remained at its pre-existing count of one. No probe residue, migration, or production data write occurred |
 | Secrets/schedules | No secret was changed and no schedule or automation was added; `computeOutcomeMeasures` remains deliberately unhosted |
 | Feature gates | Clinical AI, OASIS, and legacy PDGM financial paths remain fail-closed: six anonymous safe-pause probes returned the expected HTTP 409 reasons. `computeOutcomeMeasures` and `managePatientCareTeamAssignment` remain absent and unwired. The legacy `getPatientContext` endpoint is hosted only as an HTTP 410 tombstone |
@@ -126,7 +126,7 @@ targeted the CareMetric production app.
 | Production function status | Inventory remains 240. Pulled `deduplicatePatients`, `saveOasisResponses`, and `calculatePDGM` match the hardened baseline. `computeOutcomeMeasures` entry SHA-256 remained `2c2a37bf...` while its existing schedule was intentionally set to `is_active:false`; no post-change logs were returned |
 | Live production surfaces | Rechecked on 2026-09-04: `caremetricai.base44.app` and `app.caremetricai.com` return HTTP 200 and the verified `index-egZIJufH.js` asset with unchanged SHA-256 `145532107c092fa272821a6c215b886f3188d71091682d02af6ca529675928f7`; `pennsync.com` still returns separate `index--wkWNhXC.js`, so no domain cutover occurred |
 | Manifest/PWA | The production-facing manifest says `PennSync by CareMetric`; its relative `id`, `start_url`, and `scope`, four icons, and historical branding remain intact. The contained frontend and manifest are now on the same verified source baseline |
-| Current safety boundary | The deployed PR `#143` checkpoint is synchronized only to the isolated staging app; the newer source-only PR head is not hosted. Production remains on the contained site bundle; its only later backend revision was the separately authorized byte-identical `computeOutcomeMeasures` scheduler disablement. No production data/schema API mutation, additional function or secret change, domain move, native upload, or Apple/Google record change occurred |
+| Current safety boundary | The deployed PR `#143` checkpoint is synchronized only to the isolated staging app; the current source candidate is not hosted. Production remains on the contained site bundle; its only later backend revision was the separately authorized byte-identical `computeOutcomeMeasures` scheduler disablement. No production data/schema API mutation, additional function or secret change, domain move, native upload, or Apple/Google record change occurred |
 
 The initial entity deployment exposed unsupported `$contains` array-membership
 RLS in Message and SharedDocument. Draft PR `#143` replaces it with Base44's
@@ -612,10 +612,11 @@ Three revisions must remain distinct. The isolated staging app still runs
 `94888934ebf417071b286e3a74904c872bd70777`. Before this tranche, draft PR
 `#143` pointed to evidence-only commit
 `869dd08c987897fe3e99fbb2a905b655f2ff1d23`, tree
-`cb0b51e9f61f1a3b95bab53dad093b70b15ff5b7`. The source hardening below is the
-source-only PR head containing this checkpoint; it has not been deployed, and
-the earlier hosted parity, anonymous probes, and zero-row evidence do not prove
-it.
+`cb0b51e9f61f1a3b95bab53dad093b70b15ff5b7`. The source hardening described in
+this subsection is commit `4da1cef19bbaaac4be6ed5f2312af4752c3d11f4`,
+tree `73beaf133a3533ccef00ed99d60d6ce7832e5b6e`. It was not deployed, and its
+242-schema / 267-function counts are historical for that revision. The current
+successor is recorded below.
 
 - Live-readiness input is harder to false-pass. A plan-only, non-PHI fixture
   manifest pins the exact staging target, five actors, two agencies, three
@@ -725,6 +726,80 @@ No Base44 deployment, schema or function push, hosted-data access or mutation,
 secret or schedule change, production publication, domain move, native upload,
 or store-record change occurred for this source-only checkpoint.
 
+### Source-completion security hardening (source-only, 2026-09-05)
+
+This successor to `4da1cef1` remains source-only. It contains 243 entity
+schemas and 268 backend functions; hosted staging remains the distinct
+`f4e41dc2` runtime with 241 schemas and 263 functions. The detailed authority,
+containment, and residual-risk record is in
+[`HOSTED-RLS-PROOF.md` §5p](./HOSTED-RLS-PROOF.md#5p-source-completion-security-checkpoint-source-only-updated-2026-09-05).
+
+- Direct `Document` operations are now all false and production browser upload,
+  list, view, download, and fax selection use private-storage brokers. The
+  source still needs hosted private-object, signed-delivery, backfill,
+  uniqueness, orphan-reconciliation, and stable fax-artifact proof.
+- Direct `OASISAssessment` operations are all false. The three retained reader
+  implementations are unreachable behind literal false gates; OASIS v2 and
+  dependent PDGM workflows remain unavailable.
+- Direct `UserActivity` and `SecurityLog` operations are all false, production
+  browser readers are gone, and affected screens report unavailable rather than
+  empty or all-clear results. Purpose-bound tenant/provenance read brokers and
+  authoritative hosted audit evidence remain absent.
+- The all-false `TelecomDestinationBinding` schema and signed webhook path now
+  permit only provider-classified, Ed25519-verified STOP/START through one exact
+  active credential/profile/destination/Agency binding. HELP, non-keyword SMS,
+  inbound fax/call routing, scheduled delivery, dispatch, redrive, history,
+  analytics, patient texting, and telehealth remain unavailable.
+- `listMyTenantMemberships`, hardened `getMyTenantContext`, the SPA tenant
+  selection state machine, immutable authority key, and authority-scoped caches
+  require exact server-owned subject, Agency, membership id/version, role, and
+  owner mode before protected routes mount. Logout, explicit switch,
+  principal/authority change, definitive denial/integrity failure, and
+  revocation purge authority-bound live drafts. A transient broker failure
+  keeps those drafts locked with the protected tree blocked; exact
+  same-authority revalidation may preserve them. Unbound retired offline work
+  is not replayed automatically and remains quarantined for supervised
+  recovery; legacy worker/cache removal is separate and browser-only.
+  Confirmation and toast hosts are also authority-keyed. Transition cleanup
+  clears both toast stores, and the Sonner facade retains only fixed generic
+  severity text—not caller content, identifiers, actions, Promises, results, or
+  errors—until every async operation is generation-bound.
+- That state/remount/cache boundary is containment, not complete tenant
+  isolation. `useScopedPatients` still defaults to a direct Patient entity read
+  followed by browser filtering; the legacy filter deliberately retains
+  unattributable charts, and built-in-admin Patient RLS may return platform-wide
+  rows before filtering. Purpose-bound full-chart projections, clinical-row
+  tenant backfill or quarantine, and hosted two-agency proof remain release
+  blockers. The legacy browser scope also loads a platform User roster and
+  treats its hard cap as complete, while `getDashboardData` scopes regular
+  callers by actor email rather than selected membership/Agency. Unknown,
+  case-mismatched, or cap-truncated authors can remain unattributable; all of
+  these paths remain inside the same purpose-bound projection migration.
+  Manifest-routed Care Plan editors additionally retain raw multi-stage SDK
+  writes whose old-authority continuations can resume after a tenant remount;
+  generation-aware tenant brokers must replace them before release.
+- The routed secure-messaging page is explicitly unavailable. Direct `Message`
+  read/create/update/delete are all denied, all six message-domain functions are
+  statically paused before request or SDK access, and production browser source
+  has no direct Message operation or broker import/invocation. Legacy rows still
+  lack immutable Agency provenance, so restore list, send, reply, read-state,
+  AI, or urgent-trigger behavior only through purpose-bound tenant brokers with
+  authority-keyed cache/mutation behavior, legacy-row backfill or quarantine,
+  and authenticated cross-tenant proof; unavailable must not be presented as
+  an empty inbox or zero unread messages.
+- The pinned source RLS cohorts are `8 / 11 / 21` for no-RLS,
+  mutation-open, and read-open schemas. This is narrower source containment, not
+  hosted tenant-isolation proof.
+- The readiness fixture validator now emits a deterministic authority-source
+  digest, and every hosted probe requires an authenticated result, capture time,
+  retained-artifact digest, and reference. It performs no hosted action and the
+  empty evidence template must remain blocked.
+
+Final frozen-tree validation totals are recorded after the source tree is
+sealed. No Base44 deployment, schema/function push, hosted-data access or
+mutation, schedule, secret, domain, production asset, native binary, or store
+record changed in this checkpoint.
+
 ## Deliberate merge decisions
 
 - Kept the newest Smart Note, visit preparation, medication reconciliation,
@@ -749,9 +824,8 @@ these are complete:
 
 1. Continue authenticated validation in the separate nonproduction Base44 app.
    The last deployed staging runtime remains `f4e41dc2`, with 241 schemas and
-   263 functions; its synchronization evidence applies only to that tree.
-   Pre-update PR head `869dd08c` is evidence-only, and the current source-only
-   PR head has not been deployed. Before production,
+   263 functions. Commit `4da1cef1` is the preceding source-only checkpoint;
+   the latest 243-schema / 268-function successor is also unhosted. Before production,
    deploy the new revision only to isolated staging and repeat exact
    schema/function/site parity, anonymous denials, authenticated two-agency
    positive and cross-tenant tests, and post-probe residue checks.
@@ -764,24 +838,27 @@ these are complete:
    Named owners, real evidence references, all reviewer approvals, and the full
    hosted matrix remain required.
 
-   Current source reduces the pinned RLS cohorts to `10` no-RLS, `16`
-   mutation-open, and `28` read-open schemas; hosted `f4e41dc2` remains at
-   `19 / 25 / 34`. The reduction is containment, not tenant isolation. Complete
-   server-owned tenant provenance and purpose-bound brokers for the remaining
-   education, fax/Medicare configuration, discharge/note, and Document
-   surfaces. Any education-policy deployment must include its compatible
-   frontend because stale clients still stamp synthetic `assigned_by` values.
-   `SecurityLog` direct mutation is now closed in source, but its built-in-admin
-   read remains global and multiple browser screens still list it directly;
-   replace those reads with tenant/provenance-scoped brokers and prove them with
-   two agencies before treating that log as authoritative application evidence.
-   The canonical Admin-A/Admin-B fixture identities deliberately use built-in
-   `User.role=user` plus immutable `AgencyMembership.tenant_role=agency_admin`,
-   while the current SPA grants facility-admin navigation only from the built-in
-   role. Those actors therefore render nurse UX: raw broker probes may proceed,
-   but admin UI workflows remain blocked until navigation derives a freshly
-   validated server-owned membership context without restoring mutable User
-   claims.
+   Current source reduces the pinned RLS cohorts to `8` no-RLS, `11`
+   mutation-open, and `21` read-open schemas; hosted `f4e41dc2` remains at
+   `19 / 25 / 34`. This is source containment, not hosted tenant isolation. The
+   remaining exact cohorts are hash-pinned and concentrate in
+   education/template/reference, Referral, settings, regulatory, and legacy
+   clinical-event surfaces.
+
+   `UserActivity` and `SecurityLog` now deny all direct operations and have zero
+   production browser readers. Their history and derived-analysis screens
+   report unavailable rather than empty or all-clear results. Before either log
+   can serve as authoritative evidence, add purpose-bound tenant/provenance read
+   brokers, backfill or quarantine legacy rows, prove service-role append/
+   readback and idempotency, and complete the authenticated two-agency matrix.
+
+   The canonical Admin-A/Admin-B identities now obtain facility navigation only
+   from a freshly resolved active `agency_admin` membership context. A bare
+   built-in admin role, mutable User fields, or stale context cannot elevate the
+   SPA; protected-owner navigation additionally requires the membership-free
+   owner context and configured owner identity. This selector and cache-
+   isolation boundary is source-only and still requires hosted account-switch,
+   role/version change, revocation, race, failure, and cross-tenant proof.
    Before production, replace the remaining permissive policies with reviewed
    per-operation tenant rules and prove authenticated multi-user isolation,
    uploads, shared-patient workflows, and negative cross-tenant cases with at
@@ -796,29 +873,37 @@ these are complete:
    bypassed.
    Patient creation and bounded updates are now broker-only, and hard deletion
    is disabled; direct Patient create/update/delete all fail closed. The eight
-   legacy broad Patient writers are paused before access. The roster,
-   exact-chart, Visit, OASIS, and Document read brokers are now hosted,
-   but still require authenticated two-agency positive and cross-tenant proof.
+   legacy broad Patient writers are paused before access. The deployed
+   `f4e41dc2` roster, exact-chart, Visit, OASIS, and version-1 Document read
+   brokers are hosted, but still require authenticated two-agency positive and
+   cross-tenant proof; the current private-storage version-2 Document broker
+   code below is source-only.
    `PatientDetails` now
    consumes the hardened exact Patient and Visit schedule brokers behind a
    neutral whole-chart containment state, with immutable singleton route-scope
    normalization and explicit agency requirements for ambiguous users. The
    broad legacy context endpoint is hosted as a 410 tombstone pending final
-   consumer retirement. Patient read RLS remains broad and most consumers still use
-   direct entity access plus client filtering. Migrate every remaining read
-   consumer and prove authenticated multi-row hosted keyset traversal, cache
-   eviction, and concurrency behavior. Hosted Visit read brokers and OASIS
-   exact/summary reads require the same two-agency proof before production wiring.
-   Hosted staging still has the version-1 Document binding that stores a public
-   `file_url`. The version-2 private-storage create/read/download brokers are
-   source-only, unwired, and unproved. Before cutover, prove multipart
-   transport, `UploadPrivateFile.file_uri`, signed delivery, expiry, no-store
-   behavior, gateway limits, assignment revocation, and cross-tenant denial
-   with real staging actors. Add datastore binding uniqueness or an operational
-   reconciliation design for nontransactional metadata/binding creation and
-   orphaned private objects. Migrate and verify legacy files, tenant/patient
-   provenance, bindings, duplicates, and corruption; retire direct Document
-   create/read/download callsites; then set direct Document creation false.
+   consumer retirement. Patient read RLS remains broad: a built-in admin may
+   receive platform-wide rows, while most consumers still use direct entity
+   access plus browser filtering and the legacy scope deliberately retains
+   tenant/author-unattributable charts. This is a release-blocking tenant-
+   isolation gap, not proof of safe scoping. Migrate every remaining full-chart
+   consumer to a purpose-bound server projection; tenant-stamp and backfill or
+   quarantine legacy rows; then prove authenticated multi-row hosted keyset
+   traversal, cache eviction, concurrency behavior, and the two-agency matrix.
+   Hosted Visit read brokers and OASIS exact/summary reads require the same
+   proof before production wiring.
+   Current source denies all direct Document operations and has no production
+   browser Document SDK consumer. Upload, list, view, download, and Document fax
+   selection are wired to the version-2 private-storage brokers; list responses
+   expose no pointer and exact downloads receive a 60-second no-store signed
+   URL. This source is not hosted. Before cutover, prove multipart transport,
+   private URI handling, signed delivery and expiry, gateway limits, assignment
+   revocation, and cross-tenant denial. Backfill and verify legacy files,
+   tenant/patient provenance and bindings; add binding uniqueness or operational
+   reconciliation for nontransactional metadata/binding creation, duplicate
+   bindings, and orphaned private objects. Fax must still migrate from transient
+   signed URLs to stable server-authorized artifact identifiers.
 
    Fax must accept a stable server-authorized document or private-artifact
    identifier, not a caller-supplied URL. The current fax path does not prove
@@ -850,33 +935,42 @@ these are complete:
    global-admin/sample read bypass only after a reviewed tenant/provenance
    backfill and authenticated two-agency proof.
 
-   The new UserActivity boundary, dedicated AI agreement authority/status
-   brokers, message-read reconciliation, SecurityLog mutation containment, and
-   disabled AI mutation paths are also source-only. Prove service-owned audit
-   append/readback and PHI minimization with the required LR-01 V6 hosted
-   samples; resolve AI audit/attestation idempotency and sequential partial
-   failure; and prove message `updateMany`/readback behavior under concurrent
-   hosted requests. Generic browser audit helpers now intentionally record
-   nothing, so every required compliance event needs a purpose-specific server
-   broker before it can be claimed as covered. Keep login telemetry disabled
-   until a provider-authenticated idempotent session event exists. Task-bearing
-   pathway activation and coordination-alert creation must remain disabled
-   until atomic, idempotent, patient-authorized brokers exist.
+   The all-false UserActivity/SecurityLog boundaries, dedicated AI agreement
+   authority/status brokers, message-read reconciliation, and disabled AI
+   mutation paths are source-only. Prove service-owned audit append/readback and
+   PHI minimization with the required LR-01 V6 hosted samples; add reviewed
+   purpose-bound tenant/provenance readers; backfill or quarantine legacy rows;
+   resolve audit and AI attestation idempotency/sequential partial failure; and
+   prove message `updateMany`/readback under concurrent hosted requests. Generic
+   browser audit helpers intentionally record nothing, so every required
+   compliance event needs a purpose-specific server broker before it can be
+   claimed as covered. Keep login telemetry disabled until a provider-
+   authenticated idempotent session event exists. Task-bearing pathway
+   activation and coordination-alert creation must remain disabled until
+   atomic, idempotent, patient-authorized brokers exist.
 
-   Telecom and telehealth must remain unavailable until immutable bindings map
-   each provider number or room to one tenant, Patient/session, and authorized
-   destination. Current source closes direct SMS/session rows and pauses
-   scheduled SMS, redrive, telehealth token minting, and all signed inbound
-   patient routing after signature verification. Existing browser conversation,
-   consent, schedule, analytics, and telehealth screens therefore fail closed
-   and must be migrated to narrow purpose-bound brokers before activation.
-   Restore compliant STOP/START handling before any inbound SMS webhook is
-   deployed, prove provider retry behavior without duplicate effects, generate
-   unguessable room ids behind a server-owned session/provider binding, and
-   replace all `User.work_phone_number`, `personal_cell_e164`, `agency_name`,
-   and caller-shaped host/room authority with immutable records. Keep every
-   literal pause closed until authenticated two-agency positive, negative,
-   replay, collision, and offboarding tests pass in isolated staging.
+   Secure messaging is also explicitly unavailable in the current source.
+   Direct `Message` read/create/update/delete are all denied, production browser
+   source has no direct Message operation or broker import/invocation, and
+   `sendMessage`, `markMessageRead`, `summarizeMessageThread`,
+   `generateMessageSuggestions`, `messagingAssistant`, and
+   `notifyUrgentMessage` return literal HTTP 503/no-store responses before
+   request parsing or SDK/entity/trigger/AI access. Before restoring the domain,
+   add purpose-bound selected-tenant provenance brokers; authority-key every
+   cache and mutation; backfill or quarantine legacy rows; and pass
+   authenticated two-agency switch, revocation, race, and negative tests.
+
+   The source now implements only the narrow verified keyword-handling exception:
+   provider-classified, Ed25519-verified STOP/START with one exact active
+   inbound-enabled destination/profile binding. Do not deploy that path until
+   the new schema and reviewed rows are provisioned, legacy consent provenance
+   is backfilled or quarantined, uniqueness/CAS and replay behavior are proved
+   on hosted Base44, and authenticated two-agency positive, negative, delayed-
+   event, collision, and offboarding tests pass. HELP/nonkeyword SMS, inbound
+   fax/call routing, scheduled SMS, dispatch, redrive, and general tenant
+   sending remain paused. Browser history, schedule, unread-count, analytics,
+   patient-texting, and telehealth surfaces must remain explicit-unavailable
+   until narrow hosted brokers exist.
 2. Keep `oasis_response_schema_v2_enabled` false. Hosted `f4e41dc2` contains
    the earlier hard-paused endpoint, not the new source-only create-draft
    design. Current source still returns HTTP 503 at a literal gate before body
@@ -894,9 +988,11 @@ these are complete:
    adapters. The quick-upload widget is static so a PHI PDF cannot be stored
    before entity creation fails; dormant analyzer-update and supervisor-
    approval writers fail closed under RLS and must not be restored directly.
-   The hosted OASIS read broker remains unwired and needs two-agency proof.
-   Browser
-   patient merge controls are now hard-paused before browser data access or
+   Current source also sets `OASISAssessment` read false. Its three residual
+   direct-reader implementations are unreachable behind literal false gates,
+   and the authorized read wrapper remains unwired; do not restore any reader
+   before authenticated two-agency hosted proof. Browser patient merge controls
+   are now hard-paused before browser data access or
    mutation, and `deduplicatePatients` rejects every preview/apply request with
    HTTP 503 before client creation, authentication, or service-role patient
    reads. The old "dry-run" also depended on mutable claims and could expose
@@ -1033,9 +1129,10 @@ these are complete:
    historical production outcome schedule is now inactive. Keep remaining
    backend work staged and separately reviewed, then complete hosted two-agency,
    tenant/CAS, outcome, PDGM, Document, native-device, privacy, signing/IAP,
-   backup, and rollback gates before any domain or store step. The containment
-   and hosted-validation claims above apply to the deployed production artifact
-   and staging runtime `f4e41dc2`, not to the current source-only PR head.
+   backup, and rollback gates before any domain or store step. The earlier
+   production-frontend containment and §5n hosted-validation claims apply to the
+   deployed production artifact and staging runtime `f4e41dc2`, not to the
+   current source-only candidate.
    Repeat isolated staging synchronization and all
    affected hosted proofs before treating the newer source as a release
    candidate.

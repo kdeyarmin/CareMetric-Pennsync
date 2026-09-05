@@ -309,7 +309,7 @@ export function createLiveReadinessFixturePlan(input) {
   }
   return {
     status: "valid_fixture_plan",
-    readiness_status: "blocked_until_hosted_identities_and_evidence_exist",
+    readiness_status: "blocked_until_authenticated_hosted_evidence_and_reviews_exist",
     fixture_set_id: input.fixture_set_id,
     target: { ...LIVE_READINESS_STAGING_TARGET },
     capabilities: ["LR-01", "LR-02"],

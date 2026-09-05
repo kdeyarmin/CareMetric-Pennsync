@@ -27,6 +27,7 @@ import TrainingAttachmentManager from "@/components/training/TrainingAttachmentM
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
 import { parseLocalDate, startOfLocalDay, formatLocalDate, isPastLocalDueDate } from "@/lib/dateLocal";
+import { isAdminLike } from "@/lib/superAdmin";
 
 const formatDate = (value) => formatLocalDate(value) || "—";
 
@@ -76,21 +77,24 @@ export default function AnnualMandatoryEducationHub() {
   });
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const isAdminUser = currentUser?.role === 'admin' || currentUser?.account_type === 'agency_admin' || currentUser?.account_type === 'super_admin';
+  // This builder reads protected rosters/drafts and mutates TrainingCourse and
+  // related admin-only records. Mutable account_type labels cannot grant it.
+  const isAdminUser = isAdminLike(currentUser);
   const { data: users = [] } = useQuery({ queryKey: ["annual-users", agencyQueryKey(currentUser)], queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     },
-    enabled: !!currentUser,
+    enabled: isAdminUser,
     initialData: [],
   });
-  const { data: courses = [] } = useQuery({ queryKey: ["annual-courses"], queryFn: () => base44.entities.TrainingCourse.list('-updated_date', 500), initialData: [] });
-  const { data: assignments = [] } = useQuery({ queryKey: ["annual-assignments"], queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 1000), initialData: [] });
-  const { data: certificates = [] } = useQuery({ queryKey: ["annual-certificates"], queryFn: () => base44.entities.TrainingCertificate.list('-issued_at', 500), initialData: [] });
+  const { data: courses = [] } = useQuery({ queryKey: ["annual-courses"], queryFn: () => base44.entities.TrainingCourse.list('-updated_date', 500), enabled: isAdminUser, initialData: [] });
+  const { data: assignments = [] } = useQuery({ queryKey: ["annual-assignments"], queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 1000), enabled: isAdminUser, initialData: [] });
+  const { data: certificates = [] } = useQuery({ queryKey: ["annual-certificates"], queryFn: () => base44.entities.TrainingCertificate.list('-issued_at', 500), enabled: isAdminUser, initialData: [] });
   const { data: plans = [] } = useQuery({
     queryKey: ["annual-plans", "-created_date", 200],
     queryFn: () => base44.entities.LearningPlan.list('-created_date', 200),
+    enabled: isAdminUser,
     initialData: [],
   });
 
@@ -241,7 +245,7 @@ export default function AnnualMandatoryEducationHub() {
 
   if (currentUser && !isAdminUser) {
     return (
-      <AccessDeniedState description="This Penn annual education builder is available to Agency Admin and Super Admin users only." />
+      <AccessDeniedState description="The annual education builder requires protected administrator access. Facility-admin access remains unavailable until its roster, course, and assignment operations use immutable tenant-membership authorization." />
     );
   }
 

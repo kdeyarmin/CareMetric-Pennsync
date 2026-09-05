@@ -10,6 +10,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
+// Static release checkpoint. Message has no immutable selected-tenant
+// provenance yet; the dormant implementation is retained for contract tests.
+const SECURE_MESSAGE_DOMAIN_PAUSED = true;
+const secureMessageUnavailable = () => Response.json(
+  {
+    error: 'Secure messaging is temporarily unavailable',
+    code: 'secure_message_tenant_broker_required',
+  },
+  { status: 503, headers: { 'Cache-Control': 'no-store' } },
+);
+
 function errorResponse(error, status) {
   return Response.json({ error }, { status });
 }
@@ -53,6 +64,8 @@ async function requireExactReadback(entities, id) {
 }
 
 Deno.serve(async (req) => {
+  if (SECURE_MESSAGE_DOMAIN_PAUSED) return secureMessageUnavailable();
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

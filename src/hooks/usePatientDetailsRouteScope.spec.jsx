@@ -16,6 +16,10 @@ vi.mock('@/functions/getMyTenantContext', () => ({
 }));
 
 const { usePatientDetailsRouteScope } = await import('./usePatientDetailsRouteScope.js');
+const {
+  bindTrustedTenantContext,
+  clearTrustedTenantContext,
+} = await import('@/lib/roles.js');
 
 function tenantContext({
   userId = 'user-a',
@@ -59,8 +63,14 @@ function deferred() {
 
 describe('usePatientDetailsRouteScope', () => {
   beforeEach(() => {
+    clearTrustedTenantContext();
+    bindTrustedTenantContext(
+      { id: 'user-a', email: 'user-a@example.com' },
+      tenantContext(),
+    );
     authMe.mockReset().mockResolvedValue({
       id: 'user-a',
+      email: 'user-a@example.com',
       agency_id: 'mutable-user-agency-must-not-authorize',
     });
     getTenantContext.mockReset().mockResolvedValue({
@@ -69,6 +79,7 @@ describe('usePatientDetailsRouteScope', () => {
   });
 
   afterEach(() => {
+    clearTrustedTenantContext();
     onlineManager.setOnline(true);
   });
 
@@ -79,11 +90,15 @@ describe('usePatientDetailsRouteScope', () => {
     expect(result.current.agencyId).toBeNull();
     await waitFor(() => expect(result.current.agencyId).toBe('agency-a'));
     expect(result.current.isSuccess).toBe(true);
-    expect(getTenantContext).toHaveBeenCalledWith({});
+    expect(getTenantContext).toHaveBeenCalledWith({
+      agencyId: 'agency-a',
+      expectedMembershipId: 'membership-a',
+      expectedMembershipVersion: 4,
+    });
 
     const tenantQuery = client.getQueryCache().find({
-      exact: true,
-      queryKey: ['tenant-context', 'patient-details-route', 'user-a'],
+      predicate: (query) => query.queryKey[0] === 'tenant-context'
+        && query.queryKey[1] === 'patient-details-route',
     });
     expect(tenantQuery).toBeTruthy();
     expect(tenantQuery.options.staleTime).toBe(0);
@@ -113,23 +128,23 @@ describe('usePatientDetailsRouteScope', () => {
 
     expect(result.current.agencyId).toBeNull();
     await act(async () => {
-      authStep.resolve({ id: 'user-a' });
+      authStep.resolve({ id: 'user-a', email: 'user-a@example.com' });
       await authStep.promise;
     });
-    await waitFor(() => expect(getTenantContext).toHaveBeenCalledWith({}));
+    await waitFor(() => expect(getTenantContext).toHaveBeenCalledWith({
+      agencyId: 'agency-a',
+      expectedMembershipId: 'membership-a',
+      expectedMembershipVersion: 4,
+    }));
     expect(result.current.agencyId).toBeNull();
 
     await act(async () => {
       tenantStep.resolve({
-        tenant_context: tenantContext({
-          agencyId: 'agency-fresh',
-          membershipId: 'membership-fresh',
-          membershipVersion: 5,
-        }),
+        tenant_context: tenantContext(),
       });
       await tenantStep.promise;
     });
-    await waitFor(() => expect(result.current.agencyId).toBe('agency-fresh'));
+    await waitFor(() => expect(result.current.agencyId).toBe('agency-a'));
     expect(exposedAgencyIds).not.toContain('agency-stale');
   });
 
@@ -180,7 +195,12 @@ describe('usePatientDetailsRouteScope', () => {
       ['tenant-context', 'patient-details-route', 'user-a'],
       { tenant_context: tenantContext() },
     );
-    authMe.mockResolvedValueOnce({ id: 'user-b' });
+    clearTrustedTenantContext();
+    bindTrustedTenantContext(
+      { id: 'user-b', email: 'user-b@example.com' },
+      contextB,
+    );
+    authMe.mockResolvedValueOnce({ id: 'user-b', email: 'user-b@example.com' });
     getTenantContext.mockResolvedValueOnce({ tenant_context: contextB });
 
     const exposedAgencyIds = [];
@@ -209,25 +229,13 @@ describe('usePatientDetailsRouteScope', () => {
   });
 
   it('keeps an unscoped platform owner disabled', async () => {
-    getTenantContext.mockResolvedValueOnce({
-      tenant_context: {
-        user_id: 'user-a',
-        user_email: 'user-a@example.com',
-        membership_id: null,
-        membership_key: null,
-        membership_version: null,
-        agency_id: null,
-        tenant_role: 'platform_owner',
-        membership_status: null,
-        is_platform_owner: true,
-        agency: null,
-      },
-    });
+    clearTrustedTenantContext();
     const { wrapper } = createHarness();
     const { result } = renderHook(() => usePatientDetailsRouteScope(), { wrapper });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.agencyId).toBeNull();
-    expect(result.current.error.message).toMatch(/route scope/);
+    expect(result.current.error.message).toMatch(/Trusted tenant selection/);
+    expect(getTenantContext).not.toHaveBeenCalled();
   });
 });

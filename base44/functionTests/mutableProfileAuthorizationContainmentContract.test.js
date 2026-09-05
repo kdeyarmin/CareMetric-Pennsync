@@ -47,7 +47,6 @@ test('provider and platform-administration handlers gate on the protected owner 
     'managePhoneNumberPool',
     'manageSmsConsent',
     'provisionNurseWorkNumber',
-    'runSecurityAudit',
     'searchPurchaseTelnyxNumbers',
     'sendFax',
     'sendSms',
@@ -73,6 +72,18 @@ test('provider and platform-administration handlers gate on the protected owner 
       `${name} must reject non-owners before consuming a privileged request payload`,
     );
   }
+});
+
+test('provenance-derived security audit is unavailable before SDK or request work', () => {
+  const source = readEntry('runSecurityAudit');
+
+  assert.match(source, /code:\s*'SECURITY_AUDIT_PAUSED'/);
+  assert.match(source, /status:\s*503/);
+  assert.match(source, /'Cache-Control':\s*'no-store'/);
+  assert.doesNotMatch(
+    source,
+    /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|account_type|agency_name/,
+  );
 });
 
 test('patient-bearing clinical helpers retain exact creator and assigned-nurse checks', () => {
@@ -187,12 +198,15 @@ test('record-owner exceptions remain exact and escalation requires the protected
     /if \(normalizeE164\(claimed\.phone\) !== phone\)/,
     'consent may only be recorded for the exact normalized phone on the authorized chart',
   );
-  const patientAccess = consent.indexOf("if (!isProtectedSuperAdmin(user) && claimed.created_by !== user.email && !isAssigned)");
-  const phoneBinding = consent.indexOf('if (normalizeE164(claimed.phone) !== phone)');
-  const ledgerRead = consent.indexOf('base44.asServiceRole.entities.SmsConsent');
+  const consentHandler = consent.slice(consent.indexOf('Deno.serve'));
+  const patientAccess = consentHandler.indexOf("if (!isProtectedSuperAdmin(user) && claimed.created_by !== user.email && !isAssigned)");
+  const phoneBinding = consentHandler.indexOf('if (normalizeE164(claimed.phone) !== phone)');
+  const telecomBinding = consentHandler.indexOf('resolveActiveTelnyxSmsBinding(base44');
+  const ledgerRead = consentHandler.indexOf('loadLatestScopedSmsConsent(base44');
   assert.ok(
-    patientAccess >= 0 && patientAccess < phoneBinding && phoneBinding < ledgerRead,
-    'recordSmsConsent must authorize the chart and bind its phone before reading the global consent ledger',
+    patientAccess >= 0 && patientAccess < phoneBinding
+      && phoneBinding < telecomBinding && telecomBinding < ledgerRead,
+    'recordSmsConsent must authorize the chart and bind its phone and tenant before reading the scoped consent ledger',
   );
 });
 

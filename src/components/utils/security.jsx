@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify';
 import { logError } from './activityLogger';
+import { openAuthorityBoundWindow } from '@/lib/authorityBoundWindows';
 
 /**
  * Security utility functions for Penn Sync
@@ -70,7 +71,7 @@ export function sanitizeInput(input) {
  * vbscript:, and protocol-relative `//host` URLs are rejected. Protocol-relative
  * links inherit the page scheme and open an arbitrary third-party host — an
  * open-redirect / phishing vector when the URL comes from entity or AI data.
- * Use before window.open()/href for untrusted URLs.
+ * Use before new-window navigation or href assignment for untrusted URLs.
  * @param {string} url
  * @returns {boolean}
  */
@@ -90,8 +91,8 @@ export function isSafeExternalUrl(url) {
 
 /**
  * Open an (untrusted) URL in a new tab only if it uses a safe scheme. Returns
- * true if it opened, false if the URL was rejected. Always applies
- * noopener,noreferrer.
+ * true if it opened, false if the URL was rejected. The child context is
+ * opener-severed and registered for synchronous tenant-transition teardown.
  * @param {string} url
  * @returns {boolean}
  */
@@ -100,8 +101,7 @@ export function openExternalUrl(url) {
     console.error('Blocked attempt to open unsafe URL');
     return false;
   }
-  window.open(url, '_blank', 'noopener,noreferrer');
-  return true;
+  return openAuthorityBoundWindow(url, '_blank') !== null;
 }
 
 /**

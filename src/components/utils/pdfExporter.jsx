@@ -1,7 +1,12 @@
 import { jsPDF } from "jspdf";
 import html2canvas from "html2canvas";
+import { isTenantSdkRealmOpen } from "@/lib/tenantSdkRealmGate";
+import { downloadAuthorityBoundBlob } from '@/lib/downloadBlob';
 
 export const exportToPDF = async (options = {}) => {
+  if (!isTenantSdkRealmOpen()) {
+    throw new Error('PDF export unavailable while workspace authority is being verified');
+  }
   const {
     filename = 'report.pdf',
     title = 'Report',
@@ -334,10 +339,15 @@ export const exportToPDF = async (options = {}) => {
   }
 
   if (output === 'blob') {
+    if (!isTenantSdkRealmOpen()) {
+      throw new Error('PDF export expired because workspace authority changed');
+    }
     return doc.output('blob');
   }
-  doc.save(filename);
-  return true;
+  if (!isTenantSdkRealmOpen()) {
+    throw new Error('PDF export expired because workspace authority changed');
+  }
+  return downloadAuthorityBoundBlob(doc.output('blob'), filename);
 };
 
 export const exportDataTableToPDF = (data, columns, options = {}) => {

@@ -809,12 +809,14 @@ test('static contract keeps the broker service-role-only, read-only, finite, and
   );
 
   const entity = JSON5.parse(entityText);
+  assert.equal(entity.rls.read, false);
   assert.equal(entity.rls.create, false);
   assert.equal(entity.rls.update, false);
   assert.equal(entity.rls.delete, false);
 
   const files = await collectFiles(sourceRootUrl);
   const consumers = [];
+  const directEntityReaders = [];
   for (const file of files.filter((name) => /\.[jt]sx?$/.test(name))) {
     if (file === 'functions/readAuthorizedOASISAssessments.js'
       || file === 'functions/readAuthorizedOASISAssessments.spec.js') continue;
@@ -824,6 +826,17 @@ test('static contract keeps the broker service-role-only, read-only, finite, and
       || text.includes('listAuthorizedOASISAssessments')) {
       consumers.push(file);
     }
+    if (
+      !/\.(?:spec|test)\.[jt]sx?$/.test(file)
+      && /base44\.entities\.OASISAssessment\.(?:get|list|filter)\s*\(/.test(text)
+    ) {
+      directEntityReaders.push(file);
+    }
   }
   assert.deepEqual(consumers, [], 'OASIS read wrapper must remain unwired pending hosted proof');
+  assert.deepEqual(directEntityReaders.sort(), [
+    'components/clinical/OASISQuickUpdate.jsx',
+    'components/reports/OASISComplianceReport.jsx',
+    'components/reports/PDGMReimbursementReport.jsx',
+  ], 'every remaining direct OASIS browser reader must stay in the reviewed hard-paused set');
 });

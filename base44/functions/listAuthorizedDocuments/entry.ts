@@ -6,7 +6,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * Non-agency-wide roles must provide one exact Patient scope whose creator or
  * active care-team authority is re-proved. This prevents a tenant member from
  * learning agency-wide Document volume while a capped binding scan validates
- * every returned DocumentTenantBinding and Document pair. It is unwired.
+ * every returned DocumentTenantBinding and Document pair. Browser library and
+ * fax selectors use only its finite projections.
  */
 
 const MAX_BODY_BYTES = 20_000;

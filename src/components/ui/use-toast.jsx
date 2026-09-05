@@ -110,6 +110,15 @@ function dispatch(action) {
   });
 }
 
+// Authority transitions must remove the payloads themselves, not merely mark
+// their view as closed for the normal delayed animation cleanup. Toast titles
+// and descriptions may contain patient-identifying context.
+function clearAllToasts() {
+  toastTimeouts.forEach((timeout) => clearTimeout(timeout));
+  toastTimeouts.clear();
+  dispatch({ type: actionTypes.REMOVE_TOAST });
+}
+
 function toast({ ...props }) {
   const id = genId();
 
@@ -161,4 +170,4 @@ function useToast() {
   };
 }
 
-export { useToast, toast }; 
+export { clearAllToasts, useToast, toast };

@@ -57,6 +57,7 @@ export function buildTodayPriorities({
   patients = [],
   incidents = [],
   noteConversions = [],
+  noteConversionsAvailable = true,
   messages = [],
   dashboardError = null,
   now = new Date(),
@@ -154,8 +155,10 @@ export function buildTodayPriorities({
     }));
   }
 
-  const recentAiNotes = noteConversions.filter((note) => daysUntil(note?.created_date, now) !== null && daysUntil(note.created_date, now) >= -7).length;
-  if (recentAiNotes === 0 && todayScheduledVisits.length > 0) {
+  const recentAiNotes = noteConversionsAvailable
+    ? noteConversions.filter((note) => daysUntil(note?.created_date, now) !== null && daysUntil(note.created_date, now) >= -7).length
+    : null;
+  if (noteConversionsAvailable && recentAiNotes === 0 && todayScheduledVisits.length > 0) {
     priorities.push(createPriority({
       id: 'smart-note-reminder',
       title: 'Use Smart Notes to reduce after-hours charting',

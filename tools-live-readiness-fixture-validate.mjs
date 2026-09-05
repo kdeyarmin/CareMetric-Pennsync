@@ -6,6 +6,10 @@ import {
   formatLiveReadinessFixtureErrors,
   validateLiveReadinessFixtureManifest,
 } from "./src/lib/liveReadinessFixtureManifest.js";
+import {
+  createLiveReadinessSourceContract,
+  formatLiveReadinessSourceContractErrors,
+} from "./tools-live-readiness-source-contract.mjs";
 
 function positionalArguments(argv) {
   return argv.slice(2).filter((arg) => arg !== "--");
@@ -16,6 +20,7 @@ export function runLiveReadinessFixtureValidateCli({
   readFile = readFileSync,
   write = console.log,
   error = console.error,
+  resolveSourceContract = createLiveReadinessSourceContract,
 } = {}) {
   const positional = positionalArguments(argv);
   if (positional.length !== 1) {
@@ -46,7 +51,33 @@ export function runLiveReadinessFixtureValidateCli({
     error(`Unable to validate live-readiness fixture plan: ${formatLiveReadinessFixtureErrors(errors)}`);
     return 2;
   }
-  write(JSON.stringify(createLiveReadinessFixturePlan(input), null, 2));
+
+  const sourceContract = resolveSourceContract();
+  if (
+    !sourceContract
+    || sourceContract.status !== "valid_source_authority_contract"
+    || !sourceContract.source_authority_contract_sha256
+  ) {
+    const sourceErrors = Array.isArray(sourceContract?.errors) ? sourceContract.errors : [];
+    const detail = sourceErrors.length > 0
+      ? `: ${formatLiveReadinessSourceContractErrors(sourceErrors)}`
+      : ".";
+    error(`Unable to validate live-readiness source authority contract${detail}`);
+    return 2;
+  }
+
+  write(JSON.stringify({
+    ...createLiveReadinessFixturePlan(input),
+    source_contract: {
+      status: sourceContract.status,
+      schema_version: sourceContract.schema_version,
+      source_authority_contract_sha256:
+        sourceContract.source_authority_contract_sha256,
+      artifact_count: sourceContract.artifact_count,
+      checks: sourceContract.checks,
+      source_limitations: sourceContract.source_limitations,
+    },
+  }, null, 2));
   return 0;
 }
 

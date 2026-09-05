@@ -25,12 +25,18 @@ test("CI report passes only for a release-complete ledger", () => {
   );
   const report = createLiveReadinessCiReport(ledger);
   assert.equal(report.status, "pass");
-  assert.deepEqual(report.messages, ["Evaluated readiness packet is structurally complete for LR-X."]);
+  assert.deepEqual(report.messages, [
+    "Evaluated readiness packet meets its structural and digest-binding requirements for LR-X; cited artifact contents and reviewer identities remain externally reviewed.",
+  ]);
+  assert.equal(report.assurance.cited_artifact_bytes_fetched_or_verified, false);
+  assert.equal(report.assurance.reviewer_identities_cryptographically_verified, false);
   assert.deepEqual(report.evaluatedCapabilityIds, ["LR-X"]);
   assert.equal(report.totalReferenceCount, LIVE_READINESS_EVIDENCE.length);
   assert.deepEqual(report.referenceCountsByCapability, { "LR-X": LIVE_READINESS_EVIDENCE.length });
   assert.deepEqual(report.probeCountsByCapability, { "LR-X": { required: 0, completed: 0 } });
   assert.deepEqual(report.blockers.missingRequiredProbes, {});
+  assert.deepEqual(report.blockers.nonPassingProbes, {});
+  assert.deepEqual(report.blockers.incompleteProbeAttestations, {});
 });
 
 test("CI report fails and classifies missing release metadata", () => {

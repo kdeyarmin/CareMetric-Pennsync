@@ -75,26 +75,12 @@
     "signer_email",
     "expires_at"
   ],
+  // Signing capabilities are bearer secrets and the entire signing workflow
+  // is quarantined. Direct reads and mutations are denied for every user role.
   "rls": {
-    "read": {
-      "user_condition": {
-        "role": "admin"
-      }
-    },
-    "create": {
-      "user_condition": {
-        "role": "__service_role_only__"
-      }
-    },
-    "update": {
-      "user_condition": {
-        "role": "__service_role_only__"
-      }
-    },
-    "delete": {
-      "user_condition": {
-        "role": "__service_role_only__"
-      }
-    }
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

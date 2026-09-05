@@ -5,6 +5,8 @@ import { Mic, MicOff, Trash2, Upload } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { toast } from 'sonner';
 import { formatTime } from "@/lib/formatTime";
+import { getAuthorityBoundUserMedia, stopMediaStream } from '@/lib/tenantMediaDevices';
+import { isTenantSdkRealmLeaseCurrent } from '@/lib/tenantSdkRealmGate';
 
 export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
   const [isRecording, setIsRecording] = useState(false);
@@ -13,35 +15,75 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
   const mediaRecorderRef = useRef(null);
   const chunksRef = useRef([]);
   const timerRef = useRef(null);
+  const streamRef = useRef(null);
+  const mountedRef = useRef(true);
+  const mediaAcquisitionRef = useRef(0);
+  const recordingLeaseRef = useRef(null);
 
   // Cleanup interval and media stream on unmount
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
+      mediaAcquisitionRef.current += 1;
       if (timerRef.current) clearInterval(timerRef.current);
-      if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
-        mediaRecorderRef.current.stop();
+      const recorder = mediaRecorderRef.current;
+      if (recorder) {
+        recorder.onstop = null;
+        recorder.ondataavailable = null;
       }
+      if (recorder && recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch { /* already stopped */ }
+      }
+      stopMediaStream(streamRef.current);
+      streamRef.current = null;
+      recordingLeaseRef.current = null;
+      chunksRef.current = [];
     };
   }, []);
 
   const startRecording = async () => {
+    const acquisition = ++mediaAcquisitionRef.current;
+    let acquiredStream = null;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const { realmLease, stream } = await getAuthorityBoundUserMedia({ audio: true });
+      acquiredStream = stream;
+      if (
+        !mountedRef.current
+        || acquisition !== mediaAcquisitionRef.current
+        || !isTenantSdkRealmLeaseCurrent(realmLease)
+      ) {
+        stopMediaStream(stream);
+        return;
+      }
+      recordingLeaseRef.current = realmLease;
+      streamRef.current = stream;
       const mediaRecorder = new MediaRecorder(stream);
       
       mediaRecorderRef.current = mediaRecorder;
       chunksRef.current = [];
 
       mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) {
+        if (
+          mountedRef.current
+          && acquisition === mediaAcquisitionRef.current
+          && isTenantSdkRealmLeaseCurrent(realmLease)
+          && e.data.size > 0
+        ) {
           chunksRef.current.push(e.data);
         }
       };
 
       mediaRecorder.onstop = () => {
+        if (
+          !mountedRef.current
+          || acquisition !== mediaAcquisitionRef.current
+          || !isTenantSdkRealmLeaseCurrent(realmLease)
+        ) return;
         const blob = new Blob(chunksRef.current, { type: 'audio/webm' });
         setAudioBlob(blob);
-        stream.getTracks().forEach(track => track.stop());
+        stopMediaStream(stream);
+        streamRef.current = null;
       };
 
       mediaRecorder.start();
@@ -53,8 +95,20 @@ export default function AudioRecorder({ onAudioProcessed, isProcessing }) {
       }, 1000);
 
     } catch (error) {
-      console.error("Error accessing microphone:", error);
-      toast.error("Could not access microphone. Please check your browser permissions.");
+      stopMediaStream(acquiredStream);
+      if (streamRef.current === acquiredStream) streamRef.current = null;
+      const recorder = mediaRecorderRef.current;
+      if (recorder) {
+        recorder.onstop = null;
+        recorder.ondataavailable = null;
+      }
+      if (recorder && recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch { /* already stopped */ }
+      }
+      if (mountedRef.current && acquisition === mediaAcquisitionRef.current) {
+        console.error("Error accessing microphone:", error);
+        toast.error("Could not access microphone. Please check your browser permissions.");
+      }
     }
   };
 

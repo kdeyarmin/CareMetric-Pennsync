@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey, scopePatientsForCurrentCaller } from "@/lib/agencyRoster";
@@ -46,6 +46,7 @@ import {
   setVisitReviewAcknowledgement,
 } from '@/functions/updateAuthorizedVisit';
 import { getAuthorizedPatientNoteHistory } from '@/functions/getAuthorizedPatientNoteHistory';
+import { createAuthorityBoundSpeechRecognition } from '@/lib/tenantMediaDevices';
 
 const getVisitTypes = (careScope) => {
   if (careScope === "hospice") return HOSPICE_VISIT_TYPES;
@@ -95,12 +96,29 @@ import AcknowledgeGate from "../components/smartNote/AcknowledgeGate";
 import PageContainer from "@/components/ui/PageContainer";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
 import { ALL_ROWS } from '@/lib/queryLimits';
+import {
+  captureAuthorityDraftLease,
+  isAuthorityDraftLeaseCurrent,
+} from '@/lib/phiStorage';
 
 export default function SmartNoteAssistant({ visitId = null }) {
   const [searchParams] = useSearchParams();
+  // One immutable lease belongs to this component instance. Never recapture
+  // after an awaited save/import: an unmounted A component could otherwise pick
+  // up B's current lease and delete or overwrite B's same-patient draft.
+  const authorityDraftLeaseRef = useRef(undefined);
+  if (authorityDraftLeaseRef.current === undefined) {
+    authorityDraftLeaseRef.current = Object.freeze({
+      lease: captureAuthorityDraftLease(),
+    });
+  }
+  const authorityDraftLease = authorityDraftLeaseRef.current.lease;
   const queryPatientId = searchParams.get("patientId") || searchParams.get("patient_id") || "";
   const queryVisitType = searchParams.get("visitType") || searchParams.get("visit_type") || "";
   const referralHandoff = useMemo(() => {
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) {
+      return { draftNote: "", patientId: "", visitType: "" };
+    }
     if (searchParams.get("referral_mode") !== "true") return { draftNote: "", patientId: "", visitType: "" };
     const referralId = searchParams.get("referral_id");
     if (!referralId) return { draftNote: "", patientId: "", visitType: "" };
@@ -116,7 +134,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     } catch {
       return { draftNote: "", patientId: "", visitType: "" };
     }
-  }, [searchParams]);
+  }, [authorityDraftLease, searchParams]);
   const referralDraftNote = referralHandoff.draftNote;
   const [patientId, setPatientId] = useState(queryPatientId || referralHandoff.patientId);
   const [visitType, setVisitType] = useState(queryVisitType || referralHandoff.visitType || "routine_visit");
@@ -150,6 +168,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [reviewAck, setReviewAck] = useState(null);
   const recRef = useRef(null);
   const recStopRef = useRef(null);
+  const recBindingRef = useRef(null);
   const textareaRef = useRef(null);
   const SAVED_PATIENT_KEY = "smart_note_patient_v1";
   const patientIdRef = useRef(patientId);
@@ -160,10 +179,17 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const autosaveBucketRef = useRef(undefined);
   const autosavePrevNoteRef = useRef("");
 
-  const tryRestoreDurableDraft = (pid) => {
+  const tryRestoreDurableDraft = useCallback((pid) => {
+    // The component captured before the dynamic import. If it is unmounted for an
+    // account/tenant transition while the chunk is resolving, the storage seam
+    // rejects the stale lease instead of restoring another authority's note.
     import('@/lib/draftNotes')
-      .then(({ getDraftNoteLocally }) => getDraftNoteLocally(`draft_${pid || 'unassigned'}`))
+      .then(({ getDraftNoteLocally }) => getDraftNoteLocally(
+        `draft_${pid || 'unassigned'}`,
+        authorityDraftLease,
+      ))
       .then((d) => {
+        if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
         if (patientIdRef.current !== pid || noteRef.current?.trim()) return;
         if (!d?.note || d.note.trim().length <= 20) return;
         setNote(d.note);
@@ -171,14 +197,18 @@ export default function SmartNoteAssistant({ visitId = null }) {
         setDraftRestored(true);
       })
       .catch(() => {});
-  };
+  }, [authorityDraftLease]);
 
-  const clearDraft = (pid) => {
+  const clearDraft = useCallback((pid) => {
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
     sessionStorage.removeItem(draftKeyFor(pid));
     import('@/lib/draftNotes')
-      .then(({ deleteDraftNoteLocally }) => deleteDraftNoteLocally(`draft_${pid || 'unassigned'}`))
+      .then(({ deleteDraftNoteLocally }) => deleteDraftNoteLocally(
+        `draft_${pid || 'unassigned'}`,
+        authorityDraftLease,
+      ))
       .catch(() => {});
-  };
+  }, [authorityDraftLease]);
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
   const careScope = currentUser?.care_scope || "home_health";
@@ -249,6 +279,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
   }, [boundVisit]);
 
   useEffect(() => {
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
     if (queryPatientId || queryVisitType) {
       if (queryPatientId) setPatientId(queryPatientId);
       if (queryVisitType) setVisitType(queryVisitType);
@@ -262,13 +293,15 @@ export default function SmartNoteAssistant({ visitId = null }) {
         if (parsed.visitType) setVisitType(parsed.visitType);
       } catch { /* no-op */ }
     }
-  }, [queryPatientId, queryVisitType]);
+  }, [authorityDraftLease, queryPatientId, queryVisitType]);
 
   useEffect(() => {
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
     sessionStorage.setItem(SAVED_PATIENT_KEY, JSON.stringify({ patientId, visitType }));
-  }, [patientId, visitType]);
+  }, [authorityDraftLease, patientId, visitType]);
 
   useEffect(() => {
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
     if (referralDraftNote) {
       setNote(referralDraftNote);
       setDraftRestored(true);
@@ -284,7 +317,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
         setDraftRestored(true);
       }
     } catch { /* ignore a corrupt draft */ }
-  }, [referralDraftNote]);
+  }, [authorityDraftLease, referralDraftNote, tryRestoreDurableDraft]);
 
   useEffect(() => {
     const prev = prevPatientRef.current;
@@ -306,6 +339,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     setHandoffError(null);
     setReviewAck(null);
     if (patientId !== boundPatientRef.current) setExistingVisitId(null);
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
     let incoming = null;
     const saved = sessionStorage.getItem(draftKeyFor(patientId));
     if (saved) {
@@ -323,10 +357,11 @@ export default function SmartNoteAssistant({ visitId = null }) {
       setDraftRestored(false);
       tryRestoreDurableDraft(patientId);
     }
-  }, [patientId]);
+  }, [authorityDraftLease, patientId, tryRestoreDurableDraft]);
 
   useEffect(() => {
     const pid = patientIdRef.current;
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
     const bucketChanged = autosaveBucketRef.current !== pid;
     const prevNote = autosavePrevNoteRef.current;
     autosaveBucketRef.current = pid;
@@ -336,39 +371,75 @@ export default function SmartNoteAssistant({ visitId = null }) {
       return;
     }
     sessionStorage.setItem(draftKeyFor(pid), JSON.stringify({ note, visitType, patientId: pid }));
-    import('@/lib/draftNotes').then(({ saveDraftNoteLocally }) => {
-        saveDraftNoteLocally({ id: `draft_${pid || 'unassigned'}`, note, visitType, patientId: pid });
-    }).catch(console.error);
-  }, [note, visitType]);
+    import('@/lib/draftNotes')
+      .then(({ saveDraftNoteLocally }) => saveDraftNoteLocally(
+        { id: `draft_${pid || 'unassigned'}`, note, visitType, patientId: pid },
+        authorityDraftLease,
+      ))
+      .catch(console.error);
+  }, [authorityDraftLease, clearDraft, note, visitType]);
 
   useEffect(() => { if (step === 1) textareaRef.current?.focus(); }, [step]);
 
   useEffect(() => {
     return () => {
-      try { recRef.current?.stop(); } catch { /* already stopped */ }
+      recBindingRef.current?.dispose();
+      recBindingRef.current = null;
+      recRef.current = null;
       releaseDictation(recStopRef.current);
+      recStopRef.current = null;
     };
   }, []);
 
   const startDictation = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { toast.error("Speech recognition not supported in this browser."); return; }
-    const rec = new SR();
+    let binding;
+    try {
+      binding = createAuthorityBoundSpeechRecognition(SR);
+    } catch {
+      toast.error("Dictation expired because workspace authority changed.");
+      return;
+    }
+    const rec = binding.recognition;
     rec.continuous = true;
     rec.interimResults = false;
     rec.lang = "en-US";
     rec.onresult = (e) => {
+      if (!binding.isCurrent()) return;
       const t = Array.from(e.results).slice(e.resultIndex).map(r => r[0].transcript).join(" ");
       const enhanced = enhanceTranscription(t);
       setNote(prev => prev ? prev + " " + enhanced : enhanced);
     };
-    const stop = () => { try { rec.stop(); } catch { /* already stopped */ } };
+    const stop = () => {
+      if (!binding.isCurrent()) return;
+      try { rec.stop(); } catch { /* already stopped */ }
+    };
     recStopRef.current = stop;
-    rec.onerror = () => { setListening(false); releaseDictation(stop); };
-    rec.onend = () => { setListening(false); releaseDictation(stop); };
+    rec.onerror = () => {
+      if (!binding.isCurrent()) return;
+      setListening(false);
+      releaseDictation(stop);
+    };
+    rec.onend = () => {
+      if (!binding.isCurrent()) return;
+      setListening(false);
+      releaseDictation(stop);
+    };
+    recBindingRef.current?.dispose();
+    recBindingRef.current = binding;
     recRef.current = rec;
     claimDictation(stop);
-    rec.start();
+    try {
+      rec.start();
+    } catch {
+      binding.dispose();
+      recBindingRef.current = null;
+      recRef.current = null;
+      releaseDictation(stop);
+      toast.error("Unable to start dictation.");
+      return;
+    }
     setListening(true);
   };
   const stopDictation = () => { recRef.current?.stop(); setListening(false); releaseDictation(recStopRef.current); };

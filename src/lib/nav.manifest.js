@@ -20,7 +20,7 @@
  *                     (nursing-only tools). Admins always pass.
  *  breadcrumbParent – page key of the logical parent (builds the crumb chain)
  *  keywords         – extra search terms for the command palette
- *  badge            – runtime badge key resolved in Layout: "messages" | "sms" | "notifications" | "timeOffApprovals"
+ *  badge            – reserved for a future tenant-bound count broker
  *  action           – runtime action key resolved in Layout: "openNotifications"
  *
  * Adding a new page: add ONE entry here — sidebar, breadcrumbs and palette all update.
@@ -328,7 +328,6 @@ export const NAV_MANIFEST = [
     adminOnly: false,
     breadcrumbParent: null,
     keywords: ["messages", "inbox", "chat", "email"],
-    badge: "messages",
   },
   {
     page: "PhoneCenter",
@@ -338,7 +337,6 @@ export const NAV_MANIFEST = [
     adminOnly: false,
     breadcrumbParent: null,
     keywords: ["phone", "call", "sms", "text"],
-    badge: "sms",
   },
   {
     page: "SendFax",
@@ -822,7 +820,6 @@ export const NAV_MANIFEST = [
     adminOnly: false,
     breadcrumbParent: null,
     keywords: ["time off", "pto", "leave", "vacation", "request", "schedule"],
-    badge: "timeOffApprovals",
   },
   {
     page: "Timesheets",
@@ -832,7 +829,6 @@ export const NAV_MANIFEST = [
     adminOnly: false,
     breadcrumbParent: null,
     keywords: ["timesheet", "timesheets", "payroll", "hours", "points", "pay period", "pay", "wages", "accountant", "mileage", "reimbursement"],
-    badge: "timesheetApprovals",
   },
   {
     // All users can view the on-call schedule; only admins can enter/edit it

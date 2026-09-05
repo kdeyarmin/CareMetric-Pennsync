@@ -6,6 +6,7 @@ import { pathToFileURL } from "node:url";
 import { createLiveReadinessReleaseLedger } from "./src/lib/liveReadinessReleaseLedger.js";
 import { createLiveReadinessCiReport } from "./src/lib/liveReadinessCiReport.js";
 import { formatLiveReadinessInputErrors, validateLiveReadinessInput } from "./src/lib/liveReadinessInputValidation.js";
+import { createLiveReadinessSourceContract } from "./tools-live-readiness-source-contract.mjs";
 
 export function resolveCheckoutIdentity({ execFile = execFileSync } = {}) {
   const options = {
@@ -26,6 +27,20 @@ export function resolveCheckoutIdentity({ execFile = execFileSync } = {}) {
     throw new Error("Readiness reports require a clean Git checkout.");
   }
   return { commit, tree };
+}
+
+export function resolveSourceAuthorityContractIdentity({
+  createSourceContract = createLiveReadinessSourceContract,
+} = {}) {
+  const contract = createSourceContract();
+  if (
+    !contract
+    || contract.status !== "valid_source_authority_contract"
+    || !/^[0-9a-f]{64}$/.test(contract.source_authority_contract_sha256)
+  ) {
+    throw new Error("Checked-out readiness source authority contract is invalid.");
+  }
+  return contract.source_authority_contract_sha256;
 }
 
 function parseInput(raw, expected) {
@@ -55,12 +70,18 @@ export function buildLiveReadinessReportFromJson(
   options = {},
 ) {
   const env = options.env ?? process.env;
-  let { expectedSourceCommit, expectedSourceTree } = options;
+  let {
+    expectedSourceCommit,
+    expectedSourceTree,
+    expectedSourceAuthorityContractSha256,
+  } = options;
   if (!expectedSourceCommit || !expectedSourceTree) {
     const checkout = resolveCheckoutIdentity();
     expectedSourceCommit ||= checkout.commit;
     expectedSourceTree ||= checkout.tree;
   }
+  expectedSourceAuthorityContractSha256 ||=
+    resolveSourceAuthorityContractIdentity();
   const expectedBackendOrigin = options.expectedBackendOrigin
     || env.READINESS_STAGING_BACKEND_ORIGIN
     || env.B44_ORIGIN
@@ -68,6 +89,7 @@ export function buildLiveReadinessReportFromJson(
   const expected = {
     expectedSourceCommit,
     expectedSourceTree,
+    expectedSourceAuthorityContractSha256,
     expectedBackendOrigin,
     expectedHostedRuntimeCommit: options.expectedHostedRuntimeCommit
       || env.READINESS_HOSTED_RUNTIME_COMMIT_SHA,
@@ -94,6 +116,7 @@ export function runLiveReadinessReportCli({
   write = console.log,
   error = console.error,
   resolveCheckout = resolveCheckoutIdentity,
+  resolveSourceAuthorityContract = resolveSourceAuthorityContractIdentity,
   env = process.env,
   expectedBackendOrigin = env.READINESS_STAGING_BACKEND_ORIGIN
     || env.B44_ORIGIN
@@ -105,6 +128,7 @@ export function runLiveReadinessReportCli({
     env.READINESS_CANDIDATE_DEPLOYABLE_MANIFEST_SHA256,
   expectedHostedResourceManifestSha256 =
     env.READINESS_HOSTED_RESOURCE_MANIFEST_SHA256,
+  expectedSourceAuthorityContractSha256,
 } = {}) {
   // pnpm 11 preserves the conventional `--` separator in the child argv.
   // Accept both documented forms without ever treating the separator as a
@@ -127,10 +151,13 @@ export function runLiveReadinessReportCli({
 
   try {
     const checkout = resolveCheckout();
+    const sourceAuthorityContractSha256 =
+      expectedSourceAuthorityContractSha256 || resolveSourceAuthorityContract();
     const report = buildLiveReadinessReportFromJson(raw, {
       env,
       expectedSourceCommit: checkout.commit,
       expectedSourceTree: checkout.tree,
+      expectedSourceAuthorityContractSha256: sourceAuthorityContractSha256,
       expectedBackendOrigin,
       expectedHostedRuntimeCommit,
       expectedHostedRuntimeTree,

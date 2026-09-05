@@ -5,7 +5,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
 import { isAdminView } from "@/lib/roles";
+import { isAdminLike } from "@/lib/superAdmin";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Activity, Database, Settings, Zap } from "lucide-react";
 import AdminConsoleDirectory from "@/components/admin/AdminConsoleDirectory";
@@ -28,10 +30,18 @@ export default function AdminOperations() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+  const adminView = isAdminView(currentUser);
+  // User Activity is paused for every role, and System Health actions still
+  // require Base44's protected built-in admin role. Keep both tabs out of a
+  // facility-only view; the protected view receives the explicit paused state.
+  const canUseProtectedAdminTools = isAdminLike(currentUser);
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
-  const activeTab = TAB_KEYS.includes(requestedTab) ? requestedTab : "overview";
+  const visibleTabKeys = canUseProtectedAdminTools
+    ? TAB_KEYS
+    : ["overview", "data-quality", "settings"];
+  const activeTab = visibleTabKeys.includes(requestedTab) ? requestedTab : "overview";
   // Reflect the active tab in the URL so console tabs are shareable/bookmarkable
   // and redirects from the retired pages deep-link correctly. "overview" is the
   // default, so it stays a clean /AdminOperations with no query string.
@@ -51,7 +61,7 @@ export default function AdminOperations() {
 
   if (isLoading) return null;
 
-  if (!isAdminView(currentUser)) {
+  if (!adminView) {
     return (
       <AccessDeniedState
         title="Access Restricted"
@@ -70,6 +80,14 @@ export default function AdminOperations() {
         favoritePage="AdminOperations"
       />
 
+      {!canUseProtectedAdminTools && (
+        <Alert className="mb-4 border-blue-200 bg-blue-50">
+          <AlertDescription className="text-blue-900">
+            User Activity is unavailable for every role until a tenant-authorized audit broker is verified. System Health requires protected administrator access. Facility-admin access remains limited to the visible console sections while tenant-scoped operations brokers are pending.
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
         <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0">
           <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
@@ -77,18 +95,22 @@ export default function AdminOperations() {
               <Activity className="h-4 w-4 mr-2" />
               Overview
             </TabsTrigger>
-            <TabsTrigger value="activity" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
-              <Activity className="h-4 w-4 mr-2" />
-              User Activity
-            </TabsTrigger>
+            {canUseProtectedAdminTools && (
+              <TabsTrigger value="activity" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
+                <Activity className="h-4 w-4 mr-2" />
+                User Activity
+              </TabsTrigger>
+            )}
             <TabsTrigger value="data-quality" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
               <Database className="h-4 w-4 mr-2" />
               Data Quality
             </TabsTrigger>
-            <TabsTrigger value="system-health" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
-              <Zap className="h-4 w-4 mr-2" />
-              System Health
-            </TabsTrigger>
+            {canUseProtectedAdminTools && (
+              <TabsTrigger value="system-health" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
+                <Zap className="h-4 w-4 mr-2" />
+                System Health
+              </TabsTrigger>
+            )}
             <TabsTrigger value="settings" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
               <Settings className="h-4 w-4 mr-2" />
               Settings
@@ -101,17 +123,21 @@ export default function AdminOperations() {
           <AdminDashboardOverview />
         </TabsContent>
 
-        <TabsContent value="activity">
-          <UserActivityDashboard />
-        </TabsContent>
+        {canUseProtectedAdminTools && (
+          <TabsContent value="activity">
+            <UserActivityDashboard />
+          </TabsContent>
+        )}
 
         <TabsContent value="data-quality">
           <DataQualityDashboard />
         </TabsContent>
 
-        <TabsContent value="system-health">
-          <SystemHealthPanel />
-        </TabsContent>
+        {canUseProtectedAdminTools && (
+          <TabsContent value="system-health">
+            <SystemHealthPanel />
+          </TabsContent>
+        )}
 
         <TabsContent value="settings">
           <SystemSettings />

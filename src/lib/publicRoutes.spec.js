@@ -47,6 +47,9 @@ describe('isPublicTokenPath', () => {
     // bug survived — keep the gate calling this helper.
     const app = readFileSync(`${process.cwd()}/src/App.jsx`, 'utf8');
     expect(app).toContain('isPublicTokenPath(location.pathname)');
+    expect(app).toContain('setPublicRouteActive(true)');
+    expect(app).toContain('setPublicRouteActive(false)');
+    expect(app).toContain('preparedPublicSnapshot !== publicCapabilitySnapshot');
     expect(app).not.toContain("startsWith('/join')");
   });
 });

@@ -174,27 +174,14 @@
     "title",
     "category"
   ],
-  // PHI read-scoping: with no read rule, ANY authenticated user could bulk-
-  // .list() every row (patient documents). uploaded_by is in the $or because
-  // some rows are created via service role (e.g. state-reportable incidents)
-  // where created_by is NOT the submitting user — uploaded_by keeps those
-  // visible to their submitter.
-  // Reads are scoped to the owning user (+ admin), matching the app's
-  // Patient/Visit/ComplianceAudit role model: non-admin staff see only their
-  // own rows on agency-wide report surfaces; admins see everything. The
-  // Direct update and delete are denied. Document analysis and narrowly scoped
-  // compensation remain service-role operations. Direct create stays open only
-  // as explicit migration debt until the authorized upload broker reaches
-  // metadata/file parity and legacy tenant provenance is backfilled.
+  // Document rows and their private storage bindings are broker-only. Browser
+  // creation, reads, updates, and deletes are denied; finite service functions
+  // prove immutable tenant/patient authority and return purpose projections or
+  // short-lived signed delivery. Legacy rows require a reviewed binding/private
+  // storage backfill before this source policy may be deployed.
   "rls": {
-    "read": {
-      "$or": [
-        { "data.uploaded_by": "{{user.email}}" },
-        { "created_by": "{{user.email}}" },
-        { "user_condition": { "role": "admin" } }
-      ]
-    },
-    "create": true,
+    "read": false,
+    "create": false,
     "update": false,
     "delete": false
   }

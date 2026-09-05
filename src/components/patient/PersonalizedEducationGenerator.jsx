@@ -18,6 +18,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 import { formatAge } from "@/lib/age";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 export default function PersonalizedEducationGenerator({ patient, complianceData, visits }) {
   const ai = useAICall();
@@ -112,10 +113,6 @@ Format each section clearly with headers.`,
     } catch (error) {
       console.error('Education generation error:', error);
     }
-  };
-
-  const handlePrint = () => {
-    window.print();
   };
 
   const handleCopy = () => {
@@ -256,7 +253,12 @@ ${educationMaterials.key_takeaways?.map(k => `• ${k}`).join('\n')}
             <Button size="sm" variant="outline" onClick={handleEmail} disabled={!patient.email && !patient.caregiver_email}>
               <Mail className="w-4 h-4" />
             </Button>
-            <Button size="sm" variant="outline" onClick={handlePrint}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled
+              title="Separate print previews are unavailable until they can be revoked with workspace authority."
+            >
               <Printer className="w-4 h-4" />
             </Button>
           </div>
@@ -350,15 +352,14 @@ ${educationMaterials.key_takeaways?.map(k => `• ${k}`).join('\n')}
                         <p className="font-semibold text-sm text-slate-900">{resource.name}</p>
                         <p className="text-xs text-slate-600 mt-1">{resource.description}</p>
                       </div>
-                      {resource.link && (
-                        <a
-                          href={isSafeExternalUrl(resource.link) ? resource.link : undefined}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      {resource.link && isSafeExternalUrl(resource.link) && (
+                        <button
+                          type="button"
+                          onClick={() => openAuthorityBoundWindow(resource.link)}
                           className="ml-2 text-blue-600 hover:text-blue-700"
                         >
                           <Badge variant="outline" className="cursor-pointer">Visit</Badge>
-                        </a>
+                        </button>
                       )}
                     </div>
                   </div>

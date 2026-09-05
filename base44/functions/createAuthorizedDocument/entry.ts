@@ -1,13 +1,12 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
- * Source-only Document creation authority substrate.
+ * Source-only Document creation authority boundary.
  *
- * This function is intentionally not wired to any frontend callsite yet. It
- * accepts an actual multipart File, proves immutable tenant authority before
+ * It accepts an actual multipart File, proves immutable tenant authority before
  * the private upload, and records an all-RLS-false DocumentTenantBinding beside
- * the metadata-only Document row. Existing Document RLS remains unchanged until
- * every writer and reader has migrated to binding-backed brokers.
+ * the metadata-only Document row. The browser uploader is deliberately limited
+ * to this contract.
  */
 
 const MAX_IDENTIFIER_LENGTH = 200;

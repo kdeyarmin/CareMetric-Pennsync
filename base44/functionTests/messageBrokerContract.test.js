@@ -1,20 +1,42 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFile, writeFile, unlink } from 'node:fs/promises';
+import { readFile, readdir, writeFile, unlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import JSON5 from 'json5';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
 
-async function loadHandler(functionName, client, superAdminEmail = '') {
+/**
+ * Load a temporary function module. Existing authorization regression tests
+ * explicitly exercise dormant code by flipping only the static pause literal;
+ * the raw-entry checkpoint test below never performs that rewrite.
+ */
+async function loadHandler(functionName, client, superAdminEmail = '', {
+  exerciseDormantAuthorization = true,
+} = {}) {
   let source = await readFile(
     new URL(`../functions/${functionName}/entry.ts`, import.meta.url),
     'utf8',
   );
+  if (exerciseDormantAuthorization) {
+    const activeSource = source.replace(
+      'const SECURE_MESSAGE_DOMAIN_PAUSED = true;',
+      'const SECURE_MESSAGE_DOMAIN_PAUSED = false;',
+    );
+    assert.notEqual(
+      activeSource,
+      source,
+      `${functionName} must retain the literal secure-message pause checkpoint`,
+    );
+    source = activeSource;
+  }
   source = source.replace(
     /import\s+\{\s*createClientFromRequest\s*\}\s+from\s+'npm:[^']+';/,
-    'const createClientFromRequest = () => globalThis.__messageBrokerClient;',
+    `const createClientFromRequest = (...args) => {
+      globalThis.__messageBrokerClientCalls.push(args);
+      return globalThis.__messageBrokerClient;
+    };`,
   );
   const output = transpileTs(source).outputText;
   const temporaryModule = join(
@@ -24,6 +46,8 @@ async function loadHandler(functionName, client, superAdminEmail = '') {
   await writeFile(temporaryModule, output);
   let handler;
   globalThis.__messageBrokerClient = client;
+  const clientCalls = [];
+  globalThis.__messageBrokerClientCalls = clientCalls;
   globalThis.Deno = {
     env: { get: (name) => name === 'SUPER_ADMIN_EMAIL' ? superAdminEmail : undefined },
     serve: (candidate) => { handler = candidate; },
@@ -34,18 +58,67 @@ async function loadHandler(functionName, client, superAdminEmail = '') {
     await unlink(temporaryModule).catch(() => {});
   }
   assert.equal(typeof handler, 'function');
+  handler.__clientCalls = clientCalls;
   return handler;
 }
 
 const request = (body) => ({ json: async () => body });
 
-function makeClient({ user, users = [], patients = [], referrals = [], documents = [], messages = [] }) {
+const MESSAGE_DOMAIN_FUNCTIONS = [
+  'sendMessage',
+  'markMessageRead',
+  'summarizeMessageThread',
+  'generateMessageSuggestions',
+  'messagingAssistant',
+  'notifyUrgentMessage',
+];
+
+async function productionBrowserSources(directory = new URL('../../src/', import.meta.url)) {
+  const sources = [];
+  for (const entry of await readdir(directory, { withFileTypes: true })) {
+    const entryUrl = new URL(entry.name + (entry.isDirectory() ? '/' : ''), directory);
+    if (entry.isDirectory()) {
+      sources.push(...await productionBrowserSources(entryUrl));
+      continue;
+    }
+    if (!/\.(?:js|jsx|ts|tsx)$/.test(entry.name)
+      || /(?:\.test|\.spec)\.(?:js|jsx|ts|tsx)$/.test(entry.name)) {
+      continue;
+    }
+    sources.push({ path: entryUrl.pathname, source: await readFile(entryUrl, 'utf8') });
+  }
+  return sources;
+}
+
+test('raw secure-message entries pause before touching a poison request or client', async () => {
+  const poisonRequest = new Proxy({}, {
+    get(_target, property) {
+      throw new Error(`paused handler touched request.${String(property)}`);
+    },
+  });
+
+  for (const functionName of MESSAGE_DOMAIN_FUNCTIONS) {
+    const handler = await loadHandler(functionName, null, '', {
+      exerciseDormantAuthorization: false,
+    });
+    const response = await handler(poisonRequest);
+
+    assert.equal(response.status, 503, functionName);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store', functionName);
+    assert.deepEqual(await response.json(), {
+      error: 'Secure messaging is temporarily unavailable',
+      code: 'secure_message_tenant_broker_required',
+    }, functionName);
+    assert.equal(handler.__clientCalls.length, 0, `${functionName} created an SDK client`);
+  }
+});
+
+function makeClient({ user, users = [], patients = [], referrals = [], messages = [] }) {
   const state = {
     user,
     users: users.map((row) => ({ ...row })),
     patients: patients.map((row) => ({ ...row })),
     referrals: referrals.map((row) => ({ ...row })),
-    documents: documents.map((row) => ({ ...row })),
     messages: messages.map((row) => ({ ...row })),
     creates: [],
     updates: [],
@@ -78,7 +151,6 @@ function makeClient({ user, users = [], patients = [], referrals = [], documents
     User: entity('users'),
     Patient: entity('patients'),
     Referral: entity('referrals'),
-    Document: entity('documents'),
     Message: messageEntity,
   };
   return {
@@ -230,12 +302,6 @@ test('resource authorization rechecks exact IDs when backend filters return the 
       returned: { id: 'wrong-referral', created_by: sender.email, assigned_to: recipient.email },
       payload: { related_event_type: 'referral', related_event_id: 'requested-referral' },
       expectedError: 'Referral not found',
-    },
-    {
-      entity: 'Document',
-      returned: { id: 'wrong-document', created_by: sender.email, uploaded_by: recipient.email },
-      payload: { related_event_type: 'document', related_event_id: 'requested-document' },
-      expectedError: 'Document not found',
     },
   ];
 
@@ -670,21 +736,30 @@ test('markMessageRead rechecks the exact ID returned by the service filter', asy
   assert.equal(fixture.state.updates.length, 0);
 });
 
-test('Message schema and all six callsites expose no direct mutation bypass', async () => {
+test('Message schema and all production browser source remain fail-closed', async () => {
   const schemaText = await readFile(new URL('../entities/Message.jsonc', import.meta.url), 'utf8');
   const schema = JSON5.parse(schemaText);
+  assert.equal(schema.rls.read, false);
   assert.equal(schema.rls.create, false);
   assert.equal(schema.rls.update, false);
   assert.equal(schema.rls.delete, false);
-  assert.doesNotMatch(schemaText, /"user_condition"\s*:\s*\{\s*"role"\s*:\s*"admin"/);
 
-  const callsites = await Promise.all([
-    '../../src/pages/Messages.jsx',
-    '../../src/components/messaging/CareTeamMessaging.jsx',
-    '../../src/pages/ReferralIntake.jsx',
-    '../../src/components/documents/ReferralDocumentViewer.jsx',
-  ].map((path) => readFile(new URL(path, import.meta.url), 'utf8')));
-  for (const source of callsites) {
-    assert.doesNotMatch(source, /entities\.Message\.(?:create|update|delete)\s*\(/);
+  const brokerNames = MESSAGE_DOMAIN_FUNCTIONS.join('|');
+  const forbidden = [
+    /entities\s*(?:\?\.|\.)\s*Message\b/,
+    /entities\s*(?:\?\.)?\s*\[\s*['"]Message['"]\s*\]/,
+    /\{[^}\n]*\bMessage(?:\s*:\s*[$\w]+)?[^}\n]*\}\s*=\s*[^;\n]*\bentities\b/,
+    /\{\s*entities\s*:\s*\{[^}\n]*\bMessage\b/,
+    /\bMessage\s*(?:\?\.|\.)\s*(?:list|filter|get|create|update|delete|updateMany|deleteMany|bulkCreate)\s*\(/,
+    new RegExp(`functions\\s*(?:\\?\\.|\\.)\\s*invoke\\s*\\(\\s*['"](?:${brokerNames})['"]`),
+    new RegExp(`functions\\s*(?:\\?\\.|\\.)\\s*(?:${brokerNames})\\s*\\(`),
+    new RegExp(`(?:from|import\\s*\\()\\s*['"][^'"]*(?:${brokerNames})[^'"]*['"]`),
+  ];
+  const violations = [];
+  for (const { path, source } of await productionBrowserSources()) {
+    for (const pattern of forbidden) {
+      if (pattern.test(source)) violations.push(`${path}: ${pattern}`);
+    }
   }
+  assert.deepEqual(violations, [], `Browser Message bypasses:\n${violations.join('\n')}`);
 });

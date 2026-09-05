@@ -2,6 +2,10 @@ import { useEffect, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { getMyTenantContext } from '@/functions/getMyTenantContext';
+import {
+  tenantContextMatchesRequest,
+  trustedTenantRequest,
+} from '@/lib/trustedTenantRequest';
 
 const MAX_IDENTIFIER_LENGTH = 200;
 const TENANT_ROLES = new Set([
@@ -74,11 +78,11 @@ function isPatientDetailsTenantQuery(query) {
 /**
  * Resolve the only safe implicit PatientDetails route scope.
  *
- * Calling getMyTenantContext without an agency selector succeeds with a scoped
- * membership only when the server can resolve one unambiguous active tenant.
- * Mutable User/Patient agency fields are deliberately ignored. Cached identity
- * and tenant results are never exposed until both have revalidated after this
- * mount, so a stale, paused, failed, or transitioning session produces no URL.
+ * AuthContext's exact selected membership supplies the agency plus expected
+ * membership id/version. Mutable User/Patient agency fields are ignored.
+ * Cached identity and tenant results are never exposed until both have
+ * revalidated after this mount, so a stale, paused, failed, or transitioning
+ * session produces no URL.
  */
 export function usePatientDetailsRouteScope({ enabled = true } = {}) {
   const queryClient = useQueryClient();
@@ -92,11 +96,21 @@ export function usePatientDetailsRouteScope({ enabled = true } = {}) {
   const currentUserId = exactIdentifier(currentUserQuery.data?.id)
     ? currentUserQuery.data.id
     : null;
+  const tenantRequest = useMemo(
+    () => trustedTenantRequest(currentUserQuery.data),
+    [currentUserQuery.data],
+  );
 
   const tenantContextQuery = useQuery({
-    queryKey: ['tenant-context', 'patient-details-route', currentUserId],
-    queryFn: () => getMyTenantContext({}),
-    enabled: enabled && currentUserSettled && !!currentUserId,
+    queryKey: [
+      'tenant-context',
+      'patient-details-route',
+      currentUserId,
+      tenantRequest?.authorityKey || null,
+      tenantRequest?.agencyId || null,
+    ],
+    queryFn: () => getMyTenantContext(tenantRequest.options),
+    enabled: enabled && currentUserSettled && !!currentUserId && !!tenantRequest,
     ...AUTH_REFRESH_OPTIONS,
   });
   const tenantContextSettled = currentUserSettled
@@ -105,14 +119,25 @@ export function usePatientDetailsRouteScope({ enabled = true } = {}) {
     tenantContextQuery.data?.tenant_context,
     currentUserId,
   ), [currentUserId, tenantContextQuery.data?.tenant_context]);
+  const exactSelectedScope = singletonScope
+    && tenantContextMatchesRequest(tenantContextQuery.data?.tenant_context, tenantRequest)
+    ? singletonScope
+    : null;
 
   const identityError = currentUserSettled && !currentUserId
     ? new Error('Authenticated user identity failed integrity validation')
     : null;
-  const scopeError = tenantContextSettled && !singletonScope
+  const authorityError = currentUserSettled && currentUserId && !tenantRequest
+    ? new Error('Trusted tenant selection is unavailable')
+    : null;
+  const scopeError = tenantContextSettled && !exactSelectedScope
     ? new Error('Patient chart route scope failed integrity validation')
     : null;
-  const error = currentUserQuery.error || tenantContextQuery.error || identityError || scopeError;
+  const error = currentUserQuery.error
+    || tenantContextQuery.error
+    || identityError
+    || authorityError
+    || scopeError;
   const isFetching = currentUserQuery.isFetching || tenantContextQuery.isFetching;
   const isPaused = currentUserQuery.isPaused || tenantContextQuery.isPaused;
   const isSuccess = Boolean(
@@ -120,7 +145,7 @@ export function usePatientDetailsRouteScope({ enabled = true } = {}) {
     && currentUserSettled
     && currentUserId
     && tenantContextSettled
-    && singletonScope
+    && exactSelectedScope
     && !error
     && !isFetching
     && !isPaused
@@ -144,7 +169,7 @@ export function usePatientDetailsRouteScope({ enabled = true } = {}) {
   }, [currentUserQuery.error, currentUserQuery.isFetching, queryClient]);
 
   return {
-    agencyId: isSuccess ? singletonScope.agencyId : null,
+    agencyId: isSuccess ? exactSelectedScope.agencyId : null,
     error: error || null,
     status: error ? 'error' : isSuccess ? 'success' : 'pending',
     isError: Boolean(error),

@@ -261,7 +261,7 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
         <CardHeader className="bg-slate-50 border-b border-slate-100 rounded-t-xl">
           <CardTitle>{patient ? 'Edit Patient' : 'Add New Patient'}</CardTitle>
         </CardHeader>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} autoComplete="off">
           <CardContent className="p-6 space-y-4">
             {/* OCR Document Extractor - Only show for new patients */}
             {!patient && (
@@ -473,6 +473,8 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
               id="primary_diagnosis"
               value={formData.primary_diagnosis}
               onChange={(e) => handleChange('primary_diagnosis', e.target.value)}
+              spellCheck={false}
+              autoCorrect="off"
             />
           </div>
 
@@ -485,6 +487,8 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
                 onChange={(e) => setSecondaryDiagnosisInput(e.target.value)}
                 onKeyPress={(e) => e.key === 'Enter' && (e.preventDefault(), addSecondaryDiagnosis())}
                 placeholder="Type and press Enter"
+                spellCheck={false}
+                autoCorrect="off"
               />
               <Button type="button" onClick={addSecondaryDiagnosis} variant="outline">
                 Add
@@ -514,6 +518,8 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
               onChange={(e) => handleChange('allergies', e.target.value)}
               placeholder="NKDA or list allergies"
               rows={3}
+              spellCheck={false}
+              autoCorrect="off"
             />
           </div>
         </CardContent>

@@ -17,12 +17,21 @@ Turn the gated live-readiness matrix into real hosted evidence so
    pnpm run readiness:fixture:validate -- docs/audits/live-readiness-fixture-manifest.template.json
    ```
 
-   Exit code `0` means only that the manifest has the reviewed LR-01 two-agency
-   topology and shared LR-02 actors/patients, points at the exact isolated
-   staging app, contains no credential or PHI-shaped fields, and requests no
-   network access or hosted writes. It does **not** encode the S3 Referral or S4
-   Visit action/result, create identities or rows, prove that they exist, or
-   clear LR-01/LR-02.
+   Exit code `0` means the manifest has the reviewed LR-01 two-agency topology
+   and shared LR-02 actors/patients, points at the exact isolated staging app,
+   contains no credential or PHI-shaped fields, and requests no network access
+   or hosted writes. It also means the pinned static source contract found the
+   expected authority-schema semantics, reviewed-broker markers, local contract
+   test sources, and hard-disabled care-team assignment mutation gate. Record
+   the emitted `source_contract.source_authority_contract_sha256` from the exact
+   candidate checkout.
+
+   The command still reports hosted readiness as blocked. It does **not** run
+   those local contract tests, encode the S3 Referral or S4 Visit action/result,
+   create identities or rows, prove deployed parity, authenticate a user, prove
+   hosted platform behavior, or clear LR-01/LR-02. Run `pnpm run test:contracts`
+   and `pnpm run test:security` separately for executable source-only coverage;
+   their mocks are not hosted evidence.
 
 2. **Provision the plan through reviewed paths when the hosted prerequisites
    are available:**
@@ -39,8 +48,13 @@ Turn the gated live-readiness matrix into real hosted evidence so
      `managePatientCareTeamAssignment` is deliberately withheld pending its
      atomicity prerequisites, so canonical fixture provisioning remains
      incomplete. Do not bypass that blocker with direct entity CRUD.
-   - Create Referral and Visit records through S3/S4 rather than pre-seeding
-     them; the workflow result is the evidence LR-02 needs.
+   - The local source contract also reports that S3 has no reviewed
+     immutable-tenant Referral broker and that S4 Visit creation still relies
+     on legacy Patient assignment fields. Do not run or mark S3/S4 passing until
+     reviewed paths use canonical tenant/care-team authority.
+   - Create Referral and Visit records through the eventual reviewed S3/S4
+     paths rather than pre-seeding them; the workflow result is the evidence
+     LR-02 needs.
 
    `src/test/entityFixtures.js` is a UI loaded-state helper, not a hosted seed
    source. It does not encode the immutable two-agency authority topology and
@@ -60,7 +74,9 @@ Turn the gated live-readiness matrix into real hosted evidence so
      origin from the same `VITE_BASE44_BACKEND_URL` used for the raw probes; the
      CLI requires that configured value and rejects another Base44 tenant host
    - Set `candidate_source_commit_sha` and `candidate_source_tree_sha` to the
-     clean checked-out Git revision; the CLI verifies both. Record the distinct
+     clean checked-out Git revision; the CLI verifies both. Set
+     `source_authority_contract_sha256` to the value emitted by the fixture
+     validator for that checkout; the report recomputes and verifies it. Record the distinct
      `hosted_runtime_commit_sha`, `hosted_runtime_tree_sha`, and the identifier
      from a complete immutable deployment receipt. A functions version can be
      retained as partial corroboration, but it does not identify the site,
@@ -76,17 +92,24 @@ Turn the gated live-readiness matrix into real hosted evidence so
      reviewed inventory scope explicitly accounts for the non-runtime delta
    - Canonical fixture emails (not passwords): protected Platform-Owner; Admin-A/Admin-B; Clinician-A/Clinician-A-empty
    - Fictional patient ids A1/A2/B1 and the reviewed active assignment of A1 to Clinician-A
-   - A retained run-index reference plus at least one actual artifact reference
-     in every required `test_evidence.probes` entry: V1–V6/T1–T4 for LR-01 and
-     S1–S4 for LR-02. Include S5–S9 only when those optional/in-scope flows were
-     exercised
+   - A retained run-index reference plus a complete attestation in every
+     required `test_evidence.probes` entry: V1–V6/T1–T4 for LR-01 and S1–S4 for
+     LR-02. Every probe needs `execution_context: authenticated_hosted`, a
+     `pass|fail|blocked` result, a canonical UTC millisecond `captured_at`, the
+     lowercase SHA-256 of its retained probe bundle, and at least one actual
+     artifact reference. Include S5–S9 only when those optional/in-scope flows
+     were exercised; a supplied non-passing or incomplete optional probe blocks
+     the packet
    - Named owners and reviewer approvals
 
    Every populated `references` array must contain references to actual
-   supporting artifacts. The top-level `test_evidence.references` array is the
-   run index; it does not replace the required per-probe artifact maps. Test
-   labels or expected-result prose are not evidence. The CLI rejects known
-   template placeholders rather than treating them as completed fields.
+   supporting artifacts. References must be trimmed, bounded, and unique within
+   each entry. The top-level `test_evidence.references` array is the run index;
+   it does not replace the required per-probe artifact maps or artifact digests.
+   The digest binds retained bytes but does not authenticate their truth; human
+   reviewers must inspect them. Test labels or expected-result prose are not
+   evidence. The CLI rejects known template placeholders rather than treating
+   them as completed fields.
 
 5. **Run and pass LR-01 first** (isolation before deep workflow smoke):
    - Apply RLS matrix from `docs/SECURITY-RLS-CHECKLIST.md`
@@ -116,8 +139,10 @@ Turn the gated live-readiness matrix into real hosted evidence so
 
    Run this from the exact candidate checkout with its staging
    backend and independently captured deployment outputs configured as above.
-   Exit code `0` = the LR-01/LR-02 packet is structurally complete, its candidate
-   commit/tree matches the clean checkout, its hosted identities and
+   Exit code `0` = the LR-01/LR-02 packet is structurally complete, all required
+   hosted probes are explicitly authenticated and passing, its candidate
+   commit/tree and source-authority-contract digest match the clean checkout,
+   its hosted identities and
    resource-inventory attestation match the protected execution context, its
    candidate/hosted resource-inventory attestations agree, the probe backend
    matches, and every reviewer decision is
@@ -127,8 +152,10 @@ Turn the gated live-readiness matrix into real hosted evidence so
    inventory, or retrieve hosted state. The
    report includes the exact input-byte SHA-256, evaluated capability ids,
    source/deployment/target identity, and evidence-reference counts. Retain the
-   private packet by that digest. The report does not contain or generate the
-   cited hosted evidence.
+   private packet by that digest. Its `assurance` object explicitly keeps
+   `cited_artifact_bytes_fetched_or_verified` and
+   `reviewer_identities_cryptographically_verified` false: the report does not
+   contain, retrieve, authenticate, or generate the cited hosted evidence.
 
 ## Rules
 

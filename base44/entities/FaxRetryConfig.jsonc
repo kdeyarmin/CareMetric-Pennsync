@@ -57,11 +57,11 @@
     }
   },
   "required": [],
-  // The settings editor is on the protected admin route. Fax workers read with
-  // service role; the clinician fax-history view still needs direct reads until
-  // a tenant-scoped configuration broker replaces that legacy path.
+  // The settings editor is protected-admin-only and fax workers read with
+  // service role. Clinician fax-history surfaces do not receive agency retry
+  // policy directly while the transmission workflow remains paused.
   "rls": {
-    "read": true,
+    "read": { "user_condition": { "role": "admin" } },
     "create": { "user_condition": { "role": "admin" } },
     "update": { "user_condition": { "role": "admin" } },
     "delete": false

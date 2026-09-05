@@ -1,6 +1,7 @@
 import {
   LIVE_CAPABILITY_MATRIX,
   LIVE_READINESS_EVIDENCE,
+  LIVE_READINESS_PROBE_EXECUTION_CONTEXT,
   LIVE_READINESS_PROBES,
   LIVE_READINESS_REVIEWERS,
 } from "./liveReadinessGate.js";
@@ -14,6 +15,11 @@ const OBJECT_TYPE = "object";
 const GIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
 const DEPLOYMENT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{2,127}$/;
+const CANONICAL_CAPTURED_AT_PATTERN =
+  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const MAX_EVIDENCE_TEXT_LENGTH = 4_000;
+const MAX_REFERENCE_LENGTH = 2_048;
+const MAX_REFERENCES_PER_ENTRY = 25;
 const TRUSTED_BASE44_HOST_SUFFIXES = Object.freeze([
   "base44.com",
   "base44.app",
@@ -54,6 +60,10 @@ const SAFE_READINESS_PATH_KEYS = new Set([
   "summary",
   "references",
   "probes",
+  "execution_context",
+  "result",
+  "captured_at",
+  "artifact_sha256",
   "id",
   "capability",
   "priority",
@@ -92,6 +102,51 @@ function findPlaceholderValues(value, path, errors) {
 
 function isNonBlankString(value) {
   return typeof value === "string" && value.trim().length > 0;
+}
+
+function isCanonicalBoundedText(value, maxLength) {
+  return isNonBlankString(value)
+    && value === value.trim()
+    && value.length <= maxLength
+    && ![...value].some((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint <= 31 || codePoint === 127;
+    });
+}
+
+function isCanonicalCapturedAt(value) {
+  if (typeof value !== "string" || !CANONICAL_CAPTURED_AT_PATTERN.test(value)) {
+    return false;
+  }
+  const parsed = new Date(value);
+  return !Number.isNaN(parsed.valueOf()) && parsed.toISOString() === value;
+}
+
+function validateReferences(references, path, errors, { required = false } = {}) {
+  if (!Array.isArray(references)) {
+    if (required || references !== undefined) {
+      addError(errors, path, "Evidence references must be an array.");
+    }
+    return;
+  }
+  if (required && references.length === 0) {
+    addError(errors, path, "At least one retained artifact reference is required.");
+  }
+  if (references.length > MAX_REFERENCES_PER_ENTRY) {
+    addError(errors, path, "Evidence references exceed the bounded per-entry limit.");
+  }
+  const seen = new Set();
+  references.forEach((reference, index) => {
+    if (!isCanonicalBoundedText(reference, MAX_REFERENCE_LENGTH)) {
+      addError(errors, `${path}.${index}`, "Evidence reference must be a canonical bounded string.");
+      return;
+    }
+    if (seen.has(reference)) {
+      addError(errors, path, "Evidence references must not contain duplicates.");
+      return;
+    }
+    seen.add(reference);
+  });
 }
 
 function isIsoCalendarDate(value) {
@@ -161,19 +216,43 @@ function validateProbeEvidence(capabilityId, entry, entryPath, errors) {
   for (const [probeId, probe] of Object.entries(entry.probes)) {
     if (!allowedProbeIds.has(probeId)) continue;
     const probePath = `${entryPath}.probes.${probeId}`;
-    if (!isObject(probe) || Object.keys(probe).some((key) => key !== "references")) {
-      addError(errors, probePath, "Probe evidence must contain only an artifact references array.");
+    const allowedProbeKeys = new Set([
+      "execution_context",
+      "result",
+      "captured_at",
+      "artifact_sha256",
+      "references",
+    ]);
+    if (!isObject(probe) || Object.keys(probe).some((key) => !allowedProbeKeys.has(key))) {
+      addError(errors, probePath, "Probe evidence contains an unsupported attestation field.");
       continue;
     }
-    if (!Array.isArray(probe.references) || probe.references.length === 0) {
-      addError(errors, `${probePath}.references`, "Probe evidence requires at least one artifact reference.");
-      continue;
+    if (probe.execution_context !== LIVE_READINESS_PROBE_EXECUTION_CONTEXT) {
+      addError(
+        errors,
+        `${probePath}.execution_context`,
+        "Probe execution context must attest an authenticated hosted run.",
+      );
     }
-    probe.references.forEach((reference, index) => {
-      if (!isNonBlankString(reference)) {
-        addError(errors, `${probePath}.references.${index}`, "Probe artifact references must be non-blank strings.");
-      }
-    });
+    if (!["pass", "fail", "blocked"].includes(probe.result)) {
+      addError(errors, `${probePath}.result`, "Probe result must be pass, fail, or blocked.");
+    }
+    if (!isCanonicalCapturedAt(probe.captured_at)) {
+      addError(
+        errors,
+        `${probePath}.captured_at`,
+        "Probe capture time must be a real canonical UTC instant with milliseconds.",
+      );
+    }
+    if (typeof probe.artifact_sha256 !== "string"
+      || !SHA256_PATTERN.test(probe.artifact_sha256)) {
+      addError(
+        errors,
+        `${probePath}.artifact_sha256`,
+        "Probe artifact digest must be a lowercase SHA-256 value.",
+      );
+    }
+    validateReferences(probe.references, `${probePath}.references`, errors, { required: true });
   }
 }
 
@@ -182,6 +261,7 @@ export function validateLiveReadinessInput(
   {
     expectedSourceCommit,
     expectedSourceTree,
+    expectedSourceAuthorityContractSha256,
     expectedBackendOrigin,
     expectedHostedRuntimeCommit,
     expectedHostedRuntimeTree,
@@ -210,8 +290,8 @@ export function validateLiveReadinessInput(
         addError(errors, "release", "Release contains an unsupported metadata field.");
         continue;
       }
-      if (!isNonBlankString(value)) {
-        addError(errors, `release.${key}`, "Release metadata values must be non-blank strings.");
+      if (!isCanonicalBoundedText(value, MAX_EVIDENCE_TEXT_LENGTH)) {
+        addError(errors, `release.${key}`, "Release metadata must be a canonical bounded string.");
       }
     }
     if (
@@ -287,6 +367,35 @@ export function validateLiveReadinessInput(
       && input.release.candidate_source_tree_sha !== expectedSourceTree
     ) {
       addError(errors, "release.candidate_source_tree_sha", "Candidate source tree must match the clean checked-out Git tree.");
+    }
+    if (
+      input.release.source_authority_contract_sha256 !== undefined
+      && !containsPlaceholder(input.release.source_authority_contract_sha256)
+      && !SHA256_PATTERN.test(input.release.source_authority_contract_sha256)
+    ) {
+      addError(
+        errors,
+        "release.source_authority_contract_sha256",
+        "Source authority contract digest must be a lowercase SHA-256 value.",
+      );
+    }
+    if (SHA256_PATTERN.test(input.release.source_authority_contract_sha256)) {
+      if (!SHA256_PATTERN.test(expectedSourceAuthorityContractSha256)) {
+        addError(
+          errors,
+          "release.source_authority_contract_sha256",
+          "Exact locally computed source authority contract digest is required for source binding.",
+        );
+      } else if (
+        input.release.source_authority_contract_sha256
+        !== expectedSourceAuthorityContractSha256
+      ) {
+        addError(
+          errors,
+          "release.source_authority_contract_sha256",
+          "Source authority contract digest must match the current readiness source check.",
+        );
+      }
     }
     for (const [key, expected] of [
       ["hosted_runtime_commit_sha", expectedHostedRuntimeCommit],
@@ -415,19 +524,14 @@ export function validateLiveReadinessInput(
           addError(errors, entryPath, "Evidence category contains an unsupported field.");
         }
         for (const textKey of ["value", "summary"]) {
-          if (entry[textKey] !== undefined && !isNonBlankString(entry[textKey])) {
-            addError(errors, `${entryPath}.${textKey}`, "Evidence text must be a non-blank string.");
+          if (
+            entry[textKey] !== undefined
+            && !isCanonicalBoundedText(entry[textKey], MAX_EVIDENCE_TEXT_LENGTH)
+          ) {
+            addError(errors, `${entryPath}.${textKey}`, "Evidence text must be a canonical bounded string.");
           }
         }
-        if (entry.references !== undefined && !Array.isArray(entry.references)) {
-          addError(errors, `${entryPath}.references`, "Evidence references must be an array when provided.");
-        } else if (Array.isArray(entry.references)) {
-          entry.references.forEach((reference, index) => {
-            if (!isNonBlankString(reference)) {
-              addError(errors, `${entryPath}.references.${index}`, "Evidence references must be non-blank strings.");
-            }
-          });
-        }
+        validateReferences(entry.references, `${entryPath}.references`, errors);
         if (key === "test_evidence") {
           validateProbeEvidence(capabilityId, entry, entryPath, errors);
         }

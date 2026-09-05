@@ -6,6 +6,10 @@ import {
   isAuthorizedPatientPurpose,
 } from '@/functions/getAuthorizedPatient';
 import { getMyTenantContext } from '@/functions/getMyTenantContext';
+import {
+  tenantContextMatchesRequest,
+  trustedTenantRequest,
+} from '@/lib/trustedTenantRequest';
 
 const MAX_IDENTIFIER_LENGTH = 200;
 const AUTH_REFRESH_OPTIONS = Object.freeze({
@@ -143,6 +147,13 @@ export function useAuthorizedPatient({
   const identityErrorMessage = currentUserSettled && !currentUserId
     ? 'Authenticated user identity failed integrity validation'
     : null;
+  const tenantRequest = useMemo(
+    () => trustedTenantRequest(currentUserQuery.data, requestedAgencyId),
+    [currentUserQuery.data, requestedAgencyId],
+  );
+  const authorityErrorMessage = currentUserSettled && currentUserId && !tenantRequest
+    ? 'Requested agency does not match the trusted tenant selection'
+    : null;
 
   const tenantContextQuery = useQuery({
     queryKey: [
@@ -150,23 +161,22 @@ export function useAuthorizedPatient({
       'authorized-patient',
       currentUserId,
       requestedAgencyId,
+      tenantRequest?.authorityKey || null,
     ],
-    queryFn: () => getMyTenantContext(
-      requestedAgencyId === null ? {} : { agencyId: requestedAgencyId },
-    ),
-    enabled: enabled && !inputErrorMessage && currentUserSettled && !!currentUserId,
+    queryFn: () => getMyTenantContext(tenantRequest.options),
+    enabled: enabled
+      && !inputErrorMessage
+      && currentUserSettled
+      && !!currentUserId
+      && !!tenantRequest,
     ...AUTH_REFRESH_OPTIONS,
   });
 
-  const tenantScope = useMemo(() => exactTenantScope(
-    tenantContextQuery.data?.tenant_context,
-    currentUserId,
-    requestedAgencyId,
-  ), [
-    currentUserId,
-    requestedAgencyId,
-    tenantContextQuery.data?.tenant_context,
-  ]);
+  const tenantScope = useMemo(() => {
+    const context = tenantContextQuery.data?.tenant_context;
+    if (!tenantContextMatchesRequest(context, tenantRequest)) return null;
+    return exactTenantScope(context, currentUserId, requestedAgencyId);
+  }, [currentUserId, requestedAgencyId, tenantContextQuery.data?.tenant_context, tenantRequest]);
   const tenantContextSettled = currentUserSettled
     && settledSuccessfullyAfterMount(tenantContextQuery);
   const scopeErrorMessage = tenantContextSettled && !tenantScope
@@ -185,6 +195,7 @@ export function useAuthorizedPatient({
     queryFn: async () => {
       if (inputErrorMessage) throw new Error(inputErrorMessage);
       if (identityErrorMessage) throw new Error(identityErrorMessage);
+      if (authorityErrorMessage) throw new Error(authorityErrorMessage);
       if (scopeErrorMessage || !tenantScope) {
         throw new Error(scopeErrorMessage || 'Tenant authorization scope is unavailable');
       }
@@ -202,6 +213,7 @@ export function useAuthorizedPatient({
     enabled: enabled && !!(
       inputErrorMessage
       || identityErrorMessage
+      || authorityErrorMessage
       || scopeErrorMessage
       || tenantScopeSettled
     ),

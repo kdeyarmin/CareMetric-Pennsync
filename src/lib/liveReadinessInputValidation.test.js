@@ -16,6 +16,17 @@ const validInput = {
   evidence: { "LR-01": { owner: { value: "owner", references: ["docs/owner.md"] }, reviewers: { product: "approved" } } },
 };
 
+function hostedProbe(probeId, overrides = {}) {
+  return {
+    execution_context: "authenticated_hosted",
+    result: "pass",
+    captured_at: "2026-09-05T00:00:00.000Z",
+    artifact_sha256: "a".repeat(64),
+    references: [`evidence/${probeId}.json`],
+    ...overrides,
+  };
+}
+
 test("valid readiness input returns no validation errors", () => {
   assert.deepEqual(validateLiveReadinessInput(validInput), []);
 });
@@ -34,6 +45,13 @@ test("committed evidence templates use ledger release keys and LR-01/LR-02 scope
     assert.deepEqual(Object.keys(input.evidence["LR-02"].test_evidence.probes), [
       "S1", "S2", "S3", "S4",
     ]);
+    assert.deepEqual(Object.keys(input.evidence["LR-01"].test_evidence.probes.V1), [
+      "execution_context", "result", "captured_at", "artifact_sha256", "references",
+    ]);
+    assert.equal(
+      input.evidence["LR-01"].test_evidence.probes.V1.execution_context,
+      "authenticated_hosted",
+    );
     assert.match(input.evidence["LR-02"].test_evidence.summary, /S1(?:–|-)S4/);
     assert.ok(validateLiveReadinessInput(input).some((error) => error.path === "release.release_id"));
   }
@@ -64,7 +82,7 @@ test("validator requires a bounded artifact-reference map for every mandatory pr
           references: ["evidence/lr01/index.json"],
           probes: Object.fromEntries(
             ["V1", "V2", "V3", "V4", "V5", "V6", "T1", "T2", "T3"]
-              .map((probeId) => [probeId, { references: [`evidence/lr01/${probeId}.json`] }]),
+              .map((probeId) => [probeId, hostedProbe(probeId)]),
           ),
         },
       },
@@ -73,12 +91,12 @@ test("validator requires a bounded artifact-reference map for every mandatory pr
           summary: "required smoke passed",
           references: ["evidence/lr02/index.json"],
           probes: {
-            S1: { references: ["evidence/lr02/S1.json"] },
-            S2: { references: ["evidence/lr02/S2.json"] },
-            S3: { references: ["evidence/lr02/S3.json"] },
-            S4: { references: [] },
-            S5: { references: ["evidence/lr02/S5.json"] },
-            S10: { references: ["evidence/lr02/unknown.json"] },
+            S1: hostedProbe("S1"),
+            S2: hostedProbe("S2"),
+            S3: hostedProbe("S3"),
+            S4: hostedProbe("S4", { references: [] }),
+            S5: hostedProbe("S5"),
+            S10: hostedProbe("S10"),
           },
         },
       },
@@ -89,6 +107,68 @@ test("validator requires a bounded artifact-reference map for every mandatory pr
   assert.ok(errors.some((error) => error.path === "evidence.LR-02.test_evidence.probes"));
   assert.ok(errors.some((error) => error.path === "evidence.LR-02.test_evidence.probes.S4.references"));
   assert.equal(formatLiveReadinessInputErrors(errors).includes("S10"), false);
+});
+
+test("validator requires complete authenticated hosted probe attestations", () => {
+  const errors = validateLiveReadinessInput({
+    matrix: LIVE_CAPABILITY_MATRIX.slice(0, 2),
+    evidence: {
+      "LR-01": {
+        test_evidence: {
+          summary: "captured",
+          references: ["evidence/index.json"],
+          probes: Object.fromEntries(
+            ["V1", "V2", "V3", "V4", "V5", "V6", "T1", "T2", "T3", "T4"]
+              .map((probeId) => [probeId, hostedProbe(probeId)]),
+          ),
+        },
+      },
+      "LR-02": {
+        test_evidence: {
+          summary: "captured",
+          references: ["evidence/index.json"],
+          probes: {
+            S1: { references: ["evidence/S1.json"] },
+            S2: hostedProbe("S2", { execution_context: "local_mock" }),
+            S3: hostedProbe("S3", { captured_at: "2026-09-05" }),
+            S4: hostedProbe("S4", { artifact_sha256: "not-a-digest" }),
+          },
+        },
+      },
+    },
+  });
+  assert.ok(errors.some((error) => (
+    error.path === "evidence.LR-02.test_evidence.probes.S1.execution_context"
+  )));
+  assert.ok(errors.some((error) => (
+    error.path === "evidence.LR-02.test_evidence.probes.S1.result"
+  )));
+  assert.ok(errors.some((error) => (
+    error.path === "evidence.LR-02.test_evidence.probes.S2.execution_context"
+  )));
+  assert.ok(errors.some((error) => (
+    error.path === "evidence.LR-02.test_evidence.probes.S3.captured_at"
+  )));
+  assert.ok(errors.some((error) => (
+    error.path === "evidence.LR-02.test_evidence.probes.S4.artifact_sha256"
+  )));
+  assert.equal(formatLiveReadinessInputErrors(errors).includes("local_mock"), false);
+});
+
+test("validator bounds and canonicalizes retained artifact references", () => {
+  const errors = validateLiveReadinessInput({
+    matrix: LIVE_CAPABILITY_MATRIX.slice(0, 2),
+    evidence: {
+      "LR-01": {
+        owner: {
+          summary: "owner",
+          references: [" evidence/owner.json ", "same", "same"],
+        },
+      },
+    },
+  });
+  assert.ok(errors.some((error) => error.path === "evidence.LR-01.owner.references.0"));
+  assert.ok(errors.some((error) => error.path === "evidence.LR-01.owner.references"));
 });
 
 test("validator reports invalid matrix rows and missing fields", () => {
@@ -215,6 +295,26 @@ test("validator binds the packet to one checked-out and hosted source revision",
     "release.candidate_source_tree_sha",
     "release.hosted_deployment_id",
     "release.hosted_resource_manifest_sha256",
+  ]);
+});
+
+test("validator binds the packet to the locally computed source authority contract", () => {
+  const expected = "a".repeat(64);
+  assert.deepEqual(validateLiveReadinessInput({
+    release: { source_authority_contract_sha256: expected },
+    matrix: LIVE_CAPABILITY_MATRIX.slice(0, 2),
+  }, {
+    expectedSourceAuthorityContractSha256: expected,
+  }), []);
+
+  const errors = validateLiveReadinessInput({
+    release: { source_authority_contract_sha256: "b".repeat(64) },
+    matrix: LIVE_CAPABILITY_MATRIX.slice(0, 2),
+  }, {
+    expectedSourceAuthorityContractSha256: expected,
+  });
+  assert.deepEqual(errors.map((error) => error.path), [
+    "release.source_authority_contract_sha256",
   ]);
 });
 

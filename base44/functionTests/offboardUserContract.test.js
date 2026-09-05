@@ -98,7 +98,7 @@ test('an incomplete sweep is reported to the caller, not just logged', () => {
 
 test('the client exposes offboarding only to the protected owner and cannot invoke reactivation', () => {
   const client = readFileSync(join(process.cwd(), 'src/pages/UserManagement.jsx'), 'utf8');
-  assert.match(client, /import \{ isSuperAdmin \} from ["']@\/lib\/superAdmin["']/, 'UI must use the protected owner helper');
+  assert.match(client, /import \{[^}]*\bisSuperAdmin\b[^}]*\} from ["']@\/lib\/superAdmin["']/, 'UI must use the protected owner helper');
   assert.match(client, /const canManageOffboarding = isSuperAdmin\(currentUser\)/, 'UI gate must require the protected owner');
   assert.match(client, /disabled=\{!isActive \|\| currentUser\.email === user\.email \|\| !canManageOffboarding\}/, 'inactive accounts and ordinary admins must not receive an actionable status control');
   assert.match(client, /Reactivation temporarily unavailable pending retirement of legacy PHI grants/, 'inactive-account control must explain the hard pause');

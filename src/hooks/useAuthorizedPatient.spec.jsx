@@ -28,12 +28,19 @@ vi.mock('@/api/base44Client', () => ({
       },
     },
   },
+  tenantAuthorityClient: {
+    getMyTenantContext: (payload) => invoke('getMyTenantContext', payload),
+  },
 }));
 
 const {
   authorizedPatientQueryKey,
   useAuthorizedPatient,
 } = await import('./useAuthorizedPatient.js');
+const {
+  bindTrustedTenantContext,
+  clearTrustedTenantContext,
+} = await import('@/lib/roles.js');
 
 const tenantContext = {
   user_id: 'user-a',
@@ -89,11 +96,20 @@ function expectNoDirectPatientRead() {
 
 describe('useAuthorizedPatient', () => {
   afterEach(() => {
+    clearTrustedTenantContext();
     onlineManager.setOnline(true);
   });
 
   beforeEach(() => {
-    authMe.mockReset().mockResolvedValue({ id: 'user-a' });
+    clearTrustedTenantContext();
+    bindTrustedTenantContext(
+      { id: 'user-a', email: 'clinician@example.com' },
+      tenantContext,
+    );
+    authMe.mockReset().mockResolvedValue({
+      id: 'user-a',
+      email: 'clinician@example.com',
+    });
     invoke.mockReset().mockImplementation(async (name) => {
       if (name === 'getMyTenantContext') {
         return { data: { tenant_context: tenantContext } };
@@ -190,7 +206,11 @@ describe('useAuthorizedPatient', () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toMatchObject({ message: 'tenant lookup unavailable' });
     expect(invoke).toHaveBeenCalledTimes(1);
-    expect(invoke).toHaveBeenCalledWith('getMyTenantContext', { agency_id: 'agency-a' });
+    expect(invoke).toHaveBeenCalledWith('getMyTenantContext', {
+      agency_id: 'agency-a',
+      expected_membership_id: 'membership-a',
+      expected_membership_version: 7,
+    });
     expectNoDirectPatientRead();
   });
 
@@ -244,9 +264,7 @@ describe('useAuthorizedPatient', () => {
     }), { wrapper });
 
     await waitFor(() => expect(result.current.isError).toBe(true));
-    expect(result.current.error).toMatchObject({
-      message: 'Tenant authorization scope failed integrity validation',
-    });
+    expect(result.current.error.message).toMatch(/integrity validation/);
     expect(invoke).toHaveBeenCalledTimes(1);
     expectNoDirectPatientRead();
   });
@@ -293,12 +311,16 @@ describe('useAuthorizedPatient', () => {
     expect(invoke).not.toHaveBeenCalled();
 
     await act(async () => {
-      authStep.resolve({ id: 'user-a' });
+      authStep.resolve({ id: 'user-a', email: 'clinician@example.com' });
       await authStep.promise;
     });
     await waitFor(() => expect(invoke).toHaveBeenCalledWith(
       'getMyTenantContext',
-      { agency_id: 'agency-a' },
+      {
+        agency_id: 'agency-a',
+        expected_membership_id: 'membership-a',
+        expected_membership_version: 7,
+      },
     ));
     expect(result.current.data).toBeUndefined();
     expect(result.current.tenantScope).toBeNull();
@@ -448,7 +470,12 @@ describe('useAuthorizedPatient', () => {
       { tenant_context: tenantContext },
     );
     client.setQueryData(oldPatientKey, alertPatient);
-    authMe.mockResolvedValue({ id: 'user-b' });
+    clearTrustedTenantContext();
+    bindTrustedTenantContext(
+      { id: 'user-b', email: 'clinician-b@example.com' },
+      tenantContextB,
+    );
+    authMe.mockResolvedValue({ id: 'user-b', email: 'clinician-b@example.com' });
     invoke.mockImplementation(async (name) => {
       if (name === 'getMyTenantContext') {
         return { data: { tenant_context: tenantContextB } };

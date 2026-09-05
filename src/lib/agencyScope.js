@@ -1,17 +1,20 @@
 /**
  * Client-side agency scoping helpers.
  *
- * Entity RLS treats bare role:admin / agency_admin as platform-wide
- * (docs/HOSTED-RLS-PROOF.md §5b). Admin UIs that User.list / Patient.list must
- * filter by the caller's agency so facility admins do not render other tenants'
- * staff or patient PHI. Backend service-role functions remain the real write
- * boundary; this is defense-in-depth for the SPA.
+ * The caller's mutable User fields are not tenant authority. AuthContext binds
+ * one exact, service-validated tenant context to the authenticated principal;
+ * these helpers consume only that in-memory context. A missing, mismatched, or
+ * incomplete binding fails closed and a regular active membership is scoped to
+ * its exact agency. The membership-free platform owner has no selected tenant,
+ * so patient/roster helpers also fail closed until a reviewed owner agency
+ * selector and purpose-bound brokers exist. Backend brokers and entity RLS
+ * remain the real authorization boundary; this is defense-in-depth for the SPA.
  *
  * ## How a chart's agency is decided
  *
- * `User` carries `agency_id` / `agency_name` as first-class fields, so staff
- * scoping is a direct comparison. `Patient` has no agency field, so a chart's
- * tenancy is resolved in priority order:
+ * Staff rows may carry `agency_id` / `agency_name`, but the caller's agency id
+ * and canonical name always come from the trusted context. A chart's tenancy is
+ * resolved in priority order:
  *
  *   1. EXPLICIT — the chart carries `agency_id` / `agency_name`. Authoritative:
  *      it either matches the caller's agency or it does not.
@@ -34,36 +37,52 @@
  * by stamping `agency_id` on the records that lack it.
  */
 
+import { getTrustedTenantContext } from '@/lib/roles';
+
 const norm = (value) => String(value ?? '').trim();
 
-/** True when the caller is an agency-scoped facility admin (not platform-wide). */
+function trustedCallerScope(user) {
+  const context = getTrustedTenantContext(user);
+  if (!context) return { mode: 'none' };
+  if (context.is_platform_owner === true && context.tenant_role === 'platform_owner') {
+    return { mode: 'none' };
+  }
+  const agencyId = norm(context.agency_id);
+  const agencyName = norm(context.agency?.name);
+  if (
+    context.is_platform_owner !== false
+    || context.membership_status !== 'active'
+    || !agencyId
+    || !agencyName
+  ) {
+    return { mode: 'none' };
+  }
+  return { mode: 'agency', agencyId, agencyName };
+}
+
+/** True when the caller has an exact trusted regular-tenant binding. */
 export function isCallerAgencyScoped(user) {
-  const agency = norm(user?.agency_name);
-  return (
-    user?.account_type !== 'super_admin'
-    && !!agency
-    && (user?.account_type === 'agency_admin' || user?.role === 'admin')
-  );
+  return trustedCallerScope(user).mode === 'agency';
 }
 
 /**
- * Filter User rows to the caller's agency.
- * - Missing caller → [] (fail closed while auth loads).
- * - agency_admin without agency_name → [] (fail closed).
- * - super_admin → unfiltered (even if they have an agency_name).
- * - Any other caller with agency_name → same-agency users only.
- * - Platform admin (role:admin, no agency) → unfiltered.
+ * Filter User rows using only the caller's trusted tenant context.
+ * - Missing, mismatched, or incomplete binding → [] (fail closed).
+ * - Membership-free platform-owner binding → [] until an agency is selected
+ *   through a reviewed owner workflow.
+ * - Exact active regular binding → same-agency users only.
+ * Raw `role`, `account_type`, `agency_id`, and `agency_name` fields on the User
+ * object cannot widen or switch the scope.
  */
 export function filterUsersByCallerAgency(users, caller) {
   if (!Array.isArray(users)) return [];
-  if (!caller) return [];
-  if (caller.account_type === 'agency_admin' && !norm(caller.agency_name)) {
-    return [];
-  }
-  if (caller.account_type === 'super_admin') return users;
-  const agency = norm(caller.agency_name);
-  if (!agency) return users;
-  return users.filter((u) => u?.agency_name === agency);
+  const scope = trustedCallerScope(caller);
+  if (scope.mode === 'none') return [];
+  return users.filter((user) => {
+    const userAgencyId = norm(user?.agency_id);
+    if (userAgencyId) return userAgencyId === scope.agencyId;
+    return norm(user?.agency_name) === scope.agencyName;
+  });
 }
 
 /** Email set for staff in the caller's agency (empty when fail-closed). */
@@ -80,43 +99,33 @@ export function agencyStaffEmails(users, caller) {
  * keyed to an employee — to the caller's agency. `emailOf` pulls the staff email
  * off a row.
  *
- * Same fail-closed / platform-admin rules as filterUsersByCallerAgency, which is
+ * Same fail-closed rules as filterUsersByCallerAgency, which is
  * the whole point of it existing: hand-rolled copies of this shape recomputed
  * `isCallerAgencyScoped` inline and then returned the UNFILTERED rows whenever
  * it came out false. That reads as "this caller is not agency-scoped, so show
- * everything", but it also catches an agency_admin whose agency_name is blank —
- * the one case that has to fail closed rather than open.
+ * everything", but it also catches missing or stale tenant authority — exactly
+ * the cases that have to fail closed rather than open.
  */
 export function filterRowsByStaffAgency(rows, users, caller, emailOf) {
   if (!Array.isArray(rows)) return [];
-  if (!caller) return [];
-  if (caller.account_type === 'agency_admin' && !norm(caller.agency_name)) {
-    return [];
-  }
-  if (caller.account_type === 'super_admin') return rows;
-  if (!norm(caller.agency_name)) return rows;
+  const scope = trustedCallerScope(caller);
+  if (scope.mode === 'none') return [];
   const emails = agencyStaffEmails(users, caller);
   return rows.filter((row) => emails.has(emailOf(row)));
 }
 
 /**
  * Reduce (users, caller) to what patient filtering actually needs.
- * mode 'none' → caller sees nothing (fail closed); 'all' → caller sees
- * everything (platform admin / super_admin); 'agency' → compare per chart.
+ * mode 'none' → caller sees nothing (fail closed); 'agency' → compare per chart.
  */
 function resolveCallerScope(users, caller) {
-  if (!caller) return { mode: 'none' };
-  if (caller.account_type === 'agency_admin' && !norm(caller.agency_name)) {
-    return { mode: 'none' };
-  }
-  if (caller.account_type === 'super_admin') return { mode: 'all' };
-  const agencyName = norm(caller.agency_name);
-  if (!agencyName) return { mode: 'all' };
+  const trusted = trustedCallerScope(caller);
+  if (trusted.mode !== 'agency') return trusted;
   const roster = Array.isArray(users) ? users : [];
   return {
     mode: 'agency',
-    agencyName,
-    agencyId: norm(caller.agency_id),
+    agencyName: trusted.agencyName,
+    agencyId: trusted.agencyId,
     staff: agencyStaffEmails(roster, caller),
     known: new Set(roster.map((u) => u?.email).filter(Boolean)),
   };
@@ -131,9 +140,8 @@ function resolveCallerScope(users, caller) {
 function classifyRow(row, scope, linked) {
   const rowAgencyId = norm(row?.agency_id);
   const rowAgencyName = norm(row?.agency_name);
-  // An explicit tenancy on the row wins, but only when it is expressed in a
-  // dimension the caller also carries. A row tagged by id against a caller
-  // known only by name is not comparable, so fall through rather than guess.
+  // An explicit tenancy on the row wins. Trusted regular contexts carry both
+  // an agency id and canonical name; legacy rows may still carry only one.
   if (rowAgencyId && scope.agencyId) {
     return rowAgencyId === scope.agencyId ? 'match' : 'foreign';
   }
@@ -158,13 +166,12 @@ function classifyPatient(patient, scope) {
  * Filter Patient rows to charts the caller's agency may see. Pass the FULL user
  * list — a pre-filtered roster makes every outside author look like an unknown
  * one, which collapses the 'foreign' case into 'unattributable'.
- * Same fail-closed / platform-admin rules as filterUsersByCallerAgency.
+ * Same fail-closed rules as filterUsersByCallerAgency.
  */
 export function filterPatientsByCallerAgency(patients, users, caller) {
   if (!Array.isArray(patients)) return [];
   const scope = resolveCallerScope(users, caller);
   if (scope.mode === 'none') return [];
-  if (scope.mode === 'all') return patients;
   return patients.filter((p) => classifyPatient(p, scope) !== 'foreign');
 }
 
@@ -186,7 +193,6 @@ export function filterRecordsByAuthorAgency(rows, users, caller, authorOf = (row
   if (!Array.isArray(rows)) return [];
   const scope = resolveCallerScope(users, caller);
   if (scope.mode === 'none') return [];
-  if (scope.mode === 'all') return rows;
   return rows.filter((row) => classifyRow(row, scope, [authorOf(row)]) !== 'foreign');
 }
 
@@ -202,11 +208,6 @@ export function describePatientAgencyScope(patients, users, caller) {
   if (scope.mode === 'none') {
     return {
       scoped: false, total: rows.length, visible: 0, hidden: rows.length, unattributable: 0,
-    };
-  }
-  if (scope.mode === 'all') {
-    return {
-      scoped: false, total: rows.length, visible: rows.length, hidden: 0, unattributable: 0,
     };
   }
   let hidden = 0;

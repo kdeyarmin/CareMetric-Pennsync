@@ -141,28 +141,12 @@
       "description": "Email addresses of users who have read the message"
     }
   },
-  // Message backs historical outbound delivery rows as well as in-app care-team
-  // messages. New in-app writes go through sendMessage, which validates the
-  // participant and clinical-record context and stamps sender identity.
+  // Message contains legacy rows without immutable selected-tenant provenance.
+  // Keep every direct operation closed until those rows are backfilled or
+  // quarantined and a tenant-authorized message broker is proven in hosted tests.
   "required": [],
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "data.sender_email": "{{user.email}}"
-        },
-        {
-          "data.recipients": {
-            "$in": [
-              "{{user.email}}"
-            ]
-          }
-        }
-      ]
-    },
+    "read": false,
     "create": false,
     "update": false,
     "delete": false

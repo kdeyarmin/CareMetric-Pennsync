@@ -11,6 +11,8 @@ import { Eye, CheckCircle2, RotateCcw, Sparkles, ShieldCheck, Loader2 } from "lu
 import { toast } from "sonner";
 import { getCourseReadiness } from "./courseReadiness";
 import { recordTrainingAuditEvent } from "@/functions/recordTrainingAuditEvent";
+import AccessDeniedState from "@/components/ui/AccessDeniedState";
+import { isAdminLike } from "@/lib/superAdmin";
 
 // SME (subject-matter-expert) review queue. AI-generated courses stay as drafts
 // while their author edits them, then enter this queue as pending_review so a
@@ -21,7 +23,9 @@ export default function SMEReviewQueue() {
   const [notes, setNotes] = useState({});
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const isAdminUser = currentUser?.role === "admin" || currentUser?.account_type === "agency_admin" || currentUser?.account_type === "super_admin";
+  // Reading pending drafts and publishing/rejecting TrainingCourse records both
+  // require Base44's protected built-in admin role.
+  const canReviewCourses = isAdminLike(currentUser);
 
   const { data: pendingCourses = [], isLoading } = useQuery({
     queryKey: ["sme-review-queue"],
@@ -31,7 +35,7 @@ export default function SMEReviewQueue() {
       200
     ),
     initialData: [],
-    enabled: isAdminUser,
+    enabled: canReviewCourses,
   });
 
   const refresh = () => {
@@ -123,6 +127,12 @@ export default function SMEReviewQueue() {
       setBusyId(null);
     }
   };
+
+  if (currentUser && !canReviewCourses) {
+    return (
+      <AccessDeniedState description="SME course review requires protected administrator access. Facility-admin review remains unavailable until training records use immutable tenant-membership authorization." />
+    );
+  }
 
   return (
     <div className="space-y-6">

@@ -306,13 +306,14 @@ carries agency attribution either.
 Both are properties of filtering after the fact, which is why §5b's position
 stands: this layer is defense in depth, and the boundary is server-side.
 
-**`Message` is deliberately participant-scoped.** Its read policy uses
-`created_by` ∨ `data.sender_email` ∨ `data.recipients.$in` with no global admin
-arm. Direct create/update/delete are denied. New sends and atomic mark-read
-updates go through authenticated service functions that derive sender identity,
-validate the exact patient/referral/document/thread participants, and never use
-custom agency or account claims as authority. Hosted two-user and two-agency
-negative proofs are still required before production.
+**`Message` is closed at this source checkpoint.** Read/create/update/delete are
+all `false` because legacy rows have no immutable selected-tenant provenance.
+`sendMessage`, `markMessageRead`, `summarizeMessageThread`,
+`generateMessageSuggestions`, `messagingAssistant`, and `notifyUrgentMessage`
+return a literal HTTP 503 with `Cache-Control: no-store` before request parsing,
+SDK client creation, authentication, entity access, trigger processing, or AI.
+Restore the domain only after purpose-bound selected-tenant brokers, legacy-row
+backfill or quarantine, and authenticated hosted cross-tenant proof exist.
 
 ## 5d. Isolated anonymous-policy proof (updated 2026-09-03)
 
@@ -834,6 +835,179 @@ The complete source checkpoint passes 2,151 utility/core, 51 schema/contract,
 559 security, 47 deduplication, and 1,084 component tests: 3,892 package checks
 with zero failures. These are repository checks only and do not extend the
 hosted proof in §5n to this source tree.
+
+## 5p. Source-completion security checkpoint (source-only, updated 2026-09-05)
+
+Section §5o records predecessor commit
+`4da1cef19bbaaac4be6ed5f2312af4752c3d11f4`, tree
+`73beaf133a3533ccef00ed99d60d6ce7832e5b6e`. This successor remains
+source-only. The isolated staging app still runs
+`f4e41dc2d5481c7e23dd84e6e70464691bfdabd8`, tree
+`94888934ebf417071b286e3a74904c872bd70777`, with 241 schemas and 263
+functions. Current source contains 243 entity schemas and 268 backend
+functions; the additions since §5o are the all-false
+`TelecomDestinationBinding` authority schema and the
+`listMyTenantMemberships` broker. None of the hosted evidence in §5n proves
+this revision.
+
+- `Document` now denies direct create/read/update/delete. Production browser
+  code performs no direct Document SDK operation: upload, list, view, download,
+  and Document fax selection use the private-storage brokers.
+  `createAuthorizedDocument` retains only an opaque private `file_uri` in the
+  service-owned binding, while `getAuthorizedDocument` creates a purpose-bound
+  60-second signed URL with `Cache-Control: no-store`. `analyzeDocument`
+  remains a literal HTTP 503. Existing-file backfill, binding uniqueness,
+  orphan reconciliation, private-object cleanup, and stable fax-source
+  migration remain unproved.
+- `OASISAssessment` now denies all four direct operations. The only three
+  residual direct-reader source blocks are inside reviewed components whose
+  literal feature flags are false; the authorized read wrapper remains unwired.
+  OASIS v2 write, upload, analysis, submission, approval, and PDGM-dependent
+  workflows remain unavailable.
+- `UserActivity` and `SecurityLog` now deny all four direct operations and have
+  no production browser entity readers. Activity history, security history,
+  nurse-performance analysis, and security-audit conclusions render explicit
+  unavailable states rather than empty or all-clear results; their public
+  reader/analysis functions return literal no-store HTTP 503 responses before
+  SDK construction. Purpose-specific service-role appenders remain
+  containment only and still need provenance, idempotency, read-broker, and
+  hosted evidence.
+- `TelecomDestinationBinding` defines the versioned authority required to bind
+  one canonical active Telnyx credential, messaging profile, E.164 destination,
+  Agency, and provider/local-number provenance when reviewed rows are
+  provisioned; direct RLS is all false and no source function mutates it. Only a
+  verified, provider-classified signed
+  `STOP` or `START` may cross the inbound-SMS pause, and only through one exact
+  inbound-enabled binding. Consent state is scoped by integration, profile,
+  Agency, binding, and recipient; replay conflicts, ambiguous ordering,
+  duplicate authority, malformed provenance, and bounded-scan overflow fail
+  closed. Only a later valid signed `START` lifts a keyword `STOP`. HELP and
+  other inbound SMS, fax/call routing, scheduled SMS, dispatch, and redrive
+  remain literal HTTP 503. Outbound sends and manual consent changes require
+  the exact outbound-enabled binding.
+- `listMyTenantMemberships` and the hardened `getMyTenantContext` expose a
+  finite, service-owned authority handshake. They use POST-only bounded
+  streamed bodies, exact keys, no-store responses, full membership/Agency/
+  caller snapshot rechecks, and reject duplicates, foreign rows, unsafe Agency
+  labels, lifecycle drift, overflow, and mutable User claims. An explicit
+  choice is required for multiple memberships; a single membership may resolve
+  automatically; zero memberships fail closed; the protected platform owner
+  remains membership-free.
+- The SPA does not mount the protected route tree until the selected
+  membership id, version, role, Agency, and authenticated subject exactly match
+  the resolved context. Tenant/account transitions synchronously clear trusted
+  authority, cancel observed React Query reads, drain tracked TanStack
+  mutations, and clear React Query and roster caches before another context is
+  accepted. Authority-bound live drafts are
+  purged on logout, explicit switch, principal/authority change, or definitive
+  denial, integrity failure, or revocation. A transient broker failure instead
+  keeps the drafts locked while the protected tree remains blocked; only a
+  freshly verified exact same authority may restore them. The immutable
+  authority key remounts protected state after a principal, tenant, role, or
+  version change. Browser role and agency-scope helpers use only this trusted
+  context; mutable User agency/account fields and a bare built-in admin role
+  cannot grant facility access. Unbound retired offline queues are not replayed
+  automatically and remain quarantined for supervised recovery; worker/cache
+  retirement is an independent browser-only cleanup. Confirmation and toast
+  hosts are inside the keyed boundary; transition cleanup clears both toast
+  stores, and the Sonner facade stores only fixed generic severity text—never a
+  caller message, description, JSX/action, identifier, Promise, result, or
+  error—until every async operation carries an authority generation.
+- This lifecycle gate does **not** make legacy clinical reads tenant-isolated.
+  `useScopedPatients` still defaults to a direct `Patient` entity read followed
+  by browser filtering, and `agencyScope` deliberately retains rows whose
+  tenant and author are unattributable. Built-in-admin Patient RLS can therefore
+  deliver platform-wide Patient rows before that filter. Release remains
+  blocked until every full-chart consumer uses a purpose-bound server
+  projection, legacy clinical rows are tenant-stamped and backfilled or
+  quarantined, and the authenticated two-agency matrix passes. The legacy
+  browser scope also loads a platform User roster and treats its hard cap as
+  complete, while `getDashboardData` is actor-email-scoped rather than
+  selected-membership/Agency-scoped; neither is tenant-isolation proof.
+  Unknown, case-mismatched, or cap-truncated authors can remain unattributable.
+  These paths stay inside the same full-chart projection migration blocker.
+  Manifest-routed Care Plan editors also retain raw multi-stage SDK writes: an
+  old-authority continuation can resume after a tenant remount and reach broad
+  creator/admin CarePlan RLS. Those writes must move behind generation-aware,
+  purpose-bound tenant brokers before release can be considered isolated.
+- The routed secure-messaging page is explicitly unavailable in this source
+  checkpoint. Direct `Message` read/create/update/delete are all denied, all six
+  message-domain functions are statically paused before request or SDK access,
+  and production browser source has no direct Message operation or broker
+  import/invocation. Legacy rows still lack immutable Agency provenance, so
+  restore list, send, reply, read-state, AI, or urgent-trigger behavior only
+  after purpose-bound tenant brokers, authority-keyed mutation/cache behavior,
+  legacy-row backfill or quarantine, and authenticated cross-tenant proof exist.
+  An unavailable inbox is not an empty inbox or evidence of zero unread
+  messages.
+- Public signing and provider follow-up are explicitly quarantined. Twenty-three
+  signing, annotation, package, certificate, notification, reminder,
+  validation, and submission handlers return literal no-store HTTP 503 before
+  request parsing, SDK construction, or data access. Ten related schemas deny
+  create/read/update/delete, their public pages are static unavailable states,
+  and the authenticated package/signature controls are unavailable. Clinician
+  discharge signature capture and fax signature stamping are paused; unsigned
+  fax delivery remains available. This is containment, not evidence that legal
+  attestation, identity, replay/revocation, immutable audit, delivery, or native
+  signing requirements are satisfied.
+- Browser function calls no longer accept a revision override from URL,
+  browser storage, or mutable app parameters. Only an exact build-time
+  `VITE_BASE44_FUNCTIONS_VERSION` is forwarded; floating aliases and mismatches
+  fail closed. Source cannot prove which revision the hosted site resolved,
+  whether the deployed bundle carries an exact pin, or whether every older
+  addressable or cached function revision has been retired. Those are hosted
+  release evidence requirements.
+- Browser authority teardown covers retained same-tab anchors, new windows,
+  print/document contexts, forms and named targets, shadow roots, object URLs,
+  file inputs/drops, clipboard, media devices/processing, speech, audio/video,
+  and page-lifetime transitions. Guards install atomically before dynamic app
+  imports, hostile framed bootstrap is blocked, and CSP denies objects, base
+  URL rewriting, frames, and foreign form actions. These source guards do not
+  prove browser/device behavior. The History API also cannot erase older
+  cross-document history entries that may already contain raw identifiers;
+  release requires a routing design and hosted navigation proof that never
+  writes such identifiers to browser history.
+- Native iOS download handling remains a release blocker outside this source
+  authorization. `ios/PennSync/WebViewController.swift` can start a
+  `WKDownload`, and `ios/PennSync/BlobDownloadHandler.swift` can write and
+  present a share sheet after web authority closes. The native layer has no
+  authority-generation bridge that cancels/dismisses in-flight work and
+  deletes the artifact on tenant/principal change. No native source, binary,
+  or store record was changed in this checkpoint.
+- The reviewed RLS inventory is now `8 / 11 / 21` for schemas with no RLS,
+  unrestricted mutations, and unrestricted reads. The exact name sets and
+  SHA-256 fingerprints are pinned in `schemaContract.test.js`. The residual
+  cohorts are primarily education/template/reference, Referral, settings,
+  regulatory, and legacy clinical-event surfaces; containment is not hosted
+  tenant isolation.
+- Live-readiness validation now binds the canonical fixture and reviewed
+  authority artifacts to a deterministic source-contract digest. Every
+  required hosted probe must carry its own authenticated-hosted result,
+  canonical capture time, retained-artifact SHA-256, and reference. The
+  repository still does not fetch or authenticate cited artifacts or reviewer
+  identities, provision hosted fixtures, or run LR-01/LR-02; the untouched
+  evidence template must remain blocked.
+
+Local component accessibility checks pass, but the six Playwright public-route
+accessibility cases could not start in this environment because its Chromium
+executable is absent; no browser assertions ran. Frozen-tree validation passes
+2,160 utility/core, 57 schema/contract, 623 security, 47 deduplication, and
+1,390 component tests (4,277 package tests total), plus 19 component
+accessibility tests. Lint, baseline/high-signal/utility typechecks, production
+build, 268-function transpilation/invocation validation, 220-consumer shared
+helper parity, workflow lint, the 36-item OASIS worksheet, and the canonical
+no-write readiness fixture also pass. The production dependency audit reports
+one low-severity advisory and no high-severity failure. No Base44 deployment,
+schema/function push, hosted-data access or
+mutation, schedule, secret, domain, production asset, native binary, or store
+record was changed for this checkpoint. Release remains blocked on isolated-
+staging synchronization and authenticated two-agency proof, datastore
+uniqueness/CAS and migration evidence, private Document backfill, telecom-
+binding provisioning, full-chart purpose-bound broker/projection migration,
+clinical-row tenant backfill or quarantine, supervised retired-work recovery,
+tenant-provenance message brokers and migration, OASIS/PDGM clinical approval,
+device/store/privacy/signing work, backup/restore, and production cutover
+review.
 
 ---
 

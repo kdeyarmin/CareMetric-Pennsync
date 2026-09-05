@@ -24,6 +24,18 @@ const PRIORITIES = new Set(['normal', 'high', 'urgent']);
 const MAX_RECIPIENTS = 25;
 const MAX_ATTACHMENTS = 10;
 
+// Static release checkpoint: Message rows do not yet carry immutable selected-
+// tenant provenance. This literal cannot be bypassed by request or environment
+// input; the dormant implementation below remains only for authorization tests.
+const SECURE_MESSAGE_DOMAIN_PAUSED = true;
+const secureMessageUnavailable = () => Response.json(
+  {
+    error: 'Secure messaging is temporarily unavailable',
+    code: 'secure_message_tenant_broker_required',
+  },
+  { status: 503, headers: { 'Cache-Control': 'no-store' } },
+);
+
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 
 function errorResponse(error, status) {
@@ -109,16 +121,6 @@ function optionalStoredIdentifier(value) {
 
 function hasStoredIdentifier(value) {
   return value !== undefined && value !== null && value !== '';
-}
-
-function assertDocumentAccess(user, document) {
-  if (!document) return errorResponse('Document not found', 404);
-  const caller = normalizeEmail(user.email);
-  if (normalizeEmail(document.created_by) === caller
-    || isProtectedSuperAdmin(user)) {
-    return null;
-  }
-  return errorResponse('Forbidden', 403);
 }
 
 async function getById(entity, id) {
@@ -208,6 +210,8 @@ function validateAttachments(attachments, allowedUrls) {
 }
 
 Deno.serve(async (req) => {
+  if (SECURE_MESSAGE_DOMAIN_PAUSED) return secureMessageUnavailable();
+
   try {
     const base44 = createClientFromRequest(req);
     // The hosted SDK rejects (rather than returning null) for an anonymous
@@ -231,7 +235,6 @@ Deno.serve(async (req) => {
     let relatedId;
     let relatedType;
     let referralId;
-    let documentId;
     try {
       if (!Array.isArray(body.recipients) || body.recipients.length === 0) {
         throw new Error('recipients is required');
@@ -248,9 +251,11 @@ Deno.serve(async (req) => {
       relatedId = boundedString(body.related_event_id, 'related_event_id', 200);
       relatedType = boundedString(body.related_event_type, 'related_event_type', 30);
       referralId = boundedString(body.referral_id, 'referral_id', 200);
-      documentId = boundedString(body.document_id, 'document_id', 200);
+      if (body.document_id !== undefined) {
+        throw new Error('document messaging is unavailable');
+      }
       if (relatedId !== null && relatedType === null) throw new Error('related_event_type is required');
-      if (relatedType !== null && !['referral', 'document'].includes(relatedType)) {
+      if (relatedType !== null && relatedType !== 'referral') {
         throw new Error('related_event_type is not supported');
       }
       if (relatedType === 'referral') {
@@ -258,19 +263,9 @@ Deno.serve(async (req) => {
         if (referralId && referralId !== relatedId) throw new Error('referral identifiers do not match');
         referralId = relatedId;
       }
-      if (relatedType === 'document') {
-        if (!relatedId) throw new Error('related_event_id is required');
-        if (documentId && documentId !== relatedId) throw new Error('document identifiers do not match');
-        documentId = relatedId;
-      }
-      if (referralId && documentId) throw new Error('only one related record may be sent');
       if (referralId && !relatedId) {
         relatedId = referralId;
         relatedType = 'referral';
-      }
-      if (documentId && !relatedId) {
-        relatedId = documentId;
-        relatedType = 'document';
       }
     } catch (error) {
       return errorResponse(error?.message || 'Invalid message', 400);
@@ -285,25 +280,14 @@ Deno.serve(async (req) => {
     }
     recipients = recipientUsers.map((candidate) => String(candidate.email).trim());
 
-    const [referral, document] = await Promise.all([
-      getById(entities.Referral, referralId),
-      getById(entities.Document, documentId),
-    ]);
+    const referral = await getById(entities.Referral, referralId);
     if (referralId && !referral) return errorResponse('Referral not found', 404);
-    if (documentId && !document) return errorResponse('Document not found', 404);
 
     const referralPatientId = optionalStoredIdentifier(referral?.patient_id);
-    const documentPatientId = optionalStoredIdentifier(document?.patient_id);
     if (referral && hasStoredIdentifier(referral.patient_id) && !referralPatientId) {
       return errorResponse('Referral patient linkage is invalid', 409);
     }
-    if (document && hasStoredIdentifier(document.patient_id) && !documentPatientId) {
-      return errorResponse('Document patient linkage is invalid', 409);
-    }
-    if (documentId && patientId && !documentPatientId) {
-      return errorResponse('Document is not linked to the requested patient', 409);
-    }
-    const linkedPatientId = referralPatientId || documentPatientId;
+    const linkedPatientId = referralPatientId;
     if (patientId && linkedPatientId && patientId !== linkedPatientId) {
       return errorResponse('Related record belongs to a different patient', 409);
     }
@@ -320,15 +304,9 @@ Deno.serve(async (req) => {
       const denied = assertReferralAccess(user, referral, !!authorizedPatientId);
       if (denied) return denied;
     }
-    if (documentId) {
-      const denied = assertDocumentAccess(user, document);
-      if (denied) return denied;
-    }
-
     const allowedAttachmentUrls = new Set([
       referral?.document_url,
       referral?.processed_document_url,
-      document?.file_url,
     ].filter(Boolean));
     let attachments;
     try {
@@ -359,12 +337,6 @@ Deno.serve(async (req) => {
     }
     if (referral) {
       addParticipants(allowedParticipants, [referral.created_by, referral.assigned_to]);
-    }
-    if (document) {
-      // uploaded_by is a legacy client-writable data field and cannot confer
-      // authorization or recipient membership. Base44's immutable created_by
-      // provenance and an exact authorized Document→Patient link can.
-      addParticipants(allowedParticipants, [document.created_by]);
     }
     for (const message of thread.messages) {
       addParticipants(allowedParticipants, [

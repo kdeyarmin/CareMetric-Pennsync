@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
@@ -48,6 +48,10 @@ const ADMIN_TABS = ["revenue", "analytics", "audit"];
 const tabLoader = <LoadingState className="py-12" />;
 
 export default function OASISCenter() {
+  // Detailed analysis data stays in the mounted OASIS center only. Passing
+  // these clinical objects via React Router `state` writes them into browser
+  // session history, where they can survive logout or an agency switch.
+  const [analysisHandoff, setAnalysisHandoff] = useState(null);
   const { data: currentUser, isLoading: isUserLoading } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
@@ -154,7 +158,7 @@ export default function OASISCenter() {
 
         <TabsContent value="analyze">
           <Suspense fallback={tabLoader}>
-            <OASISAnalyzer />
+            <OASISAnalyzer onAnalysisHandoff={setAnalysisHandoff} />
           </Suspense>
         </TabsContent>
 
@@ -166,7 +170,7 @@ export default function OASISCenter() {
 
         <TabsContent value="clinical">
           <Suspense fallback={tabLoader}>
-            <OASISClinicalReview />
+            <OASISClinicalReview analysisHandoff={analysisHandoff} />
           </Suspense>
         </TabsContent>
 
@@ -181,13 +185,13 @@ export default function OASISCenter() {
                   </section>
                   <section className="space-y-4">
                     <h2 className="text-lg font-semibold text-slate-900">Compliance Review</h2>
-                    <OASISComplianceReview />
+                    <OASISComplianceReview analysisHandoff={analysisHandoff} />
                   </section>
                 </>
               )}
               <section className="space-y-4">
                 <h2 className="text-lg font-semibold text-slate-900">Documentation Review</h2>
-                <OASISDocumentationReview />
+                <OASISDocumentationReview analysisHandoff={analysisHandoff} />
               </section>
             </div>
           </Suspense>

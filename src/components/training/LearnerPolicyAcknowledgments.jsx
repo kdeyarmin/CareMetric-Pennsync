@@ -11,6 +11,7 @@ import { policyAcknowledgment } from "@/functions/policyAcknowledgment";
 import { toast } from "sonner";
 import { isPastLocalDueDate, formatLocalDate } from '@/lib/dateLocal';
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 // Learner-facing policy sign-off. Lists the user's PolicyAcknowledgment rows;
 // pending ones require reading the document, typing their name, and confirming.
@@ -87,9 +88,13 @@ export default function LearnerPolicyAcknowledgments() {
             </CardHeader>
             <CardContent className="space-y-3">
               {ack.doc_url && isSafeExternalUrl(ack.doc_url) ? (
-                <a href={ack.doc_url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 text-blue-600 underline hover:text-blue-700 text-sm">
+                <button
+                  type="button"
+                  onClick={() => openAuthorityBoundWindow(ack.doc_url)}
+                  className="inline-flex items-center gap-2 text-blue-600 underline hover:text-blue-700 text-sm"
+                >
                   <ExternalLink className="w-4 h-4" />Open policy document
-                </a>
+                </button>
               ) : (
                 <p className="text-sm text-slate-500">Review the current policy as communicated by your agency.</p>
               )}

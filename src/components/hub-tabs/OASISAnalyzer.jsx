@@ -125,7 +125,7 @@ function PdgmUnavailableNotice() {
   );
 }
 
-function EnabledOASISAnalyzer() {
+function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
   const [activeTab, setActiveTab] = useState("single");
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -1887,7 +1887,17 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {PDGM_LEGACY_SURFACES_ENABLED ? (
                   <FinancialGate>
-                    <Link to="/OASISCenter?tab=revenue" state={{ analysisResults, pdgmData, patientName, uploadId: analysisId }}>
+                    <Link
+                      to="/OASISCenter?tab=revenue"
+                      onClick={() => onAnalysisHandoff?.({
+                        analysisResults,
+                        pdgmData,
+                        patientName,
+                        uploadId: analysisId,
+                        patientId: selectedPatientId,
+                        navigationData,
+                      })}
+                    >
                       <Button className="w-full h-auto py-4 flex flex-col items-center gap-2">
                         <DollarSign className="w-8 h-8" />
                         <div className="text-center">
@@ -1904,7 +1914,15 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                     <p className="text-xs">Use the official EMR/CMS-approved grouper.</p>
                   </div>
                 )}
-                <Link to="/OASISCenter?tab=quality" state={{ analysisResults, pdgmData, patientName, patientId: selectedPatientId }}>
+                <Link
+                  to="/OASISCenter?tab=quality"
+                  onClick={() => onAnalysisHandoff?.({
+                    analysisResults,
+                    pdgmData,
+                    patientName,
+                    patientId: selectedPatientId,
+                  })}
+                >
                   <Button className="w-full h-auto py-4 flex flex-col items-center gap-2">
                     <Shield className="w-8 h-8" />
                     <div className="text-center">
@@ -1913,7 +1931,16 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
                     </div>
                   </Button>
                 </Link>
-                <Link to="/OASISCenter?tab=quality" state={{ analysisResults, pdgmData, patientName, navigationData, patientId: selectedPatientId }}>
+                <Link
+                  to="/OASISCenter?tab=quality"
+                  onClick={() => onAnalysisHandoff?.({
+                    analysisResults,
+                    pdgmData,
+                    patientName,
+                    navigationData,
+                    patientId: selectedPatientId,
+                  })}
+                >
                   <Button className="w-full bg-navy-600 hover:bg-navy-700 h-auto py-4 flex flex-col items-center gap-2">
                     <FileText className="w-8 h-8" />
                     <div className="text-center">
@@ -2720,7 +2747,7 @@ Return quality scores (0-100) and the top 3-5 documentation issues in each categ
   );
 }
 
-export default function OASISAnalyzer() {
+export default function OASISAnalyzer({ onAnalysisHandoff }) {
   if (!OASIS_ANALYZER_ENABLED) {
     return (
       <Card className="border-2 border-amber-300">
@@ -2748,5 +2775,5 @@ export default function OASISAnalyzer() {
     );
   }
 
-  return <EnabledOASISAnalyzer />;
+  return <EnabledOASISAnalyzer onAnalysisHandoff={onAnalysisHandoff} />;
 }

@@ -1,6 +1,3 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import App from '@/App.jsx'
 // Self-host the Inter variable font (weight axis 100–900) instead of fetching it
 // from the Google Fonts CDN. Vite bundles the woff2, so the app keeps its
 // typography with no third-party request — better for HIPAA posture and for
@@ -10,10 +7,136 @@ import '@fontsource-variable/inter'
 import '@/index.css'
 import '@/styles/button-contrast.css'
 import '@/styles/ipad.css'
-import { installAlertToToastShim } from '@/lib/alert-shim'
+import {
+  closeAuthorityBoundWindows,
+  installAuthorityBoundLinkInterceptor,
+} from '@/lib/authorityBoundWindows'
+import { installAuthorityBoundFileInputGuard } from '@/lib/authorityBoundFileInputs'
+import { installAuthorityBoundFileDropGuard } from '@/lib/authorityBoundFileDrops'
+import { poisonTenantSdkRealm } from '@/lib/tenantSdkRealmGate'
+import { isBrowserAuthorityEpochStorageKey } from '@/lib/browserAuthorityEpoch'
+import { installAuthorityBoundClipboard } from '@/lib/authorityBoundClipboard'
+import { closePublicCapabilityRealm } from '@/lib/publicCapabilityRealmGate'
 
-// Surface legacy window.alert() notifications as on-brand toasts.
-installAlertToToastShim()
+const authorityGuardCleanups = []
+
+function scrubRetiredPublicTokenBeforeAppImport() {
+  const segment = String(window.location.pathname || '').toLowerCase().split('/')[1] || ''
+  if (segment !== 'signer' && segment !== 'followup') return
+  const url = new URL(window.location.href)
+  if (!url.searchParams.has('token')) return
+  url.searchParams.delete('token')
+  // Replace the whole entry state before React Router can retain either the
+  // retired bearer or a stale clinical state object from session history.
+  window.history.replaceState({}, document.title, `${url.pathname}${url.search}${url.hash}`)
+}
+
+scrubRetiredPublicTokenBeforeAppImport()
+
+function terminallyCloseDocumentAuthority() {
+  try { poisonTenantSdkRealm() } catch { /* continue closing every realm */ }
+  try { closePublicCapabilityRealm() } catch { /* continue closing native sinks */ }
+  try { closeAuthorityBoundWindows() } catch { /* terminal close is best effort */ }
+}
+
+function currentFrameMayBootstrap() {
+  try {
+    if (window.top === window.self) return true
+  } catch {
+    return false
+  }
+  // There is no authenticated production editor handshake in this source
+  // checkpoint. Do not expose a clinical DOM to an arbitrary parent frame.
+  // Native WKWebView main frames have top === self and remain supported.
+  return false
+}
+
+function renderSecureBootstrapBlocked() {
+  const root = document.getElementById('root')
+  if (!root) return
+  const shell = document.createElement('main')
+  shell.setAttribute('role', 'alert')
+  shell.style.cssText = 'min-height:100vh;display:grid;place-items:center;background:#f8fafc;padding:24px;font-family:system-ui,sans-serif;color:#0f172a'
+  const card = document.createElement('section')
+  card.style.cssText = 'max-width:560px;border:1px solid #f59e0b;border-radius:16px;background:white;padding:24px;box-shadow:0 10px 30px rgba(15,23,42,.08)'
+  const heading = document.createElement('h1')
+  heading.textContent = 'Secure browser controls unavailable'
+  heading.style.cssText = 'font-size:22px;font-weight:700;margin:0 0 12px'
+  const message = document.createElement('p')
+  message.textContent = 'PennSync did not open a clinical workspace because this browser could not install every required privacy boundary. Close this tab and try a supported, up-to-date browser.'
+  message.style.cssText = 'font-size:15px;line-height:1.5;margin:0;color:#475569'
+  card.append(heading, message)
+  shell.append(card)
+  root.replaceChildren(shell)
+}
+
+function installDocumentAuthorityGuards() {
+  const pendingCleanups = []
+  try {
+    const installs = [
+      installAuthorityBoundLinkInterceptor,
+      installAuthorityBoundFileInputGuard,
+      installAuthorityBoundFileDropGuard,
+      installAuthorityBoundClipboard,
+    ]
+    for (const install of installs) {
+      const cleanup = install()
+      if (typeof cleanup !== 'function') {
+        throw new Error('A required browser authority guard could not be installed')
+      }
+      pendingCleanups.push(cleanup)
+    }
+  } catch (error) {
+    for (const cleanup of pendingCleanups.reverse()) {
+      try { cleanup() } catch { /* keep rolling back partial installation */ }
+    }
+    terminallyCloseDocumentAuthority()
+    throw error
+  }
+
+  // Close both raw realms before React effects or queued UI events when another
+  // same-origin context changes any SDK token or authority marker. The Auth and
+  // public providers perform their full state cleanup; this document listener
+  // remains alive even if either React tree crashes or is temporarily unmounted.
+  const closeOnAuthorityStorageTransition = (event) => {
+    if (
+      event.key === null
+      || event.key === 'base44_access_token'
+      || event.key === 'base44_pending_access_token'
+      || event.key === 'token'
+      || event.key === 'base44_app_id'
+      || event.key === 'base44_server_url'
+      || event.key === 'base44_functions_version'
+      || isBrowserAuthorityEpochStorageKey(event.key)
+    ) {
+      terminallyCloseDocumentAuthority()
+    }
+  }
+  try {
+    window.addEventListener('storage', closeOnAuthorityStorageTransition)
+  } catch (error) {
+    for (const cleanup of pendingCleanups.reverse()) {
+      try { cleanup() } catch { /* keep rolling back partial installation */ }
+    }
+    terminallyCloseDocumentAuthority()
+    throw error
+  }
+  authorityGuardCleanups.push(...pendingCleanups)
+}
+
+let documentAuthorityReady = false
+if (!currentFrameMayBootstrap()) {
+  terminallyCloseDocumentAuthority()
+  renderSecureBootstrapBlocked()
+} else {
+  try {
+    installDocumentAuthorityGuards()
+    documentAuthorityReady = true
+  } catch {
+    terminallyCloseDocumentAuthority()
+    renderSecureBootstrapBlocked()
+  }
+}
 
 // Apply the native/web color scheme before React paints. Users can override by
 // setting localStorage.theme to "light" or "dark"; otherwise the OS preference
@@ -100,7 +223,7 @@ const handleStaleChunk = (err, fallbackMessage = '') => {
   // Hard navigation with cache-buster so the browser fetches fresh chunk URLs
   // instead of serving the stale cached response that caused the error. Set only
   // the _r param on a parsed URL so existing query params (?id=, ?tab=, and the
-  // /join and /signer capability tokens) and any #hash survive the recovery reload.
+  // /join and /consent capabilities) and any #hash survive the recovery reload.
   const url = new URL(window.location.href);
   url.searchParams.set('_r', String(Date.now()));
   window.location.href = url.toString();
@@ -116,23 +239,66 @@ window.addEventListener('vite:preloadError', (e) => {
   if (handleStaleChunk(e.payload, '')) e.preventDefault();
 });
 
-// NOTE: there is no service worker any more. Offline mode was removed, and with
-// it the caching worker that backed it. A browser that registered the old one
-// keeps it until something unregisters it, so that (plus dropping its caches) is
-// handled by lib/retiredOfflineQueue.js — deleting public/sw.js alone would have
-// left existing installs serving a cached shell forever.
+// NOTE: there is no service worker any more. Offline mode was removed, and the
+// source registers no replacement. `retiredBrowserCacheCleanup` independently
+// attempts to unregister old workers and delete only their named caches without
+// importing, replaying, migrating, or deleting legacy clinical queue records.
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-)
+async function bootstrapApp() {
+  // No application/React module is evaluated until every document-lifetime
+  // native guard above has been installed and verified. This prevents an app
+  // chunk or dependency from caching an unguarded browser method during ESM's
+  // dependency-instantiation phase.
+  const { installAlertToToastShim } = await import('@/lib/alert-shim')
+  installAlertToToastShim()
+
+  // The old queue/draft recovery module is intentionally quarantined because
+  // its records predate exact tenant authority. Runtime cleanup cannot read or
+  // mutate clinical work and may proceed independently after the guards exist.
+  void import('@/lib/retiredBrowserCacheCleanup')
+    .then(({ retireLegacyBrowserCaches }) => retireLegacyBrowserCaches())
+    .catch(() => {})
+
+  const [ReactModule, ReactDomModule, AppModule] = await Promise.all([
+    import('react'),
+    import('react-dom/client'),
+    import('@/App.jsx'),
+  ])
+  const root = document.getElementById('root')
+  if (!root) throw new Error('PennSync root element is unavailable')
+  ReactDomModule.createRoot(root).render(
+    ReactModule.createElement(
+      ReactModule.StrictMode,
+      null,
+      ReactModule.createElement(AppModule.default),
+    ),
+  )
+}
+
+if (documentAuthorityReady) {
+  void bootstrapApp().catch((error) => {
+    if (handleStaleChunk(error, error?.message || '')) return
+    terminallyCloseDocumentAuthority()
+    renderSecureBootstrapBlocked()
+  })
+}
 
 if (import.meta.hot) {
+  const postHotUpdateToParent = (type) => {
+    if (window.parent === window) return
+    let parentOrigin = null
+    try {
+      parentOrigin = new URL(document.referrer).origin
+    } catch {
+      return
+    }
+    if (!/^https?:$/i.test(new URL(parentOrigin).protocol)) return
+    window.parent.postMessage({ type }, parentOrigin)
+  }
   import.meta.hot.on('vite:beforeUpdate', () => {
-    window.parent?.postMessage({ type: 'sandbox:beforeUpdate' }, '*');
+    postHotUpdateToParent('sandbox:beforeUpdate')
   });
   import.meta.hot.on('vite:afterUpdate', () => {
-    window.parent?.postMessage({ type: 'sandbox:afterUpdate' }, '*');
+    postHotUpdateToParent('sandbox:afterUpdate')
   });
 }

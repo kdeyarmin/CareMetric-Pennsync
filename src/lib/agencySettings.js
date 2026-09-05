@@ -66,8 +66,12 @@ export function fetchCallerPdgmRateConfig(_agencyName) {
 }
 
 /** @param {string | null | undefined} agencyName */
-export function fetchCallerFollowUpRuleConfig(agencyName) {
-  return fetchCallerScopedConfig('FollowUpRuleConfig', agencyName);
+export function fetchCallerFollowUpRuleConfig(_agencyName) {
+  // Follow-up rules are agency-wide policy. A caller-controlled agency_name is
+  // not authority, and there is not yet an immutable membership-scoped read
+  // broker. Use the built-in rules until that broker exists; do not read the
+  // entity directly or adopt a legacy row from another agency.
+  return Promise.resolve(null);
 }
 
 /** @param {string | null | undefined} agencyName */

@@ -403,10 +403,11 @@ Return JSON with the complete material:`,
                 <Button
                   variant="outline"
                   className="flex-1"
-                  onClick={() => window.print()}
+                  disabled
+                  title="Separate print previews are unavailable until they can be revoked with workspace authority."
                 >
                   <Download className="w-4 h-4 mr-2" />
-                  Print
+                  Print unavailable
                 </Button>
               </div>
             </CardContent>

@@ -6,7 +6,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
  * Document has no trustworthy tenant column. This broker therefore treats the
  * immutable, all-RLS-false DocumentTenantBinding as the root of authority,
  * verifies its original membership and Document preimage, and then applies
- * current Patient creator/care-team access. It is intentionally unwired.
+ * current Patient creator/care-team access. Browser view/download paths use
+ * this function instead of direct Document or stored-URL access.
  */
 
 const MAX_BODY_BYTES = 20_000;

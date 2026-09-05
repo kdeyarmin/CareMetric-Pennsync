@@ -14,6 +14,7 @@ const FUNCTION_NAMES = [
 
 const STATICALLY_PAUSED_FUNCTIONS = new Set([
   'processDischargeReport',
+  'generateFollowUpPortalToken',
 ]);
 
 function makeClient({
@@ -242,71 +243,24 @@ test('the configured protected admin reaches each handler safe input boundary', 
   }
 });
 
-test('portal-token minting rejects operator-shaped and backend-mismatched referral ids', async () => {
+test('portal-token minting stays paused for malformed and otherwise valid requests', async () => {
   const user = { email: 'owner@example.com', role: 'admin', is_active: true };
-
-  {
+  for (const body of [
+    { referral_id: { $ne: null } },
+    { referral_id: 'referral-1', provider_name: 'Provider One' },
+  ]) {
     const { client, calls } = makeClient({ user });
     const handler = await loadHandler('generateFollowUpPortalToken', client, user.email);
-    const { response } = await invoke(handler, calls, { referral_id: { $ne: null } });
+    const { response } = await invoke(handler, calls, body);
 
-    assert.equal(response.status, 400);
-    assert.deepEqual(calls.referralFilters, []);
-  }
-
-  {
-    const { client, calls } = makeClient({
-      user,
-      referralRows: [{ id: 'wrong-referral', created_by: user.email }],
-    });
-    const handler = await loadHandler('generateFollowUpPortalToken', client, user.email);
-    const { response } = await invoke(handler, calls, { referral_id: 'requested-referral' });
-
-    assert.equal(response.status, 404);
-    assert.deepEqual(calls.referralFilters[0], [
-      { id: 'requested-referral' },
-      undefined,
-      5000,
-    ]);
-    assert.deepEqual(calls.tokenFilters, []);
-    assert.deepEqual(calls.tokenCreates, []);
+    assert.equal(response.status, 503);
+    assert.equal(calls.bodyReads, 0);
+    assert.equal(privilegedCallCount(calls), 0);
   }
 });
 
-test('portal-token rotation mutates only exact active predecessors', async () => {
-  const user = { email: 'owner@example.com', role: 'admin', is_active: true };
-  const { client, calls } = makeClient({
-    user,
-    referralRows: [
-      { id: 'wrong-referral' },
-      { id: 'referral-1', created_by: 'someone@example.com' },
-    ],
-    tokenRows: [
-      { id: 'wrong-referral-token', referral_id: 'referral-2', is_active: true },
-      { id: 'inactive-token', referral_id: 'referral-1', is_active: false },
-      { id: 'active-token', referral_id: 'referral-1', is_active: true },
-      { referral_id: 'referral-1', is_active: true },
-    ],
-  });
-  const handler = await loadHandler('generateFollowUpPortalToken', client, user.email);
-  const { response, json } = await invoke(handler, calls, {
-    referral_id: ' referral-1 ',
-    provider_name: 'Provider One',
-  });
-
-  assert.equal(response.status, 200);
-  assert.equal(json.success, true);
-  assert.deepEqual(calls.tokenUpdates, [['active-token', { is_active: false }]]);
-  assert.equal(calls.tokenCreates.length, 1);
-  assert.equal(calls.tokenCreates[0].referral_id, 'referral-1');
-  assert.match(calls.tokenCreates[0].token, /^[a-f0-9]{64}$/);
-  assert.match(json.portalLink, /^https:\/\/caremetricai\.base44\.app\/followup\?token=/);
-  assert.ok(!json.portalLink.endsWith(calls.tokenCreates[0].token), 'stored hash must not be the bearer token');
-  assert.equal(calls.userLists, 0, 'mutable agency membership must not be consulted');
-});
-
-test('all three entries pin authorization to the shared protected-user helper', async () => {
-  for (const functionName of FUNCTION_NAMES) {
+test('active bulk entries pin authorization to the shared protected-user helper', async () => {
+  for (const functionName of FUNCTION_NAMES.filter((name) => !STATICALLY_PAUSED_FUNCTIONS.has(name))) {
     const source = await readFile(
       new URL(`../functions/${functionName}/entry.ts`, import.meta.url),
       'utf8',

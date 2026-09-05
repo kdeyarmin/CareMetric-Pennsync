@@ -146,25 +146,12 @@
     "content",
     "signature_fields"
   ],
+  // Signature templates are unavailable with the signing workflow. Direct
+  // access must not provide a stale browser a path around that quarantine.
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "data.is_shared": true
-        }
-      ]
-    },
-    "create": {
-      "created_by": "{{user.email}}"
-    },
-    "update": {
-      "created_by": "{{user.email}}"
-    },
-    "delete": {
-      "created_by": "{{user.email}}"
-    }
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

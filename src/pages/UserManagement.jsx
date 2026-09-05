@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey } from '@/lib/agencyRoster';
-import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -69,13 +68,13 @@ import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import ListPaginationControls from "@/components/ui/ListPaginationControls";
 import { paginateRows, clampPageSize } from "@/lib/pagination";
 import { format } from "date-fns";
-import { formatEastern } from "@/components/utils/timezone";
 import { toast } from "sonner";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import UserActivityPanel from "@/components/admin/UserActivityPanel";
+import UserActivityUnavailable from "@/components/security/UserActivityUnavailable";
 import { buildOffboardInvokeArgs } from "@/components/admin/runUserOffboard";
 import { STAFF_ROLE_OPTIONS, getStaffRole, staffRoleLabel } from "@/lib/roles";
-import { isSuperAdmin } from "@/lib/superAdmin";
+import { isAdminLike, isSuperAdmin } from "@/lib/superAdmin";
 
 export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -103,6 +102,10 @@ export default function UserManagement() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+  // Every roster/invitation read and every mutation on this page is
+  // protected by built-in role === 'admin' today. Membership-backed facility
+  // admins must not be shown controls that those APIs will reject.
+  const canManageUsers = isAdminLike(currentUser);
   const canManageOffboarding = isSuperAdmin(currentUser);
 
   const { data: allUsers = [], isLoading } = useQuery({
@@ -112,13 +115,7 @@ export default function UserManagement() {
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     },
-    enabled: isAdminView(currentUser),
-  });
-
-  const { data: userActivities = [] } = useQuery({
-    queryKey: ['userActivitiesSummary'],
-    queryFn: () => base44.entities.UserActivity.list('-created_date', 1000),
-    enabled: isAdminView(currentUser),
+    enabled: canManageUsers,
   });
 
   const { data: invitations = [] } = useQuery({
@@ -128,7 +125,7 @@ export default function UserManagement() {
       const userEmails = new Set(allUsers.map(u => (u.email || '').toLowerCase()).filter(Boolean));
       return allInvitations.filter(inv => !userEmails.has((inv.email || '').toLowerCase()));
     },
-    enabled: isAdminView(currentUser) && allUsers.length > 0,
+    enabled: canManageUsers && allUsers.length > 0,
   });
 
   // No client-side User.update mutation here on purpose. User write RLS admits
@@ -391,22 +388,6 @@ export default function UserManagement() {
   );
   const pagedUsers = userPageWindow.items;
 
-  const activityByEmail = useMemo(() => {
-    const m = new Map();
-    for (const a of userActivities) {
-      const entry = m.get(a.user_email);
-      if (entry) {
-        entry.count += 1;
-      } else {
-        m.set(a.user_email, { count: 1, last: a.created_date });
-      }
-    }
-    return m;
-  }, [userActivities]);
-
-  const getUserActivityCount = (email) => activityByEmail.get(email)?.count || 0;
-  const getUserLastActivity = (email) => activityByEmail.get(email)?.last || null;
-
   const now = new Date();
   const pendingInvitations = invitations.filter(i => i.status === 'pending' && new Date(i.expires_at) >= now);
   const expiredInvitations = invitations.filter(i => i.status === 'expired' || (i.status === 'pending' && new Date(i.expires_at) < now));
@@ -438,11 +419,11 @@ export default function UserManagement() {
     );
   };
 
-  if (!isAdminView(currentUser)) {
+  if (!canManageUsers) {
     return (
       <AccessDeniedState
-        title="Access Restricted"
-        description="Only administrators can access User Management."
+        title="Protected administrator access required"
+        description="User Management is temporarily unavailable to facility administrators until its roster, invitation, activity, and account-change APIs use immutable tenant-membership authorization."
       />
     );
   }
@@ -456,6 +437,10 @@ export default function UserManagement() {
         description="Manage user accounts, roles, and permissions"
         favoritePage="UserManagement"
       />
+
+      <div className="mb-4 sm:mb-6">
+        <UserActivityUnavailable title="User activity summaries unavailable" />
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <StatCard label="Total Users" value={stats.total} icon={Users} tone="slate" />
@@ -694,10 +679,8 @@ export default function UserManagement() {
                     <TableHead className="text-xs sm:text-sm">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                  <TableBody>
                   {pagedUsers.map((user) => {
-                    const activityCount = getUserActivityCount(user.email);
-                    const lastActivity = getUserLastActivity(user.email);
                     const isActive = user.is_active !== false;
                     return (
                       <React.Fragment key={user.id}>
@@ -729,17 +712,10 @@ export default function UserManagement() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs sm:text-sm hidden lg:table-cell">
-                          {activityCount > 0 ? `${activityCount} actions` : 'No activity'}
+                          Unavailable
                         </TableCell>
                         <TableCell className="text-xs sm:text-sm text-slate-600 hidden lg:table-cell">
-                          {lastActivity ? (
-                            <div className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {formatEastern(lastActivity, 'MMM d, yyyy')}
-                            </div>
-                          ) : (
-                            'Never'
-                          )}
+                          Unavailable
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 sm:gap-2">
@@ -748,7 +724,7 @@ export default function UserManagement() {
                               size="sm"
                               onClick={() => setExpandedActivityUser(expandedActivityUser === user.id ? null : user.id)}
                               className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 min-h-[44px] w-10 sm:w-auto p-2"
-                              title="View activity"
+                              title="Why activity history is unavailable"
                             >
                               <Activity className="w-4 h-4" />
                             </Button>

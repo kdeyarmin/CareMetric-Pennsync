@@ -7,6 +7,10 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, Sparkles, FileText } from "lucide-react";
 import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
+import {
+  assertTenantSdkRealmLeaseCurrent,
+  captureTenantSdkRealmLease,
+} from '@/lib/tenantSdkRealmGate';
 
 export default function ReferralAdmissionNote() {
   const urlParams = new URLSearchParams(window.location.search);
@@ -25,6 +29,13 @@ export default function ReferralAdmissionNote() {
 
   useEffect(() => {
     if (referral?.extracted_data) {
+      let lease;
+      try {
+        lease = captureTenantSdkRealmLease();
+        assertTenantSdkRealmLeaseCurrent(lease);
+      } catch {
+        return;
+      }
       // Format extracted data for Smart Note prepopulation with granular sections
       const data = referral.extracted_data;
       const prepopulated = {
@@ -114,17 +125,18 @@ ${data.orders_treatments?.physician_orders?.join('\n') || 'To be clarified with 
         referralData: data
       };
       
+      assertTenantSdkRealmLeaseCurrent(lease);
       setPrepopulatedData(prepopulated);
-      // Stash the prepopulation payload in sessionStorage (same-origin, cleared
-      // on tab close) instead of serializing PHI into the iframe URL query
-      // string, where it would leak into browser history, proxy/access logs,
-      // and Referer headers.
+      // Stash the prepopulation payload in authority-purged sessionStorage
+      // instead of serializing PHI into a URL query string, where it would leak
+      // into browser history, proxy/access logs, and Referer headers.
       try {
         if (referral.id) {
+          assertTenantSdkRealmLeaseCurrent(lease);
           sessionStorage.setItem(`referral_prepopulate:${referral.id}`, JSON.stringify({
             ...prepopulated,
-            // Keep patient/visit identity out of the iframe URL (history,
-            // proxy logs, Referer). SmartNoteAssistant reads these from here.
+            // Keep patient identity out of the navigation URL. The Smart Note
+            // route reads it from this authority-purged record.
             patientId: referral.patient_id || '',
             visitType: 'admission',
           }));
@@ -203,14 +215,21 @@ ${data.orders_treatments?.physician_orders?.join('\n') || 'To be clarified with 
         </CardContent>
       </Card>
 
-      {/* Smart Note Component */}
+      {/* Descendant browsing contexts are unavailable at this security
+          checkpoint. Continue in the same protected application realm. */}
       {prepopulatedData && (
         <div className="bg-white rounded-lg shadow-lg p-6">
-          <iframe
-            src={createPageUrl(`SmartNoteAssistant?visit_type=admission&referral_mode=true&referral_id=${encodeURIComponent(referral.id)}`)}
-            className="w-full h-[800px] border-0"
-            title="Smart Note Assistant"
-          />
+          <Alert className="mb-4 bg-amber-50 border-amber-300">
+            <AlertDescription className="text-amber-950">
+              Embedded clinical workspaces are disabled. Continue to Smart Note
+              in this tab to preserve the active workspace privacy boundary.
+            </AlertDescription>
+          </Alert>
+          <Link
+            to={createPageUrl(`SmartNoteAssistant?visit_type=admission&referral_mode=true&referral_id=${encodeURIComponent(referral.id)}`)}
+          >
+            <Button>Continue to Smart Note</Button>
+          </Link>
         </div>
       )}
     </div>

@@ -56,6 +56,7 @@ import DutyStatusCard from "../components/voice/DutyStatusCard";
 import { ALL_ROWS } from '@/lib/queryLimits';
 import { getStaffRole, staffRoleLabel } from "@/lib/roles";
 import { useAuth } from "@/lib/AuthContext";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 export default function UserSettings() {
   const queryClient = useQueryClient();
@@ -519,9 +520,13 @@ export default function UserSettings() {
                             <p className="text-sm text-slate-500">#{item.credential_number}</p>
                           )}
                           {item.uploaded_file_url && isSafeExternalUrl(item.uploaded_file_url) && (
-                            <a href={item.uploaded_file_url} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-600 underline hover:text-indigo-700 mt-2 inline-block">
+                            <button
+                              type="button"
+                              onClick={() => openAuthorityBoundWindow(item.uploaded_file_url)}
+                              className="text-sm text-indigo-600 underline hover:text-indigo-700 mt-2 inline-block"
+                            >
                               View Document
-                            </a>
+                            </button>
                           )}
                           {item.rejection_reason && (
                             <p className="text-sm text-red-600 mt-2 bg-red-50 p-2 rounded">

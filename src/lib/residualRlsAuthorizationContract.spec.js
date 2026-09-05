@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 const REPO_DIR = process.cwd();
 const ADMIN = { user_condition: { role: 'admin' } };
+const SERVICE_ROLE = { user_condition: { role: '__service_role_only__' } };
 const ownerOrAdmin = (field) => ({
   $or: [
     { [`data.${field}`]: '{{user.email}}' },
@@ -39,6 +40,14 @@ function directConsumers(name, operations = '(?:filter|list|get|create|update|de
     .sort();
 }
 
+function sourcesContaining(fragment, excluded = []) {
+  const exclusions = new Set(excluded);
+  return productionSources()
+    .map((path) => path.slice(REPO_DIR.length + 1))
+    .filter((path) => !exclusions.has(path) && read(path).includes(fragment))
+    .sort();
+}
+
 describe('residual RLS source containment', () => {
   it('keeps admin-only referral and compliance records behind protected routes', () => {
     for (const name of ['FaceToFaceEncounter', 'ComplianceRule']) {
@@ -57,25 +66,45 @@ describe('residual RLS source containment', () => {
     expect(manifest).toMatch(/page:\s*["']ComplianceCenter["'][\s\S]{0,300}?adminOnly:\s*true/);
   });
 
-  it('allows only protected admins to mutate shared fax and Medicare configuration', () => {
-    for (const name of ['FaxRetryConfig', 'MedicareComplianceRule']) {
-      const rls = entity(name).rls;
-      expect(rls.read, `${name}.read remains an active shared-reader debt`).toBe(true);
-      expect(rls.create, `${name}.create`).toEqual(ADMIN);
-      expect(rls.update, `${name}.update`).toEqual(ADMIN);
-      expect(rls.delete, `${name}.delete`).toBe(false);
-    }
+  it('protects fax retry policy reads and keeps clinician retry transmission paused', () => {
+    const faxRls = entity('FaxRetryConfig').rls;
+    expect(faxRls.read).toEqual(ADMIN);
+    expect(faxRls.create).toEqual(ADMIN);
+    expect(faxRls.update).toEqual(ADMIN);
+    expect(faxRls.delete).toBe(false);
 
     expect(directConsumers('FaxRetryConfig', '(?:create|update)')).toEqual([
       'src/components/admin/FaxRetryConfigPanel.jsx',
     ]);
+    expect(sourcesContaining('fetchCallerFaxRetryConfig', ['src/lib/agencySettings.js']))
+      .toEqual(['src/components/admin/FaxRetryConfigPanel.jsx']);
+
+    const panel = read('src/components/admin/FaxRetryConfigPanel.jsx');
+    expect(panel).toMatch(/const protectedAdmin\s*=\s*isAdminLike\(currentUser\)/);
+    expect(panel).toMatch(/enabled:\s*protectedAdmin/);
+    expect(panel).toMatch(/if \(isLoading \|\| !protectedAdmin\) return null/);
+
+    const history = read('src/components/fax/EnhancedFaxHistory.jsx');
+    expect(history).not.toMatch(/fetchCallerFaxRetryConfig|faxRetryConfig|retryFailedFax|retryMutation/);
+
+    const retryHandler = read('base44/functions/retryFailedFax/entry.ts');
+    expect(retryHandler).toMatch(/const FAX_TRANSMISSION_MIGRATION_PAUSED\s*=\s*true\s*;/);
+    expect(retryHandler.indexOf('if (FAX_TRANSMISSION_MIGRATION_PAUSED)'))
+      .toBeLessThan(retryHandler.indexOf('createClientFromRequest(req)'));
+  });
+
+  it('allows only protected admins to mutate shared Medicare configuration', () => {
+    const rls = entity('MedicareComplianceRule').rls;
+    expect(rls.read, 'MedicareComplianceRule.read remains an active shared-reader debt').toBe(true);
+    expect(rls.create).toEqual(ADMIN);
+    expect(rls.update).toEqual(ADMIN);
+    expect(rls.delete).toBe(false);
+
     expect(directConsumers('MedicareComplianceRule', '(?:create|update)')).toEqual([
       'src/components/compliance/MedicareRuleSeeder.jsx',
     ]);
 
-    const adminOperations = read('src/pages/AdminOperations.jsx');
     const complianceCenter = read('src/pages/ComplianceCenter.jsx');
-    expect(adminOperations).toMatch(/<SystemSettings\s*\/>/);
     expect(complianceCenter).toMatch(/\{isAdmin\s*&&\s*<MedicareRuleSeeder\s*\/>\}/);
   });
 
@@ -116,5 +145,180 @@ describe('residual RLS source containment', () => {
     expect(sender).toMatch(/sent_by:\s*currentUser\.email/);
     expect(portal).toMatch(/if \(!deliveredBy\)/);
     expect(portal).toMatch(/delivered_by:\s*deliveredBy/);
+  });
+
+  it('fails every ClinicalPathway operation closed while all direct hosts remain literally paused', () => {
+    expect(entity('ClinicalPathway').rls).toEqual({
+      read: false,
+      create: false,
+      update: false,
+      delete: false,
+    });
+    expect(directConsumers('ClinicalPathway')).toEqual([
+      'src/components/clinical/AIPathwayGenerator.jsx',
+      'src/components/clinical/AIPathwayUpdater.jsx',
+      'src/components/oasis/AIPathwayRecommender.jsx',
+      'src/components/oasis/ClinicalPathwayTrigger.jsx',
+      'src/pages/ClinicalPathwayManager.jsx',
+    ]);
+
+    expect(read('src/pages/ClinicalPathwayManager.jsx'))
+      .toMatch(/const CLINICAL_PATHWAY_MANAGER_ENABLED\s*=\s*false\s*;/);
+    expect(read('src/components/hub-tabs/OASISAnalyzer.jsx'))
+      .toMatch(/const OASIS_ANALYZER_ENABLED\s*=\s*false\s*;/);
+    expect(read('src/components/hub-tabs/OASISClinicalReview.jsx'))
+      .toMatch(/const OASIS_CLINICAL_AI_ENABLED\s*=\s*false\s*;/);
+  });
+
+  it('limits AutomaticCarePlanTrigger inventory and mutations to protected admins', () => {
+    const rls = entity('AutomaticCarePlanTrigger').rls;
+    for (const operation of ['read', 'create', 'update', 'delete']) {
+      expect(rls[operation], `AutomaticCarePlanTrigger.${operation}`).toEqual(ADMIN);
+    }
+    expect(directConsumers('AutomaticCarePlanTrigger')).toEqual([
+      'src/pages/AutomaticCarePlans.jsx',
+    ]);
+
+    const page = read('src/pages/AutomaticCarePlans.jsx');
+    expect(page).toMatch(/import \{ isAdminLike \} from ["']@\/lib\/superAdmin["']/);
+    expect(page).toMatch(/const isAdmin\s*=\s*isAdminLike\(currentUser\)/);
+    expect(page).toMatch(/enabled:\s*isAdmin/);
+    expect(page).toMatch(/if \(!isAdmin\)/);
+  });
+
+  it('scopes every MicroLearningProgress operation to the learner or protected admins', () => {
+    const rls = entity('MicroLearningProgress').rls;
+    for (const operation of ['read', 'create', 'update', 'delete']) {
+      expect(rls[operation], `MicroLearningProgress.${operation}`)
+        .toEqual(ownerOrAdmin('nurse_email'));
+    }
+    expect(directConsumers('MicroLearningProgress')).toEqual([
+      'src/components/hub-tabs/NurseTraining.jsx',
+      'src/components/training/AIComplianceQuizGenerator.jsx',
+      'src/components/training/InteractiveDocumentationScenarios.jsx',
+      'src/components/training/LearnerMemoryBoosters.jsx',
+      'src/hooks/useMyTrainingCompletions.js',
+    ]);
+  });
+
+  it('exposes PhoneNumber inventory only to protected admins and keeps writes service-owned', () => {
+    const rls = entity('PhoneNumber').rls;
+    expect(rls.read).toEqual(ADMIN);
+    for (const operation of ['create', 'update', 'delete']) {
+      expect(rls[operation], `PhoneNumber.${operation}`).toEqual(SERVICE_ROLE);
+    }
+    expect(directConsumers('PhoneNumber')).toEqual([
+      'src/components/admin/NumberPoolPanel.jsx',
+    ]);
+
+    const panel = read('src/components/admin/NumberPoolPanel.jsx');
+    expect(panel).toMatch(/const isAdmin\s*=\s*isAdminLike\(currentUser\)/);
+    expect(panel).toMatch(/queryFn:\s*\(\)\s*=>\s*base44\.entities\.PhoneNumber\.list[\s\S]{0,120}?enabled:\s*isAdmin/);
+  });
+
+  it('hard-pauses FollowUpRuleConfig reads and leaves callers on built-in rules', () => {
+    expect(entity('FollowUpRuleConfig').rls).toEqual({
+      read: false,
+      create: SERVICE_ROLE,
+      update: SERVICE_ROLE,
+      delete: SERVICE_ROLE,
+    });
+    expect(directConsumers('FollowUpRuleConfig')).toEqual([]);
+    expect(sourcesContaining('fetchCallerFollowUpRuleConfig', ['src/lib/agencySettings.js']))
+      .toEqual([
+        'src/components/referral/ProviderFaxRequestCard.jsx',
+        'src/pages/ReferralFollowUp.jsx',
+      ]);
+
+    const settings = read('src/lib/agencySettings.js');
+    const helper = settings.slice(
+      settings.indexOf('export function fetchCallerFollowUpRuleConfig'),
+      settings.indexOf('export function fetchCallerPayerRateConfig'),
+    );
+    expect(helper).toMatch(/return Promise\.resolve\(null\)/);
+    expect(helper).not.toMatch(/fetchCallerScopedConfig|base44\.entities|base44\.functions/);
+    for (const caller of [
+      'src/components/referral/ProviderFaxRequestCard.jsx',
+      'src/pages/ReferralFollowUp.jsx',
+    ]) {
+      expect(read(caller), caller).toMatch(/ruleConfig:\s*ruleConfig\s*\|\|\s*undefined/);
+    }
+  });
+
+  it('allows only the generating clinician or a protected admin to create or update discharge summaries', () => {
+    const rls = entity('DischargeSummary').rls;
+    expect(rls.create).toEqual(ownerOrAdmin('generated_by'));
+    expect(rls.update).toEqual(ownerOrAdmin('generated_by'));
+    expect(rls.delete).toBe(false);
+    expect(directConsumers('DischargeSummary')).toEqual([
+      'src/components/discharge/DischargeSummaryWorkflow.jsx',
+      'src/components/hub-tabs/DischargeSummaries.jsx',
+    ]);
+    expect(directConsumers('DischargeSummary', 'create')).toEqual([]);
+    expect(directConsumers('DischargeSummary', 'update')).toEqual([
+      'src/components/discharge/DischargeSummaryWorkflow.jsx',
+    ]);
+    expect(read('base44/functions/generateDischargeSummary/entry.ts'))
+      .toMatch(/entities\.DischargeSummary\.create\([\s\S]{0,3000}?generated_by:\s*user\.email/);
+  });
+
+  it('matches ClinicalLibraryFolder authorization to templates and keeps foreign shared folders read-only', () => {
+    expect(entity('ClinicalLibraryFolder').rls)
+      .toEqual(entity('ClinicalLibraryTemplate').rls);
+    expect(directConsumers('ClinicalLibraryFolder')).toEqual([
+      'src/components/clinical/ClinicalLibraryManager.jsx',
+    ]);
+
+    const manager = read('src/components/clinical/ClinicalLibraryManager.jsx');
+    expect(manager).toMatch(/const isProtectedAdmin\s*=\s*isAdminLike\(currentUser\)/);
+    expect(manager).toMatch(/folder\.created_by === currentUser\.email/);
+    expect(manager).toMatch(/canEditFolder=\{canManageFolder\}/);
+
+    const tree = read('src/components/clinical/FolderTreeView.jsx');
+    expect(tree).toMatch(/canEditFolder\s*=\s*\(_folder\)\s*=>\s*false/);
+    expect(tree).toMatch(/const canEdit\s*=\s*canEditFolder\(folder\)\s*===\s*true/);
+    expect(tree).toMatch(/\{canEdit && \(/);
+  });
+
+  it('protects NoteConversion creation by nurse identity and prohibits browser updates', () => {
+    const noteConversion = entity('NoteConversion');
+    const rls = noteConversion.rls;
+    expect(noteConversion.properties.recovery_request_id).toMatchObject({ type: 'string' });
+    expect(rls.create).toEqual(ownerOrAdmin('nurse_email'));
+    expect(rls.update).toBe(false);
+    expect(rls.delete).toBe(false);
+    expect(directConsumers('NoteConversion', 'create')).toEqual([
+      'src/components/smartNote/persistVisitNote.js',
+      'src/lib/retiredOfflineQueue.js',
+    ]);
+    expect(directConsumers('NoteConversion', 'update')).toEqual([]);
+    expect(directConsumers('NoteConversion', '(?:filter|list|get)')).toEqual([
+      'src/components/admin/NoteConversionReport.jsx',
+      'src/components/admin/QualityMetricsDashboard.jsx',
+      'src/components/admin/ReportsCenter.jsx',
+      'src/components/reports/NursePerformanceReport.jsx',
+      'src/lib/retiredOfflineQueue.js',
+      'src/pages/AgencyAnalytics.jsx',
+      'src/pages/AnalyticsDashboard.jsx',
+    ]);
+
+    expect(read('src/components/smartNote/persistVisitNote.js'))
+      .toMatch(/nurseEmail:\s*currentUser\.email/);
+    const retired = read('src/lib/retiredOfflineQueue.js');
+    const createCase = retired.slice(retired.indexOf("case 'CREATE_VISIT'"));
+    const identityCheck = createCase.indexOf('await bindNoteConversionToCaller(');
+    const visitCreate = createCase.indexOf('createAuthorizedVisit(fields, functions)');
+    const visitAuthorityCheck = createCase.indexOf('requireAuthorizedVisit(');
+    const conversionReconcile = createCase.indexOf('await reconcileNoteConversion(');
+    expect(identityCheck).toBeGreaterThan(-1);
+    expect(identityCheck).toBeLessThan(visitCreate);
+    expect(visitAuthorityCheck).toBeGreaterThan(visitCreate);
+    expect(conversionReconcile).toBeGreaterThan(visitAuthorityCheck);
+    expect(createCase).not.toMatch(/if\s*\(\s*result\.created\s*\)/);
+    expect(retired).toMatch(/nurse_email:\s*String\(user\.email\)\.trim\(\)/);
+    expect(retired).toMatch(/'legacy-note-conversion-v1',[\s\S]{0,500}?authority\.sourceRecordId,[\s\S]{0,300}?authority\.visitRequestId/);
+    expect(retired).toMatch(/entities\.NoteConversion\.filter\(\s*\{ recovery_request_id: recoveryRequestId \},\s*'-created_date',\s*EXACT_RECOVERY_ROW_LIMIT/);
+    expect(retired).toMatch(/if \(rows\.length >= EXACT_RECOVERY_ROW_LIMIT\)/);
+    expect(retired).toMatch(/if \(rows\.length === 1\)[\s\S]{0,200}?requireMatchingNoteConversion/);
   });
 });

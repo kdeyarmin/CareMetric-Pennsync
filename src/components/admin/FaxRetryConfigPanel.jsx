@@ -9,6 +9,7 @@ import { Switch } from "@/components/ui/switch";
 import { RefreshCw, Save, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { fetchCallerFaxRetryConfig } from "@/lib/agencySettings";
+import { isAdminLike } from "@/lib/superAdmin";
 
 /**
  * FaxRetryConfigPanel — admin editor for the FaxRetryConfig entity that drives
@@ -28,11 +29,15 @@ export default function FaxRetryConfigPanel() {
     queryFn: () => base44.auth.me(),
   });
 
+  // FaxRetryConfig is global legacy policy with protected role:admin RLS. An
+  // AgencyMembership-backed facility admin must not issue a read that the
+  // entity cannot safely tenant-scope.
+  const protectedAdmin = isAdminLike(currentUser);
   const agencyKey = currentUser?.agency_name || null;
   const { data: config = null, isLoading } = useQuery({
     queryKey: ["fax-retry-config", agencyKey],
     queryFn: () => fetchCallerFaxRetryConfig(agencyKey),
-    enabled: !!currentUser,
+    enabled: protectedAdmin,
     initialData: null,
   });
 
@@ -67,7 +72,7 @@ export default function FaxRetryConfigPanel() {
   const delay = Number(form.retry_delay_minutes);
   const maxRetriesValid = Number.isInteger(maxRetries) && maxRetries >= 0 && maxRetries <= 10;
   const delayValid = Number.isFinite(delay) && delay >= 1 && delay <= 360;
-  const canSave = maxRetriesValid && delayValid && !save.isPending && !!currentUser;
+  const canSave = maxRetriesValid && delayValid && !save.isPending && protectedAdmin;
 
   const handleSave = () => {
     const agency = String(currentUser?.agency_name || "").trim();
@@ -81,7 +86,7 @@ export default function FaxRetryConfigPanel() {
     });
   };
 
-  if (isLoading || !currentUser) return null;
+  if (isLoading || !protectedAdmin) return null;
 
   return (
     <Card>

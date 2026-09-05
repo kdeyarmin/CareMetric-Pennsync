@@ -13,6 +13,7 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import LoadingState from "@/components/ui/LoadingState";
 import AdminOnboardingChecklistStrip from "@/components/admin/AdminOnboardingChecklistStrip";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 export default function AgencySettings() {
   const queryClient = useQueryClient();
@@ -222,14 +223,13 @@ export default function AgencySettings() {
                 />
                 <p className="text-xs text-slate-500">
                   Find your wage index at{' '}
-                  <a 
-                    href="https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health/home-health-pps-wage-index" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
+                  <button
+                    type="button"
+                    onClick={() => openAuthorityBoundWindow("https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health/home-health-pps-wage-index")}
                     className="text-blue-600 hover:underline"
                   >
                     CMS.gov
-                  </a>
+                  </button>
                 </p>
               </div>
               <Alert className="bg-blue-50 border-blue-200">

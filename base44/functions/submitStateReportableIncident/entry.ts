@@ -354,8 +354,9 @@ Deno.serve(async (req) => {
       throw new Error('Incident create returned an invalid identifier');
     }
 
-    // 2) Generate + store a PDF copy as a retained Document (best-effort).
-    let pdfUrl = null;
+    // 2) Generate + privately retain a PDF through the binding-aware broker
+    // (best-effort). No storage URI or short-lived signed URL is copied into
+    // Incident, Notification, email, or the response.
     let documentId = null;
     try {
       const pdfBytes = renderReportPdf(reportText);
@@ -363,28 +364,25 @@ Deno.serve(async (req) => {
       const fileName = `State_Reportable_${safeType}_${payload.event_date || ''}.pdf`;
       const blob = new Blob([pdfBytes], { type: 'application/pdf' });
       const file = new File([blob], fileName, { type: 'application/pdf' });
-      const uploadResult = await base44.asServiceRole.integrations.Core.UploadFile({ file });
-      pdfUrl = uploadResult.file_url;
-
-      const document = await base44.asServiceRole.entities.Document.create({
-        title: `State Reportable Event – ${payload.event_type}`,
-        description: `State-reportable incident report for ${patientName}`,
-        file_url: pdfUrl,
-        file_name: fileName,
-        file_type: 'application/pdf',
-        category: 'state_reportable_incident',
+      const retained = await base44.functions.invoke('createAuthorizedDocument', {
+        file,
+        agency_id: incidentPatient.agency_id,
         patient_id: scopedPatientId,
-        tags: ['state_reportable', 'incident'],
-        document_date: payload.event_date,
-        uploaded_by: callerEmail,
-        is_sensitive: true,
+        purpose: 'patient_document',
+        client_request_id: incidentId,
       });
-      documentId = typeof document?.id === 'string' && document.id.trim().length <= 200
-        ? document.id.trim()
+      const retainedResult = retained?.data ?? retained;
+      const retainedId = retainedResult?.document?.id;
+      documentId = typeof retainedId === 'string' && retainedId.trim().length <= 200
+        ? retainedId.trim()
         : null;
-    } catch (pdfErr) {
-      // Retention failures must be visible in server logs (message-only, no PHI).
-      console.warn('State-reportable PDF/Document retention failed:', pdfErr?.message);
+      if (!documentId || retainedResult?.success !== true) {
+        throw new Error('Authorized Document retention returned an invalid result');
+      }
+    } catch {
+      // Static only: provider messages can contain filenames, identifiers, and
+      // storage details.
+      console.warn('State-reportable private Document retention failed');
     }
 
     // 3) Notify directly related protected admins plus the configured platform
@@ -429,7 +427,7 @@ Deno.serve(async (req) => {
               incident_id: incidentId,
               patient_id: scopedPatientId,
               state_reportable: true,
-              document_url: pdfUrl,
+              document_id: documentId,
             },
           })
             .then(() => { notifiedCount += 1; })
@@ -446,9 +444,9 @@ Deno.serve(async (req) => {
         intro: `A state reportable event has been submitted for ${patientName} and requires immediate follow-up.`,
         sections: [
           { pre: reportText },
-          ...(pdfUrl
-            ? [{ button: { href: pdfUrl, label: 'Download the report (PDF)' } }]
-            : [{ note: 'A PDF copy could not be generated automatically; the full report text is above.' }]),
+          ...(documentId
+            ? [{ note: 'A private PDF copy was retained in PennSync and requires current document authorization.' }]
+            : [{ note: 'A PDF copy could not be retained automatically; the full report text is above.' }]),
           { note: 'Please review and follow up in the Incident Reporting module.' },
         ],
       });
@@ -470,10 +468,9 @@ Deno.serve(async (req) => {
       );
     }
 
-    // 4) Record the alert audit + PDF link on the retained incident.
+    // 4) Record the alert audit and opaque Document id on the retained incident.
     try {
       await base44.asServiceRole.entities.Incident.update(incidentId, {
-        ...(pdfUrl ? { state_reportable_pdf_url: pdfUrl } : {}),
         ...(recipients.length > 0
           ? { state_reportable_alert_sent_at: new Date().toISOString() }
           : {}),
@@ -495,7 +492,7 @@ Deno.serve(async (req) => {
     return Response.json({
       success: true,
       incident_id: incidentId,
-      document_url: pdfUrl,
+      document_url: null,
       pdf_retained: !!documentId,
       admin_count: adminList.length,
       admins_notified: notifiedCount,

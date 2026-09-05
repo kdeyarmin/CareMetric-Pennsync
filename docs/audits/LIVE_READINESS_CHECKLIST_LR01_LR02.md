@@ -47,7 +47,13 @@ pnpm run readiness:fixture:validate -- docs/audits/live-readiness-fixture-manife
 
 The validator pins the plan to isolated staging app
 `6a9881683dc68a0bd54f1ef7`, rejects production/unreviewed targets and
-credential/PHI-shaped fields, and requires exactly this authority graph:
+credential/PHI-shaped fields, and requires exactly this authority graph. It
+also computes `source_contract.source_authority_contract_sha256` over a fixed,
+sorted set of readiness, authority-schema, broker, and local contract-test
+sources. The same run statically checks the server-owned RLS posture, canonical
+fixture enum/default support, required broker markers, and the hard-disabled
+care-team assignment mutation gate. It performs no network access or hosted
+writes.
 
 | Actor | Expected roster | Why it is diagnostic |
 |---|---|---|
@@ -63,14 +69,35 @@ assignment check. The committed manifest contains aliases and environment
 variable names only; it contains no email, password, token, patient name, or
 clinical value.
 
-An exit code `0` validates only the LR-01 authority topology and the shared
-actor/patient prerequisites for LR-02. The manifest does not encode or provision
-the Referral action required by S3 or the Visit action required by S4. It does
-not provision anything or count as hosted evidence. At the 2026-09-04 staging
-checkpoint the reviewed `managePatientCareTeamAssignment` broker is withheld,
-so the final assignment cannot yet be provisioned through an approved path. Do
-not use direct entity CRUD to manufacture a passing matrix. Create
-Referral/Visit during S3/S4, not as pre-seeded substitutes for those flows.
+An exit code `0` validates the local plan and pinned static source contract; it
+does not mean LR-01 or LR-02 passed. The output deliberately remains
+`blocked_until_authenticated_hosted_evidence_and_reviews_exist`, reports that
+no authenticated hosted probe ran, and lists every source limitation. Preserve
+the emitted source-contract digest for the evidence packet; the report command
+recomputes it from the exact clean checkout and rejects drift.
+
+The manifest does not encode or provision the Referral action required by S3
+or the Visit action required by S4. It does not provision anything or count as
+hosted evidence. At the 2026-09-04 staging checkpoint the reviewed
+`managePatientCareTeamAssignment` broker is withheld, so the final assignment
+cannot yet be provisioned through an approved path. The source contract also
+records that S3 lacks a reviewed immutable-tenant Referral broker and the S4
+Visit-create broker still uses legacy Patient assignment fields rather than
+`PatientCareTeamAssignment`. These are stop conditions, not locally satisfiable
+evidence. Do not use direct entity CRUD or legacy assignment fields to
+manufacture a passing matrix. Create Referral/Visit during S3/S4 only after
+reviewed canonical authority paths exist.
+
+Run the static and executable source contracts before any hosted work:
+
+```bash
+pnpm run test:contracts
+pnpm run test:security
+```
+
+Passing source tests proves only the checked-in contracts under their local
+mocks. It cannot prove deployed bytes, platform RLS behavior, datastore
+atomicity, authenticated sessions, or hosted outcomes.
 
 ---
 
@@ -89,6 +116,7 @@ external evidence, receipt, and inventory attestations remain outstanding.
 - [ ] Admin-A/Admin-B have active server-owned `AgencyMembership.tenant_role=agency_admin` in Agencies A/B; both clinicians have active Agency A `clinician` memberships
 - [ ] Fictional patients A1/A2 belong to Agency A and B1 belongs to Agency B; only Clinician-A has an active server-owned `PatientCareTeamAssignment` to A1
 - [ ] The committed canonical fixture plan passes `pnpm run readiness:fixture:validate -- docs/audits/live-readiness-fixture-manifest.template.json`; separately verify every planned actor/row exists in hosted staging
+- [ ] Record the emitted `source_authority_contract_sha256` from the exact clean candidate checkout; do not hand-enter a digest from another worktree
 - [ ] `INTERNAL_FN_SECRET`, `SIGNATURE_HMAC_SECRET` set in the platform (never `VITE_*`)
 
 ### Configuration steps
@@ -130,7 +158,7 @@ external evidence, receipt, and inventory attestations remain outstanding.
 | `security_approval` | Security sign-off on secure-broker V1–V6 and cross-tenant T1–T4 evidence |
 | `hosted_environment` | References corroborating the exact app/frontend/backend target, fixture set, candidate commit/tree, hosted runtime commit/tree, complete immutable deployment receipt, and equal externally reviewed candidate/hosted inventory-attestation hashes with the same explicit scope/exclusions (no secrets) |
 | `credentials_or_sandbox` | Confirmation the canonical five actors and A1/A2/B1 fixtures exist (no passwords in the packet) |
-| `test_evidence` | A run-index reference plus at least one retained raw secure-broker artifact reference under every required `probes.V1`–`V6` and `probes.T1`–`T4` entry |
+| `test_evidence` | A run-index reference plus a complete `authenticated_hosted` attestation under every required `probes.V1`–`V6` and `probes.T1`–`T4`: `result`, canonical UTC `captured_at`, SHA-256 of the retained probe bundle, and at least one artifact reference |
 | `rollback_plan` | Summary + link to runbook section |
 | `monitoring_plan` | Summary + log/alert destinations |
 | `reviewers` | `product` / `security` / `qa` / `release` → `approved` when done |
@@ -173,26 +201,33 @@ external evidence, receipt, and inventory attestations remain outstanding.
 ### Evidence packet fields
 
 Same eight evidence keys as LR-01. `test_evidence.references` identifies the run
-index, and every required `test_evidence.probes.S1`–`S4` entry needs at least one
-retained artifact reference. Attach S5–S9 evidence only for optional/in-scope
-flows actually exercised; identify unexercised optional flows explicitly.
+index, and every required `test_evidence.probes.S1`–`S4` entry needs a complete
+`authenticated_hosted` attestation: `result`, canonical UTC `captured_at`,
+SHA-256 of the retained probe bundle, and at least one artifact reference.
+Attach S5–S9 evidence only for optional/in-scope flows actually exercised;
+identify unexercised optional flows explicitly. A supplied optional probe that
+is failed, blocked, or structurally incomplete blocks the packet.
 
 ---
 
 ## Report generation
 
-1. Validate the no-write fixture plan with `pnpm run readiness:fixture:validate -- docs/audits/live-readiness-fixture-manifest.template.json`
+1. Validate the no-write fixture plan and pinned static source contract with `pnpm run readiness:fixture:validate -- docs/audits/live-readiness-fixture-manifest.template.json`; retain the emitted `source_authority_contract_sha256`
 2. Provision and verify the canonical hosted fixture through reviewed paths; a local validator pass is not provisioning evidence
 3. Copy `docs/audits/live-readiness-evidence.template.json` → a local (non-committed) file, e.g. `tmp/live-readiness-evidence.json`
 4. Keep the canonical fixture set, staging app id, and frontend origin
    unchanged; replace every `FILL_ME`, including backend origin, candidate
-   commit/tree, hosted runtime commit/tree, a complete immutable deployment
+   commit/tree, locally emitted source-authority-contract digest, hosted runtime commit/tree, a complete immutable deployment
    receipt, and equal hashes of externally reviewed candidate/hosted resource
    inventories with the same explicit scope and exclusions. A functions version
    is partial corroboration only; it cannot replace the whole-deployment receipt.
    This repository does not generate either inventory or retrieve hosted state.
    Fill summaries and **references**, including every required per-probe map,
-   with actual supporting artifacts stored outside the repo if they contain PHI
+   with actual supporting artifacts stored outside the repo if they contain
+   PHI. Each supplied probe must say `execution_context: authenticated_hosted`,
+   record `result: pass|fail|blocked`, use a canonical UTC millisecond timestamp,
+   and bind its retained probe bundle by lowercase SHA-256. Links alone are not
+   a complete probe attestation
 5. Set each reviewer to `"approved"` only after human review
 6. Run:
 
@@ -206,12 +241,17 @@ export READINESS_HOSTED_RESOURCE_MANIFEST_SHA256="<externally-reviewed-hosted-in
 pnpm run readiness:report -- tmp/live-readiness-evidence.json
 ```
 
-7. Exit code `0` = the exact LR-01/LR-02 packet is structurally complete and
-   bound to the clean checkout plus independently supplied deployment context;
+7. Exit code `0` = the exact LR-01/LR-02 packet is structurally complete, every
+   required hosted probe is explicitly attested as authenticated and passing,
+   and the packet is bound to the clean checkout, its locally recomputed source
+   authority contract, plus independently supplied deployment context;
    `1` = blocked; `2` = invalid input. It is not proof without the retained raw
    artifacts and human review
 8. Attach the JSON report to the release candidate notes and retain the private
-   evidence packet by the report's `evidencePacketSha256`
+   evidence packet by the report's `evidencePacketSha256`. The report's
+   `assurance` object intentionally says that artifact bytes were not fetched
+   and reviewer identities were not cryptographically verified; those remain
+   external release-review responsibilities
 
 **Do not commit real evidence JSON with credentials, tokens, or PHI.**
 

@@ -14,7 +14,6 @@ import jsPDF from "jspdf";
 
 export default function FaxCoverSheetGenerator({
   patientId,
-  documentId,
   recipientNumber,
   recipientName,
   pageCount = 1,
@@ -63,7 +62,6 @@ export default function FaxCoverSheetGenerator({
     try {
       const result = await base44.functions.invoke('generateFaxCoverPage', {
         patient_id: patientId || null,
-        document_id: documentId || null,
         recipient_number: recipientNumber || "",
         recipient_name: recipientName || "",
         recipient_organization: form.recipient_organization,

@@ -1,0 +1,179 @@
+{
+  "name": "TelecomDestinationBinding",
+  "type": "object",
+  "description": "Service-owned authority binding one normalized Telnyx destination and provider credential to exactly one Agency. Provider, destination, and tenant identity are immutable; lifecycle changes require a versioned backend workflow. Mutable User and PhoneNumber fields are never routing authority.",
+  "properties": {
+    "binding_key": {
+      "type": "string",
+      "description": "Canonical telnyx:<integration_secret_id>:<destination_e164> identity. Code must still reject duplicate active rows because schema-level uniqueness is not assumed."
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "telnyx"
+      ]
+    },
+    "integration_secret_id": {
+      "type": "string",
+      "description": "Exact service-only IntegrationSecret id whose Telnyx credential owns this destination."
+    },
+    "destination_e164": {
+      "type": "string",
+      "description": "Canonical provider destination in E.164 form."
+    },
+    "provider_number_id": {
+      "type": "string",
+      "description": "Exact Telnyx phone-number resource id verified when the binding was established."
+    },
+    "phone_number_id": {
+      "type": "string",
+      "description": "Exact local PhoneNumber inventory id retained as provenance only; the mutable inventory row is not authority."
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Base44 Agency id that owns this provider destination."
+    },
+    "messaging_profile_id": {
+      "type": "string",
+      "description": "Exact Telnyx Messaging Profile id. SMS opt-in/out state is scoped by this profile and recipient."
+    },
+    "voice_connection_id": {
+      "type": "string",
+      "description": "Exact Telnyx Call Control connection id when voice inbound is enabled."
+    },
+    "fax_connection_id": {
+      "type": "string",
+      "description": "Exact Telnyx Fax Application connection id when fax inbound is enabled."
+    },
+    "sms_inbound_enabled": {
+      "type": "boolean",
+      "description": "Whether this authority anchor may receive signed inbound SMS events."
+    },
+    "sms_outbound_enabled": {
+      "type": "boolean",
+      "description": "Whether this authority anchor may originate an outbound SMS after a scoped consent check."
+    },
+    "voice_inbound_enabled": {
+      "type": "boolean"
+    },
+    "fax_inbound_enabled": {
+      "type": "boolean"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "suspended",
+        "revoked"
+      ]
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "telnyx_purchase",
+        "legacy_backfill"
+      ],
+      "description": "Reviewed workflow that established the immutable identity binding."
+    },
+    "created_by_user_id": {
+      "type": "string",
+      "description": "Immutable built-in Base44 User id of the protected creator."
+    },
+    "created_by_user_email_normalized": {
+      "type": "string",
+      "format": "email"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "activated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "suspended_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "revocation_reason": {
+      "type": "string"
+    },
+    "last_transition_by_user_id": {
+      "type": "string",
+      "description": "Immutable built-in Base44 User id of the latest lifecycle actor."
+    },
+    "last_transition_by_email_normalized": {
+      "type": "string",
+      "format": "email"
+    },
+    "last_transition_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_transition_reason": {
+      "type": "string",
+      "description": "Bounded server-reviewed reason for the latest lifecycle state."
+    },
+    "last_transition_action": {
+      "type": "string",
+      "enum": [
+        "bind",
+        "activate",
+        "suspend",
+        "revoke"
+      ]
+    },
+    "last_transition_request_id": {
+      "type": "string",
+      "description": "Bounded idempotency input supplied to the future binding-management broker."
+    },
+    "last_transition_request_key": {
+      "type": "string",
+      "description": "Server-derived <binding_key>:<last_transition_request_id> idempotency key for the lifecycle transition."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Positive integer lifecycle revision maintained by a service-owned workflow."
+    }
+  },
+  "required": [
+    "binding_key",
+    "provider",
+    "integration_secret_id",
+    "destination_e164",
+    "provider_number_id",
+    "phone_number_id",
+    "agency_id",
+    "messaging_profile_id",
+    "sms_inbound_enabled",
+    "sms_outbound_enabled",
+    "voice_inbound_enabled",
+    "fax_inbound_enabled",
+    "status",
+    "source",
+    "created_by_user_id",
+    "created_by_user_email_normalized",
+    "created_at",
+    "activated_at",
+    "last_transition_by_user_id",
+    "last_transition_by_email_normalized",
+    "last_transition_at",
+    "last_transition_reason",
+    "last_transition_action",
+    "last_transition_request_id",
+    "last_transition_request_key",
+    "version"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}

@@ -22,11 +22,135 @@ const MUTATORS = [
   'bulkUpsert',
 ];
 const MUTATOR_PATTERN = MUTATORS.join('|');
+const IDENTIFIER = '[$A-Z_a-z][$\\w]*';
+
+const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 const normalizeMemberAccess = (source) => source.replace(
   /\[\s*(['"])([$A-Z_a-z][$\w]*)\1\s*\]/g,
   '.$2',
 );
+
+function possibleStaticStrings(expression, constants = new Map()) {
+  const parts = expression.trim().split(/\s*\+\s*/);
+  let values = [''];
+  for (const part of parts) {
+    const literal = part.match(/^(['"`])([^'"`]*)\1$/);
+    let partValues;
+    if (literal) {
+      partValues = [literal[2]];
+    } else if (new RegExp(`^${IDENTIFIER}$`).test(part) && constants.has(part)) {
+      partValues = [...constants.get(part)];
+    } else {
+      return [];
+    }
+    const next = [];
+    for (const prefix of values) {
+      for (const suffix of partValues) {
+        next.push(prefix + suffix);
+        if (next.length >= 64) break;
+      }
+      if (next.length >= 64) break;
+    }
+    values = next;
+  }
+  return values;
+}
+
+function normalizeEntityMemberAccess(rawSource, entityName) {
+  let source = normalizeMemberAccess(rawSource)
+    .replace(/\?\.\s*(?=\[)/g, '')
+    .replace(/\?\.\s*/g, '.');
+  const staticKeys = new Map();
+  const declaration = new RegExp(
+    `\\b(?:const|let|var)\\s+(${IDENTIFIER})\\s*=\\s*([^;\\n]+)`,
+    'g',
+  );
+  const declarations = [...source.matchAll(declaration)];
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const match of declarations) {
+      const values = possibleStaticStrings(match[2], staticKeys);
+      if (!values.length) continue;
+      const known = staticKeys.get(match[1]) || new Set();
+      for (const value of values) {
+        if (!known.has(value)) {
+          known.add(value);
+          changed = true;
+        }
+      }
+      staticKeys.set(match[1], known);
+    }
+  }
+  for (const [key, values] of staticKeys) {
+    if (!values.has(entityName)) continue;
+    source = source.replace(
+      new RegExp(`\\[\\s*${escapeRegExp(key)}\\s*\\]`, 'g'),
+      `.${entityName}`,
+    );
+  }
+  source = source.replace(/\[\s*([^\]\n]+)\s*\]/g, (whole, expression) => (
+    possibleStaticStrings(expression, staticKeys).includes(entityName)
+      ? `.${entityName}`
+      : whole
+  ));
+  return source;
+}
+
+function entityHandleFindings(rawSource, entityName) {
+  const source = normalizeEntityMemberAccess(rawSource, entityName);
+  const findings = [];
+  const entityAliases = new Set();
+
+  for (const match of source.matchAll(new RegExp(
+    `\\b(?:const|let|var)\\s+(${IDENTIFIER})\\s*=\\s*[^;\\n]*\\.entities\\b`,
+    'g',
+  ))) entityAliases.add(match[1]);
+  for (const match of source.matchAll(new RegExp(
+    `\\b(?:const|let|var)\\s*\\{[^}]*\\bentities(?:\\s*:\\s*(${IDENTIFIER}))?[^}]*\\}\\s*=`,
+    'g',
+  ))) entityAliases.add(match[1] || 'entities');
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const match of source.matchAll(new RegExp(
+      `\\b(?:const|let|var)\\s+(${IDENTIFIER})\\s*=\\s*(${IDENTIFIER})\\s*(?:;|\\n)`,
+      'g',
+    ))) {
+      if (entityAliases.has(match[2]) && !entityAliases.has(match[1])) {
+        entityAliases.add(match[1]);
+        changed = true;
+      }
+    }
+  }
+
+  const escapedEntity = escapeRegExp(entityName);
+  for (const match of source.matchAll(new RegExp(`\\bentities\\.${escapedEntity}\\b`, 'g'))) {
+    findings.push(match[0]);
+  }
+  for (const alias of entityAliases) {
+    const escapedAlias = escapeRegExp(alias);
+    for (const match of source.matchAll(new RegExp(`\\b${escapedAlias}\\.${escapedEntity}\\b`, 'g'))) {
+      findings.push(match[0]);
+    }
+    for (const match of source.matchAll(new RegExp(
+      `\\b(?:const|let|var)\\s*\\{[^}]*\\b${escapedEntity}(?:\\s*:\\s*${IDENTIFIER})?[^}]*\\}\\s*=\\s*${escapedAlias}\\b`,
+      'g',
+    ))) findings.push(match[0]);
+  }
+  for (const match of source.matchAll(new RegExp(
+    `\\b(?:const|let|var)\\s*\\{[^}]*\\b${escapedEntity}(?:\\s*:\\s*${IDENTIFIER})?[^}]*\\}\\s*=\\s*[^;\\n]*\\.entities\\b`,
+    'g',
+  ))) findings.push(match[0]);
+  for (const match of source.matchAll(new RegExp(
+    `\\b(?:const|let|var)\\s*\\{[^{}]*\\bentities\\s*:\\s*\\{[^{}]*\\b${escapedEntity}(?:\\s*:\\s*${IDENTIFIER})?[^{}]*\\}[^{}]*\\}\\s*=`,
+    'g',
+  ))) findings.push(match[0]);
+
+  return [...new Set(findings)];
+}
 
 function mutationFindings(rawSource) {
   const source = normalizeMemberAccess(rawSource);
@@ -129,22 +253,100 @@ const agreementRequest = (body, method = 'POST') => new Request('http://local/ac
   ...(method === 'POST' ? { body: JSON.stringify(body) } : {}),
 });
 
-test('UserActivity is admin-readable but denies every direct SDK write', async () => {
+test('UserActivity denies every direct browser operation until tenant provenance exists', async () => {
   const schema = JSON5.parse(await readFile(
     new URL('../entities/UserActivity.jsonc', import.meta.url),
     'utf8',
   ));
 
   assert.deepEqual(schema.rls, {
-    read: {
-      user_condition: {
-        role: 'admin',
-      },
-    },
+    read: false,
     create: false,
     update: false,
     delete: false,
   });
+});
+
+test('browser source cannot obtain UserActivity history or invoke the paused broker', async () => {
+  const violations = [];
+  for (const url of await sourceFiles(new URL('../../src/', import.meta.url))) {
+    const source = await readFile(url, 'utf8');
+    const handles = entityHandleFindings(source, 'UserActivity');
+    if (handles.length) violations.push(`${url.pathname}: ${handles.join(', ')}`);
+    if (/\b(?:functions\.)?invoke\s*\(\s*['"]getUserActivityLog['"]/.test(source)) {
+      violations.push(`${url.pathname}: getUserActivityLog invocation`);
+    }
+    if (/\b(?:functions\.)?invoke\s*\(\s*['"](?:analyzeNursePerformance|runSecurityAudit)['"]/.test(source)) {
+      violations.push(`${url.pathname}: provenance-derived analysis invocation`);
+    }
+  }
+  assert.deepEqual(violations, []);
+
+  const broker = await readFile(
+    new URL('../functions/getUserActivityLog/entry.ts', import.meta.url),
+    'utf8',
+  );
+  assert.match(broker, /code:\s*'USER_ACTIVITY_LOG_PAUSED'/);
+  assert.match(broker, /status:\s*503/);
+  assert.match(broker, /'Cache-Control':\s*'no-store'/);
+  assert.doesNotMatch(
+    broker,
+    /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|account_type|agency_name/,
+  );
+
+  const unavailable = await readFile(
+    new URL('../../src/components/security/UserActivityUnavailable.jsx', import.meta.url),
+    'utf8',
+  );
+  assert.match(unavailable, /immutable agency provenance/);
+  assert.match(unavailable, /tenant-authorized server broker/);
+  assert.match(unavailable, /must not be interpreted as zero events or an all-clear result/);
+
+  for (const [name, code] of [
+    ['analyzeNursePerformance', 'NURSE_PERFORMANCE_ANALYSIS_PAUSED'],
+    ['runSecurityAudit', 'SECURITY_AUDIT_PAUSED'],
+  ]) {
+    const source = await readFile(
+      new URL(`../functions/${name}/entry.ts`, import.meta.url),
+      'utf8',
+    );
+    assert.match(source, new RegExp(`code:\\s*'${code}'`));
+    assert.match(source, /status:\s*503/);
+    assert.match(source, /'Cache-Control':\s*'no-store'/);
+    assert.doesNotMatch(
+      source,
+      /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|InvokeLLM|account_type|agency_name/,
+      `${name} must fail before every authority, input, data, or AI operation`,
+    );
+  }
+
+  const personalized = await readFile(
+    new URL('../functions/generatePersonalizedTraining/entry.ts', import.meta.url),
+    'utf8',
+  );
+  assert.doesNotMatch(personalized, /entities\.UserActivity/);
+
+});
+
+test('UserActivity handle scanner covers aliases, destructuring, optional chains, and computed keys', () => {
+  for (const sample of [
+    `base44?.entities?.UserActivity?.list?.();`,
+    `const { UserActivity: ledger } = base44.entities; ledger.filter({});`,
+    `const entityName = 'User' + 'Activity'; base44.entities[entityName].get('x');`,
+    `base44.entities['User' + "Activity"].filter({});`,
+    `const suffix = 'Activity'; const entityName = 'User' + suffix; base44.entities[entityName];`,
+    `const models = base44['entities']; const ledger = models?.[\`UserActivity\`];`,
+    `const { entities: models } = base44; const { UserActivity } = models;`,
+    `const { entities: { UserActivity: ledger } } = base44; ledger.list();`,
+  ]) {
+    assert.notDeepEqual(entityHandleFindings(sample, 'UserActivity'), [], sample);
+  }
+
+  assert.deepEqual(entityHandleFindings(`
+    const label = 'UserActivity';
+    renderUnavailable(label);
+    base44.entities.SecurityLog.list();
+  `, 'UserActivity'), []);
 });
 
 test('frontend cannot append UserActivity and backend appends use service role', async () => {

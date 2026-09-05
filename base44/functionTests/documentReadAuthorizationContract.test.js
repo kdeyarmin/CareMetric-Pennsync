@@ -315,7 +315,7 @@ const listBody = (overrides = {}) => ({
   ...overrides,
 });
 
-test('Document read brokers are unwired, projection-bounded, and mutation-free', async () => {
+test('Document read brokers are wired, projection-bounded, and mutation-free', async () => {
   const [getSource, listSource] = await Promise.all(
     Object.values(brokerFiles).map((url) => readFile(url, 'utf8')),
   );
@@ -350,12 +350,36 @@ test('Document read brokers are unwired, projection-bounded, and mutation-free',
       if (entry.name === 'functions') continue;
       const child = join(directory.pathname, entry.name);
       if (entry.isDirectory()) files.push(...await walk(pathToFileURL(`${child}/`)));
-      else if (/\.[cm]?[jt]sx?$/.test(entry.name)) files.push(child);
+      else if (/\.[cm]?[jt]sx?$/.test(entry.name) && !/\.(?:test|spec)\./.test(entry.name)) {
+        files.push(child);
+      }
     }
     return files;
   }
-  const uiSources = await Promise.all((await walk(srcRoot)).map((file) => readFile(file, 'utf8')));
-  assert.equal(uiSources.some((source) => /getAuthorizedDocument|listAuthorizedDocuments/.test(source)), false);
+  const uiFiles = await walk(srcRoot);
+  const uiSources = await Promise.all(uiFiles.map((file) => readFile(file, 'utf8')));
+  const wired = uiFiles.filter((_, index) => (
+    /getAuthorizedDocument|listAuthorizedDocuments/.test(uiSources[index])
+  ));
+  assert.ok(
+    wired.some((file) => file.endsWith('/hooks/useAuthorizedDocuments.js')),
+    wired.join(', '),
+  );
+  assert.ok(
+    wired.some((file) => file.endsWith('/components/documents/DocumentList.jsx')),
+    wired.join(', '),
+  );
+  assert.ok(
+    wired.some((file) => file.endsWith('/components/fax/DocumentFaxSender.jsx')),
+    wired.join(', '),
+  );
+  for (let index = 0; index < uiSources.length; index += 1) {
+    assert.doesNotMatch(
+      uiSources[index],
+      /base44\.entities\.Document\.(?:list|filter|get|create|update|delete)\s*\(/,
+      uiFiles[index],
+    );
+  }
 });
 
 test('exact read validates binding, historical membership, Patient, Document, and a narrow projection at disclosure', async () => {

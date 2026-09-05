@@ -352,7 +352,7 @@ async function sourceFiles(directoryUrl) {
   return output;
 }
 
-test('DocumentTenantBinding is service-owned while direct Document mutation debt only permits the legacy uploader', async () => {
+test('DocumentTenantBinding and Document are broker-only and the private uploader is wired', async () => {
   const bindingSchema = JSON5.parse(await readFile(bindingEntityUrl, 'utf8'));
   const documentSchema = JSON5.parse(await readFile(documentEntityUrl, 'utf8'));
   assert.equal(bindingSchema.name, 'DocumentTenantBinding');
@@ -375,9 +375,12 @@ test('DocumentTenantBinding is service-owned while direct Document mutation debt
   assert.equal(Object.hasOwn(bindingSchema.properties, 'file_url'), false);
   assert.equal(bindingSchema.properties.version.default, 2);
   assert.deepEqual(bindingSchema.properties.purpose.enum, ['patient_document', 'referral']);
-  assert.notEqual(documentSchema.rls.create, false);
-  assert.equal(documentSchema.rls.update, false);
-  assert.equal(documentSchema.rls.delete, false);
+  assert.deepEqual(documentSchema.rls, {
+    read: false,
+    create: false,
+    update: false,
+    delete: false,
+  });
 
   const wrapper = await readFile(wrapperUrl, 'utf8');
   assert.match(wrapper, /functions\.invoke\('createAuthorizedDocument', payload\)/);
@@ -391,7 +394,8 @@ test('DocumentTenantBinding is service-owned while direct Document mutation debt
     const source = await readFile(path, 'utf8');
     if (/createAuthorizedDocument/.test(source)) wired.push(path);
   }
-  assert.deepEqual(wired, [], `broker must remain unwired: ${wired.join(', ')}`);
+  assert.equal(wired.length, 1, `unexpected create broker consumers: ${wired.join(', ')}`);
+  assert.ok(wired[0].endsWith('/components/documents/DocumentUploader.jsx'), wired[0]);
 
   const directMutations = { create: [], update: [], delete: [] };
   for (const path of await sourceFiles(sourceRootUrl)) {
@@ -405,11 +409,7 @@ test('DocumentTenantBinding is service-owned while direct Document mutation debt
   }
   assert.deepEqual(directMutations.update, [], 'browser Document.update must remain denied');
   assert.deepEqual(directMutations.delete, [], 'hard deletion is unavailable');
-  assert.equal(directMutations.create.length, 1, 'only the pinned legacy uploader create debt may remain');
-  assert.ok(
-    directMutations.create[0].endsWith('/components/documents/DocumentUploader.jsx'),
-    directMutations.create[0],
-  );
+  assert.deepEqual(directMutations.create, [], 'browser Document.create must remain denied');
 });
 
 test('authorized patient upload orders authority, private upload, metadata create, binding, and readbacks', async () => {

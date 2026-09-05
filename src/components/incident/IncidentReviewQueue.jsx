@@ -16,6 +16,7 @@ import {
   incidentNeedsCorrectiveAction,
 } from "@/components/incident/incidentLifecycle";
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 const severityClasses = {
   low: "bg-emerald-100 text-emerald-800",
@@ -172,22 +173,27 @@ function IncidentReviewCard({ incident, actorEmail }) {
             {incident.photo_urls?.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {incident.photo_urls.filter((url) => isSafeExternalUrl(url)).map((url) => (
-                  <a key={url} href={url} target="_blank" rel="noopener noreferrer" className="block">
-                    <img src={url} alt="Incident" className="h-20 w-20 rounded-lg object-cover border" />
-                  </a>
+                  <button
+                    key={url}
+                    type="button"
+                    onClick={() => openAuthorityBoundWindow(url)}
+                    className="inline-flex min-h-10 items-center gap-2 rounded-md border bg-white px-3 text-sm text-slate-700"
+                    aria-label="Open incident photo"
+                  >
+                    <ImageIcon className="h-4 w-4" /> Open incident photo
+                  </button>
                 ))}
               </div>
             )}
 
             {incident.state_reportable_pdf_url && isSafeExternalUrl(incident.state_reportable_pdf_url) && (
-              <a
-                href={incident.state_reportable_pdf_url}
-                target="_blank"
-                rel="noopener noreferrer"
+              <button
+                type="button"
+                onClick={() => openAuthorityBoundWindow(incident.state_reportable_pdf_url)}
                 className="inline-flex items-center gap-1.5 text-xs font-medium text-navy-700 hover:underline"
               >
                 <ImageIcon className="w-3.5 h-3.5" /> View state-reportable PDF
-              </a>
+              </button>
             )}
 
             {incident.status !== "resolved" ? (

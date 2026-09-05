@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { FileDown, Loader2 } from "lucide-react";
 import jsPDF from "jspdf";
+import { downloadAuthorityBoundBlob } from '@/lib/downloadBlob';
 import { todayEastern } from "../utils/timezone";
 
 const VISIT_TYPE_LABELS = {
@@ -270,7 +271,7 @@ export default function SmartNotePDFExporterEnhanced({
       }
 
       const filename = `${patient?.last_name || "Patient"}_${todayEastern()}_ClinicalNote.pdf`;
-      doc.save(filename);
+      downloadAuthorityBoundBlob(doc.output('blob'), filename);
     } catch (err) {
       console.error("PDF export error:", err);
       toast.error("Failed to export PDF. Please try again.");

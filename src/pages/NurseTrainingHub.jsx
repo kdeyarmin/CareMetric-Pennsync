@@ -1,9 +1,9 @@
-import { lazy, Suspense, useState, useEffect } from "react";
+import { lazy, Suspense, useEffect } from "react";
 import { useSearchParams, useNavigate } from "react-router";
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useMyTrainingCompletions } from "@/hooks/useMyTrainingCompletions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -22,19 +22,15 @@ import {
   TrendingUp,
   Clock,
   CheckCircle2,
-  Loader2,
-  Brain,
-  Lightbulb,
   PlayCircle,
   GraduationCap
 } from "lucide-react";
-import InteractiveTrainingModule from "../components/training/InteractiveTrainingModule";
-import PersonalizedTrainingRecommender from "../components/training/PersonalizedTrainingRecommender";
 import PageContainer from "@/components/ui/PageContainer";
 import EmbeddedPage from "@/components/ui/embeddedPage";
 import PageHeader from "@/components/ui/PageHeader";
 import LoadingState from "@/components/ui/LoadingState";
 import StatCard from "@/components/ui/stat-card";
+import UserActivityUnavailable from "@/components/security/UserActivityUnavailable";
 import { ALL_ROWS } from '@/lib/queryLimits';
 
 // Lazy spoke — the former Nurse Training (documentation skills) page is now a tab.
@@ -48,9 +44,6 @@ const TAB_KEYS = ["personalized", "required", "library", "progress", "documentat
 const tabLoader = <LoadingState className="py-12" />;
 
 export default function NurseTrainingHub() {
-  const [_selectedModule, setSelectedModule] = useState(null);
-  const [activeTraining, setActiveTraining] = useState(null);
-
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
   const activeTab = TAB_KEYS.includes(requestedTab) ? requestedTab : "personalized";
@@ -71,7 +64,6 @@ export default function NurseTrainingHub() {
     }
   }, [requestedTab, activeTab, setSearchParams]);
 
-  const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const { data: currentUser } = useQuery({
@@ -88,81 +80,6 @@ export default function NurseTrainingHub() {
   // Live completion data (course assignments/certs) + AI micro-training progress,
   // replacing the retired per-module TrainingCompletion entity.
   const { completedCourseIds, scoreByCourse, microProgress, assignments } = useMyTrainingCompletions(currentUser?.email);
-
-  const { data: skillGaps = [] } = useQuery({
-    queryKey: ['mySkillGaps', currentUser?.email],
-    queryFn: async () => {
-      const response = await base44.functions.invoke('analyzeNursePerformance', {
-        nurse_email: currentUser?.email,
-        date_range_days: 30
-      });
-      const data = response.data || response;
-      return data.skill_gaps || [];
-    },
-    enabled: !!currentUser?.email,
-    initialData: []
-  });
-
-  const generateTrainingMutation = useMutation({
-    mutationFn: async (skillGap) => {
-      const response = await base44.functions.invoke('generatePersonalizedTraining', {
-        skill_gap: skillGap
-      });
-      return response.data || response;
-    },
-    onSuccess: (data) => {
-      setActiveTraining(data);
-    }
-  });
-
-  // AI-generated personalized training completions are recorded as
-  // MicroLearningProgress (the live entity for AI micro-learning) rather than the
-  // retired TrainingCompletion. Real catalog courses go through the course
-  // player + grading pipeline via startTrainingMutation instead.
-  const completeModuleMutation = useMutation({
-    mutationFn: async ({ score, _timeSpent }) => {
-      return await base44.entities.MicroLearningProgress.create({
-        nurse_email: currentUser.email,
-        skill_area: activeTraining?.title || activeTraining?.skill_gap || 'Personalized training',
-        module_type: 'micro_lesson',
-        status: 'completed',
-        score,
-        attempts: 1,
-        source: 'ai_recommendation',
-        content: activeTraining || {},
-      });
-    },
-    onMutate: async ({ score }) => {
-      const queryKey = ['my-micro-progress', currentUser?.email];
-      await queryClient.cancelQueries({ queryKey });
-      const previousProgress = queryClient.getQueryData(queryKey) || [];
-      const optimisticCompletion = {
-        id: `optimistic-${Date.now()}`,
-        nurse_email: currentUser?.email,
-        skill_area: activeTraining?.title || activeTraining?.skill_gap || 'Personalized training',
-        module_type: 'micro_lesson',
-        status: 'completed',
-        score,
-        attempts: 1,
-        source: 'ai_recommendation',
-        content: activeTraining || {},
-        created_date: new Date().toISOString(),
-        updated_date: new Date().toISOString(),
-        is_optimistic: true,
-      };
-      queryClient.setQueryData(queryKey, [optimisticCompletion, ...previousProgress]);
-      return { queryKey, previousProgress };
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['my-micro-progress', currentUser?.email] });
-      setActiveTraining(null);
-      setSelectedModule(null);
-    },
-    onError: (_error, _variables, context) => {
-      if (context?.queryKey) queryClient.setQueryData(context.queryKey, context.previousProgress || []);
-      toast.error('Could not save completion. Please try again.');
-    }
-  });
 
   // Launch a module's course as a completable assignment. Reuses an existing
   // assignment for this nurse+course if one exists (so we don't pile up
@@ -223,29 +140,13 @@ export default function NurseTrainingHub() {
     ? Math.round((completedModulesCount / trainingModules.length) * 100)
     : 0;
 
-  if (activeTraining) {
-    return (
-      <InteractiveTrainingModule
-        trainingData={activeTraining}
-        onComplete={(score, timeSpent) => {
-          completeModuleMutation.mutate({
-            moduleId: 'ai_generated',
-            score,
-            timeSpent
-          });
-        }}
-        onExit={() => setActiveTraining(null)}
-      />
-    );
-  }
-
   return (
     <PageContainer>
       <PageHeader
         icon={GraduationCap}
         eyebrow="Training"
         title="Nurse Training Hub"
-        description="AI-powered personalized training and skill development"
+        description="Required training, course progress, and documentation education"
         favoritePage="NurseTrainingHub"
       />
 
@@ -254,7 +155,7 @@ export default function NurseTrainingHub() {
         <StatCard label="Completion Rate" value={`${completionRate}%`} icon={Award} tone="blue" />
         <StatCard label="Completed" value={completedModulesCount} icon={CheckCircle2} tone="emerald" />
         <StatCard label="In Progress" value={inProgressCount} icon={Clock} tone="orange" />
-        <StatCard label="Skill Gaps" value={skillGaps.length} icon={Target} tone="red" />
+        <StatCard label="Skill Gaps" value="Unavailable" icon={Target} tone="red" />
       </div>
 
       <EmbeddedPage>
@@ -286,56 +187,7 @@ export default function NurseTrainingHub() {
 
         {/* AI Personalized Training */}
         <TabsContent value="personalized" className="space-y-6">
-          <PersonalizedTrainingRecommender
-            skillGaps={skillGaps}
-            onStartTraining={(gap) => generateTrainingMutation.mutate(gap)}
-            isGenerating={generateTrainingMutation.isPending}
-          />
-
-          {/* AI-Generated Training Section */}
-          {skillGaps.length > 0 && (
-            <Card>
-              <CardHeader className="border-b border-slate-100">
-                <CardTitle className="flex items-center gap-2">
-                  <Brain className="w-5 h-5 text-navy-600" />
-                  Generate Custom Training
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="p-6">
-                <p className="text-slate-700 mb-4">
-                  Select a skill gap to generate personalized AI training content with lessons, scenarios, and quizzes.
-                </p>
-                <div className="space-y-2">
-                  {skillGaps.map((gap, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-4 bg-navy-50 rounded-lg border border-navy-200">
-                      <div className="flex-1">
-                        <p className="font-semibold text-slate-900">{gap.skill}</p>
-                        <p className="text-sm text-slate-600">{gap.recommendation}</p>
-                        <Badge variant="destructive" className="mt-2">{gap.gap_severity} priority</Badge>
-                      </div>
-                      <Button
-                        onClick={() => generateTrainingMutation.mutate(gap.skill)}
-                        disabled={generateTrainingMutation.isPending}
-                        className="bg-navy-600 hover:bg-navy-700"
-                      >
-                        {generateTrainingMutation.isPending ? (
-                          <>
-                            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                            Generating...
-                          </>
-                        ) : (
-                          <>
-                            <Lightbulb className="w-4 h-4 mr-2" />
-                            Generate Training
-                          </>
-                        )}
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          )}
+          <UserActivityUnavailable title="Personalized skill-gap analysis unavailable" />
         </TabsContent>
 
         {/* Required Training */}
