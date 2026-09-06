@@ -38,6 +38,14 @@ const TENANT_ROLES = new Set([
 ]);
 const ENABLED_AGENCY_STATUSES = new Set(['active', 'trial']);
 const AGENCY_WIDE_VISIT_ROLES = new Set(['agency_admin', 'manager']);
+const ASSIGNMENT_STATUSES = new Set(['active', 'suspended', 'revoked']);
+const ASSIGNMENT_SOURCES = new Set([
+  'manual',
+  'patient_creator',
+  'legacy_assigned_nurses',
+  'legacy_provider_patient_assignment',
+]);
+const ASSIGNMENT_ACTIONS = new Set(['grant', 'activate', 'suspend', 'revoke']);
 
 // These are clinical Visit fields accepted from the authenticated caller. All
 // tenant/identity stamps and automation claim fields are deliberately absent.
@@ -102,6 +110,22 @@ function exactIdentifier(value: unknown) {
 function requireRows(value: unknown, label: string) {
   if (!Array.isArray(value)) throw new Error(`${label} returned a non-array result`);
   return value as Array<Record<string, unknown>>;
+}
+
+function canonicalJson(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalJson);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([key, nested]) => [key, canonicalJson(nested)]),
+    );
+  }
+  return value;
+}
+
+function sameValue(left: unknown, right: unknown) {
+  return JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right));
 }
 
 function validCalendarDate(value: unknown) {
@@ -241,6 +265,9 @@ async function loadExactActivePatient(
     'Patient.filter',
   );
   if (rawRows.length >= EXACT_ROW_LIMIT) throw new PublicError(409, 'Patient is ambiguous');
+  if (rawRows.some((row) => row?.id !== patientId)) {
+    throw new PublicError(409, 'Patient query scope could not be verified');
+  }
   const exactRows = rawRows.filter((row) => row?.id === patientId);
   if (exactRows.length === 0) throw new PublicError(403, 'Patient is unavailable');
   if (exactRows.length !== 1) throw new PublicError(409, 'Patient is ambiguous');
@@ -261,6 +288,9 @@ async function loadExactEnabledAgency(entities: Record<string, any>, agencyId: s
     'Agency.filter',
   );
   if (rawRows.length >= EXACT_ROW_LIMIT) throw new PublicError(409, 'Agency is ambiguous');
+  if (rawRows.some((row) => row?.id !== agencyId)) {
+    throw new PublicError(409, 'Agency query scope could not be verified');
+  }
   const exactRows = rawRows.filter((row) => row?.id === agencyId);
   if (exactRows.length !== 1) throw new PublicError(403, 'Agency is unavailable');
   if (!ENABLED_AGENCY_STATUSES.has(String(exactRows[0].status || ''))) {
@@ -283,21 +313,182 @@ async function loadExactActiveMembership(
     ),
     'AgencyMembership.filter',
   );
+  if (rawMemberships.some((row) => row?.user_id !== userId || row?.agency_id !== agencyId)) {
+    throw new PublicError(409, 'Tenant membership query scope could not be verified');
+  }
   return resolveActiveMembership(rawMemberships, userId, normalizedEmail, agencyId);
 }
 
-function requireExistingPatientAccess(
-  patient: Record<string, unknown>,
-  membership: Record<string, unknown>,
+function assignmentKey(agencyId: string, patientId: string, userId: string) {
+  return `${agencyId}:${patientId}:${userId}`;
+}
+
+function transitionRequestKey(key: string, requestId: string) {
+  return `${key}:${requestId}`;
+}
+
+function validateAssignmentIntegrity(
+  row: Record<string, unknown>,
+  patientId: string,
+  agencyId: string,
+  userId: string,
   normalizedEmail: string,
+  membership: Record<string, unknown>,
 ) {
-  if (AGENCY_WIDE_VISIT_ROLES.has(String(membership.tenant_role || ''))) return;
-  const isOwner = normalizeEmail(patient.created_by) === normalizedEmail;
-  const isAssigned = Array.isArray(patient.assigned_nurses)
-    && patient.assigned_nurses.some((email) => normalizeEmail(email) === normalizedEmail);
-  if (!isOwner && !isAssigned) {
-    throw new PublicError(403, 'Patient is unavailable');
+  const key = assignmentKey(agencyId, patientId, userId);
+  const id = exactIdentifier(row.id);
+  const userEmail = normalizeEmail(row.user_email_normalized);
+  const creatorEmail = normalizeEmail(row.created_by_user_email_normalized);
+  const transitionEmail = normalizeEmail(row.last_transition_by_email_normalized);
+  const requestId = exactIdentifier(row.last_transition_request_id);
+  const status = typeof row.status === 'string' ? row.status : '';
+  const action = typeof row.last_transition_action === 'string'
+    ? row.last_transition_action
+    : '';
+  if (
+    !id
+    || row.assignment_key !== key
+    || row.agency_id !== agencyId
+    || row.patient_id !== patientId
+    || row.user_id !== userId
+    || !userEmail
+    || row.user_email_normalized !== userEmail
+    || userEmail !== normalizedEmail
+    || row.assignee_membership_id !== membership.id
+    || row.assignee_membership_version_at_enablement !== membership.version
+    || !Number.isSafeInteger(row.assignee_membership_version_at_enablement)
+    || Number(row.assignee_membership_version_at_enablement) < 1
+    || !ASSIGNMENT_STATUSES.has(status)
+    || !ASSIGNMENT_SOURCES.has(String(row.source || ''))
+    || !exactIdentifier(row.created_by_user_id)
+    || !creatorEmail
+    || row.created_by_user_email_normalized !== creatorEmail
+    || !validInstant(row.activated_at)
+    || (row.suspended_at != null && !validInstant(row.suspended_at))
+    || (status === 'suspended' && !validInstant(row.suspended_at))
+    || (row.revoked_at != null && !validInstant(row.revoked_at))
+    || (status === 'revoked' && (
+      !validInstant(row.revoked_at) || !boundedReason(row.revocation_reason)
+    ))
+    || (status !== 'revoked' && (row.revoked_at != null || row.revocation_reason != null))
+    || !exactIdentifier(row.last_transition_by_user_id)
+    || !transitionEmail
+    || row.last_transition_by_email_normalized !== transitionEmail
+    || !validInstant(row.last_transition_at)
+    || !boundedReason(row.last_transition_reason)
+    || !ASSIGNMENT_ACTIONS.has(action)
+    || (status === 'active' && action !== 'grant' && action !== 'activate')
+    || (status === 'suspended' && action !== 'suspend')
+    || (status === 'revoked' && action !== 'revoke')
+    || !requestId
+    || row.last_transition_request_key !== transitionRequestKey(key, requestId)
+    || !Number.isSafeInteger(row.version)
+    || Number(row.version) < 1
+  ) {
+    throw new PublicError(409, 'Care-team assignment integrity check failed');
   }
+  return row;
+}
+
+async function loadExactActiveAssignment(
+  entities: Record<string, any>,
+  patientId: string,
+  agencyId: string,
+  userId: string,
+  normalizedEmail: string,
+  membership: Record<string, unknown>,
+) {
+  const key = assignmentKey(agencyId, patientId, userId);
+  const rows = requireRows(
+    await entities.PatientCareTeamAssignment.filter(
+      { assignment_key: key, agency_id: agencyId, patient_id: patientId, user_id: userId },
+      '-updated_date',
+      EXACT_ROW_LIMIT,
+    ),
+    'PatientCareTeamAssignment.filter',
+  );
+  if (rows.length >= EXACT_ROW_LIMIT) {
+    throw new PublicError(409, 'Care-team assignment is ambiguous');
+  }
+  if (rows.some((row) => (
+    row?.assignment_key !== key
+    || row?.agency_id !== agencyId
+    || row?.patient_id !== patientId
+    || row?.user_id !== userId
+  ))) {
+    throw new PublicError(409, 'Care-team assignment query scope could not be verified');
+  }
+  if (rows.length === 0) throw new PublicError(403, 'Patient is unavailable');
+  if (rows.length !== 1) throw new PublicError(409, 'Care-team assignment is ambiguous');
+  const assignment = validateAssignmentIntegrity(
+    rows[0],
+    patientId,
+    agencyId,
+    userId,
+    normalizedEmail,
+    membership,
+  );
+  if (assignment.status !== 'active') throw new PublicError(403, 'Patient is unavailable');
+  return assignment;
+}
+
+function visitCreateAccessSnapshot(
+  membership: Record<string, unknown>,
+  assignment: Record<string, unknown> | null,
+) {
+  return {
+    membership: {
+      id: membership.id,
+      membership_key: membership.membership_key,
+      status: membership.status,
+      tenant_role: membership.tenant_role,
+      version: membership.version,
+      last_transition_at: membership.last_transition_at,
+    },
+    basis: assignment ? 'care_team_assignment' : 'agency_wide',
+    assignment: assignment ? {
+      id: assignment.id,
+      assignment_key: assignment.assignment_key,
+      status: assignment.status,
+      version: assignment.version,
+      assignee_membership_id: assignment.assignee_membership_id,
+      assignee_membership_version_at_enablement:
+        assignment.assignee_membership_version_at_enablement,
+      last_transition_at: assignment.last_transition_at,
+    } : null,
+  };
+}
+
+async function loadVisitCreateAccess(
+  entities: Record<string, any>,
+  patientId: string,
+  agencyId: string,
+  userId: string,
+  normalizedEmail: string,
+  membership: Record<string, unknown>,
+  expectedSnapshot: Record<string, unknown> | null = null,
+) {
+  const tenantRole = String(membership.tenant_role || '');
+  let assignment: Record<string, unknown> | null = null;
+  if (AGENCY_WIDE_VISIT_ROLES.has(tenantRole)) {
+    assignment = null;
+  } else if (tenantRole === 'clinician') {
+    assignment = await loadExactActiveAssignment(
+      entities,
+      patientId,
+      agencyId,
+      userId,
+      normalizedEmail,
+      membership,
+    );
+  } else {
+    throw new PublicError(403, 'Tenant role cannot create Visits');
+  }
+  const snapshot = visitCreateAccessSnapshot(membership, assignment);
+  if (expectedSnapshot && !sameValue(snapshot, expectedSnapshot)) {
+    throw new PublicError(409, 'Visit create authority changed during request');
+  }
+  return snapshot;
 }
 
 function narrowVisit(row: Record<string, unknown>) {
@@ -328,6 +519,24 @@ function visitMatchesAuthority(
     && normalizeEmail(row.created_by_user_email_normalized) === normalizedEmail;
 }
 
+async function removeCreatedVisit(
+  entities: Record<string, any>,
+  visitId: string,
+) {
+  await entities.Visit.delete(visitId);
+  const remaining = requireRows(
+    await entities.Visit.filter({ id: visitId }, undefined, EXACT_ROW_LIMIT),
+    'Visit.filter',
+  );
+  if (
+    remaining.length >= EXACT_ROW_LIMIT
+    || remaining.some((row) => row?.id !== visitId)
+    || remaining.length !== 0
+  ) {
+    throw new Error('Visit create compensation failed verification');
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -352,7 +561,7 @@ Deno.serve(async (req) => {
 
     const input = await parseVisitInput(req);
     const entities = base44.asServiceRole.entities;
-    const { patient, agencyId } = await loadExactActivePatient(
+    const { agencyId } = await loadExactActivePatient(
       entities,
       input.patientId,
       input.requestedAgencyId,
@@ -364,7 +573,14 @@ Deno.serve(async (req) => {
       normalizedEmail,
       agencyId,
     );
-    requireExistingPatientAccess(patient, membership, normalizedEmail);
+    const initialAccess = await loadVisitCreateAccess(
+      entities,
+      input.patientId,
+      agencyId,
+      userId,
+      normalizedEmail,
+      membership,
+    );
 
     const authority = {
       patientId: input.patientId,
@@ -374,9 +590,14 @@ Deno.serve(async (req) => {
     };
 
     if (input.clientRequestId) {
+      const replayQuery = {
+        client_request_id: input.clientRequestId,
+        agency_id: agencyId,
+        created_by_user_id: userId,
+      };
       const rawExisting = requireRows(
         await entities.Visit.filter(
-          { client_request_id: input.clientRequestId },
+          replayQuery,
           '-created_date',
           EXACT_ROW_LIMIT,
         ),
@@ -385,20 +606,25 @@ Deno.serve(async (req) => {
       if (rawExisting.length >= EXACT_ROW_LIMIT) {
         throw new PublicError(409, 'client_request_id is ambiguous');
       }
-      const keyedRows = rawExisting.filter(
-        (row) => row?.client_request_id === input.clientRequestId,
-      );
-      if (keyedRows.length > 1) throw new PublicError(409, 'client_request_id is ambiguous');
-      if (keyedRows.length === 1) {
-        const existing = keyedRows[0];
+      if (rawExisting.some((row) => (
+        row?.client_request_id !== input.clientRequestId
+        || row?.agency_id !== agencyId
+        || row?.created_by_user_id !== userId
+      ))) {
+        throw new PublicError(409, 'client_request_id query scope could not be verified');
+      }
+      if (rawExisting.length > 1) throw new PublicError(409, 'client_request_id is ambiguous');
+      if (rawExisting.length === 1) {
+        const existing = rawExisting[0];
         if (
           !visitMatchesAuthority(existing, authority)
-          || existing.visit_date !== input.visitFields.visit_date
-          || existing.visit_type !== input.visitFields.visit_type
+          || Object.entries(input.visitFields).some(
+            ([field, value]) => !sameValue(existing[field], value),
+          )
         ) {
           throw new PublicError(409, 'client_request_id conflicts with another visit');
         }
-        const { patient: replayPatient } = await loadExactActivePatient(
+        await loadExactActivePatient(
           entities,
           input.patientId,
           agencyId,
@@ -410,7 +636,15 @@ Deno.serve(async (req) => {
           normalizedEmail,
           agencyId,
         );
-        requireExistingPatientAccess(replayPatient, replayMembership, normalizedEmail);
+        await loadVisitCreateAccess(
+          entities,
+          input.patientId,
+          agencyId,
+          userId,
+          normalizedEmail,
+          replayMembership,
+          initialAccess,
+        );
         return Response.json({ created: false, visit: narrowVisit(existing) });
       }
     }
@@ -420,7 +654,7 @@ Deno.serve(async (req) => {
     // does not expose a cross-entity transaction here, so a residual race still
     // exists between this final proof and Visit.create; post-create authority
     // reconciliation below fails closed and removes a mismatched row.
-    const { patient: recheckedPatient } = await loadExactActivePatient(
+    await loadExactActivePatient(
       entities,
       input.patientId,
       agencyId,
@@ -432,7 +666,15 @@ Deno.serve(async (req) => {
       normalizedEmail,
       agencyId,
     );
-    requireExistingPatientAccess(recheckedPatient, recheckedMembership, normalizedEmail);
+    await loadVisitCreateAccess(
+      entities,
+      input.patientId,
+      agencyId,
+      userId,
+      normalizedEmail,
+      recheckedMembership,
+      initialAccess,
+    );
 
     const created = await entities.Visit.create({
       ...input.visitFields,
@@ -449,10 +691,47 @@ Deno.serve(async (req) => {
       await entities.Visit.filter({ id: createdId }, undefined, EXACT_ROW_LIMIT),
       'Visit.filter',
     );
+    if (rawCreated.length >= EXACT_ROW_LIMIT || rawCreated.some((row) => row?.id !== createdId)) {
+      await removeCreatedVisit(entities, createdId);
+      throw new Error('Visit post-create query scope could not be verified');
+    }
     const exactCreated = rawCreated.filter((row) => row?.id === createdId);
-    if (exactCreated.length !== 1 || !visitMatchesAuthority(exactCreated[0], authority)) {
-      await entities.Visit.delete(createdId).catch(() => {});
-      throw new Error('Visit authority stamps failed post-create verification');
+    if (
+      exactCreated.length !== 1
+      || !visitMatchesAuthority(exactCreated[0], authority)
+      || Object.entries(input.visitFields).some(
+        ([field, value]) => !sameValue(exactCreated[0][field], value),
+      )
+    ) {
+      await removeCreatedVisit(entities, createdId);
+      throw new Error('Visit fields failed post-create verification');
+    }
+
+    try {
+      await loadExactActivePatient(
+        entities,
+        input.patientId,
+        agencyId,
+      );
+      await loadExactEnabledAgency(entities, agencyId);
+      const postCreateMembership = await loadExactActiveMembership(
+        entities,
+        userId,
+        normalizedEmail,
+        agencyId,
+      );
+      await loadVisitCreateAccess(
+        entities,
+        input.patientId,
+        agencyId,
+        userId,
+        normalizedEmail,
+        postCreateMembership,
+        initialAccess,
+      );
+    } catch (error) {
+      await removeCreatedVisit(entities, createdId);
+      throw error;
     }
 
     return Response.json({ created: true, visit: narrowVisit(exactCreated[0]) });

@@ -1,4 +1,5 @@
-import { base44 } from "@/api/base44Client";
+import { listAuthorizedReferrals } from '@/functions/manageAuthorizedReferral';
+import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,26 +18,49 @@ import { format } from "date-fns";
 import { parseLocalDate } from "@/lib/dateLocal";
 
 export default function PendingReferralsWidget() {
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
+  const { tenantContext } = useAuth();
+  const canUseReferralIntake = ['agency_admin', 'manager', 'office_staff']
+    .includes(tenantContext?.tenant_role);
+  const currentUserEmail = tenantContext?.user_email;
 
   // Filter to the current user's assigned referrals server-side so an assigned
   // (even urgent) referral can't fall outside the newest-10 page and vanish.
-  const { data: referrals = [] } = useQuery({
-    queryKey: ['pendingReferrals', currentUser?.email],
-    queryFn: () => base44.entities.Referral.filter({
-      status: { $in: ['new', 'awaiting_info'] },
-      assigned_to: currentUser.email
-    }, '-created_date', 10),
+  const { data: referrals = [], isError: referralsUnavailable } = useQuery({
+    queryKey: ['referrals', 'authorized', tenantContext?.agency_id, 'pending', currentUserEmail],
+    queryFn: async () => {
+      const results = await Promise.all(['new', 'awaiting_info'].map((status) => (
+        listAuthorizedReferrals({
+          agencyId: tenantContext.agency_id,
+          assignedTo: currentUserEmail,
+          status,
+          limit: 10,
+        })
+      )));
+      return results
+        .flatMap((result) => result.referrals)
+        .sort((left, right) => Date.parse(right.created_date) - Date.parse(left.created_date))
+        .slice(0, 10);
+    },
     initialData: [],
-    enabled: !!currentUser?.email,
+    enabled: canUseReferralIntake && !!currentUserEmail && !!tenantContext?.agency_id,
     refetchInterval: 60000, // Refresh every minute
   });
 
   const urgentReferrals = referrals.filter(r => r.priority === 'urgent' || r.priority === 'high');
   const awaitingInfo = referrals.filter(r => r.status === 'awaiting_info');
+
+  if (!canUseReferralIntake) return null;
+
+  if (referralsUnavailable) {
+    return (
+      <Alert variant="destructive">
+        <AlertCircle className="h-4 w-4" />
+        <AlertDescription>
+          Pending referrals could not be authorized. No empty queue is being inferred.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   if (referrals.length === 0) return null;
 

@@ -2,6 +2,11 @@ import { useMemo, useState, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
+import {
+  listAuthorizedReferrals,
+  updateAuthorizedReferral,
+} from '@/functions/manageAuthorizedReferral';
+import { useAuth } from '@/lib/AuthContext';
 import { useAICall } from "@/hooks/useAICall";
 import { isAdminView } from "@/lib/roles";
 import { isAdminLike } from "@/lib/superAdmin";
@@ -57,6 +62,7 @@ const normName = (s) => String(s || "").toLowerCase().replace(/\bdr\.?\b/g, "").
  * the provider form. Nurses see the clinical/compliance review only.
  */
 export default function ReferralFollowUp() {
+  const { tenantContext } = useAuth();
   const queryClient = useQueryClient();
   const [searchParams, setSearchParams] = useSearchParams();
   // The selection IS the ?id= param (selectReferral writes it, deep links from
@@ -85,9 +91,13 @@ export default function ReferralFollowUp() {
   // built-in admin role. Keep that narrower mutation capability separate.
   const canManageRuleSettings = isAdminLike(currentUser);
 
-  const { data: referrals, isLoading } = useQuery({
-    queryKey: ["referrals", 200],
-    queryFn: () => base44.entities.Referral.list("-created_date", 200),
+  const { data: referrals, isLoading, isError: referralsUnavailable } = useQuery({
+    queryKey: ["referrals", "authorized", tenantContext?.agency_id, 200],
+    queryFn: () => listAuthorizedReferrals({
+      agencyId: tenantContext.agency_id,
+      limit: 200,
+    }).then((result) => result.referrals),
+    enabled: !!tenantContext?.agency_id,
   });
 
   const { data: rateConfig } = useQuery({
@@ -324,7 +334,11 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
           : it;
       });
     }
-    await base44.entities.Referral.update(selected.id, { follow_up_requests: persisted });
+    await updateAuthorizedReferral({
+      agencyId: selected.agency_id,
+      referralId: selected.id,
+      changes: { follow_up_requests: persisted },
+    });
     queryClient.invalidateQueries({ queryKey: ["referrals"] });
     return persisted;
   };
@@ -389,8 +403,12 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
     try {
       const items = tracking.items.map((it) => (it.id === itemId ? { ...it, item_status: "resolved" } : it));
       const allResolved = items.every((it) => it.item_status === "resolved");
-      await base44.entities.Referral.update(selected.id, {
-        follow_up_requests: { ...tracking, items, status: allResolved ? "resolved" : tracking.status },
+      await updateAuthorizedReferral({
+        agencyId: selected.agency_id,
+        referralId: selected.id,
+        changes: {
+          follow_up_requests: { ...tracking, items, status: allResolved ? "resolved" : tracking.status },
+        },
       });
       queryClient.invalidateQueries({ queryKey: ["referrals"] });
     } catch (error) {
@@ -487,10 +505,17 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
 
       {/* Intake→SOC aging at a glance — same board as Referral Intake, compact.
           Reuses this page's ['referrals'] query data; no extra fetch. */}
-      {!isLoading && <ReferralAgingBoard referrals={referrals || []} compact className="mb-4" />}
+      {!isLoading && !referralsUnavailable && <ReferralAgingBoard referrals={referrals || []} compact className="mb-4" />}
 
       {isLoading ? (
         <LoadingState label="Loading referrals..." />
+      ) : referralsUnavailable ? (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Referral access could not be authorized. No follow-up queue is being shown.
+          </AlertDescription>
+        </Alert>
       ) : reviewable.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center text-slate-600">

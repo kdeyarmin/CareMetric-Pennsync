@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
+import { getAuthorizedReferral } from '@/functions/manageAuthorizedReferral';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -13,18 +14,22 @@ import {
 } from '@/lib/tenantSdkRealmGate';
 
 export default function ReferralAdmissionNote() {
+  const { tenantContext } = useAuth();
   const urlParams = new URLSearchParams(window.location.search);
   const referralId = urlParams.get('referral_id');
   const [prepopulatedData, setPrepopulatedData] = useState(null);
 
-  const { data: referral, isLoading } = useQuery({
-    queryKey: ['referral', referralId],
+  const { data: referral, isLoading, isError: referralUnavailable } = useQuery({
+    queryKey: ['referrals', 'authorized', tenantContext?.agency_id, referralId],
     queryFn: async () => {
       if (!referralId) return null;
-      const refs = await base44.entities.Referral.filter({ id: referralId });
-      return refs[0];
+      const result = await getAuthorizedReferral({
+        agencyId: tenantContext.agency_id,
+        referralId,
+      });
+      return result.referral;
     },
-    enabled: !!referralId
+    enabled: !!referralId && !!tenantContext?.agency_id
   });
 
   useEffect(() => {
@@ -150,6 +155,24 @@ ${data.orders_treatments?.physician_orders?.join('\n') || 'To be clarified with 
       <div className="p-8 text-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4" />
         <p className="text-slate-600">Loading referral data...</p>
+      </div>
+    );
+  }
+
+  if (referralUnavailable) {
+    return (
+      <div className="p-8 max-w-2xl mx-auto">
+        <Alert className="bg-red-50 border-red-300">
+          <AlertDescription className="text-red-900">
+            Referral access could not be authorized. No referral data is being shown.
+          </AlertDescription>
+        </Alert>
+        <Link to={createPageUrl('ReferralIntake')}>
+          <Button className="mt-4">
+            <ArrowLeft className="w-4 h-4 mr-2" />
+            Back to Referral Intake
+          </Button>
+        </Link>
       </div>
     );
   }

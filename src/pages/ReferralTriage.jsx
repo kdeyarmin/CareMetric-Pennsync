@@ -4,6 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { base44 } from '@/api/base44Client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { ArrowRight, CheckCircle2, Clock, AlertCircle, Filter } from 'lucide-react';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
@@ -12,16 +13,20 @@ import { todayEastern } from '@/components/utils/timezone';
 import { toast } from 'sonner';
 import { buildIncompleteReferralFromTriage, referralPatientReadiness } from '@/components/referral/referralPatientReadiness';
 import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
+import { createAuthorizedReferral } from '@/functions/manageAuthorizedReferral';
+import { useAuth } from '@/lib/AuthContext';
 
 // Triage urgency levels → Referral.priority enum (low/normal/high/urgent).
 const URGENCY_TO_PRIORITY = { CRITICAL: 'urgent', HIGH: 'high', MEDIUM: 'normal', LOW: 'low' };
 const URGENCY_TO_TASK_PRIORITY = { CRITICAL: 'high', HIGH: 'high', MEDIUM: 'medium', LOW: 'medium' };
+const REFERRAL_INTAKE_ROLES = new Set(['agency_admin', 'manager', 'office_staff']);
 
 /**
  * AI-Powered Referral Triage Workflow
  * Parse incoming unstructured clinical data to triage and onboard referrals.
  */
 export default function ReferralTriage() {
+  const { tenantContext } = useAuth();
   const patientCreateRequestId = useRef(null);
   const queryClient = useQueryClient();
   const [lastAnalysis, setLastAnalysis] = useState(null);
@@ -31,6 +36,29 @@ export default function ReferralTriage() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+
+  const canUseReferralIntake = REFERRAL_INTAKE_ROLES.has(tenantContext?.tenant_role);
+
+  if (!canUseReferralIntake) {
+    return (
+      <PageContainer>
+        <PageHeader
+          icon={Filter}
+          eyebrow="Documentation"
+          title="Referral Triage"
+          description="AI-powered analysis of incoming referrals with automatic urgency and risk assessment"
+          favoritePage="ReferralTriage"
+        />
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Referral triage unavailable</AlertTitle>
+          <AlertDescription>
+            This workflow requires an active referral-intake role. No patient or referral data was created.
+          </AlertDescription>
+        </Alert>
+      </PageContainer>
+    );
+  }
 
   const handleTriageComplete = (analysis) => {
     patientCreateRequestId.current = createPatientRequestId();
@@ -46,12 +74,14 @@ export default function ReferralTriage() {
       const referralPriority = URGENCY_TO_PRIORITY[lastAnalysis.urgency_level] || 'normal';
 
       if (!readiness.ready) {
-        const referral = await base44.entities.Referral.create({
+        const referral = await createAuthorizedReferral({
           ...buildIncompleteReferralFromTriage(lastAnalysis, {
             assignedTo: currentUser?.email,
             referralDate: todayEastern(),
           }),
           priority: referralPriority,
+        }, {
+          agencyId: tenantContext?.agency_id,
         });
 
         const dueDate = new Date();
@@ -107,7 +137,7 @@ export default function ReferralTriage() {
       // must stop and tell the user, or we silently regress to the old
       // patient-only flow where triage admissions were invisible downstream.
       try {
-        await base44.entities.Referral.create({
+        await createAuthorizedReferral({
           patient_id: patient.id,
           patient_name: lastAnalysis.patient_name || '',
           diagnosis: lastAnalysis.primary_diagnosis || '',
@@ -116,6 +146,8 @@ export default function ReferralTriage() {
           document_type: 'manual',
           priority: referralPriority,
           status: 'ready_for_admission',
+        }, {
+          agencyId: tenantContext?.agency_id,
         });
       } catch (referralError) {
         console.error('Error creating referral from triage:', referralError);

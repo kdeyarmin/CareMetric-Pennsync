@@ -48,13 +48,19 @@ Turn the gated live-readiness matrix into real hosted evidence so
      `managePatientCareTeamAssignment` is deliberately withheld pending its
      atomicity prerequisites, so canonical fixture provisioning remains
      incomplete. Do not bypass that blocker with direct entity CRUD.
-   - The local source contract also reports that S3 has no reviewed
-     immutable-tenant Referral broker and that S4 Visit creation still relies
-     on legacy Patient assignment fields. Do not run or mark S3/S4 passing until
-     reviewed paths use canonical tenant/care-team authority.
-   - Create Referral and Visit records through the eventual reviewed S3/S4
-     paths rather than pre-seeding them; the workflow result is the evidence
-     LR-02 needs.
+   - The 2026-09-06 candidate source includes the reviewed immutable-tenant
+     Referral broker and makes S4 Visit creation use canonical, version-bound
+     care-team authority instead of legacy Patient assignment fields. Confirm
+     exact hosted tree/resource parity before using either path as evidence.
+   - Patient, Visit, and Referral creation-key uniqueness and Referral
+     compare-and-delete are not atomic at the datastore layer. Referral deletion
+     and non-null assignment remain paused, as do the three legacy privileged
+     Referral consumers. Preserve these as release blockers even if the narrower
+     S3/S4 create/read smoke passes.
+   - Create Referral and Visit records through the reviewed S3/S4 paths rather
+     than pre-seeding them; the hosted workflow result is the evidence LR-02
+     needs. S4 remains blocked until the canonical A1 assignment can be
+     provisioned without direct entity CRUD.
 
    `src/test/entityFixtures.js` is a UI loaded-state helper, not a hosted seed
    source. It does not encode the immutable two-agency authority topology and

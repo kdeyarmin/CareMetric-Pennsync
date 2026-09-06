@@ -1,10 +1,12 @@
-import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
+import { listAuthorizedReferrals } from '@/functions/manageAuthorizedReferral';
+import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { Download } from "lucide-react";
+import { AlertTriangle, Download } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { exportToPDF } from "../utils/pdfExporter";
 import { computeTurnaround } from "../referral/intakeToSocTracker";
@@ -24,10 +26,14 @@ const dominantPriority = (priorities = {}) => {
 };
 
 export default function ReferralVolumeReport({ dateRange }) {
-  const { data: referrals = [] } = useQuery({
-    queryKey: ['allReferrals'],
-    // Without a limit Base44 caps at 50, truncating referral volume counts.
-    queryFn: () => base44.entities.Referral.list('-created_date', 10000),
+  const { tenantContext } = useAuth();
+  const { data: referrals = [], isError: referralsUnavailable } = useQuery({
+    queryKey: ['referrals', 'authorized', tenantContext?.agency_id, 5000],
+    queryFn: () => listAuthorizedReferrals({
+      agencyId: tenantContext.agency_id,
+      limit: 5000,
+    }).then((result) => result.referrals),
+    enabled: !!tenantContext?.agency_id,
     initialData: [],
   });
 
@@ -109,6 +115,17 @@ export default function ReferralVolumeReport({ dateRange }) {
       ]
     });
   };
+
+  if (referralsUnavailable) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertDescription>
+          Referral volume data could not be authorized. No zero-value report is being shown or exported.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <div className="space-y-6">

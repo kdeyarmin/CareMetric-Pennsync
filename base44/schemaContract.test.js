@@ -550,7 +550,7 @@ test('known RLS debt cannot grow or change without explicit review', () => {
   }
   const expected = {
     noRls: [8, '752d715c7ed58c0d0ed2250350e440adb8ff1a60f07ec88f9ddd9f4e112f8bd0'],
-    openMutation: [11, 'af229553e580c1d19d54197a574ca267a7f32dd28aa80afd9b541b1280a05522'],
+    openMutation: [10, 'd35d9825b82ebe43000f3b89d65ed029e8e004b1daf8d904716951d022ce3dee'],
     openRead: [21, 'e24cda0c4ee3915f16d5eaed48b83ff8afda0491c41a26613138ac3c0e7f08a3'],
   };
   const bad = [];

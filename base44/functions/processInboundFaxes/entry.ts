@@ -66,6 +66,7 @@ const FORM_MARKER = 'additional information request';
 // Bounded OCR retries for an inbound fax before it is marked terminally failed
 // (a transient provider error otherwise dropped the fax on its first attempt).
 const MAX_OCR_ATTEMPTS = 5;
+const INBOUND_REFERRAL_FAX_MATCHING_ENABLED = false;
 
 function normalizeFaxNumber(num: unknown) {
   const digits = String(num || '').replace(/\D/g, '');
@@ -163,6 +164,15 @@ function bestFaxBackMatch(fax: { ocrText: string; senderNumber: string }, candid
 // ---- job ----
 
 Deno.serve(async (req) => {
+  if (!INBOUND_REFERRAL_FAX_MATCHING_ENABLED) {
+    return Response.json(
+      {
+        error: 'Inbound referral fax matching is temporarily unavailable',
+        code: 'inbound_referral_fax_tenant_binding_pending',
+      },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
   try {
     const base44 = createClientFromRequest(req);
     const me = await base44.auth.me().catch(() => null);

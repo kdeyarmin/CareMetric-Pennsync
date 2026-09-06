@@ -2,11 +2,14 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router";
 import { base44 } from "@/api/base44Client";
+import { listAuthorizedReferrals } from '@/functions/manageAuthorizedReferral';
+import { useAuth } from '@/lib/AuthContext';
 import { isAdminView } from "@/lib/roles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ClipboardCheck, ArrowRight, Inbox, Clock } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertTriangle, ClipboardCheck, ArrowRight, Inbox, Clock } from "lucide-react";
 
 // A sent request with no provider response for this many days is "overdue"
 // (matches the checkStaleFollowUpRequests escalation default).
@@ -28,16 +31,20 @@ const daysSince = (iso) => {
  * figures here regardless of role.
  */
 export default function OverdueFollowUpsWidget() {
+  const { tenantContext } = useAuth();
   const { data: currentUser } = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
   });
   const adminView = isAdminView(currentUser);
 
-  const { data: referrals } = useQuery({
-    queryKey: ["referrals", 200],
-    queryFn: () => base44.entities.Referral.list("-created_date", 200),
-    enabled: adminView,
+  const { data: referrals, isError: referralsUnavailable } = useQuery({
+    queryKey: ["referrals", "authorized", tenantContext?.agency_id, 200],
+    queryFn: () => listAuthorizedReferrals({
+      agencyId: tenantContext.agency_id,
+      limit: 200,
+    }).then((result) => result.referrals),
+    enabled: adminView && !!tenantContext?.agency_id,
   });
 
   const rows = useMemo(() => {
@@ -77,7 +84,20 @@ export default function OverdueFollowUpsWidget() {
     );
   }, [referrals]);
 
-  if (!adminView || rows.length === 0) return null;
+  if (!adminView) return null;
+
+  if (referralsUnavailable) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertDescription>
+          Referral follow-up status could not be authorized. No empty queue is being inferred.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  if (rows.length === 0) return null;
 
   const overdueCount = rows.filter((x) => x.overdue).length;
   const responsesIn = rows.filter((x) => x.kind === "response_in").length;

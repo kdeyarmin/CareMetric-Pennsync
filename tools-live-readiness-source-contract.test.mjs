@@ -23,9 +23,23 @@ test("source contract deterministically binds the canonical fixture, schemas, br
   assert.equal(first.checks.hosted_writes, false);
   assert.equal(first.checks.authenticated_hosted_probes_executed, false);
   assert.equal(first.checks.care_team_assignment_mutations_paused, true);
-  assert.equal(first.checks.referral_direct_mutation_path_present, true);
-  assert.equal(first.checks.visit_create_uses_legacy_assignment, true);
+  assert.equal(first.checks.referral_direct_mutation_path_present, false);
+  assert.equal(first.checks.referral_immutable_tenant_broker_present, true);
+  assert.equal(first.checks.referral_legacy_privileged_paths_paused, true);
+  assert.equal(first.checks.visit_create_uses_legacy_assignment, false);
   assert.ok(first.source_limitations.includes("authenticated_lr01_lr02_probe_artifacts_not_observed"));
+  assert.ok(first.source_limitations.includes(
+    "base44_atomic_referral_creation_uniqueness_and_compare_delete_not_available_or_proved",
+  ));
+  assert.ok(first.source_limitations.includes(
+    "base44_atomic_patient_and_visit_creation_uniqueness_not_available_or_proved",
+  ));
+  assert.equal(
+    first.source_limitations.includes(
+      "lr02_s3_referral_path_not_covered_by_a_reviewed_immutable_tenant_broker_contract",
+    ),
+    false,
+  );
   assert.deepEqual(first.errors, []);
   assert.deepEqual(
     LIVE_READINESS_SOURCE_ARTIFACT_PATHS,

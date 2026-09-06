@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
+import JSON5 from "json5";
 import {
   LIVE_READINESS_FIXTURE_ENTITY_FIELDS,
   LIVE_READINESS_FIXTURE_SET_ID,
@@ -17,6 +18,7 @@ const ENTITY_PATHS = Object.freeze({
   AgencyMembership: "base44/entities/AgencyMembership.jsonc",
   Patient: "base44/entities/Patient.jsonc",
   PatientCareTeamAssignment: "base44/entities/PatientCareTeamAssignment.jsonc",
+  Referral: "base44/entities/Referral.jsonc",
 });
 
 const BROKER_MARKERS = Object.freeze({
@@ -60,6 +62,14 @@ const BROKER_MARKERS = Object.freeze({
     "Deno.serve",
     "AgencyMembership.filter",
     "Visit.create",
+    "PatientCareTeamAssignment.filter",
+  ]),
+  "base44/functions/manageAuthorizedReferral/entry.ts": Object.freeze([
+    "Deno.serve",
+    "AgencyMembership.filter",
+    "Referral.create",
+    "Referral.updateMany",
+    "referral_delete_requires_atomic_compare_and_delete",
   ]),
   "base44/functions/getAuthorizedVisit/entry.ts": Object.freeze([
     "Deno.serve",
@@ -81,12 +91,40 @@ const CONTRACT_TEST_PATHS = Object.freeze([
   "base44/functionTests/patientCareTeamAssignmentContract.test.js",
   "base44/functionTests/visitCreationAuthorizationContract.test.js",
   "base44/functionTests/visitReadAuthorizationContract.test.js",
+  "base44/functionTests/referralAuthorizationContract.test.js",
+  "base44/functionTests/referralPrivilegedPathContainmentContract.test.js",
   "base44/functionTests/trainingIntegrityAuthorizationContract.test.js",
 ]);
 
+const REFERRAL_BROWSER_PATHS = Object.freeze([
+  "src/components/clinical/OASISQuickUpdate.jsx",
+  "src/components/dashboard/OverdueFollowUpsWidget.jsx",
+  "src/components/documents/ReferralDocumentViewer.jsx",
+  "src/components/hub-tabs/ReferralAdmissionNote.jsx",
+  "src/components/referral/DocumentToTriageMapper.jsx",
+  "src/components/referral/PendingReferralsWidget.jsx",
+  "src/components/referral/ScannedResponseUpload.jsx",
+  "src/components/reports/FollowUpAnalytics.jsx",
+  "src/components/reports/ReferralVolumeReport.jsx",
+  "src/pages/ReferralFollowUp.jsx",
+  "src/pages/ReferralIntake.jsx",
+  "src/pages/ReferralTriage.jsx",
+]);
+
+const REFERRAL_PAUSED_FUNCTION_MARKERS = Object.freeze({
+  "base44/functions/checkStaleFollowUpRequests/entry.ts":
+    "REFERRAL_STALE_ESCALATION_ENABLED = false",
+  "base44/functions/processInboundFaxes/entry.ts":
+    "INBOUND_REFERRAL_FAX_MATCHING_ENABLED = false",
+  "base44/functions/extractReferralDataForSmartNote/entry.ts":
+    "REFERRAL_SMART_NOTE_BRIDGE_ENABLED = false",
+});
+
 const SOURCE_RELEASE_GATE_PATHS = Object.freeze([
   "base44/entities/Referral.jsonc",
-  "src/pages/ReferralIntake.jsx",
+  "src/functions/manageAuthorizedReferral.js",
+  ...REFERRAL_BROWSER_PATHS,
+  ...Object.keys(REFERRAL_PAUSED_FUNCTION_MARKERS),
 ]);
 
 const READINESS_TOOL_PATHS = Object.freeze([
@@ -148,6 +186,14 @@ const REQUIRED_SCHEMA_FIELDS = Object.freeze({
     "last_transition_request_key",
     "version",
   ]),
+  Referral: Object.freeze([
+    "agency_id",
+    "created_by_user_id",
+    "created_by_user_email_normalized",
+    "client_request_id",
+    "referral_creation_key",
+    "version",
+  ]),
 });
 
 const SOURCE_LIMITATIONS = Object.freeze([
@@ -156,7 +202,9 @@ const SOURCE_LIMITATIONS = Object.freeze([
   "authenticated_lr01_lr02_probe_artifacts_not_observed",
   "human_reviewer_approvals_not_observed",
   "base44_atomic_assignment_uniqueness_not_available_or_proved",
-  "lr02_s3_referral_path_not_covered_by_a_reviewed_immutable_tenant_broker_contract",
+  "base44_atomic_patient_and_visit_creation_uniqueness_not_available_or_proved",
+  "base44_atomic_referral_creation_uniqueness_and_compare_delete_not_available_or_proved",
+  "referral_assignment_and_legacy_privileged_paths_remain_paused",
 ]);
 
 function defaultReadArtifact(relativePath) {
@@ -184,6 +232,15 @@ function parseJsonArtifact(text, path, errors) {
   }
 }
 
+function parseJsoncArtifact(text, path, errors) {
+  try {
+    return JSON5.parse(text);
+  } catch {
+    addError(errors, path, "Required source artifact must contain valid JSONC.");
+    return null;
+  }
+}
+
 function requireFields(errors, path, actual, expected) {
   if (!Array.isArray(actual)) {
     addError(errors, path, "Required-field declaration must be an array.");
@@ -205,7 +262,7 @@ function requireProperties(errors, entityName, schema) {
     addError(errors, `entities.${entityName}.properties`, "Entity properties must be an object.");
     return;
   }
-  for (const field of LIVE_READINESS_FIXTURE_ENTITY_FIELDS[entityName]) {
+  for (const field of LIVE_READINESS_FIXTURE_ENTITY_FIELDS[entityName] || []) {
     if (!isObject(schema.properties[field])) {
       addError(errors, `entities.${entityName}.properties`, "Fixture authority field is not declared.");
     }
@@ -244,7 +301,7 @@ function requireClientWritesDenied(errors, schema, entityName, operations) {
 function validateEntitySchemas(artifacts, errors) {
   const schemas = {};
   for (const [entityName, path] of Object.entries(ENTITY_PATHS)) {
-    const schema = parseJsonArtifact(artifacts[path], `entities.${entityName}`, errors);
+    const schema = parseJsoncArtifact(artifacts[path], `entities.${entityName}`, errors);
     if (!schema) continue;
     schemas[entityName] = schema;
     requireProperties(errors, entityName, schema);
@@ -300,6 +357,16 @@ function validateEntitySchemas(artifacts, errors) {
       errors,
       schemas.PatientCareTeamAssignment,
       "PatientCareTeamAssignment",
+      ["create", "read", "update", "delete"],
+    );
+  }
+  if (schemas.Referral) {
+    requireEnumValue(errors, schemas.Referral, "Referral", "status", "new");
+    requireEnumValue(errors, schemas.Referral, "Referral", "status", "soc_completed");
+    requireClientWritesDenied(
+      errors,
+      schemas.Referral,
+      "Referral",
       ["create", "read", "update", "delete"],
     );
   }
@@ -392,12 +459,27 @@ export function createLiveReadinessSourceContract({
     assignmentSource.includes("CARE_TEAM_ASSIGNMENT_MUTATIONS_ENABLED = false")
     && assignmentSource.includes("!CARE_TEAM_ASSIGNMENT_MUTATIONS_ENABLED");
   const referralSchemaSource = artifacts["base44/entities/Referral.jsonc"] || "";
-  const referralIntakeSource = artifacts["src/pages/ReferralIntake.jsx"] || "";
   const visitCreateSource = artifacts["base44/functions/createAuthorizedVisit/entry.ts"] || "";
-  const referralDirectMutationPathPresent =
+  const referralDirectOperationPathPresent =
     referralSchemaSource.includes("\"create\": true")
-    && referralSchemaSource.includes("\"update\": true")
-    && referralIntakeSource.includes("base44.entities.Referral.create");
+    || referralSchemaSource.includes("\"update\": true")
+    || REFERRAL_BROWSER_PATHS.some((path) => (
+      /\b(?:base44\.)?entities\.Referral\.(?:list|filter|get|create|update|delete|bulkCreate|updateMany)\b/
+        .test(artifacts[path] || "")
+    ));
+  const referralBrokerSource = artifacts[
+    "base44/functions/manageAuthorizedReferral/entry.ts"
+  ] || "";
+  const referralImmutableTenantBrokerPresent =
+    referralSchemaSource.includes("\"read\": false")
+    && referralSchemaSource.includes("\"create\": false")
+    && referralSchemaSource.includes("\"update\": false")
+    && referralSchemaSource.includes("\"delete\": false")
+    && referralBrokerSource.includes("Referral.updateMany")
+    && referralBrokerSource.includes("AgencyMembership.filter");
+  const referralLegacyPrivilegedPathsPaused = Object.entries(
+    REFERRAL_PAUSED_FUNCTION_MARKERS,
+  ).every(([path, marker]) => (artifacts[path] || "").includes(marker));
   const visitCreateUsesLegacyAssignment =
     visitCreateSource.includes("patient.assigned_nurses")
     && !visitCreateSource.includes("PatientCareTeamAssignment.filter");
@@ -430,7 +512,9 @@ export function createLiveReadinessSourceContract({
       source_release_gates_recorded: SOURCE_RELEASE_GATE_PATHS
         .every((path) => typeof artifacts[path] === "string"),
       care_team_assignment_mutations_paused: assignmentMutationsPaused,
-      referral_direct_mutation_path_present: referralDirectMutationPathPresent,
+      referral_direct_mutation_path_present: referralDirectOperationPathPresent,
+      referral_immutable_tenant_broker_present: referralImmutableTenantBrokerPresent,
+      referral_legacy_privileged_paths_paused: referralLegacyPrivilegedPathsPaused,
       visit_create_uses_legacy_assignment: visitCreateUsesLegacyAssignment,
       network_access: false,
       hosted_writes: false,

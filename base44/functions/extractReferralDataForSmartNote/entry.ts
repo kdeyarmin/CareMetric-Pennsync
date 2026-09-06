@@ -8,8 +8,18 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+const REFERRAL_SMART_NOTE_BRIDGE_ENABLED = false;
 
 Deno.serve(async (req) => {
+  if (!REFERRAL_SMART_NOTE_BRIDGE_ENABLED) {
+    return Response.json(
+      {
+        error: 'Referral Smart Note import is temporarily unavailable',
+        code: 'referral_smart_note_tenant_broker_pending',
+      },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
   try {
     const base44 = createClientFromRequest(req);
 

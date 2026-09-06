@@ -54,8 +54,18 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // Auth requires either an admin session or the configured `x-internal-secret` scheduler header.
 
 const DEFAULT_STALE_DAYS = 4;
+const REFERRAL_STALE_ESCALATION_ENABLED = false;
 
 Deno.serve(async (req) => {
+  if (!REFERRAL_STALE_ESCALATION_ENABLED) {
+    return Response.json(
+      {
+        error: 'Referral stale-request escalation is temporarily unavailable',
+        code: 'referral_stale_escalation_tenant_migration_pending',
+      },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
+    );
+  }
   try {
     const base44 = createClientFromRequest(req);
     const me = await base44.auth.me().catch(() => null);

@@ -54,6 +54,31 @@ const membership = (overrides = {}) => ({
   ...overrides,
 });
 
+const assignment = (overrides = {}) => ({
+  id: 'assignment-a',
+  assignment_key: 'agency-a:patient-a:user-1',
+  agency_id: 'agency-a',
+  patient_id: 'patient-a',
+  user_id: 'user-1',
+  user_email_normalized: 'clinician@agency.test',
+  assignee_membership_id: 'membership-a',
+  assignee_membership_version_at_enablement: 2,
+  status: 'active',
+  source: 'manual',
+  created_by_user_id: 'owner-1',
+  created_by_user_email_normalized: 'owner@platform.test',
+  activated_at: '2026-09-03T12:00:00.000Z',
+  last_transition_by_user_id: 'owner-1',
+  last_transition_by_email_normalized: 'owner@platform.test',
+  last_transition_at: '2026-09-03T12:00:00.000Z',
+  last_transition_reason: 'Assigned for episode',
+  last_transition_action: 'grant',
+  last_transition_request_id: 'assignment-request-1',
+  last_transition_request_key: 'agency-a:patient-a:user-1:assignment-request-1',
+  version: 1,
+  ...overrides,
+});
+
 const visitInput = (overrides = {}) => ({
   patient_id: 'patient-a',
   visit_date: '2026-09-03',
@@ -92,25 +117,31 @@ async function loadBroker({
   patients = [patient()],
   agencies = [agency()],
   memberships = [membership()],
+  assignments = [assignment()],
   visits = [],
   ignoreFilters = false,
   createdMutation = null,
   membershipResponses = null,
   patientResponses = null,
   agencyResponses = null,
+  assignmentResponses = null,
+  deleteNoop = false,
 } = {}) {
   const state = {
     patients: patients.map((row) => ({ ...row })),
     agencies: agencies.map((row) => ({ ...row })),
     memberships: memberships.map((row) => ({ ...row })),
+    assignments: assignments.map((row) => ({ ...row })),
     visits: visits.map((row) => ({ ...row })),
   };
   const calls = {
-    patientFilters: [], agencyFilters: [], membershipFilters: [], visitFilters: [], creates: [], deletes: [],
+    patientFilters: [], agencyFilters: [], membershipFilters: [], assignmentFilters: [],
+    visitFilters: [], creates: [], deletes: [],
   };
   let patientFilterIndex = 0;
   let agencyFilterIndex = 0;
   let membershipFilterIndex = 0;
+  let assignmentFilterIndex = 0;
   const filtered = (rows, query, limit) => {
     const matches = ignoreFilters
       ? rows
@@ -153,6 +184,15 @@ async function loadBroker({
             return filtered(rows, query, limit);
           },
         },
+        PatientCareTeamAssignment: {
+          filter: async (query, sort, limit) => {
+            calls.assignmentFilters.push({ query, sort, limit });
+            const rows = assignmentResponses
+              ? assignmentResponses[Math.min(assignmentFilterIndex++, assignmentResponses.length - 1)]
+              : state.assignments;
+            return filtered(rows, query, limit);
+          },
+        },
         Visit: {
           filter: async (query, sort, limit) => {
             calls.visitFilters.push({ query, sort, limit });
@@ -167,7 +207,7 @@ async function loadBroker({
           },
           delete: async (id) => {
             calls.deletes.push(id);
-            state.visits = state.visits.filter((row) => row.id !== id);
+            if (!deleteNoop) state.visits = state.visits.filter((row) => row.id !== id);
           },
         },
       },
@@ -284,8 +324,11 @@ test('Visit provenance fields exist, direct create is disabled, and the wrapper 
   assert.equal(schema.rls.delete, false);
 
   const wrapper = await readFile(wrapperUrl, 'utf8');
+  const broker = await readFile(brokerUrl, 'utf8');
   assert.match(wrapper, /base44\.functions\.invoke\('createAuthorizedVisit', payload\)/);
   assert.doesNotMatch(wrapper, /entities\.Visit\.create/);
+  assert.match(broker, /PatientCareTeamAssignment\.filter\(/);
+  assert.doesNotMatch(broker, /patient\.(?:assigned_nurses|created_by)/);
 
   const offenders = [];
   for (const path of await sourceFiles(sourceRootUrl)) {
@@ -323,10 +366,17 @@ test('authorized creation stamps immutable tenant identity and returns a narrow 
   assert.equal(json.visit.created_by_user_email_normalized, 'clinician@agency.test');
   assert.equal(json.visit.nurse_notes, undefined);
   assert.deepEqual(calls.membershipFilters[0].query, { user_id: 'user-1', agency_id: 'agency-a' });
+  assert.deepEqual(calls.assignmentFilters[0].query, {
+    assignment_key: 'agency-a:patient-a:user-1',
+    agency_id: 'agency-a',
+    patient_id: 'patient-a',
+    user_id: 'user-1',
+  });
   assert.equal('status' in calls.membershipFilters[0].query, false);
-  assert.equal(calls.patientFilters.length, 2);
-  assert.equal(calls.agencyFilters.length, 2);
-  assert.equal(calls.membershipFilters.length, 2);
+  assert.equal(calls.patientFilters.length, 3);
+  assert.equal(calls.agencyFilters.length, 3);
+  assert.equal(calls.membershipFilters.length, 3);
+  assert.equal(calls.assignmentFilters.length, 3);
   assert.deepEqual(calls.agencyFilters[0].query, { id: 'agency-a' });
   assert.deepEqual(calls.creates[0], {
     ...visitInput({ nurse_notes: 'Clinical note' }),
@@ -372,7 +422,7 @@ test('guessed foreign, inactive, ambiguous, or filter-regression Patient ids can
     {
       patients: [patient({ id: 'foreign-patient', agency_id: 'agency-b' })],
       body: visitInput(),
-      status: 403,
+      status: 409,
       ignoreFilters: true,
     },
     { patients: [patient({ agency_id: 'agency-b' })], body: visitInput({ agency_id: 'agency-a' }), status: 403 },
@@ -390,7 +440,7 @@ test('the exact Agency must be active or trial and cannot be supplied by a filte
     { agencies: [agency({ status: 'suspended' })], status: 403 },
     { agencies: [agency({ status: 'cancelled' })], status: 403 },
     { agencies: [agency(), agency({ agency_name: 'Duplicate' })], status: 403 },
-    { agencies: [agency({ id: 'agency-b' })], ignoreFilters: true, status: 403 },
+    { agencies: [agency({ id: 'agency-b' })], ignoreFilters: true, status: 409 },
   ]) {
     const { handler, calls } = await loadBroker(scenario);
     const { response } = await invokeBroker(handler);
@@ -404,28 +454,37 @@ test('the exact Agency must be active or trial and cannot be supplied by a filte
   assert.equal(trial.calls.creates.length, 1);
 });
 
-test('non-manager members need pre-existing Patient access; managers cannot grant it via Visit creation', async () => {
-  for (const tenantRole of ['clinician', 'office_staff', 'social_worker', 'spiritual_care']) {
+test('clinicians need an exact active care-team assignment; agency managers are agency-wide', async () => {
+  for (const patientOverrides of [
+    { assigned_nurses: ['clinician@agency.test'], created_by: 'someone-else@agency.test' },
+    { assigned_nurses: [], created_by: 'Clinician@Agency.test' },
+  ]) {
     const denied = await loadBroker({
-      patients: [patient({ assigned_nurses: [], created_by: 'someone-else@agency.test' })],
-      memberships: [membership({ tenant_role: tenantRole })],
+      patients: [patient(patientOverrides)],
+      assignments: [],
     });
+    const deniedResult = await invokeBroker(denied.handler);
+    assert.equal(deniedResult.response.status, 403);
+    assert.equal(denied.calls.creates.length, 0);
+  }
+
+  for (const tenantRole of ['office_staff', 'social_worker', 'spiritual_care']) {
+    const denied = await loadBroker({ memberships: [membership({ tenant_role: tenantRole })] });
     const deniedResult = await invokeBroker(denied.handler);
     assert.equal(deniedResult.response.status, 403, tenantRole);
     assert.equal(denied.calls.creates.length, 0, tenantRole);
   }
 
-  const owner = await loadBroker({
-    patients: [patient({ assigned_nurses: [], created_by: 'Clinician@Agency.test' })],
-  });
-  assert.equal((await invokeBroker(owner.handler)).response.status, 200);
-
+  const clinician = await loadBroker();
+  assert.equal((await invokeBroker(clinician.handler)).response.status, 200);
   for (const tenantRole of ['manager', 'agency_admin']) {
     const authorized = await loadBroker({
       patients: [patient({ assigned_nurses: [], created_by: 'someone-else@agency.test' })],
       memberships: [membership({ tenant_role: tenantRole })],
+      assignments: [],
     });
     assert.equal((await invokeBroker(authorized.handler)).response.status, 200, tenantRole);
+    assert.equal(authorized.calls.assignmentFilters.length, 0, tenantRole);
   }
 });
 
@@ -452,7 +511,7 @@ test('all-status membership duplicates, lifecycle corruption, and inactive state
   }
 });
 
-test('Patient access and membership are rechecked immediately before create', async () => {
+test('Patient, membership, and assignment authority are rechecked immediately before create', async () => {
   const revoked = membership({
     status: 'revoked',
     revoked_at: '2026-09-03T13:00:00.000Z',
@@ -465,15 +524,23 @@ test('Patient access and membership are rechecked immediately before create', as
   assert.equal(revokedResult.response.status, 403);
   assert.equal(revokedDuringRequest.calls.creates.length, 0);
 
-  const accessRemoved = await loadBroker({
-    patientResponses: [
-      [patient()],
-      [patient({ assigned_nurses: [], created_by: 'someone-else@agency.test' })],
-    ],
+  const revokedAssignment = assignment({
+    status: 'revoked',
+    revoked_at: '2026-09-03T13:00:00.000Z',
+    revocation_reason: 'Revoked during request',
+    last_transition_at: '2026-09-03T13:00:00.000Z',
+    last_transition_reason: 'Revoked during request',
+    last_transition_action: 'revoke',
+    last_transition_request_id: 'assignment-request-2',
+    last_transition_request_key: 'agency-a:patient-a:user-1:assignment-request-2',
+    version: 2,
   });
-  const accessResult = await invokeBroker(accessRemoved.handler);
-  assert.equal(accessResult.response.status, 403);
-  assert.equal(accessRemoved.calls.creates.length, 0);
+  const assignmentRevoked = await loadBroker({
+    assignmentResponses: [[assignment()], [revokedAssignment]],
+  });
+  const assignmentResult = await invokeBroker(assignmentRevoked.handler);
+  assert.equal(assignmentResult.response.status, 403);
+  assert.equal(assignmentRevoked.calls.creates.length, 0);
 
   const agencySuspended = await loadBroker({
     agencyResponses: [[agency()], [agency({ status: 'suspended' })]],
@@ -497,6 +564,11 @@ test('idempotent replay is authority-bound and a post-create stamp mismatch is r
   assert.equal(replayResult.response.status, 200);
   assert.equal(replayResult.json.created, false);
   assert.equal(replay.calls.creates.length, 0);
+  assert.deepEqual(replay.calls.visitFilters[0].query, {
+    client_request_id: 'request-a',
+    agency_id: 'agency-a',
+    created_by_user_id: 'user-1',
+  });
 
   const revoked = membership({
     status: 'revoked',
@@ -514,10 +586,31 @@ test('idempotent replay is authority-bound and a post-create stamp mismatch is r
   assert.equal(revokedReplayResult.response.status, 403);
   assert.equal(revokedReplayResult.json.visit, undefined);
 
-  const conflict = await loadBroker({ visits: [{ ...existing, created_by_user_id: 'attacker' }] });
+  const conflict = await loadBroker({
+    visits: [{ ...existing, created_by_user_email_normalized: 'attacker@agency.test' }],
+  });
   const conflictResult = await invokeBroker(conflict.handler, visitInput({ client_request_id: 'request-a' }));
   assert.equal(conflictResult.response.status, 409);
   assert.equal(conflict.calls.creates.length, 0);
+
+  const payloadConflict = await loadBroker({ visits: [existing] });
+  const payloadConflictResult = await invokeBroker(
+    payloadConflict.handler,
+    visitInput({ client_request_id: 'request-a', status: 'completed' }),
+  );
+  assert.equal(payloadConflictResult.response.status, 409);
+  assert.equal(payloadConflict.calls.creates.length, 0);
+
+  const regressedLookup = await loadBroker({
+    visits: [{ ...existing, client_request_id: 'other-request', agency_id: 'agency-b' }],
+    ignoreFilters: true,
+  });
+  const regressedLookupResult = await invokeBroker(
+    regressedLookup.handler,
+    visitInput({ client_request_id: 'request-a' }),
+  );
+  assert.equal(regressedLookupResult.response.status, 409);
+  assert.equal(regressedLookup.calls.creates.length, 0);
 
   const mismatch = await loadBroker({ createdMutation: { agency_id: 'agency-b' } });
   const errorLog = console.error;
@@ -526,6 +619,45 @@ test('idempotent replay is authority-bound and a post-create stamp mismatch is r
   console.error = errorLog;
   assert.equal(mismatchResult.response.status, 500);
   assert.deepEqual(mismatch.calls.deletes, ['visit-1']);
+
+  const businessMismatch = await loadBroker({ createdMutation: { status: 'completed' } });
+  console.error = () => {};
+  const businessMismatchResult = await invokeBroker(businessMismatch.handler);
+  console.error = errorLog;
+  assert.equal(businessMismatchResult.response.status, 500);
+  assert.deepEqual(businessMismatch.calls.deletes, ['visit-1']);
+
+  const failedCompensation = await loadBroker({
+    createdMutation: { agency_id: 'agency-b' },
+    deleteNoop: true,
+  });
+  console.error = () => {};
+  const failedCompensationResult = await invokeBroker(failedCompensation.handler);
+  console.error = errorLog;
+  assert.equal(failedCompensationResult.response.status, 500);
+  assert.deepEqual(failedCompensation.calls.deletes, ['visit-1']);
+  assert.equal(failedCompensation.state.visits.length, 1);
+});
+
+test('a care-team revocation after create removes the newly created Visit', async () => {
+  const revoked = assignment({
+    status: 'revoked',
+    revoked_at: '2026-09-03T13:00:00.000Z',
+    revocation_reason: 'Revoked after create',
+    last_transition_at: '2026-09-03T13:00:00.000Z',
+    last_transition_reason: 'Revoked after create',
+    last_transition_action: 'revoke',
+    last_transition_request_id: 'assignment-request-2',
+    last_transition_request_key: 'agency-a:patient-a:user-1:assignment-request-2',
+    version: 2,
+  });
+  const runtime = await loadBroker({
+    assignmentResponses: [[assignment()], [assignment()], [revoked]],
+  });
+  const result = await invokeBroker(runtime.handler);
+  assert.equal(result.response.status, 403);
+  assert.deepEqual(runtime.calls.deletes, ['visit-1']);
+  assert.equal(runtime.state.visits.length, 0);
 });
 
 test('the legacy auto-assignment trigger is an unconditional no-op before privileged reads or writes', async () => {

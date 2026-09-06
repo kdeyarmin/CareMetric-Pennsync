@@ -1,4 +1,6 @@
 import { base44 } from "@/api/base44Client";
+import { listAuthorizedReferrals } from '@/functions/manageAuthorizedReferral';
+import { useAuth } from '@/lib/AuthContext';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
@@ -15,11 +17,16 @@ export const REFERRAL_DOCUMENT_SEND_UNAVAILABLE_MESSAGE =
   'Sending referral documents through secure messages is unavailable until a tenant-authorized broker binds the selected Agency, patient, referral, thread, and recipient.';
 
 export default function ReferralDocumentViewer({ patientId }) {
-  const { data: referrals = [] } = useQuery({
-    queryKey: ['patientReferrals', patientId],
-    queryFn: () => base44.entities.Referral.filter({ patient_id: patientId }, '-created_date', PATIENT_HISTORY_ROWS),
+  const { tenantContext } = useAuth();
+  const { data: referrals = [], isError: referralsUnavailable } = useQuery({
+    queryKey: ['referrals', 'authorized', tenantContext?.agency_id, 'patient', patientId],
+    queryFn: () => listAuthorizedReferrals({
+      agencyId: tenantContext.agency_id,
+      patientId,
+      limit: PATIENT_HISTORY_ROWS,
+    }).then((result) => result.referrals),
     initialData: [],
-    enabled: !!patientId,
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
   // Filter to only show processed documents
@@ -40,6 +47,19 @@ export default function ReferralDocumentViewer({ patientId }) {
     initialData: [],
     enabled: !!currentUser,
   });
+
+  if (referralsUnavailable) {
+    return (
+      <Alert variant="destructive">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertTitle>Referral documents unavailable</AlertTitle>
+        <AlertDescription>
+          Referral access could not be authorized. No referral documents are being shown.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
   if (processedReferrals.length === 0) {
     return (
       <Card>

@@ -1025,6 +1025,73 @@ tenant-provenance message brokers and migration, OASIS/PDGM clinical approval,
 device/store/privacy/signing work, backup/restore, and production cutover
 review.
 
+## 5q. Referral and Visit authority closure (candidate source, updated 2026-09-06)
+
+Section §5p is frozen at predecessor commit
+`314f7452f6ccaf4b6bb21c82cbfffdf2626e7d86`, tree
+`fea2686fe9665c0517db135bac46b9c00f57dd13`. This successor candidate contains
+243 entity schemas and 269 backend functions. A hosted synchronization receipt
+is intentionally external to this commit: a source file cannot attest to the
+deployment that will contain itself. Hosted checkpoint identity, resource
+parity, and probes must be captured separately against the exact committed
+tree.
+
+- `Referral` now requires immutable Agency, built-in creator identity,
+  request-idempotency, and monotonic-version fields. Direct create/read/update/
+  delete are all false. Legacy Referral rows without those stamps are
+  quarantined rather than silently attributed.
+- Every reachable production browser Referral operation routes through
+  `manageAuthorizedReferral`. That broker requires one exact active
+  `AgencyMembership` in an intake role and one active/trial Agency, stamps
+  immutable provenance, validates same-Agency Patient links, narrows responses,
+  reauthorizes before disclosure, and uses a version plus `updated_date`
+  predicate for conditional updates. Rejection and SOC actor fields are
+  server-owned. Browser response validation rejects tenant, identity, role,
+  envelope, and projection drift.
+- Create retries are bound to
+  `agency_id:created_by_user_id:client_request_id`, and request-created rows are
+  re-read and reconciled. Base44 does not expose a uniqueness constraint,
+  transaction, or conditional delete for this path. Datastore-level create-key
+  uniqueness is therefore unproved; deletion remains unavailable, and non-null
+  assignment remains paused until its notification and assignment authority are
+  tenant-bound. These are explicit release limitations, not successful empty
+  states.
+- Referral Intake, Follow-Up, reports, document/admission views, and dashboard
+  widgets distinguish broker failure from an empty queue or zero metrics.
+  Clinician dashboard code does not call the intake-only broker. The stale
+  follow-up scheduler, inbound-fax Referral matcher, and Referral-to-Smart-Note
+  bridge return no-store HTTP 503 before request parsing, environment access,
+  SDK construction, or PHI reads until purpose-bound replacements exist.
+- `createAuthorizedVisit` no longer treats mutable `Patient.assigned_nurses` or
+  `Patient.created_by` as clinician authority. Clinicians require exactly one
+  active `PatientCareTeamAssignment` whose user identity and enablement
+  membership id/version match the current exact active membership. Agency
+  administrators and managers retain reviewed Agency-wide creation authority;
+  office, social-work, and spiritual-care roles cannot create Visits. Patient,
+  Agency, membership, and assignment authority are checked before and after
+  create, with compensating removal on observed post-create revocation.
+- The deterministic readiness contract now binds all migrated browser
+  consumers and paused privileged Referral paths, not only the schema and
+  primary intake page. Its 50-artifact source-authority digest is
+  `878aa738d3b4b6cffd79f6b24860df2c98c836a348b640e1f77f10cd42d39391`.
+  It reports no direct browser Referral operation and no legacy Visit-create
+  assignment dependency, while preserving explicit blockers for hosted parity,
+  fixture actors/sessions, authenticated LR-01/LR-02 evidence, human approvals,
+  assignment uniqueness/provisioning, Patient/Visit/Referral create-key
+  uniqueness, Referral compare-and-delete, and paused Referral subflows.
+
+Candidate validation passes 2,160 utility/core, 57 schema/contract, 635
+security, 47 deduplication, and 1,412 component tests (4,311 package tests
+total), plus 19 component accessibility tests. Lint, baseline and high-signal
+typechecks, production build, 269-function transpilation/invocation validation,
+and 220-consumer shared-helper parity also pass. These are source results only.
+No production app, data, schema, domain, native binary, store record, merge, or
+deployment is authorized by this section. Production release remains blocked
+until the exact candidate is synchronized to isolated staging, the canonical
+fixture can be provisioned through reviewed paths, all retained authenticated
+two-Agency probes pass, datastore/migration limitations are resolved, and the
+required human product/security/QA/release approvals are recorded.
+
 ---
 
 ## 6. Sign-off

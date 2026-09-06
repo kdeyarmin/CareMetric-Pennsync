@@ -1,7 +1,6 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -15,8 +14,11 @@ import { referralPatientReadiness, splitPatientName } from "./referralPatientRea
 import { toast } from "sonner";
 import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
 import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
+import { createAuthorizedReferral } from '@/functions/manageAuthorizedReferral';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function DocumentToTriageMapper({ onTriageCreated }) {
+  const { tenantContext } = useAuth();
   const patientCreateRequestId = useRef(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -153,7 +155,7 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
         });
         patientId = newPatient.id;
         // Persist the created patient immediately so a retry after a later failure
-        // (e.g. Referral.create below) reuses this record instead of creating a
+        // (e.g. the authorized Referral broker below) reuses this record instead of creating a
         // duplicate patient chart.
         setMapping((prev) => ({
           ...prev,
@@ -224,7 +226,9 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
           },
         };
 
-        const referral = await base44.entities.Referral.create(referralData);
+        const referral = await createAuthorizedReferral(referralData, {
+          agencyId: tenantContext?.agency_id,
+        });
 
         // Refresh the lists this just changed so a newly created patient appears
         // in the "Update Existing Patient" dropdown and app-wide patient/referral lists.

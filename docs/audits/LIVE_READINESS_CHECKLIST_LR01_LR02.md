@@ -78,15 +78,19 @@ recomputes it from the exact clean checkout and rejects drift.
 
 The manifest does not encode or provision the Referral action required by S3
 or the Visit action required by S4. It does not provision anything or count as
-hosted evidence. At the 2026-09-04 staging checkpoint the reviewed
-`managePatientCareTeamAssignment` broker is withheld, so the final assignment
-cannot yet be provisioned through an approved path. The source contract also
-records that S3 lacks a reviewed immutable-tenant Referral broker and the S4
-Visit-create broker still uses legacy Patient assignment fields rather than
-`PatientCareTeamAssignment`. These are stop conditions, not locally satisfiable
-evidence. Do not use direct entity CRUD or legacy assignment fields to
-manufacture a passing matrix. Create Referral/Visit during S3/S4 only after
-reviewed canonical authority paths exist.
+hosted evidence. The 2026-09-06 candidate source adds an immutable-tenant
+Referral broker and makes Visit creation depend on an exact active
+`PatientCareTeamAssignment` bound to the current membership version. Those are
+source contracts only until the exact tree is synchronized and exercised in
+hosted staging. The reviewed `managePatientCareTeamAssignment` broker remains
+withheld, so the final assignment cannot yet be provisioned through an approved
+path. Patient, Visit, and Referral creation-key uniqueness and Referral
+compare-and-delete are not atomic at the datastore layer; Referral deletion,
+non-null assignment, stale escalation, inbound fax matching, and the Smart
+Note Referral bridge therefore remain paused. Do
+not use direct entity CRUD or legacy assignment fields to manufacture a passing
+matrix. Run S3/S4 only against the synchronized candidate and retain blocked or
+failed results honestly; neither flow clears the release gates by itself.
 
 Run the static and executable source contracts before any hosted work:
 

@@ -1,10 +1,13 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
+import { listAuthorizedReferrals } from '@/functions/manageAuthorizedReferral';
+import { useAuth } from '@/lib/AuthContext';
 import { isAdminView } from "@/lib/roles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { ClipboardCheck, Clock, TrendingUp, DollarSign } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { AlertTriangle, ClipboardCheck, Clock, TrendingUp, DollarSign } from "lucide-react";
 import { buildFollowUpPlan } from "@/components/referral/referralFollowUpEngine";
 import { estimateFollowUpRevenueImpact, fmtUsd } from "@/components/referral/followUpRevenueImpact";
 
@@ -26,15 +29,20 @@ const hoursBetween = (a, b) => {
  * defense in depth for reuse.
  */
 export default function FollowUpAnalytics() {
+  const { tenantContext } = useAuth();
   const { data: currentUser } = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
   });
   const adminView = isAdminView(currentUser);
 
-  const { data: referrals } = useQuery({
-    queryKey: ["referrals", 10000],
-    queryFn: () => base44.entities.Referral.list("-created_date", 10000),
+  const { data: referrals, isError: referralsUnavailable } = useQuery({
+    queryKey: ["referrals", "authorized", tenantContext?.agency_id, 5000],
+    queryFn: () => listAuthorizedReferrals({
+      agencyId: tenantContext.agency_id,
+      limit: 5000,
+    }).then((result) => result.referrals),
+    enabled: !!tenantContext?.agency_id,
   });
 
   const { data: rateConfig } = useQuery({
@@ -127,6 +135,17 @@ export default function FollowUpAnalytics() {
   }, [referrals, rateConfig, adminView]);
 
   const fmtHours = (h) => (h === null ? "—" : h < 48 ? `${Math.round(h)}h` : `${(h / 24).toFixed(1)}d`);
+
+  if (referralsUnavailable) {
+    return (
+      <Alert variant="destructive" className="mt-6">
+        <AlertTriangle className="h-4 w-4" />
+        <AlertDescription>
+          Referral analytics could not be authorized. No zero-value metrics are being inferred.
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <div className="space-y-4 mt-6">

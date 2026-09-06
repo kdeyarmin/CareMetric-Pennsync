@@ -3,6 +3,13 @@ import { base44 } from "@/api/base44Client";
 import { agencyQueryKey, scopePatientsToCallerAgency } from '@/lib/agencyRoster';
 import { createAuthorizedPatient } from '@/functions/createAuthorizedPatient';
 import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
+import {
+  createAuthorizedReferral,
+  getAuthorizedReferral,
+  listAuthorizedReferrals,
+  updateAuthorizedReferral,
+} from '@/functions/manageAuthorizedReferral';
+import { useAuth } from '@/lib/AuthContext';
 import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,6 +77,8 @@ const safeDate = (value) => {
 };
 const REFERRAL_ASSIGNMENT_MESSAGE_UNAVAILABLE =
   'New nurse assignments are unavailable until referral notification uses a tenant-authorized message broker.';
+const REFERRAL_DELETE_MESSAGE_UNAVAILABLE =
+  'Referral deletion is unavailable until Base44 supports an atomic compare-and-delete operation.';
 import { toast } from "sonner";
 import { parseDob } from "@/components/patient/patientDuplicateUtils";
 import {
@@ -109,6 +118,7 @@ const ReferralAdmissionNote = lazy(() => import("@/components/hub-tabs/ReferralA
 const TAB_KEYS = ["intake", "process", "admission"];
 
 export default function ReferralIntake() {
+  const { tenantContext } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
   const activeTab = TAB_KEYS.includes(requestedTab) ? requestedTab : "intake";
@@ -168,7 +178,6 @@ export default function ReferralIntake() {
   // pager hidden (no way to recover).
   useEffect(() => { setCurrentPage(1); }, [statusFilter, priorityFilter]);
   const REFERRALS_PER_PAGE = 15;
-  const [referralToDelete, setReferralToDelete] = useState(null);
   const [referralToReject, setReferralToReject] = useState(null);
 
   const { data: currentUser } = useQuery({
@@ -176,9 +185,13 @@ export default function ReferralIntake() {
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: referrals = [], isLoading } = useQuery({
-    queryKey: ['referrals', 200],
-    queryFn: () => base44.entities.Referral.list('-created_date', 200),
+  const { data: referrals = [], isLoading, isError: referralsUnavailable } = useQuery({
+    queryKey: ['referrals', 'authorized', tenantContext?.agency_id, 200],
+    queryFn: () => listAuthorizedReferrals({
+      agencyId: tenantContext.agency_id,
+      limit: 200,
+    }).then((result) => result.referrals),
+    enabled: !!tenantContext?.agency_id,
     initialData: [],
   });
 
@@ -374,7 +387,9 @@ export default function ReferralIntake() {
             created_by: currentUser?.email || 'system',
           }];
         }
-        return base44.entities.Referral.create(payload);
+        return createAuthorizedReferral(payload, {
+          agencyId: tenantContext?.agency_id,
+        });
       }));
 
       // Reset form
@@ -402,7 +417,7 @@ export default function ReferralIntake() {
     setIsCreatingReferral(true);
     try {
       // Create referral with AI-enhanced categorization and suggestions
-      const referral = await base44.entities.Referral.create({
+      const referral = await createAuthorizedReferral({
         ...newReferral,
         document_url: uploadedFile,
         status: 'new',
@@ -436,6 +451,8 @@ export default function ReferralIntake() {
           },
           suggested_care_plans: extractedFormData.suggested_care_plans || []
         } : null
+      }, {
+        agencyId: tenantContext?.agency_id,
       });
 
       // Automatically start processing
@@ -456,7 +473,11 @@ export default function ReferralIntake() {
 
   const _handleStatusChange = async (referralId, newStatus) => {
     try {
-      await base44.entities.Referral.update(referralId, { status: newStatus });
+      await updateAuthorizedReferral({
+        agencyId: tenantContext?.agency_id,
+        referralId,
+        changes: { status: newStatus },
+      });
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
     } catch (error) {
       console.error('Error updating status:', error);
@@ -467,7 +488,11 @@ export default function ReferralIntake() {
   const handleNurseAssignment = async (referralId, nurseEmail) => {
     if (nurseEmail === 'unassigned') {
       try {
-        await base44.entities.Referral.update(referralId, { assigned_to: null });
+        await updateAuthorizedReferral({
+          agencyId: tenantContext?.agency_id,
+          referralId,
+          changes: { assigned_to: null },
+        });
         queryClient.invalidateQueries({ queryKey: ['referrals'] });
       } catch (error) {
         console.error('Error unassigning nurse:', error);
@@ -500,7 +525,10 @@ export default function ReferralIntake() {
       // the aging board and CMS timely-initiation tracking (which skip rows
       // with no referral_date) and erased manual entries.
       const existing =
-        (await base44.entities.Referral.filter({ id: referralId }).then((rows) => rows?.[0]).catch(() => null)) ||
+        (await getAuthorizedReferral({
+          agencyId: tenantContext?.agency_id,
+          referralId,
+        }).then((result) => result.referral).catch(() => null)) ||
         referrals.find((r) => r.id === referralId) ||
         {};
 
@@ -879,7 +907,11 @@ export default function ReferralIntake() {
         updates.processed_document_url = generatedPdfUrl;
       }
 
-      await base44.entities.Referral.update(referralId, updates);
+      await updateAuthorizedReferral({
+        agencyId: tenantContext?.agency_id,
+        referralId,
+        changes: updates,
+      });
 
       // Persist + validate the Face-to-Face encounter extracted from the
       // referral packet (42 CFR 424.22). Best-effort exactly like the
@@ -1045,8 +1077,11 @@ export default function ReferralIntake() {
       
       // If requires manual review, show the verification step
       if (updates.requires_manual_review) {
-        const updatedReferral = await base44.entities.Referral.filter({ id: referralId });
-        setVerificationReferral(updatedReferral[0]);
+        const updatedReferral = await getAuthorizedReferral({
+          agencyId: tenantContext?.agency_id,
+          referralId,
+        });
+        setVerificationReferral(updatedReferral.referral);
       }
       
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
@@ -1060,11 +1095,15 @@ export default function ReferralIntake() {
   const handleConfirmMatch = async (patientId) => {
     try {
       const referralToUpdate = verificationReferral || matchReviewReferral;
-      await base44.entities.Referral.update(referralToUpdate.id, {
-        patient_id: patientId,
-        requires_manual_review: false,
-        manually_confirmed: true,
-        status: 'ready_for_admission'
+      await updateAuthorizedReferral({
+        agencyId: referralToUpdate.agency_id,
+        referralId: referralToUpdate.id,
+        changes: {
+          patient_id: patientId,
+          requires_manual_review: false,
+          manually_confirmed: true,
+          status: 'ready_for_admission'
+        },
       });
       setMatchReviewReferral(null);
       setVerificationReferral(null);
@@ -1075,23 +1114,12 @@ export default function ReferralIntake() {
     }
   };
 
-  const handleDeleteReferral = async (referralId) => {
-    try {
-      await base44.entities.Referral.delete(referralId);
-      queryClient.invalidateQueries({ queryKey: ['referrals'] });
-      toast.success('Referral deleted successfully');
-    } catch (error) {
-      console.error('Error deleting referral:', error);
-      toast.error('Failed to delete referral');
-    }
-  };
-
   const handleRejectReferral = async (referralId) => {
     try {
-      await base44.entities.Referral.update(referralId, {
-        status: 'declined',
-        rejection_date: new Date().toISOString(),
-        rejected_by: currentUser?.email
+      await updateAuthorizedReferral({
+        agencyId: tenantContext?.agency_id,
+        referralId,
+        changes: { status: 'declined' },
       });
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       toast.success('Referral rejected');
@@ -1117,7 +1145,12 @@ export default function ReferralIntake() {
         firstVisitDate: socFirstVisitDate || undefined,
         by: currentUser?.email,
       });
-      await base44.entities.Referral.update(socReferral.id, payload);
+      const { soc_completed_by: _serverStamped, ...changes } = payload;
+      await updateAuthorizedReferral({
+        agencyId: socReferral.agency_id,
+        referralId: socReferral.id,
+        changes,
+      });
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       toast.success(`Start of care recorded for ${socReferral.patient_name || 'referral'}.`);
       setSocReferral(null);
@@ -1176,11 +1209,15 @@ export default function ReferralIntake() {
         care_type: data.admission_details?.care_type || 'home_health'
       }, { clientRequestId: `referral:${referralToUpdate.id}` });
 
-      await base44.entities.Referral.update(referralToUpdate.id, {
-        patient_id: newPatient.id,
-        requires_manual_review: false,
-        manually_confirmed: true,
-        status: 'ready_for_admission'
+      await updateAuthorizedReferral({
+        agencyId: referralToUpdate.agency_id,
+        referralId: referralToUpdate.id,
+        changes: {
+          patient_id: newPatient.id,
+          requires_manual_review: false,
+          manually_confirmed: true,
+          status: 'ready_for_admission'
+        },
       });
 
       setMatchReviewReferral(null);
@@ -1365,6 +1402,13 @@ export default function ReferralIntake() {
         <CardContent className="p-0">
           {isLoading ? (
             <LoadingState label="Loading referrals..." />
+          ) : referralsUnavailable ? (
+            <Alert variant="destructive" className="m-4 sm:m-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Referral access could not be authorized. No empty queue is being inferred.
+              </AlertDescription>
+            </Alert>
           ) : filteredReferrals.length === 0 ? (
             <EmptyState
               icon={Inbox}
@@ -1624,11 +1668,12 @@ export default function ReferralIntake() {
                             <Button
                               size="sm"
                               variant="outline"
-                              onClick={() => setReferralToDelete(referral)}
+                              disabled
+                              title={REFERRAL_DELETE_MESSAGE_UNAVAILABLE}
                               className="text-red-600 hover:bg-red-50 min-h-[36px] text-xs flex-1"
                             >
                               <Trash2 className="w-4 h-4 mr-1" />
-                              Delete
+                              Delete unavailable
                             </Button>
                           </div>
                         </div>
@@ -2026,29 +2071,6 @@ export default function ReferralIntake() {
           </DialogContent>
         </Dialog>
       )}
-
-      <AlertDialog open={!!referralToDelete} onOpenChange={(open) => { if (!open) setReferralToDelete(null); }}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete Referral</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete the referral for {referralToDelete?.patient_name || 'this patient'}? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-red-600 hover:bg-red-700"
-              onClick={() => {
-                handleDeleteReferral(referralToDelete.id);
-                setReferralToDelete(null);
-              }}
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
 
       <AlertDialog open={!!referralToReject} onOpenChange={(open) => { if (!open) setReferralToReject(null); }}>
         <AlertDialogContent>
