@@ -90,6 +90,14 @@ const PURPOSE_FIELDS: Record<string, readonly string[]> = {
     'category',
     'patient_id',
   ],
+  fax: [
+    'id',
+    'file_name',
+    'file_size',
+    'file_type',
+    'category',
+    'patient_id',
+  ],
 };
 
 const PURPOSE_ROLES: Record<string, ReadonlySet<string>> = {
@@ -99,6 +107,10 @@ const PURPOSE_ROLES: Record<string, ReadonlySet<string>> = {
   signature_review: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
   download: new Set([
     'platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care',
+  ]),
+  fax: new Set([
+    'platform_owner', 'agency_admin', 'manager', 'clinician', 'office_staff',
+    'social_worker', 'spiritual_care',
   ]),
 };
 // <<<END AUTHORIZED DOCUMENT EXACT PURPOSE POLICY>>>
@@ -1008,10 +1020,11 @@ Deno.serve(async (req) => {
       throw new PublicError(409, 'Document read authority changed during request');
     }
 
-    if (input.purpose === 'download') {
+    if (input.purpose === 'download' || input.purpose === 'fax') {
+      const signedUrlTtl = input.purpose === 'fax' ? 15 * 60 : SIGNED_URL_TTL_SECONDS;
       const signedResult = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({
         file_uri: disclosure.binding.file_uri,
-        expires_in: SIGNED_URL_TTL_SECONDS,
+        expires_in: signedUrlTtl,
       });
       const downloadUrl = exactHttpsUrl(signedResult?.signed_url);
       if (!downloadUrl) throw new Error('CreateFileSignedUrl returned an invalid URL');
@@ -1040,7 +1053,7 @@ Deno.serve(async (req) => {
         document: projectDocument(postSign.document, input.purpose),
         delivery: {
           download_url: downloadUrl,
-          expires_in_seconds: SIGNED_URL_TTL_SECONDS,
+          expires_in_seconds: signedUrlTtl,
         },
         scope: {
           agency_id: postSignAuthority.agencyId,

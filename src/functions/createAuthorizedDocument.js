@@ -87,7 +87,8 @@ function validateResult(result, input) {
     || !exactIdentifier(scope.membership_id)
     || !Number.isSafeInteger(scope.membership_version)
     || scope.membership_version < 1
-    || !['agency_admin', 'manager', 'clinician'].includes(scope.tenant_role)
+    || !['agency_admin', 'manager', 'clinician', ...(input.purpose === 'referral' ? ['office_staff'] : [])]
+      .includes(scope.tenant_role)
   ) {
     throw new Error(result?.error || 'Document upload failed');
   }

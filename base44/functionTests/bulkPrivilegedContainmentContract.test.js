@@ -9,12 +9,10 @@ import { transpileTs } from '../../tools-transpile-ts.mjs';
 const FUNCTION_NAMES = [
   'processDischargeReport',
   'processPatientFileUpdate',
-  'generateFollowUpPortalToken',
 ];
 
 const STATICALLY_PAUSED_FUNCTIONS = new Set([
   'processDischargeReport',
-  'generateFollowUpPortalToken',
 ]);
 
 function makeClient({
@@ -240,22 +238,6 @@ test('the configured protected admin reaches each handler safe input boundary', 
     );
     assert.equal(calls.bodyReads, STATICALLY_PAUSED_FUNCTIONS.has(functionName) ? 0 : 1, functionName);
     assert.equal(privilegedCallCount(calls), 0, functionName);
-  }
-});
-
-test('portal-token minting stays paused for malformed and otherwise valid requests', async () => {
-  const user = { email: 'owner@example.com', role: 'admin', is_active: true };
-  for (const body of [
-    { referral_id: { $ne: null } },
-    { referral_id: 'referral-1', provider_name: 'Provider One' },
-  ]) {
-    const { client, calls } = makeClient({ user });
-    const handler = await loadHandler('generateFollowUpPortalToken', client, user.email);
-    const { response } = await invoke(handler, calls, body);
-
-    assert.equal(response.status, 503);
-    assert.equal(calls.bodyReads, 0);
-    assert.equal(privilegedCallCount(calls), 0);
   }
 });
 

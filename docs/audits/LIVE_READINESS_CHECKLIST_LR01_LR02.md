@@ -84,13 +84,15 @@ Referral broker and makes Visit creation depend on an exact active
 source contracts only until the exact tree is synchronized and exercised in
 hosted staging. The reviewed `managePatientCareTeamAssignment` broker remains
 withheld, so the final assignment cannot yet be provisioned through an approved
-path. Patient, Visit, and Referral creation-key uniqueness and Referral
-compare-and-delete are not atomic at the datastore layer; Referral deletion,
-non-null assignment, stale escalation, inbound fax matching, and the Smart
-Note Referral bridge therefore remain paused. Do
-not use direct entity CRUD or legacy assignment fields to manufacture a passing
-matrix. Run S3/S4 only against the synchronized candidate and retain blocked or
-failed results honestly; neither flow clears the release gates by itself.
+path. Patient, Visit, and Referral creation-key uniqueness and version-filtered
+conditional writes are not proved atomic at the datastore layer. Referral
+deletion, assignment, stale escalation, inbound fax matching, and the Smart Note
+Referral bridge now have reviewed tenant-bound repo implementations, but those
+implementations remain release-blocked until the exact tree is synchronized and
+authenticated hosted cross-tenant evidence is retained. Do not use direct entity
+CRUD or legacy assignment fields to manufacture a passing matrix. Run S3/S4 only
+against the synchronized candidate and retain blocked or failed results honestly;
+neither flow clears the release gates by itself.
 
 Run the static and executable source contracts before any hosted work:
 
@@ -129,7 +131,7 @@ external evidence, receipt, and inventory attestations remain outstanding.
 2. [ ] Route positive tenant reads through reviewed brokers that validate immutable membership and care-team assignment; direct PHI/authority entity reads are not positive evidence
 3. [ ] Lock training attestation writes to **service-role only** (`TrainingCertificate`, `TrainingCompletion`, attempt score/status) so clients cannot forge completions
 4. [ ] Confirm scheduled/internal functions require admin session **or** `x-internal-secret: <INTERNAL_FN_SECRET>` (fail-closed if secret unset)
-5. [ ] Keep every fax/SMS/telehealth migration pause and related schedule disabled until immutable provider bindings and compliant STOP/START capture pass the authenticated two-agency matrix; a later reviewed activation may enable **exactly one** processor per approved queue
+5. [ ] Keep SMS, inbound-call, secure-message, and telehealth migration pauses enabled. Activate inbound fax routing only after provisioning one reviewed immutable destination binding per approved number and proving signed sandbox callbacks; enable **exactly one** inbound-fax processor, and retain its tenant/concurrency evidence
 
 ### Verification (must pass on **raw network responses**, not only UI)
 

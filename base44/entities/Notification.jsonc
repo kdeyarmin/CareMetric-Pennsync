@@ -2,6 +2,14 @@
   "name": "Notification",
   "type": "object",
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Server-stamped Agency id for tenant-bound workflow notifications. Legacy notifications may not have this field."
+    },
+    "dedupe_key": {
+      "type": "string",
+      "description": "Server-derived idempotency key for a purpose-specific notification workflow. Code must still reject duplicate rows because schema uniqueness is not assumed."
+    },
     "user_email": {
       "type": "string",
       "description": "Email of user who should receive this notification"

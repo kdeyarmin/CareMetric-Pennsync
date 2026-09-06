@@ -52,11 +52,12 @@ Turn the gated live-readiness matrix into real hosted evidence so
      Referral broker and makes S4 Visit creation use canonical, version-bound
      care-team authority instead of legacy Patient assignment fields. Confirm
      exact hosted tree/resource parity before using either path as evidence.
-   - Patient, Visit, and Referral creation-key uniqueness and Referral
-     compare-and-delete are not atomic at the datastore layer. Referral deletion
-     and non-null assignment remain paused, as do the three legacy privileged
-     Referral consumers. Preserve these as release blockers even if the narrower
-     S3/S4 create/read smoke passes.
+   - Patient, Visit, and Referral creation-key uniqueness and version-filtered
+     conditional writes are not proved atomic at the datastore layer. Referral
+     deletion, non-null assignment, stale escalation, inbound fax matching, and
+     Smart Note disclosure now have reviewed tenant-bound repo implementations;
+     preserve hosted parity, concurrency, and cross-tenant proof as release
+     blockers even if the narrower S3/S4 create/read smoke passes.
    - Create Referral and Visit records through the reviewed S3/S4 paths rather
      than pre-seeding them; the hosted workflow result is the evidence LR-02
      needs. S4 remains blocked until the canonical A1 assignment can be

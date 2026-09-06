@@ -7,6 +7,10 @@
   // generateFollowUpPortalToken function, consumed by the public
   // validateFollowUpToken / submitFollowUpResponse functions via service role.
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Agency id proven by the issuing Referral broker."
+    },
     "referral_id": {
       "type": "string",
       "description": "Referral this token grants response access to"
@@ -18,6 +22,54 @@
     "provider_name": {
       "type": "string",
       "description": "Referring provider/practice the request was sent to (display only)"
+    },
+    "token_creation_key": {
+      "type": "string",
+      "description": "Server-derived Agency/referral/request-snapshot identity used to detect conflicting issuance."
+    },
+    "request_generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Exact follow-up request generation timestamp authorized when this capability was issued."
+    },
+    "request_snapshot_hash": {
+      "type": "string",
+      "description": "SHA-256 of the canonical minimum-necessary provider request snapshot."
+    },
+    "request_snapshot": {
+      "type": "object",
+      "description": "Immutable minimum-necessary patient identifiers and exact requested items disclosed by this capability."
+    },
+    "referral_version_at_issue": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "referral_version_after_issue": {
+      "type": "integer",
+      "minimum": 2,
+      "description": "Expected Referral version after its follow-up request is bound to this exact token record."
+    },
+    "referral_updated_date_at_issue": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "issued_by_user_id": {
+      "type": "string"
+    },
+    "issued_by_user_email_normalized": {
+      "type": "string",
+      "format": "email"
+    },
+    "issued_by_membership_id": {
+      "type": "string"
+    },
+    "issued_by_membership_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "issued_at": {
+      "type": "string",
+      "format": "date-time"
     },
     "expires_at": {
       "type": "string",
@@ -57,11 +109,57 @@
     "submit_claimed_by": {
       "type": "string",
       "description": "Claim token for concurrent submitFollowUpResponse; set before merging answers onto the Referral so two parallel submits cannot both write"
+    },
+    "submit_claimed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "submit_claimed_response_hash": {
+      "type": "string",
+      "description": "SHA-256 of the bounded canonical response payload associated with the current short-lived submit claim."
+    },
+    "submission_id": {
+      "type": "string",
+      "description": "Durable server-generated submission identity copied to the bound Referral before this token is finalized."
+    },
+    "submitted_response_hash": {
+      "type": "string",
+      "description": "SHA-256 of the canonical accepted response payload for audit reconciliation without logging response text."
+    },
+    "answered_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic server-maintained capability lifecycle revision."
     }
   },
-  "required": ["referral_id", "token", "expires_at"],
-  // Tokens are bearer secrets and the public follow-up capability is
-  // quarantined. Historical rows remain service-role maintenance data only.
+  "required": [
+    "agency_id",
+    "referral_id",
+    "token",
+    "token_creation_key",
+    "request_generated_at",
+    "request_snapshot_hash",
+    "request_snapshot",
+    "referral_version_at_issue",
+    "referral_version_after_issue",
+    "referral_updated_date_at_issue",
+    "issued_by_user_id",
+    "issued_by_user_email_normalized",
+    "issued_by_membership_id",
+    "issued_by_membership_version",
+    "issued_at",
+    "expires_at",
+    "is_active",
+    "status",
+    "access_count",
+    "version"
+  ],
+  // Tokens are bearer secrets. Only the reviewed token lifecycle functions may
+  // access these service-role rows; browsers receive minimum-necessary snapshots.
   "rls": {
     "read": false,
     "create": false,

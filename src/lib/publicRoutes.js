@@ -1,9 +1,9 @@
 /**
  * Routes that render WITHOUT an app login.
  *
- * `/join` remains a capability route. `/signer` and `/followup` remain public
- * only so old external links reach explicit static-unavailable containment
- * pages; those pages scrub and do not validate their token. `/privacy` is the
+ * `/join` and `/followup` are capability routes. `/signer` remains public only
+ * so old external links reach an explicit static-unavailable containment page.
+ * Every capability page consumes and scrubs its token. `/privacy` is the
  * canonical pre-auth privacy policy; `/privacy-policy` is its public
  * hyphenated alias, and `/privacypolicy` is the compatibility URL already
  * registered with the Apple listing.

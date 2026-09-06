@@ -10,8 +10,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
  * no caller may set tenant, identity, audit-actor, or revision fields.
  */
 
-const ACTIONS = new Set(['list', 'get', 'create', 'update', 'delete']);
+const ACTIONS = new Set(['list', 'get', 'list_assignees', 'create', 'update', 'delete']);
 const INTAKE_ROLES = new Set(['agency_admin', 'manager', 'office_staff']);
+const REFERRAL_ASSIGNEE_ROLES = new Set(['agency_admin', 'manager', 'clinician']);
 const TENANT_ROLES = new Set([
   'agency_admin',
   'manager',
@@ -35,12 +36,28 @@ const REFERRAL_STATUSES = new Set([
 ]);
 const REFERRAL_PRIORITIES = new Set(['low', 'normal', 'high', 'urgent']);
 const DOCUMENT_TYPES = new Set(['pdf', 'fax', 'image', 'manual', 'electronic']);
+const FOLLOW_UP_CAPABILITY_FIELDS = [
+  'portal_link_active',
+  'portal_token_id',
+  'portal_token_snapshot_hash',
+  'portal_token_issued_at',
+  'portal_token_expires_at',
+  'portal_submission_id',
+  'portal_submission_hash',
+  'portal_submitted_at',
+  // Only processInboundFaxes may bind an IncomingFax to a Referral. Treat this
+  // exactly like the provider-token provenance above: browser callers may
+  // preserve the current server-issued value while resolving an item, but may
+  // never forge or replace it through the general Referral update action.
+  'fax_back',
+];
 
 const MAX_BODY_BYTES = 1_000_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const MAX_LIST_LIMIT = 5000;
 const EXACT_ROW_LIMIT = 10;
 const MEMBERSHIP_SCAN_LIMIT = 100;
+const USER_SCAN_LIMIT = 10;
 
 const CLIENT_REFERRAL_FIELDS = new Set([
   'patient_name',
@@ -86,6 +103,22 @@ const RESPONSE_FIELDS = [
   'rejection_date',
   'rejected_by',
   'soc_completed_by',
+  'assigned_to_user_id',
+  'assigned_to_membership_id',
+  'assigned_to_membership_version',
+  'assigned_at',
+  'assigned_by_user_id',
+  'assigned_by_user_email_normalized',
+];
+
+const ASSIGNMENT_PROVENANCE_FIELDS = [
+  'assigned_to',
+  'assigned_to_user_id',
+  'assigned_to_membership_id',
+  'assigned_to_membership_version',
+  'assigned_at',
+  'assigned_by_user_id',
+  'assigned_by_user_email_normalized',
 ];
 
 class PublicError extends Error {
@@ -256,6 +289,103 @@ function validateMembershipRows(
   return row;
 }
 
+function validateActiveAssigneeMembership(
+  rawRows: Array<Record<string, any>>,
+  normalizedEmail: string,
+  agencyId: string,
+) {
+  if (rawRows.length >= MEMBERSHIP_SCAN_LIMIT) {
+    throw new PublicError(409, 'Referral assignee membership is ambiguous');
+  }
+  if (rawRows.some((row) => (
+    row?.agency_id !== agencyId
+    || canonicalEmail(row?.user_email_normalized) !== normalizedEmail
+  ))) {
+    throw new PublicError(409, 'Referral assignee query scope could not be verified');
+  }
+  if (rawRows.length !== 1) {
+    throw new PublicError(403, 'Referral assignee is unavailable');
+  }
+  const row = rawRows[0];
+  const userId = exactIdentifier(row.user_id);
+  const storedEmail = canonicalEmail(row.user_email_normalized);
+  const transitionEmail = canonicalEmail(row.last_transition_by_email_normalized);
+  const transitionReason = boundedReason(row.last_transition_reason);
+  if (
+    !exactIdentifier(row.id)
+    || !userId
+    || row.membership_key !== `${agencyId}:${userId}`
+    || !storedEmail
+    || row.user_email_normalized !== storedEmail
+    || storedEmail !== normalizedEmail
+    || !REFERRAL_ASSIGNEE_ROLES.has(String(row.tenant_role || ''))
+    || row.status !== 'active'
+    || !exactIdentifier(row.created_by_user_id)
+    || !exactIdentifier(row.last_transition_by_user_id)
+    || !transitionEmail
+    || row.last_transition_by_email_normalized !== transitionEmail
+    || !validInstant(row.activated_at)
+    || !validInstant(row.last_transition_at)
+    || !transitionReason
+    || !Number.isSafeInteger(row.version)
+    || row.version < 1
+    || row.revoked_at != null
+    || row.revocation_reason != null
+  ) {
+    throw new PublicError(409, 'Referral assignee membership integrity check failed');
+  }
+  return row;
+}
+
+async function loadExactAssignee(
+  entities: Record<string, any>,
+  agencyId: string,
+  normalizedEmail: string,
+) {
+  const memberships = requireRows(
+    await entities.AgencyMembership.filter(
+      {
+        agency_id: agencyId,
+        user_email_normalized: normalizedEmail,
+        status: 'active',
+      },
+      '-updated_date',
+      MEMBERSHIP_SCAN_LIMIT,
+    ),
+    'AgencyMembership.filter',
+  );
+  const membership = validateActiveAssigneeMembership(
+    memberships,
+    normalizedEmail,
+    agencyId,
+  );
+  const userRows = requireRows(
+    await entities.User.filter({ id: membership.user_id }, undefined, USER_SCAN_LIMIT),
+    'User.filter',
+  );
+  if (userRows.length >= USER_SCAN_LIMIT) {
+    throw new PublicError(409, 'Referral assignee identity is ambiguous');
+  }
+  if (userRows.some((row) => row?.id !== membership.user_id)) {
+    throw new PublicError(409, 'Referral assignee identity scope could not be verified');
+  }
+  if (userRows.length !== 1) {
+    throw new PublicError(403, 'Referral assignee is unavailable');
+  }
+  const user = userRows[0];
+  if (
+    canonicalEmail(user.email) !== normalizedEmail
+    || user.role !== 'user'
+    || user.is_active === false
+    || user.disabled === true
+    || user.is_service === true
+    || user.is_verified === false
+  ) {
+    throw new PublicError(409, 'Referral assignee identity integrity check failed');
+  }
+  return { membership, user };
+}
+
 async function loadExactEnabledAgency(entities: Record<string, any>, agencyId: string) {
   const rows = requireRows(
     await entities.Agency.filter({ id: agencyId }, undefined, EXACT_ROW_LIMIT),
@@ -343,6 +473,31 @@ function validateReferralIntegrity(
   const creatorEmail = canonicalEmail(row.created_by_user_email_normalized);
   const platformCreator = canonicalEmail(row.created_by);
   const requestId = exactIdentifier(row.client_request_id);
+  const assignedEmail = row.assigned_to == null ? null : canonicalEmail(row.assigned_to);
+  const hasAssignmentProvenance = ASSIGNMENT_PROVENANCE_FIELDS
+    .slice(1)
+    .some((field) => row[field] != null);
+  const assignmentProvenanceIsValid = !hasAssignmentProvenance || (
+    !!assignedEmail
+    && row.assigned_to === assignedEmail
+    && !!exactIdentifier(row.assigned_to_user_id)
+    && !!exactIdentifier(row.assigned_to_membership_id)
+    && Number.isSafeInteger(row.assigned_to_membership_version)
+    && row.assigned_to_membership_version >= 1
+    && validInstant(row.assigned_at)
+    && !!exactIdentifier(row.assigned_by_user_id)
+    && canonicalEmail(row.assigned_by_user_email_normalized) === row.assigned_by_user_email_normalized
+  );
+  const hasArchiveState = row.archived_at != null
+    || row.archived_by_user_id != null
+    || row.archived_by_user_email_normalized != null
+    || row.archive_reason != null;
+  const archiveStateIsValid = !hasArchiveState || (
+    validInstant(row.archived_at)
+    && !!exactIdentifier(row.archived_by_user_id)
+    && canonicalEmail(row.archived_by_user_email_normalized) === row.archived_by_user_email_normalized
+    && !!boundedReason(row.archive_reason)
+  );
   if (
     row.id !== referralId
     || row.agency_id !== agencyId
@@ -360,6 +515,9 @@ function validateReferralIntegrity(
     || (row.patient_id != null && !exactIdentifier(row.patient_id))
     || (row.status != null && !REFERRAL_STATUSES.has(String(row.status)))
     || (row.priority != null && !REFERRAL_PRIORITIES.has(String(row.priority)))
+    || (row.assigned_to != null && !assignedEmail)
+    || !assignmentProvenanceIsValid
+    || !archiveStateIsValid
   ) {
     throw new PublicError(409, 'Referral authority integrity check failed');
   }
@@ -370,6 +528,7 @@ async function loadExactReferral(
   entities: Record<string, any>,
   referralId: string,
   agencyId: string,
+  includeArchived = false,
 ) {
   const rows = requireRows(
     await entities.Referral.filter(
@@ -385,7 +544,11 @@ async function loadExactReferral(
   }
   if (rows.length === 0) throw new PublicError(404, 'Referral unavailable');
   if (rows.length !== 1) throw new PublicError(409, 'Referral is ambiguous');
-  return validateReferralIntegrity(rows[0], referralId, agencyId);
+  const row = validateReferralIntegrity(rows[0], referralId, agencyId);
+  if (!includeArchived && row.archived_at != null) {
+    throw new PublicError(404, 'Referral unavailable');
+  }
+  return row;
 }
 
 async function loadExactPatient(
@@ -418,7 +581,6 @@ async function loadExactPatient(
 
 function validateBusinessFields(
   value: unknown,
-  normalizedEmail: string,
   mode: 'create' | 'update',
 ) {
   if (!plainObject(value)) throw new PublicError(400, `Referral ${mode} fields must be an object`);
@@ -433,6 +595,14 @@ function validateBusinessFields(
   const output: Record<string, unknown> = {};
   for (const [key, nested] of Object.entries(value)) {
     if (nested !== undefined) output[key] = nested;
+  }
+  if (Object.hasOwn(output, 'follow_up_requests')) {
+    if (!plainObject(output.follow_up_requests)) {
+      throw new PublicError(400, 'follow_up_requests is invalid');
+    }
+    const clientFollowUp = { ...output.follow_up_requests };
+    for (const field of FOLLOW_UP_CAPABILITY_FIELDS) delete clientFollowUp[field];
+    output.follow_up_requests = clientFollowUp;
   }
   if (Object.hasOwn(output, 'patient_id') && output.patient_id !== null) {
     const patientId = exactIdentifier(output.patient_id);
@@ -454,14 +624,26 @@ function validateBusinessFields(
   }
   if (Object.hasOwn(output, 'assigned_to') && output.assigned_to !== null) {
     const assignedTo = canonicalEmail(output.assigned_to);
-    if (!assignedTo || assignedTo !== normalizedEmail || mode === 'update') {
-      throw new PublicError(
-        503,
-        'Referral assignment mutations are paused',
-        'referral_assignment_mutations_paused',
-      );
-    }
+    if (!assignedTo) throw new PublicError(400, 'assigned_to is invalid');
     output.assigned_to = assignedTo;
+  }
+  return output;
+}
+
+function preserveFollowUpCapabilityState(
+  current: unknown,
+  requested: unknown,
+) {
+  if (!plainObject(requested)) return requested;
+  const output = { ...requested };
+  if (
+    plainObject(current)
+    && validInstant(current.generated_at)
+    && current.generated_at === requested.generated_at
+  ) {
+    for (const field of FOLLOW_UP_CAPABILITY_FIELDS) {
+      if (current[field] !== undefined) output[field] = current[field];
+    }
   }
   return output;
 }
@@ -480,6 +662,27 @@ function serverAuditFields(
     output.soc_completed_by = normalizedEmail;
   }
   return output;
+}
+
+function stampAssignment(
+  fields: Record<string, unknown>,
+  authority: Record<string, any>,
+  assignee: Record<string, any>,
+) {
+  return {
+    ...fields,
+    assigned_to: assignee.membership.user_email_normalized,
+    assigned_to_user_id: assignee.membership.user_id,
+    assigned_to_membership_id: assignee.membership.id,
+    assigned_to_membership_version: assignee.membership.version,
+    assigned_at: new Date().toISOString(),
+    assigned_by_user_id: authority.userId,
+    assigned_by_user_email_normalized: authority.normalizedEmail,
+  };
+}
+
+function assignmentUnset() {
+  return Object.fromEntries(ASSIGNMENT_PROVENANCE_FIELDS.map((field) => [field, '']));
 }
 
 function narrowReferral(row: Record<string, any>) {
@@ -531,7 +734,10 @@ async function listReferrals(
   if (!Number.isSafeInteger(limit) || Number(limit) < 1 || Number(limit) > MAX_LIST_LIMIT) {
     throw new PublicError(400, 'limit is invalid');
   }
-  const query: Record<string, unknown> = { agency_id: authority.agencyId };
+  const query: Record<string, unknown> = {
+    agency_id: authority.agencyId,
+    archived_at: { $exists: false },
+  };
   if (body.patient_id !== undefined) {
     const patientId = exactIdentifier(body.patient_id);
     if (!patientId) throw new PublicError(400, 'patient_id is invalid');
@@ -561,6 +767,7 @@ async function listReferrals(
   if (rows.length > Number(limit)) throw new PublicError(409, 'Referral list is ambiguous');
   if (rows.some((row) => (
     row?.agency_id !== authority.agencyId
+    || row?.archived_at != null
     || (query.patient_id !== undefined && row?.patient_id !== query.patient_id)
     || (query.status !== undefined && row?.status !== query.status)
     || (query.assigned_to !== undefined && row?.assigned_to !== query.assigned_to)
@@ -621,6 +828,79 @@ async function getReferral(
   });
 }
 
+async function listReferralAssignees(
+  base44: Record<string, any>,
+  authority: Record<string, any>,
+  body: Record<string, unknown>,
+) {
+  assertOnlyKeys(body, ['action', 'agency_id'], 'Referral assignee list');
+  const entities = base44.asServiceRole.entities;
+  const memberships = requireRows(
+    await entities.AgencyMembership.filter(
+      { agency_id: authority.agencyId, status: 'active' },
+      'user_email_normalized',
+      MEMBERSHIP_SCAN_LIMIT,
+    ),
+    'AgencyMembership.filter',
+  );
+  if (memberships.length >= MEMBERSHIP_SCAN_LIMIT) {
+    throw new PublicError(409, 'Referral assignee roster is incomplete');
+  }
+  if (memberships.some((row) => (
+    row?.agency_id !== authority.agencyId || row?.status !== 'active'
+  ))) {
+    throw new PublicError(409, 'Referral assignee roster scope could not be verified');
+  }
+
+  const assignees: Array<Record<string, unknown>> = [];
+  const seenMembershipIds = new Set<string>();
+  const seenUserIds = new Set<string>();
+  const seenEmails = new Set<string>();
+  for (const row of memberships) {
+    if (!REFERRAL_ASSIGNEE_ROLES.has(String(row?.tenant_role || ''))) continue;
+    const email = canonicalEmail(row?.user_email_normalized);
+    if (!email) throw new PublicError(409, 'Referral assignee roster integrity check failed');
+    const exact = await loadExactAssignee(entities, authority.agencyId, email);
+    if (exact.membership.id !== row.id || exact.membership.version !== row.version) {
+      throw new PublicError(409, 'Referral assignee roster changed during request');
+    }
+    if (
+      seenMembershipIds.has(exact.membership.id)
+      || seenUserIds.has(exact.membership.user_id)
+      || seenEmails.has(email)
+    ) {
+      throw new PublicError(409, 'Referral assignee roster is ambiguous');
+    }
+    seenMembershipIds.add(exact.membership.id);
+    seenUserIds.add(exact.membership.user_id);
+    seenEmails.add(email);
+    const fullName = typeof exact.user.full_name === 'string'
+      && exact.user.full_name.trim()
+      && exact.user.full_name.length <= 200
+      ? exact.user.full_name.trim()
+      : null;
+    assignees.push({
+      user_id: exact.membership.user_id,
+      email,
+      full_name: fullName,
+      tenant_role: exact.membership.tenant_role,
+      membership_id: exact.membership.id,
+      membership_version: exact.membership.version,
+    });
+  }
+  const disclosureAuthority = await loadAuthority(
+    base44,
+    authority.agencyId,
+    authority.snapshot,
+  );
+  return Response.json({
+    success: true,
+    action: 'list_assignees',
+    assignees,
+    scope: scope(disclosureAuthority),
+  });
+}
+
 async function createReferral(
   base44: Record<string, any>,
   authority: Record<string, any>,
@@ -635,10 +915,21 @@ async function createReferral(
   if (!requestId) throw new PublicError(400, 'client_request_id is invalid');
   const clientFields = validateBusinessFields(
     body.referral,
-    authority.normalizedEmail,
     'create',
   );
-  const fields = serverAuditFields(clientFields, authority.normalizedEmail);
+  let fields = serverAuditFields(clientFields, authority.normalizedEmail);
+  if (Object.hasOwn(clientFields, 'assigned_to')) {
+    if (clientFields.assigned_to === null) {
+      delete fields.assigned_to;
+    } else {
+      const assignee = await loadExactAssignee(
+        base44.asServiceRole.entities,
+        authority.agencyId,
+        String(clientFields.assigned_to),
+      );
+      fields = stampAssignment(fields, authority, assignee);
+    }
+  }
   if (fields.patient_id) {
     await loadExactPatient(
       base44.asServiceRole.entities,
@@ -698,6 +989,13 @@ async function createReferral(
   }
 
   await loadAuthority(base44, authority.agencyId, authority.snapshot);
+  if (fields.assigned_to) {
+    await loadExactAssignee(
+      base44.asServiceRole.entities,
+      authority.agencyId,
+      String(fields.assigned_to),
+    );
+  }
   if (fields.patient_id) {
     await loadExactPatient(
       base44.asServiceRole.entities,
@@ -773,16 +1071,42 @@ async function updateReferral(
   assertOnlyKeys(body, ['action', 'agency_id', 'referral_id', 'changes'], 'Referral update');
   const referralId = exactIdentifier(body.referral_id);
   if (!referralId) throw new PublicError(400, 'referral_id is invalid');
-  const changes = serverAuditFields(
-    validateBusinessFields(body.changes, authority.normalizedEmail, 'update'),
+  const clientChanges = validateBusinessFields(body.changes, 'update');
+  let changes = serverAuditFields(
+    clientChanges,
     authority.normalizedEmail,
   );
+  let unsetFields: Record<string, string> | null = null;
+  let assignmentEmail: string | null = null;
+  if (Object.hasOwn(clientChanges, 'assigned_to')) {
+    if (clientChanges.assigned_to === null) {
+      delete changes.assigned_to;
+      unsetFields = assignmentUnset();
+    } else {
+      assignmentEmail = String(clientChanges.assigned_to);
+      const assignee = await loadExactAssignee(
+        base44.asServiceRole.entities,
+        authority.agencyId,
+        assignmentEmail,
+      );
+      changes = stampAssignment(changes, authority, assignee);
+    }
+  }
   const entities = base44.asServiceRole.entities;
   const initial = await loadExactReferral(entities, referralId, authority.agencyId);
+  if (Object.hasOwn(changes, 'follow_up_requests')) {
+    changes.follow_up_requests = preserveFollowUpCapabilityState(
+      initial.follow_up_requests,
+      changes.follow_up_requests,
+    );
+  }
   if (changes.patient_id) {
     await loadExactPatient(entities, String(changes.patient_id), authority.agencyId);
   }
   await loadAuthority(base44, authority.agencyId, authority.snapshot);
+  if (assignmentEmail) {
+    await loadExactAssignee(entities, authority.agencyId, assignmentEmail);
+  }
   const current = await loadExactReferral(entities, referralId, authority.agencyId);
   if (!sameValue(narrowReferral(current), narrowReferral(initial))) {
     throw new PublicError(409, 'Referral changed during update');
@@ -797,7 +1121,11 @@ async function updateReferral(
       version: current.version,
       updated_date: current.updated_date,
     },
-    { $set: changes, $inc: { version: 1 } },
+    {
+      $set: changes,
+      ...(unsetFields ? { $unset: unsetFields } : {}),
+      $inc: { version: 1 },
+    },
   );
   if (
     !plainObject(result)
@@ -816,6 +1144,9 @@ async function updateReferral(
       throw new Error('Referral fields failed post-update verification');
     }
   }
+  if (unsetFields && Object.keys(unsetFields).some((field) => updated[field] != null)) {
+    throw new Error('Referral assignment removal failed post-update verification');
+  }
   const finalAuthority = await loadAuthority(base44, authority.agencyId, authority.snapshot);
   return Response.json({
     success: true,
@@ -826,21 +1157,74 @@ async function updateReferral(
 }
 
 async function deleteReferral(
-  _base44: Record<string, any>,
-  _authority: Record<string, any>,
+  base44: Record<string, any>,
+  authority: Record<string, any>,
   body: Record<string, unknown>,
 ) {
   assertOnlyKeys(body, ['action', 'agency_id', 'referral_id'], 'Referral delete');
   const referralId = exactIdentifier(body.referral_id);
   if (!referralId) throw new PublicError(400, 'referral_id is invalid');
-  // The SDK exposes no conditional delete. A read-then-delete sequence can
-  // erase a row changed or re-bound between calls, so deletion remains paused
-  // until the datastore supplies an atomic revision predicate.
-  throw new PublicError(
-    503,
-    'Referral deletion is paused',
-    'referral_delete_requires_atomic_compare_and_delete',
+  const entities = base44.asServiceRole.entities;
+  const initial = await loadExactReferral(entities, referralId, authority.agencyId);
+  await loadAuthority(base44, authority.agencyId, authority.snapshot);
+  const current = await loadExactReferral(entities, referralId, authority.agencyId);
+  if (!sameValue(narrowReferral(current), narrowReferral(initial))) {
+    throw new PublicError(409, 'Referral changed during removal');
+  }
+  const archivedAt = new Date().toISOString();
+  const archiveFields = {
+    archived_at: archivedAt,
+    archived_by_user_id: authority.userId,
+    archived_by_user_email_normalized: authority.normalizedEmail,
+    archive_reason: 'Removed from Referral Intake',
+    status: 'declined',
+    rejection_date: archivedAt,
+    rejected_by: authority.normalizedEmail,
+  };
+  const result = await entities.Referral.updateMany(
+    {
+      id: referralId,
+      agency_id: authority.agencyId,
+      version: current.version,
+      updated_date: current.updated_date,
+    },
+    { $set: archiveFields, $inc: { version: 1 } },
   );
+  if (
+    !plainObject(result)
+    || result.success !== true
+    || result.updated !== 1
+    || result.has_more !== false
+  ) {
+    throw new PublicError(409, 'Referral changed during removal');
+  }
+  const archived = await loadExactReferral(
+    entities,
+    referralId,
+    authority.agencyId,
+    true,
+  );
+  if (
+    archived.version !== current.version + 1
+    || archived.archived_at !== archivedAt
+    || archived.archived_by_user_id !== authority.userId
+    || archived.archived_by_user_email_normalized !== authority.normalizedEmail
+    || archived.archive_reason !== archiveFields.archive_reason
+  ) {
+    throw new Error('Referral removal failed post-update verification');
+  }
+  const finalAuthority = await loadAuthority(
+    base44,
+    authority.agencyId,
+    authority.snapshot,
+  );
+  return Response.json({
+    success: true,
+    action: 'delete',
+    archived: true,
+    referral_id: referralId,
+    scope: scope(finalAuthority),
+  });
 }
 
 Deno.serve(async (req) => {
@@ -856,6 +1240,9 @@ Deno.serve(async (req) => {
     const authority = await loadAuthority(base44, input.agencyId);
     if (input.action === 'list') return await listReferrals(base44, authority, input.body);
     if (input.action === 'get') return await getReferral(base44, authority, input.body);
+    if (input.action === 'list_assignees') {
+      return await listReferralAssignees(base44, authority, input.body);
+    }
     if (input.action === 'create') return await createReferral(base44, authority, input.body);
     if (input.action === 'update') return await updateReferral(base44, authority, input.body);
     return await deleteReferral(base44, authority, input.body);

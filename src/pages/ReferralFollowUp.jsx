@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
@@ -6,6 +6,8 @@ import {
   listAuthorizedReferrals,
   updateAuthorizedReferral,
 } from '@/functions/manageAuthorizedReferral';
+import { createAuthorizedDocument } from '@/functions/createAuthorizedDocument';
+import { getAuthorizedInboundReferralFax } from '@/functions/getAuthorizedInboundReferralFax';
 import { useAuth } from '@/lib/AuthContext';
 import { useAICall } from "@/hooks/useAICall";
 import { isAdminView } from "@/lib/roles";
@@ -24,7 +26,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   ClipboardCheck, ShieldCheck, TrendingUp, Brain, Sparkles, CheckCircle2,
-  AlertTriangle, Printer, Settings2, FileDown, DollarSign, Inbox,
+  AlertTriangle, Printer, Settings2, FileDown, DollarSign, Inbox, Link2, ClipboardCopy,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -49,13 +51,31 @@ const severityBadge = (severity) =>
 
 const normName = (s) => String(s || "").toLowerCase().replace(/\bdr\.?\b/g, "").replace(/[^a-z]/g, "");
 
+function validatedPortalLink(value) {
+  if (typeof value !== "string" || value.length > 2000) return null;
+  try {
+    const url = new URL(value);
+    const token = url.searchParams.get("token");
+    const keys = [...url.searchParams.keys()];
+    if (
+      url.protocol !== "https:" || url.username || url.password
+      || !/^\/followup\/?$/.test(url.pathname)
+      || keys.length !== 1 || keys[0] !== "token"
+      || !/^[a-f0-9]{64}$/.test(token || "")
+    ) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Referral Follow-Up — the intake QA worklist.
  *
  * Deterministic coder/QA review of every fully processed referral, provider
  * request generation (PDF, copy, and one-click FAX), staff-recorded response
- * tracking with per-item resolution, and agency-tunable rules. Public online
- * response links are deliberately unavailable.
+ * tracking with per-item resolution, tenant-bound single-use online responses,
+ * and agency-tunable rules.
  *
  * VISIBILITY POLICY: revenue/dollar figures (followUpRevenueImpact) render
  * ONLY for admin-level users (isAdminView) and are never persisted or put on
@@ -78,8 +98,19 @@ export default function ReferralFollowUp() {
   const [providerFax, setProviderFax] = useState("");
   const [saving, setSaving] = useState(false);
   const [faxing, setFaxing] = useState(false);
+  const [openingFaxId, setOpeningFaxId] = useState(null);
+  const faxDownloadRequestRef = useRef(0);
+  const [generatingLink, setGeneratingLink] = useState(false);
+  const [portalLink, setPortalLink] = useState("");
+  const [portalLinkFingerprint, setPortalLinkFingerprint] = useState("");
+  const [workingGeneratedAt, setWorkingGeneratedAt] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const ai = useAICall({ timeoutMs: 60000, retries: 1 });
+
+  useEffect(() => {
+    faxDownloadRequestRef.current += 1;
+    setOpeningFaxId(null);
+  }, [tenantContext?.agency_id, selectedId]);
 
   const { data: currentUser } = useQuery({
     queryKey: ["currentUser"],
@@ -180,6 +211,9 @@ export default function ReferralFollowUp() {
     setExcludedItemIds(new Set());
     setAiItems([]);
     setAiAssessment("");
+    setPortalLink("");
+    setPortalLinkFingerprint("");
+    setWorkingGeneratedAt("");
   }, [selectedId]);
 
   // Prefill return contact from AgencySettings once loaded (editable after).
@@ -218,6 +252,15 @@ export default function ReferralFollowUp() {
     [selectedPlan, aiItems]
   );
   const includedItems = allItems.filter((it) => !excludedItemIds.has(it.id));
+  const includedFingerprint = JSON.stringify(includedItems.map((item) => ({
+    id: item.id,
+    title: item.title,
+    needed: item.needed,
+    why: item.why,
+    citation: item.citation,
+    provider_request: item.provider_request,
+  })));
+  const activePortalLink = portalLinkFingerprint === includedFingerprint ? portalLink : "";
 
   const toggleItem = (id) => {
     setExcludedItemIds((prev) => {
@@ -315,13 +358,15 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
         agencyName: agencySettings?.office_name || "our agency",
         contactBackFax,
         contactBackPhone,
+        portalLink: activePortalLink || null,
       }
     : null;
 
-  const persistRequest = async ({ status, sentVia, faxLogId }) => {
+  const persistRequest = async ({ status, sentVia, faxLogId, generatedAt }) => {
+    const requestGeneratedAt = generatedAt || new Date().toISOString();
     const persisted = toPersistedFollowUp(
       { items: includedItems, counts: countFollowUpItems(includedItems) },
-      { generatedAt: new Date().toISOString(), status, sentVia, faxLogId }
+      { generatedAt: requestGeneratedAt, status, sentVia, faxLogId }
     );
     // A re-send must not silently discard responses the provider already gave:
     // carry answered/resolved state forward for items that survive the re-send.
@@ -339,15 +384,68 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
       referralId: selected.id,
       changes: { follow_up_requests: persisted },
     });
+    setWorkingGeneratedAt(requestGeneratedAt);
     queryClient.invalidateQueries({ queryKey: ["referrals"] });
     return persisted;
+  };
+
+  const issuePortalLink = async ({ status = "open", announce = true } = {}) => {
+    if (!selected || includedItems.length === 0) return null;
+    setGeneratingLink(true);
+    setPortalLink("");
+    setPortalLinkFingerprint("");
+    try {
+      const generatedAt = new Date().toISOString();
+      await persistRequest({
+        status,
+        sentVia: status === "sent" ? "manual" : null,
+        faxLogId: null,
+        generatedAt,
+      });
+      const response = await base44.functions.invoke("generateFollowUpPortalToken", {
+        agency_id: selected.agency_id,
+        referral_id: selected.id,
+        provider_name: formHeader?.providerName || "",
+        expires_in_days: 30,
+      });
+      const data = response?.data ?? response;
+      const link = data?.success === true ? validatedPortalLink(data.portal_link) : null;
+      if (!link) throw new Error(data?.error || "Secure link generation returned an invalid response");
+      setPortalLink(link);
+      setPortalLinkFingerprint(includedFingerprint);
+      setWorkingGeneratedAt(generatedAt);
+      queryClient.invalidateQueries({ queryKey: ["referrals"] });
+      if (announce) toast.success("Secure provider response link generated. It is included in the form preview.");
+      return { link, generatedAt };
+    } catch (error) {
+      console.error("Provider response link generation failed:", error);
+      toast.error("Couldn't generate the secure provider response link.");
+      throw error;
+    } finally {
+      setGeneratingLink(false);
+    }
+  };
+
+  const copyPortalLink = async () => {
+    if (!activePortalLink) return;
+    try {
+      await navigator.clipboard.writeText(activePortalLink);
+      toast.success("Secure provider response link copied.");
+    } catch {
+      toast.error("Couldn't copy the secure link.");
+    }
   };
 
   const saveAndMarkSent = async () => {
     if (!selected) return;
     setSaving(true);
     try {
-      await persistRequest({ status: "sent", sentVia: "manual", faxLogId: null });
+      await persistRequest({
+        status: "sent",
+        sentVia: "manual",
+        faxLogId: null,
+        generatedAt: activePortalLink ? workingGeneratedAt : undefined,
+      });
       toast.success("Follow-up request saved and marked sent.");
     } catch (error) {
       console.error("Error saving follow-up request:", error);
@@ -366,10 +464,13 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
     }
     setFaxing(true);
     try {
-      // Persist before faxing, but never mint or embed a public response link
-      // while the follow-up capability is paused.
-      await persistRequest({ status: "open", sentVia: null, faxLogId: null });
-      const form = buildProviderForm(formHeader, includedItems);
+      // Persist the exact item snapshot before issuance, then mint a fresh link
+      // so the capability printed on the outgoing form is live and any older
+      // link is no longer bound to the Referral.
+      const issued = await issuePortalLink({ announce: false });
+      const link = issued?.link;
+      if (!link) throw new Error("Secure provider response link could not be generated");
+      const form = buildProviderForm({ ...formHeader, portalLink: link }, includedItems);
       const blob = await exportToPDF({
         output: "blob",
         title: form.title,
@@ -377,24 +478,65 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
         content: followUpFormPdfContent(form),
       });
       const file = new File([blob], "referral-follow-up-request.pdf", { type: "application/pdf" });
-      const { file_url } = await base44.integrations.Core.UploadFile({ file });
-      const { data } = await base44.functions.invoke("sendFax", {
-        file_url,
+      const uploaded = await createAuthorizedDocument({
+        file,
+        agencyId: selected.agency_id,
+        purpose: "referral",
+      });
+      const response = await base44.functions.invoke("sendAuthorizedReferralFax", {
+        agency_id: selected.agency_id,
+        referral_id: selected.id,
+        document_id: uploaded.document.id,
         to_number: to,
         to_name: formHeader.providerName || null,
         document_name: `Follow-up request — ${formHeader.patientName || "referral"}`,
-        patient_id: selected.patient_id || null,
       });
+      const data = response?.data ?? response;
       if (!data?.success) {
         throw new Error(data?.error || "Fax send failed");
       }
-      await persistRequest({ status: "sent", sentVia: "fax", faxLogId: data.log_id || null });
+      await persistRequest({
+        status: "sent",
+        sentVia: "fax",
+        faxLogId: data.log_id || null,
+        generatedAt: issued.generatedAt,
+      });
       toast.success("Faxed to the provider — delivery is tracked in the fax log.");
     } catch (error) {
       console.error("Fax to provider failed:", error);
       toast.error(error?.message || "Couldn't fax the form. Download the PDF and send manually.");
     } finally {
       setFaxing(false);
+    }
+  };
+
+  const downloadFaxBack = async () => {
+    const incomingFaxId = tracking?.fax_back?.incoming_fax_id;
+    if (!selected?.agency_id || !selected?.id || !incomingFaxId) return;
+    const requestNumber = faxDownloadRequestRef.current + 1;
+    faxDownloadRequestRef.current = requestNumber;
+    setOpeningFaxId(incomingFaxId);
+    try {
+      const result = await getAuthorizedInboundReferralFax({
+        agencyId: selected.agency_id,
+        referralId: selected.id,
+        incomingFaxId,
+      });
+      if (faxDownloadRequestRef.current !== requestNumber) return;
+      const link = document.createElement('a');
+      link.href = result.delivery.download_url;
+      link.download = 'provider-fax-response.pdf';
+      link.rel = 'noopener noreferrer';
+      link.referrerPolicy = 'no-referrer';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch {
+      if (faxDownloadRequestRef.current === requestNumber) {
+        toast.error("The faxed response couldn't be authorized for download.");
+      }
+    } finally {
+      if (faxDownloadRequestRef.current === requestNumber) setOpeningFaxId(null);
     }
   };
 
@@ -596,7 +738,9 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                         )}
                       </CardTitle>
                       <span className="text-xs text-slate-600">
-                        Online response links are unavailable; use the approved fax or telephone workflow.
+                        {tracking.portal_link_active
+                          ? "A single-use online response link is active. Generate a fresh link below if you need another copy."
+                          : "Responses can be tracked online, by scanned return, fax, or telephone."}
                       </span>
                     </CardHeader>
                     <CardContent className="space-y-2">
@@ -611,13 +755,16 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                           <p className="text-xs text-blue-800 mt-1">
                             Review the faxed document and mark the answered items resolved below.
                           </p>
-                          {tracking.fax_back.document_url && isSafeExternalUrl(tracking.fax_back.document_url) && (
+                          {tracking.fax_back.incoming_fax_id && (
                             <button
                               type="button"
-                              onClick={() => openAuthorityBoundWindow(tracking.fax_back.document_url)}
+                              onClick={downloadFaxBack}
+                              disabled={openingFaxId === tracking.fax_back.incoming_fax_id}
                               className="text-xs text-blue-700 underline"
                             >
-                              Open faxed response document
+                              {openingFaxId === tracking.fax_back.incoming_fax_id
+                                ? "Authorizing faxed response…"
+                                : "Download faxed response document"}
                             </button>
                           )}
                         </div>
@@ -853,12 +1000,41 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
                             <Input id="fu-phone" value={contactBackPhone} onChange={(e) => setContactBackPhone(e.target.value)} placeholder="(555) 555-0101" />
                           </div>
                         </div>
-                        <Alert className="border-amber-300 bg-amber-50">
-                          <AlertTriangle className="h-4 w-4 text-amber-700" />
-                          <AlertDescription className="text-sm text-amber-950">
-                            Online response link generation is unavailable. Provider requests can still use the approved fax or telephone workflow.
-                          </AlertDescription>
-                        </Alert>
+                        <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 space-y-2">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div>
+                              <p className="text-sm font-semibold text-blue-950 flex items-center gap-1">
+                                <Link2 className="h-4 w-4" /> Secure online response
+                              </p>
+                              <p className="text-xs text-blue-800">
+                                Generate a single-use 30-day link. A fresh link rotates the prior link, and the plaintext is kept only in this page session.
+                              </p>
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => issuePortalLink().catch(() => {})}
+                              disabled={generatingLink}
+                            >
+                              <Link2 className="h-4 w-4 mr-1" />
+                              {generatingLink ? "Generating…" : activePortalLink ? "Rotate link" : "Generate link"}
+                            </Button>
+                          </div>
+                          {activePortalLink && (
+                            <div className="flex gap-2">
+                              <Input
+                                aria-label="Secure provider response link"
+                                value={activePortalLink}
+                                readOnly
+                                className="bg-white font-mono text-xs"
+                              />
+                              <Button type="button" variant="outline" size="sm" onClick={copyPortalLink}>
+                                <ClipboardCopy className="h-4 w-4 mr-1" /> Copy
+                              </Button>
+                            </div>
+                          )}
+                        </div>
                       </CardContent>
                     </Card>
 

@@ -9,6 +9,7 @@ import {
   createAuthorizedReferral,
   deleteAuthorizedReferral,
   getAuthorizedReferral,
+  listAuthorizedReferralAssignees,
   listAuthorizedReferrals,
   updateAuthorizedReferral,
 } from './manageAuthorizedReferral';
@@ -94,6 +95,25 @@ describe('authorized Referral browser broker', () => {
     });
   });
 
+  it('lists only integrity-checked same-agency referral assignees', async () => {
+    const assignee = {
+      user_id: 'nurse-a',
+      email: 'nurse@agency.test',
+      full_name: 'Fictional Nurse',
+      tenant_role: 'clinician',
+      membership_id: 'membership-nurse',
+      membership_version: 4,
+    };
+    invoke.mockResolvedValue({
+      data: { success: true, action: 'list_assignees', assignees: [assignee], scope },
+    });
+    const result = await listAuthorizedReferralAssignees({ agencyId: 'agency-a' });
+    expect(invoke).toHaveBeenCalledWith('manageAuthorizedReferral', {
+      action: 'list_assignees', agency_id: 'agency-a',
+    });
+    expect(result.assignees).toEqual([assignee]);
+  });
+
   it('rejects malformed caller input before invoking the broker', async () => {
     await expect(listAuthorizedReferrals({ agencyId: '$operator' })).rejects.toThrow(/agencyId/);
     await expect(listAuthorizedReferrals({ agencyId: 'agency-a', limit: 5001 })).rejects.toThrow(/limit/);
@@ -151,10 +171,21 @@ describe('authorized Referral browser broker', () => {
     }
   });
 
-  it('keeps non-atomic Referral deletion paused in the browser', async () => {
+  it('removes a Referral only through the recoverable broker action', async () => {
+    invoke.mockResolvedValue({
+      data: {
+        success: true,
+        action: 'delete',
+        archived: true,
+        referral_id: 'referral-a',
+        scope,
+      },
+    });
     await expect(deleteAuthorizedReferral({
       agencyId: 'agency-a', referralId: 'referral-a',
-    })).rejects.toThrow(/atomic datastore support/);
-    expect(invoke).not.toHaveBeenCalled();
+    })).resolves.toMatchObject({ archived: true, referral_id: 'referral-a' });
+    expect(invoke).toHaveBeenCalledWith('manageAuthorizedReferral', {
+      action: 'delete', agency_id: 'agency-a', referral_id: 'referral-a',
+    });
   });
 });

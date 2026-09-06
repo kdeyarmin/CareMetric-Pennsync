@@ -59,6 +59,23 @@ const patient = (overrides = {}) => ({
   status: 'active',
   ...overrides,
 });
+const assigneeUser = (overrides = {}) => ({
+  id: 'nurse-1',
+  email: 'nurse@agency.test',
+  full_name: 'Fictional Nurse',
+  role: 'user',
+  is_active: true,
+  is_verified: true,
+  ...overrides,
+});
+const assigneeMembership = (overrides = {}) => membership({
+  id: 'membership-nurse',
+  membership_key: 'agency-a:nurse-1',
+  user_id: 'nurse-1',
+  user_email_normalized: 'nurse@agency.test',
+  tenant_role: 'clinician',
+  ...overrides,
+});
 const referral = (overrides = {}) => ({
   id: 'referral-a',
   agency_id: 'agency-a',
@@ -83,6 +100,7 @@ async function loadHandler({
   caller = USER,
   agencies = [agency()],
   memberships = [membership()],
+  users = [assigneeUser()],
   patients = [patient()],
   referrals = [],
   ignoreFilters = false,
@@ -108,14 +126,20 @@ async function loadHandler({
   const state = {
     agencies: agencies.map((row) => ({ ...row })),
     memberships: memberships.map((row) => ({ ...row })),
+    users: users.map((row) => ({ ...row })),
     patients: patients.map((row) => ({ ...row })),
     referrals: referrals.map((row) => ({ ...row })),
   };
   const calls = { auth: 0, filters: [], creates: [], updateMany: [], deletes: [] };
   let authIndex = 0;
-  const matches = (row, query) => Object.entries(query || {}).every(
-    ([key, value]) => row?.[key] === value,
-  );
+  const matches = (row, query) => Object.entries(query || {}).every(([key, value]) => {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      if (Object.hasOwn(value, '$exists')) {
+        return (row?.[key] !== undefined) === value.$exists;
+      }
+    }
+    return row?.[key] === value;
+  });
   const filtered = (entity, rows, query, limit) => {
     calls.filters.push({ entity, query: structuredClone(query || {}), limit });
     const selected = ignoreFilters ? rows : rows.filter((row) => matches(row, query));
@@ -141,6 +165,9 @@ async function loadHandler({
           filter: async (query, sort, limit) => (
             filtered('AgencyMembership', state.memberships, query, limit)
           ),
+        },
+        User: {
+          filter: async (query, sort, limit) => filtered('User', state.users, query, limit),
         },
         Patient: {
           filter: async (query, sort, limit) => filtered('Patient', state.patients, query, limit),
@@ -179,6 +206,9 @@ async function loadHandler({
                   )),
                   updated_date: T2,
                 };
+                for (const field of Object.keys(operations.$unset || {})) {
+                  delete state.referrals[index][field];
+                }
               }
             }
             return { success: true, updated: updateNoop ? 0 : indexes.length, has_more: false };
@@ -220,6 +250,10 @@ test('Referral is immutable-tenant broker-owned and the browser wrapper invokes 
   for (const field of [
     'agency_id', 'created_by_user_id', 'created_by_user_email_normalized',
     'client_request_id', 'referral_creation_key', 'version',
+    'assigned_to_user_id', 'assigned_to_membership_id',
+    'assigned_to_membership_version', 'assigned_at', 'assigned_by_user_id',
+    'assigned_by_user_email_normalized', 'archived_at',
+    'archived_by_user_id', 'archived_by_user_email_normalized', 'archive_reason',
   ]) assert.ok(schema.properties[field], field);
   assert.deepEqual(schema.rls, { read: false, create: false, update: false, delete: false });
 
@@ -373,6 +407,7 @@ test('list is tenant-scoped, reauthorizes before disclosure, and rejects filter 
   assert.ok(runtime.calls.filters.some(({ entity, query }) => (
     entity === 'Referral'
     && query.agency_id === 'agency-a'
+    && query.archived_at?.$exists === false
     && query.patient_id === 'patient-a'
     && query.status === 'new'
     && query.assigned_to === 'office@agency.test'
@@ -397,6 +432,16 @@ test('list is tenant-scoped, reauthorizes before disclosure, and rejects filter 
   });
   assert.equal(wrongPatientResult.response.status, 409);
   assert.equal(wrongPatientResult.json.referrals, undefined);
+
+  const archived = await loadHandler({
+    referrals: [referral({ archived_at: T2, archived_by_user_id: 'office-1',
+      archived_by_user_email_normalized: 'office@agency.test', archive_reason: 'Removed from Referral Intake' })],
+  });
+  const archivedResult = await invoke(archived.handler, {
+    action: 'list', agency_id: 'agency-a', limit: 20,
+  });
+  assert.equal(archivedResult.response.status, 200);
+  assert.deepEqual(archivedResult.json.referrals, []);
 });
 
 test('idempotency lookup rejects a provider that ignores the creation-key predicate', async () => {
@@ -450,7 +495,123 @@ test('update uses a version-and-revision conditional write and server-stamps wor
   assert.equal(denied.response.status, 409);
 });
 
-test('cross-tenant Patient links, immutable-field spoofing, assignment changes, and weak callers fail closed', async () => {
+test('browser updates cannot forge or replace the server-owned inbound fax attachment', async () => {
+  const originalFaxBack = {
+    incoming_fax_id: 'incoming-a',
+    matched_signals: ['patient_name', 'patient_dob'],
+    auto_answered_count: 1,
+  };
+  const existing = await loadHandler({
+    referrals: [referral({
+      follow_up_requests: {
+        status: 'received',
+        generated_at: T1,
+        items: [],
+        fax_back: originalFaxBack,
+      },
+    })],
+  });
+  const preserved = await invoke(existing.handler, {
+    action: 'update',
+    agency_id: 'agency-a',
+    referral_id: 'referral-a',
+    changes: {
+      follow_up_requests: {
+        status: 'resolved',
+        generated_at: T1,
+        items: [],
+        fax_back: { incoming_fax_id: 'incoming-forged' },
+      },
+    },
+  });
+  assert.equal(preserved.response.status, 200);
+  assert.deepEqual(preserved.json.referral.follow_up_requests.fax_back, originalFaxBack);
+  assert.deepEqual(
+    existing.calls.updateMany[0].operations.$set.follow_up_requests.fax_back,
+    originalFaxBack,
+  );
+
+  const empty = await loadHandler({
+    referrals: [referral({
+      follow_up_requests: { status: 'sent', generated_at: T1, items: [] },
+    })],
+  });
+  const stripped = await invoke(empty.handler, {
+    action: 'update',
+    agency_id: 'agency-a',
+    referral_id: 'referral-a',
+    changes: {
+      follow_up_requests: {
+        status: 'received',
+        generated_at: T1,
+        items: [],
+        fax_back: { incoming_fax_id: 'incoming-forged' },
+      },
+    },
+  });
+  assert.equal(stripped.response.status, 200);
+  assert.equal(
+    Object.hasOwn(stripped.json.referral.follow_up_requests, 'fax_back'),
+    false,
+  );
+});
+
+test('assignment roster and assignment changes use exact active same-agency identities', async () => {
+  const runtime = await loadHandler({
+    memberships: [membership(), assigneeMembership()],
+    referrals: [referral()],
+  });
+  const roster = await invoke(runtime.handler, {
+    action: 'list_assignees', agency_id: 'agency-a',
+  });
+  assert.equal(roster.response.status, 200);
+  assert.deepEqual(roster.json.assignees, [{
+    user_id: 'nurse-1',
+    email: 'nurse@agency.test',
+    full_name: 'Fictional Nurse',
+    tenant_role: 'clinician',
+    membership_id: 'membership-nurse',
+    membership_version: 3,
+  }]);
+
+  const assigned = await invoke(runtime.handler, {
+    action: 'update',
+    agency_id: 'agency-a',
+    referral_id: 'referral-a',
+    changes: { assigned_to: 'NURSE@AGENCY.TEST' },
+  });
+  assert.equal(assigned.response.status, 200);
+  assert.equal(assigned.json.referral.assigned_to, 'nurse@agency.test');
+  assert.equal(assigned.json.referral.assigned_to_user_id, 'nurse-1');
+  assert.equal(assigned.json.referral.assigned_to_membership_id, 'membership-nurse');
+  assert.equal(assigned.json.referral.assigned_to_membership_version, 3);
+  assert.equal(assigned.json.referral.assigned_by_user_id, 'office-1');
+  assert.equal(assigned.json.referral.assigned_by_user_email_normalized, 'office@agency.test');
+  assert.ok(Number.isFinite(Date.parse(assigned.json.referral.assigned_at)));
+
+  const unassigned = await invoke(runtime.handler, {
+    action: 'update',
+    agency_id: 'agency-a',
+    referral_id: 'referral-a',
+    changes: { assigned_to: null },
+  });
+  assert.equal(unassigned.response.status, 200);
+  for (const field of [
+    'assigned_to', 'assigned_to_user_id', 'assigned_to_membership_id',
+    'assigned_to_membership_version', 'assigned_at', 'assigned_by_user_id',
+    'assigned_by_user_email_normalized',
+  ]) assert.equal(unassigned.json.referral[field], undefined, field);
+  assert.deepEqual(
+    Object.keys(runtime.calls.updateMany[1].operations.$unset).sort(),
+    [
+      'assigned_to', 'assigned_to_user_id', 'assigned_to_membership_id',
+      'assigned_to_membership_version', 'assigned_at', 'assigned_by_user_id',
+      'assigned_by_user_email_normalized',
+    ].sort(),
+  );
+});
+
+test('cross-tenant Patient links, invalid assignees, immutable-field spoofing, and weak callers fail closed', async () => {
   const scenarios = [
     {
       options: { patients: [patient({ agency_id: 'agency-b' })], ignoreFilters: true },
@@ -469,13 +630,16 @@ test('cross-tenant Patient links, immutable-field spoofing, assignment changes, 
       status: 400,
     },
     {
-      options: { referrals: [referral()] },
+      options: {
+        referrals: [referral()],
+        memberships: [assigneeMembership({ agency_id: 'agency-b' })],
+        ignoreFilters: true,
+      },
       body: {
         action: 'update', agency_id: 'agency-a', referral_id: 'referral-a',
         changes: { assigned_to: 'other@agency.test' },
       },
-      status: 503,
-      code: 'referral_assignment_mutations_paused',
+      status: 409,
     },
     {
       options: { caller: { ...USER, role: 'admin' } },
@@ -510,12 +674,25 @@ test('cross-tenant Patient links, immutable-field spoofing, assignment changes, 
   }
 });
 
-test('Referral deletion stays fail-closed without atomic compare-and-delete', async () => {
+test('Referral removal is a version-checked recoverable archive, never a hard delete', async () => {
   const office = await loadHandler({ referrals: [referral()] });
   const result = await invoke(office.handler, {
     action: 'delete', agency_id: 'agency-a', referral_id: 'referral-a',
   });
-  assert.equal(result.response.status, 503);
-  assert.equal(result.json.code, 'referral_delete_requires_atomic_compare_and_delete');
+  assert.equal(result.response.status, 200);
+  assert.equal(result.json.archived, true);
+  assert.equal(result.json.referral_id, 'referral-a');
   assert.equal(office.calls.deletes.length, 0);
+  assert.equal(office.calls.updateMany.length, 1);
+  assert.equal(office.state.referrals[0].status, 'declined');
+  assert.equal(office.state.referrals[0].archived_by_user_id, 'office-1');
+  assert.equal(office.state.referrals[0].archived_by_user_email_normalized, 'office@agency.test');
+  assert.equal(office.state.referrals[0].archive_reason, 'Removed from Referral Intake');
+  assert.ok(Number.isFinite(Date.parse(office.state.referrals[0].archived_at)));
+  assert.equal(office.state.referrals[0].version, 2);
+
+  const hidden = await invoke(office.handler, {
+    action: 'get', agency_id: 'agency-a', referral_id: 'referral-a',
+  });
+  assert.equal(hidden.response.status, 404);
 });

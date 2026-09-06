@@ -394,8 +394,14 @@ test('DocumentTenantBinding and Document are broker-only and the private uploade
     const source = await readFile(path, 'utf8');
     if (/createAuthorizedDocument/.test(source)) wired.push(path);
   }
-  assert.equal(wired.length, 1, `unexpected create broker consumers: ${wired.join(', ')}`);
-  assert.ok(wired[0].endsWith('/components/documents/DocumentUploader.jsx'), wired[0]);
+  assert.deepEqual(
+    wired.map((path) => path.slice(sourceRootUrl.pathname.length)).sort(),
+    [
+      'components/documents/DocumentUploader.jsx',
+      'pages/ReferralFollowUp.jsx',
+    ],
+    `unexpected create broker consumers: ${wired.join(', ')}`,
+  );
 
   const directMutations = { create: [], update: [], delete: [] };
   for (const path of await sourceFiles(sourceRootUrl)) {

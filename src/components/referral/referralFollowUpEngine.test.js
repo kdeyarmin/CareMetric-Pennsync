@@ -296,13 +296,15 @@ test("custom items sort after built-in rules but before AI additions", () => {
   assert.ok(idxCustom > lastRule && idxCustom < idxAi);
 });
 
-// ── portal links remain revoked ──
+// ── session-only portal link on the provider form ──
 
-test("provider form never advertises a supplied online response capability", () => {
+test("provider form advertises a supplied online response capability without persisting it", () => {
   const plan = buildFollowUpPlan({});
   const form = buildProviderForm({ patientName: "M T", portalLink: "https://x.example/followup?token=abc" }, plan.items);
-  assert.doesNotMatch(form.intro, /RESPOND ONLINE/);
-  assert.doesNotMatch(form.intro, /token=abc/);
+  assert.match(form.intro, /RESPOND ONLINE/);
+  assert.match(form.intro, /token=abc/);
+  const withoutLink = buildProviderForm({ patientName: "M T" }, plan.items);
+  assert.doesNotMatch(withoutLink.intro, /RESPOND ONLINE/);
 });
 
 // ── persistence ──

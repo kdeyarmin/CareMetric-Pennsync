@@ -17,8 +17,11 @@ const REFERRAL_RESPONSE_FIELDS = new Set([
   'match_suggestions', 'match_analysis', 'analysis_results',
   'missing_information', 'discrepancies', 'ai_generated_tasks', 'extracted_data',
   'diagnosis_coding', 'follow_up_requests', 'follow_up_notes', 'rejection_date',
-  'rejected_by', 'soc_completed_by',
+  'rejected_by', 'soc_completed_by', 'assigned_to_user_id',
+  'assigned_to_membership_id', 'assigned_to_membership_version', 'assigned_at',
+  'assigned_by_user_id', 'assigned_by_user_email_normalized',
 ]);
+const ASSIGNEE_ROLES = new Set(['agency_admin', 'manager', 'clinician']);
 
 function exactIdentifier(value) {
   return typeof value === 'string'
@@ -65,6 +68,25 @@ function validReferral(referral, agencyId) {
     && (referral.status === undefined || STATUSES.has(referral.status))
     && Number.isFinite(Date.parse(referral.created_date))
     && Number.isFinite(Date.parse(referral.updated_date));
+}
+
+function validAssignee(assignee) {
+  return exactKeys(assignee, [
+    'user_id', 'email', 'full_name', 'tenant_role', 'membership_id',
+    'membership_version',
+  ])
+    && exactIdentifier(assignee.user_id)
+    && canonicalEmail(assignee.email) === assignee.email
+    && (assignee.full_name === null || (
+      typeof assignee.full_name === 'string'
+      && assignee.full_name.trim() === assignee.full_name
+      && assignee.full_name.length > 0
+      && assignee.full_name.length <= 200
+    ))
+    && ASSIGNEE_ROLES.has(assignee.tenant_role)
+    && exactIdentifier(assignee.membership_id)
+    && Number.isSafeInteger(assignee.membership_version)
+    && assignee.membership_version >= 1;
 }
 
 function unwrap(response) {
@@ -145,6 +167,29 @@ export async function getAuthorizedReferral({ agencyId, referralId } = {}) {
   return result;
 }
 
+export async function listAuthorizedReferralAssignees({ agencyId } = {}) {
+  if (!exactIdentifier(agencyId)) throw new Error('agencyId is required');
+  const result = await invoke({
+    action: 'list_assignees',
+    agency_id: agencyId,
+  });
+  if (
+    !exactKeys(result, ['success', 'action', 'assignees', 'scope'])
+    || result.success !== true
+    || result.action !== 'list_assignees'
+    || !Array.isArray(result.assignees)
+    || result.assignees.length >= 100
+    || result.assignees.some((row) => !validAssignee(row))
+    || new Set(result.assignees.map((row) => row.membership_id)).size !== result.assignees.length
+    || new Set(result.assignees.map((row) => row.user_id)).size !== result.assignees.length
+    || new Set(result.assignees.map((row) => row.email)).size !== result.assignees.length
+    || !validScope(result.scope, agencyId)
+  ) {
+    throw new Error(result?.error || 'Referral assignee list failed integrity validation');
+  }
+  return result;
+}
+
 export async function createAuthorizedReferral(
   referral,
   { agencyId, clientRequestId = createReferralRequestId() } = {},
@@ -199,5 +244,20 @@ export async function updateAuthorizedReferral({ agencyId, referralId, changes }
 export async function deleteAuthorizedReferral({ agencyId, referralId } = {}) {
   if (!exactIdentifier(agencyId)) throw new Error('agencyId is required');
   if (!exactIdentifier(referralId)) throw new Error('referralId is required');
-  throw new Error('Referral deletion is temporarily unavailable pending atomic datastore support');
+  const result = await invoke({
+    action: 'delete',
+    agency_id: agencyId,
+    referral_id: referralId,
+  });
+  if (
+    !exactKeys(result, ['success', 'action', 'archived', 'referral_id', 'scope'])
+    || result.success !== true
+    || result.action !== 'delete'
+    || result.archived !== true
+    || result.referral_id !== referralId
+    || !validScope(result.scope, agencyId)
+  ) {
+    throw new Error(result?.error || 'Referral removal failed integrity validation');
+  }
+  return result;
 }

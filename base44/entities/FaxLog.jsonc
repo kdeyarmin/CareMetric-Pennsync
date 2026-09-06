@@ -2,6 +2,30 @@
   "name": "FaxLog",
   "type": "object",
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Agency id proven by an authorized fax workflow. Legacy rows may not carry it."
+    },
+    "referral_id": {
+      "type": "string",
+      "description": "Tenant-authorized Referral associated with an outbound provider request."
+    },
+    "document_id": {
+      "type": "string",
+      "description": "Private Document identity proven through DocumentTenantBinding. New fax workflows do not persist expiring signed URLs."
+    },
+    "sent_by_user_id": {
+      "type": "string",
+      "description": "Immutable built-in User id of the sender."
+    },
+    "sent_by_membership_id": {
+      "type": "string",
+      "description": "Exact active AgencyMembership that authorized the send."
+    },
+    "sent_by_membership_version": {
+      "type": "integer",
+      "minimum": 1
+    },
     "from_number": {
       "type": "string",
       "description": "Sender fax number"
@@ -16,7 +40,7 @@
     },
     "document_url": {
       "type": "string",
-      "description": "URL of the faxed document"
+      "description": "Legacy public/signed URL. New private-document sends retain document_id instead of persisting an expiring delivery capability."
     },
     "document_name": {
       "type": "string",
@@ -131,8 +155,7 @@
   },
   "required": [
     "from_number",
-    "to_number",
-    "document_url"
+    "to_number"
   ],
   // FaxLog contains destination numbers, document URLs, OCR text, and patient
   // links. Browser users may read only faxes they sent; every mutation is

@@ -421,17 +421,15 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
   }
 });
 
-// 12-14. Signing and provider-follow-up capabilities are deliberately paused.
+// 12-14. Document-signing capabilities remain deliberately paused. Provider
+// follow-up has a separately exercised tenant-bound capability contract.
 // Each endpoint must return before constructing an SDK client, parsing attacker
 // input, touching service-role data, uploading, or distributing a bearer link.
 const HARD_PAUSED_CAPABILITY_FUNCTIONS = [
   'validateSignerToken',
   'submitSignerSignature',
   'submitDocumentSignatures',
-  'validateFollowUpToken',
-  'submitFollowUpResponse',
   'generateSignerToken',
-  'generateFollowUpPortalToken',
   'notifySignerOfPackage',
   'sendSignatureReminder',
   'scheduleSignatureReminders',

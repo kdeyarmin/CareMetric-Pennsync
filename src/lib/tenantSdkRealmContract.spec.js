@@ -55,7 +55,9 @@ describe('protected SDK browser-realm contract', () => {
       .sort();
 
     expect(consumers('tenantAuthorityClient')).toEqual(allowedTenantAuthorityConsumers);
-    expect(consumers('publicCapabilityClient')).toEqual([]);
+    expect(consumers('publicCapabilityClient')).toEqual([
+      'src/pages/ProviderFollowUpPortal.jsx',
+    ]);
 
     const client = read('src/api/base44Client.js');
     for (const exactFunction of [
@@ -64,10 +66,12 @@ describe('protected SDK browser-realm contract', () => {
     ]) {
       expect(client, exactFunction).toContain(`'${exactFunction}'`);
     }
-    expect(client).not.toMatch(
-      /publicCapabilityClient|runPublicCapabilityOperation|submitFollowUpResponse|submitSignerSignature|validateFollowUpToken|validateSignerToken|uploadSignerArtifact|UploadFile/,
-    );
+    expect(client).toMatch(/export const publicCapabilityClient = Object\.freeze\(\{/);
+    expect(client).toMatch(/validateFollowUpToken: \(lease, payload\) => runPublicCapabilityOperation\(/);
+    expect(client).toMatch(/submitFollowUpResponse: \(lease, payload\) => runPublicCapabilityOperation\(/);
+    expect(client).not.toMatch(/submitSignerSignature|validateSignerToken|uploadSignerArtifact|UploadFile/);
     expect(client).not.toMatch(/tenantAuthorityClient[\s\S]{0,500}\binvoke\s*:/);
+    expect(client).not.toMatch(/publicCapabilityClient[\s\S]{0,1200}\binvoke\s*:/);
   });
 
   it('requires a fresh document realm for another READY agency', () => {
@@ -124,11 +128,10 @@ describe('protected SDK browser-realm contract', () => {
       .toMatch(/Secure document review and signing are unavailable/);
   });
 
-  it('keeps signing and public follow-up browser surfaces static and data-free', () => {
+  it('keeps signing surfaces static and gives follow-up only its exact capability seam', () => {
     const staticSurfaces = [
       'src/pages/SignDocument.jsx',
       'src/pages/SignerPortal.jsx',
-      'src/pages/ProviderFollowUpPortal.jsx',
       'src/components/hub-tabs/DocumentSignatures.jsx',
       'src/components/hub-tabs/CreateSignatureRequest.jsx',
       'src/components/hub-tabs/BulkSignatureRequests.jsx',
@@ -146,7 +149,12 @@ describe('protected SDK browser-realm contract', () => {
     }
     expect(read('src/pages/SignDocument.jsx')).toMatch(/Document review and signing unavailable/);
     expect(read('src/pages/SignerPortal.jsx')).toMatch(/No token was submitted/);
-    expect(read('src/pages/ProviderFollowUpPortal.jsx')).toMatch(/No token was submitted/);
+    const followUp = read('src/pages/ProviderFollowUpPortal.jsx');
+    expect(followUp).toMatch(/usePublicCapabilityLease\(\)/);
+    expect(followUp).toMatch(/scrubPublicCapabilityParameter\('token'\)/);
+    expect(followUp).toMatch(/publicCapabilityClient\.validateFollowUpToken\(lease/);
+    expect(followUp).toMatch(/publicCapabilityClient\.submitFollowUpResponse\(lease/);
+    expect(followUp).not.toMatch(/\bbase44\b|\.entities\b|\.integrations\b|UploadFile|dangerouslySetInnerHTML|<iframe/);
 
     const directSignatureConsumers = productionSourceFiles()
       .filter((file) => /\b(?:base44\.)?entities\.DocumentSignature\b/.test(readFileSync(file, 'utf8')))

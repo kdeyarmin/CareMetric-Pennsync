@@ -639,23 +639,25 @@ test("the same subscriber has independent consent scopes across provider profile
   }
 });
 
-test("signed inbound patient telecom events fail closed before mutable User routing", async () => {
+test("signed inbound patient telecom events stay paused or require exact fax destination authority", async () => {
   const source = await readFile(ENTRY_URL, "utf8");
   assert.match(source, /const INBOUND_PATIENT_SMS_ROUTING_PAUSED = true;/);
-  assert.match(source, /const INBOUND_PATIENT_FAX_ROUTING_PAUSED = true;/);
   assert.match(source, /const INBOUND_PATIENT_CALL_ROUTING_PAUSED = true;/);
+  assert.match(source, /async function resolveActiveTelnyxFaxBinding/);
+  assert.match(source, /TelecomDestinationBinding\.filter\(\{[\s\S]{0,240}destination_e164:\s*destinationE164/);
+  assert.match(source, /handleInboundFax\(base44, telnyxCreds, payload\)/);
   for (const state of ["inbound_ivr", "inbound_after_greet", "ringdown", "voicemail"]) {
     assert.match(source, new RegExp(`['\"]${state}['\"]`));
   }
 
   // Ordering is a security property: reject forged input first, then apply the
-  // literal migration gates before either legacy inbound handler is dispatched.
+  // literal migration gates or the exact fax-binding handler before any legacy
+  // inbound routing work is dispatched.
   const entry = source.slice(source.indexOf("Deno.serve"));
   const verification = entry.indexOf("await verifyTelnyxSignature");
   const extraction = entry.indexOf("extractTelnyxEvent(body)");
   const smsGate = entry.indexOf("eventType === 'message.received' && INBOUND_PATIENT_SMS_ROUTING_PAUSED");
   const keywordBinding = entry.indexOf("handleInboundConsentKeyword(base44, telnyxCreds, event, payload)");
-  const faxGate = entry.indexOf("eventType === 'fax.received' && INBOUND_PATIENT_FAX_ROUTING_PAUSED");
   const callGate = entry.indexOf("INBOUND_PATIENT_CALL_ROUTING_PAUSED && isInboundPatientCallEvent");
   const smsDispatch = entry.indexOf("return await handleInboundMessage");
   const faxDispatch = entry.indexOf("return await handleInboundFax");
@@ -665,7 +667,7 @@ test("signed inbound patient telecom events fail closed before mutable User rout
     extraction < smsGate && smsGate < keywordBinding && keywordBinding < smsDispatch,
     "signed extraction precedes the narrow keyword binding path and legacy SMS dispatch stays paused",
   );
-  assert.ok(extraction < faxGate && faxGate < faxDispatch, "fax pause precedes legacy inbound dispatch");
+  assert.ok(extraction < faxDispatch, "signed extraction precedes exact-bound fax dispatch");
   assert.ok(extraction < callGate && callGate < callDispatch, "call pause precedes legacy call dispatch");
 
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");

@@ -1,14 +1,15 @@
 import { createClient } from '@base44/sdk';
 import { appParams } from '@/lib/app-params';
 import { lockBase44FunctionRevision } from '@/lib/functionRevisionPolicy';
+import { runPublicCapabilityOperation } from '@/lib/publicCapabilityRealmGate';
 import { wrapTenantSdkClient } from '@/lib/tenantSdkRealmGate';
 
 const { appId, serverUrl, token, functionsVersion } = appParams;
 
 // Keep the raw client module-private. Protected browser operations are exposed
-// only through the single-authority realm membrane below. The current public
-// capability workflows are hard-paused server-side, so this module deliberately
-// exports no raw/public function or upload escape hatch.
+// only through exact authority membranes below. Public provider follow-up gets
+// two named function calls and no entity, auth, integration, upload, or generic
+// invoke escape hatch.
 const rawBase44 = lockBase44FunctionRevision(createClient({
   appId,
   serverUrl,
@@ -33,4 +34,15 @@ export const tenantAuthorityClient = Object.freeze({
   me: () => rawBase44.auth.me(),
   getMyTenantContext: (payload) => rawBase44.functions.invoke('getMyTenantContext', payload),
   listMyTenantMemberships: () => rawBase44.functions.invoke('listMyTenantMemberships', {}),
+});
+
+export const publicCapabilityClient = Object.freeze({
+  validateFollowUpToken: (lease, payload) => runPublicCapabilityOperation(
+    lease,
+    () => rawBase44.functions.invoke('validateFollowUpToken', payload),
+  ),
+  submitFollowUpResponse: (lease, payload) => runPublicCapabilityOperation(
+    lease,
+    () => rawBase44.functions.invoke('submitFollowUpResponse', payload),
+  ),
 });

@@ -28,11 +28,11 @@ import { transpileTs } from "../../tools-transpile-ts.mjs";
 // ---- run a function's Deno.serve handler with injected globals ----
 async function loadHandler(entryPath, { env = {}, makeClient, fetchImpl }) {
   let src = await readFile(new URL(entryPath, import.meta.url), "utf8");
-  // The shipped source keeps inbound routing and telehealth provider access
-  // literally paused. Dedicated containment contracts assert those gates and
-  // their ordering; this harness rewrites only its isolated temporary copy so
-  // the dormant Telnyx request shapes and fallback logic remain regression
-  // tested without enabling either feature in source.
+  // The shipped source keeps legacy inbound SMS/call routing and telehealth
+  // provider access literally paused. Dedicated containment contracts assert
+  // those gates; this harness rewrites only its temporary copy so dormant
+  // Telnyx request shapes remain regression tested. Fax ingress is live only
+  // through its exact service-owned destination binding.
   if (entryPath.endsWith('/createTelehealthToken/entry.ts')) {
     src = src.replace(
       'const TELEHEALTH_PROVIDER_MIGRATION_PAUSED = true;',
@@ -42,7 +42,6 @@ async function loadHandler(entryPath, { env = {}, makeClient, fetchImpl }) {
   if (entryPath.endsWith('/handleTelnyxStatusWebhook/entry.ts')) {
     for (const flag of [
       'INBOUND_PATIENT_SMS_ROUTING_PAUSED',
-      'INBOUND_PATIENT_FAX_ROUTING_PAUSED',
       'INBOUND_PATIENT_CALL_ROUTING_PAUSED',
     ]) {
       src = src.replace(`const ${flag} = true;`, `const ${flag} = false;`);
@@ -131,6 +130,22 @@ const smsBinding = (overrides = {}) => ({
   last_transition_request_id: "request_1",
   last_transition_request_key: "telnyx:integration_1:+12155550100:request_1",
   version: 1,
+  ...overrides,
+});
+
+const faxBinding = (overrides = {}) => ({
+  ...smsBinding({
+    id: "fax_binding_1",
+    binding_key: "telnyx:integration_1:+12155550190",
+    destination_e164: "+12155550190",
+    provider_number_id: "telnyx_fax_number_1",
+    phone_number_id: "fax_phone_number_1",
+    sms_inbound_enabled: false,
+    sms_outbound_enabled: false,
+    fax_inbound_enabled: true,
+    fax_connection_id: "FC1",
+    last_transition_request_key: "telnyx:integration_1:+12155550190:request_1",
+  }),
   ...overrides,
 });
 
@@ -483,11 +498,16 @@ test("a nurse-line purchase with NO saved campaign warns instead of enrolling", 
 // so update/create calls can be recorded, and per-entity overrides.
 function makeSpyBase44({ user = { email: "a@x.com", role: "admin", full_name: "Ada" }, data = {}, writes = [] } = {}) {
   const cache = {};
+  const matches = (row, query = {}) => Object.entries(query).every(([key, value]) => {
+    if (value && typeof value === "object" && !Array.isArray(value)) return true;
+    return row?.[key] === value;
+  });
   const entity = (name) => {
     if (!cache[name]) {
       cache[name] = {
         create: async (row) => {
-          const created = { id: `${name}_1`, ...row };
+          const now = new Date().toISOString();
+          const created = { id: `${name}_1`, created_date: now, updated_date: now, ...row };
           writes.push({ entity: name, op: "create", row });
           if (!data[name]) data[name] = [];
           data[name].push(created);
@@ -500,10 +520,23 @@ function makeSpyBase44({ user = { email: "a@x.com", role: "admin", full_name: "A
           if (idx >= 0) rows[idx] = { ...rows[idx], ...patch };
           return { id, ...patch };
         },
+        updateMany: async (query = {}, patch = {}) => {
+          writes.push({ entity: name, op: "updateMany", query, patch });
+          const rows = data[name] || [];
+          const matched = rows.filter((row) => matches(row, query));
+          for (const row of matched) {
+            Object.assign(row, patch.$set || {});
+            for (const [key, amount] of Object.entries(patch.$inc || {})) {
+              row[key] = (Number(row[key]) || 0) + Number(amount);
+            }
+            row.updated_date = new Date(Date.parse(row.updated_date || Date.now()) + 1).toISOString();
+          }
+          return { success: true, updated: matched.length, has_more: false };
+        },
         // Support id-equality filters used by claim-before-assign / claim-before-send.
         filter: async (query = {}) => {
           const rows = data[name] || [];
-          if (query && query.id != null) return rows.filter((r) => r.id === query.id);
+          if (query && query.id != null) return rows.filter((row) => row.id === query.id);
           return rows;
         },
         list: async () => data[name] || [],
@@ -625,34 +658,163 @@ test("a stray inbound fax on the blind line is passed straight through to the of
     { match: (u) => u.endsWith("/v2/faxes"), respond: () => ({ status: 200, json: { data: { id: "fwd_1" } } }) },
   ]);
   const writes = [];
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret({
+      public_key: pubB64,
+      fax_connection_id: "FC1",
+      messaging_profile_id: "MP1",
+    })],
+    TelecomDestinationBinding: [faxBinding()],
+    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+    // fax_receiving_enabled is NOT set — the default posture forwards to the office.
+    AgencySettings: [{
+      agency_id: "agency_a",
+      agency_code: "AGENCY-A",
+      office_fax_number_e164: "+17244650444",
+    }],
+    IncomingFax: [],
+  };
+  const client = makeSpyBase44({ writes, data: state });
   const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
     env: {},
-    makeClient: () => makeSpyBase44({
-      writes,
-      data: {
-        IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64, fax_connection_id: "FC1" })],
-        // fax_receiving_enabled is NOT set — the default posture forwards to the office.
-        AgencySettings: [{ office_fax_number_e164: "+17244650444" }],
-        IncomingFax: [],
-      },
-    }),
+    makeClient: () => client,
     fetchImpl: impl,
   });
-  const res = await handler(signedWebhook(privateKey, { data: { event_type: "fax.received", payload: {
+  const event = { data: { event_type: "fax.received", payload: {
     id: "faxin_1", direction: "inbound", media_url: "https://media.telnyx.com/f1.pdf",
     from: "+13125550182", to: "+12155550190",
-  } } }));
-  assert.equal(res.status, 200);
+  } } };
+  const res = await handler(signedWebhook(privateKey, event));
+  assert.equal(res.status, 200, JSON.stringify(await res.clone().json()));
+  const replay = await handler(signedWebhook(privateKey, event));
+  assert.equal(replay.status, 200, JSON.stringify(await replay.clone().json()));
+  const replayBody = await replay.json();
+  assert.equal(replayBody.deduped, true, JSON.stringify(replayBody));
   const fwd = calls.find((c) => c.url.endsWith("/v2/faxes"));
   assert.ok(fwd, "forwarded the received fax to the office");
+  assert.equal(calls.filter((c) => c.url.endsWith("/v2/faxes")).length, 1, "a replay never forwards twice");
   assert.equal(fwd.body.to, "+17244650444", "delivered to the office fax machine");
   assert.equal(fwd.body.from, "+12155550190", "sent from the line that received it");
   assert.equal(fwd.body.media_url, "https://media.telnyx.com/f1.pdf");
   const row = writes.find((w) => w.entity === "IncomingFax" && w.op === "create");
   assert.ok(row, "created the at-most-once forward record");
   assert.equal(row.row.processing_status, "completed", "kept away from the in-app OCR job");
-  const routed = writes.find((w) => w.entity === "IncomingFax" && w.op === "update");
-  assert.equal(routed?.patch.status, "routed", "marked routed after the successful forward");
+  const claim = writes.find((w) => (
+    w.entity === "IncomingFax" && w.op === "updateMany" && w.patch.$set.status === "reviewing"
+  ));
+  assert.ok(claim, "claimed the inbound row before calling the fax provider");
+  assert.equal(claim.patch.$set.routed_to, "office_fax_pending");
+  const routed = writes.find((w) => (
+    w.entity === "IncomingFax" && w.op === "updateMany" && w.patch.$set.status === "routed"
+  ));
+  assert.equal(routed?.patch.$set.status, "routed", "marked routed after the successful forward");
+  assert.equal(routed?.query.claimed_by, claim.patch.$set.claimed_by, "only the claim owner can finalize");
+});
+
+test("an exact-bound opt-in inbound fax is ingested once with immutable tenant provenance", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const { impl, calls } = makeFetch([]);
+  const writes = [];
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret({
+      public_key: pubB64,
+      fax_connection_id: "FC1",
+      messaging_profile_id: "MP1",
+    })],
+    TelecomDestinationBinding: [faxBinding()],
+    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+    AgencySettings: [{
+      agency_id: "agency_a",
+      agency_code: "AGENCY-A",
+      fax_receiving_enabled: true,
+      office_fax_number_e164: "+17244650444",
+    }],
+    IncomingFax: [],
+  };
+  const client = makeSpyBase44({ writes, data: state });
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => client,
+    fetchImpl: impl,
+  });
+  const event = { data: { event_type: "fax.received", payload: {
+    id: "faxin_bound_1", direction: "inbound", media_url: "https://media.telnyx.com/bound.pdf",
+    from: "+13125550182", to: "+12155550190", page_count: 3,
+  } } };
+  const first = await handler(signedWebhook(privateKey, event));
+  assert.equal(first.status, 200, JSON.stringify(await first.clone().json()));
+  const second = await handler(signedWebhook(privateKey, event));
+  assert.equal(second.status, 200, JSON.stringify(await second.clone().json()));
+  assert.equal((await second.json()).deduped, true);
+  const creates = writes.filter((write) => write.entity === "IncomingFax" && write.op === "create");
+  assert.equal(creates.length, 1);
+  assert.deepEqual({
+    agency_id: creates[0].row.agency_id,
+    ingress_binding_id: creates[0].row.ingress_binding_id,
+    ingress_binding_key: creates[0].row.ingress_binding_key,
+    ingress_binding_version: creates[0].row.ingress_binding_version,
+    integration_secret_id: creates[0].row.integration_secret_id,
+    received_to_number: creates[0].row.received_to_number,
+    processing_status: creates[0].row.processing_status,
+    version: creates[0].row.version,
+  }, {
+    agency_id: "agency_a",
+    ingress_binding_id: "fax_binding_1",
+    ingress_binding_key: "telnyx:integration_1:+12155550190",
+    ingress_binding_version: 1,
+    integration_secret_id: "integration_1",
+    received_to_number: "+12155550190",
+    processing_status: "pending",
+    version: 1,
+  });
+  assert.equal(calls.length, 0, "opt-in ingestion does not forward the fax");
+});
+
+test("an existing foreign inbound fax identity blocks disclosure, creation, and forwarding", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const { impl, calls } = makeFetch([]);
+  const writes = [];
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret({
+      public_key: pubB64,
+      fax_connection_id: "FC1",
+      messaging_profile_id: "MP1",
+    })],
+    TelecomDestinationBinding: [faxBinding()],
+    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+    AgencySettings: [{
+      agency_id: "agency_a",
+      agency_code: "AGENCY-A",
+      fax_receiving_enabled: true,
+    }],
+    IncomingFax: [{
+      id: "incoming_foreign",
+      agency_id: "agency_b",
+      telnyx_fax_id: "faxin_conflict_1",
+      document_url: "https://media.telnyx.com/conflict.pdf",
+    }],
+  };
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ writes, data: state }),
+    fetchImpl: impl,
+  });
+  const response = await handler(signedWebhook(privateKey, { data: {
+    event_type: "fax.received",
+    payload: {
+      id: "faxin_conflict_1",
+      direction: "inbound",
+      media_url: "https://media.telnyx.com/conflict.pdf",
+      from: "+13125550182",
+      to: "+12155550190",
+    },
+  } }));
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).code, "INBOUND_FAX_IDENTITY_CONFLICT");
+  assert.equal(writes.length, 0);
+  assert.equal(calls.length, 0);
 });
 
 test("sendFax normalizes a formatted office fax number to E.164 on `from`", async () => {

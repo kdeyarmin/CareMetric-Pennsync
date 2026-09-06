@@ -17,6 +17,7 @@ import { act, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog";
+import { PublicCapabilityBoundary } from "@/lib/PublicCapabilityContext";
 // routes.jsx derives ROUTES from nav.manifest.js; import it as the app does so
 // this smoke coverage follows the production route table exactly.
 import { REDIRECTS, ROUTES } from "@/routes";
@@ -67,6 +68,12 @@ vi.mock("@/api/base44Client", () => {
         list: arr,
         updateMyUserData: obj,
       },
+    },
+    publicCapabilityClient: {
+      validateFollowUpToken: async () => ({
+        data: { valid: false, error: "This smoke-test link is unavailable." },
+      }),
+      submitFollowUpResponse: async () => ({ data: { success: false } }),
     },
   };
 });
@@ -125,9 +132,14 @@ describe("routed pages mount without crashing", () => {
     // (We mount the loading state rather than flushing data to the loaded state
     // because some pages start polling/interval queries that never let an async
     // act() settle — that would hang the suite, not catch more real bugs.)
+    const pageContent = page === "ProviderFollowUpPortal" ? (
+      <PublicCapabilityBoundary capabilitySnapshot="followup|route-smoke-test">
+        <Page />
+      </PublicCapabilityBoundary>
+    ) : <Page />;
     const { unmount } = render(
       <Providers>
-        <Page />
+        {pageContent}
       </Providers>,
     );
     unmount();

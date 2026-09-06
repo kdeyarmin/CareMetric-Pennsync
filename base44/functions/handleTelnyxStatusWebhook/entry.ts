@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
 /**
  * handleTelnyxStatusWebhook — the single inbound webhook for the whole Telnyx
@@ -732,11 +732,11 @@ function decodeClientState(b64) {
 
 // Inbound patient communications cannot be routed safely until dialed Telnyx
 // numbers, tenant ownership, and destinations are resolved from a service-owned
-// binding instead of mutable User profile fields. Keep these literal release
-// gates fail-closed so they are mechanically reviewable and cannot be enabled by
-// a request, entity row, or environment value.
+// binding instead of mutable User profile fields. SMS and voice remain behind
+// literal release gates. Inbound fax now crosses only a dedicated, exact
+// service-owned destination binding; it never uses mutable User fields or a
+// newest/single-row AgencySettings fallback as tenant authority.
 const INBOUND_PATIENT_SMS_ROUTING_PAUSED = true;
-const INBOUND_PATIENT_FAX_ROUTING_PAUSED = true;
 const INBOUND_PATIENT_CALL_ROUTING_PAUSED = true;
 const INBOUND_PATIENT_CALL_STATES = new Set([
   'inbound_ivr',
@@ -1197,118 +1197,498 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
 // and cause a duplicate PHI transmission on top of the in-flight attempt.
 const FAX_RANK = { queued: 1, sending: 2, sent: 3, delivered: 4, failed: 4, retrying: 4, retried: 5 };
 
-// Inbound fax handling: Telnyx delivers a received fax as `fax.received` with
-// the media URL. The app does NOT expect inbound faxes by default — outbound
-// faxes transmit from a blind Telnyx line but are PRESENTED under the office
-// fax machine's number, so fax-backs are dialed straight to the office. Any
-// stray fax that still lands on the blind line (e.g. a machine auto-redialing
-// the transmitting number) is passed straight through to the office fax
-// machine. Opt-in ingestion (fax_receiving_enabled) keeps the legacy behavior:
-// an IncomingFax row that the processInboundFaxes job OCRs and matches to
-// referral follow-ups.
-async function handleInboundFax(base44, payload) {
-  const providerId = payload?.id;
-  if (!providerId) return Response.json({ success: true, skipped: 'no fax id' });
-  // `fax.received` is inbound-only at Telnyx, but keep the direction check as
-  // a guard against provider payload quirks.
-  if (payload?.direction && payload.direction !== 'inbound') {
-    return Response.json({ success: true, skipped: 'not inbound' });
-  }
-  const mediaUrl = payload?.media_url || payload?.original_media_url;
-  if (!mediaUrl) return Response.json({ success: true, skipped: 'no media url' });
+const INBOUND_FAX_EXACT_ROW_LIMIT = 10;
+const INBOUND_FAX_NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 
-  // Idempotency: Telnyx re-delivers webhooks. Suppress a redelivery only once
-  // the fax is SETTLED — either routed to the office (status 'routed') or
-  // captured in-app for OCR (the ingestion path, processing_status 'pending').
-  // A FAILED office-forward row (created 'completed' but never 'routed') is
-  // left retryable so a redelivery can complete the forward — otherwise a
-  // transient forward error silently dropped the fax forever.
-  const existing = await base44.asServiceRole.entities.IncomingFax.filter({ telnyx_fax_id: providerId }, undefined, 5000).catch(() => []);
-  const settled = (Array.isArray(existing) ? existing : []).find(
-    (r) => r?.status === 'routed' || r?.processing_status === 'pending',
-  );
-  if (settled) {
-    return Response.json({ success: true, deduped: true });
-  }
-
-  // Match the dialed fax line to the owning agency's settings. Fail closed when
-  // the dialed number doesn't match any agency — newest-row would mis-route PHI.
-  const dialedFax = normalizeE164(payload?.to) || payload?.to || '';
-  const settings = await resolveAgencySettingsByNumber(base44, dialedFax);
-  if (!settings) {
-    console.error('inbound fax: no AgencySettings match for dialed line');
-    return Response.json({ success: true, skipped: 'unresolved fax line' });
-  }
-
-  if (settings?.fax_receiving_enabled) {
-    // Opt-in ingestion: keep the fax in-app for OCR + referral matching.
-    const record = await base44.asServiceRole.entities.IncomingFax.create({
-      // Route to whoever owns the agency settings (an admin) until the
-      // processing job matches it to a patient/referral.
-      user_email: settings.created_by || 'unassigned',
-      sender_fax_number: payload?.from || '',
-      received_at: new Date().toISOString(),
-      document_url: mediaUrl,
-      page_count: Number.isFinite(payload?.page_count) ? payload.page_count : undefined,
-      telnyx_fax_id: providerId,
-      processing_status: 'pending',
-      status: 'unread',
-    });
-    return Response.json({ success: true, incoming_fax_id: record.id });
-  }
-
-  // Default posture: pass the fax straight through to the office machine.
-  // Requires the office fax number + fax creds; the self-loop guard skips the
-  // forward if the office number IS the line that received it (misconfig).
-  const officeFax = normalizeE164(settings?.office_fax_number_e164);
-  const receivedOn = normalizeE164(payload?.to);
-  const creds = await resolveTelnyxCreds(base44);
-  if (!creds.apiKey || !creds.faxConnectionId || !officeFax || !receivedOn || officeFax === receivedOn) {
-    return Response.json({ success: true, skipped: 'fax receiving disabled' });
-  }
-
-  // The row is the at-most-once guard; marked 'routed' on success, left
-  // 'unread' on failure so a stray fax is never silently dropped (it stays
-  // visible to admins with its media URL). processing_status 'completed' keeps
-  // the OCR job away from it. On a redelivery after a failed forward, REUSE the
-  // prior unrouted row instead of creating a duplicate.
-  const record = (Array.isArray(existing) ? existing : []).find(
-    (r) => r?.processing_status === 'completed' && r?.status !== 'routed',
-  ) || await base44.asServiceRole.entities.IncomingFax.create({
-    user_email: settings?.created_by || 'unassigned',
-    sender_fax_number: payload?.from || '',
-    received_at: new Date().toISOString(),
-    document_url: mediaUrl,
-    page_count: Number.isFinite(payload?.page_count) ? payload.page_count : undefined,
-    telnyx_fax_id: providerId,
-    processing_status: 'completed',
-    status: 'unread',
-  });
-  let forwarded = false;
+function exactInboundFaxHttpsUrl(value) {
+  if (typeof value !== 'string' || !value || value.length > 8192 || value.trim() !== value) return null;
   try {
-    const resp = await fetch('https://api.telnyx.com/v2/faxes', {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password && !url.hash
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function inboundFaxUnavailable(status = 503, code = 'INBOUND_FAX_BINDING_UNAVAILABLE') {
+  return Response.json(
+    { success: false, error: 'Inbound fax routing is temporarily unavailable', code },
+    {
+      status,
+      headers: {
+        ...INBOUND_FAX_NO_STORE_HEADERS,
+        ...(status === 503 ? { 'Retry-After': '300' } : {}),
+      },
+    },
+  );
+}
+
+function successfulInboundFaxUpdate(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+    && value.success === true && value.updated === 1 && value.has_more === false;
+}
+
+async function resolveActiveTelnyxFaxBinding(base44, telnyxCreds, rawDestination) {
+  const record = telnyxCreds?.record;
+  const integrationSecretId = boundedTelnyxAuthorityId(record?.id);
+  const faxConnectionId = boundedTelnyxAuthorityId(telnyxCreds?.faxConnectionId);
+  const destinationE164 = normalizeE164(rawDestination);
+  if (record?.provider !== 'telnyx'
+    || record?.is_active !== true
+    || !integrationSecretId || record.id !== integrationSecretId
+    || !faxConnectionId || record.fax_connection_id !== faxConnectionId
+    || !destinationE164) {
+    return { ok: false, reason: 'invalid_fax_binding_input' };
+  }
+
+  let activeIntegrations;
+  try {
+    activeIntegrations = await base44.asServiceRole.entities.IntegrationSecret.filter(
+      { provider: 'telnyx', is_active: true },
+      undefined,
+      2,
+    );
+  } catch {
+    return { ok: false, reason: 'fax_integration_read_failed' };
+  }
+  if (!Array.isArray(activeIntegrations) || activeIntegrations.length !== 1) {
+    return { ok: false, reason: 'fax_integration_ambiguous' };
+  }
+  const activeIntegration = activeIntegrations[0];
+  if (activeIntegration?.id !== integrationSecretId
+    || activeIntegration?.provider !== 'telnyx'
+    || activeIntegration?.is_active !== true
+    || activeIntegration?.fax_connection_id !== faxConnectionId) {
+    return { ok: false, reason: 'fax_integration_integrity_failed' };
+  }
+
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.TelecomDestinationBinding.filter({
+      provider: 'telnyx',
+      integration_secret_id: integrationSecretId,
+      destination_e164: destinationE164,
+      status: 'active',
+    }, undefined, INBOUND_FAX_EXACT_ROW_LIMIT);
+  } catch {
+    return { ok: false, reason: 'fax_binding_read_failed' };
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    return { ok: false, reason: rows?.length ? 'fax_binding_ambiguous' : 'fax_binding_not_found' };
+  }
+  const binding = rows[0];
+  const bindingId = boundedTelnyxAuthorityId(binding?.id);
+  const agencyId = boundedTelnyxAuthorityId(binding?.agency_id);
+  const providerNumberId = boundedTelnyxAuthorityId(binding?.provider_number_id);
+  const phoneNumberId = boundedTelnyxAuthorityId(binding?.phone_number_id);
+  const creatorId = boundedTelnyxAuthorityId(binding?.created_by_user_id);
+  const transitionActorId = boundedTelnyxAuthorityId(binding?.last_transition_by_user_id);
+  const transitionRequestId = boundedTelnyxAuthorityId(binding?.last_transition_request_id);
+  const transitionReason = typeof binding?.last_transition_reason === 'string'
+    ? binding.last_transition_reason.trim()
+    : '';
+  const expectedBindingKey = `telnyx:${integrationSecretId}:${destinationE164}`;
+  const expectedTransitionKey = transitionRequestId
+    ? `${expectedBindingKey}:${transitionRequestId}`
+    : null;
+  const createdAt = Date.parse(binding?.created_at || '');
+  const activatedAt = Date.parse(binding?.activated_at || '');
+  const transitionedAt = Date.parse(binding?.last_transition_at || '');
+  const suspendedAt = binding?.suspended_at == null ? null : Date.parse(binding.suspended_at);
+  const initialActive = binding?.last_transition_action === 'bind'
+    && binding?.version === 1
+    && suspendedAt == null
+    && createdAt === activatedAt
+    && activatedAt === transitionedAt
+    && creatorId === transitionActorId
+    && binding?.created_by_user_email_normalized === binding?.last_transition_by_email_normalized;
+  const reactivated = binding?.last_transition_action === 'activate'
+    && Number.isSafeInteger(binding?.version) && binding.version >= 2
+    && Number.isFinite(suspendedAt)
+    && createdAt <= suspendedAt && suspendedAt < activatedAt
+    && activatedAt === transitionedAt;
+  if (!bindingId || binding.id !== bindingId
+    || !agencyId || binding.agency_id !== agencyId
+    || !providerNumberId || binding.provider_number_id !== providerNumberId
+    || !phoneNumberId || binding.phone_number_id !== phoneNumberId
+    || !creatorId || binding.created_by_user_id !== creatorId
+    || !transitionActorId || binding.last_transition_by_user_id !== transitionActorId
+    || !transitionRequestId || binding.last_transition_request_id !== transitionRequestId
+    || !isCanonicalTelnyxAuthorityEmail(binding?.created_by_user_email_normalized)
+    || !isCanonicalTelnyxAuthorityEmail(binding?.last_transition_by_email_normalized)
+    || binding?.provider !== 'telnyx'
+    || binding?.integration_secret_id !== integrationSecretId
+    || binding?.destination_e164 !== destinationE164
+    || binding?.binding_key !== expectedBindingKey
+    || binding?.fax_connection_id !== faxConnectionId
+    || binding?.fax_inbound_enabled !== true
+    || typeof binding?.sms_inbound_enabled !== 'boolean'
+    || typeof binding?.sms_outbound_enabled !== 'boolean'
+    || typeof binding?.voice_inbound_enabled !== 'boolean'
+    || binding?.status !== 'active'
+    || !['manual', 'telnyx_purchase', 'legacy_backfill'].includes(binding?.source)
+    || (!initialActive && !reactivated)
+    || !transitionReason || binding.last_transition_reason !== transitionReason
+    || transitionReason.length > 500
+    || binding?.last_transition_request_key !== expectedTransitionKey
+    || !Number.isFinite(createdAt) || !Number.isFinite(activatedAt) || !Number.isFinite(transitionedAt)
+    || createdAt > activatedAt || activatedAt > transitionedAt
+    || binding?.revoked_at != null || binding?.revocation_reason != null
+    || !Number.isSafeInteger(binding?.version) || binding.version < 1) {
+    return { ok: false, reason: 'fax_binding_integrity_failed' };
+  }
+
+  let agencies;
+  try {
+    agencies = await base44.asServiceRole.entities.Agency.filter(
+      { id: agencyId },
+      undefined,
+      INBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+  } catch {
+    return { ok: false, reason: 'fax_agency_read_failed' };
+  }
+  if (!Array.isArray(agencies) || agencies.length !== 1
+    || agencies[0]?.id !== agencyId
+    || !['active', 'trial'].includes(agencies[0]?.status)
+    || !boundedTelnyxAuthorityId(agencies[0]?.agency_code)) {
+    return { ok: false, reason: 'fax_agency_unavailable' };
+  }
+  const agency = agencies[0];
+  const duplicateAgencies = await base44.asServiceRole.entities.Agency.filter(
+    { agency_code: agency.agency_code },
+    undefined,
+    INBOUND_FAX_EXACT_ROW_LIMIT,
+  ).catch(() => null);
+  if (!Array.isArray(duplicateAgencies) || duplicateAgencies.length !== 1
+    || duplicateAgencies[0]?.id !== agencyId) {
+    return { ok: false, reason: 'fax_agency_identity_ambiguous' };
+  }
+  const settingsRows = await base44.asServiceRole.entities.AgencySettings.filter(
+    { agency_code: agency.agency_code },
+    '-updated_date',
+    INBOUND_FAX_EXACT_ROW_LIMIT,
+  ).catch(() => null);
+  if (!Array.isArray(settingsRows) || settingsRows.length !== 1
+    || settingsRows[0]?.agency_code !== agency.agency_code
+    || (settingsRows[0]?.agency_id != null && settingsRows[0].agency_id !== agencyId)) {
+    return { ok: false, reason: 'fax_settings_unavailable' };
+  }
+  return {
+    ok: true,
+    binding,
+    bindingId,
+    bindingKey: expectedBindingKey,
+    bindingVersion: binding.version,
+    integrationSecretId,
+    destinationE164,
+    agencyId,
+    settings: settingsRows[0],
+  };
+}
+
+function inboundFaxRowMatches(row, authority, providerId, mediaUrl) {
+  return !!row
+    && boundedTelnyxAuthorityId(row.id) === row.id
+    && row.agency_id === authority.agencyId
+    && row.ingress_binding_id === authority.bindingId
+    && row.ingress_binding_key === authority.bindingKey
+    && Number.isSafeInteger(row.ingress_binding_version)
+    && row.ingress_binding_version >= 1
+    && row.ingress_binding_version <= authority.bindingVersion
+    && row.integration_secret_id === authority.integrationSecretId
+    && row.received_to_number === authority.destinationE164
+    && row.telnyx_fax_id === providerId
+    && row.document_url === mediaUrl
+    && Number.isSafeInteger(row.version)
+    && row.version >= 1
+    && Number.isFinite(Date.parse(row.created_date || ''))
+    && Number.isFinite(Date.parse(row.updated_date || ''));
+}
+
+function sameInboundFaxAuthority(left, right) {
+  return left?.ok === true
+    && right?.ok === true
+    && left.bindingId === right.bindingId
+    && left.bindingKey === right.bindingKey
+    && left.bindingVersion === right.bindingVersion
+    && left.integrationSecretId === right.integrationSecretId
+    && left.destinationE164 === right.destinationE164
+    && left.agencyId === right.agencyId
+    && JSON.stringify(left.binding) === JSON.stringify(right.binding)
+    && JSON.stringify(left.settings) === JSON.stringify(right.settings);
+}
+
+async function loadExactInboundFax(base44, authority, providerId, mediaUrl) {
+  const rows = await base44.asServiceRole.entities.IncomingFax.filter(
+    { telnyx_fax_id: providerId },
+    undefined,
+    INBOUND_FAX_EXACT_ROW_LIMIT,
+  );
+  if (!Array.isArray(rows) || rows.length > 1) return { ok: false, rows: [] };
+  if (rows.some((row) => !inboundFaxRowMatches(row, authority, providerId, mediaUrl))) {
+    return { ok: false, rows };
+  }
+  return { ok: true, rows };
+}
+
+async function createInboundFax(base44, authority, payload, providerId, mediaUrl, processingStatus) {
+  const sender = normalizeE164(payload?.from) || '';
+  const pageCount = Number.isSafeInteger(payload?.page_count) && payload.page_count > 0
+    ? payload.page_count
+    : undefined;
+  const receivedAt = new Date().toISOString();
+  const created = await base44.asServiceRole.entities.IncomingFax.create({
+    agency_id: authority.agencyId,
+    ingress_binding_id: authority.bindingId,
+    ingress_binding_key: authority.bindingKey,
+    ingress_binding_version: authority.bindingVersion,
+    integration_secret_id: authority.integrationSecretId,
+    received_to_number: authority.destinationE164,
+    user_email: authority.binding.created_by_user_email_normalized,
+    sender_fax_number: sender,
+    received_at: receivedAt,
+    document_url: mediaUrl,
+    ...(pageCount ? { page_count: pageCount } : {}),
+    telnyx_fax_id: providerId,
+    processing_status: processingStatus,
+    status: 'unread',
+    version: 1,
+  });
+  const createdId = boundedTelnyxAuthorityId(created?.id);
+  if (!createdId) throw new Error('IncomingFax.create returned no exact id');
+  const loaded = await loadExactInboundFax(base44, authority, providerId, mediaUrl);
+  if (!loaded.ok || loaded.rows.length !== 1 || loaded.rows[0]?.id !== createdId
+    || loaded.rows[0]?.processing_status !== processingStatus
+    || loaded.rows[0]?.status !== 'unread'
+    || loaded.rows[0]?.received_at !== receivedAt) {
+    throw new Error('Inbound fax creation failed verification');
+  }
+  return loaded.rows[0];
+}
+
+async function claimInboundFaxForward(base44, authority, record) {
+  const priorVersion = record.version;
+  const claimId = typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  const claimedAt = new Date().toISOString();
+  const result = await base44.asServiceRole.entities.IncomingFax.updateMany(
+    {
+      id: record.id,
+      agency_id: authority.agencyId,
+      version: record.version,
+      updated_date: record.updated_date,
+      processing_status: 'completed',
+      status: 'unread',
+    },
+    {
+      $set: {
+        status: 'reviewing',
+        routed_to: 'office_fax_pending',
+        claimed_by: claimId,
+        claimed_at: claimedAt,
+      },
+      $inc: { version: 1 },
+    },
+  );
+  if (!successfulInboundFaxUpdate(result)) return null;
+  const loaded = await loadExactInboundFax(
+    base44,
+    authority,
+    record.telnyx_fax_id,
+    record.document_url,
+  );
+  if (!loaded.ok || loaded.rows.length !== 1) {
+    throw new Error('Inbound fax forward claim failed verification');
+  }
+  const claimed = loaded.rows[0];
+  if (claimed.id !== record.id
+    || claimed.version !== priorVersion + 1
+    || claimed.processing_status !== 'completed'
+    || claimed.status !== 'reviewing'
+    || claimed.routed_to !== 'office_fax_pending'
+    || claimed.claimed_by !== claimId
+    || claimed.claimed_at !== claimedAt) {
+    throw new Error('Inbound fax forward claim failed verification');
+  }
+  return claimed;
+}
+
+async function releaseInboundFaxForwardClaim(base44, authority, record) {
+  const result = await base44.asServiceRole.entities.IncomingFax.updateMany(
+    {
+      id: record.id,
+      agency_id: authority.agencyId,
+      version: record.version,
+      updated_date: record.updated_date,
+      processing_status: 'completed',
+      status: 'reviewing',
+      routed_to: 'office_fax_pending',
+      claimed_by: record.claimed_by,
+    },
+    {
+      $set: {
+        status: 'unread',
+        routed_to: null,
+        claimed_by: null,
+        claimed_at: null,
+      },
+      $inc: { version: 1 },
+    },
+  );
+  return successfulInboundFaxUpdate(result);
+}
+
+// Signed Telnyx fax ingress. The exact dialed destination is resolved through
+// TelecomDestinationBinding before any tenant setting, media row, or forward
+// command is touched. `fax_receiving_enabled` selects in-app OCR versus office
+// forwarding only after that immutable tenant boundary is established.
+async function handleInboundFax(base44, telnyxCreds, payload) {
+  const providerId = boundedTelnyxAuthorityId(payload?.id);
+  const mediaUrl = exactInboundFaxHttpsUrl(payload?.media_url || payload?.original_media_url);
+  const receivedOn = normalizeE164(payload?.to);
+  if (!providerId || payload?.id !== providerId || payload?.direction !== 'inbound'
+    || !mediaUrl || !receivedOn) {
+    return inboundFaxUnavailable(400, 'INVALID_INBOUND_FAX_EVENT');
+  }
+  let authority = await resolveActiveTelnyxFaxBinding(base44, telnyxCreds, receivedOn);
+  if (!authority.ok) return inboundFaxUnavailable();
+
+  const existing = await loadExactInboundFax(base44, authority, providerId, mediaUrl).catch(() => null);
+  if (!existing?.ok) return inboundFaxUnavailable(409, 'INBOUND_FAX_IDENTITY_CONFLICT');
+  const finalAuthority = await resolveActiveTelnyxFaxBinding(base44, telnyxCreds, receivedOn);
+  if (!sameInboundFaxAuthority(authority, finalAuthority)) return inboundFaxUnavailable();
+  authority = finalAuthority;
+  if (authority.settings.fax_receiving_enabled === true) {
+    if (existing.rows.length === 1) {
+      return Response.json(
+        { success: true, deduped: true, incoming_fax_id: existing.rows[0].id },
+        { headers: INBOUND_FAX_NO_STORE_HEADERS },
+      );
+    }
+    const record = await createInboundFax(
+      base44,
+      authority,
+      payload,
+      providerId,
+      mediaUrl,
+      'pending',
+    );
+    return Response.json(
+      { success: true, incoming_fax_id: record.id },
+      { headers: INBOUND_FAX_NO_STORE_HEADERS },
+    );
+  }
+
+  const officeFax = normalizeE164(authority.settings.office_fax_number_e164);
+  if (!telnyxCreds.apiKey || !officeFax || officeFax === receivedOn) {
+    return inboundFaxUnavailable(409, 'INBOUND_FAX_FORWARDING_UNAVAILABLE');
+  }
+  let record = existing.rows[0];
+  if (record?.status === 'routed') {
+    if (record.processing_status !== 'completed'
+      || record.routed_to !== 'office_fax'
+      || !Number.isFinite(Date.parse(record.routed_at || ''))) {
+      return inboundFaxUnavailable(409, 'INBOUND_FAX_IDENTITY_CONFLICT');
+    }
+    return Response.json(
+      { success: true, deduped: true, forwarded_to_office: true, incoming_fax_id: record.id },
+      { headers: INBOUND_FAX_NO_STORE_HEADERS },
+    );
+  }
+  if (!record) {
+    record = await createInboundFax(
+      base44,
+      authority,
+      payload,
+      providerId,
+      mediaUrl,
+      'completed',
+    );
+  } else if (record.processing_status !== 'completed' || record.status !== 'unread') {
+    return inboundFaxUnavailable(409, 'INBOUND_FAX_IDENTITY_CONFLICT');
+  }
+
+  // Telnyx Fax has no client idempotency key. Claim this exact inbound row
+  // before the irreversible provider call so overlapping webhook deliveries
+  // cannot both forward the same PHI document. An ambiguous post-send failure
+  // deliberately leaves the row in `reviewing`; a replay must not blindly send
+  // again when the first provider outcome is unknown.
+  const claimed = await claimInboundFaxForward(base44, authority, record);
+  if (!claimed) return inboundFaxUnavailable(409, 'INBOUND_FAX_FORWARD_ALREADY_CLAIMED');
+  record = claimed;
+  const preSendAuthority = await resolveActiveTelnyxFaxBinding(base44, telnyxCreds, receivedOn);
+  if (!sameInboundFaxAuthority(authority, preSendAuthority)) {
+    await releaseInboundFaxForwardClaim(base44, authority, record).catch(() => false);
+    return inboundFaxUnavailable();
+  }
+  authority = preSendAuthority;
+
+  let response;
+  try {
+    response = await fetch('https://api.telnyx.com/v2/faxes', {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${creds.apiKey}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${telnyxCreds.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        connection_id: creds.faxConnectionId,
+        connection_id: authority.binding.fax_connection_id,
         from: receivedOn,
         to: officeFax,
         media_url: mediaUrl,
         quality: 'high',
       }),
     });
-    forwarded = resp.ok;
-    if (!resp.ok) console.error('inbound fax office-forward rejected', { status: resp.status });
-  } catch (err) {
-    console.error('inbound fax office-forward failed:', err?.message);
+  } catch {
+    // The provider may have accepted a request even when the client never saw a
+    // response. Preserve the claim for operator reconciliation; auto-release
+    // here would turn a harmless webhook retry into a duplicate fax.
+    return inboundFaxUnavailable(502, 'INBOUND_FAX_FORWARD_FAILED');
   }
-  if (forwarded) {
-    await base44.asServiceRole.entities.IncomingFax.update(record.id, {
-      status: 'routed',
-      routed_to: `office fax ${officeFax}`,
-    }).catch(() => {});
+  if (!response.ok) {
+    const released = await releaseInboundFaxForwardClaim(base44, authority, record).catch(() => false);
+    return released
+      ? inboundFaxUnavailable(502, 'INBOUND_FAX_FORWARD_FAILED')
+      : inboundFaxUnavailable(503, 'INBOUND_FAX_FORWARD_CONFIRMATION_INTERRUPTED');
   }
-  return Response.json({ success: true, forwarded_to_office: forwarded, incoming_fax_id: record.id });
+  const recordVersion = record.version;
+  const update = await base44.asServiceRole.entities.IncomingFax.updateMany(
+    {
+      id: record.id,
+      agency_id: authority.agencyId,
+      version: recordVersion,
+      updated_date: record.updated_date,
+      processing_status: 'completed',
+      status: 'reviewing',
+      routed_to: 'office_fax_pending',
+      claimed_by: record.claimed_by,
+    },
+    {
+      $set: {
+        status: 'routed',
+        routed_to: 'office_fax',
+        routed_at: new Date().toISOString(),
+        claimed_by: null,
+        claimed_at: null,
+      },
+      $inc: { version: 1 },
+    },
+  );
+  if (!successfulInboundFaxUpdate(update)) {
+    return inboundFaxUnavailable(503, 'INBOUND_FAX_FORWARD_CONFIRMATION_INTERRUPTED');
+  }
+  const verified = await loadExactInboundFax(base44, authority, providerId, mediaUrl);
+  if (!verified.ok || verified.rows.length !== 1
+    || verified.rows[0]?.id !== record.id
+    || verified.rows[0]?.status !== 'routed'
+    || verified.rows[0]?.version !== recordVersion + 1) {
+    return inboundFaxUnavailable(503, 'INBOUND_FAX_FORWARD_CONFIRMATION_INTERRUPTED');
+  }
+  return Response.json(
+    { success: true, forwarded_to_office: true, incoming_fax_id: record.id },
+    { headers: INBOUND_FAX_NO_STORE_HEADERS },
+  );
 }
 
 async function handleFaxEvent(base44, payload) {
@@ -1897,16 +2277,13 @@ Deno.serve(async (req) => {
       if (keywordResponse) return keywordResponse;
       return inboundRoutingPausedResponse('SMS');
     }
-    if (eventType === 'fax.received' && INBOUND_PATIENT_FAX_ROUTING_PAUSED) {
-      return inboundRoutingPausedResponse('fax');
-    }
     if (INBOUND_PATIENT_CALL_ROUTING_PAUSED && isInboundPatientCallEvent(eventType, payload)) {
       return inboundRoutingPausedResponse('call');
     }
 
     if (eventType === 'message.received') return await handleInboundMessage(base44, apiKey, messagingProfileId, payload);
     if (eventType.startsWith('message.')) return await handleOutboundMessageStatus(base44, payload);
-    if (eventType === 'fax.received') return await handleInboundFax(base44, payload);
+    if (eventType === 'fax.received') return await handleInboundFax(base44, telnyxCreds, payload);
     if (eventType.startsWith('fax.')) return await handleFaxEvent(base44, payload);
     if (eventType.startsWith('call.')) return await handleCallEvent(base44, apiKey, eventType, payload);
 

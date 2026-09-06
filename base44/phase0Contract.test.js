@@ -160,17 +160,32 @@ test('P0-05 outbound delivery entities expose status fields and shared delivery-
   assert.match(deliverySrc, /createDeliveryAttemptEvent/);
 });
 
-test('P1-04 provider follow-up public token functions remain hard-paused before access', () => {
-  for (const functionName of ['validateFollowUpToken', 'submitFollowUpResponse']) {
-    const entry = source(`base44/functions/${functionName}/entry.ts`);
-    assert.match(entry, /Deno\.serve\(\(\)\s*=>\s*Response\.json/);
-    assert.match(entry, /status:\s*503/);
+test('P1-04 provider follow-up uses a hashed, single-use, tenant-bound capability contract', () => {
+  const issue = source('base44/functions/generateFollowUpPortalToken/entry.ts');
+  const validate = source('base44/functions/validateFollowUpToken/entry.ts');
+  const submit = source('base44/functions/submitFollowUpResponse/entry.ts');
+  const lifecycleContract = source(
+    'base44/functionTests/providerFollowUpCapabilityContract.test.js',
+  );
+
+  assert.match(issue, /crypto\.getRandomValues/);
+  assert.match(issue, /token:\s*tokenHash/);
+  assert.match(issue, /functions\.invoke\('manageAuthorizedReferral'/);
+  assert.match(issue, /portal_token_snapshot_hash:\s*snapshotHash/);
+  assert.doesNotMatch(issue, /ProviderFollowUpToken\.create\(\{[^}]*token:\s*token[,\s}]/s);
+
+  for (const entry of [validate, submit]) {
+    assert.match(entry, /createClientFromRequest/);
+    assert.match(entry, /sha256Hex\((?:input\.)?token\)/);
+    assert.match(entry, /ProviderFollowUpToken\.filter/);
+    assert.match(entry, /Referral\.filter/);
+    assert.match(entry, /updateMany/);
     assert.match(entry, /['"]Cache-Control['"]:\s*['"]no-store['"]/);
-    assert.doesNotMatch(
-      entry,
-      /createClient(?:FromRequest)?|\breq\.(?:json|text|arrayBuffer|formData)\(|asServiceRole|entities\.|integrations\./,
-    );
   }
+  assert.match(submit, /submission_id/);
+  assert.match(submit, /portal_submission_hash/);
+  assert.match(lifecycleContract, /issues, validates, submits, notifies, and retries/);
+  assert.match(lifecycleContract, /false-success cross-tenant Referral row/);
 });
 
 test('hosted RLS proof worksheet exists and refuses to fake local proof', () => {

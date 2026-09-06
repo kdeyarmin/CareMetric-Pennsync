@@ -81,7 +81,10 @@ describe('Layout tenant-authority containment', () => {
     expect(careTeamMessages).not.toContain('base44.entities.Message');
     expect(careTeamMessages).not.toContain('useQuery');
     expect(careTeamMessages).not.toContain('useMutation');
-    expect(referralIntake).toContain('REFERRAL_ASSIGNMENT_MESSAGE_UNAVAILABLE');
+    expect(referralIntake).toContain('listAuthorizedReferralAssignees');
+    expect(referralIntake).toContain('updateAuthorizedReferral');
+    expect(referralIntake).toContain('changes: { assigned_to:');
+    expect(referralIntake).not.toContain('base44.entities.Referral');
     expect(referralIntake).not.toContain('sendMessage');
     expect(referralDocuments).toContain('REFERRAL_DOCUMENT_SEND_UNAVAILABLE_MESSAGE');
     expect(referralDocuments).not.toContain('sendMessage');

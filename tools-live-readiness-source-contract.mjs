@@ -8,7 +8,7 @@ import {
   validateLiveReadinessFixtureManifest,
 } from "./src/lib/liveReadinessFixtureManifest.js";
 
-export const LIVE_READINESS_SOURCE_CONTRACT_VERSION = 1;
+export const LIVE_READINESS_SOURCE_CONTRACT_VERSION = 2;
 
 const CANONICAL_FIXTURE_PATH =
   "docs/audits/live-readiness-fixture-manifest.template.json";
@@ -19,6 +19,8 @@ const ENTITY_PATHS = Object.freeze({
   Patient: "base44/entities/Patient.jsonc",
   PatientCareTeamAssignment: "base44/entities/PatientCareTeamAssignment.jsonc",
   Referral: "base44/entities/Referral.jsonc",
+  IncomingFax: "base44/entities/IncomingFax.jsonc",
+  TelecomDestinationBinding: "base44/entities/TelecomDestinationBinding.jsonc",
 });
 
 const BROKER_MARKERS = Object.freeze({
@@ -69,7 +71,39 @@ const BROKER_MARKERS = Object.freeze({
     "AgencyMembership.filter",
     "Referral.create",
     "Referral.updateMany",
-    "referral_delete_requires_atomic_compare_and_delete",
+    "archive_reason: 'Removed from Referral Intake'",
+  ]),
+  "base44/functions/extractReferralDataForSmartNote/entry.ts": Object.freeze([
+    "Deno.serve",
+    "functions.invoke('manageAuthorizedReferral'",
+    "validateAuthorizedReferralResult",
+    "Cache-Control': 'no-store'",
+  ]),
+  "base44/functions/checkStaleFollowUpRequests/entry.ts": Object.freeze([
+    "Deno.serve",
+    "AgencyMembership.filter",
+    "Referral.updateMany",
+    "dedupe_key",
+    "agency_id",
+  ]),
+  "base44/functions/processInboundFaxes/entry.ts": Object.freeze([
+    "Deno.serve",
+    "TelecomDestinationBinding.filter",
+    "IncomingFax.updateMany",
+    "Referral.updateMany",
+    "dedupe_key",
+  ]),
+  "base44/functions/getAuthorizedInboundReferralFax/entry.ts": Object.freeze([
+    "Deno.serve",
+    "functions.invoke('manageAuthorizedReferral'",
+    "IncomingFax.filter",
+    "Cache-Control': 'no-store'",
+  ]),
+  "base44/functions/handleTelnyxStatusWebhook/entry.ts": Object.freeze([
+    "resolveActiveTelnyxFaxBinding",
+    "TelecomDestinationBinding.filter",
+    "ingress_binding_id",
+    "fax_inbound_enabled",
   ]),
   "base44/functions/getAuthorizedVisit/entry.ts": Object.freeze([
     "Deno.serve",
@@ -93,6 +127,8 @@ const CONTRACT_TEST_PATHS = Object.freeze([
   "base44/functionTests/visitReadAuthorizationContract.test.js",
   "base44/functionTests/referralAuthorizationContract.test.js",
   "base44/functionTests/referralPrivilegedPathContainmentContract.test.js",
+  "base44/functionTests/inboundReferralFaxAuthorizationContract.test.js",
+  "base44/functionTests/inboundReferralFaxDocumentAuthorizationContract.test.js",
   "base44/functionTests/trainingIntegrityAuthorizationContract.test.js",
 ]);
 
@@ -111,20 +147,14 @@ const REFERRAL_BROWSER_PATHS = Object.freeze([
   "src/pages/ReferralTriage.jsx",
 ]);
 
-const REFERRAL_PAUSED_FUNCTION_MARKERS = Object.freeze({
-  "base44/functions/checkStaleFollowUpRequests/entry.ts":
-    "REFERRAL_STALE_ESCALATION_ENABLED = false",
-  "base44/functions/processInboundFaxes/entry.ts":
-    "INBOUND_REFERRAL_FAX_MATCHING_ENABLED = false",
-  "base44/functions/extractReferralDataForSmartNote/entry.ts":
-    "REFERRAL_SMART_NOTE_BRIDGE_ENABLED = false",
-});
-
 const SOURCE_RELEASE_GATE_PATHS = Object.freeze([
   "base44/entities/Referral.jsonc",
+  "base44/entities/IncomingFax.jsonc",
+  "base44/entities/TelecomDestinationBinding.jsonc",
   "src/functions/manageAuthorizedReferral.js",
+  "src/functions/getAuthorizedInboundReferralFax.js",
+  "base44/workflows/Process Inbound Referral Faxes.jsonc",
   ...REFERRAL_BROWSER_PATHS,
-  ...Object.keys(REFERRAL_PAUSED_FUNCTION_MARKERS),
 ]);
 
 const READINESS_TOOL_PATHS = Object.freeze([
@@ -194,6 +224,27 @@ const REQUIRED_SCHEMA_FIELDS = Object.freeze({
     "referral_creation_key",
     "version",
   ]),
+  IncomingFax: Object.freeze([
+    "agency_id",
+    "ingress_binding_id",
+    "ingress_binding_key",
+    "ingress_binding_version",
+    "integration_secret_id",
+    "received_to_number",
+    "telnyx_fax_id",
+    "document_url",
+    "version",
+  ]),
+  TelecomDestinationBinding: Object.freeze([
+    "binding_key",
+    "provider",
+    "integration_secret_id",
+    "destination_e164",
+    "agency_id",
+    "fax_inbound_enabled",
+    "status",
+    "version",
+  ]),
 });
 
 const SOURCE_LIMITATIONS = Object.freeze([
@@ -203,8 +254,7 @@ const SOURCE_LIMITATIONS = Object.freeze([
   "human_reviewer_approvals_not_observed",
   "base44_atomic_assignment_uniqueness_not_available_or_proved",
   "base44_atomic_patient_and_visit_creation_uniqueness_not_available_or_proved",
-  "base44_atomic_referral_creation_uniqueness_and_compare_delete_not_available_or_proved",
-  "referral_assignment_and_legacy_privileged_paths_remain_paused",
+  "base44_atomic_referral_creation_uniqueness_not_available_or_proved",
 ]);
 
 function defaultReadArtifact(relativePath) {
@@ -370,6 +420,31 @@ function validateEntitySchemas(artifacts, errors) {
       ["create", "read", "update", "delete"],
     );
   }
+  if (schemas.IncomingFax) {
+    requireEnumValue(errors, schemas.IncomingFax, "IncomingFax", "processing_status", "pending");
+    requireEnumValue(errors, schemas.IncomingFax, "IncomingFax", "status", "routed");
+    requireClientWritesDenied(
+      errors,
+      schemas.IncomingFax,
+      "IncomingFax",
+      ["create", "read", "update", "delete"],
+    );
+  }
+  if (schemas.TelecomDestinationBinding) {
+    requireEnumValue(
+      errors,
+      schemas.TelecomDestinationBinding,
+      "TelecomDestinationBinding",
+      "status",
+      "active",
+    );
+    requireClientWritesDenied(
+      errors,
+      schemas.TelecomDestinationBinding,
+      "TelecomDestinationBinding",
+      ["create", "read", "update", "delete"],
+    );
+  }
 }
 
 function validateSourceMarkers(artifacts, errors) {
@@ -477,9 +552,24 @@ export function createLiveReadinessSourceContract({
     && referralSchemaSource.includes("\"delete\": false")
     && referralBrokerSource.includes("Referral.updateMany")
     && referralBrokerSource.includes("AgencyMembership.filter");
-  const referralLegacyPrivilegedPathsPaused = Object.entries(
-    REFERRAL_PAUSED_FUNCTION_MARKERS,
-  ).every(([path, marker]) => (artifacts[path] || "").includes(marker));
+  const inboundFaxWorkerSource = artifacts[
+    "base44/functions/processInboundFaxes/entry.ts"
+  ] || "";
+  const inboundFaxWebhookSource = artifacts[
+    "base44/functions/handleTelnyxStatusWebhook/entry.ts"
+  ] || "";
+  const inboundFaxReadSource = artifacts[
+    "base44/functions/getAuthorizedInboundReferralFax/entry.ts"
+  ] || "";
+  const referralInboundFaxPathsSecured =
+    inboundFaxWorkerSource.includes("IncomingFax.updateMany")
+    && inboundFaxWorkerSource.includes("Referral.updateMany")
+    && inboundFaxWorkerSource.includes("TelecomDestinationBinding.filter")
+    && !inboundFaxWorkerSource.includes("INBOUND_REFERRAL_FAX_MATCHING_ENABLED = false")
+    && inboundFaxWebhookSource.includes("resolveActiveTelnyxFaxBinding")
+    && inboundFaxWebhookSource.includes("ingress_binding_id")
+    && inboundFaxReadSource.includes("functions.invoke('manageAuthorizedReferral'")
+    && inboundFaxReadSource.includes("IncomingFax.filter");
   const visitCreateUsesLegacyAssignment =
     visitCreateSource.includes("patient.assigned_nurses")
     && !visitCreateSource.includes("PatientCareTeamAssignment.filter");
@@ -514,7 +604,7 @@ export function createLiveReadinessSourceContract({
       care_team_assignment_mutations_paused: assignmentMutationsPaused,
       referral_direct_mutation_path_present: referralDirectOperationPathPresent,
       referral_immutable_tenant_broker_present: referralImmutableTenantBrokerPresent,
-      referral_legacy_privileged_paths_paused: referralLegacyPrivilegedPathsPaused,
+      referral_inbound_fax_paths_secured: referralInboundFaxPathsSecured,
       visit_create_uses_legacy_assignment: visitCreateUsesLegacyAssignment,
       network_access: false,
       hosted_writes: false,

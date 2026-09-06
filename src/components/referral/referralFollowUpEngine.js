@@ -481,7 +481,8 @@ export function sortFollowUpItems(items) {
  *
  * @param {{patientName?:string, patientDob?:string, referralDate?:string,
  *          providerName?:string, agencyName?:string, requestDate?:string,
- *          contactBackFax?:string, contactBackPhone?:string}} header
+ *          contactBackFax?:string, contactBackPhone?:string,
+ *          portalLink?:string}} header
  * @param {Array} items follow-up items (any order; will be sorted)
  * @returns {{title:string, intro:string, sections:Array, signatureBlock:string[]}}
  */
@@ -504,7 +505,10 @@ export function buildProviderForm(header = {}, items = []) {
       `Re: ${header.patientName || "(patient)"}${header.patientDob ? `, DOB ${header.patientDob}` : ""}. ` +
       `Thank you for your referral${header.referralDate ? ` dated ${header.referralDate}` : ""}. ` +
       `To admit this patient promptly and meet Medicare's documentation requirements, ${header.agencyName || "our agency"} needs the items below. ` +
-      `Each item lists exactly what is needed and why. Please complete the response lines or attach the noted documents and return by fax${header.contactBackFax ? ` to ${header.contactBackFax}` : ""}${header.contactBackPhone ? ` (questions: ${header.contactBackPhone})` : ""}.`,
+      `Each item lists exactly what is needed and why. Please complete the response lines or attach the noted documents and return by fax${header.contactBackFax ? ` to ${header.contactBackFax}` : ""}${header.contactBackPhone ? ` (questions: ${header.contactBackPhone})` : ""}.` +
+      (header.portalLink
+        ? ` PREFER TO RESPOND ONLINE? Complete this request securely at: ${header.portalLink}`
+        : ""),
     sections,
     signatureBlock: [
       "Provider/designee completing this form: ______________________________",
@@ -550,8 +554,9 @@ export function toPersistedFollowUp(
     generated_at: generatedAt || null,
     sent_via: sentVia, // "fax" | "manual" | null
     fax_log_id: faxLogId,
-    // Preserve the legacy shape as an explicit revocation marker while online
-    // follow-up capability links are hard-paused.
+    // A newly composed request has no active capability. The referral broker
+    // preserves server-owned capability fields only when the same generated_at
+    // snapshot is updated after issuance; callers cannot activate a link here.
     portal_link_active: false,
     counts: plan.counts,
     items: sortFollowUpItems(plan.items).map((it) => ({
@@ -565,9 +570,8 @@ export function toPersistedFollowUp(
       citation: it.citation,
       impact: it.impact,
       provider_request: it.provider_request,
-      // Preserve the legacy lifecycle-shaped fields without implying that the
-      // paused public portal can advance them. Staff verification remains the
-      // only approved workflow in this source checkpoint.
+      // The public submission broker may advance these lifecycle fields after
+      // proving the single-use token and exact request snapshot.
       item_status: "open",
       response: null,
       answered_at: null,

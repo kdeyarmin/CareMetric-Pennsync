@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
-import { agencyQueryKey, scopePatientsToCallerAgency } from '@/lib/agencyRoster';
+import { scopePatientsToCallerAgency } from '@/lib/agencyRoster';
 import { createAuthorizedPatient } from '@/functions/createAuthorizedPatient';
 import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
 import {
   createAuthorizedReferral,
+  deleteAuthorizedReferral,
   getAuthorizedReferral,
+  listAuthorizedReferralAssignees,
   listAuthorizedReferrals,
   updateAuthorizedReferral,
 } from '@/functions/manageAuthorizedReferral';
@@ -75,10 +77,6 @@ const safeDate = (value) => {
   const d = new Date(value);
   return isValid(d) ? format(d, "MM/dd/yyyy") : "N/A";
 };
-const REFERRAL_ASSIGNMENT_MESSAGE_UNAVAILABLE =
-  'New nurse assignments are unavailable until referral notification uses a tenant-authorized message broker.';
-const REFERRAL_DELETE_MESSAGE_UNAVAILABLE =
-  'Referral deletion is unavailable until Base44 supports an atomic compare-and-delete operation.';
 import { toast } from "sonner";
 import { parseDob } from "@/components/patient/patientDuplicateUtils";
 import {
@@ -106,7 +104,7 @@ import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import PatientMatchReview from "../components/referral/PatientMatchReview";
 import PatientVerificationStep from "../components/referral/PatientVerificationStep";
 import MultiReferralDetector from "../components/referral/MultiReferralDetector";
-import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 const ReferralProcessor = lazy(() => import("@/components/hub-tabs/ReferralProcessor"));
 const ReferralAdmissionNote = lazy(() => import("@/components/hub-tabs/ReferralAdmissionNote"));
@@ -178,6 +176,7 @@ export default function ReferralIntake() {
   // pager hidden (no way to recover).
   useEffect(() => { setCurrentPage(1); }, [statusFilter, priorityFilter]);
   const REFERRALS_PER_PAGE = 15;
+  const [referralToDelete, setReferralToDelete] = useState(null);
   const [referralToReject, setReferralToReject] = useState(null);
 
   const { data: currentUser } = useQuery({
@@ -195,14 +194,12 @@ export default function ReferralIntake() {
     initialData: [],
   });
 
-  const { data: users = [] } = useQuery({
-    queryKey: ['allUsers', ALL_ROWS, agencyQueryKey(currentUser)],
-    queryFn: async () => {
-      const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
-      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
-      return filterUsersByCallerAgency(_rows, currentUser);
-    },
-    enabled: !!currentUser,
+  const { data: referralAssignees = [], isError: assigneesUnavailable } = useQuery({
+    queryKey: ['referralAssignees', 'authorized', tenantContext?.agency_id],
+    queryFn: () => listAuthorizedReferralAssignees({
+      agencyId: tenantContext.agency_id,
+    }).then((result) => result.assignees),
+    enabled: !!tenantContext?.agency_id,
     initialData: [],
   });
 
@@ -486,20 +483,18 @@ export default function ReferralIntake() {
   };
 
   const handleNurseAssignment = async (referralId, nurseEmail) => {
-    if (nurseEmail === 'unassigned') {
-      try {
-        await updateAuthorizedReferral({
-          agencyId: tenantContext?.agency_id,
-          referralId,
-          changes: { assigned_to: null },
-        });
-        queryClient.invalidateQueries({ queryKey: ['referrals'] });
-      } catch (error) {
-        console.error('Error unassigning nurse:', error);
-      }
-      return;
+    try {
+      await updateAuthorizedReferral({
+        agencyId: tenantContext?.agency_id,
+        referralId,
+        changes: { assigned_to: nurseEmail === 'unassigned' ? null : nurseEmail },
+      });
+      await queryClient.invalidateQueries({ queryKey: ['referrals'] });
+      toast.success(nurseEmail === 'unassigned' ? 'Referral unassigned' : 'Referral assigned');
+    } catch (error) {
+      console.error('Error assigning referral:', error);
+      toast.error('The referral assignment could not be saved. Refresh and try again.');
     }
-    toast.error(REFERRAL_ASSIGNMENT_MESSAGE_UNAVAILABLE);
   };
 
   const handleProcessingComplete = async (referralId, extractedData, analysisResults, generatedPdfUrl = null) => {
@@ -1114,6 +1109,20 @@ export default function ReferralIntake() {
     }
   };
 
+  const handleDeleteReferral = async (referralId) => {
+    try {
+      await deleteAuthorizedReferral({
+        agencyId: tenantContext?.agency_id,
+        referralId,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['referrals'] });
+      toast.success('Referral removed from intake');
+    } catch (error) {
+      console.error('Error removing referral:', error);
+      toast.error('The referral could not be removed. Refresh and try again.');
+    }
+  };
+
   const handleRejectReferral = async (referralId) => {
     try {
       await updateAuthorizedReferral({
@@ -1551,22 +1560,25 @@ export default function ReferralIntake() {
                           <Select
                             value={referral.assigned_to || "unassigned"}
                             onValueChange={(value) => handleNurseAssignment(referral.id, value)}
+                            disabled={assigneesUnavailable}
                           >
                             <SelectTrigger className="w-full min-w-[140px] h-11 touch-target">
                               <SelectValue placeholder="Assign nurse" />
                             </SelectTrigger>
                             <SelectContent>
                               <SelectItem value="unassigned">Unassigned</SelectItem>
-                              {users.filter(u => u.role === 'user' || u.role === 'admin').map(u => (
-                                <SelectItem key={u.email} value={u.email} disabled>
-                                  {u.full_name || u.email}
+                              {referralAssignees.map((assignee) => (
+                                <SelectItem key={assignee.membership_id} value={assignee.email}>
+                                  {assignee.full_name || assignee.email}
                                 </SelectItem>
                               ))}
                             </SelectContent>
                           </Select>
-                          <p className="max-w-[180px] text-[11px] leading-tight text-amber-700">
-                            {REFERRAL_ASSIGNMENT_MESSAGE_UNAVAILABLE}
-                          </p>
+                          {assigneesUnavailable && (
+                            <p className="max-w-[180px] text-[11px] leading-tight text-red-700">
+                              The authorized nurse roster could not be loaded.
+                            </p>
+                          )}
                         </div>
                       </TableCell>
                       <TableCell>
@@ -1668,12 +1680,11 @@ export default function ReferralIntake() {
                             <Button
                               size="sm"
                               variant="outline"
-                              disabled
-                              title={REFERRAL_DELETE_MESSAGE_UNAVAILABLE}
+                              onClick={() => setReferralToDelete(referral)}
                               className="text-red-600 hover:bg-red-50 min-h-[36px] text-xs flex-1"
                             >
                               <Trash2 className="w-4 h-4 mr-1" />
-                              Delete unavailable
+                              Remove
                             </Button>
                           </div>
                         </div>
@@ -2071,6 +2082,30 @@ export default function ReferralIntake() {
           </DialogContent>
         </Dialog>
       )}
+
+      <AlertDialog open={!!referralToDelete} onOpenChange={(open) => { if (!open) setReferralToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Referral</AlertDialogTitle>
+            <AlertDialogDescription>
+              Remove the referral for {referralToDelete?.patient_name || 'this patient'} from the intake queue? The record will be archived for audit and recovery instead of permanently erased.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-red-600 hover:bg-red-700"
+              onClick={() => {
+                const referralId = referralToDelete?.id;
+                setReferralToDelete(null);
+                if (referralId) void handleDeleteReferral(referralId);
+              }}
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={!!referralToReject} onOpenChange={(open) => { if (!open) setReferralToReject(null); }}>
         <AlertDialogContent>

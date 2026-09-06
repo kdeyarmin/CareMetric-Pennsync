@@ -2,6 +2,30 @@
   "name": "IncomingFax",
   "type": "object",
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Agency id proven from the signed provider event and exact service-owned TelecomDestinationBinding. Legacy rows may not carry it and are never auto-routed."
+    },
+    "ingress_binding_id": {
+      "type": "string",
+      "description": "Exact TelecomDestinationBinding id that authorized this inbound fax."
+    },
+    "ingress_binding_key": {
+      "type": "string",
+      "description": "Canonical binding key retained with the immutable inbound provenance snapshot."
+    },
+    "ingress_binding_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "integration_secret_id": {
+      "type": "string",
+      "description": "Exact active Telnyx IntegrationSecret used to verify and bind the ingress event."
+    },
+    "received_to_number": {
+      "type": "string",
+      "description": "Canonical inbound destination proven by TelecomDestinationBinding."
+    },
     "user_email": {
       "type": "string"
     },
@@ -37,7 +61,7 @@
     },
     "claimed_by": {
       "type": "string",
-      "description": "Per-run claim token so overlapping processInboundFaxes crons cannot double-OCR / double-match the same fax"
+      "description": "Per-run claim token so overlapping OCR jobs or signed-webhook forward attempts cannot process/transmit the same fax twice"
     },
     "claimed_at": {
       "type": "string",
@@ -164,14 +188,37 @@
     },
     "notes": {
       "type": "string"
+    },
+    "suggested_referral_id": {
+      "type": "string",
+      "description": "Tenant-local Referral suggestion for manual review; never treated as an automatic attachment."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "Monotonic revision used by the scheduled processor's conditional claim/finalize transitions."
     }
   },
   "required": [
+    "agency_id",
+    "ingress_binding_id",
+    "ingress_binding_key",
+    "ingress_binding_version",
+    "integration_secret_id",
+    "received_to_number",
     "user_email",
-    "document_url"
+    "received_at",
+    "document_url",
+    "telnyx_fax_id",
+    "processing_status",
+    "status",
+    "version"
   ],
   // Provider webhooks and the scheduled processor use the service role. The
-  // PHI-bearing inbox must not be reachable through direct entity CRUD.
+  // PHI-bearing inbox must not be reachable through direct entity CRUD. New
+  // tenant-routable rows require the provenance fields above at runtime; old
+  // rows remain quarantined instead of being guessed into a tenant.
   "rls": {
     "read": false,
     "create": false,

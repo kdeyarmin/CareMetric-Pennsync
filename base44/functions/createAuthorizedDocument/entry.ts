@@ -253,6 +253,7 @@ function validateActiveMembership(
   rawRows: Array<Record<string, any>>,
   actor: { userId: string; normalizedEmail: string },
   agencyId: string,
+  purpose: string,
 ) {
   if (rawRows.length >= MEMBERSHIP_SCAN_LIMIT) {
     throw new PublicError(409, 'Tenant membership is ambiguous');
@@ -297,7 +298,10 @@ function validateActiveMembership(
     throw new PublicError(409, 'Tenant membership integrity check failed');
   }
   if (status !== 'active') throw new PublicError(403, 'No active membership for agency');
-  if (!DOCUMENT_CREATE_ROLES.has(tenantRole)) {
+  if (
+    !DOCUMENT_CREATE_ROLES.has(tenantRole)
+    && !(tenantRole === 'office_staff' && purpose === 'referral')
+  ) {
     throw new PublicError(403, 'Tenant role cannot upload documents');
   }
   return row;
@@ -537,7 +541,12 @@ async function loadAuthority(
     ),
     'AgencyMembership.filter',
   );
-  const membership = validateActiveMembership(rawMemberships, actor, input.agencyId);
+  const membership = validateActiveMembership(
+    rawMemberships,
+    actor,
+    input.agencyId,
+    String(input.purpose || ''),
+  );
   const agency = await loadExactEnabledAgency(entities, input.agencyId);
   const patientContext = input.patientId
     ? await loadExactAuthorizedPatient(
