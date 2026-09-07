@@ -1,6 +1,7 @@
 import { buildHelpUrl } from '@caremetric/help-sdk';
 
 export const PENNSYNC_HELP_PRODUCT = 'pennsync';
+export const PENNSYNC_PRODUCTION_APP_ID = '694ec16e72e01b60d22f7cbf';
 
 const HELP_ENVIRONMENTS = new Set(['production', 'staging', 'development']);
 // Require a version-shaped value, not merely a string whose characters happen
@@ -11,6 +12,18 @@ const SAFE_RELEASE_TOKEN = /^v?\d+(?:\.\d+){1,3}(?:-[A-Za-z0-9]+(?:[.-][A-Za-z0-
 /** The rollout flag is deliberately strict: only the exact value `true` enables it. */
 export function isCentralHelpEnabled(value) {
   return value === 'true';
+}
+
+/**
+ * Activate the central launcher only for PennSync's immutable production
+ * Base44 identity. Base44 does not expose backend Secrets to Vite builds, so an
+ * omitted flag enables the production build while an explicit non-`true`
+ * value remains a fail-closed emergency override. Preview/dev and every other
+ * app id stay off even if a flag is accidentally supplied.
+ */
+export function resolveCentralHelpActivation({ appId, flag, isDevelopment = false } = {}) {
+  if (isDevelopment || appId !== PENNSYNC_PRODUCTION_APP_ID) return false;
+  return flag == null || isCentralHelpEnabled(flag);
 }
 
 /**
@@ -77,7 +90,11 @@ export function buildPennSyncHelpUrl({ pathname, knownRoutes, appVersion, enviro
 
 const viteEnv = import.meta.env || {};
 
-export const CENTRAL_HELP_ENABLED = isCentralHelpEnabled(viteEnv.VITE_CENTRAL_HELP_ENABLED);
+export const CENTRAL_HELP_ENABLED = resolveCentralHelpActivation({
+  appId: viteEnv.VITE_BASE44_APP_ID,
+  flag: viteEnv.VITE_CENTRAL_HELP_ENABLED,
+  isDevelopment: viteEnv.DEV === true,
+});
 export const PENNSYNC_HELP_APP_VERSION = sanitizeHelpAppVersion(viteEnv.VITE_APP_VERSION);
 export const PENNSYNC_HELP_ENVIRONMENT = resolveHelpEnvironment(viteEnv.VITE_DEPLOY_ENV, {
   isDevelopment: viteEnv.DEV === true,

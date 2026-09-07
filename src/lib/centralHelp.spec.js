@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildPennSyncHelpUrl,
   isCentralHelpEnabled,
+  PENNSYNC_PRODUCTION_APP_ID,
+  resolveCentralHelpActivation,
   resolveHelpEnvironment,
   resolveKnownHelpRoute,
   sanitizeHelpAppVersion,
@@ -68,5 +70,26 @@ describe('PennSync central help context', () => {
     expect(isCentralHelpEnabled('TRUE')).toBe(false);
     expect(isCentralHelpEnabled('1')).toBe(false);
     expect(isCentralHelpEnabled(undefined)).toBe(false);
+  });
+
+  it('activates only the production Base44 build and keeps previews and staging off', () => {
+    expect(resolveCentralHelpActivation({ appId: PENNSYNC_PRODUCTION_APP_ID })).toBe(true);
+    expect(resolveCentralHelpActivation({
+      appId: PENNSYNC_PRODUCTION_APP_ID,
+      flag: 'true',
+    })).toBe(true);
+    expect(resolveCentralHelpActivation({
+      appId: PENNSYNC_PRODUCTION_APP_ID,
+      flag: 'false',
+    })).toBe(false);
+    expect(resolveCentralHelpActivation({
+      appId: PENNSYNC_PRODUCTION_APP_ID,
+      isDevelopment: true,
+    })).toBe(false);
+    expect(resolveCentralHelpActivation({
+      appId: '6a9881683dc68a0bd54f1ef7',
+      flag: 'true',
+    })).toBe(false);
+    expect(resolveCentralHelpActivation({ flag: 'true' })).toBe(false);
   });
 });

@@ -28,7 +28,7 @@ Copy `.env.example` to `.env` and set the required values:
 - `VITE_SUPER_ADMIN_EMAIL` — platform-owner email for frontend UI gating; super-admin UI also requires Base44's protected `role=admin`.
 - `SUPER_ADMIN_EMAIL` — matching backend function setting for platform-owner-only operations; missing configuration fails closed.
 - `BASE44_LEGACY_SDK_IMPORTS` — optional build toggle for legacy SDK import compatibility.
-- `VITE_CENTRAL_HELP_ENABLED` — first-party Support Hub rollout flag; only the exact value `true` shows the central launcher. `/Help` remains available as the local fallback.
+- `VITE_CENTRAL_HELP_ENABLED` — optional first-party Support Hub control for the production CareMetric Base44 app. The production build is enabled by its immutable app ID when the variable is omitted; an explicit value other than the exact string `true` disables it. Preview/development and every other app ID remain off. `/Help` remains available as the local fallback.
 - `VITE_DEPLOY_ENV` — allowlisted Support Hub context label: `production`, `staging`, or `development`.
 - `VITE_APP_VERSION` — optional version-shaped release token sent for version-aware help overlays (for example, `3.8.2` or `2026.09.07+abc123`). UUIDs, names, arbitrary labels, and values over 48 characters are rejected.
 
