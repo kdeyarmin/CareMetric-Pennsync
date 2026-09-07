@@ -25,7 +25,7 @@ export default function DesktopSidebar({
   collapsed, onToggleCollapse,
   currentUser, isAdmin,
   navCategories, adminItems,
-  isActive, onLogout,
+  isActive, helpSourceRoute, onLogout,
 }) {
   const favoriteIds = (currentUser?.favorited_patients || [])
     .map((p) => (typeof p === 'string' ? p : p?.id))
@@ -135,6 +135,7 @@ export default function DesktopSidebar({
                 <Link
                   key={item.page}
                   to={createPageUrl(item.page)}
+                  state={item.page === 'Help' && helpSourceRoute ? { helpSourceRoute } : undefined}
                   className={navItemClasses(active)}
                   title={collapsed ? item.name : undefined}
                 >
