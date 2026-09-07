@@ -26,6 +26,15 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 const isSet = (v) => typeof v === 'string' && v.trim() !== '';
 
+// btoa only accepts Latin-1 input. Encode credentials as UTF-8 first so a
+// malformed or non-ASCII secret cannot crash the entire integration report.
+function basicAuth(username, password) {
+  const bytes = new TextEncoder().encode(`${username}:${password}`);
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `Basic ${btoa(binary)}`;
+}
+
 // A provider is healthy only when the probe returns 2xx. A generic non-2xx does
 // not prove authentication: 404, 429, and 5xx were previously mislabeled as
 // "Working", which made this dashboard unsafe as a release check.
@@ -173,7 +182,7 @@ Deno.serve(async (req) => {
     if (twilioSid && twilioToken) {
       const r = await probe(
         `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(twilioSid)}.json`,
-        { headers: { Authorization: `Basic ${btoa(`${twilioSid}:${twilioToken}`)}` } },
+        { headers: { Authorization: basicAuth(twilioSid, twilioToken) } },
         'Authenticated with Twilio.',
         'Twilio',
       );
@@ -236,11 +245,16 @@ Deno.serve(async (req) => {
         : 'Outcome workflow is intentionally paused until hosted tenant and atomicity validation is approved.',
     });
 
-    return Response.json({
+    const report = {
       success: true,
       generated_at: new Date().toISOString(),
       integrations,
-    });
+    };
+    // Workflow run details currently omit backend-function output. Emit only
+    // the sanitized report (never credential values) so hosted release checks
+    // remain diagnosable from Base44 function logs.
+    console.info('checkAllIntegrations result:', JSON.stringify(report));
+    return Response.json(report);
   } catch (error) {
     console.error('checkAllIntegrations error:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

@@ -33,3 +33,15 @@ test('an empty or malformed Telnyx check cannot become Working', () => {
   assert.match(source, /validResult = data\?\.success === true && checks\.length > 0/);
   assert.match(source, /hasFail = !validResult/);
 });
+
+test('Twilio Basic Auth safely handles non-Latin-1 credential input', () => {
+  assert.match(source, /new TextEncoder\(\)\.encode/);
+  assert.match(source, /Authorization: basicAuth\(twilioSid, twilioToken\)/);
+  assert.doesNotMatch(source, /btoa\(`\$\{twilioSid\}:\$\{twilioToken\}`\)/);
+});
+
+test('hosted workflow checks log only the sanitized integration report', () => {
+  assert.match(source, /checkAllIntegrations result:/);
+  assert.match(source, /JSON\.stringify\(report\)/);
+  assert.doesNotMatch(source, /JSON\.stringify\(Deno\.env/);
+});
