@@ -33,6 +33,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import JSON5 from 'json5';
+import '../src/lib/tenantArchitecture.contract.js';
 
 const ENTITIES_DIR = join(dirname(fileURLToPath(import.meta.url)), 'entities');
 const BASE44_DIR = dirname(ENTITIES_DIR);
@@ -251,7 +252,8 @@ test('reviewed dormant and service-only entities remain fail-closed', () => {
     'PatientPathwayAssignment', 'PatientRecommendation', 'PatientRiskAssessment',
     'OASISAutomationRule', 'RiskAlert', 'RiskAnalysis', 'ScheduleFeedback',
     'ServiceCode', 'SharedDocument', 'SuggestedIntervention', 'TeamMessage',
-    'TeamNote', 'TelecomDestinationBinding',
+    'TeamNote', 'TelecomDestinationBinding', 'ContentScopeBinding',
+    'PhysicianAgencyProfile', 'StagingReadinessFixture',
   ];
   const bad = [];
   for (const name of names) {
@@ -295,6 +297,14 @@ test('retired patient-linked entities have no direct browser entity access', () 
     0,
     `A fail-closed patient-linked entity gained direct browser access; add an authorized broker first:\n${bad.join('\n')}`,
   );
+});
+
+test('learner-readable training modules never expose embedded answer keys', () => {
+  const schema = byName.get('TrainingModule');
+  const answerKey = schema?.properties?.content?.properties?.quiz_questions
+    ?.items?.properties?.correct_answer;
+  assert.equal(answerKey?.rls?.read, false);
+  assert.equal(answerKey?.rls?.write, false);
 });
 
 test('OCR feedback is directly readable only by its owner/admin and directly immutable', () => {

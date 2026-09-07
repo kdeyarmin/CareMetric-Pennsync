@@ -80,7 +80,12 @@
                 }
               },
               "correct_answer": {
-                "type": "number"
+                "type": "number",
+                "description": "Server-only answer key. Learner delivery must use a purpose-bound projection that omits this field.",
+                "rls": {
+                  "read": false,
+                  "write": false
+                }
               },
               "explanation": {
                 "type": "string"

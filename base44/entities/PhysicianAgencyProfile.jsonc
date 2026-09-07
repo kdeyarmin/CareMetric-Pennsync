@@ -1,0 +1,85 @@
+{
+  "name": "PhysicianAgencyProfile",
+  "type": "object",
+  "description": "Service-owned private agency overlay for a shared Physician master record. Agency notes, preferences, tags, and referral metrics must live here after reviewed migration; direct CRUD remains denied.",
+  "properties": {
+    "profile_key": {
+      "type": "string",
+      "description": "Canonical agency_id:physician_id key. Datastore uniqueness must still be proved before migration."
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable tenant Agency id."
+    },
+    "physician_id": {
+      "type": "string",
+      "description": "Immutable id of the shared Physician master record."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "inactive", "quarantined"],
+      "default": "quarantined"
+    },
+    "accepts_home_health": {
+      "type": "boolean"
+    },
+    "accepts_hospice": {
+      "type": "boolean"
+    },
+    "preferred_contact_method": {
+      "type": "string",
+      "enum": ["fax", "phone", "email", "portal"]
+    },
+    "office_hours": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "string",
+      "description": "Agency-private relationship notes; never copied to the shared master."
+    },
+    "tags": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "last_referral_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "referral_count": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "created_by_user_id": {
+      "type": "string"
+    },
+    "last_transition_by_user_id": {
+      "type": "string"
+    },
+    "last_transition_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    }
+  },
+  "required": [
+    "profile_key",
+    "agency_id",
+    "physician_id",
+    "status",
+    "created_by_user_id",
+    "last_transition_by_user_id",
+    "last_transition_at",
+    "version"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}

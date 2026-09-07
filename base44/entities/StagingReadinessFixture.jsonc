@@ -1,0 +1,79 @@
+{
+  "name": "StagingReadinessFixture",
+  "type": "object",
+  "description": "Service-owned registry for the one approved LR-01/LR-02 synthetic staging fixture. It stores identifiers and lifecycle metadata only, never passwords, tokens, secrets, or PHI.",
+  "properties": {
+    "fixture_set_id": {
+      "type": "string"
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["staging"]
+    },
+    "app_id": {
+      "type": "string"
+    },
+    "origin": {
+      "type": "string",
+      "format": "uri"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["preflight", "active", "teardown_required", "removed"],
+      "default": "preflight"
+    },
+    "actor_user_ids": {
+      "type": "object",
+      "description": "Role-keyed immutable User ids only; credentials are forbidden."
+    },
+    "agency_ids": {
+      "type": "object"
+    },
+    "patient_ids": {
+      "type": "object"
+    },
+    "assignment_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "created_by_user_id": {
+      "type": "string"
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_transition_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    }
+  },
+  "required": [
+    "fixture_set_id",
+    "environment",
+    "app_id",
+    "origin",
+    "status",
+    "actor_user_ids",
+    "created_by_user_id",
+    "created_at",
+    "expires_at",
+    "last_transition_at",
+    "version"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}
