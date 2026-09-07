@@ -3,8 +3,8 @@
 > Step-by-step companion to `telnyx-setup.md` (reference) and
 > `SECURITY-RLS-CHECKLIST.md` §3–§5. Work top to bottom; each step says **where** to set
 > it and **how to verify**. All backend secrets are Deno-function secrets — **never**
-> prefix any of these with `VITE_` (that ships them to the browser). The two `VITE_*`
-> frontend vars are the only public ones.
+> prefix any of these with `VITE_` (that ships them to the browser). The `VITE_*`
+> frontend vars listed below are the only public ones.
 
 ---
 
@@ -14,10 +14,13 @@
 |---|---|---|
 | `VITE_BASE44_APP_ID` | build/host env | the Base44 app id |
 | `VITE_BASE44_BACKEND_URL` | build/host env | the Base44 backend origin |
+| `VITE_DEPLOY_ENV` | build/host env | `production` for the production deploy; use `staging` or `development` elsewhere |
+| `VITE_CENTRAL_HELP_ENABLED` | build/host env | optional; omit or set exactly `true` to enable central help only after the production app-id/environment gates pass; any other value disables it |
 
 **Verify:** app loads past the blocking config screen and does not redirect to a blank
-`/login`. (Can also be passed as `?app_id=…&server_url=…` and is persisted to
-localStorage.)
+`/login`. In the production bundle, verify the CareMetric Help Center launcher appears
+on `/Help`; in staging/development, verify it does not. (The app id and backend URL can
+also be passed as `?app_id=…&server_url=…` and are persisted to localStorage.)
 
 ---
 
