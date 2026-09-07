@@ -32,7 +32,7 @@ function signedWebhook(privateKey, event) {
   });
 }
 
-async function loadHandler(makeClient, fetchImpl) {
+async function loadHandler(makeClient, fetchImpl, env = { OUTBOUND_DELIVERY_RELEASE: "enabled-v1" }) {
   let source = await readFile(ENTRY_URL, "utf8");
   source = source.replace(
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
@@ -44,7 +44,10 @@ async function loadHandler(makeClient, fetchImpl) {
 
   let handler;
   globalThis.__inboundRoutingMakeClient = makeClient;
-  globalThis.Deno = { serve: (candidate) => { handler = candidate; } };
+  globalThis.Deno = {
+    serve: (candidate) => { handler = candidate; },
+    env: { get: (key) => env[key] },
+  };
   globalThis.fetch = fetchImpl;
   try {
     await import(`${pathToFileURL(tempPath).href}?v=${Date.now()}`);
@@ -260,6 +263,48 @@ test("every live consent broker uses composite authority while unsafe provider p
       `${name} returns 503 before its legacy consent path`,
     );
   }
+});
+
+test("Telnyx webhook gates only provider egress and preserves signed inbound/status handling", async () => {
+  const source = await readFile(ENTRY_URL, "utf8");
+  assert.match(source, /<<<BEGIN SHARED HELPER: outboundDeliveryGate/);
+
+  const callCommand = source.slice(
+    source.indexOf("async function callCommand"),
+    source.indexOf("const SPEAK_DEFAULTS"),
+  );
+  assert.ok(
+    callCommand.indexOf("if (!outboundDeliveryReleased())") >= 0
+      && callCommand.indexOf("if (!outboundDeliveryReleased())") < callCommand.indexOf("await fetch("),
+    "every Call Control action is gated at the shared provider wrapper",
+  );
+
+  const autoReply = source.slice(
+    source.indexOf("async function sendAutoReply"),
+    source.indexOf("async function getAgencyConfig"),
+  );
+  assert.ok(
+    autoReply.indexOf("if (!outboundDeliveryReleased())") >= 0
+      && autoReply.indexOf("if (!outboundDeliveryReleased())") < autoReply.indexOf("await fetch("),
+    "every webhook-generated SMS reply is gated at the shared provider wrapper",
+  );
+
+  const inboundFax = source.slice(
+    source.indexOf("async function handleInboundFax"),
+    source.indexOf("async function handleFaxEvent"),
+  );
+  const faxGate = inboundFax.indexOf("if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax')");
+  const persistedIngress = inboundFax.lastIndexOf("record = await createInboundFax", faxGate);
+  assert.ok(persistedIngress >= 0 && persistedIngress < faxGate, "inbound fax ingress is persisted before the forwarding gate");
+  assert.ok(faxGate < inboundFax.indexOf("claimInboundFaxForward"), "paused forwarding never claims an inbound fax");
+  assert.ok(faxGate < inboundFax.indexOf("await fetch('https://api.telnyx.com/v2/faxes'"), "paused forwarding never calls Telnyx");
+
+  const entry = source.slice(source.lastIndexOf("Deno.serve"));
+  assert.doesNotMatch(
+    entry,
+    /if \(!outboundDeliveryReleased\(\)\)/,
+    "the webhook entry itself must not block signature verification, inbound ingestion, or status reconciliation",
+  );
 });
 
 test("signed provider-classified STOP/START appends scoped, replay-safe consent only", async () => {
@@ -845,6 +890,29 @@ test("signed inbound patient telecom events stay paused or require exact fax des
     }));
     assert.equal(outboundCallResponse.status, 200);
     assert.ok(fetchCalls.some((call) => call.url.endsWith("/v2/calls/outbound-call-1/actions/transfer")));
+
+    const releasedFetchCount = fetchCalls.length;
+    const pausedHandler = await loadHandler(
+      () => client,
+      async (url, init = {}) => {
+        fetchCalls.push({ url: String(url), init });
+        return Response.json({ data: {} });
+      },
+      {},
+    );
+    const pausedOutboundCall = await pausedHandler(signedWebhook(privateKey, {
+      data: {
+        event_type: "call.answered",
+        payload: {
+          call_control_id: "outbound-call-paused",
+          direction: "outgoing",
+          client_state: maskedBridgeState,
+        },
+      },
+    }));
+    assert.equal(pausedOutboundCall.status, 200, "signed webhook handling remains live while egress is paused");
+    assert.equal((await pausedOutboundCall.json()).bridged, false);
+    assert.equal(fetchCalls.length, releasedFetchCount, "the default-off gate blocks every Call Control fallback request");
 
     const invalidBody = JSON.stringify({ data: { event_type: "message.received", payload: {} } });
     const invalidTimestamp = String(Math.floor(Date.now() / 1000));

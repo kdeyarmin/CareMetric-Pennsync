@@ -90,6 +90,12 @@ in every environment to that environment's exact HTTPS origin. Account,
 invitation, and notification email paths reject a missing or malformed value;
 they do not fall back to `APP_URL` or a production hostname.
 
+`OUTBOUND_DELIVERY_RELEASE` is an application-wide release gate, not a provider
+credential. Leave it absent or blank in staging: email, SMS, fax, and voice
+delivery then remain fail-closed even when provider credentials are present.
+Only the exact value `enabled-v1`, set after a separate environment-specific
+approval, releases delivery. Never use a `VITE_` variable for this gate.
+
 **Verify scheduled-function auth:** deploy/create checked-in native workflows
 only as the intended protected platform admin. In isolated staging, list the deployed
 workflow, run one canary, and verify that its creator-backed `auth.me()` identity
@@ -128,11 +134,12 @@ keys are not runtime requirements in the current source tree and must not be
 treated as launch blockers.
 
 The integration-health report exposes release state separately from credential
-state. A successful read-only provider probe never authorizes traffic. The
-current tree has provider/workflow-specific pauses (including
-`OUTCOME_PIPELINE_RELEASE` for the outcome worker), not one application-wide
-outbound-delivery switch; keep all staging delivery paths paused except for an
-explicitly approved controlled-destination test.
+state. A successful read-only provider probe never authorizes traffic.
+`OUTBOUND_DELIVERY_RELEASE` is the application-wide delivery switch and is
+fail-closed unless its value is exactly `enabled-v1`. Provider/workflow-specific
+pauses (including `OUTCOME_PIPELINE_RELEASE` for the outcome worker) remain
+independent defense-in-depth gates; keep all of them paused in staging except
+for an explicitly approved controlled-destination test.
 
 The fax/follow-up workflows have independent default-false gates, all of which
 must remain unset in staging until their individual hosted proof is approved:
@@ -161,6 +168,34 @@ must use the shared-secret header. The seven checked-in definitions under
 function-level configs must remain absent, and no dashboard duplicate may be
 created. Workflow presence never releases a handler's default-closed source gate.
 
+### Mandatory backlog census before any delivery release
+
+Copying entities or secrets into an environment does **not** make its queued
+work safe to deliver. A copied production recipient, old retry row, or overdue
+schedule can become live as soon as the global and worker gates are opened.
+While every delivery gate is still closed, complete and retain this review:
+
+1. Census, by tenant and age, all `ScheduledSms` and `ScheduledFax` rows that
+   could dispatch; failed outbound `SmsMessage` rows eligible for redrive;
+   failed `FaxLog` rows eligible for retry; pending signature reminders; and
+   invitation, credential-renewal, personnel-expiration, or other reminder
+   digest work. Record counts plus the oldest/newest due timestamps without
+   exporting message bodies, documents, secret values, or full destinations.
+2. Quarantine or cancel stale, production-copied, ambiguous, and real-recipient
+   work. Do not mark it sent and do not advance a reminder-offset/digest stamp
+   for delivery that did not occur. Resolve duplicate schedules before release.
+3. Create one fresh, explicitly approved canary for a controlled destination in
+   one test tenant. Confirm there is exactly one eligible row and that all other
+   outbound backlogs remain empty or quarantined.
+4. Open `OUTBOUND_DELIVERY_RELEASE` and only the single required worker/channel
+   gate for the bounded canary window. Verify exactly one provider attempt and
+   reconcile the local delivery/audit record with the provider result. Close
+   the gates again before reviewing any additional queue.
+
+Neither `OUTBOUND_DELIVERY_RELEASE` nor any worker-specific gate may be released
+for general staging traffic until this census, quarantine, and one-row canary
+have passed. A read-only provider health check is not a substitute.
+
 | Function | Schedule | Notes |
 |---|---|---|
 | `processScheduledFaxes` | Native workflow every 10 minutes | Sole scheduled-fax target. Keep `processScheduledFaxesByPriority` unregistered; the handler still requires `WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES=enabled-v1`. |
@@ -181,6 +216,10 @@ and controlled delivery tests require their own explicit approval.
 ---
 
 ## 6. End-to-end channel smoke tests (do before go-live)
+
+Do not run these while `OUTBOUND_DELIVERY_RELEASE` is absent or blank. Release
+the gate only in the specifically approved environment and only for the bounded
+test window and destinations.
 
 1. **SMS out/in:** send an SMS to a test handset (`sendSms`) → delivered; reply
    `STOP` → opt-out recorded (`SmsConsent`), `START` → re-opt-in. Inbound text appears

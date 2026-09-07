@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
@@ -512,6 +532,7 @@ function quietHoursCheck(toNumber, now, settings) {
 
 Deno.serve(async (req) => {
   try {
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('sms');
     if (SMS_REDRIVE_MIGRATION_PAUSED) {
       return Response.json(
         { error: 'SMS redrive is paused pending service-owned message provenance migration' },

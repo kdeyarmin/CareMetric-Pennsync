@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
@@ -86,6 +106,8 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Forbidden: invitation is outside your agency.' }, { status: 403 });
       }
     }
+
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
 
     const now = new Date();
     const newExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);

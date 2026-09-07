@@ -672,6 +672,7 @@ function faxNotificationSpec(fax, recipient, kind) {
       recipient_membership_id: recipient.id,
       recipient_membership_version: recipient.version,
       authority_version: 1,
+      authority_state: 'active',
       version: 1,
       user_email: recipient.user_email_normalized,
       type: delivered ? 'fax_delivered' : 'fax_failed',
@@ -699,6 +700,7 @@ function faxNotificationMatches(row, spec) {
     && row.recipient_membership_id === spec.payload.recipient_membership_id
     && row.recipient_membership_version === spec.payload.recipient_membership_version
     && row.authority_version === 1
+    && row.authority_state === spec.payload.authority_state
     && Number.isSafeInteger(row.version)
     && row.version >= 1
     && row.user_email === spec.payload.user_email

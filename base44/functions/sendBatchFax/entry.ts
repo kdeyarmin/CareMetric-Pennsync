@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 /**
  * Resolve Telnyx credentials from the in-app IntegrationSecret row with
  * provider 'telnyx'.
@@ -1265,6 +1285,7 @@ async function createSchedule(base44: Record<string, any>, input: Record<string,
   if ((initialDelivery.document.patient_id ?? null) !== binding.patientId) {
     throw new PublicError(409, 'Private document fax authority changed', 'fax_authority_unavailable');
   }
+  if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
   const sender = await loadAgencyConfiguration(base44.asServiceRole.entities, input.agencyId);
   const credentials = await loadExactTelnyxCredentials(base44.asServiceRole.entities);
   const senderBinding = await loadExactOutboundFaxBinding(
@@ -1583,6 +1604,7 @@ async function sendInteractive(base44: Record<string, any>, req: Request, input:
       'referral_fax_authority_required',
     );
   }
+  if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
   const requestKey = await sha256Text(`${input.agencyId}\u0000${initialAuthority.userId}\u0000${input.clientRequestId}`);
   const results = [];
   for (let index = 0; index < input.recipients.length; index += 1) {
@@ -1628,12 +1650,17 @@ async function sendInteractive(base44: Record<string, any>, req: Request, input:
 Deno.serve(async (req) => {
   try {
     const input = await parseBatchRequest(req);
+    if ((input.action === 'dispatch_scheduled' || input.action === 'dispatch_retry')
+      && !outboundDeliveryReleased()) {
+      return outboundDeliveryPausedResponse('fax');
+    }
     const base44 = createClientFromRequest(req);
-    let result: Record<string, any>;
+    let result: Record<string, any> | Response;
     if (input.action === 'schedule') result = await createSchedule(base44, input);
     else if (input.action === 'dispatch_scheduled') result = await dispatchScheduled(base44, req, input);
     else if (input.action === 'dispatch_retry') result = await dispatchRetry(base44, req, input);
     else result = await sendInteractive(base44, req, input);
+    if (result instanceof Response) return result;
     return Response.json(result, {
       status: result.requires_reconciliation ? 202 : 200,
       headers: NO_STORE_HEADERS,

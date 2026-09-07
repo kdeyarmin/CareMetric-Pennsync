@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, User, XCircle, Phone, MapPin, Calendar, FileText } from "lucide-react";
 import { useAuthorizedReferralPatients } from './authorizedPatientMatches';
+import { normalizePatientMatchSuggestions } from './patientMatchSuggestions';
 
 export default function PatientMatchReview({
   referral,
@@ -16,13 +17,26 @@ export default function PatientMatchReview({
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'comparison'
   const matchAnalysis = referral.match_analysis;
-  const matchPatientIds = (referral.match_suggestions || []).map((match) => match.patient_id);
+  const normalizedSuggestionResult = useMemo(() => normalizePatientMatchSuggestions({
+    preferred: matchAnalysis?.best_match_id ? {
+      patient_id: matchAnalysis.best_match_id,
+      confidence_score: matchAnalysis.confidence_score,
+      reasons: matchAnalysis.match_factors,
+      discrepancies: matchAnalysis.discrepancies,
+    } : null,
+    suggestions: referral.match_suggestions,
+  }), [matchAnalysis, referral.match_suggestions]);
+  const suggestions = normalizedSuggestionResult.suggestions;
+  const invalidOnlySuggestions = normalizedSuggestionResult.invalidCount > 0
+    && suggestions.length === 0;
+  const matchPatientIds = suggestions.map((match) => match.patient_id);
   const patientLookup = useAuthorizedReferralPatients({
     tenantContext,
     patientIds: matchPatientIds,
   });
   const suggestedPatients = patientLookup.data;
-  const lookupBlocked = matchPatientIds.length > 0 && !patientLookup.isSuccess;
+  const lookupBlocked = invalidOnlySuggestions
+    || (matchPatientIds.length > 0 && !patientLookup.isSuccess);
   const unavailableCount = patientLookup.isSuccess
     ? new Set(matchPatientIds).size - suggestedPatients.length
     : 0;
@@ -58,11 +72,23 @@ export default function PatientMatchReview({
         <AlertDescription className="text-yellow-900">
           <strong>Patient Match Requires Review</strong>
           <p className="mt-1 text-sm">
-            The AI system found {referral.match_suggestions?.length || 0} potential matches. 
+            The AI system found {suggestions.length} potential matches.
             Review the side-by-side comparison and select the best option.
           </p>
         </AlertDescription>
       </Alert>
+
+      {(normalizedSuggestionResult.invalidCount > 0
+        || normalizedSuggestionResult.truncatedCount > 0) && (
+        <Alert variant={invalidOnlySuggestions ? "destructive" : undefined}>
+          <AlertCircle className="w-4 h-4" />
+          <AlertDescription>
+            {invalidOnlySuggestions
+              ? 'Saved patient-match suggestions are malformed. No patient can be matched or created until the referral is reprocessed.'
+              : 'Some saved patient-match suggestions were invalid or exceeded the reviewed limit and were ignored.'}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {patientLookup.isError && (
         <Alert variant="destructive">
@@ -171,15 +197,15 @@ export default function PatientMatchReview({
       </Card>
       )}
 
-      {viewMode === 'list' && referral.match_suggestions && referral.match_suggestions.length > 0 && (
+      {viewMode === 'list' && suggestions.length > 0 && (
         <div
           className="space-y-3"
           role="radiogroup"
           aria-label="Potential patient matches"
         >
-          <h3 className="font-semibold text-slate-900">Potential Matches ({referral.match_suggestions.length})</h3>
+          <h3 className="font-semibold text-slate-900">Potential Matches ({suggestions.length})</h3>
           
-          {referral.match_suggestions.map((match, index) => {
+          {suggestions.map((match, index) => {
             const patient = suggestedPatients.find(p => p.id === match.patient_id);
             const canSelect = Boolean(patient) && !lookupBlocked;
             return (

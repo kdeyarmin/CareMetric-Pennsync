@@ -1,4 +1,24 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 
 // <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveAgencySettings(base44, agencyName) {
@@ -405,6 +425,51 @@ async function resolveScope(entities, caller, recipient, requestedAgencyId) {
   return { agency: agencies[0], callerMembership, recipientMembership };
 }
 
+function sameMembershipSnapshot(left, right) {
+  if (left == null || right == null) return left === right;
+  return left.id === right.id
+    && left.agencyId === right.agencyId
+    && left.tenantRole === right.tenantRole
+    && left.version === right.version;
+}
+
+function sameUserSnapshot(left, right) {
+  return left.id === right.id
+    && left.email === right.email
+    && left.role === right.role
+    && left.isPlatformOwner === right.isPlatformOwner;
+}
+
+async function revalidateResolvedScope(
+  entities,
+  caller,
+  recipient,
+  requestedAgencyId,
+  expectedScope,
+) {
+  const currentCaller = await loadExactUser(entities, caller.email);
+  const currentRecipient = caller.id === recipient.id
+    ? currentCaller
+    : await loadExactUser(entities, recipient.email);
+  if (
+    !sameUserSnapshot(currentCaller, caller)
+    || !sameUserSnapshot(currentRecipient, recipient)
+  ) throw new PublicError(403, 'Notification authority changed; retry');
+
+  const currentScope = await resolveScope(
+    entities,
+    currentCaller,
+    currentRecipient,
+    requestedAgencyId,
+  );
+  if (
+    currentScope.agency?.id !== expectedScope.agency?.id
+    || !sameMembershipSnapshot(currentScope.callerMembership, expectedScope.callerMembership)
+    || !sameMembershipSnapshot(currentScope.recipientMembership, expectedScope.recipientMembership)
+  ) throw new PublicError(403, 'Notification authority changed; retry');
+  return currentScope;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -468,6 +533,7 @@ Deno.serve(async (req) => {
     const shouldSendEmail = userPrefs.email_notifications_enabled && 
                            typePrefs.email !== false &&
                            userPrefs.digest_mode === 'instant';
+    const outboundDeliveryIsReleased = outboundDeliveryReleased();
     let emailPermittedNow = false;
     let appBase = null;
 
@@ -505,21 +571,30 @@ Deno.serve(async (req) => {
       }
 
       emailPermittedNow = !inQuietHours || input.priority === 'critical';
-      if (emailPermittedNow) {
+      if (emailPermittedNow && outboundDeliveryIsReleased) {
         // Resolve a link origin before creating an in-app notification or
         // attempting email. Invalid staging configuration must not leave a
         // partial notification whose email silently linked another environment.
         appBase = input.actionUrl ? getAppBaseUrl() : null;
       }
     }
+    const deliveryPaused = emailPermittedNow && !outboundDeliveryIsReleased;
 
     if (shouldCreateInApp) {
+      const inAppScope = await revalidateResolvedScope(
+        entities,
+        caller,
+        recipient,
+        input.requestedAgencyId,
+        scope,
+      );
       await entities.Notification.create({
-        agency_id: scope.recipientMembership.agencyId,
+        agency_id: inAppScope.recipientMembership.agencyId,
         recipient_user_id: recipient.id,
-        recipient_membership_id: scope.recipientMembership.id,
-        recipient_membership_version: scope.recipientMembership.version,
+        recipient_membership_id: inAppScope.recipientMembership.id,
+        recipient_membership_version: inAppScope.recipientMembership.version,
         authority_version: 1,
+        authority_state: 'active',
         version: 1,
         user_email: recipient.email,
         title: input.title,
@@ -539,8 +614,15 @@ Deno.serve(async (req) => {
     }
 
     let emailSent = false;
-    if (emailPermittedNow) {
+    if (emailPermittedNow && outboundDeliveryIsReleased) {
       try {
+        await revalidateResolvedScope(
+          entities,
+          caller,
+          recipient,
+          input.requestedAgencyId,
+          scope,
+        );
         await base44.asServiceRole.integrations.Core.SendEmail({
           to: recipient.email,
           from_name: 'PennSync by CareMetric',
@@ -575,7 +657,8 @@ Deno.serve(async (req) => {
         email: emailSent,
         // No push provider is invoked by this broker.
         push: false,
-      }
+      },
+      delivery_paused: deliveryPaused,
     });
 
   } catch (error) {

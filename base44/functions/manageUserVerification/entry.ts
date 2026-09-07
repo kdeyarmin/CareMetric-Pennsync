@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isAdminLike = (u) => !!u && u.role === 'admin';
 // <<<END SHARED HELPER: isAdminLike>>>
@@ -56,6 +76,7 @@ Deno.serve(async (req) => {
     // OTP verify/resend endpoints unthrottled. Use the supported actions below.
 
     if (action === 'resend') {
+      if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
       const result = await base44.auth.resendOtp(email);
       return Response.json({ success: true, action, result });
     }

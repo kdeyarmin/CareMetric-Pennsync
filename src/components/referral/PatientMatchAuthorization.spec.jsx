@@ -103,6 +103,46 @@ function queryClient() {
   });
 }
 
+function renderMatchSurface(surface, matchReferral, callbacks = {}) {
+  const onConfirmMatch = callbacks.onConfirmMatch || vi.fn();
+  const onCreateNew = callbacks.onCreateNew || vi.fn();
+  if (surface === 'verification') {
+    renderWithProviders(
+      <PatientVerificationStep
+        referral={matchReferral}
+        tenantContext={tenantContext}
+        onConfirmMatch={onConfirmMatch}
+        onCreateNew={onCreateNew}
+        onSkip={callbacks.onExit || vi.fn()}
+      />,
+    );
+    return {
+      onConfirmMatch,
+      onCreateNew,
+      confirmName: /Confirm Selected Patient/i,
+      createName: /Create New Patient Record/i,
+      exitName: /Skip for Now/i,
+    };
+  }
+
+  renderWithProviders(
+    <PatientMatchReview
+      referral={matchReferral}
+      tenantContext={tenantContext}
+      onConfirmMatch={onConfirmMatch}
+      onCreateNew={onCreateNew}
+      onClose={callbacks.onExit || vi.fn()}
+    />,
+  );
+  return {
+    onConfirmMatch,
+    onCreateNew,
+    confirmName: /Confirm Selected Match/i,
+    createName: /Create New Patient/i,
+    exitName: /Cancel/i,
+  };
+}
+
 describe('referral patient match authorization', () => {
   it('uses purpose-bound broker projections and invalidates a verification selection after reauthorization omits it', async () => {
     const client = queryClient();
@@ -229,4 +269,78 @@ describe('referral patient match authorization', () => {
     expect(screen.getByRole('button', { name: /Retry authorized lookup/i })).toBeEnabled();
     expect(screen.getByRole('button', { name: /Skip for Now/i })).toBeEnabled();
   });
+
+  it.each(['verification', 'review'])(
+    'renders one selectable radio for duplicated best/alternative suggestions in %s',
+    async (surface) => {
+      const user = userEvent.setup();
+      const duplicatedReferral = {
+        ...referral,
+        match_suggestions: [
+          ...referral.match_suggestions,
+          {
+            patient_id: 'patient-a',
+            confidence_score: 88,
+            reasons: ['Duplicate alternative'],
+            discrepancies: [],
+          },
+        ],
+      };
+      const controls = renderMatchSurface(surface, duplicatedReferral);
+
+      const radios = await screen.findAllByRole('radio');
+      expect(radios).toHaveLength(1);
+      expect(screen.getByText('Potential Matches (1)')).toBeInTheDocument();
+
+      await user.click(radios[0]);
+      expect(screen.getAllByRole('radio', { checked: true })).toHaveLength(1);
+      await user.click(screen.getByRole('button', { name: controls.confirmName }));
+      await waitFor(() => {
+        expect(controls.onConfirmMatch).toHaveBeenCalledTimes(1);
+        expect(controls.onConfirmMatch).toHaveBeenCalledWith('patient-a');
+      });
+    },
+  );
+
+  it.each(['verification', 'review'])(
+    'ignores malformed siblings while authorizing a valid suggestion in %s',
+    async (surface) => {
+      const mixedReferral = {
+        ...referral,
+        match_analysis: { ...referral.match_analysis, best_match_id: null },
+        match_suggestions: [
+          { patient_id: '$ne', confidence_score: 99, reasons: ['Malformed'] },
+          ...referral.match_suggestions,
+        ],
+      };
+      renderMatchSurface(surface, mixedReferral);
+
+      expect(await screen.findByRole('radio', { name: /Ada\s+Lovelace/i })).toBeInTheDocument();
+      expect(broker.list).toHaveBeenCalledTimes(2);
+      expect(broker.list.mock.calls.every(([request]) => (
+        request.patientIds.length === 1 && request.patientIds[0] === 'patient-a'
+      ))).toBe(true);
+      expect(screen.getByText(/some saved patient-match suggestions were invalid/i))
+        .toBeInTheDocument();
+    },
+  );
+
+  it.each(['verification', 'review'])(
+    'fails closed without a broker call when every saved suggestion is malformed in %s',
+    async (surface) => {
+      const invalidReferral = {
+        ...referral,
+        match_analysis: { ...referral.match_analysis, best_match_id: '$bad' },
+        match_suggestions: [{ patient_id: ' patient-a', confidence_score: 99 }],
+      };
+      const controls = renderMatchSurface(surface, invalidReferral);
+
+      expect(await screen.findByText(/saved patient-match suggestions are malformed/i))
+        .toBeInTheDocument();
+      expect(broker.list).not.toHaveBeenCalled();
+      expect(screen.getByRole('button', { name: controls.confirmName })).toBeDisabled();
+      expect(screen.getByRole('button', { name: controls.createName })).toBeDisabled();
+      expect(screen.getByRole('button', { name: controls.exitName })).toBeEnabled();
+    },
+  );
 });

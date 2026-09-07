@@ -96,8 +96,10 @@ test('health reports exact public-link configuration and outbound release state'
   assert.match(source, /APP_PUBLIC_URL is missing or is not an exact HTTPS origin/);
   assert.match(source, /parsed\.protocol !== 'https:'/);
   assert.match(source, /id: 'outbound_delivery_release'/);
-  assert.match(source, /release_state: 'not-globally-gated'/);
-  assert.match(source, /Provider health never authorizes traffic/);
+  assert.match(source, /OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE'/);
+  assert.match(source, /OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1'/);
+  assert.match(source, /release_state: outboundDeliveryIsReleased \? 'released' : 'paused'/);
+  assert.match(source, /provider health never authorizes traffic/i);
   assert.match(source, /outbound_actions_performed: false/);
 });
 
@@ -110,7 +112,7 @@ test('every implemented workflow release gate is reported and rendered explicitl
   assert.match(source, /release_state: released \? 'released' : 'paused'/);
   assert.match(panelSource, /item\.release_state === "released"/);
   assert.match(panelSource, /item\.release_state === "paused"/);
-  assert.match(panelSource, /No global gate/);
+  assert.doesNotMatch(panelSource, /No global gate/);
 });
 
 test('workflow-critical configuration remains in the capability response', () => {
@@ -229,7 +231,9 @@ test('missing optional provider keys produce no direct provider requests or phan
     assert.equal(byId.base44_email.delivery_verified, false);
     assert.equal(byId.openai_transcription.status, 'warn');
     assert.equal(byId.anthropic_soap.status, 'warn');
-    assert.equal(byId.outbound_delivery_release.release_state, 'not-globally-gated');
+    assert.equal(byId.outbound_delivery_release.release_state, 'paused');
+    assert.equal(byId.outbound_delivery_release.configured, false);
+    assert.equal(byId.outbound_delivery_release.status, 'warn');
     for (const id of Object.keys(WORKFLOW_GATES)) {
       assert.equal(byId[id].release_state, 'paused');
       assert.equal(byId[id].status, 'warn');
@@ -258,6 +262,39 @@ test('workflow gates release only on their exact reviewed value', async () => {
   assert.equal(byId.release_poll_fax_statuses.status, 'ok');
   assert.equal(byId.release_process_scheduled_faxes.release_state, 'paused');
   assert.equal(byId.release_process_scheduled_faxes.status, 'warn');
+});
+
+test('global outbound delivery releases only on its exact reviewed value', async () => {
+  for (const value of [
+    undefined,
+    '',
+    '   ',
+    'enabled',
+    'ENABLED-V1',
+    'enabled-v1x',
+    ' enabled-v1',
+    'enabled-v1 ',
+  ]) {
+    const handler = await loadHandler({
+      env: { OUTBOUND_DELIVERY_RELEASE: value },
+    });
+    const response = await handler({});
+    const report = await response.json();
+    const release = report.integrations.find((item) => item.id === 'outbound_delivery_release');
+    assert.equal(release.release_state, 'paused');
+    assert.equal(release.status, 'warn');
+  }
+
+  const handler = await loadHandler({
+    env: { OUTBOUND_DELIVERY_RELEASE: 'enabled-v1' },
+  });
+  const response = await handler({});
+  const report = await response.json();
+  const release = report.integrations.find((item) => item.id === 'outbound_delivery_release');
+  assert.equal(release.release_state, 'released');
+  assert.equal(release.configured, true);
+  assert.equal(release.status, 'ok');
+  assert.doesNotMatch(JSON.stringify(release), /OUTBOUND_DELIVERY_RELEASE_VALUE/);
 });
 
 test('missing APP_PUBLIC_URL is a fail-closed capability, without exposing errors', async () => {

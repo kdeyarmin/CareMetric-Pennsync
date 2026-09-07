@@ -1,5 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
+
 
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
@@ -214,6 +235,8 @@ Deno.serve(async (req) => {
       reviewed_at: new Date().toISOString(),
       review_notes: String(note || '').slice(0, 2000),
     });
+    const deliveryPaused = !!timesheet.employee_email && !outboundDeliveryReleased();
+    let email = false;
 
     // Let the employee know the outcome (best-effort), in-app and by email.
     try {
@@ -231,31 +254,34 @@ Deno.serve(async (req) => {
         action_label: 'View timesheet',
         metadata: { timesheet_id, reviewed_by: user.email },
       });
-      await base44.asServiceRole.integrations.Core.SendEmail({
-        to: timesheet.employee_email,
-        from_name: 'PennSync by CareMetric',
-        subject: approved ? 'Your timesheet was approved' : 'Your timesheet needs changes',
-        body: renderBrandedEmail({
-          preheader: `Your timesheet for ${period} was ${decision}.`,
-          eyebrow: approved ? 'Timesheet approved' : 'Timesheet reviewed',
-          title: approved ? 'Your timesheet was approved' : 'Your timesheet was not approved',
-          intro: `Your timesheet for the pay period ${period} was ${decision} by ${reviewerName}.`,
-          sections: [
-            {
-              callout: approved
-                ? { tone: 'success', text: 'Your timesheet has been approved and will be included in the payroll export.' }
-                : { tone: 'warn', text: 'Your timesheet needs changes. Please review the note, update it, and resubmit.' },
-            },
-            ...(trimmedNote ? [{ rows: [['Note from reviewer', trimmedNote]] }] : []),
-            { note: 'View the details in PennSync under Timesheets.' },
-          ],
-        }),
-      }).catch(() => null);
+      if (!deliveryPaused) {
+        await base44.asServiceRole.integrations.Core.SendEmail({
+          to: timesheet.employee_email,
+          from_name: 'PennSync by CareMetric',
+          subject: approved ? 'Your timesheet was approved' : 'Your timesheet needs changes',
+          body: renderBrandedEmail({
+            preheader: `Your timesheet for ${period} was ${decision}.`,
+            eyebrow: approved ? 'Timesheet approved' : 'Timesheet reviewed',
+            title: approved ? 'Your timesheet was approved' : 'Your timesheet was not approved',
+            intro: `Your timesheet for the pay period ${period} was ${decision} by ${reviewerName}.`,
+            sections: [
+              {
+                callout: approved
+                  ? { tone: 'success', text: 'Your timesheet has been approved and will be included in the payroll export.' }
+                  : { tone: 'warn', text: 'Your timesheet needs changes. Please review the note, update it, and resubmit.' },
+              },
+              ...(trimmedNote ? [{ rows: [['Note from reviewer', trimmedNote]] }] : []),
+              { note: 'View the details in PennSync under Timesheets.' },
+            ],
+          }),
+        });
+        email = true;
+      }
     } catch (_notifyError) {
       // Best-effort notification/email.
     }
 
-    return Response.json({ success: true, timesheet: updated });
+    return Response.json({ success: true, timesheet: updated, email, delivery_paused: deliveryPaused });
   } catch (error) {
     console.error('reviewTimesheet failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

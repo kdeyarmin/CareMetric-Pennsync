@@ -109,6 +109,17 @@ export default function Layout() {
   const roleView = getRoleView(currentUser);
   const isSuperAdminUser = roleView === 'super_admin';
   const isAdmin = roleView === 'super_admin' || roleView === 'facility_admin';
+  // In-app Notification rows are authorized by an exact current
+  // AgencyMembership id/version. The protected platform owner is deliberately
+  // membership-free, so keep the control visible but disabled instead of
+  // opening an inbox request that must fail closed or look deceptively empty.
+  const notificationsAvailable = Boolean(
+    tenantContext?.agency_id
+    && tenantContext?.membership_id
+    && Number.isSafeInteger(tenantContext?.membership_version)
+    && tenantContext.membership_version >= 1
+    && tenantContext?.is_platform_owner === false
+  );
   // Base44's automated Testing Agent signs in as a dynamically-created account
   // (is_test_agent_user flag, @testagent.base44.com email) that is never
   // admin-approved, so it would otherwise be stuck on the pending-approval gate
@@ -230,8 +241,10 @@ export default function Layout() {
           currentPageName={currentPageName}
           mobileMenuOpen={mobileMenuOpen}
           onToggleMobileMenu={() => setMobileMenuOpen(v => !v)}
-          notificationsAvailable={Boolean(tenantContext?.agency_id)}
-          onOpenNotificationCenter={() => setNotificationCenterOpen(true)}
+          notificationsAvailable={notificationsAvailable}
+          onOpenNotificationCenter={() => {
+            if (notificationsAvailable) setNotificationCenterOpen(true);
+          }}
         />
 
         <MobileMenu
@@ -256,11 +269,17 @@ export default function Layout() {
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => setNotificationCenterOpen(true)}
-                  aria-label="Open notifications"
+                  onClick={() => {
+                    if (notificationsAvailable) setNotificationCenterOpen(true);
+                  }}
+                  aria-label={notificationsAvailable ? 'Open notifications' : 'Notifications unavailable'}
+                  title={notificationsAvailable
+                    ? 'Notifications'
+                    : 'Notifications are available only in a tenant-member workspace'}
+                  disabled={!notificationsAvailable}
                 >
                   <Bell className="mr-2 h-4 w-4" />
-                  Notifications
+                  {notificationsAvailable ? 'Notifications' : 'Notifications unavailable'}
                 </Button>
               </div>
             )}
@@ -287,7 +306,7 @@ export default function Layout() {
 
         <MobileBottomNav isActive={isActive} unreadMessageCount={0} isAdmin={isAdmin} currentUser={currentUser} />
 
-        {notificationCenterOpen && tenantContext?.agency_id && (
+        {notificationCenterOpen && notificationsAvailable && (
           <div
             className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4"
             role="presentation"

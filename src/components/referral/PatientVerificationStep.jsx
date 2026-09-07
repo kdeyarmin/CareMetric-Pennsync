@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,7 @@ import {
   looksLikeMedicareAdvantage,
 } from "./mbiValidator";
 import { useAuthorizedReferralPatients } from './authorizedPatientMatches';
+import { normalizePatientMatchSuggestions } from './patientMatchSuggestions';
 
 // A suggested patient's stored date_of_birth may be a malformed string (patients
 // auto-created from referrals persist the raw AI-extracted DOB). date-fns format()
@@ -64,22 +65,31 @@ export default function PatientVerificationStep({
 
   const extractedData = referral.extracted_data;
   const matchAnalysis = referral.match_analysis;
-  const suggestions = referral.match_suggestions || [];
+  const normalizedSuggestionResult = useMemo(() => normalizePatientMatchSuggestions({
+    preferred: matchAnalysis?.best_match_id ? {
+      patient_id: matchAnalysis.best_match_id,
+      confidence_score: matchAnalysis.confidence_score,
+      reasons: matchAnalysis.match_factors,
+      discrepancies: matchAnalysis.discrepancies,
+    } : null,
+    suggestions: referral.match_suggestions,
+  }), [matchAnalysis, referral.match_suggestions]);
+  const suggestions = normalizedSuggestionResult.suggestions;
+  const invalidOnlySuggestions = normalizedSuggestionResult.invalidCount > 0
+    && suggestions.length === 0;
 
   // Resolve the suggested (and best-match) patients directly by id rather than
   // paging the newest 500 — otherwise a match against an older chart is silently
   // dropped, steering staff to create a duplicate record.
-  const matchPatientIds = [
-    ...suggestions.map((s) => s.patient_id),
-    ...(matchAnalysis?.best_match_id ? [matchAnalysis.best_match_id] : []),
-  ].filter(Boolean);
+  const matchPatientIds = suggestions.map((suggestion) => suggestion.patient_id);
 
   const patientLookup = useAuthorizedReferralPatients({
     tenantContext,
     patientIds: matchPatientIds,
   });
   const allPatients = patientLookup.data;
-  const lookupBlocked = matchPatientIds.length > 0 && !patientLookup.isSuccess;
+  const lookupBlocked = invalidOnlySuggestions
+    || (matchPatientIds.length > 0 && !patientLookup.isSuccess);
   const unavailableCount = patientLookup.isSuccess
     ? new Set(matchPatientIds).size - allPatients.length
     : 0;
@@ -89,18 +99,6 @@ export default function PatientVerificationStep({
     const patient = allPatients.find(p => p.id === sug.patient_id);
     return patient ? { ...patient, confidence: sug.confidence_score, reasons: sug.reasons } : null;
   }).filter(Boolean);
-
-  // Add best match from analysis if available
-  if (matchAnalysis?.best_match_id && !suggestedPatients.find(p => p.id === matchAnalysis.best_match_id)) {
-    const bestMatch = allPatients.find(p => p.id === matchAnalysis.best_match_id);
-    if (bestMatch) {
-      suggestedPatients.unshift({
-        ...bestMatch,
-        confidence: matchAnalysis.confidence_score,
-        reasons: matchAnalysis.match_factors
-      });
-    }
-  }
 
   const selectedPatient = suggestedPatients.find((patient) => patient.id === selectedPatientId) || null;
 
@@ -151,6 +149,18 @@ export default function PatientVerificationStep({
           </p>
         </AlertDescription>
       </Alert>
+
+      {(normalizedSuggestionResult.invalidCount > 0
+        || normalizedSuggestionResult.truncatedCount > 0) && (
+        <Alert variant={invalidOnlySuggestions ? "destructive" : undefined}>
+          <AlertTriangle className="w-5 h-5" />
+          <AlertDescription>
+            {invalidOnlySuggestions
+              ? 'Saved patient-match suggestions are malformed. No patient can be matched or created until the referral is reprocessed.'
+              : 'Some saved patient-match suggestions were invalid or exceeded the reviewed limit and were ignored.'}
+          </AlertDescription>
+        </Alert>
+      )}
 
       {patientLookup.isError && (
         <Alert variant="destructive">

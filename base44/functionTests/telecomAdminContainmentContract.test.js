@@ -34,7 +34,11 @@ function loadHandler(name, { user, superAdminEmail }) {
   };
   const Deno = {
     env: {
-      get: (key) => (key === 'SUPER_ADMIN_EMAIL' ? superAdminEmail : undefined),
+      get: (key) => {
+        if (key === 'SUPER_ADMIN_EMAIL') return superAdminEmail;
+        if (key === 'OUTBOUND_DELIVERY_RELEASE') return 'enabled-v1';
+        return undefined;
+      },
     },
     serve: (candidate) => { handler = candidate; },
   };

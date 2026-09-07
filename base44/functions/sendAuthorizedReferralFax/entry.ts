@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 const MAX_BODY_BYTES = 20_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const MAX_LABEL_LENGTH = 300;
@@ -804,6 +824,8 @@ Deno.serve(async (req) => {
     if (!fromNumber) throw new PublicError(500, 'No valid outbound fax number is configured');
     const destination = isAllowedDestination(input.toNumber, configuration.settings);
     if (!destination.allowed) throw new PublicError(403, blockedReasonMessage(destination.reason));
+
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
 
     if (retrySource) {
       const retryConfig = await loadFaxRetryConfig(

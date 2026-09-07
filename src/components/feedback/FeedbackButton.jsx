@@ -1,6 +1,4 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
@@ -13,57 +11,19 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { MessageSquare, Send, CheckCircle2 } from "lucide-react";
+import { MessageSquare, Send } from "lucide-react";
 import { toast } from 'sonner';
+import { OUTBOUND_DELIVERY_PAUSED_MESSAGE } from '@/lib/outboundDeliveryContainment';
 
 export default function FeedbackButton() {
   const [open, setOpen] = useState(false);
   const [subject, setSubject] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sent, setSent] = useState(false);
 
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
-
-  const handleSubmit = async (e) => {
+  const handleSubmit = (e) => {
     e.preventDefault();
     if (!feedback.trim()) return;
-
-    setSending(true);
-    try {
-      await base44.integrations.Core.SendEmail({
-        to: "kdeyarmin@pennhospice.com",
-        subject: subject || "Feedback from PennSync by CareMetric User",
-        body: `
-Feedback from: ${currentUser?.full_name || 'Unknown'} (${currentUser?.email || 'No email'})
-Role: ${currentUser?.role || 'Unknown'}
-
-Subject: ${subject || 'General Feedback'}
-
-Feedback:
-${feedback}
-
----
-Sent from PennSync by CareMetric Feedback Feature
-        `.trim()
-      });
-
-      setSent(true);
-      setTimeout(() => {
-        setOpen(false);
-        setSubject("");
-        setFeedback("");
-        setSent(false);
-      }, 2000);
-    } catch (error) {
-      console.error('Error sending feedback:', error);
-      toast.error('Failed to send feedback. Please try again.');
-    } finally {
-      setSending(false);
-    }
+    toast.error(OUTBOUND_DELIVERY_PAUSED_MESSAGE);
   };
 
   return (
@@ -85,14 +45,10 @@ Sent from PennSync by CareMetric Feedback Feature
             Share your ideas, report issues, or suggest new features. Your feedback helps us improve PennSync by CareMetric.
           </DialogDescription>
         </DialogHeader>
-        {sent ? (
-          <div className="flex flex-col items-center justify-center py-8 text-center">
-            <CheckCircle2 className="w-16 h-16 text-green-600 mb-4" />
-            <p className="text-lg font-semibold text-green-600">Feedback Sent!</p>
-            <p className="text-sm text-slate-600">Thank you for helping us improve.</p>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
+        <form onSubmit={handleSubmit} className="space-y-4">
+            <p className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+              {OUTBOUND_DELIVERY_PAUSED_MESSAGE}
+            </p>
             <div>
               <Label htmlFor="subject">Subject (Optional)</Label>
               <Input
@@ -119,27 +75,19 @@ Sent from PennSync by CareMetric Feedback Feature
                 type="button"
                 variant="outline"
                 onClick={() => setOpen(false)}
-                disabled={sending}
               >
                 Cancel
               </Button>
               <Button
                 type="submit"
-                disabled={!feedback.trim() || sending}
+                disabled={!feedback.trim()}
                 className="gap-2"
               >
-                {sending ? (
-                  <>Sending...</>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    Send Feedback
-                  </>
-                )}
+                <Send className="w-4 h-4" />
+                Send Feedback
               </Button>
             </div>
           </form>
-        )}
       </DialogContent>
     </Dialog>
   );

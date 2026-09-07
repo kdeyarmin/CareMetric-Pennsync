@@ -243,6 +243,7 @@ test('reviewed dormant and service-only entities remain fail-closed', () => {
     'FaxCoverTemplate', 'FaxDocument', 'FaxHistory', 'FaxNotification',
     'FaxPriorityRule', 'FormTemplate', 'IncomingFax', 'InsuranceProvider',
     'MaterialInteraction', 'Medication', 'MedicationReconciliation', 'Message', 'MessageTemplate',
+    'Notification',
     'NursePerformanceMetric', 'OASISActionItem', 'OASISAudit', 'OASISFeedback',
     'OASISScenario', 'OASISWorkflowExecution', 'PatientBillingInfo',
     'PatientEducationDraft', 'PatientEducationEngagement',

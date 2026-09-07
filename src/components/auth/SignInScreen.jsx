@@ -12,8 +12,9 @@ import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Eye, EyeOff, Loader2, MailCheck, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Loader2, ShieldAlert } from 'lucide-react';
 import { BRAND_LOGO_URL, APP_NAME, PLATFORM_NAME } from '@/lib/brand';
+import { OUTBOUND_DELIVERY_PAUSED_MESSAGE } from '@/lib/outboundDeliveryContainment';
 import {
   CENTRAL_SUPPORT_EMAIL,
   CENTRAL_SUPPORT_EMAIL_HREF,
@@ -30,8 +31,9 @@ import {
  * the URL never changes, so after sign-in the user lands exactly where they
  * were headed.
  *
- * Flows handled here: email/password sign-in and the password-reset request.
- * Everything else (sign-up for invited users, OTP verification, captcha
+ * Flows handled here: email/password sign-in and a fail-closed password-reset
+ * notice while outbound delivery is paused. Everything else (sign-up for
+ * invited users, OTP verification, captcha
  * challenges) falls back to the platform-hosted page via navigateToLogin().
  *
  * Also handles a pending `?access_token=` handoff that arrived without a
@@ -46,7 +48,7 @@ const reloadApp = () => window.location.reload();
 
 const SignInScreen = ({ onAuthenticated = reloadApp }) => {
   const { navigateToLogin } = useAuth();
-  const [mode, setMode] = useState('signin'); // 'signin' | 'reset' | 'reset-sent'
+  const [mode, setMode] = useState('signin'); // 'signin' | 'reset'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -158,24 +160,10 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
     }
   };
 
-  const handleResetRequest = async (e) => {
+  const handleResetRequest = (e) => {
     e.preventDefault();
     if (busy) return;
-    setError('');
-    setBusy(true);
-    const operation = ++authOperationRef.current;
-    try {
-      await base44.auth.resetPasswordRequest(email.trim());
-      if (mountedRef.current && operation === authOperationRef.current) {
-        setMode('reset-sent');
-      }
-    } catch {
-      if (mountedRef.current && operation === authOperationRef.current) {
-        setError('Couldn’t send the reset email. Please try again, or use the standard sign-in page (link below).');
-      }
-    } finally {
-      if (mountedRef.current && operation === authOperationRef.current) setBusy(false);
-    }
+    setError(OUTBOUND_DELIVERY_PAUSED_MESSAGE);
   };
 
   return (
@@ -314,7 +302,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Reset your password</h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Enter your email and we’ll send you a link to reset it.
+                    {OUTBOUND_DELIVERY_PAUSED_MESSAGE}
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -348,21 +336,6 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
               </form>
             )}
 
-            {!pendingToken && mode === 'reset-sent' && (
-              <div className="text-center">
-                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-navy-50 ring-1 ring-inset ring-navy-200/60">
-                  <MailCheck className="h-7 w-7 text-navy-600" />
-                </div>
-                <h2 className="text-lg font-semibold text-slate-900">Check your email</h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  If an account exists for <span className="font-medium text-slate-800">{email}</span>,
-                  a password-reset link is on its way.
-                </p>
-                <Button variant="outline" onClick={() => switchMode('signin')} className="mt-6 w-full">
-                  <ArrowLeft className="mr-2 h-4 w-4" /> Back to sign in
-                </Button>
-              </div>
-            )}
           </div>
         </div>
 

@@ -164,6 +164,26 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 
 Deno.serve(async (req) => {
   try {
@@ -180,6 +200,7 @@ Deno.serve(async (req) => {
 
     const now = new Date();
     const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
+    const deliveryReleased = outboundDeliveryReleased();
 
     // Get all pending invitations
     // Explicit high limit: an unlimited filter() only returns the server's
@@ -196,6 +217,7 @@ Deno.serve(async (req) => {
     // Expiring within 24 hours — claim (stamp) FIRST so concurrent cron runs
     // cannot both email the same invite, then send. If every admin email fails,
     // clear stamps so the next run can retry.
+    const expiringSoonCandidates = [];
     const claimedExpiring = [];
     for (const invitation of pendingInvitations) {
       const expiresAt = new Date(invitation.expires_at);
@@ -220,6 +242,10 @@ Deno.serve(async (req) => {
         });
       } else if (tomorrow > expiresAt) {
         if (invitation.expiring_soon_notified_at) continue;
+        expiringSoonCandidates.push(invitation);
+        // Preserve expiration maintenance while the environment-wide delivery
+        // gate is closed, but do not claim an email tier that was never sent.
+        if (!deliveryReleased) continue;
         // Re-read + stamp before enqueueing to shrink the double-email window.
         const freshRows = await base44.asServiceRole.entities.UserInvitation
           .filter({ id: invitation.id }, undefined, 1)
@@ -233,10 +259,21 @@ Deno.serve(async (req) => {
         claimedExpiring.push(invitation);
       }
     }
-    const expiringSoon = claimedExpiring;
+    const expiringSoon = deliveryReleased ? claimedExpiring : expiringSoonCandidates;
 
     console.log('Expired invitations:', expired.length);
     console.log('Expiring soon:', expiringSoon.length);
+
+    if (!deliveryReleased) {
+      return Response.json({
+        success: true,
+        expired: expired.length,
+        expiring_soon: expiringSoon.length,
+        notifications_sent: 0,
+        delivery_paused: true,
+        code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+      }, { headers: { 'Cache-Control': 'no-store' } });
+    }
 
     // Scope invitation digests to each admin's agency (super_admins see all).
     // Unscoped fan-out emailed invitee names/emails to every tenant's admins.
@@ -257,8 +294,8 @@ Deno.serve(async (req) => {
           ? expired
           : expired.filter((inv) => !inv.agency_name || inv.agency_name === admin.agency_name);
         const scopedExpiring = admin.account_type === 'super_admin'
-          ? expiringSoon
-          : expiringSoon.filter((inv) => !inv.agency_name || inv.agency_name === admin.agency_name);
+          ? claimedExpiring
+          : claimedExpiring.filter((inv) => !inv.agency_name || inv.agency_name === admin.agency_name);
         if (scopedExpired.length === 0 && scopedExpiring.length === 0) continue;
         const sections = [];
         if (scopedExpired.length > 0) {
@@ -294,9 +331,9 @@ Deno.serve(async (req) => {
         }
       }
       // Total outage: clear claim stamps so the next cron can retry.
-      if (emailsSent === 0 && expiringSoon.length > 0) {
+      if (emailsSent === 0 && claimedExpiring.length > 0) {
         await Promise.allSettled(
-          expiringSoon.map((inv) =>
+          claimedExpiring.map((inv) =>
             base44.asServiceRole.entities.UserInvitation.update(inv.id, {
               expiring_soon_notified_at: null,
             })
@@ -312,7 +349,8 @@ Deno.serve(async (req) => {
       // Report emails ACTUALLY sent, not the admin count — during a SendEmail
       // outage (emailsSent stays 0, stamps cleared for retry) or when admins are
       // skipped for empty scoped lists, admins.length overstated delivery.
-      notifications_sent: emailsSent
+      notifications_sent: emailsSent,
+      delivery_paused: false,
     });
 
   } catch (error) {

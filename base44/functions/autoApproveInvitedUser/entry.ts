@@ -1,5 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
+
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
@@ -207,10 +228,22 @@ Deno.serve(async (req) => {
     );
     
     if (!invitations || invitations.length === 0) {
-      return Response.json({ success: true, message: 'No pending invitations found' });
+      return Response.json({
+        success: true,
+        message: 'No pending invitations found',
+        email: false,
+        delivery_paused: false,
+      });
     }
 
-    const appUrl = getAppBaseUrl();
+    const outboundDeliveryIsReleased = outboundDeliveryReleased();
+    let emailAppUrl = null;
+    if (outboundDeliveryIsReleased) {
+      // Keep this exact resolver marker for the public-origin contract while
+      // avoiding an APP_PUBLIC_URL dependency when email delivery is paused.
+      const appUrl = getAppBaseUrl();
+      emailAppUrl = appUrl;
+    }
     let approvedCount = 0;
     let skippedCount = 0;
 
@@ -254,23 +287,27 @@ Deno.serve(async (req) => {
           accepted_at: new Date().toISOString()
         });
 
-        // Send welcome email (fire and forget to reduce timeout risk)
-        base44.asServiceRole.integrations.Core.SendEmail({
-          to: user.email,
-          from_name: 'PennSync by CareMetric',
-          subject: 'Your PennSync by CareMetric account is now active',
-          body: renderBrandedEmail({
-            preheader: 'Your account has been activated and is ready to use.',
-            eyebrow: 'Account activated',
-            title: `Welcome aboard, ${invitation.full_name || user.email}!`,
-            intro: 'Your PennSync by CareMetric account has been activated and is ready to use.',
-            sections: [
-              { rows: [['Login', appUrl], ['Email', user.email]] },
-              { button: { href: appUrl, label: 'Sign in to PennSync' } },
-              { note: 'If you have any questions, please reach out to your administrator.' },
-            ],
-          }),
-        }).catch(() => console.error('Auto-approval email delivery failed'));
+        // Account approval is the primary mutation. Human delivery remains a
+        // best-effort side effect and is skipped while the environment gate is
+        // closed.
+        if (outboundDeliveryIsReleased) {
+          base44.asServiceRole.integrations.Core.SendEmail({
+            to: user.email,
+            from_name: 'PennSync by CareMetric',
+            subject: 'Your PennSync by CareMetric account is now active',
+            body: renderBrandedEmail({
+              preheader: 'Your account has been activated and is ready to use.',
+              eyebrow: 'Account activated',
+              title: `Welcome aboard, ${invitation.full_name || user.email}!`,
+              intro: 'Your PennSync by CareMetric account has been activated and is ready to use.',
+              sections: [
+                { rows: [['Login', emailAppUrl], ['Email', user.email]] },
+                { button: { href: emailAppUrl, label: 'Sign in to PennSync' } },
+                { note: 'If you have any questions, please reach out to your administrator.' },
+              ],
+            }),
+          }).catch(() => console.error('Auto-approval email delivery failed'));
+        }
 
         approvedCount++;
         console.log('✓ Auto-approved invited user');
@@ -284,7 +321,9 @@ Deno.serve(async (req) => {
       success: true, 
       approved: approvedCount,
       skipped: skippedCount,
-      total: invitations.length
+      total: invitations.length,
+      ...(!outboundDeliveryIsReleased && approvedCount > 0 ? { email: false } : {}),
+      delivery_paused: !outboundDeliveryIsReleased && approvedCount > 0,
     });
 
   } catch {

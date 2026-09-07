@@ -47,6 +47,28 @@ ${isAllowedDestination.toString()}`;
 }
 
 export const SHARED_HELPERS = {
+  // Application-wide human-delivery release gate. This is intentionally
+  // fail-closed: deploying code or copying an environment's existing secrets
+  // cannot release email, SMS, fax, or voice traffic. A future release requires
+  // the exact, separately reviewed sentinel in that environment.
+  outboundDeliveryGate: `const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}`,
+
   // Global reimbursement kill switch. This deliberately remains false until
   // PennSync uses the official CMS HHGS 432-group grouper, server-resolves
   // protected assessment inputs, and passes CMS golden-case tests. Keep every

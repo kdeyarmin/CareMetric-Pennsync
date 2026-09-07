@@ -33,9 +33,7 @@ function IntegrationRow({ item }) {
     ? "Released"
     : item.release_state === "paused"
       ? "Paused"
-      : item.release_state === "not-globally-gated"
-        ? "No global gate"
-        : null;
+      : null;
   return (
     <div className="flex items-start gap-3 py-3">
       <Icon className={`w-5 h-5 mt-0.5 flex-shrink-0 ${meta.color}`} />

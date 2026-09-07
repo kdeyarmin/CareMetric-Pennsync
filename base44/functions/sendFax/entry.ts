@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 /**
  * sendFax — outbound fax via the Telnyx Programmable Fax API. Idempotent on a
  * recent identical send, logs to the FaxLog entity (telnyx_fax_id stores the
@@ -305,6 +325,8 @@ Deno.serve(async (req) => {
           : 'No outbound fax number configured. Set the outbound fax line (and office fax number) in Agency Settings.',
       }, { status: 500 });
     }
+
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
 
     // Idempotency: a double-submit would otherwise create a second FaxLog and
     // send + charge the same PHI fax twice. Telnyx Fax has no client idempotency

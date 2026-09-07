@@ -195,6 +195,26 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 
 // Local calendar day count for date-only YYYY-MM-DD fields (mirrors
 // sendPersonnelExpirationNotifications / remindPlanOverdueStaff).
@@ -224,6 +244,16 @@ Deno.serve(async (req) => {
     const authError = getSchedulerAuthError(req, user);
     if (authError) return authError;
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    if (!outboundDeliveryReleased()) {
+      return Response.json({
+        success: true,
+        notifications_sent: 0,
+        admin_digests_sent: 0,
+        details: [],
+        delivery_paused: true,
+        code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+      }, { headers: { 'Cache-Control': 'no-store' } });
+    }
 
     const today = new Date();
     const todayIso = today.toISOString().slice(0, 10);
@@ -508,7 +538,8 @@ Deno.serve(async (req) => {
       success: true,
       notifications_sent: notificationsSent.length,
       admin_digests_sent: adminDigestSent,
-      details: notificationsSent
+      details: notificationsSent,
+      delivery_paused: false,
     });
   } catch (error) {
     console.error('sendCredentialRenewalReminders failed:', error);

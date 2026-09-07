@@ -18,6 +18,22 @@ test('SmsMessage direct access is fully service-only', () => {
   });
 });
 
+test('scheduled SMS workers apply the global outbound gate before every worker-specific pause', () => {
+  for (const [name, literal] of [
+    ['dispatchScheduledSms', 'const SCHEDULED_SMS_DISPATCH_PAUSED = true;'],
+    ['redriveFailedSms', 'const SMS_REDRIVE_MIGRATION_PAUSED = true;'],
+  ]) {
+    const source = readEntry(name);
+    assert.match(source, /<<<BEGIN SHARED HELPER: outboundDeliveryGate/);
+    assert.ok(source.includes(literal), `${name} retains its narrower migration pause`);
+    const handler = source.indexOf('Deno.serve(async (req) =>');
+    const releaseGate = source.indexOf("if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('sms')", handler);
+    const sdk = source.indexOf('createClientFromRequest(req)', handler);
+    assert.ok(handler >= 0 && releaseGate > handler, `${name} handler and outbound gate must exist`);
+    assert.ok(sdk > releaseGate, `${name} must fail closed before SDK creation and queue access`);
+  }
+});
+
 test('redriveFailedSms is literally paused before SDK creation or service reads', () => {
   const source = readEntry('redriveFailedSms');
   assert.match(source, /const SMS_REDRIVE_MIGRATION_PAUSED = true;/);

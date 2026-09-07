@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { isSafeExternalUrl } from "@/components/utils/security";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,6 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 import { formatAge } from "@/lib/age";
 import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
+import { rejectOutboundDelivery } from '@/lib/outboundDeliveryContainment';
 
 export default function PersonalizedEducationGenerator({ patient, complianceData, visits }) {
   const ai = useAICall();
@@ -164,40 +164,10 @@ ${educationMaterials.key_takeaways?.map(k => `• ${k}`).join('\n')}
       return;
     }
 
-    const emailContent = `
-<h2>Patient Education Materials</h2>
-<p><strong>For:</strong> ${patient.first_name} ${patient.last_name}</p>
-<p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-
-<h3>Condition Overview</h3>
-<p>${educationMaterials.condition_overview}</p>
-
-<h3>Medication Guide</h3>
-<p>${educationMaterials.medication_guide}</p>
-
-<h3>Self-Care Instructions</h3>
-<p>${educationMaterials.self_care_instructions}</p>
-
-<h3>⚠️ Warning Signs - Call 911 If:</h3>
-<ul>${educationMaterials.warning_signs?.map(s => `<li>${s}</li>`).join('')}</ul>
-
-<h3>Lifestyle Recommendations</h3>
-<p>${educationMaterials.lifestyle_recommendations}</p>
-
-<h3>Key Takeaways</h3>
-<ul>${educationMaterials.key_takeaways?.map(k => `<li>${k}</li>`).join('')}</ul>
-    `;
-
     try {
-      await base44.integrations.Core.SendEmail({
-        to: patient.caregiver_email || patient.email,
-        subject: `Patient Education Materials - ${patient.first_name} ${patient.last_name}`,
-        body: emailContent
-      });
-      toast.success('Education materials sent successfully!');
+      await rejectOutboundDelivery();
     } catch (error) {
-      console.error('Email error:', error);
-      toast.error('Failed to send email');
+      toast.error(error?.message || 'Outbound delivery is paused in this environment.');
     }
   };
 

@@ -72,6 +72,7 @@ function runtime(overrides = {}) {
     recipient_membership_id: 'membership-a',
     recipient_membership_version: 3,
     authority_version: 1,
+    authority_state: 'active',
     version: 1,
     user_email: 'recipient@example.test',
     title: 'Provider follow-up request unanswered',
@@ -90,6 +91,8 @@ function runtime(overrides = {}) {
     notifications: overrides.notifications || [notification],
     filters: [],
     updates: [],
+    membershipReads: 0,
+    notificationReads: 0,
   };
   const matches = (row, query) => Object.entries(query || {})
     .every(([key, value]) => row?.[key] === value);
@@ -104,10 +107,20 @@ function runtime(overrides = {}) {
         filter: async (query) => filter('Agency', state.agencies, query),
       },
       AgencyMembership: {
-        filter: async (query) => filter('AgencyMembership', state.memberships, query),
+        filter: async (query) => {
+          const rows = filter('AgencyMembership', state.memberships, query);
+          state.membershipReads += 1;
+          overrides.afterMembershipFilter?.(state, state.membershipReads);
+          return rows;
+        },
       },
       Notification: {
-        filter: async (query) => filter('Notification', state.notifications, query),
+        filter: async (query) => {
+          const rows = filter('Notification', state.notifications, query);
+          state.notificationReads += 1;
+          overrides.afterNotificationFilter?.(state, state.notificationReads);
+          return rows;
+        },
         updateMany: async (query, operations) => {
           state.updates.push({ query: clone(query), operations: clone(operations) });
           let updated = 0;
@@ -121,6 +134,7 @@ function runtime(overrides = {}) {
             }
             updated += 1;
           }
+          overrides.afterNotificationUpdate?.(state);
           return { success: true, updated, has_more: false };
         },
       },
@@ -129,27 +143,24 @@ function runtime(overrides = {}) {
   return { client, state };
 }
 
-test('Notification carries secure recipient provenance fields before the deferred RLS cutover', async () => {
+test('Notification denies direct browser CRUD and carries secure recipient authority fields', async () => {
   const schema = JSON5.parse(await readFile(
     new URL('../entities/Notification.jsonc', import.meta.url),
     'utf8',
   ));
-  const legacyRecipientOrAdminRule = {
-    $or: [
-      { 'data.user_email': '{{user.email}}' },
-      { user_condition: { role: 'admin' } },
-    ],
-  };
   assert.deepEqual(schema.rls, {
-    read: legacyRecipientOrAdminRule,
-    create: legacyRecipientOrAdminRule,
-    update: legacyRecipientOrAdminRule,
-    delete: legacyRecipientOrAdminRule,
+    read: false,
+    create: false,
+    update: false,
+    delete: false,
   });
   for (const field of [
     'agency_id', 'recipient_user_id', 'recipient_membership_id',
-    'recipient_membership_version', 'authority_version', 'version', 'dismissed_at',
+    'recipient_membership_version', 'authority_version', 'authority_state',
+    'version', 'dismissed_at',
   ]) assert.ok(schema.properties[field], field);
+  assert.deepEqual(schema.properties.authority_state.enum, ['active', 'invalidated']);
+  assert.equal(schema.properties.authority_state.default, 'active');
 });
 
 test('browser Notification access is broker-only and the center is tenant-bound', async () => {
@@ -168,7 +179,49 @@ test('browser Notification access is broker-only and the center is tenant-bound'
   assert.deepEqual(violations, []);
   const layout = await readFile(new URL('../../src/components/Layout.jsx', import.meta.url), 'utf8');
   assert.match(layout, /<NotificationCenter[\s\S]*agencyId=\{tenantContext\.agency_id\}/);
-  assert.doesNotMatch(layout, /notificationsAvailable=\{false\}/);
+  assert.match(layout, /const notificationsAvailable = Boolean\([\s\S]*tenantContext\?\.membership_id[\s\S]*tenantContext\?\.is_platform_owner === false/);
+  assert.match(layout, /disabled=\{!notificationsAvailable\}/);
+  assert.match(layout, /notificationCenterOpen && notificationsAvailable/);
+});
+
+test('membership-free protected platform owner has no Notification entity access', async () => {
+  const { client, state } = runtime({
+    user: { role: 'admin' },
+    memberships: [],
+  });
+  const handler = await loadHandler(
+    client,
+    new Map([['SUPER_ADMIN_EMAIL', 'recipient@example.test']]),
+  );
+  const response = await handler(request({ action: 'list', agency_id: 'agency-a' }));
+  assert.equal(response.status, 403);
+  assert.equal(state.filters.some(({ entity }) => entity === 'Notification'), false);
+  assert.equal(state.updates.length, 0);
+});
+
+test('every authority-v1 Notification producer explicitly stamps active state', async () => {
+  const producers = [
+    'createNotification',
+    'checkStaleFollowUpRequests',
+    'handleTelnyxStatusWebhook',
+    'pollFaxStatuses',
+    'processInboundFaxes',
+    'submitFollowUpResponse',
+  ];
+  for (const producer of producers) {
+    const source = await readFile(
+      new URL(`../functions/${producer}/entry.ts`, import.meta.url),
+      'utf8',
+    );
+    assert.match(
+      source,
+      /recipient_membership_version:[^\n]+\n\s*authority_version: 1,\n\s*authority_state: 'active',/,
+      producer,
+    );
+    if (producer !== 'createNotification') {
+      assert.match(source, /row\??\.authority_state ===/, `${producer} reconciliation`);
+    }
+  }
 });
 
 test('recipient list is tenant/user/membership-bound and returns no workflow state', async () => {
@@ -188,8 +241,11 @@ test('recipient list is tenant/user/membership-bound and returns no workflow sta
   assert.ok(state.filters.some(({ entity, query }) => entity === 'Notification'
     && query.agency_id === 'agency-a'
     && query.recipient_user_id === 'user-a'
+    && query.recipient_membership_id === 'membership-a'
+    && query.recipient_membership_version === 3
     && query.user_email === 'recipient@example.test'
     && query.authority_version === 1
+    && query.authority_state === 'active'
     && query.dismissed === false));
 });
 
@@ -217,12 +273,67 @@ test('foreign tenant access is rejected before any Notification read or mutation
   assert.equal(state.updates.length, 0);
 });
 
-test('membership revision drift rejects a stale notification before projection', async () => {
-  const { client, state } = runtime({ membership: { version: 4 } });
+test('recipient list excludes stale membership revisions individually', async () => {
+  const stale = runtime().state.notifications[0];
+  const current = {
+    ...stale,
+    id: 'notification-current',
+    recipient_membership_version: 4,
+  };
+  const { client, state } = runtime({
+    membership: { version: 4 },
+    notifications: [stale, current],
+  });
   const handler = await loadHandler(client);
   const response = await handler(request({ action: 'list', agency_id: 'agency-a' }));
-  assert.equal(response.status, 409);
-  assert.equal((await response.json()).error, 'Notification integrity check failed');
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(body.notifications.map((row) => row.id), ['notification-current']);
+  assert.ok(state.filters.some(({ entity, query }) => entity === 'Notification'
+    && query.recipient_membership_id === 'membership-a'
+    && query.recipient_membership_version === 4));
+  assert.equal(state.updates.length, 0);
+});
+
+test('recipient list excludes invalidated authority rows individually', async () => {
+  const active = runtime().state.notifications[0];
+  const invalidated = {
+    ...active,
+    id: 'notification-invalidated',
+    authority_state: 'invalidated',
+  };
+  const { client } = runtime({ notifications: [invalidated, active] });
+  const handler = await loadHandler(client);
+  const response = await handler(request({ action: 'list', agency_id: 'agency-a' }));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(body.notifications.map((row) => row.id), ['notification-a']);
+});
+
+test('list revalidates authority before projecting queried rows', async () => {
+  const { client, state } = runtime({
+    afterNotificationFilter: (currentState, readCount) => {
+      if (readCount === 1) currentState.memberships[0].version = 4;
+    },
+  });
+  const handler = await loadHandler(client);
+  const response = await handler(request({ action: 'list', agency_id: 'agency-a' }));
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, 'Notification recipient authority changed');
+  assert.equal(state.updates.length, 0);
+});
+
+test('list revalidates authority after projecting queried rows', async () => {
+  const { client, state } = runtime({
+    afterMembershipFilter: (currentState, readCount) => {
+      if (readCount === 3) currentState.memberships[0].version = 4;
+    },
+  });
+  const handler = await loadHandler(client);
+  const response = await handler(request({ action: 'list', agency_id: 'agency-a' }));
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, 'Notification recipient authority changed');
+  assert.equal(state.membershipReads, 4);
   assert.equal(state.updates.length, 0);
 });
 
@@ -241,11 +352,15 @@ test('mark_read conditionally changes only recipient state and preserves workflo
   assert.equal(body.notification.is_read, true);
   assert.equal(body.notification.version, 2);
   assert.equal(state.updates.length, 1);
+  assert.equal(state.updates[0].query.recipient_membership_id, 'membership-a');
+  assert.equal(state.updates[0].query.recipient_membership_version, 3);
+  assert.equal(state.updates[0].query.authority_state, 'active');
   assert.deepEqual(state.updates[0].operations.$inc, { version: 1 });
   assert.deepEqual(Object.keys(state.updates[0].operations.$set).sort(), ['is_read', 'read_at']);
   for (const key of [
     'agency_id', 'dedupe_key', 'recipient_user_id', 'recipient_membership_id',
-    'recipient_membership_version', 'authority_version', 'user_email', 'title',
+    'recipient_membership_version', 'authority_version', 'authority_state',
+    'user_email', 'title',
     'message', 'type', 'priority', 'action_url',
   ]) assert.deepEqual(state.notifications[0][key], before[key], key);
 });
@@ -283,4 +398,41 @@ test('stale or forged mutation versions cannot overwrite recipient state', async
   }));
   assert.equal(response.status, 409);
   assert.equal(state.updates.length, 0);
+});
+
+test('mutation revalidates changed authority immediately before update', async () => {
+  const { client, state } = runtime({
+    afterNotificationFilter: (currentState, readCount) => {
+      if (readCount === 1) currentState.memberships[0].status = 'revoked';
+    },
+  });
+  const handler = await loadHandler(client);
+  const response = await handler(request({
+    action: 'mark_read',
+    agency_id: 'agency-a',
+    notification_id: 'notification-a',
+    expected_version: 1,
+  }));
+  assert.equal(response.status, 403);
+  assert.equal(state.updates.length, 0);
+  assert.equal(state.notifications[0].is_read, false);
+});
+
+test('mutation revalidates authority immediately after update', async () => {
+  const { client, state } = runtime({
+    afterNotificationUpdate: (currentState) => {
+      currentState.memberships[0].status = 'revoked';
+    },
+  });
+  const handler = await loadHandler(client);
+  const response = await handler(request({
+    action: 'mark_read',
+    agency_id: 'agency-a',
+    notification_id: 'notification-a',
+    expected_version: 1,
+  }));
+  assert.equal(response.status, 403);
+  assert.equal(state.updates.length, 1);
+  assert.equal(state.notifications[0].is_read, true);
+  assert.equal(state.notifications[0].version, 2);
 });

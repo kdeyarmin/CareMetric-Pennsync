@@ -21,6 +21,7 @@ const NOTIFICATION_SCAN_LIMIT = MAX_NOTIFICATION_ROWS + 1;
 const EXACT_ROW_LIMIT = 10;
 const MEMBERSHIP_SCAN_LIMIT = 10;
 const AUTHORITY_VERSION = 1;
+const AUTHORITY_STATE = 'active';
 
 const ACTIONS = new Set(['list', 'mark_read', 'mark_all_read', 'dismiss']);
 const ENABLED_AGENCY_STATUSES = new Set(['active', 'trial']);
@@ -212,10 +213,7 @@ async function loadScope(
     || membershipRows.length > 1
   ) throw new PublicError(409, 'Notification recipient membership is ambiguous');
 
-  if (membershipRows.length === 0) {
-    if (!caller.isPlatformOwner) throw new PublicError(403, 'Forbidden');
-    return { ...caller, agencyId, membershipId: null, membershipVersion: null };
-  }
+  if (membershipRows.length === 0) throw new PublicError(403, 'Forbidden');
 
   const membership = membershipRows[0];
   const membershipId = exactIdentifier(membership.id);
@@ -239,6 +237,38 @@ async function loadScope(
   };
 }
 
+function sameScope(left: Record<string, any>, right: Record<string, any>) {
+  return left.userId === right.userId
+    && left.email === right.email
+    && left.agencyId === right.agencyId
+    && left.membershipId === right.membershipId
+    && left.membershipVersion === right.membershipVersion;
+}
+
+async function revalidateScope(
+  entities: Record<string, any>,
+  caller: { userId: string; email: string; isPlatformOwner: boolean },
+  expectedScope: Record<string, any>,
+) {
+  const currentScope = await loadScope(entities, caller, expectedScope.agencyId);
+  if (!sameScope(currentScope, expectedScope)) {
+    throw new PublicError(403, 'Notification recipient authority changed');
+  }
+  return currentScope;
+}
+
+function authorityFilter(scope: Record<string, any>) {
+  return {
+    agency_id: scope.agencyId,
+    recipient_user_id: scope.userId,
+    recipient_membership_id: scope.membershipId,
+    recipient_membership_version: scope.membershipVersion,
+    user_email: scope.email,
+    authority_version: AUTHORITY_VERSION,
+    authority_state: AUTHORITY_STATE,
+  };
+}
+
 function validateNotification(row: Record<string, any>, scope: Record<string, any>) {
   const id = exactIdentifier(row?.id);
   const email = canonicalEmail(row?.user_email);
@@ -248,18 +278,16 @@ function validateNotification(row: Record<string, any>, scope: Record<string, an
   const actionLabel = row?.action_label == null
     ? null
     : boundedText(row.action_label, MAX_ACTION_LABEL_LENGTH);
-  const membershipMatches = scope.membershipId === null
-    ? row?.recipient_membership_id == null && row?.recipient_membership_version == null
-    : row?.recipient_membership_id === scope.membershipId
-      && row?.recipient_membership_version === scope.membershipVersion;
   if (
     !id
     || row.agency_id !== scope.agencyId
     || row.recipient_user_id !== scope.userId
     || email !== scope.email
     || row.user_email !== email
-    || !membershipMatches
+    || row?.recipient_membership_id !== scope.membershipId
+    || row?.recipient_membership_version !== scope.membershipVersion
     || row.authority_version !== AUTHORITY_VERSION
+    || row.authority_state !== AUTHORITY_STATE
     || !Number.isSafeInteger(row.version)
     || row.version < 1
     || !title
@@ -308,10 +336,7 @@ async function listRows(entities: Record<string, any>, scope: Record<string, any
   const rows = requireRows(
     await entities.Notification.filter(
       {
-        agency_id: scope.agencyId,
-        recipient_user_id: scope.userId,
-        user_email: scope.email,
-        authority_version: AUTHORITY_VERSION,
+        ...authorityFilter(scope),
         dismissed: false,
       },
       '-created_date',
@@ -320,7 +345,7 @@ async function listRows(entities: Record<string, any>, scope: Record<string, any
     'Notification.filter',
   );
   return {
-    rows: rows.slice(0, MAX_NOTIFICATION_ROWS).map((row) => validateNotification(row, scope)),
+    rows: rows.slice(0, MAX_NOTIFICATION_ROWS),
     complete: rows.length <= MAX_NOTIFICATION_ROWS,
   };
 }
@@ -334,10 +359,7 @@ async function loadExactRow(
     await entities.Notification.filter(
       {
         id: notificationId,
-        agency_id: scope.agencyId,
-        recipient_user_id: scope.userId,
-        user_email: scope.email,
-        authority_version: AUTHORITY_VERSION,
+        ...authorityFilter(scope),
       },
       undefined,
       EXACT_ROW_LIMIT,
@@ -353,12 +375,15 @@ async function loadExactRow(
 
 async function transitionRow(
   entities: Record<string, any>,
+  caller: { userId: string; email: string; isPlatformOwner: boolean },
   scope: Record<string, any>,
   notificationId: string,
   expectedVersion: number,
   action: 'mark_read' | 'dismiss',
 ) {
-  const before = await loadExactRow(entities, scope, notificationId);
+  let currentScope = await revalidateScope(entities, caller, scope);
+  const before = await loadExactRow(entities, currentScope, notificationId);
+  currentScope = await revalidateScope(entities, caller, scope);
   const alreadyApplied = action === 'mark_read' ? before.is_read : before.dismissed;
   if (alreadyApplied) {
     return { row: before, idempotent: true };
@@ -379,10 +404,7 @@ async function transitionRow(
   const result = await entities.Notification.updateMany(
     {
       id: before.id,
-      agency_id: scope.agencyId,
-      recipient_user_id: scope.userId,
-      user_email: scope.email,
-      authority_version: AUTHORITY_VERSION,
+      ...authorityFilter(currentScope),
       version: expectedVersion,
     },
     { $set: patch, $inc: { version: 1 } },
@@ -395,7 +417,9 @@ async function transitionRow(
     || result.has_more !== false
   ) throw new PublicError(409, 'Notification changed; refresh and retry');
 
-  const after = await loadExactRow(entities, scope, notificationId);
+  currentScope = await revalidateScope(entities, caller, scope);
+  const after = await loadExactRow(entities, currentScope, notificationId);
+  await revalidateScope(entities, caller, scope);
   if (
     after.version !== expectedVersion + 1
     || !after.is_read
@@ -416,23 +440,34 @@ Deno.serve(async (req) => {
     const scope = await loadScope(entities, caller, input.agencyId);
 
     if (input.action === 'list') {
-      const page = await listRows(entities, scope);
+      let currentScope = await revalidateScope(entities, caller, scope);
+      const page = await listRows(entities, currentScope);
+      currentScope = await revalidateScope(entities, caller, scope);
+      const notifications = page.rows.map((row) =>
+        projectNotification(validateNotification(row, currentScope))
+      );
+      await revalidateScope(entities, caller, scope);
       return jsonResponse({
         success: true,
         action: 'list',
         agency_id: scope.agencyId,
-        notifications: page.rows.map(projectNotification),
+        notifications,
         complete: page.complete,
       });
     }
 
     if (input.action === 'mark_all_read') {
-      const page = await listRows(entities, scope);
+      let currentScope = await revalidateScope(entities, caller, scope);
+      const page = await listRows(entities, currentScope);
+      currentScope = await revalidateScope(entities, caller, scope);
+      const rows = page.rows.map((row) => validateNotification(row, currentScope));
+      await revalidateScope(entities, caller, scope);
       let marked = 0;
-      for (const row of page.rows) {
+      for (const row of rows) {
         if (row.is_read) continue;
         const transition = await transitionRow(
           entities,
+          caller,
           scope,
           row.id,
           row.version,
@@ -440,6 +475,7 @@ Deno.serve(async (req) => {
         );
         if (!transition.idempotent) marked += 1;
       }
+      await revalidateScope(entities, caller, scope);
       return jsonResponse({
         success: true,
         action: 'mark_all_read',
@@ -451,17 +487,20 @@ Deno.serve(async (req) => {
 
     const transition = await transitionRow(
       entities,
+      caller,
       scope,
       input.notificationId as string,
       input.expectedVersion as number,
       input.action as 'mark_read' | 'dismiss',
     );
+    const notification = projectNotification(transition.row);
+    await revalidateScope(entities, caller, scope);
     return jsonResponse({
       success: true,
       action: input.action,
       agency_id: scope.agencyId,
       idempotent: transition.idempotent,
-      notification: projectNotification(transition.row),
+      notification,
     });
   } catch (error) {
     if (error instanceof PublicError) {

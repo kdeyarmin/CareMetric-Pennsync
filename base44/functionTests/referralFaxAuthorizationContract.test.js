@@ -26,7 +26,7 @@ async function loadHandler(makeClient) {
   globalThis.__referralFaxCreateClient = makeClient;
   globalThis.Deno = {
     serve: (candidate) => { handler = candidate; },
-    env: { get: () => undefined },
+    env: { get: (key) => key === 'OUTBOUND_DELIVERY_RELEASE' ? 'enabled-v1' : undefined },
   };
   try {
     await import(`${pathToFileURL(target).href}?case=${Math.random()}`);

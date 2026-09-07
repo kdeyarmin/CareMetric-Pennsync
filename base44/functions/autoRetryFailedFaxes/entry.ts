@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 // Deploying source must not make a provider-facing retry worker runnable. The
 // native workflow owns the schedule, while this exact reviewed revision still
 // requires an explicit runtime release before the SDK is constructed.
@@ -763,6 +783,7 @@ async function settleAutomaticRetry(entities, claim, fax, changes) {
 
 Deno.serve(async (req) => {
   try {
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
     if (!AUTO_RETRY_FAILED_FAXES_ENABLED) {
       return Response.json(
         { error: 'Automatic failed-fax retry workflow is not released' },

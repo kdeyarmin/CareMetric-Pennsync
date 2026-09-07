@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -287,6 +307,7 @@ Deno.serve(async (req) => {
         if (!isAdmin) {
           return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
         }
+        if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
         return await checkExpiredInvitations(base44);
 
       case 'cancel_invitation':
@@ -343,6 +364,8 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
   // Validate the environment-specific origin before creating an invitation row.
   // A bad deployment configuration must not create a partial invite flow.
   const signupUrl = getAppBaseUrl();
+
+  if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
 
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -464,6 +487,7 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   // Send email FIRST, then stamp — otherwise a SendEmail failure still extends
   // expiry and looks like a successful resend.
   const signupUrl = getAppBaseUrl();
+  if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
   try {
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: invitation.email,
@@ -556,6 +580,8 @@ async function resetPassword(base44, currentUser, params, isAdmin, callerIsSuper
       return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
     }
   }
+
+  if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
 
   // Generate a temporary password from a CSPRNG with a guaranteed length and
   // character mix. `Math.random().toString(36).slice(-8)` is non-cryptographic

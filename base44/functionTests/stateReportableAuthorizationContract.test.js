@@ -38,6 +38,7 @@ async function loadHandler({
   userRows = [],
   superAdminEmail = '',
   incidentId = 'incident-1',
+  outboundDeliveryRelease,
 } = {}) {
   let source = await readFile(
     new URL('../functions/submitStateReportableIncident/entry.ts', import.meta.url),
@@ -128,7 +129,13 @@ async function loadHandler({
   globalThis.__stateReportPdf = PdfStub;
   globalThis.Deno = {
     serve: (candidate) => { handler = candidate; },
-    env: { get: (name) => (name === 'SUPER_ADMIN_EMAIL' ? superAdminEmail : undefined) },
+    env: {
+      get: (name) => {
+        if (name === 'SUPER_ADMIN_EMAIL') return superAdminEmail;
+        if (name === 'OUTBOUND_DELIVERY_RELEASE') return outboundDeliveryRelease;
+        return undefined;
+      },
+    },
   };
   try {
     await import(pathToFileURL(temporaryModule).href);
@@ -277,6 +284,7 @@ test('an explicitly assigned clinician can submit and unrelated user rows are no
     },
     patientRows: [{ id: 'wrong-patient' }, patient],
     superAdminEmail: 'platform-owner@example.com',
+    outboundDeliveryRelease: 'enabled-v1',
     userRows: [
       { email: 'Direct-Admin@Example.com', role: 'admin' },
       {
@@ -339,6 +347,7 @@ test('the configured protected admin can submit for a foreign patient', async ()
     patientRows: [patient],
     userRows: [{ email: 'platform-owner@example.com', role: 'admin' }],
     superAdminEmail: 'platform-owner@example.com',
+    outboundDeliveryRelease: 'enabled-v1',
   });
   const { response, json } = await invoke(handler, calls);
 
@@ -346,6 +355,43 @@ test('the configured protected admin can submit for a foreign patient', async ()
   assert.equal(json.success, true);
   assert.equal(calls.incidentCreates.length, 1);
   assert.deepEqual(calls.emails.map((row) => row.to), ['platform-owner@example.com']);
+});
+
+test('paused outbound delivery retains incident and in-app alerts without claiming email delivery', async () => {
+  const { handler, calls } = await loadHandler({
+    user: {
+      email: 'assigned@example.com',
+      role: 'user',
+      full_name: 'Assigned Clinician',
+    },
+    patientRows: [patient],
+    userRows: [
+      { email: 'direct-admin@example.com', role: 'admin' },
+      { email: 'platform-owner@example.com', role: 'admin' },
+    ],
+    superAdminEmail: 'platform-owner@example.com',
+  });
+  const { response, json } = await invoke(handler, calls);
+
+  assert.equal(response.status, 200);
+  assert.equal(json.success, true);
+  assert.equal(json.admins_notified, 2);
+  assert.equal(json.emails_sent, 0);
+  assert.equal(json.email_failures, 0);
+  assert.equal(json.delivery_paused, true);
+  assert.equal(calls.incidentCreates.length, 1);
+  assert.equal(calls.incidentCreates[0].office_notified, false);
+  assert.equal(calls.incidentCreates[0].alert_triggered, false);
+  assert.equal(calls.notificationCreates.length, 2);
+  assert.deepEqual(calls.emails, []);
+  assert.equal(calls.incidentUpdates.length, 1);
+  const auditUpdate = calls.incidentUpdates[0][1];
+  assert.equal(auditUpdate.office_notified, true);
+  assert.equal(auditUpdate.alert_triggered, false);
+  assert.equal(auditUpdate.state_reportable_alert_sent_at, undefined);
+  assert.equal(auditUpdate.details.admin_alert.email_sent_at, null);
+  assert.deepEqual(auditUpdate.details.admin_alert.recipients, []);
+  assert.equal(auditUpdate.details.admin_alert.delivery_paused, true);
 });
 
 test('a non-scalar incident id stops related file, notification, and email writes', async () => {

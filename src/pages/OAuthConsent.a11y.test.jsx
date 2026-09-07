@@ -46,9 +46,11 @@ describe('OAuthConsent public accessibility states', () => {
   it('announces an invalid authorization link inside one titled main landmark', async () => {
     const { container } = renderConsent();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent(
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(
       'This authorization link is invalid or has expired.',
     );
+    expect(alert).toHaveClass('bg-red-50', 'text-red-700');
     expect(document.title).toBe('Authorize access | PennSync by CareMetric');
     expect(container.querySelectorAll('main')).toHaveLength(1);
     expect(container.querySelector('h1')).toHaveTextContent('Authorize access');

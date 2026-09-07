@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 /**
  * handleTelnyxStatusWebhook — the single inbound webhook for the whole Telnyx
  * integration: messaging (inbound SMS + delivery status), fax status, and voice
@@ -805,6 +825,7 @@ function inboundRoutingPausedResponse(channel) {
 // (max_length) / transcription_start (transcription_engine_config.language)
 // and hangup_cause enum values are verified against Telnyx v2 docs/SDK.
 async function callCommand(apiKey, callControlId, command, payload = {}) {
+  if (!outboundDeliveryReleased()) return { ok: false, status: 503, paused: true };
   try {
     const resp = await fetch(`https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/${command}`, {
       method: 'POST',
@@ -823,6 +844,7 @@ const SPEAK_DEFAULTS = { voice: 'female', language: 'en-US' };
 
 // ---- Telnyx outbound SMS (auto-reply) ----
 async function sendAutoReply(apiKey, messagingProfileId, from, to, text) {
+  if (!outboundDeliveryReleased()) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
@@ -1503,6 +1525,7 @@ function outboundFaxNotificationSpec(fax, recipient, kind) {
       recipient_membership_id: recipient.id,
       recipient_membership_version: recipient.version,
       authority_version: 1,
+      authority_state: 'active',
       version: 1,
       user_email: recipient.user_email_normalized,
       title: delivered ? 'Fax Status Update' : 'Fax Failed',
@@ -1530,6 +1553,7 @@ function outboundFaxNotificationMatches(row, spec) {
     && row.recipient_membership_id === spec.payload.recipient_membership_id
     && row.recipient_membership_version === spec.payload.recipient_membership_version
     && row.authority_version === 1
+    && row.authority_state === spec.payload.authority_state
     && Number.isSafeInteger(row.version)
     && row.version >= 1
     && row.user_email === spec.payload.user_email
@@ -2011,6 +2035,10 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
   } else if (record.processing_status !== 'completed' || record.status !== 'unread') {
     return inboundFaxUnavailable(409, 'INBOUND_FAX_IDENTITY_CONFLICT');
   }
+
+  // Persist signed inbound fax ingress even while forwarding is paused. A 503
+  // leaves the unclaimed row replayable without crossing the provider boundary.
+  if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
 
   // Telnyx Fax has no client idempotency key. Claim this exact inbound row
   // before the irreversible provider call so overlapping webhook deliveries

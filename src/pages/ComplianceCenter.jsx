@@ -32,6 +32,7 @@ import { isAdminView } from "@/lib/roles";
 import LoadingState from "@/components/ui/LoadingState";
 import { ALL_ROWS } from '@/lib/queryLimits';
 import { parseLocalDate } from "@/lib/dateLocal";
+import { rejectOutboundDelivery } from '@/lib/outboundDeliveryContainment';
 
 /** Calendar-day delta from local midnight today to a date-only value (negative = past). */
 function localDaysUntil(dateStr) {
@@ -310,21 +311,13 @@ export default function ComplianceCenter() {
   }, [groupedByUser]);
 
   const sendNotificationMutation = useMutation({
-    mutationFn: async ({ recipients, subject }) => {
-      // Each recipient gets ONLY their own compliance issues — never a combined
-      // roster (that would leak every selected employee's PHI to everyone).
-      return await Promise.all(
-        recipients.map(({ email, message }) =>
-          base44.integrations.Core.SendEmail({ to: email, subject, body: message })
-        )
-      );
-    },
+    mutationFn: () => rejectOutboundDelivery(),
     onSuccess: (_, variables) => {
       toast.success(`Notifications sent to ${variables.recipients.length} employee(s)`);
       setSelectedUsers(new Set());
     },
-    onError: () => {
-      toast.error("Failed to send notifications");
+    onError: (error) => {
+      toast.error(error?.message || "Outbound delivery is paused in this environment.");
     }
   });
 

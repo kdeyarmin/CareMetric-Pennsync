@@ -77,7 +77,6 @@ const safeDate = (value) => {
   return isValid(d) ? format(d, "MM/dd/yyyy") : "N/A";
 };
 import { toast } from "sonner";
-import { parseDob } from "@/components/patient/patientDuplicateUtils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -98,7 +97,9 @@ import { runReferralQuickScan } from "../components/referral/referralExtraction"
 import { markStartOfCareCompleted } from "../components/referral/intakeToSocTracker";
 import { referralToF2FInput, validateFaceToFace, toFaceToFaceEncounter } from "../components/referral/faceToFaceValidator";
 import { validateIntakeDiagnoses } from "../components/referral/intakeDiagnosisValidator";
-import { referralPatientReadiness, splitPatientName } from "../components/referral/referralPatientReadiness";
+import { referralPatientReadiness } from "../components/referral/referralPatientReadiness";
+import { buildReferralPatientMatchCandidates } from "../components/referral/referralPatientMatching";
+import { normalizePatientMatchSuggestions } from "../components/referral/patientMatchSuggestions";
 import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import PatientMatchReview from "../components/referral/PatientMatchReview";
 import PatientVerificationStep from "../components/referral/PatientVerificationStep";
@@ -595,11 +596,6 @@ export default function ReferralIntake() {
       }
 
       // Enhanced patient matching logic
-      const fullName = extractedData.demographics?.full_name || '';
-      const dob = extractedData.demographics?.date_of_birth;
-      const phone = extractedData.demographics?.phone;
-      const address = extractedData.demographics?.address;
-      
       let existingPatient = null;
       // The auto-create path also assigns existingPatient, so the summary below
       // can't tell "created" from "matched" by inspecting it — track it here.
@@ -608,129 +604,16 @@ export default function ReferralIntake() {
       // The complete authorized keyset roster prevents a chart older than an
       // arbitrary UI page from being missed and then duplicated.
       const allPatients = await listAuthorizedReferralIdentityRoster({ tenantContext });
-      
-      if (fullName || dob || phone) {
-        // Use the shared splitter so "Last, First" fax forms and placeholder
-        // names ("Unknown" / "Not provided on referral") match triage behavior
-        // instead of creating first_name "Doe," / treating placeholders as real.
-        const { first_name: firstName, last_name: lastName } = splitPatientName(fullName);
-        const middleName = '';
-        
-        // Helper: normalize string for comparison
-        const normalize = (str) => str?.toLowerCase().trim().replace(/[^a-z0-9]/g, '') || '';
-        
-        // Helper: true Levenshtein edit distance. A positional char-by-char compare
-        // (the prior approach) collapses on a single insertion/deletion — "jon" vs
-        // "john" scored 0.5 instead of 0.75 — which distorts the auto-match threshold.
-        const levenshtein = (a, b) => {
-          const m = a.length, n = b.length;
-          if (!m) return n;
-          if (!n) return m;
-          let prev = Array.from({ length: n + 1 }, (_, i) => i);
-          for (let i = 1; i <= m; i++) {
-            const cur = [i];
-            for (let j = 1; j <= n; j++) {
-              cur[j] = a[i - 1] === b[j - 1]
-                ? prev[j - 1]
-                : 1 + Math.min(prev[j - 1], prev[j], cur[j - 1]);
-            }
-            prev = cur;
-          }
-          return prev[n];
-        };
+      const { bestMatch, aiCandidates } = buildReferralPatientMatchCandidates({
+        patients: allPatients,
+        demographics: extractedData.demographics || {},
+      });
 
-        // Helper: calculate string similarity from edit distance (0..1)
-        const similarity = (s1, s2) => {
-          if (!s1 || !s2) return 0;
-          const longerLen = Math.max(s1.length, s2.length);
-          if (longerLen === 0) return 1.0;
-          return (longerLen - levenshtein(s1, s2)) / longerLen;
-        };
-        
-        // Score each patient for match likelihood
-        const scoredPatients = allPatients.map(p => {
-          let score = 0;
-          let nameMatched = false;
-          const reasons = [];
-          
-          // Name matching (40 points max)
-          if (firstName && p.first_name) {
-            const firstNameSim = similarity(normalize(firstName), normalize(p.first_name));
-            if (firstNameSim >= 0.8) {
-              score += firstNameSim * 20;
-              nameMatched = true;
-              reasons.push(`First name: ${(firstNameSim * 100).toFixed(0)}%`);
-            }
-          }
-          
-          if (lastName && p.last_name) {
-            const lastNameSim = similarity(normalize(lastName), normalize(p.last_name));
-            if (lastNameSim >= 0.8) {
-              score += lastNameSim * 20;
-              nameMatched = true;
-              reasons.push(`Last name: ${(lastNameSim * 100).toFixed(0)}%`);
-            }
-          }
-          
-          // Middle name/initial bonus (5 points)
-          if (middleName && p.middle_name) {
-            const m1 = normalize(middleName);
-            const m2 = normalize(p.middle_name);
-            if (m1 === m2 || m1[0] === m2[0]) {
-              score += 5;
-              reasons.push('Middle name match');
-            }
-          }
-          
-          // DOB matching (30 points) — tolerate MM/DD/YYYY vs YYYY-MM-DD via parseDob
-          // (same helper OASIS patient matching already uses).
-          if (dob && p.date_of_birth) {
-            const a = parseDob(dob);
-            const b = parseDob(p.date_of_birth);
-            if (a && b && a.year === b.year && a.month === b.month && a.day === b.day) {
-              score += 30;
-              reasons.push('Exact DOB match');
-            } else if (a && b && a.year === b.year && a.month === b.month) {
-              score += 15;
-              reasons.push('Partial DOB match');
-            }
-          }
-          
-          // Phone matching (15 points)
-          if (phone && p.phone) {
-            const p1 = normalize(phone);
-            const p2 = normalize(p.phone);
-            if (p1 === p2 || p1.includes(p2.slice(-7)) || p2.includes(p1.slice(-7))) {
-              score += 15;
-              reasons.push('Phone match');
-            }
-          }
-          
-          // Address matching (10 points)
-          if (address && p.address) {
-            const a1 = normalize(address);
-            const a2 = normalize(p.address);
-            if (similarity(a1, a2) >= 0.7) {
-              score += 10;
-              reasons.push('Address match');
-            }
-          }
-          
-          return { patient: p, score, nameMatched, reasons };
-        });
-        
-        // Sort by score and get best match
-        const bestMatch = scoredPatients.sort((a, b) => b.score - a.score)[0];
-        
-        // Match threshold: 60+ points = high confidence match. A NAME signal is
-        // also required: without it, exact DOB (30) + phone (15) + address (10)
-        // + middle initial (5) reaches 60 on their own — which is precisely a
-        // twin/household member sharing DOB, phone, and address. Auto-linking a
-        // referral to the WRONG person's chart is a patient-safety error; the
-        // dedupe engine (patientDuplicateUtils) enforces the same identity guard.
-        if (bestMatch && bestMatch.score >= 60 && bestMatch.nameMatched) {
-          existingPatient = bestMatch.patient;
-        }
+      // Match threshold: 60+ points = high confidence match. A NAME signal is
+      // also required: without it, shared demographic/contact information can
+      // auto-link a referral to the wrong household member's chart.
+      if (bestMatch && bestMatch.score >= 60 && bestMatch.nameMatched) {
+        existingPatient = bestMatch.patient;
       }
 
       // Enhanced AI-powered patient matching with detailed analysis
@@ -738,7 +621,7 @@ export default function ReferralIntake() {
         // Always run AI matching for comprehensive analysis
         const aiMatchResponse = await base44.functions.invoke('matchPatientWithAI', {
           extractedData,
-          existingPatients: allPatients.slice(0, 100) // Analyze top 100 patients
+          existingPatients: aiCandidates,
         });
 
         const matchAnalysis = aiMatchResponse.data?.matchAnalysis;
@@ -760,18 +643,21 @@ export default function ReferralIntake() {
           } else if (matchAnalysis.confidence_level === 'high' && matchAnalysis.best_match_id) {
             // Medium-high confidence (70-89%) - flag for quick review
             updates.requires_manual_review = true;
-            updates.match_suggestions = [
-              { 
+            updates.match_suggestions = normalizePatientMatchSuggestions({
+              preferred: {
                 patient_id: matchAnalysis.best_match_id, 
                 confidence_score: matchAnalysis.confidence_score,
-                reasons: matchAnalysis.match_factors 
+                reasons: matchAnalysis.match_factors,
+                discrepancies: matchAnalysis.discrepancies,
               },
-              ...(matchAnalysis.alternative_matches || [])
-            ];
+              suggestions: matchAnalysis.alternative_matches,
+            }).suggestions;
           } else if (matchAnalysis.confidence_level === 'medium' && matchAnalysis.alternative_matches?.length > 0) {
             // Medium confidence (50-69%) - show multiple options
             updates.requires_manual_review = true;
-            updates.match_suggestions = matchAnalysis.alternative_matches;
+            updates.match_suggestions = normalizePatientMatchSuggestions({
+              suggestions: matchAnalysis.alternative_matches,
+            }).suggestions;
           } else if (matchAnalysis.confidence_level === 'low' || matchAnalysis.recommendation === 'create_new') {
             // Low confidence - likely new patient
           }

@@ -1,6 +1,27 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 import { jsPDF } from 'npm:jspdf@2.5.2';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
+
 // <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
 const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
 const isProtectedAdmin = (user) => !!user && user.role === 'admin';
@@ -329,8 +350,10 @@ Deno.serve(async (req) => {
       photo_urls: Array.isArray(payload.photo_urls) ? payload.photo_urls : [],
       state_reportable: true,
       status: 'reported',
-      office_notified: true,
-      alert_triggered: true,
+      // These audit flags are updated only after a corresponding side effect
+      // succeeds. The primary incident must never imply delivery occurred.
+      office_notified: false,
+      alert_triggered: false,
       details: {
         state_reportable: true,
         event_type: payload.event_type,
@@ -410,6 +433,7 @@ Deno.serve(async (req) => {
     let notifiedCount = 0;
     const recipients = [];
     const failures = [];
+    const deliveryPaused = adminList.length > 0 && !outboundDeliveryReleased();
 
     if (adminList.length > 0) {
       await Promise.all(
@@ -435,42 +459,46 @@ Deno.serve(async (req) => {
         )
       );
 
-      const subject = `Urgent: state reportable event – ${payload.event_type} – ${patientName}`;
-      const body = renderBrandedEmail({
-        preheader: `A state reportable event was submitted for ${patientName} and requires immediate follow-up.`,
-        eyebrow: 'State reportable event',
-        tone: 'urgent',
-        title: `State reportable event — ${payload.event_type}`,
-        intro: `A state reportable event has been submitted for ${patientName} and requires immediate follow-up.`,
-        sections: [
-          { pre: reportText },
-          ...(documentId
-            ? [{ note: 'A private PDF copy was retained in PennSync and requires current document authorization.' }]
-            : [{ note: 'A PDF copy could not be retained automatically; the full report text is above.' }]),
-          { note: 'Please review and follow up in the Incident Reporting module.' },
-        ],
-      });
+      if (!deliveryPaused) {
+        const subject = `Urgent: state reportable event – ${payload.event_type} – ${patientName}`;
+        const body = renderBrandedEmail({
+          preheader: `A state reportable event was submitted for ${patientName} and requires immediate follow-up.`,
+          eyebrow: 'State reportable event',
+          tone: 'urgent',
+          title: `State reportable event — ${payload.event_type}`,
+          intro: `A state reportable event has been submitted for ${patientName} and requires immediate follow-up.`,
+          sections: [
+            { pre: reportText },
+            ...(documentId
+              ? [{ note: 'A private PDF copy was retained in PennSync and requires current document authorization.' }]
+              : [{ note: 'A PDF copy could not be retained automatically; the full report text is above.' }]),
+            { note: 'Please review and follow up in the Incident Reporting module.' },
+          ],
+        });
 
-      await Promise.all(
-        adminList.map((admin) =>
-          base44.asServiceRole.integrations.Core.SendEmail({
-            to: admin.email,
-            subject,
-            body,
-            from_name: 'PennSync by CareMetric',
-          })
-            .then(() => { recipients.push(admin.email); })
-            .catch((e) => {
-              failures.push({ email: admin.email, error: e?.message });
-              debugLog('Admin email failed:', e?.message);
+        await Promise.all(
+          adminList.map((admin) =>
+            base44.asServiceRole.integrations.Core.SendEmail({
+              to: admin.email,
+              subject,
+              body,
+              from_name: 'PennSync by CareMetric',
             })
-        )
-      );
+              .then(() => { recipients.push(admin.email); })
+              .catch((e) => {
+                failures.push({ email: admin.email, error: e?.message });
+                debugLog('Admin email failed:', e?.message);
+              })
+          )
+        );
+      }
     }
 
     // 4) Record the alert audit and opaque Document id on the retained incident.
     try {
       await base44.asServiceRole.entities.Incident.update(incidentId, {
+        office_notified: notifiedCount > 0,
+        alert_triggered: recipients.length > 0,
         ...(recipients.length > 0
           ? { state_reportable_alert_sent_at: new Date().toISOString() }
           : {}),
@@ -482,6 +510,7 @@ Deno.serve(async (req) => {
             recipients,
             failures,
             notified_count: notifiedCount,
+            delivery_paused: deliveryPaused,
           },
         },
       });
@@ -498,6 +527,7 @@ Deno.serve(async (req) => {
       admins_notified: notifiedCount,
       emails_sent: recipients.length,
       email_failures: failures.length,
+      delivery_paused: deliveryPaused,
     });
   } catch (error) {
     console.error('submitStateReportableIncident failed:', error?.message);

@@ -7,7 +7,7 @@ import {
 } from '@/lib/browserAuthorityEpoch';
 
 const TERMINAL_AUTH_METHODS = new Set(['logout', 'redirectToLogin']);
-const CLOSED_BOOTSTRAP_AUTH_METHODS = new Set(['resetPasswordRequest', 'setToken']);
+const CLOSED_BOOTSTRAP_AUTH_METHODS = new Set(['setToken']);
 const PROTECTED_AUTH_METHODS = new Set(['me', 'updateMe']);
 const MAX_AUTHORITY_SNAPSHOT_LENGTH = 2_000;
 

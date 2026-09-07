@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 /**
  * Dormant, authority-bound signer-token issuer.
  *
@@ -360,6 +380,7 @@ Deno.serve(async (req) => {
     const initialAuthority = await loadAuthority(base44, input.agencyId);
     cleanupEntities = initialAuthority.entities;
     const initialPackage = await loadPackageSnapshot(initialAuthority.entities, input);
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
     const duplicate = requireRows(await initialAuthority.entities.DocumentPackageToken.filter(
       { agency_id: input.agencyId, package_id: input.packageId, signer_id: input.signerId, token_request_id: input.requestId },
       '-created_date', EXACT_ROW_LIMIT,

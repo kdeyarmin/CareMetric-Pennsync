@@ -884,6 +884,7 @@ function faxNotification(
     recipient_membership_id: recipient.id,
     recipient_membership_version: recipient.version,
     authority_version: 1,
+    authority_state: 'active',
     version: 1,
     user_email: recipient.user_email_normalized,
     title: kind === 'matched'
@@ -914,6 +915,7 @@ function faxNotificationMatches(row: Record<string, any>, expected: Record<strin
     && row?.recipient_membership_id === expected.recipient_membership_id
     && row?.recipient_membership_version === expected.recipient_membership_version
     && row?.authority_version === expected.authority_version
+    && row?.authority_state === expected.authority_state
     && Number.isSafeInteger(row?.version)
     && row.version >= 1
     && row?.user_email === expected.user_email

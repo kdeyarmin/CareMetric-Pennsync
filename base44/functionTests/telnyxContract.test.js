@@ -27,6 +27,7 @@ import { transpileTs } from "../../tools-transpile-ts.mjs";
 
 // ---- run a function's Deno.serve handler with injected globals ----
 async function loadHandler(entryPath, { env = {}, makeClient, fetchImpl }) {
+  env = { OUTBOUND_DELIVERY_RELEASE: 'enabled-v1', ...env };
   let src = await readFile(new URL(entryPath, import.meta.url), "utf8");
   // The shipped source keeps legacy inbound SMS/call routing and telehealth
   // provider access literally paused. Dedicated containment contracts assert

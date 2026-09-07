@@ -50,6 +50,10 @@ test('fax queue workers remain doubly gated before constructing a Base44 client'
   ]) {
     const source = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
     const handler = source.slice(source.lastIndexOf('Deno.serve'));
+    assert.match(source, /<<<BEGIN SHARED HELPER: outboundDeliveryGate/);
+    const outboundGate = handler.indexOf("if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax')");
+    assert.ok(outboundGate >= 0, `${name} has the application-wide fax delivery gate`);
+    assert.ok(outboundGate < handler.indexOf(`if (!${flag})`), `${name} checks the global gate first`);
     assert.match(source, new RegExp(`${envName.replaceAll('_', '\\_')}['"]\\) \\|\\| ''\\)\\.trim\\(\\) === 'enabled-v1'`));
     assert.ok(handler.indexOf(`if (!${flag})`) < handler.indexOf('createClientFromRequest(req)'));
     const workflow = JSON5.parse(await readFile(
@@ -65,6 +69,25 @@ test('fax queue workers remain doubly gated before constructing a Base44 client'
     await assert.rejects(
       readFile(new URL(`../functions/${name}/function.jsonc`, import.meta.url), 'utf8'),
       (error) => error?.code === 'ENOENT',
+    );
+  }
+});
+
+test('fax compatibility brokers gate delivery before invoking a sender or queue worker', async () => {
+  for (const [name, invoked] of [
+    ['retryFailedFax', 'sendAuthorizedReferralFax'],
+    ['processScheduledFaxesByPriority', 'processScheduledFaxes'],
+  ]) {
+    const source = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
+    const handler = source.slice(source.lastIndexOf('Deno.serve'));
+    assert.match(source, /<<<BEGIN SHARED HELPER: outboundDeliveryGate/);
+    const outboundGate = handler.indexOf("if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax')");
+    const invoke = handler.indexOf(`functions.invoke('${invoked}'`);
+    assert.ok(outboundGate >= 0, `${name} has the application-wide fax delivery gate`);
+    assert.ok(invoke > outboundGate, `${name} must not invoke ${invoked} while delivery is paused`);
+    assert.ok(
+      outboundGate > handler.indexOf('auth.me()'),
+      `${name} preserves authentication before revealing the environment release state`,
     );
   }
 });

@@ -8,6 +8,26 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 /**
  * Read-only capability report for integrations the current source tree uses.
  *
@@ -368,21 +388,22 @@ Deno.serve(async (req) => {
         : 'APP_PUBLIC_URL is missing or is not an exact HTTPS origin; outbound app-link generation fails closed.',
     });
 
-    // There is intentionally no synthetic global flag reported as protection:
-    // the current tree has provider/workflow-specific pauses, not one enforced
-    // application-wide outbound release gate.
+    const outboundDeliveryReleaseConfigured = isSet(env(OUTBOUND_DELIVERY_RELEASE_ENV));
+    const outboundDeliveryIsReleased = outboundDeliveryReleased();
     integrations.push({
       id: 'outbound_delivery_release',
       label: 'Application-wide outbound delivery gate',
       category: 'Release gate',
       capability: 'outbound_delivery_control',
-      configured: false,
+      configured: outboundDeliveryReleaseConfigured,
       editable_in_app: false,
-      status: 'warn',
+      status: outboundDeliveryIsReleased ? 'ok' : 'warn',
       probe: 'local-validation',
-      release_state: 'not-globally-gated',
+      release_state: outboundDeliveryIsReleased ? 'released' : 'paused',
       delivery_verified: false,
-      detail: 'No application-wide outbound release gate is enforced. Provider health never authorizes traffic; keep provider- and workflow-specific delivery paths paused except for approved controlled tests.',
+      detail: outboundDeliveryIsReleased
+        ? 'OUTBOUND_DELIVERY_RELEASE is enabled-v1. Provider health still does not authorize traffic, and this check performed no delivery.'
+        : 'Application-wide outbound delivery is paused. Only the exact reviewed value enabled-v1 releases it; provider health never authorizes traffic.',
     });
 
     for (const gate of WORKFLOW_RELEASE_GATES) {
