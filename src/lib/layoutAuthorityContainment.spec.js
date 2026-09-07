@@ -87,6 +87,8 @@ describe('Layout tenant-authority containment', () => {
     expect(referralIntake).toContain('listAuthorizedReferralAssignees');
     expect(referralIntake).toContain('updateAuthorizedReferral');
     expect(referralIntake).toContain('changes: { assigned_to:');
+    expect(referralIntake).toMatch(/agencyId: tenantContext\?\.agency_id,\s*clientRequestId: `referral:\$\{referralId\}`/);
+    expect(referralIntake).toMatch(/agencyId: tenantContext\?\.agency_id,\s*clientRequestId: `referral:\$\{referralToUpdate\.id\}`/);
     expect(referralIntake).not.toContain('base44.entities.Referral');
     expect(referralIntake).not.toContain('sendMessage');
     expect(referralDocuments).toContain('REFERRAL_DOCUMENT_SEND_UNAVAILABLE_MESSAGE');

@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
-import { scopePatientsToCallerAgency } from '@/lib/agencyRoster';
 import { createAuthorizedPatient } from '@/functions/createAuthorizedPatient';
 import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
 import {
@@ -104,6 +103,10 @@ import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import PatientMatchReview from "../components/referral/PatientMatchReview";
 import PatientVerificationStep from "../components/referral/PatientVerificationStep";
 import MultiReferralDetector from "../components/referral/MultiReferralDetector";
+import {
+  listAuthorizedReferralIdentityRoster,
+  resolveAuthorizedReferralPatients,
+} from "../components/referral/authorizedPatientMatches";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 const ReferralProcessor = lazy(() => import("@/components/hub-tabs/ReferralProcessor"));
@@ -601,13 +604,10 @@ export default function ReferralIntake() {
       // The auto-create path also assigns existingPatient, so the summary below
       // can't tell "created" from "matched" by inspecting it — track it here.
       let createdNewPatient = false;
-      // Match only against charts this agency may see. Matching a referral onto
-      // another tenant's chart would attach PHI to the wrong record; charts with
-      // no agency attribution stay in scope, so this cannot silently duplicate.
-      const allPatients = await scopePatientsToCallerAgency(
-        await base44.entities.Patient.list('-created_date', 500),
-        currentUser,
-      );
+      // Match only against the broker's purpose-limited identity projection.
+      // The complete authorized keyset roster prevents a chart older than an
+      // arbitrary UI page from being missed and then duplicated.
+      const allPatients = await listAuthorizedReferralIdentityRoster({ tenantContext });
       
       if (fullName || dob || phone) {
         // Use the shared splitter so "Last, First" fax forms and placeholder
@@ -854,46 +854,40 @@ export default function ReferralIntake() {
           care_type: extractedData.admission_details?.care_type || 'home_health',
           clinical_notes: `Referral received from ${extractedData.demographics.referring_physician || 'physician'} on ${extractedData.admission_details?.referral_date || 'unknown date'}.\n\nReason: ${extractedData.admission_details?.referral_reason || 'Not specified'}`,
           goals_of_care: extractedData.skilled_needs?.goals_of_care ? [extractedData.skilled_needs.goals_of_care] : []
-        }, { clientRequestId: `referral:${referralId}` });
+        }, {
+          agencyId: tenantContext?.agency_id,
+          clientRequestId: `referral:${referralId}`,
+        });
 
         updates.patient_id = newPatient.id;
         existingPatient = newPatient;
         createdNewPatient = true;
         }
       } else if (existingPatient) {
-        // Pull MRN from existing patient and update with referral data
-        const updateData = {
-          medical_record_number: existingPatient.medical_record_number || extractedData.demographics?.medical_record_number || extractedData.demographics?.mrn,
-        };
-        
-        // Update fields only if they're missing or empty in existing record
-        if (!existingPatient.physician_name && (extractedData.demographics?.referring_physician || extractedData.demographics?.primary_care_physician)) {
-          updateData.physician_name = extractedData.demographics.referring_physician || extractedData.demographics.primary_care_physician;
-        }
-        if (!existingPatient.physician_phone && (extractedData.demographics?.referring_physician_contact || extractedData.demographics?.pcp_contact)) {
-          updateData.physician_phone = extractedData.demographics.referring_physician_contact || extractedData.demographics.pcp_contact;
-        }
-        if (!existingPatient.emergency_contact_name && extractedData.demographics?.emergency_contact) {
-          updateData.emergency_contact_name = extractedData.demographics.emergency_contact;
-        }
-        if (!existingPatient.emergency_contact_phone && extractedData.demographics?.emergency_phone) {
-          updateData.emergency_contact_phone = extractedData.demographics.emergency_phone;
-        }
-        if (extractedData.diagnoses?.secondary_diagnoses?.length > 0) {
-          const existingDiagnoses = existingPatient.secondary_diagnoses || [];
-          const newDiagnoses = extractedData.diagnoses.secondary_diagnoses.filter(d => !existingDiagnoses.includes(d));
-          if (newDiagnoses.length > 0) {
-            updateData.secondary_diagnoses = [...existingDiagnoses, ...newDiagnoses];
-          }
-        }
-        
-        // Update patient with new information
-        await updatePatientFields({
-          patientId: existingPatient.id,
-          agencyId: existingPatient.agency_id,
-          expectedUpdatedDate: existingPatient.updated_date,
-          changes: updateData,
+        // Re-authorize the exact match immediately before linking it. Combining
+        // identity_match with the roster projection supplies the current
+        // updated_date without widening either broker purpose. Referral intake
+        // only fills a missing MRN; other clinical/contact merges require their
+        // own reviewed purpose and must not be inferred from omitted fields.
+        const [reauthorizedPatient] = await resolveAuthorizedReferralPatients({
+          tenantContext,
+          patientIds: [existingPatient.id],
         });
+        if (!reauthorizedPatient) {
+          throw new Error('Matched patient is no longer authorized for this agency');
+        }
+        existingPatient = reauthorizedPatient;
+
+        const referredMrn = extractedData.demographics?.medical_record_number
+          || extractedData.demographics?.mrn;
+        if (!existingPatient.medical_record_number && referredMrn) {
+          await updatePatientFields({
+            patientId: existingPatient.id,
+            agencyId: tenantContext?.agency_id,
+            expectedUpdatedDate: existingPatient.updated_date,
+            changes: { medical_record_number: referredMrn },
+          });
+        }
         updates.patient_id = existingPatient.id;
       }
 
@@ -1216,7 +1210,10 @@ export default function ReferralIntake() {
         past_medical_history: data.diagnoses?.past_medical_history || [],
         status: 'active',
         care_type: data.admission_details?.care_type || 'home_health'
-      }, { clientRequestId: `referral:${referralToUpdate.id}` });
+      }, {
+        agencyId: tenantContext?.agency_id,
+        clientRequestId: `referral:${referralToUpdate.id}`,
+      });
 
       await updateAuthorizedReferral({
         agencyId: referralToUpdate.agency_id,
@@ -2055,6 +2052,7 @@ export default function ReferralIntake() {
             </DialogHeader>
             <PatientVerificationStep
               referral={verificationReferral}
+              tenantContext={tenantContext}
               onConfirmMatch={handleConfirmMatch}
               onCreateNew={handleCreateNewFromReview}
               onSkip={() => setVerificationReferral(null)}
@@ -2075,6 +2073,7 @@ export default function ReferralIntake() {
             </DialogHeader>
             <PatientMatchReview
               referral={matchReviewReferral}
+              tenantContext={tenantContext}
               onConfirmMatch={handleConfirmMatch}
               onCreateNew={handleCreateNewFromReview}
               onClose={() => setMatchReviewReferral(null)}
