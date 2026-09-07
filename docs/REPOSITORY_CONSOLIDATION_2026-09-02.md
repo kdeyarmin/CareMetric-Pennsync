@@ -126,7 +126,7 @@ targeted the CareMetric production app.
 | Production function status | Inventory remains 240. Pulled `deduplicatePatients`, `saveOasisResponses`, and `calculatePDGM` match the hardened baseline. `computeOutcomeMeasures` entry SHA-256 remained `2c2a37bf...` while its existing schedule was intentionally set to `is_active:false`; no post-change logs were returned |
 | Live production surfaces | Rechecked on 2026-09-04: `caremetricai.base44.app` and `app.caremetricai.com` return HTTP 200 and the verified `index-egZIJufH.js` asset with unchanged SHA-256 `145532107c092fa272821a6c215b886f3188d71091682d02af6ca529675928f7`; `pennsync.com` still returns separate `index--wkWNhXC.js`, so no domain cutover occurred |
 | Manifest/PWA | The production-facing manifest says `PennSync by CareMetric`; its relative `id`, `start_url`, and `scope`, four icons, and historical branding remain intact. The contained frontend and manifest are now on the same verified source baseline |
-| Current safety boundary | The deployed PR `#143` checkpoint is synchronized only to the isolated staging app; the current source candidate is not hosted. Production remains on the contained site bundle; its only later backend revision was the separately authorized byte-identical `computeOutcomeMeasures` scheduler disablement. No production data/schema API mutation, additional function or secret change, domain move, native upload, or Apple/Google record change occurred |
+| 2026-09-04 safety boundary | At that checkpoint, deployed PR `#143` was synchronized only to the isolated staging app and its successor source candidate was not hosted. Production remained on the contained site bundle; its only later backend revision was the separately authorized byte-identical `computeOutcomeMeasures` scheduler disablement. No production data/schema API mutation, additional function or secret change, domain move, native upload, or Apple/Google record change occurred. See the 2026-09-07 addendum below for the later staging-only deployment. |
 
 The initial entity deployment exposed unsupported `$contains` array-membership
 RLS in Message and SharedDocument. Draft PR `#143` replaces it with Base44's
@@ -627,9 +627,11 @@ successor is recorded below.
   placeholders, unknown fields, malformed or extra CLI input, and a capability
   marked done without artifact references for every required probe (`V1`–`V6`,
   `T1`–`T4`, or `S1`–`S4`). It does not echo private input details. Candidate
-  and hosted deployable-resource hashes are independently reviewed external
-  inventory attestations, not manifests generated or retrieved by this
-  repository; their scope and exclusions still require release review. A
+  and hosted deployable-resource hashes remain independently reviewed
+  attestations whose scope and exclusions require release review. The
+  repository now provides `tools-base44-candidate-manifest.mjs` for a
+  deterministic local candidate-side inventory; it does not retrieve hosted
+  state, produce a deployment receipt, or establish hosted byte/RLS parity. A
   successful local validation proves only plan structure: it neither
   provisions fixtures nor supplies hosted evidence. The withheld assignment
   mutation broker still prevents approved creation of the hosted assignment,
@@ -800,6 +802,38 @@ sealed. No Base44 deployment, schema/function push, hosted-data access or
 mutation, schedule, secret, domain, production asset, native binary, or store
 record changed in this checkpoint.
 
+### Isolated staging deployment addendum — 2026-09-07
+
+The later staging-only deployment candidate had a retained local inventory
+produced during deployment inspection before
+`tools-base44-candidate-manifest.mjs` was added to the repository. The later
+checked-in generator covers the same declared local-only scope, but it
+must not be cited retroactively as the producer of this retained artifact. Its
+canonical candidate digest was
+`e6a7e43484e7f0aaa05365cda9931a80a2fac556136338868166642b57523785`;
+the payload described 246 entity schemas, 273 functions, seven workflows, one
+auth file, zero connectors, zero agents, 516 site files, 16 source-derived
+secret names, and 238 entity RLS declarations with eight absent declarations.
+These are candidate-side counts and hashes only. They do not prove that hosted
+schema fields/RLS, function code, auth, secrets, connectors, workflows, or all
+516 site files are byte-for-byte equivalent.
+
+An independent authenticated, read-only inspection of staging app
+`6a9881683dc68a0bd54f1ef7` after deployment observed exact function-name parity
+at 273 and the same seven current workflow names. All seven were inactive with
+zero runs, no last-run timestamp, and no recorded failure. Six other rows in
+the global workflow history belonged exclusively to deleted temporary
+integration-health workflows; they are historical cleanup evidence, not runs
+of the current seven schedules. Current-workflow and unattended outbound
+release gates stayed closed. The staging secret-name inventory remained four
+names and no secret value was exposed or changed.
+
+Five selected hosted JavaScript assets—the entry, app shell, privacy policy,
+telehealth join, and OAuth consent chunks—matched their local candidate hashes.
+That targeted check corroborates the deployed site revision but is not a full
+516-file hosted-byte receipt. Hosted entity-policy/RLS parity and authenticated
+two-agency LR-01/LR-02 proof remain open, and production was not changed.
+
 ## Deliberate merge decisions
 
 - Kept the newest Smart Note, visit preparation, medication reconciliation,
@@ -823,27 +857,28 @@ v2, register new scheduled functions, or upload a native binary until all of
 these are complete:
 
 1. Continue authenticated validation in the separate nonproduction Base44 app.
-   The last deployed staging runtime remains `f4e41dc2`, with 241 schemas and
-   263 functions. Commit `4da1cef1` is the preceding source-only checkpoint;
-   the latest 243-schema / 268-function successor is also unhosted. Before production,
-   deploy the new revision only to isolated staging and repeat exact
-   schema/function/site parity, anonymous denials, authenticated two-agency
-   positive and cross-tenant tests, and post-probe residue checks.
+   The 2026-09-07 read-only inventory observed 273 hosted function names and
+   seven inactive, zero-run current workflows after the staging-only deploy.
+   The corresponding local candidate contained 246 entity schemas, but that
+   local manifest is not hosted schema/RLS evidence and selected asset checks
+   are not full-site parity. Before production, obtain same-scope hosted and
+   candidate attestations, then repeat anonymous denials, authenticated
+   two-agency positive and cross-tenant tests, and post-probe residue checks.
 
    The reviewed fixture-plan validator and stricter evidence reporter prevent
    several local false-pass shapes, but they neither provision hosted
-   identities nor prove LR-01/LR-02. The reviewed assignment mutation broker
-   remains withheld, so the required A1-to-Clinician-A fixture cannot yet be
+   identities nor prove LR-01/LR-02. The assignment mutation path remains
+   release-paused, so the required A1-to-Clinician-A fixture cannot yet be
    created through an approved path. Do not substitute direct entity CRUD.
    Named owners, real evidence references, all reviewer approvals, and the full
    hosted matrix remain required.
 
-   Current source reduces the pinned RLS cohorts to `8` no-RLS, `11`
-   mutation-open, and `21` read-open schemas; hosted `f4e41dc2` remains at
-   `19 / 25 / 34`. This is source containment, not hosted tenant isolation. The
-   remaining exact cohorts are hash-pinned and concentrate in
-   education/template/reference, Referral, settings, regulatory, and legacy
-   clinical-event surfaces.
+   The recorded 2026-09-07 candidate manifest counted eight schemas without an
+   RLS declaration. Earlier `8 / 11 / 21` source and `19 / 25 / 34` hosted
+   cohort statements belong to their named historical checkpoints; they do not
+   establish policy state for the later deployment. Regenerate the candidate
+   inventory for every successor and obtain a same-scope hosted policy
+   attestation before claiming tenant isolation.
 
    `UserActivity` and `SecurityLog` now deny all direct operations and have zero
    production browser readers. Their history and derived-analysis screens

@@ -88,15 +88,39 @@ Turn the gated live-readiness matrix into real hosted evidence so
      from a complete immutable deployment receipt. A functions version can be
      retained as partial corroboration, but it does not identify the site,
      schemas, and automations and cannot satisfy that receipt requirement alone.
-   - Obtain externally reviewed candidate and hosted resource-inventory
-     attestations. They must declare the same scope, including frontend/site
-     bytes, every entity schema and RLS rule, functions, automations/schedules,
-     auth and connector configuration, secret configuration identifiers (never
-     secret values), and every intentional exclusion. Record their SHA-256
-     values; the two digests must match. This
-     repository has no canonical manifest generator or hosted-state retrieval
-     command. Hosted and candidate Git identities may differ only when the
-     reviewed inventory scope explicitly accounts for the non-runtime delta
+   - Generate the deterministic **candidate-side** inventory only after the
+     exact site candidate has been built. Prefer a clean reviewed checkout:
+
+     ```bash
+     test -z "$(git status --porcelain --untracked-files=normal)"
+     pnpm run build
+     node tools-base44-candidate-manifest.mjs > tmp/base44-candidate-manifest.json
+     ```
+
+     If a deliberately dirty diagnostic candidate must be retained, set
+     `PENNSYNC_ASSET_REVISION` to its exact reviewed identifier before building;
+     otherwise the Vite configuration intentionally uses a time-varying dirty
+     asset suffix and successive builds will not have identical bytes. A dirty
+     checkout still cannot satisfy the readiness reporter's clean-checkout
+     gate.
+
+     The generator reads local deployment inputs and `dist` only. It records
+     source and semantic hashes for entity/RLS definitions, functions,
+     workflows and project configuration; raw hashes for auth files and built
+     site files; local agent/connector definitions; and names statically used
+     by `Deno.env.get` (never secret values). Its `manifestSha256` is the
+     canonical digest of the unsigned manifest payload, so identical candidate
+     bytes produce an identical value. It performs no network request and does
+     not inspect hosted state.
+   - Separately obtain an externally reviewed **hosted** resource-inventory
+     attestation. The candidate output is not a deployment receipt and cannot
+     prove that hosted entity policy/RLS semantics, function bytes, auth,
+     workflows, connector state, secret configuration, or every site byte
+     match. Before recording the two protected evidence values, reviewers must
+     reconcile both artifacts to one explicitly identical scope and list every
+     exclusion. Never compare unlike digests and call them parity. Hosted and
+     candidate Git identities may differ only when the reviewed inventory scope
+     explicitly accounts for the non-runtime delta.
    - Canonical fixture emails (not passwords): protected Platform-Owner; Admin-A/Admin-B; Clinician-A/Clinician-A-empty
    - Fictional patient ids A1/A2/B1 and the reviewed active assignment of A1 to Clinician-A
    - A retained run-index reference plus a complete attestation in every
@@ -154,9 +178,10 @@ Turn the gated live-readiness matrix into real hosted evidence so
    candidate/hosted resource-inventory attestations agree, the probe backend
    matches, and every reviewer decision is
    approved; `1` = blocked; `2` = invalid input. The CLI also refuses a dirty
-   checkout. These protected variables are externally reviewed attestations;
-   the CLI does not verify receipt completeness, generate either resource
-   inventory, or retrieve hosted state. The
+   checkout. These protected variables are externally reviewed attestations.
+   The repository can generate the local candidate inventory described above,
+   but neither CLI verifies receipt completeness or retrieves/generates the
+   hosted inventory. The
    report includes the exact input-byte SHA-256, evaluated capability ids,
    source/deployment/target identity, and evidence-reference counts. Retain the
    private packet by that digest. Its `assurance` object explicitly keeps

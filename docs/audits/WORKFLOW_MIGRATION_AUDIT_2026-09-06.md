@@ -31,7 +31,10 @@ Safe source-side changes made behind those closed gates:
 
 These changes do not close the hosted release gates. Activation still requires proof of native scheduler authentication for empty workflow arguments, hosted conditional-update/single-winner semantics, uniqueness or duplicate-failure behavior for idempotency keys, required legacy provenance backfills, sanitized failure injection, and provider fixtures. Notification authority cutover, operator review/reconciliation UX, immutable inbound correlation, e-signature legal/finalization approval, and the outcome stable-snapshot proof remain product/platform gates. None should be inferred from passing repository tests.
 
-## Hosted staging observation — 2026-09-06
+## Pre-deployment hosted staging observation — 2026-09-06
+
+This table is a frozen historical snapshot and is superseded by the
+post-deployment observation dated 2026-09-07 below.
 
 | Check | Observed result | Consequence |
 |---|---|---|
@@ -51,6 +54,36 @@ BASE44_DISABLE_TELEMETRY=1 npx --yes base44 --app-id 6a9881683dc68a0bd54f1ef7 fu
 
 `BASE44_DISABLE_TELEMETRY=1` is the CLI's supported telemetry opt-out. It is required in the validation environment so the audit does not depend on an unrelated analytics endpoint.
 
+## Post-deployment hosted staging observation — 2026-09-07
+
+An authenticated, read-only recheck of isolated staging app
+`6a9881683dc68a0bd54f1ef7` observed the following later state:
+
+| Check | Observed result | Evidence boundary |
+|---|---|---|
+| Functions | 273 hosted function names; exact name-set agreement with the recorded candidate | Name agreement is not a hosted function-byte receipt. |
+| Current workflows | All seven names below were present and `inactive`; each reported `totalRuns: 0`, `lastRunAt: null`, and no failure | None of the seven current workflows has execution evidence, and none was activated. |
+| Global workflow history | Six historical runs belonged only to deleted temporary integration-health workflows | These rows must remain separate from the current-workflow totals; they do not show that any current schedule ran. |
+| Candidate inventory | Retained local manifest digest `e6a7e43484e7f0aaa05365cda9931a80a2fac556136338868166642b57523785` recorded 246 entities, 273 functions, seven workflows, one auth file, zero connectors/agents, and 516 site files | The retained payload predates the checked-in `tools-base44-candidate-manifest.mjs`; the later tool implements the same local-only inventory boundary. Neither artifact inspects hosted RLS, bytes, auth, connector, workflow, or secret state. |
+| Staging secret names | `APP_PUBLIC_URL`, `INTERNAL_FN_SECRET`, `SIGNATURE_HMAC_SECRET`, and `SUPER_ADMIN_EMAIL`; values were not read | Missing workflow-release configuration keeps these unattended workflow outbound paths closed; secret-name presence would not prove value equality. |
+| Integration capacity | Credits were subsequently reported purchased, but no provider-backed workflow test was counted as passing | Recheck capacity with an approved synthetic fixture before interpreting provider behavior. |
+
+The seven current workflow names were:
+
+1. `Process Scheduled Faxes`
+2. `Process Inbound Referral Faxes`
+3. `Poll Fax Statuses`
+4. `Nightly Outcome Measure Computation`
+5. `Dispatch Scheduled Signature Reminders`
+6. `Check Stale Follow-Up Requests`
+7. `Auto Retry Failed Faxes`
+
+No live handler invocation was used as a substitute for this read-only check:
+these handlers can mutate records or send traffic if release prerequisites are
+ever satisfied. Workflow inactivity, absent staging release-secret names, and
+the source default-closed gates are containment evidence, not end-to-end
+workflow success. Production was not modified or deployed.
+
 ## Reviewed workflow matrix
 
 | Workflow | Schedule | Handler state in this branch | Release decision |
@@ -60,7 +93,7 @@ BASE44_DISABLE_TELEMETRY=1 npx --yes base44 --app-id 6a9881683dc68a0bd54f1ef7 fu
 | Dispatch Scheduled Signature Reminders | Every 15 minutes | Rebuilt implementation remains behind a source-level false release gate | Keep inactive with the rest of e-signature until legal, identity, concurrency, finalization, immutable-audit, and tenant gates are approved and tested. |
 | Nightly Outcome Measure Computation | Daily at 06:00 UTC | Empty-payload schedule moved to a bounded per-agency dispatcher; dispatcher and worker are environment-gated and runtime-inactive by default | Keep runtime closed pending hosted CAS, single-winner publication, stable-snapshot, tenant-provenance, and two-agency proof. The former `{}` → one-agency-writer mismatch is fixed in source. |
 | Poll Fax Statuses | Every 5 minutes | Rebuilt with exact credential revision, sender provenance, conditional transitions, and durable notification claims | Keep inactive. Retry response-loss reconciliation, legacy row migration, and hosted atomicity/failure-injection evidence are incomplete. |
-| Process Inbound Referral Faxes | Every 10 minutes | Rebuilt with tenant-bound ingress provenance, conditional claims, OCR, and referral matching | Keep inactive. Integration credits are exhausted, its notification producer has not completed the authority-v1 cutover, and aggregate failure signaling/hosted OCR replay evidence remain incomplete. |
+| Process Inbound Referral Faxes | Every 10 minutes | Rebuilt with tenant-bound ingress provenance, conditional claims, OCR, and referral matching | Keep inactive. Broader notification-producer migration, aggregate failure signaling, and hosted OCR replay evidence remain incomplete; purchased credits alone do not satisfy those gates. |
 | Process Scheduled Faxes | Every 10 minutes | Rebuilt with private-document authority, HMAC-bound internal dispatch, conditional claims, and exact sender/provider provenance | Keep inactive. Hosted uniqueness/atomicity, immutable Referral↔Document authority, and sender-binding backfill remain incomplete. |
 
 ## Migration defects contained
@@ -75,11 +108,11 @@ BASE44_DISABLE_TELEMETRY=1 npx --yes base44 --app-id 6a9881683dc68a0bd54f1ef7 fu
 
 Before releasing any workflow handler in staging:
 
-1. Restore staging integration credits.
-2. Sync the exact reviewed entity/function revision to staging, including all four functions missing from the pre-deployment inventory; keep every handler release gate closed in the same change.
+1. Confirm staging integration capacity with an approved, synthetic no-PHI fixture before provider-backed validation; a purchase report is not execution evidence.
+2. After every successor source or site build, regenerate the candidate-side manifest and reconcile it with a separately reviewed, same-scope hosted inventory. Function/entity name counts alone do not prove hosted byte or RLS-policy parity.
 3. Provision one reviewed Telnyx IntegrationSecret and exact TelecomDestinationBinding per receiving number.
 4. Run direct, authenticated two-agency positive and negative function tests, including token replay/expiry, inbound fax replay, cross-tenant fax identity, OCR failure, duplicate-click handling, signed webhook replay, and provider-network ambiguity.
-5. Prove exact hosted readback for all seven native workflows, absence of their duplicate legacy automations, and removal of the obsolete worker-owned outcome schedule. Invoke only zero-data or purpose-built staging probes until the relevant external capacity and provenance fixtures are approved.
+5. Preserve the observed inactive readback for all seven native workflows, then prove native scheduler authentication, absence of duplicate legacy automations, and removal of the obsolete worker-owned outcome schedule before activation. Invoke only zero-data or purpose-built staging probes after the relevant external capacity and provenance fixtures are approved.
 6. Capture sanitized run identifiers, timestamps, deployed revision, and pass/fail evidence in the live-readiness packet.
 7. Complete the Notification producer migration or introduce a separate service-only workflow-delivery ledger before activating stale-follow-up, inbound-fax, polling, or fax notification paths.
 8. Keep production merge and deployment blocked until the repository checks and hosted evidence both pass and a release owner explicitly approves them.

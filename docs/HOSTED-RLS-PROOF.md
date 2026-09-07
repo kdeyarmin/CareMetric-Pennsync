@@ -1094,6 +1094,46 @@ required human product/security/QA/release approvals are recorded.
 
 ---
 
+## 5r. Candidate inventory and staging observation (updated 2026-09-07)
+
+The retained candidate-side payload was produced during the deployment
+inspection before `tools-base44-candidate-manifest.mjs` was added to the
+repository. The later checked-in generator covers the same declared local-only
+scope, but it must not be cited retroactively as the producer of
+this retained artifact. The retained payload had canonical digest
+`e6a7e43484e7f0aaa05365cda9931a80a2fac556136338868166642b57523785`
+and described 246 entity schemas, 273 functions, seven workflow definitions,
+one auth file, zero connectors, zero agents, 516 built-site files, 16
+source-derived `Deno.env.get` names, and 238 entity RLS declarations with eight
+schemas lacking an RLS declaration at that snapshot.
+
+Those are **local candidate facts**, not hosted policy proof. The checked-in
+generator does not call Base44, read hosted RLS/auth/connector/secret configuration, or
+produce an immutable deployment receipt. Matching resource names cannot prove
+matching definitions, and the internal candidate digest cannot be compared to
+an unlike hosted inventory and labeled byte or policy parity. Any successor
+source or rebuilt site requires a new manifest and a separately reviewed hosted
+attestation with the same explicit scope.
+
+A separate authenticated, read-only post-deployment inspection of isolated
+staging app `6a9881683dc68a0bd54f1ef7` observed all 273 candidate function names
+and the seven current workflow names. Each current workflow was inactive, had
+`totalRuns: 0`, no `lastRunAt`, and no recorded failure. The global workflow
+history also contained six runs belonging only to deleted temporary
+integration-health workflows. Those historical rows are not runs of any of the
+seven current workflows and are not execution evidence for them. All current
+workflows and their unattended outbound release gates therefore remain closed.
+
+The same inspection found only the staging secret names `APP_PUBLIC_URL`,
+`INTERNAL_FN_SECRET`, `SIGNATURE_HMAC_SECRET`, and `SUPER_ADMIN_EMAIL`; values
+were not read or exposed. Five selected hosted JavaScript assets (the entry,
+app shell, privacy, telehealth-join, and OAuth-consent chunks) were fetched and
+matched to their candidate hashes. That selected check is useful corroboration,
+but it is not a 516-file hosted-byte attestation and does not establish hosted
+entity/RLS parity. No production resource was changed by these staging checks.
+
+---
+
 ## 6. Sign-off
 
 1. Validate the canonical no-write fixture plan, then separately provision and
@@ -1106,8 +1146,10 @@ required human product/security/QA/release approvals are recorded.
    but does not identify the deployed site, schemas, and automations and cannot
    satisfy `hosted_deployment_id` by itself. Separately obtain externally
    reviewed candidate and hosted resource-inventory attestations that use the
-   same declared scope and exclusions. This repository has no generator or
-   hosted-state retrieval command for those inventories.
+   same declared scope and exclusions. This repository can generate the local
+   candidate-side inventory with `tools-base44-candidate-manifest.mjs`; it has
+   no hosted-state retrieval command, and the local output is not a deployment
+   receipt or hosted-parity attestation.
 4. Export the explicit `READINESS_STAGING_BACKEND_ORIGIN` from §2 plus the
    independently captured `READINESS_HOSTED_RUNTIME_COMMIT_SHA`,
    `READINESS_HOSTED_RUNTIME_TREE_SHA`, `READINESS_HOSTED_DEPLOYMENT_ID`,
