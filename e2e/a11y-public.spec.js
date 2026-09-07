@@ -1,4 +1,4 @@
-import { test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 import { publicAccessibilityRoutes } from '../src/lib/accessibilitySmokeMatrix.js';
 import { expectNoSeriousAxeViolations } from './axePlaywright.js';
 
@@ -21,6 +21,13 @@ for (const entry of routes) {
     // SPA routers need a beat to paint the no-token / public state.
     await page.waitForLoadState('networkidle').catch(() => {});
     await page.waitForTimeout(300);
+
+    await expect(page).toHaveTitle(entry.expectedTitle);
+    await expect(page.locator('main')).toHaveCount(1);
+    await expect(page.getByRole('heading', {
+      level: 1,
+      name: entry.expectedHeading,
+    })).toBeVisible();
 
     await expectNoSeriousAxeViolations(
       page,

@@ -10,6 +10,8 @@ export const PUBLIC_ACCESSIBILITY_SMOKE_ROUTES = Object.freeze([
   {
     route: '/privacy',
     page: 'PrivacyPolicy',
+    expectedTitle: 'Privacy Policy | PennSync by CareMetric',
+    expectedHeading: 'Privacy Policy',
     requiresAuth: false,
     expectedNoCredentialState: 'policy_content',
     requiredChecks: ['document-title', 'main-landmark', 'heading-order', 'keyboard-scroll', 'color-contrast'],
@@ -17,6 +19,8 @@ export const PUBLIC_ACCESSIBILITY_SMOKE_ROUTES = Object.freeze([
   {
     route: '/privacy-policy',
     page: 'PrivacyPolicyHyphenatedAlias',
+    expectedTitle: 'Privacy Policy | PennSync by CareMetric',
+    expectedHeading: 'Privacy Policy',
     requiresAuth: false,
     expectedNoCredentialState: 'policy_content',
     requiredChecks: ['document-title', 'main-landmark', 'heading-order', 'keyboard-scroll', 'color-contrast'],
@@ -24,6 +28,8 @@ export const PUBLIC_ACCESSIBILITY_SMOKE_ROUTES = Object.freeze([
   {
     route: '/privacypolicy',
     page: 'PrivacyPolicyCompatibility',
+    expectedTitle: 'Privacy Policy | PennSync by CareMetric',
+    expectedHeading: 'Privacy Policy',
     requiresAuth: false,
     expectedNoCredentialState: 'policy_content',
     requiredChecks: ['document-title', 'main-landmark', 'heading-order', 'keyboard-scroll', 'color-contrast'],
@@ -31,6 +37,8 @@ export const PUBLIC_ACCESSIBILITY_SMOKE_ROUTES = Object.freeze([
   {
     route: '/join',
     page: 'JoinTelehealth',
+    expectedTitle: 'Telehealth visit | PennSync by CareMetric',
+    expectedHeading: 'Telehealth visit unavailable',
     requiresAuth: false,
     expectedNoCredentialState: 'invalid_visit_link',
     requiredChecks: ['document-title', 'main-landmark', 'form-labels', 'focus-visible', 'color-contrast'],
@@ -38,6 +46,8 @@ export const PUBLIC_ACCESSIBILITY_SMOKE_ROUTES = Object.freeze([
   {
     route: '/signer',
     page: 'SignerPortal',
+    expectedTitle: 'Document signing | PennSync by CareMetric',
+    expectedHeading: 'Document signing unavailable',
     requiresAuth: false,
     expectedNoCredentialState: 'access_denied',
     requiredChecks: ['document-title', 'main-landmark', 'error-announcement', 'focus-visible', 'color-contrast'],
@@ -45,9 +55,20 @@ export const PUBLIC_ACCESSIBILITY_SMOKE_ROUTES = Object.freeze([
   {
     route: '/followup',
     page: 'ProviderFollowUpPortal',
+    expectedTitle: 'Referral information request | PennSync by CareMetric',
+    expectedHeading: 'Home Health Referral — Information Request',
     requiresAuth: false,
     expectedNoCredentialState: 'invalid_or_missing_token',
     requiredChecks: ['document-title', 'main-landmark', 'form-labels', 'error-announcement', 'focus-visible'],
+  },
+  {
+    route: '/consent',
+    page: 'OAuthConsent',
+    expectedTitle: 'Authorize access | PennSync by CareMetric',
+    expectedHeading: 'Authorize access',
+    requiresAuth: false,
+    expectedNoCredentialState: 'invalid_or_expired_authorization',
+    requiredChecks: ['document-title', 'main-landmark', 'error-announcement', 'focus-visible', 'color-contrast'],
   },
 ]);
 
@@ -110,6 +131,10 @@ export function validateAccessibilitySmokeRoute(routeConfig) {
     if (!routeConfig.role) missing.push('role');
   } else if (!routeConfig?.expectedNoCredentialState) {
     missing.push('expectedNoCredentialState');
+  }
+  if (!routeConfig?.requiresAuth) {
+    if (!routeConfig.expectedTitle) missing.push('expectedTitle');
+    if (!routeConfig.expectedHeading) missing.push('expectedHeading');
   }
   const checks = routeConfig?.requiredChecks;
   if (!Array.isArray(checks) || checks.length < 3) missing.push('requiredChecks');

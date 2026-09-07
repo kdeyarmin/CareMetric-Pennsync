@@ -173,7 +173,9 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-navy-50 via-white to-navy-100 p-4">
+    <>
+      <title>{`Sign in | ${APP_NAME} by ${PLATFORM_NAME}`}</title>
+      <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-navy-50 via-white to-navy-100 p-4">
       <div className="w-full max-w-md">
         {/* Brand hero: logo shown whole (object-contain in a padded tile — never
             masked/cropped) above the PennSync lockup. */}
@@ -375,7 +377,8 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
           </Link>
         </p>
       </div>
-    </div>
+      </main>
+    </>
   );
 };
 

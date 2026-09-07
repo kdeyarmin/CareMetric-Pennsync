@@ -70,8 +70,10 @@ const fillCredentials = async (user, email = 'nurse@agency.com', password = 'hun
 
 describe('SignInScreen', () => {
   it('renders the PennSync brand with the logo un-cropped', () => {
-    render(<SignInScreen onAuthenticated={vi.fn()} />);
+    const { container } = render(<SignInScreen onAuthenticated={vi.fn()} />);
 
+    expect(document.title).toBe('Sign in | PennSync by CareMetric');
+    expect(container.querySelectorAll('main')).toHaveLength(1);
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Welcome to PennSync');
     expect(screen.getByText(/by caremetric/i)).toBeInTheDocument();
     expect(screen.getByText(/sign in to continue/i)).toBeInTheDocument();

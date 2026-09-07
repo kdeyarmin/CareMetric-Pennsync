@@ -21,6 +21,14 @@ describe('hosted deployment path guards', () => {
     expect(viteConfig).toContain("base: command === 'build' ? './' : '/',");
   });
 
+  it('names every built asset with a source or build revision', () => {
+    const viteConfig = readRepoFile('vite.config.js');
+    expect(viteConfig).toContain("['PENNSYNC_ASSET_REVISION', 'GITHUB_SHA', 'RENDER_GIT_COMMIT']");
+    expect(viteConfig).toContain('entryFileNames: `assets/[name]-[hash]-${buildAssetRevision}.js`');
+    expect(viteConfig).toContain('chunkFileNames: `assets/[name]-[hash]-${buildAssetRevision}.js`');
+    expect(viteConfig).toContain('assetFileNames: `assets/[name]-[hash]-${buildAssetRevision}[extname]`');
+  });
+
   it('registers no service worker', () => {
     // Offline mode was removed along with public/sw.js. A worker registered here
     // would control the page and serve a cached shell with nothing to update it.

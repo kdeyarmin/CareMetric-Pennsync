@@ -42,9 +42,12 @@ afterEach(() => {
 describe('public capability pages', () => {
   it('keeps signing paused, scrubs its token, and offers no signature controls', () => {
     window.history.replaceState({}, '', '/signer?token=secret-signer-token');
-    renderWithProviders(<SignerPortal />);
+    const { container } = renderWithProviders(<SignerPortal />);
 
     expect(window.location.search).toBe('');
+    expect(document.title).toBe('Document signing | PennSync by CareMetric');
+    expect(container.querySelectorAll('main')).toHaveLength(1);
+    expect(container.querySelector('h1')).toHaveTextContent('Document signing unavailable');
     expect(screen.getByText(/No token was submitted/)).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
@@ -55,9 +58,12 @@ describe('public capability pages', () => {
       data: { valid: false, error: 'This link has expired.' },
     });
     window.history.replaceState({}, '', `/followup?token=${TOKEN}`);
-    renderFollowUp();
+    const { container } = renderFollowUp();
 
     expect(window.location.search).toBe('');
+    expect(document.title).toBe('Referral information request | PennSync by CareMetric');
+    expect(container.querySelectorAll('main')).toHaveLength(1);
+    expect(container.querySelector('h1')).toHaveTextContent('Home Health Referral — Information Request');
     expect(await screen.findByText('This link has expired.')).toBeInTheDocument();
     expect(capabilityFunctions.validate).toHaveBeenCalledWith(
       expect.any(Object),

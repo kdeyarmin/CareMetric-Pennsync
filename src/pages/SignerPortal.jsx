@@ -1,6 +1,7 @@
 import { useLayoutEffect } from 'react';
 import { Lock } from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
+import { APP_NAME, PLATFORM_NAME } from '@/lib/brand';
 import { scrubPublicCapabilityParameter } from '@/lib/publicCapabilityUrl';
 
 export const PUBLIC_SIGNING_UNAVAILABLE_MESSAGE =
@@ -17,18 +18,21 @@ export default function SignerPortal() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 flex items-center justify-center">
-      <Card className="w-full max-w-xl border-amber-300" role="status">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-amber-950">
-            <Lock className="h-5 w-5" aria-hidden="true" />
-            Document signing unavailable
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="text-sm text-slate-700">
-          {PUBLIC_SIGNING_UNAVAILABLE_MESSAGE}
-        </CardContent>
-      </Card>
-    </div>
+    <>
+      <title>{`Document signing | ${APP_NAME} by ${PLATFORM_NAME}`}</title>
+      <main className="min-h-screen bg-slate-50 p-4 flex items-center justify-center">
+        <Card className="w-full max-w-xl border-amber-300" role="status">
+          <CardHeader>
+            <h1 className="flex items-center gap-2 text-2xl font-semibold leading-tight tracking-tight text-amber-950">
+              <Lock className="h-5 w-5" aria-hidden="true" />
+              Document signing unavailable
+            </h1>
+          </CardHeader>
+          <CardContent className="text-sm text-slate-700">
+            {PUBLIC_SIGNING_UNAVAILABLE_MESSAGE}
+          </CardContent>
+        </Card>
+      </main>
+    </>
   );
 }

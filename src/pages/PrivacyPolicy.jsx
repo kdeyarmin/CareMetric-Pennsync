@@ -2,6 +2,7 @@ import React from 'react';
 import { useNavigate } from 'react-router';
 import { Shield, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { APP_NAME, PLATFORM_NAME } from '@/lib/brand';
 
 /**
  * PrivacyPolicy — PUBLIC page (routed pre-auth in App.jsx).
@@ -31,7 +32,9 @@ const PrivacyPolicy = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 px-4 py-10">
+    <>
+      <title>{`Privacy Policy | ${APP_NAME} by ${PLATFORM_NAME}`}</title>
+      <main className="min-h-screen bg-slate-50 px-4 py-10">
       <div className="mx-auto w-full max-w-3xl">
         <Button variant="ghost" onClick={goBack} className="mb-4 -ml-2 text-slate-600">
           <ArrowLeft className="mr-2 h-4 w-4" /> Back
@@ -144,7 +147,8 @@ const PrivacyPolicy = () => {
           </p>
         </div>
       </div>
-    </div>
+      </main>
+    </>
   );
 };
 

@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import LoadingState from '@/components/ui/LoadingState';
 import { Textarea } from '@/components/ui/textarea';
+import { APP_NAME, PLATFORM_NAME } from '@/lib/brand';
 import { usePublicCapabilityLease } from '@/lib/PublicCapabilityContext';
 import { scrubPublicCapabilityParameter } from '@/lib/publicCapabilityUrl';
 
@@ -125,7 +126,9 @@ export default function ProviderFollowUpPortal() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 py-8 px-4">
+    <>
+      <title>{`Referral information request | ${APP_NAME} by ${PLATFORM_NAME}`}</title>
+      <main className="min-h-screen bg-slate-50 py-8 px-4">
       <div className="max-w-3xl mx-auto space-y-4">
         <div className="text-center">
           <div className="inline-flex items-center gap-2 text-navy-800">
@@ -294,6 +297,7 @@ export default function ProviderFollowUpPortal() {
           </>
         )}
       </div>
-    </div>
+      </main>
+    </>
   );
 }

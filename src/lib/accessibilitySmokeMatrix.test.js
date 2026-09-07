@@ -12,6 +12,7 @@ import {
 test('public accessibility smoke matrix covers known no-token routes', () => {
   const routes = PUBLIC_ACCESSIBILITY_SMOKE_ROUTES.map((r) => r.route).sort();
   assert.deepEqual(routes, [
+    '/consent',
     '/followup',
     '/join',
     '/privacy',
@@ -30,10 +31,17 @@ test('each accessibility smoke route has enough metadata for axe/browser runners
 });
 
 test('public vs authenticated helpers partition the matrix', () => {
-  assert.equal(publicAccessibilityRoutes().length, 6);
+  assert.equal(publicAccessibilityRoutes().length, 7);
   assert.ok(authenticatedAccessibilityRoutes().length >= 4);
   assert.ok(authenticatedAccessibilityRoutes().every((r) => r.requiresAuth === true));
   assert.ok(publicAccessibilityRoutes().every((r) => r.requiresAuth === false));
+});
+
+test('public route matrix pins one exact title and primary heading per route', () => {
+  for (const route of PUBLIC_ACCESSIBILITY_SMOKE_ROUTES) {
+    assert.match(route.expectedTitle, / \| PennSync by CareMetric$/);
+    assert.ok(route.expectedHeading);
+  }
 });
 
 test('authenticated routes document role and expected state for LR-02', () => {
