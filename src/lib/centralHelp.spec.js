@@ -73,23 +73,38 @@ describe('PennSync central help context', () => {
   });
 
   it('activates only the production Base44 build and keeps previews and staging off', () => {
-    expect(resolveCentralHelpActivation({ appId: PENNSYNC_PRODUCTION_APP_ID })).toBe(true);
+    expect(resolveCentralHelpActivation({
+      appId: PENNSYNC_PRODUCTION_APP_ID,
+      environment: 'production',
+    })).toBe(true);
     expect(resolveCentralHelpActivation({
       appId: PENNSYNC_PRODUCTION_APP_ID,
       flag: 'true',
+      environment: 'production',
     })).toBe(true);
     expect(resolveCentralHelpActivation({
       appId: PENNSYNC_PRODUCTION_APP_ID,
       flag: 'false',
+      environment: 'production',
     })).toBe(false);
     expect(resolveCentralHelpActivation({
       appId: PENNSYNC_PRODUCTION_APP_ID,
+      environment: 'production',
       isDevelopment: true,
+    })).toBe(false);
+    expect(resolveCentralHelpActivation({
+      appId: PENNSYNC_PRODUCTION_APP_ID,
+      flag: 'true',
+      environment: 'staging',
+    })).toBe(false);
+    expect(resolveCentralHelpActivation({
+      appId: PENNSYNC_PRODUCTION_APP_ID,
+      flag: 'true',
     })).toBe(false);
     expect(resolveCentralHelpActivation({
       appId: '6a9881683dc68a0bd54f1ef7',
       flag: 'true',
+      environment: 'production',
     })).toBe(false);
-    expect(resolveCentralHelpActivation({ flag: 'true' })).toBe(false);
   });
 });
