@@ -27,8 +27,8 @@ vi.mock("@/api/base44Client", () => ({
       },
       TrainingModule: { filter: mocks.moduleFilter },
       TrainingQuestion: { filter: mocks.questionFilter },
-      Notification: { create: mocks.notificationCreate },
     },
+    functions: { invoke: mocks.notificationCreate },
   },
 }));
 

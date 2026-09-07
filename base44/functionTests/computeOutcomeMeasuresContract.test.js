@@ -4,7 +4,7 @@ import { readFile, writeFile, unlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { createHash } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 import { transpileTs } from "../../tools-transpile-ts.mjs";
 import {
   IMPROVEMENT_MEASURES as FE_MEASURES,
@@ -44,6 +44,36 @@ function canonicalJson(value) {
 
 function canonicalSha256(value) {
   return createHash("sha256").update(JSON.stringify(canonicalJson(value))).digest("hex");
+}
+
+function withDispatchProof(payload, {
+  secret = "scheduler-secret",
+  issuedAt = new Date().toISOString(),
+  nonce = randomUUID(),
+} = {}) {
+  const proof = {
+    version: "outcome-dispatch-v1",
+    issued_at: issuedAt,
+    nonce,
+  };
+  const message = JSON.stringify([
+    proof.version,
+    payload.agency_id,
+    payload.period_type,
+    payload.period_start,
+    payload.period_end,
+    payload.benchmark ?? null,
+    payload.idempotency_key,
+    proof.issued_at,
+    proof.nonce,
+  ]);
+  return {
+    ...payload,
+    dispatch_proof: {
+      ...proof,
+      signature: createHmac("sha256", secret).update(message).digest("hex"),
+    },
+  };
 }
 
 function v2Row(itemNumber, definitionId, code) {
@@ -114,10 +144,6 @@ async function loadHandler({
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     "const createClientFromRequest = globalThis.__omMakeClient;",
   );
-  src = src.replace(
-    'const OUTCOME_COMPUTATION_ENABLED = false;',
-    `const OUTCOME_COMPUTATION_ENABLED = ${outcomeComputationEnabled};`,
-  );
   const js = transpileTs(src).outputText;
   const tmp = join(tmpdir(), `omctr_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   await writeFile(tmp, js);
@@ -162,7 +188,15 @@ async function loadHandler({
   let handler;
   globalThis.Deno = {
     serve: (h) => { handler = h; },
-    env: { get: (key) => key === "INTERNAL_FN_SECRET" ? internalSecret : undefined },
+    env: {
+      get: (key) => {
+        if (key === "INTERNAL_FN_SECRET") return internalSecret;
+        if (key === "OUTCOME_PIPELINE_RELEASE") {
+          return outcomeComputationEnabled ? "enabled-v1" : undefined;
+        }
+        return undefined;
+      },
+    },
   };
   globalThis.__omMakeClient = () => ({
     auth: { me: async () => user },
@@ -500,6 +534,57 @@ test("the internal scheduler secret may run one explicit agency scope", async ()
   assert.equal(status, 200);
   assert.equal(json.agency_id, AGENCY_A);
   assert.equal(written.metricCreates.length, 1);
+});
+
+test("a short-lived dispatcher proof may run only its exact signed agency and window", async () => {
+  const fixture = await loadHandler({
+    user: null,
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+  });
+  const payload = withDispatchProof({
+    agency_id: AGENCY_A,
+    period_start: "2026-06-01",
+    period_end: "2026-06-01",
+    period_type: "daily",
+    idempotency_key: "nightly-outcome-daily:2026-06-01",
+  });
+  const accepted = await run(fixture.handler, payload, {});
+  assert.equal(accepted.status, 200);
+  assert.equal(accepted.json.agency_id, AGENCY_A);
+  assert.equal(fixture.written.metricCreates.length, 1);
+
+  const tamperedFixture = await loadHandler({ user: null });
+  const tampered = await run(tamperedFixture.handler, {
+    ...payload,
+    agency_id: AGENCY_B,
+  }, {});
+  assert.equal(tampered.status, 401);
+  assert.match(tampered.json.error, /internal scheduler secret required/i);
+  assert.deepEqual(tamperedFixture.queries, []);
+});
+
+test("expired, malformed, and extra-field dispatcher requests fail before service-role access", async () => {
+  const expiredPayload = withDispatchProof({
+    agency_id: AGENCY_A,
+    period_start: "2026-06-01",
+    period_end: "2026-06-01",
+    period_type: "daily",
+    idempotency_key: "nightly-outcome-daily:2026-06-01",
+  }, { issuedAt: new Date(Date.now() - 16 * 60 * 1000).toISOString() });
+  const expiredFixture = await loadHandler({ user: null });
+  const expired = await run(expiredFixture.handler, expiredPayload, {});
+  assert.equal(expired.status, 401);
+  assert.deepEqual(expiredFixture.queries, []);
+
+  const extraFixture = await loadHandler();
+  const extra = await run(extraFixture.handler, {
+    agency_id: AGENCY_A,
+    unexpected_scope: AGENCY_B,
+  });
+  assert.equal(extra.status, 400);
+  assert.match(extra.json.error, /unsupported fields/i);
+  assert.deepEqual(extraFixture.queries, []);
 });
 
 test("a mutable account_type=super_admin claim cannot replace the internal secret", async () => {

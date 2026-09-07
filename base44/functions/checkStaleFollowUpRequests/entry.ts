@@ -286,14 +286,19 @@ function followUpNotificationKey(agencyId: string, referralId: string, sentAt: s
 function expectedNotification(
   agencyId: string,
   referralId: string,
-  recipientEmail: string,
+  recipient: Record<string, any>,
   key: string,
   staleDays: number,
 ) {
   return {
     agency_id: agencyId,
     dedupe_key: key,
-    user_email: recipientEmail,
+    recipient_user_id: recipient.user_id,
+    recipient_membership_id: recipient.id,
+    recipient_membership_version: recipient.version,
+    authority_version: 1,
+    version: 1,
+    user_email: recipient.user_email_normalized,
     title: 'Provider follow-up request unanswered',
     message: `A provider information request has had no response for ${staleDays}+ days. Review it before the start-of-care deadline.`,
     type: 'info',
@@ -305,6 +310,7 @@ function expectedNotification(
       workflow: 'stale_provider_follow_up',
     },
     is_read: false,
+    dismissed: false,
     action_url: `/ReferralFollowUp?id=${encodeURIComponent(referralId)}`,
   };
 }
@@ -312,13 +318,22 @@ function expectedNotification(
 function notificationMatches(row: Record<string, any>, expected: Record<string, any>) {
   return row?.agency_id === expected.agency_id
     && row?.dedupe_key === expected.dedupe_key
+    && row?.recipient_user_id === expected.recipient_user_id
+    && row?.recipient_membership_id === expected.recipient_membership_id
+    && row?.recipient_membership_version === expected.recipient_membership_version
+    && row?.authority_version === expected.authority_version
+    && Number.isSafeInteger(row?.version)
+    && row.version >= 1
     && canonicalEmail(row?.user_email) === expected.user_email
     && row?.title === expected.title
     && row?.message === expected.message
     && row?.type === expected.type
     && row?.priority === expected.priority
     && sameJson(row?.metadata, expected.metadata)
-    && row?.is_read === false
+    && typeof row?.is_read === 'boolean'
+    && (row.is_read ? validInstant(row.read_at) : row.read_at == null)
+    && typeof row?.dismissed === 'boolean'
+    && (row.dismissed ? validInstant(row.dismissed_at) : row.dismissed_at == null)
     && row?.action_url === expected.action_url;
 }
 
@@ -331,6 +346,7 @@ async function findNotification(
       {
         agency_id: expected.agency_id,
         dedupe_key: expected.dedupe_key,
+        recipient_user_id: expected.recipient_user_id,
         user_email: expected.user_email,
       },
       '-created_date',
@@ -441,7 +457,7 @@ async function processAgency(
       const notification = expectedNotification(
         agencyId,
         referral.id,
-        referral.created_by_user_email_normalized,
+        recipient,
         key,
         staleDays,
       );
@@ -541,13 +557,24 @@ Deno.serve(async (req) => {
       totals.failed += result.failed;
     }
 
-    return Response.json({
+    const result = {
       success: true,
       agency_id: agencyId,
       agencies_processed: agencyIds.length,
       stale_days: staleDays,
       ...totals,
-    }, { headers: { 'Cache-Control': 'no-store' } });
+    };
+    if (totals.failed > 0) {
+      return Response.json({
+        ...result,
+        success: false,
+        error: 'One or more stale follow-up escalations failed',
+      }, {
+        status: 500,
+        headers: { 'Cache-Control': 'no-store' },
+      });
+    }
+    return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     if (error instanceof PublicError) {
       return Response.json(

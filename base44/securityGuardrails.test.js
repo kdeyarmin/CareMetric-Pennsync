@@ -263,41 +263,57 @@ for (const file of SCHEDULER_AUTH_FILES) {
   });
 }
 
-test('computeOutcomeMeasures is internal-secret-only and never authorizes from User or Agency claims', () => {
+test('computeOutcomeMeasures accepts only internal or signed dispatcher authority and never User or Agency claims', () => {
   const src = read('base44/functions/computeOutcomeMeasures/entry.ts');
   const dedicatedGate = src.slice(
     src.indexOf('function hasValidInternalSecret'),
     src.indexOf('// computeOutcomeMeasures'),
   );
   const handler = src.slice(src.indexOf('Deno.serve'));
-  assert.ok(/getOutcomeInitialAuthError\(req\)/.test(handler));
+  assert.ok(/getOutcomeInitialAuthError\(req, body\)/.test(handler));
   assert.ok(/INTERNAL_FN_SECRET/.test(dedicatedGate));
+  assert.ok(/verifyOutcomeDispatchProof/.test(dedicatedGate));
   assert.ok(!/auth\.me\(/.test(handler));
   assert.ok(!/account_type|admin_user_ids|admin_email/.test(dedicatedGate));
   assert.ok(/agency_id is required/.test(handler));
   assert.ok(/valid period_start and period_end/.test(handler));
 });
 
-test('computeOutcomeMeasures remains hard-paused and scheduled default-off', () => {
+test('the outcome worker and scheduler dispatcher remain release-gated and scheduled default-off', () => {
   const src = read('base44/functions/computeOutcomeMeasures/entry.ts');
-  const config = JSON5.parse(read('base44/functions/computeOutcomeMeasures/function.jsonc'));
+  const workerConfig = JSON5.parse(read('base44/functions/computeOutcomeMeasures/function.jsonc'));
+  const dispatcher = read('base44/functions/dispatchNightlyOutcomeMeasures/entry.ts');
+  const config = JSON5.parse(read('base44/functions/dispatchNightlyOutcomeMeasures/function.jsonc'));
   const gate = src.indexOf('if (!OUTCOME_COMPUTATION_ENABLED)');
   const client = src.indexOf('createClientFromRequest(req)');
+  const dispatchGate = dispatcher.indexOf('if (!OUTCOME_DISPATCH_ENABLED)');
+  const dispatchClient = dispatcher.indexOf('createClientFromRequest(req)');
 
-  assert.match(src, /const OUTCOME_COMPUTATION_ENABLED = false;/);
+  assert.match(src, /Deno\.env\.get\('OUTCOME_PIPELINE_RELEASE'\)/);
+  assert.match(src, /=== 'enabled-v1'/);
   assert.ok(gate > 0 && gate < client, 'hard pause must return before SDK client creation');
-  assert.equal(config.name, 'computeOutcomeMeasures');
+  assert.equal(workerConfig.name, 'computeOutcomeMeasures');
+  assert.equal(workerConfig.entry, 'entry.ts');
+  assert.deepEqual(workerConfig.automations, [], 'the one-agency worker must explicitly remove its unsafe empty-payload schedule');
+  assert.match(dispatcher, /Deno\.env\.get\('OUTCOME_PIPELINE_RELEASE'\)/);
+  assert.match(dispatcher, /=== 'enabled-v1'/);
+  assert.ok(dispatchGate > 0 && dispatchGate < dispatchClient,
+    'dispatcher pause must return before SDK client creation');
+  assert.equal(config.name, 'dispatchNightlyOutcomeMeasures');
   assert.equal(config.entry, 'entry.ts');
   assert.equal(config.automations.length, 1);
   assert.equal(config.automations[0].name, 'Nightly Outcome Measure Computation');
   assert.equal(config.automations[0].is_active, false);
-  assert.equal(config.automations[0].function_args, null);
+  assert.deepEqual(config.automations[0].function_args, {});
   assert.equal(config.automations[0].type, 'scheduled');
   assert.equal(config.automations[0].schedule_mode, 'recurring');
-  assert.equal(config.automations[0].schedule_type, 'simple');
-  assert.equal(config.automations[0].repeat_unit, 'days');
-  assert.equal(config.automations[0].repeat_interval, 1);
-  assert.equal(config.automations[0].start_time, '06:00');
+  assert.equal(config.automations[0].schedule_type, 'cron');
+  assert.equal(config.automations[0].cron_expression, '0 6 * * *');
+  assert.match(dispatcher, /Object\.keys\(body\)\.length !== 0/);
+  assert.match(dispatcher, /loadScheduledAgencyIds/);
+  assert.match(dispatcher, /requireExactEnabledAgency/);
+  assert.match(dispatcher, /createOutcomeDispatchProof/);
+  assert.match(dispatcher, /asServiceRole\.functions\.invoke\(\s*'computeOutcomeMeasures'/);
 });
 
 test('computed outcome and PDGM rows use hosted operation-specific service-role-only RLS', () => {
@@ -316,6 +332,11 @@ test('browser outcome surfaces do not read outcome entities or invoke the secret
     existsSync(join(REPO, 'src/functions/computeOutcomeMeasures.js')),
     false,
     'the dormant browser invoker must stay removed; the outcome job is internal-secret-only.',
+  );
+  assert.equal(
+    existsSync(join(REPO, 'src/functions/dispatchNightlyOutcomeMeasures.js')),
+    false,
+    'the global scheduler dispatcher must never be exposed through a browser wrapper.',
   );
   for (const file of [
     'src/components/oasis/OutcomeMeasuresSection.jsx',
@@ -421,19 +442,13 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
   }
 });
 
-// 12-14. Document-signing capabilities remain deliberately paused. Provider
-// follow-up has a separately exercised tenant-bound capability contract.
-// Each endpoint must return before constructing an SDK client, parsing attacker
-// input, touching service-role data, uploading, or distributing a bearer link.
+// 12-14. Residual document-signing capabilities remain static early 503s.
+// Five rebuilt brokers retain dormant implementations behind fail-closed source
+// gates and have a separate contract below.
 const HARD_PAUSED_CAPABILITY_FUNCTIONS = [
-  'validateSignerToken',
-  'submitSignerSignature',
   'submitDocumentSignatures',
-  'generateSignerToken',
   'notifySignerOfPackage',
   'sendSignatureReminder',
-  'scheduleSignatureReminders',
-  'dispatchScheduledSignatureReminders',
   'sendAutomatedSignatureReminders',
   'checkPendingSignatureRequests',
   'sendDocumentReminderEmails',
@@ -443,6 +458,7 @@ const HARD_PAUSED_CAPABILITY_FUNCTIONS = [
   'generateSignatureCertificate',
   'signatureIntegrity',
   'stampSignatureOnPDF',
+  'embedAnnotationsToPDF',
   'notifyAdminOfSignedDocument',
   'onDocumentSigned',
 ];
@@ -462,8 +478,39 @@ for (const functionName of HARD_PAUSED_CAPABILITY_FUNCTIONS) {
   });
 }
 
+const DORMANT_SIGNATURE_BROKERS = {
+  validateSignerToken: 'PUBLIC_SIGNATURE_RELEASE_ENABLED',
+  submitSignerSignature: 'PUBLIC_SIGNATURE_RELEASE_ENABLED',
+  generateSignerToken: 'PUBLIC_SIGNATURE_RELEASE_ENABLED',
+  scheduleSignatureReminders: 'SIGNATURE_REMINDER_RELEASE_ENABLED',
+  dispatchScheduledSignatureReminders: 'SIGNATURE_REMINDER_DISPATCH_ENABLED',
+};
+
+for (const [functionName, marker] of Object.entries(DORMANT_SIGNATURE_BROKERS)) {
+  test(`${functionName} retains a dormant implementation behind its early release gate`, () => {
+    const src = read(`base44/functions/${functionName}/entry.ts`);
+    assert.match(src, new RegExp(`const ${marker} = false;`));
+    assert.match(src, /npm:\@base44\/sdk\@0\.8\.46/);
+    const handlerIndex = src.indexOf('Deno.serve(async (req) =>');
+    const guardIndex = src.indexOf(`if (!${marker})`, handlerIndex);
+    const clientIndex = src.indexOf('createClientFromRequest(req)', handlerIndex);
+    assert.notEqual(handlerIndex, -1);
+    assert.notEqual(guardIndex, -1);
+    assert.notEqual(clientIndex, -1);
+    assert.ok(guardIndex < clientIndex, `${functionName} must gate before SDK construction`);
+    for (const bodyCall of ['req.text()', 'req.formData()', 'req.json()', 'req.arrayBuffer()']) {
+      const bodyIndex = src.indexOf(bodyCall, handlerIndex);
+      if (bodyIndex !== -1) assert.ok(guardIndex < bodyIndex, `${functionName} must gate before ${bodyCall}`);
+    }
+    const guardedPrefix = src.slice(guardIndex, clientIndex);
+    assert.match(guardedPrefix, /status:\s*503/);
+    assert.match(guardedPrefix, /['"]Cache-Control['"]:\s*['"]no-store['"]/);
+    assert.match(guardedPrefix, /Pragma:\s*['"]no-cache['"]/);
+  });
+}
+
 // Codex P1/P2 regression locks (PR review on deep-app-review).
-test('Codex review: SoR and FaxRetry stay in scope across loops', () => {
+test('Codex review: SoR and automatic fax retry stay in scope across loops', () => {
   const monitor = read('base44/functions/monitorComplianceRisks/entry.ts');
   const autoRetry = read('base44/functions/autoRetryFailedFaxes/entry.ts');
   assert.ok(
@@ -474,11 +521,10 @@ test('Codex review: SoR and FaxRetry stay in scope across loops', () => {
     /if\s*\(\s*agencyName\s*\)\s*\{[\s\S]*?sorCache\.set\(\s*key\s*,\s*false\s*\)/.test(monitor),
     'monitorComplianceRisks must fail closed on keyed AgencySettings miss.',
   );
-  assert.ok(
-    /dueFaxes\.push\(\s*\{\s*fax\s*,\s*cfg\s*,\s*c\s*\}\s*\)/.test(autoRetry)
-    && /for\s*\(\s*const\s*\{\s*fax\s*,\s*cfg\s*,\s*c\s*\}\s*of\s*dueFaxes\s*\)/.test(autoRetry),
-    'autoRetryFailedFaxes must carry cfg/c into the dispatch loop.',
-  );
+  assert.ok(/strictAutomaticRetryCandidate\(fax, now\)/.test(autoRetry)
+    && /loadAutomaticRetryPolicy\(entities, fax\)/.test(autoRetry)
+    && /action:\s*'dispatch_retry'/.test(autoRetry),
+  'autoRetryFailedFaxes must validate each exact source and policy before delegated dispatch.');
 });
 
 test('Codex review: invitation actions fail closed without an agency', () => {
@@ -490,7 +536,7 @@ test('Codex review: invitation actions fail closed without an agency', () => {
   );
 });
 
-test('Codex review: scheduleSms auth, digests, fax sender agency, audit pause', () => {
+test('Codex review: scheduleSms auth, digests, fax authority, audit pause', () => {
   const sms = read('base44/functions/scheduleSms/entry.ts');
   const digest = read('base44/functions/sendCredentialRenewalReminders/entry.ts');
   const batch = read('base44/functions/sendBatchFax/entry.ts');
@@ -507,14 +553,14 @@ test('Codex review: scheduleSms auth, digests, fax sender agency, audit pause', 
     && /never unscoped/.test(digest),
     'Agency credential digests must exclude unscoped items.',
   );
-  assert.ok(
-    /senderAgency/.test(batch) && /senderEmail/.test(batch),
-    'sendBatchFax must resolve AgencySettings from the attributed sender.',
-  );
-  assert.ok(
-    /senderAgency/.test(retry) && /originalFax\.sent_by/.test(retry),
-    'retryFailedFax must resolve fax settings from the original sender agency.',
-  );
+  assert.ok(/AgencyMembership\.filter/.test(batch)
+    && /DocumentTenantBinding\.filter/.test(batch)
+    && /TelecomDestinationBinding\.filter/.test(batch)
+    && /CreateFileSignedUrl/.test(batch),
+  'sendBatchFax must re-prove tenant, private document, and sender authority.');
+  assert.ok(/functions\.invoke\('sendAuthorizedReferralFax'/.test(retry)
+    && /retry_fax_log_id:\s*faxLogId/.test(retry),
+  'retryFailedFax must delegate exact retry authority to the referral fax broker.');
   assert.ok(
     /legacy\.length === 1/.test(timesheet) && /VisitPointConfig/.test(timesheet),
     'submitTimesheet must adopt a single unscoped VisitPointConfig legacy row.',
@@ -539,7 +585,7 @@ test('Codex review: scheduleSms auth, digests, fax sender agency, audit pause', 
 //     through the SHARED isAllowedDestination helper (generated from the
 //     frontend costControls.js). Hand-maintained inline copies are exactly how
 //     the malformed-+1 bypass drifted in before.
-for (const fn of ['sendSms', 'sendFax', 'sendBatchFax', 'startMaskedCall', 'dispatchScheduledSms', 'autoRetryFailedFaxes']) {
+for (const fn of ['sendSms', 'sendFax', 'sendBatchFax', 'startMaskedCall', 'dispatchScheduledSms']) {
   test(`${fn} consumes the shared isAllowedDestination helper`, () => {
     const src = read(`base44/functions/${fn}/entry.ts`);
     assert.ok(
@@ -754,15 +800,17 @@ test('dispatchScheduledSms resolves agency config per row', () => {
 // autoRetryFailedFaxes must classify a non-OK Telnyx response instead of
 // terminal-failing every queued fax on the first provider error, and must
 // re-gate the stored destination through isAllowedDestination.
-test('autoRetryFailedFaxes classifies provider errors and re-gates the destination', () => {
+test('autoRetryFailedFaxes claims only strict terminal private attempts and delegates dispatch', () => {
   const src = read('base44/functions/autoRetryFailedFaxes/entry.ts');
   assert.ok(
-    /classifyFaxFailure\(String\(status\), errText\)/.test(src),
-    'autoRetryFailedFaxes must classify the non-OK Telnyx status (transient 401/403/429/5xx reschedule) rather than always exhausting.',
+    /provider_submission_state === 'accepted'/.test(src)
+    && /provider_terminal_status === 'failed'/.test(src)
+    && /row\.document_url == null/.test(src),
+    'autoRetryFailedFaxes must require accepted, signed-terminal, private-document provenance.',
   );
   assert.ok(
-    /isAllowedDestination\(fax\.to_number, faxLine\.settings\)/.test(src),
-    'autoRetryFailedFaxes must re-validate the stored to_number against the cost-control allowlist before dispatch.',
+    /FaxLog\.updateMany/.test(src) && /action:\s*'dispatch_retry'/.test(src),
+    'autoRetryFailedFaxes must atomically claim then delegate to the authority/destination broker.',
   );
 });
 

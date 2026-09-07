@@ -1,14 +1,117 @@
 {
   "name": "ScheduledFax",
   "type": "object",
+  "description": "Server-owned queue for authority-bound private-document fax batches. Legacy URL/from-number rows remain readable to service workers only and are rejected at dispatch when versioned provenance is absent.",
   "properties": {
+    "schedule_key": {
+      "type": "string",
+      "description": "SHA-256 idempotency key scoped to Agency, immutable authorizing User id, and client_request_id. Runtime still detects duplicates because datastore uniqueness is not assumed."
+    },
+    "client_request_id": {
+      "type": "string",
+      "description": "Bounded caller retry identity used only inside the server-built schedule_key."
+    },
+    "authorization_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Version of the service-owned scheduled-fax authority contract. Only version 1 is dispatchable."
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Agency id proven by the authenticated scheduling broker."
+    },
+    "document_id": {
+      "type": "string",
+      "description": "Private Document identity proven through DocumentTenantBinding."
+    },
+    "document_binding_id": {
+      "type": "string",
+      "description": "Exact immutable DocumentTenantBinding observed when the schedule was authorized."
+    },
+    "document_binding_version": {
+      "type": "integer",
+      "minimum": 2,
+      "description": "DocumentTenantBinding format version observed when the schedule was authorized."
+    },
+    "document_content_sha256": {
+      "type": "string",
+      "description": "Exact private-document content digest observed when the schedule was authorized."
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "telnyx"
+      ]
+    },
+    "integration_secret_id": {
+      "type": "string"
+    },
+    "integration_secret_updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "fax_connection_id": {
+      "type": "string"
+    },
+    "sender_number_e164": {
+      "type": "string",
+      "description": "Exact server-resolved outbound sender; caller-supplied from_number is never used."
+    },
+    "sender_telecom_binding_id": {
+      "type": "string"
+    },
+    "sender_telecom_binding_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sender_provider_number_id": {
+      "type": "string"
+    },
+    "sender_settings_id": {
+      "type": "string"
+    },
+    "sender_settings_updated_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "authorized_by_user_id": {
+      "type": "string",
+      "description": "Immutable built-in User id that authorized the scheduled disclosure."
+    },
+    "authorized_by_email_normalized": {
+      "type": "string",
+      "format": "email",
+      "description": "Normalized built-in email retained as an integrity check for authorized_by_user_id."
+    },
+    "authorized_by_membership_id": {
+      "type": "string",
+      "description": "Exact active AgencyMembership that authorized the scheduled disclosure."
+    },
+    "authorized_by_membership_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "AgencyMembership revision that authorized the scheduled disclosure."
+    },
+    "authorized_tenant_role": {
+      "type": "string",
+      "enum": [
+        "agency_admin",
+        "manager",
+        "clinician",
+        "office_staff",
+        "social_worker",
+        "spiritual_care"
+      ],
+      "description": "Tenant role re-proved at dispatch; a changed role fails closed."
+    },
     "scheduled_time": {
       "type": "string",
       "format": "date-time",
       "description": "When to send the fax"
     },
     "from_number": {
-      "type": "string"
+      "type": "string",
+      "description": "Legacy caller-supplied sender value. Versioned jobs ignore it and resolve the agency fax line server-side."
     },
     "to_numbers": {
       "type": "array",
@@ -17,7 +120,8 @@
       }
     },
     "document_url": {
-      "type": "string"
+      "type": "string",
+      "description": "Legacy public/signed URL. Versioned jobs must omit it and create a short-lived private-file capability only at dispatch."
     },
     "document_name": {
       "type": "string"
@@ -40,6 +144,9 @@
         "pending",
         "processing",
         "sent",
+        "partial_failure",
+        "needs_review",
+        "blocked",
         "cancelled",
         "failed"
       ],
@@ -55,6 +162,33 @@
       "type": "string",
       "format": "date-time"
     },
+    "dispatch_attempt_id": {
+      "type": "string",
+      "description": "Opaque identity for the current processor-to-broker dispatch attempt."
+    },
+    "accepted_count": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "failed_count": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "unknown_count": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "last_error_code": {
+      "type": "string",
+      "description": "Bounded non-PHI machine code explaining a blocked or review-required queue outcome."
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
     "canceled_at": {
       "type": "string",
       "format": "date-time",
@@ -67,9 +201,7 @@
   },
   "required": [
     "scheduled_time",
-    "from_number",
-    "to_numbers",
-    "document_url"
+    "to_numbers"
   ],
   "rls": {
     "read": false,

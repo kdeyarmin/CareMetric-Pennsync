@@ -15,8 +15,8 @@ vi.mock('@/api/base44Client', () => ({
     auth: { me: (...a) => authMe(...a) },
     entities: {
       User: { list: (...a) => userList(...a) },
-      Notification: { create: (...a) => notificationCreate(...a) },
     },
+    functions: { invoke: (...a) => notificationCreate(...a) },
     integrations: { Core: { SendEmail: (...a) => sendEmail(...a) } },
   },
 }));
@@ -136,7 +136,8 @@ describe('AdmissionBriefEmailCard', () => {
     expect(sent.body).toContain('To: Kelly Nurse');
 
     await waitFor(() => expect(notificationCreate).toHaveBeenCalledTimes(1));
-    expect(notificationCreate.mock.calls[0][0]).toMatchObject({
+    expect(notificationCreate.mock.calls[0][0]).toBe('createNotification');
+    expect(notificationCreate.mock.calls[0][1]).toMatchObject({
       user_email: 'kelly@a.example',
       type: 'new_referral',
     });

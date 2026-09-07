@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { base44 } from '@/api/base44Client';
-import { retryFailedFax } from '@/functions/retryFailedFax';
+import { sendAuthorizedReferralFax } from '@/functions/sendAuthorizedReferralFax';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
-import { CheckCircle2, AlertCircle, Clock, RefreshCw, X, Bell, RotateCcw, PauseCircle, PlayCircle } from 'lucide-react';
+import { CheckCircle2, AlertCircle, AlertTriangle, Clock, RefreshCw, X, Bell, RotateCcw, PauseCircle, PlayCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -12,10 +12,12 @@ import {
   getRelativeTimeLabel,
   normalizeStatus
 } from '@/components/fax/faxTrackerUtils';
+import { canManuallyRetryFax } from '@/components/fax/faxRetry';
 
 const statusConfig = {
   delivered: { color: 'bg-green-50', icon: CheckCircle2, label: 'Delivered', badge: 'text-green-700 bg-green-100' },
   failed: { color: 'bg-red-50', icon: AlertCircle, label: 'Failed', badge: 'text-red-700 bg-red-100' },
+  needs_review: { color: 'bg-amber-50', icon: AlertTriangle, label: 'Needs review', badge: 'text-amber-800 bg-amber-100' },
   pending: { color: 'bg-blue-50', icon: Clock, label: 'Pending', badge: 'text-blue-700 bg-blue-100' },
   queued: { color: 'bg-amber-50', icon: Clock, label: 'Queued', badge: 'text-amber-700 bg-amber-100' }
 };
@@ -32,6 +34,7 @@ export default function RealtimeFaxStatusTracker() {
   const [selectedFax, setSelectedFax] = useState(null);
   const [liveUpdatesEnabled, setLiveUpdatesEnabled] = useState(true);
   const [retryNotice, setRetryNotice] = useState('');
+  const [retryNoticeNeedsReview, setRetryNoticeNeedsReview] = useState(false);
   const queryClient = useQueryClient();
 
   // Fetch recent fax logs with real-time polling
@@ -52,12 +55,17 @@ export default function RealtimeFaxStatusTracker() {
   });
 
   const retryFaxMutation = useMutation({
-    mutationFn: (fax) => retryFailedFax({ fax_log_id: fax.id }),
-    onSuccess: () => {
+    mutationFn: (fax) => sendAuthorizedReferralFax({ retry_fax_log_id: fax.id }),
+    onSuccess: (response) => {
+      const data = response?.data ?? response;
       queryClient.invalidateQueries({ queryKey: ['faxLogs'] });
       queryClient.invalidateQueries({ queryKey: ['faxLogs', 'recent'] });
       setSelectedFax(null);
-      setRetryNotice('Retry request submitted. Status will refresh automatically.');
+      const needsReview = data?.requires_reconciliation || data?.status === 'submission_unknown';
+      setRetryNoticeNeedsReview(needsReview);
+      setRetryNotice(needsReview
+        ? 'Telnyx may have accepted the retry. Review the provider record before any further send.'
+        : 'Retry request submitted. Status will refresh automatically.');
     }
   });
 
@@ -86,7 +94,10 @@ export default function RealtimeFaxStatusTracker() {
 
   useEffect(() => {
     if (!retryNotice) return undefined;
-    const timeoutId = setTimeout(() => setRetryNotice(''), 5000);
+    const timeoutId = setTimeout(() => {
+      setRetryNotice('');
+      setRetryNoticeNeedsReview(false);
+    }, 5000);
     return () => clearTimeout(timeoutId);
   }, [retryNotice]);
 
@@ -117,12 +128,13 @@ export default function RealtimeFaxStatusTracker() {
 
       {/* Summary Cards */}
       {total > 0 && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
             { key: 'delivered', label: 'Delivered' },
             { key: 'pending', label: 'Pending' },
             { key: 'queued', label: 'Queued' },
-            { key: 'failed', label: 'Failed' }
+            { key: 'failed', label: 'Failed' },
+            { key: 'needs_review', label: 'Needs review' }
           ].map(({ key, label }) => {
             const config = statusConfig[key];
             const Icon = config.icon;
@@ -144,9 +156,11 @@ export default function RealtimeFaxStatusTracker() {
       )}
 
       {retryNotice && (
-        <Alert className="bg-green-50 border-green-200">
-          <CheckCircle2 className="w-4 h-4 text-green-600" />
-          <AlertDescription className="text-green-800">
+        <Alert className={retryNoticeNeedsReview ? 'bg-amber-50 border-amber-200' : 'bg-green-50 border-green-200'}>
+          {retryNoticeNeedsReview
+            ? <AlertTriangle className="w-4 h-4 text-amber-700" />
+            : <CheckCircle2 className="w-4 h-4 text-green-600" />}
+          <AlertDescription className={retryNoticeNeedsReview ? 'text-amber-900' : 'text-green-800'}>
             {retryNotice}
           </AlertDescription>
         </Alert>
@@ -291,7 +305,7 @@ export default function RealtimeFaxStatusTracker() {
                 </div>
               )}
 
-              {selectedFax.status?.toLowerCase() === 'failed' && (
+              {canManuallyRetryFax(selectedFax) && (
                 <Button
                   variant="default"
                   className="w-full"
@@ -304,6 +318,15 @@ export default function RealtimeFaxStatusTracker() {
                     <><RotateCcw className="w-4 h-4 mr-2" /> Retry failed fax</>
                   )}
                 </Button>
+              )}
+
+              {selectedFax.status === 'submission_unknown' && (
+                <Alert className="bg-amber-50 border-amber-200">
+                  <AlertTriangle className="w-4 h-4 text-amber-700" />
+                  <AlertDescription className="text-amber-900">
+                    Telnyx may have accepted this fax. Check the provider record before sending it again.
+                  </AlertDescription>
+                </Alert>
               )}
 
               <Button

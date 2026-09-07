@@ -102,6 +102,7 @@ function makeStatefulClient({ publicKeyB64, secretOverrides = {}, secrets, bindi
     public_key: publicKeyB64,
     messaging_profile_id: "MP1",
     is_active: true,
+    updated_date: "2026-09-05T11:59:00.000Z",
     ...secretOverrides,
   };
   const data = {
@@ -414,13 +415,17 @@ test("signed consent keywords fail closed without one exact active destination/p
   const cases = [
     {
       name: "inactive IntegrationSecret",
-      expectedStatus: 401,
+      expectedStatus: 503,
       options: { secretOverrides: { is_active: false } },
     },
     {
       name: "non-Telnyx IntegrationSecret",
-      expectedStatus: 401,
+      expectedStatus: 503,
       options: { secretOverrides: { provider: "other" } },
+    },
+    {
+      name: "missing IntegrationSecret revision provenance",
+      options: { secretOverrides: { updated_date: undefined } },
     },
     {
       name: "multiple active Telnyx credentials",
@@ -429,10 +434,12 @@ test("signed consent keywords fail closed without one exact active destination/p
           {
             id: "integration_1", provider: "telnyx", is_active: true,
             api_key: "KEYtest", public_key: publicKeyB64, messaging_profile_id: "MP1",
+            updated_date: "2026-09-05T11:59:00.000Z",
           },
           {
             id: "integration_2", provider: "telnyx", is_active: true,
             api_key: "KEYother", public_key: publicKeyB64, messaging_profile_id: "MP2",
+            updated_date: "2026-09-05T11:58:00.000Z",
           },
         ],
       },
@@ -681,7 +688,15 @@ test("signed inbound patient telecom events stay paused or require exact fax des
         filter: async (...args) => {
           entityCalls.push({ name, operation: "filter", args });
           if (name === "IntegrationSecret") {
-            return [{ id: "integration_1", provider: "telnyx", api_key: "KEYtest", public_key: publicKeyB64, messaging_profile_id: "MP1", is_active: true }];
+            return [{
+              id: "integration_1",
+              provider: "telnyx",
+              api_key: "KEYtest",
+              public_key: publicKeyB64,
+              messaging_profile_id: "MP1",
+              is_active: true,
+              updated_date: "2026-09-05T11:59:00.000Z",
+            }];
           }
           return [];
         },

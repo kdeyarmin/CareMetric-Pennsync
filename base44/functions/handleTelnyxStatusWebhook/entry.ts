@@ -390,6 +390,43 @@ async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
 }
 // <<<END SHARED HELPER: telnyxSmsAuthority>>>
 
+// Webhook mutations must be bound to one exact, active Telnyx credential row.
+// The generic resolver intentionally supports legacy callers by choosing a
+// preferred row; that fallback is unsafe for a signed webhook because two
+// active rows would make both signature authority and fax provenance ambiguous.
+const TELNYX_WEBHOOK_CREDENTIAL_ROW_LIMIT = 2;
+async function resolveExactActiveTelnyxWebhookCredentials(base44) {
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.IntegrationSecret.filter(
+      { provider: 'telnyx', is_active: true },
+      undefined,
+      TELNYX_WEBHOOK_CREDENTIAL_ROW_LIMIT,
+    );
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) return null;
+  const record = rows[0];
+  const pick = (value) => (typeof value === 'string' && value.trim() === value && value
+    ? value
+    : null);
+  if (record?.provider !== 'telnyx'
+    || record?.is_active !== true
+    || boundedTelnyxAuthorityId(record?.id) !== record?.id
+    || !Number.isFinite(Date.parse(record?.updated_date || ''))
+    || !pick(record?.public_key)) return null;
+  return {
+    apiKey: pick(record.api_key),
+    publicKey: pick(record.public_key),
+    messagingProfileId: pick(record.messaging_profile_id),
+    voiceConnectionId: pick(record.voice_connection_id),
+    faxConnectionId: pick(record.fax_connection_id),
+    record,
+    readError: null,
+  };
+}
+
 // <<<BEGIN SHARED HELPER: resolveFaxRetryConfig — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveFaxRetryConfig(base44, agencyName) {
   const key = String(agencyName || '').trim();
@@ -1198,6 +1235,7 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
 const FAX_RANK = { queued: 1, sending: 2, sent: 3, delivered: 4, failed: 4, retrying: 4, retried: 5 };
 
 const INBOUND_FAX_EXACT_ROW_LIMIT = 10;
+const OUTBOUND_FAX_EXACT_ROW_LIMIT = 10;
 const INBOUND_FAX_NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 
 function exactInboundFaxHttpsUrl(value) {
@@ -1228,6 +1266,257 @@ function inboundFaxUnavailable(status = 503, code = 'INBOUND_FAX_BINDING_UNAVAIL
 function successfulInboundFaxUpdate(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value)
     && value.success === true && value.updated === 1 && value.has_more === false;
+}
+
+function outboundFaxHasStatusAuthority(row) {
+  const referralAuthority = boundedTelnyxAuthorityId(row?.referral_id) === row?.referral_id
+    && boundedTelnyxAuthorityId(row?.sent_by_user_id) === row?.sent_by_user_id
+    && boundedTelnyxAuthorityId(row?.sent_by_membership_id) === row?.sent_by_membership_id
+    && Number.isSafeInteger(row?.sent_by_membership_version)
+    && row.sent_by_membership_version >= 1;
+  const bindingAuthority = boundedTelnyxAuthorityId(row?.sender_telecom_binding_id)
+      === row?.sender_telecom_binding_id
+    && Number.isSafeInteger(row?.sender_telecom_binding_version)
+    && row.sender_telecom_binding_version >= 1
+    && boundedTelnyxAuthorityId(row?.sender_provider_number_id)
+      === row?.sender_provider_number_id;
+  return !!row
+    && boundedTelnyxAuthorityId(row.id) === row.id
+    && boundedTelnyxAuthorityId(row.agency_id) === row.agency_id
+    && boundedTelnyxAuthorityId(row.document_id) === row.document_id
+    && (referralAuthority || bindingAuthority)
+    && row.provider === 'telnyx'
+    && boundedTelnyxAuthorityId(row.integration_secret_id) === row.integration_secret_id
+    && Number.isFinite(Date.parse(row.integration_secret_updated_at || ''))
+    && boundedTelnyxAuthorityId(row.fax_connection_id) === row.fax_connection_id
+    && boundedTelnyxAuthorityId(row.sender_settings_id) === row.sender_settings_id
+    && Number.isFinite(Date.parse(row.sender_settings_updated_at || ''))
+    && boundedTelnyxAuthorityId(row.telnyx_fax_id) === row.telnyx_fax_id
+    && boundedTelnyxAuthorityId(row.provider_submission_attempt_id)
+      === row.provider_submission_attempt_id
+    && row.provider_submission_state === 'accepted'
+    && Number.isFinite(Date.parse(row.provider_accepted_at || ''))
+    && row.document_url == null;
+}
+
+function outboundFaxHasRetryAuthority(row) {
+  return outboundFaxHasStatusAuthority(row)
+    && boundedTelnyxAuthorityId(row.referral_id) === row.referral_id
+    && boundedTelnyxAuthorityId(row.sent_by_user_id) === row.sent_by_user_id
+    && boundedTelnyxAuthorityId(row.sent_by_membership_id) === row.sent_by_membership_id
+    && Number.isSafeInteger(row.sent_by_membership_version)
+    && row.sent_by_membership_version >= 1
+    && Number.isSafeInteger(row.retry_count)
+    && row.retry_count >= 0
+    && Number.isSafeInteger(row.retry_generation)
+    && row.retry_generation >= 0
+    && row.retry_generation <= row.retry_count;
+}
+
+const OUTBOUND_FAX_MAX_RETRY_ATTEMPTS = 10;
+
+function boundedOutboundFaxRetryPolicy(config) {
+  const source = config && typeof config === 'object' && !Array.isArray(config)
+    ? config
+    : {};
+  const unset = (value) => value == null
+    || (typeof value === 'string' && value.trim() === '');
+  const rawMaxRetries = Number(source.max_retries);
+  const rawDelayMinutes = Number(source.retry_delay_minutes);
+  // Treat service-owned policy rows as untrusted input too. Malformed values
+  // must fail closed instead of authorizing another transmission.
+  const valid = (unset(source.max_retries)
+      || (Number.isSafeInteger(rawMaxRetries)
+        && rawMaxRetries >= 0
+        && rawMaxRetries <= OUTBOUND_FAX_MAX_RETRY_ATTEMPTS))
+    && (unset(source.retry_delay_minutes)
+      || (Number.isFinite(rawDelayMinutes)
+        && rawDelayMinutes >= 1
+        && rawDelayMinutes <= 360))
+    && (source.is_active == null || typeof source.is_active === 'boolean')
+    && (source.auto_retry_enabled == null || typeof source.auto_retry_enabled === 'boolean')
+    && (source.notify_on_final_failure == null
+      || typeof source.notify_on_final_failure === 'boolean');
+  const boundedConfig = {
+    ...source,
+    ...(source.is_active === false ? { auto_retry_enabled: false } : {}),
+  };
+  return { valid, config: boundedConfig, normalized: faxRetryConfig(boundedConfig) };
+}
+
+async function resolveFaxRetryConfigByAgency(base44, agencyId) {
+  let exact;
+  try {
+    exact = await base44.asServiceRole.entities.FaxRetryConfig.filter(
+      { agency_id: agencyId },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+  } catch {
+    return { ok: false, config: null };
+  }
+  if (!Array.isArray(exact) || exact.length > 1
+    || exact.some((row) => row?.agency_id !== agencyId)) {
+    return { ok: false, config: null };
+  }
+  if (exact.length === 1) return { ok: true, config: exact[0] };
+
+  let agencies;
+  try {
+    agencies = await base44.asServiceRole.entities.Agency.filter(
+      { id: agencyId },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+  } catch {
+    return { ok: false, config: null };
+  }
+  if (!Array.isArray(agencies) || agencies.length !== 1 || agencies[0]?.id !== agencyId
+    || !boundedTelnyxAuthorityId(agencies[0]?.agency_code)) {
+    return { ok: false, config: null };
+  }
+  let duplicates;
+  let legacy;
+  try {
+    duplicates = await base44.asServiceRole.entities.Agency.filter(
+      { agency_code: agencies[0].agency_code },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+    legacy = await base44.asServiceRole.entities.FaxRetryConfig.filter(
+      { agency_name: agencies[0].agency_code },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+  } catch {
+    return { ok: false, config: null };
+  }
+  if (!Array.isArray(duplicates) || duplicates.length !== 1 || duplicates[0]?.id !== agencyId
+    || !Array.isArray(legacy) || legacy.length > 1
+    || legacy.some((row) => row?.agency_name !== agencies[0].agency_code
+      || (row?.agency_id != null && row.agency_id !== agencyId))) {
+    return { ok: false, config: null };
+  }
+  return { ok: true, config: legacy[0] || null };
+}
+
+const FAX_NOTIFICATION_EXACT_ROW_LIMIT = 10;
+
+function outboundFaxNotificationSpec(fax, kind) {
+  const delivered = kind === 'delivery';
+  const agencyId = boundedTelnyxAuthorityId(fax?.agency_id);
+  const dedupeKey = `fax:${agencyId || 'legacy'}:${fax.id}:${delivered ? 'delivered' : 'failed'}`;
+  const recipient = fax.to_name
+    ? `${fax.to_name} (${fax.to_number})`
+    : fax.to_number;
+  return {
+    markerField: delivered ? 'delivery_confirmation_sent' : 'final_failure_notified',
+    claimField: delivered ? 'delivery_notify_claimed_by' : 'failure_notify_claimed_by',
+    claimedAtField: delivered ? 'delivery_notify_claimed_at' : 'failure_notify_claimed_at',
+    dedupeKey,
+    payload: {
+      ...(agencyId ? { agency_id: agencyId } : {}),
+      dedupe_key: dedupeKey,
+      user_email: fax.sent_by,
+      title: delivered ? '✅ Fax delivered' : '❌ Fax failed',
+      message: delivered
+        ? `Your fax to ${recipient} was delivered successfully (${fax.pages ?? 'N/A'} pages).`
+        : `"${fax.document_name || 'Your document'}" to ${recipient} could not be delivered (${fax.failure_reason || 'Fax delivery failed'}). Verify the number and resend.`,
+      type: delivered ? 'fax_delivered' : 'fax_failed',
+      priority: delivered ? 'medium' : 'high',
+      metadata: { related_entity: 'FaxLog', related_entity_id: fax.id },
+      is_read: false,
+      action_url: delivered
+        ? `/SendFax?tab=logs&fax_id=${fax.id}`
+        : `/SendFax?fax_id=${fax.id}`,
+    },
+  };
+}
+
+function outboundFaxNotificationMatches(row, spec) {
+  return !!row
+    && boundedTelnyxAuthorityId(row.id) === row.id
+    && row.dedupe_key === spec.dedupeKey
+    && row.user_email === spec.payload.user_email
+    && row.type === spec.payload.type
+    && (row.agency_id ?? null) === (spec.payload.agency_id ?? null)
+    && row.metadata?.related_entity === 'FaxLog'
+    && row.metadata?.related_entity_id === spec.payload.metadata.related_entity_id;
+}
+
+async function loadOutboundFaxNotifications(base44, spec) {
+  const rows = await base44.asServiceRole.entities.Notification.filter(
+    { dedupe_key: spec.dedupeKey },
+    undefined,
+    FAX_NOTIFICATION_EXACT_ROW_LIMIT,
+  );
+  if (!Array.isArray(rows) || rows.length >= FAX_NOTIFICATION_EXACT_ROW_LIMIT
+    || rows.some((row) => !outboundFaxNotificationMatches(row, spec))) return null;
+  return rows;
+}
+
+async function finalizeOutboundFaxNotification(base44, fax, spec, claimToken) {
+  const rows = await base44.asServiceRole.entities.FaxLog.filter(
+    { id: fax.id },
+    undefined,
+    OUTBOUND_FAX_EXACT_ROW_LIMIT,
+  ).catch(() => null);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== fax.id
+    || rows[0]?.telnyx_fax_id !== fax.telnyx_fax_id) return false;
+  if (rows[0][spec.markerField] === true) return true;
+  if (rows[0][spec.claimField] !== claimToken
+    || !Number.isFinite(Date.parse(rows[0][spec.claimedAtField] || ''))
+    || !Number.isFinite(Date.parse(rows[0]?.updated_date || ''))) return false;
+  const result = await base44.asServiceRole.entities.FaxLog.updateMany(
+    {
+      id: fax.id,
+      telnyx_fax_id: fax.telnyx_fax_id,
+      status: fax.status,
+      [spec.claimField]: claimToken,
+      updated_date: rows[0].updated_date,
+    },
+    { $set: {
+      [spec.markerField]: true,
+      [spec.claimField]: null,
+      [spec.claimedAtField]: null,
+    } },
+  ).catch(() => null);
+  if (successfulInboundFaxUpdate(result)) return true;
+  const concurrent = await base44.asServiceRole.entities.FaxLog.filter(
+    { id: fax.id },
+    undefined,
+    OUTBOUND_FAX_EXACT_ROW_LIMIT,
+  ).catch(() => null);
+  return Array.isArray(concurrent) && concurrent.length === 1
+    && concurrent[0]?.id === fax.id
+    && concurrent[0]?.telnyx_fax_id === fax.telnyx_fax_id
+    && concurrent[0]?.[spec.markerField] === true;
+}
+
+async function sendClaimedOutboundFaxNotification(base44, fax, kind, claimToken) {
+  const spec = outboundFaxNotificationSpec(fax, kind);
+  let existing = await loadOutboundFaxNotifications(base44, spec).catch(() => null);
+  if (existing?.length) {
+    return finalizeOutboundFaxNotification(base44, fax, spec, claimToken);
+  }
+  if (existing === null) return false;
+  let created = null;
+  try {
+    created = await base44.asServiceRole.entities.Notification.create(spec.payload);
+  } catch {
+    // A create response can be lost after the row committed. Reconcile by the
+    // purpose-specific key before ever allowing another notification attempt.
+    existing = await loadOutboundFaxNotifications(base44, spec).catch(() => null);
+    if (existing?.length) {
+      return finalizeOutboundFaxNotification(base44, fax, spec, claimToken);
+    }
+    return false;
+  }
+  if (!outboundFaxNotificationMatches(created, spec)) {
+    existing = await loadOutboundFaxNotifications(base44, spec).catch(() => null);
+    if (!existing?.length) return false;
+  }
+  return finalizeOutboundFaxNotification(base44, fax, spec, claimToken);
 }
 
 async function resolveActiveTelnyxFaxBinding(base44, telnyxCreds, rawDestination) {
@@ -1691,17 +1980,50 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
   );
 }
 
-async function handleFaxEvent(base44, payload) {
-  const providerId = payload?.id;
+async function handleFaxEvent(base44, telnyxCreds, payload) {
+  const rawProviderId = payload?.id;
+  const providerId = boundedTelnyxAuthorityId(rawProviderId);
   const mapped = mapFaxStatus(payload?.status);
-  if (!providerId) return Response.json({ success: true, skipped: 'no fax id' });
+  if (!rawProviderId) return Response.json({ success: true, skipped: 'no fax id' });
+  if (!providerId || providerId !== rawProviderId) {
+    return Response.json({ success: false, message: 'Invalid fax id' }, { status: 400 });
+  }
   if (!mapped) return Response.json({ success: true, skipped: 'unknown status', status: payload?.status });
 
-  const rows = await base44.asServiceRole.entities.FaxLog.filter({ telnyx_fax_id: providerId }, undefined, 5000).catch(() => []);
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.FaxLog.filter(
+      { telnyx_fax_id: providerId },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+  } catch {
+    return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
+  }
   // 404 so Telnyx redelivers after the sender persists telnyx_fax_id (senders
   // write the id only after the API call, so a fast status callback can race it).
+  if (!Array.isArray(rows)) {
+    return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
+  }
   if (!rows.length) return Response.json({ success: false, message: 'FaxLog not found' }, { status: 404 });
+  if (rows.length !== 1 || rows.some((row) => row?.telnyx_fax_id !== providerId)) {
+    return Response.json({ success: false, message: 'Fax identity is ambiguous' }, { status: 409 });
+  }
   const faxLog = rows[0];
+  if (!outboundFaxHasStatusAuthority(faxLog)
+    || !Number.isFinite(Date.parse(faxLog?.updated_date || ''))) {
+    return Response.json({ success: false, message: 'Fax identity is incomplete' }, { status: 409 });
+  }
+  const credential = telnyxCreds?.record;
+  if (faxLog.provider !== 'telnyx'
+    || faxLog.integration_secret_id !== credential?.id
+    || faxLog.integration_secret_updated_at !== credential?.updated_date
+    || faxLog.fax_connection_id !== credential?.fax_connection_id
+    || boundedTelnyxAuthorityId(credential?.id) !== credential?.id
+    || boundedTelnyxAuthorityId(credential?.fax_connection_id) !== credential?.fax_connection_id
+    || !Number.isFinite(Date.parse(credential?.updated_date || ''))) {
+    return Response.json({ success: false, message: 'Fax provider authority is stale or incomplete' }, { status: 409 });
+  }
   // Idempotency + forward-only: ignore an unchanged or out-of-order (lower-rank)
   // transition. Telnyx re-delivers webhooks and can deliver them out of order, so
   // this ack's without re-running side effects (critically, without re-bumping
@@ -1710,33 +2032,55 @@ async function handleFaxEvent(base44, payload) {
     return Response.json({ success: true, status: faxLog.status, deduped: true });
   }
 
+  const transitionedAt = new Date().toISOString();
   const update = {
     status: mapped,
     // Don't let a legitimate 0-page report fall through to the old value.
     pages: Number.isFinite(payload?.page_count) ? payload.page_count : faxLog.pages,
     failure_reason: null,
     next_retry_at: null,
+    provider_submission_state: 'accepted',
+    provider_accepted_at: Number.isFinite(Date.parse(faxLog.provider_accepted_at || ''))
+      ? faxLog.provider_accepted_at
+      : transitionedAt,
+    ...(mapped === 'delivered' || mapped === 'failed' ? {
+      provider_terminal_status: mapped,
+      provider_terminal_at: transitionedAt,
+    } : {}),
   };
 
-  let exhaustedNow = false;
+  let notificationKind = null;
+  let notificationClaimToken = null;
+  if (mapped === 'delivered' && faxLog.sent_by && !faxLog.delivery_confirmation_sent) {
+    notificationKind = 'delivery';
+    notificationClaimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `fax-del-${Date.now()}`;
+    update.delivery_confirmation_sent = false;
+    update.delivery_notify_claimed_by = notificationClaimToken;
+    update.delivery_notify_claimed_at = transitionedAt;
+  }
   if (mapped === 'failed') {
     const failureReason = payload?.failure_reason || payload?.failover?.failure_reason || 'Fax delivery failed';
-    // Honor the admin FaxRetryConfig for the sender's agency (never global newest).
-    let senderAgency = '';
-    if (faxLog.sent_by) {
-      const [sender] = await base44.asServiceRole.entities.User
-        .filter({ email: faxLog.sent_by }, undefined, 1).catch(() => []);
-      senderAgency = sender?.agency_name || '';
-    }
-    const cfg = (await resolveFaxRetryConfig(base44, senderAgency)) || {};
-    const retryCfg = faxRetryConfig(cfg);
-    const plan = planFaxRetry({
-      retryCount: faxLog.retry_count || 0,
-      errorCode: payload?.failure_code || payload?.error_code,
-      errorMessage: failureReason,
-      priority: faxLog.priority || 'normal',
-      config: cfg,
-    });
+    // Only a private-document fax with immutable tenant/member authority may
+    // receive a retry schedule. Legacy URL-bearing rows and incomplete rows are
+    // terminal: a background worker must never reconstruct and resend them.
+    const retryAuthority = outboundFaxHasRetryAuthority(faxLog);
+    const retryPolicy = retryAuthority
+      ? await resolveFaxRetryConfigByAgency(base44, faxLog.agency_id)
+      : { ok: false, config: null };
+    const boundedPolicy = boundedOutboundFaxRetryPolicy(retryPolicy.config);
+    const cfg = boundedPolicy.config;
+    const retryCfg = boundedPolicy.normalized;
+    const plan = retryAuthority && retryPolicy.ok && boundedPolicy.valid
+      ? planFaxRetry({
+        retryCount: faxLog.retry_count || 0,
+        errorCode: payload?.failure_code || payload?.error_code,
+        errorMessage: failureReason,
+        priority: faxLog.priority || 'normal',
+        config: cfg,
+      })
+      : { willRetry: false };
     // planFaxRetry already encodes the budget (attempts < maxRetries). Schedule
     // whenever it says willRetry — including nextRetryCount === maxRetries, which
     // is the last allowed send (isFaxRetryDue uses `>` so the cron still honors it).
@@ -1744,74 +2088,93 @@ async function handleFaxEvent(base44, payload) {
       update.next_retry_at = plan.nextRetryAt;
       update.retry_count = plan.nextRetryCount;
     } else {
-      exhaustedNow = retryCfg.notifyOnFinalFailure && !faxLog.final_failure_notified;
-      update.final_failure_notified = true;
-      if (exhaustedNow) {
-        update.failure_notify_claimed_by = typeof crypto !== 'undefined' && crypto.randomUUID
+      // If retry authority/policy cannot be proven, notify instead of silently
+      // leaving a failed fax in a state that appears eligible for automation.
+      const shouldNotify = (retryAuthority && retryPolicy.ok && boundedPolicy.valid
+        ? retryCfg.notifyOnFinalFailure
+        : true) && !!faxLog.sent_by;
+      if (shouldNotify && !faxLog.final_failure_notified) {
+        notificationKind = 'failure';
+        notificationClaimToken = typeof crypto !== 'undefined' && crypto.randomUUID
           ? crypto.randomUUID()
           : `fax-fail-${Date.now()}`;
+        update.final_failure_notified = false;
+        update.failure_notify_claimed_by = notificationClaimToken;
+        update.failure_notify_claimed_at = transitionedAt;
+      } else {
+        update.final_failure_notified = true;
       }
     }
     update.failure_reason = failureReason;
   }
 
-  await base44.asServiceRole.entities.FaxLog.update(faxLog.id, update);
-
-  // Tell the sender when a fax was delivered successfully (parity with the old
-  // handleTwilioFaxWebhook). Claim + re-read so poller/webhook races don't
-  // double-notify; release stamp if create fails so a later run can retry.
-  if (mapped === 'delivered' && faxLog.sent_by && !faxLog.delivery_confirmation_sent) {
-    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `fax-del-${Date.now()}`;
-    await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
-      delivery_confirmation_sent: true,
-      delivery_notify_claimed_by: claimToken,
-    }).catch(() => {});
-    const claimCheck = await base44.asServiceRole.entities.FaxLog
-      .filter({ id: faxLog.id }, '-created_date', 1).catch(() => []);
-    if (claimCheck[0]?.delivery_notify_claimed_by === claimToken) {
-      const recipientName = faxLog.to_name ? `${faxLog.to_name} (${faxLog.to_number})` : faxLog.to_number;
-      try {
-        await base44.asServiceRole.entities.Notification.create({
-          user_email: faxLog.sent_by,
-          title: '✅ Fax delivered',
-          message: `Your fax to ${recipientName} was delivered successfully (${update.pages || faxLog.pages || 'N/A'} pages).`,
-          type: 'fax_delivered', priority: 'medium', metadata: { related_entity: 'FaxLog', related_entity_id: faxLog.id },
-          is_read: false, action_url: `/SendFax?tab=logs&fax_id=${faxLog.id}`,
-        });
-      } catch (err) {
-        console.error('Failed to send fax delivered notification:', err);
-        await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
-          delivery_confirmation_sent: false,
-          delivery_notify_claimed_by: '',
-        }).catch(() => {});
-      }
-    }
+  // Retry-policy reads above cross multiple await boundaries. Re-prove the
+  // provider id still identifies this one unchanged row immediately before the
+  // CAS so a concurrently inserted duplicate (including another tenant's row)
+  // cannot inherit this signed status event.
+  const currentIdentityRows = await base44.asServiceRole.entities.FaxLog.filter(
+    { telnyx_fax_id: providerId },
+    undefined,
+    OUTBOUND_FAX_EXACT_ROW_LIMIT,
+  ).catch(() => null);
+  if (!Array.isArray(currentIdentityRows) || currentIdentityRows.length !== 1
+    || currentIdentityRows[0]?.id !== faxLog.id
+    || currentIdentityRows[0]?.telnyx_fax_id !== providerId
+    || currentIdentityRows[0]?.status !== faxLog.status
+    || currentIdentityRows[0]?.updated_date !== faxLog.updated_date) {
+    return Response.json({ success: false, message: 'Fax identity changed during status processing' }, { status: 409 });
   }
 
-  // Tell the sender when a fax has permanently failed (no retries left).
-  if (exhaustedNow && faxLog.sent_by && update.failure_notify_claimed_by) {
-    const claimCheck = await base44.asServiceRole.entities.FaxLog
-      .filter({ id: faxLog.id }, '-created_date', 1).catch(() => []);
-    if (claimCheck[0]?.failure_notify_claimed_by === update.failure_notify_claimed_by) {
-      const recipient = faxLog.to_name ? `${faxLog.to_name} (${faxLog.to_number})` : faxLog.to_number;
-      try {
-        await base44.asServiceRole.entities.Notification.create({
-          user_email: faxLog.sent_by,
-          title: '❌ Fax failed',
-          message: `"${faxLog.document_name || 'Your document'}" to ${recipient} could not be delivered (${update.failure_reason}). Verify the number and resend.`,
-          type: 'fax_failed', priority: 'high', metadata: { related_entity: 'FaxLog', related_entity_id: faxLog.id },
-          is_read: false, action_url: `/SendFax?fax_id=${faxLog.id}`,
-        });
-      } catch (err) {
-        console.error('Failed to send fax failure notification:', err);
-        await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
-          final_failure_notified: false,
-          failure_notify_claimed_by: '',
-        }).catch(() => {});
-      }
+  const transitionResult = await base44.asServiceRole.entities.FaxLog.updateMany(
+    {
+      id: faxLog.id,
+      telnyx_fax_id: providerId,
+      status: faxLog.status,
+      updated_date: faxLog.updated_date,
+    },
+    { $set: update },
+  ).catch(() => null);
+  if (!successfulInboundFaxUpdate(transitionResult)) {
+    const concurrent = await base44.asServiceRole.entities.FaxLog.filter(
+      { telnyx_fax_id: providerId },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    ).catch(() => null);
+    if (Array.isArray(concurrent) && concurrent.length === 1
+      && concurrent[0]?.telnyx_fax_id === providerId
+      && (FAX_RANK[concurrent[0]?.status] || 0) >= (FAX_RANK[mapped] || 0)) {
+      return Response.json({ success: true, status: concurrent[0].status, deduped: true });
     }
+    return Response.json({ success: false, message: 'Fax status update interrupted' }, { status: 503 });
+  }
+  const verifiedRows = await base44.asServiceRole.entities.FaxLog.filter(
+    { telnyx_fax_id: providerId },
+    undefined,
+    OUTBOUND_FAX_EXACT_ROW_LIMIT,
+  ).catch(() => null);
+  if (!Array.isArray(verifiedRows) || verifiedRows.length !== 1
+    || verifiedRows[0]?.id !== faxLog.id
+    || verifiedRows[0]?.telnyx_fax_id !== providerId
+    || verifiedRows[0]?.status !== mapped
+    || verifiedRows[0]?.provider_submission_state !== 'accepted'
+    || ((mapped === 'delivered' || mapped === 'failed')
+      && (verifiedRows[0]?.provider_terminal_status !== mapped
+        || !Number.isFinite(Date.parse(verifiedRows[0]?.provider_terminal_at || ''))))) {
+    return Response.json({ success: false, message: 'Fax status confirmation interrupted' }, { status: 503 });
+  }
+  const transitionedFaxLog = verifiedRows[0];
+
+  // The transition owns the notification claim before this irreversible create.
+  // If the create response is lost, the purpose-specific Notification key lets
+  // the poller reconcile the committed row without creating a duplicate.
+  if (notificationKind && notificationClaimToken) {
+    const notified = await sendClaimedOutboundFaxNotification(
+      base44,
+      transitionedFaxLog,
+      notificationKind,
+      notificationClaimToken,
+    ).catch(() => false);
+    if (!notified) console.error('Outbound fax notification remains pending for poller recovery');
   }
   return Response.json({ success: true, status: mapped });
 }
@@ -2245,7 +2608,13 @@ async function saveVoicemail(base44, payload) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const telnyxCreds = await resolveTelnyxCreds(base44);
+    const telnyxCreds = await resolveExactActiveTelnyxWebhookCredentials(base44);
+    if (!telnyxCreds) {
+      return Response.json(
+        { error: 'Webhook credential is not configured uniquely' },
+        { status: 503, headers: { 'Retry-After': '300' } },
+      );
+    }
     const { apiKey, publicKey, messagingProfileId } = telnyxCreds;
 
     // Read the raw body ONCE — signature is over the exact bytes.
@@ -2284,7 +2653,7 @@ Deno.serve(async (req) => {
     if (eventType === 'message.received') return await handleInboundMessage(base44, apiKey, messagingProfileId, payload);
     if (eventType.startsWith('message.')) return await handleOutboundMessageStatus(base44, payload);
     if (eventType === 'fax.received') return await handleInboundFax(base44, telnyxCreds, payload);
-    if (eventType.startsWith('fax.')) return await handleFaxEvent(base44, payload);
+    if (eventType.startsWith('fax.')) return await handleFaxEvent(base44, telnyxCreds, payload);
     if (eventType.startsWith('call.')) return await handleCallEvent(base44, apiKey, eventType, payload);
 
     return Response.json({ success: true, skipped: 'unhandled event', event: eventType });

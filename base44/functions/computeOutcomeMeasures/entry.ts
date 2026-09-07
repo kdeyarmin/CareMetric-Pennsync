@@ -1,9 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
-// Production remains fail-closed until hosted atomicity, stable snapshots,
-// tenant backfill, and two-agency validation are complete. The accompanying
-// function.jsonc also preserves the legacy schedule explicitly as inactive.
-const OUTCOME_COMPUTATION_ENABLED = false;
+// Source deployment remains fail-closed until an environment is explicitly
+// approved for outcome validation. The scheduler automation is attached only
+// to the tenant-aware dispatcher and remains inactive by default.
+const OUTCOME_COMPUTATION_ENABLED =
+  String(Deno.env.get('OUTCOME_PIPELINE_RELEASE') || '').trim() === 'enabled-v1';
 
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
@@ -39,10 +40,78 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
-// This job uses service-role reads and writes. It therefore accepts ONLY the
-// server-held internal secret and every invocation must name exactly ONE
-// agency. Browser sessions and mutable User/Agency membership fields are never
-// authorization inputs. There is no platform-wide mode.
+// <<<BEGIN SHARED HELPER: outcomeDispatchProof — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTCOME_DISPATCH_PROOF_VERSION = 'outcome-dispatch-v1';
+const OUTCOME_DISPATCH_PROOF_MAX_AGE_MS = 15 * 60 * 1000;
+const OUTCOME_DISPATCH_PROOF_MAX_FUTURE_SKEW_MS = 60 * 1000;
+function outcomeDispatchProofMessage(payload, proof) {
+  return JSON.stringify([
+    OUTCOME_DISPATCH_PROOF_VERSION,
+    payload.agency_id,
+    payload.period_type,
+    payload.period_start,
+    payload.period_end,
+    payload.benchmark ?? null,
+    payload.idempotency_key,
+    proof.issued_at,
+    proof.nonce,
+  ]);
+}
+async function outcomeDispatchHmacHex(secret, value) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(value));
+  return Array.from(new Uint8Array(signature), (byte) =>
+    byte.toString(16).padStart(2, '0')).join('');
+}
+async function createOutcomeDispatchProof(secret, payload) {
+  const proof = {
+    version: OUTCOME_DISPATCH_PROOF_VERSION,
+    issued_at: new Date().toISOString(),
+    nonce: crypto.randomUUID(),
+  };
+  return {
+    ...proof,
+    signature: await outcomeDispatchHmacHex(
+      secret,
+      outcomeDispatchProofMessage(payload, proof),
+    ),
+  };
+}
+async function verifyOutcomeDispatchProof(secret, payload, proof, nowMs = Date.now()) {
+  if (!proof || typeof proof !== 'object' || Array.isArray(proof)) return false;
+  const keys = Object.keys(proof).sort();
+  if (JSON.stringify(keys) !== JSON.stringify(['issued_at', 'nonce', 'signature', 'version'])) {
+    return false;
+  }
+  if (proof.version !== OUTCOME_DISPATCH_PROOF_VERSION) return false;
+  if (typeof proof.issued_at !== 'string' || typeof proof.nonce !== 'string' ||
+      typeof proof.signature !== 'string') return false;
+  const issuedAtMs = Date.parse(proof.issued_at);
+  if (!Number.isFinite(issuedAtMs) || new Date(issuedAtMs).toISOString() !== proof.issued_at ||
+      issuedAtMs > nowMs + OUTCOME_DISPATCH_PROOF_MAX_FUTURE_SKEW_MS ||
+      nowMs - issuedAtMs > OUTCOME_DISPATCH_PROOF_MAX_AGE_MS ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(proof.nonce) ||
+      !/^[0-9a-f]{64}$/.test(proof.signature)) return false;
+  const expected = await outcomeDispatchHmacHex(
+    secret,
+    outcomeDispatchProofMessage(payload, proof),
+  );
+  return timingSafeEqualStr(proof.signature, expected);
+}
+// <<<END SHARED HELPER: outcomeDispatchProof>>>
+
+// This job uses service-role reads and writes. It therefore accepts only the
+// server-held internal secret or a short-lived dispatcher capability signed by
+// that secret, and every invocation must name exactly ONE agency. Browser
+// sessions and mutable User/Agency membership fields are never authorization
+// inputs. There is no platform-wide mode.
 function hasValidInternalSecret(req) {
   const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
   if (!expectedSecret) return false;
@@ -50,7 +119,7 @@ function hasValidInternalSecret(req) {
   return timingSafeEqualStr(providedSecret, expectedSecret);
 }
 
-function getOutcomeInitialAuthError(req) {
+async function getOutcomeInitialAuthError(req, body) {
   const expectedSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
   if (!expectedSecret) {
     return Response.json(
@@ -59,6 +128,7 @@ function getOutcomeInitialAuthError(req) {
     );
   }
   if (hasValidInternalSecret(req)) return null;
+  if (await verifyOutcomeDispatchProof(expectedSecret, body, body.dispatch_proof)) return null;
   return Response.json(
     { error: 'Unauthorized: internal scheduler secret required' },
     { status: 401 },
@@ -135,6 +205,16 @@ const OUTCOME_RUN_LEASE_MS = 60 * 60 * 1000;
 const MAX_EXPIRED_RUN_RECONCILIATIONS_PER_REQUEST = 10;
 const OUTCOME_RUN_PUBLICATION_MODE = 'single_run_record_gate_v1';
 const IDEMPOTENCY_KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]{15,127}$/;
+const MAX_OUTCOME_REQUEST_BYTES = 10_000;
+const OUTCOME_REQUEST_FIELDS = new Set([
+  'agency_id',
+  'period_start',
+  'period_end',
+  'period_type',
+  'benchmark',
+  'idempotency_key',
+  'dispatch_proof',
+]);
 const OUTCOME_RUN_SNAPSHOT_FIELDS = Object.freeze([
   'id',
   'agency_id',
@@ -771,7 +851,7 @@ Deno.serve(async (req) => {
   if (!OUTCOME_COMPUTATION_ENABLED) {
     return Response.json(
       { error: 'Outcome computation is paused pending hosted atomicity and tenant validation' },
-      { status: 503 },
+      { status: 503, headers: { 'Cache-Control': 'no-store' } },
     );
   }
 
@@ -782,20 +862,62 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
 
-    let body = {};
+    if (req.method !== 'POST') {
+      return Response.json(
+        { error: 'Method not allowed' },
+        { status: 405, headers: { Allow: 'POST', 'Cache-Control': 'no-store' } },
+      );
+    }
+    const statedLength = Number(req.headers.get('content-length'));
+    if (Number.isFinite(statedLength) && statedLength > MAX_OUTCOME_REQUEST_BYTES) {
+      return Response.json(
+        { error: 'Request body is too large' },
+        { status: 413, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
+    let body;
     try {
-      const parsedBody = await req.json();
-      if (parsedBody && typeof parsedBody === 'object' && !Array.isArray(parsedBody)) body = parsedBody;
-    } catch { /* GET / cron invocation */ }
-    const agencyId = String(body.agency_id || '').trim();
+      const rawBody = await req.text();
+      if (new TextEncoder().encode(rawBody).byteLength > MAX_OUTCOME_REQUEST_BYTES) {
+        return Response.json(
+          { error: 'Request body is too large' },
+          { status: 413, headers: { 'Cache-Control': 'no-store' } },
+        );
+      }
+      body = JSON.parse(rawBody);
+    } catch {
+      return Response.json(
+        { error: 'Invalid JSON body' },
+        { status: 400, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json(
+        { error: 'Request body must be an object' },
+        { status: 400, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
+    if (Object.keys(body).some((field) => !OUTCOME_REQUEST_FIELDS.has(field))) {
+      return Response.json(
+        { error: 'Request body contains unsupported fields' },
+        { status: 400, headers: { 'Cache-Control': 'no-store' } },
+      );
+    }
+    const agencyId = typeof body.agency_id === 'string'
+      && body.agency_id.length <= 200
+      && body.agency_id.trim() === body.agency_id
+      && !body.agency_id.startsWith('$')
+      && !/[\u0000-\u001f\u007f]/.test(body.agency_id)
+      ? body.agency_id
+      : '';
     if (!agencyId) {
       return Response.json(
         { error: 'agency_id is required; platform-wide outcome computation is not supported' },
         { status: 400 },
       );
     }
-    const periodStart = String(body.period_start || '').trim();
-    const periodEnd = String(body.period_end || '').trim();
+    const periodStart = typeof body.period_start === 'string' ? body.period_start : '';
+    const periodEnd = typeof body.period_end === 'string' ? body.period_end : '';
     const isIsoDate = (value) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
       const parsed = new Date(`${value}T00:00:00.000Z`);
@@ -807,7 +929,7 @@ Deno.serve(async (req) => {
         { status: 400 },
       );
     }
-    const periodType = String(body.period_type || '').trim();
+    const periodType = typeof body.period_type === 'string' ? body.period_type : '';
     const allowedPeriodTypes = new Set(['daily', 'weekly', 'monthly', 'quarterly', 'yearly', 'custom']);
     if (!allowedPeriodTypes.has(periodType)) {
       return Response.json(
@@ -828,7 +950,10 @@ Deno.serve(async (req) => {
       );
     }
     const benchmark = benchmarkProvided ? body.benchmark : undefined;
-    const idempotencyKey = String(body.idempotency_key || '').trim();
+    const idempotencyKey = typeof body.idempotency_key === 'string'
+      && body.idempotency_key.trim() === body.idempotency_key
+      ? body.idempotency_key
+      : '';
     if (!IDEMPOTENCY_KEY_RE.test(idempotencyKey)) {
       return Response.json(
         {
@@ -839,8 +964,9 @@ Deno.serve(async (req) => {
     }
     // A valid browser session is intentionally insufficient: this function
     // performs service-role writes and tenant membership fields are not yet a
-    // protected authorization source. Only a server-held secret may continue.
-    const authError = getOutcomeInitialAuthError(req);
+    // protected authorization source. Only the server-held secret or an exact
+    // short-lived capability signed by that secret may continue.
+    const authError = await getOutcomeInitialAuthError(req, body);
     if (authError) return authError;
 
     // Verify the requested tenant exists without listing or guessing. This is

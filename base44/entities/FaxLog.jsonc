@@ -14,6 +14,18 @@
       "type": "string",
       "description": "Private Document identity proven through DocumentTenantBinding. New fax workflows do not persist expiring signed URLs."
     },
+    "document_binding_id": {
+      "type": "string",
+      "description": "Exact service-owned DocumentTenantBinding used to authorize this attempt."
+    },
+    "document_binding_version": {
+      "type": "integer",
+      "minimum": 2
+    },
+    "document_content_sha256": {
+      "type": "string",
+      "description": "Exact private-document content digest revalidated before provider submission."
+    },
     "sent_by_user_id": {
       "type": "string",
       "description": "Immutable built-in User id of the sender."
@@ -54,11 +66,85 @@
         "sent",
         "delivered",
         "failed",
+        "submission_unknown",
         "retrying",
         "retried"
       ],
       "default": "queued",
       "description": "Fax status"
+    },
+    "provider_submission_state": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "accepted",
+        "rejected",
+        "indeterminate"
+      ],
+      "description": "Server-owned result of the Telnyx create-fax boundary. Indeterminate means the request may have been accepted and must never be automatically resent."
+    },
+    "provider_submission_attempt_id": {
+      "type": "string",
+      "description": "Opaque server-generated identity for exactly one provider submission attempt. It contains no PHI and is not a provider idempotency key."
+    },
+    "provider_accepted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server time when Telnyx acceptance was proved by a create response or signed webhook."
+    },
+    "provider_terminal_status": {
+      "type": "string",
+      "enum": [
+        "delivered",
+        "failed"
+      ],
+      "description": "Terminal status proved by a signed provider event. Only an accepted, terminal failed transmission is eligible for a new retry attempt."
+    },
+    "provider_terminal_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server time when the signed provider event established the terminal status."
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "telnyx"
+      ],
+      "description": "Exact provider selected before submission."
+    },
+    "integration_secret_id": {
+      "type": "string",
+      "description": "Exact active IntegrationSecret authority used for this provider attempt; no secret value is stored."
+    },
+    "integration_secret_updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Non-secret IntegrationSecret revision observed and revalidated immediately before provider submission."
+    },
+    "fax_connection_id": {
+      "type": "string",
+      "description": "Exact Telnyx fax connection bound to this attempt."
+    },
+    "sender_telecom_binding_id": {
+      "type": "string",
+      "description": "Exact service-owned TelecomDestinationBinding proving the sender number, provider credential, connection, and Agency."
+    },
+    "sender_telecom_binding_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "sender_provider_number_id": {
+      "type": "string",
+      "description": "Exact provider number resource proved by sender_telecom_binding_id."
+    },
+    "sender_settings_id": {
+      "type": "string",
+      "description": "Exact AgencySettings row from which the outbound sender and destination policy were resolved."
+    },
+    "sender_settings_updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "AgencySettings preimage timestamp immediately revalidated before provider submission."
     },
     "telnyx_fax_id": {
       "type": "string",
@@ -99,6 +185,28 @@
       "default": 0,
       "description": "Number of retry attempts made"
     },
+    "retry_of_fax_log_id": {
+      "type": "string",
+      "description": "Exact prior FaxLog id superseded by this separately logged transmission attempt."
+    },
+    "scheduled_fax_id": {
+      "type": "string",
+      "description": "Exact ScheduledFax queue id that authorized this recipient attempt, when applicable."
+    },
+    "batch_request_key": {
+      "type": "string",
+      "description": "Server-built SHA-256 identity for one authenticated batch, scheduled batch, or retry attempt."
+    },
+    "batch_recipient_key": {
+      "type": "string",
+      "description": "Server-built SHA-256 identity for exactly one destination inside a batch; used for durable duplicate suppression."
+    },
+    "retry_generation": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Zero for an original send and incremented for each separately logged retry attempt."
+    },
     "next_retry_at": {
       "type": "string",
       "format": "date-time",
@@ -120,11 +228,21 @@
     },
     "delivery_notify_claimed_by": {
       "type": "string",
-      "description": "Best-effort claim token for delivery confirmation notify (poller/webhook)"
+      "description": "Outbox claim token for one delivery notification (poller/webhook)."
+    },
+    "delivery_notify_claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When delivery notification ownership was claimed. A stale claim is reconciled by the fax-status poller before another notification create."
     },
     "failure_notify_claimed_by": {
       "type": "string",
-      "description": "Best-effort claim token for final-failure notify (poller/webhook)"
+      "description": "Outbox claim token for one final-failure notification (poller/webhook)."
+    },
+    "failure_notify_claimed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When final-failure notification ownership was claimed. A stale claim is reconciled by the fax-status poller before another notification create."
     },
     "ocr_text": {
       "type": "string",
@@ -151,6 +269,10 @@
       "type": "string",
       "format": "date-time",
       "description": "When this fax was claimed for a retry send"
+    },
+    "retry_claimed_by_user_id": {
+      "type": "string",
+      "description": "Immutable authenticated User id that owns the current manual retry claim."
     }
   },
   "required": [

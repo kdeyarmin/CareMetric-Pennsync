@@ -1,8 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 
-const { create } = vi.hoisted(() => ({ create: vi.fn(async (x) => x) }));
+const { invoke } = vi.hoisted(() => ({ invoke: vi.fn(async (_name, x) => ({ data: x })) }));
 vi.mock('@/api/base44Client', () => ({
-  base44: { entities: { Notification: { create: (...a) => create(...a) } } },
+  base44: { functions: { invoke: (...a) => invoke(...a) } },
 }));
 
 import { validateNotification, NOTIFICATION_TYPES, sendInAppNotification } from './notify.js';
@@ -42,17 +42,19 @@ describe('validateNotification', () => {
 });
 
 describe('sendInAppNotification', () => {
-  it('persists the NORMALIZED priority, not the caller\'s out-of-range value', async () => {
-    // Regression: an out-of-range priority left in `...rest` overwrote safePriority.
-    create.mockClear();
+  it('requests the broker with the normalized priority and no entity-only state', async () => {
+    invoke.mockClear();
     await sendInAppNotification({ user_email: 'a@b.com', title: 'T', message: 'M', type: 'info', priority: 'urgent' });
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(create.mock.calls[0][0].priority).toBe('medium');
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(invoke.mock.calls[0][0]).toBe('createNotification');
+    expect(invoke.mock.calls[0][1].priority).toBe('medium');
+    expect(invoke.mock.calls[0][1]).not.toHaveProperty('is_read');
+    expect(invoke.mock.calls[0][1]).not.toHaveProperty('dedupe_key');
   });
 
-  it('throws (and does not create) on invalid input', async () => {
-    create.mockClear();
+  it('throws (and does not invoke the broker) on invalid input', async () => {
+    invoke.mockClear();
     await expect(sendInAppNotification({ user_email: 'a@b.com', title: 'T', message: 'M', type: 'bogus' })).rejects.toThrow();
-    expect(create).not.toHaveBeenCalled();
+    expect(invoke).not.toHaveBeenCalled();
   });
 });

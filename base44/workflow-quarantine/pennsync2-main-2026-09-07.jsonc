@@ -1,0 +1,30 @@
+{
+  "source_repository": "pennsync2",
+  "source_commit": "cb5bc42efeab1764685bedfb5dc2497afbfb4b13",
+  "decision": "do_not_import_or_activate",
+  "reviewed_at": "2026-09-07T00:00:00.000Z",
+  "workflows": [
+    { "name": "Auto-Approve Stuck Invited Users", "target": "autoApproveInvitedUser", "state": "quarantined", "reason": "global_user_mutation_requires_hosted_scope_and_concurrency_proof" },
+    { "name": "Auto-Process Completed Visits", "target": "processCompletedVisit", "state": "source_disabled", "reason": "tenant_safe_visit_update_migration_incomplete" },
+    { "name": "Auto-assign Nurse to Patient on Visit", "target": "autoAssignNurseToPatient", "state": "safe_noop", "reason": "visit_creation_must_not_grant_patient_access" },
+    { "name": "Corrective Action on Failed Compliance Training", "target": "triggerCorrectiveActionPlan", "state": "quarantined", "reason": "ai_and_multi_entity_mutation_requires_hosted_event_and_rollback_proof" },
+    { "name": "Daily Annual Education Reminder Notifications", "target": "sendTrainingNotifications", "state": "quarantined", "reason": "duplicates_the_general_training_scan_and_uses_legacy_notifications" },
+    { "name": "Daily Annual Education Renewal Reassignment", "target": "processAnnualEducationRenewals", "state": "quarantined", "reason": "global_reassignment_requires_tenant_and_single_winner_proof" },
+    { "name": "Daily Credential Renewal Reminders", "target": "sendCredentialRenewalReminders", "state": "quarantined", "reason": "external_delivery_and_global_scan_require_hosted_proof" },
+    { "name": "Daily Data Quality Score Update", "target": "calculateDataQualityScores", "state": "source_disabled", "reason": "legacy_patient_service_role_writer_is_unavailable" },
+    { "name": "Daily Expiration Notifications", "target": "sendExpirationNotifications", "state": "quarantined", "reason": "overlaps_credential_and_training_jobs_and_uses_legacy_notifications" },
+    { "name": "Daily Pending Signature Request Check", "target": "checkPendingSignatureRequests", "state": "source_disabled", "reason": "signature_release_is_paused" },
+    { "name": "Daily Personnel File Expiration Notifications", "target": "sendPersonnelExpirationNotifications", "state": "quarantined", "reason": "overlaps_expiration_jobs_and_uses_legacy_notifications" },
+    { "name": "Daily Training Reminder Notifications", "target": "sendTrainingNotifications", "state": "quarantined", "reason": "global_scan_and_legacy_notification_producer_require_migration" },
+    { "name": "Daily Training Renewal Reassignment", "target": "processTrainingRenewals", "state": "quarantined", "reason": "overlaps_annual_renewal_and_requires_single_winner_proof" },
+    { "name": "Document Signed Notification", "target": "onDocumentSigned", "state": "source_disabled", "reason": "signature_release_is_paused" },
+    { "name": "Email Certificate On Pass", "target": "sendTrainingCertificateEmail", "state": "quarantined", "reason": "entity_event_and_external_delivery_require_hosted_proof" },
+    { "name": "Fax Status Change Notifications", "target": "sendFaxStatusNotification", "state": "quarantined", "reason": "duplicates_provider_event_processing_and_uses_legacy_notifications" },
+    { "name": "Notify Admin of Signed Document", "target": "notifyAdminOfSignedDocument", "state": "source_disabled", "reason": "signature_release_is_paused" },
+    { "name": "Notify Signer of New Package", "target": "notifySignerOfPackage", "state": "source_disabled", "reason": "signature_release_is_paused" },
+    { "name": "Notify Urgent Messages", "target": "notifyUrgentMessage", "state": "source_disabled", "reason": "secure_messaging_release_is_paused" },
+    { "name": "Send Daily Document Reminders", "target": "sendDocumentReminderEmails", "state": "source_disabled", "reason": "signature_release_is_paused" },
+    { "name": "Sync Twilio Fax Statuses", "target": "syncTwilioFaxStatuses", "state": "missing_target", "reason": "obsolete_twilio_workflow_has_no_function_in_the_consolidated_source" },
+    { "name": "Update Patient Quality Score on Change", "target": "enforceDataCompleteness", "state": "source_disabled", "reason": "legacy_patient_service_role_writer_is_unavailable" }
+  ]
+}

@@ -66,7 +66,7 @@ describe('residual RLS source containment', () => {
     expect(manifest).toMatch(/page:\s*["']ComplianceCenter["'][\s\S]{0,300}?adminOnly:\s*true/);
   });
 
-  it('protects fax retry policy reads and keeps clinician retry transmission paused', () => {
+  it('protects fax retry policy reads and contains clinician retry transmission in the referral broker', () => {
     const faxRls = entity('FaxRetryConfig').rls;
     expect(faxRls.read).toEqual(ADMIN);
     expect(faxRls.create).toEqual(ADMIN);
@@ -87,10 +87,11 @@ describe('residual RLS source containment', () => {
     const history = read('src/components/fax/EnhancedFaxHistory.jsx');
     expect(history).not.toMatch(/fetchCallerFaxRetryConfig|faxRetryConfig|retryFailedFax|retryMutation/);
 
-    const retryHandler = read('base44/functions/retryFailedFax/entry.ts');
-    expect(retryHandler).toMatch(/const FAX_TRANSMISSION_MIGRATION_PAUSED\s*=\s*true\s*;/);
-    expect(retryHandler.indexOf('if (FAX_TRANSMISSION_MIGRATION_PAUSED)'))
-      .toBeLessThan(retryHandler.indexOf('createClientFromRequest(req)'));
+    const retrySource = read('base44/functions/retryFailedFax/entry.ts');
+    const retryHandler = retrySource.slice(retrySource.lastIndexOf('Deno.serve'));
+    expect(retryHandler).toMatch(/functions\.invoke\('sendAuthorizedReferralFax'/);
+    expect(retryHandler).toMatch(/retry_fax_log_id:\s*faxLogId/);
+    expect(retryHandler).not.toMatch(/FaxLog\.(?:create|update|updateMany)|api\.telnyx\.com/);
   });
 
   it('allows only protected admins to mutate shared Medicare configuration', () => {

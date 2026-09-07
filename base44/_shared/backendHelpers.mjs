@@ -421,6 +421,78 @@ function getSchedulerAuthError(req, user) {
   );
 }`,
 
+  // A Base44 scheduled automation cannot attach the internal-secret header that
+  // the outcome writer requires. The scheduler-facing dispatcher therefore
+  // signs each exact one-agency request with a short-lived HMAC capability. The
+  // writer verifies the capability before constructing any service-role query.
+  // Every field that controls tenant scope, reporting window, benchmark, or
+  // idempotency is covered by the signature; a captured proof can only replay
+  // the same idempotent request during the bounded acceptance window.
+  outcomeDispatchProof: `const OUTCOME_DISPATCH_PROOF_VERSION = 'outcome-dispatch-v1';
+const OUTCOME_DISPATCH_PROOF_MAX_AGE_MS = 15 * 60 * 1000;
+const OUTCOME_DISPATCH_PROOF_MAX_FUTURE_SKEW_MS = 60 * 1000;
+function outcomeDispatchProofMessage(payload, proof) {
+  return JSON.stringify([
+    OUTCOME_DISPATCH_PROOF_VERSION,
+    payload.agency_id,
+    payload.period_type,
+    payload.period_start,
+    payload.period_end,
+    payload.benchmark ?? null,
+    payload.idempotency_key,
+    proof.issued_at,
+    proof.nonce,
+  ]);
+}
+async function outcomeDispatchHmacHex(secret, value) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(value));
+  return Array.from(new Uint8Array(signature), (byte) =>
+    byte.toString(16).padStart(2, '0')).join('');
+}
+async function createOutcomeDispatchProof(secret, payload) {
+  const proof = {
+    version: OUTCOME_DISPATCH_PROOF_VERSION,
+    issued_at: new Date().toISOString(),
+    nonce: crypto.randomUUID(),
+  };
+  return {
+    ...proof,
+    signature: await outcomeDispatchHmacHex(
+      secret,
+      outcomeDispatchProofMessage(payload, proof),
+    ),
+  };
+}
+async function verifyOutcomeDispatchProof(secret, payload, proof, nowMs = Date.now()) {
+  if (!proof || typeof proof !== 'object' || Array.isArray(proof)) return false;
+  const keys = Object.keys(proof).sort();
+  if (JSON.stringify(keys) !== JSON.stringify(['issued_at', 'nonce', 'signature', 'version'])) {
+    return false;
+  }
+  if (proof.version !== OUTCOME_DISPATCH_PROOF_VERSION) return false;
+  if (typeof proof.issued_at !== 'string' || typeof proof.nonce !== 'string' ||
+      typeof proof.signature !== 'string') return false;
+  const issuedAtMs = Date.parse(proof.issued_at);
+  if (!Number.isFinite(issuedAtMs) || new Date(issuedAtMs).toISOString() !== proof.issued_at ||
+      issuedAtMs > nowMs + OUTCOME_DISPATCH_PROOF_MAX_FUTURE_SKEW_MS ||
+      nowMs - issuedAtMs > OUTCOME_DISPATCH_PROOF_MAX_AGE_MS ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(proof.nonce) ||
+      !/^[0-9a-f]{64}$/.test(proof.signature)) return false;
+  const expected = await outcomeDispatchHmacHex(
+    secret,
+    outcomeDispatchProofMessage(payload, proof),
+  );
+  return timingSafeEqualStr(proof.signature, expected);
+}`,
+
   // Branded transactional-email builder. Produces the PennSync (navy + gold) HTML
   // shell every outgoing email uses so the logo, wordmark, colors, and footer never
   // drift across functions (the from_name 'PennSync by CareMetric' is set at each

@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
@@ -26,18 +26,25 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 const isSet = (v) => typeof v === 'string' && v.trim() !== '';
 
-// Light auth probe against a provider. Returns { status, detail }.
+// A provider is healthy only when the probe returns 2xx. A generic non-2xx does
+// not prove authentication: 404, 429, and 5xx were previously mislabeled as
+// "Working", which made this dashboard unsafe as a release check.
 async function probe(url, options, okDetail, failLabel) {
   try {
     const res = await fetch(url, options);
-    if (res.ok || res.status === 200) return { status: 'ok', detail: okDetail };
+    if (res.ok) return { status: 'ok', detail: okDetail };
     if (res.status === 401 || res.status === 403) {
       return { status: 'fail', detail: `${failLabel} rejected the key (HTTP ${res.status}). Check the key value.` };
     }
-    // Other non-2xx (e.g. 400 for a probe endpoint) still proves the key authenticated.
-    return { status: 'ok', detail: okDetail };
+    if (res.status === 429) {
+      return { status: 'warn', detail: `${failLabel} rate-limited the health check (HTTP 429); authentication was not confirmed.` };
+    }
+    if (res.status >= 500) {
+      return { status: 'warn', detail: `${failLabel} is currently unavailable (HTTP ${res.status}); authentication was not confirmed.` };
+    }
+    return { status: 'fail', detail: `${failLabel} health check failed (HTTP ${res.status}); authentication was not confirmed.` };
   } catch (e) {
-    return { status: 'warn', detail: `Could not reach ${failLabel}: ${e.message}` };
+    return { status: 'warn', detail: `Could not reach ${failLabel}; authentication was not confirmed.` };
   }
 }
 
@@ -131,6 +138,8 @@ Deno.serve(async (req) => {
     }
 
     // ---- HeyGen (training video avatars) ----
+    // There is no harmless, stable auth endpoint pinned in this repository.
+    // Presence is configuration evidence only and must never render as Working.
     const heygenKey = env('HEYGEN_API_KEY');
     integrations.push({
       id: 'heygen',
@@ -138,8 +147,10 @@ Deno.serve(async (req) => {
       category: 'Media',
       configured: Boolean(heygenKey),
       editable_in_app: false,
-      status: heygenKey ? 'ok' : 'warn',
-      detail: heygenKey ? 'HEYGEN_API_KEY is set.' : 'HEYGEN_API_KEY is not set (AI training video generation disabled).',
+      status: 'warn',
+      detail: heygenKey
+        ? 'HEYGEN_API_KEY is configured, but this dashboard has not authenticated it with HeyGen.'
+        : 'HEYGEN_API_KEY is not set (AI training video generation disabled).',
     });
 
     // ---- Notifyre (fax fallback) ----
@@ -150,8 +161,10 @@ Deno.serve(async (req) => {
       category: 'Fax',
       configured: Boolean(notifyreKey),
       editable_in_app: false,
-      status: notifyreKey ? 'ok' : 'warn',
-      detail: notifyreKey ? 'NOTIFYRE_API_KEY is set.' : 'NOTIFYRE_API_KEY is not set (optional fax fallback).',
+      status: 'warn',
+      detail: notifyreKey
+        ? 'NOTIFYRE_API_KEY is configured, but this dashboard has not authenticated it with Notifyre.'
+        : 'NOTIFYRE_API_KEY is not set (optional fax fallback).',
     });
 
     // ---- Twilio (legacy SMS / voice) ----
@@ -174,7 +187,8 @@ Deno.serve(async (req) => {
       const res = await base44.functions.invoke('testTelnyxConnection', {});
       const data = res?.data || res;
       const checks = Array.isArray(data?.checks) ? data.checks : [];
-      const hasFail = checks.some((c) => c.status === 'fail');
+      const validResult = data?.success === true && checks.length > 0;
+      const hasFail = !validResult || checks.some((c) => c.status === 'fail');
       const hasWarn = checks.some((c) => c.status === 'warn');
       const apiLive = checks.find((c) => c.id === 'telnyx_api_live');
       integrations.push({
@@ -187,12 +201,40 @@ Deno.serve(async (req) => {
         detail: apiLive && apiLive.status === 'fail'
           ? apiLive.detail
           : hasFail
-            ? 'One or more Telnyx checks failed — see the Telnyx setup section.'
+            ? validResult
+              ? 'One or more Telnyx checks failed — see the Telnyx setup section.'
+              : 'Telnyx health check returned an invalid or empty result; authentication was not confirmed.'
             : 'Telnyx credentials configured and authenticated.',
       });
     } catch (e) {
       integrations.push({ id: 'telnyx', label: 'Telnyx (SMS / voice / fax)', category: 'Telephony', configured: false, editable_in_app: true, status: 'warn', detail: `Telnyx test could not run: ${e.message}` });
     }
+
+    const internalSecret = env('INTERNAL_FN_SECRET');
+    integrations.push({
+      id: 'workflow_internal_auth',
+      label: 'Workflow internal authentication',
+      category: 'Automation',
+      configured: Boolean(internalSecret && internalSecret.length >= 32),
+      editable_in_app: false,
+      status: internalSecret && internalSecret.length >= 32 ? 'ok' : 'fail',
+      detail: internalSecret && internalSecret.length >= 32
+        ? 'INTERNAL_FN_SECRET is configured for scheduler-to-function authentication.'
+        : 'INTERNAL_FN_SECRET is missing or too short; protected scheduled functions cannot run.',
+    });
+
+    const outcomeRelease = env('OUTCOME_PIPELINE_RELEASE');
+    integrations.push({
+      id: 'outcome_pipeline_release',
+      label: 'Outcome workflow release gate',
+      category: 'Automation',
+      configured: Boolean(outcomeRelease),
+      editable_in_app: false,
+      status: outcomeRelease === 'enabled-v1' ? 'ok' : 'warn',
+      detail: outcomeRelease === 'enabled-v1'
+        ? 'Outcome workflow release gate is enabled-v1.'
+        : 'Outcome workflow is intentionally paused until hosted tenant and atomicity validation is approved.',
+    });
 
     return Response.json({
       success: true,

@@ -838,7 +838,8 @@ test('every cleanup update requires exact readback before complete can be true',
     }],
     ['ScheduledFax', 'scheduled_faxes_canceled', {
       id: 'fax-1',
-      created_by: targetEmail,
+      authorized_by_user_id: 'target-1',
+      authorized_by_email_normalized: targetEmail.toLowerCase(),
       status: 'pending',
     }],
     ['ScheduledSignatureReminder', 'signature_reminders_canceled', {
@@ -886,7 +887,12 @@ test('exact committed cleanup readbacks are the only rows counted as revoked', a
       }],
       UserInvitation: [{ id: 'invite-1', email: targetEmail, status: 'pending' }],
       ScheduledSms: [{ id: 'sms-1', nurse_email: targetEmail, status: 'pending' }],
-      ScheduledFax: [{ id: 'fax-1', created_by: targetEmail, status: 'pending' }],
+      ScheduledFax: [{
+        id: 'fax-1',
+        authorized_by_user_id: 'target-1',
+        authorized_by_email_normalized: targetEmail.toLowerCase(),
+        status: 'pending',
+      }],
       ScheduledSignatureReminder: [{
         id: 'reminder-1',
         requested_by: targetEmail,

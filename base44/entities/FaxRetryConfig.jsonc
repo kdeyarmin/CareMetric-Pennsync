@@ -2,15 +2,23 @@
   "name": "FaxRetryConfig",
   "type": "object",
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Agency id for this retry policy. New server-owned policy writes must set it and reject duplicates."
+    },
     "max_retries": {
-      "type": "number",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10,
       "default": 3,
-      "description": "Maximum number of retry attempts"
+      "description": "Maximum number of retry attempts (0–10). Runtime workers also enforce this ceiling."
     },
     "retry_delay_minutes": {
       "type": "number",
+      "minimum": 1,
+      "maximum": 360,
       "default": 15,
-      "description": "Minutes to wait between retries"
+      "description": "Minutes to wait between retries (1–360)."
     },
     "auto_retry_enabled": {
       "type": "boolean",
@@ -53,7 +61,7 @@
     },
     "agency_name": {
       "type": "string",
-      "description": "Tenant agency this retry policy belongs to. Readers must filter by caller/sender agency — never take global newest-row across tenants."
+      "description": "Legacy agency-code binding retained for audited migration only. Runtime authority uses agency_id; a unique verified agency code may be used only as a temporary fallback."
     }
   },
   "required": [],

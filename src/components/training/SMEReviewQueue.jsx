@@ -11,6 +11,7 @@ import { Eye, CheckCircle2, RotateCcw, Sparkles, ShieldCheck, Loader2 } from "lu
 import { toast } from "sonner";
 import { getCourseReadiness } from "./courseReadiness";
 import { recordTrainingAuditEvent } from "@/functions/recordTrainingAuditEvent";
+import { sendInAppNotification } from "@/lib/notify";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { isAdminLike } from "@/lib/superAdmin";
 
@@ -59,7 +60,7 @@ export default function SMEReviewQueue() {
   const notifyAuthor = async (course, title, message) => {
     if (!course.created_by || course.created_by === currentUser?.email) return;
     try {
-      await base44.entities.Notification.create({
+      await sendInAppNotification({
         user_email: course.created_by,
         title,
         message,

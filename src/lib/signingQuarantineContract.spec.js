@@ -29,6 +29,9 @@ const quarantinedEntities = [
   'ProviderFollowUpToken',
   'ReminderLog',
   'ScheduledSignatureReminder',
+  'SignatureArtifactBinding',
+  'SignatureAuditEvent',
+  'SignerReviewGrant',
 ];
 
 const unsignedFaxSenders = {

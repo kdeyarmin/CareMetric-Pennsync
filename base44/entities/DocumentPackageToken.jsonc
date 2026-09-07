@@ -2,6 +2,10 @@
   "name": "DocumentPackageToken",
   "type": "object",
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable tenant copied from the exact authority-bound package."
+    },
     "package_id": {
       "type": "string",
       "description": "Reference to DocumentPackage"
@@ -15,7 +19,7 @@
     },
     "token": {
       "type": "string",
-      "description": "SHA-256 hash of the secure access token. The plaintext token exists only in the emailed signing link; validators hash the presented token before lookup. (Legacy rows may still hold a plaintext token until they expire.)"
+      "description": "SHA-256 digest of the high-entropy bearer token. Plaintext exists only in the outbound email operation and request memory."
     },
     "token_hashed": {
       "type": "boolean",
@@ -25,6 +29,40 @@
       "type": "string",
       "description": "Email of authorized signer"
     },
+    "signer_id": {
+      "type": "string",
+      "description": "Opaque signer id bound to the token; client-supplied identity is never authoritative."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["delivery_pending", "delivery_indeterminate", "delivery_rejected", "active", "claimed", "consumed", "revoked", "expired"],
+      "default": "active"
+    },
+    "authority_version": {
+      "type": "number",
+      "default": 1,
+      "description": "Monotonic revision used for conditional token claims, releases, and terminal transitions."
+    },
+    "created_by_user_id": {
+      "type": "string",
+      "description": "Immutable User id that authorized minting, or the original package creator for scheduler rotation."
+    },
+    "creator_membership_id": {
+      "type": "string"
+    },
+    "creator_membership_version": {
+      "type": "number"
+    },
+    "token_request_id": {
+      "type": "string",
+      "description": "Opaque server-side issuance request id used for duplicate detection."
+    },
+    "delivery_attempt_id": { "type": "string" },
+    "delivery_state": {
+      "type": "string",
+      "enum": ["pending", "accepted", "indeterminate", "rejected"]
+    },
+    "delivery_settled_at": { "type": "string", "format": "date-time" },
     "signer_name": {
       "type": "string",
       "description": "Name of signer for personalization"
@@ -53,6 +91,36 @@
       "type": "string",
       "format": "date-time",
       "description": "Last time token was used"
+    },
+    "claimed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "claimed_by_request_id": {
+      "type": "string"
+    },
+    "claimed_by_operation_id": {
+      "type": "string",
+      "description": "Server-generated owner of the in-flight conditional claim; caller retry ids never confer claim ownership."
+    },
+    "claimed_document_id": {
+      "type": "string",
+      "description": "Exact DocumentSignature protected by the in-flight claim."
+    },
+    "consumed_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_completed_request_id": {
+      "type": "string",
+      "description": "Most recent signature submission request completed with this token; supports exact response-loss recovery without replaying the legal act."
+    },
+    "last_completed_document_id": {
+      "type": "string"
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time"
     },
     "ip_addresses": {
       "type": "array",

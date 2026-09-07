@@ -76,11 +76,17 @@ issuance is protected structurally: `issueCertificate` only trusts a passing
 | Secret | Set at launch? | Effect if unset |
 |---|---|---|
 | `SIGNATURE_HMAC_SECRET` | **Yes** | Signature integrity MAC falls back to **unkeyed sha256** — detects corruption, **not** forgery. Set it so e-signature tamper-evidence is forgery-resistant. |
-| `INTERNAL_FN_SECRET` | **Yes** | Every scheduled/internal function (the ~30-function cron family: fax queues, SMS dispatch, renewal reminders, outcome measures, …) authorizes with `x-internal-secret: <INTERNAL_FN_SECRET>` OR an admin session, and **fails closed with a 500 when the secret is unset** and the caller isn't an admin — so unattended cron firings all fail until it is set. See `docs/LEARNING_CENTER_SCHEDULED_JOBS.md` for the registration steps (the platform trigger must send the header). |
+| `INTERNAL_FN_SECRET` | **Required for external/header-based schedulers; recommended otherwise** | Native Base44 automations run as the user who created them, so an automation created by an active protected admin authorizes through `auth.me()` without this header. External/no-session scheduler calls must send `x-internal-secret: <INTERNAL_FN_SECRET>` and fail closed with `500` when it is unset; authenticated non-admin callers fail with `403`. Never place the secret in browser code or automation `function_args`. See `docs/LEARNING_CENTER_SCHEDULED_JOBS.md`. |
 
-**Verify scheduled-function auth:** an unauthenticated POST to a cron function
-(e.g. `processScheduledFaxes`) without the header → `401/500`; with
-`x-internal-secret` set correctly → `200`.
+**Verify scheduled-function auth:** deploy/create native automations only as the
+intended protected platform admin. In isolated staging, list the deployed
+workflow, run one canary, and verify that its creator-backed `auth.me()` identity
+is the expected active admin and the response is successful. Also verify an
+unauthenticated POST to a cron function (e.g. `processScheduledFaxes`) without
+the header → `401/500`, with the correct `x-internal-secret` → `200`, and an
+authenticated non-admin call → `403`. If the automation creator is deactivated
+or demoted, recreate the automation under the approved owner before re-enabling
+it.
 
 **Verify certificate issuance:** a direct `issueCertificate` call from a non-admin
 with no passing attempt is rejected; a legitimate completion via
@@ -101,8 +107,8 @@ of the app is unaffected.
 
 (Telehealth video tokens and outbound fax use the Telnyx config from §2, not these.)
 
-These three plus the §3 `SIGNATURE_HMAC_SECRET` are the **complete** backend
-secret list (four total) — nothing else is read from the dashboard env.
+These three plus the §3 `SIGNATURE_HMAC_SECRET` are the AI/media and signature
+secrets. Scheduler and Telnyx secrets are documented separately above.
 
 **Verify:** with a key set, the corresponding feature runs; with it unset, it shows the
 not-configured notice rather than erroring.
@@ -111,8 +117,10 @@ not-configured notice rather than erroring.
 
 ## 5. Scheduled functions (crons) — enable exactly one of each duplicated pair
 
-These run privileged `asServiceRole` work with no `auth.me()` — correct only if the
-platform restricts who can invoke function endpoints (**confirm that**).
+These run privileged `asServiceRole` work after the shared authorization gate.
+Native Base44 runs inherit the automation creator's identity; external
+schedulers must use the shared-secret header. Keep the creator identity and the
+single-active-schedule rules below in the deployment evidence.
 
 | Function | Schedule | Notes |
 |---|---|---|

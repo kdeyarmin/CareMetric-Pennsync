@@ -1,0 +1,36 @@
+{
+  "name": "SignerReviewGrant",
+  "type": "object",
+  "description": "Short-lived, single-use proof that a bearer-token holder was authorized to review the exact private document digest before signing.",
+  "properties": {
+    "grant_key": { "type": "string", "description": "SHA-256 digest of the plaintext review nonce; plaintext is response-only." },
+    "agency_id": { "type": "string" },
+    "package_id": { "type": "string" },
+    "document_signature_id": { "type": "string" },
+    "signer_id": { "type": "string" },
+    "token_id": { "type": "string" },
+    "document_content_sha256": { "type": "string" },
+    "package_authority_version": { "type": "number" },
+    "document_authority_version": { "type": "number" },
+    "document_binding_id": { "type": "string" },
+    "document_binding_version": { "type": "number" },
+    "signer_roster_sha256": { "type": "string" },
+    "agreement_text_sha256": { "type": "string", "description": "Digest of the exact approved consent text displayed for this grant." },
+    "status": { "type": "string", "enum": ["active", "claimed", "consumed", "expired", "revoked"], "default": "active" },
+    "authority_version": { "type": "number", "default": 1 },
+    "issued_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "claimed_at": { "type": "string", "format": "date-time" },
+    "claimed_by_request_id": { "type": "string" },
+    "claimed_by_operation_id": { "type": "string", "description": "Server-generated owner of the in-flight claim." },
+    "claimed_document_id": { "type": "string" },
+    "consumed_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "grant_key", "agency_id", "package_id", "document_signature_id", "signer_id",
+    "token_id", "document_content_sha256", "package_authority_version",
+    "document_authority_version", "document_binding_id", "document_binding_version",
+    "signer_roster_sha256", "agreement_text_sha256", "status", "authority_version", "issued_at", "expires_at"
+  ],
+  "rls": { "read": false, "create": false, "update": false, "delete": false }
+}

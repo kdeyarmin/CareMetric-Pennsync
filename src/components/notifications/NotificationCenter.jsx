@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,107 +24,77 @@ import {
 } from "lucide-react";
 import { formatEastern, formatRelativeEastern } from "@/components/utils/timezone";
 import { Link } from "react-router";
+import {
+  dismissMyNotification,
+  listMyNotifications,
+  markAllMyNotificationsRead,
+  markMyNotificationRead,
+} from "@/functions/manageMyNotifications";
 
-export default function NotificationCenter({ currentUser, onClose }) {
+export function isSafeNotificationActionUrl(value) {
+  return typeof value === 'string'
+    && value.startsWith('/')
+    && !value.startsWith('//')
+    && !value.includes('\\')
+    && value.length <= 1000
+    && ![...value].some((character) => {
+      const code = character.charCodeAt(0);
+      return code <= 31 || code === 127;
+    });
+}
+
+export default function NotificationCenter({ currentUser, agencyId, onClose }) {
   const queryClient = useQueryClient();
   const [selectedNotification, setSelectedNotification] = useState(null);
 
+  const notificationKey = ['notifications', agencyId, currentUser?.id];
   const { data: notificationEntities = [] } = useQuery({
-    queryKey: ['notifications', currentUser?.email],
-    queryFn: () => base44.entities.Notification.filter(
-      { user_email: currentUser?.email },
-      '-created_date',
-      100
-    ),
+    queryKey: notificationKey,
+    queryFn: () => listMyNotifications({ agencyId }),
     initialData: [],
-    enabled: !!currentUser?.email,
+    enabled: !!currentUser?.id && !!agencyId,
     refetchInterval: 30000,
-  });
-
-  const { data: activeAlerts = [] } = useQuery({
-    queryKey: ['active-alerts-nc', currentUser?.email],
-    queryFn: () => base44.entities.PatientAlert.filter(
-      { status: 'active', assigned_to: currentUser?.email },
-      '-created_date',
-      20
-    ),
-    initialData: [],
-    refetchInterval: 60000,
-    enabled: !!currentUser?.email,
   });
 
   // Combine all notifications — tasks are intentionally excluded here because
   // they are a persistent work-item list (with their own Task UI) and injecting
   // all pending tasks as synthetic unread notifications floods the panel and can
   // never be cleared (synthetic items can't be marked read or deleted).
-  const combinedNotifications = [
-    ...notificationEntities.map(n => ({
-      id: n.id,
-      type: n.type || 'notification',
-      title: n.title || 'Notification',
-      message: n.message || n.title,
-      created_date: n.created_date,
-      is_read: n.is_read,
-      priority: n.priority || 'medium',
-      // Preserve the deep-link fields so the action button can render.
-      action_url: n.action_url,
-      action_label: n.action_label
-    })),
-    // Only include critical/high patient alerts to avoid flooding
-    ...activeAlerts.filter(a => ['critical', 'high'].includes(a.severity)).map(a => ({
-      id: a.id,
-      type: 'patient_alert',
-      title: 'Patient Alert',
-      message: a.message || a.description,
-      created_date: a.created_date,
-      is_read: false,
-      priority: a.severity || 'high',
-      // Surfaced from a PatientAlert, not a Notification row — its id is NOT
-      // a Notification id, so it must be excluded from Notification.update calls.
-      _synthetic: true
-    })),
-  ].sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
-
-  const notifications = combinedNotifications;
+  const notifications = notificationEntities
+    .map(n => ({ ...n }))
+    .sort((a, b) => new Date(b.created_date) - new Date(a.created_date));
 
   const markAsReadMutation = useMutation({
-    mutationFn: (notificationId) => base44.entities.Notification.update(notificationId, {
-      is_read: true,
-      read_at: new Date().toISOString()
+    mutationFn: (notification) => markMyNotificationRead({
+      agencyId,
+      notificationId: notification.id,
+      expectedVersion: notification.version,
     }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: notificationKey });
     },
   });
 
   const markAllAsReadMutation = useMutation({
-    mutationFn: async () => {
-      // Only real Notification rows can be marked read (synthetic alert/task
-      // items carry a non-Notification id). allSettled so one failure doesn't
-      // short-circuit the rest.
-      const unreadIds = notifications.filter(n => !n.is_read && !n._synthetic).map(n => n.id);
-      await Promise.allSettled(unreadIds.map(id =>
-        base44.entities.Notification.update(id, {
-          is_read: true,
-          read_at: new Date().toISOString()
-        })
-      ));
-    },
+    mutationFn: () => markAllMyNotificationsRead({ agencyId }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: notificationKey });
     },
   });
 
-  const deleteNotificationMutation = useMutation({
-    mutationFn: (notificationId) => base44.entities.Notification.delete(notificationId),
+  const dismissNotificationMutation = useMutation({
+    mutationFn: (notification) => dismissMyNotification({
+      agencyId,
+      notificationId: notification.id,
+      expectedVersion: notification.version,
+    }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: notificationKey });
       setSelectedNotification(null);
     },
   });
 
   const unreadNotifications = notifications.filter(n => !n.is_read);
-  const _readNotifications = notifications.filter(n => n.is_read);
 
   const getNotificationIcon = (type) => {
     switch (type) {
@@ -160,11 +129,8 @@ export default function NotificationCenter({ currentUser, onClose }) {
   };
 
   const handleNotificationClick = (notification) => {
-    // Synthetic items (open PatientAlerts/Tasks surfaced here) carry an
-    // alert/task id, not a Notification id — calling Notification.update with it
-    // is a no-op error, so only mark real notifications read.
-    if (!notification.is_read && !notification._synthetic) {
-      markAsReadMutation.mutate(notification.id);
+    if (!notification.is_read) {
+      markAsReadMutation.mutate(notification);
     }
     setSelectedNotification(notification);
   };
@@ -309,22 +275,18 @@ export default function NotificationCenter({ currentUser, onClose }) {
               </div>
               <p className="text-slate-900">{selectedNotification.message}</p>
               <div className="flex gap-2 pt-4 border-t">
-                {selectedNotification.action_url && (
+                {isSafeNotificationActionUrl(selectedNotification.action_url) && (
                   <Link to={selectedNotification.action_url} onClick={() => setSelectedNotification(null)}>
                     <Button>
                       {selectedNotification.action_label || 'View'}
                     </Button>
                   </Link>
                 )}
-                {/* Synthetic rows are PatientAlerts, not Notifications — their
-                    id would be sent to Notification.update() and fail silently,
-                    and is_read is always false for them so this button would
-                    otherwise always render. */}
-                {!selectedNotification.is_read && !selectedNotification._synthetic && (
+                {!selectedNotification.is_read && (
                   <Button
                     variant="outline"
                     onClick={() => {
-                      markAsReadMutation.mutate(selectedNotification.id);
+                      markAsReadMutation.mutate(selectedNotification);
                       setSelectedNotification(null);
                     }}
                   >
@@ -332,15 +294,13 @@ export default function NotificationCenter({ currentUser, onClose }) {
                     Mark as read
                   </Button>
                 )}
-                {!selectedNotification._synthetic && (
-                  <Button
-                    variant="outline"
-                    onClick={() => deleteNotificationMutation.mutate(selectedNotification.id)}
-                  >
-                    <Trash2 className="w-4 h-4 mr-2" />
-                    Delete
-                  </Button>
-                )}
+                <Button
+                  variant="outline"
+                  onClick={() => dismissNotificationMutation.mutate(selectedNotification)}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Dismiss
+                </Button>
               </div>
             </div>
           </DialogContent>

@@ -10,7 +10,7 @@ const EXPECTED = {
   'Auto Retry Failed Faxes.jsonc': {
     target: 'autoRetryFailedFaxes',
     schedule: { mode: 'interval', value: 15, unit: 'minutes' },
-    releaseState: 'paused_fax',
+    releaseState: 'live',
   },
   'Check Stale Follow-Up Requests.jsonc': {
     target: 'checkStaleFollowUpRequests',
@@ -23,9 +23,10 @@ const EXPECTED = {
     releaseState: 'paused_signature',
   },
   'Nightly Outcome Measure Computation.jsonc': {
-    target: 'computeOutcomeMeasures',
+    target: 'dispatchNightlyOutcomeMeasures',
+    legacyTarget: 'computeOutcomeMeasures',
     schedule: { mode: 'recurring', cron: '0 6 * * *' },
-    releaseState: 'paused_outcomes',
+    releaseState: 'paused_outcome_dispatch',
   },
   'Poll Fax Statuses.jsonc': {
     target: 'pollFaxStatuses',
@@ -40,7 +41,7 @@ const EXPECTED = {
   'Process Scheduled Faxes.jsonc': {
     target: 'processScheduledFaxes',
     schedule: { mode: 'interval', value: 10, unit: 'minutes' },
-    releaseState: 'paused_fax',
+    releaseState: 'live',
   },
 };
 
@@ -76,14 +77,20 @@ function assertHandlerReleaseState(source, expected, file) {
   }
 
   if (expected.releaseState === 'paused_signature') {
+    const markerIndex = source.indexOf('const SIGNATURE_REMINDER_DISPATCH_ENABLED = false;');
+    const handlerIndex = source.indexOf('Deno.serve(async (req) =>');
+    const guardIndex = source.indexOf('if (!SIGNATURE_REMINDER_DISPATCH_ENABLED)', handlerIndex);
     assert.match(source, /Signature reminders are temporarily unavailable/);
     assert.match(source, /status:\s*503/);
-    assert.equal(clientIndex, -1, `${file} pause must occur before any SDK construction`);
+    assert.notEqual(markerIndex, -1, `${file} must retain its explicit inactive marker`);
+    assert.notEqual(clientIndex, -1, `${file} must retain its dormant reviewed implementation`);
+    assert.ok(markerIndex < handlerIndex && handlerIndex < guardIndex && guardIndex < clientIndex,
+      `${file} must pause before SDK construction`);
     return;
   }
 
-  const marker = expected.releaseState === 'paused_outcomes'
-    ? 'const OUTCOME_COMPUTATION_ENABLED = false;'
+  const marker = expected.releaseState === 'paused_outcome_dispatch'
+    ? 'const OUTCOME_DISPATCH_ENABLED ='
     : 'const FAX_TRANSMISSION_MIGRATION_PAUSED = true;';
   const markerIndex = source.indexOf(marker);
   assert.notEqual(markerIndex, -1, `${file} target must retain its fail-closed marker`);
@@ -126,7 +133,7 @@ test('migrated Base44 workflows preserve exact schedules, targets, and release c
     assert.equal(action?.then, 'end');
     assert.equal(
       workflow['x-base44-migrated-from-automation']?.legacy_payload_function,
-      expected.target,
+      expected.legacyTarget || expected.target,
       `${file} migration provenance must match its target`,
     );
 
@@ -135,10 +142,26 @@ test('migrated Base44 workflows preserve exact schedules, targets, and release c
     const source = await readFile(entryUrl, 'utf8');
     assertHandlerReleaseState(source, expected, file);
 
-    if (expected.releaseState === 'paused_outcomes') {
-      assert.match(source, /agency_id is required; platform-wide outcome computation is not supported/);
-      assert.match(source, /period_start and period_end/);
-      assert.match(source, /idempotency_key is required/);
+    if (expected.releaseState === 'paused_outcome_dispatch') {
+      assert.equal(
+        workflow['x-base44-migrated-from-automation']?.replacement_dispatch_function,
+        expected.target,
+      );
+      assert.equal(
+        workflow['x-base44-migrated-from-automation']?.release_state,
+        'inactive_pending_hosted_outcome_validation',
+      );
+      assert.match(source, /loadScheduledAgencyIds/);
+      assert.match(source, /createOutcomeDispatchProof/);
+      assert.match(source, /idempotency_key:\s*`nightly-outcome-daily:/);
+      const workerSource = await readFile(
+        new URL(`${expected.legacyTarget}/entry.ts`, FUNCTIONS_URL),
+        'utf8',
+      );
+      assert.match(workerSource, /agency_id is required; platform-wide outcome computation is not supported/);
+      assert.match(workerSource, /period_start and period_end/);
+      assert.match(workerSource, /idempotency_key is required/);
+      assert.match(workerSource, /verifyOutcomeDispatchProof/);
     }
   }
 });

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { Outlet, useLocation } from "react-router";
 
-import { LogOut, Clock } from "lucide-react";
+import { Bell, LogOut, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { buildNavCategories, buildAdminItems, NAV_MANIFEST, isNavItemActive } from "@/lib/nav.manifest";
@@ -19,6 +19,7 @@ import PageTransition from "@/components/layout/PageTransition";
 import SessionTimeoutManager from "@/components/security/SessionTimeoutManager";
 import Breadcrumbs from "@/components/navigation/Breadcrumbs";
 import CommandPalette from "@/components/navigation/CommandPalette";
+import NotificationCenter from "@/components/notifications/NotificationCenter";
 
 const SIDEBAR_COLLAPSED_KEY = "caremetric_sidebar_collapsed";
 
@@ -43,6 +44,7 @@ export default function Layout() {
     catch { return false; }
   });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [notificationCenterOpen, setNotificationCenterOpen] = useState(false);
 
   useEffect(() => {
     try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(sidebarCollapsed)); }
@@ -213,7 +215,8 @@ export default function Layout() {
           currentPageName={currentPageName}
           mobileMenuOpen={mobileMenuOpen}
           onToggleMobileMenu={() => setMobileMenuOpen(v => !v)}
-          notificationsAvailable={false}
+          notificationsAvailable={Boolean(tenantContext?.agency_id)}
+          onOpenNotificationCenter={() => setNotificationCenterOpen(true)}
         />
 
         <MobileMenu
@@ -233,6 +236,19 @@ export default function Layout() {
           style={{ background: "var(--app-shell-background)" }}
         >
           <div className="mx-auto w-full min-w-0 max-w-[1600px] p-4 sm:p-6 md:p-8 lg:p-10">
+            {tenantContext?.agency_id && (
+              <div className="mb-4 hidden justify-end md:flex">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setNotificationCenterOpen(true)}
+                  aria-label="Open notifications"
+                >
+                  <Bell className="mr-2 h-4 w-4" />
+                  Notifications
+                </Button>
+              </div>
+            )}
             {tenantMemberships.length > 1 && (
               <div className="mb-4 flex justify-end">
                 <div className="flex flex-wrap items-center justify-end gap-2 text-sm text-slate-700">
@@ -255,6 +271,22 @@ export default function Layout() {
         </main>
 
         <MobileBottomNav isActive={isActive} unreadMessageCount={0} isAdmin={isAdmin} currentUser={currentUser} />
+
+        {notificationCenterOpen && tenantContext?.agency_id && (
+          <div
+            className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/40 p-4"
+            role="presentation"
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) setNotificationCenterOpen(false);
+            }}
+          >
+            <NotificationCenter
+              currentUser={currentUser}
+              agencyId={tenantContext.agency_id}
+              onClose={() => setNotificationCenterOpen(false)}
+            />
+          </div>
+        )}
 
         <SessionTimeoutManager timeoutMinutes={15} warningMinutes={2} />
       </div>

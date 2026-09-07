@@ -99,6 +99,8 @@ const activeTelnyxSecret = (overrides = {}) => ({
   provider: "telnyx",
   is_active: true,
   api_key: "KEYtest",
+  fax_connection_id: "fax_connection_1",
+  updated_date: "2026-09-06T11:59:00.000Z",
   ...overrides,
 });
 
@@ -1079,6 +1081,512 @@ function signedWebhook(privateKey, event) {
     body: rawBody,
   });
 }
+
+const outboundFax = (overrides = {}) => ({
+  id: "FaxLog_1",
+  created_date: "2026-09-06T12:00:00.000Z",
+  updated_date: "2026-09-06T12:00:01.000Z",
+  agency_id: "agency_a",
+  referral_id: "referral_a",
+  document_id: "document_a",
+  sent_by: "staff@example.com",
+  sent_by_user_id: "user_a",
+  sent_by_membership_id: "membership_a",
+  sent_by_membership_version: 2,
+  from_number: "+12155550100",
+  to_number: "+13125550182",
+  to_name: "Example Practice",
+  document_name: "Referral follow-up",
+  telnyx_fax_id: "outbound_fax_1",
+  provider_submission_attempt_id: "submission_attempt_1",
+  provider_submission_state: "accepted",
+  provider: "telnyx",
+  integration_secret_id: "integration_1",
+  integration_secret_updated_at: "2026-09-06T11:59:00.000Z",
+  fax_connection_id: "fax_connection_1",
+  sender_settings_id: "agency_settings_1",
+  sender_settings_updated_at: "2026-09-06T11:58:00.000Z",
+  provider_accepted_at: "2026-09-06T12:00:02.000Z",
+  status: "sending",
+  retry_count: 0,
+  retry_generation: 0,
+  final_failure_notified: false,
+  delivery_confirmation_sent: false,
+  ...overrides,
+});
+
+test("pollFaxStatuses uses exact provider identity, CAS, and immutable agency retry policy", async () => {
+  const writes = [];
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret()],
+    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+    FaxRetryConfig: [{ agency_id: "agency_a", max_retries: 3, retry_delay_minutes: 15 }],
+    FaxLog: [outboundFax()],
+    Notification: [],
+  };
+  const { impl, calls } = makeFetch([{
+    match: (url) => url.endsWith("/v2/faxes/outbound_fax_1"),
+    respond: () => ({ status: 200, json: { data: {
+      id: "outbound_fax_1",
+      status: "failed",
+      failure_reason: "remote line busy",
+    } } }),
+  }]);
+  const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ writes, data: state }),
+    fetchImpl: impl,
+  });
+  const response = await handler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  assert.equal(calls.length, 1);
+  assert.equal(state.FaxLog[0].status, "failed");
+  assert.equal(state.FaxLog[0].provider_terminal_status, "failed");
+  assert.equal(state.FaxLog[0].retry_count, 1);
+  assert.ok(Number.isFinite(Date.parse(state.FaxLog[0].next_retry_at)));
+  assert.equal(writes.some((write) => write.entity === "User"), false);
+  const transition = writes.find((write) => write.entity === "FaxLog" && write.op === "updateMany");
+  assert.equal(transition?.query.id, "FaxLog_1");
+  assert.equal(transition?.query.telnyx_fax_id, "outbound_fax_1");
+  assert.equal(transition?.query.status, "sending");
+  assert.equal(transition?.query.updated_date, "2026-09-06T12:00:01.000Z");
+});
+
+test("pollFaxStatuses releases a stale retry only with exact generation and provider provenance", async () => {
+  const writes = [];
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret()],
+    FaxLog: [outboundFax({
+      status: "retrying",
+      provider_terminal_status: "failed",
+      provider_terminal_at: "2026-09-06T12:05:00.000Z",
+      retry_count: 1,
+      retry_generation: 0,
+      retry_claimed_by: "retry_claim_1",
+      retry_claimed_by_user_id: "user_a",
+      retry_claimed_at: "2020-01-01T00:00:00.000Z",
+      final_failure_notified: true,
+    })],
+    Notification: [],
+  };
+  const client = makeSpyBase44({ writes, data: state });
+  const faxEntity = client.asServiceRole.entities.FaxLog;
+  const filterFax = faxEntity.filter;
+  faxEntity.filter = async (query, ...args) => (
+    query?.retry_of_fax_log_id
+      ? []
+      : filterFax(query, ...args)
+  );
+  const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
+    env: {},
+    makeClient: () => client,
+    fetchImpl: makeFetch([]).impl,
+  });
+  const response = await handler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  assert.equal((await response.json()).released_stale_retries, 1);
+  assert.equal(state.FaxLog[0].status, "failed");
+  const release = writes.find((write) => (
+    write.entity === "FaxLog"
+    && write.op === "updateMany"
+    && write.query.retry_claimed_by === "retry_claim_1"
+  ));
+  assert.equal(release.query.retry_count, 1);
+  assert.equal(release.query.retry_generation, 0);
+  assert.equal(release.query.integration_secret_id, "integration_1");
+  assert.equal(release.query.integration_secret_updated_at, "2026-09-06T11:59:00.000Z");
+  assert.equal(release.query.fax_connection_id, "fax_connection_1");
+});
+
+test("fax status poller fails closed for malformed or inactive retry policies", async () => {
+  for (const policy of [
+    { agency_id: "agency_a", max_retries: 100, retry_delay_minutes: 15 },
+    { agency_id: "agency_a", max_retries: 3, retry_delay_minutes: 361 },
+    { agency_id: "agency_a", max_retries: 3, retry_delay_minutes: 15, is_active: false },
+  ]) {
+    const state = {
+      IntegrationSecret: [activeTelnyxSecret()],
+      Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+      FaxRetryConfig: [policy],
+      FaxLog: [outboundFax()],
+      Notification: [],
+    };
+    const provider = makeFetch([{
+      match: (url) => url.endsWith("/v2/faxes/outbound_fax_1"),
+      respond: () => ({ status: 200, json: { data: {
+        id: "outbound_fax_1",
+        status: "failed",
+        failure_reason: "remote line busy",
+      } } }),
+    }]);
+    const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
+      env: {},
+      makeClient: () => makeSpyBase44({ data: state }),
+      fetchImpl: provider.impl,
+    });
+    const response = await handler(new Request("https://app/functions/pollFaxStatuses"));
+    assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+    assert.equal(provider.calls.length, 1);
+    assert.equal(state.FaxLog[0].status, "failed");
+    assert.equal(state.FaxLog[0].retry_count, 0);
+    assert.equal(state.FaxLog[0].next_retry_at, null);
+    assert.equal(state.FaxLog[0].final_failure_notified, true);
+    assert.equal(state.Notification.length, 1);
+  }
+});
+
+test("pollFaxStatuses never schedules legacy fax rows and rejects ambiguous active credentials", async () => {
+  const legacyWrites = [];
+  const legacyState = {
+    IntegrationSecret: [activeTelnyxSecret()],
+    FaxLog: [outboundFax({
+      provider_submission_attempt_id: undefined,
+      document_url: "https://legacy.example/fax.pdf",
+    })],
+    Notification: [],
+  };
+  const legacyFetch = makeFetch([{
+    match: (url) => url.endsWith("/v2/faxes/outbound_fax_1"),
+    respond: () => ({ status: 200, json: { data: {
+      id: "outbound_fax_1",
+      status: "failed",
+      failure_reason: "remote line busy",
+    } } }),
+  }]);
+  const legacyHandler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ writes: legacyWrites, data: legacyState }),
+    fetchImpl: legacyFetch.impl,
+  });
+  const legacyResponse = await legacyHandler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(legacyResponse.status, 200);
+  assert.equal(legacyFetch.calls.length, 0);
+  assert.equal(legacyState.FaxLog[0].status, "sending");
+  assert.equal(legacyState.FaxLog[0].next_retry_at, undefined);
+  assert.equal(legacyState.FaxLog[0].retry_count, 0);
+  assert.equal(legacyState.FaxLog[0].final_failure_notified, false);
+  assert.equal(legacyState.Notification.length, 0);
+  assert.equal(legacyWrites.length, 0);
+
+  const duplicateCredentials = [
+    activeTelnyxSecret({ id: "integration_1", api_key: "KEYone" }),
+    activeTelnyxSecret({ id: "integration_2", api_key: "KEYtwo" }),
+  ];
+  const ambiguousFetch = makeFetch([]);
+  const ambiguousHandler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ data: {
+      IntegrationSecret: duplicateCredentials,
+      FaxLog: [outboundFax()],
+    } }),
+    fetchImpl: ambiguousFetch.impl,
+  });
+  const ambiguousResponse = await ambiguousHandler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(ambiguousResponse.status, 500);
+  assert.equal(ambiguousFetch.calls.length, 0);
+});
+
+test("pollFaxStatuses quarantines duplicate provider ids before calling Telnyx", async () => {
+  const writes = [];
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret()],
+    FaxLog: [outboundFax(), outboundFax({ id: "FaxLog_2" })],
+  };
+  const provider = makeFetch([]);
+  const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ writes, data: state }),
+    fetchImpl: provider.impl,
+  });
+  const response = await handler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    success: true,
+    checked: 0,
+    updated: 0,
+    released_stale_retries: 0,
+    ambiguous_fax_identities: 1,
+  });
+  assert.equal(provider.calls.length, 0);
+  assert.equal(writes.length, 0);
+});
+
+test("fax status consumers quarantine a stale credential revision", async () => {
+  const pollWrites = [];
+  const pollState = {
+    IntegrationSecret: [activeTelnyxSecret()],
+    FaxLog: [outboundFax({ integration_secret_updated_at: "2026-09-05T11:59:00.000Z" })],
+  };
+  const provider = makeFetch([]);
+  const pollHandler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ writes: pollWrites, data: pollState }),
+    fetchImpl: provider.impl,
+  });
+  const pollResponse = await pollHandler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(pollResponse.status, 200);
+  assert.equal((await pollResponse.json()).checked, 0);
+  assert.equal(provider.calls.length, 0);
+  assert.equal(pollWrites.length, 0);
+
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const webhookWrites = [];
+  const webhookState = {
+    IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
+    FaxLog: [outboundFax({ integration_secret_updated_at: "2026-09-05T11:59:00.000Z" })],
+  };
+  const webhookHandler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ writes: webhookWrites, data: webhookState }),
+    fetchImpl: makeFetch([]).impl,
+  });
+  const event = { data: { event_type: "fax.failed", payload: {
+    id: "outbound_fax_1",
+    status: "failed",
+    failure_reason: "remote line busy",
+  } } };
+  const webhookResponse = await webhookHandler(signedWebhook(privateKey, event));
+  assert.equal(webhookResponse.status, 409);
+  assert.equal(webhookWrites.length, 0);
+  assert.equal(webhookState.FaxLog[0].status, "sending");
+});
+
+test("signed outbound fax statuses transition exactly once and preserve retry authority", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const writes = [];
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
+    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+    FaxRetryConfig: [{ agency_id: "agency_a", max_retries: 3, retry_delay_minutes: 15 }],
+    FaxLog: [outboundFax()],
+    Notification: [],
+  };
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ writes, data: state }),
+    fetchImpl: makeFetch([]).impl,
+  });
+  const event = { data: { event_type: "fax.failed", payload: {
+    id: "outbound_fax_1",
+    status: "failed",
+    failure_reason: "remote line busy",
+  } } };
+  const first = await handler(signedWebhook(privateKey, event));
+  assert.equal(first.status, 200, JSON.stringify(await first.clone().json()));
+  assert.equal(state.FaxLog[0].status, "failed");
+  assert.equal(state.FaxLog[0].provider_submission_state, "accepted");
+  assert.equal(state.FaxLog[0].provider_terminal_status, "failed");
+  assert.ok(Number.isFinite(Date.parse(state.FaxLog[0].provider_terminal_at)));
+  assert.equal(state.FaxLog[0].retry_count, 1);
+  assert.ok(Number.isFinite(Date.parse(state.FaxLog[0].next_retry_at)));
+  const transitions = writes.filter((write) => write.entity === "FaxLog" && write.op === "updateMany");
+  assert.equal(transitions.length, 1);
+  assert.equal(transitions[0].query.telnyx_fax_id, "outbound_fax_1");
+  assert.equal(transitions[0].query.status, "sending");
+  assert.equal(transitions[0].query.updated_date, "2026-09-06T12:00:01.000Z");
+
+  const replay = await handler(signedWebhook(privateKey, event));
+  assert.equal(replay.status, 200);
+  assert.equal((await replay.json()).deduped, true);
+  assert.equal(writes.filter((write) => write.entity === "FaxLog" && write.op === "updateMany").length, 1);
+});
+
+test("signed fax webhook fails closed for malformed or inactive retry policies", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  for (const policy of [
+    { agency_id: "agency_a", max_retries: 100, retry_delay_minutes: 15 },
+    { agency_id: "agency_a", max_retries: 3, retry_delay_minutes: 361 },
+    { agency_id: "agency_a", max_retries: 3, retry_delay_minutes: 15, is_active: false },
+  ]) {
+    const state = {
+      IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
+      Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+      FaxRetryConfig: [policy],
+      FaxLog: [outboundFax()],
+      Notification: [],
+    };
+    const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
+      env: {},
+      makeClient: () => makeSpyBase44({ data: state }),
+      fetchImpl: makeFetch([]).impl,
+    });
+    const response = await handler(signedWebhook(privateKey, { data: {
+      event_type: "fax.failed",
+      payload: {
+        id: "outbound_fax_1",
+        status: "failed",
+        failure_reason: "remote line busy",
+      },
+    } }));
+    assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+    assert.equal(state.FaxLog[0].status, "failed");
+    assert.equal(state.FaxLog[0].retry_count, 0);
+    assert.equal(state.FaxLog[0].next_retry_at, null);
+    assert.equal(state.FaxLog[0].final_failure_notified, true);
+    assert.equal(state.Notification.length, 1);
+  }
+});
+
+test("fax webhooks reject ambiguous active Telnyx credentials before any status write", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const writes = [];
+  const state = {
+    IntegrationSecret: [
+      activeTelnyxSecret({ id: "integration_1", public_key: pubB64 }),
+      activeTelnyxSecret({ id: "integration_2", public_key: pubB64 }),
+    ],
+    FaxLog: [outboundFax()],
+  };
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ writes, data: state }),
+    fetchImpl: makeFetch([]).impl,
+  });
+  const response = await handler(signedWebhook(privateKey, { data: {
+    event_type: "fax.failed",
+    payload: { id: "outbound_fax_1", status: "failed" },
+  } }));
+  assert.equal(response.status, 503);
+  assert.equal(state.FaxLog[0].status, "sending");
+  assert.equal(writes.length, 0);
+});
+
+test("an ambiguous committed fax notification is reconciled without a duplicate create", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const writes = [];
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
+    FaxLog: [outboundFax()],
+    Notification: [],
+  };
+  const client = makeSpyBase44({ writes, data: state });
+  const notificationEntity = client.asServiceRole.entities.Notification;
+  const createNotification = notificationEntity.create;
+  let loseCreateResponse = true;
+  notificationEntity.create = async (row) => {
+    const created = await createNotification(row);
+    if (loseCreateResponse) {
+      loseCreateResponse = false;
+      throw new Error("simulated response loss after notification commit");
+    }
+    return created;
+  };
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => client,
+    fetchImpl: makeFetch([]).impl,
+  });
+  const event = { data: { event_type: "fax.delivered", payload: {
+    id: "outbound_fax_1",
+    status: "delivered",
+    page_count: 2,
+  } } };
+  const first = await handler(signedWebhook(privateKey, event));
+  assert.equal(first.status, 200, JSON.stringify(await first.clone().json()));
+  assert.equal(state.Notification.length, 1);
+  assert.match(state.Notification[0].dedupe_key, /^fax:agency_a:FaxLog_1:delivered$/);
+  assert.equal(state.FaxLog[0].delivery_confirmation_sent, true);
+  assert.equal(state.FaxLog[0].delivery_notify_claimed_by, null);
+
+  const replay = await handler(signedWebhook(privateKey, event));
+  assert.equal(replay.status, 200);
+  assert.equal(state.Notification.length, 1);
+});
+
+test("pollFaxStatuses recovers a stale terminal notification claim", async () => {
+  const writes = [];
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret()],
+    FaxLog: [outboundFax({
+      status: "delivered",
+      provider_terminal_status: "delivered",
+      provider_terminal_at: "2026-09-06T12:05:00.000Z",
+      delivery_confirmation_sent: false,
+      delivery_notify_claimed_by: "stale-delivery-claim",
+      delivery_notify_claimed_at: "2026-09-06T12:05:00.000Z",
+      updated_date: "2026-09-06T12:05:00.000Z",
+    })],
+    Notification: [],
+  };
+  const provider = makeFetch([{
+    match: (url) => url.endsWith("/v2/faxes/outbound_fax_1"),
+    respond: () => ({ status: 200, json: { data: {
+      id: "outbound_fax_1",
+      status: "delivered",
+      page_count: 2,
+    } } }),
+  }]);
+  const client = makeSpyBase44({ writes, data: state });
+  const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
+    env: {},
+    makeClient: () => client,
+    fetchImpl: provider.impl,
+  });
+  const first = await handler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(first.status, 200, JSON.stringify(await first.clone().json()));
+  assert.equal(state.Notification.length, 1);
+  assert.equal(state.FaxLog[0].delivery_confirmation_sent, true);
+  assert.equal(state.FaxLog[0].delivery_notify_claimed_by, null);
+  assert.equal(state.FaxLog[0].delivery_notify_claimed_at, null);
+
+  const second = await handler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(second.status, 200);
+  assert.equal(state.Notification.length, 1);
+  assert.equal(writes.filter((write) => (
+    write.entity === "Notification" && write.op === "create"
+  )).length, 1);
+});
+
+test("ambiguous outbound fax identity and legacy URL rows never receive a retry schedule", async () => {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const duplicateState = {
+    IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
+    FaxLog: [outboundFax(), outboundFax({ id: "FaxLog_2" })],
+  };
+  const duplicateWrites = [];
+  const duplicateHandler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ writes: duplicateWrites, data: duplicateState }),
+    fetchImpl: makeFetch([]).impl,
+  });
+  const event = { data: { event_type: "fax.failed", payload: {
+    id: "outbound_fax_1",
+    status: "failed",
+    failure_reason: "remote line busy",
+  } } };
+  const duplicateResponse = await duplicateHandler(signedWebhook(privateKey, event));
+  assert.equal(duplicateResponse.status, 409);
+  assert.equal(duplicateWrites.length, 0);
+
+  const legacyWrites = [];
+  const legacyState = {
+    IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
+    FaxLog: [outboundFax({
+      provider_submission_attempt_id: undefined,
+      document_url: "https://legacy.example/fax.pdf",
+    })],
+    Notification: [],
+  };
+  const legacyHandler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => makeSpyBase44({ writes: legacyWrites, data: legacyState }),
+    fetchImpl: makeFetch([]).impl,
+  });
+  const legacyResponse = await legacyHandler(signedWebhook(privateKey, event));
+  assert.equal(legacyResponse.status, 409, JSON.stringify(await legacyResponse.clone().json()));
+  assert.equal(legacyState.FaxLog[0].status, "sending");
+  assert.equal(legacyState.FaxLog[0].next_retry_at, undefined);
+  assert.equal(legacyState.FaxLog[0].retry_count, 0);
+  assert.equal(legacyState.FaxLog[0].final_failure_notified, false);
+  assert.equal(legacyState.Notification.length, 0);
+  assert.equal(legacyWrites.length, 0);
+});
 
 const b64json = (o) => Buffer.from(JSON.stringify(o)).toString("base64");
 const decodeState = (b64) => JSON.parse(Buffer.from(b64, "base64").toString("utf8"));

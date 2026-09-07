@@ -10,6 +10,29 @@
       "type": "string",
       "description": "Server-derived idempotency key for a purpose-specific notification workflow. Code must still reject duplicate rows because schema uniqueness is not assumed."
     },
+    "recipient_user_id": {
+      "type": "string",
+      "description": "Immutable built-in Base44 User id of the recipient. Secure workflow notifications must bind this to an exact active membership before creation."
+    },
+    "recipient_membership_id": {
+      "type": "string",
+      "description": "Exact AgencyMembership id that authorized delivery to the recipient. Legacy/unscoped notifications may not have this field and are excluded from the secure recipient broker."
+    },
+    "recipient_membership_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "AgencyMembership revision that authorized delivery. The recipient broker requires it to match the current active membership."
+    },
+    "authority_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Server-owned notification authority format. Version 1 requires immutable tenant, user, and membership provenance."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic server-maintained revision used for conditional recipient read-state and dismissal updates."
+    },
     "user_email": {
       "type": "string",
       "description": "Email of user who should receive this notification"
@@ -98,6 +121,11 @@
       "type": "boolean",
       "default": false,
       "description": "Whether user dismissed this notification"
+    },
+    "dismissed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server timestamp written by the recipient notification broker when the row was dismissed."
     },
     "expires_at": {
       "type": "string",

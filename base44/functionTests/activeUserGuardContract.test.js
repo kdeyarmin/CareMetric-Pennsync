@@ -43,7 +43,14 @@ function authenticatedFunctions() {
       continue;
     }
     if (!src.includes('auth.me()')) continue;
-    out.push({ name: entry.name, guarded: src.includes('is_active === false') });
+    // Most handlers reject an inactive caller directly (`=== false`). A few
+    // authenticated-or-internal dispatchers express the same rule inside the
+    // exact platform-owner predicate (`user.is_active !== false`). Recognize
+    // that equivalent allow predicate without exempting the function or
+    // accepting an unrelated entity's `is_active` field.
+    const guarded = src.includes('is_active === false')
+      || /\buser(?:\?\.|\.)is_active\s*!==\s*false\b/.test(src);
+    out.push({ name: entry.name, guarded });
   }
   return out.sort((a, b) => a.name.localeCompare(b.name));
 }

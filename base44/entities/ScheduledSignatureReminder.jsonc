@@ -2,6 +2,25 @@
   "name": "ScheduledSignatureReminder",
   "type": "object",
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable tenant id copied from the exact signature package."
+    },
+    "package_id": {
+      "type": "string",
+      "description": "Exact authority-bound DocumentPackage to notify."
+    },
+    "signer_id": {
+      "type": "string",
+      "description": "Opaque signer id; dispatch re-derives the address from the current package/signature state."
+    },
+    "schedule_key": {
+      "type": "string",
+      "description": "Server-built SHA-256 idempotency key scoped to agency, package, signer, and request id."
+    },
+    "client_request_id": {
+      "type": "string"
+    },
     "document_id": {
       "type": "string",
       "description": "Id of the DocumentSignature request this reminder is for"
@@ -24,12 +43,23 @@
       "type": "string",
       "description": "Email of the user who scheduled the reminder (rows are created via service role, so created_by is not the scheduler)"
     },
+    "requested_by_user_id": {
+      "type": "string",
+      "description": "Immutable built-in User id of the scheduler."
+    },
+    "requesting_membership_id": {
+      "type": "string"
+    },
+    "requesting_membership_version": {
+      "type": "number"
+    },
     "status": {
       "type": "string",
       "enum": [
         "pending",
         "sending",
         "sent",
+        "indeterminate",
         "failed",
         "canceled"
       ],
@@ -49,6 +79,20 @@
       "type": "string",
       "format": "date-time",
       "description": "When this row was claimed for dispatch"
+    },
+    "authority_version": {
+      "type": "number",
+      "default": 1,
+      "description": "Monotonic revision used for exact conditional dispatch transitions."
+    },
+    "delivery_attempt_id": {
+      "type": "string",
+      "description": "Opaque id for the single external email attempt."
+    },
+    "delivery_state": {
+      "type": "string",
+      "enum": ["not_started", "pending", "accepted", "indeterminate", "rejected"],
+      "default": "not_started"
     },
     "sent_at": {
       "type": "string",

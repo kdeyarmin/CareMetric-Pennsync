@@ -98,6 +98,7 @@ export default function ReferralFollowUp() {
   const [providerFax, setProviderFax] = useState("");
   const [saving, setSaving] = useState(false);
   const [faxing, setFaxing] = useState(false);
+  const faxSubmissionInFlightRef = useRef(false);
   const [openingFaxId, setOpeningFaxId] = useState(null);
   const faxDownloadRequestRef = useRef(0);
   const [generatingLink, setGeneratingLink] = useState(false);
@@ -457,11 +458,15 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
 
   const faxToProvider = async () => {
     if (!selected || includedItems.length === 0) return;
+    // React state disables the button after a render; the ref also closes the
+    // same-tick double-click window before upload/provider side effects start.
+    if (faxSubmissionInFlightRef.current) return;
     const to = providerFax.trim();
     if (!to) {
       toast.error("Enter the provider's fax number first.");
       return;
     }
+    faxSubmissionInFlightRef.current = true;
     setFaxing(true);
     try {
       // Persist the exact item snapshot before issuance, then mint a fresh link
@@ -501,11 +506,18 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
         faxLogId: data.log_id || null,
         generatedAt: issued.generatedAt,
       });
-      toast.success("Faxed to the provider — delivery is tracked in the fax log.");
+      if (data.requires_reconciliation || data.status === "submission_unknown") {
+        toast.warning(
+          "Telnyx may have accepted this fax. Review the fax log/provider record; do not send it again until its status is reconciled.",
+        );
+      } else {
+        toast.success("Faxed to the provider — delivery is tracked in the fax log.");
+      }
     } catch (error) {
       console.error("Fax to provider failed:", error);
       toast.error(error?.message || "Couldn't fax the form. Download the PDF and send manually.");
     } finally {
+      faxSubmissionInFlightRef.current = false;
       setFaxing(false);
     }
   };

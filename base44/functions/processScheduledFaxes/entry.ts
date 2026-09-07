@@ -34,6 +34,48 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+async function scheduledFaxCapabilityMac(secret, capability) {
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const payload = JSON.stringify([
+    capability.version, capability.action, capability.resource_id, capability.claim_id,
+    capability.issued_at, capability.expires_at, capability.nonce,
+  ]);
+  const signature = new Uint8Array(await crypto.subtle.sign(
+    'HMAC', key, new TextEncoder().encode(payload),
+  ));
+  return Array.from(signature, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function createFaxInternalCapability(action, resourceId, claimId) {
+  const secret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (secret.length < 32) throw new Error('Internal fax capability signing is unavailable');
+  const issuedAt = Date.now();
+  const capability = {
+    version: 1, action, resource_id: resourceId, claim_id: claimId,
+    issued_at: issuedAt, expires_at: issuedAt + 300_000, nonce: crypto.randomUUID(),
+  };
+  return { ...capability, mac: await scheduledFaxCapabilityMac(secret, capability) };
+}
+
+async function verifyScheduledFaxCapability(value, action, resourceId, claimId) {
+  if (!scheduledPlainObject(value)
+    || Object.keys(value).some((key) => ![
+      'version', 'action', 'resource_id', 'claim_id', 'issued_at', 'expires_at', 'nonce', 'mac',
+    ].includes(key))
+    || value.version !== 1 || value.action !== action
+    || value.resource_id !== resourceId || value.claim_id !== claimId
+    || !scheduledExactId(value.nonce) || !Number.isSafeInteger(value.issued_at)
+    || !Number.isSafeInteger(value.expires_at) || !/^[a-f0-9]{64}$/.test(String(value.mac || ''))) return false;
+  const now = Date.now();
+  if (value.issued_at > now + 5_000 || value.expires_at < now
+    || value.expires_at <= value.issued_at || value.expires_at - value.issued_at > 300_000) return false;
+  const secret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (secret.length < 32) return false;
+  return timingSafeEqualStr(String(value.mac), await scheduledFaxCapabilityMac(secret, value));
+}
+
 // <<<BEGIN SHARED HELPER: batchNeverDispatched — generated, edit base44/_shared/backendHelpers.mjs>>>
 function batchNeverDispatched(payload, status) {
   const d = payload || {};
@@ -58,169 +100,381 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// Scheduled fax dispatch is held until the queue and its routing inputs are
-// authorized through immutable service-owned bindings.
-const FAX_TRANSMISSION_MIGRATION_PAUSED = true;
+function scheduledPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
 
+function scheduledExactId(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 200
+    && value.trim() === value && !value.startsWith('$')
+    && !/[\u0000-\u001f\u007f]/.test(value) ? value : null;
+}
+
+function scheduledValidInstant(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function scheduledSuccessfulCas(value) {
+  return scheduledPlainObject(value) && value.success === true
+    && value.updated === 1 && value.has_more === false;
+}
+
+async function parseScheduledInvocation(req) {
+  const declared = Number(req.headers.get('content-length'));
+  if (Number.isFinite(declared) && declared > 4_000) return null;
+  const raw = await req.text().catch(() => '');
+  if (new TextEncoder().encode(raw).byteLength > 4_000) return null;
+  if (!raw) return {};
+  try {
+    const body = JSON.parse(raw);
+    return scheduledPlainObject(body)
+      && Object.keys(body).every((key) => key === 'capability') ? body : null;
+  } catch {
+    return null;
+  }
+}
+
+async function scheduledInternalInvoke(body) {
+  const claimId = scheduledExactId(body?.capability?.claim_id);
+  return !!claimId && verifyScheduledFaxCapability(
+    body.capability, 'process_scheduled', 'scheduled-fax-processor', claimId,
+  );
+}
+
+function scheduledRequireRows(value, label) {
+  if (!Array.isArray(value)) throw new Error(`${label} returned a non-array result`);
+  return value;
+}
+
+async function scheduledSha256(value) {
+  const bytes = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value)));
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+function scheduledProvenanceIsComplete(row) {
+  return !!row
+    && !!scheduledExactId(row.id)
+    && row.authorization_version === 1
+    && !!scheduledExactId(row.schedule_key)
+    && !!scheduledExactId(row.client_request_id)
+    && !!scheduledExactId(row.agency_id)
+    && !!scheduledExactId(row.document_id)
+    && !!scheduledExactId(row.document_binding_id)
+    && row.document_binding_version === 2
+    && /^[a-f0-9]{64}$/.test(String(row.document_content_sha256 || ''))
+    && row.provider === 'telnyx'
+    && !!scheduledExactId(row.integration_secret_id)
+    && scheduledValidInstant(row.integration_secret_updated_at)
+    && !!scheduledExactId(row.fax_connection_id)
+    && /^\+\d{8,15}$/.test(String(row.sender_number_e164 || ''))
+    && !!scheduledExactId(row.sender_telecom_binding_id)
+    && Number.isSafeInteger(row.sender_telecom_binding_version)
+    && row.sender_telecom_binding_version >= 1
+    && !!scheduledExactId(row.sender_provider_number_id)
+    && !!scheduledExactId(row.sender_settings_id)
+    && scheduledValidInstant(row.sender_settings_updated_at)
+    && !!scheduledExactId(row.authorized_by_user_id)
+    && typeof row.authorized_by_email_normalized === 'string'
+    && row.authorized_by_email_normalized === row.authorized_by_email_normalized.trim().toLowerCase()
+    && row.authorized_by_email_normalized.includes('@')
+    && !!scheduledExactId(row.authorized_by_membership_id)
+    && Number.isSafeInteger(row.authorized_by_membership_version)
+    && row.authorized_by_membership_version >= 1
+    && ['agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care']
+      .includes(row.authorized_tenant_role)
+    && scheduledValidInstant(row.scheduled_time)
+    && scheduledValidInstant(row.updated_date)
+    && Array.isArray(row.to_numbers)
+    && row.to_numbers.length >= 1
+    && row.to_numbers.length <= 50
+    && new Set(row.to_numbers).size === row.to_numbers.length
+    && row.to_numbers.every((number) => /^\+\d{8,15}$/.test(String(number || '')))
+    && row.document_url == null
+    && row.from_number == null;
+}
+
+async function scheduledOutcomeFromLogs(entities, row) {
+  const logs = scheduledRequireRows(
+    await entities.FaxLog.filter({ scheduled_fax_id: row.id }, '-created_date', 100),
+    'FaxLog.filter',
+  );
+  if (logs.some((log) => log?.scheduled_fax_id !== row.id
+    || log?.batch_request_key !== row.schedule_key
+    || log?.agency_id !== row.agency_id || log?.document_id !== row.document_id
+    || log?.document_binding_id !== row.document_binding_id
+    || log?.document_binding_version !== row.document_binding_version
+    || log?.document_content_sha256 !== row.document_content_sha256
+    || log?.sent_by_user_id !== row.authorized_by_user_id
+    || log?.sent_by_membership_id !== row.authorized_by_membership_id
+    || log?.sent_by_membership_version !== row.authorized_by_membership_version
+    || log?.provider !== row.provider
+    || log?.integration_secret_id !== row.integration_secret_id
+    || log?.integration_secret_updated_at !== row.integration_secret_updated_at
+    || log?.fax_connection_id !== row.fax_connection_id
+    || log?.from_number !== row.sender_number_e164
+    || log?.sender_telecom_binding_id !== row.sender_telecom_binding_id
+    || log?.sender_telecom_binding_version !== row.sender_telecom_binding_version
+    || log?.sender_provider_number_id !== row.sender_provider_number_id
+    || log?.sender_settings_id !== row.sender_settings_id
+    || log?.sender_settings_updated_at !== row.sender_settings_updated_at)) {
+    return { status: 'needs_review', accepted: 0, failed: 0, unknown: logs.length, code: 'fax_log_scope_mismatch' };
+  }
+  const byRecipient = new Map();
+  for (const log of logs) {
+    if (!row.to_numbers.includes(log?.to_number)) {
+      return { status: 'needs_review', accepted: 0, failed: 0, unknown: logs.length, code: 'fax_log_destination_mismatch' };
+    }
+    const expectedKey = await scheduledSha256(`${row.schedule_key}\u0000${log.to_number}`);
+    if (log.batch_recipient_key !== expectedKey || byRecipient.has(log.to_number)) {
+      return { status: 'needs_review', accepted: 0, failed: 0, unknown: logs.length, code: 'fax_log_identity_ambiguous' };
+    }
+    byRecipient.set(log.to_number, log);
+  }
+  if (logs.length < row.to_numbers.length) {
+    return { status: 'pending', accepted: 0, failed: 0, unknown: 0, code: null };
+  }
+  let accepted = 0;
+  let failed = 0;
+  let unknown = 0;
+  for (const log of logs) {
+    if (log.provider_submission_state === 'accepted') accepted++;
+    else if (log.provider_submission_state === 'rejected') failed++;
+    else unknown++;
+  }
+  const status = unknown > 0
+    ? 'needs_review'
+    : failed === 0
+      ? 'sent'
+      : accepted > 0
+        ? 'partial_failure'
+        : 'failed';
+  return { status, accepted, failed, unknown, code: unknown > 0 ? 'provider_submission_reconciliation' : null };
+}
+
+async function settleScheduledFax(entities, current, outcome) {
+  const terminal = outcome.status !== 'pending';
+  const result = await entities.ScheduledFax.updateMany({
+    id: current.id,
+    status: 'processing',
+    claimed_by: current.claimed_by,
+    claimed_at: current.claimed_at,
+    dispatch_attempt_id: current.dispatch_attempt_id,
+    updated_date: current.updated_date,
+  }, { $set: {
+    status: outcome.status,
+    claimed_by: null,
+    claimed_at: null,
+    dispatch_attempt_id: null,
+    accepted_count: outcome.accepted,
+    failed_count: outcome.failed,
+    unknown_count: outcome.unknown,
+    last_error_code: outcome.code,
+    completed_at: terminal ? new Date().toISOString() : null,
+  } });
+  return scheduledSuccessfulCas(result);
+}
+
+async function reconcileStaleScheduledClaims(entities) {
+  const staleBefore = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+  const rows = scheduledRequireRows(
+    await entities.ScheduledFax.filter({ status: 'processing' }, 'claimed_at', 100),
+    'ScheduledFax.filter',
+  );
+  let reconciled = 0;
+  for (const row of rows) {
+    if (!scheduledProvenanceIsComplete(row) || !scheduledExactId(row.claimed_by)
+      || row.dispatch_attempt_id !== row.claimed_by || !scheduledValidInstant(row.claimed_at)
+      || row.claimed_at >= staleBefore || row.canceled_at != null) continue;
+    const outcome = await scheduledOutcomeFromLogs(entities, row);
+    if (await settleScheduledFax(entities, row, outcome)) reconciled++;
+  }
+  return reconciled;
+}
+
+function scheduledResultOutcome(data, total) {
+  const accepted = Number(data?.accepted);
+  const failed = Number(data?.failed);
+  const unknown = Number(data?.unknown);
+  if (![accepted, failed, unknown].every((value) => Number.isSafeInteger(value) && value >= 0)
+    || accepted + failed + unknown !== total) {
+    return { status: 'needs_review', accepted: 0, failed: 0, unknown: total, code: 'invalid_broker_result' };
+  }
+  if (unknown > 0 || data.requires_reconciliation === true) {
+    return { status: 'needs_review', accepted, failed, unknown, code: 'provider_submission_reconciliation' };
+  }
+  return {
+    status: failed === 0 ? 'sent' : accepted > 0 ? 'partial_failure' : 'failed',
+    accepted,
+    failed,
+    unknown,
+    code: failed > 0 ? 'provider_rejected' : null,
+  };
+}
 
 Deno.serve(async (req) => {
-  if (FAX_TRANSMISSION_MIGRATION_PAUSED) {
-    return Response.json({
-      error: 'Scheduled fax dispatch is temporarily unavailable pending service-owned sender, tenant, and document bindings',
-      code: 'fax_authority_migration_pending',
-    }, { status: 503 });
-  }
-
   try {
+    const invocation = await parseScheduledInvocation(req);
+    if (!invocation) return Response.json({ error: 'Invalid request' }, { status: 400 });
     const base44 = createClientFromRequest(req);
-
-    // Authorization: privileged scheduled job (mirrors processTrainingRenewals /
-    // syncFaxStatuses). Admins can run it with session auth; scheduled/internal callers must send `x-internal-secret`; every other caller is rejected.
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
-    if (authError) return authError;
+    if (authError && !await scheduledInternalInvoke(invocation)) return authError;
     if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
-
+    const entities = base44.asServiceRole.entities;
+    const reconciled = await reconcileStaleScheduledClaims(entities);
     const now = new Date().toISOString();
+    const rows = scheduledRequireRows(await entities.ScheduledFax.filter({
+      status: 'pending', scheduled_time: { $lte: now },
+    }, 'scheduled_time', 200), 'ScheduledFax.filter');
+    rows.sort((left, right) => {
+      const rank = { urgent: 0, normal: 1, low: 2 };
+      const delta = (rank[left.priority] ?? 1) - (rank[right.priority] ?? 1);
+      return delta || Date.parse(left.scheduled_time) - Date.parse(right.scheduled_time);
+    });
 
-    // Get scheduled faxes that are due, earliest-scheduled first with an explicit
-    // cap. Without a sort/limit the SDK returns only its default first page (~50)
-    // in arbitrary order, so under a >50 backlog the most-overdue faxes fall off
-    // and are never sent. Sort ASCENDING on scheduled_time so the page is the
-    // most-overdue rows, matching processScheduledFaxesByPriority.
-    const scheduledFaxes = await base44.asServiceRole.entities.ScheduledFax.filter({
-      status: 'pending',
-      scheduled_time: { "$lte": now }
-    }, 'scheduled_time', 200);
+    let processed = 0;
+    let sent = 0;
+    let failed = 0;
+    let needsReview = 0;
+    let blocked = 0;
+    let inFlight = 0;
 
-    console.log(`Found ${scheduledFaxes.length} scheduled faxes to process`);
+    for (const row of rows) {
+      if (!scheduledProvenanceIsComplete(row)) {
+        const blockedResult = await entities.ScheduledFax.updateMany({
+          id: row.id, status: 'pending', updated_date: row.updated_date,
+        }, { $set: {
+          status: 'blocked', last_error_code: 'legacy_or_invalid_fax_provenance', completed_at: new Date().toISOString(),
+        } }).catch(() => null);
+        if (scheduledSuccessfulCas(blockedResult)) blocked++;
+        continue;
+      }
+      const expectedScheduleKey = await scheduledSha256(
+        `${row.agency_id}\u0000${row.authorized_by_user_id}\u0000${row.client_request_id}`,
+      );
+      if (expectedScheduleKey !== row.schedule_key || row.canceled_at != null) {
+        const blockedResult = await entities.ScheduledFax.updateMany({
+          id: row.id, status: 'pending', updated_date: row.updated_date,
+        }, { $set: {
+          status: row.canceled_at != null ? 'cancelled' : 'blocked',
+          last_error_code: row.canceled_at != null ? 'fax_cancelled' : 'invalid_schedule_key',
+          completed_at: new Date().toISOString(),
+        } }).catch(() => null);
+        if (scheduledSuccessfulCas(blockedResult)) blocked++;
+        continue;
+      }
+      const sameKey = await entities.ScheduledFax.filter(
+        { schedule_key: row.schedule_key }, undefined, 10,
+      ).catch(() => null);
+      if (!Array.isArray(sameKey) || sameKey.length !== 1 || sameKey[0]?.id !== row.id) {
+        const blockedResult = await entities.ScheduledFax.updateMany({
+          id: row.id, status: 'pending', updated_date: row.updated_date,
+        }, { $set: {
+          status: 'blocked', last_error_code: 'duplicate_schedule_key', completed_at: new Date().toISOString(),
+        } }).catch(() => null);
+        if (scheduledSuccessfulCas(blockedResult)) blocked++;
+        continue;
+      }
 
-    // NOTE: only ONE scheduled-fax processor should be enabled in the platform
-    // scheduler (this OR processScheduledFaxesByPriority) — running both will
-    // double-send. See docs.
-
-    for (const scheduledFax of scheduledFaxes) {
-      // Claim the row (pending -> processing) with a token BEFORE sending, then
-      // RE-READ to confirm we own it. A bare status flip isn't atomic: two
-      // overlapping runs (or this processor + processScheduledFaxesByPriority)
-      // both read 'pending' and both flip it, double-sending the fax. The
-      // claim-token + re-read makes the loser detect it lost and skip. (Mirrors
-      // dispatchScheduledSms — Telnyx fax has no client idempotency key.)
-      const runId = crypto.randomUUID();
-      try {
-        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-          status: 'processing', claimed_by: runId, claimed_at: new Date().toISOString(),
+      const dispatchAttemptId = crypto.randomUUID();
+      const claimedAt = new Date().toISOString();
+      const claim = await entities.ScheduledFax.updateMany({
+        id: row.id,
+        status: 'pending',
+        schedule_key: row.schedule_key,
+        authorization_version: 1,
+        agency_id: row.agency_id,
+        document_id: row.document_id,
+        document_binding_id: row.document_binding_id,
+        document_content_sha256: row.document_content_sha256,
+        authorized_by_user_id: row.authorized_by_user_id,
+        authorized_by_membership_id: row.authorized_by_membership_id,
+        authorized_by_membership_version: row.authorized_by_membership_version,
+        integration_secret_id: row.integration_secret_id,
+        integration_secret_updated_at: row.integration_secret_updated_at,
+        sender_telecom_binding_id: row.sender_telecom_binding_id,
+        sender_telecom_binding_version: row.sender_telecom_binding_version,
+        updated_date: row.updated_date,
+      }, { $set: {
+        status: 'processing',
+        claimed_by: dispatchAttemptId,
+        claimed_at: claimedAt,
+        dispatch_attempt_id: dispatchAttemptId,
+      } }).catch(() => null);
+      if (!scheduledSuccessfulCas(claim)) continue;
+      const claimedRows = await entities.ScheduledFax.filter({ id: row.id }, undefined, 10).catch(() => null);
+      const claimed = Array.isArray(claimedRows) && claimedRows.length === 1 ? claimedRows[0] : null;
+      if (!claimed || claimed.id !== row.id || claimed.status !== 'processing' || claimed.claimed_by !== dispatchAttemptId
+        || claimed.claimed_at !== claimedAt || claimed.dispatch_attempt_id !== dispatchAttemptId
+        || !scheduledValidInstant(claimed.updated_date)) continue;
+      if (claimed.canceled_at != null) {
+        await settleScheduledFax(entities, claimed, {
+          status: 'cancelled', accepted: 0, failed: 0, unknown: 0, code: 'fax_cancelled',
         });
-      } catch (claimErr) {
-        console.error('Could not claim scheduled fax; skipping', claimErr?.message || claimErr);
         continue;
       }
-      const claimCheck = await base44.asServiceRole.entities.ScheduledFax
-        .filter({ id: scheduledFax.id }, '-created_date', 1).catch(() => []);
-      if (!claimCheck[0] || claimCheck[0].claimed_by !== runId) {
-        // Another run claimed it first — skip to avoid a duplicate send.
-        continue;
-      }
-      // Cancel can race the claim: offboard sets canceled_at + status cancelled,
-      // then claim overwrites status to processing — but canceled_at survives.
-      // Never send (or requeue to pending) after an explicit cancel.
-      if (claimCheck[0].canceled_at || claimCheck[0].status === 'cancelled') {
-        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-          status: 'cancelled', claimed_by: '', claimed_at: null,
-        }).catch(() => {});
-        continue;
-      }
+
       try {
-        // Use the batch send function for each scheduled fax
+        const capability = await createFaxInternalCapability(
+          'dispatch_scheduled', row.id, dispatchAttemptId,
+        );
         const response = await base44.asServiceRole.functions.invoke('sendBatchFax', {
-          file_url: scheduledFax.document_url,
-          to_numbers: scheduledFax.to_numbers,
-          from_number: scheduledFax.from_number,
-          document_name: scheduledFax.document_name,
-          patient_id: scheduledFax.patient_id,
-          cover_page_details: scheduledFax.cover_page_details,
-          priority: scheduledFax.priority,
-          sent_by: scheduledFax.created_by || me?.email || 'scheduler@system',
-          internal_secret: Deno.env.get('INTERNAL_FN_SECRET') || '',
+          action: 'dispatch_scheduled',
+          scheduled_fax_id: row.id,
+          dispatch_attempt_id: dispatchAttemptId,
+          capability,
         });
-
-        // sendBatchFax always resolves 200 (even when every recipient failed), so
-        // inspect the result instead of assuming success — otherwise a fax whose
-        // recipients ALL failed is falsely recorded as 'sent' (a silent PHI
-        // delivery failure with a false delivery confirmation). Mirrors the
-        // processScheduledFaxesByPriority sibling.
-        const data = response?.data || {};
-        const recipientCount = scheduledFax.to_numbers?.length || 0;
-        const successful = data.successful || 0;
-        const failed = data.failed ?? (recipientCount - successful);
-
-        // sendBatchFax rejected the whole batch before dispatching anything (bad
-        // credentials, disallowed file_url, agency config). Marking the row
-        // 'failed' here DESTROYS it — this cron only ever reads status 'pending',
-        // so the queued PHI document would never be transmitted and no UI can
-        // requeue it. Release the claim instead and let a later run send it once
-        // the underlying problem is fixed.
-        //
-        // Only the never-dispatched case is requeued. If any recipient was
-        // actually attempted we keep the terminal status, because Telnyx fax has
-        // no client idempotency key and requeueing could re-transmit PHI.
-        if (batchNeverDispatched(data, response?.status)) {
-          console.error('A scheduled fax was not dispatched and has been requeued:', data.error);
-          // Re-read before requeue — a cancel that landed mid-send must not be
-          // resurrected as pending.
-          const mid = await base44.asServiceRole.entities.ScheduledFax
-            .filter({ id: scheduledFax.id }, '-created_date', 1).catch(() => []);
-          if (mid[0]?.canceled_at || mid[0]?.status === 'cancelled') {
-            await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-              status: 'cancelled', claimed_by: '', claimed_at: null,
-            }).catch(() => {});
-            continue;
-          }
-          await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-            status: 'pending', claimed_by: '', claimed_at: null,
-          }).catch((err) => console.error('Failed to requeue scheduled fax:', err?.message || err));
-          continue;
+        const data = scheduledPlainObject(response?.data) ? response.data : response;
+        const [current] = await entities.ScheduledFax.filter({ id: row.id }, undefined, 10).catch(() => []);
+        if (!current || current.status !== 'processing' || current.claimed_by !== dispatchAttemptId) continue;
+        const outcome = scheduledResultOutcome(data, row.to_numbers.length);
+        if (await settleScheduledFax(entities, current, outcome)) {
+          processed++;
+          if (outcome.status === 'sent') sent++;
+          else if (outcome.status === 'needs_review') needsReview++;
+          else failed++;
         }
-
-        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-          status: failed > 0 ? 'failed' : 'sent'
-        }).catch((err) => console.error('Failed to mark scheduled fax result:', err?.message || err));
-
-        console.log(`Processed scheduled fax batch: ${successful} sent, ${failed} failed`);
       } catch (error) {
-        console.error('Failed to process scheduled fax:', error?.message || error);
-        // A non-2xx from sendBatchFax rejects rather than resolving, so the
-        // never-dispatched signal arrives here too — same reasoning as above:
-        // requeue rather than destroy the queued document.
-        if (batchNeverDispatched(error?.response?.data, error?.response?.status)) {
-          const mid = await base44.asServiceRole.entities.ScheduledFax
-            .filter({ id: scheduledFax.id }, '-created_date', 1).catch(() => []);
-          if (mid[0]?.canceled_at || mid[0]?.status === 'cancelled') {
-            await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-              status: 'cancelled', claimed_by: '', claimed_at: null,
-            }).catch(() => {});
-            continue;
+        const payload = error?.response?.data;
+        const status = Number(error?.response?.status);
+        const [current] = await entities.ScheduledFax.filter({ id: row.id }, undefined, 10).catch(() => []);
+        if (!current || current.status !== 'processing' || current.claimed_by !== dispatchAttemptId) continue;
+        if (scheduledPlainObject(payload) && payload.dispatch_started === false && Number.isFinite(status)) {
+          const transient = status >= 500 && payload.code === 'fax_configuration_unavailable';
+          const outcome = {
+            status: transient ? 'pending' : 'blocked',
+            accepted: 0,
+            failed: 0,
+            unknown: 0,
+            code: typeof payload.code === 'string' ? payload.code.slice(0, 200) : 'fax_dispatch_rejected',
+          };
+          if (await settleScheduledFax(entities, current, outcome)) {
+            if (transient) inFlight++;
+            else blocked++;
           }
-          await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-            status: 'pending', claimed_by: '', claimed_at: null,
-          }).catch((err) => console.error('Failed to requeue scheduled fax:', err?.message || err));
-          continue;
+        } else {
+          // An invoke error without a verified pre-dispatch response may have
+          // happened after Telnyx accepted a request. Preserve the claim for the
+          // stale reconciler; never blindly requeue and duplicate PHI.
+          inFlight++;
         }
-        // Guard the failure write too — an unhandled throw here would abort the
-        // whole batch mid-run and surface as a function-level 500 to the scheduler.
-        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-          status: 'failed'
-        }).catch((err) => console.error('Failed to mark scheduled fax failed:', err?.message || err));
       }
     }
 
     return Response.json({
       success: true,
-      processed: scheduledFaxes.length
-    });
-
-  } catch (error) {
-    console.error('Process scheduled faxes error:', error);
+      due: rows.length,
+      processed,
+      sent,
+      failed,
+      needs_review: needsReview,
+      blocked,
+      awaiting_reconciliation: inFlight,
+      stale_claims_reconciled: reconciled,
+      timestamp: new Date().toISOString(),
+    }, { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
+  } catch {
+    console.error('processScheduledFaxes failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

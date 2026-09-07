@@ -1,12 +1,11 @@
 import { base44 } from '@/api/base44Client';
 
 /**
- * notify — single validated entry point for creating in-app notifications.
+ * notify — single validated browser entry point for requesting notifications.
  *
- * Notifications were created ad-hoc via direct `Notification.create` calls with no
- * shared validation, so an invalid `type`, an out-of-range `priority`, or an
- * external `action_url` (a phishing-link vector) could slip through. This mirrors
- * the server-side createNotification validation so the client behaves consistently.
+ * Notification is service-role-only. Browser callers validate their request here
+ * and then invoke the createNotification broker; they never receive entity CRUD
+ * authority and cannot set tenant, recipient-provenance, dedupe, or workflow fields.
  */
 
 // Must match the Notification entity `type` enum.
@@ -44,14 +43,20 @@ export function validateNotification({ user_email, title, message, type, priorit
  * input so callers don't silently persist malformed/abusable notifications.
  */
 export async function sendInAppNotification(params = {}) {
-  // Destructure `priority` out so it lands in neither path twice — leaving it in
-  // `rest` would let the trailing `...rest` spread overwrite the validated
-  // safePriority with the original (possibly out-of-range) value.
-  const { user_email, title, message, type, priority: _priority, action_url, action_label, metadata, ...rest } = params;
+  const {
+    user_email,
+    title,
+    message,
+    type,
+    action_url,
+    action_label,
+    metadata,
+    patient_id,
+  } = params;
   const check = validateNotification(params);
   if (!check.valid) throw new Error(check.error);
 
-  return base44.entities.Notification.create({
+  const response = await base44.functions.invoke('createNotification', {
     user_email,
     title,
     message,
@@ -60,7 +65,7 @@ export async function sendInAppNotification(params = {}) {
     ...(action_url != null ? { action_url } : {}),
     ...(action_label != null ? { action_label } : {}),
     ...(metadata != null ? { metadata } : {}),
-    is_read: false,
-    ...rest,
+    ...(patient_id != null ? { patient_id } : {}),
   });
+  return response?.data ?? response;
 }

@@ -7,6 +7,7 @@ const readSource = (relativePath) => readFileSync(`${process.cwd()}/${relativePa
 describe('Layout tenant-authority containment', () => {
   it('does not issue platform-wide approval or clinical badge reads', () => {
     const layout = readSource('src/components/Layout.jsx');
+    const notificationCenter = readSource('src/components/notifications/NotificationCenter.jsx');
 
     expect(layout).not.toContain('entities.TimeOffRequest');
     expect(layout).not.toContain('entities.Timesheet');
@@ -14,7 +15,9 @@ describe('Layout tenant-authority containment', () => {
     expect(layout).not.toContain('entities.Message');
     expect(layout).not.toContain('entities.Notification');
     expect(layout).not.toContain("invoke('getScopedPatientAlerts'");
-    expect(layout).not.toContain('NotificationCenter');
+    expect(layout).toContain('agencyId={tenantContext.agency_id}');
+    expect(notificationCenter).toContain('listMyNotifications({ agencyId })');
+    expect(notificationCenter).not.toContain('base44.entities.Notification');
   });
 
   it('does not automatically replay unbound retired work after tenant entry', () => {

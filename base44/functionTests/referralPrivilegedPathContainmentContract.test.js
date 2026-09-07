@@ -201,6 +201,12 @@ test('stale follow-up worker is tenant-bound, conditional, and duplicate-safe', 
   assert.equal(runtime.state.creates.length, 1);
   assert.equal(runtime.state.creates[0].agency_id, 'agency-a');
   assert.equal(runtime.state.creates[0].user_email, 'intake@example.test');
+  assert.equal(runtime.state.creates[0].recipient_user_id, 'user-a');
+  assert.equal(runtime.state.creates[0].recipient_membership_id, 'membership-a');
+  assert.equal(runtime.state.creates[0].recipient_membership_version, 1);
+  assert.equal(runtime.state.creates[0].authority_version, 1);
+  assert.equal(runtime.state.creates[0].version, 1);
+  assert.equal(runtime.state.creates[0].dismissed, false);
   assert.match(runtime.state.creates[0].dedupe_key, /^referral-stale:agency-a:referral-a:/);
   assert.doesNotMatch(runtime.state.creates[0].message, /patient|intake@example\.test/i);
   assert.equal(runtime.state.updates.length, 2);
@@ -253,6 +259,32 @@ test('stale follow-up worker supports the migrated empty-args scheduler contract
     entity === 'Agency' && query.status === 'trial'
   )));
   assert.equal(runtime.state.creates.length, 1);
+});
+
+test('stale follow-up worker returns non-2xx when any row escalation fails', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  runtime.client.asServiceRole.entities.Notification.create = async () => {
+    throw new Error('simulated provider failure');
+  };
+  const handler = await loadStaleFollowUpHandler(
+    () => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]),
+  );
+  const response = await handler(staleFollowUpRequest());
+  assert.equal(response.status, 500);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await response.json(), {
+    success: false,
+    agency_id: 'agency-a',
+    agencies_processed: 1,
+    stale_days: 4,
+    scanned: 1,
+    escalated: 0,
+    skipped_without_active_recipient: 0,
+    failed: 1,
+    error: 'One or more stale follow-up escalations failed',
+  });
+  assert.equal(runtime.state.referrals[0].follow_up_requests.stale_notified_at, undefined);
 });
 
 test('unscoped stale scheduler work is rejected before entity access without scheduler authority', async () => {

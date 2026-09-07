@@ -1,0 +1,17 @@
+{
+  "name": "checkStaleFollowUpRequests",
+  "entry": "entry.ts",
+  "automations": [
+    {
+      "name": "Check Stale Follow-Up Requests",
+      "description": "Escalates tenant-bound provider follow-up requests after the notification-ledger cutover is complete.",
+      "function_args": {},
+      "is_active": false,
+      "type": "scheduled",
+      "schedule_mode": "recurring",
+      "schedule_type": "cron",
+      "cron_expression": "0 12 * * *",
+      "ends_type": "never"
+    }
+  ]
+}

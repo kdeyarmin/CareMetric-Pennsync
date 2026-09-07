@@ -873,7 +873,7 @@ async function offboardUser(
 
   try {
     const pendingFaxes = await base44.asServiceRole.entities.ScheduledFax.filter(
-      { created_by: targetEmail, status: 'pending' },
+      { authorized_by_user_id: userId, status: 'pending' },
       undefined,
       5000,
     ).catch((err) => {
@@ -882,6 +882,11 @@ async function offboardUser(
       return null;
     });
     for (const row of (pendingFaxes || [])) {
+      if (row?.authorized_by_user_id !== userId
+        || row?.authorized_by_email_normalized !== targetEmailNormalized) {
+        results.failures += 1;
+        continue;
+      }
       const ok = await revoke(
         'scheduled fax cancel',
         entities.ScheduledFax,

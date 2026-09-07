@@ -40,27 +40,18 @@ test('sendFax elevates only FaxLog writes after its authorization and destinatio
   ], 'base44.asServiceRole.entities.FaxLog.create(', 'sendFax');
 });
 
-test('retryFailedFax elevates FaxLog writes only after ownership and resend-safety gates', async () => {
+test('retryFailedFax delegates to the reviewed referral broker and never writes FaxLog', async () => {
   const source = await readFunction('retryFailedFax');
+  const handler = source.slice(source.lastIndexOf('Deno.serve'));
   const serviceWrites = source.match(
     /base44\.asServiceRole\.entities\.FaxLog\.(?:create|update)\s*\(/g,
   ) || [];
 
-  assert.equal(serviceWrites.length, 5, 'all five retryFailedFax FaxLog writes use the service role');
-  assert.doesNotMatch(
-    source,
-    /base44\.entities\.FaxLog\.(?:create|update)\s*\(/,
-    'retryFailedFax must not rely on caller RLS for authorized FaxLog writes',
-  );
-  assertOrderedBefore(source, [
-    'if (!user)',
-    'if (!isOwner && !isPlatformAdmin && !isAgencyScopedAdmin)',
-    "if (originalFax.status !== 'failed')",
-    'if ((Number(originalFax.retry_count) || 0) >= maxRetries)',
-    'if (!isSafeFetchUrl(originalFax.document_url))',
-    'if (!apiKey || !faxConnectionId)',
-    'if (!fromNumber)',
-  ], 'base44.asServiceRole.entities.FaxLog.update(fax_log_id, {', 'retryFailedFax');
+  assert.equal(serviceWrites.length, 0);
+  assert.doesNotMatch(source, /(?:base44\.)?entities\.FaxLog\.(?:create|update|updateMany)\s*\(/);
+  assert.match(handler, /base44\.functions\.invoke\('sendAuthorizedReferralFax',\s*\{/);
+  assert.match(handler, /retry_fax_log_id:\s*faxLogId/);
+  assert.doesNotMatch(handler, /document_url|file_url|api\.telnyx\.com/);
 });
 
 test('FaxLog browser access is sender-read-only and all writes require a backend workflow', async () => {

@@ -2,6 +2,44 @@
   "name": "DocumentPackage",
   "type": "object",
   "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable tenant id stamped by the server-side signature-request broker."
+    },
+    "package_key": {
+      "type": "string",
+      "description": "Server-built SHA-256 idempotency key for the agency, creator, and client request."
+    },
+    "client_request_id": {
+      "type": "string",
+      "description": "Bounded caller retry id scoped server-side before use."
+    },
+    "created_by_user_id": {
+      "type": "string",
+      "description": "Immutable built-in User id of the request creator."
+    },
+    "created_by_user_email_normalized": {
+      "type": "string",
+      "format": "email",
+      "description": "Normalized built-in creator email retained as an integrity check."
+    },
+    "creator_membership_id": {
+      "type": "string"
+    },
+    "creator_membership_version": {
+      "type": "number"
+    },
+    "authority_version": {
+      "type": "number",
+      "default": 1,
+      "description": "Monotonic server-owned revision for conditional package transitions."
+    },
+    "token_issue_claimed_by": {
+      "type": "string",
+      "description": "Server-generated owner of the short signer-token issuance lease."
+    },
+    "token_issue_claimed_at": { "type": "string", "format": "date-time" },
+    "token_issue_request_id": { "type": "string" },
     "package_name": {
       "type": "string",
       "description": "Name of the document package (e.g., Admission Onboarding)"
@@ -88,7 +126,12 @@
     },
     "signer_email": {
       "type": "string",
+      "format": "email",
       "description": "Primary signer email for reminder notifications"
+    },
+    "signer_id": {
+      "type": "string",
+      "description": "Opaque signer id shared with the member DocumentSignature signer rows."
     },
     "signer_name": {
       "type": "string",
