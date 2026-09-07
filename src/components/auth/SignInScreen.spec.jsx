@@ -86,6 +86,15 @@ describe('SignInScreen', () => {
     expect(logo.className).toContain('object-contain');
   });
 
+  it('shows the owner-verified central support routes before sign-in', () => {
+    render(<SignInScreen onAuthenticated={vi.fn()} />);
+
+    expect(screen.getByRole('link', { name: '(877) 521-2890' }))
+      .toHaveAttribute('href', 'tel:+18775212890');
+    expect(screen.getByRole('link', { name: 'support@caremetric.ai' }))
+      .toHaveAttribute('href', 'mailto:support@caremetric.ai');
+  });
+
   it('signs in with email/password, stores the token and hands off to the app', async () => {
     mocks.post.mockResolvedValueOnce({ access_token: 'tok-123' });
     const onAuthenticated = vi.fn();

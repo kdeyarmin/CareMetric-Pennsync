@@ -1,11 +1,12 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { Outlet, useLocation } from "react-router";
 
 import { Bell, LogOut, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { buildNavCategories, buildAdminItems, NAV_MANIFEST, isNavItemActive } from "@/lib/nav.manifest";
-import { PAGE_NAMES } from "@/routes";
+import { PAGE_NAMES, ROUTER_PATHS } from "@/routes";
+import { resolveKnownHelpRoute } from "@/lib/centralHelp";
 import { getRoleView } from "@/lib/roles";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 import { useAuth } from "@/lib/AuthContext";
@@ -34,9 +35,23 @@ export default function Layout() {
   // but a raw path segment would miss the case-sensitive NAV_MAP lookup and
   // drop the sidebar highlight + breadcrumbs. Mirrors NavigationTracker.
   const rawSegment = location.pathname.split('/')[1] || '';
+  const matchedPageName = rawSegment
+    ? PAGE_NAMES.find((key) => key.toLowerCase() === rawSegment.toLowerCase())
+    : null;
   const currentPageName = rawSegment
-    ? (PAGE_NAMES.find((key) => key.toLowerCase() === rawSegment.toLowerCase()) || rawSegment)
+    ? (matchedPageName || rawSegment)
     : 'Dashboard';
+  // Only an exact static router path may leave PennSync as contextual-help
+  // route data. Validating the full pathname (not just its first segment)
+  // prevents extra identifier-bearing segments from being canonicalized away.
+  const resolvedHelpSourceRoute = resolveKnownHelpRoute(location.pathname, ROUTER_PATHS);
+  const lastNonHelpRouteRef = useRef('/Help');
+  if (resolvedHelpSourceRoute?.toLowerCase() !== '/help') {
+    lastNonHelpRouteRef.current = resolvedHelpSourceRoute || '/Help';
+  }
+  const helpSourceRoute = resolvedHelpSourceRoute?.toLowerCase() === '/help'
+    ? lastNonHelpRouteRef.current
+    : (resolvedHelpSourceRoute || '/Help');
   // Persist the desktop sidebar collapse choice so daily users don't have to
   // re-collapse it every session (read lazily so the first paint matches).
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -265,7 +280,7 @@ export default function Layout() {
             )}
             <Breadcrumbs currentPageName={currentPageName} />
             <PageTransition>
-              <Outlet key={location.pathname} />
+              <Outlet key={location.pathname} context={{ helpSourceRoute }} />
             </PageTransition>
           </div>
         </main>
