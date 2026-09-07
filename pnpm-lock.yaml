@@ -18,11 +18,14 @@ importers:
   .:
     dependencies:
       '@base44/sdk':
-        specifier: ^0.8.46
-        version: 0.8.46
+        specifier: ^0.8.48
+        version: 0.8.48
       '@base44/vite-plugin':
-        specifier: ^1.0.34
-        version: 1.0.34
+        specifier: ^1.0.35
+        version: 1.0.35
+      '@caremetric/help-sdk':
+        specifier: file:vendor/caremetric-help-sdk-0.1.0.tgz
+        version: file:vendor/caremetric-help-sdk-0.1.0.tgz
       '@fontsource-variable/inter':
         specifier: ^5.3.0
         version: 5.3.0
@@ -340,15 +343,20 @@ packages:
     resolution: {integrity: sha512-4zBIxpPzowiZpusoFkyGVwakdRJUyuH5PxQ/PrqghfdFWWasvnCdPfQXHrenDai+gyLARulZjZowCOj6fjT4pA==}
     engines: {node: '>=6.9.0'}
 
-  '@base44/sdk@0.8.46':
-    resolution: {integrity: sha512-jS23j7J7qFVs9CJSyzJwXD8YyMtHBTIgQbTS4AbUZFKWtu0beWyb5APJCK/GwIL47aYjBacQlDwLPV5zgXwYKg==}
+  '@base44/sdk@0.8.48':
+    resolution: {integrity: sha512-AXDLduglymT+RM6OZu+VFQtsLe++FhXZlvn/I/M2PFOVAC3MTpdmqnm5zL5D0BPK86JBeNpeK5vd9tkKFmAdZQ==}
 
-  '@base44/vite-plugin@1.0.34':
-    resolution: {integrity: sha512-XqFUXhQYz/7RI53kzTxn8uNSwlQ1OC53g66eGhOrkbhwn8Hyi35txIg3m94YIUT4/NCHHFboipAT/yj6nuPgug==}
+  '@base44/vite-plugin@1.0.35':
+    resolution: {integrity: sha512-pX0cxwlhtSP2TRQwRWmgMfHNvTRgKGpK1rUoE+xj8Jp+vFzo7Pk6IMlcE8+JKivLOBJhtMnMMfX9+P+0p5Jn0Q==}
 
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
     hasBin: true
+
+  '@caremetric/help-sdk@file:vendor/caremetric-help-sdk-0.1.0.tgz':
+    resolution: {integrity: sha512-Hg5JxiCVI2Iig6SoyNBrrbExf3vpzlzb87ta8NG1OjGTaZo4y/m0Uxpk9+yg81T3PP48nFmGkpefhfiT1Ys+Nw==, tarball: file:vendor/caremetric-help-sdk-0.1.0.tgz}
+    version: 0.1.0
+    engines: {node: '>=18'}
 
   '@csstools/color-helpers@6.1.0':
     resolution: {integrity: sha512-064IFJdjTfUqnjpCVpMOdbr8FLQBhinbZj6yRv2An2E41O/pLEXqfFRWqGq/SxlE5PEUYTlvWsG2r8MswAVvkg==}
@@ -4053,7 +4061,7 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@base44/sdk@0.8.46':
+  '@base44/sdk@0.8.48':
     dependencies:
       axios: 1.18.1
       partysocket: 0.0.23
@@ -4065,7 +4073,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@base44/vite-plugin@1.0.34':
+  '@base44/vite-plugin@1.0.35':
     dependencies:
       '@babel/generator': 7.29.7
       '@babel/parser': 7.29.7
@@ -4077,6 +4085,8 @@ snapshots:
   '@bramus/specificity@2.4.2':
     dependencies:
       css-tree: 3.2.1
+
+  '@caremetric/help-sdk@file:vendor/caremetric-help-sdk-0.1.0.tgz': {}
 
   '@csstools/color-helpers@6.1.0': {}
 

@@ -75,7 +75,7 @@ HELP
 ```
 **Help message**
 ```
-CareMetric AI: For help, contact your healthcare provider or reach us at support@caremetricai.com or visit https://caremetric.ai. Reply STOP to unsubscribe. Msg&data rates may apply.
+CareMetric AI: For help, contact your healthcare provider or reach us at support@caremetric.ai or visit https://caremetric.ai. Reply STOP to unsubscribe. Msg&data rates may apply.
 ```
 
 > Screenshot for all three auto-responses:
@@ -140,14 +140,11 @@ delivered if the primary webhook fails.
 
 ---
 
-## ⚠️ Two things to double-check before you submit
+## ⚠️ Final checks before you submit
 
 1. **Webhook function name.** The URL above ends in `twilio-sms-webhook`, but
    this app's Telnyx integration uses a Supabase function for status events.
    Confirm `twilio-sms-webhook` is the correct/intended endpoint for Telnyx
    provisioning callbacks (not a leftover from the old Twilio setup).
-2. **Support email domain.** The Help message uses `support@caremetricai.com`
-   while every other URL uses the `caremetric.ai` domain. Verify the email
-   address is correct (e.g., `support@caremetric.ai`) so reviewers don't flag a
-   domain mismatch.
-```
+2. **Support route confirmed.** The owner-verified central support email is
+   `support@caremetric.ai`; keep that exact address in the HELP auto-response.

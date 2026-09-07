@@ -14,6 +14,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ArrowLeft, Eye, EyeOff, Loader2, MailCheck, ShieldAlert } from 'lucide-react';
 import { BRAND_LOGO_URL, APP_NAME, PLATFORM_NAME } from '@/lib/brand';
+import {
+  CENTRAL_SUPPORT_EMAIL,
+  CENTRAL_SUPPORT_EMAIL_HREF,
+  CENTRAL_SUPPORT_PHONE_DISPLAY,
+  CENTRAL_SUPPORT_PHONE_HREF,
+} from '@/lib/supportContacts';
 
 /**
  * Branded in-app sign-in screen: PennSync by CareMetric.
@@ -334,6 +340,15 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
             Use the standard sign-in page
           </button>
         </p>
+        <div aria-label="CareMetric support" className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs">
+          <span className="text-slate-500">Need support?</span>
+          <a href={CENTRAL_SUPPORT_PHONE_HREF} className="font-medium text-navy-700 underline-offset-2 hover:underline">
+            {CENTRAL_SUPPORT_PHONE_DISPLAY}
+          </a>
+          <a href={CENTRAL_SUPPORT_EMAIL_HREF} className="font-medium text-navy-700 underline-offset-2 hover:underline">
+            {CENTRAL_SUPPORT_EMAIL}
+          </a>
+        </div>
         <p className="mt-2 text-center text-xs text-slate-400">
           Secure clinical platform · HIPAA compliant ·{' '}
           <Link to="/privacy" className="underline-offset-2 hover:underline">

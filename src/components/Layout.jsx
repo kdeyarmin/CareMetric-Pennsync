@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { buildNavCategories, buildAdminItems, NAV_MANIFEST, isNavItemActive } from "@/lib/nav.manifest";
-import { PAGE_NAMES } from "@/routes";
+import { PAGE_NAMES, ROUTER_PATHS } from "@/routes";
+import { resolveKnownHelpRoute } from "@/lib/centralHelp";
 import { getRoleView } from "@/lib/roles";
 import { BRAND_LOGO_URL } from "@/lib/brand";
 
@@ -39,9 +40,16 @@ export default function Layout() {
   // but a raw path segment would miss the case-sensitive NAV_MAP lookup and
   // drop the sidebar highlight + breadcrumbs. Mirrors NavigationTracker.
   const rawSegment = location.pathname.split('/')[1] || '';
+  const matchedPageName = rawSegment
+    ? PAGE_NAMES.find((key) => key.toLowerCase() === rawSegment.toLowerCase())
+    : null;
   const currentPageName = rawSegment
-    ? (PAGE_NAMES.find((key) => key.toLowerCase() === rawSegment.toLowerCase()) || rawSegment)
+    ? (matchedPageName || rawSegment)
     : 'Dashboard';
+  // Only an exact static router path may leave PennSync as contextual-help
+  // route data. Validating the full pathname (not just its first segment)
+  // prevents extra identifier-bearing segments from being canonicalized away.
+  const helpSourceRoute = resolveKnownHelpRoute(location.pathname, ROUTER_PATHS);
   // Persist the desktop sidebar collapse choice so daily users don't have to
   // re-collapse it every session (read lazily so the first paint matches).
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
@@ -400,6 +408,7 @@ export default function Layout() {
           navCategories={navCategories}
           adminItems={adminItems}
           isActive={isActive}
+          helpSourceRoute={helpSourceRoute}
           onLogout={handleLogout}
         />
 
@@ -418,6 +427,7 @@ export default function Layout() {
           adminItems={adminItems}
           isAdmin={isAdmin}
           isActive={isActive}
+          helpSourceRoute={helpSourceRoute}
           currentUser={currentUser}
           onLogout={handleLogout}
         />

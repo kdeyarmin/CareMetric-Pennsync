@@ -2,6 +2,12 @@ import { useAuth } from "@/lib/AuthContext";
 import { Button } from "@/components/ui/button";
 import { ShieldAlert, LogOut } from "lucide-react";
 import { BRAND_LOGO_URL } from "@/lib/brand";
+import {
+  CENTRAL_SUPPORT_EMAIL,
+  CENTRAL_SUPPORT_EMAIL_HREF,
+  CENTRAL_SUPPORT_PHONE_DISPLAY,
+  CENTRAL_SUPPORT_PHONE_HREF,
+} from "@/lib/supportContacts";
 
 const UserNotRegisteredError = () => {
   // Route sign-out through AuthContext.logout (not base44.auth.logout directly)
@@ -48,6 +54,18 @@ const UserNotRegisteredError = () => {
             <Button onClick={() => { void logout(); }} variant="outline" className="w-full">
               <LogOut className="mr-2 h-4 w-4" /> Sign out
             </Button>
+          </div>
+        </div>
+
+        <div aria-label="CareMetric support" className="mt-4 text-center text-xs text-slate-500">
+          <p>CareMetric support</p>
+          <div className="mt-1 flex flex-wrap items-center justify-center gap-x-3 gap-y-1">
+            <a href={CENTRAL_SUPPORT_PHONE_HREF} className="font-medium text-navy-700 underline-offset-2 hover:underline">
+              {CENTRAL_SUPPORT_PHONE_DISPLAY}
+            </a>
+            <a href={CENTRAL_SUPPORT_EMAIL_HREF} className="font-medium text-navy-700 underline-offset-2 hover:underline">
+              {CENTRAL_SUPPORT_EMAIL}
+            </a>
           </div>
         </div>
 

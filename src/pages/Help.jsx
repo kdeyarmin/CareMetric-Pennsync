@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -18,12 +19,25 @@ import { useAuth } from "@/lib/AuthContext";
 import { isAdminView } from "@/lib/roles";
 import { hostedAssetPath } from '@/lib/assetPath';
 import { ROUTER_PATHS } from '@/routes';
+import CentralHelpButton from '@/components/support/CentralHelpButton';
+import {
+  CENTRAL_SUPPORT_EMAIL,
+  CENTRAL_SUPPORT_EMAIL_HREF,
+  CENTRAL_SUPPORT_PHONE_DISPLAY,
+  CENTRAL_SUPPORT_PHONE_HREF,
+} from '@/lib/supportContacts';
 
 export default function Help() {
   const [searchQuery, setSearchQuery] = useState("");
   const [downloading, setDownloading] = useState(false);
   const { user } = useAuth();
   const isAdmin = isAdminView(user);
+  const location = useLocation();
+
+  // Help navigation carries only a canonical manifest route in router state.
+  // A direct visit falls back to /Help. buildPennSyncHelpUrl independently
+  // rechecks the value against ROUTER_PATHS before anything leaves the app.
+  const helpSourceRoute = location.state?.helpSourceRoute || location.pathname;
 
   const handleDownloadManual = async () => {
     setDownloading(true);
@@ -163,14 +177,17 @@ export default function Help() {
         description="Everything you need to master PennSync"
         favoritePage="Help"
         actions={
-          <Button
-            onClick={handleDownloadManual}
-            disabled={downloading}
-            className="bg-gold-400 hover:bg-gold-300 text-navy-900 font-semibold shadow-lg min-h-[48px] px-6"
-          >
-            <Download className="w-5 h-5 mr-2" />
-            {downloading ? 'Generating...' : 'Download Full Manual'}
-          </Button>
+          <div className="flex flex-col sm:flex-row gap-2">
+            <CentralHelpButton pathname={helpSourceRoute} knownRoutes={ROUTER_PATHS} />
+            <Button
+              onClick={handleDownloadManual}
+              disabled={downloading}
+              className="bg-gold-400 hover:bg-gold-300 text-navy-900 font-semibold shadow-lg min-h-[48px] px-6"
+            >
+              <Download className="w-5 h-5 mr-2" />
+              {downloading ? 'Generating...' : 'Download Full Manual'}
+            </Button>
+          </div>
         }
       />
 
@@ -446,10 +463,23 @@ export default function Help() {
                         <p className="text-sm text-slate-600">Platform Administrator</p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg">
+                    <a
+                      href={CENTRAL_SUPPORT_PHONE_HREF}
+                      className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg text-sm font-medium text-navy-800 hover:bg-navy-50"
+                    >
+                      <Phone className="w-5 h-5 text-navy-900" />
+                      <span>{CENTRAL_SUPPORT_PHONE_DISPLAY}</span>
+                    </a>
+                    <a
+                      href={CENTRAL_SUPPORT_EMAIL_HREF}
+                      className="flex items-center gap-3 p-3 bg-slate-50 rounded-lg text-sm font-medium text-navy-800 hover:bg-navy-50"
+                    >
                       <Mail className="w-5 h-5 text-navy-900" />
-                      <p className="text-sm text-slate-700">Contact your agency administrator</p>
-                    </div>
+                      <span>{CENTRAL_SUPPORT_EMAIL}</span>
+                    </a>
+                    <p className="text-xs text-slate-500">
+                      For agency-specific access or policy questions, you can also contact your agency administrator.
+                    </p>
                   </div>
                 </CardContent>
               </Card>
