@@ -176,11 +176,21 @@ function renderBrandedEmail(opts) {
  */
 
 function getAppBaseUrl() {
-  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
-  if (fromEnv) {
-    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  const configured = String(Deno.env.get('APP_PUBLIC_URL') || '').trim();
+  if (!configured) throw new Error('APP_PUBLIC_URL is required for outbound app links');
+  let parsed;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
   }
-  return 'https://caremetricai.base44.app';
+  if (
+    parsed.protocol !== 'https:' || parsed.username || parsed.password
+    || parsed.pathname !== '/' || parsed.search || parsed.hash
+  ) {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
+  }
+  return parsed.origin;
 }
 
 const MAX_BODY_BYTES = 20_000;
@@ -453,36 +463,13 @@ Deno.serve(async (req) => {
       push: false 
     };
 
-    // Always create in-app notification if in_app is enabled
-    if (userPrefs.in_app_notifications_enabled && typePrefs.in_app !== false) {
-      await entities.Notification.create({
-        agency_id: scope.recipientMembership.agencyId,
-        recipient_user_id: recipient.id,
-        recipient_membership_id: scope.recipientMembership.id,
-        recipient_membership_version: scope.recipientMembership.version,
-        authority_version: 1,
-        version: 1,
-        user_email: recipient.email,
-        title: input.title,
-        message: input.message,
-        type: input.type,
-        priority: input.priority,
-        action_url: input.actionUrl,
-        action_label: input.actionLabel,
-        metadata: input.metadata,
-        is_read: false,
-        read_at: null,
-        email_sent: false,
-        push_sent: false,
-        dismissed: false,
-        dismissed_at: null,
-      });
-    }
-
-    // Check if should send email
+    const shouldCreateInApp = userPrefs.in_app_notifications_enabled
+      && typePrefs.in_app !== false;
     const shouldSendEmail = userPrefs.email_notifications_enabled && 
                            typePrefs.email !== false &&
                            userPrefs.digest_mode === 'instant';
+    let emailPermittedNow = false;
+    let appBase = null;
 
     if (shouldSendEmail) {
       // Check quiet hours. Quiet-hour start/end times are entered relative to the
@@ -517,33 +504,66 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Send email if not in quiet hours or if critical priority
-      if (!inQuietHours || input.priority === 'critical') {
-        try {
-          // Deep-link the in-app action_url (a relative path) into an absolute URL
-          // so the email button actually works.
-          const appBase = getAppBaseUrl();
-          await base44.asServiceRole.integrations.Core.SendEmail({
-            to: recipient.email,
-            from_name: 'PennSync by CareMetric',
-            subject: `${input.title} · PennSync by CareMetric`,
-            body: renderBrandedEmail({
-              preheader: input.message,
-              eyebrow: 'Notification',
-              tone: input.priority === 'critical' ? 'urgent' : 'brand',
-              title: input.title,
-              intro: input.message,
-              sections: [
-                ...(input.actionUrl
-                  ? [{ button: { href: `${appBase}${input.actionUrl}`, label: input.actionLabel || 'View in PennSync' } }]
-                  : []),
-              ],
-              footerNote: 'You’re receiving this because email notifications are enabled for this alert type. Manage your preferences on the Notification Settings page in PennSync.',
-            }),
-          });
-        } catch (emailError) {
-          console.error('Failed to send email:', emailError);
-        }
+      emailPermittedNow = !inQuietHours || input.priority === 'critical';
+      if (emailPermittedNow) {
+        // Resolve a link origin before creating an in-app notification or
+        // attempting email. Invalid staging configuration must not leave a
+        // partial notification whose email silently linked another environment.
+        appBase = input.actionUrl ? getAppBaseUrl() : null;
+      }
+    }
+
+    if (shouldCreateInApp) {
+      await entities.Notification.create({
+        agency_id: scope.recipientMembership.agencyId,
+        recipient_user_id: recipient.id,
+        recipient_membership_id: scope.recipientMembership.id,
+        recipient_membership_version: scope.recipientMembership.version,
+        authority_version: 1,
+        version: 1,
+        user_email: recipient.email,
+        title: input.title,
+        message: input.message,
+        type: input.type,
+        priority: input.priority,
+        action_url: input.actionUrl,
+        action_label: input.actionLabel,
+        metadata: input.metadata,
+        is_read: false,
+        read_at: null,
+        email_sent: false,
+        push_sent: false,
+        dismissed: false,
+        dismissed_at: null,
+      });
+    }
+
+    let emailSent = false;
+    if (emailPermittedNow) {
+      try {
+        await base44.asServiceRole.integrations.Core.SendEmail({
+          to: recipient.email,
+          from_name: 'PennSync by CareMetric',
+          subject: `${input.title} · PennSync by CareMetric`,
+          body: renderBrandedEmail({
+            preheader: input.message,
+            eyebrow: 'Notification',
+            tone: input.priority === 'critical' ? 'urgent' : 'brand',
+            title: input.title,
+            intro: input.message,
+            sections: [
+              ...(input.actionUrl
+                ? [{ button: { href: `${appBase}${input.actionUrl}`, label: input.actionLabel || 'View in PennSync' } }]
+                : []),
+            ],
+            footerNote: 'You’re receiving this because email notifications are enabled for this alert type. Manage your preferences on the Notification Settings page in PennSync.',
+          }),
+        });
+        emailSent = true;
+      } catch {
+        // Notification bodies may contain PHI, and SDK errors can retain the
+        // request payload. Keep operational logging constant and payload-free.
+        console.error('Notification email delivery failed');
       }
     }
 
@@ -551,9 +571,10 @@ Deno.serve(async (req) => {
       success: true, 
       message: 'Notification created',
       channels: {
-        in_app: userPrefs.in_app_notifications_enabled && typePrefs.in_app !== false,
-        email: shouldSendEmail,
-        push: userPrefs.push_notifications_enabled && typePrefs.push !== false
+        in_app: shouldCreateInApp,
+        email: emailSent,
+        // No push provider is invoked by this broker.
+        push: false,
       }
     });
 
@@ -561,7 +582,7 @@ Deno.serve(async (req) => {
     if (error instanceof PublicError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
-    console.error('Error creating notification:', error);
+    console.error('createNotification failed');
     return Response.json({ 
       error: 'Internal server error' 
     }, { status: 500 });

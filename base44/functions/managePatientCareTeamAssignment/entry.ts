@@ -48,6 +48,7 @@ const MAX_IDENTIFIER_LENGTH = 200;
 const MAX_REASON_LENGTH = 500;
 const EXACT_ROW_LIMIT = 10;
 const MEMBERSHIP_SCAN_LIMIT = 100;
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 
 const MEMBERSHIP_SNAPSHOT_FIELDS = [
   'id',
@@ -117,6 +118,12 @@ class PublicError extends Error {
     this.name = 'PublicError';
     this.status = status;
   }
+}
+
+function jsonResponse(body: unknown, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of Object.entries(NO_STORE_HEADERS)) headers.set(name, value);
+  return Response.json(body, { ...init, headers });
 }
 
 const normalizeEmail = (value: unknown) =>
@@ -193,6 +200,35 @@ function assignmentKey(agencyId: string, patientId: string, userId: string) {
 
 function transitionRequestKey(key: string, requestId: string) {
   return `${key}:${requestId}`;
+}
+
+function assignmentLifecycleIsCoherent(row: Record<string, any>, status: string, action: string) {
+  if (action === 'grant') {
+    return status === 'active'
+      && row.version === 1
+      && row.activated_at === row.last_transition_at
+      && row.suspended_at == null;
+  }
+  if (action === 'activate') {
+    return status === 'active'
+      && row.version >= 3
+      && row.version % 2 === 1
+      && validInstant(row.suspended_at)
+      && row.activated_at === row.last_transition_at;
+  }
+  if (action === 'suspend') {
+    return status === 'suspended'
+      && row.version >= 2
+      && row.version % 2 === 0
+      && row.suspended_at === row.last_transition_at;
+  }
+  if (action === 'revoke') {
+    return status === 'revoked'
+      && row.version >= 2
+      && row.revoked_at === row.last_transition_at
+      && row.revocation_reason === row.last_transition_reason;
+  }
+  return false;
 }
 
 function isProtectedPlatformOwner(user: Record<string, any>) {
@@ -398,6 +434,7 @@ function validateMembership(
     || (status === 'revoked' && (
       !validInstant(row.revoked_at) || !boundedReason(row.revocation_reason)
     ))
+    || (status !== 'revoked' && (row.revoked_at != null || row.revocation_reason != null))
   ) {
     throw new PublicError(409, 'Tenant membership integrity check failed');
   }
@@ -489,6 +526,12 @@ function validateAssignment(
   const transitionEmail = canonicalEmail(row?.last_transition_by_email_normalized);
   const requestId = exactIdentifier(row?.last_transition_request_id);
   const status = typeof row?.status === 'string' ? row.status : '';
+  const action = typeof row?.last_transition_action === 'string'
+    ? row.last_transition_action
+    : '';
+  const suspendedAt = row?.suspended_at;
+  const revokedAt = row?.revoked_at;
+  const revocationReason = row?.revocation_reason;
   if (
     !id
     || row.assignment_key !== key
@@ -506,16 +549,20 @@ function validateAssignment(
     || !creatorEmail
     || row.created_by_user_email_normalized !== creatorEmail
     || !validInstant(row.activated_at)
-    || (status === 'suspended' && !validInstant(row.suspended_at))
+    || (suspendedAt != null && !validInstant(suspendedAt))
+    || (status === 'suspended' && !validInstant(suspendedAt))
+    || (revokedAt != null && !validInstant(revokedAt))
     || (status === 'revoked' && (
-      !validInstant(row.revoked_at) || !boundedReason(row.revocation_reason)
+      !validInstant(revokedAt) || !boundedReason(revocationReason)
     ))
+    || (status !== 'revoked' && (revokedAt != null || revocationReason != null))
     || !exactIdentifier(row.last_transition_by_user_id)
     || !transitionEmail
     || row.last_transition_by_email_normalized !== transitionEmail
     || !validInstant(row.last_transition_at)
     || !boundedReason(row.last_transition_reason)
-    || !MUTATION_ACTIONS.has(String(row.last_transition_action || ''))
+    || !MUTATION_ACTIONS.has(action)
+    || !assignmentLifecycleIsCoherent(row, status, action)
     || !requestId
     || row.last_transition_request_key !== transitionRequestKey(key, requestId)
     || !Number.isSafeInteger(row.version)
@@ -757,7 +804,7 @@ function success(
   authority: Record<string, any>,
   status = 200,
 ) {
-  return Response.json({
+  return jsonResponse({
     success: true,
     action,
     idempotent,
@@ -908,7 +955,7 @@ async function applyConditionalTransition(
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
-      return Response.json(
+      return jsonResponse(
         { error: 'Method not allowed' },
         { status: 405, headers: { Allow: 'POST' } },
       );
@@ -916,7 +963,7 @@ Deno.serve(async (req) => {
 
     const input = await parseRequest(req);
     if (input.action !== 'inspect' && !CARE_TEAM_ASSIGNMENT_MUTATIONS_ENABLED) {
-      return Response.json({
+      return jsonResponse({
         error: 'Care-team assignment mutations are paused',
         code: 'care_team_assignment_mutations_paused',
       }, { status: 503 });
@@ -924,19 +971,19 @@ Deno.serve(async (req) => {
 
     const base44 = createClientFromRequest(req);
     const observedCaller = await base44.auth.me().catch(() => null);
-    if (!observedCaller) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!observedCaller) return jsonResponse({ error: 'Unauthorized' }, { status: 401 });
     if (
       observedCaller.is_active === false
       || observedCaller.disabled === true
       || observedCaller.is_service === true
       || observedCaller.is_verified === false
     ) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
+      return jsonResponse({ error: 'Forbidden' }, { status: 403 });
     }
     try {
       validateUserIdentity(observedCaller, 'Caller');
     } catch {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
+      return jsonResponse({ error: 'Forbidden' }, { status: 403 });
     }
 
     const entities = base44.asServiceRole.entities;
@@ -1225,11 +1272,11 @@ Deno.serve(async (req) => {
     return success(finalAssignment, input.action, false, initialCaller);
   } catch (error) {
     if (error instanceof PublicError) {
-      return Response.json({ error: error.message }, { status: error.status });
+      return jsonResponse({ error: error.message }, { status: error.status });
     }
     // Never place request bodies, patient identifiers, emails, or datastore
     // error strings in retained logs.
     console.error('managePatientCareTeamAssignment failed');
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonResponse({ error: 'Internal server error' }, { status: 500 });
   }
 });

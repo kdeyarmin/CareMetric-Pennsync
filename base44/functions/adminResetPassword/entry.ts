@@ -147,11 +147,21 @@ function renderBrandedEmail(opts) {
 // <<<END SHARED HELPER: brandedEmail>>>
 
 function getAppBaseUrl() {
-  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
-  if (fromEnv) {
-    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  const configured = String(Deno.env.get('APP_PUBLIC_URL') || '').trim();
+  if (!configured) throw new Error('APP_PUBLIC_URL is required for outbound app links');
+  let parsed;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
   }
-  return 'https://caremetricai.base44.app';
+  if (
+    parsed.protocol !== 'https:' || parsed.username || parsed.password
+    || parsed.pathname !== '/' || parsed.search || parsed.hash
+  ) {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
+  }
+  return parsed.origin;
 }
 
 Deno.serve(async (req) => {
@@ -201,10 +211,12 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Resolve the environment-specific origin before any invite/email side
+    // effect. Invalid configuration must not produce a partial reset flow.
+    const appUrl = getAppBaseUrl();
+
     // Re-invite the user — this sends them a fresh link to set/reset their password
     await base44.users.inviteUser(userEmail, targetUser.role || 'user');
-
-    const appUrl = getAppBaseUrl();
 
     // Also send a clear email with login details
     await base44.asServiceRole.integrations.Core.SendEmail({
@@ -243,8 +255,10 @@ Deno.serve(async (req) => {
       message: `Password reset invite and login instructions sent to ${userEmail}`
     });
 
-  } catch (error) {
-    console.error('adminResetPassword error:', error);
+  } catch {
+    // SDK errors may retain request headers and email bodies. Do not serialize
+    // them into function logs.
+    console.error('adminResetPassword failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

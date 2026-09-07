@@ -7,10 +7,12 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
  * failure. This prevents a scheduler replay from emailing two bearer links.
  */
 const SIGNATURE_REMINDER_DISPATCH_ENABLED = false;
+const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = false;
 const MAX_IDENTIFIER_LENGTH = 200;
 const EXACT_ROW_LIMIT = 10;
 const BATCH_LIMIT = 100;
 const MAX_PACKAGE_DOCUMENTS = 25;
+const CLAIM_LEASE_MS = 20 * 60 * 1000;
 
 class PublicError extends Error {
   status: number;
@@ -40,6 +42,39 @@ function validInstant(value: unknown) {
 
 function exactDigest(value: unknown) {
   return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : null;
+}
+
+function dueDateEnd(value: unknown) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const instant = Date.parse(`${value}T23:59:59.999Z`);
+  if (!Number.isFinite(instant)) return null;
+  return new Date(instant).toISOString().slice(0, 10) === value ? instant : null;
+}
+
+function deriveAuthorityDeadline(pkg: Record<string, any>, signatures: Array<Record<string, any>>) {
+  const deadlines: number[] = [];
+  if (pkg.due_date != null) {
+    const packageDeadline = dueDateEnd(pkg.due_date);
+    if (packageDeadline == null) throw new PublicError(409, 'Signature package deadline is invalid');
+    deadlines.push(packageDeadline);
+  }
+  for (const signature of signatures) {
+    if (signature?.due_date != null) {
+      const signatureDue = dueDateEnd(signature.due_date);
+      if (signatureDue == null) throw new PublicError(409, 'Signature document due date is invalid');
+      deadlines.push(signatureDue);
+    }
+    for (const field of ['expires_at', 'expiration_date']) {
+      const value = signature?.[field];
+      if (value == null) continue;
+      if (!validInstant(value)) throw new PublicError(409, 'Signature document deadline is invalid');
+      deadlines.push(Date.parse(value));
+    }
+  }
+  if (!deadlines.length) throw new PublicError(409, 'Signature deadline authority is unavailable');
+  const deadline = Math.min(...deadlines);
+  if (deadline <= Date.now()) throw new PublicError(409, 'Signature package has expired');
+  return new Date(deadline).toISOString();
 }
 
 function requireRows(value: unknown, label: string) {
@@ -108,9 +143,11 @@ function validateReminder(row: Record<string, any>) {
   const requesterId = exactIdentifier(row.requested_by_user_id);
   const requesterEmail = canonicalEmail(row.requested_by);
   const membershipId = exactIdentifier(row.requesting_membership_id);
+  const auditEventId = exactIdentifier(row.audit_event_id);
   if (!id || !agencyId || !packageId || !signerId || !documentId || !requestId || !requesterId
-      || !requesterEmail || row.requested_by !== requesterEmail || !membershipId
+      || !requesterEmail || row.requested_by !== requesterEmail || !membershipId || !auditEventId
       || !exactDigest(row.schedule_key) || !validInstant(row.send_at) || !validInstant(row.deadline_date)
+      || !validInstant(row.audit_confirmed_at)
       || row.status !== 'pending' || row.delivery_state !== 'not_started'
       || row.claimed_by != null || row.claimed_at != null || row.delivery_attempt_id != null
       || !Number.isSafeInteger(row.attempts) || row.attempts < 0
@@ -119,7 +156,7 @@ function validateReminder(row: Record<string, any>) {
     throw new PublicError(409, 'Scheduled signature reminder integrity is invalid');
   }
   return { ...row, id, agencyId, packageId, signerId, documentId, requestId,
-    requesterId, requesterEmail, membershipId };
+    requesterId, requesterEmail, membershipId, auditEventId };
 }
 
 async function loadDispatchTarget(entities: Record<string, any>, reminder: Record<string, any>) {
@@ -161,6 +198,7 @@ async function loadDispatchTarget(entities: Record<string, any>, reminder: Recor
   let pending = false;
   let documentTitle = 'Document';
   let sourceDigest = null;
+  const authoritySignatures: Array<Record<string, any>> = [];
   for (const signatureId of documentIds as string[]) {
     const signature = await exactOne(entities.DocumentSignature,
       { id: signatureId, agency_id: reminder.agencyId }, 'DocumentSignature');
@@ -184,25 +222,64 @@ async function loadDispatchTarget(entities: Record<string, any>, reminder: Recor
         || binding.content_sha256 !== signature.document_content_sha256) {
       throw new PublicError(409, 'Signature source binding is invalid');
     }
+    authoritySignatures.push(signature);
     if (signatureId === reminder.documentId) {
       pending = signer.status === 'pending';
       documentTitle = String(signature.document_title || signature.document_name || 'Document').slice(0, 200);
       sourceDigest = signature.document_content_sha256;
     }
   }
+  const deadline = deriveAuthorityDeadline(pkg, authoritySignatures);
+  if (reminder.deadline_date !== deadline || Date.parse(reminder.send_at) > Date.parse(deadline)) {
+    throw new PublicError(409, 'Signature reminder deadline authority changed');
+  }
+  const scheduleEventKey = await sha256(
+    `reminder_scheduled\0${reminder.id}\0${reminder.requestId}`,
+  );
+  const scheduleAudit = await exactOne(entities.SignatureAuditEvent, {
+    id: reminder.auditEventId,
+    event_key: scheduleEventKey,
+  }, 'SignatureAuditEvent');
+  if (scheduleAudit.agency_id !== reminder.agencyId
+      || scheduleAudit.package_id !== reminder.packageId
+      || scheduleAudit.document_signature_id !== reminder.documentId
+      || scheduleAudit.signer_id !== reminder.signerId
+      || scheduleAudit.action !== 'reminder_scheduled'
+      || scheduleAudit.actor_type !== 'authenticated_user'
+      || scheduleAudit.actor_user_id !== reminder.requesterId
+      || scheduleAudit.membership_id !== reminder.membershipId
+      || scheduleAudit.membership_version !== reminder.requesting_membership_version
+      || scheduleAudit.request_id !== reminder.requestId
+      || scheduleAudit.authority_version !== 1
+      || scheduleAudit.document_content_sha256 !== sourceDigest
+      || !validInstant(scheduleAudit.occurred_at)
+      || Date.parse(scheduleAudit.occurred_at) > Date.parse(reminder.audit_confirmed_at)) {
+    throw new PublicError(409, 'Signature reminder schedule audit is invalid');
+  }
   return { pkg, patientId, creatorId, creatorMembershipId, signerEmail,
     signerName: String(pkg.signer_name || 'Signer').slice(0, 200), documentIds,
-    pending, documentTitle, sourceDigest };
+    pending, documentTitle, sourceDigest, deadline };
 }
 
 async function audit(entities: Record<string, any>, payload: Record<string, any>) {
-  const existing = requireRows(await entities.SignatureAuditEvent.filter(
+  let existing = requireRows(await entities.SignatureAuditEvent.filter(
     { event_key: payload.event_key }, undefined, EXACT_ROW_LIMIT,
   ), 'SignatureAuditEvent.filter');
   if (existing.length > 1) throw new Error('Signature audit identity is ambiguous');
-  if (existing.length === 1) return;
-  const created = await entities.SignatureAuditEvent.create(payload);
-  if (!exactIdentifier(created?.id)) throw new Error('Signature audit could not be recorded');
+  if (existing.length === 0) {
+    try { await entities.SignatureAuditEvent.create(payload); } catch {
+      // A create response may be lost after commit. Exact readback below is the
+      // only evidence that this audit identity is durable and unambiguous.
+    }
+    existing = requireRows(await entities.SignatureAuditEvent.filter(
+      { event_key: payload.event_key }, undefined, EXACT_ROW_LIMIT,
+    ), 'SignatureAuditEvent.filter');
+  }
+  if (existing.length !== 1 || !exactIdentifier(existing[0]?.id)
+      || Object.entries(payload).some(([key, value]) => existing[0]?.[key] !== value)) {
+    throw new Error('Signature audit could not be verified');
+  }
+  return existing[0];
 }
 
 function htmlEscape(value: unknown) {
@@ -219,8 +296,114 @@ async function settleReminder(entities: Record<string, any>, reminder: Record<st
   return result?.updated === 1;
 }
 
+async function quarantinePendingReminder(
+  entities: Record<string, any>,
+  row: Record<string, any>,
+  reason: string,
+) {
+  const id = exactIdentifier(row?.id);
+  if (!id || row?.status !== 'pending' || !validInstant(row?.updated_date)) return false;
+  const version = Number.isSafeInteger(row?.authority_version) && row.authority_version >= 1
+    ? row.authority_version
+    : 0;
+  const result = await entities.ScheduledSignatureReminder.updateMany(
+    { id, status: 'pending', updated_date: row.updated_date },
+    { $set: {
+      status: 'failed', delivery_state: 'rejected', claimed_by: null, claimed_at: null,
+      failure_reason: reason, attempts: Number.isSafeInteger(row?.attempts) && row.attempts >= 0
+        ? row.attempts + 1
+        : 1,
+      authority_version: version + 1,
+    } },
+  ).catch(() => null);
+  return result?.updated === 1;
+}
+
+async function quarantineDuplicateReminderKey(
+  entities: Record<string, any>,
+  row: Record<string, any>,
+) {
+  return quarantinePendingReminder(
+    entities,
+    row,
+    'Duplicate reminder schedule identity; automatic delivery is blocked',
+  );
+}
+
+async function quarantineStaleReminderClaims(entities: Record<string, any>) {
+  const staleBefore = new Date(Date.now() - CLAIM_LEASE_MS).toISOString();
+  const rows = requireRows(await entities.ScheduledSignatureReminder.filter(
+    { status: 'sending', delivery_state: 'pending' }, 'claimed_at', BATCH_LIMIT,
+  ), 'ScheduledSignatureReminder.filter');
+  let quarantined = 0;
+  for (const row of rows) {
+    const id = exactIdentifier(row?.id);
+    const claimId = exactIdentifier(row?.claimed_by);
+    const deliveryAttemptId = exactIdentifier(row?.delivery_attempt_id);
+    const validClaim = !!id && !!claimId && !!deliveryAttemptId && validInstant(row?.claimed_at)
+      && Number.isSafeInteger(row?.authority_version) && row.authority_version >= 1
+      && Number.isSafeInteger(row?.attempts) && row.attempts >= 0;
+    if (!validClaim) {
+      if (!id || !validInstant(row?.updated_date)) continue;
+      const version = Number.isSafeInteger(row?.authority_version) && row.authority_version >= 1
+        ? row.authority_version
+        : 0;
+      const invalid = await entities.ScheduledSignatureReminder.updateMany(
+        { id, status: 'sending', updated_date: row.updated_date },
+        { $set: {
+          status: 'indeterminate', delivery_state: 'indeterminate', claimed_by: null,
+          claimed_at: null, failure_reason: 'Invalid dispatch claim; automatic resend is blocked',
+          attempts: Number.isSafeInteger(row?.attempts) && row.attempts >= 0 ? row.attempts + 1 : 1,
+          authority_version: version + 1,
+        } },
+      ).catch(() => null);
+      if (invalid?.updated === 1) quarantined += 1;
+      continue;
+    }
+    if (row.claimed_at >= staleBefore) continue;
+    const result = await entities.ScheduledSignatureReminder.updateMany(
+      {
+        id,
+        status: 'sending',
+        delivery_state: 'pending',
+        claimed_by: claimId,
+        claimed_at: row.claimed_at,
+        delivery_attempt_id: deliveryAttemptId,
+        authority_version: row.authority_version,
+      },
+      { $set: {
+        status: 'indeterminate',
+        delivery_state: 'indeterminate',
+        claimed_by: null,
+        claimed_at: null,
+        attempts: row.attempts + 1,
+        failure_reason: 'Dispatch claim expired; provider delivery may have started and automatic resend is blocked',
+        authority_version: row.authority_version + 1,
+      } },
+    ).catch(() => null);
+    if (result?.updated !== 1) continue;
+    quarantined += 1;
+    if (exactIdentifier(row.agency_id) && exactIdentifier(row.package_id)
+        && exactIdentifier(row.document_id) && exactIdentifier(row.signer_id)) {
+      await audit(entities, {
+        event_key: await sha256(`reminder_stale_indeterminate\0${id}\0${deliveryAttemptId}`),
+        agency_id: row.agency_id,
+        package_id: row.package_id,
+        document_signature_id: row.document_id,
+        signer_id: row.signer_id,
+        action: 'reminder_indeterminate',
+        actor_type: 'scheduler',
+        request_id: deliveryAttemptId,
+        authority_version: row.authority_version + 1,
+        occurred_at: new Date().toISOString(),
+      }).catch(() => null);
+    }
+  }
+  return quarantined;
+}
+
 Deno.serve(async (req) => {
-  if (!SIGNATURE_REMINDER_DISPATCH_ENABLED) {
+  if (!SIGNATURE_REMINDER_DISPATCH_ENABLED || !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN) {
     return Response.json(
       { error: 'Signature reminders are temporarily unavailable.', code: 'signature_reminder_dispatch_unavailable' },
       { status: 503, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } },
@@ -231,14 +414,33 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me().catch(() => null);
     if (!schedulerAuthorized(req, user)) throw new PublicError(user ? 403 : 401, 'Scheduler authorization required');
     const entities = base44.asServiceRole.entities;
+    const staleIndeterminate = await quarantineStaleReminderClaims(entities);
     const pendingRows = requireRows(await entities.ScheduledSignatureReminder.filter(
       { status: 'pending', delivery_state: 'not_started' }, 'send_at', BATCH_LIMIT,
     ), 'ScheduledSignatureReminder.filter');
-    const summary = { checked: pendingRows.length, processed: 0, sent: 0, canceled: 0, indeterminate: 0, quarantined: 0 };
+    const summary = { checked: pendingRows.length, processed: 0, sent: 0, canceled: 0,
+      indeterminate: staleIndeterminate, stale_indeterminate: staleIndeterminate,
+      quarantined: 0, audit_failures: 0 };
     for (const candidate of pendingRows) {
       let reminder: Record<string, any>;
-      try { reminder = validateReminder(candidate); } catch { summary.quarantined += 1; continue; }
+      try { reminder = validateReminder(candidate); } catch {
+        if (await quarantinePendingReminder(
+          entities,
+          candidate,
+          'Invalid reminder provenance; automatic delivery is blocked',
+        )) summary.quarantined += 1;
+        continue;
+      }
       if (Date.parse(reminder.send_at) > Date.now()) continue;
+      const duplicateRows = requireRows(await entities.ScheduledSignatureReminder.filter(
+        { schedule_key: reminder.schedule_key }, undefined, EXACT_ROW_LIMIT,
+      ), 'ScheduledSignatureReminder.filter');
+      if (duplicateRows.length !== 1 || duplicateRows[0]?.id !== reminder.id) {
+        for (const duplicate of duplicateRows) {
+          if (await quarantineDuplicateReminderKey(entities, duplicate)) summary.quarantined += 1;
+        }
+        continue;
+      }
       const runId = crypto.randomUUID();
       const deliveryAttemptId = crypto.randomUUID();
       const claimAt = new Date().toISOString();
@@ -254,6 +456,22 @@ Deno.serve(async (req) => {
         claimed_at: claimAt, delivery_attempt_id: deliveryAttemptId,
         authority_version: reminder.authority_version + 1 };
       summary.processed += 1;
+      const postClaimDuplicates = requireRows(await entities.ScheduledSignatureReminder.filter(
+        { schedule_key: reminder.schedule_key }, undefined, EXACT_ROW_LIMIT,
+      ), 'ScheduledSignatureReminder.filter');
+      if (postClaimDuplicates.length !== 1 || postClaimDuplicates[0]?.id !== reminder.id) {
+        await settleReminder(entities, reminder, {
+          status: 'indeterminate', delivery_state: 'indeterminate',
+          failure_reason: 'Duplicate reminder identity appeared after claim; delivery was not attempted',
+          attempts: reminder.attempts + 1,
+        }).catch(() => false);
+        for (const duplicate of postClaimDuplicates) {
+          if (duplicate?.id !== reminder.id
+              && await quarantineDuplicateReminderKey(entities, duplicate)) summary.quarantined += 1;
+        }
+        summary.indeterminate += 1;
+        continue;
+      }
       let target: Record<string, any>;
       try { target = await loadDispatchTarget(entities, reminder); } catch {
         await settleReminder(entities, reminder, {
@@ -301,7 +519,10 @@ Deno.serve(async (req) => {
         const plaintext = generateToken();
         const tokenDigest = await sha256(plaintext);
         const now = new Date().toISOString();
-        const expiresAt = new Date(Math.min(Date.now() + 72 * 60 * 60 * 1000, Date.parse(reminder.deadline_date) + 24 * 60 * 60 * 1000)).toISOString();
+        const expiresAt = new Date(Math.min(
+          Date.now() + 72 * 60 * 60 * 1000,
+          Date.parse(target.deadline),
+        )).toISOString();
         if (Date.parse(expiresAt) <= Date.now()) throw new PublicError(409, 'Signature deadline has expired');
         const token = await entities.DocumentPackageToken.create({
           agency_id: reminder.agencyId, package_id: reminder.packageId,
@@ -356,14 +577,18 @@ Deno.serve(async (req) => {
             continue;
           }
         }
-        await audit(entities, {
-          event_key: await sha256(`reminder_accepted\0${reminder.id}\0${deliveryAttemptId}`),
-          agency_id: reminder.agencyId, package_id: reminder.packageId,
-          document_signature_id: reminder.documentId, signer_id: reminder.signerId,
-          token_id: tokenId, action: 'reminder_accepted', actor_type: 'scheduler',
-          request_id: deliveryAttemptId, authority_version: reminder.authority_version + 1,
-          document_content_sha256: target.sourceDigest, occurred_at: new Date().toISOString(),
-        }).catch(() => null);
+        try {
+          await audit(entities, {
+            event_key: await sha256(`reminder_accepted\0${reminder.id}\0${deliveryAttemptId}`),
+            agency_id: reminder.agencyId, package_id: reminder.packageId,
+            document_signature_id: reminder.documentId, signer_id: reminder.signerId,
+            token_id: tokenId, action: 'reminder_accepted', actor_type: 'scheduler',
+            request_id: deliveryAttemptId, authority_version: reminder.authority_version + 1,
+            document_content_sha256: target.sourceDigest, occurred_at: new Date().toISOString(),
+          });
+        } catch {
+          summary.audit_failures += 1;
+        }
         summary.sent += 1;
       } catch {
         if (externalStarted) {
@@ -402,8 +627,10 @@ Deno.serve(async (req) => {
         }
       }
     }
-    return Response.json({ success: true, ...summary, checked_at: new Date().toISOString() },
-      { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
+    const degraded = summary.audit_failures > 0;
+    return Response.json({ success: !degraded, degraded, ...summary, checked_at: new Date().toISOString() },
+      { status: degraded ? 503 : 200,
+        headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
   } catch (error) {
     const status = error instanceof PublicError ? error.status : 500;
     const message = error instanceof PublicError ? error.message : 'Unable to dispatch signature reminders';

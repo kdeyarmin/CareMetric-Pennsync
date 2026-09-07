@@ -1,13 +1,69 @@
 import assert from 'node:assert/strict';
-import { readFile } from 'node:fs/promises';
+import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test from 'node:test';
+import { transpileTs } from '../../tools-transpile-ts.mjs';
 
 const source = await readFile(
   new URL('../functions/checkAllIntegrations/entry.ts', import.meta.url),
   'utf8',
 );
+const panelSource = await readFile(
+  new URL('../../src/components/admin/IntegrationsHealthPanel.jsx', import.meta.url),
+  'utf8',
+);
+const WORKFLOW_GATES = {
+  release_auto_retry_failed_faxes: 'WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES',
+  release_check_stale_follow_up_requests: 'WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS',
+  release_poll_fax_statuses: 'WORKFLOW_RELEASE_POLL_FAX_STATUSES',
+  release_process_inbound_faxes: 'WORKFLOW_RELEASE_PROCESS_INBOUND_FAXES',
+  release_process_scheduled_faxes: 'WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES',
+};
 
-test('integration probes never report a non-2xx response as working', () => {
+async function loadHandler({ env = {}, client } = {}) {
+  const rewritten = source.replace(
+    /import\s+\{\s*createClientFromRequest\s*\}\s+from\s+'npm:[^']+';/,
+    'const createClientFromRequest = () => globalThis.__integrationHealthClient;',
+  );
+  const temporaryModule = join(
+    tmpdir(),
+    `integration_health_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`,
+  );
+  await writeFile(temporaryModule, transpileTs(rewritten).outputText);
+
+  let handler;
+  globalThis.__integrationHealthClient = client || {
+    auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: true }) },
+    functions: {
+      invoke: async () => ({
+        data: {
+          success: true,
+          checks: [{ id: 'telnyx_api_live', status: 'warn' }],
+          stats: { messaging_ready: false, voice_ready: false, fax_ready: false },
+        },
+      }),
+    },
+  };
+  globalThis.Deno = {
+    serve: (candidate) => { handler = candidate; },
+    env: { get: (name) => env[name] },
+  };
+  try {
+    await import(pathToFileURL(temporaryModule).href);
+  } finally {
+    await unlink(temporaryModule).catch(() => {});
+  }
+  assert.equal(typeof handler, 'function');
+  return handler;
+}
+
+test('provider probes are bounded, parallel, and never report non-2xx as working', () => {
+  assert.match(source, /new AbortController\(\)/);
+  assert.match(source, /setTimeout\(\(\) => controller\.abort\(\), PROBE_TIMEOUT_MS\)/);
+  assert.match(source, /redirect: 'error'/);
+  assert.match(source, /await Promise\.all\(\[/);
   assert.match(source, /if \(res\.ok\) return \{ status: 'ok'/);
   assert.doesNotMatch(source, /Other non-2xx[\s\S]*status: 'ok'/);
   for (const status of ['401', '403', '429', '500']) {
@@ -15,14 +71,49 @@ test('integration probes never report a non-2xx response as working', () => {
   }
 });
 
-test('secret presence alone is not presented as authenticated provider health', () => {
-  assert.doesNotMatch(source, /status: heygenKey \? 'ok'/);
-  assert.doesNotMatch(source, /status: notifyreKey \? 'ok'/);
-  assert.match(source, /has not authenticated it with HeyGen/);
-  assert.match(source, /has not authenticated it with Notifyre/);
+test('legacy non-runtime providers are not treated as credential requirements', () => {
+  for (const secret of [
+    'GOOGLE_GEMINI_API_KEY',
+    'DEEPGRAM_API_KEY',
+    'RESEND_API_KEY',
+    'NOTIFYRE_API_KEY',
+    'TWILIO_ACCOUNT_SID',
+    'TWILIO_AUTH_TOKEN',
+  ]) {
+    assert.doesNotMatch(source, new RegExp(`env\\('${secret}'\\)`), secret);
+  }
+  for (const id of ['gemini', 'deepgram', 'resend', 'notifyre', 'twilio']) {
+    assert.doesNotMatch(source, new RegExp(`id: ['"]${id}['"]`), id);
+  }
+  assert.match(source, /id: 'base44_llm'/);
+  assert.match(source, /Core\.InvokeLLM capability/);
+  assert.match(source, /id: 'base44_email'/);
+  assert.match(source, /Core\.SendEmail/);
 });
 
-test('workflow-critical configuration appears in the health response', () => {
+test('health reports exact public-link configuration and outbound release state', () => {
+  assert.match(source, /id: 'app_public_url'/);
+  assert.match(source, /APP_PUBLIC_URL is missing or is not an exact HTTPS origin/);
+  assert.match(source, /parsed\.protocol !== 'https:'/);
+  assert.match(source, /id: 'outbound_delivery_release'/);
+  assert.match(source, /release_state: 'not-globally-gated'/);
+  assert.match(source, /Provider health never authorizes traffic/);
+  assert.match(source, /outbound_actions_performed: false/);
+});
+
+test('every implemented workflow release gate is reported and rendered explicitly', () => {
+  for (const [id, envName] of Object.entries(WORKFLOW_GATES)) {
+    assert.match(source, new RegExp(`id: ['"]${id}['"]`), id);
+    assert.match(source, new RegExp(envName), envName);
+  }
+  assert.match(source, /releaseValue === 'enabled-v1'/);
+  assert.match(source, /release_state: released \? 'released' : 'paused'/);
+  assert.match(panelSource, /item\.release_state === "released"/);
+  assert.match(panelSource, /item\.release_state === "paused"/);
+  assert.match(panelSource, /No global gate/);
+});
+
+test('workflow-critical configuration remains in the capability response', () => {
   assert.match(source, /id: 'workflow_internal_auth'/);
   assert.match(source, /INTERNAL_FN_SECRET is missing or too short/);
   assert.match(source, /id: 'signature_hmac'/);
@@ -32,18 +123,158 @@ test('workflow-critical configuration appears in the health response', () => {
 });
 
 test('an empty or malformed Telnyx check cannot become Working', () => {
-  assert.match(source, /validResult = data\?\.success === true && checks\.length > 0/);
+  assert.match(source, /wellFormedChecks = checks\.length > 0/);
+  assert.match(source, /hasRequiredChecks = \[\.\.\.TELNYX_REQUIRED_CHECK_IDS\]/);
+  assert.match(source, /validStats =/);
+  assert.match(source, /validResult = data\?\.success === true && wellFormedChecks && hasRequiredChecks && validStats/);
   assert.match(source, /hasFail = !validResult/);
+  assert.doesNotMatch(source, /Telnyx test could not run:.*message/);
 });
 
-test('Twilio Basic Auth safely handles non-Latin-1 credential input', () => {
-  assert.match(source, /new TextEncoder\(\)\.encode/);
-  assert.match(source, /Authorization: basicAuth\(twilioSid, twilioToken\)/);
-  assert.doesNotMatch(source, /btoa\(`\$\{twilioSid\}:\$\{twilioToken\}`\)/);
+test('malformed, partial, duplicate, or invalid-status Telnyx reports fail closed', async () => {
+  let delegatedResult;
+  const client = {
+    auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: true }) },
+    functions: { invoke: async () => delegatedResult },
+  };
+  const handler = await loadHandler({ client });
+  const malformed = [
+    { data: { success: true, checks: [{}], stats: { messaging_ready: false, voice_ready: false, fax_ready: false } } },
+    { data: { success: true, checks: [{ id: 'telnyx_api_live', status: 'ok' }], stats: { messaging_ready: true, voice_ready: false, fax_ready: false } } },
+    { data: { success: true, checks: [
+      { id: 'telnyx_api_key', status: 'ok' },
+      { id: 'telnyx_api_key', status: 'ok' },
+      { id: 'telnyx_api_live', status: 'ok' },
+    ], stats: { messaging_ready: true, voice_ready: false, fax_ready: false } } },
+    { data: { success: true, checks: [
+      { id: 'telnyx_api_key', status: 'healthy' },
+      { id: 'telnyx_api_live', status: 'ok' },
+    ], stats: { messaging_ready: true, voice_ready: false, fax_ready: false } } },
+    { data: { success: true, checks: [
+      { id: 'telnyx_api_key', status: 'ok' },
+      { id: 'telnyx_api_live', status: 'ok' },
+    ], stats: {} } },
+  ];
+
+  for (const result of malformed) {
+    delegatedResult = result;
+    const response = await handler({});
+    const report = await response.json();
+    const telnyx = report.integrations.find((item) => item.id === 'telnyx');
+    assert.equal(telnyx.status, 'fail');
+    assert.equal(telnyx.configured, false);
+  }
+
+  delegatedResult = { data: {
+    success: true,
+    checks: [
+      { id: 'telnyx_api_key', status: 'ok' },
+      { id: 'telnyx_api_live', status: 'ok' },
+    ],
+    stats: { messaging_ready: true, voice_ready: false, fax_ready: false },
+  } };
+  const response = await handler({});
+  const report = await response.json();
+  const telnyx = report.integrations.find((item) => item.id === 'telnyx');
+  assert.equal(telnyx.status, 'ok');
+  assert.equal(telnyx.configured, true);
 });
 
-test('hosted workflow checks log only the sanitized integration report', () => {
+test('integration health rejects unavailable admin identities before any delegated probe', async () => {
+  for (const user of [
+    null,
+    { id: 'admin-a', role: 'admin', is_active: false },
+    { id: 'admin-a', role: 'admin', is_active: true, disabled: true },
+    { id: 'admin-a', role: 'admin', is_active: true, is_service: true },
+    { id: 'admin-a', role: 'admin', is_active: true, is_verified: false },
+    { id: 'user-a', role: 'user', is_active: true },
+  ]) {
+    let delegatedCalls = 0;
+    const client = {
+      auth: { me: async () => user },
+      functions: { invoke: async () => { delegatedCalls += 1; return {}; } },
+    };
+    const handler = await loadHandler({ client });
+    const response = await handler({});
+    assert.equal(response.status, user ? 403 : 401);
+    assert.equal(delegatedCalls, 0);
+  }
+});
+
+test('missing optional provider keys produce no direct provider requests or phantom failures', async () => {
+  let fetchCalls = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error('provider fetch must not run');
+  };
+  try {
+    const handler = await loadHandler({
+      env: {
+        APP_PUBLIC_URL: 'https://staging.example.test',
+        INTERNAL_FN_SECRET: 'i'.repeat(32),
+        SIGNATURE_HMAC_SECRET: 's'.repeat(32),
+      },
+    });
+    const response = await handler({});
+    const report = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(fetchCalls, 0);
+    assert.equal(report.probe_policy.outbound_actions_performed, false);
+    assert.equal(report.probe_policy.credential_values_exposed, false);
+
+    const byId = Object.fromEntries(report.integrations.map((item) => [item.id, item]));
+    assert.equal(byId.app_public_url.status, 'ok');
+    assert.equal(byId.base44_email.configured, true);
+    assert.equal(byId.base44_email.delivery_verified, false);
+    assert.equal(byId.openai_transcription.status, 'warn');
+    assert.equal(byId.anthropic_soap.status, 'warn');
+    assert.equal(byId.outbound_delivery_release.release_state, 'not-globally-gated');
+    for (const id of Object.keys(WORKFLOW_GATES)) {
+      assert.equal(byId[id].release_state, 'paused');
+      assert.equal(byId[id].status, 'warn');
+    }
+    for (const id of ['gemini', 'deepgram', 'resend', 'notifyre', 'twilio']) {
+      assert.equal(byId[id], undefined);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('workflow gates release only on their exact reviewed value', async () => {
+  const handler = await loadHandler({
+    env: {
+      APP_PUBLIC_URL: 'https://staging.example.test',
+      WORKFLOW_RELEASE_POLL_FAX_STATUSES: 'enabled-v1',
+      WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES: 'enabled',
+    },
+  });
+  const response = await handler({});
+  const report = await response.json();
+  const byId = Object.fromEntries(report.integrations.map((item) => [item.id, item]));
+
+  assert.equal(byId.release_poll_fax_statuses.release_state, 'released');
+  assert.equal(byId.release_poll_fax_statuses.status, 'ok');
+  assert.equal(byId.release_process_scheduled_faxes.release_state, 'paused');
+  assert.equal(byId.release_process_scheduled_faxes.status, 'warn');
+});
+
+test('missing APP_PUBLIC_URL is a fail-closed capability, without exposing errors', async () => {
+  const handler = await loadHandler();
+  const response = await handler({});
+  const report = await response.json();
+  const appUrl = report.integrations.find((item) => item.id === 'app_public_url');
+  assert.equal(response.status, 200);
+  assert.equal(appUrl.configured, false);
+  assert.equal(appUrl.status, 'fail');
+  assert.match(appUrl.detail, /fails closed/);
+});
+
+test('hosted workflow checks log only the sanitized capability report', () => {
   assert.match(source, /checkAllIntegrations result:/);
   assert.match(source, /JSON\.stringify\(report\)/);
   assert.doesNotMatch(source, /JSON\.stringify\(Deno\.env/);
+  assert.doesNotMatch(source, /detail:.*error\?\.message/);
+  assert.match(source, /credential_values_exposed: false/);
 });

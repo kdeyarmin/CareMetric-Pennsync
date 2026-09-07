@@ -56,6 +56,7 @@
     "status": {
       "type": "string",
       "enum": [
+        "pending_audit",
         "pending",
         "sending",
         "sent",
@@ -63,8 +64,8 @@
         "failed",
         "canceled"
       ],
-      "default": "pending",
-      "description": "Scheduled reminder status"
+      "default": "pending_audit",
+      "description": "Scheduled reminder status. New rows remain pending_audit and cannot dispatch until their immutable audit event is durably verified."
     },
     "attempts": {
       "type": "number",
@@ -84,6 +85,15 @@
       "type": "number",
       "default": 1,
       "description": "Monotonic revision used for exact conditional dispatch transitions."
+    },
+    "audit_event_id": {
+      "type": "string",
+      "description": "Exact SignatureAuditEvent whose durable readback made this reminder dispatchable."
+    },
+    "audit_confirmed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server timestamp when audit_event_id was verified and status changed from pending_audit to pending."
     },
     "delivery_attempt_id": {
       "type": "string",

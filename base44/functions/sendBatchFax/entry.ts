@@ -205,17 +205,17 @@ async function resolveTelnyxCreds(base44) {
       || list.find((r) => r && pick(r.api_key))
       || list[0]
       || null;
-  } catch (err) {
+  } catch {
     // Do NOT collapse this into "not configured". A failed read (this invocation
     // path carries no service token, entity 404, 401/403, rate limit, platform
     // blip) is a completely different problem from an unconfigured integration,
     // and reporting them identically is what sent operators chasing a credential
     // they had already entered correctly.
-    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    readError = 'credential_store_unavailable';
     // The catch used to be bare, so an unreadable credential row left no
     // server-side breadcrumb at all — the only signal was a misleading
     // "not configured" reply. Log it; unattended runs have nowhere else to say so.
-    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
   }
   const rec = record || {};
   return {
@@ -236,7 +236,7 @@ async function resolveTelnyxCreds(base44) {
 function telnyxCredsMessage(creds, what) {
   const label = what || 'credentials';
   if (creds && creds.readError) {
-    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+    return `Could not read Telnyx ${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.`;
   }
   return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
 }
@@ -252,6 +252,14 @@ const FAX_TENANT_ROLES = new Set([
 ]);
 const AGENCY_WIDE_FAX_ROLES = new Set(['agency_admin', 'manager']);
 const REFERRAL_FAX_ROLES = new Set(['agency_admin', 'manager', 'office_staff']);
+const ASSIGNMENT_STATUSES = new Set(['active', 'suspended', 'revoked']);
+const ASSIGNMENT_SOURCES = new Set([
+  'manual',
+  'patient_creator',
+  'legacy_assigned_nurses',
+  'legacy_provider_patient_assignment',
+]);
+const ASSIGNMENT_ACTIONS = new Set(['grant', 'activate', 'suspend', 'revoke']);
 const NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 
 class PublicError extends Error {
@@ -291,6 +299,15 @@ function boundedLabel(value: unknown, max = 300) {
   return text.length <= max && !/[\u0000-\u001f\u007f]/.test(text) ? text : null;
 }
 
+function boundedReason(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const reason = value.trim();
+  if (!reason || reason.length > 500 || /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(reason)) {
+    return null;
+  }
+  return reason;
+}
+
 function validInstant(value: unknown) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
@@ -325,6 +342,43 @@ function canonicalJson(value: unknown): unknown {
 
 function sameValue(left: unknown, right: unknown) {
   return JSON.stringify(canonicalJson(left)) === JSON.stringify(canonicalJson(right));
+}
+
+function assignmentKey(agencyId: string, patientId: string, userId: string) {
+  return `${agencyId}:${patientId}:${userId}`;
+}
+
+function transitionRequestKey(key: string, requestId: string) {
+  return `${key}:${requestId}`;
+}
+
+function assignmentLifecycleIsCoherent(row: Record<string, any>, status: string, action: string) {
+  if (action === 'grant') {
+    return status === 'active'
+      && row.version === 1
+      && row.activated_at === row.last_transition_at
+      && row.suspended_at == null;
+  }
+  if (action === 'activate') {
+    return status === 'active'
+      && row.version >= 3
+      && row.version % 2 === 1
+      && validInstant(row.suspended_at)
+      && row.activated_at === row.last_transition_at;
+  }
+  if (action === 'suspend') {
+    return status === 'suspended'
+      && row.version >= 2
+      && row.version % 2 === 0
+      && row.suspended_at === row.last_transition_at;
+  }
+  if (action === 'revoke') {
+    return status === 'revoked'
+      && row.version >= 2
+      && row.revoked_at === row.last_transition_at
+      && row.revocation_reason === row.last_transition_reason;
+  }
+  return false;
 }
 
 async function sha256Text(value: string) {
@@ -658,6 +712,72 @@ async function loadExactRetryReferral(entities: Record<string, any>, authority: 
   return rows[0];
 }
 
+function validateCareTeamAssignmentIntegrity(
+  row: Record<string, any>,
+  patientId: string,
+  authority: Record<string, any>,
+) {
+  const id = exactIdentifier(row?.id);
+  const key = assignmentKey(authority.agencyId, patientId, authority.userId);
+  const userEmail = canonicalEmail(row?.user_email_normalized);
+  const creatorEmail = canonicalEmail(row?.created_by_user_email_normalized);
+  const transitionEmail = canonicalEmail(row?.last_transition_by_email_normalized);
+  const requestId = exactIdentifier(row?.last_transition_request_id);
+  const status = typeof row?.status === 'string' ? row.status : '';
+  const action = typeof row?.last_transition_action === 'string'
+    ? row.last_transition_action
+    : '';
+  const suspendedAt = row?.suspended_at;
+  const revokedAt = row?.revoked_at;
+  const revocationReason = row?.revocation_reason;
+  if (
+    !id
+    || row.assignment_key !== key
+    || row.agency_id !== authority.agencyId
+    || row.patient_id !== patientId
+    || row.user_id !== authority.userId
+    || !userEmail
+    || row.user_email_normalized !== userEmail
+    || userEmail !== authority.email
+    || row.assignee_membership_id !== authority.membershipId
+    || !Number.isSafeInteger(row.assignee_membership_version_at_enablement)
+    || row.assignee_membership_version_at_enablement < 1
+    || row.assignee_membership_version_at_enablement !== authority.membershipVersion
+    || !ASSIGNMENT_STATUSES.has(status)
+    || !ASSIGNMENT_SOURCES.has(String(row.source || ''))
+    || !exactIdentifier(row.created_by_user_id)
+    || !creatorEmail
+    || row.created_by_user_email_normalized !== creatorEmail
+    || !validInstant(row.activated_at)
+    || (suspendedAt != null && !validInstant(suspendedAt))
+    || (status === 'suspended' && !validInstant(suspendedAt))
+    || (revokedAt != null && !validInstant(revokedAt))
+    || (status === 'revoked' && (
+      !validInstant(revokedAt) || !boundedReason(revocationReason)
+    ))
+    || (status !== 'revoked' && (revokedAt != null || revocationReason != null))
+    || !exactIdentifier(row.last_transition_by_user_id)
+    || !transitionEmail
+    || row.last_transition_by_email_normalized !== transitionEmail
+    || !validInstant(row.last_transition_at)
+    || !boundedReason(row.last_transition_reason)
+    || !ASSIGNMENT_ACTIONS.has(action)
+    || !assignmentLifecycleIsCoherent(row, status, action)
+    || !requestId
+    || row.last_transition_request_key !== transitionRequestKey(key, requestId)
+    || !Number.isSafeInteger(row.version)
+    || row.version < 1
+    || !validInstant(row.updated_date)
+  ) {
+    throw new PublicError(
+      409,
+      'Scheduled fax patient access is no longer active',
+      'fax_authority_unavailable',
+    );
+  }
+  return row;
+}
+
 async function validateInternalAccess(
   entities: Record<string, any>,
   authority: Record<string, any>,
@@ -687,18 +807,25 @@ async function validateInternalAccess(
   if (AGENCY_WIDE_FAX_ROLES.has(authority.tenantRole)
     || (patient.created_by_user_id === authority.userId
       && canonicalEmail(patient.created_by_user_email_normalized) === authority.email)) return patient;
+  const key = assignmentKey(authority.agencyId, binding.patientId, authority.userId);
   const assignments = requireRows(await entities.PatientCareTeamAssignment.filter({
-    agency_id: authority.agencyId, patient_id: binding.patientId, user_id: authority.userId,
+    assignment_key: key,
+    agency_id: authority.agencyId,
+    patient_id: binding.patientId,
+    user_id: authority.userId,
   }, undefined, BATCH_EXACT_LIMIT), 'PatientCareTeamAssignment.filter');
-  if (assignments.length !== 1 || assignments[0]?.agency_id !== authority.agencyId
-    || assignments[0]?.patient_id !== binding.patientId || assignments[0]?.user_id !== authority.userId
-    || assignments[0]?.status !== 'active' || assignments[0]?.user_email_normalized !== authority.email
-    || assignments[0]?.assignee_membership_id !== authority.membershipId
-    || assignments[0]?.assignee_membership_version_at_enablement !== authority.membershipVersion
-    || !validInstant(assignments[0]?.updated_date)) {
+  if (assignments.length !== 1) {
     throw new PublicError(409, 'Scheduled fax patient access is no longer active', 'fax_authority_unavailable');
   }
-  return { patient, assignment: assignments[0] };
+  const assignment = validateCareTeamAssignmentIntegrity(
+    assignments[0],
+    binding.patientId,
+    authority,
+  );
+  if (assignment.status !== 'active') {
+    throw new PublicError(409, 'Scheduled fax patient access is no longer active', 'fax_authority_unavailable');
+  }
+  return { patient, assignment };
 }
 
 async function loadInternalAuthority(entities: Record<string, any>, expected: Record<string, any>) {

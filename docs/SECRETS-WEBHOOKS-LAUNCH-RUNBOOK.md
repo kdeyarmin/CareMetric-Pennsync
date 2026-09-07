@@ -75,8 +75,13 @@ issuance is protected structurally: `issueCertificate` only trusts a passing
 
 | Secret | Set at launch? | Effect if unset |
 |---|---|---|
-| `SIGNATURE_HMAC_SECRET` | **Yes** | Signature integrity MAC falls back to **unkeyed sha256** — detects corruption, **not** forgery. Set it so e-signature tamper-evidence is forgery-resistant. |
+| `SIGNATURE_HMAC_SECRET` | **Yes** | Signature token issuance and verification fail closed when the secret is missing or too short. |
 | `INTERNAL_FN_SECRET` | **Required for external/header-based schedulers; recommended otherwise** | Native Base44 automations run as the user who created them, so an automation created by an active protected admin authorizes through `auth.me()` without this header. External/no-session scheduler calls must send `x-internal-secret: <INTERNAL_FN_SECRET>` and fail closed with `500` when it is unset; authenticated non-admin callers fail with `403`. Never place the secret in browser code or automation `function_args`. See `docs/LEARNING_CENTER_SCHEDULED_JOBS.md`. |
+
+`APP_PUBLIC_URL` is required non-secret backend configuration. Set it separately
+in every environment to that environment's exact HTTPS origin. Account,
+invitation, and notification email paths reject a missing or malformed value;
+they do not fall back to `APP_URL` or a production hostname.
 
 **Verify scheduled-function auth:** deploy/create native automations only as the
 intended protected platform admin. In isolated staging, list the deployed
@@ -101,11 +106,35 @@ of the app is unaffected.
 
 | Secret | Powers |
 |---|---|
-| `OPENAI_API_KEY` | Whisper/audio transcription, SOAP-note-from-audio, AI training-course generation, training-attempt grading, corrective-action-plan generation, in-service rebuild |
-| `ANTHROPIC_API_KEY` | AI fax cover-page generation |
+| `OPENAI_API_KEY` | Direct Whisper/audio transcription, including the transcription stage of SOAP-note-from-audio |
+| `ANTHROPIC_API_KEY` | Direct SOAP-note-from-audio structuring |
 | `HEYGEN_API_KEY` | AI training-video generation |
 
 (Telehealth video tokens and outbound fax use the Telnyx config from §2, not these.)
+
+Most application AI uses platform-managed `Core.InvokeLLM`, and transactional
+email uses platform-managed `Core.SendEmail`; neither consumes an app-managed
+provider key. Fax-cover formatting is deterministic and sends no patient data
+to an AI provider. Gemini, Deepgram, Resend, Notifyre, and Twilio environment
+keys are not runtime requirements in the current source tree and must not be
+treated as launch blockers.
+
+The integration-health report exposes release state separately from credential
+state. A successful read-only provider probe never authorizes traffic. The
+current tree has provider/workflow-specific pauses (including
+`OUTCOME_PIPELINE_RELEASE` for the outcome worker), not one application-wide
+outbound-delivery switch; keep all staging delivery paths paused except for an
+explicitly approved controlled-destination test.
+
+The fax/follow-up workflows have independent default-false gates, all of which
+must remain unset in staging until their individual hosted proof is approved:
+`WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES`,
+`WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS`,
+`WORKFLOW_RELEASE_POLL_FAX_STATUSES`,
+`WORKFLOW_RELEASE_PROCESS_INBOUND_FAXES`, and
+`WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES`. Only the exact value `enabled-v1`
+releases the corresponding handler, and workflow activation remains a separate
+decision.
 
 These three plus the §3 `SIGNATURE_HMAC_SECRET` are the AI/media and signature
 secrets. Scheduler and Telnyx secrets are documented separately above.

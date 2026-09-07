@@ -3,7 +3,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 export const CARE_TEAM_MESSAGES_UNAVAILABLE_MESSAGE =
-  "Care-team messages are unavailable until the patient, thread, and selected tenant are verified by a purpose-bound server broker. No empty-thread or unread-count conclusion should be inferred.";
+  "Care-team messages remain paused until a purpose-bound v2 broker verifies the selected Agency, exact active membership, Patient authority, immutable participant set, thread provenance, and replay-safe mutation path. Legacy rows stay quarantined, and no empty-thread or unread-count conclusion should be inferred.";
 
 export default function CareTeamMessaging() {
   return (

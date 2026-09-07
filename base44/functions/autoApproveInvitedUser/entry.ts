@@ -170,11 +170,21 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // then auto-approves them and sends a welcome email.
 
 function getAppBaseUrl() {
-  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
-  if (fromEnv) {
-    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  const configured = String(Deno.env.get('APP_PUBLIC_URL') || '').trim();
+  if (!configured) throw new Error('APP_PUBLIC_URL is required for outbound app links');
+  let parsed;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
   }
-  return 'https://caremetricai.base44.app';
+  if (
+    parsed.protocol !== 'https:' || parsed.username || parsed.password
+    || parsed.pathname !== '/' || parsed.search || parsed.hash
+  ) {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
+  }
+  return parsed.origin;
 }
 
 Deno.serve(async (req) => {
@@ -260,12 +270,12 @@ Deno.serve(async (req) => {
               { note: 'If you have any questions, please reach out to your administrator.' },
             ],
           }),
-        }).catch(err => console.error('Auto-approval email failed:', err?.message || err));
+        }).catch(() => console.error('Auto-approval email delivery failed'));
 
         approvedCount++;
         console.log('✓ Auto-approved invited user');
-      } catch (itemError) {
-        console.error('Error processing invitation:', itemError.message);
+      } catch {
+        console.error('Auto-approval invitation processing failed');
         skippedCount++;
       }
     }
@@ -277,8 +287,8 @@ Deno.serve(async (req) => {
       total: invitations.length
     });
 
-  } catch (error) {
-    console.error('autoApproveInvitedUser error:', error.message);
+  } catch {
+    console.error('autoApproveInvitedUser failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

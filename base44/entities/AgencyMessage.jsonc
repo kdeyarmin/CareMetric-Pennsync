@@ -1,7 +1,68 @@
 {
   "name": "AgencyMessage",
   "type": "object",
+  "description": "Retired parallel cross-agency message model. Existing rows are quarantined and inaccessible. Any future replacement must use immutable Agency ids and exact server-owned participant membership bindings; agency codes and emails are display-only and never authorization inputs.",
   "properties": {
+    "provenance_version": {
+      "type": "integer",
+      "enum": [2]
+    },
+    "provenance_status": {
+      "type": "string",
+      "enum": ["verified_v2", "quarantined_legacy"]
+    },
+    "from_agency_id": {
+      "type": "string",
+      "description": "Immutable sending Agency id; an agency code cannot substitute for this field."
+    },
+    "to_agency_id": {
+      "type": "string",
+      "description": "Immutable receiving Agency id; cross-agency authorization requires an explicit future broker policy."
+    },
+    "sender_user_id": {
+      "type": "string",
+      "description": "Server-derived built-in sender User id."
+    },
+    "sender_membership_id": {
+      "type": "string"
+    },
+    "sender_membership_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "participant_user_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "participant_membership_bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "agency_id": { "type": "string" },
+          "user_id": { "type": "string" },
+          "membership_id": { "type": "string" },
+          "membership_version": { "type": "integer", "minimum": 1 }
+        },
+        "required": ["agency_id", "user_id", "membership_id", "membership_version"]
+      }
+    },
+    "participant_set_sha256": {
+      "type": "string"
+    },
+    "client_request_id": {
+      "type": "string"
+    },
+    "message_creation_key": {
+      "type": "string"
+    },
+    "payload_sha256": {
+      "type": "string"
+    },
+    "state_version": {
+      "type": "integer",
+      "minimum": 1
+    },
     "from_agency_code": {
       "type": "string",
       "description": "Sending agency code"

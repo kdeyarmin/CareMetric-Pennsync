@@ -663,7 +663,9 @@ function formatAge(dob, now = new Date(), fallback = 'Unknown') {
   // It keeps coming back because a failed credential READ used to be reported as
   // "credentials not configured" — so an operator with a perfectly good key was
   // told to add the key, and the obvious next move was to set an env var.
-  // The `readError` field below is what ends that loop: a read failure now says so.
+  // The fixed `readError` category below is what ends that loop: a read failure
+  // now says so without retaining an SDK/provider message that could contain a
+  // credential, request body, tenant identifier, or other sensitive context.
   // Env vars would not have fixed those incidents; they would have masked them.
   // If the env path is ever genuinely wanted, it must change HERE (so all copies
   // move together) plus getTelnyxSecretStatus, discoverTelnyxResources, and both
@@ -688,17 +690,17 @@ function formatAge(dob, now = new Date(), fallback = 'Unknown') {
       || list.find((r) => r && pick(r.api_key))
       || list[0]
       || null;
-  } catch (err) {
+  } catch {
     // Do NOT collapse this into "not configured". A failed read (this invocation
     // path carries no service token, entity 404, 401/403, rate limit, platform
     // blip) is a completely different problem from an unconfigured integration,
     // and reporting them identically is what sent operators chasing a credential
     // they had already entered correctly.
-    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    readError = 'credential_store_unavailable';
     // The catch used to be bare, so an unreadable credential row left no
     // server-side breadcrumb at all — the only signal was a misleading
     // "not configured" reply. Log it; unattended runs have nowhere else to say so.
-    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
   }
   const rec = record || {};
   return {
@@ -719,7 +721,7 @@ function formatAge(dob, now = new Date(), fallback = 'Unknown') {
 function telnyxCredsMessage(creds, what) {
   const label = what || 'credentials';
   if (creds && creds.readError) {
-    return \`Could not read Telnyx \${label} — the stored-credential lookup failed (\${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.\`;
+    return \`Could not read Telnyx \${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.\`;
   }
   return \`Telnyx \${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).\`;
 }`,

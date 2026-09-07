@@ -36,7 +36,17 @@ test('all PennSync2 legacy workflows remain explicitly reviewed and undeployed',
     const source = await readFile(entry, 'utf8');
     if (workflow.state === 'source_disabled') {
       assert.match(source, /temporarily unavailable|Legacy Patient service-role writer is temporarily unavailable/);
-      assert.match(source, /status:\s*503/);
+      if (workflow.target === 'notifyUrgentMessage') {
+        assert.match(source, /const SECURE_MESSAGE_DOMAIN_PAUSED = true;/);
+        assert.match(source, /const secureMessageUnavailable = \(\) => json\(\{[\s\S]*?temporarily unavailable[\s\S]*?\},\s*503\);/);
+        const handlerIndex = source.indexOf('Deno.serve(async (req) =>');
+        const guardIndex = source.indexOf('if (SECURE_MESSAGE_DOMAIN_PAUSED) return secureMessageUnavailable();', handlerIndex);
+        const clientIndex = source.indexOf('createClientFromRequest(req)', handlerIndex);
+        assert.ok(handlerIndex !== -1 && handlerIndex < guardIndex && guardIndex < clientIndex,
+          'notifyUrgentMessage must return its HTTP 503 helper before SDK construction');
+      } else {
+        assert.match(source, /status:\s*503/);
+      }
     } else if (workflow.state === 'safe_noop') {
       assert.match(source, /automatic patient assignment disabled/);
       assert.doesNotMatch(source, /createClientFromRequest/);

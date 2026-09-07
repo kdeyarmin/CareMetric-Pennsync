@@ -142,17 +142,17 @@ async function resolveTelnyxCreds(base44) {
       || list.find((r) => r && pick(r.api_key))
       || list[0]
       || null;
-  } catch (err) {
+  } catch {
     // Do NOT collapse this into "not configured". A failed read (this invocation
     // path carries no service token, entity 404, 401/403, rate limit, platform
     // blip) is a completely different problem from an unconfigured integration,
     // and reporting them identically is what sent operators chasing a credential
     // they had already entered correctly.
-    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    readError = 'credential_store_unavailable';
     // The catch used to be bare, so an unreadable credential row left no
     // server-side breadcrumb at all — the only signal was a misleading
     // "not configured" reply. Log it; unattended runs have nowhere else to say so.
-    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
   }
   const rec = record || {};
   return {
@@ -173,7 +173,7 @@ async function resolveTelnyxCreds(base44) {
 function telnyxCredsMessage(creds, what) {
   const label = what || 'credentials';
   if (creds && creds.readError) {
-    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+    return `Could not read Telnyx ${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.`;
   }
   return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
 }

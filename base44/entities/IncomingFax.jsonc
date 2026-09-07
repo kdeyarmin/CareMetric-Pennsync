@@ -71,6 +71,26 @@
       "type": "number",
       "description": "Count of OCR attempts. A transient OCR failure returns the row to 'pending' (bounded retry) instead of terminally 'failed'; only after the cap is a fax marked failed."
     },
+    "processing_quarantined_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When deterministic provenance or authority failure removed this row from automatic OCR/routing."
+    },
+    "processing_last_error_code": {
+      "type": "string",
+      "description": "Non-PHI machine code for automatic-processing quarantine."
+    },
+    "processing_next_attempt_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Durable fairness lease for a transient OCR, authority-read, or claim failure."
+    },
+    "processing_attempt_count": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Number of transient automatic-processing deferrals, separate from OCR attempts."
+    },
     "ocr_text": {
       "type": "string",
       "description": "Extracted text from OCR"

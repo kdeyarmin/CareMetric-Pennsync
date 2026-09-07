@@ -1,7 +1,7 @@
 // Maps a backend "<provider> ... not configured" error into a clear,
 // user-facing message telling the user the feature needs an administrator to
-// configure it. Several Base44 edge functions (audio transcription, AI fax
-// cover pages, training course/video generation, telehealth tokens) return an
+// configure it. Several Base44 edge functions (audio transcription, SOAP-note
+// structuring, training-video generation, telehealth tokens) return an
 // HTTP 500 with a body like { error: "OpenAI API key not configured" } when the
 // required API key / credential is missing. Without this helper that raw,
 // technical string leaks straight to the end user.
@@ -11,7 +11,7 @@
 
 const SERVICE_LABELS = {
   openai: "audio transcription and AI documentation",
-  anthropic: "AI fax cover-page generation",
+  anthropic: "SOAP-note structuring",
   heygen: "AI training-video generation",
   telnyx: "telehealth and messaging",
 };

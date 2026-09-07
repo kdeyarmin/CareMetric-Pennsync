@@ -188,11 +188,21 @@ function randomInt(max) {
 }
 
 function getAppBaseUrl() {
-  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
-  if (fromEnv) {
-    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  const configured = String(Deno.env.get('APP_PUBLIC_URL') || '').trim();
+  if (!configured) throw new Error('APP_PUBLIC_URL is required for outbound app links');
+  let parsed;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
   }
-  return 'https://caremetricai.base44.app';
+  if (
+    parsed.protocol !== 'https:' || parsed.username || parsed.password
+    || parsed.pathname !== '/' || parsed.search || parsed.hash
+  ) {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
+  }
+  return parsed.origin;
 }
 
 const STAFF_ROLES = ['nurse', 'office_staff', 'social_worker', 'spiritual_care'];
@@ -288,8 +298,8 @@ Deno.serve(async (req) => {
       default:
         return Response.json({ error: 'Invalid action' }, { status: 400 });
     }
-  } catch (error) {
-    console.error('User management error:', error);
+  } catch {
+    console.error('userManagement failed');
     // Return a generic message and keep the detail server-side only (matches
     // validateSignerToken / resetUserPassword) — the top-level catch wraps the
     // whole handler including pre-authorization failures, so leaking error.message
@@ -330,6 +340,10 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     return Response.json({ error: 'Only a super admin can invite a user with the admin role.' }, { status: 403 });
   }
 
+  // Validate the environment-specific origin before creating an invitation row.
+  // A bad deployment configuration must not create a partial invite flow.
+  const signupUrl = getAppBaseUrl();
+
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
@@ -351,7 +365,6 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
 
   // Send invitation email
   try {
-    const signupUrl = getAppBaseUrl();
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: email,
       subject: 'You’re invited to join PennSync by CareMetric',
@@ -368,8 +381,8 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
         ],
       }),
     });
-  } catch (emailError) {
-    console.error('Email send failed (non-critical):', emailError.message);
+  } catch {
+    console.error('Invitation email delivery failed');
   }
 
   // Log activity
@@ -468,8 +481,8 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
         ],
       }),
     });
-  } catch (emailError) {
-    console.error('Failed to resend invitation email:', emailError?.message || emailError);
+  } catch {
+    console.error('Invitation resend delivery failed');
     return Response.json({ error: 'Failed to send invitation email. Please try again.' }, { status: 502 });
   }
 
@@ -480,8 +493,8 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
       last_sent_at: now.toISOString(),
       resend_count: prior.resend_count + 1
     });
-  } catch (stampError) {
-    console.error('Invitation stamp failed after email sent:', stampError?.message || stampError);
+  } catch {
+    console.error('Invitation stamp failed after email sent');
     // Email already went out — leave prior row; report soft success with warning.
   }
 
@@ -666,8 +679,8 @@ async function checkExpiredInvitations(base44) {
           }),
         });
         emailsSent += 1;
-      } catch (emailError) {
-        console.error('Failed to send email to admin:', emailError?.message || emailError);
+      } catch {
+        console.error('Expired-invitation admin email delivery failed');
       }
     }
     if (emailsSent > 0 && expiringSoon.length > 0) {

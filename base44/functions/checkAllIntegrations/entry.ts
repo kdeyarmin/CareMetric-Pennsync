@@ -8,215 +8,401 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-
 /**
- * checkAllIntegrations — admin/super-admin read-only health probe across every
- * external integration the app relies on. It NEVER sends a text, places a call,
- * or emails anyone; each check either confirms a secret is present or makes the
- * lightest possible authenticated read against the provider.
+ * Read-only capability report for integrations the current source tree uses.
  *
- * Most AI / transcription / email keys are PLATFORM secrets (Deno.env), injected
- * by Base44 and not editable from app code — so for those we report presence and,
- * where cheap, a live auth probe. Telnyx credentials live in the IntegrationSecret
- * entity and are delegated to the existing testTelnyxConnection function.
- *
- * Returns: { success, generated_at, integrations: [{ id, label, category,
- *   configured, status: 'ok'|'warn'|'fail', detail, editable_in_app }] }
+ * This function never sends email/SMS/fax, places calls, creates media, or
+ * invokes a billable model. Provider checks are authenticated GET requests
+ * bounded by a short timeout. A successful credential probe is authentication
+ * evidence only; it is not an outbound-delivery release decision.
  */
 
-const isSet = (v) => typeof v === 'string' && v.trim() !== '';
+const PROBE_TIMEOUT_MS = 5_000;
+const TELNYX_CHECK_TIMEOUT_MS = 8_000;
+const isSet = (value) => typeof value === 'string' && value.trim() !== '';
+const TELNYX_CHECK_STATUSES = new Set(['ok', 'warn', 'fail']);
+const TELNYX_REQUIRED_CHECK_IDS = new Set(['telnyx_api_key', 'telnyx_api_live']);
+const WORKFLOW_RELEASE_GATES = [
+  {
+    id: 'release_auto_retry_failed_faxes',
+    env: 'WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES',
+    label: 'Automatic failed-fax retry',
+    capability: 'fax_retry_automation',
+  },
+  {
+    id: 'release_check_stale_follow_up_requests',
+    env: 'WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS',
+    label: 'Stale follow-up request checks',
+    capability: 'follow_up_request_automation',
+  },
+  {
+    id: 'release_poll_fax_statuses',
+    env: 'WORKFLOW_RELEASE_POLL_FAX_STATUSES',
+    label: 'Fax status polling',
+    capability: 'fax_status_polling',
+  },
+  {
+    id: 'release_process_inbound_faxes',
+    env: 'WORKFLOW_RELEASE_PROCESS_INBOUND_FAXES',
+    label: 'Inbound fax processing',
+    capability: 'inbound_fax_automation',
+  },
+  {
+    id: 'release_process_scheduled_faxes',
+    env: 'WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES',
+    label: 'Scheduled fax processing',
+    capability: 'scheduled_fax_automation',
+  },
+];
 
-// btoa only accepts Latin-1 input. Encode credentials as UTF-8 first so a
-// malformed or non-ASCII secret cannot crash the entire integration report.
-function basicAuth(username, password) {
-  const bytes = new TextEncoder().encode(`${username}:${password}`);
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return `Basic ${btoa(binary)}`;
+function publicAppOrigin(value) {
+  const configured = String(value || '').trim();
+  if (!configured) return null;
+  try {
+    const parsed = new URL(configured);
+    if (
+      parsed.protocol !== 'https:' || parsed.username || parsed.password
+      || parsed.pathname !== '/' || parsed.search || parsed.hash
+    ) return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
 }
 
-// A provider is healthy only when the probe returns 2xx. A generic non-2xx does
-// not prove authentication: 404, 429, and 5xx were previously mislabeled as
-// "Working", which made this dashboard unsafe as a release check.
+// A provider is healthy only when its bounded, read-only probe returns 2xx.
+// Response bodies and thrown provider details are deliberately not returned or
+// logged because they are unnecessary for classifying authentication.
 async function probe(url, options, okDetail, failLabel) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
   try {
-    const res = await fetch(url, options);
-    if (res.ok) return { status: 'ok', detail: okDetail };
-    if (res.status === 401 || res.status === 403) {
-      return { status: 'fail', detail: `${failLabel} rejected the key (HTTP ${res.status}). Check the key value.` };
+    // Credential-bearing diagnostics must never follow a redirect. Fetch can
+    // otherwise forward non-standard auth headers (for example x-api-key) to a
+    // redirected host.
+    const res = await fetch(url, {
+      ...options,
+      redirect: 'error',
+      signal: controller.signal,
+    });
+    const status = res.status;
+    try { await res.body?.cancel(); } catch { /* no body to discard */ }
+    if (res.ok) return { status: 'ok', detail: okDetail, probe: 'authenticated-read' };
+    if (status === 401 || status === 403) {
+      return {
+        status: 'fail',
+        detail: `${failLabel} rejected the configured credential (HTTP ${status}).`,
+        probe: 'authenticated-read',
+      };
     }
-    if (res.status === 429) {
-      return { status: 'warn', detail: `${failLabel} rate-limited the health check (HTTP 429); authentication was not confirmed.` };
+    if (status === 429) {
+      return {
+        status: 'warn',
+        detail: `${failLabel} rate-limited the read-only probe; authentication was not confirmed.`,
+        probe: 'authenticated-read',
+      };
     }
-    if (res.status >= 500) {
-      return { status: 'warn', detail: `${failLabel} is currently unavailable (HTTP ${res.status}); authentication was not confirmed.` };
+    if (status >= 500) {
+      return {
+        status: 'warn',
+        detail: `${failLabel} was unavailable during the read-only probe; authentication was not confirmed.`,
+        probe: 'authenticated-read',
+      };
     }
-    return { status: 'fail', detail: `${failLabel} health check failed (HTTP ${res.status}); authentication was not confirmed.` };
-  } catch (e) {
-    return { status: 'warn', detail: `Could not reach ${failLabel}; authentication was not confirmed.` };
+    return {
+      status: 'fail',
+      detail: `${failLabel} rejected the read-only probe (HTTP ${status}); authentication was not confirmed.`,
+      probe: 'authenticated-read',
+    };
+  } catch {
+    return {
+      status: 'warn',
+      detail: `Could not complete the bounded ${failLabel} read-only probe; authentication was not confirmed.`,
+      probe: 'authenticated-read',
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function withTimeout(promise, milliseconds) {
+  let timeout;
+  const deadline = new Promise((_, reject) => {
+    timeout = setTimeout(() => reject(new Error('health-check-timeout')), milliseconds);
+  });
+  try {
+    return await Promise.race([promise, deadline]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function checkTelnyx(base44) {
+  try {
+    const res = await withTimeout(
+      base44.functions.invoke('testTelnyxConnection', {}),
+      TELNYX_CHECK_TIMEOUT_MS,
+    );
+    const data = res?.data || res;
+    const checks = Array.isArray(data?.checks) ? data.checks : [];
+    const checkIds = new Set();
+    const wellFormedChecks = checks.length > 0 && checks.every((check) => {
+      const id = typeof check?.id === 'string' ? check.id : '';
+      const status = typeof check?.status === 'string' ? check.status : '';
+      if (!id || checkIds.has(id) || !TELNYX_CHECK_STATUSES.has(status)) return false;
+      checkIds.add(id);
+      return true;
+    });
+    const hasRequiredChecks = [...TELNYX_REQUIRED_CHECK_IDS].every((id) => checkIds.has(id));
+    const stats = data?.stats;
+    const validStats = !!stats && typeof stats === 'object' && !Array.isArray(stats)
+      && ['messaging_ready', 'voice_ready', 'fax_ready']
+        .every((key) => typeof stats[key] === 'boolean');
+    const validResult = data?.success === true && wellFormedChecks && hasRequiredChecks && validStats;
+    const hasFail = !validResult || checks.some((check) => check?.status === 'fail');
+    const hasWarn = checks.some((check) => check?.status === 'warn');
+    const configured = validResult && Boolean(
+      stats.messaging_ready || stats.voice_ready || stats.fax_ready,
+    );
+    return {
+      id: 'telnyx',
+      label: 'Telnyx telecom',
+      category: 'Telecom',
+      capability: 'sms_voice_fax',
+      configured,
+      editable_in_app: true,
+      status: hasFail ? 'fail' : hasWarn ? 'warn' : 'ok',
+      probe: 'delegated-read-only',
+      delivery_verified: false,
+      detail: hasFail
+        ? validResult
+          ? 'One or more Telnyx configuration/authentication checks failed; no traffic was sent.'
+          : 'Telnyx returned an invalid or empty health result; authentication was not confirmed.'
+        : hasWarn
+          ? 'Telnyx returned one or more warnings; no traffic was sent.'
+          : 'Telnyx configuration passed its read-only checks; delivery is not verified or released.',
+    };
+  } catch {
+    return {
+      id: 'telnyx',
+      label: 'Telnyx telecom',
+      category: 'Telecom',
+      capability: 'sms_voice_fax',
+      configured: false,
+      editable_in_app: true,
+      status: 'warn',
+      probe: 'delegated-read-only',
+      delivery_verified: false,
+      detail: 'The bounded Telnyx read-only check did not complete; authentication was not confirmed.',
+    };
   }
 }
 
 Deno.serve(async (req) => {
   try {
+    if (req?.method && req.method !== 'POST') {
+      return Response.json({ error: 'Method not allowed' }, { status: 405, headers: { Allow: 'POST' } });
+    }
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
-    const isAdmin = user.role === 'admin';
+    const isAdmin = user?.role === 'admin'
+      && user.disabled !== true
+      && user.is_service !== true
+      && user.is_verified !== false;
     if (!isAdmin) {
       return Response.json({ error: 'Administrator access required.' }, { status: 403 });
     }
 
-    const env = (k) => {
-      const v = Deno.env.get(k);
-      return isSet(v) ? v : null;
+    const env = (name) => {
+      const value = Deno.env.get(name);
+      return isSet(value) ? value : null;
     };
 
-    const integrations = [];
-
-    // ---- OpenAI (Whisper transcription + LLM) ----
     const openaiKey = env('OPENAI_API_KEY');
-    if (openaiKey) {
-      const r = await probe(
-        'https://api.openai.com/v1/models',
-        { headers: { Authorization: `Bearer ${openaiKey}` } },
-        'Authenticated with OpenAI.',
-        'OpenAI',
-      );
-      integrations.push({ id: 'openai', label: 'OpenAI (LLM / Whisper)', category: 'AI', configured: true, editable_in_app: false, ...r });
-    } else {
-      integrations.push({ id: 'openai', label: 'OpenAI (LLM / Whisper)', category: 'AI', configured: false, editable_in_app: false, status: 'fail', detail: 'OPENAI_API_KEY is not set.' });
-    }
-
-    // ---- Anthropic (Claude) ----
     const anthropicKey = env('ANTHROPIC_API_KEY');
-    if (anthropicKey) {
-      const r = await probe(
-        'https://api.anthropic.com/v1/models',
-        { headers: { 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' } },
-        'Authenticated with Anthropic.',
-        'Anthropic',
-      );
-      integrations.push({ id: 'anthropic', label: 'Anthropic (Claude)', category: 'AI', configured: true, editable_in_app: false, ...r });
-    } else {
-      integrations.push({ id: 'anthropic', label: 'Anthropic (Claude)', category: 'AI', configured: false, editable_in_app: false, status: 'fail', detail: 'ANTHROPIC_API_KEY is not set.' });
-    }
-
-    // ---- Google Gemini ----
-    const geminiKey = env('GOOGLE_GEMINI_API_KEY');
-    if (geminiKey) {
-      const r = await probe(
-        `https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(geminiKey)}`,
-        {},
-        'Authenticated with Google Gemini.',
-        'Google Gemini',
-      );
-      integrations.push({ id: 'gemini', label: 'Google Gemini', category: 'AI', configured: true, editable_in_app: false, ...r });
-    } else {
-      integrations.push({ id: 'gemini', label: 'Google Gemini', category: 'AI', configured: false, editable_in_app: false, status: 'warn', detail: 'GOOGLE_GEMINI_API_KEY is not set (optional web-context model).' });
-    }
-
-    // ---- Deepgram (live dictation) ----
-    const deepgramKey = env('DEEPGRAM_API_KEY');
-    if (deepgramKey) {
-      const r = await probe(
-        'https://api.deepgram.com/v1/projects',
-        { headers: { Authorization: `Token ${deepgramKey}` } },
-        'Authenticated with Deepgram.',
-        'Deepgram',
-      );
-      integrations.push({ id: 'deepgram', label: 'Deepgram (dictation)', category: 'Transcription', configured: true, editable_in_app: false, ...r });
-    } else {
-      integrations.push({ id: 'deepgram', label: 'Deepgram (dictation)', category: 'Transcription', configured: false, editable_in_app: false, status: 'warn', detail: 'DEEPGRAM_API_KEY is not set (live dictation disabled).' });
-    }
-
-    // ---- Resend (transactional email) ----
-    const resendKey = env('RESEND_API_KEY');
-    if (resendKey) {
-      const r = await probe(
-        'https://api.resend.com/domains',
-        { headers: { Authorization: `Bearer ${resendKey}` } },
-        'Authenticated with Resend.',
-        'Resend',
-      );
-      integrations.push({ id: 'resend', label: 'Resend (email)', category: 'Email', configured: true, editable_in_app: false, ...r });
-    } else {
-      integrations.push({ id: 'resend', label: 'Resend (email)', category: 'Email', configured: false, editable_in_app: false, status: 'warn', detail: 'RESEND_API_KEY is not set (falls back to platform email).' });
-    }
-
-    // ---- HeyGen (training video avatars) ----
-    // There is no harmless, stable auth endpoint pinned in this repository.
-    // Presence is configuration evidence only and must never render as Working.
     const heygenKey = env('HEYGEN_API_KEY');
+
+    // Independent provider checks run concurrently, each with its own timeout.
+    // Missing optional feature keys cause no request.
+    const [openaiHealth, anthropicHealth, heygenHealth, telnyxHealth] = await Promise.all([
+      openaiKey
+        ? probe(
+          'https://api.openai.com/v1/models',
+          { headers: { Authorization: `Bearer ${openaiKey}` } },
+          'The OpenAI credential authenticated; transcription-model entitlement and audio processing are not proven.',
+          'OpenAI',
+        )
+        : Promise.resolve(null),
+      anthropicKey
+        ? probe(
+          'https://api.anthropic.com/v1/models',
+          { headers: { 'x-api-key': anthropicKey, 'anthropic-version': '2023-06-01' } },
+          'The Anthropic credential authenticated; required-model entitlement and SOAP structuring are not proven.',
+          'Anthropic',
+        )
+        : Promise.resolve(null),
+      heygenKey
+        ? probe(
+          'https://api.heygen.com/v2/avatars',
+          { headers: { 'x-api-key': heygenKey } },
+          'The HeyGen credential authenticated against its read-only avatar catalog; video generation is not proven.',
+          'HeyGen',
+        )
+        : Promise.resolve(null),
+      checkTelnyx(base44),
+    ]);
+
+    const integrations = [
+      {
+        id: 'base44_llm',
+        label: 'Base44 Core LLM',
+        category: 'AI',
+        capability: 'application_ai_generation',
+        configured: true,
+        editable_in_app: false,
+        status: 'warn',
+        probe: 'not-run',
+        delivery_verified: false,
+        detail: 'Application AI uses the platform-managed Core.InvokeLLM capability. This health check does not spend credits, invoke a model, or prove end-to-end generation.',
+      },
+      openaiKey
+        ? {
+          id: 'openai_transcription',
+          label: 'OpenAI audio transcription',
+          category: 'Transcription',
+          capability: 'direct_audio_transcription',
+          configured: true,
+          editable_in_app: false,
+          delivery_verified: false,
+          ...openaiHealth,
+        }
+        : {
+          id: 'openai_transcription',
+          label: 'OpenAI audio transcription',
+          category: 'Transcription',
+          capability: 'direct_audio_transcription',
+          configured: false,
+          editable_in_app: false,
+          status: 'warn',
+          probe: 'not-run',
+          delivery_verified: false,
+          detail: 'OPENAI_API_KEY is not set; direct audio transcription is unavailable, but platform-managed application AI is unaffected.',
+        },
+      anthropicKey
+        ? {
+          id: 'anthropic_soap',
+          label: 'Anthropic SOAP-note structuring',
+          category: 'AI',
+          capability: 'soap_note_structuring',
+          configured: true,
+          editable_in_app: false,
+          delivery_verified: false,
+          ...anthropicHealth,
+        }
+        : {
+          id: 'anthropic_soap',
+          label: 'Anthropic SOAP-note structuring',
+          category: 'AI',
+          capability: 'soap_note_structuring',
+          configured: false,
+          editable_in_app: false,
+          status: 'warn',
+          probe: 'not-run',
+          delivery_verified: false,
+          detail: 'ANTHROPIC_API_KEY is not set; direct SOAP-note structuring is unavailable. Fax-cover formatting does not require this key.',
+        },
+      heygenKey
+        ? {
+          id: 'heygen',
+          label: 'HeyGen training videos',
+          category: 'Media',
+          capability: 'training_video_generation',
+          configured: true,
+          editable_in_app: false,
+          delivery_verified: false,
+          ...heygenHealth,
+        }
+        : {
+          id: 'heygen',
+          label: 'HeyGen training videos',
+          category: 'Media',
+          capability: 'training_video_generation',
+          configured: false,
+          editable_in_app: false,
+          status: 'warn',
+          probe: 'not-run',
+          delivery_verified: false,
+          detail: 'HEYGEN_API_KEY is not set; optional training-video generation is unavailable.',
+        },
+      {
+        id: 'base44_email',
+        label: 'Base44 Core email',
+        category: 'Email',
+        capability: 'transactional_email',
+        configured: true,
+        editable_in_app: false,
+        status: 'warn',
+        probe: 'not-run',
+        delivery_verified: false,
+        detail: 'Email uses platform-managed Core.SendEmail; no Resend credential is consumed. This check sends no email, so recipient delivery remains unverified.',
+      },
+      telnyxHealth,
+    ];
+
+    const appOrigin = publicAppOrigin(env('APP_PUBLIC_URL'));
     integrations.push({
-      id: 'heygen',
-      label: 'HeyGen (training videos)',
-      category: 'Media',
-      configured: Boolean(heygenKey),
+      id: 'app_public_url',
+      label: 'Public app-link origin',
+      category: 'Configuration',
+      capability: 'outbound_link_generation',
+      configured: Boolean(appOrigin),
       editable_in_app: false,
-      status: 'warn',
-      detail: heygenKey
-        ? 'HEYGEN_API_KEY is configured, but this dashboard has not authenticated it with HeyGen.'
-        : 'HEYGEN_API_KEY is not set (AI training video generation disabled).',
+      status: appOrigin ? 'ok' : 'fail',
+      probe: 'local-validation',
+      delivery_verified: false,
+      detail: appOrigin
+        ? 'APP_PUBLIC_URL is a valid HTTPS origin for outbound app links.'
+        : 'APP_PUBLIC_URL is missing or is not an exact HTTPS origin; outbound app-link generation fails closed.',
     });
 
-    // ---- Notifyre (fax fallback) ----
-    const notifyreKey = env('NOTIFYRE_API_KEY');
+    // There is intentionally no synthetic global flag reported as protection:
+    // the current tree has provider/workflow-specific pauses, not one enforced
+    // application-wide outbound release gate.
     integrations.push({
-      id: 'notifyre',
-      label: 'Notifyre (fax fallback)',
-      category: 'Fax',
-      configured: Boolean(notifyreKey),
+      id: 'outbound_delivery_release',
+      label: 'Application-wide outbound delivery gate',
+      category: 'Release gate',
+      capability: 'outbound_delivery_control',
+      configured: false,
       editable_in_app: false,
       status: 'warn',
-      detail: notifyreKey
-        ? 'NOTIFYRE_API_KEY is configured, but this dashboard has not authenticated it with Notifyre.'
-        : 'NOTIFYRE_API_KEY is not set (optional fax fallback).',
+      probe: 'local-validation',
+      release_state: 'not-globally-gated',
+      delivery_verified: false,
+      detail: 'No application-wide outbound release gate is enforced. Provider health never authorizes traffic; keep provider- and workflow-specific delivery paths paused except for approved controlled tests.',
     });
 
-    // ---- Twilio (legacy SMS / voice) ----
-    const twilioSid = env('TWILIO_ACCOUNT_SID');
-    const twilioToken = env('TWILIO_AUTH_TOKEN');
-    if (twilioSid && twilioToken) {
-      const r = await probe(
-        `https://api.twilio.com/2010-04-01/Accounts/${encodeURIComponent(twilioSid)}.json`,
-        { headers: { Authorization: basicAuth(twilioSid, twilioToken) } },
-        'Authenticated with Twilio.',
-        'Twilio',
-      );
-      integrations.push({ id: 'twilio', label: 'Twilio (SMS / voice)', category: 'Telephony', configured: true, editable_in_app: false, ...r });
-    } else {
-      integrations.push({ id: 'twilio', label: 'Twilio (SMS / voice)', category: 'Telephony', configured: false, editable_in_app: false, status: 'warn', detail: 'Twilio credentials are not fully set (optional — Telnyx is the primary provider).' });
-    }
-
-    // ---- Telnyx (SMS / voice / fax) — delegate to the dedicated live test ----
-    try {
-      const res = await base44.functions.invoke('testTelnyxConnection', {});
-      const data = res?.data || res;
-      const checks = Array.isArray(data?.checks) ? data.checks : [];
-      const validResult = data?.success === true && checks.length > 0;
-      const hasFail = !validResult || checks.some((c) => c.status === 'fail');
-      const hasWarn = checks.some((c) => c.status === 'warn');
-      const apiLive = checks.find((c) => c.id === 'telnyx_api_live');
+    for (const gate of WORKFLOW_RELEASE_GATES) {
+      const releaseValue = env(gate.env);
+      const released = releaseValue === 'enabled-v1';
       integrations.push({
-        id: 'telnyx',
-        label: 'Telnyx (SMS / voice / fax)',
-        category: 'Telephony',
-        configured: Boolean(data?.stats?.messaging_ready || data?.stats?.voice_ready || data?.stats?.fax_ready),
-        editable_in_app: true,
-        status: hasFail ? 'fail' : hasWarn ? 'warn' : 'ok',
-        detail: apiLive && apiLive.status === 'fail'
-          ? apiLive.detail
-          : hasFail
-            ? validResult
-              ? 'One or more Telnyx checks failed — see the Telnyx setup section.'
-              : 'Telnyx health check returned an invalid or empty result; authentication was not confirmed.'
-            : 'Telnyx credentials configured and authenticated.',
+        id: gate.id,
+        label: gate.label,
+        category: 'Release gate',
+        capability: gate.capability,
+        configured: Boolean(releaseValue),
+        editable_in_app: false,
+        status: released ? 'ok' : 'warn',
+        probe: 'local-validation',
+        release_state: released ? 'released' : 'paused',
+        delivery_verified: false,
+        detail: released
+          ? `${gate.env} is enabled-v1. This report did not invoke the workflow or perform delivery.`
+          : `${gate.env} is not enabled-v1; the workflow remains fail-closed before SDK construction.`,
       });
-    } catch (e) {
-      integrations.push({ id: 'telnyx', label: 'Telnyx (SMS / voice / fax)', category: 'Telephony', configured: false, editable_in_app: true, status: 'warn', detail: `Telnyx test could not run: ${e.message}` });
     }
 
     const internalSecret = env('INTERNAL_FN_SECRET');
@@ -224,9 +410,12 @@ Deno.serve(async (req) => {
       id: 'workflow_internal_auth',
       label: 'Workflow internal authentication',
       category: 'Automation',
+      capability: 'scheduler_authentication',
       configured: Boolean(internalSecret && internalSecret.length >= 32),
       editable_in_app: false,
       status: internalSecret && internalSecret.length >= 32 ? 'ok' : 'fail',
+      probe: 'local-validation',
+      delivery_verified: false,
       detail: internalSecret && internalSecret.length >= 32
         ? 'INTERNAL_FN_SECRET is configured for scheduler-to-function authentication.'
         : 'INTERNAL_FN_SECRET is missing or too short; protected scheduled functions cannot run.',
@@ -237,9 +426,12 @@ Deno.serve(async (req) => {
       id: 'signature_hmac',
       label: 'E-signature token authentication',
       category: 'Security',
+      capability: 'signature_token_integrity',
       configured: Boolean(signatureSecret && signatureSecret.length >= 32),
       editable_in_app: false,
       status: signatureSecret && signatureSecret.length >= 32 ? 'ok' : 'fail',
+      probe: 'local-validation',
+      delivery_verified: false,
       detail: signatureSecret && signatureSecret.length >= 32
         ? 'SIGNATURE_HMAC_SECRET is configured for signed capability tokens.'
         : 'SIGNATURE_HMAC_SECRET is missing or too short; secure signer tokens cannot be issued.',
@@ -249,27 +441,35 @@ Deno.serve(async (req) => {
     integrations.push({
       id: 'outcome_pipeline_release',
       label: 'Outcome workflow release gate',
-      category: 'Automation',
+      category: 'Release gate',
+      capability: 'outcome_workflow_delivery',
       configured: Boolean(outcomeRelease),
       editable_in_app: false,
       status: outcomeRelease === 'enabled-v1' ? 'ok' : 'warn',
+      probe: 'local-validation',
+      release_state: outcomeRelease === 'enabled-v1' ? 'released' : 'paused',
+      delivery_verified: false,
       detail: outcomeRelease === 'enabled-v1'
-        ? 'Outcome workflow release gate is enabled-v1.'
+        ? 'Outcome workflow release gate is enabled-v1; this health check still performs no delivery.'
         : 'Outcome workflow is intentionally paused until hosted tenant and atomicity validation is approved.',
     });
 
     const report = {
       success: true,
       generated_at: new Date().toISOString(),
+      probe_policy: {
+        outbound_actions_performed: false,
+        credential_values_exposed: false,
+        provider_timeout_ms: PROBE_TIMEOUT_MS,
+      },
       integrations,
     };
-    // Workflow run details currently omit backend-function output. Emit only
-    // the sanitized report (never credential values) so hosted release checks
-    // remain diagnosable from Base44 function logs.
     console.info('checkAllIntegrations result:', JSON.stringify(report));
     return Response.json(report);
   } catch (error) {
-    console.error('checkAllIntegrations error:', error);
+    console.error('checkAllIntegrations error:', {
+      name: typeof error?.name === 'string' ? error.name : 'Error',
+    });
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

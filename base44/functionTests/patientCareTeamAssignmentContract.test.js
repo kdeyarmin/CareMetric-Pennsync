@@ -121,10 +121,21 @@ const assignment = (overrides = {}) => {
     version: 1,
     ...overrides,
   };
-  if (row.status === 'suspended' && row.suspended_at === undefined) row.suspended_at = T2;
+  if (row.status === 'suspended') {
+    if (row.suspended_at === undefined) row.suspended_at = T2;
+    if (!Object.hasOwn(overrides, 'version')) row.version = 2;
+    if (!Object.hasOwn(overrides, 'last_transition_at')) row.last_transition_at = row.suspended_at;
+    if (!Object.hasOwn(overrides, 'last_transition_action')) row.last_transition_action = 'suspend';
+  }
   if (row.status === 'revoked') {
     if (row.revoked_at === undefined) row.revoked_at = T2;
     if (row.revocation_reason === undefined) row.revocation_reason = 'Assignment revoked';
+    if (!Object.hasOwn(overrides, 'version')) row.version = 2;
+    if (!Object.hasOwn(overrides, 'last_transition_at')) row.last_transition_at = row.revoked_at;
+    if (!Object.hasOwn(overrides, 'last_transition_reason')) {
+      row.last_transition_reason = row.revocation_reason;
+    }
+    if (!Object.hasOwn(overrides, 'last_transition_action')) row.last_transition_action = 'revoke';
   }
   return row;
 };
@@ -366,6 +377,8 @@ async function invoke(handler, body = grantBody(), { method = 'POST', invalidJso
     headers: { 'content-type': 'application/json' },
     body: invalidJson ? '{' : JSON.stringify(body),
   }));
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal(response.headers.get('pragma'), 'no-cache');
   return { response, json: await response.json() };
 }
 
@@ -396,6 +409,9 @@ test('the client boundary is unwired and invokes only the finite broker', async 
   const backend = await readFile(functionUrl, 'utf8');
   assert.match(backend, /npm:@base44\/sdk@0\.8\.46/);
   assert.match(backend, /const CARE_TEAM_ASSIGNMENT_MUTATIONS_ENABLED = false;/);
+  assert.equal((backend.match(/Response\.json\(/g) || []).length, 1);
+  assert.match(backend, /const NO_STORE_HEADERS = \{ 'Cache-Control': 'no-store'/);
+  assert.match(backend, /function jsonResponse[\s\S]*Object\.entries\(NO_STORE_HEADERS\)/);
   assert.match(backend, /PatientCareTeamAssignment\.updateMany\(/);
   assert.doesNotMatch(backend, /PatientCareTeamAssignment\.update\(/);
   assert.doesNotMatch(backend, /Deno\.env\.get\([^)]*CARE_TEAM/);
@@ -539,6 +555,7 @@ test('grant and activation require exact current Agency, Patient, User, and memb
     { users: [OWNER, { ...TARGET, is_active: false }] },
     { memberships: [] },
     { memberships: [membership({ status: 'suspended' })] },
+    { memberships: [membership({ revoked_at: T2, revocation_reason: 'Polluted terminal metadata' })] },
     { memberships: [membership({ user_email_normalized: 'old@example.test' })] },
     { memberships: [membership(), membership({ id: 'duplicate-membership' })] },
   ];
@@ -584,6 +601,74 @@ test('inspect is read-only and rejects mutation-only fields', async () => {
   assert.equal((await invoke(staleIdentity.handler, inspectBody())).response.status, 409);
 });
 
+test('assignment lifecycle status, action, and terminal metadata must remain coherent', async () => {
+  const coherentRows = [
+    assignment(),
+    assignment({
+      status: 'suspended',
+      suspended_at: T2,
+    }),
+    assignment({
+      status: 'revoked',
+      revoked_at: T2,
+      revocation_reason: 'Assignment revoked',
+    }),
+  ];
+  for (const row of coherentRows) {
+    const runtime = await loadHandler({ assignments: [row] });
+    assert.equal((await invoke(runtime.handler, inspectBody())).response.status, 200);
+  }
+
+  const corruptRows = [
+    assignment({ last_transition_action: 'suspend' }),
+    assignment({
+      status: 'suspended',
+      suspended_at: T2,
+      last_transition_action: 'grant',
+    }),
+    assignment({
+      status: 'revoked',
+      revoked_at: T2,
+      revocation_reason: 'Assignment revoked',
+      last_transition_action: 'activate',
+    }),
+    assignment({ revoked_at: T2, revocation_reason: 'Polluted terminal metadata' }),
+    assignment({ revocation_reason: 'Polluted terminal metadata' }),
+    assignment({ suspended_at: 'not-an-instant' }),
+    assignment({ version: 2 }),
+    assignment({
+      status: 'active',
+      version: 4,
+      suspended_at: T1,
+      activated_at: T2,
+      last_transition_at: T2,
+      last_transition_action: 'activate',
+    }),
+    assignment({
+      status: 'suspended',
+      version: 1,
+      suspended_at: T2,
+      last_transition_at: T2,
+      last_transition_action: 'suspend',
+    }),
+    assignment({
+      status: 'revoked',
+      version: 2,
+      revoked_at: T2,
+      revocation_reason: 'Assignment revoked',
+      last_transition_at: T1,
+      last_transition_reason: 'Assignment revoked',
+      last_transition_action: 'revoke',
+    }),
+  ];
+  for (const row of corruptRows) {
+    const runtime = await loadHandler({ assignments: [row] });
+    const result = await invoke(runtime.handler, inspectBody());
+    assert.equal(result.response.status, 409);
+    assert.equal(result.json.assignment, undefined);
+  }
+});
+
 test('suspend, activate, and terminal revoke preserve one monotonic row', async () => {
   const runtime = await loadHandler({ assignments: [assignment()] });
   const suspended = await invoke(runtime.handler, transitionBody('suspend', 1));
@@ -623,6 +708,7 @@ test('suspend, activate, and terminal revoke preserve one monotonic row', async 
 test('exact retries are idempotent while stale and exhausted versions fail closed', async () => {
   const replayRow = assignment({
     status: 'suspended', version: 2, suspended_at: T2,
+    last_transition_at: T2,
     last_transition_reason: 'suspend assignment',
     last_transition_action: 'suspend',
     last_transition_request_id: 'suspend-request-1',

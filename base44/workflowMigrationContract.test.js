@@ -10,12 +10,16 @@ const EXPECTED = {
   'Auto Retry Failed Faxes.jsonc': {
     target: 'autoRetryFailedFaxes',
     schedule: { mode: 'interval', value: 15, unit: 'minutes' },
-    releaseState: 'live',
+    releaseState: 'paused_workflow',
+    releaseEnv: 'WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES',
+    releaseConst: 'AUTO_RETRY_FAILED_FAXES_ENABLED',
   },
   'Check Stale Follow-Up Requests.jsonc': {
     target: 'checkStaleFollowUpRequests',
     schedule: { mode: 'recurring', cron: '0 12 * * *' },
-    releaseState: 'live',
+    releaseState: 'paused_workflow',
+    releaseEnv: 'WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS',
+    releaseConst: 'STALE_FOLLOW_UP_WORKFLOW_ENABLED',
   },
   'Dispatch Scheduled Signature Reminders.jsonc': {
     target: 'dispatchScheduledSignatureReminders',
@@ -31,17 +35,24 @@ const EXPECTED = {
   'Poll Fax Statuses.jsonc': {
     target: 'pollFaxStatuses',
     schedule: { mode: 'interval', value: 5, unit: 'minutes' },
-    releaseState: 'live',
+    releaseState: 'paused_workflow',
+    releaseEnv: 'WORKFLOW_RELEASE_POLL_FAX_STATUSES',
+    releaseConst: 'FAX_POLL_RELEASE_ENV',
+    releaseGuard: 'if (Deno.env.get(FAX_POLL_RELEASE_ENV) !== FAX_POLL_RELEASE_VALUE)',
   },
   'Process Inbound Referral Faxes.jsonc': {
     target: 'processInboundFaxes',
     schedule: { mode: 'recurring', cron: '*/10 * * * *' },
-    releaseState: 'live',
+    releaseState: 'paused_workflow',
+    releaseEnv: 'WORKFLOW_RELEASE_PROCESS_INBOUND_FAXES',
+    releaseConst: 'INBOUND_FAX_WORKFLOW_ENABLED',
   },
   'Process Scheduled Faxes.jsonc': {
     target: 'processScheduledFaxes',
     schedule: { mode: 'interval', value: 10, unit: 'minutes' },
-    releaseState: 'live',
+    releaseState: 'paused_workflow',
+    releaseEnv: 'WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES',
+    releaseConst: 'PROCESS_SCHEDULED_FAXES_ENABLED',
   },
 };
 
@@ -76,16 +87,44 @@ function assertHandlerReleaseState(source, expected, file) {
     return;
   }
 
+  if (expected.releaseState === 'paused_workflow') {
+    const envIndex = source.indexOf(expected.releaseEnv);
+    const markerIndex = source.indexOf(expected.releaseConst);
+    const handlerIndex = source.indexOf('Deno.serve');
+    const guardIndex = source.indexOf(
+      expected.releaseGuard || `if (!${expected.releaseConst})`,
+      handlerIndex,
+    );
+    assert.notEqual(envIndex, -1, `${file} must retain its reviewed release environment key`);
+    assert.notEqual(markerIndex, -1, `${file} must retain its explicit release marker`);
+    assert.notEqual(handlerIndex, -1, `${file} target must expose a handler`);
+    assert.notEqual(guardIndex, -1, `${file} must guard the handler with its release marker`);
+    assert.notEqual(clientIndex, -1, `${file} target must retain its dormant implementation`);
+    assert.ok(markerIndex < handlerIndex && handlerIndex < guardIndex && guardIndex < clientIndex,
+      `${file} must fail closed before SDK construction`);
+    assert.match(source.slice(guardIndex, clientIndex), /status:\s*503/,
+      `${file} release guard must return HTTP 503`);
+    assert.match(source.slice(markerIndex, handlerIndex), /enabled-v1/,
+      `${file} must require the exact reviewed release value`);
+    return;
+  }
+
   if (expected.releaseState === 'paused_signature') {
     const markerIndex = source.indexOf('const SIGNATURE_REMINDER_DISPATCH_ENABLED = false;');
+    const proofMarkerIndex = source.indexOf('const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = false;');
     const handlerIndex = source.indexOf('Deno.serve(async (req) =>');
-    const guardIndex = source.indexOf('if (!SIGNATURE_REMINDER_DISPATCH_ENABLED)', handlerIndex);
+    const guardIndex = source.indexOf(
+      'if (!SIGNATURE_REMINDER_DISPATCH_ENABLED || !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN)',
+      handlerIndex,
+    );
     assert.match(source, /Signature reminders are temporarily unavailable/);
     assert.match(source, /status:\s*503/);
     assert.notEqual(markerIndex, -1, `${file} must retain its explicit inactive marker`);
+    assert.notEqual(proofMarkerIndex, -1, `${file} must retain its explicit atomic-uniqueness proof gate`);
     assert.notEqual(clientIndex, -1, `${file} must retain its dormant reviewed implementation`);
-    assert.ok(markerIndex < handlerIndex && handlerIndex < guardIndex && guardIndex < clientIndex,
-      `${file} must pause before SDK construction`);
+    assert.ok(markerIndex < proofMarkerIndex && proofMarkerIndex < handlerIndex
+      && handlerIndex < guardIndex && guardIndex < clientIndex,
+    `${file} must require both release and atomic-uniqueness proof before SDK construction`);
     return;
   }
 

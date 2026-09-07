@@ -53,10 +53,18 @@ is always active. The dashboard-env secret list is therefore just:
 
 | Secret | Purpose | If unset |
 |---|---|---|
-| **`SIGNATURE_HMAC_SECRET`** | Keys the e-signature integrity MAC (forgery-resistant tamper-evidence) | unkeyed sha256 — detects corruption, not forgery — **set it at launch** |
-| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `HEYGEN_API_KEY` | AI feature gates (transcription / SOAP notes / fax cover pages / training videos) | those features show a "not configured" notice |
+| **`SIGNATURE_HMAC_SECRET`** | Keys the e-signature integrity MAC (forgery-resistant tamper-evidence) | signature token issuance and verification fail closed |
+| `APP_PUBLIC_URL` (non-secret) | Exact per-environment HTTPS origin for account, invitation, signer, and notification links | outbound app-link generation fails closed; there is no production or `APP_URL` fallback |
+| `OPENAI_API_KEY` | Direct audio transcription, including the transcription stage of SOAP-note-from-audio | direct transcription is unavailable; platform-managed application AI is unaffected |
+| `ANTHROPIC_API_KEY` | Direct SOAP-note-from-audio structuring | that optional structuring step is unavailable; deterministic fax covers are unaffected |
+| `HEYGEN_API_KEY` | Training-video generation | optional generated training videos are unavailable |
 
 All `VITE_*` vars are public by design — never put secrets there.
+
+Platform-managed `Core.InvokeLLM` and `Core.SendEmail` do not use separate
+Gemini, Deepgram, Resend, Notifyre, or Twilio environment credentials in the
+current source tree. Do not classify those retired/unimplemented keys as
+security or launch requirements.
 
 ## 4. Scheduled / internal functions — require shared scheduler auth
 

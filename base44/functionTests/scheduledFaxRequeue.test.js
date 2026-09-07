@@ -198,3 +198,127 @@ test('only definite non-ambiguous provider 4xx responses are safe rejections', a
     assert.equal(providerSubmissionDefinitelyRejected(new Response('', { status })), false, status);
   }
 });
+
+function careTeamAssignment(overrides = {}) {
+  return {
+    id: 'assignment-1',
+    assignment_key: 'agency-1:patient-1:user-1',
+    agency_id: 'agency-1',
+    patient_id: 'patient-1',
+    user_id: 'user-1',
+    user_email_normalized: 'user@example.com',
+    assignee_membership_id: 'membership-1',
+    assignee_membership_version_at_enablement: 3,
+    status: 'active',
+    source: 'manual',
+    created_by_user_id: 'manager-1',
+    created_by_user_email_normalized: 'manager@example.com',
+    activated_at: '2026-09-06T10:00:00.000Z',
+    last_transition_by_user_id: 'manager-1',
+    last_transition_by_email_normalized: 'manager@example.com',
+    last_transition_at: '2026-09-06T10:00:00.000Z',
+    last_transition_reason: 'Assigned for direct care',
+    last_transition_action: 'grant',
+    last_transition_request_id: 'assignment-request-1',
+    last_transition_request_key: 'agency-1:patient-1:user-1:assignment-request-1',
+    version: 1,
+    updated_date: '2026-09-06T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+test('scheduled fax care-team access requires one canonical assignment at the exact membership version', async () => {
+  const { validateInternalAccess } = await loadInline(
+    '../functions/sendBatchFax/entry.ts',
+    ['validateInternalAccess'],
+  );
+  const authority = {
+    agencyId: 'agency-1',
+    userId: 'user-1',
+    email: 'user@example.com',
+    membershipId: 'membership-1',
+    membershipVersion: 3,
+    tenantRole: 'clinician',
+  };
+  const binding = {
+    patientId: 'patient-1',
+    creatorEmail: 'creator@example.com',
+    binding: { purpose: 'patient_document', created_by_user_id: 'creator-1' },
+  };
+  const patient = {
+    id: 'patient-1',
+    agency_id: 'agency-1',
+    created_by_user_id: 'creator-1',
+    created_by_user_email_normalized: 'creator@example.com',
+    is_sample: false,
+    is_archived: false,
+    updated_date: '2026-09-06T10:00:00.000Z',
+  };
+
+  const calls = [];
+  const invokeWith = (assignmentRows) => validateInternalAccess({
+    Patient: { filter: async () => [patient] },
+    PatientCareTeamAssignment: {
+      filter: async (query) => {
+        calls.push(structuredClone(query));
+        return assignmentRows;
+      },
+    },
+  }, authority, binding, null);
+
+  const exact = careTeamAssignment();
+  const result = await invokeWith([exact]);
+  assert.equal(result.assignment.id, exact.id);
+  assert.deepEqual(calls[0], {
+    assignment_key: 'agency-1:patient-1:user-1',
+    agency_id: 'agency-1',
+    patient_id: 'patient-1',
+    user_id: 'user-1',
+  });
+
+  const corruptRows = [
+    careTeamAssignment({ assignment_key: 'forged' }),
+    careTeamAssignment({ assignee_membership_id: 'membership-2' }),
+    careTeamAssignment({ assignee_membership_version_at_enablement: 2 }),
+    careTeamAssignment({ assignee_membership_version_at_enablement: 4 }),
+    careTeamAssignment({ last_transition_action: 'suspend' }),
+    careTeamAssignment({ version: 2 }),
+    careTeamAssignment({
+      status: 'active',
+      version: 4,
+      suspended_at: '2026-09-06T10:30:00.000Z',
+      activated_at: '2026-09-06T11:00:00.000Z',
+      last_transition_at: '2026-09-06T11:00:00.000Z',
+      last_transition_action: 'activate',
+    }),
+    careTeamAssignment({
+      status: 'suspended',
+      version: 1,
+      suspended_at: '2026-09-06T11:00:00.000Z',
+      last_transition_at: '2026-09-06T11:00:00.000Z',
+      last_transition_action: 'suspend',
+    }),
+    careTeamAssignment({
+      status: 'revoked',
+      version: 2,
+      revoked_at: '2026-09-06T11:00:00.000Z',
+      revocation_reason: 'Assignment revoked',
+      last_transition_at: '2026-09-06T10:00:00.000Z',
+      last_transition_reason: 'Assignment revoked',
+      last_transition_action: 'revoke',
+    }),
+    careTeamAssignment({ revoked_at: '2026-09-06T11:00:00.000Z', revocation_reason: 'Polluted terminal metadata' }),
+    careTeamAssignment({ source: 'mutable_email' }),
+    careTeamAssignment({ last_transition_request_key: 'forged' }),
+  ];
+  for (const row of corruptRows) {
+    await assert.rejects(
+      invokeWith([row]),
+      (error) => error?.status === 409 && error?.code === 'fax_authority_unavailable',
+    );
+  }
+  await assert.rejects(
+    invokeWith([exact, { ...exact, id: 'assignment-duplicate' }]),
+    (error) => error?.status === 409 && error?.code === 'fax_authority_unavailable',
+  );
+});

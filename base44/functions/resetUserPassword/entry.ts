@@ -143,11 +143,21 @@ function renderBrandedEmail(opts) {
 // <<<END SHARED HELPER: brandedEmail>>>
 
 function getAppBaseUrl() {
-  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
-  if (fromEnv) {
-    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  const configured = String(Deno.env.get('APP_PUBLIC_URL') || '').trim();
+  if (!configured) throw new Error('APP_PUBLIC_URL is required for outbound app links');
+  let parsed;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
   }
-  return 'https://caremetricai.base44.app';
+  if (
+    parsed.protocol !== 'https:' || parsed.username || parsed.password
+    || parsed.pathname !== '/' || parsed.search || parsed.hash
+  ) {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
+  }
+  return parsed.origin;
 }
 
 Deno.serve(async (req) => {
@@ -210,10 +220,12 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Resolve the environment-specific origin before changing the credential.
+    // Invalid configuration must not leave the account reset without its email.
+    const appUrl = getAppBaseUrl();
+
     // Update user password using service role
     await base44.asServiceRole.auth.updateUserPassword(userEmail, tempPassword);
-
-    const appUrl = getAppBaseUrl();
 
     // Send email with temporary password
     await base44.asServiceRole.integrations.Core.SendEmail({
@@ -272,8 +284,10 @@ Deno.serve(async (req) => {
       message: 'Password reset successfully. Temporary password sent via email.'
     });
 
-  } catch (error) {
-    console.error('Password reset error:', error);
+  } catch {
+    // The delivery request contains the temporary password. SDK error objects
+    // may retain that request body, so never serialize the object or message.
+    console.error('resetUserPassword failed');
     // Generic message — don't leak internals to the client.
     return Response.json({ error: 'Failed to reset password' }, { status: 500 });
   }

@@ -274,11 +274,21 @@ export function buildWelcomeEmail(opts = {}) {
 }
 
 function getAppBaseUrl() {
-  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
-  if (fromEnv) {
-    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  const configured = String(Deno.env.get('APP_PUBLIC_URL') || '').trim();
+  if (!configured) throw new Error('APP_PUBLIC_URL is required for outbound app links');
+  let parsed;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
   }
-  return 'https://caremetricai.base44.app';
+  if (
+    parsed.protocol !== 'https:' || parsed.username || parsed.password
+    || parsed.pathname !== '/' || parsed.search || parsed.hash
+  ) {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
+  }
+  return parsed.origin;
 }
 
 Deno.serve(async (req) => {
@@ -336,6 +346,10 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Preflight the environment-specific link origin before the platform invite
+    // or invitation-row write so bad configuration cannot create a partial flow.
+    const appUrl = getAppBaseUrl();
+
     // Use the platform's built-in invite (handles email delivery natively)
     await base44.users.inviteUser(email, userRole);
     console.log('✓ Platform invite sent');
@@ -371,7 +385,6 @@ Deno.serve(async (req) => {
     // (public/manuals/*, served at the app origin root); the builder derives the
     // manual link from the app origin.
     try {
-      const appUrl = getAppBaseUrl();
       const { subject, body } = buildWelcomeEmail({
         fullName: full_name,
         email,
@@ -389,8 +402,8 @@ Deno.serve(async (req) => {
         body,
       });
       console.log('✓ Branded welcome email sent');
-    } catch (emailError) {
-      console.error('Welcome email failed (invite still succeeded):', emailError?.message || emailError);
+    } catch {
+      console.error('Welcome email delivery failed after invite succeeded');
     }
 
     // Log activity
@@ -403,8 +416,8 @@ Deno.serve(async (req) => {
         page: 'UserManagement',
         entity_type: 'UserInvitation'
       });
-    } catch (logError) {
-      console.error('Failed to log activity:', logError.message);
+    } catch {
+      console.error('Invitation activity logging failed');
     }
 
     return Response.json({
@@ -413,8 +426,8 @@ Deno.serve(async (req) => {
       user_email: email
     });
 
-  } catch (error) {
-    console.error('Error in createUserWithTempPassword:', error.message);
+  } catch {
+    console.error('createUserWithTempPassword failed');
     return Response.json({
       error: 'Failed to send invitation',
       details: 'Internal server error'

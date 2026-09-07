@@ -5,10 +5,11 @@ import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
+import JSON5 from 'json5';
 
 const ENTRY_URL = new URL('../functions/processInboundFaxes/entry.ts', import.meta.url);
 
-async function loadHandler(makeClient) {
+async function loadHandler(makeClient, { releaseEnabled = true } = {}) {
   let source = await readFile(ENTRY_URL, 'utf8');
   source = source.replace(
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
@@ -23,7 +24,13 @@ async function loadHandler(makeClient) {
   globalThis.__inboundReferralFaxCreateClient = makeClient;
   globalThis.Deno = {
     serve: (candidate) => { handler = candidate; },
-    env: { get: () => null },
+    env: {
+      get: (name) => (
+        releaseEnabled && name === 'WORKFLOW_RELEASE_PROCESS_INBOUND_FAXES'
+          ? 'enabled-v1'
+          : null
+      ),
+    },
   };
   try {
     await import(`${pathToFileURL(target).href}?case=${Math.random()}`);
@@ -42,6 +49,7 @@ function matches(row, query = {}) {
       if (Object.hasOwn(expected, '$exists')) {
         return expected.$exists ? row[key] != null : row[key] == null;
       }
+      if (Object.hasOwn(expected, '$lte')) return row[key] != null && row[key] <= expected.$lte;
       return true;
     }
     return row[key] === expected;
@@ -51,7 +59,6 @@ function matches(row, query = {}) {
 function makeRuntime({
   attached = false,
   foreignIncoming = false,
-  revokeBindingDuringAnswerExtraction = false,
 } = {}) {
   const now = '2026-09-06T12:00:00.000Z';
   const oldClaim = '2026-09-06T10:00:00.000Z';
@@ -254,9 +261,6 @@ function makeRuntime({
                 summary: 'Completed provider response',
               };
             }
-            if (revokeBindingDuringAnswerExtraction) {
-              data.TelecomDestinationBinding[0].status = 'revoked';
-            }
             return { answers: [{ id: 'item-a', answered: true, response_text: 'Signed note attached' }] };
           },
         },
@@ -279,7 +283,41 @@ function request(body = { agency_id: 'agency-a' }) {
   });
 }
 
-test('inbound fax worker matches and attaches only within immutable tenant provenance', async () => {
+test('inbound fax workflow is disabled before SDK construction by default', async () => {
+  let constructed = false;
+  const handler = await loadHandler(() => {
+    constructed = true;
+    throw new Error('SDK must not be constructed');
+  }, { releaseEnabled: false });
+  const response = await handler(request());
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal((await response.json()).code, 'inbound_fax_workflow_disabled');
+  assert.equal(constructed, false);
+});
+
+test('inbound queue is bounded oldest-first and poison rows are durably quarantined', async () => {
+  const source = await readFile(ENTRY_URL, 'utf8');
+  assert.doesNotMatch(source, /Inbound fax scan is incomplete/);
+  assert.match(source, /loadIncomingFaxQueue\(entities, agencyId, 'pending', scanAt\)/);
+  assert.match(source, /loadIncomingFaxQueue\(entities, agencyId, 'processing', scanAt\)/);
+  assert.match(source, /processing_next_attempt_at: \{ \$exists: false \}/);
+  assert.match(source, /processing_next_attempt_at: \{ \$lte: now \}/);
+  assert.match(source, /deferIncomingFax/);
+  assert.match(source, /quarantineIncomingFax/);
+  assert.match(source, /inbound_fax_authority_changed/);
+  assert.match(source, /Inbound fax agency batch failed/);
+  const schema = JSON5.parse(await readFile(
+    new URL('../entities/IncomingFax.jsonc', import.meta.url),
+    'utf8',
+  ));
+  assert.ok(schema.properties.processing_quarantined_at);
+  assert.ok(schema.properties.processing_last_error_code);
+  assert.ok(schema.properties.processing_next_attempt_at);
+  assert.ok(schema.properties.processing_attempt_count);
+});
+
+test('heuristic inbound fax matches remain suggestions and never mutate Referral answers', async () => {
   const runtime = makeRuntime();
   const handler = await loadHandler(() => runtime.client);
   const response = await handler(request());
@@ -291,24 +329,27 @@ test('inbound fax worker matches and attaches only within immutable tenant prove
     agencies_processed: 1,
     scanned: 1,
     processed: 1,
-    matched: 1,
-    suggested: 0,
+    matched: 0,
+    suggested: 1,
     failed: 0,
   });
-  assert.equal(runtime.getLlmCalls(), 2);
+  assert.equal(runtime.getLlmCalls(), 1);
   const followUp = runtime.data.Referral[0].follow_up_requests;
-  assert.equal(followUp.status, 'received');
-  assert.equal(followUp.portal_link_active, false);
-  assert.equal(followUp.fax_back.incoming_fax_id, 'incoming-a');
-  assert.equal(Object.hasOwn(followUp.fax_back, 'document_url'), false);
-  assert.equal(followUp.items[0].item_status, 'answered');
-  assert.equal(followUp.items[0].response.source, 'fax');
+  assert.equal(followUp.status, 'sent');
+  assert.equal(followUp.portal_link_active, true);
+  assert.equal(followUp.fax_back, undefined);
+  assert.equal(followUp.items[0].item_status, 'open');
+  assert.equal(followUp.items[0].response, null);
+  assert.equal(
+    runtime.calls.some((call) => call.entity === 'Referral' && call.operation === 'updateMany'),
+    false,
+  );
   assert.equal(runtime.data.IncomingFax[0].processing_status, 'completed');
-  assert.equal(runtime.data.IncomingFax[0].status, 'routed');
+  assert.equal(runtime.data.IncomingFax[0].status, 'unread');
   assert.equal(runtime.data.IncomingFax[0].suggested_referral_id, 'referral-a');
   assert.equal(runtime.data.Notification.length, 1);
   assert.equal(runtime.data.Notification[0].agency_id, 'agency-a');
-  assert.match(runtime.data.Notification[0].dedupe_key, /^referral-fax-matched:agency-a:/);
+  assert.match(runtime.data.Notification[0].dedupe_key, /^referral-fax-suggested:agency-a:/);
   assert.doesNotMatch(runtime.data.Notification[0].message, /Jane|1950|Patient/);
   for (const call of runtime.calls.filter((item) => (
     item.operation === 'filter' && ['Referral', 'IncomingFax', 'FaxLog'].includes(item.entity)
@@ -346,7 +387,7 @@ test('false-success foreign IncomingFax rows fail before OCR or protected writes
   assert.equal(runtime.calls.some((call) => call.operation === 'create'), false);
 });
 
-test('ambiguous integration authority and corrupt binding lifecycle fail before OCR or writes', async () => {
+test('ambiguous integration authority and corrupt binding lifecycle quarantine one row before OCR', async () => {
   const scenarios = [
     (runtime) => runtime.data.IntegrationSecret.push({
       id: 'integration-b',
@@ -363,26 +404,32 @@ test('ambiguous integration authority and corrupt binding lifecycle fail before 
     arrange(runtime);
     const handler = await loadHandler(() => runtime.client);
     const response = await handler(request());
-    assert.equal(response.status, 409);
+    assert.equal(response.status, 500);
     assert.equal(runtime.getLlmCalls(), 0);
-    assert.equal(runtime.calls.some((call) => call.operation === 'updateMany'), false);
+    const quarantine = runtime.calls.find((call) => (
+      call.entity === 'IncomingFax'
+      && call.operation === 'updateMany'
+      && call.patch?.$set?.processing_last_error_code === 'invalid_inbound_fax_authority'
+    ));
+    assert.ok(quarantine);
+    assert.equal(runtime.data.IncomingFax[0].processing_status, 'failed');
     assert.equal(runtime.calls.some((call) => call.operation === 'create'), false);
   }
 });
 
-test('binding revocation during answer extraction blocks the Referral attachment', async () => {
-  const runtime = makeRuntime({ revokeBindingDuringAnswerExtraction: true });
+test('heuristic processing never invokes a second LLM answer-extraction boundary', async () => {
+  const runtime = makeRuntime();
   const handler = await loadHandler(() => runtime.client);
   const response = await handler(request());
-  assert.equal(response.status, 409);
-  assert.equal(runtime.getLlmCalls(), 2);
+  assert.equal(response.status, 200);
+  assert.equal(runtime.getLlmCalls(), 1);
   assert.equal(runtime.data.Referral[0].follow_up_requests.status, 'sent');
-  assert.equal(runtime.data.Notification.length, 0);
+  assert.equal(runtime.data.Notification.length, 1);
   assert.equal(
     runtime.calls.some((call) => call.entity === 'Referral' && call.operation === 'updateMany'),
     false,
   );
-  assert.equal(runtime.data.IncomingFax[0].processing_status, 'pending');
+  assert.equal(runtime.data.IncomingFax[0].processing_status, 'completed');
   assert.equal(runtime.data.IncomingFax[0].claimed_by, null);
 });
 
@@ -399,25 +446,30 @@ test('legacy same-tenant rows stay quarantined without poisoning newer fax work'
     id: 'legacy-incoming',
     agency_id: 'agency-a',
     received_at: '2026-08-01T00:00:00.000Z',
+    created_date: '2026-08-01T00:00:00.000Z',
+    updated_date: '2026-08-01T00:00:00.000Z',
     processing_status: 'pending',
     status: 'unread',
+    version: 1,
   });
   const handler = await loadHandler(() => runtime.client);
   const response = await handler(request());
-  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  assert.equal(response.status, 500, JSON.stringify(await response.clone().json()));
   assert.deepEqual(await response.json(), {
-    success: true,
+    success: false,
     agency_id: 'agency-a',
     agencies_processed: 1,
     scanned: 2,
     processed: 1,
-    matched: 1,
-    suggested: 0,
+    matched: 0,
+    suggested: 1,
     failed: 1,
+    error: 'One or more inbound faxes could not be processed safely',
   });
-  assert.equal(runtime.getLlmCalls(), 2);
-  assert.equal(runtime.data.IncomingFax[0].processing_status, 'pending');
+  assert.equal(runtime.getLlmCalls(), 1);
+  assert.equal(runtime.data.IncomingFax[0].processing_status, 'failed');
+  assert.equal(runtime.data.IncomingFax[0].processing_last_error_code, 'invalid_inbound_fax_provenance');
   assert.equal(runtime.data.IncomingFax[1].processing_status, 'completed');
   assert.equal(runtime.data.Referral[0].follow_up_requests.status, 'sent');
-  assert.equal(runtime.data.Referral[1].follow_up_requests.status, 'received');
+  assert.equal(runtime.data.Referral[1].follow_up_requests.status, 'sent');
 });

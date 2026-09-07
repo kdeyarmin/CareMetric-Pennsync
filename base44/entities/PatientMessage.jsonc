@@ -1,7 +1,67 @@
 {
   "name": "PatientMessage",
   "type": "object",
+  "description": "Retired parallel patient-message model. Existing rows are quarantined and inaccessible. Any future patient-facing channel requires verified tenant, patient, consent, identity, thread, and participant provenance stamped by a dedicated server broker.",
   "properties": {
+    "provenance_version": {
+      "type": "integer",
+      "enum": [2]
+    },
+    "provenance_status": {
+      "type": "string",
+      "enum": ["verified_v2", "quarantined_legacy"]
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Agency id copied from the exact authorized Patient."
+    },
+    "sender_user_id": {
+      "type": "string",
+      "description": "Server-derived built-in sender User id for provider-originated messages."
+    },
+    "sender_membership_id": {
+      "type": "string"
+    },
+    "sender_membership_version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "participant_user_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "participant_membership_bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "user_id": { "type": "string" },
+          "membership_id": { "type": "string" },
+          "membership_version": { "type": "integer", "minimum": 1 }
+        },
+        "required": ["user_id", "membership_id", "membership_version"]
+      }
+    },
+    "participant_set_sha256": {
+      "type": "string"
+    },
+    "client_request_id": {
+      "type": "string"
+    },
+    "message_creation_key": {
+      "type": "string"
+    },
+    "payload_sha256": {
+      "type": "string"
+    },
+    "read_by_user_ids": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "state_version": {
+      "type": "integer",
+      "minimum": 1
+    },
     "patient_id": {
       "type": "string",
       "description": "Reference to Patient entity"

@@ -234,36 +234,26 @@ function requestSnapshot(referral: Record<string, any>, providerName: string) {
   };
 }
 
-function appBaseUrl(req: Request) {
-  const configured = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim();
-  const requestOrigin = String(req.headers.get('origin') || '').trim();
-  const candidates = [configured, requestOrigin, 'https://caremetricai.base44.app'];
-  for (const candidate of candidates) {
-    try {
-      const parsed = new URL(candidate);
-      const host = parsed.hostname.toLowerCase();
-      const isConfigured = !!configured && candidate === configured;
-      const isBase44Host = host === 'base44.app'
-        || host.endsWith('.base44.app')
-        || host === 'base44.io'
-        || host.endsWith('.base44.io');
-      if (
-        parsed.protocol === 'https:'
-        && !parsed.username
-        && !parsed.password
-        && (isConfigured || isBase44Host)
-      ) return parsed.origin;
-    } catch {
-      // Try the reviewed compatibility origin.
-    }
-  }
+function getAppBaseUrl() {
+  const configured = String(Deno.env.get('APP_PUBLIC_URL') || '').trim();
+  if (!configured) throw new PublicError(500, 'Public provider portal URL is not configured');
+  let parsed;
   try {
-    const own = new URL(req.url);
-    if (own.protocol === 'https:') return own.origin;
+    parsed = new URL(configured);
   } catch {
-    // Handled below.
+    throw new PublicError(500, 'Public provider portal URL is not configured');
   }
-  throw new PublicError(500, 'Public provider portal URL is not configured');
+  if (
+    parsed.protocol !== 'https:'
+    || parsed.username
+    || parsed.password
+    || parsed.pathname !== '/'
+    || parsed.search
+    || parsed.hash
+  ) {
+    throw new PublicError(500, 'Public provider portal URL is not configured');
+  }
+  return parsed.origin;
 }
 
 function exactTokenRecord(row: Record<string, any>, expected: Record<string, any>) {
@@ -341,6 +331,10 @@ Deno.serve(async (req) => {
   let base44: Record<string, any> | null = null;
   try {
     const input = await parseInput(req);
+    // Resolve the environment-specific public origin before SDK construction,
+    // token creation, referral mutation, or prior-token revocation. A staging
+    // deployment must never mint a capability whose link points at production.
+    const portalOrigin = getAppBaseUrl();
     base44 = createClientFromRequest(req);
     const user = await base44.auth.me().catch(() => null);
     const userId = exactIdentifier(user?.id);
@@ -468,7 +462,7 @@ Deno.serve(async (req) => {
     return Response.json({
       success: true,
       token_id: createdTokenId,
-      portal_link: `${appBaseUrl(req)}/followup?token=${encodeURIComponent(token)}`,
+      portal_link: `${portalOrigin}/followup?token=${encodeURIComponent(token)}`,
       expires_at: expiresAt,
       referral_version: bound.referral.version,
     }, { status: 201, headers: NO_STORE_HEADERS });

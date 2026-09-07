@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
 
-test('inbound Referral fax worker is tenant-bound and conditionally mutates protected rows', async () => {
+test('inbound Referral fax worker is tenant-bound and keeps heuristic matches advisory', async () => {
   const source = await readFile(
     new URL('../functions/processInboundFaxes/entry.ts', import.meta.url),
     'utf8',
@@ -18,12 +18,18 @@ test('inbound Referral fax worker is tenant-bound and conditionally mutates prot
   assert.match(source, /IncomingFax\.filter\([\s\S]{0,180}agency_id:\s*agencyId/);
   assert.match(source, /TelecomDestinationBinding\.filter/);
   assert.match(source, /IncomingFax\.updateMany/);
-  assert.match(source, /Referral\.updateMany/);
+  assert.doesNotMatch(source, /Referral\.updateMany/);
+  assert.doesNotMatch(source, /extractItemAnswers/);
+  assert.match(source, /no referral data was changed/i);
   assert.match(source, /dedupe_key:\s*dedupeKey/);
   assert.match(source, /claimed_by:\s*runId/);
 });
 
-async function loadStaleFollowUpHandler(makeClient, env = new Map()) {
+async function loadStaleFollowUpHandler(
+  makeClient,
+  env = new Map(),
+  { releaseEnabled = true } = {},
+) {
   let source = await readFile(
     new URL('../functions/checkStaleFollowUpRequests/entry.ts', import.meta.url),
     'utf8',
@@ -41,7 +47,13 @@ async function loadStaleFollowUpHandler(makeClient, env = new Map()) {
   globalThis.__staleFollowUpCreateClient = makeClient;
   globalThis.Deno = {
     serve: (candidate) => { handler = candidate; },
-    env: { get: (name) => env.get(name) },
+    env: {
+      get: (name) => (
+        name === 'WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS' && releaseEnabled
+          ? 'enabled-v1'
+          : env.get(name)
+      ),
+    },
   };
   try {
     await import(`${pathToFileURL(target).href}?case=${Math.random()}`);
@@ -177,6 +189,19 @@ function staleFollowUpRequest(body = { agency_id: 'agency-a', stale_days: 4 }) {
     body: JSON.stringify(body),
   });
 }
+
+test('stale follow-up workflow is disabled before SDK construction by default', async () => {
+  let constructed = false;
+  const handler = await loadStaleFollowUpHandler(() => {
+    constructed = true;
+    throw new Error('SDK must not be constructed');
+  }, new Map(), { releaseEnabled: false });
+  const response = await handler(staleFollowUpRequest());
+  assert.equal(response.status, 503);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal((await response.json()).code, 'stale_follow_up_workflow_disabled');
+  assert.equal(constructed, false);
+});
 
 test('stale follow-up worker is tenant-bound, conditional, and duplicate-safe', async () => {
   const runtime = createStaleFollowUpRuntime();

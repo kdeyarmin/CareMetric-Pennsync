@@ -25,6 +25,69 @@ import { transpileTs } from "../../tools-transpile-ts.mjs";
  */
 globalThis.Deno = globalThis.Deno || { serve() {}, env: { get: () => undefined } };
 
+const TEST_TELNYX_ENTRY = new URL('../functions/testTelnyxConnection/entry.ts', import.meta.url);
+const CREDENTIAL_STORE_UNAVAILABLE = 'credential_store_unavailable';
+
+async function withTestTelnyxHandler(client, fetchImpl, run) {
+  const source = await readFile(TEST_TELNYX_ENTRY, 'utf8');
+  const rewritten = source.replace(
+    /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
+    'const createClientFromRequest = () => globalThis.__testTelnyxClient;',
+  );
+  const temporaryModule = join(
+    tmpdir(),
+    `test_telnyx_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`,
+  );
+  await writeFile(temporaryModule, transpileTs(rewritten).outputText);
+
+  const priorDeno = globalThis.Deno;
+  const priorFetch = globalThis.fetch;
+  const priorClient = globalThis.__testTelnyxClient;
+  let handler;
+  globalThis.__testTelnyxClient = client;
+  globalThis.fetch = fetchImpl;
+  globalThis.Deno = {
+    serve: (candidate) => { handler = candidate; },
+    env: { get: () => undefined },
+  };
+  try {
+    await import(pathToFileURL(temporaryModule).href);
+    assert.equal(typeof handler, 'function');
+    return await run(handler);
+  } finally {
+    globalThis.Deno = priorDeno;
+    globalThis.fetch = priorFetch;
+    globalThis.__testTelnyxClient = priorClient;
+    await unlink(temporaryModule).catch(() => {});
+  }
+}
+
+function diagnosticClient({ credentialRows = [], credentialError, authError } = {}) {
+  return {
+    auth: {
+      me: async () => {
+        if (authError) throw authError;
+        return { id: 'admin-a', role: 'admin', is_active: true, agency_name: 'agency-a' };
+      },
+    },
+    asServiceRole: {
+      entities: {
+        IntegrationSecret: {
+          filter: async () => {
+            if (credentialError) throw credentialError;
+            return credentialRows;
+          },
+        },
+        AgencySettings: {
+          filter: async () => [],
+          list: async () => [],
+        },
+        User: { list: async () => [] },
+      },
+    },
+  };
+}
+
 async function loadInline(entryPath, names) {
   let src = await readFile(new URL(entryPath, import.meta.url), "utf8");
   src = src.replace(/import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/, "const createClientFromRequest = () => ({});");
@@ -147,31 +210,135 @@ test("resolveTelnyxCreds picks the active, populated row rather than whatever so
 // with a perfectly good key was told to add the key. Both incidents (2026-07-22,
 // 2026-08-05) ended with someone adding a TELNYX_* env fallback that had to be
 // reverted. A read failure must say so, in every copy.
-test("a failed IntegrationSecret read reports readError, not 'not configured'", async () => {
+test("a failed IntegrationSecret read reports a fixed category, not raw SDK text or 'not configured'", async () => {
+  const sensitiveFailure = 'Service token rejected request containing patient Jane Example and api-key-secret';
   const throwing = {
     asServiceRole: {
       entities: {
         IntegrationSecret: {
-          filter: async () => { throw new Error("Service token is required to use asServiceRole"); },
+          filter: async () => { throw new Error(sensitiveFailure); },
         },
       },
     },
   };
-  for (const file of Object.keys(FILES)) {
-    const mod = await loadInline(file, ["resolveTelnyxCreds", "telnyxCredsMessage"]);
-    const got = await mod.resolveTelnyxCreds(throwing);
-    assert.equal(got.apiKey, null, `${file} must not invent a key`);
-    assert.match(got.readError || "", /Service token is required/, `${file} must surface the read failure`);
+  const logged = [];
+  const priorConsoleError = console.error;
+  console.error = (...args) => logged.push(args);
+  try {
+    for (const file of Object.keys(FILES)) {
+      const mod = await loadInline(file, ["resolveTelnyxCreds", "telnyxCredsMessage"]);
+      const got = await mod.resolveTelnyxCreds(throwing);
+      assert.equal(got.apiKey, null, `${file} must not invent a key`);
+      assert.equal(
+        got.readError,
+        CREDENTIAL_STORE_UNAVAILABLE,
+        `${file} must return only the fixed credential-store failure category`,
+      );
 
-    const message = mod.telnyxCredsMessage(got, "fax credentials");
-    assert.match(message, /Could not read Telnyx fax credentials/, `${file} message must name a read failure`);
-    assert.doesNotMatch(message, /add the API key/, `${file} must not tell the admin to re-enter a key that is not the problem`);
+      const message = mod.telnyxCredsMessage(got, "fax credentials");
+      assert.match(message, /Could not read Telnyx fax credentials/, `${file} message must name a read failure`);
+      assert.doesNotMatch(message, /add the API key/, `${file} must not tell the admin to re-enter a key that is not the problem`);
+      assert.doesNotMatch(message, new RegExp(sensitiveFailure), `${file} must not echo the SDK error`);
 
-    // And the unconfigured case still reads as unconfigured.
-    const absent = await mod.resolveTelnyxCreds(makeBase44([]));
-    assert.equal(absent.readError, null, `${file} must not claim a read error when the row is simply absent`);
-    assert.match(mod.telnyxCredsMessage(absent, "credentials"), /not configured/, `${file} unconfigured message`);
+      // And the unconfigured case still reads as unconfigured.
+      const absent = await mod.resolveTelnyxCreds(makeBase44([]));
+      assert.equal(absent.readError, null, `${file} must not claim a read error when the row is simply absent`);
+      assert.match(mod.telnyxCredsMessage(absent, "credentials"), /not configured/, `${file} unconfigured message`);
+    }
+  } finally {
+    console.error = priorConsoleError;
   }
+
+  assert.equal(logged.length, Object.keys(FILES).length);
+  for (const args of logged) {
+    assert.deepEqual(args, ['resolveTelnyxCreds: Telnyx credential lookup failed']);
+    assert.doesNotMatch(JSON.stringify(args), new RegExp(sensitiveFailure));
+  }
+});
+
+test('testTelnyxConnection classifies credential-store and provider failures without echoing details', async () => {
+  const credentialFailure = 'SDK failure with patient Jane Example and api-key-secret';
+  const credentialLogs = [];
+  const priorConsoleError = console.error;
+  console.error = (...args) => credentialLogs.push(args);
+  try {
+    await withTestTelnyxHandler(
+      diagnosticClient({ credentialError: new Error(credentialFailure) }),
+      async () => { throw new Error('the live provider probe must be skipped'); },
+      async (handler) => {
+        const response = await handler({ method: 'POST' });
+        const report = await response.json();
+        assert.equal(response.status, 200);
+        const apiKey = report.checks.find((check) => check.id === 'telnyx_api_key');
+        const live = report.checks.find((check) => check.id === 'telnyx_api_live');
+        assert.equal(apiKey.category, CREDENTIAL_STORE_UNAVAILABLE);
+        assert.equal(live.category, CREDENTIAL_STORE_UNAVAILABLE);
+        assert.equal(apiKey.status, 'fail');
+        assert.equal(live.status, 'fail');
+        assert.doesNotMatch(JSON.stringify(report), new RegExp(credentialFailure));
+      },
+    );
+  } finally {
+    console.error = priorConsoleError;
+  }
+  assert.deepEqual(credentialLogs, [['resolveTelnyxCreds: Telnyx credential lookup failed']]);
+
+  const providerFailure = 'network stack echoed Authorization: Bearer provider-api-key-secret';
+  await withTestTelnyxHandler(
+    diagnosticClient({
+      credentialRows: [{ provider: 'telnyx', api_key: 'provider-api-key-secret', is_active: true }],
+    }),
+    async () => { throw new Error(providerFailure); },
+    async (handler) => {
+      const response = await handler({ method: 'POST' });
+      const report = await response.json();
+      const live = report.checks.find((check) => check.id === 'telnyx_api_live');
+      assert.equal(response.status, 200);
+      assert.equal(live.category, 'provider_unreachable');
+      assert.equal(live.status, 'fail');
+      assert.doesNotMatch(JSON.stringify(report), /provider-api-key-secret/);
+      assert.doesNotMatch(JSON.stringify(report), new RegExp(providerFailure));
+    },
+  );
+});
+
+test('testTelnyxConnection outer SDK failures use a fixed response category and log message', async () => {
+  const sdkFailure = 'auth SDK retained request body for patient Jane Example';
+  const logged = [];
+  const priorConsoleError = console.error;
+  console.error = (...args) => logged.push(args);
+  try {
+    await withTestTelnyxHandler(
+      diagnosticClient({ authError: new Error(sdkFailure) }),
+      async () => { throw new Error('provider fetch must not run'); },
+      async (handler) => {
+        const response = await handler({ method: 'POST' });
+        const body = await response.json();
+        assert.equal(response.status, 500);
+        assert.deepEqual(body, {
+          error: 'Telnyx connection diagnostic is unavailable',
+          code: 'diagnostic_unavailable',
+        });
+        assert.doesNotMatch(JSON.stringify(body), new RegExp(sdkFailure));
+      },
+    );
+  } finally {
+    console.error = priorConsoleError;
+  }
+  assert.deepEqual(logged, [['testTelnyxConnection diagnostic failed']]);
+});
+
+test('canonical Telnyx credential helper retains no raw error object or message', async () => {
+  const source = await readFile(new URL('../_shared/backendHelpers.mjs', import.meta.url), 'utf8');
+  const start = source.indexOf('resolveTelnyxCreds: `');
+  const end = source.indexOf('`,\n\n  // Resolve SMS authority', start);
+  assert.ok(start >= 0 && end > start, 'canonical resolveTelnyxCreds helper must remain discoverable');
+  const helper = source.slice(start, end);
+
+  assert.match(helper, /readError = 'credential_store_unavailable'/);
+  assert.match(helper, /console\.error\('resolveTelnyxCreds: Telnyx credential lookup failed'\)/);
+  assert.doesNotMatch(helper, /(?:err|error)\?*\.message|String\((?:err|error)\.message\)/);
+  assert.doesNotMatch(helper, /\$\{creds\.readError\}/);
 });
 
 // Coverage completeness: a new inline copy that nobody adds to FILES would be

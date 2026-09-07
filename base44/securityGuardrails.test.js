@@ -479,25 +479,39 @@ for (const functionName of HARD_PAUSED_CAPABILITY_FUNCTIONS) {
 }
 
 const DORMANT_SIGNATURE_BROKERS = {
-  validateSignerToken: 'PUBLIC_SIGNATURE_RELEASE_ENABLED',
-  submitSignerSignature: 'PUBLIC_SIGNATURE_RELEASE_ENABLED',
-  generateSignerToken: 'PUBLIC_SIGNATURE_RELEASE_ENABLED',
-  scheduleSignatureReminders: 'SIGNATURE_REMINDER_RELEASE_ENABLED',
-  dispatchScheduledSignatureReminders: 'SIGNATURE_REMINDER_DISPATCH_ENABLED',
+  validateSignerToken: { releaseMarker: 'PUBLIC_SIGNATURE_RELEASE_ENABLED' },
+  submitSignerSignature: { releaseMarker: 'PUBLIC_SIGNATURE_RELEASE_ENABLED' },
+  generateSignerToken: { releaseMarker: 'PUBLIC_SIGNATURE_RELEASE_ENABLED' },
+  scheduleSignatureReminders: {
+    releaseMarker: 'SIGNATURE_REMINDER_RELEASE_ENABLED',
+    proofMarker: 'SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN',
+  },
+  dispatchScheduledSignatureReminders: {
+    releaseMarker: 'SIGNATURE_REMINDER_DISPATCH_ENABLED',
+    proofMarker: 'SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN',
+  },
 };
 
-for (const [functionName, marker] of Object.entries(DORMANT_SIGNATURE_BROKERS)) {
+for (const [functionName, { releaseMarker, proofMarker }] of Object.entries(DORMANT_SIGNATURE_BROKERS)) {
   test(`${functionName} retains a dormant implementation behind its early release gate`, () => {
     const src = read(`base44/functions/${functionName}/entry.ts`);
-    assert.match(src, new RegExp(`const ${marker} = false;`));
+    assert.match(src, new RegExp(`const ${releaseMarker} = false;`));
+    if (proofMarker) assert.match(src, new RegExp(`const ${proofMarker} = false;`));
     assert.match(src, /npm:\@base44\/sdk\@0\.8\.46/);
     const handlerIndex = src.indexOf('Deno.serve(async (req) =>');
-    const guardIndex = src.indexOf(`if (!${marker})`, handlerIndex);
+    const guardIndex = src.indexOf(`if (!${releaseMarker}`, handlerIndex);
     const clientIndex = src.indexOf('createClientFromRequest(req)', handlerIndex);
     assert.notEqual(handlerIndex, -1);
     assert.notEqual(guardIndex, -1);
     assert.notEqual(clientIndex, -1);
     assert.ok(guardIndex < clientIndex, `${functionName} must gate before SDK construction`);
+    if (proofMarker) {
+      const proofDeclarationIndex = src.indexOf(`const ${proofMarker} = false;`);
+      const proofGuardIndex = src.indexOf(`!${proofMarker}`, guardIndex);
+      assert.ok(proofDeclarationIndex < handlerIndex, `${functionName} must declare its atomic proof gate before the handler`);
+      assert.ok(proofGuardIndex > guardIndex && proofGuardIndex < clientIndex,
+        `${functionName} must require atomic uniqueness proof before SDK construction`);
+    }
     for (const bodyCall of ['req.text()', 'req.formData()', 'req.json()', 'req.arrayBuffer()']) {
       const bodyIndex = src.indexOf(bodyCall, handlerIndex);
       if (bodyIndex !== -1) assert.ok(guardIndex < bodyIndex, `${functionName} must gate before ${bodyCall}`);
@@ -700,8 +714,8 @@ test('functions with agency_name scope gates refuse agency_admin without agency_
 
 // A direct provider Messages-API call must send a REAL model id, never the
 // Base44 InvokeLLM sentinel 'automatic' (which 404s on api.anthropic.com and
-// made every SOAP-note / fax-cover-sheet generation silently fail).
-for (const fn of ['transcribeAndGenerateSOAPNote', 'generateFaxCoverPage']) {
+// made SOAP-note generation silently fail).
+for (const fn of ['transcribeAndGenerateSOAPNote']) {
   test(`${fn} does not send model:'automatic' to the direct Anthropic API`, () => {
     const src = read(`base44/functions/${fn}/entry.ts`);
     assert.ok(/api\.anthropic\.com/.test(src), `${fn} is expected to call the Anthropic Messages API directly.`);
@@ -711,6 +725,13 @@ for (const fn of ['transcribeAndGenerateSOAPNote', 'generateFaxCoverPage']) {
     );
   });
 }
+
+test('generateFaxCoverPage formats deterministically without sending PHI to an AI provider', () => {
+  const src = read('base44/functions/generateFaxCoverPage/entry.ts');
+  assert.ok(/function buildFaxCoverPage\(/.test(src));
+  assert.ok(/FAX_CONFIDENTIALITY_NOTICE/.test(src));
+  assert.ok(!/api\.anthropic\.com|ANTHROPIC_API_KEY|InvokeLLM/.test(src));
+});
 
 // gradeTrainingAttempt must derive the pass mark from the ADMIN-OWNED course,
 // not solely from the learner-writable TrainingAssignment row — otherwise a
@@ -814,19 +835,13 @@ test('autoRetryFailedFaxes claims only strict terminal private attempts and dele
   );
 });
 
-// Every retained AI implementation must assertPatientAccess after the patient
-// load so a facility admin (bare role:admin RLS is platform-wide) cannot pull
-// another agency's chart into an LLM prompt. The three message-domain entries
-// in this list are additionally unreachable behind the static 503 checkpoint;
-// messageBrokerContract exercises their dormant code only in rewritten copies.
+// Every directly authorized retained AI implementation must assertPatientAccess
+// after the patient load so a facility admin (bare role:admin RLS is
+// platform-wide) cannot pull another agency's chart into an LLM prompt.
 for (const file of [
   'base44/functions/generateDischargeSummary/entry.ts',
-  'base44/functions/generateMessageSuggestions/entry.ts',
   'base44/functions/generatePatientEducation/entry.ts',
-  'base44/functions/summarizeMessageThread/entry.ts',
   'base44/functions/generateFaxCoverPage/entry.ts',
-  'base44/functions/messagingAssistant/entry.ts',
-  'base44/functions/processCompletedVisit/entry.ts',
 ]) {
   test(`${file} retained implementation gates patient PHI with assertPatientAccess`, () => {
     const src = read(file);
@@ -840,6 +855,50 @@ for (const file of [
     );
   });
 }
+
+// The two purpose-bound message AI brokers use their v2 tenant authority and
+// exact PatientCareTeamAssignment provenance rather than the older helper
+// signature. The dynamic message broker contract exercises these dormant paths.
+for (const file of [
+  'base44/functions/generateMessageSuggestions/entry.ts',
+  'base44/functions/summarizeMessageThread/entry.ts',
+]) {
+  test(`${file} gates patient PHI with exact secure-message assignment authority`, () => {
+    const src = read(file);
+    assert.match(src, /const SECURE_MESSAGE_DOMAIN_PAUSED = true;/);
+    assert.match(src, /async function requirePatientAccess\(/);
+    assert.match(src, /entities\.PatientCareTeamAssignment\.filter\(/);
+    assert.match(src, /await requirePatientAccess\(entities,\s*patient,\s*authority\);/);
+    assert.match(src, /assignment\.version % 2 !== 1/);
+    assert.match(src, /Date\.parse\(assignment\.updated_date\) < Date\.parse\(assignment\.last_transition_at\)/);
+  });
+}
+
+test('messagingAssistant remains a static purpose-bound retirement boundary', () => {
+  const src = read('base44/functions/messagingAssistant/entry.ts');
+  assert.match(src, /const SECURE_MESSAGE_DOMAIN_PAUSED = true;/);
+  assert.match(src, /if \(SECURE_MESSAGE_DOMAIN_PAUSED\) return secureMessageUnavailable\(\);/);
+  assert.match(src, /code:\s*'secure_message_purpose_broker_required'/);
+  assert.doesNotMatch(src, /createClientFromRequest\s*\(/);
+  assert.doesNotMatch(src, /\b_req\.(?:json|text|arrayBuffer|formData)\(/);
+});
+
+test('processCompletedVisit delegates PHI reads and Visit writes through updateAuthorizedVisit', () => {
+  const src = read('base44/functions/processCompletedVisit/entry.ts');
+  const markerIndex = src.indexOf('const PROCESS_COMPLETED_VISIT_PAUSED = true;');
+  const handlerIndex = src.indexOf('Deno.serve(async (req) =>');
+  const guardIndex = src.indexOf('if (PROCESS_COMPLETED_VISIT_PAUSED)', handlerIndex);
+  const clientIndex = src.indexOf('createClientFromRequest(req)', handlerIndex);
+  assert.ok(markerIndex !== -1 && markerIndex < handlerIndex
+    && handlerIndex < guardIndex && guardIndex < clientIndex,
+  'processCompletedVisit must pause before SDK construction');
+  assert.match(src.slice(guardIndex, clientIndex), /status:\s*503/);
+  assert.match(src, /base44\.functions\.fetch\('\/updateAuthorizedVisit'/);
+  for (const action of ['read_ai_processing_source', 'claim_ai_processing', 'publish_ai_processing']) {
+    assert.match(src, new RegExp(`action: '${action}'`));
+  }
+  assert.doesNotMatch(src, /asServiceRole\.entities\.(?:Visit|Patient)\b/);
+});
 
 test('getPatientContext is a static permanent-retirement boundary', () => {
   const src = read('base44/functions/getPatientContext/entry.ts');

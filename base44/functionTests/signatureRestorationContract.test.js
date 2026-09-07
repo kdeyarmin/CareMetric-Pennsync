@@ -80,6 +80,57 @@ test('token, review, signature, and delivery code retains fail-closed security i
   assert.doesNotMatch(submit, /signed_pdf_url\s*:/);
 });
 
+test('signature reminder scheduling requires exact requester membership and audit-before-dispatch', async () => {
+  const scheduler = await source('scheduleSignatureReminders');
+  assert.match(scheduler, /const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = false;/);
+  assert.match(scheduler, /!SIGNATURE_REMINDER_RELEASE_ENABLED \|\| !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN/);
+  assert.match(scheduler, /Platform ownership is not tenant membership/);
+  assert.match(scheduler, /\{ agency_id: agencyId, user_id: userId \}/);
+  assert.doesNotMatch(scheduler, /authority\.membership\?\.id\s*\?\?/);
+  assert.doesNotMatch(scheduler, /authority\.membership\?\.version\s*\?\?/);
+  assert.match(scheduler, /status:\s*'pending_audit'/);
+  assert.match(scheduler, /ensureScheduleAudit/);
+  const pendingAuditIndex = scheduler.indexOf("status: 'pending_audit'");
+  const auditIndex = scheduler.indexOf('const event = await ensureScheduleAudit', pendingAuditIndex);
+  const activationIndex = scheduler.indexOf("status: 'pending'", auditIndex);
+  assert.ok(pendingAuditIndex >= 0 && pendingAuditIndex < auditIndex && auditIndex < activationIndex);
+  assert.match(scheduler, /audit_event_id:\s*event\.id/);
+  assert.match(scheduler, /audit_confirmed_at:\s*auditConfirmedAt/);
+  assert.match(scheduler, /const authorizedInput = \{ \.\.\.input, deadline: target\.deadline \}/);
+  assert.match(scheduler, /deadline_date:\s*target\.deadline/);
+  assert.doesNotMatch(scheduler, /deadline:\s*record\.deadline_date/);
+  assert.match(scheduler, /deriveAuthorityDeadline\(pkg, authoritySignatures\)/);
+
+  const entity = JSON5.parse(await readFile(
+    new URL('entities/ScheduledSignatureReminder.jsonc', ROOT), 'utf8',
+  ));
+  assert.ok(entity.properties.status.enum.includes('pending_audit'));
+  assert.equal(entity.properties.status.default, 'pending_audit');
+  assert.ok(entity.properties.audit_event_id);
+  assert.ok(entity.properties.audit_confirmed_at);
+});
+
+test('stale sending reminders become indeterminate and can never be auto-resent', async () => {
+  const dispatcher = await source('dispatchScheduledSignatureReminders');
+  assert.match(dispatcher, /const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = false;/);
+  assert.match(dispatcher, /!SIGNATURE_REMINDER_DISPATCH_ENABLED \|\| !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN/);
+  assert.match(dispatcher, /quarantineStaleReminderClaims/);
+  assert.match(dispatcher, /\{ status: 'sending', delivery_state: 'pending' \}/);
+  assert.match(dispatcher, /status:\s*'indeterminate'/);
+  assert.match(dispatcher, /delivery_state:\s*'indeterminate'/);
+  assert.match(dispatcher, /automatic resend is blocked/);
+  assert.match(dispatcher, /stale_indeterminate:\s*staleIndeterminate/);
+  assert.match(dispatcher, /!auditEventId/);
+  assert.match(dispatcher, /Signature reminder schedule audit is invalid/);
+  assert.match(dispatcher, /event_key:\s*scheduleEventKey/);
+  assert.match(dispatcher, /scheduleAudit\.membership_id !== reminder\.membershipId/);
+  assert.match(dispatcher, /quarantinePendingReminder/);
+  assert.match(dispatcher, /quarantineDuplicateReminderKey/);
+  assert.match(dispatcher, /const postClaimDuplicates/);
+  assert.match(dispatcher, /reminder\.deadline_date !== deadline/);
+  assert.match(dispatcher, /Date\.parse\(target\.deadline\)/);
+});
+
 test('signature authority entities are browser-denied and carry immutable snapshot fields', async () => {
   const required = {
     DocumentSignature: ['agency_id', 'created_by_user_id', 'creator_membership_id', 'document_binding_id', 'document_content_sha256', 'authority_version'],

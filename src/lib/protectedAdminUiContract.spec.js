@@ -164,4 +164,20 @@ describe('protected-admin frontend alignment', () => {
     expect(features).toMatch(/personalized skill-gap analysis is currently unavailable/);
     expect(features).not.toMatch(/Review individual nurse metrics|View your personalized learning path/);
   });
+
+  it('does not market hard-paused Clinical Pathways as active automation', () => {
+    const features = read('src/pages/Features.jsx');
+    const start = features.indexOf('category: "Clinical Pathways"');
+    const end = features.indexOf('category: "Workflow & Notifications"', start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+
+    const pathwayCatalog = features.slice(start, end);
+    expect(pathwayCatalog.match(/paused:\s*true/g)).toHaveLength(4);
+    expect(pathwayCatalog.match(/timeSaved:\s*"Unavailable"/g)).toHaveLength(4);
+    expect(pathwayCatalog.match(/description:\s*"Paused:/g)).toHaveLength(4);
+    expect(pathwayCatalog).not.toMatch(
+      /Automatic pathway activation|Pathways trigger automatically|Click 'Create Tasks'|Navigate to Clinical Pathway Manager to create/,
+    );
+  });
 });

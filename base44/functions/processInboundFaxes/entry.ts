@@ -1,5 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
+// Keep OCR and referral-fax routing inert after source deployment. Enabling a
+// hosted schedule is not sufficient: a reviewed release must also opt this
+// exact handler revision in after media, correlation, and replay validation.
+const INBOUND_FAX_WORKFLOW_ENABLED =
+  String(Deno.env.get('WORKFLOW_RELEASE_PROCESS_INBOUND_FAXES') || '').trim() === 'enabled-v1';
+
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
@@ -59,6 +65,7 @@ const MEMBERSHIP_SCAN_LIMIT = 100;
 const NOTIFICATION_SCAN_LIMIT = 10;
 const MAX_OCR_ATTEMPTS = 5;
 const CLAIM_LEASE_MS = 15 * 60 * 1000;
+const ROW_RETRY_LEASE_MS = 5 * 60 * 1000;
 const ENABLED_AGENCY_STATUSES = new Set(['active', 'trial']);
 const MEMBERSHIP_STATUSES = new Set(['pending', 'active', 'suspended', 'revoked']);
 const TENANT_ROLES = new Set([
@@ -453,7 +460,6 @@ async function loadReferralScan(entities: Record<string, any>, agencyId: string)
     ),
     'Referral.filter',
   );
-  if (rows.length >= MAX_REFERRAL_SCAN) throw new PublicError(409, 'Referral scan is incomplete');
   if (rows.some((row) => row?.agency_id !== agencyId || row?.archived_at != null)) {
     throw new PublicError(409, 'Referral scan scope could not be verified');
   }
@@ -485,13 +491,18 @@ async function buildCandidates(
   for (const referral of referrals) {
     const followUp = referral.follow_up_requests;
     if (!plainObject(followUp) || followUp.status !== 'sent' || followUp.sent_via !== 'fax') continue;
-    if (!validInstant(followUp.generated_at) || !Array.isArray(followUp.items)) {
-      throw new PublicError(409, 'Referral follow-up integrity check failed');
+    if (!validInstant(followUp.generated_at) || !Array.isArray(followUp.items)) continue;
+    // Candidate matching is advisory only. A bounded set can safely miss a
+    // suggestion because the fax remains in manual review; it must not stop OCR
+    // or strand the agency queue.
+    if (candidates.length >= MAX_CANDIDATES) break;
+    let sentToNumber;
+    try {
+      sentToNumber = await loadFaxDestination(entities, referral);
+    } catch (error) {
+      if (!(error instanceof PublicError)) throw error;
+      continue;
     }
-    if (candidates.length >= MAX_CANDIDATES) {
-      throw new PublicError(409, 'Referral fax candidate scan is incomplete');
-    }
-    const sentToNumber = await loadFaxDestination(entities, referral);
     if (!sentToNumber) continue;
     candidates.push({
       referral,
@@ -556,42 +567,13 @@ function bestFaxBackMatch(
     const signals = matchSignals(fax, candidate);
     const score = Object.values(signals).filter(Boolean).length;
     if (score === 0 || !(signals.patient_name || signals.patient_dob || signals.sender_number)) continue;
-    const confident = signals.patient_name && score >= 2;
     if (!best || score > best.score) {
-      best = { candidate, signals, score, confident, tied: false };
+      best = { candidate, signals, score, tied: false };
     } else if (score === best.score) {
-      best = { ...best, confident: false, tied: true };
+      best = { ...best, tied: true };
     }
   }
   return best;
-}
-
-function applyFaxAnswersToItems(
-  items: Array<Record<string, any>>,
-  answers: Array<Record<string, any>>,
-  answeredAt: string,
-) {
-  const byId = new Map<string, string>();
-  for (const answer of answers || []) {
-    const id = exactIdentifier(answer?.id);
-    const response = typeof answer?.response_text === 'string'
-      ? answer.response_text.trim().slice(0, 4000)
-      : '';
-    if (id && answer?.answered === true && response) byId.set(id, response);
-  }
-  let answeredCount = 0;
-  const merged = items.map((item) => {
-    const response = byId.get(item?.id);
-    if (!response || (item.item_status && item.item_status !== 'open')) return item;
-    answeredCount += 1;
-    return {
-      ...item,
-      item_status: 'answered',
-      response: { text: response, source: 'fax' },
-      answered_at: answeredAt,
-    };
-  });
-  return { items: merged, answeredCount };
 }
 
 async function claimFax(
@@ -675,6 +657,12 @@ async function releaseFailedOcr(entities: Record<string, any>, fax: Record<strin
     claimed_by: null,
     claimed_at: null,
     ocr_attempts: attempts,
+    processing_next_attempt_at: attempts >= MAX_OCR_ATTEMPTS
+      ? null
+      : new Date(Date.now() + ROW_RETRY_LEASE_MS).toISOString(),
+    processing_last_error_code: attempts >= MAX_OCR_ATTEMPTS
+      ? 'ocr_retry_exhausted'
+      : 'ocr_retry_deferred',
   });
 }
 
@@ -683,6 +671,135 @@ async function releaseClaimForRetry(entities: Record<string, any>, fax: Record<s
     processing_status: 'pending',
     claimed_by: null,
     claimed_at: null,
+    processing_next_attempt_at: new Date(Date.now() + ROW_RETRY_LEASE_MS).toISOString(),
+    processing_last_error_code: 'transient_processing_error',
+  });
+}
+
+async function deferIncomingFax(
+  entities: Record<string, any>,
+  fax: Record<string, any>,
+  code: string,
+) {
+  const id = exactIdentifier(fax?.id);
+  const agencyId = exactIdentifier(fax?.agency_id);
+  if (!id || !agencyId || !['pending', 'processing'].includes(fax?.processing_status)
+      || !Number.isSafeInteger(fax?.version) || fax.version < 1
+      || !validInstant(fax?.updated_date)) return false;
+  const attempts = Number.isSafeInteger(fax?.processing_attempt_count)
+      && fax.processing_attempt_count >= 0
+    ? Math.min(fax.processing_attempt_count + 1, Number.MAX_SAFE_INTEGER)
+    : 1;
+  const result = await entities.IncomingFax.updateMany(
+    {
+      id,
+      agency_id: agencyId,
+      processing_status: fax.processing_status,
+      version: fax.version,
+      updated_date: fax.updated_date,
+    },
+    { $set: {
+      processing_next_attempt_at: new Date(Date.now() + ROW_RETRY_LEASE_MS).toISOString(),
+      processing_attempt_count: attempts,
+      processing_last_error_code: code,
+    }, $inc: { version: 1 } },
+  ).catch(() => null);
+  return successfulSingleUpdate(result);
+}
+
+async function loadIncomingFaxQueue(
+  entities: Record<string, any>,
+  agencyId: string,
+  status: string,
+  now = new Date().toISOString(),
+) {
+  const buckets = [];
+  for (const spec of [
+    {
+      query: {
+        agency_id: agencyId,
+        processing_status: status,
+        processing_quarantined_at: { $exists: false },
+        processing_next_attempt_at: { $exists: false },
+      },
+      sort: 'received_at',
+    },
+    {
+      query: {
+        agency_id: agencyId,
+        processing_status: status,
+        processing_quarantined_at: { $exists: false },
+        processing_next_attempt_at: { $lte: now },
+      },
+      sort: 'processing_next_attempt_at',
+    },
+  ]) {
+    const rows = requireRows(
+      await entities.IncomingFax.filter(spec.query, spec.sort, MAX_INCOMING_SCAN),
+      'IncomingFax.filter',
+    );
+    buckets.push(rows);
+  }
+  const rows = [];
+  const seen = new Set<string>();
+  for (let index = 0; rows.length < MAX_INCOMING_SCAN; index++) {
+    let found = false;
+    for (const bucket of buckets) {
+      const row = bucket[index];
+      if (!row) continue;
+      found = true;
+      const id = exactIdentifier(row?.id);
+      if (id && seen.has(id)) continue;
+      if (id) seen.add(id);
+      rows.push(row);
+      if (rows.length >= MAX_INCOMING_SCAN) break;
+    }
+    if (!found) break;
+  }
+  return rows;
+}
+
+async function quarantineIncomingFax(
+  entities: Record<string, any>,
+  fax: Record<string, any>,
+  code: string,
+) {
+  const id = exactIdentifier(fax?.id);
+  const agencyId = exactIdentifier(fax?.agency_id);
+  const status = fax?.processing_status;
+  const updatedDate = typeof fax?.updated_date === 'string' ? fax.updated_date : null;
+  const rawVersion = fax?.version;
+  const filterVersion = (typeof rawVersion === 'number' || typeof rawVersion === 'string')
+    ? rawVersion
+    : null;
+  if (!id || !agencyId || !['pending', 'processing'].includes(status)
+      || !updatedDate || filterVersion == null) return false;
+  const nextVersion = Number.isSafeInteger(rawVersion) && rawVersion >= 1 ? rawVersion + 1 : 1;
+  const result = await entities.IncomingFax.updateMany(
+    { id, agency_id: agencyId, processing_status: status, version: filterVersion, updated_date: updatedDate },
+    { $set: {
+      processing_status: 'failed',
+      claimed_by: null,
+      claimed_at: null,
+      processing_quarantined_at: new Date().toISOString(),
+      processing_last_error_code: code,
+      version: nextVersion,
+    } },
+  ).catch(() => null);
+  return successfulSingleUpdate(result);
+}
+
+async function quarantineClaimedFax(
+  entities: Record<string, any>,
+  fax: Record<string, any>,
+  code: string,
+) {
+  return conditionalFaxUpdate(entities, fax, {
+    processing_status: 'failed',
+    claimed_by: null,
+    claimed_at: null,
+    processing_quarantined_at: new Date().toISOString(),
+    processing_last_error_code: code,
   });
 }
 
@@ -704,66 +821,6 @@ async function runOcr(base44: Record<string, any>, fax: Record<string, any>) {
   });
 }
 
-async function extractItemAnswers(
-  base44: Record<string, any>,
-  followUp: Record<string, any>,
-  ocrText: string,
-) {
-  const openItems = followUp.items
-    .filter((item: Record<string, any>) => (
-      exactIdentifier(item?.id) && (!item.item_status || item.item_status === 'open')
-    ))
-    .map((item: Record<string, any>) => ({
-      id: item.id,
-      title: typeof item.title === 'string' ? item.title.slice(0, 300) : '',
-      question: typeof item.provider_request?.question === 'string'
-        ? item.provider_request.question.slice(0, 1000)
-        : (typeof item.needed === 'string' ? item.needed.slice(0, 1000) : ''),
-    }));
-  if (!openItems.length) return { items: followUp.items, answeredCount: 0 };
-  const extraction = await base44.asServiceRole.integrations.Core.InvokeLLM({
-    model: 'automatic',
-    prompt: `Determine which requested items were explicitly answered in this provider fax. Do not invent answers.\n\nREQUESTED ITEMS:\n${openItems.map((item: Record<string, any>, index: number) => `${index + 1}. id: ${item.id}\n${item.title}\n${item.question}`).join('\n')}\n\nFAX TEXT:\n${ocrText.slice(0, 30000)}`,
-    response_json_schema: {
-      type: 'object',
-      properties: {
-        answers: {
-          type: 'array',
-          items: {
-            type: 'object',
-            properties: {
-              id: { type: 'string' },
-              answered: { type: 'boolean' },
-              response_text: { type: 'string' },
-            },
-          },
-        },
-      },
-    },
-  });
-  return applyFaxAnswersToItems(
-    followUp.items,
-    Array.isArray(extraction?.answers) ? extraction.answers : [],
-    new Date().toISOString(),
-  );
-}
-
-async function conditionalReferralUpdate(
-  entities: Record<string, any>,
-  referral: Record<string, any>,
-  followUp: Record<string, any>,
-) {
-  const result = await entities.Referral.updateMany(
-    {
-      id: referral.id,
-      agency_id: referral.agency_id,
-      version: referral.version,
-      updated_date: referral.updated_date,
-    },
-    { $set: { follow_up_requests: followUp }, $inc: { version: 1 } },
-  );
-  return successfulSingleUpdate(result);
-}
 
 async function loadActiveRecipient(
   entities: Record<string, any>,
@@ -962,98 +1019,33 @@ async function processClaimedFax(
   }
 
   const referralSnapshot = match.candidate.referral;
-  const signalNames = Object.entries(match.signals)
-    .filter(([, value]) => value)
-    .map(([name]) => name);
-  if (!match.confident) {
-    const suggestedReferral = await loadExactReferral(
-      entities,
-      fax.agency_id,
-      referralSnapshot.id,
-    );
-    if (!sameValue(suggestedReferral, referralSnapshot)) {
-      throw new PublicError(409, 'Referral changed during inbound fax suggestion');
-    }
-    await ensureNotification(entities, suggestedReferral, fax.id, 'suggested');
-    await finalizeFax(entities, fax, {
-      ...ocrFields(ocr, ocrText),
-      status: 'unread',
-      ai_category: 'referral',
-      suggested_routing: 'admin',
-      suggested_referral_id: suggestedReferral.id,
-      suggested_patient_id: suggestedReferral.patient_id || null,
-      notes: match.tied
-        ? 'Possible provider follow-up match is ambiguous; manual review is required.'
-        : 'Possible provider follow-up match requires manual review.',
-      confidence_score: Math.min(100, match.score * 20),
-    });
-    return { processed: 1, matched: 0, suggested: 1, failed: 0 };
+  // OCR/name/DOB/sender signals are advisory only. None of them is an immutable
+  // correlation proof that this provider response belongs to this exact
+  // Referral. Until a server-issued response id/barcode is bound to both the
+  // outbound request and inbound FaxLog, never mutate follow-up state or mark
+  // extracted answers as accepted clinical facts.
+  const suggestedReferral = await loadExactReferral(
+    entities,
+    fax.agency_id,
+    referralSnapshot.id,
+  );
+  if (!sameValue(suggestedReferral, referralSnapshot)) {
+    throw new PublicError(409, 'Referral changed during inbound fax suggestion');
   }
-
-  const current = await loadExactReferral(entities, fax.agency_id, referralSnapshot.id);
-  if (!sameValue(current, referralSnapshot)) {
-    throw new PublicError(409, 'Referral follow-up changed during inbound fax processing');
-  }
-  const followUp = current.follow_up_requests;
-  if (!plainObject(followUp) || followUp.status !== 'sent' || !Array.isArray(followUp.items)) {
-    throw new PublicError(409, 'Referral follow-up is no longer eligible');
-  }
-  let merged = { items: followUp.items, answeredCount: 0 };
-  try {
-    merged = await extractItemAnswers(base44, followUp, ocrText);
-  } catch {
-    // Attachment remains useful if conservative per-item extraction fails.
-  }
-  // Item extraction is a second asynchronous provider boundary. The 15-minute
-  // claim lease can expire, the agency can be disabled, or the receiving-number
-  // binding can be suspended while that call is in flight. Re-read the exact
-  // claim and every routing authority immediately before the Referral write;
-  // otherwise an older worker could attach after a successor claimed the fax,
-  // or after inbound authority was revoked.
-  const preCommitFax = await loadExactIncomingFax(entities, fax.agency_id, fax.id);
-  if (
-    preCommitFax.version !== fax.version
-    || preCommitFax.updated_date !== fax.updated_date
-    || preCommitFax.processing_status !== 'processing'
-    || preCommitFax.claimed_by !== fax.claimed_by
-    || preCommitFax.claimed_at !== fax.claimed_at
-  ) throw new PublicError(409, 'Inbound fax claim changed before referral attachment');
-  await loadEnabledAgency(entities, fax.agency_id);
-  await loadIngressAuthority(entities, preCommitFax);
-  const receivedAt = new Date().toISOString();
-  const nextFollowUp = {
-    ...followUp,
-    items: merged.items,
-    status: 'received',
-    received_at: receivedAt,
-    portal_link_active: false,
-    fax_back: {
-      incoming_fax_id: fax.id,
-      matched_signals: signalNames,
-      auto_answered_count: merged.answeredCount,
-    },
-  };
-  const committed = await conditionalReferralUpdate(entities, current, nextFollowUp);
-  if (!committed) throw new PublicError(409, 'Referral changed during inbound fax processing');
-  const updated = await loadExactReferral(entities, fax.agency_id, current.id);
-  if (
-    updated.version !== current.version + 1
-    || !sameValue(updated.follow_up_requests, nextFollowUp)
-    || Object.hasOwn(updated.follow_up_requests?.fax_back || {}, 'document_url')
-  ) throw new Error('Referral fax-back update failed verification');
-  await ensureNotification(entities, updated, fax.id, 'matched');
+  await ensureNotification(entities, suggestedReferral, fax.id, 'suggested');
   await finalizeFax(entities, fax, {
     ...ocrFields(ocr, ocrText),
-    status: 'routed',
-    routed_at: receivedAt,
-    routed_to: `ReferralFollowUp:${updated.id}`,
-    suggested_patient_id: updated.patient_id || null,
-    suggested_referral_id: updated.id,
+    status: 'unread',
     ai_category: 'referral',
-    notes: 'Matched to a provider follow-up request.',
+    suggested_routing: 'admin',
+    suggested_referral_id: suggestedReferral.id,
+    suggested_patient_id: suggestedReferral.patient_id || null,
+    notes: match.tied
+      ? 'Possible provider follow-up match is ambiguous; manual review is required and no referral data was changed.'
+      : 'Heuristic provider follow-up match requires manual review; no referral data was changed.',
     confidence_score: Math.min(100, match.score * 20),
   });
-  return { processed: 1, matched: 1, suggested: 0, failed: 0 };
+  return { processed: 1, matched: 0, suggested: 1, failed: 0 };
 }
 
 async function processAgency(
@@ -1063,25 +1055,9 @@ async function processAgency(
 ) {
   const entities = base44.asServiceRole.entities;
   await loadEnabledAgency(entities, agencyId);
-  const pending = requireRows(
-    await entities.IncomingFax.filter(
-      { agency_id: agencyId, processing_status: 'pending' },
-      '-received_at',
-      MAX_INCOMING_SCAN,
-    ),
-    'IncomingFax.filter',
-  );
-  const processing = requireRows(
-    await entities.IncomingFax.filter(
-      { agency_id: agencyId, processing_status: 'processing' },
-      '-received_at',
-      MAX_INCOMING_SCAN,
-    ),
-    'IncomingFax.filter',
-  );
-  if (pending.length >= MAX_INCOMING_SCAN || processing.length >= MAX_INCOMING_SCAN) {
-    throw new PublicError(409, 'Inbound fax scan is incomplete');
-  }
+  const scanAt = new Date().toISOString();
+  const pending = await loadIncomingFaxQueue(entities, agencyId, 'pending', scanAt);
+  const processing = await loadIncomingFaxQueue(entities, agencyId, 'processing', scanAt);
   const rows: Array<Record<string, any>> = [...pending, ...processing];
   if (rows.some((row) => row?.agency_id !== agencyId)) {
     throw new PublicError(409, 'Inbound fax scan scope could not be verified');
@@ -1098,18 +1074,46 @@ async function processAgency(
       // newer work. The agency scope check above still makes a foreign row a
       // hard failure rather than silently skipping a filter regression.
       if (!(error instanceof PublicError)) throw error;
+      await quarantineIncomingFax(
+        entities,
+        row,
+        'invalid_inbound_fax_provenance',
+      );
       totals.failed += 1;
     }
   }
   if (!eligibleFaxes.length) return totals;
   const referrals = await loadReferralScan(entities, agencyId);
   const candidates = await buildCandidates(entities, referrals);
-  const seen = new Set<string>();
+  const identityCounts = new Map<string, number>();
   for (const fax of eligibleFaxes) {
-    if (seen.has(fax.id)) throw new PublicError(409, 'Inbound fax scan returned duplicate rows');
-    seen.add(fax.id);
-    await loadIngressAuthority(entities, fax);
-    const claimed = await claimFax(entities, fax, runId);
+    identityCounts.set(fax.id, (identityCounts.get(fax.id) || 0) + 1);
+  }
+  for (const fax of eligibleFaxes) {
+    if ((identityCounts.get(fax.id) || 0) !== 1) {
+      await quarantineIncomingFax(entities, fax, 'duplicate_inbound_fax_identity');
+      totals.failed += 1;
+      continue;
+    }
+    try {
+      await loadIngressAuthority(entities, fax);
+    } catch (error) {
+      if (error instanceof PublicError) {
+        await quarantineIncomingFax(entities, fax, 'invalid_inbound_fax_authority');
+      } else {
+        await deferIncomingFax(entities, fax, 'inbound_authority_read_failed');
+      }
+      totals.failed += 1;
+      continue;
+    }
+    let claimed;
+    try {
+      claimed = await claimFax(entities, fax, runId);
+    } catch {
+      await deferIncomingFax(entities, fax, 'inbound_claim_failed');
+      totals.failed += 1;
+      continue;
+    }
     if (!claimed) continue;
     try {
       const outcome = await processClaimedFax(base44, claimed, referrals, candidates);
@@ -1118,8 +1122,15 @@ async function processAgency(
       totals.suggested += outcome.suggested;
       totals.failed += outcome.failed;
     } catch (error) {
-      await releaseClaimForRetry(entities, claimed).catch(() => false);
-      if (error instanceof PublicError) throw error;
+      if (error instanceof PublicError) {
+        await quarantineClaimedFax(
+          entities,
+          claimed,
+          'inbound_fax_authority_changed',
+        ).catch(() => false);
+      } else {
+        await releaseClaimForRetry(entities, claimed).catch(() => false);
+      }
       totals.failed += 1;
     }
   }
@@ -1127,6 +1138,16 @@ async function processAgency(
 }
 
 Deno.serve(async (req) => {
+  if (!INBOUND_FAX_WORKFLOW_ENABLED) {
+    return Response.json(
+      {
+        success: false,
+        error: 'Inbound fax processing is disabled pending hosted validation',
+        code: 'inbound_fax_workflow_disabled',
+      },
+      { status: 503, headers: NO_STORE_HEADERS },
+    );
+  }
   try {
     const base44 = createClientFromRequest(req);
     const me = await base44.auth.me().catch(() => null);
@@ -1147,24 +1168,45 @@ Deno.serve(async (req) => {
       ? globalThis.crypto.randomUUID()
       : `${Date.now()}:${Math.random().toString(36).slice(2)}`;
     const totals = { scanned: 0, processed: 0, matched: 0, suggested: 0, failed: 0 };
+    let agencyFailures = 0;
     for (const scheduledAgencyId of agencyIds) {
-      const result = await processAgency(
-        base44,
-        scheduledAgencyId,
-        `inbound-referral-fax:${scheduledAgencyId}:${runRoot}`,
-      );
+      let result;
+      try {
+        result = await processAgency(
+          base44,
+          scheduledAgencyId,
+          `inbound-referral-fax:${scheduledAgencyId}:${runRoot}`,
+        );
+      } catch (error) {
+        if (agencyId && error instanceof PublicError) throw error;
+        // Deliberately omit agency, fax, patient, and provider identifiers from
+        // unattended logs. One tenant failure must not strand later tenants.
+        console.error('Inbound fax agency batch failed');
+        totals.failed += 1;
+        agencyFailures += 1;
+        continue;
+      }
       totals.scanned += result.scanned;
       totals.processed += result.processed;
       totals.matched += result.matched;
       totals.suggested += result.suggested;
       totals.failed += result.failed;
     }
-    return Response.json({
+    const result = {
       success: true,
       agency_id: agencyId,
       agencies_processed: agencyIds.length,
       ...totals,
-    }, { headers: NO_STORE_HEADERS });
+      ...(agencyFailures ? { agency_failures: agencyFailures } : {}),
+    };
+    if (totals.failed > 0) {
+      return Response.json({
+        ...result,
+        success: false,
+        error: 'One or more inbound faxes could not be processed safely',
+      }, { status: 500, headers: NO_STORE_HEADERS });
+    }
+    return Response.json(result, { headers: NO_STORE_HEADERS });
   } catch (error) {
     if (error instanceof PublicError) {
       return Response.json(

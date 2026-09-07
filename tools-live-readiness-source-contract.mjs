@@ -90,7 +90,7 @@ const BROKER_MARKERS = Object.freeze({
     "Deno.serve",
     "TelecomDestinationBinding.filter",
     "IncomingFax.updateMany",
-    "Referral.updateMany",
+    "suggested_routing: 'admin'",
     "dedupe_key",
   ]),
   "base44/functions/getAuthorizedInboundReferralFax/entry.ts": Object.freeze([
@@ -563,9 +563,10 @@ export function createLiveReadinessSourceContract({
   ] || "";
   const referralInboundFaxPathsSecured =
     inboundFaxWorkerSource.includes("IncomingFax.updateMany")
-    && inboundFaxWorkerSource.includes("Referral.updateMany")
+    && !inboundFaxWorkerSource.includes("Referral.updateMany")
+    && inboundFaxWorkerSource.includes("suggested_routing: 'admin'")
     && inboundFaxWorkerSource.includes("TelecomDestinationBinding.filter")
-    && !inboundFaxWorkerSource.includes("INBOUND_REFERRAL_FAX_MATCHING_ENABLED = false")
+    && inboundFaxWorkerSource.includes("WORKFLOW_RELEASE_PROCESS_INBOUND_FAXES")
     && inboundFaxWebhookSource.includes("resolveActiveTelnyxFaxBinding")
     && inboundFaxWebhookSource.includes("ingress_binding_id")
     && inboundFaxReadSource.includes("functions.invoke('manageAuthorizedReferral'")

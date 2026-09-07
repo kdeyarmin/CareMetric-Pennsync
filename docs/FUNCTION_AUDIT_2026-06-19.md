@@ -40,16 +40,19 @@ Three independent code sweeps (app map, stub/incomplete-code hunt, data/integrat
 
 ## A2 — Cannot be fully implemented **without external configuration** (deployment checklist, NOT code bugs)
 
-These functions are fully implemented but are inert or error until the corresponding credential is set. **This is the core answer to "functions that cannot be fully implemented."** All required keys are now documented in `.env.example`, and the UI now degrades gracefully when they're missing.
+This table has been updated to distinguish direct-provider credentials from
+platform-managed capabilities and deliberately paused domains. A missing
+optional feature key is not an application-wide launch blocker.
 
 | Capability | Function(s) | Requires |
 |---|---|---|
-| Audio / Whisper transcription, SOAP-note-from-audio | `transcribeAudioWithWhisper`, `transcribeAndGenerateSOAPNote` | `OPENAI_API_KEY` |
-| AI training-course generation, training-attempt grading, corrective-action plans, in-service rebuild | `generateTrainingCourse`, `gradeTrainingAttempt`, `triggerCorrectiveActionPlan`, `rebuildExistingInServices` | `OPENAI_API_KEY` |
-| AI fax cover-page generation | `generateFaxCoverPage` | `ANTHROPIC_API_KEY` |
+| Audio / Whisper transcription | `transcribeAudioWithWhisper`, transcription stage of `transcribeAndGenerateSOAPNote` | `OPENAI_API_KEY` |
+| SOAP-note structuring | `transcribeAndGenerateSOAPNote` | `ANTHROPIC_API_KEY` |
+| Application AI generation/grading | `generateTrainingCourse`, `gradeTrainingAttempt`, `triggerCorrectiveActionPlan`, `rebuildExistingInServices`, other `InvokeLLM` consumers | Base44-managed `Core.InvokeLLM` (no app-managed provider key) |
+| Deterministic fax cover-page formatting | `generateFaxCoverPage` | None |
 | AI training-video generation | `generateTrainingVideo`, `generateTrainingCourse` (video opt.) | `HEYGEN_API_KEY` |
-| Telehealth video tokens | `createTelehealthToken` | `TWILIO_API_KEY`, `TWILIO_API_SECRET` |
-| SMS / voice / fax | Twilio function family | `TWILIO_ACCOUNT_SID` + `TWILIO_AUTH_TOKEN` (or in-app `IntegrationSecret`); `TWILIO_FAX_NUMBER` for fax |
+| Telehealth video tokens | `createTelehealthToken` | Explicitly paused pending its tenant/provider migration; no legacy Twilio key is a readiness requirement |
+| SMS / voice / fax | Telnyx function family | In-app `IntegrationSecret` plus exact tenant destination bindings; retired Twilio/Telnyx env vars are not fallbacks |
 | Notification emails (~10 fns) | `SendEmail` consumers | Base44 dashboard email provider (no code key) — **silent no-op risk if unconfigured** |
 | ~30 AI analysis features | `InvokeLLM` consumers | Base44 dashboard AI provider (no code key) |
 

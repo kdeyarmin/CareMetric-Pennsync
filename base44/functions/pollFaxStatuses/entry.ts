@@ -73,17 +73,17 @@ async function resolveTelnyxCreds(base44) {
       || list.find((r) => r && pick(r.api_key))
       || list[0]
       || null;
-  } catch (err) {
+  } catch {
     // Do NOT collapse this into "not configured". A failed read (this invocation
     // path carries no service token, entity 404, 401/403, rate limit, platform
     // blip) is a completely different problem from an unconfigured integration,
     // and reporting them identically is what sent operators chasing a credential
     // they had already entered correctly.
-    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    readError = 'credential_store_unavailable';
     // The catch used to be bare, so an unreadable credential row left no
     // server-side breadcrumb at all — the only signal was a misleading
     // "not configured" reply. Log it; unattended runs have nowhere else to say so.
-    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
   }
   const rec = record || {};
   return {
@@ -104,7 +104,7 @@ async function resolveTelnyxCreds(base44) {
 function telnyxCredsMessage(creds, what) {
   const label = what || 'credentials';
   if (creds && creds.readError) {
-    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+    return `Could not read Telnyx ${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.`;
   }
   return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
 }
@@ -119,6 +119,13 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // <<<END SHARED HELPER: requireActiveUser>>>
 
 const FAX_POLL_EXACT_ROW_LIMIT = 10;
+const FAX_POLL_RELEASE_ENV = 'WORKFLOW_RELEASE_POLL_FAX_STATUSES';
+const FAX_POLL_RELEASE_VALUE = 'enabled-v1';
+const FAX_POLL_STATUSES = ['submission_unknown', 'queued', 'sending', 'sent'];
+const FAX_POLL_PAGE_SIZE = 25;
+const FAX_POLL_MAX_PROVIDER_CALLS = 20;
+const FAX_POLL_PROVIDER_TIMEOUT_MS = 10_000;
+const FAX_POLL_LEASE_MS = 5 * 60 * 1000;
 const FAX_POLL_RANK = {
   submission_unknown: 0,
   queued: 1,
@@ -150,6 +157,199 @@ const successfulFaxCas = (value) => !!value
   && value.success === true
   && value.updated === 1
   && value.has_more === false;
+
+function faxPollSummaryResponse(summary) {
+  const providerFailures = Number(summary?.provider_failures) || 0;
+  const rowFailures = Number(summary?.row_failures) || 0;
+  const scanFailures = Number(summary?.scan_failures) || 0;
+  const recoveryFailures = Number(summary?.recovery_failures) || 0;
+  const failureCount = providerFailures + rowFailures + scanFailures + recoveryFailures;
+  return Response.json({
+    success: failureCount === 0,
+    degraded: failureCount > 0,
+    checked: Number(summary?.checked) || 0,
+    updated: Number(summary?.updated) || 0,
+    scanned: Number(summary?.scanned) || 0,
+    provider_failures: providerFailures,
+    row_failures: rowFailures,
+    scan_failures: scanFailures,
+    recovery_failures: recoveryFailures,
+    released_stale_retries: Number(summary?.released_stale_retries) || 0,
+    ambiguous_fax_identities: Number(summary?.ambiguous_fax_identities) || 0,
+  }, {
+    status: failureCount > 0 ? 503 : 200,
+    headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' },
+  });
+}
+
+async function loadFairFaxPollCandidates(base44, now = new Date().toISOString()) {
+  const byStatus = new Map<string, Record<string, any>>();
+  let scanned = 0;
+  let rowFailures = 0;
+  let scanFailures = 0;
+
+  for (const status of FAX_POLL_STATUSES) {
+    const candidates: Array<Record<string, any>> = [];
+    const seenIds = new Set<string>();
+    // Two bounded queues cover legacy rows that have never been polled and rows
+    // whose durable lease has expired. A successful claim moves a row out of
+    // both queues, so a cold start cannot repeatedly consume the first page.
+    for (const spec of [
+      {
+        query: {
+          status,
+          status_poll_quarantined_at: { $exists: false },
+          status_poll_next_attempt_at: { $exists: false },
+        },
+        sort: 'created_date',
+      },
+      {
+        query: {
+          status,
+          status_poll_quarantined_at: { $exists: false },
+          status_poll_next_attempt_at: { $lte: now },
+        },
+        sort: 'status_poll_next_attempt_at',
+      },
+    ]) {
+      let page: unknown;
+      try {
+        page = await base44.asServiceRole.entities.FaxLog.filter(
+          spec.query,
+          spec.sort,
+          FAX_POLL_PAGE_SIZE,
+        );
+      } catch {
+        scanFailures++;
+        console.error('Fax status backlog page could not be read');
+        continue;
+      }
+      if (!Array.isArray(page) || page.length > FAX_POLL_PAGE_SIZE) {
+        scanFailures++;
+        console.error('Fax status backlog page was malformed');
+        continue;
+      }
+      for (const fax of page) {
+        scanned++;
+        if (fax?.status !== status
+          || exactFaxAuthorityId(fax?.id) !== fax?.id
+          || !exactFaxInstant(fax?.updated_date)) {
+          rowFailures++;
+          continue;
+        }
+        if (seenIds.has(fax.id)) continue;
+        seenIds.add(fax.id);
+        candidates.push(fax);
+      }
+    }
+    byStatus.set(status, { candidates });
+  }
+
+  // Round-robin the independently paged status buckets. This reserves progress
+  // for every non-terminal state instead of letting a large queued backlog hide
+  // sent/submission-unknown attempts indefinitely.
+  const candidates = [];
+  const seenIds = new Set<string>();
+  for (let index = 0; candidates.length < FAX_POLL_MAX_PROVIDER_CALLS; index++) {
+    let found = false;
+    for (const status of FAX_POLL_STATUSES) {
+      const entry = byStatus.get(status)?.candidates?.[index];
+      if (!entry) continue;
+      found = true;
+      const fax = entry;
+      if (seenIds.has(fax.id)) {
+        rowFailures++;
+        continue;
+      }
+      seenIds.add(fax.id);
+      candidates.push(fax);
+      if (candidates.length >= FAX_POLL_MAX_PROVIDER_CALLS) break;
+    }
+    if (!found) break;
+  }
+
+  return { candidates, scanned, rowFailures, scanFailures };
+}
+
+async function reserveFaxPollCandidate(entities, fax, nowMs = Date.now()) {
+  const id = exactFaxAuthorityId(fax?.id);
+  if (!id || !FAX_POLL_STATUSES.includes(fax?.status) || !exactFaxInstant(fax?.updated_date)) return null;
+  const attempts = Number.isSafeInteger(fax?.status_poll_attempt_count)
+      && fax.status_poll_attempt_count >= 0
+    ? Math.min(fax.status_poll_attempt_count + 1, Number.MAX_SAFE_INTEGER)
+    : 1;
+  const attemptedAt = new Date(nowMs).toISOString();
+  const nextAttemptAt = new Date(nowMs + FAX_POLL_LEASE_MS).toISOString();
+  const claimed = await entities.FaxLog.updateMany(
+    { id, status: fax.status, updated_date: fax.updated_date },
+    { $set: {
+      status_poll_last_attempt_at: attemptedAt,
+      status_poll_next_attempt_at: nextAttemptAt,
+      status_poll_attempt_count: attempts,
+      status_poll_last_error_code: null,
+    } },
+  ).catch(() => null);
+  if (!successfulFaxCas(claimed)) return null;
+  const rows = await entities.FaxLog.filter({ id }, undefined, FAX_POLL_EXACT_ROW_LIMIT).catch(() => null);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== id
+      || rows[0]?.status !== fax.status
+      || rows[0]?.status_poll_last_attempt_at !== attemptedAt
+      || rows[0]?.status_poll_next_attempt_at !== nextAttemptAt
+      || rows[0]?.status_poll_attempt_count !== attempts
+      || !exactFaxInstant(rows[0]?.updated_date)) return null;
+  return rows[0];
+}
+
+async function quarantineFaxPollCandidate(entities, fax, code, nowMs = Date.now()) {
+  const id = exactFaxAuthorityId(fax?.id);
+  if (!id || !FAX_POLL_STATUSES.includes(fax?.status) || !exactFaxInstant(fax?.updated_date)) return false;
+  const result = await entities.FaxLog.updateMany(
+    { id, status: fax.status, updated_date: fax.updated_date },
+    { $set: {
+      status_poll_next_attempt_at: null,
+      status_poll_quarantined_at: new Date(nowMs).toISOString(),
+      status_poll_last_error_code: code,
+    } },
+  ).catch(() => null);
+  return successfulFaxCas(result);
+}
+
+async function quarantineFaxRecoveryRow(entities, fax, kind, code, nowMs = Date.now()) {
+  const id = exactFaxAuthorityId(fax?.id);
+  if (!id || !exactFaxAuthorityId(fax?.status) || !exactFaxInstant(fax?.updated_date)
+      || !['retry', 'notification'].includes(kind)) return false;
+  const result = await entities.FaxLog.updateMany(
+    { id, status: fax.status, updated_date: fax.updated_date },
+    { $set: {
+      [`${kind}_recovery_quarantined_at`]: new Date(nowMs).toISOString(),
+      [`${kind}_recovery_last_error_code`]: code,
+    } },
+  ).catch(() => null);
+  return successfulFaxCas(result);
+}
+
+async function reserveFaxRecoveryRow(entities, fax, kind, nowMs = Date.now()) {
+  const id = exactFaxAuthorityId(fax?.id);
+  if (!id || !exactFaxAuthorityId(fax?.status) || !exactFaxInstant(fax?.updated_date)
+      || !['retry', 'notification'].includes(kind)) return null;
+  const attemptedAt = new Date(nowMs).toISOString();
+  const nextAttemptAt = new Date(nowMs + FAX_POLL_LEASE_MS).toISOString();
+  const result = await entities.FaxLog.updateMany(
+    { id, status: fax.status, updated_date: fax.updated_date },
+    { $set: {
+      [`${kind}_recovery_last_attempt_at`]: attemptedAt,
+      [`${kind}_recovery_next_attempt_at`]: nextAttemptAt,
+    } },
+  ).catch(() => null);
+  if (!successfulFaxCas(result)) return null;
+  const rows = await entities.FaxLog.filter({ id }, undefined, FAX_POLL_EXACT_ROW_LIMIT).catch(() => null);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== id
+      || rows[0]?.status !== fax.status
+      || rows[0]?.[`${kind}_recovery_last_attempt_at`] !== attemptedAt
+      || rows[0]?.[`${kind}_recovery_next_attempt_at`] !== nextAttemptAt
+      || !exactFaxInstant(rows[0]?.updated_date)) return null;
+  return rows[0];
+}
 
 function faxHasOutboundStatusAuthority(row) {
   const referralAuthority = exactFaxAuthorityId(row?.referral_id) === row?.referral_id
@@ -486,7 +686,15 @@ async function recoverFaxNotification(base44, fax, kind, telnyxCreds) {
   if (!fax.sent_by || fax[spec.markerField] === true
     || !exactFaxAuthorityId(fax.id)
     || !exactFaxAuthorityId(fax.telnyx_fax_id)
-    || !exactFaxInstant(fax.updated_date)) return false;
+    || !exactFaxInstant(fax.updated_date)) {
+    await quarantineFaxRecoveryRow(
+      base44.asServiceRole.entities,
+      fax,
+      'notification',
+      'invalid_terminal_notification_row',
+    );
+    return false;
+  }
 
   // Do not trust a terminal row whose provider id now resolves to another row
   // (including another tenant). Ambiguous provider identities are quarantined.
@@ -497,7 +705,15 @@ async function recoverFaxNotification(base44, fax, kind, telnyxCreds) {
   ).catch(() => null);
   if (!Array.isArray(identityRows) || identityRows.length !== 1
     || identityRows[0]?.id !== fax.id
-    || identityRows[0]?.telnyx_fax_id !== fax.telnyx_fax_id) return false;
+    || identityRows[0]?.telnyx_fax_id !== fax.telnyx_fax_id) {
+    await quarantineFaxRecoveryRow(
+      base44.asServiceRole.entities,
+      fax,
+      'notification',
+      'ambiguous_terminal_provider_identity',
+    );
+    return false;
+  }
   const current = identityRows[0];
   const terminalStatus = kind === 'delivery' ? 'delivered' : 'failed';
   if (!faxHasOutboundStatusAuthority(current)
@@ -512,7 +728,15 @@ async function recoverFaxNotification(base44, fax, kind, telnyxCreds) {
     || Date.parse(current.provider_terminal_at) < Date.parse(current.provider_accepted_at)
     || current.sent_by !== fax.sent_by
     || (current.agency_id ?? null) !== (fax.agency_id ?? null)
-    || (kind === 'failure' && current.next_retry_at != null)) return false;
+    || (kind === 'failure' && current.next_retry_at != null)) {
+    await quarantineFaxRecoveryRow(
+      base44.asServiceRole.entities,
+      current,
+      'notification',
+      'invalid_terminal_notification_authority',
+    );
+    return false;
+  }
   if (current[spec.markerField] === true) return true;
 
   const existingClaim = exactFaxAuthorityId(current[spec.claimField]);
@@ -554,23 +778,91 @@ async function recoverFaxNotification(base44, fax, kind, telnyxCreds) {
 
 async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
   let recovered = 0;
+  const nowMs = Date.now();
+  const now = new Date(nowMs).toISOString();
   for (const status of ['delivered', 'failed']) {
     const markerField = status === 'delivered'
       ? 'delivery_confirmation_sent'
       : 'final_failure_notified';
-    const rows = await base44.asServiceRole.entities.FaxLog.filter(
-      { status, [markerField]: false },
-      '-updated_date',
-      20,
-    ).catch(() => null);
-    if (!Array.isArray(rows)) continue;
-    for (const fax of rows) {
-      if (fax?.status !== status || !fax?.sent_by) continue;
+    const rows = [];
+    const seen = new Set<string>();
+    let successfulScans = 0;
+    for (const spec of [
+      {
+        query: {
+          status,
+          [markerField]: false,
+          notification_recovery_quarantined_at: { $exists: false },
+          notification_recovery_next_attempt_at: { $exists: false },
+        },
+        sort: 'updated_date',
+      },
+      {
+        query: {
+          status,
+          [markerField]: false,
+          notification_recovery_quarantined_at: { $exists: false },
+          notification_recovery_next_attempt_at: { $lte: now },
+        },
+        sort: 'notification_recovery_next_attempt_at',
+      },
+    ]) {
+      const page = await base44.asServiceRole.entities.FaxLog.filter(
+        spec.query,
+        spec.sort,
+        20,
+      ).catch(() => null);
+      if (!Array.isArray(page)) continue;
+      successfulScans++;
+      for (const row of page) {
+        const id = exactFaxAuthorityId(row?.id);
+        if (!id || seen.has(id)) continue;
+        seen.add(id);
+        rows.push(row);
+        if (rows.length >= 20) break;
+      }
+      if (rows.length >= 20) break;
+    }
+    if (successfulScans === 0) throw new Error('Terminal notification recovery scan failed');
+    for (const candidate of rows) {
+      const fax = await reserveFaxRecoveryRow(
+        base44.asServiceRole.entities,
+        candidate,
+        'notification',
+        nowMs,
+      );
+      if (!fax) continue;
+      if (fax?.status !== status || !fax?.sent_by || !exactFaxAuthorityId(fax?.id)
+          || !exactFaxInstant(fax?.updated_date)) {
+        await quarantineFaxRecoveryRow(
+          base44.asServiceRole.entities,
+          fax,
+          'notification',
+          'invalid_terminal_notification_row',
+        );
+        continue;
+      }
       if (status === 'delivered') {
-        if (fax.provider_terminal_status !== 'delivered') continue;
+        if (fax.provider_terminal_status !== 'delivered') {
+          await quarantineFaxRecoveryRow(
+            base44.asServiceRole.entities,
+            fax,
+            'notification',
+            'invalid_terminal_notification_state',
+          );
+          continue;
+        }
         if (await recoverFaxNotification(base44, fax, 'delivery', telnyxCreds).catch(() => false)) recovered++;
       } else {
-        if (fax.provider_terminal_status !== 'failed' || fax.next_retry_at != null) continue;
+        if (fax.provider_terminal_status !== 'failed' || fax.next_retry_at != null) {
+          await quarantineFaxRecoveryRow(
+            base44.asServiceRole.entities,
+            fax,
+            'notification',
+            'invalid_terminal_notification_state',
+          );
+          continue;
+        }
         if (await recoverFaxNotification(base44, fax, 'failure', telnyxCreds).catch(() => false)) recovered++;
       }
     }
@@ -580,6 +872,15 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
 
 Deno.serve(async (req) => {
   try {
+    // Default-false release boundary. This check deliberately runs before SDK
+    // construction so a deployed-but-inactive staging function cannot read PHI,
+    // mutate FaxLog, or contact Telnyx through a manual invocation.
+    if (Deno.env.get(FAX_POLL_RELEASE_ENV) !== FAX_POLL_RELEASE_VALUE) {
+      return Response.json(
+        { error: 'Fax status polling is not released' },
+        { status: 503, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } },
+      );
+    }
     const base44 = createClientFromRequest(req);
 
     // Authorization: privileged status-poll job (service-role FaxLog reads/writes
@@ -600,12 +901,59 @@ Deno.serve(async (req) => {
     // definite provider rejection, retire the source instead of making it
     // eligible for another send; this prevents a crash-after-submit duplicate.
     let releasedStale = 0;
+    let recoveryFailures = 0;
     try {
-      const staleCutoff = new Date(Date.now() - 15 * 60 * 1000).toISOString();
-      const retrying = await base44.asServiceRole.entities.FaxLog.filter(
-        { status: 'retrying' }, '-created_date', 20,
-      ).catch(() => []);
-      for (const fax of Array.isArray(retrying) ? retrying : []) {
+      const recoveryNowMs = Date.now();
+      const recoveryNow = new Date(recoveryNowMs).toISOString();
+      const staleCutoff = new Date(recoveryNowMs - 15 * 60 * 1000).toISOString();
+      const retrying = [];
+      const seenRetryIds = new Set<string>();
+      let successfulRetryScans = 0;
+      for (const spec of [
+        {
+          query: {
+            status: 'retrying',
+            retry_claimed_at: { $lte: staleCutoff },
+            retry_recovery_quarantined_at: { $exists: false },
+            retry_recovery_next_attempt_at: { $exists: false },
+          },
+          sort: 'retry_claimed_at',
+        },
+        {
+          query: {
+            status: 'retrying',
+            retry_claimed_at: { $lte: staleCutoff },
+            retry_recovery_quarantined_at: { $exists: false },
+            retry_recovery_next_attempt_at: { $lte: recoveryNow },
+          },
+          sort: 'retry_recovery_next_attempt_at',
+        },
+      ]) {
+        const page = await base44.asServiceRole.entities.FaxLog.filter(
+          spec.query,
+          spec.sort,
+          20,
+        ).catch(() => null);
+        if (!Array.isArray(page)) continue;
+        successfulRetryScans++;
+        for (const row of page) {
+          const id = exactFaxAuthorityId(row?.id);
+          if (!id || seenRetryIds.has(id)) continue;
+          seenRetryIds.add(id);
+          retrying.push(row);
+          if (retrying.length >= 20) break;
+        }
+        if (retrying.length >= 20) break;
+      }
+      if (successfulRetryScans === 0) throw new Error('Stale retry scan failed');
+      for (const candidate of retrying) {
+        const fax = await reserveFaxRecoveryRow(
+          base44.asServiceRole.entities,
+          candidate,
+          'retry',
+          recoveryNowMs,
+        );
+        if (!fax) continue;
         if (!faxHasPrivateRetryAuthority(fax)
           || !exactFaxAuthorityId(fax?.retry_claimed_by)
           || !exactFaxAuthorityId(fax?.retry_claimed_by_user_id)
@@ -618,14 +966,30 @@ Deno.serve(async (req) => {
           || fax.integration_secret_id !== telnyxCreds.integrationSecretId
           || fax.integration_secret_updated_at !== telnyxCreds.integrationSecretUpdatedAt
           || fax.fax_connection_id !== telnyxCreds.connectionId
-          || Date.parse(fax.retry_claimed_at) >= Date.parse(staleCutoff)) continue;
+          || Date.parse(fax.retry_claimed_at) > Date.parse(staleCutoff)) {
+          await quarantineFaxRecoveryRow(
+            base44.asServiceRole.entities,
+            fax,
+            'retry',
+            'invalid_stale_retry_claim',
+          );
+          continue;
+        }
         const children = await base44.asServiceRole.entities.FaxLog.filter(
           { retry_of_fax_log_id: fax.id },
           '-created_date',
           FAX_POLL_EXACT_ROW_LIMIT,
         ).catch(() => null);
         if (!Array.isArray(children) || children.length > 1
-          || children.some((row) => row?.retry_of_fax_log_id !== fax.id)) continue;
+          || children.some((row) => row?.retry_of_fax_log_id !== fax.id)) {
+          await quarantineFaxRecoveryRow(
+            base44.asServiceRole.entities,
+            fax,
+            'retry',
+            'ambiguous_stale_retry_children',
+          );
+          continue;
+        }
         const child = children[0] || null;
         const exactChild = !child || (
           exactFaxAuthorityId(child.id) === child.id
@@ -648,7 +1012,15 @@ Deno.serve(async (req) => {
           && child.fax_connection_id === telnyxCreds.connectionId
           && child.document_url == null
         );
-        if (!exactChild) continue;
+        if (!exactChild) {
+          await quarantineFaxRecoveryRow(
+            base44.asServiceRole.entities,
+            fax,
+            'retry',
+            'invalid_stale_retry_child',
+          );
+          continue;
+        }
         const definitelyRejected = children.length === 1
           && child.status === 'failed'
           && child.provider_submission_state === 'rejected';
@@ -687,66 +1059,92 @@ Deno.serve(async (req) => {
               : 'A replacement attempt exists and requires its own delivery reconciliation',
           } },
         ).catch(() => null);
-        if (successfulFaxCas(result)) releasedStale++;
+        if (successfulFaxCas(result)) {
+          releasedStale++;
+        } else {
+          await quarantineFaxRecoveryRow(
+            base44.asServiceRole.entities,
+            fax,
+            'retry',
+            'stale_retry_recovery_unresolved',
+          );
+        }
       }
-    } catch (err) {
-      console.error('stale retry-claim release failed:', err?.message);
+    } catch {
+      recoveryFailures++;
+      console.error('Stale retry-claim recovery failed');
     }
 
     // Terminal statuses do not advance again, so a webhook replay cannot repair
     // a notification create that committed ambiguously or failed after the
     // status transition. Reconcile stale outbox claims on every poll instead.
-    await recoverTerminalFaxNotifications(base44, telnyxCreds).catch((err) => {
-      console.error('terminal fax-notification recovery failed:', err?.message);
+    await recoverTerminalFaxNotifications(base44, telnyxCreds).catch(() => {
+      recoveryFailures++;
+      console.error('Terminal fax-notification recovery failed');
     });
 
-    // Poll recent non-terminal attempts. A submission_unknown row is included
-    // only when it carries a provider id recovered from an accepted response;
-    // a successful provider GET can then reconcile it without another send.
-    const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-    
-    const pendingFaxes = await base44.asServiceRole.entities.FaxLog.filter(
-      { status: { $in: ['queued', 'sending', 'sent', 'submission_unknown'] } },
-      '-created_date',
-      20  // Small batch to avoid CPU limit
-    );
-
-    // Filter to exact recent rows and exact provider ids before interpolating an
-    // identifier into a Telnyx URL or writing a provider response back.
-    const exactCandidates = (Array.isArray(pendingFaxes) ? pendingFaxes : []).filter((fax) => (
-      exactFaxAuthorityId(fax?.id) === fax?.id
-      && exactFaxAuthorityId(fax?.telnyx_fax_id) === fax?.telnyx_fax_id
-      && exactFaxInstant(fax?.created_date)
-      && Date.parse(fax.created_date) > Date.parse(cutoff)
-      && exactFaxInstant(fax?.updated_date)
-    ));
-    const providerIdCounts = new Map();
-    for (const fax of exactCandidates) {
-      providerIdCounts.set(fax.telnyx_fax_id, (providerIdCounts.get(fax.telnyx_fax_id) || 0) + 1);
+    // Poll every age of non-terminal attempt. Each selected row first receives a
+    // durable next-attempt lease. That lease, unlike an in-memory cursor, survives
+    // cold starts and causes later rows to reach the bounded front page.
+    const pollStartedAt = Date.now();
+    const scan = await loadFairFaxPollCandidates(base44, new Date(pollStartedAt).toISOString());
+    let rowFailures = scan.rowFailures;
+    let providerFailures = 0;
+    const scanFailures = scan.scanFailures;
+    const ambiguousProviderIds = new Set<string>();
+    const reservedCandidates = [];
+    for (const candidate of scan.candidates) {
+      const reserved = await reserveFaxPollCandidate(
+        base44.asServiceRole.entities,
+        candidate,
+        pollStartedAt,
+      );
+      if (reserved) reservedCandidates.push(reserved);
+      else rowFailures++;
     }
-    const ambiguousFaxIdentities = [...providerIdCounts.values()]
-      .filter((count) => count > 1).length;
-    const faxesToCheck = exactCandidates.filter((fax) => (
-      providerIdCounts.get(fax.telnyx_fax_id) === 1
-    ));
+    const faxesToCheck = [];
+    for (const fax of reservedCandidates) {
+      if (!faxHasOutboundStatusAuthority(fax)) {
+        await quarantineFaxPollCandidate(
+          base44.asServiceRole.entities,
+          fax,
+          'invalid_status_poll_authority',
+          pollStartedAt,
+        );
+        rowFailures++;
+        continue;
+      }
+      if (fax.integration_secret_id !== telnyxCreds.integrationSecretId
+          || fax.integration_secret_updated_at !== telnyxCreds.integrationSecretUpdatedAt
+          || fax.fax_connection_id !== telnyxCreds.connectionId) {
+        await quarantineFaxPollCandidate(
+          base44.asServiceRole.entities,
+          fax,
+          'stale_status_poll_credential',
+          pollStartedAt,
+        );
+        rowFailures++;
+        continue;
+      }
+      faxesToCheck.push(fax);
+    }
 
     if (faxesToCheck.length === 0) {
-      return Response.json({
-        success: true,
+      return faxPollSummaryResponse({
         checked: 0,
         updated: 0,
+        scanned: scan.scanned,
+        provider_failures: providerFailures,
+        row_failures: rowFailures,
+        scan_failures: scanFailures,
+        recovery_failures: recoveryFailures,
         released_stale_retries: releasedStale,
-        ambiguous_fax_identities: ambiguousFaxIdentities,
+        ambiguous_fax_identities: ambiguousProviderIds.size,
       });
     }
 
     const { apiKey } = telnyxCreds;
-    const authorizedFaxes = faxesToCheck.filter((fax) => (
-      faxHasOutboundStatusAuthority(fax)
-      && fax.integration_secret_id === telnyxCreds.integrationSecretId
-      && fax.integration_secret_updated_at === telnyxCreds.integrationSecretUpdatedAt
-      && fax.fax_connection_id === telnyxCreds.connectionId
-    ));
+    const authorizedFaxes = faxesToCheck;
 
     // Cache retry policy only by immutable Agency id. A mutable sender email or
     // User.agency_name is not authorization for a service-role retry schedule.
@@ -759,6 +1157,7 @@ Deno.serve(async (req) => {
     };
 
     let updated = 0;
+    let providerChecks = 0;
 
     // Process all faxes in parallel instead of sequentially
     await Promise.all(authorizedFaxes.map(async (fax) => {
@@ -770,21 +1169,57 @@ Deno.serve(async (req) => {
         );
         if (!Array.isArray(identityRows) || identityRows.length !== 1
           || identityRows[0]?.id !== fax.id
-          || identityRows[0]?.telnyx_fax_id !== fax.telnyx_fax_id) return;
-        const response = await fetch(
-          `https://api.telnyx.com/v2/faxes/${encodeURIComponent(fax.telnyx_fax_id)}`,
-          { headers: { Authorization: `Bearer ${apiKey}` } }
-        );
+          || identityRows[0]?.telnyx_fax_id !== fax.telnyx_fax_id) {
+          ambiguousProviderIds.add(fax.telnyx_fax_id);
+          await quarantineFaxPollCandidate(
+            base44.asServiceRole.entities,
+            fax,
+            'ambiguous_provider_fax_identity',
+            pollStartedAt,
+          );
+          rowFailures++;
+          return;
+        }
+        providerChecks++;
+        let response;
+        try {
+          response = await fetch(
+            `https://api.telnyx.com/v2/faxes/${encodeURIComponent(fax.telnyx_fax_id)}`,
+            {
+              headers: { Authorization: `Bearer ${apiKey}` },
+              signal: AbortSignal.timeout(FAX_POLL_PROVIDER_TIMEOUT_MS),
+            },
+          );
+        } catch {
+          providerFailures++;
+          console.error('Telnyx fax status request failed or timed out');
+          return;
+        }
 
-        if (!response.ok) return;
+        if (!response.ok) {
+          providerFailures++;
+          console.error('Telnyx fax status request returned a non-success response');
+          return;
+        }
 
-        const faxData = await response.json();
+        let faxData;
+        try {
+          faxData = await response.json();
+        } catch {
+          providerFailures++;
+          console.error('Telnyx fax status response was not valid JSON');
+          return;
+        }
         const responseProviderId = exactFaxAuthorityId(faxData?.data?.id);
         const newStatus = mapFaxStatus(faxData?.data?.status);
 
         // Bind the response to the requested FaxLog before using it. Unknown
         // statuses and mismatched/missing provider ids are not safe writes.
-        if (!newStatus || responseProviderId !== fax.telnyx_fax_id) return;
+        if (!newStatus || responseProviderId !== fax.telnyx_fax_id) {
+          providerFailures++;
+          console.error('Telnyx fax status response failed identity or status validation');
+          return;
+        }
 
         // The provider GET is an external-await boundary. Re-prove that the id
         // still resolves to this exact unchanged row before applying its result;
@@ -798,7 +1233,19 @@ Deno.serve(async (req) => {
           || currentIdentityRows[0]?.id !== fax.id
           || currentIdentityRows[0]?.telnyx_fax_id !== fax.telnyx_fax_id
           || currentIdentityRows[0]?.status !== fax.status
-          || currentIdentityRows[0]?.updated_date !== fax.updated_date) return;
+          || currentIdentityRows[0]?.updated_date !== fax.updated_date) {
+          if (Array.isArray(currentIdentityRows) && currentIdentityRows.length !== 1) {
+            ambiguousProviderIds.add(fax.telnyx_fax_id);
+            await quarantineFaxPollCandidate(
+              base44.asServiceRole.entities,
+              fax,
+              'ambiguous_provider_fax_identity',
+              pollStartedAt,
+            );
+          }
+          rowFailures++;
+          return;
+        }
 
         if ((FAX_POLL_RANK[newStatus] || 0) > (FAX_POLL_RANK[fax.status] || 0)) {
           // Share the webhook's idempotency markers (delivery_confirmation_sent /
@@ -889,7 +1336,10 @@ Deno.serve(async (req) => {
             },
             { $set: update },
           );
-          if (!successfulFaxCas(transitionResult)) return;
+          if (!successfulFaxCas(transitionResult)) {
+            rowFailures++;
+            return;
+          }
           const transitionCheck = await base44.asServiceRole.entities.FaxLog
             .filter({ id: fax.id }, undefined, FAX_POLL_EXACT_ROW_LIMIT).catch(() => []);
           if (transitionCheck.length !== 1
@@ -899,7 +1349,10 @@ Deno.serve(async (req) => {
             || transitionCheck[0]?.provider_submission_state !== 'accepted'
             || ((newStatus === 'delivered' || newStatus === 'failed')
               && (transitionCheck[0]?.provider_terminal_status !== newStatus
-                || !exactFaxInstant(transitionCheck[0]?.provider_terminal_at)))) return;
+                || !exactFaxInstant(transitionCheck[0]?.provider_terminal_at)))) {
+            rowFailures++;
+            return;
+          }
 
           if (notificationKind && notificationClaimToken) {
             const notified = await sendClaimedFaxNotification(
@@ -908,25 +1361,33 @@ Deno.serve(async (req) => {
               notificationKind,
               notificationClaimToken,
             ).catch(() => false);
-            if (!notified) console.error('Fax notification remains pending for poller recovery');
+            if (!notified) {
+              rowFailures++;
+              console.error('Fax notification remains pending for poller recovery');
+            }
           }
 
           updated++;
         }
-      } catch (error) {
+      } catch {
+        rowFailures++;
         console.error('Error checking fax status');
       }
     }));
 
-    return Response.json({
-      success: true,
-      checked: authorizedFaxes.length,
+    return faxPollSummaryResponse({
+      checked: providerChecks,
       updated,
+      scanned: scan.scanned,
+      provider_failures: providerFailures,
+      row_failures: rowFailures,
+      scan_failures: scanFailures,
+      recovery_failures: recoveryFailures,
       released_stale_retries: releasedStale,
-      ambiguous_fax_identities: ambiguousFaxIdentities,
+      ambiguous_fax_identities: ambiguousProviderIds.size,
     });
-  } catch (error) {
-    console.error('pollFaxStatuses failed:', error);
+  } catch {
+    console.error('pollFaxStatuses failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

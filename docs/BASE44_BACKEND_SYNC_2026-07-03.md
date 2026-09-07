@@ -7,8 +7,10 @@
 > on CareMetric AI, and the three §3 scheduled triggers were registered there
 > via the Base44 builder. The old hardcoded `hub.base44.app/apps/68ee80d9…`
 > (PENNSync) links in ten backend functions were repointed to
-> `https://caremetricai.base44.app`, and `base44/.app.jsonc` now carries the
-> CareMetric AI app id. The gap analysis below is kept for the record; §5's
+> `https://caremetricai.base44.app`. The ignored, environment-local
+> `base44/.app.jsonc` must point to the explicitly selected deployment target; in
+> the 2026-09 staging hardening workspace it points to staging app
+> `6a9881683dc68a0bd54f1ef7`, not production. The gap analysis below is kept for the record; §5's
 > drift numbers apply to the retired PENNSync app, not production.
 
 > **SAFETY CORRECTION (2026-09-02):** the outcome/OASIS instructions below were
@@ -127,9 +129,11 @@ Function names must match exactly — the deployed frontend already invokes them
 (Existing cron roster: `docs/SECRETS-WEBHOOKS-LAUNCH-RUNBOOK.md` §5 — the
 one-fax-processor-only and single-`dispatchScheduledSms` rules still apply.)
 
-No new secrets are needed: the four-secret list in the runbook
-(`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `HEYGEN_API_KEY`,
-`SIGNATURE_HMAC_SECRET`) is unchanged.
+No new secret is introduced by these schedules. Refer to the current runbook
+for capability-specific provider keys: OpenAI is limited to direct audio
+transcription, Anthropic to SOAP-note structuring, and HeyGen to optional
+training-video generation. Fax-cover formatting is local. `APP_PUBLIC_URL` is
+required non-secret per-environment configuration.
 
 ## 4. Do NOT touch (platform-only work)
 

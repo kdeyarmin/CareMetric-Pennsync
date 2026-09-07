@@ -1,5 +1,11 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
+// Deployment is intentionally harmless until the notification authority and
+// hosted scheduler/CAS evidence have been reviewed. The attached automation is
+// also inactive; both gates must be opened in one explicit release decision.
+const STALE_FOLLOW_UP_WORKFLOW_ENABLED =
+  String(Deno.env.get('WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS') || '').trim() === 'enabled-v1';
+
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
@@ -519,6 +525,15 @@ async function processAgency(
 }
 
 Deno.serve(async (req) => {
+  if (!STALE_FOLLOW_UP_WORKFLOW_ENABLED) {
+    return Response.json(
+      {
+        error: 'Stale follow-up processing is disabled pending hosted validation',
+        code: 'stale_follow_up_workflow_disabled',
+      },
+      { status: 503, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } },
+    );
+  }
   try {
     const base44 = createClientFromRequest(req);
     const me = await base44.auth.me().catch(() => null);

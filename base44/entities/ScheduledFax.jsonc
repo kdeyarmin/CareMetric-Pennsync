@@ -142,6 +142,7 @@
       "type": "string",
       "enum": [
         "pending",
+        "deferred",
         "processing",
         "sent",
         "partial_failure",
@@ -165,6 +166,22 @@
     "dispatch_attempt_id": {
       "type": "string",
       "description": "Opaque identity for the current processor-to-broker dispatch attempt."
+    },
+    "dispatch_retry_count": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Count of verified pre-dispatch configuration failures. It never counts an ambiguous or provider-started attempt."
+    },
+    "next_dispatch_attempt_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Earliest time a deferred row may be claimed after a verified pre-dispatch failure."
+    },
+    "last_dispatch_attempt_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the queue last acquired a dispatch claim, independent of provider acceptance."
     },
     "accepted_count": {
       "type": "integer",

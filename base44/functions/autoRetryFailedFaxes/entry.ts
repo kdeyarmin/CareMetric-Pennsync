@@ -1,5 +1,17 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// Deploying source must not make a provider-facing retry worker runnable. The
+// hosted automation remains inactive independently; staging validation must
+// opt in to this exact reviewed revision before the SDK is constructed.
+const AUTO_RETRY_FAILED_FAXES_ENABLED =
+  String(Deno.env.get('WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES') || '').trim() === 'enabled-v1';
+
+const AUTO_RETRY_SCAN_PAGE_SIZE = 200;
+const AUTO_RETRY_SCAN_LIMIT = 1_000;
+const AUTO_RETRY_DEFER_MAX_ATTEMPTS = 12;
+const AUTO_RETRY_DEFER_BASE_MINUTES = 15;
+const AUTO_RETRY_DEFER_MAX_MINUTES = 360;
+
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
@@ -277,17 +289,17 @@ async function resolveTelnyxCreds(base44) {
       || list.find((r) => r && pick(r.api_key))
       || list[0]
       || null;
-  } catch (err) {
+  } catch {
     // Do NOT collapse this into "not configured". A failed read (this invocation
     // path carries no service token, entity 404, 401/403, rate limit, platform
     // blip) is a completely different problem from an unconfigured integration,
     // and reporting them identically is what sent operators chasing a credential
     // they had already entered correctly.
-    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    readError = 'credential_store_unavailable';
     // The catch used to be bare, so an unreadable credential row left no
     // server-side breadcrumb at all — the only signal was a misleading
     // "not configured" reply. Log it; unattended runs have nowhere else to say so.
-    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
   }
   const rec = record || {};
   return {
@@ -308,7 +320,7 @@ async function resolveTelnyxCreds(base44) {
 function telnyxCredsMessage(creds, what) {
   const label = what || 'credentials';
   if (creds && creds.readError) {
-    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+    return `Could not read Telnyx ${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.`;
   }
   return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
 }
@@ -479,6 +491,104 @@ function autoSuccessfulCas(value) {
   return autoPlainObject(value) && value.success === true && value.updated === 1 && value.has_more === false;
 }
 
+async function loadDueAutomaticRetryRows(entities, dueBefore) {
+  const rows = [];
+  let afterId = null;
+  while (rows.length < AUTO_RETRY_SCAN_LIMIT) {
+    const query = {
+      status: 'failed',
+      next_retry_at: { $lte: dueBefore },
+      ...(afterId ? { id: { $gt: afterId } } : {}),
+    };
+    const pageSize = Math.min(AUTO_RETRY_SCAN_PAGE_SIZE, AUTO_RETRY_SCAN_LIMIT - rows.length);
+    const page = autoRequireRows(
+      await entities.FaxLog.filter(query, 'id', pageSize),
+      'FaxLog.filter',
+    );
+    if (page.length === 0) break;
+    let lastId = afterId;
+    for (const row of page) {
+      const id = autoExactId(row?.id);
+      if (!id || (lastId && id <= lastId)) {
+        throw new Error('FaxLog.filter returned an invalid retry scan cursor');
+      }
+      rows.push(row);
+      lastId = id;
+    }
+    afterId = lastId;
+    if (page.length < pageSize) break;
+  }
+  rows.sort((left, right) => {
+    const timeDelta = Date.parse(left?.next_retry_at) - Date.parse(right?.next_retry_at);
+    return (Number.isFinite(timeDelta) && timeDelta !== 0)
+      ? timeDelta
+      : String(left?.id || '').localeCompare(String(right?.id || ''));
+  });
+  return rows;
+}
+
+function automaticRetryBackoff(row, nowMs = Date.now()) {
+  const current = Number.isSafeInteger(row?.automatic_retry_queue_attempts)
+    && row.automatic_retry_queue_attempts >= 0
+    ? Math.min(row.automatic_retry_queue_attempts, AUTO_RETRY_DEFER_MAX_ATTEMPTS)
+    : 0;
+  const attempts = Math.min(current + 1, AUTO_RETRY_DEFER_MAX_ATTEMPTS);
+  const minutes = Math.min(
+    AUTO_RETRY_DEFER_MAX_MINUTES,
+    AUTO_RETRY_DEFER_BASE_MINUTES * (2 ** Math.min(attempts - 1, 5)),
+  );
+  return {
+    attempts,
+    exhausted: attempts >= AUTO_RETRY_DEFER_MAX_ATTEMPTS,
+    nextRetryAt: attempts >= AUTO_RETRY_DEFER_MAX_ATTEMPTS
+      ? null
+      : new Date(nowMs + minutes * 60_000).toISOString(),
+  };
+}
+
+function automaticRetryQueueCasFilter(row) {
+  if (!autoExactId(row?.id) || row?.status !== 'failed'
+    || !autoValidInstant(row?.next_retry_at) || !autoValidInstant(row?.updated_date)) return null;
+  return {
+    id: row.id,
+    status: 'failed',
+    next_retry_at: row.next_retry_at,
+    updated_date: row.updated_date,
+  };
+}
+
+async function quarantineAutomaticRetry(entities, row, code, nowMs = Date.now()) {
+  const filter = automaticRetryQueueCasFilter(row);
+  if (!filter) return false;
+  const result = await entities.FaxLog.updateMany(filter, { $set: {
+    next_retry_at: null,
+    automatic_retry_last_error_code: code,
+    automatic_retry_quarantined_at: new Date(nowMs).toISOString(),
+  } });
+  return autoSuccessfulCas(result);
+}
+
+async function deferAutomaticRetry(entities, row, code, nowMs = Date.now()) {
+  const filter = automaticRetryQueueCasFilter(row);
+  if (!filter) return null;
+  const backoff = automaticRetryBackoff(row, nowMs);
+  const result = await entities.FaxLog.updateMany(filter, { $set: {
+    next_retry_at: backoff.nextRetryAt,
+    automatic_retry_queue_attempts: backoff.attempts,
+    automatic_retry_last_error_code: backoff.exhausted ? `${code}_retry_exhausted` : code,
+    automatic_retry_quarantined_at: backoff.exhausted
+      ? new Date(nowMs).toISOString()
+      : null,
+  } });
+  return autoSuccessfulCas(result) ? (backoff.exhausted ? 'quarantined' : 'deferred') : null;
+}
+
+function automaticRetryHasConflictingClaim(row) {
+  return row?.retry_claimed_by != null || row?.retry_claimed_at != null
+    || row?.retry_claimed_by_user_id != null || row?.failure_notify_claimed_by != null
+    || row?.failure_notify_claimed_at != null;
+}
+
 function strictAutomaticRetryCandidate(row, now) {
   return !!row
     && !!autoExactId(row.id)
@@ -609,6 +719,9 @@ async function claimAutomaticRetry(entities, fax) {
     retry_claimed_at: claimedAt,
     retry_claimed_by_user_id: fax.sent_by_user_id,
     next_retry_at: null,
+    automatic_retry_queue_attempts: 0,
+    automatic_retry_last_error_code: null,
+    automatic_retry_quarantined_at: null,
   } });
   if (!autoSuccessfulCas(result)) return null;
   const rows = autoRequireRows(
@@ -650,6 +763,12 @@ async function settleAutomaticRetry(entities, claim, fax, changes) {
 
 Deno.serve(async (req) => {
   try {
+    if (!AUTO_RETRY_FAILED_FAXES_ENABLED) {
+      return Response.json(
+        { error: 'Automatic failed-fax retry workflow is not released' },
+        { status: 503, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } },
+      );
+    }
     const base44 = createClientFromRequest(req);
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
@@ -658,25 +777,55 @@ Deno.serve(async (req) => {
 
     const entities = base44.asServiceRole.entities;
     const now = Date.now();
-    const rows = autoRequireRows(
-      await entities.FaxLog.filter({
-        status: 'failed', next_retry_at: { $lte: new Date(now).toISOString() },
-      }, 'next_retry_at', 200),
-      'FaxLog.filter',
-    );
+    const rows = await loadDueAutomaticRetryRows(entities, new Date(now).toISOString());
     let retried = 0;
     let rejected = 0;
     let reconciliation = 0;
     let skipped = 0;
+    let quarantined = 0;
+    let deferred = 0;
+    let policyErrors = 0;
 
     for (const fax of rows) {
       if (!strictAutomaticRetryCandidate(fax, now)) {
-        skipped++;
+        const conflictingClaim = automaticRetryHasConflictingClaim(fax);
+        const disposition = conflictingClaim
+          ? await deferAutomaticRetry(entities, fax, 'retry_claim_conflict', now).catch(() => null)
+          : await quarantineAutomaticRetry(
+            entities,
+            fax,
+            'legacy_or_invalid_retry_provenance',
+            now,
+          ).then((applied) => applied ? 'quarantined' : null).catch(() => null);
+        if (disposition === 'deferred') deferred++;
+        else if (disposition === 'quarantined') quarantined++;
+        else skipped++;
         continue;
       }
-      const loadedPolicy = await loadAutomaticRetryPolicy(entities, fax);
+      let loadedPolicy = null;
+      try {
+        loadedPolicy = await loadAutomaticRetryPolicy(entities, fax);
+      } catch {
+        policyErrors++;
+        const disposition = await deferAutomaticRetry(
+          entities,
+          fax,
+          'retry_policy_read_failed',
+          now,
+        ).catch(() => null);
+        if (disposition === 'deferred') deferred++;
+        else if (disposition === 'quarantined') quarantined++;
+        else skipped++;
+        continue;
+      }
       if (!loadedPolicy) {
-        skipped++;
+        if (await quarantineAutomaticRetry(
+          entities,
+          fax,
+          'retry_policy_unavailable',
+          now,
+        ).catch(() => false)) quarantined++;
+        else skipped++;
         continue;
       }
       const claim = await claimAutomaticRetry(entities, fax);
@@ -770,6 +919,11 @@ Deno.serve(async (req) => {
       provider_rejected: rejected,
       requires_reconciliation: reconciliation,
       skipped,
+      quarantined,
+      deferred,
+      policy_errors: policyErrors,
+      scanned: rows.length,
+      scan_limit_reached: rows.length === AUTO_RETRY_SCAN_LIMIT,
       timestamp: new Date().toISOString(),
     }, { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
   } catch {

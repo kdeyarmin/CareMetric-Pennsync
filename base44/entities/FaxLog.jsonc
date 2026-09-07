@@ -212,6 +212,84 @@
       "format": "date-time",
       "description": "Scheduled time for next automatic retry attempt"
     },
+    "automatic_retry_queue_attempts": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Bounded worker deferral count for retry-queue infrastructure or claim conflicts. This is not a provider submission count."
+    },
+    "automatic_retry_last_error_code": {
+      "type": "string",
+      "description": "Non-PHI machine code for the latest automatic-retry queue deferral or quarantine."
+    },
+    "automatic_retry_quarantined_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When an unsafe or policy-ineligible due retry was removed from automatic dispatch pending audited operator review."
+    },
+    "status_poll_last_attempt_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Durable start time of the latest provider-status reconciliation attempt."
+    },
+    "status_poll_next_attempt_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Durable fairness lease. Non-terminal rows are eligible again only after this instant."
+    },
+    "status_poll_attempt_count": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Number of provider-status reconciliation claims, not a fax transmission count."
+    },
+    "status_poll_last_error_code": {
+      "type": "string",
+      "description": "Non-PHI machine code for a status-poll quarantine."
+    },
+    "status_poll_quarantined_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When invalid or ambiguous status-poll provenance was removed from automatic reconciliation."
+    },
+    "retry_recovery_quarantined_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When an invalid stale retry claim was removed from automatic recovery."
+    },
+    "retry_recovery_last_error_code": {
+      "type": "string",
+      "description": "Non-PHI machine code explaining stale retry recovery quarantine."
+    },
+    "retry_recovery_last_attempt_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Durable start time of the latest stale-retry recovery attempt."
+    },
+    "retry_recovery_next_attempt_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Durable fairness lease for unresolved stale-retry recovery."
+    },
+    "notification_recovery_quarantined_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When invalid terminal-notification provenance was removed from automatic recovery."
+    },
+    "notification_recovery_last_error_code": {
+      "type": "string",
+      "description": "Non-PHI machine code explaining terminal-notification recovery quarantine."
+    },
+    "notification_recovery_last_attempt_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Durable start time of the latest terminal-notification recovery attempt."
+    },
+    "notification_recovery_next_attempt_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Durable fairness lease for unresolved terminal-notification recovery."
+    },
     "final_failure_notified": {
       "type": "boolean",
       "default": false,

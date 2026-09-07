@@ -32,6 +32,9 @@ const patient = (overrides = {}) => ({
   created_by_user_id: 'creator-id',
   created_by_user_email_normalized: 'creator@example.com',
   created_by: 'creator@example.com',
+  client_request_id: 'create-patient-a',
+  patient_creation_key: 'agency-a:creator-id:create-patient-a',
+  status: 'active',
   assigned_nurses: ['member@example.com', 'recipient@example.com'],
   is_sample: false,
   is_archived: false,
@@ -41,6 +44,34 @@ const patient = (overrides = {}) => ({
   medical_record_number: 'MRN-1',
   primary_diagnosis: 'Test diagnosis',
   updated_date: NOW,
+  ...overrides,
+});
+
+const assignment = (overrides = {}) => ({
+  id: 'assignment-a',
+  assignment_key: 'agency-a:patient-a:user-a',
+  agency_id: 'agency-a',
+  patient_id: 'patient-a',
+  user_id: 'user-a',
+  user_email_normalized: 'member@example.com',
+  assignee_membership_id: 'membership-a',
+  assignee_membership_version_at_enablement: 1,
+  status: 'active',
+  source: 'manual',
+  created_by_user_id: 'owner-id',
+  created_by_user_email_normalized: 'owner@example.com',
+  activated_at: NOW,
+  suspended_at: null,
+  revoked_at: null,
+  revocation_reason: null,
+  last_transition_by_user_id: 'owner-id',
+  last_transition_by_email_normalized: 'owner@example.com',
+  last_transition_at: NOW,
+  last_transition_reason: 'Authorized for test',
+  last_transition_action: 'grant',
+  last_transition_request_id: 'grant-a',
+  last_transition_request_key: 'agency-a:patient-a:user-a:grant-a',
+  version: 1,
   ...overrides,
 });
 
@@ -71,6 +102,7 @@ function makeDocumentClient({
   memberships = [membership()],
   agencies = [{ id: 'agency-a', agency_name: 'Agency A', status: 'active' }],
   patients = [patient()],
+  assignments = [assignment()],
   documents = [document()],
   agencySettings = [],
 } = {}) {
@@ -78,12 +110,14 @@ function makeDocumentClient({
     memberships: memberships.map((row) => ({ ...row })),
     agencies: agencies.map((row) => ({ ...row })),
     patients: patients.map((row) => ({ ...row })),
+    assignments: assignments.map((row) => ({ ...row })),
     documents: documents.map((row) => ({ ...row })),
     agencySettings: agencySettings.map((row) => ({ ...row })),
     calls: {
       memberships: [],
       agencies: [],
       patients: [],
+      assignments: [],
       documents: [],
       settings: [],
       updates: [],
@@ -101,6 +135,7 @@ function makeDocumentClient({
     AgencyMembership: filterEntity('memberships', 'memberships'),
     Agency: filterEntity('agencies', 'agencies'),
     Patient: filterEntity('patients', 'patients'),
+    PatientCareTeamAssignment: filterEntity('assignments', 'assignments'),
     Document: {
       ...filterEntity('documents', 'documents'),
       update: async (...args) => {
@@ -136,7 +171,6 @@ function makeDocumentClient({
 
 async function loadHandler(functionName, client, {
   superAdminEmail = '',
-  anthropicKey = 'test-anthropic-key',
 } = {}) {
   let source = await readFile(
     new URL(`../functions/${functionName}/entry.ts`, import.meta.url),
@@ -159,7 +193,6 @@ async function loadHandler(functionName, client, {
     env: {
       get: (name) => {
         if (name === 'SUPER_ADMIN_EMAIL') return superAdminEmail;
-        if (name === 'ANTHROPIC_API_KEY') return anthropicKey;
         return undefined;
       },
     },
@@ -173,7 +206,14 @@ async function loadHandler(functionName, client, {
   return handler;
 }
 
-const request = (body) => ({ json: async () => body });
+const request = (body) => {
+  const raw = JSON.stringify(body);
+  return {
+    method: 'POST',
+    headers: new Headers(),
+    text: async () => raw,
+  };
+};
 
 test('analyzeDocument is a static fail-closed boundary until an authorized write broker exists', async () => {
   const fixture = makeDocumentClient();
@@ -221,6 +261,56 @@ test('generateFaxCoverPage rejects every legacy Document identifier before reads
   }
 });
 
+test('generateFaxCoverPage rejects non-POST and oversized bodies before reading them', async () => {
+  let authReads = 0;
+  const client = {
+    get auth() {
+      authReads += 1;
+      throw new Error('method rejection must precede authentication');
+    },
+  };
+  const handler = await loadHandler('generateFaxCoverPage', client);
+  let bodyReads = 0;
+  const methodResponse = await handler({
+    method: 'GET',
+    get headers() { throw new Error('method rejection must precede headers'); },
+    text: async () => { bodyReads += 1; return '{}'; },
+  });
+
+  assert.equal(methodResponse.status, 405);
+  assert.equal(methodResponse.headers.get('Allow'), 'POST');
+  assert.equal(methodResponse.headers.get('Cache-Control'), 'no-store');
+  assert.equal(methodResponse.headers.get('Pragma'), 'no-cache');
+  assert.equal(authReads, 0);
+  assert.equal(bodyReads, 0);
+
+  const fixture = makeDocumentClient();
+  const oversizedHandler = await loadHandler('generateFaxCoverPage', fixture.client);
+  const oversizedResponse = await oversizedHandler({
+    method: 'POST',
+    headers: new Headers({ 'content-length': '100001' }),
+    text: async () => { bodyReads += 1; return '{}'; },
+  });
+  assert.equal(oversizedResponse.status, 413);
+  assert.equal(oversizedResponse.headers.get('Cache-Control'), 'no-store');
+  assert.equal(oversizedResponse.headers.get('Pragma'), 'no-cache');
+  assert.equal(bodyReads, 0);
+  assert.deepEqual(fixture.state.calls.patients, []);
+  assert.deepEqual(fixture.state.calls.memberships, []);
+
+  const rawOversizedResponse = await oversizedHandler({
+    method: 'POST',
+    headers: new Headers(),
+    text: async () => { bodyReads += 1; return 'x'.repeat(100_001); },
+  });
+  assert.equal(rawOversizedResponse.status, 413);
+  assert.equal(rawOversizedResponse.headers.get('Cache-Control'), 'no-store');
+  assert.equal(rawOversizedResponse.headers.get('Pragma'), 'no-cache');
+  assert.equal(bodyReads, 1);
+  assert.deepEqual(fixture.state.calls.patients, []);
+  assert.deepEqual(fixture.state.calls.memberships, []);
+});
+
 test('generateFaxCoverPage rejects operator identifiers and mutable tenant claims before reads', async () => {
   const fixture = makeDocumentClient();
   const handler = await loadHandler('generateFaxCoverPage', fixture.client);
@@ -237,7 +327,35 @@ test('generateFaxCoverPage rejects operator identifiers and mutable tenant claim
   assert.deepEqual(fixture.state.calls.memberships, []);
 });
 
-test('generateFaxCoverPage derives tenant only from exact immutable authority', async () => {
+test('generateFaxCoverPage bounds every presentation field before protected reads', async () => {
+  const invalidBodies = [
+    { recipient_number: '1'.repeat(65) },
+    { recipient_name: 'N'.repeat(201) },
+    { recipient_organization: 'O'.repeat(301) },
+    { sender_name: 'S'.repeat(201) },
+    { sender_number: '1'.repeat(65) },
+    { subject: 'S'.repeat(301) },
+    { notes: 'N'.repeat(5_001) },
+    { urgency: 'immediate' },
+    { page_count: '1' },
+    { page_count: -1 },
+    { page_count: 10_001 },
+  ];
+
+  for (const body of invalidBodies) {
+    const fixture = makeDocumentClient();
+    const handler = await loadHandler('generateFaxCoverPage', fixture.client);
+    const response = await handler(request(body));
+    assert.equal(response.status, 400);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assert.equal(response.headers.get('Pragma'), 'no-cache');
+    assert.deepEqual(fixture.state.calls.patients, []);
+    assert.deepEqual(fixture.state.calls.memberships, []);
+    assert.deepEqual(fixture.state.calls.assignments, []);
+  }
+});
+
+test('generateFaxCoverPage derives tenant only from exact immutable authority and formats locally', async () => {
   const fixture = makeDocumentClient({
     user: {
       id: 'user-a',
@@ -249,31 +367,113 @@ test('generateFaxCoverPage derives tenant only from exact immutable authority', 
   });
   const handler = await loadHandler('generateFaxCoverPage', fixture.client);
   const originalFetch = globalThis.fetch;
-  const fetchCalls = [];
-  globalThis.fetch = async (...args) => {
-    fetchCalls.push(args);
-    return new Response(JSON.stringify({
-      content: [{ text: JSON.stringify({ from_name: 'Member', from_fax: '+17245550199' }) }],
-    }), { status: 200, headers: { 'content-type': 'application/json' } });
+  let fetchCalls = 0;
+  globalThis.fetch = async () => {
+    fetchCalls += 1;
+    throw new Error('fax-cover formatting must not call a provider');
   };
   try {
     const response = await handler(request({
       patient_id: 'patient-a',
       recipient_number: '+17245550101',
       recipient_name: 'Recipient',
+      recipient_organization: 'Receiving Practice',
+      sender_name: 'Member',
+      notes: 'Please review the attachment.',
       page_count: 1,
     }));
     const json = await response.json();
     assert.equal(response.status, 200);
+    assert.equal(response.headers.get('Cache-Control'), 'no-store');
+    assert.equal(response.headers.get('Pragma'), 'no-cache');
     assert.equal(json.success, true);
-    assert.equal(fetchCalls.length, 1);
+    assert.equal(fetchCalls, 0);
     assert.deepEqual(fixture.state.calls.settings, []);
-    assert.match(
-      JSON.parse(fetchCalls[0][1].body).messages[0].content,
-      /Sender Fax: See letterhead/,
+    assert.deepEqual(fixture.state.calls.assignments[0][0], {
+      assignment_key: 'agency-a:patient-a:user-a',
+      agency_id: 'agency-a',
+      patient_id: 'patient-a',
+      user_id: 'user-a',
+    });
+    assert.deepEqual(Object.keys(json.cover_page_data).sort(), [
+      'confidentiality_notice', 'date', 'document_title', 'from_fax', 'from_name',
+      'notes', 'patient_diagnosis', 'patient_dob', 'patient_mrn', 'patient_name',
+      'subject', 'time', 'to_fax', 'to_name', 'to_organization', 'total_pages',
+      'urgency',
+    ].sort());
+    assert.equal(json.cover_page_data.from_name, 'Member');
+    assert.equal(json.cover_page_data.from_fax, 'See letterhead');
+    assert.equal(json.cover_page_data.to_name, 'Recipient');
+    assert.equal(json.cover_page_data.to_organization, 'Receiving Practice');
+    assert.equal(json.cover_page_data.to_fax, '+17245550101');
+    assert.equal(json.cover_page_data.subject, 'RE: Patient Pat Example');
+    assert.equal(json.cover_page_data.urgency, 'routine');
+    assert.equal(json.cover_page_data.total_pages, 2);
+    assert.equal(json.cover_page_data.patient_name, 'Pat Example');
+    assert.equal(json.cover_page_data.patient_dob, '1950-01-01');
+    assert.equal(json.cover_page_data.patient_mrn, 'MRN-1');
+    assert.equal(json.cover_page_data.patient_diagnosis, 'Test diagnosis');
+    assert.equal(json.cover_page_data.document_title, 'See attached');
+    assert.equal(json.cover_page_data.notes, 'Please review the attachment.');
+    assert.equal(
+      json.cover_page_data.confidentiality_notice,
+      'CONFIDENTIALITY NOTICE: This fax transmission contains confidential health information protected by HIPAA. If you have received this fax in error, please notify the sender immediately and destroy all copies.',
     );
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test('generateFaxCoverPage ignores mutable assigned_nurses without canonical assignment authority', async () => {
+  const fixture = makeDocumentClient({
+    patients: [patient({ assigned_nurses: ['member@example.com'] })],
+    assignments: [],
+  });
+  const handler = await loadHandler('generateFaxCoverPage', fixture.client);
+  const response = await handler(request({ patient_id: 'patient-a' }));
+
+  assert.equal(response.status, 403);
+  assert.equal((await response.json()).error, 'Patient is unavailable');
+  assert.equal(fixture.state.calls.assignments.length, 1);
+});
+
+test('generateFaxCoverPage rejects assignment not bound to the current membership version', async () => {
+  const fixture = makeDocumentClient({
+    memberships: [membership({ version: 2 })],
+    assignments: [assignment({ assignee_membership_version_at_enablement: 1 })],
+  });
+  const handler = await loadHandler('generateFaxCoverPage', fixture.client);
+  const response = await handler(request({ patient_id: 'patient-a' }));
+
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, 'Care-team assignment integrity check failed');
+});
+
+test('generateFaxCoverPage fails closed on incoherent assignment lifecycle provenance', async () => {
+  const incoherentRows = [
+    assignment({ source: 'browser_claim' }),
+    assignment({ last_transition_action: 'activate', version: 2 }),
+    assignment({
+      last_transition_action: 'activate',
+      version: 4,
+      suspended_at: '2026-09-02T12:00:00.000Z',
+    }),
+    assignment({
+      status: 'suspended',
+      last_transition_action: 'suspend',
+      version: 3,
+      suspended_at: NOW,
+    }),
+    assignment({ last_transition_request_key: 'forged:key' }),
+    assignment({ last_transition_at: 'not-a-date' }),
+  ];
+
+  for (const row of incoherentRows) {
+    const fixture = makeDocumentClient({ assignments: [row] });
+    const handler = await loadHandler('generateFaxCoverPage', fixture.client);
+    const response = await handler(request({ patient_id: 'patient-a' }));
+    assert.equal(response.status, 409);
+    assert.equal((await response.json()).error, 'Care-team assignment integrity check failed');
   }
 });
 

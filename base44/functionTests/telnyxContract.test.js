@@ -104,6 +104,10 @@ const activeTelnyxSecret = (overrides = {}) => ({
   ...overrides,
 });
 
+const pollFaxStatusesReleased = {
+  WORKFLOW_RELEASE_POLL_FAX_STATUSES: "enabled-v1",
+};
+
 const smsBinding = (overrides = {}) => ({
   id: "binding_1",
   binding_key: "telnyx:integration_1:+12155550100",
@@ -501,7 +505,17 @@ test("a nurse-line purchase with NO saved campaign warns instead of enrolling", 
 function makeSpyBase44({ user = { email: "a@x.com", role: "admin", full_name: "Ada" }, data = {}, writes = [] } = {}) {
   const cache = {};
   const matches = (row, query = {}) => Object.entries(query).every(([key, value]) => {
-    if (value && typeof value === "object" && !Array.isArray(value)) return true;
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      if (Object.hasOwn(value, "$exists")) {
+        return (row?.[key] !== undefined && row?.[key] !== null) === value.$exists;
+      }
+      if (Object.hasOwn(value, "$lte") && !(row?.[key] != null && row[key] <= value.$lte)) return false;
+      if (Object.hasOwn(value, "$gte") && !(row?.[key] != null && row[key] >= value.$gte)) return false;
+      if (Object.hasOwn(value, "$gt") && !(row?.[key] != null && row[key] > value.$gt)) return false;
+      if (Object.hasOwn(value, "$lt") && !(row?.[key] != null && row[key] < value.$lt)) return false;
+      if (Array.isArray(value.$in) && !value.$in.includes(row?.[key])) return false;
+      return true;
+    }
     return row?.[key] === value;
   });
   const entity = (name) => {
@@ -536,9 +550,31 @@ function makeSpyBase44({ user = { email: "a@x.com", role: "admin", full_name: "A
           return { success: true, updated: matched.length, has_more: false };
         },
         // Support id-equality filters used by claim-before-assign / claim-before-send.
-        filter: async (query = {}) => {
-          const rows = data[name] || [];
-          if (query && query.id != null) return rows.filter((row) => row.id === query.id);
+        filter: async (query = {}, sort, limit, skip = 0) => {
+          let rows = data[name] || [];
+          if (name === "FaxLog") {
+            rows = rows.filter((row) => matches(row, query));
+          } else {
+            if (query && query.id != null) rows = rows.filter((row) => row.id === query.id);
+            if (typeof query?.telnyx_fax_id === "string") {
+              rows = rows.filter((row) => row.telnyx_fax_id === query.telnyx_fax_id);
+            }
+            if (typeof query?.status === "string") {
+              rows = rows.filter((row) => row.status === query.status);
+            } else if (Array.isArray(query?.status?.$in)) {
+              rows = rows.filter((row) => query.status.$in.includes(row.status));
+            }
+          }
+          rows = [...rows];
+          if (typeof sort === "string") {
+            const direction = sort.startsWith("-") ? -1 : 1;
+            const field = sort.replace(/^-/, "");
+            rows.sort((a, b) => direction * String(a?.[field] || "").localeCompare(String(b?.[field] || "")));
+          }
+          if (Number.isSafeInteger(limit)) {
+            const offset = Number.isSafeInteger(skip) && skip >= 0 ? skip : 0;
+            rows = rows.slice(offset, offset + limit);
+          }
           return rows;
         },
         list: async () => data[name] || [],
@@ -1115,6 +1151,164 @@ const outboundFax = (overrides = {}) => ({
   ...overrides,
 });
 
+test("pollFaxStatuses is default-false before Base44 SDK construction", async () => {
+  let clientConstructions = 0;
+  const provider = makeFetch([]);
+  const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
+    env: {},
+    makeClient: () => {
+      clientConstructions++;
+      throw new Error("SDK construction must remain unreachable while gated");
+    },
+    fetchImpl: provider.impl,
+  });
+
+  const response = await handler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(response.status, 503);
+  assert.deepEqual(await response.json(), { error: "Fax status polling is not released" });
+  assert.equal(clientConstructions, 0);
+  assert.equal(provider.calls.length, 0);
+
+  const config = await readFile(
+    new URL("../functions/pollFaxStatuses/function.jsonc", import.meta.url),
+    "utf8",
+  );
+  assert.match(config, /"is_active"\s*:\s*false/);
+});
+
+test("pollFaxStatuses persists fairness across a cold start beyond twenty rows", async () => {
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret()],
+    FaxLog: Array.from({ length: 30 }, (_, index) => outboundFax({
+      id: `FaxLog_${index + 1}`,
+      telnyx_fax_id: `outbound_fax_${index + 1}`,
+      provider_submission_attempt_id: `submission_attempt_${index + 1}`,
+      created_date: new Date(Date.UTC(2020, 0, 1) + index * 1000).toISOString(),
+      updated_date: new Date(Date.UTC(2026, 8, 6) + index * 1000).toISOString(),
+    })),
+  };
+  const provider = makeFetch([{
+    match: (url) => url.includes("/v2/faxes/outbound_fax_"),
+    respond: (url) => ({ status: 200, json: { data: {
+      id: decodeURIComponent(url.split("/").at(-1)),
+      status: "sending",
+    } } }),
+  }]);
+  const loadPoller = () => loadHandler("../functions/pollFaxStatuses/entry.ts", {
+    env: pollFaxStatusesReleased,
+    makeClient: () => makeSpyBase44({ data: state }),
+    fetchImpl: provider.impl,
+  });
+  const handler = await loadPoller();
+
+  const first = await handler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(first.status, 200, JSON.stringify(await first.clone().json()));
+  const firstBody = await first.json();
+  assert.equal(firstBody.checked, 20);
+  assert.equal(firstBody.scanned, 25);
+  assert.ok(
+    provider.calls.some((call) => call.url.endsWith("/v2/faxes/outbound_fax_1")),
+    "an attempt more than 48 hours old is still polled",
+  );
+
+  // Load a fresh module to model a cold function isolate. Progress must come
+  // from FaxLog leases, never process memory.
+  const coldHandler = await loadPoller();
+  const second = await coldHandler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(second.status, 200, JSON.stringify(await second.clone().json()));
+  const secondBody = await second.json();
+  assert.equal(secondBody.checked, 10);
+  assert.equal(secondBody.scanned, 10);
+  assert.equal(provider.calls.length, 30);
+  assert.ok(
+    provider.calls.some((call) => call.url.endsWith("/v2/faxes/outbound_fax_21")),
+    "rows fetched just beyond the provider budget are not skipped by the cursor",
+  );
+  assert.ok(
+    provider.calls.some((call) => call.url.endsWith("/v2/faxes/outbound_fax_30")),
+    "the next page is reached instead of repeatedly polling only twenty rows",
+  );
+  assert.ok(state.FaxLog.every((row) => Number.isFinite(Date.parse(row.status_poll_last_attempt_at))));
+});
+
+test("pollFaxStatuses reserves provider capacity across non-terminal statuses", async () => {
+  const queued = Array.from({ length: 25 }, (_, index) => outboundFax({
+    id: `QueuedFax_${index + 1}`,
+    telnyx_fax_id: `queued_fax_${index + 1}`,
+    provider_submission_attempt_id: `queued_attempt_${index + 1}`,
+    status: "queued",
+    created_date: new Date(Date.UTC(2020, 0, 1) + index * 1000).toISOString(),
+  }));
+  const sent = outboundFax({
+    id: "SentFax_1",
+    telnyx_fax_id: "sent_fax_1",
+    provider_submission_attempt_id: "sent_attempt_1",
+    status: "sent",
+    created_date: "2026-09-06T12:00:00.000Z",
+  });
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret()],
+    FaxLog: [...queued, sent],
+  };
+  const provider = makeFetch([{
+    match: (url) => url.includes("/v2/faxes/"),
+    respond: (url) => ({ status: 200, json: { data: {
+      id: decodeURIComponent(url.split("/").at(-1)),
+      status: url.endsWith("/sent_fax_1") ? "sent" : "queued",
+    } } }),
+  }]);
+  const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
+    env: pollFaxStatusesReleased,
+    makeClient: () => makeSpyBase44({ data: state }),
+    fetchImpl: provider.impl,
+  });
+
+  const response = await handler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  assert.equal((await response.json()).checked, 20);
+  assert.equal(provider.calls.length, 20);
+  assert.ok(
+    provider.calls.some((call) => call.url.endsWith("/v2/faxes/sent_fax_1")),
+    "a queued backlog cannot consume every provider call",
+  );
+});
+
+test("pollFaxStatuses bounds provider GETs and returns a PHI-free degraded summary", async () => {
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret()],
+    FaxLog: [outboundFax()],
+  };
+  let observedSignal = null;
+  const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
+    env: pollFaxStatusesReleased,
+    makeClient: () => makeSpyBase44({ data: state }),
+    fetchImpl: async (_url, init = {}) => {
+      observedSignal = init.signal;
+      throw new DOMException("simulated timeout", "AbortError");
+    },
+  });
+
+  const response = await handler(new Request("https://app/functions/pollFaxStatuses"));
+  assert.equal(response.status, 503);
+  const body = await response.json();
+  assert.equal(body.success, false);
+  assert.equal(body.degraded, true);
+  assert.equal(body.checked, 1);
+  assert.equal(body.updated, 0);
+  assert.equal(body.provider_failures, 1);
+  assert.equal(body.row_failures, 0);
+  assert.ok(observedSignal instanceof AbortSignal, "Telnyx GET receives an AbortSignal timeout");
+  const serialized = JSON.stringify(body);
+  for (const secretOrPhi of [
+    "FaxLog_1",
+    "outbound_fax_1",
+    "staff@example.com",
+    "+13125550182",
+  ]) {
+    assert.equal(serialized.includes(secretOrPhi), false);
+  }
+});
+
 test("pollFaxStatuses uses exact provider identity, CAS, and immutable agency retry policy", async () => {
   const writes = [];
   const state = {
@@ -1133,7 +1327,7 @@ test("pollFaxStatuses uses exact provider identity, CAS, and immutable agency re
     } } }),
   }]);
   const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
-    env: {},
+    env: pollFaxStatusesReleased,
     makeClient: () => makeSpyBase44({ writes, data: state }),
     fetchImpl: impl,
   });
@@ -1145,11 +1339,12 @@ test("pollFaxStatuses uses exact provider identity, CAS, and immutable agency re
   assert.equal(state.FaxLog[0].retry_count, 1);
   assert.ok(Number.isFinite(Date.parse(state.FaxLog[0].next_retry_at)));
   assert.equal(writes.some((write) => write.entity === "User"), false);
-  const transition = writes.find((write) => write.entity === "FaxLog" && write.op === "updateMany");
+  const transition = writes.find((write) => write.entity === "FaxLog" && write.op === "updateMany"
+    && write.query.telnyx_fax_id === "outbound_fax_1");
   assert.equal(transition?.query.id, "FaxLog_1");
   assert.equal(transition?.query.telnyx_fax_id, "outbound_fax_1");
   assert.equal(transition?.query.status, "sending");
-  assert.equal(transition?.query.updated_date, "2026-09-06T12:00:01.000Z");
+  assert.equal(transition?.query.updated_date, "2026-09-06T12:00:01.001Z");
 });
 
 test("pollFaxStatuses releases a stale retry only with exact generation and provider provenance", async () => {
@@ -1178,7 +1373,7 @@ test("pollFaxStatuses releases a stale retry only with exact generation and prov
       : filterFax(query, ...args)
   );
   const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
-    env: {},
+    env: pollFaxStatusesReleased,
     makeClient: () => client,
     fetchImpl: makeFetch([]).impl,
   });
@@ -1220,7 +1415,7 @@ test("fax status poller fails closed for malformed or inactive retry policies", 
       } } }),
     }]);
     const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
-      env: {},
+      env: pollFaxStatusesReleased,
       makeClient: () => makeSpyBase44({ data: state }),
       fetchImpl: provider.impl,
     });
@@ -1254,19 +1449,24 @@ test("pollFaxStatuses never schedules legacy fax rows and rejects ambiguous acti
     } } }),
   }]);
   const legacyHandler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
-    env: {},
+    env: pollFaxStatusesReleased,
     makeClient: () => makeSpyBase44({ writes: legacyWrites, data: legacyState }),
     fetchImpl: legacyFetch.impl,
   });
   const legacyResponse = await legacyHandler(new Request("https://app/functions/pollFaxStatuses"));
-  assert.equal(legacyResponse.status, 200);
+  assert.equal(legacyResponse.status, 503);
+  assert.equal((await legacyResponse.json()).row_failures, 1);
   assert.equal(legacyFetch.calls.length, 0);
   assert.equal(legacyState.FaxLog[0].status, "sending");
   assert.equal(legacyState.FaxLog[0].next_retry_at, undefined);
   assert.equal(legacyState.FaxLog[0].retry_count, 0);
   assert.equal(legacyState.FaxLog[0].final_failure_notified, false);
   assert.equal(legacyState.Notification.length, 0);
-  assert.equal(legacyWrites.length, 0);
+  assert.equal(legacyWrites.length, 2);
+  const legacyQuarantine = legacyWrites.find((write) => (
+    write.entity === "FaxLog" && write.patch?.$set?.status_poll_quarantined_at
+  ));
+  assert.equal(legacyQuarantine.patch.$set.status_poll_last_error_code, "invalid_status_poll_authority");
 
   const duplicateCredentials = [
     activeTelnyxSecret({ id: "integration_1", api_key: "KEYone" }),
@@ -1274,7 +1474,7 @@ test("pollFaxStatuses never schedules legacy fax rows and rejects ambiguous acti
   ];
   const ambiguousFetch = makeFetch([]);
   const ambiguousHandler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
-    env: {},
+    env: pollFaxStatusesReleased,
     makeClient: () => makeSpyBase44({ data: {
       IntegrationSecret: duplicateCredentials,
       FaxLog: [outboundFax()],
@@ -1294,21 +1494,31 @@ test("pollFaxStatuses quarantines duplicate provider ids before calling Telnyx",
   };
   const provider = makeFetch([]);
   const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
-    env: {},
+    env: pollFaxStatusesReleased,
     makeClient: () => makeSpyBase44({ writes, data: state }),
     fetchImpl: provider.impl,
   });
   const response = await handler(new Request("https://app/functions/pollFaxStatuses"));
-  assert.equal(response.status, 200);
+  assert.equal(response.status, 503);
   assert.deepEqual(await response.json(), {
-    success: true,
+    success: false,
+    degraded: true,
     checked: 0,
     updated: 0,
+    scanned: 2,
+    provider_failures: 0,
+    row_failures: 2,
+    scan_failures: 0,
+    recovery_failures: 0,
     released_stale_retries: 0,
     ambiguous_fax_identities: 1,
   });
   assert.equal(provider.calls.length, 0);
-  assert.equal(writes.length, 0);
+  assert.equal(writes.length, 4);
+  assert.equal(writes.filter((write) => (
+    write.entity === "FaxLog"
+    && write.patch?.$set?.status_poll_last_error_code === "ambiguous_provider_fax_identity"
+  )).length, 2);
 });
 
 test("fax status consumers quarantine a stale credential revision", async () => {
@@ -1319,15 +1529,22 @@ test("fax status consumers quarantine a stale credential revision", async () => 
   };
   const provider = makeFetch([]);
   const pollHandler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
-    env: {},
+    env: pollFaxStatusesReleased,
     makeClient: () => makeSpyBase44({ writes: pollWrites, data: pollState }),
     fetchImpl: provider.impl,
   });
   const pollResponse = await pollHandler(new Request("https://app/functions/pollFaxStatuses"));
-  assert.equal(pollResponse.status, 200);
-  assert.equal((await pollResponse.json()).checked, 0);
+  assert.equal(pollResponse.status, 503);
+  const pollBody = await pollResponse.json();
+  assert.equal(pollBody.checked, 0);
+  assert.equal(pollBody.row_failures, 1);
   assert.equal(provider.calls.length, 0);
-  assert.equal(pollWrites.length, 0);
+  assert.equal(pollWrites.length, 2);
+  assert.equal(
+    pollWrites.at(-1).patch.$set.status_poll_last_error_code,
+    "stale_status_poll_credential",
+  );
+  assert.ok(Number.isFinite(Date.parse(pollState.FaxLog[0].status_poll_quarantined_at)));
 
   const { publicKey, privateKey } = generateKeyPairSync("ed25519");
   const pubB64 = rawEd25519PublicKeyB64(publicKey);
@@ -1523,7 +1740,7 @@ test("pollFaxStatuses recovers a stale terminal notification claim", async () =>
   }]);
   const client = makeSpyBase44({ writes, data: state });
   const handler = await loadHandler("../functions/pollFaxStatuses/entry.ts", {
-    env: {},
+    env: pollFaxStatusesReleased,
     makeClient: () => client,
     fetchImpl: provider.impl,
   });

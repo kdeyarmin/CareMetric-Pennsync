@@ -8,47 +8,101 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-/** Explicit patient access — Patient/Visit RLS treats role:admin as platform-wide. */
-async function assertPatientAccess(base44, user, patient) {
-  if (!patient) return Response.json({ error: 'Patient not found' }, { status: 404 });
-  const isSuperAdmin = user.account_type === 'super_admin';
-  const isAgencyScopedAdmin =
-    user.account_type === 'agency_admin'
-    || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-  const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-  const isAssigned = Array.isArray(patient.assigned_nurses)
-    && patient.assigned_nurses.includes(user.email);
-  if (!isPlatformAdmin && !isAgencyScopedAdmin && patient.created_by !== user.email && !isAssigned) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
-  }
-  if (isAgencyScopedAdmin) {
-    if (!user.agency_name) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    const agencyUsers = await base44.asServiceRole.entities.User
-      .list('-created_date', 5000).catch(() => []);
-    const agencyEmails = new Set(
-      (agencyUsers || [])
-        .filter((u) => u.agency_name === user.agency_name && u.email)
-        .map((u) => u.email),
-    );
-    const inAgency = (patient.created_by && agencyEmails.has(patient.created_by))
-      || (Array.isArray(patient.assigned_nurses)
-        && patient.assigned_nurses.some((e) => agencyEmails.has(e)));
-    if (!inAgency) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-  }
-  return null;
+const MAX_IDENTIFIER_LENGTH = 200;
+const SOURCE_SHA256_PATTERN = /^[a-f0-9]{64}$/;
+
+function exactIdentifier(value) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= MAX_IDENTIFIER_LENGTH
+    && value.trim() === value
+    && !value.startsWith('$');
 }
 
-// Source-level containment until Visit updates are owned by the immutable
-// AgencyMembership authorization broker. This endpoint currently performs two
-// user-mode Visit.update calls (claim + AI narrative publication), so even its
-// read path must remain unreachable while direct Visit mutation is being
-// disabled. Keep this check before client creation, authentication, or any
-// entity/integration access.
+function plainObject(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value);
+}
+
+function validAiSourceResult(result, visitId) {
+  const source = result?.source;
+  const visit = source?.visit;
+  const patient = source?.patient;
+  const processing = result?.processing;
+  return plainObject(result)
+    && result.updated === false
+    && result.action === 'read_ai_processing_source'
+    && SOURCE_SHA256_PATTERN.test(String(result.source_sha256 || ''))
+    && plainObject(source)
+    && source.protocol === 'completed_visit_ai_source_v1'
+    && exactIdentifier(source.agency_id)
+    && plainObject(visit)
+    && visit.id === visitId
+    && exactIdentifier(visit.patient_id)
+    && visit.status === 'completed'
+    && typeof visit.nurse_notes === 'string'
+    && typeof visit.raw_transcription === 'string'
+    && plainObject(visit.vital_signs)
+    && plainObject(patient)
+    && patient.id === visit.patient_id
+    && patient.agency_id === source.agency_id
+    && typeof patient.first_name === 'string'
+    && typeof patient.last_name === 'string'
+    && typeof patient.primary_diagnosis === 'string'
+    && typeof patient.updated_date === 'string'
+    && Number.isFinite(Date.parse(patient.updated_date))
+    && plainObject(processing)
+    && (processing.claimed_by === null || exactIdentifier(processing.claimed_by))
+    && (processing.processed_at === null
+      || (typeof processing.processed_at === 'string'
+        && Number.isFinite(Date.parse(processing.processed_at))));
+}
+
+// Source-level containment remains in place while the completed-visit flow is
+// proven in hosted two-agency tests. Both Visit mutations now cross the
+// immutable AgencyMembership/Patient authority checks in updateAuthorizedVisit;
+// this release gate must still remain before client creation, authentication,
+// or any entity/integration access until nested-auth, claim-race, and provider
+// failure evidence has been accepted.
 const PROCESS_COMPLETED_VISIT_PAUSED = true;
+
+async function invokeAuthorizedVisitAction(base44, payload) {
+  const internalSecret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (internalSecret.length < 32) {
+    throw new Error('Internal Visit mutation authorization is unavailable');
+  }
+  const response = await base44.functions.fetch('/updateAuthorizedVisit', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-internal-secret': internalSecret,
+    },
+    body: JSON.stringify(payload),
+  });
+  const result = await response.json().catch(() => null);
+  if (!response.ok || result?.action !== payload.action) {
+    throw new Error('Authorized Visit action failed');
+  }
+  return result;
+}
+
+async function readAuthorizedVisitAiSource(base44, visitId) {
+  const result = await invokeAuthorizedVisitAction(base44, {
+    visit_id: visitId,
+    action: 'read_ai_processing_source',
+  });
+  if (!validAiSourceResult(result, visitId)) {
+    throw new Error('Authorized Visit AI source read failed');
+  }
+  return result;
+}
+
+async function invokeAuthorizedVisitMutation(base44, payload) {
+  const result = await invokeAuthorizedVisitAction(base44, payload);
+  if (result?.updated !== true) {
+    throw new Error('Authorized Visit mutation failed');
+  }
+  return result;
+}
 
 Deno.serve(async (req) => {
   if (PROCESS_COMPLETED_VISIT_PAUSED) {
@@ -74,20 +128,13 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'visit_id is required' }, { status: 400 });
     }
 
-    // Fetch visit data
-    const visit = await base44.entities.Visit.get(visit_id);
-    
-    if (!visit) {
-      return Response.json({ error: 'Visit not found' }, { status: 404 });
-    }
-
-    // Only process if visit is completed
-    if (visit.status !== 'completed') {
-      return Response.json({
-        error: 'Visit must be completed before processing',
-        visit_status: visit.status
-      }, { status: 400 });
-    }
+    // Read only the finite, purpose-bound source projection through the same
+    // immutable tenant/Patient/Visit authority broker that owns the claim and
+    // publication. No legacy user-mode Visit/Patient read participates.
+    const initialSource = await readAuthorizedVisitAiSource(base44, visit_id);
+    const visit = initialSource.source.visit;
+    const patient = initialSource.source.patient;
+    const sourceSha256 = initialSource.source_sha256;
 
     // Idempotency guard. This function has no client idempotency key, so a
     // double-click / retry would otherwise (a) overwrite nurse_notes with a fresh
@@ -95,14 +142,14 @@ Deno.serve(async (req) => {
     // the documentation — and (b) create duplicate follow-up tasks + notifications
     // every time. Prefer the durable ai_processed_at stamp; fall back to existing
     // AI tasks for visits processed before that field existed.
-    if (visit.ai_processed_at) {
+    if (initialSource.processing.processed_at) {
       const existingAiTasks = await base44.entities.Task
         .filter({ related_visit_id: visit_id, source: 'ai_generated' }, undefined, 5000)
         .catch(() => []);
       return Response.json({
         success: true,
         already_processed: true,
-        visit,
+        visit: { ...visit, ai_processed_at: initialSource.processing.processed_at },
         tasks_created: 0,
         tasks: existingAiTasks || [],
       });
@@ -124,20 +171,35 @@ Deno.serve(async (req) => {
     // concurrent submits both see zero tasks, both run InvokeLLM, then both
     // overwrite nurse_notes and create duplicate tasks. Claim + re-read mirrors
     // onDocumentSigned / sendRenewalReminders.
-    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+    const claimNonce = typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `ai-process-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    const claimToken = `visit-ai-v1:${sourceSha256}:${claimNonce}`;
     try {
-      await base44.entities.Visit.update(visit_id, { ai_process_claimed_by: claimToken });
+      const claimResult = await invokeAuthorizedVisitMutation(base44, {
+        visit_id,
+        action: 'claim_ai_processing',
+        claim_token: claimToken,
+        expected_source_sha256: sourceSha256,
+      });
+      if (claimResult?.visit?.ai_process_claimed_by !== claimToken) {
+        throw new Error('Authorized Visit claim was not confirmed');
+      }
     } catch {
       return Response.json({ error: 'Could not claim visit for processing' }, { status: 409 });
     }
-    const claimCheck = await base44.entities.Visit.filter({ id: visit_id }, '-created_date', 1).catch(() => []);
-    if (!claimCheck[0] || claimCheck[0].ai_process_claimed_by !== claimToken) {
+    const claimedSource = await readAuthorizedVisitAiSource(base44, visit_id).catch(() => null);
+    if (
+      !claimedSource
+      || claimedSource.processing.claimed_by !== claimToken
+      || claimedSource.processing.processed_at !== null
+      || claimedSource.source_sha256 !== sourceSha256
+      || JSON.stringify(claimedSource.source) !== JSON.stringify(initialSource.source)
+    ) {
       return Response.json({
         success: true,
         already_processed: true,
-        visit: claimCheck[0] || visit,
+        visit,
         tasks_created: 0,
         tasks: [],
         skipped: 'claimed by concurrent run',
@@ -150,10 +212,6 @@ Deno.serve(async (req) => {
     const rawNotes = (visit.raw_transcription && visit.raw_transcription.trim())
       ? visit.raw_transcription
       : (visit.nurse_notes || '');
-
-    const patient = await base44.entities.Patient.get(visit.patient_id);
-    const denied = await assertPatientAccess(base44, user, patient);
-    if (denied) return denied;
 
     // Generate Medicare-compliant narrative
     const narrativePrompt = `You are a clinical documentation specialist. Generate a Medicare-compliant visit narrative based on the following information:
@@ -275,7 +333,29 @@ Only suggest tasks that are clinically necessary. If no follow-up is needed, ret
     if (!visit.raw_transcription || !visit.raw_transcription.trim()) {
       visitUpdate.raw_transcription = rawNotes;
     }
-    const updatedVisit = await base44.entities.Visit.update(visit_id, visitUpdate);
+    const publishResult = await invokeAuthorizedVisitMutation(base44, {
+      visit_id,
+      action: 'publish_ai_processing',
+      claim_token: claimToken,
+      expected_source_sha256: sourceSha256,
+      nurse_notes: visitUpdate.nurse_notes,
+      ai_tags: visitUpdate.ai_tags,
+      ai_processed_at: visitUpdate.ai_processed_at,
+      ...(visitUpdate.raw_transcription === undefined
+        ? {}
+        : { raw_transcription: visitUpdate.raw_transcription }),
+    });
+    if (
+      publishResult?.visit?.ai_process_claimed_by !== claimToken
+      || publishResult?.visit?.ai_processed_at !== visitUpdate.ai_processed_at
+    ) {
+      throw new Error('Authorized Visit publication was not confirmed');
+    }
+    const updatedVisit = {
+      ...visit,
+      ...visitUpdate,
+      documentation_review_ack: null,
+    };
 
     // Allowed Task enums; the AI can emit values outside the enum (which a plain
     // `|| default` would not catch since it only handles falsy), so validate
@@ -332,8 +412,10 @@ Only suggest tasks that are clinically necessary. If no follow-up is needed, ret
       narrative_length: narrativeText.length
     });
 
-  } catch (error) {
-    console.error('Process completed visit error:', error);
+  } catch {
+    // Provider and SDK error objects can retain the PHI-bearing prompts and
+    // clinical payloads processed above. Keep the operational breadcrumb fixed.
+    console.error('processCompletedVisit failed');
     return Response.json({
       error: 'Internal server error'
     }, { status: 500 });

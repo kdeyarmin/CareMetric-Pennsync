@@ -43,6 +43,7 @@ const ASSIGNMENT_SOURCES = new Set([
 ]);
 const ASSIGNMENT_ACTIONS = new Set(['grant', 'activate', 'suspend', 'revoke']);
 const PAGE_SORT = 'id_asc';
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 
 // <<<BEGIN AUTHORIZED PATIENT LIST PURPOSE POLICY>>>
 const PURPOSE_FIELDS: Record<string, readonly string[]> = {
@@ -166,6 +167,12 @@ class PublicError extends Error {
     this.name = 'PublicError';
     this.status = status;
   }
+}
+
+function jsonResponse(body: unknown, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of Object.entries(NO_STORE_HEADERS)) headers.set(name, value);
+  return Response.json(body, { ...init, headers });
 }
 
 const normalizeEmail = (value: unknown) =>
@@ -688,6 +695,35 @@ function transitionRequestKey(key: string, requestId: string) {
   return `${key}:${requestId}`;
 }
 
+function assignmentLifecycleIsCoherent(row: Record<string, any>, status: string, action: string) {
+  if (action === 'grant') {
+    return status === 'active'
+      && row.version === 1
+      && row.activated_at === row.last_transition_at
+      && row.suspended_at == null;
+  }
+  if (action === 'activate') {
+    return status === 'active'
+      && row.version >= 3
+      && row.version % 2 === 1
+      && validInstant(row.suspended_at)
+      && row.activated_at === row.last_transition_at;
+  }
+  if (action === 'suspend') {
+    return status === 'suspended'
+      && row.version >= 2
+      && row.version % 2 === 0
+      && row.suspended_at === row.last_transition_at;
+  }
+  if (action === 'revoke') {
+    return status === 'revoked'
+      && row.version >= 2
+      && row.revoked_at === row.last_transition_at
+      && row.revocation_reason === row.last_transition_reason;
+  }
+  return false;
+}
+
 function validateAssignmentIntegrity(
   row: Record<string, any>,
   patientId: string,
@@ -719,7 +755,7 @@ function validateAssignmentIntegrity(
     || row.assignee_membership_id !== authority.membership.id
     || !Number.isSafeInteger(row.assignee_membership_version_at_enablement)
     || row.assignee_membership_version_at_enablement < 1
-    || row.assignee_membership_version_at_enablement > authority.membership.version
+    || row.assignee_membership_version_at_enablement !== authority.membership.version
     || !ASSIGNMENT_STATUSES.has(status)
     || !ASSIGNMENT_SOURCES.has(String(row.source || ''))
     || !exactIdentifier(row.created_by_user_id)
@@ -739,9 +775,7 @@ function validateAssignmentIntegrity(
     || !validInstant(row.last_transition_at)
     || !boundedReason(row.last_transition_reason)
     || !ASSIGNMENT_ACTIONS.has(action)
-    || (status === 'active' && action !== 'grant' && action !== 'activate')
-    || (status === 'suspended' && action !== 'suspend')
-    || (status === 'revoked' && action !== 'revoke')
+    || !assignmentLifecycleIsCoherent(row, status, action)
     || !requestId
     || row.last_transition_request_key !== transitionRequestKey(key, requestId)
     || !Number.isSafeInteger(row.version)
@@ -1115,7 +1149,7 @@ async function loadPatients(
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
-      return Response.json(
+      return jsonResponse(
         { error: 'Method not allowed' },
         { status: 405, headers: { Allow: 'POST' } },
       );
@@ -1177,13 +1211,13 @@ Deno.serve(async (req) => {
           : null,
       };
     }
-    return Response.json(response);
+    return jsonResponse(response);
   } catch (error) {
     if (error instanceof PublicError) {
-      return Response.json({ error: error.message }, { status: error.status });
+      return jsonResponse({ error: error.message }, { status: error.status });
     }
     // Never retain provider error objects: they may embed query predicates or PHI.
     console.error('listAuthorizedPatients failed');
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonResponse({ error: 'Internal server error' }, { status: 500 });
   }
 });

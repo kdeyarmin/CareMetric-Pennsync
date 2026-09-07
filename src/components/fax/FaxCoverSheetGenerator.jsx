@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { configNotReadyMessage } from "@/lib/aiFeatureError";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -82,7 +81,7 @@ export default function FaxCoverSheetGenerator({
       onCoverSheetReady?.(pdfUrl, data);
       toast.success("Cover sheet generated");
     } catch (error) {
-      toast.error(configNotReadyMessage(error) || ("Failed to generate cover sheet: " + error.message));
+      toast.error("Failed to generate cover sheet: " + error.message);
     } finally {
       setIsGenerating(false);
     }

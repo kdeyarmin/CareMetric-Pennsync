@@ -90,7 +90,7 @@ function assignment(overrides = {}) {
     user_id: 'user-1',
     user_email_normalized: 'clinician@agency.test',
     assignee_membership_id: 'membership-a',
-    assignee_membership_version_at_enablement: 1,
+    assignee_membership_version_at_enablement: 2,
     status: 'active',
     source: 'manual',
     created_by_user_id: 'manager-1',
@@ -108,11 +108,18 @@ function assignment(overrides = {}) {
   };
   if (row.status === 'suspended') {
     if (row.suspended_at === undefined) row.suspended_at = '2026-09-03T12:30:00.000Z';
+    if (!Object.hasOwn(overrides, 'version')) row.version = 2;
+    if (!Object.hasOwn(overrides, 'last_transition_at')) row.last_transition_at = row.suspended_at;
     if (overrides.last_transition_action === undefined) row.last_transition_action = 'suspend';
   }
   if (row.status === 'revoked') {
     if (row.revoked_at === undefined) row.revoked_at = '2026-09-03T12:30:00.000Z';
     if (row.revocation_reason === undefined) row.revocation_reason = 'Removed from care team';
+    if (!Object.hasOwn(overrides, 'version')) row.version = 2;
+    if (!Object.hasOwn(overrides, 'last_transition_at')) row.last_transition_at = row.revoked_at;
+    if (!Object.hasOwn(overrides, 'last_transition_reason')) {
+      row.last_transition_reason = row.revocation_reason;
+    }
     if (overrides.last_transition_action === undefined) row.last_transition_action = 'revoke';
   }
   return row;
@@ -292,6 +299,8 @@ async function invoke(handler, path, body, method = 'POST') {
     ...(method === 'GET' || method === 'HEAD' ? {} : { body: JSON.stringify(body) }),
   });
   const response = await handler(request);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal(response.headers.get('pragma'), 'no-cache');
   return { response, json: await response.json() };
 }
 
@@ -710,6 +719,31 @@ test('malformed, duplicate, or mismatched assignment bindings fail closed', asyn
     [assignment({ assignee_membership_id: 'membership-b' })],
     [assignment({ assignee_membership_version_at_enablement: 3 })],
     [assignment({ user_email_normalized: 'other@agency.test' })],
+    [assignment({ version: 2 })],
+    [assignment({
+      status: 'active',
+      version: 4,
+      suspended_at: '2026-09-03T12:00:00.000Z',
+      activated_at: '2026-09-03T12:30:00.000Z',
+      last_transition_at: '2026-09-03T12:30:00.000Z',
+      last_transition_action: 'activate',
+    })],
+    [assignment({
+      status: 'suspended',
+      version: 1,
+      suspended_at: '2026-09-03T12:30:00.000Z',
+      last_transition_at: '2026-09-03T12:30:00.000Z',
+      last_transition_action: 'suspend',
+    })],
+    [assignment({
+      status: 'revoked',
+      version: 2,
+      revoked_at: '2026-09-03T12:30:00.000Z',
+      revocation_reason: 'Removed from care team',
+      last_transition_at: '2026-09-03T12:00:00.000Z',
+      last_transition_reason: 'Removed from care team',
+      last_transition_action: 'revoke',
+    })],
   ];
   for (const assignments of cases) {
     const { handler } = await loadBroker('get', { patients: [nonCreator], assignments });
@@ -732,6 +766,33 @@ test('malformed, duplicate, or mismatched assignment bindings fail closed', asyn
   assert.equal(leakedResult.json.patient, undefined);
 });
 
+test('care-team assignments require the exact current membership version for every patient read', async () => {
+  const target = nonCreatorPatient('patient-a');
+  const staleAssignment = assignmentFor('patient-a', {
+    assignee_membership_version_at_enablement: 1,
+  });
+
+  const exact = await loadBroker('get', {
+    patients: [target],
+    assignments: [staleAssignment],
+  });
+  const exactResult = await invoke(exact.handler, 'getAuthorizedPatient', getBody());
+  assert.equal(exactResult.response.status, 409);
+  assert.equal(exactResult.json.patient, undefined);
+
+  const roster = await loadBroker('list', {
+    patients: [target],
+    assignments: [staleAssignment],
+  });
+  const rosterResult = await invoke(
+    roster.handler,
+    'listAuthorizedPatients',
+    pageBody(),
+  );
+  assert.equal(rosterResult.response.status, 409);
+  assert.equal(rosterResult.json.patients, undefined);
+});
+
 test('assignment suspension or version drift during an exact read returns no PHI', async () => {
   const nonCreator = patient({
     created_by_user_id: 'user-2',
@@ -744,12 +805,15 @@ test('assignment suspension or version drift during an exact read returns no PHI
       status: 'suspended',
       version: 2,
       last_transition_at: '2026-09-03T12:30:00.000Z',
+      suspended_at: '2026-09-03T12:30:00.000Z',
       last_transition_action: 'suspend',
       last_transition_request_id: 'suspend-request-a',
       last_transition_request_key: 'agency-a:patient-a:user-1:suspend-request-a',
     }),
     assignment({
-      version: 2,
+      version: 3,
+      suspended_at: '2026-09-03T12:00:00.000Z',
+      activated_at: '2026-09-03T12:30:00.000Z',
       last_transition_at: '2026-09-03T12:30:00.000Z',
       last_transition_action: 'activate',
       last_transition_request_id: 'activate-request-a',
@@ -1031,7 +1095,9 @@ test('assignment revocation during roster read fails closed before returning PHI
 test('active assignment version drift during roster read fails closed before returning PHI', async () => {
   const active = assignmentFor('patient-a');
   const changed = assignmentFor('patient-a', {
-    version: 2,
+    version: 3,
+    suspended_at: '2026-09-03T12:00:00.000Z',
+    activated_at: '2026-09-03T12:30:00.000Z',
     last_transition_action: 'activate',
     last_transition_at: '2026-09-03T12:30:00.000Z',
     last_transition_request_id: 'activate-request-a',

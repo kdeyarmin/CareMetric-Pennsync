@@ -284,38 +284,42 @@ export default function FeaturesPage() {
         {
           name: "Diagnosis-Based Pathway Triggers",
           icon: Layers,
-          description: "Automatic pathway activation based on diagnosis codes, keywords, and clinical conditions",
-          timeSaved: "8-12 min/admission",
+          description: "Paused: diagnosis-based pathway triggering is unavailable while pathway authority and clinical validation are completed",
+          timeSaved: "Unavailable",
           impact: "critical",
-          details: "Condition-specific assessments and documentation prompts",
-          howToUse: "Pathways trigger automatically on patient admission based on diagnosis. Review and implement recommendations."
+          details: "No pathway is activated from diagnosis codes, keywords, OASIS responses, or clinical conditions",
+          howToUse: "Use clinician-approved agency pathways outside PennSync until the tenant-authorized pathway broker is hosted and verified.",
+          paused: true
         },
         {
           name: "Documentation Prompts",
           icon: FileText,
-          description: "Condition-specific prompts ensure comprehensive documentation of all relevant clinical factors",
-          timeSaved: "5-8 min/visit",
+          description: "Paused: pathway-authored documentation prompts are unavailable pending tenant scoping and clinical approval",
+          timeSaved: "Unavailable",
           impact: "high",
-          details: "General documentation guidance, priority flagging, evidence-based assessments",
-          howToUse: "Review pathway documentation prompts during visits to ensure complete clinical capture."
+          details: "No pathway list, AI-authored prompt, OASIS response suggestion, or rescore recommendation is loaded",
+          howToUse: "Continue the agency's approved documentation workflow until this feature is validated and released.",
+          paused: true
         },
         {
           name: "Automated Task Creation",
           icon: CheckCircle2,
-          description: "Generate pathway-specific tasks for care coordination, safety, and follow-up",
-          timeSaved: "3-5 min/pathway",
+          description: "Paused: pathway-specific task creation is unavailable until an authorized, idempotent server workflow is verified",
+          timeSaved: "Unavailable",
           impact: "high",
-          details: "Priority-based task assignment, due date recommendations, care team coordination",
-          howToUse: "Click 'Create Tasks' from triggered pathway to auto-generate all recommended follow-up items."
+          details: "No task, alert, notification, or workflow record is generated from a clinical pathway",
+          howToUse: "Create required care-coordination tasks through the agency's approved workflow while automation remains paused.",
+          paused: true
         },
         {
           name: "Pathway Management",
           icon: BookOpen,
-          description: "Admin interface to create, edit, and manage evidence-based clinical pathways",
-          timeSaved: "Standardizes care",
+          description: "Paused: the pathway catalog and management interface are unavailable while tenant authority is completed",
+          timeSaved: "Unavailable",
           impact: "high",
-          details: "Customizable triggers, documentation templates, clinical guidance library",
-          howToUse: "Admins: Navigate to Clinical Pathway Manager to create and customize pathways for your agency."
+          details: "No pathway list, create, edit, duplicate, delete, or AI generation operation is available",
+          howToUse: "Maintain approved pathways in the agency's current system until PennSync pathway management is released.",
+          paused: true
         }
       ]
     },

@@ -6,6 +6,31 @@ Commit `35ef5e12` added six Base44 workflow definitions that preserve legacy aut
 
 Repository correctness does not prove a hosted workflow is active, inactive, or successfully invoking a deployed function. Base44 stores that operational status remotely. An authenticated, read-only CLI and dashboard inspection was therefore completed against the isolated staging app on 2026-09-06. It made no hosted write, deployment, workflow creation, merge, or production change.
 
+## Repository hardening addendum — 2026-09-07
+
+This follow-up changed source and focused contracts only. It did not deploy or activate a workflow. All seven function automations remain `is_active: false`; the signature reminder dispatcher remains protected by its literal false gate, and the outcome dispatcher remains environment-gated.
+
+The other five migrated handlers now also require an exact, default-off source release value before SDK construction:
+
+| Handler | Required source release value |
+|---|---|
+| `autoRetryFailedFaxes` | `WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES=enabled-v1` |
+| `checkStaleFollowUpRequests` | `WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS=enabled-v1` |
+| `pollFaxStatuses` | `WORKFLOW_RELEASE_POLL_FAX_STATUSES=enabled-v1` |
+| `processInboundFaxes` | `WORKFLOW_RELEASE_PROCESS_INBOUND_FAXES=enabled-v1` |
+| `processScheduledFaxes` | `WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES=enabled-v1` |
+
+Safe source-side changes made behind those closed gates:
+
+1. Inbound fax OCR/name/DOB/sender matches are suggestions only. The worker no longer attaches a fax to a Referral, changes follow-up status, or writes LLM-extracted answers. Re-enabling automatic attachment requires a server-issued immutable outbound-to-inbound correlation plus an explicit, audited review action.
+2. Fax status polling is oldest-first and fair across nonterminal states, carries a bounded provider-call budget and provider timeout, advances its warm cursor only past rows actually considered for provider work, and returns a sanitized non-2xx degraded summary for partial scan/provider/recovery failures.
+3. Automatic retry scans past its former first page, conditionally quarantines malformed or policy-ineligible poison rows, and applies bounded deferral/backoff to claim and policy-read conflicts. Repeated infrastructure deferrals eventually quarantine rather than occupy the due queue forever.
+4. Scheduled fax processing never requeues incomplete or ambiguous child-log evidence. Invalid stale claims become `needs_review`, verified pre-dispatch configuration failures use capped backoff, and provider/broker correlation ids remain on terminal records for reconciliation.
+5. Signature scheduling no longer treats platform ownership as tenant membership. A reminder begins in non-dispatchable `pending_audit`, becomes pending only after exact audit readback, and dispatch revalidates that audit. Expired `sending` leases become `indeterminate`; they are never automatically resent.
+6. The migration contract now enumerates and verifies every source release boundary before Base44 SDK construction, in addition to verifying that all function automations remain inactive.
+
+These changes do not close the hosted release gates. Activation still requires proof of native scheduler authentication for empty workflow arguments, hosted conditional-update/single-winner semantics, uniqueness or duplicate-failure behavior for idempotency keys, required legacy provenance backfills, sanitized failure injection, and provider fixtures. Notification authority cutover, operator review/reconciliation UX, immutable inbound correlation, e-signature legal/finalization approval, and the outcome stable-snapshot proof remain product/platform gates. None should be inferred from passing repository tests.
+
 ## Hosted staging observation — 2026-09-06
 
 | Check | Observed result | Consequence |

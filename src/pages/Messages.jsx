@@ -4,7 +4,15 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 
 export const TENANT_MESSAGES_UNAVAILABLE_MESSAGE =
-  "Secure messages are unavailable until every thread has verified tenant provenance and list, send, reply, and read-state changes use a tenant-authorized server broker. This state must not be interpreted as an empty inbox or zero unread messages.";
+  "Secure messages remain paused. Legacy and ambiguous rows are quarantined; no inbox, thread, unread count, send, reply, read-state, AI, or urgent-alert result is available until v2 tenant, membership, patient, thread, participant, idempotency, and hosted atomicity evidence is approved. This state must not be interpreted as an empty inbox or zero unread messages.";
+
+export const TENANT_MESSAGES_RELEASE_REQUIREMENTS = Object.freeze([
+  "exact active AgencyMembership for every participant",
+  "immutable server-stamped agency, thread, sender, and participant provenance",
+  "atomic create idempotency and versioned read-state compare-and-set proof",
+  "durable uniquely keyed urgent-message notification outbox",
+  "hosted tenant-isolation, replay, authorization-drift, and legacy-quarantine evidence",
+]);
 
 export default function Messages() {
   return (
@@ -13,7 +21,7 @@ export default function Messages() {
         icon={Mail}
         eyebrow="Communication"
         title="Messages"
-        description="The participant mailbox is paused while tenant-bound message authority is completed and verified."
+        description="The participant mailbox is paused while secure-message v2 authority and atomicity are completed and verified."
         favoritePage="Messages"
       />
       <Alert className="border-amber-300 bg-amber-50 text-amber-950">
