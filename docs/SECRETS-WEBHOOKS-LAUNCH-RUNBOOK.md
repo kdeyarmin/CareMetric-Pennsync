@@ -17,6 +17,10 @@
 | `VITE_DEPLOY_ENV` | build/host env | `production` for the production deploy; use `staging` or `development` elsewhere |
 | `VITE_CENTRAL_HELP_ENABLED` | build/host env | optional; omit or set exactly `true` to enable central help only after the production app-id/environment gates pass; any other value disables it |
 
+The checked-in Base44 build command defaults an unset `VITE_DEPLOY_ENV` to
+`production`, but preserves an explicit host value. Staging deployments must set
+`VITE_DEPLOY_ENV=staging`; do not remove or override that host setting.
+
 **Verify:** app loads past the blocking config screen and does not redirect to a blank
 `/login`. In the production bundle, verify the CareMetric Help Center launcher appears
 on `/Help`; in staging/development, verify it does not. (The app id and backend URL can

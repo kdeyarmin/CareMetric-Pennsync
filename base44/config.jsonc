@@ -2,7 +2,7 @@
   "name": "PennSync",
   "site": {
     "installCommand": "pnpm install --frozen-lockfile",
-    "buildCommand": "VITE_DEPLOY_ENV=production pnpm run build",
+    "buildCommand": "VITE_DEPLOY_ENV=${VITE_DEPLOY_ENV:-production} pnpm run build",
     "serveCommand": "pnpm run dev",
     "outputDirectory": "./dist"
   }
