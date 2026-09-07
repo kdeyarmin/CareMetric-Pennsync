@@ -76,22 +76,23 @@ issuance is protected structurally: `issueCertificate` only trusts a passing
 | Secret | Set at launch? | Effect if unset |
 |---|---|---|
 | `SIGNATURE_HMAC_SECRET` | **Yes** | Signature token issuance and verification fail closed when the secret is missing or too short. |
-| `INTERNAL_FN_SECRET` | **Required for external/header-based schedulers; recommended otherwise** | Native Base44 automations run as the user who created them, so an automation created by an active protected admin authorizes through `auth.me()` without this header. External/no-session scheduler calls must send `x-internal-secret: <INTERNAL_FN_SECRET>` and fail closed with `500` when it is unset; authenticated non-admin callers fail with `403`. Never place the secret in browser code or automation `function_args`. See `docs/LEARNING_CENTER_SCHEDULED_JOBS.md`. |
+| `INTERNAL_FN_SECRET` | **Required for external/header-based schedulers; recommended otherwise** | Native Base44 workflows run as the user who created them, so a workflow created by an active protected admin authorizes through `auth.me()` without this header. External/no-session scheduler calls must send `x-internal-secret: <INTERNAL_FN_SECRET>` and fail closed with `500` when it is unset; authenticated non-admin callers fail with `403`. Never place the secret in browser code or workflow `args`. See `docs/LEARNING_CENTER_SCHEDULED_JOBS.md`. |
 
 `APP_PUBLIC_URL` is required non-secret backend configuration. Set it separately
 in every environment to that environment's exact HTTPS origin. Account,
 invitation, and notification email paths reject a missing or malformed value;
 they do not fall back to `APP_URL` or a production hostname.
 
-**Verify scheduled-function auth:** deploy/create native automations only as the
-intended protected platform admin. In isolated staging, list the deployed
+**Verify scheduled-function auth:** deploy/create checked-in native workflows
+only as the intended protected platform admin. In isolated staging, list the deployed
 workflow, run one canary, and verify that its creator-backed `auth.me()` identity
 is the expected active admin and the response is successful. Also verify an
 unauthenticated POST to a cron function (e.g. `processScheduledFaxes`) without
 the header → `401/500`, with the correct `x-internal-secret` → `200`, and an
-authenticated non-admin call → `403`. If the automation creator is deactivated
-or demoted, recreate the automation under the approved owner before re-enabling
-it.
+authenticated non-admin call → `403`. If the workflow creator is deactivated
+or demoted, recreate the workflow under the approved owner before releasing its
+handler gate. Do not create dashboard or function-level duplicate schedules for
+targets already defined under `base44/workflows/`.
 
 **Verify certificate issuance:** a direct `issueCertificate` call from a non-admin
 with no passing attempt is rejected; a legitimate completion via
@@ -144,19 +145,21 @@ not-configured notice rather than erroring.
 
 ---
 
-## 5. Scheduled functions (crons) — enable exactly one of each duplicated pair
+## 5. Scheduled functions (crons) — preserve one authoritative schedule
 
 These run privileged `asServiceRole` work after the shared authorization gate.
-Native Base44 runs inherit the automation creator's identity; external
-schedulers must use the shared-secret header. Keep the creator identity and the
-single-active-schedule rules below in the deployment evidence.
+Native Base44 runs inherit the workflow creator's identity; external schedulers
+must use the shared-secret header. The seven checked-in definitions under
+`base44/workflows/` are authoritative for their targets. Their legacy
+function-level configs must remain absent, and no dashboard duplicate may be
+created. Workflow presence never releases a handler's default-closed source gate.
 
 | Function | Schedule | Notes |
 |---|---|---|
-| `processScheduledFaxes` **XOR** `processScheduledFaxesByPriority` | one of them, e.g. every 5 min | **Enable only ONE** — both running double-sends faxes. |
+| `processScheduledFaxes` | Native workflow every 10 minutes | Sole scheduled-fax target. Keep `processScheduledFaxesByPriority` unregistered; the handler still requires `WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES=enabled-v1`. |
 | `dispatchScheduledSms` | one schedule, e.g. every 5 min | `pending→sending` claim is best-effort, not atomic — overlapping runs double-send a queued text. One schedule only. |
-| `sendAutomatedSignatureReminders` | per your reminder policy | Idempotency now guards on `last_reminder_sent_at` (schema field exists), so a tick won't re-email every run. |
-| `dispatchScheduledSignatureReminders` | one schedule, e.g. every 15 min | Delivers `ScheduledSignatureReminder` rows queued by `scheduleSignatureReminders` (which is caller-invoked, not a cron). Claim + re-read guards overlapping runs; recipients are re-derived from the document's pending signers at send time. |
+| `sendAutomatedSignatureReminders` | Unregistered | Legacy alternate path remains quarantined; do not schedule it. |
+| `dispatchScheduledSignatureReminders` | Native workflow every 15 minutes | Sole signature-reminder target. Its literal release and atomic-uniqueness gates remain false pending hosted proof. |
 | `sendExpirationNotifications` | daily | Document/credential expirations. |
 | `sendPersonnelExpirationNotifications` | daily | Personnel credential expirations. |
 | `monitorComplianceRisks` | daily/periodic | Compliance risk monitor. |
@@ -164,8 +167,9 @@ single-active-schedule rules below in the deployment evidence.
 | `deduplicatePatients` | periodic | Patient dedupe. |
 | `autoApproveInvitedUser` | per platform trigger | Confirm cron-only / trigger-only invocation. |
 
-**Verify:** exactly one fax processor and one `dispatchScheduledSms` are enabled; send a
-test scheduled fax and a scheduled SMS and confirm a **single** delivery each.
+**Verify:** read back exactly one native `Process Scheduled Faxes` workflow and
+no legacy/dashboard duplicate, while its handler gate remains closed. Release
+and controlled delivery tests require their own explicit approval.
 
 ---
 

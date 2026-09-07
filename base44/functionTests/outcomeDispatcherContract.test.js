@@ -8,7 +8,7 @@ import test from 'node:test';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
 
 const SOURCE_URL = new URL('../functions/dispatchNightlyOutcomeMeasures/entry.ts', import.meta.url);
-const CONFIG_URL = new URL('../functions/dispatchNightlyOutcomeMeasures/function.jsonc', import.meta.url);
+const WORKFLOW_URL = new URL('../workflows/Nightly Outcome Measure Computation.jsonc', import.meta.url);
 
 async function loadHandler({
   enabled = true,
@@ -135,24 +135,32 @@ test('outcome dispatcher is disabled before SDK construction by default', async 
   assert.deepEqual(fixture.calls.invocations, []);
 });
 
-test('the CLI-deployable nightly automation is exact, empty-payload, and inactive', async () => {
-  const config = JSON.parse(await readFile(CONFIG_URL, 'utf8'));
-  assert.equal(config.name, 'dispatchNightlyOutcomeMeasures');
-  assert.equal(config.entry, 'entry.ts');
-  assert.equal(config.automations.length, 1);
-  assert.deepEqual(config.automations[0], {
-    name: 'Nightly Outcome Measure Computation',
-    description: 'Dispatches one tenant-bound, idempotent daily outcome computation per active agency',
-    function_args: {},
-    is_active: false,
-    type: 'scheduled',
+test('the native nightly workflow is exact, empty-payload, and has no legacy function automation', async () => {
+  const workflow = JSON.parse(await readFile(WORKFLOW_URL, 'utf8'));
+  assert.equal(workflow.name, 'Nightly Outcome Measure Computation');
+  assert.deepEqual(workflow.trigger?.config, {
+    trigger_type: 'scheduled',
+    events: [],
     schedule_mode: 'recurring',
-    schedule_type: 'cron',
     cron_expression: '0 6 * * *',
+    one_time_date: null,
+    timezone: 'UTC',
+    interval_value: null,
+    interval_unit: null,
+    interval_anchor: null,
     ends_type: 'never',
     ends_on_date: null,
     ends_after_count: null,
   });
+  assert.equal(
+    workflow.definition?.do?.[0]?.run_function?.with?.function_name,
+    'dispatchNightlyOutcomeMeasures',
+  );
+  assert.deepEqual(workflow.definition?.do?.[0]?.run_function?.with?.args, {});
+  await assert.rejects(
+    readFile(new URL('../functions/dispatchNightlyOutcomeMeasures/function.jsonc', import.meta.url), 'utf8'),
+    (error) => error?.code === 'ENOENT',
+  );
 });
 
 test('one empty scheduler tick signs an exact prior-UTC-day request for each verified agency', async () => {

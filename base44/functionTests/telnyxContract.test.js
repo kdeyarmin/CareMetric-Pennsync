@@ -1169,11 +1169,19 @@ test("pollFaxStatuses is default-false before Base44 SDK construction", async ()
   assert.equal(clientConstructions, 0);
   assert.equal(provider.calls.length, 0);
 
-  const config = await readFile(
-    new URL("../functions/pollFaxStatuses/function.jsonc", import.meta.url),
+  const workflow = JSON.parse(await readFile(
+    new URL("../workflows/Poll Fax Statuses.jsonc", import.meta.url),
     "utf8",
+  ));
+  assert.equal(workflow.definition?.do?.[0]?.run_function?.with?.function_name, "pollFaxStatuses");
+  assert.deepEqual(workflow.definition?.do?.[0]?.run_function?.with?.args, {});
+  assert.equal(workflow.trigger?.config?.schedule_mode, "interval");
+  assert.equal(workflow.trigger?.config?.interval_value, 5);
+  assert.equal(workflow.trigger?.config?.interval_unit, "minutes");
+  await assert.rejects(
+    readFile(new URL("../functions/pollFaxStatuses/function.jsonc", import.meta.url), "utf8"),
+    (error) => error?.code === "ENOENT",
   );
-  assert.match(config, /"is_active"\s*:\s*false/);
 });
 
 test("pollFaxStatuses persists fairness across a cold start beyond twenty rows", async () => {

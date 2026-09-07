@@ -1,13 +1,15 @@
 # Learning Center — Scheduled Jobs
 
-These Deno functions are plain HTTP endpoints (`Deno.serve`). Approved native
-Base44 schedules belong in the target function's `function.jsonc` `automations`
-array and deploy with that function; a dashboard-created automation has the
-same identity model. Base44 runs an automation as **the user who created the
-automation**, so `base44.auth.me()` returns that creator — not a scheduler
-service account or the user whose entity change triggered a hook. Create/deploy
-privileged schedules only as the intended protected platform admin and verify
-that creator identity in staging before activation.
+These Deno functions are plain HTTP endpoints (`Deno.serve`). Approved migrated
+Base44 schedules live in `base44/workflows/*.jsonc`; each native workflow is the
+sole schedule authority for its target function. The corresponding legacy
+`base44/functions/<target>/function.jsonc` automation metadata must remain absent:
+workflow-enabled apps reject that duplicate configuration, and retaining both
+would create ambiguous ownership. Base44 runs a native workflow as **the user
+who created it**, so `base44.auth.me()` returns that creator — not a scheduler
+service account. Create/deploy privileged workflows only as the intended
+protected platform admin and verify that creator identity in staging before
+runtime release.
 
 The shared scheduler gate admits that protected built-in admin identity. It
 also admits an external/no-session scheduler that sends
@@ -31,8 +33,9 @@ eventual automation uses the same deployment and creator-identity model.
 | `monitorComplianceRisks` | **PAUSED — do not register or invoke.** The current implementation performs platform-wide service-role Patient/OASIS reads and can write critical alerts from unverified keyword heuristics. Keep it disabled until a server-owned tenant broker, per-agency scope, and clinically validated rules exist. | Only after release gates pass |
 
 ## Registration and creator-identity validation
-1. Create/deploy each approved native automation from the intended protected
-   platform-admin account, preferably from a reviewed `function.jsonc`. If an
+1. Create/deploy each approved native workflow from the intended protected
+   platform-admin account from its reviewed `base44/workflows/*.jsonc`. Do not
+   recreate legacy function-level automation metadata for the same target. If an
    external scheduler will call the HTTP endpoint without a user session, also
    set `INTERNAL_FN_SECRET` and send it as `x-internal-secret`.
 2. In isolated staging, list the deployed workflow, run one canary, and inspect

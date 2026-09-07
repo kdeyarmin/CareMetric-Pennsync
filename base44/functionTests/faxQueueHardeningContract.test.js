@@ -32,20 +32,40 @@ async function loadInline(entryPath, names) {
 const NOW = Date.parse('2026-09-06T12:00:00.000Z');
 
 test('fax queue workers remain doubly gated before constructing a Base44 client', async () => {
-  for (const [name, envName, flag] of [
-    ['autoRetryFailedFaxes', 'WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES', 'AUTO_RETRY_FAILED_FAXES_ENABLED'],
-    ['processScheduledFaxes', 'WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES', 'PROCESS_SCHEDULED_FAXES_ENABLED'],
+  for (const [name, envName, flag, workflowFile, interval] of [
+    [
+      'autoRetryFailedFaxes',
+      'WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES',
+      'AUTO_RETRY_FAILED_FAXES_ENABLED',
+      'Auto Retry Failed Faxes.jsonc',
+      15,
+    ],
+    [
+      'processScheduledFaxes',
+      'WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES',
+      'PROCESS_SCHEDULED_FAXES_ENABLED',
+      'Process Scheduled Faxes.jsonc',
+      10,
+    ],
   ]) {
     const source = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
     const handler = source.slice(source.lastIndexOf('Deno.serve'));
     assert.match(source, new RegExp(`${envName.replaceAll('_', '\\_')}['"]\\) \\|\\| ''\\)\\.trim\\(\\) === 'enabled-v1'`));
     assert.ok(handler.indexOf(`if (!${flag})`) < handler.indexOf('createClientFromRequest(req)'));
-    const config = JSON5.parse(await readFile(
-      new URL(`../functions/${name}/function.jsonc`, import.meta.url),
+    const workflow = JSON5.parse(await readFile(
+      new URL(`../workflows/${workflowFile}`, import.meta.url),
       'utf8',
     ));
-    assert.ok(config.automations.length > 0);
-    assert.ok(config.automations.every((automation) => automation.is_active === false));
+    assert.equal(workflow.definition?.do?.[0]?.run_function?.with?.function_name, name);
+    assert.deepEqual(workflow.definition?.do?.[0]?.run_function?.with?.args, {});
+    assert.equal(workflow.trigger?.config?.trigger_type, 'scheduled');
+    assert.equal(workflow.trigger?.config?.schedule_mode, 'interval');
+    assert.equal(workflow.trigger?.config?.interval_value, interval);
+    assert.equal(workflow.trigger?.config?.interval_unit, 'minutes');
+    await assert.rejects(
+      readFile(new URL(`../functions/${name}/function.jsonc`, import.meta.url), 'utf8'),
+      (error) => error?.code === 'ENOENT',
+    );
   }
 });
 

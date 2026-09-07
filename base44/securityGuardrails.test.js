@@ -279,11 +279,11 @@ test('computeOutcomeMeasures accepts only internal or signed dispatcher authorit
   assert.ok(/valid period_start and period_end/.test(handler));
 });
 
-test('the outcome worker and scheduler dispatcher remain release-gated and scheduled default-off', () => {
+test('the outcome worker and native-workflow dispatcher remain runtime-gated by default', () => {
   const src = read('base44/functions/computeOutcomeMeasures/entry.ts');
   const workerConfig = JSON5.parse(read('base44/functions/computeOutcomeMeasures/function.jsonc'));
   const dispatcher = read('base44/functions/dispatchNightlyOutcomeMeasures/entry.ts');
-  const config = JSON5.parse(read('base44/functions/dispatchNightlyOutcomeMeasures/function.jsonc'));
+  const workflow = JSON5.parse(read('base44/workflows/Nightly Outcome Measure Computation.jsonc'));
   const gate = src.indexOf('if (!OUTCOME_COMPUTATION_ENABLED)');
   const client = src.indexOf('createClientFromRequest(req)');
   const dispatchGate = dispatcher.indexOf('if (!OUTCOME_DISPATCH_ENABLED)');
@@ -299,16 +299,20 @@ test('the outcome worker and scheduler dispatcher remain release-gated and sched
   assert.match(dispatcher, /=== 'enabled-v1'/);
   assert.ok(dispatchGate > 0 && dispatchGate < dispatchClient,
     'dispatcher pause must return before SDK client creation');
-  assert.equal(config.name, 'dispatchNightlyOutcomeMeasures');
-  assert.equal(config.entry, 'entry.ts');
-  assert.equal(config.automations.length, 1);
-  assert.equal(config.automations[0].name, 'Nightly Outcome Measure Computation');
-  assert.equal(config.automations[0].is_active, false);
-  assert.deepEqual(config.automations[0].function_args, {});
-  assert.equal(config.automations[0].type, 'scheduled');
-  assert.equal(config.automations[0].schedule_mode, 'recurring');
-  assert.equal(config.automations[0].schedule_type, 'cron');
-  assert.equal(config.automations[0].cron_expression, '0 6 * * *');
+  assert.equal(workflow.name, 'Nightly Outcome Measure Computation');
+  assert.equal(workflow.trigger?.config?.trigger_type, 'scheduled');
+  assert.equal(workflow.trigger?.config?.schedule_mode, 'recurring');
+  assert.equal(workflow.trigger?.config?.cron_expression, '0 6 * * *');
+  assert.equal(
+    workflow.definition?.do?.[0]?.run_function?.with?.function_name,
+    'dispatchNightlyOutcomeMeasures',
+  );
+  assert.deepEqual(workflow.definition?.do?.[0]?.run_function?.with?.args, {});
+  assert.equal(
+    existsSync(join(REPO, 'base44/functions/dispatchNightlyOutcomeMeasures/function.jsonc')),
+    false,
+    'native workflow ownership requires the legacy function automation config to stay absent',
+  );
   assert.match(dispatcher, /Object\.keys\(body\)\.length !== 0/);
   assert.match(dispatcher, /loadScheduledAgencyIds/);
   assert.match(dispatcher, /requireExactEnabledAgency/);

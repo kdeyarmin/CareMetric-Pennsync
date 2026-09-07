@@ -118,14 +118,16 @@ Per `.env.example` and the checklist:
   rejected). Idempotency de-dups on provider message/call ids, so retries can't
   double-process.
 
-### 2.4 Scheduled functions — keep inactive pending hosted proof
-All migrated workflows and legacy function automations must remain inactive. Before
-any later activation, prove in staging that native workflow ticks carry the expected
-protected authority, `$exists`/`$lte` filters behave as assumed, and exact one-row
-`updateMany` claims are single-winner. Establish datastore-enforced uniqueness for
-signature reminder schedule keys and validate scheduled-fax idempotency across the
-lease boundary. Never enable a migrated workflow and its legacy automation at the
-same time.
+### 2.4 Scheduled functions — keep runtime gates closed pending hosted proof
+The native files under `base44/workflows/` are the sole schedule authority for
+the seven migrated workflows. Their duplicate legacy function automation configs
+must remain absent. Keep every handler's default-closed release gate in place.
+Before any later runtime release, prove in staging that native workflow ticks carry
+the expected protected authority, `$exists`/`$lte` filters behave as assumed, and
+exact one-row `updateMany` claims are single-winner. Establish datastore-enforced
+uniqueness for signature reminder schedule keys and validate scheduled-fax
+idempotency across the lease boundary. Never recreate a legacy automation for a
+native workflow target.
 
 ### 2.5 PDGM grouper — active payment/compliance blocker
 PDGM payment is **unavailable**, not estimated and not $0. Loading tables or

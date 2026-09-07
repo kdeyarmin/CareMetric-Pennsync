@@ -178,6 +178,11 @@ test('migrated Base44 workflows preserve exact schedules, targets, and release c
 
     const entryUrl = new URL(`${expected.target}/entry.ts`, FUNCTIONS_URL);
     await access(entryUrl);
+    await assert.rejects(
+      access(new URL(`${expected.target}/function.jsonc`, FUNCTIONS_URL)),
+      (error) => error?.code === 'ENOENT',
+      `${file} must be authoritative; legacy function automation metadata must stay absent`,
+    );
     const source = await readFile(entryUrl, 'utf8');
     assertHandlerReleaseState(source, expected, file);
 

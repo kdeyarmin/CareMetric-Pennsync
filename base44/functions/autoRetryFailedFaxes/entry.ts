@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 // Deploying source must not make a provider-facing retry worker runnable. The
-// hosted automation remains inactive independently; staging validation must
-// opt in to this exact reviewed revision before the SDK is constructed.
+// native workflow owns the schedule, while this exact reviewed revision still
+// requires an explicit runtime release before the SDK is constructed.
 const AUTO_RETRY_FAILED_FAXES_ENABLED =
   String(Deno.env.get('WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES') || '').trim() === 'enabled-v1';
 

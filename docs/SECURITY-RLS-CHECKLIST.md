@@ -99,8 +99,10 @@ Apply that shared gate to the whole cron family, including:
 `sendTrainingNotifications`, `syncFaxStatuses`, `syncTrainingVideoStatuses`,
 `triggerCorrectiveActionPlan`.
 
-- Enable **only one** scheduled-fax processor (`processScheduledFaxes` **or**
-  `processScheduledFaxesByPriority`) — both running double-sends.
+- Keep the checked-in native `Process Scheduled Faxes` workflow as the sole
+  scheduled-fax definition; it targets `processScheduledFaxes` every 10 minutes.
+  `processScheduledFaxesByPriority` and all legacy/dashboard duplicates must
+  remain unregistered.
 - Likewise enable **only one** schedule for `dispatchScheduledSms` (e.g. every
   5 min). Its `pending → sending` claim is best-effort, not atomic, so two
   overlapping runs could double-send a queued text.

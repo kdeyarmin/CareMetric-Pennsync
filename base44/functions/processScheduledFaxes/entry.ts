@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
-// Deploying source must not make a provider-facing queue runnable. The hosted
-// automation remains inactive independently; staging validation must opt in to
-// this exact reviewed revision before the SDK is constructed.
+// Deploying source must not make a provider-facing queue runnable. The native
+// workflow owns the schedule, while staging must opt in to this exact reviewed
+// revision before the SDK is constructed.
 const PROCESS_SCHEDULED_FAXES_ENABLED =
   String(Deno.env.get('WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES') || '').trim() === 'enabled-v1';
 

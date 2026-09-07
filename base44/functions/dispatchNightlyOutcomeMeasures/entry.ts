@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
-// Source deployment is harmless by default. Staging validation must explicitly
-// set OUTCOME_PIPELINE_RELEASE=enabled-v1, and the attached automation remains
-// inactive until the hosted datastore/tenant evidence is reviewed.
+// Source deployment is harmless by default. The native workflow owns the
+// schedule, but staging must explicitly set OUTCOME_PIPELINE_RELEASE=enabled-v1
+// only after the hosted datastore/tenant evidence is reviewed.
 const OUTCOME_DISPATCH_ENABLED =
   String(Deno.env.get('OUTCOME_PIPELINE_RELEASE') || '').trim() === 'enabled-v1';
 

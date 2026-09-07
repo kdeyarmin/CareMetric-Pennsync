@@ -23,6 +23,13 @@
 > server-owned tenant/patient authorization boundary.
 > `docs/REPOSITORY_CONSOLIDATION_2026-09-02.md` is authoritative.
 
+> **WORKFLOW METADATA CORRECTION (2026-09-07):** dashboard-registration and
+> function-level automation instructions later in this historical gap analysis
+> are superseded for the seven migrated schedules. Their authoritative
+> definitions live under `base44/workflows/`; the corresponding legacy
+> per-function configs must remain absent, and runtime release is controlled by
+> the handlers' reviewed default-closed gates.
+
 This repo is the source of truth for backend code, but the Deno functions and
 entity schemas only *run* on the hosted Base44 platform. This doc lists exactly
 what exists in the repo but **not** on the live PENNSync app, and provides a

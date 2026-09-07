@@ -1,8 +1,8 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
 // Deployment is intentionally harmless until the notification authority and
-// hosted scheduler/CAS evidence have been reviewed. The attached automation is
-// also inactive; both gates must be opened in one explicit release decision.
+// hosted scheduler/CAS evidence have been reviewed. The native workflow owns
+// the schedule, but this handler needs a separate explicit runtime release.
 const STALE_FOLLOW_UP_WORKFLOW_ENABLED =
   String(Deno.env.get('WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS') || '').trim() === 'enabled-v1';
 

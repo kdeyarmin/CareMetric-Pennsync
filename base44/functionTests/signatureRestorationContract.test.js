@@ -148,18 +148,23 @@ test('signature authority entities are browser-denied and carry immutable snapsh
   }
 });
 
-test('the function-level 15-minute automation is explicit and inactive', async () => {
-  const config = JSON5.parse(await readFile(
-    new URL('functions/dispatchScheduledSignatureReminders/function.jsonc', ROOT), 'utf8',
+test('the native 15-minute reminder workflow is exact and has no legacy function automation', async () => {
+  const workflow = JSON5.parse(await readFile(
+    new URL('workflows/Dispatch Scheduled Signature Reminders.jsonc', ROOT), 'utf8',
   ));
-  assert.equal(config.name, 'dispatchScheduledSignatureReminders');
-  assert.equal(config.entry, 'entry.ts');
-  assert.equal(config.automations.length, 1);
-  assert.deepEqual(config.automations[0].function_args, {});
-  assert.equal(config.automations[0].schedule_mode, 'recurring');
-  assert.equal(config.automations[0].schedule_type, 'simple');
-  assert.equal(config.automations[0].repeat_unit, 'minutes');
-  assert.equal(config.automations[0].repeat_interval, 15);
-  assert.equal(config.automations[0].ends_type, 'never');
-  assert.equal(config.automations[0].is_active, false);
+  assert.equal(workflow.name, 'Dispatch Scheduled Signature Reminders');
+  assert.equal(
+    workflow.definition?.do?.[0]?.run_function?.with?.function_name,
+    'dispatchScheduledSignatureReminders',
+  );
+  assert.deepEqual(workflow.definition?.do?.[0]?.run_function?.with?.args, {});
+  assert.equal(workflow.trigger?.config?.trigger_type, 'scheduled');
+  assert.equal(workflow.trigger?.config?.schedule_mode, 'interval');
+  assert.equal(workflow.trigger?.config?.interval_unit, 'minutes');
+  assert.equal(workflow.trigger?.config?.interval_value, 15);
+  assert.equal(workflow.trigger?.config?.ends_type, 'never');
+  await assert.rejects(
+    readFile(new URL('functions/dispatchScheduledSignatureReminders/function.jsonc', ROOT), 'utf8'),
+    (error) => error?.code === 'ENOENT',
+  );
 });

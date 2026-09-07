@@ -6,6 +6,7 @@ on:
     paths:
       - 'base44/_shared/**'
       - 'base44/functions/**'
+      - 'base44/workflows/**'
       - 'src/components/oasis/**'
       - 'src/components/fax/**'
       - 'src/components/voice/**'
@@ -29,6 +30,7 @@ on:
     paths:
       - 'base44/_shared/**'
       - 'base44/functions/**'
+      - 'base44/workflows/**'
       - 'src/components/oasis/**'
       - 'src/components/fax/**'
       - 'src/components/voice/**'
