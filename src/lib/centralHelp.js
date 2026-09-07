@@ -15,11 +15,12 @@ export function isCentralHelpEnabled(value) {
 }
 
 /**
- * Activate the central launcher only for PennSync's immutable production
- * Base44 identity. Base44 does not expose backend Secrets to Vite builds, so an
- * omitted flag enables the production build while an explicit non-`true`
- * value remains a fail-closed emergency override. Preview/dev, staging, and
- * every other app id stay off even if a flag is accidentally supplied.
+ * Activate the central launcher only when both PennSync's immutable production
+ * Base44 identity and the explicit `production` deployment environment match.
+ * Base44 does not expose backend Secrets to Vite builds, so an omitted flag
+ * enables that verified production build while an explicit non-`true` value
+ * remains a fail-closed emergency override. Preview/dev, staging, and every
+ * other app id stay off even if a flag is accidentally supplied.
  */
 export function resolveCentralHelpActivation({
   appId,
