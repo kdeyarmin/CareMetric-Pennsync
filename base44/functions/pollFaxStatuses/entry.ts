@@ -126,6 +126,21 @@ const FAX_POLL_PAGE_SIZE = 25;
 const FAX_POLL_MAX_PROVIDER_CALLS = 20;
 const FAX_POLL_PROVIDER_TIMEOUT_MS = 10_000;
 const FAX_POLL_LEASE_MS = 5 * 60 * 1000;
+const FAX_NOTIFICATION_MEMBERSHIP_SCAN_LIMIT = 100;
+const FAX_NOTIFICATION_MEMBERSHIP_STATUSES = new Set([
+  'pending',
+  'active',
+  'suspended',
+  'revoked',
+]);
+const FAX_NOTIFICATION_TENANT_ROLES = new Set([
+  'agency_admin',
+  'manager',
+  'clinician',
+  'office_staff',
+  'social_worker',
+  'spiritual_care',
+]);
 const FAX_POLL_RANK = {
   submission_unknown: 0,
   queued: 1,
@@ -150,6 +165,18 @@ const exactFaxAuthorityId = (value) => {
 
 const exactFaxInstant = (value) => typeof value === 'string'
   && Number.isFinite(Date.parse(value));
+
+const canonicalFaxEmail = (value) => {
+  if (typeof value !== 'string' || value.length > 320) return null;
+  const email = value.trim().toLowerCase();
+  return email && email.includes('@') && !/\s/.test(email) ? email : null;
+};
+
+const boundedFaxMembershipReason = (value) => {
+  if (typeof value !== 'string') return null;
+  const reason = value.trim();
+  return reason && reason.length <= 500 ? reason : null;
+};
 
 const successfulFaxCas = (value) => !!value
   && typeof value === 'object'
@@ -576,24 +603,89 @@ function boundedFaxRetryPolicy(config) {
 
 const FAX_NOTIFICATION_CLAIM_LEASE_MS = 5 * 60 * 1000;
 
-function faxNotificationSpec(fax, kind) {
+function faxNotificationClaimFields(kind) {
   const delivered = kind === 'delivery';
-  const agencyId = exactFaxAuthorityId(fax?.agency_id);
-  const dedupeKey = `fax:${agencyId || 'legacy'}:${fax.id}:${delivered ? 'delivered' : 'failed'}`;
   return {
     markerField: delivered ? 'delivery_confirmation_sent' : 'final_failure_notified',
     claimField: delivered ? 'delivery_notify_claimed_by' : 'failure_notify_claimed_by',
     claimedAtField: delivered ? 'delivery_notify_claimed_at' : 'failure_notify_claimed_at',
+  };
+}
+
+async function loadActiveFaxNotificationRecipient(base44, fax) {
+  const agencyId = exactFaxAuthorityId(fax?.agency_id);
+  const userId = exactFaxAuthorityId(fax?.sent_by_user_id);
+  const membershipId = exactFaxAuthorityId(fax?.sent_by_membership_id);
+  const sentMembershipVersion = fax?.sent_by_membership_version;
+  const senderEmail = canonicalFaxEmail(fax?.sent_by);
+  if (!agencyId || !userId || !membershipId || !senderEmail
+    || fax.sent_by !== senderEmail
+    || !Number.isSafeInteger(sentMembershipVersion) || sentMembershipVersion < 1) return null;
+
+  const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+    { agency_id: agencyId, user_id: userId },
+    '-updated_date',
+    FAX_NOTIFICATION_MEMBERSHIP_SCAN_LIMIT,
+  );
+  if (!Array.isArray(rows)
+    || rows.length >= FAX_NOTIFICATION_MEMBERSHIP_SCAN_LIMIT
+    || rows.length !== 1
+    || rows.some((row) => row?.agency_id !== agencyId || row?.user_id !== userId)) return null;
+
+  const recipient = rows[0];
+  const recipientEmail = canonicalFaxEmail(recipient?.user_email_normalized);
+  const transitionEmail = canonicalFaxEmail(recipient?.last_transition_by_email_normalized);
+  const status = String(recipient?.status || '');
+  if (exactFaxAuthorityId(recipient?.id) !== membershipId
+    || recipient.id !== membershipId
+    || recipient.membership_key !== `${agencyId}:${userId}`
+    || recipientEmail !== senderEmail
+    || recipient.user_email_normalized !== recipientEmail
+    || !FAX_NOTIFICATION_TENANT_ROLES.has(String(recipient.tenant_role || ''))
+    || !FAX_NOTIFICATION_MEMBERSHIP_STATUSES.has(status)
+    || !exactFaxAuthorityId(recipient.created_by_user_id)
+    || !exactFaxAuthorityId(recipient.last_transition_by_user_id)
+    || !transitionEmail
+    || recipient.last_transition_by_email_normalized !== transitionEmail
+    || !exactFaxInstant(recipient.last_transition_at)
+    || !boundedFaxMembershipReason(recipient.last_transition_reason)
+    || !Number.isSafeInteger(recipient.version)
+    || recipient.version < sentMembershipVersion
+    || ((status === 'active' || status === 'suspended') && !exactFaxInstant(recipient.activated_at))
+    || (status === 'revoked'
+      && (!exactFaxInstant(recipient.revoked_at)
+        || !boundedFaxMembershipReason(recipient.revocation_reason)))) return null;
+  return status === 'active' ? recipient : null;
+}
+
+function faxNotificationSpec(fax, recipient, kind) {
+  const delivered = kind === 'delivery';
+  const agencyId = fax.agency_id;
+  const dedupeKey = `fax:${agencyId}:${fax.id}:${delivered ? 'delivered' : 'failed'}`;
+  return {
+    ...faxNotificationClaimFields(kind),
     dedupeKey,
     payload: {
-      ...(agencyId ? { agency_id: agencyId } : {}),
+      agency_id: agencyId,
       dedupe_key: dedupeKey,
-      user_email: fax.sent_by,
+      recipient_user_id: recipient.user_id,
+      recipient_membership_id: recipient.id,
+      recipient_membership_version: recipient.version,
+      authority_version: 1,
+      version: 1,
+      user_email: recipient.user_email_normalized,
       type: delivered ? 'fax_delivered' : 'fax_failed',
       title: delivered ? 'Fax Status Update' : 'Fax Failed',
       message: getNotificationMessage(delivered ? 'delivered' : 'failed', fax),
-      metadata: { related_entity: 'FaxLog', related_entity_id: fax.id },
+      priority: delivered ? 'medium' : 'high',
+      metadata: {
+        agency_id: agencyId,
+        related_entity: 'FaxLog',
+        related_entity_id: fax.id,
+        workflow: delivered ? 'fax_delivery_confirmation' : 'fax_final_failure',
+      },
       is_read: false,
+      dismissed: false,
     },
   };
 }
@@ -601,18 +693,39 @@ function faxNotificationSpec(fax, kind) {
 function faxNotificationMatches(row, spec) {
   return !!row
     && exactFaxAuthorityId(row.id) === row.id
+    && row.agency_id === spec.payload.agency_id
     && row.dedupe_key === spec.dedupeKey
+    && row.recipient_user_id === spec.payload.recipient_user_id
+    && row.recipient_membership_id === spec.payload.recipient_membership_id
+    && row.recipient_membership_version === spec.payload.recipient_membership_version
+    && row.authority_version === 1
+    && Number.isSafeInteger(row.version)
+    && row.version >= 1
     && row.user_email === spec.payload.user_email
+    && canonicalFaxEmail(row.user_email) === spec.payload.user_email
     && row.type === spec.payload.type
-    && (row.agency_id ?? null) === (spec.payload.agency_id ?? null)
+    && row.title === spec.payload.title
+    && row.message === spec.payload.message
+    && row.priority === spec.payload.priority
+    && row.metadata?.agency_id === spec.payload.metadata.agency_id
     && row.metadata?.related_entity === 'FaxLog'
-    && row.metadata?.related_entity_id === spec.payload.metadata.related_entity_id;
+    && row.metadata?.related_entity_id === spec.payload.metadata.related_entity_id
+    && row.metadata?.workflow === spec.payload.metadata.workflow
+    && Object.keys(row.metadata || {}).length === Object.keys(spec.payload.metadata).length
+    && typeof row.is_read === 'boolean'
+    && (row.is_read ? exactFaxInstant(row.read_at) : row.read_at == null)
+    && typeof row.dismissed === 'boolean'
+    && (row.dismissed ? exactFaxInstant(row.dismissed_at) : row.dismissed_at == null)
+    && row.action_url == null;
 }
 
 async function loadFaxNotifications(base44, spec) {
+  // The webhook path shares this purpose key. Search it without authority
+  // predicates so a legacy or malformed row fails closed instead of being
+  // hidden and followed by a duplicate notification.
   const rows = await base44.asServiceRole.entities.Notification.filter(
     { dedupe_key: spec.dedupeKey },
-    undefined,
+    '-created_date',
     FAX_POLL_EXACT_ROW_LIMIT,
   );
   if (!Array.isArray(rows) || rows.length >= FAX_POLL_EXACT_ROW_LIMIT
@@ -659,7 +772,9 @@ async function finalizeFaxNotification(base44, fax, spec, claimToken) {
 }
 
 async function sendClaimedFaxNotification(base44, fax, kind, claimToken) {
-  const spec = faxNotificationSpec(fax, kind);
+  const recipient = await loadActiveFaxNotificationRecipient(base44, fax).catch(() => null);
+  if (!recipient) return false;
+  const spec = faxNotificationSpec(fax, recipient, kind);
   let existing = await loadFaxNotifications(base44, spec).catch(() => null);
   if (existing?.length) return finalizeFaxNotification(base44, fax, spec, claimToken);
   if (existing === null) return false;
@@ -682,7 +797,7 @@ async function sendClaimedFaxNotification(base44, fax, kind, claimToken) {
 }
 
 async function recoverFaxNotification(base44, fax, kind, telnyxCreds) {
-  const spec = faxNotificationSpec(fax, kind);
+  const spec = faxNotificationClaimFields(kind);
   if (!fax.sent_by || fax[spec.markerField] === true
     || !exactFaxAuthorityId(fax.id)
     || !exactFaxAuthorityId(fax.telnyx_fax_id)

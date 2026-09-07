@@ -119,6 +119,12 @@ function validInstant(value: unknown) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
 
+function boundedReason(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const reason = value.trim();
+  return reason && reason.length <= 500 ? reason : null;
+}
+
 function validHttpsUrl(value: unknown) {
   if (typeof value !== 'string' || !value || value.length > 8192 || value.trim() !== value) return null;
   try {
@@ -840,34 +846,46 @@ async function loadActiveRecipient(
   if (rows.length !== 1) return null;
   const membership = rows[0];
   const email = canonicalEmail(membership.user_email_normalized);
+  const transitionEmail = canonicalEmail(membership.last_transition_by_email_normalized);
+  const status = String(membership.status || '');
   if (
     !exactIdentifier(membership.id)
     || membership.membership_key !== `${referral.agency_id}:${referral.created_by_user_id}`
     || email !== referral.created_by_user_email_normalized
     || membership.user_email_normalized !== email
     || !TENANT_ROLES.has(String(membership.tenant_role || ''))
-    || !MEMBERSHIP_STATUSES.has(String(membership.status || ''))
+    || !MEMBERSHIP_STATUSES.has(status)
     || !exactIdentifier(membership.created_by_user_id)
     || !exactIdentifier(membership.last_transition_by_user_id)
-    || canonicalEmail(membership.last_transition_by_email_normalized) !== membership.last_transition_by_email_normalized
+    || !transitionEmail
+    || membership.last_transition_by_email_normalized !== transitionEmail
     || !validInstant(membership.last_transition_at)
+    || !boundedReason(membership.last_transition_reason)
     || !Number.isSafeInteger(membership.version)
     || membership.version < 1
+    || ((status === 'active' || status === 'suspended') && !validInstant(membership.activated_at))
+    || (status === 'revoked'
+      && (!validInstant(membership.revoked_at) || !boundedReason(membership.revocation_reason)))
   ) throw new PublicError(409, 'Notification recipient integrity check failed');
-  return membership.status === 'active' ? email : null;
+  return status === 'active' ? membership : null;
 }
 
 function faxNotification(
   referral: Record<string, any>,
   incomingFaxId: string,
-  recipient: string,
+  recipient: Record<string, any>,
   kind: 'matched' | 'suggested',
 ) {
   const dedupeKey = `referral-fax-${kind}:${referral.agency_id}:${referral.id}:${incomingFaxId}`;
   return {
     agency_id: referral.agency_id,
     dedupe_key: dedupeKey,
-    user_email: recipient,
+    recipient_user_id: recipient.user_id,
+    recipient_membership_id: recipient.id,
+    recipient_membership_version: recipient.version,
+    authority_version: 1,
+    version: 1,
+    user_email: recipient.user_email_normalized,
     title: kind === 'matched'
       ? 'Provider fax response received'
       : 'Inbound fax may answer a provider request',
@@ -884,8 +902,32 @@ function faxNotification(
       workflow: `inbound_referral_fax_${kind}`,
     },
     is_read: false,
+    dismissed: false,
     action_url: `/ReferralFollowUp?id=${encodeURIComponent(referral.id)}`,
   };
+}
+
+function faxNotificationMatches(row: Record<string, any>, expected: Record<string, any>) {
+  return row?.agency_id === expected.agency_id
+    && row?.dedupe_key === expected.dedupe_key
+    && row?.recipient_user_id === expected.recipient_user_id
+    && row?.recipient_membership_id === expected.recipient_membership_id
+    && row?.recipient_membership_version === expected.recipient_membership_version
+    && row?.authority_version === expected.authority_version
+    && Number.isSafeInteger(row?.version)
+    && row.version >= 1
+    && row?.user_email === expected.user_email
+    && canonicalEmail(row.user_email) === expected.user_email
+    && row?.title === expected.title
+    && row?.message === expected.message
+    && row?.type === expected.type
+    && row?.priority === expected.priority
+    && sameValue(row?.metadata, expected.metadata)
+    && typeof row?.is_read === 'boolean'
+    && (row.is_read ? validInstant(row.read_at) : row.read_at == null)
+    && typeof row?.dismissed === 'boolean'
+    && (row.dismissed ? validInstant(row.dismissed_at) : row.dismissed_at == null)
+    && row?.action_url === expected.action_url;
 }
 
 async function ensureNotification(
@@ -897,11 +939,9 @@ async function ensureNotification(
   const recipient = await loadActiveRecipient(entities, referral);
   if (!recipient) return false;
   const expected = faxNotification(referral, incomingFaxId, recipient, kind);
-  const query = {
-    agency_id: expected.agency_id,
-    dedupe_key: expected.dedupe_key,
-    user_email: expected.user_email,
-  };
+  // Query the purpose key without authority predicates so a legacy or corrupt
+  // row cannot be hidden by its missing provenance and followed by a duplicate.
+  const query = { dedupe_key: expected.dedupe_key };
   let rows = requireRows(
     await entities.Notification.filter(query, '-created_date', NOTIFICATION_SCAN_LIMIT),
     'Notification.filter',
@@ -916,9 +956,9 @@ async function ensureNotification(
       'Notification.filter',
     );
   }
-  if (rows.length !== 1 || Object.entries(expected).some(([key, value]) => (
-    !sameValue(rows[0]?.[key], value)
-  ))) throw new Error('Inbound fax notification failed verification');
+  if (rows.length !== 1 || !faxNotificationMatches(rows[0], expected)) {
+    throw new Error('Inbound fax notification failed verification');
+  }
   return true;
 }
 

@@ -1401,34 +1401,122 @@ async function resolveFaxRetryConfigByAgency(base44, agencyId) {
 }
 
 const FAX_NOTIFICATION_EXACT_ROW_LIMIT = 10;
+const FAX_NOTIFICATION_MEMBERSHIP_SCAN_LIMIT = 100;
+const FAX_NOTIFICATION_MEMBERSHIP_STATUSES = new Set([
+  'pending',
+  'active',
+  'suspended',
+  'revoked',
+]);
+const FAX_NOTIFICATION_TENANT_ROLES = new Set([
+  'agency_admin',
+  'manager',
+  'clinician',
+  'office_staff',
+  'social_worker',
+  'spiritual_care',
+]);
 
-function outboundFaxNotificationSpec(fax, kind) {
-  const delivered = kind === 'delivery';
+const canonicalFaxNotificationEmail = (value) => {
+  if (typeof value !== 'string' || value.length > 320) return null;
+  const email = value.trim().toLowerCase();
+  return email && email.includes('@') && !/\s/.test(email) ? email : null;
+};
+
+const exactFaxNotificationInstant = (value) => typeof value === 'string'
+  && Number.isFinite(Date.parse(value));
+
+const boundedFaxNotificationReason = (value) => {
+  if (typeof value !== 'string') return null;
+  const reason = value.trim();
+  return reason && reason.length <= 500 ? reason : null;
+};
+
+async function loadActiveOutboundFaxNotificationRecipient(base44, fax) {
   const agencyId = boundedTelnyxAuthorityId(fax?.agency_id);
-  const dedupeKey = `fax:${agencyId || 'legacy'}:${fax.id}:${delivered ? 'delivered' : 'failed'}`;
-  const recipient = fax.to_name
-    ? `${fax.to_name} (${fax.to_number})`
-    : fax.to_number;
+  const userId = boundedTelnyxAuthorityId(fax?.sent_by_user_id);
+  const membershipId = boundedTelnyxAuthorityId(fax?.sent_by_membership_id);
+  const sentMembershipVersion = fax?.sent_by_membership_version;
+  const senderEmail = canonicalFaxNotificationEmail(fax?.sent_by);
+  if (!agencyId || !userId || !membershipId || !senderEmail
+    || fax.sent_by !== senderEmail
+    || !Number.isSafeInteger(sentMembershipVersion) || sentMembershipVersion < 1) return null;
+
+  const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+    { agency_id: agencyId, user_id: userId },
+    '-updated_date',
+    FAX_NOTIFICATION_MEMBERSHIP_SCAN_LIMIT,
+  );
+  if (!Array.isArray(rows)
+    || rows.length >= FAX_NOTIFICATION_MEMBERSHIP_SCAN_LIMIT
+    || rows.length !== 1
+    || rows.some((row) => row?.agency_id !== agencyId || row?.user_id !== userId)) return null;
+
+  const recipient = rows[0];
+  const recipientEmail = canonicalFaxNotificationEmail(recipient?.user_email_normalized);
+  const transitionEmail = canonicalFaxNotificationEmail(recipient?.last_transition_by_email_normalized);
+  const status = String(recipient?.status || '');
+  if (boundedTelnyxAuthorityId(recipient?.id) !== membershipId
+    || recipient.id !== membershipId
+    || recipient.membership_key !== `${agencyId}:${userId}`
+    || recipientEmail !== senderEmail
+    || recipient.user_email_normalized !== recipientEmail
+    || !FAX_NOTIFICATION_TENANT_ROLES.has(String(recipient.tenant_role || ''))
+    || !FAX_NOTIFICATION_MEMBERSHIP_STATUSES.has(status)
+    || !boundedTelnyxAuthorityId(recipient.created_by_user_id)
+    || !boundedTelnyxAuthorityId(recipient.last_transition_by_user_id)
+    || !transitionEmail
+    || recipient.last_transition_by_email_normalized !== transitionEmail
+    || !exactFaxNotificationInstant(recipient.last_transition_at)
+    || !boundedFaxNotificationReason(recipient.last_transition_reason)
+    || !Number.isSafeInteger(recipient.version)
+    || recipient.version < sentMembershipVersion
+    || ((status === 'active' || status === 'suspended')
+      && !exactFaxNotificationInstant(recipient.activated_at))
+    || (status === 'revoked'
+      && (!exactFaxNotificationInstant(recipient.revoked_at)
+        || !boundedFaxNotificationReason(recipient.revocation_reason)))) return null;
+  return status === 'active' ? recipient : null;
+}
+
+function outboundFaxNotificationMessage(kind, fax) {
+  const documentName = fax.document_name || 'Document';
+  const recipient = fax.to_name || fax.to_number;
+  return kind === 'delivery'
+    ? `Fax "${documentName}" delivered to ${recipient}`
+    : `Fax "${documentName}" failed to ${recipient}. Reason: ${fax.failure_reason || 'Unknown'}`;
+}
+
+function outboundFaxNotificationSpec(fax, recipient, kind) {
+  const delivered = kind === 'delivery';
+  const agencyId = fax.agency_id;
+  const dedupeKey = `fax:${agencyId}:${fax.id}:${delivered ? 'delivered' : 'failed'}`;
   return {
     markerField: delivered ? 'delivery_confirmation_sent' : 'final_failure_notified',
     claimField: delivered ? 'delivery_notify_claimed_by' : 'failure_notify_claimed_by',
     claimedAtField: delivered ? 'delivery_notify_claimed_at' : 'failure_notify_claimed_at',
     dedupeKey,
     payload: {
-      ...(agencyId ? { agency_id: agencyId } : {}),
+      agency_id: agencyId,
       dedupe_key: dedupeKey,
-      user_email: fax.sent_by,
-      title: delivered ? '✅ Fax delivered' : '❌ Fax failed',
-      message: delivered
-        ? `Your fax to ${recipient} was delivered successfully (${fax.pages ?? 'N/A'} pages).`
-        : `"${fax.document_name || 'Your document'}" to ${recipient} could not be delivered (${fax.failure_reason || 'Fax delivery failed'}). Verify the number and resend.`,
+      recipient_user_id: recipient.user_id,
+      recipient_membership_id: recipient.id,
+      recipient_membership_version: recipient.version,
+      authority_version: 1,
+      version: 1,
+      user_email: recipient.user_email_normalized,
+      title: delivered ? 'Fax Status Update' : 'Fax Failed',
+      message: outboundFaxNotificationMessage(kind, fax),
       type: delivered ? 'fax_delivered' : 'fax_failed',
       priority: delivered ? 'medium' : 'high',
-      metadata: { related_entity: 'FaxLog', related_entity_id: fax.id },
+      metadata: {
+        agency_id: agencyId,
+        related_entity: 'FaxLog',
+        related_entity_id: fax.id,
+        workflow: delivered ? 'fax_delivery_confirmation' : 'fax_final_failure',
+      },
       is_read: false,
-      action_url: delivered
-        ? `/SendFax?tab=logs&fax_id=${fax.id}`
-        : `/SendFax?fax_id=${fax.id}`,
+      dismissed: false,
     },
   };
 }
@@ -1436,18 +1524,39 @@ function outboundFaxNotificationSpec(fax, kind) {
 function outboundFaxNotificationMatches(row, spec) {
   return !!row
     && boundedTelnyxAuthorityId(row.id) === row.id
+    && row.agency_id === spec.payload.agency_id
     && row.dedupe_key === spec.dedupeKey
+    && row.recipient_user_id === spec.payload.recipient_user_id
+    && row.recipient_membership_id === spec.payload.recipient_membership_id
+    && row.recipient_membership_version === spec.payload.recipient_membership_version
+    && row.authority_version === 1
+    && Number.isSafeInteger(row.version)
+    && row.version >= 1
     && row.user_email === spec.payload.user_email
+    && canonicalFaxNotificationEmail(row.user_email) === spec.payload.user_email
     && row.type === spec.payload.type
-    && (row.agency_id ?? null) === (spec.payload.agency_id ?? null)
+    && row.title === spec.payload.title
+    && row.message === spec.payload.message
+    && row.priority === spec.payload.priority
+    && row.metadata?.agency_id === spec.payload.metadata.agency_id
     && row.metadata?.related_entity === 'FaxLog'
-    && row.metadata?.related_entity_id === spec.payload.metadata.related_entity_id;
+    && row.metadata?.related_entity_id === spec.payload.metadata.related_entity_id
+    && row.metadata?.workflow === spec.payload.metadata.workflow
+    && Object.keys(row.metadata || {}).length === Object.keys(spec.payload.metadata).length
+    && typeof row.is_read === 'boolean'
+    && (row.is_read ? exactFaxNotificationInstant(row.read_at) : row.read_at == null)
+    && typeof row.dismissed === 'boolean'
+    && (row.dismissed ? exactFaxNotificationInstant(row.dismissed_at) : row.dismissed_at == null)
+    && row.action_url == null;
 }
 
 async function loadOutboundFaxNotifications(base44, spec) {
   const rows = await base44.asServiceRole.entities.Notification.filter(
+    // This purpose key is shared with the poller. A legacy or malformed row
+    // that already owns it must remain visible and fail closed; narrowing the
+    // query to recipient fields could otherwise hide it and permit a duplicate.
     { dedupe_key: spec.dedupeKey },
-    undefined,
+    '-created_date',
     FAX_NOTIFICATION_EXACT_ROW_LIMIT,
   );
   if (!Array.isArray(rows) || rows.length >= FAX_NOTIFICATION_EXACT_ROW_LIMIT
@@ -1494,7 +1603,9 @@ async function finalizeOutboundFaxNotification(base44, fax, spec, claimToken) {
 }
 
 async function sendClaimedOutboundFaxNotification(base44, fax, kind, claimToken) {
-  const spec = outboundFaxNotificationSpec(fax, kind);
+  const recipient = await loadActiveOutboundFaxNotificationRecipient(base44, fax).catch(() => null);
+  if (!recipient) return false;
+  const spec = outboundFaxNotificationSpec(fax, recipient, kind);
   let existing = await loadOutboundFaxNotifications(base44, spec).catch(() => null);
   if (existing?.length) {
     return finalizeOutboundFaxNotification(base44, fax, spec, claimToken);

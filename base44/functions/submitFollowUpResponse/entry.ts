@@ -661,11 +661,19 @@ async function loadActiveRecipient(
   return status === 'active' ? row : null;
 }
 
-function notificationPayload(referral: Record<string, any>, token: Record<string, any>) {
+function notificationPayload(
+  token: Record<string, any>,
+  recipient: Record<string, any>,
+) {
   return {
     agency_id: token.agency_id,
     dedupe_key: `provider-follow-up:${token.agency_id}:${token.referral_id}:${token.id}`,
-    user_email: referral.created_by_user_email_normalized,
+    recipient_user_id: recipient.user_id,
+    recipient_membership_id: recipient.id,
+    recipient_membership_version: recipient.version,
+    authority_version: 1,
+    version: 1,
+    user_email: recipient.user_email_normalized,
     title: 'Provider follow-up response received',
     message: 'A provider submitted information for a referral follow-up request. Review the responses and resolve completed items.',
     type: 'info',
@@ -677,6 +685,7 @@ function notificationPayload(referral: Record<string, any>, token: Record<string
       workflow: 'provider_follow_up_response',
     },
     is_read: false,
+    dismissed: false,
     action_url: `/ReferralFollowUp?id=${encodeURIComponent(token.referral_id)}`,
   };
 }
@@ -684,13 +693,23 @@ function notificationPayload(referral: Record<string, any>, token: Record<string
 function notificationMatches(row: Record<string, any>, expected: Record<string, any>) {
   return row?.agency_id === expected.agency_id
     && row?.dedupe_key === expected.dedupe_key
-    && canonicalEmail(row?.user_email) === expected.user_email
+    && row?.recipient_user_id === expected.recipient_user_id
+    && row?.recipient_membership_id === expected.recipient_membership_id
+    && row?.recipient_membership_version === expected.recipient_membership_version
+    && row?.authority_version === expected.authority_version
+    && Number.isSafeInteger(row?.version)
+    && row.version >= 1
+    && row?.user_email === expected.user_email
+    && canonicalEmail(row.user_email) === expected.user_email
     && row?.title === expected.title
     && row?.message === expected.message
     && row?.type === expected.type
     && row?.priority === expected.priority
     && sameValue(row?.metadata, expected.metadata)
-    && row?.is_read === false
+    && typeof row?.is_read === 'boolean'
+    && (row.is_read ? validInstant(row.read_at) : row.read_at == null)
+    && typeof row?.dismissed === 'boolean'
+    && (row.dismissed ? validInstant(row.dismissed_at) : row.dismissed_at == null)
     && row?.action_url === expected.action_url;
 }
 
@@ -707,15 +726,14 @@ async function notifyRequester(
       referral.created_by_user_email_normalized,
     );
     if (!recipient) return false;
-    const expected = notificationPayload(referral, token);
+    const expected = notificationPayload(token, recipient);
     const find = async () => {
       const rows = requireRows(
         await entities.Notification.filter(
-          {
-            agency_id: expected.agency_id,
-            dedupe_key: expected.dedupe_key,
-            user_email: expected.user_email,
-          },
+          // Search the purpose key alone so a pre-cutover or corrupt row is
+          // detected and blocks duplicate creation instead of being hidden by
+          // its missing authority-v1 fields.
+          { dedupe_key: expected.dedupe_key },
           '-created_date',
           NOTIFICATION_SCAN_LIMIT,
         ),

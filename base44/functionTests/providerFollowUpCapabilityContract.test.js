@@ -237,8 +237,11 @@ function post(functionName, body, headers = {}) {
 
 async function loadedHandlers(runtime) {
   const handlers = {};
+  const env = new Map([
+    ['APP_PUBLIC_URL', 'https://caremetric-staging.base44.app'],
+  ]);
   for (const name of FUNCTIONS) {
-    handlers[name] = await loadCapabilityHandler(name, () => runtime.client);
+    handlers[name] = await loadCapabilityHandler(name, () => runtime.client, env);
   }
   return handlers;
 }

@@ -1151,6 +1151,24 @@ const outboundFax = (overrides = {}) => ({
   ...overrides,
 });
 
+const activeFaxSenderMembership = (overrides = {}) => ({
+  id: "membership_a",
+  agency_id: "agency_a",
+  user_id: "user_a",
+  membership_key: "agency_a:user_a",
+  user_email_normalized: "staff@example.com",
+  tenant_role: "clinician",
+  status: "active",
+  created_by_user_id: "user_owner",
+  last_transition_by_user_id: "user_owner",
+  last_transition_by_email_normalized: "owner@example.com",
+  last_transition_at: "2026-01-01T00:00:00.000Z",
+  last_transition_reason: "Activated for agency fax access",
+  activated_at: "2026-01-01T00:00:00.000Z",
+  version: 2,
+  ...overrides,
+});
+
 test("pollFaxStatuses is default-false before Base44 SDK construction", async () => {
   let clientConstructions = 0;
   const provider = makeFetch([]);
@@ -1410,6 +1428,7 @@ test("fax status poller fails closed for malformed or inactive retry policies", 
     const state = {
       IntegrationSecret: [activeTelnyxSecret()],
       Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+      AgencyMembership: [activeFaxSenderMembership()],
       FaxRetryConfig: [policy],
       FaxLog: [outboundFax()],
       Notification: [],
@@ -1629,6 +1648,7 @@ test("signed fax webhook fails closed for malformed or inactive retry policies",
     const state = {
       IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
       Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+      AgencyMembership: [activeFaxSenderMembership()],
       FaxRetryConfig: [policy],
       FaxLog: [outboundFax()],
       Notification: [],
@@ -1686,6 +1706,7 @@ test("an ambiguous committed fax notification is reconciled without a duplicate 
   const writes = [];
   const state = {
     IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
+    AgencyMembership: [activeFaxSenderMembership()],
     FaxLog: [outboundFax()],
     Notification: [],
   };
@@ -1727,6 +1748,7 @@ test("pollFaxStatuses recovers a stale terminal notification claim", async () =>
   const writes = [];
   const state = {
     IntegrationSecret: [activeTelnyxSecret()],
+    AgencyMembership: [activeFaxSenderMembership()],
     FaxLog: [outboundFax({
       status: "delivered",
       provider_terminal_status: "delivered",
