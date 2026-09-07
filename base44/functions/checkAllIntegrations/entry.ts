@@ -232,6 +232,19 @@ Deno.serve(async (req) => {
         : 'INTERNAL_FN_SECRET is missing or too short; protected scheduled functions cannot run.',
     });
 
+    const signatureSecret = env('SIGNATURE_HMAC_SECRET');
+    integrations.push({
+      id: 'signature_hmac',
+      label: 'E-signature token authentication',
+      category: 'Security',
+      configured: Boolean(signatureSecret && signatureSecret.length >= 32),
+      editable_in_app: false,
+      status: signatureSecret && signatureSecret.length >= 32 ? 'ok' : 'fail',
+      detail: signatureSecret && signatureSecret.length >= 32
+        ? 'SIGNATURE_HMAC_SECRET is configured for signed capability tokens.'
+        : 'SIGNATURE_HMAC_SECRET is missing or too short; secure signer tokens cannot be issued.',
+    });
+
     const outcomeRelease = env('OUTCOME_PIPELINE_RELEASE');
     integrations.push({
       id: 'outcome_pipeline_release',

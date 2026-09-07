@@ -25,6 +25,8 @@ test('secret presence alone is not presented as authenticated provider health', 
 test('workflow-critical configuration appears in the health response', () => {
   assert.match(source, /id: 'workflow_internal_auth'/);
   assert.match(source, /INTERNAL_FN_SECRET is missing or too short/);
+  assert.match(source, /id: 'signature_hmac'/);
+  assert.match(source, /SIGNATURE_HMAC_SECRET is missing or too short/);
   assert.match(source, /id: 'outcome_pipeline_release'/);
   assert.match(source, /OUTCOME_PIPELINE_RELEASE/);
 });
