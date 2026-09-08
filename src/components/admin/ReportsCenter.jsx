@@ -1,10 +1,10 @@
-import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useEffect, useRef, useState } from "react";
 import { CHART_COLORS } from "@/constants/chartColors";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Label } from "@/components/ui/label";
 import {
   Select,
@@ -23,28 +23,91 @@ import {
   FileText,
   Target,
   Award,
+  AlertTriangle,
   Loader2,
   LineChart
 } from "lucide-react";
 import { BarChart, Bar, LineChart as RechartsLineChart, Line, PieChart as RechartsPieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { format, subDays, differenceInDays } from "date-fns";
 import { formatEastern, todayEastern } from "@/components/utils/timezone";
-import { useQuery } from "@tanstack/react-query";
 import { escapeCsvField } from "@/components/admin/csvExport";
 import { toast } from 'sonner';
 import { safePercent } from "@/lib/safePercent";
 import { startOfLocalDay } from "@/lib/dateLocal";
+import { downloadAuthorityBoundBlob } from '@/lib/downloadBlob';
 
-export default function ReportsCenter({ users: allUsers, patients: allPatients, visits, incidents }) {
-  const [reportType, setReportType] = useState("productivity");
+const EMPTY_ROWS = Object.freeze([]);
+// NoteConversion's administrator read arm is platform-wide and each row can
+// carry patient_id/diagnosis. Productivity reporting stays unavailable until a
+// tenant-bound service projection exists; client-side filtering is not authz.
+const NOTE_CONVERSION_REPORTS_AVAILABLE = false;
+
+export default function ReportsCenter({
+  authorityKey,
+  users: allUsers,
+  patients: allPatients,
+  visits,
+  incidents,
+}) {
+  const [reportType, setReportType] = useState("quality");
   const [dateRange, setDateRange] = useState("30");
   const [_selectedNurse, _setSelectedNurse] = useState("all");
   const [isGenerating, setIsGenerating] = useState(false);
   const [exportFormat, setExportFormat] = useState("pdf");
   const [reportPreview, setReportPreview] = useState(null);
   const [showPreview, setShowPreview] = useState(false);
+  const mountedRef = useRef(false);
+  const authorityRef = useRef(authorityKey);
+  const operationSequenceRef = useRef(0);
+  authorityRef.current = authorityKey;
+
+  const sourceSnapshotAvailable = typeof authorityKey === 'string'
+    && authorityKey.length > 0
+    && Array.isArray(allUsers)
+    && Array.isArray(allPatients)
+    && Array.isArray(visits)
+    && Array.isArray(incidents);
+  const selectedSourceUnavailable = reportType === 'productivity'
+    && !NOTE_CONVERSION_REPORTS_AVAILABLE;
+  const reportActionsAvailable = sourceSnapshotAvailable && !selectedSourceUnavailable;
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      operationSequenceRef.current += 1;
+    };
+  }, []);
+
+  // Any authority or configuration transition retires previews and invalidates
+  // an export that was awaiting a dynamically imported renderer.
+  useEffect(() => {
+    operationSequenceRef.current += 1;
+    setReportPreview(null);
+    setShowPreview(false);
+    setIsGenerating(false);
+  }, [authorityKey, dateRange, exportFormat, reportType]);
+
+  const operationIsCurrent = (operation) => mountedRef.current
+    && operation.sequence === operationSequenceRef.current
+    && operation.authorityKey === authorityRef.current
+    && reportActionsAvailable;
+
+  const beginOperation = () => ({
+    sequence: ++operationSequenceRef.current,
+    authorityKey: authorityRef.current,
+  });
 
   const generatePreview = () => {
+    if (!reportActionsAvailable) {
+      setReportPreview(null);
+      setShowPreview(false);
+      toast.error(selectedSourceUnavailable
+        ? 'Productivity reports are unavailable until NoteConversion has a tenant-bound reporting projection.'
+        : 'Report access must be freshly verified before generating a preview.');
+      return;
+    }
+    const operation = beginOperation();
     const endDate = todayEastern();
     const startDate = format(subDays(new Date(), parseInt(dateRange, 10)), 'yyyy-MM-dd');
 
@@ -75,11 +138,21 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
         break;
     }
 
+    if (!operationIsCurrent(operation)) return;
     setReportPreview(previewData);
     setShowPreview(true);
   };
 
   const generateReport = async () => {
+    if (!reportActionsAvailable) {
+      setReportPreview(null);
+      setShowPreview(false);
+      toast.error(selectedSourceUnavailable
+        ? 'Productivity reports are unavailable until NoteConversion has a tenant-bound reporting projection.'
+        : 'Report access must be freshly verified before exporting.');
+      return;
+    }
+    const operation = beginOperation();
     setIsGenerating(true);
     
     try {
@@ -89,6 +162,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
       if (exportFormat === 'pdf') {
         // Generate PDF using utility
         const { exportToPDF } = await import('@/components/utils/pdfExporter');
+        if (!operationIsCurrent(operation)) return;
         
         const filteredVisits = visits.filter(v => 
           v.visit_date >= startDate && v.visit_date <= endDate
@@ -243,12 +317,17 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
             ];
         }
 
-        await exportToPDF({
-          filename: `penn-sync-${reportType}-report-${endDate}.pdf`,
+        if (!operationIsCurrent(operation)) return;
+        const pdfFilename = `penn-sync-${reportType}-report-${endDate}.pdf`;
+        const pdfBlob = await exportToPDF({
+          filename: pdfFilename,
           title: reportTitle,
           subtitle: `${startDate} to ${endDate}`,
-          content: pdfContent
+          content: pdfContent,
+          output: 'blob',
         });
+        if (!operationIsCurrent(operation)) return;
+        downloadAuthorityBoundBlob(pdfBlob, pdfFilename);
       } else {
         // Original CSV export
         const filteredVisits = visits.filter(v => 
@@ -297,35 +376,30 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
             throw new Error('Unknown report type');
         }
 
-        // Download report as CSV
+        if (!operationIsCurrent(operation)) return;
+        // Download report as CSV under the same authority lease used by other
+        // protected exports. No delayed anchor click can outlive teardown.
         const blob = new Blob([reportContent], { type: 'text/csv' });
-        const url = window.URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = fileName;
-        document.body.appendChild(a);
-        a.click();
-        window.URL.revokeObjectURL(url);
-        a.remove();
+        if (!operationIsCurrent(operation)) return;
+        downloadAuthorityBoundBlob(blob, fileName);
       }
 
     } catch (error) {
+      if (!operationIsCurrent(operation)) return;
       console.error('Error generating report:', error);
       toast.error(`Failed to generate report: ${error.message || 'Unknown error'}. Please try again.`);
+    } finally {
+      if (operationIsCurrent(operation)) setIsGenerating(false);
     }
-    
-    setIsGenerating(false);
   };
 
-  // Fetch note enhancements for productivity reports (backend entity: NoteConversion)
-  const { data: allNoteEnhancements = [] } = useQuery({
-    queryKey: ['allNoteConversions', 1000],
-    queryFn: () => base44.entities.NoteConversion.list('-created_date', 1000),
-    initialData: [],
-  });
+  const allNoteEnhancements = EMPTY_ROWS;
 
   // Helper functions for PDF data
   const generateProductivityReportData = (visits, allUsers) => {
+    if (!NOTE_CONVERSION_REPORTS_AVAILABLE) {
+      throw new Error('Tenant-bound NoteConversion reporting is unavailable');
+    }
     const endDate = todayEastern();
     const startDate = format(subDays(new Date(), parseInt(dateRange, 10)), 'yyyy-MM-dd');
     
@@ -928,6 +1002,16 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
           <CardTitle>Report Configuration</CardTitle>
         </CardHeader>
         <CardContent>
+          {selectedSourceUnavailable && (
+            <Alert className="mb-6 border-amber-300 bg-amber-50" role="status">
+              <AlertTriangle className="h-4 w-4 text-amber-700" />
+              <AlertDescription className="text-amber-950">
+                Productivity metrics and exports are unavailable because NoteConversion
+                does not yet have a tenant-bound reporting projection. No platform-wide
+                rows are loaded or treated as agency data.
+              </AlertDescription>
+            </Alert>
+          )}
           <div className="grid md:grid-cols-2 gap-6 mb-6">
             <div>
               <Label>Report Type</Label>
@@ -938,7 +1022,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
                 <SelectContent>
                   {reportTypes.map(type => (
                     <SelectItem key={type.value} value={type.value}>
-                      {type.label}
+                      {type.label}{type.value === 'productivity' ? ' (Unavailable)' : ''}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -996,6 +1080,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
                 onClick={generatePreview}
                 variant="outline"
                 className="flex-1"
+                disabled={!reportActionsAvailable}
               >
                 <BarChart3 className="w-4 h-4 mr-2" />
                 Preview with Charts
@@ -1003,7 +1088,7 @@ export default function ReportsCenter({ users: allUsers, patients: allPatients, 
             )}
             <Button
               onClick={generateReport}
-              disabled={isGenerating}
+              disabled={isGenerating || !reportActionsAvailable}
               className="bg-blue-600 hover:bg-blue-700 flex-1"
             >
               {isGenerating ? (

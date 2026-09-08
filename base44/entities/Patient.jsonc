@@ -834,28 +834,7 @@
     "last_name"
   ],
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "data.assigned_nurses": {
-            "$in": [
-              "{{user.email}}"
-            ]
-          }
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "data.is_sample": true
-        }
-      ]
-    },
+    "read": false,
     "create": false,
     "update": false,
     "delete": false

@@ -22,7 +22,7 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
   const patientCreateRequestId = useRef(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 1000 });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'deduplication', sort: '-created_date', limit: 1000 });
 
   const [extractedData, setExtractedData] = useState(null);
   const [mapping, setMapping] = useState({
@@ -186,7 +186,7 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
         };
         await updatePatientFields({
           patientId,
-          agencyId: selectedPatient?.agency_id,
+          agencyId: tenantContext?.agency_id,
           expectedUpdatedDate: selectedPatient?.updated_date,
           changes,
         });

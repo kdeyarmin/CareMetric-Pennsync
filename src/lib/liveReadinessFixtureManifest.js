@@ -1,4 +1,4 @@
-export const LIVE_READINESS_FIXTURE_SCHEMA_VERSION = 1;
+export const LIVE_READINESS_FIXTURE_SCHEMA_VERSION = 2;
 export const LIVE_READINESS_FIXTURE_SET_ID = "lr01-lr02-two-agency-v1";
 
 export const LIVE_READINESS_STAGING_TARGET = Object.freeze({
@@ -83,6 +83,31 @@ export const LIVE_READINESS_FIXTURE_ENTITY_FIELDS = Object.freeze({
     "last_transition_at",
     "version",
   ]),
+  Referral: Object.freeze([
+    "agency_id",
+    "patient_id",
+    "patient_name",
+    "status",
+    "priority",
+    "document_type",
+    "client_request_id",
+  ]),
+  Visit: Object.freeze([
+    "agency_id",
+    "patient_id",
+    "client_request_id",
+    "visit_date",
+    "visit_type",
+    "status",
+    "nurse_notes",
+    "raw_transcription",
+    "compliance_score",
+    "compliance_issues",
+    "homebound_status_verified",
+    "skilled_intervention_documented",
+    "documentation_source",
+    "grounding_pending",
+  ]),
 });
 
 const TOP_LEVEL_KEYS = [
@@ -94,14 +119,66 @@ const TOP_LEVEL_KEYS = [
   "capabilities",
   "actors",
   "agencies",
+  "memberships",
   "patients",
   "assignments",
+  "workflow_requests",
 ];
 const TARGET_KEYS = ["environment", "app_id", "origin"];
 const ACTOR_KEYS = ["email_env", "built_in_role", "agency", "tenant_role"];
-const AGENCY_KEYS = ["status"];
-const PATIENT_KEYS = ["agency", "creator", "status", "is_sample", "is_archived"];
-const ASSIGNMENT_KEYS = ["patient", "actor", "status", "source"];
+const AGENCY_KEYS = [
+  "creator",
+  "resource",
+  "action",
+  "agency_name",
+  "agency_code",
+  "status",
+];
+const MEMBERSHIP_KEYS = [
+  "caller",
+  "broker",
+  "actor",
+  "agency",
+  "tenant_role",
+  "provision_action",
+  "provision_reason",
+  "activation_action",
+  "activation_reason",
+];
+const PATIENT_KEYS = [
+  "broker",
+  "action",
+  "agency",
+  "creator",
+  "client_request_id",
+  "first_name",
+  "last_name",
+  "status",
+  "is_sample",
+  "is_archived",
+];
+const ASSIGNMENT_KEYS = [
+  "caller",
+  "broker",
+  "patient",
+  "actor",
+  "action",
+  "client_request_id",
+  "reason",
+  "status",
+  "source",
+];
+const WORKFLOW_REQUEST_KEYS = [
+  "capability",
+  "probe",
+  "actor",
+  "agency",
+  "patient",
+  "broker",
+  "action",
+  "client_request_id",
+  "input",
+];
 
 export const LIVE_READINESS_FIXTURE_ACTORS = Object.freeze({
   platform_owner: Object.freeze({
@@ -136,62 +213,237 @@ export const LIVE_READINESS_FIXTURE_ACTORS = Object.freeze({
   }),
 });
 
+const CANONICAL_ACTORS = LIVE_READINESS_FIXTURE_ACTORS;
+
 export const LIVE_READINESS_FIXTURE_AGENCIES = Object.freeze({
-  agency_a: Object.freeze({ status: "active" }),
-  agency_b: Object.freeze({ status: "active" }),
+  agency_a: Object.freeze({
+    creator: "platform_owner",
+    resource: "Agency",
+    action: "create",
+    agency_name: "Synthetic Readiness Agency A",
+    agency_code: "LR-A",
+    status: "active",
+  }),
+  agency_b: Object.freeze({
+    creator: "platform_owner",
+    resource: "Agency",
+    action: "create",
+    agency_name: "Synthetic Readiness Agency B",
+    agency_code: "LR-B",
+    status: "active",
+  }),
 });
+
+const CANONICAL_AGENCIES = LIVE_READINESS_FIXTURE_AGENCIES;
+
+const CANONICAL_MEMBERSHIPS = Object.freeze([
+  Object.freeze({
+    caller: "platform_owner",
+    broker: "manageAgencyMembership",
+    actor: "admin_a",
+    agency: "agency_a",
+    tenant_role: "agency_admin",
+    provision_action: "provision",
+    provision_reason: "Create synthetic LR fixture membership",
+    activation_action: "activate",
+    activation_reason: "Activate synthetic LR fixture membership",
+  }),
+  Object.freeze({
+    caller: "platform_owner",
+    broker: "manageAgencyMembership",
+    actor: "clinician_a",
+    agency: "agency_a",
+    tenant_role: "clinician",
+    provision_action: "provision",
+    provision_reason: "Create synthetic LR fixture membership",
+    activation_action: "activate",
+    activation_reason: "Activate synthetic LR fixture membership",
+  }),
+  Object.freeze({
+    caller: "platform_owner",
+    broker: "manageAgencyMembership",
+    actor: "clinician_a_empty",
+    agency: "agency_a",
+    tenant_role: "clinician",
+    provision_action: "provision",
+    provision_reason: "Create synthetic LR fixture membership",
+    activation_action: "activate",
+    activation_reason: "Activate synthetic LR fixture membership",
+  }),
+  Object.freeze({
+    caller: "platform_owner",
+    broker: "manageAgencyMembership",
+    actor: "admin_b",
+    agency: "agency_b",
+    tenant_role: "agency_admin",
+    provision_action: "provision",
+    provision_reason: "Create synthetic LR fixture membership",
+    activation_action: "activate",
+    activation_reason: "Activate synthetic LR fixture membership",
+  }),
+]);
 
 export const LIVE_READINESS_FIXTURE_PATIENTS = Object.freeze({
   a1: Object.freeze({
+    broker: "createAuthorizedPatient",
+    action: "create",
     agency: "agency_a",
     creator: "admin_a",
+    client_request_id: "lr-fixture-patient-a1-v1",
+    first_name: "Synthetic",
+    last_name: "Agency-A-One",
     status: "active",
     is_sample: false,
     is_archived: false,
   }),
   a2: Object.freeze({
+    broker: "createAuthorizedPatient",
+    action: "create",
     agency: "agency_a",
     creator: "admin_a",
+    client_request_id: "lr-fixture-patient-a2-v1",
+    first_name: "Synthetic",
+    last_name: "Agency-A-Two",
     status: "active",
     is_sample: false,
     is_archived: false,
   }),
   b1: Object.freeze({
+    broker: "createAuthorizedPatient",
+    action: "create",
     agency: "agency_b",
     creator: "admin_b",
+    client_request_id: "lr-fixture-patient-b1-v1",
+    first_name: "Synthetic",
+    last_name: "Agency-B-One",
     status: "active",
     is_sample: false,
     is_archived: false,
   }),
 });
 
+const CANONICAL_PATIENTS = LIVE_READINESS_FIXTURE_PATIENTS;
+
 export const LIVE_READINESS_FIXTURE_ASSIGNMENTS = Object.freeze([
   Object.freeze({
+    caller: "admin_a",
+    broker: "managePatientCareTeamAssignment",
     patient: "a1",
     actor: "clinician_a",
+    action: "grant",
+    client_request_id: "lr-fixture-assignment-a1-clinician-a-v1",
+    reason: "Grant synthetic LR direct-care assignment",
     status: "active",
     source: "manual",
   }),
 ]);
 
-const CANONICAL_ACTORS = LIVE_READINESS_FIXTURE_ACTORS;
-const CANONICAL_AGENCIES = LIVE_READINESS_FIXTURE_AGENCIES;
-const CANONICAL_PATIENTS = LIVE_READINESS_FIXTURE_PATIENTS;
 const CANONICAL_ASSIGNMENT = LIVE_READINESS_FIXTURE_ASSIGNMENTS[0];
+
+const CANONICAL_WORKFLOW_REQUESTS = Object.freeze({
+  referral_a1_create: Object.freeze({
+    capability: "LR-02",
+    probe: "S3",
+    actor: "admin_a",
+    agency: "agency_a",
+    patient: "a1",
+    broker: "manageAuthorizedReferral",
+    action: "create",
+    client_request_id: "lr02-s3-referral-a1-v1",
+    input: Object.freeze({
+      patient_name: "Synthetic Agency A One",
+      status: "new",
+      priority: "normal",
+      document_type: "manual",
+    }),
+  }),
+  smart_note_a1_visit_create: Object.freeze({
+    capability: "LR-02",
+    probe: "S4",
+    actor: "clinician_a",
+    agency: "agency_a",
+    patient: "a1",
+    broker: "createAuthorizedVisit",
+    action: "create",
+    client_request_id: "lr02-s4-smart-note-a1-v1",
+    input: Object.freeze({
+      visit_date: "2026-09-07",
+      visit_type: "skilled_nursing",
+      status: "completed",
+      nurse_notes: "Synthetic readiness note; no real patient information.",
+      raw_transcription: "Synthetic readiness observation only.",
+      compliance_score: 100,
+      compliance_issues: Object.freeze([]),
+      homebound_status_verified: true,
+      skilled_intervention_documented: true,
+      documentation_source: "smart_note",
+      grounding_pending: false,
+    }),
+  }),
+});
+
+export const LIVE_READINESS_FIXTURE_ACTOR_ALIASES = Object.freeze(
+  Object.keys(CANONICAL_ACTORS),
+);
+export const LIVE_READINESS_FIXTURE_TENANT_ACTOR_ALIASES = Object.freeze(
+  LIVE_READINESS_FIXTURE_ACTOR_ALIASES.filter((alias) => alias !== "platform_owner"),
+);
+export const LIVE_READINESS_FIXTURE_AGENCY_ALIASES = Object.freeze(
+  Object.keys(CANONICAL_AGENCIES),
+);
+export const LIVE_READINESS_FIXTURE_PATIENT_ALIASES = Object.freeze(
+  Object.keys(CANONICAL_PATIENTS),
+);
+export const LIVE_READINESS_FIXTURE_TOPOLOGY = Object.freeze({
+  actor_aliases: LIVE_READINESS_FIXTURE_ACTOR_ALIASES,
+  tenant_actor_aliases: LIVE_READINESS_FIXTURE_TENANT_ACTOR_ALIASES,
+  agency_aliases: LIVE_READINESS_FIXTURE_AGENCY_ALIASES,
+  patient_aliases: LIVE_READINESS_FIXTURE_PATIENT_ALIASES,
+  assignment_edges: Object.freeze(LIVE_READINESS_FIXTURE_ASSIGNMENTS.map((assignment) => (
+    Object.freeze({ patient: assignment.patient, actor: assignment.actor })
+  ))),
+});
+
+const RUNTIME_RESOLUTION_KEYS = [
+  "agency_ids",
+  "actor_users",
+  "patient_ids",
+  "provisioned_membership_versions",
+];
+const RESOLVED_ACTOR_KEYS = ["user_id", "email"];
+const TENANT_ACTOR_ALIASES = LIVE_READINESS_FIXTURE_TENANT_ACTOR_ALIASES;
 
 const SAFE_MANIFEST_PATH_KEYS = new Set([
   ...TOP_LEVEL_KEYS,
   ...TARGET_KEYS,
   ...ACTOR_KEYS,
   ...AGENCY_KEYS,
+  ...MEMBERSHIP_KEYS,
   ...PATIENT_KEYS,
   ...ASSIGNMENT_KEYS,
+  ...WORKFLOW_REQUEST_KEYS,
+  "referral_a1_create",
+  "smart_note_a1_visit_create",
+  "patient_name",
+  "priority",
+  "document_type",
+  "visit_date",
+  "visit_type",
+  "nurse_notes",
+  "raw_transcription",
+  "compliance_score",
+  "compliance_issues",
+  "homebound_status_verified",
+  "skilled_intervention_documented",
+  "documentation_source",
+  "grounding_pending",
   ...Object.keys(CANONICAL_ACTORS),
   ...Object.keys(CANONICAL_AGENCIES),
   ...Object.keys(CANONICAL_PATIENTS),
 ]);
 
 const SENSITIVE_MANIFEST_KEY = /(?:^|_)(?:password|passcode|token|secret|authorization|cookie|session|email|phone|address|date_of_birth|dob|ssn|medical_record_number|first_name|last_name)(?:_|$)/i;
+const REVIEWED_SYNTHETIC_IDENTITY_KEYS = new Set(["first_name", "last_name", "patient_name"]);
 
 function isObject(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -227,7 +479,11 @@ function findSensitiveKeys(value, path, errors) {
   }
   if (!isObject(value)) return;
   for (const [key, nested] of Object.entries(value)) {
-    if (key !== "email_env" && SENSITIVE_MANIFEST_KEY.test(key)) {
+    if (
+      key !== "email_env"
+      && !REVIEWED_SYNTHETIC_IDENTITY_KEYS.has(key)
+      && SENSITIVE_MANIFEST_KEY.test(key)
+    ) {
       addError(errors, path, "Credential, direct identity, or PHI-shaped fields are forbidden in the committed fixture plan.");
     }
     const nestedPath = SAFE_MANIFEST_PATH_KEYS.has(key) ? `${path}.${key}` : path;
@@ -257,6 +513,210 @@ function validateCanonicalMap(errors, path, value, expected, itemKeys) {
       }
     }
   }
+}
+
+function exactRuntimeIdentifier(value) {
+  return typeof value === "string"
+    && value.length > 0
+    && value.length <= 200
+    && value.trim() === value
+    && !value.startsWith("$")
+    && ![...value].some((character) => {
+      const codePoint = character.codePointAt(0);
+      return codePoint <= 31 || codePoint === 127;
+    });
+}
+
+function canonicalRuntimeEmail(value) {
+  return typeof value === "string"
+    && value === value.trim().toLowerCase()
+    && value.length <= 320
+    && value.includes("@")
+    && !/\s/.test(value);
+}
+
+function validateRuntimeResolution(resolution) {
+  if (!isObject(resolution)) return false;
+  const exactTopLevel = Object.keys(resolution).length === RUNTIME_RESOLUTION_KEYS.length
+    && RUNTIME_RESOLUTION_KEYS.every((key) => Object.hasOwn(resolution, key));
+  if (!exactTopLevel) return false;
+
+  const aliasMapIsExact = (value, aliases) => isObject(value)
+    && Object.keys(value).length === aliases.length
+    && aliases.every((alias) => Object.hasOwn(value, alias));
+  const agencyAliases = Object.keys(CANONICAL_AGENCIES);
+  const patientAliases = Object.keys(CANONICAL_PATIENTS);
+  if (!aliasMapIsExact(resolution.agency_ids, agencyAliases)
+    || !agencyAliases.every((alias) => exactRuntimeIdentifier(resolution.agency_ids[alias]))) {
+    return false;
+  }
+  if (!aliasMapIsExact(resolution.patient_ids, patientAliases)
+    || !patientAliases.every((alias) => exactRuntimeIdentifier(resolution.patient_ids[alias]))) {
+    return false;
+  }
+  if (!aliasMapIsExact(resolution.actor_users, TENANT_ACTOR_ALIASES)) return false;
+  for (const alias of TENANT_ACTOR_ALIASES) {
+    const actor = resolution.actor_users[alias];
+    if (
+      !isObject(actor)
+      || Object.keys(actor).length !== RESOLVED_ACTOR_KEYS.length
+      || !RESOLVED_ACTOR_KEYS.every((key) => Object.hasOwn(actor, key))
+      || !exactRuntimeIdentifier(actor.user_id)
+      || !canonicalRuntimeEmail(actor.email)
+    ) {
+      return false;
+    }
+  }
+  return aliasMapIsExact(resolution.provisioned_membership_versions, TENANT_ACTOR_ALIASES)
+    && TENANT_ACTOR_ALIASES.every((alias) => (
+      Number.isSafeInteger(resolution.provisioned_membership_versions[alias])
+      && resolution.provisioned_membership_versions[alias] >= 1
+    ));
+}
+
+function assembleFixtureRequests(input, resolution) {
+  const agencyCreates = Object.entries(input.agencies).map(([alias, agency]) => ({
+    alias: `${alias}_create`,
+    caller: agency.creator,
+    resource: agency.resource,
+    operation: agency.action,
+    body: {
+      agency_name: agency.agency_name,
+      agency_code: agency.agency_code,
+      status: agency.status,
+    },
+  }));
+
+  const membershipActions = input.memberships.flatMap((membership) => {
+    const agencyId = resolution.agency_ids[membership.agency];
+    const target = resolution.actor_users[membership.actor];
+    const common = {
+      agency_id: agencyId,
+      target_user_id: target.user_id,
+      target_user_email: target.email,
+    };
+    return [
+      {
+        alias: `${membership.actor}_membership_provision`,
+        caller: membership.caller,
+        broker: membership.broker,
+        body: {
+          action: membership.provision_action,
+          ...common,
+          reason: membership.provision_reason,
+          tenant_role: membership.tenant_role,
+        },
+      },
+      {
+        alias: `${membership.actor}_membership_activate`,
+        caller: membership.caller,
+        broker: membership.broker,
+        body: {
+          action: membership.activation_action,
+          ...common,
+          expected_version: resolution.provisioned_membership_versions[membership.actor],
+          reason: membership.activation_reason,
+        },
+      },
+    ];
+  });
+
+  const patientCreates = Object.entries(input.patients).map(([alias, patient]) => ({
+    alias: `${alias}_create`,
+    caller: patient.creator,
+    broker: patient.broker,
+    body: {
+      agency_id: resolution.agency_ids[patient.agency],
+      client_request_id: patient.client_request_id,
+      first_name: patient.first_name,
+      last_name: patient.last_name,
+      status: patient.status,
+    },
+    expected: {
+      status: patient.status,
+      is_sample: patient.is_sample,
+      is_archived: patient.is_archived,
+    },
+  }));
+
+  const assignmentActions = input.assignments.map((assignment) => ({
+    alias: `${assignment.patient}_${assignment.actor}_assignment_grant`,
+    caller: assignment.caller,
+    broker: assignment.broker,
+    body: {
+      action: assignment.action,
+      agency_id: resolution.agency_ids[input.patients[assignment.patient].agency],
+      patient_id: resolution.patient_ids[assignment.patient],
+      target_user_id: resolution.actor_users[assignment.actor].user_id,
+      client_request_id: assignment.client_request_id,
+      reason: assignment.reason,
+    },
+    expected: {
+      status: assignment.status,
+      source: assignment.source,
+    },
+  }));
+
+  const workflowRequests = Object.entries(input.workflow_requests).map(([alias, request]) => {
+    const common = {
+      alias,
+      capability: request.capability,
+      probe: request.probe,
+      caller: request.actor,
+      broker: request.broker,
+    };
+    if (alias === "referral_a1_create") {
+      return {
+        ...common,
+        body: {
+          action: request.action,
+          agency_id: resolution.agency_ids[request.agency],
+          client_request_id: request.client_request_id,
+          referral: {
+            ...request.input,
+            patient_id: resolution.patient_ids[request.patient],
+          },
+        },
+      };
+    }
+    return {
+      ...common,
+      body: {
+        ...request.input,
+        patient_id: resolution.patient_ids[request.patient],
+        agency_id: resolution.agency_ids[request.agency],
+        client_request_id: request.client_request_id,
+      },
+    };
+  });
+
+  return {
+    mode: "plan_only_no_writes",
+    network_access: false,
+    hosted_writes: false,
+    agency_creates: agencyCreates,
+    membership_actions: membershipActions,
+    patient_creates: patientCreates,
+    assignment_actions: assignmentActions,
+    workflow_requests: workflowRequests,
+  };
+}
+
+/**
+ * Materialize exact broker/entity request bodies from canonical aliases and
+ * externally resolved staging row identities. This is a pure assembler: it
+ * performs no SDK construction, network access, auth, or writes. Callers must
+ * keep the resolved user emails private and must pass no passwords or tokens.
+ */
+export function assembleLiveReadinessFixtureRequests(input, resolution) {
+  const errors = validateLiveReadinessFixtureManifest(input);
+  if (errors.length > 0) {
+    throw new Error(`Invalid fixture manifest: ${formatLiveReadinessFixtureErrors(errors)}`);
+  }
+  if (!validateRuntimeResolution(resolution)) {
+    throw new Error("Invalid fixture runtime resolution.");
+  }
+  return assembleFixtureRequests(input, resolution);
 }
 
 export function validateLiveReadinessFixtureManifest(input) {
@@ -304,6 +764,15 @@ export function validateLiveReadinessFixtureManifest(input) {
 
   validateCanonicalMap(errors, "actors", input.actors, CANONICAL_ACTORS, ACTOR_KEYS);
   validateCanonicalMap(errors, "agencies", input.agencies, CANONICAL_AGENCIES, AGENCY_KEYS);
+  if (!Array.isArray(input.memberships)) {
+    addError(errors, "memberships", "Must be the canonical four-membership lifecycle plan.");
+  } else if (!sameValue(input.memberships, CANONICAL_MEMBERSHIPS)) {
+    addError(errors, "memberships", "Membership inputs do not match the canonical synthetic fixture contract.");
+  } else {
+    input.memberships.forEach((membership, index) => {
+      requireExactKeys(errors, `memberships.${index}`, membership, MEMBERSHIP_KEYS);
+    });
+  }
   validateCanonicalMap(errors, "patients", input.patients, CANONICAL_PATIENTS, PATIENT_KEYS);
 
   if (!Array.isArray(input.assignments)) {
@@ -317,6 +786,14 @@ export function validateLiveReadinessFixtureManifest(input) {
       }
     }
   }
+
+  validateCanonicalMap(
+    errors,
+    "workflow_requests",
+    input.workflow_requests,
+    CANONICAL_WORKFLOW_REQUESTS,
+    WORKFLOW_REQUEST_KEYS,
+  );
 
   return errors;
 }
@@ -343,6 +820,8 @@ export function createLiveReadinessFixturePlan(input) {
       memberships: 4,
       patients: 3,
       care_team_assignments: 1,
+      workflow_requests: 2,
+      planned_mutating_actions: 16,
     },
     expected_patient_access: {
       platform_owner: "excluded_from_tenant_assertions",
@@ -351,11 +830,19 @@ export function createLiveReadinessFixturePlan(input) {
       clinician_a_empty: [],
       admin_b: ["b1"],
     },
+    request_assembly: {
+      pure_assembler_available: true,
+      executes_requests: false,
+      runtime_resolution_required: [...RUNTIME_RESOLUTION_KEYS],
+      assignment_request_expected_to_hit_source_pause: true,
+    },
     safeguards: {
       network_access: false,
       hosted_writes: false,
       credentials_present: false,
-      raw_phi_fields_present: false,
+      real_phi_values_present: false,
+      reviewed_synthetic_identity_values_present: true,
+      plan_only_inputs_are_hosted_evidence: false,
       tenant_authority_source: "AgencyMembership_and_PatientCareTeamAssignment",
       mutable_user_claims_used: false,
     },

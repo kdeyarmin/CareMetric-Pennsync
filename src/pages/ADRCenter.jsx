@@ -95,7 +95,7 @@ export default function ADRCenter() {
   });
 
   // Patient roster for chart linking — loaded only once a case is open.
-  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 500, enabled: !!selectedCaseId });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 500, enabled: !!selectedCaseId });
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["adrCases"] });
   const selectedCase = useMemo(

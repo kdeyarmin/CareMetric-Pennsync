@@ -105,10 +105,10 @@ export default function DocumentList({
   const [openingDocumentId, setOpeningDocumentId] = useState(null);
 
   const { data: allPatients = [] } = useScopedPatients({
+    purpose: 'roster',
     sort: '-updated_date',
     limit: 2000,
     enabled: showPatientInfo && !!agencyId,
-    readMode: 'authorized-roster',
     agencyId: agencyId || undefined,
   });
 

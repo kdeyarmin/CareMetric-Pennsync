@@ -16,10 +16,10 @@ const entity = (name) => JSON5.parse(readFileSync(join(HERE, 'entities', `${name
 const source = (rel) => readFileSync(join(REPO, rel), 'utf8');
 
 const HIGH_RISK_ACCESS = [
-  { entity: 'Patient', owners: ['created_by'], adminReadable: true },
-  // Visit creation is service-owned. Its caller provenance is an explicit
-  // server-stamped custom field; platform-managed created_by is incidental.
-  { entity: 'Visit', owners: ['created_by_user_email_normalized'], adminReadable: true },
+  // Patient and Visit direct SDK access is closed. Purpose-bound brokers
+  // re-check immutable tenant membership and care-team authority before reads.
+  { entity: 'Patient', brokerOnly: true },
+  { entity: 'Visit', brokerOnly: true },
   // Document is stricter than owner-scoped RLS: every direct operation is
   // disabled and tenant/patient access is mediated by finite brokers.
   { entity: 'Document', brokerOnly: true },

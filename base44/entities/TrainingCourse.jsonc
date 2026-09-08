@@ -273,14 +273,22 @@
       "items": {
         "type": "object"
       },
-      "description": "Pre-assessment (test-out / baseline) questions generated for the course"
+      "description": "Server-only pre-assessment payload. Learner delivery must use a sanitized purpose-bound projection.",
+      "rls": {
+        "read": false,
+        "write": false
+      }
     },
     "brain_sparks_json": {
       "type": "array",
       "items": {
         "type": "object"
       },
-      "description": "Brain-spark memory boosters (spaced-recall prompts) generated for the course"
+      "description": "Server-only spaced-recall payload. Learner delivery must use a sanitized purpose-bound projection.",
+      "rls": {
+        "read": false,
+        "write": false
+      }
     }
   },
   "required": [

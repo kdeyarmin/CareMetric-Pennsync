@@ -54,6 +54,23 @@ const DORMANT_REFERENCE_ENTITY_NAMES = [
   'SubscriptionSettings',
 ];
 
+// These schemas intentionally remain in the policy-decision queue. This is not
+// an approval of open access: the list makes the unresolved scope reviewable and
+// prevents a ninth schema from silently joining it. Remove a name only after its
+// ownership and operation-specific RLS policy has been approved and implemented.
+const RLS_POLICY_DECISION_PENDING_ENTITY_NAMES = [
+  'CustomValidationRule',
+  'EducationMaterial',
+  'LearningPlan',
+  'LearningPlanCourse',
+  'LibraryDocument',
+  'PDFTemplate',
+  'Physician',
+  'TrainingModule',
+];
+const RLS_POLICY_DECISION_PENDING_NAMES_SHA256 =
+  '752d715c7ed58c0d0ed2250350e440adb8ff1a60f07ec88f9ddd9f4e112f8bd0';
+
 const entityFiles = readdirSync(ENTITIES_DIR).filter((f) => f.endsWith('.jsonc'));
 
 // Parse every file once. Parse failures are recorded (not thrown) so the parse
@@ -307,6 +324,14 @@ test('learner-readable training modules never expose embedded answer keys', () =
   assert.equal(answerKey?.rls?.write, false);
 });
 
+test('learner-readable training courses keep answer-bearing payloads server-only', () => {
+  const schema = byName.get('TrainingCourse');
+  for (const field of ['pre_assessment_json', 'brain_sparks_json']) {
+    assert.equal(schema?.properties?.[field]?.rls?.read, false, `${field} read must be false`);
+    assert.equal(schema?.properties?.[field]?.rls?.write, false, `${field} write must be false`);
+  }
+});
+
 test('OCR feedback is directly readable only by its owner/admin and directly immutable', () => {
   const schema = byName.get('OCRFeedback');
   assert.deepEqual(schema.rls.read, {
@@ -536,6 +561,176 @@ test('entity-level RLS never authorizes with mutable account_type', () => {
   );
 });
 
+test('RLS policy-decision queue remains explicit and fingerprinted', () => {
+  const reviewedNames = [...RLS_POLICY_DECISION_PENDING_ENTITY_NAMES];
+  const fingerprint = createHash('sha256').update(reviewedNames.join('\n')).digest('hex');
+  assert.deepEqual(reviewedNames, [...reviewedNames].sort(), 'reviewed RLS queue must stay sorted');
+  assert.equal(
+    fingerprint,
+    RLS_POLICY_DECISION_PENDING_NAMES_SHA256,
+    'reviewed RLS queue changed; record an explicit policy-review decision before updating its fingerprint',
+  );
+
+  const actualWithoutRls = [...parsed.entries()]
+    .filter(([, schema]) => schema && !Object.hasOwn(schema, 'rls'))
+    .map(([file, schema]) => schema.name || file.replace(/\.jsonc$/, ''))
+    .sort();
+  assert.deepEqual(
+    actualWithoutRls,
+    reviewedNames,
+    'the schemas without RLS must exactly match the reviewed policy-decision queue',
+  );
+});
+
+test('RLS policy-decision entities keep a reviewed direct-consumer inventory', () => {
+  // Each entry is: production source path :: SDK authority :: directly accessed
+  // members. A duplicate call to an already-reviewed member is intentionally
+  // collapsed, while a new file, authority tier, or member fails this contract.
+  const expected = {
+    CustomValidationRule: [
+      'src/components/validation/CustomValidationRuleManager.jsx :: user-scope :: create,delete,list,update',
+    ],
+    EducationMaterial: [
+      'src/components/carePlan/AICarePlanSuggestionEngine.jsx :: user-scope :: filter',
+      'src/components/education/EducationMaterialEditor.jsx :: user-scope :: create,update',
+      'src/components/education/PersonalizedMaterialSender.jsx :: user-scope :: update',
+      'src/pages/EducationLibrary.jsx :: user-scope :: create,delete,filter',
+    ],
+    LearningPlan: [
+      'base44/functions/assignAnnualLearningPlan/entry.ts :: service-role :: filter',
+      'base44/functions/autoEnrollAnnualPlans/entry.ts :: service-role :: filter',
+      'base44/functions/onUserSignup/entry.ts :: service-role :: filter',
+      'base44/functions/remindPlanOverdueStaff/entry.ts :: service-role :: filter',
+      'base44/functions/seedAnnualMandatoryEducationSamples/entry.ts :: service-role :: create,filter',
+      'base44/functions/seedYearlyRequiredInServices/entry.ts :: service-role :: create,filter',
+      'src/components/training/AnnualLearningPlanPanel.jsx :: user-scope :: create,update',
+      'src/components/training/AnnualMandatoryEducationHub.jsx :: user-scope :: list',
+      'src/components/training/LearningPathProgress.jsx :: user-scope :: filter',
+      'src/components/training/LearningPlanForm.jsx :: user-scope :: create,update',
+      'src/components/training/LearningPlanManager.jsx :: user-scope :: delete,list',
+    ],
+    LearningPlanCourse: [
+      'base44/functions/assignAnnualLearningPlan/entry.ts :: service-role :: filter',
+      'base44/functions/autoEnrollAnnualPlans/entry.ts :: service-role :: filter',
+      'base44/functions/onUserSignup/entry.ts :: service-role :: filter',
+      'base44/functions/seedAnnualMandatoryEducationSamples/entry.ts :: service-role :: create,filter',
+      'base44/functions/seedYearlyRequiredInServices/entry.ts :: service-role :: create,filter',
+      'src/components/training/AnnualLearningPlanPanel.jsx :: user-scope :: create,delete,filter,update',
+      'src/components/training/LearningPathProgress.jsx :: user-scope :: filter',
+      'src/components/training/LearningPlanManager.jsx :: user-scope :: create,delete,filter,update',
+    ],
+    LibraryDocument: [
+      'src/components/documents/TemplateLibrary.jsx :: user-scope :: create,delete,list,update',
+    ],
+    PDFTemplate: [
+      'src/components/documents/PDFTemplateBuilder.jsx :: user-scope :: create',
+      'src/components/documents/PDFTemplateManager.jsx :: user-scope :: create,delete,list,update',
+      'src/components/documents/TemplateLibrary.jsx :: user-scope :: delete,list,update',
+      'src/components/documents/TemplateVersionHistory.jsx :: user-scope :: filter',
+    ],
+    Physician: [
+      'base44/functions/importProvidersCsv/entry.ts :: service-role :: create,list,update',
+      'src/components/fax/FaxRecipientFields.jsx :: user-scope :: list',
+      'src/components/physician/PhysicianDirectory.jsx :: user-scope :: delete,filter,update',
+      'src/components/physician/PhysicianForm.jsx :: user-scope :: create,update',
+      'src/pages/ReferralFollowUp.jsx :: user-scope :: list',
+    ],
+    TrainingModule: [
+      'base44/functions/duplicateInService/entry.ts :: service-role :: create,filter',
+      'base44/functions/generateCourseQuiz/entry.ts :: service-role :: filter',
+      'base44/functions/generatePersonalizedLearningPath/entry.ts :: service-role :: filter',
+      'base44/functions/generateTrainingCourse/entry.ts :: service-role :: create,filter,update',
+      'base44/functions/manageTrainingVideos/entry.ts :: service-role :: filter,update',
+      'base44/functions/rebuildExistingInServices/entry.ts :: service-role :: create,delete,filter',
+      'base44/functions/seedAnnualMandatoryEducationSamples/entry.ts :: service-role :: create',
+      'base44/functions/seedYearlyRequiredInServices/entry.ts :: service-role :: create,filter,update',
+      'base44/functions/syncTrainingVideoStatuses/entry.ts :: service-role :: filter,update',
+      'base44/functions/triggerCorrectiveActionPlan/entry.ts :: service-role :: create,delete',
+      'src/components/learning/CourseCatalogDetail.jsx :: user-scope :: filter',
+      'src/components/training/CourseLessonBuilder.jsx :: user-scope :: (entity-handle),filter',
+      'src/components/training/CourseManager.jsx :: user-scope :: create,filter',
+      'src/components/training/ModuleScriptPanel.jsx :: user-scope :: update',
+      'src/components/training/OnboardingTracker.jsx :: user-scope :: filter',
+      'src/components/training/SMEReviewQueue.jsx :: user-scope :: filter',
+      'src/components/training/TrainingAttachmentManager.jsx :: user-scope :: filter,update',
+      'src/components/training/TrainingLibrary.jsx :: user-scope :: filter',
+      'src/components/training/TrainingVideoStudio.jsx :: user-scope :: filter',
+      'src/pages/AdminTrainingAnalytics.jsx :: user-scope :: list',
+      'src/pages/NurseTrainingHub.jsx :: user-scope :: list',
+      'src/pages/TrainingCoursePlayer.jsx :: user-scope :: filter',
+    ],
+  };
+
+  const codeFiles = [];
+  const visit = (directory) => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) visit(path);
+      else if (
+        /\.(?:js|jsx|cjs|mjs|ts|tsx|cts|mts)$/.test(entry.name)
+        && !/\.(?:test|spec)\.[^.]+$/.test(entry.name)
+      ) {
+        codeFiles.push(path);
+      }
+    }
+  };
+  visit(join(REPO_DIR, 'src'));
+  visit(join(BASE44_DIR, 'functions'));
+
+  const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const actual = Object.fromEntries(
+    RLS_POLICY_DECISION_PENDING_ENTITY_NAMES.map((name) => [name, []]),
+  );
+  for (const path of codeFiles) {
+    const source = readFileSync(path, 'utf8');
+    const collectionRoots = [
+      {
+        expression: 'base44\\s*\\.\\s*asServiceRole\\s*\\.\\s*entities',
+        authority: 'service-role',
+      },
+      { expression: 'base44\\s*\\.\\s*entities', authority: 'user-scope' },
+    ];
+    const aliasPattern = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*base44\s*\.\s*(?:(asServiceRole)\s*\.\s*)?entities(?=\s*(?:;|\r?\n|$))/g;
+    for (const match of source.matchAll(aliasPattern)) {
+      collectionRoots.push({
+        expression: escapeRegExp(match[1]),
+        authority: match[2] ? 'service-role' : 'user-scope',
+      });
+    }
+
+    const uniqueRoots = [...new Map(
+      collectionRoots.map((root) => [`${root.expression}:${root.authority}`, root]),
+    ).values()];
+    for (const name of RLS_POLICY_DECISION_PENDING_ENTITY_NAMES) {
+      const consumers = new Map();
+      for (const root of uniqueRoots) {
+        const referencePattern = new RegExp(
+          `\\b${root.expression}\\s*(?:\\.\\s*${name}\\b|\\[\\s*["']${name}["']\\s*\\])(?:\\s*\\.\\s*([A-Za-z_$][\\w$]*))?`,
+          'g',
+        );
+        for (const match of source.matchAll(referencePattern)) {
+          const key = root.authority;
+          if (!consumers.has(key)) consumers.set(key, new Set());
+          consumers.get(key).add(match[1] || '(entity-handle)');
+        }
+      }
+      for (const [authority, members] of consumers) {
+        const relativePath = path.slice(REPO_DIR.length + 1);
+        actual[name].push(
+          `${relativePath} :: ${authority} :: ${[...members].sort().join(',')}`,
+        );
+      }
+    }
+  }
+  for (const consumers of Object.values(actual)) consumers.sort();
+
+  assert.deepEqual(
+    actual,
+    expected,
+    'a direct consumer of an undecided-RLS entity changed; review the authority boundary and update the inventory plus policy worksheet deliberately',
+  );
+});
+
 test('known RLS debt cannot grow or change without explicit review', () => {
   const isOpen = (rule) => {
     if (rule === undefined || rule === null || rule === true) return true;
@@ -560,7 +755,10 @@ test('known RLS debt cannot grow or change without explicit review', () => {
     if (isOpen(schema.rls?.read)) inventories.openRead.push(name);
   }
   const expected = {
-    noRls: [8, '752d715c7ed58c0d0ed2250350e440adb8ff1a60f07ec88f9ddd9f4e112f8bd0'],
+    noRls: [
+      RLS_POLICY_DECISION_PENDING_ENTITY_NAMES.length,
+      RLS_POLICY_DECISION_PENDING_NAMES_SHA256,
+    ],
     openMutation: [10, 'd35d9825b82ebe43000f3b89d65ed029e8e004b1daf8d904716951d022ce3dee'],
     openRead: [21, 'e24cda0c4ee3915f16d5eaed48b83ff8afda0491c41a26613138ac3c0e7f08a3'],
   };

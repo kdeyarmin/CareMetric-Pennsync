@@ -9,11 +9,13 @@ import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
  * Aggregates and analyzes patient history for AI context enrichment
  */
 
-export async function buildComprehensivePatientHistory(patientId) {
+export async function buildComprehensivePatientHistory(patientId, authorizedContext = {}) {
   try {
-    const [patient, visits, incidents, alerts, tasks] = await Promise.all([
-      base44.entities.Patient.filter({ id: patientId }).then(data => data[0]),
-      base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 20),
+    const { patient, visits } = authorizedContext;
+    if (!patient || patient.id !== patientId || !Array.isArray(visits)) {
+      throw new Error('Authorized Patient and Visit context is required');
+    }
+    const [incidents, alerts, tasks] = await Promise.all([
       base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 10),
       base44.entities.PatientAlert.filter({ patient_id: patientId, status: 'active' }, undefined, PATIENT_HISTORY_ROWS),
       base44.entities.Task.filter({ patient_id: patientId, status: { $ne: 'completed' } }, undefined, PATIENT_HISTORY_ROWS)

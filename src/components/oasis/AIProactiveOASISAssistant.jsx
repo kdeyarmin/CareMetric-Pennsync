@@ -22,6 +22,7 @@ import { toast } from 'sonner';
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 import { useAuth } from '@/lib/AuthContext';
 import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 
 export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = false }) {
   const { tenantContext } = useAuth();
@@ -41,11 +42,12 @@ export default function AIProactiveOASISAssistant({ patientId, autoAnalyze = fal
     enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
-  const { data: visits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId, 20],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 20),
+  const { data: visits = [] } = useAuthorizedVisits({
+    patientId,
+    purpose: 'documentation',
+    sort: '-visit_date',
+    limit: 20,
     enabled: !!patientId,
-    initialData: []
   });
 
   const { data: incidents = [] } = useQuery({

@@ -10,7 +10,7 @@ describe('purpose-bound Patient projection migration', () => {
   it('uses the authorized roster for patient-alert selection', () => {
     const page = read('src/pages/PatientAlerts.jsx');
 
-    expect(page).toMatch(/readMode:\s*'authorized-roster'/);
+    expect(page).toMatch(/purpose:\s*'roster'/);
   });
 
   it('loads alert-analysis Patient fields through the exact broker hook', () => {
@@ -34,7 +34,7 @@ describe('purpose-bound Patient projection migration', () => {
   it('uses authorized roster and education projections for personalization', () => {
     const sender = read('src/components/education/PersonalizedMaterialSender.jsx');
 
-    expect(sender).toMatch(/readMode:\s*'authorized-roster'/);
+    expect(sender).toMatch(/purpose:\s*'education_delivery'/);
     expect(sender).toMatch(/useAuthorizedPatient\(\{/);
     expect(sender).toMatch(/purpose:\s*'education_context'/);
     expect(sender).toMatch(/agencyId:\s*tenantContext\?\.agency_id/);
@@ -44,22 +44,21 @@ describe('purpose-bound Patient projection migration', () => {
   it('reuses the authorized roster for incident patient identity', () => {
     const report = read('src/pages/EventReport.jsx');
 
-    expect(report).toMatch(/readMode:\s*'authorized-roster'/);
+    expect(report).toMatch(/purpose:\s*'roster'/);
     expect(report).toMatch(/patients\.find/);
     expect(report).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);
   });
 
-  it('loads discharge and audio Patient fields through the selector projection', () => {
-    for (const relativePath of [
-      'src/components/discharge/DischargeSummaryWorkflow.jsx',
-      'src/components/visit/AudioVisitCapture.jsx',
-    ]) {
-      const source = read(relativePath);
-      expect(source).toMatch(/useAuthorizedPatient\(\{/);
-      expect(source).toMatch(/purpose:\s*'selector'/);
-      expect(source).toMatch(/agencyId:\s*tenantContext\?\.agency_id/);
-      expect(source).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);
-    }
+  it('keeps discharge static-quarantined and loads audio through the selector projection', () => {
+    const discharge = read('src/components/discharge/DischargeSummaryWorkflow.jsx');
+    expect(discharge).toMatch(/Discharge summaries are temporarily unavailable/);
+    expect(discharge).not.toMatch(/useAuthorizedPatient\(\{|entities\.Patient\.(?:get|filter|list)/);
+
+    const audio = read('src/components/visit/AudioVisitCapture.jsx');
+    expect(audio).toMatch(/useAuthorizedPatient\(\{/);
+    expect(audio).toMatch(/purpose:\s*'selector'/);
+    expect(audio).toMatch(/agencyId:\s*tenantContext\?\.agency_id/);
+    expect(audio).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);
   });
 
   it('revalidates health-history merge bases through the write projection', () => {
@@ -73,7 +72,7 @@ describe('purpose-bound Patient projection migration', () => {
   it('uses authorized roster and chart-safety projections for Smart Notes', () => {
     const smartNote = read('src/pages/SmartNoteAssistant.jsx');
 
-    expect(smartNote).toMatch(/readMode:\s*'authorized-roster'/);
+    expect(smartNote).toMatch(/purpose:\s*'roster'/);
     expect(smartNote).toMatch(/purpose:\s*'smart_note_context'/);
     expect(smartNote).toMatch(/agencyId:\s*tenantContext\?\.agency_id/);
     expect(smartNote).not.toMatch(/entities\.Patient\.(?:get|filter|list)/);

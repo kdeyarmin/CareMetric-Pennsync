@@ -100,7 +100,7 @@ export default function PatientAlertsDashboard({ patientId = null }) {
   }, [allAlerts, patientId, currentUser, isAdmin]);
 
   // Fetch patients for lookup (agency-scoped for facility admins)
-  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 2000 });
 
   // (No clinical-event query here: an unused `_clinicalEvents` useQuery used to
   // bulk-list 200 ClinicalEvent rows — per-patient PHI, across every patient,

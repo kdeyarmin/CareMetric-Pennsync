@@ -13,6 +13,7 @@ import ContactAvatar from "@/components/phone/ContactAvatar";
 import { PhoneEmptyState } from "@/components/phone/PhoneFrame";
 import { isSafeExternalUrl } from "@/components/utils/security";
 import AuthorityBoundAudio from '@/components/ui/AuthorityBoundAudio';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 
 const REASON_STYLES = {
   "Callback requested": "bg-navy-100 text-navy-800",
@@ -44,11 +45,11 @@ export default function CallbackQueue() {
     initialData: [],
   });
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ["callback-patients", user?.email],
-    queryFn: () => base44.entities.Patient.filter({ assigned_nurses: user.email }, "-created_date", 500),
+  const { data: patients = [] } = useScopedPatients({
+    purpose: 'contact',
+    sort: 'last_name',
+    limit: 500,
     enabled: !!user?.email,
-    initialData: [],
   });
   const patientById = useMemo(() => Object.fromEntries(patients.map((p) => [p.id, p])), [patients]);
   const patientByPhone = useMemo(() => {

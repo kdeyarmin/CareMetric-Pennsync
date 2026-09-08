@@ -738,9 +738,10 @@ test('generateFaxCoverPage formats deterministically without sending PHI to an A
 });
 
 // gradeTrainingAttempt must derive the pass mark from the ADMIN-OWNED course,
-// not solely from the learner-writable TrainingAssignment row — otherwise a
-// learner sets passing_score_required:1 and mints a compliance certificate.
-test('gradeTrainingAttempt derives the pass mark from the course, not the learner-writable assignment', () => {
+// not solely from TrainingAssignment. Direct assignment writes are now closed,
+// but the independent course floor preserves integrity if hosted policy drifts
+// or a legacy assignment contains a weakened threshold.
+test('gradeTrainingAttempt derives the pass mark from the course, not solely from the assignment', () => {
   const src = read('base44/functions/gradeTrainingAttempt/entry.ts');
   assert.ok(
     /Number\(course\?\.passing_score/.test(src) && /Math\.max\(courseFloorScore/.test(src),
@@ -842,11 +843,7 @@ test('autoRetryFailedFaxes claims only strict terminal private attempts and dele
 // Every directly authorized retained AI implementation must assertPatientAccess
 // after the patient load so a facility admin (bare role:admin RLS is
 // platform-wide) cannot pull another agency's chart into an LLM prompt.
-for (const file of [
-  'base44/functions/generateDischargeSummary/entry.ts',
-  'base44/functions/generatePatientEducation/entry.ts',
-  'base44/functions/generateFaxCoverPage/entry.ts',
-]) {
+for (const file of ['base44/functions/generateFaxCoverPage/entry.ts']) {
   test(`${file} retained implementation gates patient PHI with assertPatientAccess`, () => {
     const src = read(file);
     assert.ok(
@@ -856,6 +853,32 @@ for (const file of [
     assert.ok(
       /assertPatientAccess\(base44,\s*user,\s*patient\)/.test(src),
       `${file} must call assertPatientAccess after loading the patient.`,
+    );
+  });
+}
+
+// These generators cannot retain a safe implementation until their output
+// entities have immutable tenant provenance and a reviewed brokered lifecycle.
+// Their route-level pause must remain before SDK construction, chart reads,
+// model invocation, or sink access.
+for (const [file, pauseCode] of [
+  [
+    'base44/functions/generateDischargeSummary/entry.ts',
+    'DISCHARGE_SUMMARY_GENERATION_PAUSED',
+  ],
+  [
+    'base44/functions/generatePatientEducation/entry.ts',
+    'PATIENT_EDUCATION_GENERATION_PAUSED',
+  ],
+]) {
+  test(`${file} remains statically quarantined before any PHI access or side effect`, () => {
+    const src = read(file);
+    assert.match(src, new RegExp(`code:\\s*['"]${pauseCode}['"]`));
+    assert.match(src, /status:\s*503/);
+    assert.match(src, /'Cache-Control':\s*'no-store'/);
+    assert.doesNotMatch(
+      src,
+      /createClientFromRequest|@base44\/sdk|asServiceRole|\.entities\b|InvokeLLM|\bfetch\s*\(/,
     );
   });
 }

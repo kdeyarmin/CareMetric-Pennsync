@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -33,18 +32,14 @@ export default function SmartNoteDataImport({
   const [importedData, setImportedData] = useState(null);
 
   // Fetch patient's recent visits with notes
-  const { data: recentVisits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId, 'completed', 10],
-    queryFn: async () => {
-      if (!patientId) return [];
-      const visits = await base44.entities.Visit.filter(
-        { patient_id: patientId, status: 'completed' }, 
-        '-visit_date', 
-        10
-      );
-      return visits.filter(v => v.nurse_notes || v.vital_signs);
-    },
-    enabled: !!patientId
+  const { data: recentVisits = [] } = useAuthorizedVisits({
+    patientId,
+    purpose: 'documentation',
+    status: 'completed',
+    sort: '-visit_date',
+    limit: 10,
+    enabled: !!patientId,
+    select: (visits) => visits.filter((visit) => visit.nurse_notes || visit.vital_signs),
   });
 
   const handleImportFromVisit = () => {

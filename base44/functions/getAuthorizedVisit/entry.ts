@@ -3,9 +3,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 /**
  * Exact, purpose-bound Visit read broker.
  *
- * This function is intentionally not wired into the UI yet. Direct Visit RLS
- * remains unchanged until hosted two-agency proof is complete. A clinician's
- * creator metadata and the legacy Patient.assigned_nurses array are never read
+ * Direct Visit reads are denied; active UI consumers call this broker for an
+ * exact purpose-bound projection. A clinician's creator metadata and the legacy
+ * Patient.assigned_nurses array are never read
  * as authority: only an exact active PatientCareTeamAssignment bound to the
  * caller's current immutable AgencyMembership version grants chart access.
  */
@@ -14,6 +14,7 @@ const MAX_BODY_BYTES = 20_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const MEMBERSHIP_SCAN_LIMIT = 100;
 const EXACT_ROW_LIMIT = 10;
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 
 const MEMBERSHIP_STATUSES = new Set(['pending', 'active', 'suspended', 'revoked']);
 const TENANT_ROLES = new Set([
@@ -78,6 +79,9 @@ const REVIEW_FIELDS = new Set([
   'statement',
   'is_clinical_signature',
 ]);
+const HANDOFF_HISTORY_FIELDS = new Set([
+  'status', 'reported_by', 'reported_at', 'self_reported', 'note',
+]);
 
 // <<<BEGIN AUTHORIZED VISIT EXACT PURPOSE POLICY>>>
 const PURPOSE_FIELDS: Record<string, readonly string[]> = {
@@ -104,6 +108,9 @@ const PURPOSE_FIELDS: Record<string, readonly string[]> = {
     'vital_signs',
     'documentation_source',
     'grounding_pending',
+    'emr_handoff_status',
+    'emr_handoff_history',
+    'documentation_review_ack',
     'updated_date',
   ],
   compliance_review: [
@@ -211,6 +218,12 @@ class PublicError extends Error {
     this.name = 'PublicError';
     this.status = status;
   }
+}
+
+function jsonResponse(body: unknown, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of Object.entries(NO_STORE_HEADERS)) headers.set(name, value);
+  return Response.json(body, { ...init, headers });
 }
 
 const normalizeEmail = (value: unknown) =>
@@ -350,6 +363,19 @@ function validVisitPurposeField(field: string, value: unknown) {
     return typeof value === 'string' && HANDOFF_STATUSES.has(value);
   }
   if (field === 'documentation_review_ack') return validReviewAcknowledgement(value);
+  if (field === 'emr_handoff_history') {
+    return Array.isArray(value) && value.length <= 100 && value.every((entry) => (
+      plainObject(entry)
+      && Object.keys(entry).every((key) => HANDOFF_HISTORY_FIELDS.has(key))
+      && HANDOFF_STATUSES.has(String(entry.status || ''))
+      && typeof entry.reported_by === 'string'
+      && entry.reported_by.length <= 320
+      && validInstant(entry.reported_at)
+      && entry.self_reported === true
+      && (entry.note === undefined
+        || (typeof entry.note === 'string' && entry.note.length <= 2_000))
+    ));
+  }
   return false;
 }
 
@@ -628,6 +654,35 @@ function transitionRequestKey(key: string, requestId: string) {
   return `${key}:${requestId}`;
 }
 
+function assignmentLifecycleIsCoherent(row: Record<string, any>, status: string, action: string) {
+  if (action === 'grant') {
+    return status === 'active'
+      && row.version === 1
+      && row.activated_at === row.last_transition_at
+      && row.suspended_at == null;
+  }
+  if (action === 'activate') {
+    return status === 'active'
+      && row.version >= 3
+      && row.version % 2 === 1
+      && validInstant(row.suspended_at)
+      && row.activated_at === row.last_transition_at;
+  }
+  if (action === 'suspend') {
+    return status === 'suspended'
+      && row.version >= 2
+      && row.version % 2 === 0
+      && row.suspended_at === row.last_transition_at;
+  }
+  if (action === 'revoke') {
+    return status === 'revoked'
+      && row.version >= 2
+      && row.revoked_at === row.last_transition_at
+      && row.revocation_reason === row.last_transition_reason;
+  }
+  return false;
+}
+
 function validateAssignmentIntegrity(
   row: Record<string, any>,
   patientId: string,
@@ -679,9 +734,7 @@ function validateAssignmentIntegrity(
     || !validInstant(row.last_transition_at)
     || !boundedReason(row.last_transition_reason)
     || !ASSIGNMENT_ACTIONS.has(action)
-    || (status === 'active' && action !== 'grant' && action !== 'activate')
-    || (status === 'suspended' && action !== 'suspend')
-    || (status === 'revoked' && action !== 'revoke')
+    || !assignmentLifecycleIsCoherent(row, status, action)
     || !requestId
     || row.last_transition_request_key !== transitionRequestKey(key, requestId)
     || !Number.isSafeInteger(row.version)
@@ -850,10 +903,35 @@ function responseScope(
   };
 }
 
+async function recordVisitDisclosure(
+  entities: Record<string, any>,
+  authority: Record<string, any>,
+  input: Record<string, any>,
+) {
+  await entities.SecurityLog.create({
+    timestamp: new Date().toISOString(),
+    user_email: authority.normalizedEmail,
+    user_role: authority.tenantRole,
+    action: 'VISIT_READ_AUTHORIZED',
+    details: {
+      broker: 'getAuthorizedVisit',
+      resource_type: 'Visit',
+      agency_id: authority.agencyId,
+      purpose: input.purpose,
+      subject_user_id: authority.userId,
+      membership_id: authority.membership?.id ?? null,
+      membership_version: authority.membership?.version ?? null,
+      returned_count: 1,
+    },
+    ip_address: 'server-side',
+    user_agent: 'server-side',
+  });
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
-      return Response.json(
+      return jsonResponse(
         { error: 'Method not allowed' },
         { status: 405, headers: { Allow: 'POST' } },
       );
@@ -923,19 +1001,31 @@ Deno.serve(async (req) => {
       disclosureAuthority,
       finalAccess,
     );
+    // The assignment lookup above is not transactional with membership state.
+    // Perform one terminal authority fence after it; an authorization change
+    // after this read is the unavoidable residual without datastore snapshots.
+    const auditAuthority = await loadAuthority(
+      base44,
+      input.agencyId,
+      disclosureAuthority.snapshot,
+    );
+    requirePurposeRole(auditAuthority, input.purpose);
 
-    return Response.json({
+    // Disclosure is fail-closed on the privileged audit write.
+    await recordVisitDisclosure(entities, auditAuthority, input);
+
+    return jsonResponse({
       success: true,
       purpose: input.purpose,
       visit: pickFields(finalVisit, PURPOSE_FIELDS[input.purpose]),
-      scope: responseScope(disclosureAuthority, patientId, disclosureAccess),
+      scope: responseScope(auditAuthority, patientId, disclosureAccess),
     });
   } catch (error) {
     if (error instanceof PublicError) {
-      return Response.json({ error: error.message }, { status: error.status });
+      return jsonResponse({ error: error.message }, { status: error.status });
     }
     // Never retain provider error objects: they may embed predicates or PHI.
     console.error('getAuthorizedVisit failed');
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonResponse({ error: 'Internal server error' }, { status: 500 });
   }
 });

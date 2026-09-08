@@ -207,15 +207,12 @@ Deno.serve(async (req) => {
     const assignmentNotes = parseAssignmentNotes(assignment.notes);
 
     // Competency gates must come from the ADMIN-OWNED course, not solely from
-    // the TrainingAssignment row. TrainingAssignment write RLS grants the
-    // assignee (the learner) full row write, so trusting the assignment's
-    // passing_score_required / max_attempts / waiting_period_hours for gating
-    // let a learner POST { passing_score_required: 1 } to their own assignment,
-    // answer one question, and have the passing TrainingAttempt drive
-    // issueCertificate into minting a compliance/CEU certificate. A
-    // learner-writable value may only make a gate STRICTER than the course
-    // baseline (raise the pass mark, lower the attempt cap, lengthen the
-    // cooldown), never weaker.
+    // the TrainingAssignment row. Direct assignment writes are closed at RLS,
+    // and retaining the independent course baseline is defense in depth against
+    // hosted-policy drift or a legacy assignment with weakened thresholds. An
+    // assignment value may only make a gate STRICTER than the course baseline
+    // (raise the pass mark, lower the attempt cap, lengthen the cooldown), never
+    // weaker.
     const courseRetake = (course && typeof course.retake_settings_json === 'object' && course.retake_settings_json) || {};
 
     const attemptCaps = [assignment.max_attempts, courseRetake.max_attempts]
@@ -368,9 +365,8 @@ Deno.serve(async (req) => {
 
     const score = computeAttemptScore(questions, earnedPoints);
     // Floor the pass mark at the admin-owned course value (see the competency-gate
-    // note above). The learner-writable assignment.passing_score_required may only
-    // RAISE the bar, never drop it below the course floor — otherwise a learner
-    // sets passing_score_required:1, answers one question, and mints a certificate.
+    // note above). assignment.passing_score_required may only RAISE the bar,
+    // never drop it below the course floor.
     const courseFloorScore = Number(course?.passing_score ?? courseRetake.passing_threshold) || 80;
     const passingScore = Math.max(courseFloorScore, Number(assignment.passing_score_required) || 0);
     const passed = score >= passingScore;
@@ -436,8 +432,8 @@ Deno.serve(async (req) => {
     }
 
     // Use the EFFECTIVE cap (course ∩ assignment), the same value the attempt
-    // gate above enforces. Using the learner-writable assignment.max_attempts
-    // here would leave the assignment 'failed' with retake_required:true even
+    // gate above enforces. Using assignment.max_attempts alone here could leave
+    // the assignment 'failed' with retake_required:true even
     // when the stricter course cap is already reached, so the UI would offer a
     // retake that the gate then always rejects (a dead end).
     const maxAttemptsReached = !!effectiveMaxAttempts && attemptNumber >= effectiveMaxAttempts && !passed;

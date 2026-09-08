@@ -1,10 +1,10 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
-import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,46 +27,122 @@ import {
   Brain,
   Lightbulb
 } from "lucide-react";
+import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
+
+function freshQuerySuccess(query) {
+  return query.isSuccess
+    && query.isFetchedAfterMount
+    && query.fetchStatus === 'idle'
+    && !query.error
+    && !query.isFetching;
+}
+
+// ComplianceAudit has an admin-global read arm and no immutable tenant
+// provenance. Keep the combined KPI/LLM capability paused until a reviewed
+// tenant-authorized aggregate broker can supply that source atomically.
+const KPI_REPORTS_ENABLED = false;
 
 export default function AIKPIReportGenerator() {
 
   const [timeframe, setTimeframe] = useState("30");
   const [report, setReport] = useState(null);
+  const [reportBasis, setReportBasis] = useState(null);
   const ai = useAICall();
+  const timeframeRef = useRef(timeframe);
+  timeframeRef.current = timeframe;
 
-  const { data: visits = [] } = useAgencyScopedQuery({
-    queryKey: ['visitsForKPI'],
-    fetch: () => base44.entities.Visit.list('-created_date', 500),
-    initialData: [],
+  const visitQuery = useAuthorizedVisits({
+    purpose: 'reporting',
+    sort: '-created_date',
+    limit: 500,
+    enabled: KPI_REPORTS_ENABLED,
   });
 
-  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
-
-  const { data: complianceAudits = [] } = useQuery({
-    queryKey: ['complianceAuditsForKPI'],
-    queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 200),
-    initialData: [],
+  const patientQuery = useScopedPatients({
+    purpose: 'roster',
+    sort: '-updated_date',
+    limit: 2000,
+    enabled: KPI_REPORTS_ENABLED,
   });
+  const tenantScopesMismatch = patientQuery.isSuccess
+    && visitQuery.isSuccess
+    && !sameAuthorizedTenantScope(patientQuery.tenantScope, visitQuery.tenantScope);
+  const tenantSnapshot = useMemo(() => (
+    visitQuery.isSuccess
+      && patientQuery.isSuccess
+      && !tenantScopesMismatch
+      ? {
+        visits: visitQuery.data,
+        patients: patientQuery.data,
+        patientTenantScope: patientQuery.tenantScope,
+        visitTenantScope: visitQuery.tenantScope,
+      }
+      : null
+  ), [
+    patientQuery.data,
+    patientQuery.isSuccess,
+    patientQuery.tenantScope,
+    tenantScopesMismatch,
+    visitQuery.data,
+    visitQuery.isSuccess,
+    visitQuery.tenantScope,
+  ]);
 
-  const { data: incidents = [] } = useAgencyScopedQuery({
+  const incidentQuery = useAgencyScopedQuery({
     queryKey: ['incidentsForKPI'],
     fetch: () => base44.entities.Incident.list('-created_date', 200),
     initialData: [],
+    enabled: KPI_REPORTS_ENABLED,
   });
+  const incidentFresh = freshQuerySuccess(incidentQuery);
+
+  const analysisSnapshot = useMemo(() => (
+    tenantSnapshot
+      && incidentFresh
+      ? {
+        ...tenantSnapshot,
+        incidents: incidentQuery.data,
+      }
+      : null
+  ), [
+    incidentQuery.data,
+    incidentFresh,
+    tenantSnapshot,
+  ]);
+  const analysisSnapshotRef = useRef(analysisSnapshot);
+  analysisSnapshotRef.current = analysisSnapshot;
+  const reportSequenceRef = useRef(0);
+
+  // A report contains Patient and Visit-derived PHI. Never retain or reveal it
+  // across a fresh authority check, denial, dataset change, or timeframe change.
+  useEffect(() => {
+    reportSequenceRef.current += 1;
+    setReport(null);
+    setReportBasis(null);
+  }, [analysisSnapshot, timeframe]);
 
   const generateReport = async () => {
-    
+    if (!KPI_REPORTS_ENABLED) {
+      toast.error('KPI report generation is paused pending a tenant-authorized compliance aggregate.');
+      return;
+    }
+    const authorizedSnapshot = analysisSnapshotRef.current;
+    if (!authorizedSnapshot) {
+      toast.error('Patient and Visit access must be verified before generating a KPI report.');
+      return;
+    }
+    const authorizedTimeframe = timeframe;
+    const reportSequence = ++reportSequenceRef.current;
     const cutoffDate = new Date();
-    cutoffDate.setDate(cutoffDate.getDate() - parseInt(timeframe, 10));
+    cutoffDate.setDate(cutoffDate.getDate() - parseInt(authorizedTimeframe, 10));
     
-    const recentVisits = visits.filter(v => new Date(v.created_date) >= cutoffDate);
-    const recentAudits = complianceAudits.filter(a => new Date(a.created_date) >= cutoffDate);
-    const recentIncidents = incidents.filter(i => new Date(i.created_date) >= cutoffDate);
+    const recentVisits = authorizedSnapshot.visits.filter(v => new Date(v.created_date) >= cutoffDate);
+    const recentIncidents = authorizedSnapshot.incidents.filter(i => new Date(i.created_date) >= cutoffDate);
 
     try {
       const prompt = `Generate a comprehensive KPI report for healthcare agency administration based on the following data.
 
-TIMEFRAME: Last ${timeframe} days
+TIMEFRAME: Last ${authorizedTimeframe} days
 
 DATA SUMMARY:
 - Total Visits: ${recentVisits.length}
@@ -74,13 +150,10 @@ DATA SUMMARY:
   - Scheduled: ${recentVisits.filter(v => v.status === 'scheduled').length}
   - In Progress: ${recentVisits.filter(v => v.status === 'in_progress').length}
 
-- Active Patients: ${patients.filter(p => p.status === 'active').length}
-- Total Patients: ${patients.length}
+- Active Patients: ${authorizedSnapshot.patients.filter(p => p.status === 'active').length}
+- Total Patients: ${authorizedSnapshot.patients.length}
 
-- Compliance Audits: ${recentAudits.length}
-  - Average Score: ${recentAudits.length > 0 ? (recentAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / recentAudits.length).toFixed(1) : 0}%
-  - Passed: ${recentAudits.filter(a => a.status === 'passed').length}
-  - Flagged: ${recentAudits.filter(a => a.status === 'flagged').length}
+- Compliance Audits: Unavailable pending a tenant-authorized aggregate source. Do not infer compliance rates, pass counts, or flags.
 
 - Incidents: ${recentIncidents.length}
   - High Severity: ${recentIncidents.filter(i => i.severity === 'high').length}
@@ -88,7 +161,7 @@ DATA SUMMARY:
   - Low Severity: ${recentIncidents.filter(i => i.severity === 'low').length}
 
 TOP DIAGNOSES (from visits):
-${[...new Set(recentVisits.map(v => visits.find(all => all.id === v.id)).filter(v => v?.nurse_notes).map(v => {
+${[...new Set(recentVisits.filter(v => v?.nurse_notes).map(v => {
   const match = v.nurse_notes.match(/(?:diagnosis|dx|condition):?\s*([^.\n]+)/i);
   return match?.[1] ? match[1].trim() : null;
 }).filter(Boolean))].slice(0, 5).map((dx, i) => `${i + 1}. ${dx}`).join('\n') || 'Not available'}
@@ -221,10 +294,22 @@ Return as JSON:
         }
       });
 
+      if (
+        analysisSnapshotRef.current !== authorizedSnapshot
+        || timeframeRef.current !== authorizedTimeframe
+        || reportSequenceRef.current !== reportSequence
+      ) return;
+      setReportBasis({ snapshot: authorizedSnapshot, timeframe: authorizedTimeframe });
       setReport(result);
     } catch (error) {
       console.error("Error generating KPI report:", error);
-      toast.error("The AI request didn't complete. Please try again.");
+      if (
+        analysisSnapshotRef.current === authorizedSnapshot
+        && timeframeRef.current === authorizedTimeframe
+        && reportSequenceRef.current === reportSequence
+      ) {
+        toast.error("The AI request didn't complete. Please try again.");
+      }
     }
     
   };
@@ -240,6 +325,12 @@ Return as JSON:
     if (score >= 70) return "text-yellow-600";
     return "text-red-600";
   };
+  const reportAvailable = Boolean(
+    analysisSnapshot
+    && report
+    && reportBasis?.snapshot === analysisSnapshot
+    && reportBasis.timeframe === timeframe
+  );
 
   return (
     <Card className="border-2 border-blue-200">
@@ -249,7 +340,7 @@ Return as JSON:
             <BarChart3 className="w-5 h-5 text-blue-600" />
             AI KPI Report Generator
           </CardTitle>
-          {report && (
+          {reportAvailable && (
             <Badge variant="outline">
               Last {report.timeframe_days} days
             </Badge>
@@ -257,6 +348,29 @@ Return as JSON:
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="status">
+          <div className="flex items-start gap-2">
+            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+            <span>
+              KPI report generation is unavailable until ComplianceAudit metrics have a reviewed tenant-authorized aggregate broker. Missing compliance data is not treated as zero.
+            </span>
+          </div>
+        </div>
+        {KPI_REPORTS_ENABLED && !analysisSnapshot && (
+          <div className="rounded-md border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950" role="status">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" />
+              <span>
+                {visitQuery.isError
+                  || patientQuery.isError
+                  || tenantScopesMismatch
+                  || incidentQuery.isError
+                  ? 'KPI report generation is unavailable because one or more authorized data sources could not be verified. Platform owners remain blocked until a reviewed agency selector is available.'
+                  : 'Reverifying matching tenant access and every report source before KPI report generation…'}
+              </span>
+            </div>
+          </div>
+        )}
         <div className="flex gap-3">
           <Select value={timeframe} onValueChange={setTimeframe}>
             <SelectTrigger className="w-40">
@@ -272,7 +386,7 @@ Return as JSON:
 
           <Button
             onClick={generateReport}
-            disabled={ai.loading}
+            disabled={ai.loading || !analysisSnapshot || !KPI_REPORTS_ENABLED}
             className="flex-1 bg-blue-600 hover:bg-blue-700"
           >
             {ai.loading ? (
@@ -289,7 +403,7 @@ Return as JSON:
           </Button>
         </div>
 
-        {report && (
+        {reportAvailable && (
           <div className="space-y-4">
             <div className="bg-blue-50 rounded-lg p-4 border border-blue-200">
               <p className="text-sm font-semibold text-blue-900 mb-2">Executive Summary</p>

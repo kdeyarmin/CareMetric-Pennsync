@@ -4,8 +4,8 @@ import { readFile, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { pathToFileURL } from 'node:url';
 import test from 'node:test';
+import JSON5 from 'json5';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
-
 const brokers = {
   get: new URL('../functions/getAuthorizedPatient/entry.ts', import.meta.url),
   list: new URL('../functions/listAuthorizedPatients/entry.ts', import.meta.url),
@@ -14,6 +14,7 @@ const wrappers = {
   get: new URL('../../src/functions/getAuthorizedPatient.js', import.meta.url),
   list: new URL('../../src/functions/listAuthorizedPatients.js', import.meta.url),
 };
+const patientEntity = new URL('../entities/Patient.jsonc', import.meta.url);
 
 const USER = {
   id: 'user-1',
@@ -63,8 +64,19 @@ function patient(overrides = {}) {
     phone: '555-0100',
     email: 'ada@example.test',
     address: '1 Computing Way',
+    emergency_contact_name: 'Charles Babbage',
+    emergency_contact_phone: '555-0101',
+    emergency_contact_relationship: 'colleague',
+    physician_name: 'Dr. Hopper',
+    physician_phone: '555-0102',
+    physician_email: 'hopper@example.test',
+    caregiver_name: 'Mary Somerville',
+    caregiver_email: 'somerville@example.test',
+    caregiver_phone: '555-0103',
     primary_diagnosis: 'I10',
     secondary_diagnoses: ['E11.9'],
+    allergies: ['none known'],
+    past_hospitalizations: ['2025-01-10'],
     status: 'active',
     care_type: 'home_health',
     admission_date: '2026-09-01',
@@ -73,6 +85,7 @@ function patient(overrides = {}) {
     clinical_notes: 'hidden',
     is_sample: false,
     is_archived: false,
+    created_date: '2026-09-01T12:00:00.000Z',
     updated_date: '2026-09-03T12:00:00.000Z',
     ...overrides,
   };
@@ -191,6 +204,7 @@ async function loadBroker(kind, {
   patientResponses = null,
   assignments = [],
   assignmentResponses = null,
+  onAssignmentFilter = null,
   auditError = null,
   ignoreFilters = false,
   superAdminEmail = null,
@@ -209,6 +223,7 @@ async function loadBroker(kind, {
   let agencyIndex = 0;
   let patientIndex = 0;
   let assignmentIndex = 0;
+  let effectiveMemberships = memberships;
 
   const selected = (responses, index, fallback) => (
     responses ? responses[Math.min(index, responses.length - 1)] : fallback
@@ -238,7 +253,7 @@ async function loadBroker(kind, {
       AgencyMembership: {
         filter: async (query, sort, limit) => {
           calls.memberships.push({ query: clone(query), sort, limit });
-          const rows = selected(membershipResponses, membershipIndex++, memberships);
+          const rows = selected(membershipResponses, membershipIndex++, effectiveMemberships);
           return filterRows(clone(rows), query, limit);
         },
       },
@@ -260,7 +275,13 @@ async function loadBroker(kind, {
         filter: async (query, sort, limit, offset, fields) => {
           calls.assignments.push({ query: clone(query), sort, limit, offset, fields: clone(fields) });
           const rows = selected(assignmentResponses, assignmentIndex++, assignments);
-          return filterRows(clone(rows), query, limit, offset, sort);
+          const result = filterRows(clone(rows), query, limit, offset, sort);
+          const replacement = onAssignmentFilter?.({
+            callNumber: calls.assignments.length,
+            memberships: clone(effectiveMemberships),
+          });
+          if (replacement) effectiveMemberships = replacement;
+          return result;
         },
       },
       SecurityLog: {
@@ -356,6 +377,20 @@ const EXACT_PURPOSE_FIELDS = {
   health_history_write_base: [
     'id', 'past_medical_history', 'past_hospitalizations', 'updated_date',
   ],
+  smart_note_context: [
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
+    'medical_record_number', 'status', 'care_type', 'primary_diagnosis',
+    'secondary_diagnoses', 'chronic_conditions', 'past_medical_history',
+    'current_medications', 'allergies', 'functional_status', 'wounds',
+    'updated_date',
+  ],
+  oasis_analysis_context: [
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
+    'admission_date', 'admission_source', 'primary_diagnosis',
+    'secondary_diagnoses', 'allergies', 'current_medications',
+    'functional_status', 'baseline_vitals', 'social_history',
+    'advance_directives', 'past_hospitalizations', 'updated_date',
+  ],
 };
 const EXACT_PURPOSE_ROLES = {
   display: ['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care'],
@@ -364,6 +399,8 @@ const EXACT_PURPOSE_ROLES = {
   education_context: ['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care'],
   visit_summary: ['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care'],
   health_history_write_base: ['platform_owner', 'agency_admin', 'manager', 'clinician'],
+  smart_note_context: ['platform_owner', 'agency_admin', 'manager', 'clinician'],
+  oasis_analysis_context: ['platform_owner', 'agency_admin', 'manager', 'clinician'],
 };
 const LIST_PURPOSE_FIELDS = {
   roster: [
@@ -380,11 +417,58 @@ const LIST_PURPOSE_FIELDS = {
     'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
     'medical_record_number', 'phone', 'address',
   ],
+  patient_management: [
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
+    'medical_record_number', 'address', 'phone', 'email', 'status', 'care_type',
+    'admission_date', 'primary_diagnosis', 'secondary_diagnoses', 'allergies',
+    'created_date', 'updated_date',
+  ],
+  data_quality: [
+    'id', 'first_name', 'middle_name', 'last_name', 'status', 'phone',
+    'emergency_contact_name', 'emergency_contact_phone', 'physician_name',
+    'updated_date',
+  ],
+  risk_analysis: [
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth', 'status',
+    'care_type', 'admission_date', 'primary_diagnosis', 'secondary_diagnoses',
+    'past_hospitalizations', 'updated_date',
+  ],
+  deduplication: [
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
+    'medical_record_number', 'address', 'phone', 'email',
+    'emergency_contact_phone', 'caregiver_email', 'caregiver_phone',
+    'physician_email', 'status', 'created_date', 'updated_date',
+  ],
+  education_delivery: [
+    'id', 'first_name', 'middle_name', 'last_name', 'medical_record_number',
+    'status', 'care_type', 'primary_diagnosis', 'email', 'updated_date',
+  ],
 };
 const LIST_PURPOSE_ROLES = {
   roster: ['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care'],
-  contact: ['platform_owner', 'agency_admin', 'manager'],
+  contact: ['platform_owner', 'agency_admin', 'manager', 'clinician'],
   identity_match: ['platform_owner', 'agency_admin', 'manager'],
+  patient_management: [
+    'platform_owner', 'agency_admin', 'manager', 'office_staff', 'clinician',
+    'social_worker', 'spiritual_care',
+  ],
+  data_quality: ['platform_owner', 'agency_admin', 'manager'],
+  risk_analysis: ['platform_owner', 'agency_admin', 'manager', 'clinician'],
+  deduplication: ['platform_owner', 'agency_admin', 'manager', 'office_staff', 'clinician'],
+  education_delivery: [
+    'platform_owner', 'agency_admin', 'manager', 'office_staff', 'clinician',
+    'social_worker', 'spiritual_care',
+  ],
+};
+const LIST_PURPOSE_MAX_PAGE_SIZE = {
+  roster: 50,
+  contact: 25,
+  identity_match: 25,
+  patient_management: 50,
+  data_quality: 50,
+  risk_analysis: 50,
+  deduplication: 25,
+  education_delivery: 50,
 };
 
 function markedSection(source, start, end) {
@@ -417,11 +501,29 @@ function fieldsFor(policy, purpose, usesSet = false) {
   return quotedValues(match[1]);
 }
 
+function arrayPurposeKeys(policy, usesSet = false) {
+  const prefix = usesSet ? 'new\\s+Set\\s*\\(\\s*\\[' : '\\[';
+  return [...policy.matchAll(new RegExp(
+    `^\\s{2}([a-z_]+):\\s*${prefix}`,
+    'gm',
+  ))].map((match) => match[1]);
+}
+
+function numericPurposeMap(policy) {
+  return Object.fromEntries(
+    [...policy.matchAll(/^\s{2}([a-z_]+):\s*(\d+),/gm)]
+      .map((match) => [match[1], Number(match[2])]),
+  );
+}
+
 test('read brokers expose finite projections and contain no read bypass or Patient write', async () => {
   const getSource = await readFile(brokers.get, 'utf8');
   const listSource = await readFile(brokers.list, 'utf8');
   const getWrapper = await readFile(wrappers.get, 'utf8');
   const listWrapper = await readFile(wrappers.list, 'utf8');
+  const schema = JSON5.parse(await readFile(patientEntity, 'utf8'));
+
+  assert.equal(schema.rls.read, false);
 
   assert.match(getSource, /BEGIN AUTHORIZED PATIENT EXACT PURPOSE POLICY/);
   assert.match(listSource, /BEGIN AUTHORIZED PATIENT LIST PURPOSE POLICY/);
@@ -432,6 +534,11 @@ test('read brokers expose finite projections and contain no read bypass or Patie
     assert.match(source, /patient_creation_key/);
     assert.ok((source.match(/await loadAuthority\s*\(/g) || []).length >= 2);
   }
+  assert.ok((listSource.match(/await loadAuthority\s*\(/g) || []).length >= 4);
+  assert.match(
+    listSource,
+    /await loadAuthority\s*\([\s\S]*?disclosureAuthority\.snapshot[\s\S]*?requirePurposeRole\(auditAuthority/,
+  );
   assert.match(getSource, /patientReadFields\(purpose\)/);
   assert.match(
     getSource,
@@ -475,6 +582,39 @@ test('read brokers expose finite projections and contain no read bypass or Patie
     '// <<<BEGIN AUTHORIZED PATIENT LIST PURPOSE POLICY>>>',
     '// <<<END AUTHORIZED PATIENT LIST PURPOSE POLICY>>>',
   );
+  const getFieldPolicy = getPolicy.slice(0, getPolicy.indexOf('const PURPOSE_ROLES'));
+  const getRolePolicy = getPolicy.slice(getPolicy.indexOf('const PURPOSE_ROLES'));
+  const listFieldPolicy = listPolicy.slice(0, listPolicy.indexOf('const PURPOSE_ROLES'));
+  const listRolePolicy = listPolicy.slice(
+    listPolicy.indexOf('const PURPOSE_ROLES'),
+    listPolicy.indexOf('const PURPOSE_MAX_PAGE_SIZE'),
+  );
+  const listPagePolicy = listPolicy.slice(listPolicy.indexOf('const PURPOSE_MAX_PAGE_SIZE'));
+  const getWrapperFields = getWrapper.slice(
+    getWrapper.indexOf('const PURPOSE_FIELDS'),
+    getWrapper.indexOf('const PURPOSE_ROLES'),
+  );
+  const getWrapperRoles = getWrapper.slice(getWrapper.indexOf('const PURPOSE_ROLES'));
+  const listWrapperFields = listWrapper.slice(
+    listWrapper.indexOf('const PURPOSE_FIELDS'),
+    listWrapper.indexOf('export const AUTHORIZED_PATIENT_LIST_PURPOSES'),
+  );
+  const listWrapperPages = listWrapper.slice(
+    listWrapper.indexOf('const PURPOSE_MAX_PAGE_SIZE'),
+    listWrapper.indexOf('const PURPOSE_ROLES'),
+  );
+  const listWrapperRoles = listWrapper.slice(listWrapper.indexOf('const PURPOSE_ROLES'));
+
+  assert.deepEqual(arrayPurposeKeys(getFieldPolicy), Object.keys(EXACT_PURPOSE_FIELDS));
+  assert.deepEqual(arrayPurposeKeys(getRolePolicy, true), Object.keys(EXACT_PURPOSE_ROLES));
+  assert.deepEqual(arrayPurposeKeys(getWrapperFields, true), Object.keys(EXACT_PURPOSE_FIELDS));
+  assert.deepEqual(arrayPurposeKeys(getWrapperRoles, true), Object.keys(EXACT_PURPOSE_ROLES));
+  assert.deepEqual(arrayPurposeKeys(listFieldPolicy), Object.keys(LIST_PURPOSE_FIELDS));
+  assert.deepEqual(arrayPurposeKeys(listRolePolicy, true), Object.keys(LIST_PURPOSE_ROLES));
+  assert.deepEqual(arrayPurposeKeys(listWrapperFields, true), Object.keys(LIST_PURPOSE_FIELDS));
+  assert.deepEqual(arrayPurposeKeys(listWrapperRoles, true), Object.keys(LIST_PURPOSE_ROLES));
+  assert.deepEqual(numericPurposeMap(listPagePolicy), LIST_PURPOSE_MAX_PAGE_SIZE);
+  assert.deepEqual(numericPurposeMap(listWrapperPages), LIST_PURPOSE_MAX_PAGE_SIZE);
   for (const [purpose, fields] of Object.entries(EXACT_PURPOSE_FIELDS)) {
     assert.deepEqual(fieldsFor(getPolicy, purpose), fields);
     assert.deepEqual(fieldsFor(getWrapper, purpose, true), fields);
@@ -499,21 +639,42 @@ test('read brokers expose finite projections and contain no read bypass or Patie
   assert.equal(listAuthority, getAuthority, 'tenant authority core must remain identical');
 });
 
-test('both brokers reject unsupported methods and operator-shaped input before privileged reads', async () => {
+test('both brokers reject unknown purposes, arbitrary filters, bad sorts, and operator-shaped input before privileged reads', async () => {
   for (const kind of ['get', 'list']) {
-    const { handler, calls } = await loadBroker(kind);
-    const getResult = await invoke(handler, kind, {}, 'GET');
+    const methodFixture = await loadBroker(kind);
+    const getResult = await invoke(methodFixture.handler, kind, {}, 'GET');
     assert.equal(getResult.response.status, 405);
     assert.equal(getResult.response.headers.get('allow'), 'POST');
 
-    const body = kind === 'get'
-      ? getBody({ patient_id: { $in: ['patient-a'] } })
-      : pageBody({ where: { agency_id: 'agency-b' } });
-    const invalid = await invoke(handler, kind, body);
-    assert.equal(invalid.response.status, 400);
-    assert.equal(calls.auth, 0);
-    assert.deepEqual(calls.memberships, []);
-    assert.deepEqual(calls.patients, []);
+    const bodies = kind === 'get'
+      ? [
+        getBody({ patient_id: { $in: ['patient-a'] } }),
+        getBody({ agency_id: { $eq: 'agency-a' } }),
+        getBody({ purpose: 'unreviewed_export' }),
+        getBody({ filter: { status: 'active' } }),
+      ]
+      : [
+        pageBody({ where: { agency_id: 'agency-b' } }),
+        pageBody({ filter: { status: 'active' } }),
+        pageBody({ purpose: 'unreviewed_export' }),
+        pageBody({ agency_id: { $eq: 'agency-a' } }),
+        pageBody({ status: { $in: ['active'] } }),
+        pageBody({ sort: { $ne: 'id_asc' } }),
+        pageBody({ purpose: 'contact', page_size: 26 }),
+        pageBody({ purpose: 'roster', page_size: 51 }),
+        {
+          agency_id: 'agency-a', mode: 'ids', purpose: 'roster',
+          patient_ids: [{ $in: ['patient-a'] }],
+        },
+      ];
+    for (const body of bodies) {
+      const fixture = await loadBroker(kind);
+      const invalid = await invoke(fixture.handler, kind, body);
+      assert.equal(invalid.response.status, 400);
+      assert.equal(fixture.calls.auth, 0);
+      assert.deepEqual(fixture.calls.memberships, []);
+      assert.deepEqual(fixture.calls.patients, []);
+    }
   }
 });
 
@@ -924,6 +1085,88 @@ test('list page applies tenant and creator scope before paging and returns a fin
     assert.equal(call.fields.includes('clinical_notes'), false);
     assert.equal(call.fields.includes('active_alerts'), false);
   }
+  assert.equal(calls.auth, 4);
+  assert.equal(calls.securityLogs.length, 1);
+  assert.deepEqual(calls.securityLogs[0], {
+    timestamp: calls.securityLogs[0].timestamp,
+    user_email: 'clinician@agency.test',
+    user_role: 'clinician',
+    action: 'PATIENT_LIST_READ_AUTHORIZED',
+    details: {
+      broker: 'listAuthorizedPatients',
+      resource_type: 'Patient',
+      agency_id: 'agency-a',
+      purpose: 'roster',
+      mode: 'page',
+      subject_user_id: 'user-1',
+      membership_id: 'membership-a',
+      membership_version: 2,
+      returned_count: 1,
+      has_more: true,
+    },
+    ip_address: 'server-side',
+    user_agent: 'server-side',
+  });
+  assert.equal(Number.isFinite(Date.parse(calls.securityLogs[0].timestamp)), true);
+});
+
+test('Patient-list disclosure fails closed when the final caller recheck or audit fails', async () => {
+  const revoked = await loadBroker('list', {
+    callers: [USER, USER, USER, { ...USER, is_active: false }],
+  });
+  const revokedResult = await invoke(
+    revoked.handler,
+    'listAuthorizedPatients',
+    pageBody(),
+  );
+  assert.equal(revokedResult.response.status, 403);
+  assert.equal(revokedResult.json.patients, undefined);
+  assert.equal(revoked.calls.auth, 4);
+  assert.equal(revoked.calls.securityLogs.length, 0);
+
+  const auditFailure = await loadBroker('list', {
+    auditError: new Error('audit unavailable'),
+  });
+  const auditResult = await invoke(
+    auditFailure.handler,
+    'listAuthorizedPatients',
+    pageBody(),
+  );
+  assert.equal(auditResult.response.status, 500);
+  assert.equal(auditResult.json.patients, undefined);
+  assert.equal(auditResult.json.error, 'Internal server error');
+  assert.equal(auditFailure.calls.securityLogs.length, 1);
+});
+
+test('every Patient list purpose returns only its reviewed projection and enforces its own page cap', async () => {
+  for (const [purpose, fields] of Object.entries(LIST_PURPOSE_FIELDS)) {
+    const pageSize = LIST_PURPOSE_MAX_PAGE_SIZE[purpose];
+    const permitted = await loadBroker('list', {
+      memberships: [membership({ tenant_role: 'manager' })],
+    });
+    const result = await invoke(
+      permitted.handler,
+      'listAuthorizedPatients',
+      pageBody({ purpose, page_size: pageSize }),
+    );
+    assert.equal(result.response.status, 200, purpose);
+    assert.deepEqual(Object.keys(result.json.patients[0]).sort(), [...fields].sort(), purpose);
+    assert.equal(result.json.patients[0].agency_id, undefined, purpose);
+    assert.equal(result.json.patients[0].clinical_notes, undefined, purpose);
+    assert.equal(result.json.patients[0].active_alerts, undefined, purpose);
+
+    const overCap = await loadBroker('list', {
+      memberships: [membership({ tenant_role: 'manager' })],
+    });
+    const denied = await invoke(
+      overCap.handler,
+      'listAuthorizedPatients',
+      pageBody({ purpose, page_size: pageSize + 1 }),
+    );
+    assert.equal(denied.response.status, 400, purpose);
+    assert.equal(overCap.calls.auth, 0, purpose);
+    assert.deepEqual(overCap.calls.patients, [], purpose);
+  }
 });
 
 test('list page merges creator and exact active assignment streams in immutable patient-id order', async () => {
@@ -952,7 +1195,7 @@ test('list page merges creator and exact active assignment streams in immutable 
   const discoveryCalls = calls.assignments.filter((call) => call.sort === 'patient_id');
   const exactCalls = calls.assignments.filter((call) => call.sort === '-updated_date');
   assert.equal(discoveryCalls.length, 2);
-  assert.equal(exactCalls.length, 4);
+  assert.equal(exactCalls.length, 5);
   for (const call of discoveryCalls) {
     assert.deepEqual(call.query, {
       agency_id: 'agency-a',
@@ -969,7 +1212,7 @@ test('list page merges creator and exact active assignment streams in immutable 
   }
   assert.deepEqual(
     exactCalls.map((call) => call.query.patient_id),
-    ['patient-a', 'patient-c', 'patient-a', 'patient-c'],
+    ['patient-a', 'patient-c', 'patient-a', 'patient-c', 'patient-a'],
   );
 });
 
@@ -1117,6 +1360,57 @@ test('active assignment version drift during roster read fails closed before ret
   assert.equal(json.patients, undefined);
 });
 
+test('assignment revocation after the final Patient page read blocks disclosure', async () => {
+  const active = assignmentFor('patient-a');
+  const revoked = assignmentFor('patient-a', {
+    status: 'revoked',
+    version: 2,
+    last_transition_at: '2026-09-03T12:30:00.000Z',
+    last_transition_request_id: 'revoke-after-final-read',
+    last_transition_request_key: 'agency-a:patient-a:user-1:revoke-after-final-read',
+  });
+  const { handler, calls } = await loadBroker('list', {
+    patients: [nonCreatorPatient('patient-a')],
+    assignmentResponses: [[active], [active], [active], [active], [revoked]],
+  });
+  const { response, json } = await invoke(
+    handler,
+    'listAuthorizedPatients',
+    pageBody(),
+  );
+  assert.equal(response.status, 409);
+  assert.match(json.error, /authority changed/);
+  assert.equal(json.patients, undefined);
+  assert.equal(calls.securityLogs.length, 0);
+  assert.equal(calls.assignments.length, 5);
+});
+
+test('terminal Patient-list authority fence catches membership revocation during assignment recheck', async () => {
+  const revoked = membership({
+    status: 'revoked',
+    revoked_at: '2026-09-03T12:45:00.000Z',
+    revocation_reason: 'Revoked during final assignment verification',
+    last_transition_at: '2026-09-03T12:45:00.000Z',
+    last_transition_reason: 'Revoked during final assignment verification',
+    version: 3,
+  });
+  const fixture = await loadBroker('list', {
+    patients: [nonCreatorPatient('patient-a')],
+    assignments: [assignmentFor('patient-a')],
+    onAssignmentFilter: ({ callNumber }) => callNumber === 5 ? [revoked] : null,
+  });
+  const { response, json } = await invoke(
+    fixture.handler,
+    'listAuthorizedPatients',
+    pageBody(),
+  );
+  assert.equal(response.status, 403);
+  assert.equal(json.patients, undefined);
+  assert.equal(fixture.calls.assignments.length, 5);
+  assert.equal(fixture.calls.auth, 4);
+  assert.equal(fixture.calls.securityLogs.length, 0);
+});
+
 test('assignment discovery stops at its hard scan cap instead of returning a partial page', async () => {
   const assignments = Array.from({ length: 255 }, (_, index) => (
     assignmentFor(`patient-${String(index).padStart(3, '0')}`)
@@ -1199,7 +1493,7 @@ test('list rejects legacy paging, malformed cursors, and changed cursor authorit
   assert.deepEqual(changed.calls.patients, []);
 });
 
-test('manager page is agency-wide while contact and identity purposes remain role-gated', async () => {
+test('manager page is agency-wide, clinician contact is reviewed, and identity matching remains role-gated', async () => {
   const managerMembership = membership({ tenant_role: 'manager' });
   const otherCreator = patient({
     created_by_user_id: 'user-2',
@@ -1216,14 +1510,22 @@ test('manager page is agency-wide while contact and identity purposes remain rol
   assert.equal(result.json.patients.length, 1);
   assert.equal(calls.patients[0].query.created_by_user_id, undefined);
 
-  const clinician = await loadBroker('list');
-  const denied = await invoke(
-    clinician.handler,
+  const clinicianContact = await loadBroker('list');
+  const permitted = await invoke(
+    clinicianContact.handler,
     'listAuthorizedPatients',
     pageBody({ purpose: 'contact', page_size: 25 }),
   );
+  assert.equal(permitted.response.status, 200);
+
+  const clinicianIdentity = await loadBroker('list');
+  const denied = await invoke(
+    clinicianIdentity.handler,
+    'listAuthorizedPatients',
+    pageBody({ purpose: 'identity_match', page_size: 25 }),
+  );
   assert.equal(denied.response.status, 403);
-  assert.deepEqual(clinician.calls.patients, []);
+  assert.deepEqual(clinicianIdentity.calls.patients, []);
 });
 
 test('only the configured built-in admin receives membership-free platform-owner scope', async () => {
@@ -1357,10 +1659,10 @@ test('clinician id batches preserve request order across creator and exact assig
   assert.deepEqual(json.patients.map((row) => row.id), ['patient-a', 'patient-b']);
   assert.equal(json.missing_ids, undefined);
   assert.equal(calls.patients.length, 2);
-  assert.equal(calls.assignments.length, 4);
+  assert.equal(calls.assignments.length, 5);
   assert.deepEqual(
     calls.assignments.map((call) => call.query.patient_id),
-    ['patient-c', 'patient-a', 'patient-c', 'patient-a'],
+    ['patient-c', 'patient-a', 'patient-c', 'patient-a', 'patient-a'],
   );
 });
 

@@ -21,7 +21,8 @@ const PURPOSE_FIELDS = Object.freeze({
   documentation: new Set([
     'id', 'patient_id', 'visit_date', 'visit_time', 'visit_type', 'status',
     'nurse_notes', 'raw_transcription', 'vital_signs', 'documentation_source',
-    'grounding_pending', 'updated_date',
+    'grounding_pending', 'emr_handoff_status', 'emr_handoff_history',
+    'documentation_review_ack', 'updated_date',
   ]),
   compliance_review: new Set([
     'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'compliance_score',
@@ -55,6 +56,9 @@ const REVIEW_FIELDS = new Set([
   'nurse_edited',
   'statement',
   'is_clinical_signature',
+]);
+const HANDOFF_HISTORY_FIELDS = new Set([
+  'status', 'reported_by', 'reported_at', 'self_reported', 'note',
 ]);
 
 function exactIdentifier(value) {
@@ -150,6 +154,18 @@ function validProjectedField(field, value, visitId) {
   if (field === 'ai_tags') return validStringList(value, 64, 128);
   if (field === 'emr_handoff_status') return HANDOFF_STATUSES.has(value);
   if (field === 'documentation_review_ack') return validReviewAcknowledgement(value);
+  if (field === 'emr_handoff_history') {
+    return Array.isArray(value) && value.length <= 100 && value.every((entry) => (
+      entry && typeof entry === 'object' && !Array.isArray(entry)
+      && Object.keys(entry).every((key) => HANDOFF_HISTORY_FIELDS.has(key))
+      && HANDOFF_STATUSES.has(entry.status)
+      && validString(entry.reported_by, 320)
+      && typeof entry.reported_at === 'string'
+      && Number.isFinite(Date.parse(entry.reported_at))
+      && entry.self_reported === true
+      && (entry.note === undefined || validString(entry.note, 2_000))
+    ));
+  }
   return false;
 }
 

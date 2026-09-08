@@ -19,17 +19,73 @@ const PURPOSE_FIELDS = Object.freeze({
     'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
     'medical_record_number', 'phone', 'address',
   ]),
+  patient_management: new Set([
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
+    'medical_record_number', 'address', 'phone', 'email', 'status', 'care_type',
+    'admission_date', 'primary_diagnosis', 'secondary_diagnoses', 'allergies',
+    'created_date', 'updated_date',
+  ]),
+  data_quality: new Set([
+    'id', 'first_name', 'middle_name', 'last_name', 'status', 'phone',
+    'emergency_contact_name', 'emergency_contact_phone', 'physician_name',
+    'updated_date',
+  ]),
+  risk_analysis: new Set([
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth', 'status',
+    'care_type', 'admission_date', 'primary_diagnosis', 'secondary_diagnoses',
+    'past_hospitalizations', 'updated_date',
+  ]),
+  deduplication: new Set([
+    'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
+    'medical_record_number', 'address', 'phone', 'email',
+    'emergency_contact_phone', 'caregiver_email', 'caregiver_phone',
+    'physician_email', 'status', 'created_date', 'updated_date',
+  ]),
+  education_delivery: new Set([
+    'id', 'first_name', 'middle_name', 'last_name', 'medical_record_number',
+    'status', 'care_type', 'primary_diagnosis', 'email', 'updated_date',
+  ]),
 });
+export const AUTHORIZED_PATIENT_LIST_PURPOSES = Object.freeze(Object.keys(PURPOSE_FIELDS));
+export function isAuthorizedPatientListPurpose(value) {
+  return typeof value === 'string' && Object.hasOwn(PURPOSE_FIELDS, value);
+}
 const PURPOSE_MAX_PAGE_SIZE = Object.freeze({
   roster: 50,
   contact: 25,
   identity_match: 25,
+  patient_management: 50,
+  data_quality: 50,
+  risk_analysis: 50,
+  deduplication: 25,
+  education_delivery: 50,
 });
 const PURPOSE_ROLES = Object.freeze({
   roster: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care']),
-  contact: new Set(['platform_owner', 'agency_admin', 'manager']),
+  contact: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
   identity_match: new Set(['platform_owner', 'agency_admin', 'manager']),
+  patient_management: new Set([
+    'platform_owner', 'agency_admin', 'manager', 'office_staff', 'clinician',
+    'social_worker', 'spiritual_care',
+  ]),
+  data_quality: new Set(['platform_owner', 'agency_admin', 'manager']),
+  risk_analysis: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  deduplication: new Set(['platform_owner', 'agency_admin', 'manager', 'office_staff', 'clinician']),
+  education_delivery: new Set([
+    'platform_owner', 'agency_admin', 'manager', 'office_staff', 'clinician',
+    'social_worker', 'spiritual_care',
+  ]),
 });
+export function authorizedPatientListPageSize(purpose) {
+  return PURPOSE_MAX_PAGE_SIZE[purpose] ?? null;
+}
+
+export function isAuthorizedPatientListSort(purpose, sort) {
+  if (!isAuthorizedPatientListPurpose(purpose)) return false;
+  if (sort === null || sort === undefined) return true;
+  if (typeof sort !== 'string' || sort.length === 0) return false;
+  return PURPOSE_FIELDS[purpose].has(sort.replace(/^-/, ''));
+}
 const STATUSES = new Set(['active', 'hospitalized', 'discharged']);
 
 function exactIdentifier(value) {

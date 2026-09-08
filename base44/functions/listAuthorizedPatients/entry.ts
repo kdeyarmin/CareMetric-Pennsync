@@ -86,18 +86,109 @@ const PURPOSE_FIELDS: Record<string, readonly string[]> = {
     'phone',
     'address',
   ],
+  patient_management: [
+    'id',
+    'first_name',
+    'middle_name',
+    'last_name',
+    'date_of_birth',
+    'medical_record_number',
+    'address',
+    'phone',
+    'email',
+    'status',
+    'care_type',
+    'admission_date',
+    'primary_diagnosis',
+    'secondary_diagnoses',
+    'allergies',
+    'created_date',
+    'updated_date',
+  ],
+  data_quality: [
+    'id',
+    'first_name',
+    'middle_name',
+    'last_name',
+    'status',
+    'phone',
+    'emergency_contact_name',
+    'emergency_contact_phone',
+    'physician_name',
+    'updated_date',
+  ],
+  risk_analysis: [
+    'id',
+    'first_name',
+    'middle_name',
+    'last_name',
+    'date_of_birth',
+    'status',
+    'care_type',
+    'admission_date',
+    'primary_diagnosis',
+    'secondary_diagnoses',
+    'past_hospitalizations',
+    'updated_date',
+  ],
+  deduplication: [
+    'id',
+    'first_name',
+    'middle_name',
+    'last_name',
+    'date_of_birth',
+    'medical_record_number',
+    'address',
+    'phone',
+    'email',
+    'emergency_contact_phone',
+    'caregiver_email',
+    'caregiver_phone',
+    'physician_email',
+    'status',
+    'created_date',
+    'updated_date',
+  ],
+  education_delivery: [
+    'id',
+    'first_name',
+    'middle_name',
+    'last_name',
+    'medical_record_number',
+    'status',
+    'care_type',
+    'primary_diagnosis',
+    'email',
+    'updated_date',
+  ],
 };
 
 const PURPOSE_ROLES: Record<string, ReadonlySet<string>> = {
   roster: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician', 'social_worker', 'spiritual_care']),
-  contact: new Set(['platform_owner', 'agency_admin', 'manager']),
+  contact: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
   identity_match: new Set(['platform_owner', 'agency_admin', 'manager']),
+  patient_management: new Set([
+    'platform_owner', 'agency_admin', 'manager', 'office_staff', 'clinician',
+    'social_worker', 'spiritual_care',
+  ]),
+  data_quality: new Set(['platform_owner', 'agency_admin', 'manager']),
+  risk_analysis: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  deduplication: new Set(['platform_owner', 'agency_admin', 'manager', 'office_staff', 'clinician']),
+  education_delivery: new Set([
+    'platform_owner', 'agency_admin', 'manager', 'office_staff', 'clinician',
+    'social_worker', 'spiritual_care',
+  ]),
 };
 
 const PURPOSE_MAX_PAGE_SIZE: Record<string, number> = {
   roster: 50,
   contact: 25,
   identity_match: 25,
+  patient_management: 50,
+  data_quality: 50,
+  risk_analysis: 50,
+  deduplication: 25,
+  education_delivery: 50,
 };
 // <<<END AUTHORIZED PATIENT LIST PURPOSE POLICY>>>
 
@@ -1146,6 +1237,62 @@ async function loadPatients(
     : loadIdBatch(entities, input, authority);
 }
 
+async function recordPatientListDisclosure(
+  entities: Record<string, any>,
+  authority: Record<string, any>,
+  input: Record<string, any>,
+  returnedCount: number,
+  hasMore: boolean,
+) {
+  await entities.SecurityLog.create({
+    timestamp: new Date().toISOString(),
+    user_email: authority.normalizedEmail,
+    user_role: authority.tenantRole,
+    action: 'PATIENT_LIST_READ_AUTHORIZED',
+    details: {
+      broker: 'listAuthorizedPatients',
+      resource_type: 'Patient',
+      agency_id: authority.agencyId,
+      purpose: input.purpose,
+      mode: input.mode,
+      subject_user_id: authority.userId,
+      membership_id: authority.membership?.id ?? null,
+      membership_version: authority.membership?.version ?? null,
+      returned_count: returnedCount,
+      has_more: hasMore,
+    },
+    ip_address: 'server-side',
+    user_agent: 'server-side',
+  });
+}
+
+async function recheckDisclosureAssignments(
+  entities: Record<string, any>,
+  rows: Array<Record<string, any>>,
+  authorization: Array<Record<string, any>>,
+  authority: Record<string, any>,
+) {
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    const authorized = authorization[index];
+    if (!authorized || authorized.patient_id !== row.id) {
+      throw new PublicError(409, 'Patient read authority changed during request');
+    }
+    if (authorized.basis === 'agency_wide' || authorized.basis === 'patient_creator') continue;
+    if (authorized.basis !== 'care_team_assignment') {
+      throw new PublicError(409, 'Patient read authority changed during request');
+    }
+    const exact = await loadExactAssignment(entities, row.id, authority);
+    if (
+      !exact
+      || exact.status !== 'active'
+      || !sameValue(assignmentAuthoritySnapshot(exact), authorized.assignment)
+    ) {
+      throw new PublicError(409, 'Patient read authority changed during request');
+    }
+  }
+}
+
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
@@ -1179,24 +1326,50 @@ Deno.serve(async (req) => {
     ) {
       throw new PublicError(409, 'Patient read authority changed during request');
     }
+    // Re-resolve tenant authority after the final Patient and assignment reads.
+    // A disclosure must never rely on an authority snapshot captured before
+    // those provider queries completed.
+    const disclosureAuthority = await loadAuthority(
+      base44,
+      input.agencyId,
+      initialAuthority.snapshot,
+    );
+    requirePurposeRole(disclosureAuthority, input.purpose);
+    requireCursorAuthority(input.cursor, input, disclosureAuthority);
 
     const visibleRows = input.mode === 'page'
       ? finalResult.rows.slice(0, input.pageSize)
       : finalResult.rows;
+    await recheckDisclosureAssignments(
+      entities,
+      visibleRows,
+      finalResult.authorization,
+      disclosureAuthority,
+    );
+    // The assignment lookup above is not transactional with membership state.
+    // Perform one terminal authority fence after it; an authorization change
+    // after this read is the unavoidable residual without datastore snapshots.
+    const auditAuthority = await loadAuthority(
+      base44,
+      input.agencyId,
+      disclosureAuthority.snapshot,
+    );
+    requirePurposeRole(auditAuthority, input.purpose);
+    requireCursorAuthority(input.cursor, input, auditAuthority);
     const response: Record<string, any> = {
       success: true,
       mode: input.mode,
       purpose: input.purpose,
       patients: visibleRows.map((row) => pickFields(row, PURPOSE_FIELDS[input.purpose])),
       scope: {
-        agency_id: finalAuthority.agencyId,
-        membership_id: finalAuthority.membership?.id ?? null,
-        membership_version: finalAuthority.membership?.version ?? null,
-        tenant_role: finalAuthority.tenantRole,
+        agency_id: auditAuthority.agencyId,
+        membership_id: auditAuthority.membership?.id ?? null,
+        membership_version: auditAuthority.membership?.version ?? null,
+        tenant_role: auditAuthority.tenantRole,
       },
     };
+    const hasMore = input.mode === 'page' && finalResult.rows.length > input.pageSize;
     if (input.mode === 'page') {
-      const hasMore = finalResult.rows.length > input.pageSize;
       const nextAfterId = hasMore ? visibleRows[visibleRows.length - 1]?.id : null;
       if (hasMore && !exactIdentifier(nextAfterId)) {
         throw new PublicError(409, 'Patient page is ambiguous');
@@ -1207,10 +1380,18 @@ Deno.serve(async (req) => {
         after_id: input.cursor?.after_id ?? null,
         has_more: hasMore,
         next_cursor: hasMore
-          ? pageCursorContext(input, finalAuthority, nextAfterId)
+          ? pageCursorContext(input, auditAuthority, nextAfterId)
           : null,
       };
     }
+    // Log only aggregate disclosure metadata; no patient identifiers or PHI.
+    await recordPatientListDisclosure(
+      entities,
+      auditAuthority,
+      input,
+      visibleRows.length,
+      hasMore,
+    );
     return jsonResponse(response);
   } catch (error) {
     if (error instanceof PublicError) {

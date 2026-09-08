@@ -73,7 +73,7 @@ export default function ClinicalLibraryManager() {
     initialData: []
   });
 
-  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: 'first_name', limit: 200 });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'roster', status: 'active', sort: 'first_name', limit: 200 });
 
   const createMutation = useMutation({
     mutationFn: (data) => base44.entities.ClinicalLibraryTemplate.create(data),

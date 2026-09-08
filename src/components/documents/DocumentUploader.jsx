@@ -41,11 +41,11 @@ export default function DocumentUploader({
   const queryClient = useQueryClient();
 
   const { data: allPatients = [] } = useScopedPatients({
+    purpose: 'roster',
     agencyId: agencyId || undefined,
     sort: '-updated_date',
     limit: 2000,
     enabled: open && !patientId && !!agencyId,
-    readMode: 'authorized-roster',
   });
 
   useEffect(() => {

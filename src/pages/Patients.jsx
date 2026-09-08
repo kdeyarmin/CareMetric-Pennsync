@@ -1,10 +1,14 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
-import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
+import {
+  excludeArchived,
+  invalidateAuthorizedPatientLists,
+  useScopedPatients,
+} from "@/hooks/useScopedPatients";
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { usePatientDetailsRouteScope } from '@/hooks/usePatientDetailsRouteScope';
 import { calculateAge, parseLocalDate, toLocalISODate } from "@/lib/dateLocal";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Plus, User, ArrowUpDown, Users, UserCheck, CalendarPlus } from "lucide-react";
 
@@ -42,16 +46,28 @@ const patientSortKey = (patient) => {
   return `${last} ${first}`.trim().toLowerCase();
 };
 
+const authorizationScopeKey = (scope) => (scope
+  ? JSON.stringify([
+      scope.user_id,
+      scope.agency_id,
+      scope.membership_id,
+      scope.membership_version,
+      scope.tenant_role,
+    ])
+  : null);
+
 export default function Patients() {
+  const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [filters, setFilters] = useState({});
-  const [editingPatient, setEditingPatient] = useState(null);
-  const [selectedPatients, setSelectedPatients] = useState([]);
+  const [editingPatientId, setEditingPatientId] = useState(null);
+  const [selectedPatientIds, setSelectedPatientIds] = useState([]);
   const [mergeDialogOpen, setMergeDialogOpen] = useState(false);
-  const [patientsToMerge, setPatientsToMerge] = useState({ patient1: null, patient2: null });
+  const [patientsToMergeIds, setPatientsToMergeIds] = useState({ patient1: null, patient2: null });
   const [sortBy, setSortBy] = useState('newest');
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const debounceTimer = useRef(null);
+  const lastAuthorizedPatientScopeKey = useRef(null);
 
   // Debounce search input by 300ms to avoid filtering on every keystroke
   useEffect(() => {
@@ -82,23 +98,148 @@ export default function Patients() {
     }
   }, [currentUser?.email]);
 
-  const { data: patients, isLoading, error: patientsError } = useScopedPatients({
+  const patientQuery = useScopedPatients({
+    purpose: 'patient_management',
     sort: '-created_date',
     limit: 2000,
     select: excludeArchived,
   });
+  const {
+    data: patientRows = [],
+    isLoading,
+    isPending: patientsPending,
+    isError: patientsDenied,
+    isSuccess: patientsReady,
+    tenantScope: patientTenantScope,
+  } = patientQuery;
+  const patients = useMemo(
+    () => (patientsReady ? patientRows : []),
+    [patientRows, patientsReady],
+  );
+  const patientScopeKey = authorizationScopeKey(patientTenantScope);
+  const patientScopeChanged = Boolean(
+    patientsReady
+    && lastAuthorizedPatientScopeKey.current
+    && lastAuthorizedPatientScopeKey.current !== patientScopeKey,
+  );
+  const patientStateCurrent = patientsReady && !patientScopeChanged;
+  // Effects clear persisted UI state, but effects run after paint. Every value
+  // read during a direct successful A -> B render must therefore fail closed
+  // independently of that cleanup commit.
+  const effectiveFilters = useMemo(
+    () => (patientScopeChanged ? {} : filters),
+    [filters, patientScopeChanged],
+  );
+  const effectiveDebouncedSearch = patientScopeChanged ? '' : debouncedSearch;
 
-  const { data: allVisits = [] } = useAgencyScopedQuery({
-    queryKey: ['allVisits'],
-    fetch: () => base44.entities.Visit.list('-visit_date', 5000),
-    initialData: [],
-    staleTime: 300000,
+  const visitQuery = useAuthorizedVisits({
+    purpose: 'activity',
+    sort: '-visit_date',
+    limit: 5000,
   });
+  const visitScopeKey = authorizationScopeKey(visitQuery.tenantScope);
+  const visitMetricsAvailable = patientsReady
+    && visitQuery.isSuccess
+    && visitScopeKey === patientScopeKey;
+  const allVisits = useMemo(
+    () => (visitMetricsAvailable ? (visitQuery.data || []) : []),
+    [visitMetricsAvailable, visitQuery.data],
+  );
+  const visitMetricsMessage = visitQuery.isError
+    ? 'Global visit metrics are unavailable for your role or current tenant scope. Visit-based filters and sorting are not being applied.'
+    : visitQuery.isPending
+      ? 'Global visit metrics are being reverified. Visit-based filters and sorting are temporarily paused.'
+      : !visitMetricsAvailable
+        ? 'Global visit metrics are unavailable until Patient and Visit tenant scopes are reverified together. Visit-based filters and sorting are not being applied.'
+        : null;
 
-  // Handle query errors gracefully
-  if (patientsError) {
-    console.error('Error loading patients:', patientsError);
-  }
+  const patientById = useMemo(
+    () => new Map(patients.map((patient) => [patient.id, patient])),
+    [patients],
+  );
+  const editingPatient = patientStateCurrent && editingPatientId
+    ? patientById.get(editingPatientId) || null
+    : null;
+  const selectedPatients = useMemo(
+    () => (patientStateCurrent
+      ? selectedPatientIds.map((id) => patientById.get(id)).filter(Boolean)
+      : []),
+    [patientById, patientStateCurrent, selectedPatientIds],
+  );
+  const patientsToMerge = useMemo(() => ({
+    patient1: patientStateCurrent && patientsToMergeIds.patient1
+      ? patientById.get(patientsToMergeIds.patient1) || null
+      : null,
+    patient2: patientStateCurrent && patientsToMergeIds.patient2
+      ? patientById.get(patientsToMergeIds.patient2) || null
+      : null,
+  }), [patientById, patientStateCurrent, patientsToMergeIds]);
+
+  // Patient objects never live in component state. A focus/reconnect recheck
+  // hides hook data immediately; clear every tenant-bound id at the same
+  // boundary so a later success cannot resolve an id under a different scope.
+  useEffect(() => {
+    const scopeChanged = Boolean(
+      patientsReady
+      && lastAuthorizedPatientScopeKey.current
+      && lastAuthorizedPatientScopeKey.current !== patientScopeKey,
+    );
+    if (patientsReady) {
+      lastAuthorizedPatientScopeKey.current = patientScopeKey;
+    }
+    if (patientsReady && !scopeChanged) return;
+
+    setEditingPatientId(null);
+    setSelectedPatientIds([]);
+    setPatientsToMergeIds({ patient1: null, patient2: null });
+    setMergeDialogOpen(false);
+    setShowForm(false);
+
+    if (scopeChanged) {
+      // Search, MRN, phone, and diagnosis terms can themselves contain PHI.
+      // Do not carry those user-entered values into another tenant scope.
+      setFilters({});
+      setDebouncedSearch('');
+      setSortBy('newest');
+    }
+  }, [patientScopeKey, patientsReady]);
+
+  // A successful refresh can also remove one chart without changing the
+  // membership. Reconcile retained ids exclusively against the new authorized
+  // projection before passing any object into edit, bulk, or merge controls.
+  useEffect(() => {
+    if (!patientsReady) return;
+    setSelectedPatientIds((ids) => {
+      const authorizedIds = ids.filter((id) => patientById.has(id));
+      return authorizedIds.length === ids.length ? ids : authorizedIds;
+    });
+    if (editingPatientId && !patientById.has(editingPatientId)) {
+      setEditingPatientId(null);
+      setShowForm(false);
+    }
+    if (
+      (patientsToMergeIds.patient1 && !patientById.has(patientsToMergeIds.patient1))
+      || (patientsToMergeIds.patient2 && !patientById.has(patientsToMergeIds.patient2))
+    ) {
+      setPatientsToMergeIds({ patient1: null, patient2: null });
+      setMergeDialogOpen(false);
+    }
+  }, [editingPatientId, patientById, patientsReady, patientsToMergeIds]);
+
+  // A role/scope that cannot load agency-wide Visits must not retain an
+  // apparently active Visit filter or sort. Those controls would otherwise
+  // imply that the empty authorization fallback was real Visit data.
+  useEffect(() => {
+    if (visitMetricsAvailable) return;
+    setSortBy((current) => (
+      current === 'last-visit' || current === 'most-visits' ? 'newest' : current
+    ));
+    setFilters((current) => (
+      current.hasVisits && current.hasVisits !== 'all'
+        ? { ...current, hasVisits: 'all' }
+        : current
+    ));
+  }, [visitMetricsAvailable]);
 
   const lastVisitDateByPatientId = useMemo(() => {
     const map = {};
@@ -138,33 +279,46 @@ export default function Patients() {
     // every patient added ON the "To" day and (b) shifted both bounds by the
     // local UTC offset. Parse as local calendar days and make "To" inclusive
     // through end of day.
-    const afterStart = filters.createdAfter ? parseLocalDate(filters.createdAfter) : null;
-    const beforeEnd = filters.createdBefore ? parseLocalDate(filters.createdBefore) : null;
+    const afterStart = effectiveFilters.createdAfter
+      ? parseLocalDate(effectiveFilters.createdAfter)
+      : null;
+    const beforeEnd = effectiveFilters.createdBefore
+      ? parseLocalDate(effectiveFilters.createdBefore)
+      : null;
     if (beforeEnd) beforeEnd.setHours(23, 59, 59, 999);
 
     return (patients || []).filter(patient => {
     if (!patient) return false;
 
     // Fuzzy search across name, MRN, phone, diagnosis (debounced)
-    const matchesSearch = patientMatchesSearch(patient, debouncedSearch);
+    const matchesSearch = patientMatchesSearch(patient, effectiveDebouncedSearch);
 
     // Status filter
-    const matchesStatus = !filters.status || filters.status === 'all' || patient.status === filters.status;
+    const matchesStatus = !effectiveFilters.status
+      || effectiveFilters.status === 'all'
+      || patient.status === effectiveFilters.status;
 
     // Diagnosis filter
-    const matchesDiagnosis = !filters.diagnosis ||
-      (patient.primary_diagnosis || '').toLowerCase().includes(filters.diagnosis.toLowerCase());
+    const matchesDiagnosis = !effectiveFilters.diagnosis
+      || (patient.primary_diagnosis || '')
+        .toLowerCase()
+        .includes(effectiveFilters.diagnosis.toLowerCase());
 
     // Age filter
     const patientAge = calculateAge(patient.date_of_birth);
-    const matchesAgeMin = !filters.ageMin || (patientAge !== null && patientAge >= parseInt(filters.ageMin));
-    const matchesAgeMax = !filters.ageMax || (patientAge !== null && patientAge <= parseInt(filters.ageMax));
+    const matchesAgeMin = !effectiveFilters.ageMin
+      || (patientAge !== null && patientAge >= parseInt(effectiveFilters.ageMin));
+    const matchesAgeMax = !effectiveFilters.ageMax
+      || (patientAge !== null && patientAge <= parseInt(effectiveFilters.ageMax));
 
     // Visit filter — use pre-built index instead of filtering allVisits per patient
-    const patientVisitCount = visitCountByPatientId[patient.id] || 0;
-    const matchesVisits = !filters.hasVisits || filters.hasVisits === 'all' ||
-      (filters.hasVisits === 'yes' && patientVisitCount > 0) ||
-      (filters.hasVisits === 'no' && patientVisitCount === 0);
+    const patientVisitCount = visitMetricsAvailable
+      ? (visitCountByPatientId[patient.id] || 0)
+      : null;
+    const matchesVisits = !visitMetricsAvailable
+      || !effectiveFilters.hasVisits || effectiveFilters.hasVisits === 'all' ||
+      (effectiveFilters.hasVisits === 'yes' && patientVisitCount > 0) ||
+      (effectiveFilters.hasVisits === 'no' && patientVisitCount === 0);
 
     // Date range filter (bounds computed above; inclusive of both boundary days)
     const createdDate = new Date(patient.created_date);
@@ -185,11 +339,13 @@ export default function Patients() {
       case 'oldest':
         return new Date(a.created_date || 0) - new Date(b.created_date || 0);
       case 'last-visit': {
+        if (!visitMetricsAvailable) return 0;
         const aDate = lastVisitDateByPatientId[a.id] || 0;
         const bDate = lastVisitDateByPatientId[b.id] || 0;
         return new Date(bDate) - new Date(aDate);
       }
       case 'most-visits': {
+        if (!visitMetricsAvailable) return 0;
         const aCount = visitCountByPatientId[a.id] || 0;
         const bCount = visitCountByPatientId[b.id] || 0;
         return bCount - aCount;
@@ -202,22 +358,34 @@ export default function Patients() {
         return 0;
     }
   });
-  }, [patients, filters, debouncedSearch, sortBy, visitCountByPatientId, lastVisitDateByPatientId]);
+  }, [
+    effectiveDebouncedSearch,
+    effectiveFilters,
+    lastVisitDateByPatientId,
+    patients,
+    sortBy,
+    visitCountByPatientId,
+    visitMetricsAvailable,
+  ]);
 
   const togglePatientSelection = (patient) => {
-    setSelectedPatients(prev => {
-      const isSelected = prev.some(p => p.id === patient.id);
+    if (!patientsReady || !patientById.has(patient?.id)) return;
+    setSelectedPatientIds(prev => {
+      const isSelected = prev.includes(patient.id);
       if (isSelected) {
-        return prev.filter(p => p.id !== patient.id);
+        return prev.filter(id => id !== patient.id);
       } else {
-        return [...prev, patient];
+        return [...prev, patient.id];
       }
     });
   };
 
   const handleMergeSelected = () => {
-    if (selectedPatients.length === 2) {
-      setPatientsToMerge({ patient1: selectedPatients[0], patient2: selectedPatients[1] });
+    if (selectedPatientIds.length === 2) {
+      setPatientsToMergeIds({
+        patient1: selectedPatientIds[0],
+        patient2: selectedPatientIds[1],
+      });
       setMergeDialogOpen(true);
     }
   };
@@ -233,7 +401,11 @@ export default function Patients() {
         description="Search, filter, and manage the active patient roster."
         favoritePage="Patients"
         actions={
-          <Button onClick={() => { setEditingPatient(null); setShowForm(true); }} className="min-h-[46px] px-5">
+          <Button
+            onClick={() => { setEditingPatientId(null); setShowForm(true); }}
+            disabled={!patientsReady}
+            className="min-h-[46px] px-5"
+          >
             <Plus className="w-4 h-4 mr-2" />
             Add Patient
           </Button>
@@ -251,7 +423,7 @@ export default function Patients() {
           aria-label="Show all patients"
           title="Show all patients"
         >
-          <StatCard label="Total Patients" value={rosterStats.total} icon={Users} tone="navy" />
+          <StatCard label="Total Patients" value={patientsReady ? rosterStats.total : '—'} icon={Users} tone="navy" />
         </button>
         <button
           type="button"
@@ -260,7 +432,7 @@ export default function Patients() {
           aria-label="Filter to active patients"
           title="Filter to active patients"
         >
-          <StatCard label="Active" value={rosterStats.active} icon={UserCheck} tone="emerald" />
+          <StatCard label="Active" value={patientsReady ? rosterStats.active : '—'} icon={UserCheck} tone="emerald" />
         </button>
         <button
           type="button"
@@ -269,38 +441,70 @@ export default function Patients() {
           aria-label="Filter to patients added in the last 30 days"
           title="Filter to patients added in the last 30 days"
         >
-          <StatCard label="New (30 days)" value={rosterStats.recent} icon={CalendarPlus} tone="slate" />
+          <StatCard label="New (30 days)" value={patientsReady ? rosterStats.recent : '—'} icon={CalendarPlus} tone="slate" />
         </button>
       </div>
 
-      {showForm && (
+      {patientStateCurrent && showForm && (
         <PatientForm
+          key={`${patientScopeKey}:${editingPatientId || 'new'}`}
           patient={editingPatient}
           onSuccess={() => {
+            invalidateAuthorizedPatientLists(queryClient);
             setShowForm(false);
-            setEditingPatient(null);
+            setEditingPatientId(null);
           }}
           onCancel={() => {
             setShowForm(false);
-            setEditingPatient(null);
+            setEditingPatientId(null);
           }}
         />
       )}
 
-      <AdvancedPatientFilters
-        onFilterChange={setFilters}
-        activeFilters={filters}
-      />
+      {patientStateCurrent && (
+        <AdvancedPatientFilters
+          key={`patient-filters:${patientScopeKey}`}
+          onFilterChange={(nextFilters) => setFilters({
+            ...nextFilters,
+            hasVisits: visitMetricsAvailable ? nextFilters.hasVisits : 'all',
+          })}
+          activeFilters={visitMetricsAvailable
+            ? filters
+            : { ...filters, hasVisits: 'all' }}
+        />
+      )}
+
+      {visitMetricsMessage && (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          {visitMetricsMessage}
+        </div>
+      )}
 
       {/* Sort & Results Count */}
       <div className="flex items-center justify-between">
         <p className="text-sm text-slate-500">
-          {filteredPatients.length} {filteredPatients.length === 1 ? 'patient' : 'patients'}
-          {filters.search && ` matching "${filters.search}"`}
+          {patientsReady
+            ? `${filteredPatients.length} ${filteredPatients.length === 1 ? 'patient' : 'patients'}`
+            : 'Patient count unavailable'}
+          {patientsReady
+            && effectiveFilters.search
+            && ` matching "${effectiveFilters.search}"`}
         </p>
         <div className="flex items-center gap-2">
           <ArrowUpDown className="w-3.5 h-3.5 text-slate-400" />
-          <Select value={sortBy} onValueChange={setSortBy}>
+          <Select
+            value={sortBy}
+            onValueChange={(nextSort) => {
+              if (
+                !visitMetricsAvailable
+                && (nextSort === 'last-visit' || nextSort === 'most-visits')
+              ) return;
+              setSortBy(nextSort);
+            }}
+          >
             <SelectTrigger className="w-[160px] h-8 text-xs">
               <SelectValue placeholder="Sort by..." />
             </SelectTrigger>
@@ -309,8 +513,8 @@ export default function Patients() {
               <SelectItem value="oldest">Oldest First</SelectItem>
               <SelectItem value="name-asc">Name A-Z</SelectItem>
               <SelectItem value="name-desc">Name Z-A</SelectItem>
-              <SelectItem value="last-visit">Last Visit</SelectItem>
-              <SelectItem value="most-visits">Most Visits</SelectItem>
+              <SelectItem value="last-visit" disabled={!visitMetricsAvailable}>Last Visit</SelectItem>
+              <SelectItem value="most-visits" disabled={!visitMetricsAvailable}>Most Visits</SelectItem>
               <SelectItem value="status">Status</SelectItem>
             </SelectContent>
           </Select>
@@ -322,7 +526,7 @@ export default function Patients() {
         <div className="mb-3 sm:mb-4">
           <BulkPatientActions
             selectedPatients={selectedPatients}
-            onClearSelection={() => setSelectedPatients([])}
+            onClearSelection={() => setSelectedPatientIds([])}
           />
           {selectedPatients.length === 2 && (
             <Button
@@ -337,7 +541,13 @@ export default function Patients() {
 
       {/* Mobile Optimized List — virtualized when the filtered roster is large */}
       <div className="lg:hidden mb-20">
-        {isLoading ? (
+        {patientsDenied ? (
+          <EmptyState
+            icon={User}
+            title="Patient records unavailable"
+            description="Your patient access could not be reverified for the current tenant scope."
+          />
+        ) : isLoading || patientsPending ? (
           <div className="space-y-3">
             <PatientCardSkeleton />
             <PatientCardSkeleton />
@@ -367,11 +577,13 @@ export default function Patients() {
               <SwipeablePatientCard
                 patient={patient}
                 patientDetailsAgencyId={patientDetailsAgencyId}
-                isSelected={selectedPatients.some(p => p.id === patient.id)}
+                isSelected={patientStateCurrent && selectedPatientIds.includes(patient.id)}
                 onToggleSelect={togglePatientSelection}
                 onEdit={(p) => {
-                  setEditingPatient(p);
-                  setShowForm(true);
+                  if (patientsReady && patientById.has(p?.id)) {
+                    setEditingPatientId(p.id);
+                    setShowForm(true);
+                  }
                 }}
               />
             )}
@@ -381,7 +593,14 @@ export default function Patients() {
 
       {/* Desktop Grid View */}
       <div className="hidden lg:grid grid-cols-1 gap-3 sm:gap-4">
-        {isLoading ? (
+        {patientsDenied ? (
+          <EmptyState
+            className="md:col-span-2"
+            icon={User}
+            title="Patient records unavailable"
+            description="Your patient access could not be reverified for the current tenant scope."
+          />
+        ) : isLoading || patientsPending ? (
           <>
             <PatientCardSkeleton />
             <PatientCardSkeleton />
@@ -411,15 +630,13 @@ export default function Patients() {
               // This page owns filtering and sorting (see the sort control above);
               // letting the list re-sort would discard that order.
               sortable={false}
-              selectedPatients={selectedPatients.map(p => p.id)}
+              selectedPatients={patientStateCurrent ? selectedPatientIds : []}
               onSelectionChange={(ids) => {
-                const selected = filteredPatients.filter(p => ids.includes(p.id));
-                setSelectedPatients(selected);
+                setSelectedPatientIds(ids.filter((id) => patientById.has(id)));
               }}
               onPatientSelect={(patientId) => {
-                const patient = patients.find(p => p.id === patientId);
-                if (patient) {
-                  setEditingPatient(patient);
+                if (patientById.has(patientId)) {
+                  setEditingPatientId(patientId);
                   setShowForm(true);
                 }
               }}
@@ -432,11 +649,13 @@ export default function Patients() {
 
       {/* Patient Merge Dialog */}
       <PatientMergeDialog
-        open={mergeDialogOpen}
+        key={`patient-merge:${patientScopeKey || 'scope-unavailable'}`}
+        open={patientStateCurrent && mergeDialogOpen}
         onOpenChange={(open) => {
           setMergeDialogOpen(open);
           if (!open) {
-            setSelectedPatients([]);
+            setSelectedPatientIds([]);
+            setPatientsToMergeIds({ patient1: null, patient2: null });
           }
         }}
         patient1={patientsToMerge.patient1}

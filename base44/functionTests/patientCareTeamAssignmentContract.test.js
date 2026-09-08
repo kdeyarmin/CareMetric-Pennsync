@@ -26,6 +26,25 @@ async function listSourceFiles(directory) {
   return nested.flat();
 }
 
+function isProductionSource(path) {
+  return !/(?:^|\/)(?:test|__tests__)(?:\/|$)|\.(?:spec|test)\.[cm]?[jt]sx?$/.test(path);
+}
+
+function hasNonLiteralFunctionTransportTarget(source) {
+  const calls = source.match(
+    /\b(?:[A-Za-z_$][\w$]*\s*\.\s*)*functions\s*\.\s*(?:invoke|fetch)\s*\(/g,
+  ) || [];
+  const literalCalls = source.match(
+    /\b(?:[A-Za-z_$][\w$]*\s*\.\s*)*functions\s*\.\s*(?:invoke|fetch)\s*\(\s*(['"])[A-Za-z0-9._/-]+\1/g,
+  ) || [];
+  return calls.length !== literalCalls.length;
+}
+
+function hasUnreviewedAssignmentBrokerReference(source) {
+  return source.includes('managePatientCareTeamAssignment')
+    || hasNonLiteralFunctionTransportTarget(source);
+}
+
 const OWNER = {
   id: 'owner-1', email: 'Owner@Example.test', role: 'admin', is_active: true, is_verified: true,
 };
@@ -425,14 +444,60 @@ test('the client boundary is unwired and invokes only the finite broker', async 
     fileURLToPath(wrapperUrl),
     fileURLToPath(new URL('../../src/functions/managePatientCareTeamAssignment.spec.js', import.meta.url)),
   ]);
-  const unexpectedCallsites = [];
+  const planOnlyBrokerLiterals = new Map([
+    [
+      fileURLToPath(new URL('../../src/lib/liveReadinessFixtureManifest.js', import.meta.url)),
+      /\bbroker\s*:\s*['"]managePatientCareTeamAssignment['"]/g,
+    ],
+    [
+      fileURLToPath(new URL('../../src/lib/liveReadinessFixtureManifest.test.js', import.meta.url)),
+      /\bbroker\s*:\s*['"]managePatientCareTeamAssignment['"]/g,
+    ],
+  ]);
+  const unexpectedCallsites = new Set();
   for (const path of await listSourceFiles(srcRoot)) {
     if (allowed.has(path)) continue;
-    if ((await readFile(path, 'utf8')).includes('managePatientCareTeamAssignment')) {
-      unexpectedCallsites.push(path);
+    let source = await readFile(path, 'utf8');
+    const planOnlyLiteral = planOnlyBrokerLiterals.get(path);
+    if (planOnlyLiteral) {
+      const matches = source.match(planOnlyLiteral) || [];
+      if (matches.length !== 1) {
+        unexpectedCallsites.add(path);
+        continue;
+      }
+      source = source.replace(planOnlyLiteral, '');
+    }
+    // Keep this deliberately broader than a direct invoke check: imports,
+    // re-exports, aliases, and wrapper calls are all unreviewed client paths.
+    if (source.includes('managePatientCareTeamAssignment')) {
+      unexpectedCallsites.add(path);
+    }
+    // Function routing in production source must also remain statically
+    // reviewable. This closes data-driven calls through the plan's broker field.
+    if (isProductionSource(path) && hasNonLiteralFunctionTransportTarget(source)) {
+      unexpectedCallsites.add(path);
     }
   }
-  assert.deepEqual(unexpectedCallsites, []);
+  assert.deepEqual([...unexpectedCallsites], []);
+});
+
+test('the client-boundary scanner rejects wrapper references and dynamic transport targets', () => {
+  for (const source of [
+    "import { managePatientCareTeamAssignment } from './functions/managePatientCareTeamAssignment';",
+    "export { managePatientCareTeamAssignment as assignmentBroker } from './functions/managePatientCareTeamAssignment';",
+    'const assignmentBroker = managePatientCareTeamAssignment; assignmentBroker(input);',
+    'managePatientCareTeamAssignment(input);',
+    'base44.functions.invoke(LIVE_READINESS_FIXTURE_ASSIGNMENTS[0].broker, payload);',
+    'base44.functions.fetch(brokerPath, request);',
+  ]) {
+    assert.equal(hasUnreviewedAssignmentBrokerReference(source), true, source);
+  }
+  assert.equal(
+    hasUnreviewedAssignmentBrokerReference(
+      "base44.functions.invoke('listAuthorizedPatients', payload);",
+    ),
+    false,
+  );
 });
 
 test('assignment mutations are hard-paused before authentication or privileged access', async () => {

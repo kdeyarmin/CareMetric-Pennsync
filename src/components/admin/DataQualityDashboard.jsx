@@ -1,73 +1,145 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { describeCallerPatientScope, agencyQueryKey } from '@/lib/agencyRoster';
-import { getStaffRole } from "@/lib/roles";
+import { getStaffRole, getTrustedTenantContext } from "@/lib/roles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { AlertTriangle, CheckCircle2, Users, FileText, ClipboardCheck } from "lucide-react";
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
+
+const EMPTY_ROWS = Object.freeze([]);
+// PersonnelCredential's administrator read is not bound to an immutable agency
+// membership. Client-side email intersection is not sufficient authorization.
+const CREDENTIAL_METRICS_AVAILABLE = false;
+const FRESH_QUERY_OPTIONS = Object.freeze({
+  retry: false,
+  staleTime: 0,
+  refetchOnMount: 'always',
+  refetchOnWindowFocus: 'always',
+  refetchOnReconnect: 'always',
+});
+
+function settledSuccessfullyAfterMount(query) {
+  return query.isSuccess
+    && query.isFetchedAfterMount
+    && query.fetchStatus === 'idle'
+    && !query.error
+    && !query.isFetching
+    && !query.isPaused;
+}
+
+function tenantScopeKey(scope) {
+  if (!scope) return null;
+  return JSON.stringify([
+    scope.user_id,
+    scope.agency_id,
+    scope.membership_id,
+    scope.membership_version,
+    scope.tenant_role,
+  ]);
+}
 
 export default function DataQualityDashboard() {
-  const { data: currentUser } = useQuery({
+  const currentUserQuery = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
+    ...FRESH_QUERY_OPTIONS,
   });
+  const currentUserAvailable = settledSuccessfullyAfterMount(currentUserQuery);
+  const currentUser = currentUserAvailable ? currentUserQuery.data : null;
 
 
-  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: null, limit: ALL_ROWS });
+  const patientQuery = useScopedPatients({
+    purpose: 'data_quality',
+    status: 'active',
+    sort: null,
+    limit: ALL_ROWS,
+    enabled: currentUserAvailable,
+  });
+  const patients = patientQuery.isSuccess ? patientQuery.data : EMPTY_ROWS;
 
-  const { data: users = [] } = useQuery({
-    queryKey: ['all-users-quality', agencyQueryKey(currentUser)],
+  const visitQuery = useAuthorizedVisits({
+    purpose: 'data_quality',
+    status: 'completed',
+    sort: '-visit_date',
+    limit: ALL_ROWS,
+    enabled: currentUserAvailable,
+  });
+  const visits = visitQuery.isSuccess ? visitQuery.data : EMPTY_ROWS;
+  const tenantScopesMismatch = patientQuery.isSuccess
+    && visitQuery.isSuccess
+    && !sameAuthorizedTenantScope(patientQuery.tenantScope, visitQuery.tenantScope);
+  const authorizedDataAvailable = patientQuery.isSuccess
+    && visitQuery.isSuccess
+    && !tenantScopesMismatch;
+  const dataQualityAuthorityKey = authorizedDataAvailable
+    ? tenantScopeKey(patientQuery.tenantScope)
+    : null;
+  const auxiliaryTenantScope = currentUserAvailable
+    ? getTrustedTenantContext(currentUser)
+    : null;
+  const auxiliaryAuthorityMatches = authorizedDataAvailable
+    && sameAuthorizedTenantScope(auxiliaryTenantScope, patientQuery.tenantScope);
+
+  const usersQuery = useQuery({
+    queryKey: ['all-users-quality', dataQualityAuthorityKey, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', ALL_ROWS);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     },
-    enabled: !!currentUser,
-    initialData: [],
+    enabled: Boolean(dataQualityAuthorityKey && auxiliaryAuthorityMatches),
+    ...FRESH_QUERY_OPTIONS,
   });
+  const usersAvailable = auxiliaryAuthorityMatches
+    && settledSuccessfullyAfterMount(usersQuery);
+  const users = usersAvailable ? usersQuery.data : EMPTY_ROWS;
 
   // How many charts carry no agency attribution at all. These stay visible on
   // purpose (see src/lib/agencyScope.js), but they are the set a stricter rule
   // would silently hide, so the backlog belongs on the data-quality board rather
   // than buried in the filter. Keyed on the roster size so it recomputes when
   // charts land; the staff roster behind it is memoized app-wide.
-  const { data: agencyScope } = useQuery({
-    queryKey: ['patients', 'attribution', agencyQueryKey(currentUser), patients.length],
+  const agencyScopeQuery = useQuery({
+    queryKey: [
+      'patients', 'attribution', dataQualityAuthorityKey,
+      agencyQueryKey(currentUser), patients.length,
+    ],
     queryFn: () => describeCallerPatientScope(patients, currentUser),
-    enabled: !!currentUser,
-    initialData: null,
+    enabled: Boolean(dataQualityAuthorityKey && usersAvailable),
+    ...FRESH_QUERY_OPTIONS,
   });
+  const agencyScopeAvailable = usersAvailable
+    && settledSuccessfullyAfterMount(agencyScopeQuery);
+  const agencyScope = agencyScopeAvailable ? agencyScopeQuery.data : null;
 
-  const { data: visits = [] } = useAgencyScopedQuery({
-    queryKey: ['recent-visits-quality'],
-    fetch: () => base44.entities.Visit.filter({ status: 'completed' }, '-visit_date', ALL_ROWS),
-    initialData: [],
-  });
-
-  const { data: credentials = [] } = useQuery({
-    queryKey: ['credentials-quality'],
-    queryFn: () => base44.entities.PersonnelCredential.list('-expiration_date', ALL_ROWS),
-    initialData: [],
-  });
+  const allDataAvailable = authorizedDataAvailable
+    && auxiliaryAuthorityMatches
+    && usersAvailable
+    && agencyScopeAvailable;
 
   const qualityMetrics = useMemo(() => {
     // Patient data quality
-    const patientIssues = patients.filter(p => 
-      !p.emergency_contact_name || 
-      !p.emergency_contact_phone || 
-      !p.physician_name || 
-      !p.phone
-    );
+    const patientIssues = patientQuery.isSuccess
+      ? patients.filter(p =>
+        !p.emergency_contact_name
+        || !p.emergency_contact_phone
+        || !p.physician_name
+        || !p.phone
+      )
+      : null;
 
-    const patientCompleteness = patients.length > 0 
-      ? ((patients.length - patientIssues.length) / patients.length * 100).toFixed(1)
-      : 100;
+    const patientCompleteness = patientQuery.isSuccess
+      ? patients.length > 0
+        ? ((patients.length - patientIssues.length) / patients.length * 100).toFixed(1)
+        : null
+      : null;
 
     const userIssues = users.filter(u => {
       if (!u.phone || u.phone === '') return true;
@@ -79,40 +151,23 @@ export default function DataQualityDashboard() {
 
     const userCompleteness = users.length > 0
       ? ((users.length - userIssues.length) / users.length * 100).toFixed(1)
-      : 100;
+      : null;
 
     // Visit documentation quality
-    const visitIssues = visits.filter(v => 
-      !v.nurse_notes || 
-      v.nurse_notes.length < 100 ||
-      !v.vital_signs ||
-      !v.homebound_justification
-    );
+    const visitIssues = visitQuery.isSuccess
+      ? visits.filter(v =>
+        !v.nurse_notes ||
+        v.nurse_notes.length < 100 ||
+        !v.vital_signs ||
+        !v.homebound_justification
+      )
+      : null;
 
-    const visitCompleteness = visits.length > 0
-      ? ((visits.length - visitIssues.length) / visits.length * 100).toFixed(1)
-      : 100;
-
-    // Credential tracking. PersonnelCredential is 1-to-many per user (multiple
-    // credential types / renewals), so the row count is not the number of users
-    // covered — count distinct owners instead.
-    //
-    // The credential list is NOT agency-scoped while `users` is, so counting
-    // every distinct user_id let owners outside this roster (other tenants,
-    // ex-employees, users past the fetch window) inflate coverage past 100%
-    // and clamp "missing" to 0 — hiding the exact gap this dashboard exists to
-    // surface. Intersect against the loaded roster, matching the reference
-    // implementation in QuickHealthOverview.jsx. PersonnelCredential.user_id
-    // holds the user's email.
-    const nurseEmails = new Set(
-      users.filter(u => getStaffRole(u) === 'nurse').map(u => u.email).filter(Boolean)
-    );
-    const credentialOwners = new Set(credentials.map(c => c.user_id).filter(id => nurseEmails.has(id)));
-    const coveredUsers = credentialOwners.size;
-    const missingCredentials = Math.max(0, nurseEmails.size - coveredUsers);
-    const credentialCoverage = nurseEmails.size > 0
-      ? ((coveredUsers / nurseEmails.size) * 100).toFixed(1)
-      : 100;
+    const visitCompleteness = visitQuery.isSuccess
+      ? visits.length > 0
+        ? ((visits.length - visitIssues.length) / visits.length * 100).toFixed(1)
+        : null
+      : null;
 
     return {
       patientIssues,
@@ -121,20 +176,38 @@ export default function DataQualityDashboard() {
       userCompleteness,
       visitIssues,
       visitCompleteness,
-      missingCredentials,
-      credentialCoverage
     };
-  }, [patients, users, visits, credentials]);
+  }, [patients, patientQuery.isSuccess, users, visits, visitQuery.isSuccess]);
 
   const overallScore = useMemo(() => {
+    if (
+      qualityMetrics.patientCompleteness === null
+      || qualityMetrics.userCompleteness === null
+      || qualityMetrics.visitCompleteness === null
+      || !allDataAvailable
+    ) return null;
     const scores = [
       parseFloat(qualityMetrics.patientCompleteness),
       parseFloat(qualityMetrics.userCompleteness),
       parseFloat(qualityMetrics.visitCompleteness),
-      parseFloat(qualityMetrics.credentialCoverage)
     ];
     return (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1);
-  }, [qualityMetrics]);
+  }, [allDataAvailable, qualityMetrics]);
+
+  if (!allDataAvailable) {
+    return (
+      <Alert className="border-amber-300 bg-amber-50" role="status">
+        <AlertTriangle className="h-4 w-4 text-amber-700" />
+        <AlertDescription className="text-amber-950">
+          {patientQuery.isError || visitQuery.isError || tenantScopesMismatch
+            ? 'Data quality metrics are unavailable because Patient or Visit access could not be verified. Platform owners remain blocked until a reviewed agency selector is available.'
+            : usersQuery.isError || agencyScopeQuery.isError
+              ? 'Data quality metrics are unavailable because a tenant-scoped staff or attribution source could not be verified. No scores or issue counts are shown.'
+              : 'Reverifying matching Patient, Visit, staff, and attribution access before loading data quality metrics…'}
+        </AlertDescription>
+      </Alert>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -144,12 +217,24 @@ export default function DataQualityDashboard() {
           <p className="text-sm text-slate-500">Monitor data completeness and compliance</p>
         </div>
         <div className="text-right">
-          <p className="text-sm text-slate-500">Overall Score</p>
-          <p className="text-3xl font-bold text-indigo-600">{overallScore}%</p>
+          <p className="text-sm text-slate-500">Verified-source Score</p>
+          <p className="text-3xl font-bold text-indigo-600">
+            {overallScore === null ? 'Unavailable' : `${overallScore}%`}
+          </p>
         </div>
       </div>
 
-      {parseFloat(overallScore) < 90 && (
+      {!CREDENTIAL_METRICS_AVAILABLE && (
+        <Alert className="border-amber-300 bg-amber-50" role="status">
+          <AlertTriangle className="h-4 w-4 text-amber-700" />
+          <AlertDescription className="text-amber-950">
+            Credential coverage is unavailable until PersonnelCredential has a
+            tenant-bound reporting projection. It is excluded from the verified-source score.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {overallScore !== null && parseFloat(overallScore) < 90 && (
         <Alert className="border-amber-300 bg-amber-50">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <AlertDescription className="text-amber-800">
@@ -181,11 +266,17 @@ export default function DataQualityDashboard() {
             <Users className="h-4 w-4 text-slate-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{qualityMetrics.patientCompleteness}%</div>
-            <Progress value={parseFloat(qualityMetrics.patientCompleteness)} className="mt-2" />
-            <p className="text-xs text-slate-500 mt-2">
-              {qualityMetrics.patientIssues.length} records missing critical data
-            </p>
+            {qualityMetrics.patientCompleteness === null ? (
+              <p className="text-sm font-semibold text-amber-800">No patient denominator</p>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{qualityMetrics.patientCompleteness}%</div>
+                <Progress value={parseFloat(qualityMetrics.patientCompleteness)} className="mt-2" />
+                <p className="text-xs text-slate-500 mt-2">
+                  {qualityMetrics.patientIssues.length} records missing critical data
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -195,11 +286,17 @@ export default function DataQualityDashboard() {
             <Users className="h-4 w-4 text-slate-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{qualityMetrics.userCompleteness}%</div>
-            <Progress value={parseFloat(qualityMetrics.userCompleteness)} className="mt-2" />
-            <p className="text-xs text-slate-500 mt-2">
-              {qualityMetrics.userIssues.length} profiles incomplete
-            </p>
+            {qualityMetrics.userCompleteness === null ? (
+              <p className="text-sm font-semibold text-amber-800">No user denominator</p>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{qualityMetrics.userCompleteness}%</div>
+                <Progress value={parseFloat(qualityMetrics.userCompleteness)} className="mt-2" />
+                <p className="text-xs text-slate-500 mt-2">
+                  {qualityMetrics.userIssues.length} profiles incomplete
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -209,11 +306,17 @@ export default function DataQualityDashboard() {
             <FileText className="h-4 w-4 text-slate-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{qualityMetrics.visitCompleteness}%</div>
-            <Progress value={parseFloat(qualityMetrics.visitCompleteness)} className="mt-2" />
-            <p className="text-xs text-slate-500 mt-2">
-              {qualityMetrics.visitIssues.length} visits need improvement
-            </p>
+            {qualityMetrics.visitCompleteness === null ? (
+              <p className="text-sm font-semibold text-amber-800">No completed-visit denominator</p>
+            ) : (
+              <>
+                <div className="text-2xl font-bold">{qualityMetrics.visitCompleteness}%</div>
+                <Progress value={parseFloat(qualityMetrics.visitCompleteness)} className="mt-2" />
+                <p className="text-xs text-slate-500 mt-2">
+                  {qualityMetrics.visitIssues.length} visits need improvement
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -223,10 +326,9 @@ export default function DataQualityDashboard() {
             <ClipboardCheck className="h-4 w-4 text-slate-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{qualityMetrics.credentialCoverage}%</div>
-            <Progress value={parseFloat(qualityMetrics.credentialCoverage)} className="mt-2" />
+            <p className="text-sm font-semibold text-amber-800">Unavailable</p>
             <p className="text-xs text-slate-500 mt-2">
-              {qualityMetrics.missingCredentials} employees need credential upload
+              Tenant-bound credential projection required
             </p>
           </CardContent>
         </Card>
@@ -238,7 +340,11 @@ export default function DataQualityDashboard() {
             <CardTitle className="text-lg">Patient Record Issues</CardTitle>
           </CardHeader>
           <CardContent>
-            {qualityMetrics.patientIssues.length === 0 ? (
+            {patients.length === 0 ? (
+              <p className="text-sm text-amber-800">
+                No active patient records are available for completeness scoring.
+              </p>
+            ) : qualityMetrics.patientIssues.length === 0 ? (
               <div className="flex items-center gap-2 text-green-600">
                 <CheckCircle2 className="h-5 w-5" />
                 <span>All patient records complete</span>
@@ -273,7 +379,11 @@ export default function DataQualityDashboard() {
             <CardTitle className="text-lg">User Profile Issues</CardTitle>
           </CardHeader>
           <CardContent>
-            {qualityMetrics.userIssues.length === 0 ? (
+            {users.length === 0 ? (
+              <p className="text-sm text-amber-800">
+                No agency user profiles are available for completeness scoring.
+              </p>
+            ) : qualityMetrics.userIssues.length === 0 ? (
               <div className="flex items-center gap-2 text-green-600">
                 <CheckCircle2 className="h-5 w-5" />
                 <span>All user profiles complete</span>

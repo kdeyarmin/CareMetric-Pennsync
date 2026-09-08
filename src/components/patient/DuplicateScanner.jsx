@@ -186,7 +186,7 @@ function EnabledDuplicateScanner() {
 
 
   // Fetch all patients for advanced scanning (agency-scoped for facility admins)
-  const { data: allPatients = [] } = useScopedPatients({ sort: '-created_date', limit: 10000, enabled: scanMode === 'advanced' });
+  const { data: allPatients = [] } = useScopedPatients({ purpose: 'deduplication', sort: '-created_date', limit: 10000, enabled: scanMode === 'advanced' });
 
   const scanAndRemoveDuplicates = async () => {
     // Both modes are paused. Standard mode called a service-role dry-run whose

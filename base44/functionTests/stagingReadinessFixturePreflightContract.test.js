@@ -7,6 +7,7 @@ import test from 'node:test';
 import JSON5 from 'json5';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
 import {
+  LIVE_READINESS_FIXTURE_AGENCIES,
   LIVE_READINESS_FIXTURE_ACTORS,
   LIVE_READINESS_FIXTURE_SET_ID,
   LIVE_READINESS_STAGING_TARGET,
@@ -23,6 +24,8 @@ const USER_BEARER = 'Bearer fixture-user-token';
 const SERVICE_BEARER = 'Bearer fixture-service-token';
 const ACTOR_KEYS = Object.keys(LIVE_READINESS_FIXTURE_ACTORS)
   .filter((actorKey) => actorKey !== 'platform_owner');
+const AGENCY_CODES = Object.fromEntries(Object.entries(LIVE_READINESS_FIXTURE_AGENCIES)
+  .map(([agencyKey, agency]) => [agencyKey, agency.agency_code]));
 
 const OWNER = {
   id: 'owner-1',
@@ -77,8 +80,9 @@ function project(row, fields) {
 }
 
 async function loadHandler({
-  callers = [OWNER, OWNER],
+  callers = [OWNER, OWNER, OWNER],
   users = userRows(),
+  agencies = [],
   memberships = [],
   patients = [],
   assignments = [],
@@ -104,11 +108,13 @@ async function loadHandler({
 
   const state = {
     User: structuredClone(users),
+    Agency: structuredClone(agencies),
     AgencyMembership: structuredClone(memberships),
     Patient: structuredClone(patients),
     PatientCareTeamAssignment: structuredClone(assignments),
     StagingReadinessFixture: structuredClone(fixtures),
   };
+  const runtime = { appPublicUrl };
   const calls = {
     clientConstructions: 0,
     clientRequests: [],
@@ -127,7 +133,7 @@ async function loadHandler({
         fields: structuredClone(fields),
       });
       if (nonArrayEntity === entity) return null;
-      if (mutateRows) mutateRows({ entity, entityCall, state });
+      if (mutateRows) mutateRows({ entity, entityCall, state, runtime, callers });
       const rows = ignoreFilters.has(entity)
         ? state[entity]
         : state[entity].filter((row) => matches(row, query));
@@ -169,7 +175,7 @@ async function loadHandler({
     env: {
       get: (name) => ({
         STAGING_READINESS_PREFLIGHT_RELEASE: release,
-        APP_PUBLIC_URL: appPublicUrl,
+        APP_PUBLIC_URL: runtime.appPublicUrl,
         SUPER_ADMIN_EMAIL: superAdminEmail,
       })[name],
     },
@@ -181,7 +187,7 @@ async function loadHandler({
     delete globalThis[globalName];
   }
   assert.equal(typeof handler, 'function');
-  return { handler, calls, state };
+  return { handler, calls, state, runtime };
 }
 
 async function invoke(handler, body = requestBody(), {
@@ -287,6 +293,25 @@ test('source is read-only, target-bound, body-bounded, and logs no error details
     [...actorDeclaration[1].matchAll(/'([^']+)'/g)].map((match) => match[1]),
     ACTOR_KEYS,
   );
+  const agencyDeclaration = source.match(/const AGENCY_KEYS = \[([^\]]+)\] as const;/);
+  assert.ok(agencyDeclaration);
+  assert.deepEqual(
+    [...agencyDeclaration[1].matchAll(/'([^']+)'/g)].map((match) => match[1]),
+    Object.keys(AGENCY_CODES),
+  );
+  for (const [agencyKey, agencyCode] of Object.entries(AGENCY_CODES)) {
+    assert.ok(source.includes(`${agencyKey}: '${agencyCode}'`));
+  }
+
+  const finalInspection = source.indexOf('const finalSnapshot = await inspectPreflight');
+  const terminalAuth = source.indexOf('const terminalCaller = await base44.auth.me()');
+  const terminalTarget = source.indexOf('requireRuntimeTarget(req);', terminalAuth);
+  const terminalOwner = source.indexOf('loadProtectedOwner(terminalCaller, owner);');
+  const publicDisclosure = source.indexOf('return jsonResponse(publicResult(finalSnapshot));');
+  assert.ok(finalInspection < terminalAuth);
+  assert.ok(terminalAuth < terminalTarget);
+  assert.ok(terminalTarget < terminalOwner);
+  assert.ok(terminalOwner < publicDisclosure);
 });
 
 test('eligible pristine actors produce only role-keyed, non-identifying readiness output', async () => {
@@ -294,11 +319,13 @@ test('eligible pristine actors produce only role-keyed, non-identifying readines
   const { response, json } = await invoke(handler);
 
   assert.equal(response.status, 200);
-  assert.equal(json.status, 'immutable_authority_preflight_passed');
-  assert.equal(json.immutable_authority_clear, true);
+  assert.equal(json.status, 'point_in_time_read_only_preflight_passed');
+  assert.equal(json.point_in_time_clear, true);
+  assert.equal(Object.hasOwn(json, 'immutable_authority_clear'), false);
   assert.equal(json.inspection_completed, true);
   assert.equal(Object.hasOwn(json, 'success'), false);
   assert.equal(json.counts.eligible_actors, 4);
+  assert.equal(json.counts.agency_code_collisions, 0);
   assert.equal(json.counts.collision_categories, 0);
   assert.equal(json.safeguards.data_mutations_performed, false);
   assert.equal(json.safeguards.outbound_actions_performed, false);
@@ -306,6 +333,10 @@ test('eligible pristine actors produce only role-keyed, non-identifying readines
   assert.equal(json.safeguards.phi_values_exposed, false);
   assert.equal(json.safeguards.later_writes_authorized, false);
   assert.deepEqual(Object.keys(json.checks.actors), Object.keys(ACTORS));
+  assert.deepEqual(json.checks.agency_code_collisions, {
+    agency_a: false,
+    agency_b: false,
+  });
   for (const actor of Object.values(json.checks.actors)) {
     assert.deepEqual(actor, {
       user: 'eligible',
@@ -321,8 +352,12 @@ test('eligible pristine actors produce only role-keyed, non-identifying readines
     assert.equal(serialized.includes(binding.user_id), false);
     assert.equal(serialized.includes(binding.email), false);
   }
+  for (const agencyCode of Object.values(AGENCY_CODES)) {
+    assert.equal(serialized.includes(agencyCode), false);
+  }
 
-  assert.equal(calls.auth, 2);
+  assert.equal(calls.auth, 3);
+  assert.equal(calls.filters.filter((call) => call.entity === 'Agency').length, 4);
   assert.equal(calls.filters.filter((call) => call.entity === 'User').length, 16);
   assert.equal(calls.filters.filter((call) => call.entity === 'AgencyMembership').length, 10);
   assert.equal(calls.filters.filter((call) => call.entity === 'Patient').length, 8);
@@ -331,11 +366,138 @@ test('eligible pristine actors produce only role-keyed, non-identifying readines
     8,
   );
   assert.equal(calls.filters.filter((call) => call.entity === 'StagingReadinessFixture').length, 2);
+  for (const [agencyKey, agencyCode] of Object.entries(AGENCY_CODES)) {
+    const matchingCalls = calls.filters.filter((call) => (
+      call.entity === 'Agency' && call.query.agency_code === agencyCode
+    ));
+    assert.equal(matchingCalls.length, 2, agencyKey);
+    for (const call of matchingCalls) assert.deepEqual(call.fields, ['id', 'agency_code']);
+  }
   for (const call of calls.filters) {
     assert.equal(call.limit, 2);
     assert.equal(call.skip, undefined);
     assert.ok(Array.isArray(call.fields) && call.fields.length > 0);
   }
+});
+
+test('canonical agency-code collisions block using only booleans and bounded counts', async () => {
+  const agencies = [
+    { id: 'existing-agency-a', agency_code: AGENCY_CODES.agency_a },
+    { id: 'unrelated-agency', agency_code: 'UNRELATED' },
+  ];
+  const { handler } = await loadHandler({ agencies });
+  const { response, json } = await invoke(handler);
+
+  assert.equal(response.status, 200);
+  assert.equal(json.status, 'blocked');
+  assert.equal(json.point_in_time_clear, false);
+  assert.deepEqual(json.checks.agency_code_collisions, {
+    agency_a: true,
+    agency_b: false,
+  });
+  assert.equal(json.counts.agency_code_collisions, 1);
+  assert.equal(json.counts.collision_categories, 1);
+  assert.ok(json.limitations.includes('agency_code_checks_are_bounded_point_in_time_only'));
+  assert.ok(json.limitations.includes('does_not_reserve_agency_codes_or_authorize_creation'));
+  assert.equal(json.limitations.includes('does_not_prove_agency_key_collision_absence'), false);
+
+  const serialized = JSON.stringify(json);
+  for (const agency of agencies) {
+    assert.equal(serialized.includes(agency.id), false);
+    assert.equal(serialized.includes(agency.agency_code), false);
+  }
+});
+
+test('agency-code provider ambiguity, malformed rows, and out-of-scope rows fail closed', async () => {
+  const cases = [
+    {
+      agencies: [
+        { id: 'agency-a-1', agency_code: AGENCY_CODES.agency_a },
+        { id: 'agency-a-2', agency_code: AGENCY_CODES.agency_a },
+      ],
+    },
+    {
+      agencies: [{ id: '$malformed', agency_code: AGENCY_CODES.agency_a }],
+    },
+    {
+      agencies: [{ id: 'foreign-agency', agency_code: 'FOREIGN' }],
+      ignoreFilters: new Set(['Agency']),
+    },
+  ];
+
+  for (const options of cases) {
+    const { handler, calls } = await loadHandler(options);
+    const { response, json } = await invoke(handler);
+    assert.equal(response.status, 409);
+    assert.equal(Object.hasOwn(json, 'inspection_completed'), false);
+    assert.equal(Object.hasOwn(json, 'checks'), false);
+    assert.equal(Object.hasOwn(json, 'counts'), false);
+    assert.ok(calls.filters.filter((call) => call.entity === 'Agency').length <= 1);
+    const serialized = JSON.stringify(json);
+    for (const agency of options.agencies) {
+      assert.equal(serialized.includes(agency.id), false);
+      assert.equal(serialized.includes(agency.agency_code), false);
+    }
+  }
+});
+
+test('agency-code snapshot drift is blocked before any readiness disclosure', async () => {
+  const { handler, calls } = await loadHandler({
+    mutateRows: ({ entity, entityCall, state }) => {
+      if (entity === 'Agency' && entityCall === 3) {
+        state.Agency.push({ id: 'racing-agency-a', agency_code: AGENCY_CODES.agency_a });
+      }
+    },
+  });
+  const { response, json } = await invoke(handler);
+
+  assert.equal(response.status, 409);
+  assert.equal(calls.filters.filter((call) => call.entity === 'Agency').length, 4);
+  assert.equal(Object.hasOwn(json, 'inspection_completed'), false);
+  assert.equal(Object.hasOwn(json, 'checks'), false);
+  assert.equal(JSON.stringify(json).includes('racing-agency-a'), false);
+  assert.equal(JSON.stringify(json).includes(AGENCY_CODES.agency_a), false);
+});
+
+test('terminal owner and runtime target races fail after final inspection without disclosure', async () => {
+  for (const ownerPatch of [
+    { is_active: false },
+    { email: 'changed-during-final-inspection@example.test' },
+  ]) {
+    const terminalOwner = { ...OWNER };
+    const { handler, calls } = await loadHandler({
+      callers: [OWNER, OWNER, terminalOwner],
+      mutateRows: ({ entity, entityCall }) => {
+        if (entity === 'Agency' && entityCall === 3) Object.assign(terminalOwner, ownerPatch);
+      },
+    });
+    const { response, json } = await invoke(handler);
+
+    assert.equal(response.status, 409);
+    assert.equal(calls.auth, 3);
+    assert.equal(calls.filters.filter((call) => call.entity === 'Agency').length, 4);
+    assert.equal(calls.filters.filter((call) => (
+      call.entity === 'StagingReadinessFixture'
+    )).length, 2);
+    assert.equal(Object.hasOwn(json, 'inspection_completed'), false);
+    assert.equal(Object.hasOwn(json, 'checks'), false);
+    assert.equal(Object.hasOwn(json, 'counts'), false);
+    assert.equal(JSON.stringify(json).includes(terminalOwner.email), false);
+  }
+
+  const targetRace = await loadHandler({
+    mutateRows: ({ entity, entityCall, runtime }) => {
+      if (entity === 'Agency' && entityCall === 3) {
+        runtime.appPublicUrl = 'https://caremetricai.base44.app/';
+      }
+    },
+  });
+  const targetResult = await invoke(targetRace.handler);
+  assert.equal(targetResult.response.status, 503);
+  assert.equal(targetRace.calls.auth, 3);
+  assert.equal(targetRace.calls.filters.filter((call) => call.entity === 'Agency').length, 4);
+  assert.equal(Object.hasOwn(targetResult.json, 'inspection_completed'), false);
+  assert.equal(Object.hasOwn(targetResult.json, 'checks'), false);
 });
 
 test('missing, ineligible, and stale immutable-ID-linked rows block without disclosure', async () => {
@@ -361,7 +523,7 @@ test('missing, ineligible, and stale immutable-ID-linked rows block without disc
 
   assert.equal(response.status, 200);
   assert.equal(json.status, 'blocked');
-  assert.equal(json.immutable_authority_clear, false);
+  assert.equal(json.point_in_time_clear, false);
   assert.equal(json.checks.fixture_registry, 'present');
   assert.equal(json.checks.actors.admin_a.membership_collision, true);
   assert.equal(json.checks.actors.clinician_a.user, 'ineligible');
@@ -546,7 +708,7 @@ test('malformed or incomplete lifecycle fields never become eligible by coercion
     const { handler } = await loadHandler({ users });
     const { response, json } = await invoke(handler);
     assert.equal(response.status, 200);
-    assert.equal(json.immutable_authority_clear, false);
+    assert.equal(json.point_in_time_clear, false);
     assert.equal(json.checks.actors.admin_a.user, 'ineligible');
   }
 });

@@ -17,6 +17,7 @@ import OCRDocumentExtractor from "./OCRDocumentExtractor";
 import { toast } from 'sonner';
 import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
 import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
+import { useAuth } from '@/lib/AuthContext';
 
 const EMPTY_FORM = Object.freeze({
   first_name: '',
@@ -36,6 +37,7 @@ const EMPTY_FORM = Object.freeze({
 const sameFormValue = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
 export default function PatientForm({ patient, onSuccess, onCancel }) {
+  const { tenantContext } = useAuth();
   const patientCreateRequestId = useRef(null);
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
 
@@ -64,10 +66,10 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
   // ['patients'] cache the Patients page populates, so this is usually instant
   // and adds no extra round-trip. Only needed when adding a brand-new patient.
   const { data: existingPatients = [] } = useScopedPatients({
+    purpose: 'deduplication',
     sort: '-created_date',
     limit: 2000,
     enabled: !patient,
-    staleTime: 60000,
     select: excludeArchived,
   });
 
@@ -174,7 +176,7 @@ export default function PatientForm({ patient, onSuccess, onCancel }) {
         );
         await updatePatientFields({
           patientId: patient.id,
-          agencyId: patient.agency_id,
+          agencyId: tenantContext?.agency_id,
           expectedUpdatedDate: patient.updated_date,
           changes: changedFields,
         });

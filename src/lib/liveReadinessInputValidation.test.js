@@ -155,6 +155,164 @@ test("validator requires complete authenticated hosted probe attestations", () =
   assert.equal(formatLiveReadinessInputErrors(errors).includes("local_mock"), false);
 });
 
+test("validator requires every LR-01 capture to precede every supplied LR-02 capture", () => {
+  const lr01Ids = ["V1", "V2", "V3", "V4", "V5", "V6", "T1", "T2", "T3", "T4"];
+  const lr02Ids = ["S1", "S2", "S3", "S4"];
+  const input = {
+    matrix: LIVE_CAPABILITY_MATRIX.slice(0, 2),
+    evidence: {
+      "LR-01": {
+        test_evidence: {
+          summary: "LR-01 hosted probes captured",
+          probes: Object.fromEntries(lr01Ids.map((probeId) => [probeId, hostedProbe(probeId)])),
+        },
+      },
+      "LR-02": {
+        test_evidence: {
+          summary: "LR-02 hosted probes captured later",
+          probes: Object.fromEntries(lr02Ids.map((probeId) => [probeId, hostedProbe(probeId, {
+            captured_at: "2026-09-05T00:05:00.000Z",
+          })])),
+        },
+      },
+    },
+  };
+  assert.deepEqual(validateLiveReadinessInput(input), []);
+
+  input.evidence["LR-02"].test_evidence.probes.S1.captured_at =
+    "2026-09-05T00:00:00.000Z";
+  const errors = validateLiveReadinessInput(input);
+  assert.ok(errors.some((error) => (
+    error.path === "evidence.LR-02.test_evidence.probes"
+    && /captured after all required LR-01/.test(error.message)
+  )));
+});
+
+test("sequence uses the latest required LR-01 time and includes optional LR-02 probes", () => {
+  const lr01Ids = ["V1", "V2", "V3", "V4", "V5", "V6", "T1", "T2", "T3", "T4"];
+  const input = {
+    matrix: LIVE_CAPABILITY_MATRIX.slice(0, 2),
+    evidence: {
+      "LR-01": {
+        test_evidence: {
+          summary: "LR-01 hosted probes captured",
+          probes: Object.fromEntries(lr01Ids.map((probeId) => [probeId, hostedProbe(probeId)])),
+        },
+      },
+      "LR-02": {
+        test_evidence: {
+          summary: "LR-02 hosted probes captured",
+          probes: {
+            S1: hostedProbe("S1", { captured_at: "2026-09-05T00:05:00.000Z" }),
+            S2: hostedProbe("S2", { captured_at: "2026-09-05T00:05:00.000Z" }),
+            S3: hostedProbe("S3", { captured_at: "2026-09-05T00:05:00.000Z" }),
+            S4: hostedProbe("S4", { captured_at: "2026-09-05T00:05:00.000Z" }),
+          },
+        },
+      },
+    },
+  };
+
+  input.evidence["LR-01"].test_evidence.probes.T4.captured_at =
+    "2026-09-05T00:10:00.000Z";
+  assert.ok(validateLiveReadinessInput(input).some((error) => (
+    error.path === "evidence.LR-02.test_evidence.probes"
+    && /captured after all required LR-01/.test(error.message)
+  )));
+
+  input.evidence["LR-01"].test_evidence.probes.T4.captured_at =
+    "2026-09-05T00:00:00.000Z";
+  input.evidence["LR-02"].test_evidence.probes.S5 = hostedProbe("S5", {
+    captured_at: "2026-09-04T23:59:59.999Z",
+  });
+  assert.ok(validateLiveReadinessInput(input).some((error) => (
+    error.path === "evidence.LR-02.test_evidence.probes"
+    && /captured after all required LR-01/.test(error.message)
+  )));
+});
+
+test("validator cannot sequence LR-02 when a required LR-01 capture time is absent", () => {
+  const input = {
+    matrix: LIVE_CAPABILITY_MATRIX.slice(0, 2),
+    evidence: {
+      "LR-01": {
+        test_evidence: {
+          summary: "incomplete LR-01 run",
+          probes: Object.fromEntries(
+            ["V1", "V2", "V3", "V4", "V5", "V6", "T1", "T2", "T3"]
+              .map((probeId) => [probeId, hostedProbe(probeId)]),
+          ),
+        },
+      },
+      "LR-02": {
+        test_evidence: {
+          summary: "LR-02 run",
+          probes: { S1: hostedProbe("S1", { captured_at: "2026-09-05T00:05:00.000Z" }) },
+        },
+      },
+    },
+  };
+  const errors = validateLiveReadinessInput(input);
+  assert.ok(errors.some((error) => (
+    error.path === "evidence.LR-02.test_evidence.probes"
+    && /cannot be evaluated/.test(error.message)
+  )));
+});
+
+test("validator rejects high-confidence credential and direct-identifier free text without overclaiming", () => {
+  const safe = {
+    matrix: LIVE_CAPABILITY_MATRIX.slice(0, 2),
+    release: {
+      release_owner: "Engineering release role",
+      rollback_owner: "Operations rollback role",
+      monitoring_owner: "Security monitoring role",
+    },
+    evidence: {
+      "LR-01": {
+        owner: {
+          summary: "Authorization: approved; API key: configured; cookie=disabled; password: compliant; MRN: redacted; DOB: omitted.",
+          references: ["evidence/LR-01/patient-access.json"],
+        },
+      },
+    },
+  };
+  assert.deepEqual(validateLiveReadinessInput(safe), []);
+
+  const samples = [
+    "Bearer abcdefghijklmnopqrstuvwxyz",
+    "password=never-print-this-value",
+    "\"password\": \"long-secret-value-123\"",
+    "Authorization: Basic dXNlcjpwYXNz",
+    "Authorization: Basic dXNlcjpwYXNzd29yZA==",
+    "github_pat_1234567890abcdefghijklmnop",
+    ["rk", "live", "1234567890abcdefghijklmnop"].join("_"),
+    "-----BEGIN ENCRYPTED PRIVATE KEY-----",
+    "contact jane.doe@example.test",
+    "MRN: 12345678",
+    "DOB: 01/02/1970",
+    "call 814-555-1212",
+  ];
+  for (const sample of samples) {
+    const input = structuredClone(safe);
+    input.evidence["LR-01"].owner.summary = sample;
+    const errors = validateLiveReadinessInput(input);
+    assert.ok(errors.some((error) => (
+      error.path === "evidence.LR-01.owner.summary"
+      && /high-confidence/.test(error.message)
+    )));
+    assert.equal(formatLiveReadinessInputErrors(errors).includes(sample), false);
+  }
+
+  const reference = structuredClone(safe);
+  reference.evidence["LR-01"].owner.references = [
+    "https://private.example.test/evidence?access_token=never-print-this-value",
+  ];
+  assert.ok(validateLiveReadinessInput(reference).some((error) => (
+    error.path === "evidence.LR-01.owner.references.0"
+    && /high-confidence/.test(error.message)
+  )));
+});
+
 test("validator bounds and canonicalizes retained artifact references", () => {
   const errors = validateLiveReadinessInput({
     matrix: LIVE_CAPABILITY_MATRIX.slice(0, 2),

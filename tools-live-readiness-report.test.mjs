@@ -75,6 +75,9 @@ const evidenceEntries = Object.fromEntries(
 
 function completeCapabilityEvidence(capabilityId) {
   const requiredProbes = LIVE_READINESS_PROBES[capabilityId]?.required || [];
+  const capturedAt = capabilityId === "LR-01"
+    ? "2026-09-05T00:00:00.000Z"
+    : "2026-09-05T00:05:00.000Z";
   return {
     ...evidenceEntries,
     test_evidence: {
@@ -82,7 +85,7 @@ function completeCapabilityEvidence(capabilityId) {
       probes: Object.fromEntries(requiredProbes.map((probeId) => [probeId, {
         execution_context: "authenticated_hosted",
         result: "pass",
-        captured_at: "2026-09-05T00:00:00.000Z",
+        captured_at: capturedAt,
         artifact_sha256: "1".repeat(64),
         references: [`evidence/${capabilityId}/${probeId}.json`],
       }])),
@@ -237,6 +240,42 @@ test("CLI rejects placeholder-filled evidence as invalid", () => {
   assert.equal(code, 2);
   assert.match(errors[0], /evidence\.LR-01\.owner\.value/);
   assert.equal(errors[0].includes("never-print-this-owner"), false);
+});
+
+test("CLI rejects LR-02 evidence captured before LR-01 completed", () => {
+  const errors = [];
+  const input = JSON.parse(completeInput());
+  input.evidence["LR-02"].test_evidence.probes.S1.captured_at =
+    "2026-09-04T23:59:59.999Z";
+  const code = runLiveReadinessReportCli({
+    argv: ["node", "tool", "out-of-order.json"],
+    readFile: () => JSON.stringify(input),
+    write: () => {},
+    error: (message) => errors.push(message),
+  });
+  assert.equal(code, 2);
+  assert.match(errors[0], /captured after all required LR-01 probes/);
+});
+
+test("CLI rejects credential- or direct-identifier-shaped free text without echoing it", () => {
+  for (const unsafeText of [
+    "Bearer abcdefghijklmnopqrstuvwxyz",
+    "patient email jane.doe@example.test",
+    "MRN: 12345678",
+  ]) {
+    const errors = [];
+    const input = JSON.parse(completeInput());
+    input.evidence["LR-01"].owner.value = unsafeText;
+    const code = runLiveReadinessReportCli({
+      argv: ["node", "tool", "sensitive-free-text.json"],
+      readFile: () => JSON.stringify(input),
+      write: () => {},
+      error: (message) => errors.push(message),
+    });
+    assert.equal(code, 2);
+    assert.match(errors[0], /high-confidence credential or direct-identifier pattern/);
+    assert.equal(errors[0].includes(unsafeText), false);
+  }
 });
 
 test("CLI rejects matrix bypasses instead of emitting a vacuous pass", () => {

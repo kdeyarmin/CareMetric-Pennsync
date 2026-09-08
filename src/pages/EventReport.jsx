@@ -20,9 +20,9 @@ export default function EventReport() {
   // Load the roster so the reporter picks a patient by name/MRN instead of
   // typing an opaque UUID (which failed silently at submit if mistyped).
   const { data: patients = [] } = useScopedPatients({
+    purpose: 'roster',
     sort: '-updated_date',
     limit: 2000,
-    readMode: 'authorized-roster',
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);

@@ -1,19 +1,25 @@
 import {
   LIVE_READINESS_FIXTURE_ACTORS,
+  LIVE_READINESS_FIXTURE_AGENCY_ALIASES,
   LIVE_READINESS_FIXTURE_AGENCIES,
   LIVE_READINESS_FIXTURE_ASSIGNMENTS,
+  LIVE_READINESS_FIXTURE_PATIENT_ALIASES,
   LIVE_READINESS_FIXTURE_PATIENTS,
   LIVE_READINESS_FIXTURE_SET_ID,
   LIVE_READINESS_STAGING_TARGET,
+  LIVE_READINESS_FIXTURE_TENANT_ACTOR_ALIASES,
+  LIVE_READINESS_FIXTURE_TOPOLOGY,
 } from './liveReadinessFixtureManifest.js';
 
-const TENANT_ACTOR_KEYS = Object.freeze(
-  Object.keys(LIVE_READINESS_FIXTURE_ACTORS)
-    .filter((actorKey) => actorKey !== 'platform_owner'),
-);
+export const READINESS_FIXTURE_TENANT_ACTOR_ALIASES =
+  LIVE_READINESS_FIXTURE_TENANT_ACTOR_ALIASES;
+export const READINESS_FIXTURE_AGENCY_ALIASES = LIVE_READINESS_FIXTURE_AGENCY_ALIASES;
+export const READINESS_FIXTURE_PATIENT_ALIASES = LIVE_READINESS_FIXTURE_PATIENT_ALIASES;
+
+const TENANT_ACTOR_KEYS = READINESS_FIXTURE_TENANT_ACTOR_ALIASES;
 
 const READINESS_FIXTURE_ADMIN_ACTORS = Object.freeze(Object.fromEntries(
-  Object.keys(LIVE_READINESS_FIXTURE_AGENCIES).map((agencyKey) => {
+  READINESS_FIXTURE_AGENCY_ALIASES.map((agencyKey) => {
     const adminActors = TENANT_ACTOR_KEYS.filter((actorKey) => {
       const actor = LIVE_READINESS_FIXTURE_ACTORS[actorKey];
       return actor.agency === agencyKey && actor.tenant_role === 'agency_admin';
@@ -43,16 +49,33 @@ export const READINESS_FIXTURE_ACTORS = Object.freeze(Object.fromEntries(
 ));
 
 export const READINESS_FIXTURE_PATIENTS = Object.freeze(Object.fromEntries(
-  Object.entries(LIVE_READINESS_FIXTURE_PATIENTS).map(([patientKey, patient]) => (
-    [patientKey, Object.freeze({
+  READINESS_FIXTURE_PATIENT_ALIASES.map((patientKey) => {
+    const patient = LIVE_READINESS_FIXTURE_PATIENTS[patientKey];
+    return [patientKey, Object.freeze({
       agency: patient.agency,
       creator: patient.creator,
       status: patient.status,
       isSample: patient.is_sample,
       isArchived: patient.is_archived,
-    })]
-  )),
+    })];
+  }),
 ));
+
+export const READINESS_FIXTURE_ASSIGNMENTS = Object.freeze(
+  LIVE_READINESS_FIXTURE_ASSIGNMENTS.map((assignment) => Object.freeze({
+    patient: assignment.patient,
+    actor: assignment.actor,
+    status: assignment.status,
+    source: assignment.source,
+  })),
+);
+
+export const READINESS_FIXTURE_TOPOLOGY = Object.freeze({
+  tenantActorAliases: READINESS_FIXTURE_TENANT_ACTOR_ALIASES,
+  agencyAliases: READINESS_FIXTURE_AGENCY_ALIASES,
+  patientAliases: READINESS_FIXTURE_PATIENT_ALIASES,
+  assignmentEdges: LIVE_READINESS_FIXTURE_TOPOLOGY.assignment_edges,
+});
 
 export const SCOPED_CONTENT_ROOTS = Object.freeze([
   'CustomValidationRule',
@@ -179,15 +202,16 @@ export function buildReadinessFixturePlan(bindings) {
     target: READINESS_FIXTURE_TARGET,
     actors,
     agencies: Object.freeze(Object.fromEntries(
-      Object.entries(LIVE_READINESS_FIXTURE_AGENCIES).map(([agencyKey, agency]) => (
-        [agencyKey, Object.freeze({
+      READINESS_FIXTURE_AGENCY_ALIASES.map((agencyKey) => {
+        const agency = LIVE_READINESS_FIXTURE_AGENCIES[agencyKey];
+        return [agencyKey, Object.freeze({
           status: agency.status,
           adminActor: READINESS_FIXTURE_ADMIN_ACTORS[agencyKey],
-        })]
-      )),
+        })];
+      }),
     )),
     patients: READINESS_FIXTURE_PATIENTS,
-    assignments: LIVE_READINESS_FIXTURE_ASSIGNMENTS,
+    assignments: READINESS_FIXTURE_ASSIGNMENTS,
     forbiddenData: Object.freeze(['password', 'token', 'secret', 'production_phi']),
   });
 }

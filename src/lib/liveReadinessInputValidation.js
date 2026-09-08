@@ -48,6 +48,26 @@ const READINESS_PLACEHOLDER_PATTERNS = Object.freeze([
   /^https:\/\/example\.com\/ticket-or-doc\/?$/i,
 ]);
 
+// This is deliberately a narrow, high-confidence screen, not a claim that
+// arbitrary free text is de-identified. It catches credential formats and
+// direct-identifier labels that should never be copied into a readiness JSON
+// packet. The retained private artifacts remain the place for any sensitive
+// detail; the packet should contain only role-based summaries and opaque refs.
+const HIGH_CONFIDENCE_SENSITIVE_TEXT_PATTERNS = Object.freeze([
+  /-----BEGIN (?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----/i,
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b/i,
+  /\bAuthorization\s*:\s*Basic\s+[A-Za-z0-9+/]{12,}={0,2}(?![A-Za-z0-9+/=])/i,
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/,
+  /\b(?:sk|pk)_(?:live|test)_[A-Za-z0-9]{12,}\b/i,
+  /\b(?:rk_(?:live|test)_[A-Za-z0-9]{12,}|whsec_[A-Za-z0-9]{12,}|sk-(?:proj-)?[A-Za-z0-9_-]{16,})\b/i,
+  /\b(?:gh[opurs]_[A-Za-z0-9]{12,}|github_pat_[A-Za-z0-9_]{12,}|xox[baprs]-[A-Za-z0-9-]{12,}|SG\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}|AKIA[A-Z0-9]{16})\b/,
+  /\b(?:password|passcode|api[_ -]?key|access[_ -]?token|refresh[_ -]?token|client[_ -]?secret|internal_fn_secret|signature_hmac_secret|authorization|cookie)\b["']?\s*[:=]\s*["']?(?!redacted\b|omitted\b|withheld\b|disabled\b|configured\b|approved\b|compliant\b|none\b|n\/?a\b)[^\s,"';}\]]{12,}/i,
+  /(?:^|[^A-Za-z0-9._%+-])[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}(?:$|[^A-Za-z0-9.-])/,
+  /\b\d{3}-\d{2}-\d{4}\b/,
+  /\b(?:MRN|medical record number|DOB|date of birth)\s*[:=#-]\s*(?=[A-Za-z0-9./-]{3,}\b)(?=[A-Za-z0-9./-]*\d)[A-Za-z0-9][A-Za-z0-9./-]{2,}\b/i,
+  /(?:\+1[ .-]?)?\(\d{3}\)[ .-]?\d{3}[ .-]?\d{4}\b|\b\d{3}-\d{3}-\d{4}\b/,
+]);
+
 const TOP_LEVEL_KEYS = new Set(["release", "evidence", "matrix"]);
 const SAFE_READINESS_PATH_KEYS = new Set([
   ...TOP_LEVEL_KEYS,
@@ -78,6 +98,21 @@ const SAFE_READINESS_PATH_KEYS = new Set([
 function containsPlaceholder(value) {
   return typeof value === "string"
     && READINESS_PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function containsHighConfidenceSensitiveText(value) {
+  return typeof value === "string"
+    && HIGH_CONFIDENCE_SENSITIVE_TEXT_PATTERNS.some((pattern) => pattern.test(value));
+}
+
+function validateSensitiveFreeText(value, path, errors) {
+  if (containsHighConfidenceSensitiveText(value)) {
+    addError(
+      errors,
+      path,
+      "Free text contains a high-confidence credential or direct-identifier pattern; retain sensitive detail only in private artifacts and cite an opaque reference.",
+    );
+  }
 }
 
 function findPlaceholderValues(value, path, errors) {
@@ -146,6 +181,7 @@ function validateReferences(references, path, errors, { required = false } = {})
       return;
     }
     seen.add(reference);
+    validateSensitiveFreeText(reference, `${path}.${index}`, errors);
   });
 }
 
@@ -256,6 +292,38 @@ function validateProbeEvidence(capabilityId, entry, entryPath, errors) {
   }
 }
 
+function validateCriticalProbeSequence(input, errors) {
+  const lr01 = input?.evidence?.["LR-01"]?.test_evidence?.probes;
+  const lr02 = input?.evidence?.["LR-02"]?.test_evidence?.probes;
+  if (!isObject(lr02) || Object.keys(lr02).length === 0) return;
+
+  const lr01Required = LIVE_READINESS_PROBES["LR-01"].required;
+  const lr01CapturedAt = lr01Required.map((probeId) => lr01?.[probeId]?.captured_at);
+  if (
+    !isObject(lr01)
+    || lr01CapturedAt.some((capturedAt) => !isCanonicalCapturedAt(capturedAt))
+  ) {
+    addError(
+      errors,
+      "evidence.LR-02.test_evidence.probes",
+      "LR-02 probe times cannot be evaluated until every required LR-01 probe has a canonical capture time.",
+    );
+    return;
+  }
+
+  const latestLr01 = Math.max(...lr01CapturedAt.map((value) => Date.parse(value)));
+  const lr02CapturedAt = Object.values(lr02)
+    .map((probe) => probe?.captured_at)
+    .filter(isCanonicalCapturedAt);
+  if (lr02CapturedAt.some((value) => Date.parse(value) <= latestLr01)) {
+    addError(
+      errors,
+      "evidence.LR-02.test_evidence.probes",
+      "Every supplied LR-02 probe must be captured after all required LR-01 probes.",
+    );
+  }
+}
+
 export function validateLiveReadinessInput(
   input,
   {
@@ -293,6 +361,7 @@ export function validateLiveReadinessInput(
       if (!isCanonicalBoundedText(value, MAX_EVIDENCE_TEXT_LENGTH)) {
         addError(errors, `release.${key}`, "Release metadata must be a canonical bounded string.");
       }
+      validateSensitiveFreeText(value, `release.${key}`, errors);
     }
     if (
       isNonBlankString(input.release.environment)
@@ -530,6 +599,9 @@ export function validateLiveReadinessInput(
           ) {
             addError(errors, `${entryPath}.${textKey}`, "Evidence text must be a canonical bounded string.");
           }
+          if (entry[textKey] !== undefined) {
+            validateSensitiveFreeText(entry[textKey], `${entryPath}.${textKey}`, errors);
+          }
         }
         validateReferences(entry.references, `${entryPath}.references`, errors);
         if (key === "test_evidence") {
@@ -538,6 +610,8 @@ export function validateLiveReadinessInput(
       }
     }
   }
+
+  validateCriticalProbeSequence(input, errors);
 
   if (Array.isArray(input.matrix)) {
     input.matrix.forEach((capability, index) => {

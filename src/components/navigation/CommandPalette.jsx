@@ -62,7 +62,7 @@ export default function CommandPalette({ isAdmin, isSuperAdmin = false, user = n
   // "jump to chart" bar. Fetch the roster only while the palette is open (not on
   // every page load) and surface name/MRN matches once the user has typed ≥2
   // chars — server RLS still scopes the list to the user's assigned patients.
-  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 2000, enabled: open && canViewPatients(user), staleTime: 60000 });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 2000, enabled: open && canViewPatients(user) });
 
   const patientMatches = useMemo(() => {
     const q = search.trim().toLowerCase();

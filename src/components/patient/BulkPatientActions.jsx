@@ -27,8 +27,10 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
 import { changePatientStatus } from '@/functions/updateAuthorizedPatient';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function BulkPatientActions({ selectedPatients, onClearSelection }) {
+  const { tenantContext } = useAuth();
   const queryClient = useQueryClient();
   const [statusDialogOpen, setStatusDialogOpen] = useState(false);
   const [newStatus, setNewStatus] = useState("");
@@ -42,7 +44,7 @@ export default function BulkPatientActions({ selectedPatients, onClearSelection 
         selectedPatients.map(patient =>
           changePatientStatus({
             patientId: patient.id,
-            agencyId: patient.agency_id,
+            agencyId: tenantContext?.agency_id,
             expectedUpdatedDate: patient.updated_date,
             status,
           })

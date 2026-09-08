@@ -8,11 +8,82 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+const MAX_IDENTIFIER_LENGTH = 200;
+const EXACT_COURSE_LIMIT = 2;
+const ASSIGNMENT_SCAN_LIMIT = 500;
 
-// Lets an authenticated user self-enroll in an elective (non-required) published
-// course. Required/mandatory and annual-mandatory compliance training stays
-// admin-assigned, so those are rejected here. Idempotent: an existing, active
-// assignment for the same user/course is returned instead of creating a duplicate.
+class PublicError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'PublicError';
+    this.status = status;
+  }
+}
+
+function exactIdentifier(value: unknown) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= MAX_IDENTIFIER_LENGTH
+    && value.trim() === value
+    && !value.startsWith('$')
+    && !/[\u0000-\u001f\u007f]/.test(value)
+    ? value
+    : null;
+}
+
+function requireRows(value: unknown, label: string) {
+  if (!Array.isArray(value)) throw new Error(`${label} returned a non-array result`);
+  return value as Array<Record<string, any>>;
+}
+
+async function loadExactCourse(entities: Record<string, any>, courseId: string) {
+  const rows = requireRows(
+    await entities.TrainingCourse.filter({ id: courseId }, undefined, EXACT_COURSE_LIMIT),
+    'TrainingCourse.filter',
+  );
+  if (rows.length === 0) throw new PublicError(404, 'Course not found');
+  if (rows.length >= EXACT_COURSE_LIMIT
+    || rows.length !== 1
+    || rows[0]?.id !== courseId) {
+    throw new PublicError(409, 'Course identity is ambiguous');
+  }
+  return rows[0];
+}
+
+async function loadUniqueActiveAssignment(
+  entities: Record<string, any>,
+  courseId: string,
+  userEmail: string,
+) {
+  const rows = requireRows(
+    await entities.TrainingAssignment.filter(
+      { course_id: courseId, assigned_to_user_id: userEmail },
+      '-created_date',
+      ASSIGNMENT_SCAN_LIMIT,
+    ),
+    'TrainingAssignment.filter',
+  );
+  if (rows.length >= ASSIGNMENT_SCAN_LIMIT
+    || rows.some((row) => (
+      row?.course_id !== courseId || row?.assigned_to_user_id !== userEmail
+    ))) {
+    throw new PublicError(409, 'Training assignment history is ambiguous');
+  }
+  const active = rows.filter((row) => !row?.archived_status);
+  if (active.length > 1) {
+    throw new PublicError(409, 'Multiple active training assignments require review');
+  }
+  return active[0] || null;
+}
+
+
+// Resolves an authenticated user's existing active assignment, or self-enrolls
+// them in an elective (non-required) published course. Required/mandatory and
+// annual-mandatory compliance training stays admin-assigned, so a user without
+// an existing assignment is rejected. Idempotent: an existing active assignment
+// is returned instead of creating a duplicate.
 
 Deno.serve(async (req) => {
   try {
@@ -23,27 +94,34 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const { courseId } = await req.json();
-    if (!courseId) {
-      return Response.json({ error: 'courseId is required' }, { status: 400 });
-    }
+    const body = await req.json();
+    const courseId = exactIdentifier(body?.courseId);
+    if (!courseId) throw new PublicError(400, 'courseId must be an exact identifier');
 
-    const [course] = await base44.asServiceRole.entities.TrainingCourse.filter({ id: courseId }, undefined, 5000);
-    if (!course) {
-      return Response.json({ error: 'Course not found' }, { status: 404 });
-    }
+    const entities = base44.asServiceRole.entities;
+    const course = await loadExactCourse(entities, courseId);
     if (course.status !== 'published') {
       return Response.json({ error: 'Course is not available for enrollment' }, { status: 400 });
     }
+    // Reuse an existing active assignment rather than duplicating. Scan the full
+    // history (not just the latest few) so repeated archive/unarchive cycles
+    // can't hide an older active assignment and cause a duplicate. Resolve this
+    // before self-enrollment eligibility: a valid admin-issued mandatory or
+    // cross-business-line assignment is itself the learner's authorization.
+    const active = await loadUniqueActiveAssignment(entities, courseId, user.email);
+    if (active) {
+      return Response.json({ success: true, already_enrolled: true, assignment_id: active.id });
+    }
+
     if (course.is_mandatory || ['annual_mandatory', 'in_service'].includes(course.training_type)) {
       return Response.json(
         { error: 'Required compliance training is assigned by your administrator and cannot be self-enrolled.' },
         { status: 400 }
       );
     }
-    // Honor the course business-line scope: a Home Health user may not self-enroll
-    // in a Hospice-only course and vice versa. Users without a set business line
-    // (e.g. office/leadership) are not blocked.
+    // Honor the course business-line scope for a new self-enrollment: a Home
+    // Health user may not self-enroll in a Hospice-only course and vice versa.
+    // Users without a set business line (e.g. office/leadership) are not blocked.
     const scope = course.business_line_scope;
     if (scope && scope !== 'all' && user.business_line && user.business_line !== scope) {
       return Response.json(
@@ -52,32 +130,14 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Reuse an existing active assignment rather than duplicating. Scan the full
-    // history (not just the latest few) so repeated archive/unarchive cycles
-    // can't hide an older active assignment and cause a duplicate.
-    const existing = await base44.asServiceRole.entities.TrainingAssignment.filter(
-      { course_id: courseId, assigned_to_user_id: user.email },
-      '-created_date',
-      500
-    );
-    const active = existing.find((a) => !a.archived_status);
-    if (active) {
-      return Response.json({ success: true, already_enrolled: true, assignment_id: active.id });
-    }
-
     // Fresh re-check immediately before create — concurrent double-clicks can
     // still race the filter→create gap (no unique index / CAS).
-    const recheck = await base44.asServiceRole.entities.TrainingAssignment.filter(
-      { course_id: courseId, assigned_to_user_id: user.email },
-      '-created_date',
-      20,
-    ).catch(() => []);
-    const recheckActive = (recheck || []).find((a) => !a.archived_status);
+    const recheckActive = await loadUniqueActiveAssignment(entities, courseId, user.email);
     if (recheckActive) {
       return Response.json({ success: true, already_enrolled: true, assignment_id: recheckActive.id });
     }
 
-    const created = await base44.asServiceRole.entities.TrainingAssignment.create({
+    const created = await entities.TrainingAssignment.create({
       course_id: course.id,
       course_title: course.title,
       assigned_to_user_id: user.email,
@@ -101,27 +161,20 @@ Deno.serve(async (req) => {
       archived_status: false,
     });
 
-    const afterCreate = await base44.asServiceRole.entities.TrainingAssignment.filter(
-      { course_id: courseId, assigned_to_user_id: user.email },
-      '-created_date',
-      20,
-    ).catch(() => []);
-    const activeAfter = (afterCreate || []).filter((a) => !a.archived_status);
-    if (activeAfter.length > 1) {
-      const keepId = activeAfter
-        .slice()
-        .sort((a, b) => String(a.created_date || '').localeCompare(String(b.created_date || '')))[0]?.id;
-      if (keepId && created?.id && created.id !== keepId) {
+    try {
+      await loadUniqueActiveAssignment(entities, courseId, user.email);
+    } catch (error) {
+      if (created?.id) {
         try {
-          await base44.asServiceRole.entities.TrainingAssignment.delete(created.id);
+          await entities.TrainingAssignment.delete(created.id);
         } catch {
-          /* best-effort */
+          /* best-effort rollback; the ambiguous state still fails closed */
         }
-        return Response.json({ success: true, already_enrolled: true, assignment_id: keepId });
       }
+      throw error;
     }
 
-    await base44.asServiceRole.entities.TrainingAuditLog.create({
+    await entities.TrainingAuditLog.create({
       actor_id: user.email,
       actor_name: user.full_name,
       action: 'assignment_created',
@@ -134,6 +187,9 @@ Deno.serve(async (req) => {
 
     return Response.json({ success: true, already_enrolled: false, assignment_id: created.id });
   } catch (error) {
+    if (error instanceof PublicError) {
+      return Response.json({ error: error.message }, { status: error.status });
+    }
     console.error('selfEnrollCourse failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }

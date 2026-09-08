@@ -18,14 +18,98 @@ const PURPOSE_FIELDS = Object.freeze({
     'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'compliance_score',
     'grounding_pending', 'updated_date',
   ]),
+  activity: new Set([
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'created_date',
+    'updated_date',
+  ]),
+  documentation: new Set([
+    'id', 'patient_id', 'visit_date', 'visit_time', 'visit_type', 'status',
+    'nurse_notes', 'raw_transcription', 'vital_signs', 'documentation_source',
+    'grounding_pending', 'updated_date',
+  ]),
+  vitals_trend: new Set([
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'vital_signs',
+    'updated_date',
+  ]),
+  operations_analytics: new Set([
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'start_time',
+    'end_time', 'created_by', 'created_date', 'updated_date',
+  ]),
+  reporting: new Set([
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'start_time',
+    'end_time', 'nurse_notes', 'vital_signs', 'created_by', 'created_date',
+    'updated_date',
+  ]),
+  data_quality: new Set([
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'nurse_notes',
+    'vital_signs', 'homebound_justification', 'updated_date',
+  ]),
+  compliance_monitoring: new Set([
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'nurse_notes',
+    'compliance_score', 'compliance_issues', 'homebound_status_verified',
+    'skilled_intervention_documented', 'homebound_justification',
+    'grounding_pending', 'created_by', 'updated_date',
+  ]),
+  ai_tagging: new Set([
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'nurse_notes',
+    'ai_tags', 'updated_date',
+  ]),
+  hospitalization_risk: new Set([
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'nurse_notes',
+    'vital_signs', 'updated_date',
+  ]),
+  clinical_insights: new Set([
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'vital_signs',
+    'created_by', 'updated_date',
+  ]),
+  deduplication: new Set([
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'created_by',
+    'created_date', 'updated_date',
+  ]),
 });
+export const AUTHORIZED_VISIT_LIST_PURPOSES = Object.freeze(Object.keys(PURPOSE_FIELDS));
+export function isAuthorizedVisitListPurpose(value) {
+  return typeof value === 'string' && Object.hasOwn(PURPOSE_FIELDS, value);
+}
 const PURPOSE_MAX_PAGE_SIZE = Object.freeze({
   schedule: 50,
   compliance_review: 25,
+  activity: 50,
+  documentation: 25,
+  vitals_trend: 50,
+  operations_analytics: 50,
+  reporting: 25,
+  data_quality: 25,
+  compliance_monitoring: 25,
+  ai_tagging: 25,
+  hospitalization_risk: 25,
+  clinical_insights: 50,
+  deduplication: 25,
 });
+export function authorizedVisitListPageSize(purpose) {
+  return PURPOSE_MAX_PAGE_SIZE[purpose] ?? null;
+}
+
+export function isAuthorizedVisitListSort(purpose, sort) {
+  if (!isAuthorizedVisitListPurpose(purpose)) return false;
+  if (sort === null || sort === undefined) return true;
+  if (typeof sort !== 'string' || sort.length === 0 || sort.startsWith('--')) return false;
+  return PURPOSE_FIELDS[purpose].has(sort.replace(/^-/, ''));
+}
 const PURPOSE_ROLES = Object.freeze({
   schedule: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
   compliance_review: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  activity: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  documentation: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  vitals_trend: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  operations_analytics: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  reporting: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  data_quality: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  compliance_monitoring: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  ai_tagging: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  hospitalization_risk: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  clinical_insights: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  deduplication: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
 });
 const CURSOR_KEYS = [
   'version',
@@ -70,8 +154,15 @@ function validProjectedField(field, value) {
   if (field === 'visit_date') return validCalendarDate(value);
   if (field === 'visit_type') return VISIT_TYPES.has(value);
   if (field === 'status') return VISIT_STATUSES.has(value);
-  if (field === 'updated_date') {
+  if (field === 'updated_date' || field === 'created_date') {
     return typeof value === 'string' && Number.isFinite(Date.parse(value));
+  }
+  if (field === 'created_by') {
+    return typeof value === 'string'
+      && value.length <= 320
+      && value.includes('@')
+      && value.trim() === value
+      && value.toLowerCase() === value;
   }
   if (['visit_time', 'start_time', 'end_time'].includes(field)) {
     return typeof value === 'string' && value.length <= 100;
@@ -80,6 +171,37 @@ function validProjectedField(field, value) {
     return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 100;
   }
   if (field === 'grounding_pending') return typeof value === 'boolean';
+  if (
+    field === 'homebound_status_verified'
+    || field === 'skilled_intervention_documented'
+  ) return typeof value === 'boolean';
+  if (field === 'nurse_notes' || field === 'raw_transcription') {
+    return typeof value === 'string' && value.length <= 250_000;
+  }
+  if (field === 'homebound_justification') {
+    return typeof value === 'string' && value.length <= 20_000;
+  }
+  if (field === 'vital_signs') {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      && Object.keys(value).every((key) => [
+        'temperature', 'blood_pressure_systolic', 'blood_pressure_diastolic',
+        'heart_rate', 'respiratory_rate', 'oxygen_saturation', 'pain_level', 'weight',
+      ].includes(key))
+      && Object.values(value).every((item) => (
+        typeof item === 'number' && Number.isFinite(item) && Math.abs(item) <= 1_000_000
+      ));
+  }
+  if (field === 'documentation_source') {
+    return ['smart_note', 'audio', 'manual'].includes(value);
+  }
+  if (field === 'compliance_issues') {
+    return Array.isArray(value) && value.length <= 100
+      && value.every((item) => typeof item === 'string' && item.length <= 2_000);
+  }
+  if (field === 'ai_tags') {
+    return Array.isArray(value) && value.length <= 64
+      && value.every((item) => typeof item === 'string' && item.length <= 128);
+  }
   return false;
 }
 
@@ -297,4 +419,107 @@ export async function listAuthorizedVisits(options = {}) {
     throw new Error(result?.error || 'Visit list failed');
   }
   return result;
+}
+
+const MAX_AUTHORIZED_VISITS = 10_000;
+
+function compareVisits(sort) {
+  if (!sort) return null;
+  const descending = sort.startsWith('-');
+  const field = descending ? sort.slice(1) : sort;
+  return (left, right) => {
+    const leftValue = left?.[field];
+    const rightValue = right?.[field];
+    if (leftValue == null && rightValue == null) {
+      return String(left?.id || '').localeCompare(String(right?.id || ''));
+    }
+    if (leftValue == null) return 1;
+    if (rightValue == null) return -1;
+    const compared = String(leftValue).localeCompare(String(rightValue), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+    if (compared !== 0) return descending ? -compared : compared;
+    return String(left?.id || '').localeCompare(String(right?.id || ''));
+  };
+}
+
+function sameTenantScope(scope, expectedScope) {
+  if (!expectedScope) return true;
+  return scope?.agency_id === expectedScope.agency_id
+    && scope?.membership_id === expectedScope.membership_id
+    && scope?.membership_version === expectedScope.membership_version
+    && scope?.tenant_role === expectedScope.tenant_role;
+}
+
+/**
+ * Collect reviewed keyset pages for a UI surface, then apply a projection-safe
+ * display sort and cap. Arbitrary entity filters and field selection are not
+ * accepted: patientId and status are the complete filter vocabulary.
+ */
+export async function collectAuthorizedVisits(options = {}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) {
+    throw new Error('Authorized Visit collection options must be an object');
+  }
+  const allowed = [
+    'agencyId', 'patientId', 'purpose', 'status', 'sort', 'limit', 'expectedScope',
+  ];
+  if (Object.keys(options).some((key) => !allowed.includes(key))) {
+    throw new Error('Authorized Visit collection contains unsupported options');
+  }
+  const {
+    agencyId,
+    patientId = null,
+    purpose,
+    status = null,
+    sort = '-visit_date',
+    limit = 500,
+    expectedScope = null,
+  } = options;
+  if (!exactIdentifier(agencyId)) throw new Error('agencyId is required');
+  if (patientId !== null && !exactIdentifier(patientId)) throw new Error('patientId is invalid');
+  if (!isAuthorizedVisitListPurpose(purpose)) throw new Error('purpose is required');
+  if (status !== null && !VISIT_STATUSES.has(status)) throw new Error('status is invalid');
+  const sortField = sort ? sort.replace(/^-/, '') : null;
+  if (sortField && !PURPOSE_FIELDS[purpose].has(sortField)) {
+    throw new Error('sort is invalid for purpose');
+  }
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > MAX_AUTHORIZED_VISITS) {
+    throw new Error('limit is invalid');
+  }
+
+  const rows = [];
+  const seenIds = new Set();
+  let cursor = null;
+  const pageSize = PURPOSE_MAX_PAGE_SIZE[purpose];
+  while (true) {
+    const result = await listAuthorizedVisits({
+      agencyId,
+      patientId,
+      purpose,
+      status,
+      sort: PAGE_SORT,
+      pageSize,
+      cursor,
+    });
+    if (!sameTenantScope(result.scope, expectedScope)) {
+      throw new Error('Visit list authority changed during collection');
+    }
+    for (const visit of result.visits) {
+      if (seenIds.has(visit.id)) {
+        throw new Error('Visit list returned a duplicate keyset row');
+      }
+      seenIds.add(visit.id);
+      rows.push(visit);
+    }
+    if (!result.page.has_more) break;
+    if (rows.length >= MAX_AUTHORIZED_VISITS) {
+      throw new Error('Visit list exceeds the reviewed UI read limit');
+    }
+    cursor = result.page.next_cursor;
+  }
+
+  const comparator = compareVisits(sort);
+  const ordered = comparator ? [...rows].sort(comparator) : rows;
+  return ordered.slice(0, limit);
 }

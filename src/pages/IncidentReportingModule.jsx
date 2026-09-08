@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
@@ -105,20 +105,10 @@ export default function IncidentReportingModule() {
 
   // Narrowing to the caller's own charts happens in `select`, so the fetched
   // roster stays identical to every other 2000-row consumer and shares its
-  // cache entry. The email no longer needs to be in the key: `select` runs per
-  // render against whoever is signed in now, rather than being baked into a
-  // cached result that a session change would keep serving.
-  // useCallback, not an inline arrow: React Query memoizes `select` by
-  // reference, so a fresh arrow each render re-filters all 2000 rows every render.
-  const selectMine = useCallback(
-    (rows) => rows.filter(p => p.assigned_nurses?.includes(currentUser?.email)),
-    [currentUser?.email],
-  );
-
   const { data: myPatients = [] } = useScopedPatients({
+    purpose: 'roster',
     sort: '-updated_date',
     limit: 2000,
-    select: selectMine,
   });
 
   const { data: incidents = [], _isLoading } = useAgencyScopedQuery({
@@ -127,7 +117,7 @@ export default function IncidentReportingModule() {
     initialData: [],
   });
 
-  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 2000 });
 
   const createIncidentMutation = useMutation({
     mutationFn: async (incidentData) => {

@@ -88,11 +88,16 @@ describe('document-signing quarantine contract', () => {
     expect(source).not.toMatch(/\bbase44\b|useQuery|useScopedPatients|<input|<textarea|bulkCreateDocumentPackages/);
   });
 
-  it('keeps discharge review but removes direct clinician signature capture', () => {
-    const workflow = read('src/components/discharge/DischargeSummaryWorkflow.jsx');
-
-    expect(workflow).toMatch(/Clinician signature capture is unavailable/);
-    expect(workflow).toMatch(/handleReviewComplete/);
-    expect(workflow).not.toMatch(/DigitalSignaturePad|handleSignature|signature_data|status:\s*['"]signed['"]/);
+  it('keeps the entire discharge-summary UI static and data-free', () => {
+    for (const file of [
+      'src/components/discharge/DischargeSummaryWorkflow.jsx',
+      'src/components/hub-tabs/DischargeSummaries.jsx',
+    ]) {
+      const source = read(file);
+      expect(source, file).toMatch(/Discharge summaries are temporarily unavailable/);
+      expect(source, file).not.toMatch(
+        /\bbase44\b|useQuery|useMutation|DischargeSummary\.|DigitalSignaturePad|handleSignature|signature_data|status:\s*['"]signed['"]/,
+      );
+    }
   });
 });

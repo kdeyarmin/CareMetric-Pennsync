@@ -4,6 +4,7 @@ import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from '@/lib/AuthContext';
 import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -55,10 +56,12 @@ export default function PatientAlertAnalyzer({
   });
 
   // Fetch recent visits
-  const { data: recentVisits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId, 10],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 10),
-    enabled: !!patientId
+  const { data: recentVisits = [] } = useAuthorizedVisits({
+    patientId,
+    purpose: 'documentation',
+    sort: '-visit_date',
+    limit: 10,
+    enabled: !!patientId,
   });
 
   // Fetch incidents

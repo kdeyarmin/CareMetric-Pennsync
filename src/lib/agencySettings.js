@@ -1,5 +1,13 @@
 import { base44 } from '@/api/base44Client';
 
+// Exact runtime allowlist: never index the SDK entity registry with caller-
+// supplied text. In particular, Patient/Visit must remain unreachable through
+// this generic configuration helper now that their direct reads are disabled.
+const CONFIG_ENTITIES = Object.freeze({
+  PayerRateConfig: base44.entities.PayerRateConfig,
+  FaxRetryConfig: base44.entities.FaxRetryConfig,
+});
+
 /**
  * Resolve the caller's AgencySettings row for UI policy (templates, hours, etc.).
  * Prefer agency_code / office_name match. A keyed miss returns null (never adopt
@@ -33,12 +41,13 @@ export async function fetchCallerAgencySettings(agencyName) {
  * caller has no agency key (or exactly one unscoped row when keyed miss is
  * handled by returning null — no foreign-row fallback).
  *
- * @param {'PDGMRateConfig' | 'FollowUpRuleConfig' | 'FaxRetryConfig' | 'PayerRateConfig'} entityName
+ * @param {'FaxRetryConfig' | 'PayerRateConfig'} entityName
  * @param {string | null | undefined} agencyName
  * @returns {Promise<object | null>}
  */
 export async function fetchCallerScopedConfig(entityName, agencyName) {
-  const entity = base44.entities[entityName];
+  if (!Object.hasOwn(CONFIG_ENTITIES, entityName)) return null;
+  const entity = CONFIG_ENTITIES[entityName];
   if (!entity) return null;
   const key = String(agencyName || '').trim();
   if (key) {

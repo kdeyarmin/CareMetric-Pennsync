@@ -27,10 +27,10 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
   });
 
   const { data: patients = [] } = useScopedPatients({
+    purpose: 'education_delivery',
     status: 'active',
     sort: 'last_name',
     limit: ALL_ROWS,
-    readMode: 'authorized-roster',
   });
 
   const { data: selectedPatient } = useAuthorizedPatient({

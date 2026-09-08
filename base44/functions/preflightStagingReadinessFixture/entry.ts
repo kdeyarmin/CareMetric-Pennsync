@@ -1,9 +1,10 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
 /**
- * Read-only eligibility and stale-row preflight for the one reviewed LR-01/LR-02
- * staging fixture. This function never creates, updates, deletes, invokes, or
- * sends anything. A successful response is not authorization for a later write.
+ * Read-only eligibility and bounded point-in-time collision preflight for the
+ * one reviewed LR-01/LR-02 staging fixture. This function never creates,
+ * updates, deletes, invokes, or sends anything. A successful response is not
+ * authorization for a later write or a reservation of canonical identifiers.
  */
 
 const FIXTURE_SET_ID = 'lr01-lr02-two-agency-v1';
@@ -11,6 +12,11 @@ const STAGING_APP_ID = '6a9881683dc68a0bd54f1ef7';
 const STAGING_ORIGIN = 'https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/';
 const RELEASE_SENTINEL = `${STAGING_APP_ID}:${FIXTURE_SET_ID}:read-only-v1`;
 const ACTOR_KEYS = ['admin_a', 'clinician_a', 'clinician_a_empty', 'admin_b'] as const;
+const AGENCY_KEYS = ['agency_a', 'agency_b'] as const;
+const AGENCY_CODES = {
+  agency_a: 'LR-A',
+  agency_b: 'LR-B',
+} as const;
 const TOP_LEVEL_KEYS = new Set(['fixture_set_id', 'target', 'actors']);
 const TARGET_KEYS = ['environment', 'app_id', 'origin'];
 const ACTOR_BINDING_KEYS = ['user_id', 'email'];
@@ -463,6 +469,37 @@ async function loadFixtureRegistry(entities: Record<string, any>) {
   };
 }
 
+async function loadExactAgencyCodeCollision(
+  entities: Record<string, any>,
+  agencyCode: string,
+) {
+  const rows = requireRows(
+    await entities.Agency.filter(
+      { agency_code: agencyCode },
+      undefined,
+      EXACT_ROW_LIMIT,
+      undefined,
+      ['id', 'agency_code'],
+    ),
+    'Agency.filter',
+  );
+  if (rows.length >= EXACT_ROW_LIMIT) {
+    throw new PublicError(409, 'Canonical agency code is ambiguous');
+  }
+  if (rows.some((row) => row?.agency_code !== agencyCode)) {
+    throw new PublicError(409, 'Agency query scope could not be verified');
+  }
+  const snapshot = rows.map((row) => {
+    const id = exactIdentifier(row?.id);
+    const code = exactIdentifier(row?.agency_code);
+    if (!id || code !== agencyCode) {
+      throw new PublicError(409, 'Agency integrity check failed');
+    }
+    return { id, agency_code: code };
+  });
+  return { present: rows.length === 1, snapshot };
+}
+
 async function inspectPreflight(
   entities: Record<string, any>,
   input: { actors: Record<string, { userId: string; email: string }> },
@@ -480,6 +517,13 @@ async function inspectPreflight(
     throw new PublicError(409, 'Platform owner tenant membership must not exist');
   }
 
+  const agencies: Record<string, Record<string, unknown>> = {};
+  for (const agencyKey of AGENCY_KEYS) {
+    agencies[agencyKey] = await loadExactAgencyCodeCollision(
+      entities,
+      AGENCY_CODES[agencyKey],
+    );
+  }
   const fixtureRegistry = await loadFixtureRegistry(entities);
   const actors: Record<string, Record<string, unknown>> = {};
   for (const actorKey of ACTOR_KEYS) {
@@ -511,7 +555,7 @@ async function inspectPreflight(
     );
     actors[actorKey] = { user, membership, patient, assignment };
   }
-  return { ownerMembership, fixtureRegistry, actors };
+  return { ownerMembership, agencies, fixtureRegistry, actors };
 }
 
 function publicResult(snapshot: Record<string, any>) {
@@ -524,21 +568,26 @@ function publicResult(snapshot: Record<string, any>) {
       assignment_collision: actor.assignment.present,
     }];
   }));
+  const agencyCodeCollisions = Object.fromEntries(AGENCY_KEYS.map((agencyKey) => (
+    [agencyKey, snapshot.agencies[agencyKey].present === true]
+  )));
   const actorValues = Object.values(actors) as Array<Record<string, unknown>>;
   const eligibleActors = actorValues.filter((actor) => actor.user === 'eligible').length;
+  const agencyCodeCollisionCount = Object.values(agencyCodeCollisions)
+    .filter((present) => present === true).length;
   const collisionCategories = actorValues.reduce((total, actor) => (
     total
     + Number(actor.membership_collision === true)
     + Number(actor.patient_collision === true)
     + Number(actor.assignment_collision === true)
-  ), snapshot.fixtureRegistry.present ? 1 : 0);
-  const immutableAuthorityClear = eligibleActors === ACTOR_KEYS.length
+  ), (snapshot.fixtureRegistry.present ? 1 : 0) + agencyCodeCollisionCount);
+  const preflightClear = eligibleActors === ACTOR_KEYS.length
     && collisionCategories === 0;
   return {
     inspection_completed: true,
     mode: 'read_only_preflight',
-    status: immutableAuthorityClear ? 'immutable_authority_preflight_passed' : 'blocked',
-    immutable_authority_clear: immutableAuthorityClear,
+    status: preflightClear ? 'point_in_time_read_only_preflight_passed' : 'blocked',
+    point_in_time_clear: preflightClear,
     fixture_set_id: FIXTURE_SET_ID,
     target: {
       environment: 'staging',
@@ -549,10 +598,12 @@ function publicResult(snapshot: Record<string, any>) {
       runtime_target: 'exact_staging_configuration',
       platform_owner_membership: 'absent',
       fixture_registry: snapshot.fixtureRegistry.present ? 'present' : 'absent',
+      agency_code_collisions: agencyCodeCollisions,
       actors,
     },
     counts: {
       eligible_actors: eligibleActors,
+      agency_code_collisions: agencyCodeCollisionCount,
       collision_categories: collisionCategories,
     },
     safeguards: {
@@ -564,7 +615,8 @@ function publicResult(snapshot: Record<string, any>) {
     },
     limitations: [
       'does_not_prove_login_credentials',
-      'does_not_prove_agency_key_collision_absence',
+      'agency_code_checks_are_bounded_point_in_time_only',
+      'does_not_reserve_agency_codes_or_authorize_creation',
       'does_not_inspect_legacy_email_or_profile_links',
       'not_a_uniqueness_or_transaction_guarantee',
       'does_not_authorize_later_writes',
@@ -594,6 +646,9 @@ Deno.serve(async (req) => {
     if (!sameValue(initial, finalSnapshot)) {
       throw new PublicError(409, 'Staging readiness preflight changed during inspection');
     }
+    const terminalCaller = await base44.auth.me().catch(() => null);
+    requireRuntimeTarget(req);
+    loadProtectedOwner(terminalCaller, owner);
     return jsonResponse(publicResult(finalSnapshot));
   } catch (error) {
     if (error instanceof PublicError) {

@@ -1,6 +1,8 @@
-import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
 import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { useAuth } from '@/lib/AuthContext';
+import { collectAuthorizedVisits } from '@/functions/listAuthorizedVisits';
 import { toLocalISODate } from "@/lib/dateLocal";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { calculatePatientMatchScore } from "@/components/oasis/patientMatchScore";
@@ -126,6 +128,7 @@ function PdgmUnavailableNotice() {
 }
 
 function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
+  const { tenantContext } = useAuth();
   const [activeTab, setActiveTab] = useState("single");
   const [file, setFile] = useState(null);
   const [isUploading, setIsUploading] = useState(false);
@@ -173,29 +176,20 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
   const queryClient = useQueryClient();
 
   // Fetch patients for linking
-  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
-
-  // Update selected patient when selectedPatientId changes
-  useEffect(() => {
-    if (selectedPatientId && patients.length > 0) {
-      const patient = patients.find(p => p.id === selectedPatientId);
-      setSelectedPatient(patient || null);
-      
-      // Load historical data for AI validation
-      if (patient) {
-        loadPatientHistoricalData(patient.id);
-      }
-    } else {
-      setSelectedPatient(null);
-      setPatientHistoricalData(null);
-    }
-  }, [selectedPatientId, patients]);
+  const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 2000 });
 
   // Load patient historical data for AI validation
-  const loadPatientHistoricalData = async (patientId) => {
+  const loadPatientHistoricalData = useCallback(async (patientId) => {
     try {
       const [visits, previousOASISRes] = await Promise.all([
-        base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 5),
+        collectAuthorizedVisits({
+          agencyId: tenantContext?.agency_id,
+          patientId,
+          purpose: 'activity',
+          sort: '-visit_date',
+          limit: 5,
+          expectedScope: tenantContext,
+        }),
         // Routed through listOASISUploads so financial fields are stripped server-side for non-financial users.
         base44.functions.invoke('listOASISUploads', { patientId, sort: '-created_date', limit: 3 })
       ]);
@@ -220,7 +214,19 @@ function EnabledOASISAnalyzer({ onAnalysisHandoff }) {
     } catch (error) {
       console.error('Error loading historical data:', error);
     }
-  };
+  }, [tenantContext]);
+
+  // Update selected patient when selectedPatientId changes.
+  useEffect(() => {
+    if (selectedPatientId && patients.length > 0) {
+      const patient = patients.find(p => p.id === selectedPatientId);
+      setSelectedPatient(patient || null);
+      if (patient) loadPatientHistoricalData(patient.id);
+    } else {
+      setSelectedPatient(null);
+      setPatientHistoricalData(null);
+    }
+  }, [loadPatientHistoricalData, patients, selectedPatientId]);
 
   // Fetch saved OASIS uploads
   const { data: savedOASISUploads = [] } = useQuery({

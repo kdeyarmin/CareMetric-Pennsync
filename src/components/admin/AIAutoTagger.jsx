@@ -1,62 +1,123 @@
-import { useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { patchIncident } from "@/functions/updateIncident";
 import { invokeLLM } from "@/lib/invokeLLM";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Brain, Tag, Loader2, CheckCircle2 } from "lucide-react";
+import { AlertTriangle, Brain, Tag, Loader2, CheckCircle2 } from "lucide-react";
 import { hasSemanticTags, mergeAiTags } from "@/components/smartNote/compliance/reportingFields";
 import { setVisitAiTags } from '@/functions/updateAuthorizedVisit';
+import { getTrustedTenantContext } from '@/lib/roles';
+import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
+
+function freshQuerySuccess(query) {
+  return query.isSuccess
+    && query.isFetchedAfterMount
+    && query.fetchStatus === 'idle'
+    && !query.error
+    && !query.isFetching;
+}
 
 export default function AIAutoTagger() {
   const [isTagging, setIsTagging] = useState(false);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState(null);
   const queryClient = useQueryClient();
+  const currentUserQuery = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+    retry: false,
+    staleTime: 0,
+    refetchOnMount: 'always',
+  });
 
   // High limits before agency post-filter so foreign-tenant rows cannot crowd
   // this agency's untagged visits/incidents out of the tagging sample.
-  const { data: visits = [] } = useAgencyScopedQuery({
-    queryKey: ['allVisitsForTagging'],
-    fetch: () => base44.entities.Visit.list('-created_date', 500),
-    initialData: [],
+  const visitQuery = useAuthorizedVisits({
+    purpose: 'ai_tagging',
+    sort: '-visit_date',
+    limit: 500,
   });
-
-  const { data: incidents = [] } = useAgencyScopedQuery({
+  const incidentQuery = useAgencyScopedQuery({
     queryKey: ['allIncidentsForTagging'],
     fetch: () => base44.entities.Incident.list('-created_date', 500),
     initialData: [],
   });
+  const incidentTenantScope = getTrustedTenantContext(currentUserQuery.data);
+  const currentUserFresh = freshQuerySuccess(currentUserQuery);
+  const incidentFresh = freshQuerySuccess(incidentQuery);
+  const visitSnapshot = useMemo(() => (
+    visitQuery.isSuccess
+      && currentUserFresh
+      && sameAuthorizedTenantScope(incidentTenantScope, visitQuery.tenantScope)
+      && incidentFresh
+      ? {
+        visits: visitQuery.data,
+        incidents: incidentQuery.data,
+        incidentTenantScope,
+        visitTenantScope: visitQuery.tenantScope,
+      }
+      : null
+  ), [
+    currentUserFresh,
+    incidentTenantScope,
+    incidentQuery.data,
+    incidentFresh,
+    visitQuery.data,
+    visitQuery.isSuccess,
+    visitQuery.tenantScope,
+  ]);
+  const visitSnapshotRef = useRef(visitSnapshot);
+  visitSnapshotRef.current = visitSnapshot;
+  const taggingSequenceRef = useRef(0);
+  const visits = visitSnapshot?.visits || [];
+  const incidents = visitSnapshot?.incidents || [];
+
+  // Results reveal how many Visit records were processed. Hide them and stop
+  // an in-flight batch as soon as any source enters revalidation or fails.
+  useEffect(() => {
+    if (visitSnapshot) return;
+    taggingSequenceRef.current += 1;
+    setIsTagging(false);
+    setProgress(0);
+    setResults(null);
+  }, [visitSnapshot]);
 
   const updateVisitMutation = useMutation({
     mutationFn: ({ id, tags }) => setVisitAiTags({ visitId: id, tags }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['allVisitsForTagging'] }),
   });
 
   // Incident writes are service-role-only; go through the function.
   const updateIncidentMutation = useMutation({
     mutationFn: ({ id, tags }) => patchIncident({ incidentId: id, patch: { ai_tags: tags } }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['allIncidentsForTagging'] }),
   });
 
   const autoTagAll = async () => {
+    const authorizedSnapshot = visitSnapshotRef.current;
+    if (!authorizedSnapshot) return;
+    const taggingSequence = ++taggingSequenceRef.current;
     setIsTagging(true);
     setProgress(0);
     
-    const totalItems = visits.length + incidents.length;
+    const totalItems = authorizedSnapshot.visits.length + authorizedSnapshot.incidents.length;
     let processed = 0;
     let tagged = { visits: 0, incidents: 0 };
 
     try {
       // Process visits in batches
-      for (let i = 0; i < visits.length; i += 5) {
-        const batch = visits.slice(i, i + 5);
+      for (let i = 0; i < authorizedSnapshot.visits.length; i += 5) {
+        const batch = authorizedSnapshot.visits.slice(i, i + 5);
         
         for (const visit of batch) {
+          if (
+            visitSnapshotRef.current !== authorizedSnapshot
+            || taggingSequenceRef.current !== taggingSequence
+          ) return;
           // Skip only when the visit already has *semantic* tags; a visit that
           // carries only SmartNote system tags (trend:/chart_flag:) still needs
           // clinical tagging, and the merge below preserves those system tags.
@@ -89,19 +150,31 @@ Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...
               }
             });
 
+            if (
+              visitSnapshotRef.current !== authorizedSnapshot
+              || taggingSequenceRef.current !== taggingSequence
+            ) return;
             await updateVisitMutation.mutateAsync({ id: visit.id, tags: mergeAiTags(visit.ai_tags, tags) });
+            if (
+              visitSnapshotRef.current !== authorizedSnapshot
+              || taggingSequenceRef.current !== taggingSequence
+            ) return;
             tagged.visits++;
           } catch (error) {
             console.error(`Error tagging visit ${visit.id}:`, error);
           }
 
           processed++;
-          setProgress((processed / totalItems) * 100);
+          if (totalItems > 0) setProgress((processed / totalItems) * 100);
         }
       }
 
       // Process incidents
-      for (const incident of incidents) {
+      for (const incident of authorizedSnapshot.incidents) {
+        if (
+          visitSnapshotRef.current !== authorizedSnapshot
+          || taggingSequenceRef.current !== taggingSequence
+        ) return;
         if (hasSemanticTags(incident.ai_tags)) {
           processed++;
           continue;
@@ -133,6 +206,10 @@ Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...
             }
           });
 
+          if (
+            visitSnapshotRef.current !== authorizedSnapshot
+            || taggingSequenceRef.current !== taggingSequence
+          ) return;
           await updateIncidentMutation.mutateAsync({ id: incident.id, tags });
           tagged.incidents++;
         } catch (error) {
@@ -140,15 +217,24 @@ Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...
         }
 
         processed++;
-        setProgress((processed / totalItems) * 100);
+        if (totalItems > 0) setProgress((processed / totalItems) * 100);
       }
 
-      setResults(tagged);
+      if (
+        visitSnapshotRef.current === authorizedSnapshot
+        && taggingSequenceRef.current === taggingSequence
+      ) {
+        setResults(tagged);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['visits', 'authorized-list', 'ai_tagging'] }),
+          queryClient.invalidateQueries({ queryKey: ['allIncidentsForTagging'] }),
+        ]);
+      }
     } catch (error) {
       console.error("Error in auto-tagging:", error);
     }
     
-    setIsTagging(false);
+    if (taggingSequenceRef.current === taggingSequence) setIsTagging(false);
   };
 
   return (
@@ -160,10 +246,14 @@ Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <Alert>
-          <Tag className="w-4 h-4" />
+        <Alert className={!visitSnapshot ? 'border-amber-300 bg-amber-50' : undefined} role="status">
+          {!visitSnapshot ? <AlertTriangle className="w-4 h-4 text-amber-700" /> : <Tag className="w-4 h-4" />}
           <AlertDescription>
-            Automatically categorize and tag {visits.filter(v => !v.ai_tags).length} visits and {incidents.filter(i => !i.ai_tags).length} incidents for better searchability and trend analysis.
+            {!visitSnapshot
+              ? (visitQuery.isError || currentUserQuery.isError || incidentQuery.isError
+                ? 'AI auto-tagging is unavailable because one or more authorized data sources could not be verified.'
+                : 'Reverifying tenant access and every tagging source before AI auto-tagging…')
+              : `Automatically categorize and tag ${visits.filter(v => !hasSemanticTags(v.ai_tags)).length} visits and ${incidents.filter(i => !hasSemanticTags(i.ai_tags)).length} incidents for better searchability and trend analysis.`}
           </AlertDescription>
         </Alert>
 
@@ -176,7 +266,7 @@ Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...
           </div>
         )}
 
-        {results && !isTagging && (
+        {visitSnapshot && results && !isTagging && (
           <Alert className="bg-green-50 border-green-200">
             <CheckCircle2 className="w-4 h-4 text-green-600" />
             <AlertDescription>
@@ -187,7 +277,7 @@ Return as JSON array of lowercase strings with underscores: ["tag1", "tag2", ...
 
         <Button
           onClick={autoTagAll}
-          disabled={isTagging}
+          disabled={isTagging || !visitSnapshot}
           className="w-full bg-navy-600 hover:bg-navy-700"
         >
           {isTagging ? (

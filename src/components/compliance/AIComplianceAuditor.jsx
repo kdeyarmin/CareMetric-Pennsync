@@ -24,6 +24,9 @@ import {
 import { logActivity, ActivityActions } from "../utils/activityLogger";
 import { buildComprehensivePatientHistory, formatHistoryForAI, extractKeyInsights } from "../utils/patientHistoryAnalyzer";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 
 const AI_COMPLIANCE_AUDITOR_ENABLED = false;
 
@@ -38,21 +41,20 @@ function EnabledAIComplianceAuditor({
   const [auditResults, setAuditResults] = useState(null);
   const [_expandedSection, _setExpandedSection] = useState(null);
   const queryClient = useQueryClient();
+  const { tenantContext } = useAuth();
 
-  const { data: patient } = useQuery({
-    queryKey: ['patient', patientId],
-    queryFn: async () => {
-      const rows = await base44.entities.Patient.filter({ id: patientId });
-      return rows[0] || null;
-    },
-    // PatientDetails may have seeded an object under this key — accept both.
-    select: (data) => (Array.isArray(data) ? data[0] : data) || null,
-    enabled: !!patientId,
+  const { data: patient } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'oasis_analysis_context',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
-  const { data: visits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId, 10],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 10),
+  const { data: visits = [] } = useAuthorizedVisits({
+    patientId,
+    purpose: 'documentation',
+    sort: '-visit_date',
+    limit: 10,
     enabled: !!patientId,
   });
 
@@ -78,7 +80,7 @@ function EnabledAIComplianceAuditor({
 
     try {
       // Build comprehensive patient history
-      const patientHistory = await buildComprehensivePatientHistory(patient.id);
+      const patientHistory = await buildComprehensivePatientHistory(patient.id, { patient, visits });
       const historyContext = formatHistoryForAI(patientHistory);
       const keyInsights = extractKeyInsights(patientHistory);
 

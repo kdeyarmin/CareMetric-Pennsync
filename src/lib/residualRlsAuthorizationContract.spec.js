@@ -109,7 +109,7 @@ describe('residual RLS source containment', () => {
     expect(complianceCenter).toMatch(/\{isAdmin\s*&&\s*<MedicareRuleSeeder\s*\/>\}/);
   });
 
-  it('narrows education creation without breaking shared care-team updates', () => {
+  it('keeps education generation quarantined without breaking shared care-team updates', () => {
     const assignments = entity('PatientEducationAssignment').rls;
     expect(assignments.read).toBe(true);
     expect(assignments.create).toEqual(ownerOrAdmin('assigned_by'));
@@ -118,9 +118,11 @@ describe('residual RLS source containment', () => {
 
     const deliveries = entity('PatientEducationDelivery').rls;
     expect(deliveries).toEqual({ read: true, create: false, update: true, delete: false });
-    expect(directConsumers('PatientEducationDelivery', 'create')).toEqual([]);
-    expect(read('base44/functions/generatePatientEducation/entry.ts'))
-      .toMatch(/asServiceRole\.entities\.PatientEducationDelivery\.create\s*\(/);
+    expect(directConsumers('PatientEducationDelivery')).toEqual([]);
+    const generator = read('base44/functions/generatePatientEducation/entry.ts');
+    expect(generator).toMatch(/code:\s*'PATIENT_EDUCATION_GENERATION_PAUSED'/);
+    expect(generator).toMatch(/status:\s*503/);
+    expect(generator).not.toMatch(/createClientFromRequest|\.entities\b|InvokeLLM/);
 
     const sent = entity('SentEducationMaterial').rls;
     expect(sent.read).toBe(true);
@@ -130,7 +132,7 @@ describe('residual RLS source containment', () => {
     expect(directConsumers('SentEducationMaterial', 'update')).toEqual([]);
   });
 
-  it('stamps every remaining browser-created education record with the actor email', () => {
+  it('stamps remaining browser-created education records and keeps the portal unavailable', () => {
     const recommender = read('src/components/carePlan/AIEducationRecommender.jsx');
     const sender = read('src/components/education/PersonalizedMaterialSender.jsx');
     const portal = read('src/components/hub-tabs/PatientEducationPortal.jsx');
@@ -140,8 +142,8 @@ describe('residual RLS source containment', () => {
     expect(recommender).toMatch(/assigned_by:\s*assignedBy/);
     expect(sender).toMatch(/if \(!currentUser\?\.email\)/);
     expect(sender).toMatch(/sent_by:\s*currentUser\.email/);
-    expect(portal).toMatch(/if \(!deliveredBy\)/);
-    expect(portal).toMatch(/delivered_by:\s*deliveredBy/);
+    expect(portal).toMatch(/Patient education generation is temporarily unavailable/);
+    expect(portal).not.toMatch(/base44|PatientEducationDelivery/);
   });
 
   it('fails every ClinicalPathway operation closed while all direct hosts remain literally paused', () => {
@@ -238,21 +240,16 @@ describe('residual RLS source containment', () => {
     }
   });
 
-  it('allows only the generating clinician or a protected admin to create or update discharge summaries', () => {
+  it('keeps discharge-summary storage owner-scoped while all generation paths are quarantined', () => {
     const rls = entity('DischargeSummary').rls;
     expect(rls.create).toEqual(ownerOrAdmin('generated_by'));
     expect(rls.update).toEqual(ownerOrAdmin('generated_by'));
     expect(rls.delete).toBe(false);
-    expect(directConsumers('DischargeSummary')).toEqual([
-      'src/components/discharge/DischargeSummaryWorkflow.jsx',
-      'src/components/hub-tabs/DischargeSummaries.jsx',
-    ]);
-    expect(directConsumers('DischargeSummary', 'create')).toEqual([]);
-    expect(directConsumers('DischargeSummary', 'update')).toEqual([
-      'src/components/discharge/DischargeSummaryWorkflow.jsx',
-    ]);
-    expect(read('base44/functions/generateDischargeSummary/entry.ts'))
-      .toMatch(/entities\.DischargeSummary\.create\([\s\S]{0,3000}?generated_by:\s*user\.email/);
+    expect(directConsumers('DischargeSummary')).toEqual([]);
+    const generator = read('base44/functions/generateDischargeSummary/entry.ts');
+    expect(generator).toMatch(/code:\s*'DISCHARGE_SUMMARY_GENERATION_PAUSED'/);
+    expect(generator).toMatch(/status:\s*503/);
+    expect(generator).not.toMatch(/createClientFromRequest|\.entities\b|InvokeLLM/);
   });
 
   it('matches ClinicalLibraryFolder authorization to templates and keeps foreign shared folders read-only', () => {
@@ -287,11 +284,8 @@ describe('residual RLS source containment', () => {
     expect(directConsumers('NoteConversion', 'update')).toEqual([]);
     expect(directConsumers('NoteConversion', '(?:filter|list|get)')).toEqual([
       'src/components/admin/NoteConversionReport.jsx',
-      'src/components/admin/QualityMetricsDashboard.jsx',
-      'src/components/admin/ReportsCenter.jsx',
       'src/components/reports/NursePerformanceReport.jsx',
       'src/lib/retiredOfflineQueue.js',
-      'src/pages/AgencyAnalytics.jsx',
       'src/pages/AnalyticsDashboard.jsx',
     ]);
 

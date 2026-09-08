@@ -18,6 +18,10 @@ vi.mock('@/hooks/useScopedPatients', () => ({
   excludeArchived: (rows) => rows.filter((row) => !row.is_archived),
 }));
 
+vi.mock('@/lib/AuthContext', () => ({
+  useAuth: () => ({ tenantContext: { agency_id: 'agency-a' } }),
+}));
+
 vi.mock('@/api/base44Client', () => {
   const entityStub = new Proxy(
     {},

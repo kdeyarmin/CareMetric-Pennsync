@@ -14,6 +14,7 @@ const MAX_BODY_BYTES = 20_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const MEMBERSHIP_SCAN_LIMIT = 100;
 const EXACT_ROW_LIMIT = 10;
+const NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 const MAX_PAGE_SIZE = 50;
 const CURSOR_VERSION = 1;
 const PAGE_SORT = 'id_asc';
@@ -105,16 +106,86 @@ const PURPOSE_FIELDS: Record<string, readonly string[]> = {
     'grounding_pending',
     'updated_date',
   ],
+  activity: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'created_date',
+    'updated_date',
+  ],
+  documentation: [
+    'id', 'patient_id', 'visit_date', 'visit_time', 'visit_type', 'status',
+    'nurse_notes', 'raw_transcription', 'vital_signs', 'documentation_source',
+    'grounding_pending', 'updated_date',
+  ],
+  vitals_trend: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'vital_signs',
+    'updated_date',
+  ],
+  operations_analytics: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'start_time',
+    'end_time', 'created_by', 'created_date', 'updated_date',
+  ],
+  reporting: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'start_time',
+    'end_time', 'nurse_notes', 'vital_signs', 'created_by', 'created_date',
+    'updated_date',
+  ],
+  data_quality: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'nurse_notes',
+    'vital_signs', 'homebound_justification', 'updated_date',
+  ],
+  compliance_monitoring: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'nurse_notes',
+    'compliance_score', 'compliance_issues', 'homebound_status_verified',
+    'skilled_intervention_documented', 'homebound_justification',
+    'grounding_pending', 'created_by', 'updated_date',
+  ],
+  ai_tagging: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'nurse_notes',
+    'ai_tags', 'updated_date',
+  ],
+  hospitalization_risk: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'nurse_notes',
+    'vital_signs', 'updated_date',
+  ],
+  clinical_insights: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'vital_signs',
+    'created_by', 'updated_date',
+  ],
+  deduplication: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'created_by',
+    'created_date', 'updated_date',
+  ],
 };
 
 const PURPOSE_ROLES: Record<string, ReadonlySet<string>> = {
   schedule: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
   compliance_review: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  activity: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  documentation: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  vitals_trend: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  operations_analytics: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  reporting: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  data_quality: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  compliance_monitoring: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  ai_tagging: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  hospitalization_risk: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  clinical_insights: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
+  deduplication: new Set(['platform_owner', 'agency_admin', 'manager', 'clinician']),
 };
 
 const PURPOSE_MAX_PAGE_SIZE: Record<string, number> = {
   schedule: 50,
   compliance_review: 25,
+  activity: 50,
+  documentation: 25,
+  vitals_trend: 50,
+  operations_analytics: 50,
+  reporting: 25,
+  data_quality: 25,
+  compliance_monitoring: 25,
+  ai_tagging: 25,
+  hospitalization_risk: 25,
+  clinical_insights: 50,
+  deduplication: 25,
 };
 // <<<END AUTHORIZED VISIT LIST PURPOSE POLICY>>>
 
@@ -198,6 +269,12 @@ class PublicError extends Error {
     this.name = 'PublicError';
     this.status = status;
   }
+}
+
+function jsonResponse(body: unknown, init: ResponseInit = {}) {
+  const headers = new Headers(init.headers);
+  for (const [name, value] of Object.entries(NO_STORE_HEADERS)) headers.set(name, value);
+  return Response.json(body, { ...init, headers });
 }
 
 const normalizeEmail = (value: unknown) =>
@@ -307,7 +384,8 @@ function validVisitPurposeField(field: string, value: unknown) {
   if (field === 'visit_date') return validCalendarDate(value);
   if (field === 'visit_type') return typeof value === 'string' && VISIT_TYPES.has(value);
   if (field === 'status') return typeof value === 'string' && VISIT_STATUSES.has(value);
-  if (field === 'updated_date') return validInstant(value);
+  if (field === 'updated_date' || field === 'created_date') return validInstant(value);
+  if (field === 'created_by') return canonicalEmail(value) === value;
   if (field === 'visit_time' || field === 'start_time' || field === 'end_time') {
     return typeof value === 'string' && value.length <= 100;
   }
@@ -766,6 +844,35 @@ function transitionRequestKey(key: string, requestId: string) {
   return `${key}:${requestId}`;
 }
 
+function assignmentLifecycleIsCoherent(row: Record<string, any>, status: string, action: string) {
+  if (action === 'grant') {
+    return status === 'active'
+      && row.version === 1
+      && row.activated_at === row.last_transition_at
+      && row.suspended_at == null;
+  }
+  if (action === 'activate') {
+    return status === 'active'
+      && row.version >= 3
+      && row.version % 2 === 1
+      && validInstant(row.suspended_at)
+      && row.activated_at === row.last_transition_at;
+  }
+  if (action === 'suspend') {
+    return status === 'suspended'
+      && row.version >= 2
+      && row.version % 2 === 0
+      && row.suspended_at === row.last_transition_at;
+  }
+  if (action === 'revoke') {
+    return status === 'revoked'
+      && row.version >= 2
+      && row.revoked_at === row.last_transition_at
+      && row.revocation_reason === row.last_transition_reason;
+  }
+  return false;
+}
+
 function validateAssignmentIntegrity(
   row: Record<string, any>,
   patientId: string,
@@ -817,9 +924,7 @@ function validateAssignmentIntegrity(
     || !validInstant(row.last_transition_at)
     || !boundedReason(row.last_transition_reason)
     || !ASSIGNMENT_ACTIONS.has(action)
-    || (status === 'active' && action !== 'grant' && action !== 'activate')
-    || (status === 'suspended' && action !== 'suspend')
-    || (status === 'revoked' && action !== 'revoke')
+    || !assignmentLifecycleIsCoherent(row, status, action)
     || !requestId
     || row.last_transition_request_key !== transitionRequestKey(key, requestId)
     || !Number.isSafeInteger(row.version)
@@ -1132,8 +1237,8 @@ async function recordVisitListDisclosure(
     action: 'VISIT_LIST_READ_AUTHORIZED',
     details: {
       broker: 'listAuthorizedVisits',
+      resource_type: 'Visit',
       agency_id: authority.agencyId,
-      patient_id: input.patientId,
       purpose: input.purpose,
       subject_user_id: authority.userId,
       membership_id: authority.membership?.id ?? null,
@@ -1149,7 +1254,7 @@ async function recordVisitListDisclosure(
 Deno.serve(async (req) => {
   try {
     if (req.method !== 'POST') {
-      return Response.json(
+      return jsonResponse(
         { error: 'Method not allowed' },
         { status: 405, headers: { Allow: 'POST' } },
       );
@@ -1220,6 +1325,16 @@ Deno.serve(async (req) => {
       finalAccess,
     );
     requireCursorAuthority(input.cursor, input, disclosureAuthority, disclosureAccess);
+    // The assignment lookup above is not transactional with membership state.
+    // Perform one terminal authority fence after it; an authorization change
+    // after this read is the unavoidable residual without datastore snapshots.
+    const auditAuthority = await loadAuthority(
+      base44,
+      input.agencyId,
+      disclosureAuthority.snapshot,
+    );
+    requirePurposeRole(auditAuthority, input.purpose);
+    requireCursorAuthority(input.cursor, input, auditAuthority, disclosureAccess);
 
     const visibleVisits = finalVisits.slice(0, input.pageSize);
     const hasMore = finalVisits.length > input.pageSize;
@@ -1231,32 +1346,32 @@ Deno.serve(async (req) => {
     // not be durably created. Browser SecurityLog writes are clinician-denied.
     await recordVisitListDisclosure(
       entities,
-      disclosureAuthority,
+      auditAuthority,
       input,
       visibleVisits.length,
       hasMore,
     );
-    return Response.json({
+    return jsonResponse({
       success: true,
       purpose: input.purpose,
       visits: visibleVisits.map((row) => pickFields(row, PURPOSE_FIELDS[input.purpose])),
-      scope: responseScope(disclosureAuthority, input, disclosureAccess),
+      scope: responseScope(auditAuthority, input, disclosureAccess),
       page: {
         page_size: input.pageSize,
         sort: PAGE_SORT,
         after_id: input.cursor?.after_id ?? null,
         has_more: hasMore,
         next_cursor: hasMore
-          ? pageCursorContext(input, disclosureAuthority, disclosureAccess, nextAfterId)
+          ? pageCursorContext(input, auditAuthority, disclosureAccess, nextAfterId)
           : null,
       },
     });
   } catch (error) {
     if (error instanceof PublicError) {
-      return Response.json({ error: error.message }, { status: error.status });
+      return jsonResponse({ error: error.message }, { status: error.status });
     }
     // Never retain provider error objects: they may embed predicates or PHI.
     console.error('listAuthorizedVisits failed');
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
+    return jsonResponse({ error: 'Internal server error' }, { status: 500 });
   }
 });

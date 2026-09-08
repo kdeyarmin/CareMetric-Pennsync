@@ -36,7 +36,7 @@ function EnabledOASISReview() {
   const isAdmin = isAdminView(currentUser);
 
   // Fetch patients with pending OASIS reviews
-  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 2000 });
 
   // Fetch all OASIS uploads with AI suggestions
   const { data: oasisRecords = [] } = useQuery({

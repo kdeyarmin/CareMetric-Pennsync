@@ -6,15 +6,21 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus, Calendar, Stethoscope } from "lucide-react";
-import { useScopedPatients } from '@/hooks/useScopedPatients';
+import {
+  invalidateAuthorizedPatientLists,
+  useScopedPatients,
+} from '@/hooks/useScopedPatients';
+import { invalidateAuthorizedVisitLists } from '@/hooks/useAuthorizedVisits';
 import { toLocalISODate } from "@/lib/dateLocal";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { createAuthorizedVisit } from '@/functions/createAuthorizedVisit';
 import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
 import { setPatientPrimaryDiagnosis } from '@/functions/updateAuthorizedPatient';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function PatientQuickActions({ onActionComplete }) {
+  const { tenantContext } = useAuth();
   const patientCreateRequestId = useRef(null);
   const [showNewPatient, setShowNewPatient] = useState(false);
   const [showNewVisit, setShowNewVisit] = useState(false);
@@ -22,7 +28,7 @@ export default function PatientQuickActions({ onActionComplete }) {
 
   const queryClient = useQueryClient();
 
-  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: '-updated_date', limit: 100 });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'roster', status: 'active', sort: '-updated_date', limit: 100 });
 
   // New Patient Form
   const [newPatient, setNewPatient] = useState({
@@ -52,8 +58,7 @@ export default function PatientQuickActions({ onActionComplete }) {
         care_type: 'home_health',
         status: 'active'
       });
-      queryClient.invalidateQueries({ queryKey: ['all-patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-quick-action'] });
+      invalidateAuthorizedPatientLists(queryClient);
       if (onActionComplete) onActionComplete();
     },
     onError: (error) => {
@@ -80,7 +85,7 @@ export default function PatientQuickActions({ onActionComplete }) {
         visit_type: 'routine_visit',
         status: 'scheduled'
       });
-      queryClient.invalidateQueries({ queryKey: ['all-visits'] });
+      invalidateAuthorizedVisitLists(queryClient);
       if (onActionComplete) onActionComplete();
     },
     onError: (error) => {
@@ -98,7 +103,7 @@ export default function PatientQuickActions({ onActionComplete }) {
   const updatePatientDiagnosisMutation = useMutation({
     mutationFn: ({ patient, diagnosis }) => setPatientPrimaryDiagnosis({
       patientId: patient.id,
-      agencyId: patient.agency_id,
+      agencyId: tenantContext?.agency_id,
       expectedUpdatedDate: patient.updated_date,
       primaryDiagnosis: diagnosis,
     }),
@@ -110,7 +115,7 @@ export default function PatientQuickActions({ onActionComplete }) {
         diagnosis: '',
         notes: ''
       });
-      queryClient.invalidateQueries({ queryKey: ['all-patients'] });
+      invalidateAuthorizedPatientLists(queryClient);
       if (onActionComplete) onActionComplete();
     },
     onError: (error) => {

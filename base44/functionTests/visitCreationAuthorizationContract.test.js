@@ -317,9 +317,7 @@ test('Visit provenance fields exist, direct create is disabled, and the wrapper 
   assert.equal(schema.properties.created_by_user_id.type, 'string');
   assert.equal(schema.properties.created_by_user_email_normalized.format, 'email');
   assert.equal(schema.rls.create, false);
-  assert.deepEqual(schema.rls.read.$or[0], {
-    'data.created_by_user_email_normalized': '{{user.email}}',
-  });
+  assert.equal(schema.rls.read, false);
   assert.equal(schema.rls.update, false);
   assert.equal(schema.rls.delete, false);
 

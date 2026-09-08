@@ -3,19 +3,82 @@ import assert from 'node:assert/strict';
 import {
   PHYSICIAN_AGENCY_OVERLAY_FIELDS,
   PHYSICIAN_MASTER_FIELDS,
+  READINESS_FIXTURE_ACTORS,
+  READINESS_FIXTURE_AGENCY_ALIASES,
+  READINESS_FIXTURE_ASSIGNMENTS,
+  READINESS_FIXTURE_PATIENT_ALIASES,
+  READINESS_FIXTURE_PATIENTS,
   READINESS_FIXTURE_TARGET,
+  READINESS_FIXTURE_TENANT_ACTOR_ALIASES,
+  READINESS_FIXTURE_TOPOLOGY,
   buildReadinessFixturePlan,
   inheritContentScope,
   splitPhysicianMasterAndAgencyOverlay,
   validateContentScopeBinding,
   validateReadinessFixtureActorBindings,
 } from './tenantArchitecture.js';
+import {
+  LIVE_READINESS_FIXTURE_ACTORS,
+  LIVE_READINESS_FIXTURE_AGENCY_ALIASES,
+  LIVE_READINESS_FIXTURE_ASSIGNMENTS,
+  LIVE_READINESS_FIXTURE_PATIENT_ALIASES,
+  LIVE_READINESS_FIXTURE_PATIENTS,
+  LIVE_READINESS_FIXTURE_TENANT_ACTOR_ALIASES,
+  LIVE_READINESS_FIXTURE_TOPOLOGY,
+} from './liveReadinessFixtureManifest.js';
 
 const actorBindings = () => ({
   admin_a: { user_id: 'user-admin-a', email: 'Admin-A@Example.test' },
   clinician_a: { user_id: 'user-clinician-a', email: 'Clinician-A@Example.test' },
   clinician_a_empty: { user_id: 'user-clinician-a-empty', email: 'Empty-A@Example.test' },
   admin_b: { user_id: 'user-admin-b', email: 'Admin-B@Example.test' },
+});
+
+function assertDeepFrozen(value, seen = new Set()) {
+  if (!value || typeof value !== 'object' || seen.has(value)) return;
+  assert.equal(Object.isFrozen(value), true);
+  seen.add(value);
+  for (const child of Object.values(value)) assertDeepFrozen(child, seen);
+}
+
+test('canonical manifest aliases and architecture projections have exact frozen parity', () => {
+  assert.equal(READINESS_FIXTURE_TENANT_ACTOR_ALIASES, LIVE_READINESS_FIXTURE_TENANT_ACTOR_ALIASES);
+  assert.equal(READINESS_FIXTURE_AGENCY_ALIASES, LIVE_READINESS_FIXTURE_AGENCY_ALIASES);
+  assert.equal(READINESS_FIXTURE_PATIENT_ALIASES, LIVE_READINESS_FIXTURE_PATIENT_ALIASES);
+  assert.deepEqual(READINESS_FIXTURE_ACTORS, Object.fromEntries(
+    LIVE_READINESS_FIXTURE_TENANT_ACTOR_ALIASES.map((alias) => [alias, {
+      agency: LIVE_READINESS_FIXTURE_ACTORS[alias].agency,
+      tenantRole: LIVE_READINESS_FIXTURE_ACTORS[alias].tenant_role,
+    }]),
+  ));
+  assert.deepEqual(READINESS_FIXTURE_PATIENTS, Object.fromEntries(
+    LIVE_READINESS_FIXTURE_PATIENT_ALIASES.map((alias) => [alias, {
+      agency: LIVE_READINESS_FIXTURE_PATIENTS[alias].agency,
+      creator: LIVE_READINESS_FIXTURE_PATIENTS[alias].creator,
+      status: LIVE_READINESS_FIXTURE_PATIENTS[alias].status,
+      isSample: LIVE_READINESS_FIXTURE_PATIENTS[alias].is_sample,
+      isArchived: LIVE_READINESS_FIXTURE_PATIENTS[alias].is_archived,
+    }]),
+  ));
+  assert.deepEqual(READINESS_FIXTURE_ASSIGNMENTS, LIVE_READINESS_FIXTURE_ASSIGNMENTS.map((row) => ({
+    patient: row.patient,
+    actor: row.actor,
+    status: row.status,
+    source: row.source,
+  })));
+  assert.deepEqual(READINESS_FIXTURE_TOPOLOGY, {
+    tenantActorAliases: LIVE_READINESS_FIXTURE_TOPOLOGY.tenant_actor_aliases,
+    agencyAliases: LIVE_READINESS_FIXTURE_TOPOLOGY.agency_aliases,
+    patientAliases: LIVE_READINESS_FIXTURE_TOPOLOGY.patient_aliases,
+    assignmentEdges: LIVE_READINESS_FIXTURE_TOPOLOGY.assignment_edges,
+  });
+  for (const value of [
+    LIVE_READINESS_FIXTURE_TOPOLOGY,
+    READINESS_FIXTURE_TOPOLOGY,
+    READINESS_FIXTURE_ACTORS,
+    READINESS_FIXTURE_PATIENTS,
+    READINESS_FIXTURE_ASSIGNMENTS,
+  ]) assertDeepFrozen(value);
 });
 
 test('readiness fixture is pinned to the reviewed isolated staging target and exact topology', () => {
@@ -100,6 +163,18 @@ test('hybrid content scope requires either global scope or one exact agency', ()
 });
 
 test('learning-plan courses and training modules inherit only from exact verified parents', () => {
+  assert.deepEqual(inheritContentScope({
+    entity_name: 'LearningPlan',
+    resource_id: 'plan-1',
+    scope_type: 'global',
+  }, 'LearningPlanCourse', 'plan-course-1', 'plan-1'), {
+    entityName: 'LearningPlanCourse',
+    resourceId: 'plan-course-1',
+    parentEntity: 'LearningPlan',
+    parentResourceId: 'plan-1',
+    scopeType: 'global',
+    agencyId: null,
+  });
   const inherited = inheritContentScope({
     entity_name: 'TrainingCourse',
     resource_id: 'course-1',
@@ -119,6 +194,16 @@ test('learning-plan courses and training modules inherit only from exact verifie
     resource_id: 'course-other',
     scope_type: 'global',
   }, 'TrainingModule', 'module-1', 'course-1'), /exact verified parent/);
+  assert.throws(() => inheritContentScope({
+    entity_name: 'TrainingCourse',
+    resource_id: 'plan-1',
+    scope_type: 'global',
+  }, 'LearningPlanCourse', 'plan-course-1', 'plan-1'), /exact verified parent/);
+  assert.throws(() => inheritContentScope({
+    entity_name: 'LearningPlan',
+    resource_id: 'plan-1',
+    scope_type: 'global',
+  }, 'PDFTemplate', 'template-1', 'plan-1'), /does not inherit/);
 });
 
 test('physician master and agency-private overlay fields cannot be mixed accidentally', () => {

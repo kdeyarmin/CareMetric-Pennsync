@@ -50,6 +50,16 @@ const MAX_SOURCE_RECORD_ID_LENGTH = 512;
 const MAX_RECOVERY_REQUEST_ID_LENGTH = 2_000;
 const EXACT_RECOVERY_ROW_LIMIT = 2;
 
+// This retired recovery path only needs these four non-Patient/Visit entity
+// handles. Never pass the full SDK registry through an injectable seam: doing
+// so would let a future dynamic lookup bypass the Patient/Visit read brokers.
+const RETIRED_QUEUE_ENTITIES = Object.freeze({
+  ComplianceAudit: base44.entities.ComplianceAudit,
+  Incident: base44.entities.Incident,
+  NoteConversion: base44.entities.NoteConversion,
+  Task: base44.entities.Task,
+});
+
 const alreadyRetired = () => {
   try {
     return localStorage.getItem(DONE_FLAG) === '1';
@@ -502,7 +512,7 @@ async function flushItem(item, entities, functions, getAuthenticatedUser) {
  *   write failed), so the storage was left in place for the next attempt.
  */
 export async function flushAndRetireOfflineQueue({
-  entities = base44.entities,
+  entities = RETIRED_QUEUE_ENTITIES,
   functions = base44.functions,
   getAuthenticatedUser = () => base44.auth.me(),
   getQueue = readLegacyQueue,

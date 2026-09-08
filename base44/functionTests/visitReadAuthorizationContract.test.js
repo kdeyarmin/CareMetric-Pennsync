@@ -14,6 +14,10 @@ const wrappers = {
   get: new URL('../../src/functions/getAuthorizedVisit.js', import.meta.url),
   list: new URL('../../src/functions/listAuthorizedVisits.js', import.meta.url),
 };
+const canonicalAssignmentLifecycleSources = [
+  new URL('../functions/listAuthorizedPatients/entry.ts', import.meta.url),
+  new URL('../functions/managePatientCareTeamAssignment/entry.ts', import.meta.url),
+];
 
 const USER = {
   id: 'user-1',
@@ -76,6 +80,8 @@ function visit(overrides = {}) {
     visit_time: '09:30',
     visit_type: 'skilled_nursing',
     status: 'completed',
+    start_time: '09:30',
+    end_time: '10:30',
     nurse_notes: 'Bounded clinical note',
     raw_transcription: 'Bounded source transcription',
     vital_signs: { heart_rate: 72 },
@@ -88,8 +94,16 @@ function visit(overrides = {}) {
     homebound_justification: 'Requires assistance to leave home.',
     ai_tags: ['trend:stable'],
     emr_handoff_status: 'not_started',
+    emr_handoff_history: [{
+      status: 'copied_to_emr',
+      reported_by: 'clinician@agency.test',
+      reported_at: '2026-09-03T12:25:00.000Z',
+      self_reported: true,
+      note: 'Copied by the assigned clinician.',
+    }],
     documentation_review_ack: { acknowledged: false, is_clinical_signature: false },
     secret_claim: 'must never cross the projection boundary',
+    created_date: '2026-09-03T09:00:00.000Z',
     updated_date: '2026-09-03T12:30:00.000Z',
     ...overrides,
   };
@@ -117,17 +131,31 @@ function assignment(overrides = {}) {
     last_transition_action: 'grant',
     last_transition_request_id: 'assignment-request-a',
     last_transition_request_key: 'agency-a:patient-a:user-1:assignment-request-a',
-    version: 3,
+    version: 1,
     ...overrides,
   };
   if (row.status === 'suspended') {
-    row.suspended_at ??= '2026-09-03T12:40:00.000Z';
+    if (row.suspended_at === undefined) row.suspended_at = '2026-09-03T12:40:00.000Z';
+    if (!Object.hasOwn(overrides, 'version')) row.version = 2;
+    if (!Object.hasOwn(overrides, 'last_transition_at')) row.last_transition_at = row.suspended_at;
     if (overrides.last_transition_action === undefined) row.last_transition_action = 'suspend';
   }
   if (row.status === 'revoked') {
-    row.revoked_at ??= '2026-09-03T12:40:00.000Z';
-    row.revocation_reason ??= 'Removed from care team';
+    if (row.revoked_at === undefined) row.revoked_at = '2026-09-03T12:40:00.000Z';
+    if (row.revocation_reason === undefined) row.revocation_reason = 'Removed from care team';
+    if (!Object.hasOwn(overrides, 'version')) row.version = 2;
+    if (!Object.hasOwn(overrides, 'last_transition_at')) row.last_transition_at = row.revoked_at;
+    if (!Object.hasOwn(overrides, 'last_transition_reason')) {
+      row.last_transition_reason = row.revocation_reason;
+    }
     if (overrides.last_transition_action === undefined) row.last_transition_action = 'revoke';
+  }
+  if (row.status === 'active' && row.last_transition_action === 'activate') {
+    if (!Object.hasOwn(overrides, 'version')) row.version = 3;
+    if (!Object.hasOwn(overrides, 'suspended_at')) {
+      row.suspended_at = '2026-09-03T10:30:00.000Z';
+    }
+    if (!Object.hasOwn(overrides, 'activated_at')) row.activated_at = row.last_transition_at;
   }
   return row;
 }
@@ -174,6 +202,7 @@ async function loadBroker(kind, {
   visitResponses = null,
   assignments = [assignment()],
   assignmentResponses = null,
+  onAssignmentFilter = null,
   auditError = null,
   ignoreFilters = false,
   superAdminEmail = null,
@@ -189,11 +218,13 @@ async function loadBroker(kind, {
     assignments: [],
     securityLogs: [],
   };
+  let effectiveMemberships = memberships;
   const indexes = { membership: 0, agency: 0, patient: 0, visit: 0, assignment: 0 };
   const selected = (responses, key, fallback) => {
     const index = indexes[key];
     indexes[key] += 1;
-    return responses ? responses[Math.min(index, responses.length - 1)] : fallback;
+    const resolvedFallback = typeof fallback === 'function' ? fallback() : fallback;
+    return responses ? responses[Math.min(index, responses.length - 1)] : resolvedFallback;
   };
   const matches = (row, query) => Object.entries(query || {}).every(([field, value]) => {
     if (value && typeof value === 'object' && !Array.isArray(value)) {
@@ -224,13 +255,26 @@ async function loadBroker(kind, {
   const serviceRole = {
     entities: {
       AgencyMembership: {
-        filter: entityFilter('memberships', 'membership', membershipResponses, memberships),
+        filter: entityFilter('memberships', 'membership', membershipResponses, () => effectiveMemberships),
       },
       Agency: { filter: entityFilter('agencies', 'agency', agencyResponses, agencies) },
       Patient: { filter: entityFilter('patients', 'patient', patientResponses, patients) },
       Visit: { filter: entityFilter('visits', 'visit', visitResponses, visits) },
       PatientCareTeamAssignment: {
-        filter: entityFilter('assignments', 'assignment', assignmentResponses, assignments),
+        filter: async (...args) => {
+          const result = await entityFilter(
+            'assignments',
+            'assignment',
+            assignmentResponses,
+            assignments,
+          )(...args);
+          const replacement = onAssignmentFilter?.({
+            callNumber: calls.assignments.length,
+            memberships: clone(effectiveMemberships),
+          });
+          if (replacement) effectiveMemberships = replacement;
+          return result;
+        },
       },
       SecurityLog: {
         create: async (payload) => {
@@ -268,6 +312,8 @@ async function invoke(handler, path, body, method = 'POST') {
     ...(method === 'GET' ? {} : { body: JSON.stringify(body) }),
   });
   const response = await handler(request);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal(response.headers.get('pragma'), 'no-cache');
   return { response, json: await response.json() };
 }
 
@@ -287,11 +333,175 @@ const listBody = (overrides = {}) => ({
   ...overrides,
 });
 
-test('Visit read brokers and wrappers are finite, broker-only, and deliberately unwired', async () => {
+const EXACT_PURPOSE_FIELDS = {
+  schedule: [
+    'id', 'patient_id', 'visit_date', 'visit_time', 'visit_type', 'status',
+    'start_time', 'end_time', 'updated_date',
+  ],
+  documentation: [
+    'id', 'patient_id', 'visit_date', 'visit_time', 'visit_type', 'status',
+    'nurse_notes', 'raw_transcription', 'vital_signs', 'documentation_source',
+    'grounding_pending', 'emr_handoff_status', 'emr_handoff_history',
+    'documentation_review_ack', 'updated_date',
+  ],
+  compliance_review: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'compliance_score',
+    'compliance_issues', 'homebound_status_verified', 'skilled_intervention_documented',
+    'homebound_justification', 'ai_tags', 'emr_handoff_status',
+    'documentation_review_ack', 'updated_date',
+  ],
+};
+const EXACT_PURPOSE_ROLES = {
+  schedule: ['platform_owner', 'agency_admin', 'manager', 'clinician'],
+  documentation: ['platform_owner', 'agency_admin', 'manager', 'clinician'],
+  compliance_review: ['platform_owner', 'agency_admin', 'manager', 'clinician'],
+};
+const LIST_PURPOSE_FIELDS = {
+  schedule: [
+    'id', 'patient_id', 'visit_date', 'visit_time', 'visit_type', 'status',
+    'start_time', 'end_time', 'updated_date',
+  ],
+  compliance_review: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'compliance_score',
+    'grounding_pending', 'updated_date',
+  ],
+  activity: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'created_date',
+    'updated_date',
+  ],
+  documentation: [
+    'id', 'patient_id', 'visit_date', 'visit_time', 'visit_type', 'status',
+    'nurse_notes', 'raw_transcription', 'vital_signs', 'documentation_source',
+    'grounding_pending', 'updated_date',
+  ],
+  vitals_trend: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'vital_signs',
+    'updated_date',
+  ],
+  operations_analytics: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'start_time',
+    'end_time', 'created_by', 'created_date', 'updated_date',
+  ],
+  reporting: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'start_time',
+    'end_time', 'nurse_notes', 'vital_signs', 'created_by', 'created_date',
+    'updated_date',
+  ],
+  data_quality: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'nurse_notes',
+    'vital_signs', 'homebound_justification', 'updated_date',
+  ],
+  compliance_monitoring: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'nurse_notes',
+    'compliance_score', 'compliance_issues', 'homebound_status_verified',
+    'skilled_intervention_documented', 'homebound_justification',
+    'grounding_pending', 'created_by', 'updated_date',
+  ],
+  ai_tagging: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'nurse_notes',
+    'ai_tags', 'updated_date',
+  ],
+  hospitalization_risk: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'nurse_notes',
+    'vital_signs', 'updated_date',
+  ],
+  clinical_insights: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'vital_signs',
+    'created_by', 'updated_date',
+  ],
+  deduplication: [
+    'id', 'patient_id', 'visit_date', 'visit_type', 'status', 'created_by',
+    'created_date', 'updated_date',
+  ],
+};
+const LIST_PURPOSE_ROLES = Object.fromEntries(
+  Object.keys(LIST_PURPOSE_FIELDS).map((purpose) => [
+    purpose,
+    ['platform_owner', 'agency_admin', 'manager', 'clinician'],
+  ]),
+);
+const LIST_PURPOSE_MAX_PAGE_SIZE = {
+  schedule: 50,
+  compliance_review: 25,
+  activity: 50,
+  documentation: 25,
+  vitals_trend: 50,
+  operations_analytics: 50,
+  reporting: 25,
+  data_quality: 25,
+  compliance_monitoring: 25,
+  ai_tagging: 25,
+  hospitalization_risk: 25,
+  clinical_insights: 50,
+  deduplication: 25,
+};
+
+function markedSection(source, start, end) {
+  const from = source.indexOf(start);
+  const to = source.indexOf(end, from);
+  assert.notEqual(from, -1, `${start} is required`);
+  assert.notEqual(to, -1, `${end} is required`);
+  return source.slice(from, to);
+}
+
+function namedFunction(source, name) {
+  const start = source.indexOf(`function ${name}`);
+  assert.notEqual(start, -1, `${name} is required`);
+  const open = source.indexOf('{', start);
+  assert.notEqual(open, -1, `${name} body is required`);
+  let depth = 0;
+  for (let index = open; index < source.length; index += 1) {
+    if (source[index] === '{') depth += 1;
+    else if (source[index] === '}' && --depth === 0) return source.slice(start, index + 1);
+  }
+  assert.fail(`${name} body is incomplete`);
+}
+
+function quotedValues(body) {
+  return [...body.matchAll(/'([^']+)'/g)].map((match) => match[1]);
+}
+
+function fieldsFor(policy, purpose, usesSet = false) {
+  const prefix = usesSet ? 'new\\s+Set\\s*\\(\\s*\\[' : '\\[';
+  const suffix = usesSet ? '\\]\\s*\\)' : '\\]';
+  const match = policy.match(new RegExp(
+    `(?:^|\\n)\\s*${purpose}:\\s*${prefix}([\\s\\S]*?)${suffix}\\s*,`,
+  ));
+  assert.ok(match, `${purpose} policy is required`);
+  const nonLiteralRemainder = match[1]
+    .replace(/'[^']*'/g, '')
+    .replace(/[\s,]/g, '');
+  assert.equal(
+    nonLiteralRemainder,
+    '',
+    `${purpose} policy must contain only literal field names (no spread/computed additions)`,
+  );
+  return quotedValues(match[1]);
+}
+
+function arrayPurposeKeys(policy, usesSet = false) {
+  const prefix = usesSet ? 'new\\s+Set\\s*\\(\\s*\\[' : '\\[';
+  return [...policy.matchAll(new RegExp(
+    `^\\s{2}([a-z_]+):\\s*${prefix}`,
+    'gm',
+  ))].map((match) => match[1]);
+}
+
+function numericPurposeMap(policy) {
+  return Object.fromEntries(
+    [...policy.matchAll(/^\s{2}([a-z_]+):\s*(\d+),/gm)]
+      .map((match) => [match[1], Number(match[2])]),
+  );
+}
+
+test('Visit read brokers and wrappers expose an exhaustive finite purpose policy without read bypasses', async () => {
   const getSource = await readFile(brokers.get, 'utf8');
   const listSource = await readFile(brokers.list, 'utf8');
   const getWrapper = await readFile(wrappers.get, 'utf8');
   const listWrapper = await readFile(wrappers.list, 'utf8');
+  const canonicalLifecycleSources = await Promise.all(
+    canonicalAssignmentLifecycleSources.map((url) => readFile(url, 'utf8')),
+  );
 
   assert.match(getSource, /BEGIN AUTHORIZED VISIT EXACT PURPOSE POLICY/);
   assert.match(listSource, /BEGIN AUTHORIZED VISIT LIST PURPOSE POLICY/);
@@ -301,9 +511,20 @@ test('Visit read brokers and wrappers are finite, broker-only, and deliberately 
     assert.match(source, /entities\.Visit\.filter\(/);
     assert.match(source, /entities\.PatientCareTeamAssignment\.filter\(/);
     assert.match(source, /assignee_membership_version_at_enablement !== authority\.membership\.version/);
-    assert.ok((source.match(/await loadAuthority\s*\(/g) || []).length >= 2);
+    assert.ok((source.match(/await loadAuthority\s*\(/g) || []).length >= 4);
+    assert.match(source, /await loadAuthority\s*\([\s\S]*?disclosureAuthority\.snapshot[\s\S]*?requirePurposeRole\(auditAuthority/);
     assert.doesNotMatch(source, /console\.error\([^)]*,\s*error\b/);
   }
+  const canonicalLifecycle = namedFunction(
+    canonicalLifecycleSources[0],
+    'assignmentLifecycleIsCoherent',
+  );
+  assert.equal(
+    namedFunction(canonicalLifecycleSources[1], 'assignmentLifecycleIsCoherent'),
+    canonicalLifecycle,
+  );
+  assert.equal(namedFunction(getSource, 'assignmentLifecycleIsCoherent'), canonicalLifecycle);
+  assert.equal(namedFunction(listSource, 'assignmentLifecycleIsCoherent'), canonicalLifecycle);
   assert.match(listSource, /query\.id\s*=\s*\{\s*\$gt:\s*input\.cursor\.after_id\s*\}/);
   assert.match(listSource, /'id',\s*\n\s*input\.pageSize \+ 1,/);
   assert.doesNotMatch(listSource, /offset|next_offset|created_desc|visit_date_desc/);
@@ -311,6 +532,60 @@ test('Visit read brokers and wrappers are finite, broker-only, and deliberately 
   assert.match(listWrapper, /functions\.invoke\('listAuthorizedVisits'/);
   assert.doesNotMatch(getWrapper, /\.entities\./);
   assert.doesNotMatch(listWrapper, /\.entities\./);
+
+  const getPolicy = markedSection(
+    getSource,
+    '// <<<BEGIN AUTHORIZED VISIT EXACT PURPOSE POLICY>>>',
+    '// <<<END AUTHORIZED VISIT EXACT PURPOSE POLICY>>>',
+  );
+  const listPolicy = markedSection(
+    listSource,
+    '// <<<BEGIN AUTHORIZED VISIT LIST PURPOSE POLICY>>>',
+    '// <<<END AUTHORIZED VISIT LIST PURPOSE POLICY>>>',
+  );
+  const getFieldPolicy = getPolicy.slice(0, getPolicy.indexOf('const PURPOSE_ROLES'));
+  const getRolePolicy = getPolicy.slice(getPolicy.indexOf('const PURPOSE_ROLES'));
+  const listFieldPolicy = listPolicy.slice(0, listPolicy.indexOf('const PURPOSE_ROLES'));
+  const listRolePolicy = listPolicy.slice(
+    listPolicy.indexOf('const PURPOSE_ROLES'),
+    listPolicy.indexOf('const PURPOSE_MAX_PAGE_SIZE'),
+  );
+  const listPagePolicy = listPolicy.slice(listPolicy.indexOf('const PURPOSE_MAX_PAGE_SIZE'));
+  const getWrapperFields = getWrapper.slice(
+    getWrapper.indexOf('const PURPOSE_FIELDS'),
+    getWrapper.indexOf('const PURPOSE_ROLES'),
+  );
+  const getWrapperRoles = getWrapper.slice(getWrapper.indexOf('const PURPOSE_ROLES'));
+  const listWrapperFields = listWrapper.slice(
+    listWrapper.indexOf('const PURPOSE_FIELDS'),
+    listWrapper.indexOf('export const AUTHORIZED_VISIT_LIST_PURPOSES'),
+  );
+  const listWrapperPages = listWrapper.slice(
+    listWrapper.indexOf('const PURPOSE_MAX_PAGE_SIZE'),
+    listWrapper.indexOf('const PURPOSE_ROLES'),
+  );
+  const listWrapperRoles = listWrapper.slice(listWrapper.indexOf('const PURPOSE_ROLES'));
+
+  assert.deepEqual(arrayPurposeKeys(getFieldPolicy), Object.keys(EXACT_PURPOSE_FIELDS));
+  assert.deepEqual(arrayPurposeKeys(getRolePolicy, true), Object.keys(EXACT_PURPOSE_ROLES));
+  assert.deepEqual(arrayPurposeKeys(getWrapperFields, true), Object.keys(EXACT_PURPOSE_FIELDS));
+  assert.deepEqual(arrayPurposeKeys(getWrapperRoles, true), Object.keys(EXACT_PURPOSE_ROLES));
+  assert.deepEqual(arrayPurposeKeys(listFieldPolicy), Object.keys(LIST_PURPOSE_FIELDS));
+  assert.deepEqual(arrayPurposeKeys(listRolePolicy, true), Object.keys(LIST_PURPOSE_ROLES));
+  assert.deepEqual(arrayPurposeKeys(listWrapperFields, true), Object.keys(LIST_PURPOSE_FIELDS));
+  assert.deepEqual(arrayPurposeKeys(listWrapperRoles, true), Object.keys(LIST_PURPOSE_ROLES));
+  assert.deepEqual(numericPurposeMap(listPagePolicy), LIST_PURPOSE_MAX_PAGE_SIZE);
+  assert.deepEqual(numericPurposeMap(listWrapperPages), LIST_PURPOSE_MAX_PAGE_SIZE);
+  for (const [purpose, fields] of Object.entries(EXACT_PURPOSE_FIELDS)) {
+    assert.deepEqual(fieldsFor(getPolicy, purpose), fields);
+    assert.deepEqual(fieldsFor(getWrapper, purpose, true), fields);
+    assert.deepEqual(fieldsFor(getRolePolicy, purpose, true), EXACT_PURPOSE_ROLES[purpose]);
+  }
+  for (const [purpose, fields] of Object.entries(LIST_PURPOSE_FIELDS)) {
+    assert.deepEqual(fieldsFor(listPolicy, purpose), fields);
+    assert.deepEqual(fieldsFor(listWrapper, purpose, true), fields);
+    assert.deepEqual(fieldsFor(listRolePolicy, purpose, true), LIST_PURPOSE_ROLES[purpose]);
+  }
 
   const appSources = await Promise.all([
     new URL('../../src/App.jsx', import.meta.url),
@@ -321,20 +596,39 @@ test('Visit read brokers and wrappers are finite, broker-only, and deliberately 
   }
 });
 
-test('operator-shaped input and unsupported methods fail before privileged reads', async () => {
+test('unknown purposes, arbitrary filters, bad sorts, operators, and unsupported methods fail before privileged reads', async () => {
   for (const kind of ['get', 'list']) {
-    const { handler, calls } = await loadBroker(kind);
-    const methodResult = await invoke(handler, kind, {}, 'GET');
+    const methodFixture = await loadBroker(kind);
+    const methodResult = await invoke(methodFixture.handler, kind, {}, 'GET');
     assert.equal(methodResult.response.status, 405);
     assert.equal(methodResult.response.headers.get('allow'), 'POST');
 
-    const body = kind === 'get'
-      ? getBody({ visit_id: { $in: ['visit-a'] } })
-      : listBody({ where: { agency_id: 'agency-b' } });
-    const invalid = await invoke(handler, kind, body);
-    assert.equal(invalid.response.status, 400);
-    assert.equal(calls.auth, 0);
-    assert.deepEqual(calls.visits, []);
+    const bodies = kind === 'get'
+      ? [
+        getBody({ visit_id: { $in: ['visit-a'] } }),
+        getBody({ agency_id: { $eq: 'agency-a' } }),
+        getBody({ purpose: 'unreviewed_export' }),
+        getBody({ filter: { patient_id: 'patient-a' } }),
+      ]
+      : [
+        listBody({ where: { agency_id: 'agency-b' } }),
+        listBody({ filter: { patient_id: 'patient-a' } }),
+        listBody({ purpose: 'unreviewed_export' }),
+        listBody({ agency_id: { $eq: 'agency-a' } }),
+        listBody({ patient_id: { $in: ['patient-a'] } }),
+        listBody({ status: { $in: ['completed'] } }),
+        listBody({ sort: { $ne: 'id_asc' } }),
+        listBody({ purpose: 'documentation', page_size: 26 }),
+        listBody({ purpose: 'schedule', page_size: 51 }),
+        listBody({ page_size: 1.5 }),
+      ];
+    for (const body of bodies) {
+      const fixture = await loadBroker(kind);
+      const invalid = await invoke(fixture.handler, kind, body);
+      assert.equal(invalid.response.status, 400);
+      assert.equal(fixture.calls.auth, 0);
+      assert.deepEqual(fixture.calls.visits, []);
+    }
   }
 });
 
@@ -372,13 +666,35 @@ test('a clinician exact read requires an active assignment bound to the current 
     visit_time: '09:30',
     visit_type: 'skilled_nursing',
     status: 'completed',
+    start_time: '09:30',
+    end_time: '10:30',
     updated_date: '2026-09-03T12:30:00.000Z',
   });
   assert.equal(result.json.scope.access_basis, 'care_team_assignment');
   assert.equal(result.json.scope.assignment_id, 'assignment-a');
-  assert.equal(success.calls.auth, 3);
+  assert.equal(success.calls.auth, 4);
   assert.equal(success.calls.visits.length, 2);
   assert.equal(success.calls.assignments.length, 3);
+  assert.equal(success.calls.securityLogs.length, 1);
+  assert.deepEqual(success.calls.securityLogs[0], {
+    timestamp: success.calls.securityLogs[0].timestamp,
+    user_email: 'clinician@agency.test',
+    user_role: 'clinician',
+    action: 'VISIT_READ_AUTHORIZED',
+    details: {
+      broker: 'getAuthorizedVisit',
+      resource_type: 'Visit',
+      agency_id: 'agency-a',
+      purpose: 'schedule',
+      subject_user_id: 'user-1',
+      membership_id: 'membership-a',
+      membership_version: 2,
+      returned_count: 1,
+    },
+    ip_address: 'server-side',
+    user_agent: 'server-side',
+  });
+  assert.equal(Number.isFinite(Date.parse(success.calls.securityLogs[0].timestamp)), true);
 
   const missing = await loadBroker('get', { assignments: [] });
   const missingResult = await invoke(missing.handler, 'getAuthorizedVisit', getBody());
@@ -395,6 +711,82 @@ test('a clinician exact read requires an active assignment bound to the current 
   });
   const suspendedResult = await invoke(suspended.handler, 'getAuthorizedVisit', getBody());
   assert.equal(suspendedResult.response.status, 404);
+});
+
+test('exact and list Visit reads reject incoherent assignment lifecycle histories', async () => {
+  const malformed = [
+    ['grant at version 3', { version: 3 }],
+    ['grant with suspension history', { suspended_at: '2026-09-03T10:30:00.000Z' }],
+    ['activate at even version 2', { last_transition_action: 'activate', version: 2 }],
+    ['activate at version 1 without a prior suspension', {
+      last_transition_action: 'activate',
+      version: 1,
+      suspended_at: null,
+    }],
+  ];
+
+  for (const kind of ['get', 'list']) {
+    const validActivation = await loadBroker(kind, {
+      assignments: [assignment({ last_transition_action: 'activate' })],
+    });
+    const validResult = await invoke(
+      validActivation.handler,
+      kind === 'get' ? 'getAuthorizedVisit' : 'listAuthorizedVisits',
+      kind === 'get' ? getBody() : listBody(),
+    );
+    assert.equal(validResult.response.status, 200, `${kind} coherent activation`);
+
+    for (const [label, overrides] of malformed) {
+      const fixture = await loadBroker(kind, {
+        assignments: [assignment(overrides)],
+      });
+      const result = await invoke(
+        fixture.handler,
+        kind === 'get' ? 'getAuthorizedVisit' : 'listAuthorizedVisits',
+        kind === 'get' ? getBody() : listBody(),
+      );
+      assert.equal(result.response.status, 409, `${kind}: ${label}`);
+      assert.equal(
+        result.json.error,
+        'Care-team assignment integrity check failed',
+        `${kind}: ${label}`,
+      );
+      assert.equal(result.json.visit, undefined, `${kind}: ${label}`);
+      assert.equal(result.json.visits, undefined, `${kind}: ${label}`);
+      assert.equal(fixture.calls.securityLogs.length, 0, `${kind}: ${label}`);
+    }
+  }
+});
+
+test('exact documentation returns the reviewed handoff fields and no unreviewed Visit data', async () => {
+  const fixture = await loadBroker('get');
+  const result = await invoke(
+    fixture.handler,
+    'getAuthorizedVisit',
+    getBody({ purpose: 'documentation' }),
+  );
+
+  assert.equal(result.response.status, 200);
+  assert.deepEqual(
+    Object.keys(result.json.visit).sort(),
+    [...EXACT_PURPOSE_FIELDS.documentation].sort(),
+  );
+  assert.deepEqual(result.json.visit.emr_handoff_history, [{
+    status: 'copied_to_emr',
+    reported_by: 'clinician@agency.test',
+    reported_at: '2026-09-03T12:25:00.000Z',
+    self_reported: true,
+    note: 'Copied by the assigned clinician.',
+  }]);
+  assert.deepEqual(result.json.visit.documentation_review_ack, {
+    acknowledged: false,
+    is_clinical_signature: false,
+  });
+  assert.equal(result.json.visit.secret_claim, undefined);
+  assert.ok(fixture.calls.visits[0].fields.includes('emr_handoff_status'));
+  assert.ok(fixture.calls.visits[0].fields.includes('emr_handoff_history'));
+  assert.ok(fixture.calls.visits[0].fields.includes('documentation_review_ack'));
+  assert.equal(fixture.calls.visits[0].fields.includes('secret_claim'), false);
 });
 
 test('tenant administrators list agency Visits with bounded id-keyset paging', async () => {
@@ -437,8 +829,8 @@ test('tenant administrators list agency Visits with bounded id-keyset paging', a
     action: 'VISIT_LIST_READ_AUTHORIZED',
     details: {
       broker: 'listAuthorizedVisits',
+      resource_type: 'Visit',
       agency_id: 'agency-a',
-      patient_id: null,
       purpose: 'schedule',
       subject_user_id: 'user-1',
       membership_id: 'membership-a',
@@ -450,6 +842,61 @@ test('tenant administrators list agency Visits with bounded id-keyset paging', a
     user_agent: 'server-side',
   });
   assert.equal(Number.isFinite(Date.parse(calls.securityLogs[0].timestamp)), true);
+});
+
+test('exact Visit disclosure fails closed when the privileged audit write fails', async () => {
+  const { handler, calls } = await loadBroker('get', {
+    auditError: new Error('audit unavailable'),
+  });
+  const result = await invoke(handler, 'getAuthorizedVisit', getBody());
+  assert.equal(result.response.status, 500);
+  assert.equal(result.json.visit, undefined);
+  assert.equal(result.json.error, 'Internal server error');
+  assert.equal(calls.securityLogs.length, 1);
+});
+
+test('every Visit list purpose returns only its reviewed projection and enforces its own page cap', async () => {
+  for (const [purpose, fields] of Object.entries(LIST_PURPOSE_FIELDS)) {
+    const pageSize = LIST_PURPOSE_MAX_PAGE_SIZE[purpose];
+    const permitted = await loadBroker('list', {
+      memberships: [membership({ tenant_role: 'manager' })],
+      assignments: [],
+    });
+    const result = await invoke(
+      permitted.handler,
+      'listAuthorizedVisits',
+      listBody({ purpose, page_size: pageSize }),
+    );
+    assert.equal(result.response.status, 200, purpose);
+    assert.deepEqual(Object.keys(result.json.visits[0]).sort(), [...fields].sort(), purpose);
+    assert.equal(result.json.visits[0].agency_id, undefined, purpose);
+    assert.equal(result.json.visits[0].secret_claim, undefined, purpose);
+
+    const overCap = await loadBroker('list', {
+      memberships: [membership({ tenant_role: 'manager' })],
+      assignments: [],
+    });
+    const denied = await invoke(
+      overCap.handler,
+      'listAuthorizedVisits',
+      listBody({ purpose, page_size: pageSize + 1 }),
+    );
+    assert.equal(denied.response.status, 400, purpose);
+    assert.equal(overCap.calls.auth, 0, purpose);
+    assert.deepEqual(overCap.calls.visits, [], purpose);
+  }
+
+  const officeStaff = await loadBroker('list', {
+    memberships: [membership({ tenant_role: 'office_staff' })],
+    assignments: [],
+  });
+  const roleDenied = await invoke(
+    officeStaff.handler,
+    'listAuthorizedVisits',
+    listBody({ purpose: 'activity', page_size: 50 }),
+  );
+  assert.equal(roleDenied.response.status, 403);
+  assert.deepEqual(officeStaff.calls.visits, []);
 });
 
 test('Visit-list disclosure fails closed when the privileged audit write fails', async () => {
@@ -536,7 +983,7 @@ test('clinician lists are patient-bound and never fall back to Visit creator pro
   assert.equal(result.response.status, 200);
   assert.deepEqual(result.json.visits.map((row) => row.id), ['visit-a']);
   assert.equal(result.json.scope.patient_id, 'patient-a');
-  assert.equal(result.json.scope.assignment_version, 3);
+  assert.equal(result.json.scope.assignment_version, 1);
 });
 
 test('wrong-scope provider results and duplicate rows fail closed', async () => {
@@ -589,6 +1036,50 @@ test('backend purpose projections reject malformed scalar, enum, boolean, time, 
       overrides: { homebound_status_verified: { hidden_phi: 'leak' } },
     },
     { kind: 'get', purpose: 'compliance_review', overrides: { emr_handoff_status: 'unknown' } },
+    {
+      kind: 'get',
+      purpose: 'documentation',
+      overrides: {
+        emr_handoff_history: [{
+          status: 'copied_to_emr',
+          reported_by: 'clinician@agency.test',
+          reported_at: '2026-09-03T12:25:00.000Z',
+          self_reported: true,
+          hidden_phi: 'leak',
+        }],
+      },
+    },
+    {
+      kind: 'get',
+      purpose: 'documentation',
+      overrides: {
+        emr_handoff_history: [{
+          status: 'copied_to_emr',
+          reported_by: 'clinician@agency.test',
+          reported_at: 'not-an-instant',
+          self_reported: true,
+        }],
+      },
+    },
+    {
+      kind: 'get',
+      purpose: 'documentation',
+      overrides: {
+        emr_handoff_history: Array.from({ length: 101 }, () => ({
+          status: 'copied_to_emr',
+          reported_by: 'clinician@agency.test',
+          reported_at: '2026-09-03T12:25:00.000Z',
+          self_reported: true,
+        })),
+      },
+    },
+    {
+      kind: 'get',
+      purpose: 'documentation',
+      overrides: {
+        documentation_review_ack: { acknowledged: true, is_clinical_signature: true },
+      },
+    },
     { kind: 'list', purpose: 'schedule', overrides: { end_time: ['09:30'] } },
     {
       kind: 'list',
@@ -711,6 +1202,33 @@ test('a final assignment suspension blocks disclosure after the final provider r
   }
 });
 
+test('terminal authority fences catch membership revocation during the final assignment read', async () => {
+  const revoked = membership({
+    status: 'revoked',
+    revoked_at: '2026-09-03T12:45:00.000Z',
+    revocation_reason: 'Revoked during final assignment verification',
+    last_transition_at: '2026-09-03T12:45:00.000Z',
+    last_transition_reason: 'Revoked during final assignment verification',
+    version: 3,
+  });
+  for (const kind of ['get', 'list']) {
+    const fixture = await loadBroker(kind, {
+      onAssignmentFilter: ({ callNumber }) => callNumber === 3 ? [revoked] : null,
+    });
+    const result = await invoke(
+      fixture.handler,
+      kind === 'get' ? 'getAuthorizedVisit' : 'listAuthorizedVisits',
+      kind === 'get' ? getBody() : listBody(),
+    );
+    assert.equal(result.response.status, 403, kind);
+    assert.equal(result.json.visit, undefined, kind);
+    assert.equal(result.json.visits, undefined, kind);
+    assert.equal(fixture.calls.assignments.length, 3, kind);
+    assert.equal(fixture.calls.auth, 4, kind);
+    assert.equal(fixture.calls.securityLogs.length, 0, kind);
+  }
+});
+
 test('only the exact configured built-in platform owner bypasses membership', async () => {
   const owner = { ...USER, role: 'admin', email: 'Owner@Platform.test' };
   const permitted = await loadBroker('list', {
@@ -724,7 +1242,7 @@ test('only the exact configured built-in platform owner bypasses membership', as
   });
   assert.equal(result.response.status, 200);
   assert.equal(result.json.scope.tenant_role, 'platform_owner');
-  assert.equal(permitted.calls.memberships.length, 3);
+  assert.equal(permitted.calls.memberships.length, 4);
   assert.equal(
     permitted.calls.memberships.every((call) => call.query.user_id === 'user-1'),
     true,

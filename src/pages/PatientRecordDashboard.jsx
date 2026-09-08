@@ -1,8 +1,14 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
-import { useScopedPatients } from '@/hooks/useScopedPatients';
+import {
+  invalidateAuthorizedPatientLists,
+  useScopedPatients,
+} from '@/hooks/useScopedPatients';
+import {
+  invalidateAuthorizedVisitLists,
+  useAuthorizedVisits,
+} from '@/hooks/useAuthorizedVisits';
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import EmptyState from "@/components/ui/empty-state";
@@ -27,37 +33,169 @@ import PatientOverviewCard from "../components/dashboard/PatientOverviewCard";
 import RecentActivityFeed from "../components/dashboard/RecentActivityFeed";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
+const authorizationScopeKey = (scope) => (scope
+  ? JSON.stringify([
+      scope.user_id,
+      scope.agency_id,
+      scope.membership_id,
+      scope.membership_version,
+      scope.tenant_role,
+    ])
+  : null);
+
+const DEFAULT_PATIENT_FILTERS = Object.freeze({
+  status: 'all',
+  careType: 'all',
+  diagnosis: '',
+  dateRange: 'all',
+});
+
+function PatientOverviewWithoutVisitMetrics({
+  patient,
+  alerts,
+  isSelected,
+  onSelect,
+  view,
+}) {
+  const importantAlertCount = alerts.filter(
+    (alert) => alert.severity === 'critical' || alert.severity === 'high',
+  ).length;
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      aria-pressed={isSelected}
+      className={`w-full rounded-xl border bg-white p-4 text-left transition-all hover:shadow-md ${
+        isSelected ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-slate-200'
+      } ${view === 'grid' ? 'min-h-[190px]' : ''}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="truncate font-semibold text-slate-900">
+            {patient.first_name} {patient.last_name}
+          </p>
+          <p className="mt-1 text-xs text-slate-500">
+            MRN: {patient.medical_record_number || 'Not assigned'}
+          </p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-medium capitalize text-slate-700">
+          {patient.status || 'unknown'}
+        </span>
+      </div>
+
+      {view === 'grid' && (
+        <p className="mt-4 text-sm text-slate-700">
+          {patient.primary_diagnosis || 'No diagnosis specified'}
+        </p>
+      )}
+
+      <div className="mt-4 grid grid-cols-2 gap-2 rounded-lg bg-slate-50 p-3 text-center">
+        <div>
+          <p className="text-xs text-slate-600">Visits</p>
+          <p className="text-sm font-semibold text-amber-700">Unavailable</p>
+        </div>
+        <div>
+          <p className="text-xs text-slate-600">Important alerts</p>
+          <p className="text-sm font-semibold text-slate-800">{importantAlertCount}</p>
+        </div>
+      </div>
+    </button>
+  );
+}
+
 export default function PatientRecordDashboard() {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState("");
-  const [filters, setFilters] = useState({
-    status: "all",
-    careType: "all",
-    diagnosis: "",
-    dateRange: "all"
-  });
-  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [filters, setFilters] = useState(() => ({ ...DEFAULT_PATIENT_FILTERS }));
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [view, setView] = useState("grid"); // grid or list
   const queryClient = useQueryClient();
+  const lastAuthorizedPatientScopeKey = useRef(null);
 
   // Refresh the dashboard's data after a quick action without a full page reload.
   const refreshDashboard = () => {
-    ['all-patients', 'all-visits', 'active-alerts'].forEach(
-      (key) => queryClient.invalidateQueries({ queryKey: [key] })
-    );
+    invalidateAuthorizedPatientLists(queryClient);
+    invalidateAuthorizedVisitLists(queryClient);
+    queryClient.invalidateQueries({ queryKey: ['active-alerts'] });
   };
 
-  // Fetch all data in parallel
-  const { data: patients = [], isLoading: loadingPatients } = useScopedPatients({ sort: '-updated_date', limit: 1000 });
-
-  const { data: visits = [] } = useAgencyScopedQuery({
-    queryKey: ['all-visits', 'created', 500],
-    fetch: () => base44.entities.Visit.list('-created_date', 500)
+  // Fetch all data in parallel. Patient objects never live in local state: any
+  // selected detail is resolved from the latest successfully authorized rows.
+  const patientQuery = useScopedPatients({
+    purpose: 'patient_management',
+    sort: '-updated_date',
+    limit: 1000,
   });
+  const patientsReady = patientQuery.isSuccess;
+  const patients = useMemo(
+    () => (patientsReady ? (patientQuery.data || []) : []),
+    [patientQuery.data, patientsReady],
+  );
+  const patientTenantScope = patientQuery.tenantScope;
+  const patientScopeKey = authorizationScopeKey(patientTenantScope);
+  const patientScopeChanged = Boolean(
+    patientsReady
+    && lastAuthorizedPatientScopeKey.current
+    && lastAuthorizedPatientScopeKey.current !== patientScopeKey,
+  );
+  const patientStateCurrent = patientsReady && !patientScopeChanged;
+  const patientById = useMemo(
+    () => new Map(patients.map((patient) => [patient.id, patient])),
+    [patients],
+  );
+  const selectedPatient = patientStateCurrent && selectedPatientId
+    ? patientById.get(selectedPatientId) || null
+    : null;
+
+  useEffect(() => {
+    const scopeChanged = Boolean(
+      patientsReady
+      && lastAuthorizedPatientScopeKey.current
+      && lastAuthorizedPatientScopeKey.current !== patientScopeKey,
+    );
+    if (patientsReady) {
+      lastAuthorizedPatientScopeKey.current = patientScopeKey;
+    }
+    if (!patientsReady || scopeChanged) {
+      setSelectedPatientId(null);
+    }
+    if (scopeChanged) {
+      setSearchQuery('');
+      setFilters({ ...DEFAULT_PATIENT_FILTERS });
+    }
+  }, [patientScopeKey, patientsReady]);
+
+  useEffect(() => {
+    if (patientsReady && selectedPatientId && !patientById.has(selectedPatientId)) {
+      setSelectedPatientId(null);
+    }
+  }, [patientById, patientsReady, selectedPatientId]);
+
+  const visitQuery = useAuthorizedVisits({
+    purpose: 'activity',
+    sort: '-created_date',
+    limit: 500,
+  });
+  const visitScopeKey = authorizationScopeKey(visitQuery.tenantScope);
+  const visitMetricsAvailable = patientsReady
+    && visitQuery.isSuccess
+    && visitScopeKey === patientScopeKey;
+  const visits = useMemo(
+    () => (visitMetricsAvailable ? (visitQuery.data || []) : []),
+    [visitMetricsAvailable, visitQuery.data],
+  );
+  const visitMetricsMessage = visitQuery.isError
+    ? 'Agency-wide Visit metrics are unavailable for your role or current tenant scope. Patient records remain available.'
+    : visitQuery.isPending
+      ? 'Agency-wide Visit metrics are being reverified. Visit counts and activity are temporarily unavailable.'
+      : !visitMetricsAvailable
+        ? 'Agency-wide Visit metrics are unavailable until Patient and Visit tenant scopes are reverified together.'
+        : null;
 
   // Server-scoped alerts — avoid entity list(N) + agency post-filter truncation.
   const { data: alerts = [] } = useQuery({
-    queryKey: ['active-alerts', 'patient-record-dashboard'],
+    queryKey: ['active-alerts', 'patient-record-dashboard', patientScopeKey],
     queryFn: async () => {
       const res = await base44.functions.invoke('getScopedPatientAlerts', {
         limit: 500,
@@ -65,16 +203,40 @@ export default function PatientRecordDashboard() {
       });
       return res?.data?.alerts || [];
     },
+    enabled: patientsReady && !!patientScopeKey,
     initialData: [],
   });
+
+  const visitsByPatientId = useMemo(() => {
+    const grouped = new Map();
+    if (!visitMetricsAvailable) return grouped;
+    visits.forEach((visit) => {
+      const patientVisits = grouped.get(visit.patient_id) || [];
+      patientVisits.push(visit);
+      grouped.set(visit.patient_id, patientVisits);
+    });
+    return grouped;
+  }, [visitMetricsAvailable, visits]);
+
+  const alertsByPatientId = useMemo(() => {
+    const grouped = new Map();
+    alerts.forEach((alert) => {
+      const patientAlerts = grouped.get(alert.patient_id) || [];
+      patientAlerts.push(alert);
+      grouped.set(alert.patient_id, patientAlerts);
+    });
+    return grouped;
+  }, [alerts]);
 
   // Filter patients based on search and filters
   const filteredPatients = useMemo(() => {
     let result = patients;
+    const effectiveSearchQuery = patientScopeChanged ? '' : searchQuery;
+    const effectiveFilters = patientScopeChanged ? DEFAULT_PATIENT_FILTERS : filters;
 
     // Text search
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
+    if (effectiveSearchQuery.trim()) {
+      const query = effectiveSearchQuery.toLowerCase();
       result = result.filter(p =>
         p.first_name?.toLowerCase().includes(query) ||
         p.last_name?.toLowerCase().includes(query) ||
@@ -85,25 +247,25 @@ export default function PatientRecordDashboard() {
     }
 
     // Status filter
-    if (filters.status !== "all") {
-      result = result.filter(p => p.status === filters.status);
+    if (effectiveFilters.status !== "all") {
+      result = result.filter(p => p.status === effectiveFilters.status);
     }
 
     // Care type filter
-    if (filters.careType !== "all") {
-      result = result.filter(p => p.care_type === filters.careType);
+    if (effectiveFilters.careType !== "all") {
+      result = result.filter(p => p.care_type === effectiveFilters.careType);
     }
 
     // Diagnosis filter
-    if (filters.diagnosis) {
-      const diagQuery = filters.diagnosis.toLowerCase();
+    if (effectiveFilters.diagnosis) {
+      const diagQuery = effectiveFilters.diagnosis.toLowerCase();
       result = result.filter(p =>
         p.primary_diagnosis?.toLowerCase().includes(diagQuery)
       );
     }
 
     // Date range filter
-    if (filters.dateRange !== "all") {
+    if (effectiveFilters.dateRange !== "all") {
       const startOfToday = new Date();
       startOfToday.setHours(0, 0, 0, 0);
       result = result.filter(p => {
@@ -112,7 +274,7 @@ export default function PatientRecordDashboard() {
         if (!admissionDate) return false;
         const daysDiff = (startOfToday - admissionDate) / (1000 * 60 * 60 * 24);
 
-        switch (filters.dateRange) {
+        switch (effectiveFilters.dateRange) {
           case "week":
             return daysDiff <= 7;
           case "month":
@@ -128,7 +290,7 @@ export default function PatientRecordDashboard() {
     }
 
     return result;
-  }, [patients, searchQuery, filters]);
+  }, [filters, patientScopeChanged, patients, searchQuery]);
 
   // Calculate statistics
   const stats = useMemo(() => {
@@ -136,14 +298,16 @@ export default function PatientRecordDashboard() {
     const criticalAlerts = alerts.filter(a => a.severity === 'critical').length;
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
-    const recentVisits = visits.filter(v => {
-      if (!v.visit_date) return false;
-      const visitDate = parseLocalDate(v.visit_date);
-      if (!visitDate) return false;
-      const daysDiff = (startOfToday - visitDate) / (1000 * 60 * 60 * 24);
-      // Lower bound too, so future-dated visits don't count as "recent".
-      return daysDiff >= 0 && daysDiff <= 7;
-    }).length;
+    const recentVisits = visitMetricsAvailable
+      ? visits.filter(v => {
+          if (!v.visit_date) return false;
+          const visitDate = parseLocalDate(v.visit_date);
+          if (!visitDate) return false;
+          const daysDiff = (startOfToday - visitDate) / (1000 * 60 * 60 * 24);
+          // Lower bound too, so future-dated visits don't count as "recent".
+          return daysDiff >= 0 && daysDiff <= 7;
+        }).length
+      : null;
 
     return {
       totalPatients: patients.length,
@@ -151,12 +315,25 @@ export default function PatientRecordDashboard() {
       criticalAlerts,
       recentVisits
     };
-  }, [patients, alerts, visits]);
+  }, [patients, alerts, visitMetricsAvailable, visits]);
 
-  if (loadingPatients) {
+  if (patientQuery.isError) {
     return (
       <PageContainer>
-        <LoadingState label="Loading patient records..." className="py-24" />
+        <EmptyState
+          icon={Users}
+          title="Patient records unavailable"
+          description="Your patient access could not be reverified for the current tenant scope. No cached patient details are shown."
+          className="my-16"
+        />
+      </PageContainer>
+    );
+  }
+
+  if (!patientsReady) {
+    return (
+      <PageContainer>
+        <LoadingState label="Reverifying patient record access..." className="py-24" />
       </PageContainer>
     );
   }
@@ -170,7 +347,10 @@ export default function PatientRecordDashboard() {
         description="Comprehensive patient management and overview"
         favoritePage="PatientRecordDashboard"
         actions={
-          <PatientQuickActions onActionComplete={refreshDashboard} />
+          <PatientQuickActions
+            key={patientScopeKey}
+            onActionComplete={refreshDashboard}
+          />
         }
       />
 
@@ -179,16 +359,33 @@ export default function PatientRecordDashboard() {
           <StatCard label="Total Patients" value={stats.totalPatients} icon={Users} tone="navy" />
           <StatCard label="Active Patients" value={stats.activePatients} icon={Activity} tone="emerald" />
           <StatCard label="Critical Alerts" value={stats.criticalAlerts} icon={AlertCircle} tone="rose" />
-          <StatCard label="Visits (7 days)" value={stats.recentVisits} icon={Calendar} tone="sky" />
+          <StatCard
+            label="Visits (7 days)"
+            value={visitMetricsAvailable ? stats.recentVisits : '—'}
+            description={visitMetricsAvailable
+              ? undefined
+              : visitQuery.isError ? 'Unavailable for this scope' : 'Reverifying access'}
+            icon={Calendar}
+            tone="sky"
+          />
         </div>
+
+        {visitMetricsMessage && (
+          <div
+            role="status"
+            className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+          >
+            {visitMetricsMessage}
+          </div>
+        )}
 
         {/* Search and Filters */}
         <Card>
           <CardContent className="p-6">
             <PatientSearchBar
-              searchQuery={searchQuery}
+              searchQuery={patientScopeChanged ? '' : searchQuery}
               onSearchChange={setSearchQuery}
-              filters={filters}
+              filters={patientScopeChanged ? DEFAULT_PATIENT_FILTERS : filters}
               onFiltersChange={setFilters}
               resultCount={filteredPatients.length}
             />
@@ -230,17 +427,28 @@ export default function PatientRecordDashboard() {
                     <EmptyState icon={Users} title="No patients found" description="No patients match your current criteria." />
                   ) : (
                     <div className={view === "grid" ? "grid grid-cols-1 gap-4" : "space-y-2"}>
-                      {filteredPatients.map(patient => (
-                        <PatientOverviewCard
-                          key={patient.id}
-                          patient={patient}
-                          visits={visits.filter(v => v.patient_id === patient.id)}
-                          alerts={alerts.filter(a => a.patient_id === patient.id)}
-                          isSelected={selectedPatient?.id === patient.id}
-                          onSelect={() => setSelectedPatient(patient)}
-                          view={view}
-                        />
-                      ))}
+                      {filteredPatients.map((patient) => {
+                        const patientAlerts = alertsByPatientId.get(patient.id) || [];
+                        const overviewProps = {
+                          patient,
+                          alerts: patientAlerts,
+                          isSelected: patientStateCurrent && selectedPatientId === patient.id,
+                          onSelect: () => setSelectedPatientId(patient.id),
+                          view,
+                        };
+                        return visitMetricsAvailable ? (
+                          <PatientOverviewCard
+                            key={patient.id}
+                            {...overviewProps}
+                            visits={visitsByPatientId.get(patient.id) || []}
+                          />
+                        ) : (
+                          <PatientOverviewWithoutVisitMetrics
+                            key={patient.id}
+                            {...overviewProps}
+                          />
+                        );
+                      })}
                     </div>
                   )}
                 </ScrollArea>
@@ -258,11 +466,20 @@ export default function PatientRecordDashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <RecentActivityFeed
-                  visits={visits.slice(0, 10)}
-                  alerts={alerts.slice(0, 5)}
-                  patients={patients}
-                />
+                {!visitMetricsAvailable && (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    Visit activity is unavailable for this scope; no zero-activity conclusion is being inferred.
+                  </p>
+                )}
+                {(visitMetricsAvailable || alerts.length > 0) && (
+                  <div className={!visitMetricsAvailable ? 'mt-3' : undefined}>
+                    <RecentActivityFeed
+                      visits={visitMetricsAvailable ? visits.slice(0, 10) : []}
+                      alerts={alerts.slice(0, 5)}
+                      patients={patients}
+                    />
+                  </div>
+                )}
               </CardContent>
             </Card>
 

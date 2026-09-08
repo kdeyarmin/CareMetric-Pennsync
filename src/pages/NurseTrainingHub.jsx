@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from "react-router";
 import { createPageUrl } from "@/utils";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
+import { selfEnrollCourse } from "@/functions/selfEnrollCourse";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useMyTrainingCompletions } from "@/hooks/useMyTrainingCompletions";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -87,32 +88,23 @@ export default function NurseTrainingHub() {
   // (non-preview) flow where attempts can be submitted, scored and completed.
   const startTrainingMutation = useMutation({
     mutationFn: async (module) => {
-      const email = currentUser?.email;
-      if (!email || !module?.course_id) {
+      if (!currentUser?.email || !module?.course_id) {
         throw new Error('Missing user or course information');
       }
-      const existing = await base44.entities.TrainingAssignment.filter(
-        { assigned_to_user_id: email, course_id: module.course_id },
-        '-assigned_date',
-        1
-      );
-      if (existing && existing[0]) return existing[0];
-      return base44.entities.TrainingAssignment.create({
-        course_id: module.course_id,
-        course_title: module.title,
-        assigned_to_user_id: email,
-        assigned_by: email,
-        assigned_date: new Date().toISOString(),
-        status: 'assigned',
-        required: !!module.is_required,
-        priority: module.is_required ? 'high' : 'medium',
-      });
+      const response = await selfEnrollCourse({ courseId: module.course_id });
+      const result = response?.data ?? response;
+      if (result?.error) throw new Error(result.error);
+      if (!result?.assignment_id) throw new Error('Training enrollment did not return an assignment');
+      return { id: result.assignment_id };
     },
     onSuccess: (assignment) => {
       navigate(`${createPageUrl('TrainingCoursePlayer')}?assignment=${assignment.id}`);
     },
     onError: (error) => {
-      toast.error(error?.message || 'Could not start training. Please try again.');
+      toast.error(
+        error?.response?.data?.error || error?.data?.error || error?.message
+          || 'Could not start training. Please try again.',
+      );
     }
   });
 

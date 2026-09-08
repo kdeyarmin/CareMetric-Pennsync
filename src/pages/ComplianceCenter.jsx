@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useAICall } from "@/hooks/useAICall";
@@ -114,7 +113,7 @@ export default function ComplianceCenter() {
     initialData: [],
   });
 
-  const { data: _patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
+  const { data: _patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 2000 });
 
   const { data: allUsers = [], refetch: _refetchUsers } = useQuery({
     queryKey: ['allUsers', 5000, agencyQueryKey(currentUser)],
@@ -138,13 +137,6 @@ export default function ComplianceCenter() {
   const { data: personnelCredentials = [], refetch: _refetchCredentials } = useQuery({
     queryKey: ['allPersonnelCredentials'],
     queryFn: () => base44.entities.PersonnelCredential.list('-updated_date', 5000),
-    initialData: [],
-    refetchInterval: 30000,
-  });
-
-  const { data: _visits = [], refetch: _refetchVisits } = useAgencyScopedQuery({
-    queryKey: ['allVisits'],
-    fetch: () => base44.entities.Visit.filter({}, '-visit_date', 5000),
     initialData: [],
     refetchInterval: 30000,
   });

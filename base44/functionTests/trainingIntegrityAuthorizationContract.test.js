@@ -80,9 +80,34 @@ test('integrity entities expose only owner reads and server-owned evidence write
       assert.equal(schema.rls.delete, false, entity);
     }
   }
+
+  const serverOwnedTraining = {
+    TrainingCompletion: {
+      $or: [
+        { 'data.nurse_email': '{{user.email}}' },
+        { user_condition: { role: 'admin' } },
+      ],
+    },
+    TrainingAssignment: {
+      $or: [
+        { 'data.assigned_to_user_id': '{{user.email}}' },
+        { user_condition: { role: 'admin' } },
+      ],
+    },
+  };
+  for (const [entity, readRule] of Object.entries(serverOwnedTraining)) {
+    const schema = JSON5.parse(await readFile(
+      new URL(`../entities/${entity}.jsonc`, import.meta.url),
+      'utf8',
+    ));
+    assert.deepEqual(schema.rls.read, readRule, `${entity}.read`);
+    assert.equal(schema.rls.create, false, `${entity}.create`);
+    assert.equal(schema.rls.update, false, `${entity}.update`);
+    assert.equal(schema.rls.delete, false, `${entity}.delete`);
+  }
 });
 
-test('frontend cannot directly write attempt or recommendation evidence or globally list protected records', async () => {
+test('frontend cannot directly write training integrity evidence or globally list protected records', async () => {
   const violations = [];
   async function walk(directory) {
     for (const entry of await readdir(directory, { withFileTypes: true })) {
@@ -91,7 +116,7 @@ test('frontend cannot directly write attempt or recommendation evidence or globa
       else if (/\.[cm]?[jt]sx?$/.test(entry.name) && !/\.(?:test|spec)\./.test(entry.name)) {
         const source = await readFile(url, 'utf8');
         for (const match of source.matchAll(
-          /base44\.entities\.(ScenarioAttempt|TrainingRecommendation)\.(create|update|delete)\b|base44\.entities\.(PlanEnrollment|TrainingRecommendation)\.list\b/g,
+          /base44\.entities\.(ScenarioAttempt|TrainingRecommendation|TrainingCompletion|TrainingAssignment)\.(create|bulkCreate|update|delete)\b|base44\.entities\.(PlanEnrollment|TrainingRecommendation)\.list\b/g,
         )) {
           violations.push(`${url.pathname}: ${match[0]}`);
         }
@@ -100,6 +125,260 @@ test('frontend cannot directly write attempt or recommendation evidence or globa
   }
   await walk(new URL('../../src/', import.meta.url));
   assert.deepEqual(violations, []);
+});
+
+test('learner assignment lifecycle uses brokers that derive assignment and completion fields', async () => {
+  const hub = await readFile(new URL('../../src/pages/NurseTrainingHub.jsx', import.meta.url), 'utf8');
+  const player = await readFile(new URL('../../src/pages/TrainingCoursePlayer.jsx', import.meta.url), 'utf8');
+  assert.match(hub, /await selfEnrollCourse\(\{ courseId: module\.course_id \}\)/);
+  assert.doesNotMatch(hub, /base44\.entities\.TrainingAssignment\./);
+  assert.match(hub, /error\?\.response\?\.data\?\.error/);
+  assert.match(player, /startTrainingAssignment\(\{ assignmentId \}\)/);
+  assert.match(player, /await gradeTrainingAttempt\(\{/);
+});
+
+test('self-enrollment broker ignores forged owner and completion evidence', async () => {
+  let created;
+  const client = {
+    auth: { me: async () => ({ email: 'learner@example.test', full_name: 'Learner' }) },
+    asServiceRole: { entities: {
+      TrainingCourse: { filter: async () => [{
+        id: 'course-1',
+        title: 'Elective',
+        status: 'published',
+        passing_score: 85,
+        training_type: 'elective',
+      }] },
+      TrainingAssignment: {
+        filter: async () => [],
+        create: async (payload) => {
+          created = payload;
+          return { id: 'assignment-1', ...payload };
+        },
+        delete: async () => {},
+      },
+      TrainingAuditLog: { create: async () => ({ id: 'audit-1' }) },
+    } },
+  };
+  const handler = await loadFunction('selfEnrollCourse', client);
+  const response = await handler(request({
+    courseId: 'course-1',
+    assigned_to_user_id: 'victim@example.test',
+    status: 'completed',
+    score_percentage: 100,
+    pass_fail_result: 'passed',
+    completion_date: '2000-01-01T00:00:00.000Z',
+  }));
+  const json = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(json.assignment_id, 'assignment-1');
+  assert.equal(created.assigned_to_user_id, 'learner@example.test');
+  assert.equal(created.status, 'assigned');
+  assert.equal(created.passing_score_required, 85);
+  assert.equal(created.progress_percentage, 0);
+  assert.equal(created.score_percentage, undefined);
+  assert.equal(created.pass_fail_result, undefined);
+  assert.equal(created.completion_date, undefined);
+});
+
+test('self-enrollment broker opens an existing required assignment but cannot create one', async () => {
+  let existingRows = [{
+    id: 'required-assignment-1',
+    course_id: 'required-course-1',
+    assigned_to_user_id: 'learner@example.test',
+    archived_status: false,
+  }];
+  let creates = 0;
+  const client = {
+    auth: { me: async () => ({ email: 'learner@example.test' }) },
+    asServiceRole: { entities: {
+      TrainingCourse: { filter: async () => [{
+        id: 'required-course-1',
+        title: 'Required In-Service',
+        status: 'published',
+        is_mandatory: true,
+        training_type: 'in_service',
+      }] },
+      TrainingAssignment: {
+        filter: async () => existingRows,
+        create: async () => { creates += 1; return { id: 'forged' }; },
+      },
+      TrainingAuditLog: { create: async () => ({ id: 'audit-1' }) },
+    } },
+  };
+  const handler = await loadFunction('selfEnrollCourse', client);
+
+  const assigned = await handler(request({ courseId: 'required-course-1' }));
+  assert.equal(assigned.status, 200);
+  assert.deepEqual(await assigned.json(), {
+    success: true,
+    already_enrolled: true,
+    assignment_id: 'required-assignment-1',
+  });
+
+  existingRows = [];
+  const unassigned = await handler(request({ courseId: 'required-course-1' }));
+  const rejected = await unassigned.json();
+  assert.equal(unassigned.status, 400);
+  assert.match(rejected.error, /assigned by your administrator/i);
+  assert.equal(creates, 0);
+});
+
+test('self-enrollment rejects non-scalar course identifiers before privileged reads', async () => {
+  let courseReads = 0;
+  let assignmentReads = 0;
+  let creates = 0;
+  const client = {
+    auth: { me: async () => ({ email: 'learner@example.test' }) },
+    asServiceRole: { entities: {
+      TrainingCourse: { filter: async () => { courseReads += 1; return []; } },
+      TrainingAssignment: {
+        filter: async () => { assignmentReads += 1; return []; },
+        create: async () => { creates += 1; return { id: 'forged' }; },
+      },
+    } },
+  };
+  const handler = await loadFunction('selfEnrollCourse', client);
+  for (const courseId of [{ $ne: null }, ['course-1'], ' course-1 ', 'x'.repeat(201)]) {
+    const response = await handler(request({ courseId }));
+    assert.equal(response.status, 400);
+  }
+  assert.equal(courseReads, 0);
+  assert.equal(assignmentReads, 0);
+  assert.equal(creates, 0);
+});
+
+test('self-enrollment requires one exact course row from a bounded lookup', async () => {
+  let courseRows = [
+    { id: 'course-1', title: 'First', status: 'published', training_type: 'elective' },
+    { id: 'course-1', title: 'Duplicate', status: 'published', training_type: 'elective' },
+  ];
+  let assignmentReads = 0;
+  const client = {
+    auth: { me: async () => ({ email: 'learner@example.test' }) },
+    asServiceRole: { entities: {
+      TrainingCourse: { filter: async (filter, sort, limit) => {
+        assert.deepEqual(filter, { id: 'course-1' });
+        assert.equal(sort, undefined);
+        assert.equal(limit, 2);
+        return courseRows;
+      } },
+      TrainingAssignment: {
+        filter: async () => { assignmentReads += 1; return []; },
+      },
+    } },
+  };
+  const handler = await loadFunction('selfEnrollCourse', client);
+
+  const duplicate = await handler(request({ courseId: 'course-1' }));
+  assert.equal(duplicate.status, 409);
+
+  courseRows = [{ id: 'different-course', title: 'Wrong', status: 'published' }];
+  const mismatched = await handler(request({ courseId: 'course-1' }));
+  assert.equal(mismatched.status, 409);
+  assert.equal(assignmentReads, 0);
+});
+
+test('self-enrollment fails closed on duplicate or truncated active-assignment history', async () => {
+  let mode = 'duplicate';
+  let creates = 0;
+  const assignment = (id, archivedStatus = false) => ({
+    id,
+    course_id: 'course-1',
+    assigned_to_user_id: 'learner@example.test',
+    archived_status: archivedStatus,
+  });
+  const client = {
+    auth: { me: async () => ({ email: 'learner@example.test' }) },
+    asServiceRole: { entities: {
+      TrainingCourse: { filter: async () => [{
+        id: 'course-1', title: 'Elective', status: 'published', training_type: 'elective',
+      }] },
+      TrainingAssignment: {
+        filter: async (_filter, _sort, limit) => {
+          assert.equal(limit, 500);
+          if (mode === 'duplicate') return [assignment('assignment-1'), assignment('assignment-2')];
+          return Array.from({ length: limit }, (_, index) => assignment(`archived-${index}`, true));
+        },
+        create: async () => { creates += 1; return { id: 'forged' }; },
+      },
+    } },
+  };
+  const handler = await loadFunction('selfEnrollCourse', client);
+
+  const duplicate = await handler(request({ courseId: 'course-1' }));
+  assert.equal(duplicate.status, 409);
+  assert.match((await duplicate.json()).error, /multiple active/i);
+
+  mode = 'truncated';
+  const truncated = await handler(request({ courseId: 'course-1' }));
+  assert.equal(truncated.status, 409);
+  assert.match((await truncated.json()).error, /history is ambiguous/i);
+  assert.equal(creates, 0);
+});
+
+test('self-enrollment does not create when the immediate assignment recheck fails', async () => {
+  let assignmentReads = 0;
+  let creates = 0;
+  const client = {
+    auth: { me: async () => ({ email: 'learner@example.test' }) },
+    asServiceRole: { entities: {
+      TrainingCourse: { filter: async () => [{
+        id: 'course-1', title: 'Elective', status: 'published', training_type: 'elective',
+      }] },
+      TrainingAssignment: {
+        filter: async () => {
+          assignmentReads += 1;
+          if (assignmentReads === 1) return [];
+          throw new Error('simulated recheck failure');
+        },
+        create: async () => { creates += 1; return { id: 'forged' }; },
+      },
+    } },
+  };
+  const handler = await loadFunction('selfEnrollCourse', client);
+  const response = await handler(request({ courseId: 'course-1' }));
+  assert.equal(response.status, 500);
+  assert.equal(assignmentReads, 2);
+  assert.equal(creates, 0);
+});
+
+test('start-assignment broker ignores forged score and completion evidence', async () => {
+  let updated;
+  const client = {
+    auth: { me: async () => ({ email: 'learner@example.test', full_name: 'Learner' }) },
+    asServiceRole: { entities: {
+      TrainingAssignment: {
+        filter: async () => [{
+          id: 'assignment-1',
+          assigned_to_user_id: 'learner@example.test',
+          status: 'assigned',
+          progress_percentage: 0,
+          latest_attempt_number: 0,
+        }],
+        update: async (_id, payload) => { updated = payload; },
+      },
+      TrainingAuditLog: { create: async () => ({ id: 'audit-1' }) },
+    } },
+  };
+  const handler = await loadFunction('startTrainingAssignment', client);
+  const response = await handler(request({
+    assignmentId: 'assignment-1',
+    status: 'completed',
+    score_percentage: 100,
+    pass_fail_result: 'passed',
+    completion_date: '2000-01-01T00:00:00.000Z',
+  }));
+
+  assert.equal(response.status, 200);
+  assert.equal(updated.status, 'in_progress');
+  assert.equal(updated.progress_percentage, 5);
+  assert.equal(updated.score_percentage, undefined);
+  assert.equal(updated.pass_fail_result, undefined);
+  assert.equal(updated.completion_date, undefined);
+  assert.ok(updated.started_date);
+  assert.ok(updated.last_accessed);
 });
 
 test('scenario broker derives owner, score, pass result, and canonical decisions from server data', async () => {
@@ -307,8 +586,11 @@ test('exact secret-bound platform owner can read unscoped records without mutabl
 
 test('client wrappers invoke only their matching integrity brokers', async () => {
   const expected = {
+    gradeTrainingAttempt: 'gradeTrainingAttempt',
     submitScenarioAttempt: 'submitScenarioAttempt',
     listTenantTrainingIntegrityRecords: 'listTenantTrainingIntegrityRecords',
+    selfEnrollCourse: 'selfEnrollCourse',
+    startTrainingAssignment: 'startTrainingAssignment',
   };
   for (const [file, functionName] of Object.entries(expected)) {
     const source = await readFile(new URL(`../../src/functions/${file}.js`, import.meta.url), 'utf8');

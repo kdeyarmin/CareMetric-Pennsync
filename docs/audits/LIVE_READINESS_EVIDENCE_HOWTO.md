@@ -33,16 +33,35 @@ Turn the gated live-readiness matrix into real hosted evidence so
    and `pnpm run test:security` separately for executable source-only coverage;
    their mocks are not hosted evidence.
 
-   Source-contract v3 also pins the default-off
+   Source-contract v4 is the true union of the readiness and tenant-architecture
+   artifact families. It pins the canonical frozen actor/Agency/Patient
+   topology and derived projections, all content schemas, the new fail-closed
+   authority/provenance schemas, exact content roots/inheritance, and training
+   answer-field denials. Its source markers and regex scans are regression
+   tripwires rather than formal interprocedural containment proofs.
+
+   v4 also pins the default-off
    `preflightStagingReadinessFixture` implementation and its executable
    contract test. That function is read-only and emits no identities or PHI,
    but it remains unavailable unless the exact staging-only release sentinel,
    app id, public origin, production data partition, and protected owner
-   configuration all match. Its narrow pass state covers immutable authority
-   links only and does not inspect legacy email/profile links. A green local
-   test or preflight response does not provision the fixture, prove login
-   credentials, authorize a later write, provide an atomic uniqueness
-   guarantee, or clear LR-01/LR-02.
+   configuration all match. Its successful status is explicitly
+   `point_in_time_read_only_preflight_passed`: it checks bounded Agency-code and
+   immutable-id collisions and terminally reauthorizes the owner/target, but it
+   reserves nothing and does not inspect legacy email/profile links. The
+   release sentinel must stay disabled; presence in a staging deployment is not
+   permission to invoke it. A green local test or preflight response does not
+   provision the fixture, prove login credentials, authorize a later write,
+   provide an atomic uniqueness guarantee, or clear LR-01/LR-02.
+
+   The fixture registry does not record the S3 Referral or S4 Visit result ids,
+   so teardown is not yet deterministic. Content migration is also blocked on
+   human CRUD/legacy-row decisions, exact parent-bound sanitized learner
+   brokers, PDFTemplate version/packet scope rules, and hosted nested-field RLS
+   proof. Auxiliary tenant aggregate brokers for ComplianceAudit,
+   NoteConversion, and TrainingAssignment are absent; Incident/User browser
+   post-filtering is an interim boundary. Do not represent a v4 source-contract
+   pass as production readiness.
 
 2. **Provision the plan through reviewed paths when the hosted prerequisites
    are available:**

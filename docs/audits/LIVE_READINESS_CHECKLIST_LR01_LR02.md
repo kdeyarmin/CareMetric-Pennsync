@@ -47,13 +47,18 @@ pnpm run readiness:fixture:validate -- docs/audits/live-readiness-fixture-manife
 
 The validator pins the plan to isolated staging app
 `6a9881683dc68a0bd54f1ef7`, rejects production/unreviewed targets and
-credential/PHI-shaped fields, and requires exactly this authority graph. It
-also computes `source_contract.source_authority_contract_sha256` over a fixed,
-sorted set of readiness, authority-schema, broker, and local contract-test
-sources. The same run statically checks the server-owned RLS posture, canonical
-fixture enum/default support, required broker markers, and the hard-disabled
-care-team assignment mutation gate. It performs no network access or hosted
-writes.
+credential/PHI-shaped fields, and requires exactly this authority graph plus
+the reviewed synthetic Agency, Patient, membership, assignment, S3 Referral,
+and S4 Smart Note/Visit request inputs. It
+also computes `source_contract.source_authority_contract_sha256` over the v4
+true union of readiness and tenant-architecture sources: authority and content
+schemas, canonical topology/projections, brokers, and local contract tests. The
+same run statically checks the server-owned RLS posture, exact content-root and
+parent-inheritance model, answer-field denials, canonical fixture enum/default
+support, required broker markers, and the hard-disabled care-team assignment
+mutation gate. It performs no network access or hosted writes. Its marker and
+regex scanners are regression tripwires, not formal interprocedural containment
+proofs.
 
 | Actor | Expected roster | Why it is diagnostic |
 |---|---|---|
@@ -65,9 +70,11 @@ writes.
 
 A1/A2 must be created by Admin-A and B1 by Admin-B. Only A1 is assigned, to
 Clinician-A. That separation ensures creator access cannot hide a broken
-assignment check. The committed manifest contains aliases and environment
-variable names only; it contains no email, password, token, patient name, or
-clinical value.
+assignment check. The committed manifest contains actor aliases and email
+environment-variable names rather than identities or credentials. Its names
+and clinical text are fixed, conspicuously synthetic test values; the
+validator rejects any change to those values. It contains no literal email,
+password, token, session, real patient identifier, or production PHI.
 
 An exit code `0` validates the local plan and pinned static source contract; it
 does not mean LR-01 or LR-02 passed. The output deliberately remains
@@ -76,10 +83,24 @@ no authenticated hosted probe ran, and lists every source limitation. Preserve
 the emitted source-contract digest for the evidence packet; the report command
 recomputes it from the exact clean checkout and rejects drift.
 
-The manifest does not encode or provision the Referral action required by S3
-or the Visit action required by S4. It does not provision anything or count as
-hosted evidence. The 2026-09-06 candidate source adds an immutable-tenant
-Referral broker and makes Visit creation depend on an exact active
+The default-off hosted `preflightStagingReadinessFixture` can report only a
+bounded point-in-time state. Its successful status is
+`point_in_time_read_only_preflight_passed`; it checks canonical Agency-code
+collisions and performs terminal owner/target reauthorization, but reserves
+nothing and authorizes no later write. Keep its release sentinel disabled and
+do not invoke or cite it as readiness evidence until the hosted step is
+explicitly approved. Even then, its response is corroboration, not an LR-01 or
+LR-02 pass.
+
+The manifest now encodes the exact plan-only Agency, membership, Patient,
+assignment, S3 Referral, and S4 Smart Note Visit request inputs. Its pure
+assembler accepts only the canonical aliases plus resolved Agency/Patient ids,
+tenant actor User ids and normalized emails, and membership versions returned
+as each provision response's `membership.version`; those runtime values are
+not credentials and do not belong in
+the committed manifest. The assembler invokes nothing, provisions nothing,
+and does not count as hosted evidence. The 2026-09-06 candidate source adds an
+immutable-tenant Referral broker and makes Visit creation depend on an exact active
 `PatientCareTeamAssignment` bound to the current membership version. Those are
 source contracts only until the exact tree is synchronized and exercised in
 hosted staging. The reviewed `managePatientCareTeamAssignment` broker remains
@@ -89,10 +110,28 @@ conditional writes are not proved atomic at the datastore layer. Referral
 deletion, assignment, stale escalation, inbound fax matching, and the Smart Note
 Referral bridge now have reviewed tenant-bound repo implementations, but those
 implementations remain release-blocked until the exact tree is synchronized and
-authenticated hosted cross-tenant evidence is retained. Do not use direct entity
-CRUD or legacy assignment fields to manufacture a passing matrix. Run S3/S4 only
-against the synchronized candidate and retain blocked or failed results honestly;
-neither flow clears the release gates by itself.
+authenticated hosted cross-tenant evidence is retained. The platform owner may
+create the two synthetic Agency rows directly as specified; do not use direct
+clinical or tenant-authority entity CRUD, or legacy assignment fields, to
+manufacture a passing matrix. Run S3/S4 only against the synchronized candidate
+and retain blocked or failed results honestly; neither flow clears the release
+gates by itself.
+
+The fixture registry still lacks fields for the Referral and Visit ids produced
+by S3/S4, so deterministic teardown is not complete. Do not provision those
+rows until the approved writer/registry can record every teardown identifier.
+
+Content and auxiliary reporting remain separate release blockers. Hybrid
+global/Agency content is a source direction only: human CRUD approvals, legacy
+classification, exact parent-bound brokers, PDFTemplate family compatibility,
+and a sanitized learner projection are pending. TrainingCourse has 15
+user-scope and 14 service-role source-file consumers, and its published global
+read conflicts with agency-private scope. TrainingModule remains unscoped and
+its generic `content` / `content_json` may carry answers despite field-level
+denials. Tenant-authorized aggregate brokers do not yet exist for
+ComplianceAudit, NoteConversion, or TrainingAssignment; Incident/User browser
+post-filtering is interim. Keep affected outputs unavailable and do not infer
+production readiness from this checklist's source tests.
 
 Run the static and executable source contracts before any hosted work:
 
@@ -210,6 +249,12 @@ Same eight evidence keys as LR-01. `test_evidence.references` identifies the run
 index, and every required `test_evidence.probes.S1`–`S4` entry needs a complete
 `authenticated_hosted` attestation: `result`, canonical UTC `captured_at`,
 SHA-256 of the retained probe bundle, and at least one artifact reference.
+Every supplied LR-02 capture time must be strictly later than all ten required
+LR-01 capture times; an absent or malformed LR-01 time prevents the report from
+sequencing LR-02. The report validator also rejects narrow, high-confidence
+credential and direct-identifier patterns in summaries, owner fields, and
+references. That screen is defense in depth, not proof that arbitrary text is
+de-identified; keep sensitive detail in the private retained artifacts.
 Attach S5–S9 evidence only for optional/in-scope flows actually exercised;
 identify unexercised optional flows explicitly. A supplied optional probe that
 is failed, blocked, or structurally incomplete blocks the packet.

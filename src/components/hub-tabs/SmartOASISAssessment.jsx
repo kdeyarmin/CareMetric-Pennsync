@@ -281,7 +281,7 @@ function EnabledSmartOASISAssessment() {
   const [guidanceOpen, setGuidanceOpen] = useState(false);
   const [currentGuidance, setCurrentGuidance] = useState({ questionId: null, questionLabel: "" });
 
-  const { data: patients = [], isLoading: patientsLoading } = useScopedPatients({ sort: '-updated_date', limit: 100 });
+  const { data: patients = [], isLoading: patientsLoading } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 100 });
 
   const handleAnswer = useCallback((questionId, value) => {
     setAnswers(prev => ({ ...prev, [questionId]: value }));

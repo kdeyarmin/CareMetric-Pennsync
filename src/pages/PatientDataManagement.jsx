@@ -1,15 +1,16 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import DuplicateScanner from "../components/patient/DuplicateScanner";
-import PatientFileUpdateUploader from "../components/patient/PatientFileUpdateUploader";
 import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
-import { isAdminView } from "@/lib/roles";
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
+import { getTrustedTenantContext, isAdminView } from "@/lib/roles";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Select,
@@ -66,6 +67,36 @@ import LoadingState from "@/components/ui/LoadingState";
 import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { formatEastern } from "../components/utils/timezone";
+import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
+
+const EMPTY_ROWS = Object.freeze([]);
+const FRESH_QUERY_OPTIONS = Object.freeze({
+  retry: false,
+  staleTime: 0,
+  refetchOnMount: 'always',
+  refetchOnWindowFocus: 'always',
+  refetchOnReconnect: 'always',
+});
+
+function settledSuccessfullyAfterMount(query) {
+  return query.isSuccess
+    && query.isFetchedAfterMount
+    && query.fetchStatus === 'idle'
+    && !query.error
+    && !query.isFetching
+    && !query.isPaused;
+}
+
+function tenantScopeKey(scope) {
+  if (!scope) return null;
+  return JSON.stringify([
+    scope.user_id,
+    scope.agency_id,
+    scope.membership_id,
+    scope.membership_version,
+    scope.tenant_role,
+  ]);
+}
 
 export default function PatientDataManagement() {
   const [activeTab, setActiveTab] = useState("overview");
@@ -75,62 +106,88 @@ export default function PatientDataManagement() {
   const [alertFilter, setAlertFilter] = useState("all");
   const [sortBy, setSortBy] = useState("name");
   const [sortOrder, setSortOrder] = useState("asc");
-  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [flagDialogOpen, setFlagDialogOpen] = useState(false);
+  const [filterAuthorityKey, setFilterAuthorityKey] = useState(null);
 
   // Admin-only page: gate the agency-wide data pulls on role (defense in depth;
   // server-side row authorization is the primary control).
-  const { data: currentUser } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
+  const currentUserQuery = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+    ...FRESH_QUERY_OPTIONS,
+  });
+  const currentUserAvailable = settledSuccessfullyAfterMount(currentUserQuery);
+  const currentUser = currentUserAvailable ? currentUserQuery.data : null;
   const isAdmin = isAdminView(currentUser);
 
-  const { data: patients = [], isLoading } = useScopedPatients({
+  const patientQuery = useScopedPatients({
+    purpose: 'patient_management',
     sort: '-created_date',
     limit: 2000,
     select: excludeArchived,
     enabled: isAdmin,
   });
+  const patients = patientQuery.isSuccess ? patientQuery.data : EMPTY_ROWS;
 
-  const { data: allVisits = [] } = useAgencyScopedQuery({
-    queryKey: ['allVisits'],
-    fetch: async () => {
-      try {
-        return await base44.entities.Visit.list('-visit_date', 5000);
-      } catch (err) {
-        console.error('Failed to load visits:', err);
-        return [];
-      }
-    },
-    initialData: [],
-    enabled: isAdmin,
+  const visitQuery = useAuthorizedVisits({
+    purpose: 'activity',
+    sort: '-visit_date',
+    limit: 5000,
+    enabled: isAdmin && activeTab === 'overview',
   });
+  const tenantScopesMismatch = patientQuery.isSuccess
+    && visitQuery.isSuccess
+    && !sameAuthorizedTenantScope(patientQuery.tenantScope, visitQuery.tenantScope);
+  const visitsAvailable = patientQuery.isSuccess
+    && visitQuery.isSuccess
+    && !tenantScopesMismatch;
+  const allVisits = visitsAvailable ? visitQuery.data : EMPTY_ROWS;
 
-  const { data: allAlerts = [] } = useAgencyScopedQuery({
-    queryKey: ['allAlerts'],
-    fetch: async () => {
-      try {
-        return await base44.entities.PatientAlert.list('-created_date', 5000);
-      } catch (err) {
-        console.error('Failed to load alerts:', err);
-        return [];
-      }
-    },
-    initialData: [],
-    enabled: isAdmin,
-  });
+  const patientAuthorityKey = patientQuery.isSuccess
+    ? tenantScopeKey(patientQuery.tenantScope)
+    : null;
+  const currentTenantScope = currentUserAvailable
+    ? getTrustedTenantContext(currentUser)
+    : null;
+  const alertAuthorityMatches = patientQuery.isSuccess
+    && sameAuthorizedTenantScope(patientQuery.tenantScope, currentTenantScope);
 
-  const { data: allIncidents = [] } = useAgencyScopedQuery({
-    queryKey: ['allIncidents'],
-    fetch: async () => {
-      try {
-        return await base44.entities.Incident.list('-incident_date', 5000);
-      } catch (err) {
-        console.error('Failed to load incidents:', err);
-        return [];
-      }
-    },
-    initialData: [],
-    enabled: isAdmin,
+  const alertQuery = useAgencyScopedQuery({
+    queryKey: ['allAlerts', patientAuthorityKey],
+    fetch: () => base44.entities.PatientAlert.list('-created_date', 5000),
+    enabled: isAdmin && activeTab === 'overview' && alertAuthorityMatches,
+    ...FRESH_QUERY_OPTIONS,
   });
+  const alertsAvailable = alertAuthorityMatches
+    && settledSuccessfullyAfterMount(alertQuery);
+  const allAlerts = alertsAvailable ? alertQuery.data : EMPTY_ROWS;
+
+  const filtersCurrent = Boolean(
+    patientAuthorityKey && filterAuthorityKey === patientAuthorityKey
+  );
+  const effectiveSearchTerm = filtersCurrent ? searchTerm : '';
+  const effectiveStatusFilter = filtersCurrent ? statusFilter : 'all';
+  const effectiveDiagnosisFilter = filtersCurrent ? diagnosisFilter : 'all';
+  const effectiveAlertFilter = filtersCurrent && alertsAvailable ? alertFilter : 'all';
+  const effectiveSortBy = filtersCurrent ? sortBy : 'name';
+  const effectiveSortOrder = filtersCurrent ? sortOrder : 'asc';
+
+  // Bind every tenant-derived control to the immutable Patient authority. The
+  // effective values above are already blank on the first render of a new
+  // authority; this effect then retires the old state for subsequent renders.
+  useEffect(() => {
+    if (filterAuthorityKey === patientAuthorityKey) return;
+    setFilterAuthorityKey(patientAuthorityKey);
+    setSearchTerm('');
+    setStatusFilter('all');
+    setDiagnosisFilter('all');
+    setAlertFilter('all');
+    setSortBy('name');
+    setSortOrder('asc');
+    setSelectedPatientId(null);
+    setFlagDialogOpen(false);
+  }, [filterAuthorityKey, patientAuthorityKey]);
 
   // Get unique diagnoses for filter
   const uniqueDiagnoses = useMemo(() => {
@@ -141,44 +198,95 @@ export default function PatientDataManagement() {
     return Array.from(diagnoses).sort();
   }, [patients]);
 
+  const visitsByPatient = useMemo(() => {
+    if (!visitsAvailable) return null;
+    const grouped = new Map();
+    for (const visit of allVisits) {
+      const summary = grouped.get(visit.patient_id) || { count: 0, recentVisit: null };
+      summary.count += 1;
+      if (
+        !summary.recentVisit
+        || String(visit.visit_date || '') > String(summary.recentVisit.visit_date || '')
+      ) summary.recentVisit = visit;
+      grouped.set(visit.patient_id, summary);
+    }
+    return grouped;
+  }, [allVisits, visitsAvailable]);
+
+  const alertsByPatient = useMemo(() => {
+    if (!alertsAvailable) return null;
+    const grouped = new Map();
+    for (const alert of allAlerts) {
+      if (alert.status !== 'active') continue;
+      const summary = grouped.get(alert.patient_id) || { count: 0, critical: 0 };
+      summary.count += 1;
+      if (alert.severity === 'critical') summary.critical += 1;
+      grouped.set(alert.patient_id, summary);
+    }
+    return grouped;
+  }, [alertsAvailable, allAlerts]);
+
   // Enhanced patient data with activity and alerts
   const enhancedPatients = useMemo(() => {
     return patients.map(patient => {
-      const patientVisits = allVisits.filter(v => v.patient_id === patient.id);
-      const patientAlerts = allAlerts.filter(a => a.patient_id === patient.id && a.status === 'active');
-      const patientIncidents = allIncidents.filter(i => i.patient_id === patient.id);
-      
-      const recentVisit = patientVisits[0];
-      const activeAlertsCount = patientAlerts.length;
-      const criticalAlerts = patientAlerts.filter(a => a.severity === 'critical').length;
+      const visitSummary = visitsByPatient?.get(patient.id);
+      const alertSummary = alertsByPatient?.get(patient.id);
+      const recentVisit = visitSummary?.recentVisit || null;
+      const activeAlertsCount = alertsAvailable ? alertSummary?.count || 0 : null;
+      const criticalAlerts = alertsAvailable ? alertSummary?.critical || 0 : null;
       
       return {
         ...patient,
         recentVisit,
-        totalVisits: patientVisits.length,
+        totalVisits: visitsAvailable ? visitSummary?.count || 0 : null,
         activeAlertsCount,
         criticalAlerts,
-        hasIncidents: patientIncidents.length > 0,
-        lastActivity: recentVisit?.visit_date || patient.created_date,
-        riskLevel: criticalAlerts > 0 ? 'high' : activeAlertsCount > 2 ? 'medium' : 'low'
+        lastActivity: visitsAvailable ? recentVisit?.visit_date || patient.created_date : null,
+        riskLevel: alertsAvailable
+          ? criticalAlerts > 0 ? 'high' : activeAlertsCount > 2 ? 'medium' : 'low'
+          : null,
       };
     });
-  }, [patients, allVisits, allAlerts, allIncidents]);
+  }, [alertsAvailable, alertsByPatient, patients, visitsAvailable, visitsByPatient]);
+
+  const selectedPatient = useMemo(() => (
+    patientQuery.isSuccess && filtersCurrent
+      ? patients.find(patient => patient.id === selectedPatientId) || null
+      : null
+  ), [filtersCurrent, patientQuery.isSuccess, patients, selectedPatientId]);
+
+  // Store only an identifier, never a detached Patient object. Revocation or a
+  // roster refresh immediately closes the dialog and removes the old chart.
+  useEffect(() => {
+    if (!selectedPatientId) return;
+    if (patientQuery.isSuccess && selectedPatient) return;
+    setSelectedPatientId(null);
+    setFlagDialogOpen(false);
+  }, [patientQuery.isSuccess, selectedPatient, selectedPatientId]);
+
+  useEffect(() => {
+    if (
+      (visitsAvailable || (sortBy !== 'visits' && sortBy !== 'lastActivity'))
+      && (alertsAvailable || sortBy !== 'alerts')
+    ) return;
+    setSortBy('name');
+    setSortOrder('asc');
+  }, [alertsAvailable, sortBy, visitsAvailable]);
 
   // Filter and sort
   const filteredAndSortedPatients = useMemo(() => {
     let filtered = enhancedPatients.filter(patient => {
       const matchesSearch = 
-        `${patient.first_name} ${patient.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (patient.medical_record_number || '').toLowerCase().includes(searchTerm.toLowerCase());
+        `${patient.first_name} ${patient.last_name}`.toLowerCase().includes(effectiveSearchTerm.toLowerCase()) ||
+        (patient.medical_record_number || '').toLowerCase().includes(effectiveSearchTerm.toLowerCase());
       
-      const matchesStatus = statusFilter === 'all' || patient.status === statusFilter;
-      const matchesDiagnosis = diagnosisFilter === 'all' || patient.primary_diagnosis === diagnosisFilter;
+      const matchesStatus = effectiveStatusFilter === 'all' || patient.status === effectiveStatusFilter;
+      const matchesDiagnosis = effectiveDiagnosisFilter === 'all' || patient.primary_diagnosis === effectiveDiagnosisFilter;
       const matchesAlert = 
-        alertFilter === 'all' ||
-        (alertFilter === 'critical' && patient.criticalAlerts > 0) ||
-        (alertFilter === 'active' && patient.activeAlertsCount > 0) ||
-        (alertFilter === 'none' && patient.activeAlertsCount === 0);
+        effectiveAlertFilter === 'all' ||
+        (effectiveAlertFilter === 'critical' && patient.criticalAlerts > 0) ||
+        (effectiveAlertFilter === 'active' && patient.activeAlertsCount > 0) ||
+        (effectiveAlertFilter === 'none' && patient.activeAlertsCount === 0);
       
       return matchesSearch && matchesStatus && matchesDiagnosis && matchesAlert;
     });
@@ -187,7 +295,7 @@ export default function PatientDataManagement() {
     filtered.sort((a, b) => {
       let aVal, bVal;
       
-      switch (sortBy) {
+      switch (effectiveSortBy) {
         case 'name':
           aVal = `${a.first_name} ${a.last_name}`.toLowerCase();
           bVal = `${b.first_name} ${b.last_name}`.toLowerCase();
@@ -209,23 +317,35 @@ export default function PatientDataManagement() {
           bVal = b.created_date;
       }
       
-      if (aVal < bVal) return sortOrder === 'asc' ? -1 : 1;
-      if (aVal > bVal) return sortOrder === 'asc' ? 1 : -1;
+      if (aVal < bVal) return effectiveSortOrder === 'asc' ? -1 : 1;
+      if (aVal > bVal) return effectiveSortOrder === 'asc' ? 1 : -1;
       return 0;
     });
 
     return filtered;
-  }, [enhancedPatients, searchTerm, statusFilter, diagnosisFilter, alertFilter, sortBy, sortOrder]);
+  }, [
+    effectiveAlertFilter,
+    effectiveDiagnosisFilter,
+    effectiveSearchTerm,
+    effectiveSortBy,
+    effectiveSortOrder,
+    effectiveStatusFilter,
+    enhancedPatients,
+  ]);
 
   // Stats
   const stats = useMemo(() => {
     return {
       total: enhancedPatients.length,
       active: enhancedPatients.filter(p => p.status === 'active').length,
-      withAlerts: enhancedPatients.filter(p => p.activeAlertsCount > 0).length,
-      critical: enhancedPatients.filter(p => p.criticalAlerts > 0).length,
+      withAlerts: alertsAvailable
+        ? enhancedPatients.filter(p => p.activeAlertsCount > 0).length
+        : null,
+      critical: alertsAvailable
+        ? enhancedPatients.filter(p => p.criticalAlerts > 0).length
+        : null,
     };
-  }, [enhancedPatients]);
+  }, [alertsAvailable, enhancedPatients]);
 
   const getStatusColor = (status) => {
     const colors = {
@@ -246,8 +366,10 @@ export default function PatientDataManagement() {
   };
 
   const toggleSort = (field) => {
-    if (sortBy === field) {
-      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    if (!visitsAvailable && (field === 'visits' || field === 'lastActivity')) return;
+    if (!alertsAvailable && field === 'alerts') return;
+    if (effectiveSortBy === field) {
+      setSortOrder(effectiveSortOrder === 'asc' ? 'desc' : 'asc');
     } else {
       setSortBy(field);
       setSortOrder('asc');
@@ -255,12 +377,20 @@ export default function PatientDataManagement() {
   };
 
   const SortIcon = ({ field }) => {
-    if (sortBy !== field) return <Minus className="w-4 h-4 opacity-30" />;
-    return sortOrder === 'asc' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />;
+    if (effectiveSortBy !== field) return <Minus className="w-4 h-4 opacity-30" />;
+    return effectiveSortOrder === 'asc' ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />;
   };
 
   // Admin-only surface: block non-admins (server-side authz is the real gate).
-  if (currentUser && !isAdmin) {
+  if (!currentUserAvailable && !currentUserQuery.isError) {
+    return (
+      <PageContainer>
+        <LoadingState label="Verifying administrator access..." className="py-24" />
+      </PageContainer>
+    );
+  }
+
+  if (currentUserQuery.isError || !isAdmin) {
     return (
       <PageContainer>
         <AccessDeniedState
@@ -272,10 +402,22 @@ export default function PatientDataManagement() {
     );
   }
 
-  if (isLoading) {
+  if (patientQuery.isPending) {
     return (
       <PageContainer>
         <LoadingState label="Loading patient data..." className="py-24" />
+      </PageContainer>
+    );
+  }
+
+  if (patientQuery.isError) {
+    return (
+      <PageContainer>
+        <AccessDeniedState
+          title="Patient data unavailable"
+          description="Patient access could not be verified. No patient records are displayed."
+          className="py-24"
+        />
       </PageContainer>
     );
   }
@@ -302,7 +444,7 @@ export default function PatientDataManagement() {
 
         <TabsContent value="overview" className="m-0">
           <div>
-<PageHeader
+            <PageHeader
               icon={Users}
               eyebrow="Configuration"
               title="Patient Data Management"
@@ -310,12 +452,34 @@ export default function PatientDataManagement() {
               favoritePage="PatientDataManagement"
             />
 
+            {!visitsAvailable && (
+              <Alert className="mb-4 border-amber-300 bg-amber-50" role="status">
+                <AlertTriangle className="h-4 w-4 text-amber-700" />
+                <AlertDescription className="text-amber-950">
+                  {visitQuery.isError || patientQuery.isError || tenantScopesMismatch
+                    ? 'Visit activity is unavailable because matching Patient and Visit access could not be verified. Visit counts and last activity are withheld. Platform owners remain blocked until a reviewed agency selector is available.'
+                    : 'Reverifying matching Patient and Visit tenant access. Visit counts and last activity are temporarily withheld.'}
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {!alertsAvailable && (
+              <Alert className="mb-4 border-amber-300 bg-amber-50" role="status">
+                <AlertTriangle className="h-4 w-4 text-amber-700" />
+                <AlertDescription className="text-amber-950">
+                  {alertQuery.isError
+                    ? 'Patient alert data is unavailable because its tenant-scoped read could not be verified. Alert counts, risk labels, and alert filters are withheld.'
+                    : 'Reverifying tenant-scoped alert data. Alert counts, risk labels, and alert filters are temporarily withheld.'}
+                </AlertDescription>
+              </Alert>
+            )}
+
             {/* Stats Cards */}
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6">
               <StatCard label="Total Patients" value={stats.total} icon={Users} tone="navy" />
               <StatCard label="Active" value={stats.active} icon={Activity} tone="emerald" />
-              <StatCard label="With Alerts" value={stats.withAlerts} icon={Bell} tone="amber" />
-              <StatCard label="Critical" value={stats.critical} icon={AlertTriangle} tone="rose" />
+              <StatCard label="With Alerts" value={stats.withAlerts ?? '—'} icon={Bell} tone="amber" />
+              <StatCard label="Critical" value={stats.critical ?? '—'} icon={AlertTriangle} tone="rose" />
       </div>
 
             {/* Duplicate Scanner */}
@@ -332,14 +496,14 @@ export default function PatientDataManagement() {
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
                 <Input
                   placeholder="Search by name or MRN..."
-                  value={searchTerm}
+                  value={effectiveSearchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="pl-10 h-11 touch-target"
                 />
               </div>
             </div>
 
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={effectiveStatusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="h-11 touch-target">
                 <SelectValue placeholder="Status" />
               </SelectTrigger>
@@ -351,7 +515,7 @@ export default function PatientDataManagement() {
               </SelectContent>
             </Select>
 
-            <Select value={diagnosisFilter} onValueChange={setDiagnosisFilter}>
+            <Select value={effectiveDiagnosisFilter} onValueChange={setDiagnosisFilter}>
               <SelectTrigger className="h-11 touch-target">
                 <SelectValue placeholder="Diagnosis" />
               </SelectTrigger>
@@ -363,7 +527,11 @@ export default function PatientDataManagement() {
               </SelectContent>
             </Select>
 
-            <Select value={alertFilter} onValueChange={setAlertFilter}>
+            <Select
+              value={effectiveAlertFilter}
+              onValueChange={setAlertFilter}
+              disabled={!alertsAvailable}
+            >
               <SelectTrigger className="h-11 touch-target">
                 <SelectValue placeholder="Alerts" />
               </SelectTrigger>
@@ -410,6 +578,7 @@ export default function PatientDataManagement() {
                       variant="ghost" 
                       size="sm" 
                       onClick={() => toggleSort('alerts')}
+                      disabled={!alertsAvailable}
                       className="gap-1 sm:gap-2 text-xs sm:text-sm p-1"
                     >
                       Alerts <SortIcon field="alerts" />
@@ -421,6 +590,7 @@ export default function PatientDataManagement() {
                       variant="ghost" 
                       size="sm" 
                       onClick={() => toggleSort('visits')}
+                      disabled={!visitsAvailable}
                       className="gap-1 sm:gap-2 text-xs sm:text-sm p-1"
                     >
                       Visits <SortIcon field="visits" />
@@ -431,6 +601,7 @@ export default function PatientDataManagement() {
                       variant="ghost" 
                       size="sm" 
                       onClick={() => toggleSort('lastActivity')}
+                      disabled={!visitsAvailable}
                       className="gap-1 sm:gap-2 text-xs sm:text-sm p-1"
                     >
                       Last Activity <SortIcon field="lastActivity" />
@@ -466,7 +637,11 @@ export default function PatientDataManagement() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2">
-                        {patient.activeAlertsCount > 0 ? (
+                        {!alertsAvailable ? (
+                          <Badge variant="outline" className="text-amber-700">
+                            Unavailable
+                          </Badge>
+                        ) : patient.activeAlertsCount > 0 ? (
                           <>
                             <Badge variant="outline" className="gap-1">
                               <Bell className="w-3 h-3" />
@@ -487,18 +662,22 @@ export default function PatientDataManagement() {
                       </div>
                     </TableCell>
                     <TableCell className="hidden lg:table-cell">
-                      <Badge className={`${getRiskColor(patient.riskLevel)} text-xs`}>
-                        {patient.riskLevel}
-                      </Badge>
+                      {alertsAvailable ? (
+                        <Badge className={`${getRiskColor(patient.riskLevel)} text-xs`}>
+                          {patient.riskLevel}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-amber-700">Unavailable</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-xs sm:text-sm hidden lg:table-cell">
-                      <span>{patient.totalVisits}</span>
+                      <span>{patient.totalVisits ?? '—'}</span>
                     </TableCell>
                     <TableCell className="text-xs hidden xl:table-cell">
                       <div className="flex items-center gap-1 text-slate-600">
                         <Clock className="w-3 h-3" />
                         <span className="whitespace-nowrap">
-                          {patient.lastActivity ? 
+                          {!visitsAvailable ? 'Unavailable' : patient.lastActivity ?
                             formatEastern(patient.lastActivity, 'MMM d, yyyy') : 
                             'No activity'
                           }
@@ -525,7 +704,7 @@ export default function PatientDataManagement() {
                               Create Note
                             </Link>
                           </DropdownMenuItem>
-                          {patient.activeAlertsCount > 0 && (
+                          {alertsAvailable && patient.activeAlertsCount > 0 && (
                             <DropdownMenuItem asChild>
                               <Link to={`${createPageUrl("PatientAlerts")}?patientId=${patient.id}`}>
                                 <Bell className="w-4 h-4 mr-2" />
@@ -535,7 +714,7 @@ export default function PatientDataManagement() {
                           )}
                           <DropdownMenuItem 
                             onClick={() => {
-                              setSelectedPatient(patient);
+                              setSelectedPatientId(patient.id);
                               setFlagDialogOpen(true);
                             }}
                           >
@@ -563,7 +742,10 @@ export default function PatientDataManagement() {
         </Card>
 
             {/* Flag Dialog */}
-            <Dialog open={flagDialogOpen} onOpenChange={setFlagDialogOpen}>
+            <Dialog
+              open={Boolean(filtersCurrent && patientQuery.isSuccess && selectedPatient && flagDialogOpen)}
+              onOpenChange={setFlagDialogOpen}
+            >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Flag Patient</DialogTitle>
@@ -612,7 +794,14 @@ function ImportPatientsTab() {
         </p>
       </div>
 
-      <PatientFileUpdateUploader />
+      <Alert className="border-amber-300 bg-amber-50" role="status">
+        <AlertTriangle className="h-4 w-4 text-amber-700" />
+        <AlertDescription className="text-amber-950">
+          Patient roster import is paused until upload and processing can run through
+          one atomic tenant-bound broker. This prevents a file uploaded under one
+          agency authority from being processed after an account or agency switch.
+        </AlertDescription>
+      </Alert>
     </div>
   );
 }

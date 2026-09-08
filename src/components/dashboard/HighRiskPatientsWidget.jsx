@@ -57,7 +57,7 @@ export default function HighRiskPatientsWidget() {
     refetchInterval: 300000,
   });
 
-  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 500 });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 500 });
 
   const getPatientName = (patientId) => {
     const patient = patients.find(p => p.id === patientId);

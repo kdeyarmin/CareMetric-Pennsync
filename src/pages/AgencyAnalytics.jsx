@@ -1,120 +1,139 @@
-import { useState, useMemo } from "react";
+import { useMemo } from "react";
 import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { agencyQueryKey } from '@/lib/agencyRoster';
-import { isAdminView } from "@/lib/roles";
+import { getTrustedTenantContext, isAdminView } from "@/lib/roles";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
-import { toLocalISODate } from "@/lib/dateLocal";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Users,
   TrendingUp,
   Clock,
   FileText,
-  Shield,
-  DollarSign,
   Download,
   AlertCircle,
-  CheckCircle2,
   BarChart3
 } from "lucide-react";
 import { calculateStats, calculateNurseStats, formatCurrency } from "../components/utils/statsCalculator";
-import { toCsvRows } from "@/components/admin/csvExport";
 import { toast } from "sonner";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import StatCard from "@/components/ui/stat-card";
+import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
+
+const EMPTY_ROWS = Object.freeze([]);
+const FRESH_QUERY_OPTIONS = Object.freeze({
+  retry: false,
+  staleTime: 0,
+  refetchOnMount: 'always',
+  refetchOnWindowFocus: 'always',
+  refetchOnReconnect: 'always',
+});
+
+function settledSuccessfullyAfterMount(query) {
+  return query.isSuccess
+    && query.isFetchedAfterMount
+    && query.fetchStatus === 'idle'
+    && !query.error
+    && !query.isFetching
+    && !query.isPaused;
+}
+
+function tenantScopeKey(scope) {
+  if (!scope) return null;
+  return JSON.stringify([
+    scope.user_id,
+    scope.agency_id,
+    scope.membership_id,
+    scope.membership_version,
+    scope.tenant_role,
+  ]);
+}
 
 export default function AgencyAnalytics() {
-  const [_dateRange, _setDateRange] = useState("30days");
-
   // Admin-only page: agency-wide performance rankings and revenue/cost figures
   // must not render for clinical staff (server-side RLS remains the primary
   // control; this is the same defense-in-depth gate as AnalyticsDashboard).
-  const { data: currentUser } = useQuery({ queryKey: ['currentUser'], queryFn: () => base44.auth.me() });
+  const currentUserQuery = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+    ...FRESH_QUERY_OPTIONS,
+  });
+  const currentUserAvailable = settledSuccessfullyAfterMount(currentUserQuery);
+  const currentUser = currentUserAvailable ? currentUserQuery.data : null;
   const isAdmin = isAdminView(currentUser);
 
   // Fetch all necessary data
-  const { data: visits = [] } = useAgencyScopedQuery({
-    // Limit is part of the identity: PatientRecordDashboard reads only 500 rows
-    // under the same root, and sharing one entry silently truncated whichever
-    // page mounted second.
-    queryKey: ['all-visits', 'created', 1000],
-    fetch: () => base44.entities.Visit.list('-created_date', 1000),
-    initialData: [],
+  const visitQuery = useAuthorizedVisits({
+    purpose: 'operations_analytics',
+    sort: '-created_date',
+    limit: 1000,
     enabled: isAdmin,
   });
+  const visits = visitQuery.isSuccess ? visitQuery.data : EMPTY_ROWS;
 
-  const { data: noteConversions = [] } = useQuery({
-    queryKey: ['note-conversions'],
-    queryFn: () => base44.entities.NoteConversion.list('-created_date', 1000),
-    initialData: [],
-    enabled: isAdmin,
-  });
+  const patientQuery = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 5000, enabled: isAdmin });
+  const allPatients = patientQuery.isSuccess ? patientQuery.data : EMPTY_ROWS;
+  const tenantScopesMismatch = patientQuery.isSuccess
+    && visitQuery.isSuccess
+    && !sameAuthorizedTenantScope(patientQuery.tenantScope, visitQuery.tenantScope);
+  const primaryAuthorized = visitQuery.isSuccess
+    && patientQuery.isSuccess
+    && !tenantScopesMismatch;
+  const analyticsAuthorityKey = primaryAuthorized
+    ? tenantScopeKey(patientQuery.tenantScope)
+    : null;
+  const auxiliaryTenantScope = currentUserAvailable
+    ? getTrustedTenantContext(currentUser)
+    : null;
+  const auxiliaryAuthorityMatches = primaryAuthorized
+    && sameAuthorizedTenantScope(auxiliaryTenantScope, patientQuery.tenantScope);
 
-  // Sibling Incident/ComplianceAudit/TrainingCompletion queries pass limits;
-  // these two didn't, capping agency stats and top-performers at 50 rows.
-  const { data: users = [] } = useQuery({
-    queryKey: ['all-users', 5000, agencyQueryKey(currentUser)],
+  // The legacy User list is an interim agency-scoped source. Do not even start
+  // it for platform owners or before Patient/Visit independently agree on one
+  // immutable membership authority, and never consume cached rows in recheck.
+  const usersQuery = useQuery({
+    queryKey: ['all-users', 5000, analyticsAuthorityKey, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 5000);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     },
-    initialData: [],
-    enabled: isAdmin,
+    enabled: Boolean(analyticsAuthorityKey && auxiliaryAuthorityMatches),
+    ...FRESH_QUERY_OPTIONS,
   });
+  const usersAvailable = auxiliaryAuthorityMatches
+    && settledSuccessfullyAfterMount(usersQuery);
+  const users = usersAvailable ? usersQuery.data : EMPTY_ROWS;
+  const analyticsAvailable = primaryAuthorized && usersAvailable;
 
-  const { data: allPatients = [] } = useScopedPatients({ sort: '-created_date', limit: 5000, enabled: (isAdmin) });
-
-  const { data: incidents = [] } = useAgencyScopedQuery({
-    queryKey: ['all-incidents'],
-    fetch: () => base44.entities.Incident.list('-created_date', 1000),
-    initialData: [],
-    enabled: isAdmin,
-  });
-
-  const { data: complianceAudits = [] } = useQuery({
-    queryKey: ['compliance-audits'],
-    queryFn: () => base44.entities.ComplianceAudit.list('-created_date', 1000),
-    initialData: [],
-    enabled: isAdmin,
-  });
-
-  // Training activity from the live assignment system (TrainingCompletion retired).
-  const { data: trainingAssignments = [] } = useQuery({
-    queryKey: ['training-assignments-agency'],
-    queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 5000),
-    initialData: [],
-    enabled: isAdmin,
-  });
-
-  // Calculate overall statistics
+  // NoteConversion, ComplianceAudit, and TrainingAssignment administrator reads
+  // are platform-wide and lack immutable agency provenance. They are not loaded
+  // here. Only metrics based on the authorized P/V snapshot and fresh scoped
+  // roster remain available.
   const overallStats = useMemo(() => {
     return calculateStats({
       visits,
-      noteConversions,
       users,
       patients: allPatients,
-      incidents,
-      complianceAudits
     });
-  }, [visits, noteConversions, users, allPatients, incidents, complianceAudits]);
+  }, [visits, users, allPatients]);
 
   // Calculate nurse performance stats
   const nurseStats = useMemo(() => {
     const nurses = users.filter(u => u.role === 'user');
     return nurses.map(nurse => ({
       ...nurse,
-      stats: calculateNurseStats(nurse.email, { visits, noteConversions })
+      stats: calculateNurseStats(nurse.email, { visits })
     }));
-  }, [users, visits, noteConversions]);
+  }, [users, visits]);
 
   // Top performers
   const topPerformers = useMemo(() => {
@@ -124,62 +143,25 @@ export default function AgencyAnalytics() {
       .slice(0, 5);
   }, [nurseStats]);
 
-  // Training completion stats
-  const trainingStats = useMemo(() => {
-    const completed = trainingAssignments.filter(t => t.status === 'completed' || t.pass_fail_result === 'passed').length;
-    const total = trainingAssignments.length;
-    return {
-      completed,
-      total,
-      rate: total > 0 ? ((completed / total) * 100).toFixed(1) : 0
-    };
-  }, [trainingAssignments]);
-
   const handleExport = () => {
-    try {
-      const summaryRows = [
-        ['Agency Analytics Report'],
-        ['Generated', new Date().toISOString()],
-        [],
-        ['Metric', 'Value'],
-        ['Total Visits', overallStats.visits.total],
-        ['Completed Visits', overallStats.visits.completed],
-        ['Visit Completion Rate (%)', overallStats.visits.completionRate],
-        ['Total Patients', overallStats.patients.total],
-        ['Active Patients', overallStats.patients.active],
-        ['Total Incidents', overallStats.incidents.total],
-        ['Avg Compliance Score', overallStats.compliance.avgScore],
-        ['Estimated Revenue', overallStats.financial.estimatedRevenue],
-        ['Cost Savings', overallStats.financial.costSavings],
-        ['Training Completion Rate (%)', trainingStats.rate],
-        [],
-        ['Top Performers'],
-        ['Name', 'Email', 'Total Visits', 'Completion Rate (%)'],
-        ...topPerformers.map((n) => [
-          n.full_name || '',
-          n.email || '',
-          n.stats.totalVisits,
-          n.stats.completionRate,
-        ]),
-      ];
-
-      const csv = toCsvRows(summaryRows);
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `agency_analytics_${toLocalISODate()}.csv`;
-      document.body.appendChild(a);
-      a.click();
-      window.URL.revokeObjectURL(url);
-      a.remove();
-    } catch (error) {
-      console.error('Agency analytics export error:', error);
-      toast.error('Failed to export report: ' + error.message);
-    }
+    toast.error(
+      'Agency analytics export is unavailable until NoteConversion, ComplianceAudit, and TrainingAssignment have tenant-bound reporting projections.',
+    );
   };
 
-  if (currentUser && !isAdmin) {
+  if (!currentUserAvailable && !currentUserQuery.isError) {
+    return (
+      <PageContainer>
+        <Card>
+          <CardContent className="p-12 text-center text-slate-600">
+            Verifying administrator access…
+          </CardContent>
+        </Card>
+      </PageContainer>
+    );
+  }
+
+  if (currentUserQuery.isError || !isAdmin) {
     return (
       <PageContainer>
         <AccessDeniedState
@@ -187,6 +169,36 @@ export default function AgencyAnalytics() {
           description="Agency Analytics is available to administrators only."
           className="py-24"
         />
+      </PageContainer>
+    );
+  }
+
+  if (!analyticsAvailable) {
+    return (
+      <PageContainer>
+        <PageHeader
+          icon={BarChart3}
+          eyebrow="Analytics"
+          title="Agency Analytics & Performance"
+          description="Comprehensive overview of agency operations and metrics"
+          favoritePage="AgencyAnalytics"
+          actions={
+            <Button variant="outline" className="gap-2" disabled>
+              <Download className="w-4 h-4" />
+              Export Report
+            </Button>
+          }
+        />
+        <Alert className="border-amber-300 bg-amber-50" role="status">
+          <AlertCircle className="h-4 w-4 text-amber-700" />
+          <AlertDescription className="text-amber-950">
+            {visitQuery.isError || patientQuery.isError || tenantScopesMismatch
+              ? 'Agency analytics are unavailable because Patient or Visit access could not be verified. No metrics or exports are shown.'
+              : usersQuery.isError
+                ? 'Agency analytics are unavailable because the agency staff roster could not be verified. No metrics or exports are shown.'
+                : 'Reverifying Patient, Visit, and staff-roster access before loading agency metrics…'}
+          </AlertDescription>
+        </Alert>
       </PageContainer>
     );
   }
@@ -200,7 +212,13 @@ export default function AgencyAnalytics() {
         description="Comprehensive overview of agency operations and metrics"
         favoritePage="AgencyAnalytics"
         actions={
-          <Button variant="outline" className="gap-2" onClick={handleExport}>
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={handleExport}
+            disabled
+            title="Tenant-bound reporting projections are not available"
+          >
             <Download className="w-4 h-4" />
             Export Report
           </Button>
@@ -228,27 +246,13 @@ export default function AgencyAnalytics() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="space-y-4">
-                    <div>
-                      <div className="flex justify-between mb-2">
-                        <span className="text-sm text-slate-600">AI Enhancement Rate</span>
-                        <span className="text-sm font-semibold">{overallStats.visits.total > 0 ? Math.min(100, Math.round((overallStats.noteEnhancements.total / overallStats.visits.total) * 100)) : 0}%</span>
-                      </div>
-                      <div className="w-full bg-slate-200 rounded-full h-2">
-                        <div className="bg-indigo-600 h-2 rounded-full" style={{ width: `${overallStats.visits.total > 0 ? Math.min(100, Math.round((overallStats.noteEnhancements.total / overallStats.visits.total) * 100)) : 0}%` }}></div>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-4 pt-4 border-t">
-                      <div>
-                        <p className="text-2xl font-bold text-slate-900">{overallStats.compliance.avgScore}</p>
-                        <p className="text-sm text-slate-600">Avg Quality Score</p>
-                      </div>
-                      <div>
-                        <p className="text-2xl font-bold text-slate-900">{overallStats.noteEnhancements.total}</p>
-                        <p className="text-sm text-slate-600">Notes Enhanced</p>
-                      </div>
-                    </div>
-                  </div>
+                  <Alert className="border-amber-300 bg-amber-50" role="status">
+                    <AlertCircle className="h-4 w-4 text-amber-700" />
+                    <AlertDescription className="text-amber-950">
+                      Documentation-efficiency and compliance metrics are unavailable until
+                      NoteConversion and ComplianceAudit have tenant-bound reporting projections.
+                    </AlertDescription>
+                  </Alert>
                 </CardContent>
               </Card>
 
@@ -286,7 +290,7 @@ export default function AgencyAnalytics() {
                   <TrendingUp className="w-5 h-5 text-indigo-600" />
                   Top Performing Nurses
                 </CardTitle>
-                <CardDescription>Based on visit completion rate and documentation quality</CardDescription>
+                <CardDescription>Based on the freshly authorized Visit snapshot</CardDescription>
               </CardHeader>
               <CardContent>
                 <div className="space-y-3">
@@ -312,65 +316,14 @@ export default function AgencyAnalytics() {
 
           {/* Compliance Tab */}
           <TabsContent value="compliance" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <StatCard
-                title="Avg Compliance Score"
-                value={`${overallStats.compliance.avgScore}%`}
-                icon={Shield}
-                color="green"
-              />
-              <StatCard
-                title="Total Audits"
-                value={overallStats.compliance.auditsInRange}
-                subtitle={`${overallStats.compliance.passedAudits} passed`}
-                icon={CheckCircle2}
-                color="indigo"
-              />
-              <StatCard
-                title="Quality Score"
-                value={`${overallStats.compliance.qualityScore}%`}
-                subtitle="Overall quality"
-                icon={AlertCircle}
-                color="indigo"
-              />
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Compliance Status Breakdown</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <span className="text-sm font-medium text-emerald-700">Passed</span>
-                      <span className="text-sm font-semibold">{overallStats.compliance.passedAudits}</span>
-                    </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2">
-                      <div className="bg-emerald-600 h-2 rounded-full" style={{ width: `${overallStats.compliance.qualityScore}%` }}></div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <span className="text-sm font-medium text-indigo-700">Total Audits</span>
-                      <span className="text-sm font-semibold">{overallStats.compliance.auditsInRange}</span>
-                    </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2">
-                      <div className="bg-indigo-600 h-2 rounded-full" style={{ width: `100%` }}></div>
-                    </div>
-                  </div>
-                  <div>
-                    <div className="flex justify-between mb-2">
-                      <span className="text-sm font-medium text-slate-700">Avg Score</span>
-                      <span className="text-sm font-semibold">{overallStats.compliance.avgScore}%</span>
-                    </div>
-                    <div className="w-full bg-slate-200 rounded-full h-2">
-                      <div className="bg-slate-600 h-2 rounded-full" style={{ width: `${overallStats.compliance.avgScore}%` }}></div>
-                    </div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <Alert className="border-amber-300 bg-amber-50" role="status">
+              <AlertCircle className="h-4 w-4 text-amber-700" />
+              <AlertDescription className="text-amber-950">
+                Compliance analytics are unavailable until ComplianceAudit has a
+                tenant-bound reporting projection. A platform-wide administrator list
+                is not treated as agency evidence.
+              </AlertDescription>
+            </Alert>
           </TabsContent>
 
           {/* Performance Tab */}
@@ -406,7 +359,7 @@ export default function AgencyAnalytics() {
                             {nurse.stats.completionRate}%
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-slate-600">{nurse.stats.timeSavedHours}h</TableCell>
+                        <TableCell className="text-amber-700">Unavailable</TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -417,63 +370,18 @@ export default function AgencyAnalytics() {
 
           {/* Training Tab */}
           <TabsContent value="training" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <StatCard
-                title="Total Trainings"
-                value={trainingStats.total}
-                icon={FileText}
-                color="indigo"
-              />
-              <StatCard
-                title="Completed"
-                value={trainingStats.completed}
-                subtitle={`${trainingStats.rate}% rate`}
-                icon={CheckCircle2}
-                color="green"
-              />
-              <StatCard
-                title="In Progress"
-                value={trainingStats.total - trainingStats.completed}
-                icon={Clock}
-                color="amber"
-              />
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Training Completion Status</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-2">
-                  <div className="flex justify-between mb-2">
-                    <span className="text-sm text-slate-600">Overall Completion Rate</span>
-                    <span className="text-sm font-semibold">{trainingStats.rate}%</span>
-                  </div>
-                  <div className="w-full bg-slate-200 rounded-full h-3">
-                    <div className="bg-indigo-600 h-3 rounded-full transition-all" style={{ width: `${trainingStats.rate}%` }}></div>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <Alert className="border-amber-300 bg-amber-50" role="status">
+              <AlertCircle className="h-4 w-4 text-amber-700" />
+              <AlertDescription className="text-amber-950">
+                Training analytics are unavailable until TrainingAssignment has a
+                tenant-bound reporting projection. Counts and completion rates are withheld.
+              </AlertDescription>
+            </Alert>
           </TabsContent>
 
           {/* Financial Tab */}
           <TabsContent value="financial" className="space-y-6">
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              <StatCard
-                title="Est. Time Saved Value"
-                value={formatCurrency(overallStats.financial.costSavings)}
-                subtitle="Based on documentation efficiency"
-                icon={DollarSign}
-                color="green"
-              />
-              <StatCard
-                title="Productivity Gain"
-                value={overallStats.timeSaved.displayTotal}
-                subtitle="Through AI automation"
-                icon={TrendingUp}
-                color="indigo"
-              />
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <StatCard
                 title="Est. Revenue"
                 value={formatCurrency(overallStats.financial.estimatedRevenue)}
@@ -481,35 +389,14 @@ export default function AgencyAnalytics() {
                 icon={Clock}
                 color="purple"
               />
+              <Alert className="border-amber-300 bg-amber-50" role="status">
+                <AlertCircle className="h-4 w-4 text-amber-700" />
+                <AlertDescription className="text-amber-950">
+                  Time-saved and cost-savings estimates are unavailable until
+                  NoteConversion has a tenant-bound reporting projection.
+                </AlertDescription>
+              </Alert>
             </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Financial Impact Summary</CardTitle>
-                <CardDescription>Estimated value from AI-powered documentation and efficiency gains</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center p-4 bg-emerald-50 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium text-emerald-700">Total Time Saved</p>
-                      <p className="text-2xl font-bold text-emerald-900">{overallStats.timeSaved.displayTotal}</p>
-                    </div>
-                    <DollarSign className="w-8 h-8 text-emerald-600" />
-                  </div>
-                  <div className="flex justify-between items-center p-4 bg-indigo-50 rounded-lg">
-                    <div>
-                      <p className="text-sm font-medium text-indigo-700">Estimated Value</p>
-                      <p className="text-2xl font-bold text-indigo-900">{formatCurrency(overallStats.financial.costSavings)}</p>
-                    </div>
-                    <TrendingUp className="w-8 h-8 text-indigo-600" />
-                  </div>
-                  <p className="text-sm text-slate-500 mt-4">
-                    * Estimates based on industry average hourly rates and documented time savings through AI documentation assistance
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
           </TabsContent>
         </Tabs>
     </PageContainer>

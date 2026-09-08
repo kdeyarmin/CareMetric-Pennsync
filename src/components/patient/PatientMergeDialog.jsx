@@ -12,8 +12,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { base44 } from "@/api/base44Client";
-import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { 
   ArrowRight, 
   Phone, 
@@ -44,15 +44,19 @@ export default function PatientMergeDialog({
   const [step, setStep] = useState(1); // 1: Select Primary, 2: Review, 3: Confirm
 
   // Fetch related data for both patients
-  const { data: patient1Visits = [] } = useQuery({
-    queryKey: ['patientVisits', patient1?.id, 5000],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patient1.id }, '-visit_date', 5000),
+  const { data: patient1Visits = [] } = useAuthorizedVisits({
+    patientId: patient1?.id ?? null,
+    purpose: 'activity',
+    sort: '-visit_date',
+    limit: 5000,
     enabled: !!patient1?.id,
   });
 
-  const { data: patient2Visits = [] } = useQuery({
-    queryKey: ['patientVisits', patient2?.id, 5000],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patient2.id }, '-visit_date', 5000),
+  const { data: patient2Visits = [] } = useAuthorizedVisits({
+    patientId: patient2?.id ?? null,
+    purpose: 'activity',
+    sort: '-visit_date',
+    limit: 5000,
     enabled: !!patient2?.id,
   });
 

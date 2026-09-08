@@ -70,9 +70,10 @@ Deno.serve(async (req) => {
         // this gate must not depend on caller-supplied trust. The only evidence a
         // NON-ADMIN caller can present is a passing TrainingAttempt row: attempts
         // are written exclusively server-side by gradeTrainingAttempt (entity RLS
-        // allows admin writes only; the grader uses the service role), whereas
-        // TrainingAssignment rows are writable by their assignee and must not be
-        // trusted for issuance. gradeTrainingAttempt writes the passing attempt
+        // allows admin writes only; the grader uses the service role). Direct
+        // TrainingAssignment writes are also closed, but the independently
+        // server-written attempt remains the authoritative evidence for a
+        // learner-triggered issuance. gradeTrainingAttempt writes that attempt
         // BEFORE invoking this, so the internal flow always qualifies. An admin
         // caller may additionally issue manually from the assignment's recorded
         // state (pass_fail_result / status).
@@ -104,7 +105,7 @@ Deno.serve(async (req) => {
         // Derive the recorded score from the verified source, never from the request
         // body — a forged high score must not land on the certificate. For a
         // non-admin caller the only trusted source is the server-written attempt;
-        // the assignee-writable assignment score is honored for admin issuance only.
+        // the assignment score is honored for admin/internal issuance only.
         const verifiedScore = passedAttempt?.score ??
             ((callerIsAdmin || internalOk) ? (assignment.score_percentage ?? null) : null);
 
