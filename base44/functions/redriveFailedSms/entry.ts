@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
@@ -54,6 +74,11 @@ function getSchedulerAuthError(req, user) {
 
 const SEND_TIMEOUT_MS = 15000;
 const BATCH_LIMIT = 100;
+// SmsMessage rows do not yet carry an immutable, service-owned transmission
+// authority binding. Keep provider redrive unavailable until legacy rows are
+// migrated and the scheduler can prove their provenance without trusting
+// caller-editable message or User fields.
+const SMS_REDRIVE_MIGRATION_PAUSED = true;
 
 // ---- redrive eligibility (mirrors src/components/messaging/smsRedrive.js) ----
 const TRANSIENT_FAILURE_PATTERNS = [
@@ -133,17 +158,17 @@ async function resolveTelnyxCreds(base44) {
       || list.find((r) => r && pick(r.api_key))
       || list[0]
       || null;
-  } catch (err) {
+  } catch {
     // Do NOT collapse this into "not configured". A failed read (this invocation
     // path carries no service token, entity 404, 401/403, rate limit, platform
     // blip) is a completely different problem from an unconfigured integration,
     // and reporting them identically is what sent operators chasing a credential
     // they had already entered correctly.
-    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    readError = 'credential_store_unavailable';
     // The catch used to be bare, so an unreadable credential row left no
     // server-side breadcrumb at all — the only signal was a misleading
     // "not configured" reply. Log it; unattended runs have nowhere else to say so.
-    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
   }
   const rec = record || {};
   return {
@@ -164,7 +189,7 @@ async function resolveTelnyxCreds(base44) {
 function telnyxCredsMessage(creds, what) {
   const label = what || 'credentials';
   if (creds && creds.readError) {
-    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+    return `Could not read Telnyx ${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.`;
   }
   return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
 }
@@ -507,6 +532,14 @@ function quietHoursCheck(toNumber, now, settings) {
 
 Deno.serve(async (req) => {
   try {
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('sms');
+    if (SMS_REDRIVE_MIGRATION_PAUSED) {
+      return Response.json(
+        { error: 'SMS redrive is paused pending service-owned message provenance migration' },
+        { status: 503 },
+      );
+    }
+
     const base44 = createClientFromRequest(req);
 
     // Authorization: privileged cron job (service-role reads/writes + billable
@@ -651,7 +684,7 @@ Deno.serve(async (req) => {
         action: 'sms_redriven',
         entity_type: 'SmsMessage',
         entity_id: row.id,
-        details: { to_number: row.to_number, attempt: attempts, provider_message_id: resp.data?.data?.id || null },
+        details: { attempt: attempts, provider: 'telnyx', direction: 'outbound' },
         status: 'success',
       }).catch(() => {});
     }

@@ -57,12 +57,12 @@ final class WebViewController: UIViewController {
         // Play telehealth audio/video inline instead of forcing fullscreen.
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
-        // Opt in to App-Bound Domains (WKAppBoundDomains in Info.plist lists
-        // base44.app / base44.com). This unlocks Service Workers inside the
-        // web view. Main-frame navigation is limited to app-bound domains,
-        // which is safe here because `decidePolicyFor` already sends external
-        // main-frame URLs to Safari; cross-origin subframes (e.g. Supabase
-        // storage previews) are unaffected by the restriction.
+        // Keep main-frame navigation within the declared App-Bound Domains
+        // (WKAppBoundDomains in Info.plist lists base44.app / base44.com).
+        // The web frontend intentionally registers no service worker; this
+        // setting is retained as a navigation-containment boundary.
+        // `decidePolicyFor` sends external main-frame URLs to Safari, while
+        // cross-origin subframes (for example storage previews) remain allowed.
         configuration.limitsNavigationsToAppBoundDomains = true
 
         webView = WKWebView(frame: view.bounds, configuration: configuration)

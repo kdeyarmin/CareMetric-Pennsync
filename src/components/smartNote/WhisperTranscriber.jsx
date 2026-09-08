@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { base44 } from '@/api/base44Client';
 import { toast } from 'sonner';
+import { getAuthorityBoundUserMedia, stopMediaStream } from '@/lib/tenantMediaDevices';
+import { isTenantSdkRealmLeaseCurrent } from '@/lib/tenantSdkRealmGate';
 
 /**
  * Real-time audio transcription component using OpenAI Whisper
@@ -23,6 +25,9 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
   const timerRef = useRef(null);
   const streamRef = useRef(null);
   const mountedRef = useRef(true);
+  const mediaAcquisitionRef = useRef(0);
+  const recordingLeaseRef = useRef(null);
+  const recorderStopResolveRef = useRef(null);
 
   // Release the mic, timer, and recorder if the component unmounts mid-recording
   // (navigating away without pressing Stop) so the microphone isn't left live.
@@ -32,36 +37,63 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
     mountedRef.current = true;
     return () => {
       mountedRef.current = false;
-      streamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaAcquisitionRef.current += 1;
+      stopMediaStream(streamRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
       const mr = mediaRecorderRef.current;
+      if (mr) {
+        mr.onstop = null;
+        mr.ondataavailable = null;
+      }
+      recorderStopResolveRef.current?.();
+      recorderStopResolveRef.current = null;
       if (mr && mr.state !== "inactive") { try { mr.stop(); } catch { /* already stopped */ } }
+      recordingLeaseRef.current = null;
+      audioChunksRef.current = [];
     };
   }, []);
 
   // Initialize audio recording
   const startRecording = async () => {
+    const acquisition = ++mediaAcquisitionRef.current;
+    let acquiredStream = null;
     try {
       setError(null);
       setTranscript('');
       audioChunksRef.current = [];
 
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const { realmLease, stream } = await getAuthorityBoundUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
         },
       });
+      acquiredStream = stream;
+
+      if (
+        !mountedRef.current
+        || acquisition !== mediaAcquisitionRef.current
+        || !isTenantSdkRealmLeaseCurrent(realmLease)
+      ) {
+        stopMediaStream(stream);
+        return;
+      }
 
       streamRef.current = stream;
+      recordingLeaseRef.current = realmLease;
 
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType: 'audio/webm',
       });
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+        if (
+          mountedRef.current
+          && acquisition === mediaAcquisitionRef.current
+          && isTenantSdkRealmLeaseCurrent(realmLease)
+          && event.data.size > 0
+        ) {
           audioChunksRef.current.push(event.data);
         }
       };
@@ -78,16 +110,40 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
 
       toast.success('Recording started');
     } catch (err) {
-      setError('Microphone access denied. Please enable microphone permissions.');
-      console.error('Recording error:', err);
+      stopMediaStream(acquiredStream);
+      if (streamRef.current === acquiredStream) streamRef.current = null;
+      const recorder = mediaRecorderRef.current;
+      if (recorder) {
+        recorder.onstop = null;
+        recorder.ondataavailable = null;
+      }
+      if (recorder && recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch { /* already stopped */ }
+      }
+      if (mountedRef.current && acquisition === mediaAcquisitionRef.current) {
+        setError('Microphone access denied. Please enable microphone permissions.');
+        console.error('Recording error:', err);
+      }
     }
   };
 
   // Stop recording and transcribe
   const stopRecording = async () => {
-    if (!mediaRecorderRef.current) return;
+    const recorder = mediaRecorderRef.current;
+    const acquisition = mediaAcquisitionRef.current;
+    const realmLease = recordingLeaseRef.current;
+    if (!recorder || !realmLease || !isTenantSdkRealmLeaseCurrent(realmLease)) return;
 
-    mediaRecorderRef.current.stop();
+    const stopped = new Promise((resolve) => {
+      recorderStopResolveRef.current = resolve;
+      recorder.onstop = () => {
+        if (recorderStopResolveRef.current === resolve) {
+          recorderStopResolveRef.current = null;
+        }
+        resolve();
+      };
+    });
+    recorder.stop();
     setIsRecording(false);
 
     if (timerRef.current) {
@@ -100,20 +156,20 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
     }
 
     // Wait for recording to finish
-    await new Promise((resolve) => {
-      if (mediaRecorderRef.current) {
-        mediaRecorderRef.current.onstop = resolve;
-      } else {
-        resolve();
-      }
-    });
+    await stopped;
+
+    if (
+      !mountedRef.current
+      || acquisition !== mediaAcquisitionRef.current
+      || !isTenantSdkRealmLeaseCurrent(realmLease)
+    ) return;
 
     // Transcribe audio
-    await transcribeAudio();
+    await transcribeAudio(realmLease, acquisition);
   };
 
   // Send audio to Whisper API for transcription
-  const transcribeAudio = async () => {
+  const transcribeAudio = async (realmLease, acquisition) => {
     if (audioChunksRef.current.length === 0) {
       setError('No audio recorded');
       return;
@@ -138,7 +194,11 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
       });
       const result = response.data;
 
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current
+        || acquisition !== mediaAcquisitionRef.current
+        || !isTenantSdkRealmLeaseCurrent(realmLease)
+      ) return;
       if (result?.text) {
         setTranscript(result.text);
         onTranscribe?.(result.text);
@@ -147,12 +207,20 @@ export default function WhisperTranscriber({ onTranscribe, disabled = false }) {
         setError('Could not transcribe audio. Please try again.');
       }
     } catch (err) {
-      if (!mountedRef.current) return;
+      if (
+        !mountedRef.current
+        || acquisition !== mediaAcquisitionRef.current
+        || !isTenantSdkRealmLeaseCurrent(realmLease)
+      ) return;
       const friendly = configNotReadyMessage(err);
       setError(friendly || err.message || 'Transcription error');
       if (!friendly) console.error('Transcription error:', err);
     } finally {
-      if (mountedRef.current) setIsTranscribing(false);
+      if (
+        mountedRef.current
+        && acquisition === mediaAcquisitionRef.current
+        && isTenantSdkRealmLeaseCurrent(realmLease)
+      ) setIsTranscribing(false);
     }
   };
 

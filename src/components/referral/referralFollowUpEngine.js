@@ -481,7 +481,8 @@ export function sortFollowUpItems(items) {
  *
  * @param {{patientName?:string, patientDob?:string, referralDate?:string,
  *          providerName?:string, agencyName?:string, requestDate?:string,
- *          contactBackFax?:string, contactBackPhone?:string}} header
+ *          contactBackFax?:string, contactBackPhone?:string,
+ *          portalLink?:string}} header
  * @param {Array} items follow-up items (any order; will be sorted)
  * @returns {{title:string, intro:string, sections:Array, signatureBlock:string[]}}
  */
@@ -506,7 +507,7 @@ export function buildProviderForm(header = {}, items = []) {
       `To admit this patient promptly and meet Medicare's documentation requirements, ${header.agencyName || "our agency"} needs the items below. ` +
       `Each item lists exactly what is needed and why. Please complete the response lines or attach the noted documents and return by fax${header.contactBackFax ? ` to ${header.contactBackFax}` : ""}${header.contactBackPhone ? ` (questions: ${header.contactBackPhone})` : ""}.` +
       (header.portalLink
-        ? ` PREFER TO RESPOND ONLINE? Complete this request securely in a few minutes at: ${header.portalLink}`
+        ? ` PREFER TO RESPOND ONLINE? Complete this request securely at: ${header.portalLink}`
         : ""),
     sections,
     signatureBlock: [
@@ -545,7 +546,7 @@ export function providerFormToText(form) {
  */
 export function toPersistedFollowUp(
   plan,
-  { generatedAt, status = "open", sentVia = null, faxLogId = null, portalLink = null } = {}
+  { generatedAt, status = "open", sentVia = null, faxLogId = null } = {}
 ) {
   if (!plan) return null;
   return {
@@ -553,13 +554,10 @@ export function toPersistedFollowUp(
     generated_at: generatedAt || null,
     sent_via: sentVia, // "fax" | "manual" | null
     fax_log_id: faxLogId,
-    // NEVER the plaintext link: generateFollowUpPortalToken stores only the
-    // token's SHA-256 precisely so that Referral/token reads can't yield live
-    // capability links — persisting the plaintext here defeated that one
-    // entity over. Only the fact that a link is active is recorded; the
-    // plaintext lives in UI state for the session that minted it, and staff
-    // can always rotate to get a fresh copyable link.
-    portal_link_active: Boolean(portalLink),
+    // A newly composed request has no active capability. The referral broker
+    // preserves server-owned capability fields only when the same generated_at
+    // snapshot is updated after issuance; callers cannot activate a link here.
+    portal_link_active: false,
     counts: plan.counts,
     items: sortFollowUpItems(plan.items).map((it) => ({
       id: it.id,
@@ -572,9 +570,8 @@ export function toPersistedFollowUp(
       citation: it.citation,
       impact: it.impact,
       provider_request: it.provider_request,
-      // Per-item lifecycle: open → answered (provider responded via portal) →
-      // resolved (staff verified). Responses are written by the
-      // submitFollowUpResponse backend function.
+      // The public submission broker may advance these lifecycle fields after
+      // proving the single-use token and exact request snapshot.
       item_status: "open",
       response: null,
       answered_at: null,

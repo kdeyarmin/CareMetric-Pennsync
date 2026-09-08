@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +27,7 @@ import {
 } from "@/components/ui/accordion";
 import { toast } from 'sonner';
 import { formatAge } from "@/lib/age";
-import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 export default function AutomaticDocumentReviewer({
   noteContent: noteContentProp,
@@ -39,8 +39,6 @@ export default function AutomaticDocumentReviewer({
   diagnosis,
   patientData,
   vitalSigns,
-  visitId,
-  nurseEmail,
   autoReview = false,
   onReviewComplete,
   onApplySuggestion
@@ -52,17 +50,11 @@ export default function AutomaticDocumentReviewer({
   // takes the reserved slot instead of queueing behind that background work.
   const ai = useAICall({ priority: 'background' });
   const [reviewResults, setReviewResults] = useState(null);
-  const queryClient = useQueryClient();
 
   const { data: medicareRules = [] } = useQuery({
     queryKey: ['medicareComplianceRules'],
     queryFn: () => base44.entities.MedicareComplianceRule.list(undefined, ALL_ROWS),
     initialData: [],
-  });
-
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
   });
 
   const performReview = useCallback(async ({ interactive = false } = {}) => {
@@ -231,68 +223,9 @@ Return detailed JSON analysis.`,
       }, { priority: interactive ? 'interactive' : 'background' });
 
       setReviewResults(result);
-
-      // Guard against duplicating recommendations when the same visit is reviewed
-      // again (the "Run Review Again" button and autoReview both re-invoke this):
-      // if we've already recorded recommendations for this visit from this
-      // reviewer, don't insert a second set.
-      let alreadyRecorded = false;
-      if (visitId) {
-        try {
-          const existing = await base44.entities.TrainingRecommendation.filter({
-            visit_id: visitId,
-            source: 'automatic_document_review'
-          }, undefined, PATIENT_HISTORY_ROWS);
-          alreadyRecorded = existing?.length > 0;
-        } catch (error) {
-          console.error('Error checking existing training recommendations:', error);
-        }
-      }
-
-      // If note is exemplary, flag it for training
-      if (result.is_exemplary && result.overall_score >= 90 && !alreadyRecorded) {
-        try {
-          // Could create a training module or flag for review
-          await base44.entities.TrainingRecommendation.create({
-            nurse_email: nurseEmail || currentUser?.email,
-            recommendation_type: 'documentation',
-            recommendation_text: `Exemplary documentation identified for training: ${result.executive_summary}`,
-            source: 'automatic_document_review',
-            severity: 'low',
-            addressed: false,
-            visit_id: visitId,
-            context_data: {
-              element: 'exemplary_documentation',
-              note_snippet: noteContent.substring(0, 200),
-              overall_score: result.overall_score,
-              training_value: result.training_value
-            }
-          });
-        } catch (error) {
-          console.error('Error flagging exemplary documentation:', error);
-        }
-      }
-
-      // Track issues for training recommendations
-      if (result.recommended_training?.length > 0 && !alreadyRecorded) {
-        for (const training of result.recommended_training) {
-          try {
-            await base44.entities.TrainingRecommendation.create({
-              nurse_email: nurseEmail || currentUser?.email,
-              recommendation_type: 'documentation',
-              recommendation_text: training,
-              source: 'automatic_document_review',
-              severity: result.critical_issues?.length > 0 ? 'high' : 'medium',
-              addressed: false,
-              visit_id: visitId
-            });
-          } catch (error) {
-            console.error('Error creating training recommendation:', error);
-          }
-        }
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['trainingRecommendations'] });
+      // Do not persist the browser-generated review as training evidence. A
+      // server-owned analyzer must recreate and validate that recommendation
+      // from canonical clinical records before TrainingRecommendation is written.
       onReviewComplete?.(result);
 
     } catch (error) {
@@ -300,7 +233,7 @@ Return detailed JSON analysis.`,
       toast.error('Failed to review document. Please try again.');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- AI hook object is intentionally omitted; its run() is stable, and including it would re-fire the call every render
-  }, [currentUser?.email, diagnosis, medicareRules, noteContent, nurseEmail, onReviewComplete, patientData?.date_of_birth, queryClient, visitId, visitType, vitalSigns]);
+  }, [diagnosis, medicareRules, noteContent, onReviewComplete, patientData?.date_of_birth, visitType, vitalSigns]);
 
   useEffect(() => {
     if (autoReview && noteContent && noteContent.length > 100 && !reviewResults) {

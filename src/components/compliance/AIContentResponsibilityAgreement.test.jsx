@@ -7,19 +7,14 @@ import {
 } from '@/lib/aiContentAgreement';
 
 // --- Mocks for the gate's collaborators ---------------------------------------
-const updateMe = vi.fn(() => Promise.resolve());
-const createUserActivity = vi.fn(() => Promise.resolve());
-vi.mock('@/api/base44Client', () => ({
-  base44: {
-    auth: { updateMe: (...args) => updateMe(...args) },
-    entities: { UserActivity: { create: (...args) => createUserActivity(...args) } },
-  },
+const acceptAgreement = vi.fn(() => Promise.resolve());
+vi.mock('@/functions/acceptAiContentAgreement', () => ({
+  acceptAiContentAgreement: (...args) => acceptAgreement(...args),
 }));
 
-const refreshUser = vi.fn(() => Promise.resolve());
 const logout = vi.fn();
 vi.mock('@/lib/AuthContext', () => ({
-  useAuth: () => ({ user: { id: 'u1', email: 'nurse@example.com' }, refreshUser, logout }),
+  useAuth: () => ({ user: { id: 'u1', email: 'nurse@example.com' }, logout }),
 }));
 
 const invalidateQueries = vi.fn();
@@ -31,9 +26,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 describe('AIContentResponsibilityAgreement', () => {
   beforeEach(() => {
-    updateMe.mockClear();
-    createUserActivity.mockClear();
-    refreshUser.mockClear();
+    acceptAgreement.mockReset().mockResolvedValue({ data: { success: true } });
     logout.mockClear();
     invalidateQueries.mockClear();
   });
@@ -59,45 +52,47 @@ describe('AIContentResponsibilityAgreement', () => {
     expect(agree).toBeEnabled();
   });
 
-  it('records the sign-off (updateMe + audit) and refreshes auth on accept', async () => {
-    render(<AIContentResponsibilityAgreement />);
+  it('records the sign-off and requires a protected status recheck on accept', async () => {
+    const onAccepted = vi.fn(() => Promise.resolve());
+    render(<AIContentResponsibilityAgreement onAccepted={onAccepted} />);
     screen.getAllByRole('checkbox').forEach((b) => fireEvent.click(b));
     fireEvent.click(screen.getByRole('button', { name: /i agree & continue/i }));
 
-    await waitFor(() => expect(updateMe).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(acceptAgreement).toHaveBeenCalledTimes(1));
+    expect(acceptAgreement).toHaveBeenCalledWith({
+      accepted: true,
+      agreement_version: AI_CONTENT_AGREEMENT_VERSION,
+    });
 
-    const patch = updateMe.mock.calls[0][0];
-    expect(patch.ai_content_agreement_accepted).toBe(true);
-    expect(patch.ai_content_agreement_version).toBe(AI_CONTENT_AGREEMENT_VERSION);
-    expect(typeof patch.ai_content_agreement_accepted_at).toBe('string');
-
-    await waitFor(() => expect(refreshUser).toHaveBeenCalledTimes(1));
-    expect(createUserActivity).toHaveBeenCalledWith(
-      expect.objectContaining({ action: 'ai_content_agreement_accepted' }),
-    );
-    // The durable attestation must be written BEFORE the User flag: if the
-    // audit write fails, the gate must stay unsatisfied so the user retries.
-    expect(createUserActivity.mock.invocationCallOrder[0]).toBeLessThan(
-      updateMe.mock.invocationCallOrder[0],
-    );
+    await waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(1));
     expect(invalidateQueries).toHaveBeenCalled();
   });
 
   it('does not set the acceptance flag when the attestation write fails', async () => {
-    createUserActivity.mockRejectedValueOnce(new Error('audit down'));
+    acceptAgreement.mockRejectedValueOnce(new Error('audit down'));
     render(<AIContentResponsibilityAgreement />);
     screen.getAllByRole('checkbox').forEach((b) => fireEvent.click(b));
     fireEvent.click(screen.getByRole('button', { name: /i agree & continue/i }));
 
-    await waitFor(() => expect(createUserActivity).toHaveBeenCalledTimes(1));
-    expect(updateMe).not.toHaveBeenCalled();
-    expect(refreshUser).not.toHaveBeenCalled();
+    await waitFor(() => expect(acceptAgreement).toHaveBeenCalledTimes(1));
+    expect(invalidateQueries).not.toHaveBeenCalled();
+  });
+
+  it('restores the retry control when protected verification does not confirm acceptance', async () => {
+    const onAccepted = vi.fn(() => Promise.reject(new Error('not yet visible')));
+    render(<AIContentResponsibilityAgreement onAccepted={onAccepted} />);
+    screen.getAllByRole('checkbox').forEach((b) => fireEvent.click(b));
+    const agree = screen.getByRole('button', { name: /i agree & continue/i });
+    fireEvent.click(agree);
+
+    await waitFor(() => expect(onAccepted).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(agree).toBeEnabled());
   });
 
   it('does not persist when the user chooses to sign out instead', () => {
     render(<AIContentResponsibilityAgreement />);
     fireEvent.click(screen.getByRole('button', { name: /sign out/i }));
     expect(logout).toHaveBeenCalledTimes(1);
-    expect(updateMe).not.toHaveBeenCalled();
+    expect(acceptAgreement).not.toHaveBeenCalled();
   });
 });

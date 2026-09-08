@@ -1,12 +1,13 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
-import { useQuery } from "@tanstack/react-query";
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sparkles, Loader2, Copy, CheckCircle2, ChevronDown, ChevronUp, FileText, User } from "lucide-react";
 import { toast } from "sonner";
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 
 const SECTIONS = [
   { key: "chief_concern", label: "Chief Concern" },
@@ -61,6 +62,7 @@ export default function VisitSummaryGenerator({ patientId }) {
   const [copiedAll, setCopiedAll] = useState(false);
   const [selectedSections, setSelectedSections] = useState(new Set(SECTIONS.map(s => s.key)));
   const [showSectionPicker, setShowSectionPicker] = useState(false);
+  const { tenantContext } = useAuth();
 
   // Clear sticky summary / visit selection when the parent chart switches patients.
   useEffect(() => {
@@ -74,16 +76,19 @@ export default function VisitSummaryGenerator({ patientId }) {
   // back to every patient's recent visits — the picker labels show only date +
   // type, so a cross-patient list let a nurse summarize (and send to the LLM) the
   // wrong patient's note with no way to tell whose chart it was.
-  const { data: visits = [] } = useQuery({
-    queryKey: ["patient-visits-for-summary", patientId],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, "-visit_date", 20),
+  const { data: visits = [] } = useAuthorizedVisits({
+    patientId,
+    purpose: 'documentation',
+    sort: '-visit_date',
+    limit: 20,
     enabled: !!patientId,
   });
 
-  const { data: patient } = useQuery({
-    queryKey: ["patient-for-summary", patientId],
-    queryFn: () => base44.entities.Patient.filter({ id: patientId }, "-created_date", 1).then(r => r[0]),
-    enabled: !!patientId,
+  const { data: patient } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'visit_summary',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
   const selectedVisit = visits.find(v => v.id === selectedVisitId);

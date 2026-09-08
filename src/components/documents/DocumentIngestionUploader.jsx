@@ -326,6 +326,8 @@ export default function DocumentIngestionUploader({ onDataExtracted, _patientId 
   return (
     <div className="space-y-3">
       <div
+        data-authority-file-drop-zone
+        aria-disabled={loading}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}

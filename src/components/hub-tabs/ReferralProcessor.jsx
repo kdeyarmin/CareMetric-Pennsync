@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { toLocalISODate } from "@/lib/dateLocal";
 import { useQueryClient } from "@tanstack/react-query";
@@ -19,8 +19,10 @@ import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { FileText, UserPlus, ArrowRight, AlertTriangle, CheckCircle2 } from "lucide-react";
 import { toast } from 'sonner';
+import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
 
 export default function ReferralProcessor() {
+  const patientCreateRequestId = useRef(null);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [extractedData, setExtractedData] = useState(null);
@@ -100,7 +102,9 @@ export default function ReferralProcessor() {
         status: 'active'
       };
 
-      const newPatient = await base44.entities.Patient.create(patientData);
+      const newPatient = await createAuthorizedPatient(patientData, {
+        clientRequestId: patientCreateRequestId.current ||= createPatientRequestId(),
+      });
       setCreatedPatientId(newPatient.id);
       queryClient.invalidateQueries({ queryKey: ['patients'] });
 
@@ -134,6 +138,7 @@ export default function ReferralProcessor() {
 
         <ReferralPDFSummarizer
           onDataExtracted={(data) => {
+            patientCreateRequestId.current = createPatientRequestId();
             setExtractedData(data);
             // A new document supersedes the previous one's analysis/links/note.
             setReferralAnalysis(null);

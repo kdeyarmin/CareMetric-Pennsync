@@ -19,8 +19,8 @@ const severityIcons = {
   low: CheckCircle2,
 };
 
-export default function TodayPriorities({ currentUser, visits, patients, incidents, noteConversions, messages, dashboardError }) {
-  const priorities = buildTodayPriorities({ currentUser, visits, patients, incidents, noteConversions, messages, dashboardError });
+export default function TodayPriorities({ currentUser, visits, patients, incidents, noteConversions, noteConversionsAvailable, messages, dashboardError }) {
+  const priorities = buildTodayPriorities({ currentUser, visits, patients, incidents, noteConversions, noteConversionsAvailable, messages, dashboardError });
 
   return (
     <Card className="border-navy-100 bg-gradient-to-br from-white via-white to-navy-50/40 shadow-sm">
@@ -32,7 +32,7 @@ export default function TodayPriorities({ currentUser, visits, patients, inciden
             </div>
             <CardTitle className="text-xl text-slate-900">Today’s priorities</CardTitle>
             <p className="mt-1 text-sm text-slate-600">
-              Ranked next steps based on your role, schedule, patient risk, messages, and operational exceptions.
+              Ranked next steps based on your role, schedule, patient risk, and operational exceptions.
             </p>
           </div>
           <Badge variant="outline" className="w-fit border-navy-200 bg-white text-navy-700">

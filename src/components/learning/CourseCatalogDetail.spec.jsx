@@ -10,6 +10,7 @@ vi.mock("@/api/base44Client", () => ({
   base44: { entities: { TrainingModule: { filter: mocks.moduleFilter } } },
 }));
 
+
 import CourseCatalogDetail from "./CourseCatalogDetail";
 
 const course = {
@@ -63,7 +64,9 @@ describe("CourseCatalogDetail", () => {
     expect(screen.getByText("Regulatory alignment")).toBeInTheDocument();
     expect(screen.getByText("42 CFR §484.60 — Care planning")).toBeInTheDocument();
     expect(screen.getByText("Why this matters now")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "CDC STEADI" })).toHaveAttribute("href", "https://example.org/steadi");
+    const referenceLink = screen.getByRole("link", { name: "CDC STEADI" });
+    expect(referenceLink).toHaveAttribute("href", "https://example.org/steadi");
+    expect(referenceLink).not.toHaveAttribute("target");
 
     // The lesson outline comes from the course's real modules.
     expect(await screen.findByText("Spotting hazards")).toBeInTheDocument();

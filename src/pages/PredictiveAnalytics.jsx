@@ -2,6 +2,7 @@ import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -39,7 +40,7 @@ function EnabledPredictiveAnalytics() {
   const [riskFilter, setRiskFilter] = useState("all");
 
   // Fetch patients
-  const { data: patients = [], isPending: patientsLoading } = useScopedPatients({ status: 'active', sort: null, limit: ALL_ROWS });
+  const { data: patients = [], isPending: patientsLoading } = useScopedPatients({ purpose: 'roster', status: 'active', sort: null, limit: ALL_ROWS });
 
   // Fetch OASIS data
   const { data: oasisData = [], isPending: oasisLoading } = useQuery({
@@ -48,9 +49,10 @@ function EnabledPredictiveAnalytics() {
   });
 
   // Fetch visits
-  const { data: visits = [], isPending: visitsLoading } = useAgencyScopedQuery({
-    queryKey: ['predictiveVisits'],
-    fetch: () => base44.entities.Visit.list('-created_date', 500),
+  const { data: visits = [], isPending: visitsLoading } = useAuthorizedVisits({
+    purpose: 'hospitalization_risk',
+    sort: '-created_date',
+    limit: 500,
   });
 
   // Fetch alerts

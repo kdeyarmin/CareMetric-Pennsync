@@ -1,5 +1,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -329,29 +340,21 @@ const runInBatches = async (items, batchSize, worker) => {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-
+    const user = await base44.auth.me().catch(() => null);
     if (!user) {
       return Response.json({ success: false, error: 'Unauthorized' }, { status: 401 });
     }
-
-    const isAdminLike = user.role === 'admin'
-      || user.account_type === 'agency_admin'
-      || user.account_type === 'super_admin';
-    if (!isAdminLike) {
-      return Response.json({ success: false, error: 'Forbidden: Admin access required' }, { status: 403 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    // This import can enumerate, create, discharge, and archive patient charts.
+    // Mutable User-schema claims cannot safely establish tenant membership, so
+    // pause facility-admin access until an immutable membership source exists.
+    // Reject before reading either inline CSV data or a caller-supplied file URL.
+    if (!isProtectedSuperAdmin(user)) {
+      return Response.json({
+        success: false,
+        error: 'Forbidden: protected platform administrator required',
+      }, { status: 403 });
     }
-    // agency_admin without agency_name must not fall through to platform-wide
-    // Patient.list/create (isAgencyScoped below requires a truthy agency_name).
-    if (user.account_type === 'agency_admin' && !user.agency_name) {
-      return Response.json({ success: false, error: 'Forbidden: agency_name is required.' }, { status: 403 });
-    }
-    // Facility admins with an agency may only import/match patients in their
-    // agency. Platform-wide: super_admin or role:admin without agency_name.
-    const isAgencyScoped = user.account_type !== 'super_admin'
-      && user.agency_name
-      && (user.account_type === 'agency_admin' || user.role === 'admin');
 
     const body = await req.json();
     const reportType = body.report_type === 'discharge_report' ? 'discharge_report' : 'active_census';
@@ -359,6 +362,17 @@ Deno.serve(async (req) => {
     // anything, so an admin can review which patients would be added vs.
     // matched to existing records before committing the import.
     const dryRun = body.dry_run === true || body.mode === 'preview';
+    // Source/staging containment: preview remains available to the protected
+    // owner, but apply mode cannot safely create or mutate Patient rows until
+    // it requires one exact AgencyMembership-backed agency and stamps the same
+    // immutable provenance as createAuthorizedPatient. Refuse before reading a
+    // supplied file or enumerating any Patient data.
+    if (!dryRun) {
+      return Response.json({
+        success: false,
+        error: 'Patient import commit is paused pending tenant-safe agency stamping',
+      }, { status: 503 });
+    }
     let fileContent = cleanValue(body.file_content);
 
     if (!fileContent && body.file_url) {
@@ -402,20 +416,7 @@ Deno.serve(async (req) => {
       existingPatients.push(...page);
       if (page.length < PATIENT_PAGE) break;
     }
-    let scopedPatients = existingPatients;
-    if (isAgencyScoped) {
-      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
-      const agencyEmails = new Set(
-        (agencyUsers || [])
-          .filter((u) => u.agency_name === user.agency_name && u.email)
-          .map((u) => u.email),
-      );
-      scopedPatients = existingPatients.filter((p) =>
-        (p.created_by && agencyEmails.has(p.created_by))
-        || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
-      );
-    }
-    const { existingByMrn, existingByNameDob } = buildExistingLookups(scopedPatients);
+    const { existingByMrn, existingByNameDob } = buildExistingLookups(existingPatients);
 
     const results = {
       reportType,

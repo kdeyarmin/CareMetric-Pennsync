@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
@@ -48,7 +48,8 @@ import { format, subMonths } from "date-fns";
 import { parseLocalDate, formatLocalDate } from "@/lib/dateLocal";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
-import { isSafeExternalUrl, openExternalUrl } from "@/components/utils/security";
+import { isSafeExternalUrl } from "@/components/utils/security";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 const STATUS_OPTIONS = [
   { value: "reported", label: "Reported" },
@@ -104,20 +105,10 @@ export default function IncidentReportingModule() {
 
   // Narrowing to the caller's own charts happens in `select`, so the fetched
   // roster stays identical to every other 2000-row consumer and shares its
-  // cache entry. The email no longer needs to be in the key: `select` runs per
-  // render against whoever is signed in now, rather than being baked into a
-  // cached result that a session change would keep serving.
-  // useCallback, not an inline arrow: React Query memoizes `select` by
-  // reference, so a fresh arrow each render re-filters all 2000 rows every render.
-  const selectMine = useCallback(
-    (rows) => rows.filter(p => p.assigned_nurses?.includes(currentUser?.email)),
-    [currentUser?.email],
-  );
-
   const { data: myPatients = [] } = useScopedPatients({
+    purpose: 'roster',
     sort: '-updated_date',
     limit: 2000,
-    select: selectMine,
   });
 
   const { data: incidents = [], _isLoading } = useAgencyScopedQuery({
@@ -126,7 +117,7 @@ export default function IncidentReportingModule() {
     initialData: [],
   });
 
-  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 2000 });
 
   const createIncidentMutation = useMutation({
     mutationFn: async (incidentData) => {
@@ -683,14 +674,13 @@ export default function IncidentReportingModule() {
                           )}
                         </div>
                         {incident.state_reportable_pdf_url && isSafeExternalUrl(incident.state_reportable_pdf_url) && (
-                          <a
-                            href={incident.state_reportable_pdf_url}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                          <button
+                            type="button"
+                            onClick={() => openAuthorityBoundWindow(incident.state_reportable_pdf_url)}
                             className="inline-flex items-center gap-1 mt-2 text-sm text-blue-600 underline hover:text-blue-700"
                           >
                             <FileText className="w-4 h-4" /> View PDF report
-                          </a>
+                          </button>
                         )}
                       </div>
                       {incident.status !== 'resolved' && (
@@ -751,13 +741,14 @@ export default function IncidentReportingModule() {
                     {incident.photo_urls?.length > 0 && (
                       <div className="mt-3 flex gap-2">
                         {incident.photo_urls.filter((url) => isSafeExternalUrl(url)).map((url, idx) => (
-                          <img
+                          <button
                             key={idx}
-                            src={url}
-                            alt={`Incident photo ${idx + 1}`}
-                            className="w-20 h-20 object-cover rounded-lg cursor-pointer hover:opacity-80"
-                            onClick={() => openExternalUrl(url)}
-                          />
+                            type="button"
+                            className="inline-flex min-h-10 items-center gap-2 rounded-md border bg-white px-3 text-sm text-slate-700"
+                            onClick={() => openAuthorityBoundWindow(url)}
+                          >
+                            <Camera className="h-4 w-4" /> Open incident photo {idx + 1}
+                          </button>
                         ))}
                       </div>
                     )}

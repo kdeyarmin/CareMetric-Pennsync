@@ -30,13 +30,7 @@ const TIMEZONES = [
   "America/Los_Angeles", "America/Anchorage", "Pacific/Honolulu",
 ];
 
-const guessTimeZone = () => {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York";
-  } catch {
-    return "America/New_York";
-  }
-};
+const DEFAULT_TIMEZONE = "America/New_York";
 
 // Parse the free-text holidays textarea into an array of well-formed YYYY-MM-DD
 // dates. Only run this on blur/save — never per keystroke — so partially-typed
@@ -72,7 +66,7 @@ export default function CallingHoursPanel() {
 
   const [form, setForm] = useState({
     business_hours_enabled: false,
-    business_hours_timezone: guessTimeZone(),
+    business_hours_timezone: DEFAULT_TIMEZONE,
     business_hours: defaultBusinessHours(),
     business_hours_holidays: [],
     after_hours_call_action: "transfer",
@@ -95,7 +89,7 @@ export default function CallingHoursPanel() {
     if (!settings) return;
     setForm({
       business_hours_enabled: settings.business_hours_enabled === true,
-      business_hours_timezone: settings.business_hours_timezone || guessTimeZone(),
+      business_hours_timezone: settings.business_hours_timezone || DEFAULT_TIMEZONE,
       business_hours:
         settings.business_hours && typeof settings.business_hours === "object"
           ? { ...defaultBusinessHours(), ...settings.business_hours }

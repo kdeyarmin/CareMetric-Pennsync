@@ -13,6 +13,7 @@
  */
 import { base44 } from '@/api/base44Client';
 import { filterPatientsByCallerAgency, describePatientAgencyScope } from '@/lib/agencyScope';
+import { getTenantAuthorityKey } from '@/lib/roles';
 
 const ROSTER_TTL_MS = 60000; // matches the app-wide React Query staleTime
 const ROSTER_PAGE_SIZE = 2000;
@@ -27,6 +28,11 @@ let inFlight = null;
 let cachedCaller = null;
 let callerAt = 0;
 let callerInFlight = null;
+// Every authority transition advances this epoch. Promises that began under an
+// older principal/tenant may still resolve because the SDK calls are not
+// abortable; they must never repopulate either module cache (or clear a newer
+// in-flight request from their finally handler).
+let cacheEpoch = 0;
 
 /**
  * Fetch the COMPLETE platform roster, paging past the per-request limit.
@@ -36,10 +42,12 @@ let callerInFlight = null;
  * misclassify records authored by older foreign-agency users and leak them
  * across tenants. Paginate until a short page proves we have every account.
  */
-async function fetchFullRoster() {
+async function fetchFullRoster(expectedEpoch) {
   const all = [];
   for (let page = 0; page < ROSTER_MAX_PAGES; page += 1) {
+    if (expectedEpoch !== cacheEpoch) return [];
     const rows = await base44.entities.User.list('-created_date', ROSTER_PAGE_SIZE, page * ROSTER_PAGE_SIZE);
+    if (expectedEpoch !== cacheEpoch) return [];
     if (!Array.isArray(rows) || rows.length === 0) break;
     all.push(...rows);
     if (rows.length < ROSTER_PAGE_SIZE) break;
@@ -58,41 +66,56 @@ export function loadAgencyRoster() {
     return Promise.resolve(cachedRoster);
   }
   if (inFlight) return inFlight;
-  inFlight = fetchFullRoster()
+  const requestEpoch = cacheEpoch;
+  let request;
+  request = fetchFullRoster(requestEpoch)
     .then((rows) => {
+      if (requestEpoch !== cacheEpoch) return [];
       cachedRoster = Array.isArray(rows) ? rows : [];
       cachedAt = Date.now();
       return cachedRoster;
     })
-    .catch(() => cachedRoster)
-    .finally(() => { inFlight = null; });
-  return inFlight;
+    .catch(() => (requestEpoch === cacheEpoch ? cachedRoster : []))
+    .finally(() => {
+      if (requestEpoch === cacheEpoch && inFlight === request) inFlight = null;
+    });
+  inFlight = request;
+  return request;
 }
 
 /**
  * Resolve the signed-in user for code paths that have no React component to
  * read `useQuery(['currentUser'])` from — imperative loaders inside event
  * handlers, mostly. Memoized on the same window as the roster.
- * Resolves to null when auth is unavailable, which fails closed.
+ * Resolves to null when auth is unavailable, which fails closed. AuthContext
+ * must reset this cache synchronously before every logout, account change, or
+ * tenant-authority transition so a prior principal is never reused.
  */
 export function loadCurrentCaller() {
   if (callerAt && Date.now() - callerAt < ROSTER_TTL_MS) {
     return Promise.resolve(cachedCaller);
   }
   if (callerInFlight) return callerInFlight;
-  callerInFlight = base44.auth.me()
+  const requestEpoch = cacheEpoch;
+  let request;
+  request = base44.auth.me()
     .then((user) => {
+      if (requestEpoch !== cacheEpoch) return null;
       cachedCaller = user || null;
       callerAt = Date.now();
       return cachedCaller;
     })
-    .catch(() => cachedCaller)
-    .finally(() => { callerInFlight = null; });
-  return callerInFlight;
+    .catch(() => (requestEpoch === cacheEpoch ? cachedCaller : null))
+    .finally(() => {
+      if (requestEpoch === cacheEpoch && callerInFlight === request) callerInFlight = null;
+    });
+  callerInFlight = request;
+  return request;
 }
 
-/** Drop the memoized roster and caller (sign-out, and tests). */
+/** Drop the memoized roster and caller (authority transition, sign-out, tests). */
 export function resetAgencyRosterCache() {
+  cacheEpoch += 1;
   cachedRoster = [];
   cachedAt = 0;
   inFlight = null;
@@ -104,8 +127,9 @@ export function resetAgencyRosterCache() {
 /**
  * Scope a freshly-listed set of charts to the caller's agency.
  * Use this in any queryFn that lists patients across charts; pair it with
- * `agencyQueryKey(currentUser)` in the query key and `enabled: !!currentUser`,
- * since a missing caller fails closed to [].
+ * `agencyQueryKey(currentUser)` in the query key and enable the query only when
+ * that authority key is non-null. A present User without a trusted context is
+ * not sufficient authority and fails closed to [].
  */
 export async function scopePatientsToCallerAgency(patients, caller) {
   const roster = await loadAgencyRoster();
@@ -129,12 +153,14 @@ export async function describeCallerPatientScope(patients, caller) {
 }
 
 /**
- * Cache-key fragment identifying the agency a scoped query was filtered for.
- * A scoped query MUST carry this: without it two admins in different agencies
- * share one cache entry and each renders the other tenant's roster.
+ * Cache-key fragment identifying the exact trusted tenant authority used by a
+ * scoped query. It deliberately ignores mutable User role/agency fields. The
+ * key changes with principal, membership, membership version, tenant role,
+ * agency, or owner mode so React Query cannot reuse protected data across an
+ * account switch, tenant switch, revocation/version update, or role change.
+ * Missing or mismatched trusted context returns null and must keep the query
+ * disabled/fail closed.
  */
 export function agencyQueryKey(caller) {
-  if (!caller) return null;
-  if (caller.account_type === 'super_admin') return 'super_admin';
-  return String(caller.agency_id || caller.agency_name || '').trim() || 'platform';
+  return getTenantAuthorityKey(caller);
 }

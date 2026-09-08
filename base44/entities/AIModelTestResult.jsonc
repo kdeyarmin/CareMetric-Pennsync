@@ -76,6 +76,8 @@
         "role": "admin"
       }
     },
-    "write": {}
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

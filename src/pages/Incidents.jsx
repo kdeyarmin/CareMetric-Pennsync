@@ -20,6 +20,7 @@ export default function Incidents() {
   // `select` rather than a filter inside the queryFn, so the shared cache entry
   // keeps the full scoped roster and each consumer narrows its own view of it.
   const { data: patients = [] } = useScopedPatients({
+    purpose: 'roster',
     sort: "-updated_date",
     limit: 500,
     select: activeAndNotArchived,

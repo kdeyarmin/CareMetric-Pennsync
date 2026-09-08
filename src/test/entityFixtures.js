@@ -150,7 +150,7 @@ export function functionResponseFor(name) {
     documents: rowsFor('Document'),
     users: rowsFor('User'),
     // Singular subjects for the "one record plus its context" functions
-    // (getPatientContext, getVisitDetail, …) that detail pages read.
+    // (purpose-bound Patient/Visit brokers) that detail pages read.
     patient: rowsFor('Patient')[0],
     visit: rowsFor('Visit')[0],
     carePlan: rowsFor('CarePlan')[0],
@@ -166,4 +166,3 @@ export function functionResponseFor(name) {
   if (schemas[entity]) body[entity.charAt(0).toLowerCase() + entity.slice(1)] = rowsFor(entity);
   return body;
 }
-

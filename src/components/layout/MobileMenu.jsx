@@ -19,7 +19,7 @@ function GoldIndicator() {
   return <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-gold-400" aria-hidden="true" />;
 }
 
-export default function MobileMenu({ open, onClose, navCategories, adminItems, isAdmin, isActive, helpSourceRoute, currentUser, onLogout }) {
+export default function MobileMenu({ open, onClose, navCategories, adminItems, isAdmin, isActive, currentUser, onLogout }) {
   useEffect(() => {
     if (!open) return;
     const onKeyDown = (e) => {
@@ -78,7 +78,6 @@ export default function MobileMenu({ open, onClose, navCategories, adminItems, i
                   <Link
                     key={item.page}
                     to={createPageUrl(item.page)}
-                    state={item.page === 'Help' && helpSourceRoute ? { helpSourceRoute } : undefined}
                     onClick={onClose}
                     className={navItemClasses(active)}
                   >

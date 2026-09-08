@@ -23,8 +23,7 @@ describe('CentralHelpButton', () => {
     expect(url.searchParams.get('route')).toBe('/PatientDetails');
     expect(url.searchParams.get('app_version')).toBe('2026.09.07+abc123');
     expect(url.toString()).not.toMatch(/secret|patient_id|localhost/i);
-    expect(link).toHaveAttribute('target', '_blank');
-    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(link).not.toHaveAttribute('target');
   });
 
   it('renders no central launcher when the rollout flag is off', () => {

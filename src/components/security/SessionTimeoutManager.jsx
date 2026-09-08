@@ -1,6 +1,4 @@
 import { useEffect, useState, useCallback, useRef } from "react";
-import { base44 } from "@/api/base44Client";
-import { queryClientInstance } from "@/lib/query-client";
 import {
   Dialog,
   DialogContent,
@@ -10,8 +8,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Clock, RefreshCw } from "lucide-react";
 import { logSecurityEvent } from "../utils/security";
-import { clearCachedPHI } from "@/lib/phiStorage";
 import { formatTime } from "@/lib/formatTime";
+import { useAuth } from "@/lib/AuthContext";
 
 /**
  * Session Timeout Manager Component
@@ -21,6 +19,7 @@ export default function SessionTimeoutManager({
   timeoutMinutes = 15,
   warningMinutes = 2 
 }) {
+  const { logout } = useAuth();
   const [showWarning, setShowWarning] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(warningMinutes * 60);
   // Last-activity timestamp lives in a ref, not state. This manager is mounted
@@ -38,32 +37,27 @@ export default function SessionTimeoutManager({
     if (loggingOutRef.current) return;
     loggingOutRef.current = true;
 
-    await logSecurityEvent('SESSION_TIMEOUT', {
+    // Logging is corroborating telemetry, never a prerequisite for revoking a
+    // session. A stalled audit endpoint must not keep the provider token,
+    // tenant authority, or protected UI alive past the inactivity deadline.
+    void logSecurityEvent('SESSION_TIMEOUT', {
       timeout_minutes: timeoutMinutes,
       last_activity: new Date(lastActivityRef.current).toISOString()
-    }, 'warning');
+    }, 'warning').catch(() => {});
 
-    // Clear sensitive data from memory (incl. cached PHI in the query cache)
-    sessionStorage.clear();
-    try { queryClientInstance.clear(); } catch { /* no-op */ }
-    // Purge re-fetchable PHI persisted to localStorage (preserves
-    // in-progress local drafts — see clearCachedPHI). Await so the purge
-    // completes before the logout redirect navigates away.
-    try { await clearCachedPHI(); } catch { /* no-op */ }
-
-    // Logout and redirect (pass the current URL so the SDK performs a
-    // deterministic navigation, matching AuthContext.logout).
-    base44.auth.logout(window.location.href);
-  }, [timeoutMinutes]);
+    // AuthContext invalidates in-flight authority work and purges every
+    // tenant-scoped cache/storage layer before provider token removal.
+    await logout();
+  }, [logout, timeoutMinutes]);
 
   const handleExtendSession = useCallback(() => {
     setShowWarning(false);
     lastActivityRef.current = Date.now();
     setSecondsRemaining(warningMinutes * 60);
 
-    logSecurityEvent('SESSION_EXTENDED', {
+    void logSecurityEvent('SESSION_EXTENDED', {
       extended_at: new Date().toISOString()
-    }, 'info');
+    }, 'info').catch(() => {});
   }, [warningMinutes]);
 
   const resetActivity = useCallback(() => {

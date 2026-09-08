@@ -6,12 +6,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card } from '@/components/ui/card';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Loader2, Plus, Edit2, Trash2, FileText, FileType } from 'lucide-react';
+import { Loader2, Plus, Edit2, Trash2, FileText, FileType, ShieldCheck } from 'lucide-react';
 import PageContainer from '@/components/ui/PageContainer';
 import PageHeader from '@/components/ui/PageHeader';
 import EmptyState from '@/components/ui/empty-state';
 import { isAdminView } from '@/lib/roles';
+import { isAdminLike } from '@/lib/superAdmin';
 import { useConfirm } from '@/components/ui/confirm-dialog';
 
 const PDFTemplateLibrary = lazy(() => import('@/components/hub-tabs/PDFTemplateLibrary'));
@@ -42,12 +44,16 @@ export default function TemplateManagement() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
-  const isAdmin = isAdminView(currentUser);
-  // The document-template CRUD tab is admin-only; the PDF Templates tab stays
-  // open to everyone (the retired /PDFTemplateLibrary route was non-admin), so
-  // non-admins land on — and are limited to — the PDF tab.
-  const defaultTab = isAdmin ? 'templates' : 'pdf';
-  const validTabKeys = isAdmin ? ['templates', 'pdf'] : ['pdf'];
+  const adminView = isAdminView(currentUser);
+  // DocumentTemplate is publicly readable but its mutations explicitly trust
+  // only Base44's protected built-in admin role. Membership-backed facility
+  // admins retain the useful template inventory as a read-only surface.
+  const canManageTemplates = isAdminLike(currentUser);
+  // The document-template inventory tab is an administrator surface; the PDF
+  // Templates tab stays open to everyone (the retired /PDFTemplateLibrary route
+  // was non-admin), so non-admins land on — and are limited to — the PDF tab.
+  const defaultTab = adminView ? 'templates' : 'pdf';
+  const validTabKeys = adminView ? ['templates', 'pdf'] : ['pdf'];
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get('tab');
@@ -76,11 +82,15 @@ export default function TemplateManagement() {
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ['templates'],
     queryFn: async () => base44.entities.DocumentTemplate.list('-created_date', 100),
+    enabled: adminView,
   });
 
   // Create/update template
   const saveMutation = useMutation({
     mutationFn: async (data) => {
+      if (!canManageTemplates) {
+        throw new Error('Protected administrator access is required to change document templates.');
+      }
       if (editingTemplate) {
         return base44.entities.DocumentTemplate.update(editingTemplate.id, data);
       }
@@ -96,7 +106,12 @@ export default function TemplateManagement() {
 
   // Delete template
   const deleteMutation = useMutation({
-    mutationFn: (id) => base44.entities.DocumentTemplate.delete(id),
+    mutationFn: (id) => {
+      if (!canManageTemplates) {
+        throw new Error('Protected administrator access is required to delete document templates.');
+      }
+      return base44.entities.DocumentTemplate.delete(id);
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['templates'] }),
   });
 
@@ -151,7 +166,7 @@ export default function TemplateManagement() {
       <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
         <div className="overflow-x-auto -mx-3 sm:mx-0 px-3 sm:px-0">
           <TabsList className="inline-flex w-max min-w-full gap-1 h-auto p-1">
-            {isAdmin && (
+            {adminView && (
               <TabsTrigger value="templates" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
                 <FileText className="h-4 w-4 mr-2" />
                 Document Templates
@@ -164,21 +179,31 @@ export default function TemplateManagement() {
           </TabsList>
         </div>
 
-        {isAdmin && (
+        {adminView && (
         <TabsContent value="templates" className="space-y-4 sm:space-y-6">
+          {!canManageTemplates && (
+            <Alert className="border-blue-200 bg-blue-50">
+              <ShieldCheck className="h-4 w-4 text-blue-700" />
+              <AlertDescription className="text-blue-900">
+                Document templates are read-only for facility administrators. Creating, editing, and deleting templates requires protected administrator access.
+              </AlertDescription>
+            </Alert>
+          )}
           {isLoading ? (
             <div className="flex items-center justify-center p-8">
               <Loader2 className="w-6 h-6 animate-spin" />
             </div>
           ) : (
             <>
-      <div className="flex justify-end">
-        <Button onClick={() => setShowForm(true)} className="gap-2">
-          <Plus className="w-4 h-4" /> New Template
-        </Button>
-      </div>
+      {canManageTemplates && (
+        <div className="flex justify-end">
+          <Button onClick={() => setShowForm(true)} className="gap-2">
+            <Plus className="w-4 h-4" /> New Template
+          </Button>
+        </div>
+      )}
 
-      {showForm && (
+      {canManageTemplates && showForm && (
         <Card className="p-6 space-y-4">
           <h2 className="text-xl font-semibold">
             {editingTemplate ? 'Edit Template' : 'Create New Template'}
@@ -250,7 +275,7 @@ export default function TemplateManagement() {
                   </span>
                 </div>
               </div>
-              <div className="flex gap-2">
+              {canManageTemplates && <div className="flex gap-2">
                 <Button
                   size="sm"
                   variant="outline"
@@ -275,14 +300,18 @@ export default function TemplateManagement() {
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
-              </div>
+              </div>}
             </div>
           </Card>
         ))}
       </div>
 
       {templates.length === 0 && !showForm && (
-        <EmptyState icon={FileText} title="No templates yet." description="Create one to get started." />
+        <EmptyState
+          icon={FileText}
+          title="No templates yet."
+          description={canManageTemplates ? "Create one to get started." : "A protected administrator must create the first template."}
+        />
       )}
             </>
           )}

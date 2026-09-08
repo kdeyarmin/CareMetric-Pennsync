@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       user_email: caller.email,
       user_role: caller.role,
       action: 'super_admin_ensured',
-      details: { target_email: caller.email, role_updated: roleUpdated, was_already_super_admin: already },
+      details: { role_updated: roleUpdated, was_already_super_admin: already },
     }).catch(() => {});
 
     return Response.json({

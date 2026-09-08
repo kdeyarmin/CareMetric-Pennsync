@@ -24,7 +24,7 @@ export default function PatientDeteriorationPredictor({ patientId, recentVisits,
     if (!recentVisits || recentVisits.length < 2) return;
 
     try {
-      // recentVisits arrives most-recent-FIRST (getPatientContext orders Visit by
+      // recentVisits must arrive most-recent-FIRST (the authorized caller orders Visit by
       // '-visit_date'). The prompt below presents trends "most recent last", so put
       // the visits in chronological order (oldest -> newest) before serializing —
       // otherwise the model reads every trend backwards (a declining O2 looks like

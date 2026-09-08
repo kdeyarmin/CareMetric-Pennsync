@@ -52,5 +52,13 @@
     "rule_type",
     "pattern",
     "priority"
-  ]
+  ],
+  // Only authenticated backend code currently consumes this entity, and it
+  // uses the service role. Client CRUD is denied pending tenant stamping.
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

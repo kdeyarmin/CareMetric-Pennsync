@@ -8,14 +8,16 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
-function agencyAdminMissingAgencyResponse(user) {
-  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
-    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-  }
-  return null;
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
 }
-// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
+// <<<END SHARED HELPER: protectedUserAuthz>>>
 
 
 
@@ -73,33 +75,15 @@ function normalizeE164(raw) {
   return null;
 }
 
-// Mirrors maskPhone() in src/components/voice/phoneUtils.js — reveals only the
-// last 4 digits so the nurse's private cell is never written in full to audit.
-function maskLast4(e164) {
-  const d = (e164 || '').replace(/[^\d]/g, '');
-  if (!e164) return 'unknown';
-  if (d.length < 4) return '••••';
-  return `(•••) •••-${d.slice(-4)}`;
-}
-
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    {
-      const _agencyAdminGate = agencyAdminMissingAgencyResponse(user);
-      if (_agencyAdminGate) return _agencyAdminGate;
-    }
-    // Same admin surface as managePhoneNumberPool / the isAdminLike frontend
-    // gate — an agency_admin can reach the panel, so the backend must accept them.
-    const isAdmin =
-      user.role === 'admin' ||
-      user.account_type === 'super_admin' ||
-      user.account_type === 'agency_admin';
-    if (!isAdmin) {
-      return Response.json({ error: 'Only administrators can provision work numbers' }, { status: 403 });
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Only the protected platform owner can provision work numbers' }, { status: 403 });
     }
 
     const { target_user_email, work_phone_number, personal_cell_e164, twilio_phone_number_sid } = await req.json();
@@ -120,13 +104,6 @@ Deno.serve(async (req) => {
     const target = targets[0];
     if (!target) {
       return Response.json({ error: 'Target user not found' }, { status: 404 });
-    }
-
-    // Agency admins may only provision numbers for staff in their own agency.
-    if (user.account_type !== 'super_admin' && user.agency_name && (user.account_type === 'agency_admin' || user.role === 'admin')) {
-      if (!user.agency_name || target.agency_name !== user.agency_name) {
-        return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
-      }
     }
 
     // Work numbers must be unique across nurses.
@@ -186,19 +163,15 @@ Deno.serve(async (req) => {
       }
     }
 
-    // Audit — never store the full cell number.
-    await base44.entities.UserActivity.create({
+    // PhoneNumber/User retain the assignment endpoints. The activity row only
+    // needs the affected User correlation key and outcome.
+    await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'work_number_provisioned',
       entity_type: 'User',
       entity_id: target.id,
-      details: {
-        target_user_email,
-        work_phone_number: workNum || target.work_phone_number || null,
-        personal_cell_masked: cellNum ? maskLast4(cellNum) : null,
-        timestamp: new Date().toISOString(),
-      },
+      details: { personal_cell_linked: Boolean(cellNum) },
       status: 'success',
     }).catch((err) => console.error('Failed to log activity:', err));
 

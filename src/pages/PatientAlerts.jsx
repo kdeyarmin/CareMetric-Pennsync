@@ -51,6 +51,7 @@ export default function PatientAlerts() {
   // can no longer be served the full unfiltered roster (or vice versa) depending
   // on mount order, and a ['patients']-prefix invalidate still refreshes it.
   const { data: patients = [] } = useScopedPatients({
+    purpose: 'roster',
     status: 'active',
     sort: null,
     limit: ALL_ROWS,

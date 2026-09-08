@@ -68,5 +68,11 @@
     "current_quantity",
     "threshold_quantity",
     "severity"
-  ]
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
 }

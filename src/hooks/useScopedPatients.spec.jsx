@@ -1,131 +1,286 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { renderHook, waitFor, act } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { act, renderHook, waitFor } from '@testing-library/react';
 import { useState } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const { patientList, patientFilter, userList, authMe } = vi.hoisted(() => ({
-  patientList: vi.fn(),
-  patientFilter: vi.fn(),
-  userList: vi.fn(),
+const { authMe, getTenantContext, listAuthorized } = vi.hoisted(() => ({
   authMe: vi.fn(),
+  getTenantContext: vi.fn(),
+  listAuthorized: vi.fn(),
 }));
 
+// Deliberately expose no Patient entity. A regression to a direct SDK read
+// fails immediately instead of being hidden behind a permissive mock.
 vi.mock('@/api/base44Client', () => ({
-  base44: {
-    entities: {
-      Patient: { list: patientList, filter: patientFilter },
-      User: { list: userList },
-    },
-    auth: { me: authMe },
-  },
+  base44: { auth: { me: authMe } },
 }));
+
+vi.mock('@/functions/getMyTenantContext', () => ({
+  getMyTenantContext: getTenantContext,
+}));
+
+vi.mock('@/functions/listAuthorizedPatients', () => {
+  const fields = {
+    roster: new Set(['id', 'first_name', 'last_name', 'status', 'updated_date']),
+    contact: new Set(['id', 'first_name', 'last_name', 'phone', 'email']),
+    patient_management: new Set(['id', 'first_name', 'last_name', 'created_date', 'updated_date']),
+  };
+  const sizes = { roster: 50, contact: 25, patient_management: 50 };
+  return {
+    listAuthorizedPatients: listAuthorized,
+    authorizedPatientListPageSize: (purpose) => sizes[purpose] ?? null,
+    isAuthorizedPatientListPurpose: (purpose) => Object.hasOwn(fields, purpose),
+    isAuthorizedPatientListSort: (purpose, sort) => (
+      Object.hasOwn(fields, purpose)
+      && (sort == null || (typeof sort === 'string' && fields[purpose].has(sort.replace(/^-/, ''))))
+    ),
+  };
+});
 
 const {
-  useScopedPatients, excludeArchived, onlyActive, activeAndNotArchived,
+  activeAndNotArchived,
+  excludeArchived,
+  onlyActive,
+  useScopedPatients,
 } = await import('./useScopedPatients.js');
-const { resetAgencyRosterCache } = await import('@/lib/agencyRoster.js');
+const {
+  bindTrustedTenantContext,
+  clearTrustedTenantContext,
+} = await import('@/lib/roles.js');
 
-const ROWS = [
-  { id: 'ours', created_by: 'a@x.com' },
-  { id: 'theirs', created_by: 'b@x.com' },
-  { id: 'orphan', created_by: 'importer@no-reply.base44.com' },
-];
-const ROSTER = [
-  { email: 'a@x.com', agency_name: 'Acme' },
-  { email: 'b@x.com', agency_name: 'Other' },
-];
+const TENANT_CONTEXT = {
+  user_id: 'user-a',
+  user_email: 'user-a@example.com',
+  agency_id: 'agency-a',
+  membership_id: 'membership-a',
+  membership_key: 'agency-a:user-a',
+  membership_version: 4,
+  tenant_role: 'clinician',
+  membership_status: 'active',
+  is_platform_owner: false,
+  agency: { id: 'agency-a', name: 'Acme', status: 'active' },
+};
+const AUTH_USER = {
+  id: 'user-a',
+  email: 'user-a@example.com',
+  role: 'admin',
+  // Mutable profile values must never select the tenant.
+  agency_id: 'attacker-controlled-agency',
+  agency_name: 'Attacker Controlled',
+};
 
-/**
- * A test client WITHOUT the app's `initialDataUpdatedAt: 0` default, on purpose:
- * that is the environment the hook has to work in, and the combination of
- * `initialData: []` with a non-zero staleTime is what silently suppressed the
- * fetch-on-mount before the hook set the timestamp itself.
- */
-function wrapper({ children }) {
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime: 60000 } },
+function authorizedPage(patients, {
+  hasMore = false,
+  nextCursor = null,
+  scope = TENANT_CONTEXT,
+} = {}) {
+  return {
+    patients,
+    scope: {
+      agency_id: scope.agency_id,
+      membership_id: scope.membership_id,
+      membership_version: scope.membership_version,
+      tenant_role: scope.tenant_role,
+    },
+    page: { has_more: hasMore, next_cursor: nextCursor },
+  };
+}
+
+function deferred() {
+  let resolve;
+  let reject;
+  const promise = new Promise((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  return { promise, resolve, reject };
+}
+
+function createWrapper(client = new QueryClient({
+  defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+})) {
+  return {
+    client,
+    Wrapper({ children }) {
+      return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    },
+  };
 }
 
 describe('useScopedPatients', () => {
   beforeEach(() => {
-    resetAgencyRosterCache();
-    patientList.mockReset().mockResolvedValue(ROWS);
-    patientFilter.mockReset().mockResolvedValue(ROWS);
-    userList.mockReset().mockResolvedValue(ROSTER);
-    authMe.mockReset().mockResolvedValue({ role: 'admin', agency_name: 'Acme' });
+    clearTrustedTenantContext();
+    bindTrustedTenantContext(AUTH_USER, TENANT_CONTEXT);
+    authMe.mockReset().mockResolvedValue({ ...AUTH_USER });
+    getTenantContext.mockReset().mockResolvedValue({ tenant_context: TENANT_CONTEXT });
+    listAuthorized.mockReset().mockResolvedValue(authorizedPage([]));
   });
 
-  afterEach(() => {
-    resetAgencyRosterCache();
+  afterEach(() => clearTrustedTenantContext());
+
+  it('loads only through the named broker purpose and verified immutable tenant scope', async () => {
+    listAuthorized.mockResolvedValueOnce(authorizedPage([
+      { id: 'p2', first_name: 'Zoe', last_name: 'Zulu', status: 'active' },
+      { id: 'p1', first_name: 'Amy', last_name: 'Alpha', status: 'active' },
+    ]));
+    const { Wrapper } = createWrapper();
+
+    const { result } = renderHook(() => useScopedPatients({
+      agencyId: 'agency-a',
+      purpose: 'roster',
+      status: 'active',
+      sort: 'first_name',
+      limit: 100,
+    }), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.data.map((row) => row.id)).toEqual(['p1', 'p2']));
+    expect(getTenantContext).toHaveBeenCalledWith({
+      agencyId: 'agency-a',
+      expectedMembershipId: 'membership-a',
+      expectedMembershipVersion: 4,
+    });
+    expect(listAuthorized).toHaveBeenCalledWith({
+      agencyId: 'agency-a',
+      mode: 'page',
+      purpose: 'roster',
+      status: 'active',
+      sort: 'id_asc',
+      pageSize: 50,
+      cursor: null,
+    });
   });
 
-  it('fetches on mount even under a non-zero staleTime', async () => {
-    const { result } = renderHook(() => useScopedPatients({ limit: 500 }), { wrapper });
-    await waitFor(() => expect(patientList).toHaveBeenCalled());
-    expect(patientList).toHaveBeenCalledWith('-updated_date', 500);
-    await waitFor(() => expect(result.current.data).toHaveLength(2));
+  it('uses a purpose-specific page cap and walks all keyset pages before UI sort/limit', async () => {
+    const nextCursor = { after_id: 'p2' };
+    listAuthorized
+      .mockResolvedValueOnce(authorizedPage([
+        { id: 'p1', first_name: 'Charlie', last_name: 'C' },
+        { id: 'p2', first_name: 'Delta', last_name: 'D' },
+      ], { hasMore: true, nextCursor }))
+      .mockResolvedValueOnce(authorizedPage([
+        { id: 'p3', first_name: 'Alpha', last_name: 'A' },
+        { id: 'p4', first_name: 'Bravo', last_name: 'B' },
+      ]));
+    const { Wrapper } = createWrapper();
+
+    const { result } = renderHook(() => useScopedPatients({
+      purpose: 'contact',
+      sort: 'first_name',
+      limit: 2,
+    }), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.data.map((row) => row.id)).toEqual(['p3', 'p4']));
+    expect(listAuthorized).toHaveBeenCalledTimes(2);
+    expect(listAuthorized.mock.calls[0][0]).toMatchObject({ purpose: 'contact', pageSize: 25 });
+    expect(listAuthorized.mock.calls[1][0].cursor).toBe(nextCursor);
   });
 
-  it('applies the agency scope, keeping unattributable charts', async () => {
-    const { result } = renderHook(() => useScopedPatients(), { wrapper });
-    await waitFor(() => expect(result.current.data.map((p) => p.id)).toEqual(['ours', 'orphan']));
-  });
-
-  it('reads the active-only roster through filter when given a status', async () => {
-    renderHook(() => useScopedPatients({ status: 'active', sort: null, limit: 50 }), { wrapper });
-    await waitFor(() => expect(patientFilter).toHaveBeenCalled());
-    expect(patientFilter).toHaveBeenCalledWith({ status: 'active' }, undefined, 50);
-    expect(patientList).not.toHaveBeenCalled();
-  });
-
-  it('does not run before the caller is known, since scoping fails closed', async () => {
-    let resolveMe;
-    authMe.mockReturnValueOnce(new Promise((r) => { resolveMe = r; }));
-    renderHook(() => useScopedPatients(), { wrapper });
-    // Without the gate this would fetch, scope against a null caller, and cache
-    // an empty roster for the whole staleTime.
-    await Promise.resolve();
-    expect(patientList).not.toHaveBeenCalled();
-    resolveMe({ role: 'admin', agency_name: 'Acme' });
-    await waitFor(() => expect(patientList).toHaveBeenCalled());
-  });
-
-  it('honours a caller-supplied enabled gate', async () => {
-    renderHook(() => useScopedPatients({ enabled: false }), { wrapper });
-    await Promise.resolve();
-    expect(patientList).not.toHaveBeenCalled();
-  });
-
-  it('narrows with select without changing what was fetched', async () => {
+  it('fails closed if the broker scope drifts from the verified membership', async () => {
+    listAuthorized.mockResolvedValueOnce(authorizedPage([{ id: 'p1' }], {
+      scope: { ...TENANT_CONTEXT, membership_version: 5 },
+    }));
+    const { Wrapper } = createWrapper();
     const { result } = renderHook(
-      () => useScopedPatients({ select: (rows) => rows.filter((p) => p.id === 'orphan') }),
-      { wrapper },
+      () => useScopedPatients({ purpose: 'roster' }),
+      { wrapper: Wrapper },
     );
-    await waitFor(() => expect(result.current.data.map((p) => p.id)).toEqual(['orphan']));
-    expect(patientList).toHaveBeenCalledWith('-updated_date', 2000);
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error.message).toMatch(/authority changed/);
+    expect(result.current.data).toEqual([]);
   });
 
-  it('shares one fetch between two consumers of the same sort and limit', async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const shared = ({ children }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
-    );
-    renderHook(() => useScopedPatients({ sort: '-updated_date', limit: 2000 }), { wrapper: shared });
-    renderHook(() => useScopedPatients({ sort: '-updated_date', limit: 2000 }), { wrapper: shared });
-    await waitFor(() => expect(patientList).toHaveBeenCalled());
-    expect(patientList).toHaveBeenCalledTimes(1);
+  it('keys cached PHI by purpose and immutable membership identity', async () => {
+    const { client, Wrapper } = createWrapper();
+    renderHook(() => useScopedPatients({ purpose: 'roster' }), { wrapper: Wrapper });
+    await waitFor(() => expect(listAuthorized).toHaveBeenCalled());
+
+    const patientKeys = client.getQueryCache().getAll()
+      .map((query) => query.queryKey)
+      .filter((key) => key[0] === 'patients' && key[1] === 'authorized-list');
+    expect(patientKeys).toContainEqual([
+      'patients', 'authorized-list', 'roster', 'all', '-updated_date', 2000,
+      ['user-a', 'agency-a', 'membership-a', 4, 'clinician'],
+    ]);
   });
 
-  it('does not share a cache entry across different limits', async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const shared = ({ children }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+  it.each([
+    ['membership revocation', Object.assign(new Error('membership revoked'), { status: 403 })],
+    ['tenant verification outage', new Error('tenant broker unavailable')],
+  ])('withholds and evicts cached PHI during a %s', async (_label, failure) => {
+    listAuthorized.mockResolvedValueOnce(authorizedPage([{ id: 'p1', status: 'active' }]));
+    const { client, Wrapper } = createWrapper();
+    const { result } = renderHook(
+      () => useScopedPatients({ purpose: 'roster' }),
+      { wrapper: Wrapper },
     );
-    renderHook(() => useScopedPatients({ limit: 100 }), { wrapper: shared });
-    renderHook(() => useScopedPatients({ limit: 2000 }), { wrapper: shared });
-    await waitFor(() => expect(patientList).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(result.current.data.map((row) => row.id)).toEqual(['p1']));
+
+    const recheck = deferred();
+    getTenantContext.mockReturnValueOnce(recheck.promise);
+    let invalidation;
+    act(() => {
+      invalidation = client.invalidateQueries({ queryKey: ['tenant-context', 'patient-list'] });
+    });
+    await waitFor(() => expect(getTenantContext).toHaveBeenCalledTimes(2));
+    expect(result.current.data).toEqual([]);
+
+    await act(async () => {
+      recheck.reject(failure);
+      await invalidation;
+    });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.data).toEqual([]);
+    await waitFor(() => expect(client.getQueryCache().findAll({
+      queryKey: ['patients', 'authorized-list'],
+    })).toHaveLength(0));
+  });
+
+  it('does not request identity, authority, or PHI while disabled', async () => {
+    const { Wrapper } = createWrapper();
+    renderHook(
+      () => useScopedPatients({ purpose: 'roster', enabled: false }),
+      { wrapper: Wrapper },
+    );
+    await Promise.resolve();
+    expect(authMe).not.toHaveBeenCalled();
+    expect(getTenantContext).not.toHaveBeenCalled();
+    expect(listAuthorized).not.toHaveBeenCalled();
+  });
+
+  it('fails closed when no exact tenant is selected', async () => {
+    clearTrustedTenantContext();
+    authMe.mockResolvedValueOnce({ ...AUTH_USER });
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(
+      () => useScopedPatients({ purpose: 'roster' }),
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error.message).toMatch(/trusted tenant selection/);
+    expect(getTenantContext).not.toHaveBeenCalled();
+    expect(listAuthorized).not.toHaveBeenCalled();
+    expect(result.current.data).toEqual([]);
+  });
+
+  it('rejects unknown purposes, operator filters, unsafe sorts, and query overrides', () => {
+    const { Wrapper } = createWrapper();
+    for (const options of [
+      {},
+      { purpose: 'full_record' },
+      { purpose: 'roster', agencyId: '$ne' },
+      { purpose: 'roster', status: { $ne: 'discharged' } },
+      { purpose: 'roster', sort: 'date_of_birth' },
+      { purpose: 'roster', where: { status: 'active' } },
+      { purpose: 'roster', filter: { assigned_nurses: 'a@example.test' } },
+      { purpose: 'roster', staleTime: 60_000 },
+      { purpose: 'roster', limit: 10_001 },
+      { purpose: 'roster', readMode: 'authorized-roster' },
+    ]) {
+      expect(() => renderHook(() => useScopedPatients(options), { wrapper: Wrapper })).toThrow();
+    }
+    expect(listAuthorized).not.toHaveBeenCalled();
   });
 
   describe('shared selectors', () => {
@@ -135,66 +290,25 @@ describe('useScopedPatients', () => {
       { id: 'discharged', status: 'discharged', is_archived: false },
     ];
 
-    it('excludeArchived drops merged/archived charts', () => {
-      expect(excludeArchived(rows).map((p) => p.id)).toEqual(['live', 'discharged']);
+    it('keeps their documented filters', () => {
+      expect(excludeArchived(rows).map((row) => row.id)).toEqual(['live', 'discharged']);
+      expect(onlyActive(rows).map((row) => row.id)).toEqual(['live', 'archived']);
+      expect(activeAndNotArchived(rows).map((row) => row.id)).toEqual(['live']);
     });
 
-    it('onlyActive keeps active charts regardless of archive flag', () => {
-      expect(onlyActive(rows).map((p) => p.id)).toEqual(['live', 'archived']);
-    });
-
-    it('activeAndNotArchived requires both', () => {
-      expect(activeAndNotArchived(rows).map((p) => p.id)).toEqual(['live']);
-    });
-
-    // The reason the selectors are module-level at all, and the reason
-    // queryKeyContract rejects inline arrows: React Query memoizes `select` by
-    // reference (queryObserver: `options.select === selectFn`). A fresh arrow
-    // per render re-filters the entire roster on every render.
-    it('runs once per fetch, not once per render', async () => {
+    it('keeps a stable selector memoized across unrelated renders', async () => {
+      listAuthorized.mockResolvedValueOnce(authorizedPage(rows));
       const spy = vi.fn(excludeArchived);
+      const { Wrapper } = createWrapper();
       const { result } = renderHook(() => {
         const [, force] = useState(0);
-        const query = useScopedPatients({ select: spy });
-        return { query, force };
-      }, { wrapper });
-
-      // Wait for the FETCHED rows, not merely for `data` to exist — initialData
-      // makes it defined on the first render, well before the roster lands.
+        return { query: useScopedPatients({ purpose: 'roster', select: spy }), force };
+      }, { wrapper: Wrapper });
       await waitFor(() => expect(result.current.query.data).toHaveLength(2));
-      const afterLoad = spy.mock.calls.length;
-      act(() => result.current.force((n) => n + 1));
-      act(() => result.current.force((n) => n + 1));
-      expect(spy.mock.calls.length).toBe(afterLoad);
+      const callsAfterLoad = spy.mock.calls.length;
+      act(() => result.current.force((value) => value + 1));
+      act(() => result.current.force((value) => value + 1));
+      expect(spy.mock.calls.length).toBe(callsAfterLoad);
     });
-
-    // The other half of the contract: this is what the stable reference buys.
-    // If React Query ever memoizes `select` by something other than identity,
-    // this test starts failing and the queryKeyContract guard can be dropped.
-    it('re-runs on every render when the reference is NOT stable', async () => {
-      const spy = vi.fn(excludeArchived);
-      const { result } = renderHook(() => {
-        const [, force] = useState(0);
-        const query = useScopedPatients({ select: (r) => spy(r) });
-        return { query, force };
-      }, { wrapper });
-
-      await waitFor(() => expect(result.current.query.data).toHaveLength(2));
-      const afterLoad = spy.mock.calls.length;
-      act(() => result.current.force((n) => n + 1));
-      act(() => result.current.force((n) => n + 1));
-      expect(spy.mock.calls.length).toBeGreaterThan(afterLoad);
-    });
-  });
-
-  it('does not share a cache entry between the full and active-only rosters', async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const shared = ({ children }) => (
-      <QueryClientProvider client={client}>{children}</QueryClientProvider>
-    );
-    renderHook(() => useScopedPatients({ limit: 200 }), { wrapper: shared });
-    renderHook(() => useScopedPatients({ status: 'active', limit: 200 }), { wrapper: shared });
-    await waitFor(() => expect(patientFilter).toHaveBeenCalled());
-    expect(patientList).toHaveBeenCalledTimes(1);
   });
 });

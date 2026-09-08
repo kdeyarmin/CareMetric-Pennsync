@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -6,20 +6,29 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { UserPlus, Calendar, Stethoscope } from "lucide-react";
-import { base44 } from "@/api/base44Client";
-import { useScopedPatients } from '@/hooks/useScopedPatients';
+import {
+  invalidateAuthorizedPatientLists,
+  useScopedPatients,
+} from '@/hooks/useScopedPatients';
+import { invalidateAuthorizedVisitLists } from '@/hooks/useAuthorizedVisits';
 import { toLocalISODate } from "@/lib/dateLocal";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { createAuthorizedVisit } from '@/functions/createAuthorizedVisit';
+import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
+import { setPatientPrimaryDiagnosis } from '@/functions/updateAuthorizedPatient';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function PatientQuickActions({ onActionComplete }) {
+  const { tenantContext } = useAuth();
+  const patientCreateRequestId = useRef(null);
   const [showNewPatient, setShowNewPatient] = useState(false);
   const [showNewVisit, setShowNewVisit] = useState(false);
   const [showNewDiagnosis, setShowNewDiagnosis] = useState(false);
 
   const queryClient = useQueryClient();
 
-  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: '-updated_date', limit: 100 });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'roster', status: 'active', sort: '-updated_date', limit: 100 });
 
   // New Patient Form
   const [newPatient, setNewPatient] = useState({
@@ -33,8 +42,11 @@ export default function PatientQuickActions({ onActionComplete }) {
   });
 
   const createPatientMutation = useMutation({
-    mutationFn: (data) => base44.entities.Patient.create(data),
+    mutationFn: (data) => createAuthorizedPatient(data, {
+      clientRequestId: patientCreateRequestId.current ||= createPatientRequestId(),
+    }),
     onSuccess: () => {
+      patientCreateRequestId.current = null;
       toast.success('Patient created successfully!');
       setShowNewPatient(false);
       setNewPatient({
@@ -46,8 +58,7 @@ export default function PatientQuickActions({ onActionComplete }) {
         care_type: 'home_health',
         status: 'active'
       });
-      queryClient.invalidateQueries({ queryKey: ['all-patients'] });
-      queryClient.invalidateQueries({ queryKey: ['patients-quick-action'] });
+      invalidateAuthorizedPatientLists(queryClient);
       if (onActionComplete) onActionComplete();
     },
     onError: (error) => {
@@ -64,7 +75,7 @@ export default function PatientQuickActions({ onActionComplete }) {
   });
 
   const createVisitMutation = useMutation({
-    mutationFn: (data) => base44.entities.Visit.create(data),
+    mutationFn: async (data) => (await createAuthorizedVisit(data)).visit,
     onSuccess: () => {
       toast.success('Visit scheduled successfully!');
       setShowNewVisit(false);
@@ -74,7 +85,7 @@ export default function PatientQuickActions({ onActionComplete }) {
         visit_type: 'routine_visit',
         status: 'scheduled'
       });
-      queryClient.invalidateQueries({ queryKey: ['all-visits'] });
+      invalidateAuthorizedVisitLists(queryClient);
       if (onActionComplete) onActionComplete();
     },
     onError: (error) => {
@@ -90,7 +101,12 @@ export default function PatientQuickActions({ onActionComplete }) {
   });
 
   const updatePatientDiagnosisMutation = useMutation({
-    mutationFn: ({ id, data }) => base44.entities.Patient.update(id, data),
+    mutationFn: ({ patient, diagnosis }) => setPatientPrimaryDiagnosis({
+      patientId: patient.id,
+      agencyId: tenantContext?.agency_id,
+      expectedUpdatedDate: patient.updated_date,
+      primaryDiagnosis: diagnosis,
+    }),
     onSuccess: () => {
       toast.success('Diagnosis added successfully!');
       setShowNewDiagnosis(false);
@@ -99,7 +115,7 @@ export default function PatientQuickActions({ onActionComplete }) {
         diagnosis: '',
         notes: ''
       });
-      queryClient.invalidateQueries({ queryKey: ['all-patients'] });
+      invalidateAuthorizedPatientLists(queryClient);
       if (onActionComplete) onActionComplete();
     },
     onError: (error) => {
@@ -111,7 +127,10 @@ export default function PatientQuickActions({ onActionComplete }) {
     <>
       <div className="flex flex-wrap gap-2">
         <Button
-          onClick={() => setShowNewPatient(true)}
+          onClick={() => {
+            patientCreateRequestId.current = createPatientRequestId();
+            setShowNewPatient(true);
+          }}
           className="bg-blue-600 hover:bg-blue-700 h-11"
         >
           <UserPlus className="w-4 h-4 mr-2" />
@@ -309,9 +328,13 @@ export default function PatientQuickActions({ onActionComplete }) {
               <Textarea
                 value={newDiagnosis.notes}
                 onChange={(e) => setNewDiagnosis({ ...newDiagnosis, notes: e.target.value })}
-                placeholder="Additional clinical notes..."
+                placeholder="Clinical note append is temporarily unavailable"
                 rows={4}
+                disabled
               />
+              <p className="mt-1 text-xs text-slate-500">
+                Add the diagnosis now. Clinical-note append remains read-only until its append-only workflow is available.
+              </p>
             </div>
           </div>
           <DialogFooter>
@@ -320,13 +343,10 @@ export default function PatientQuickActions({ onActionComplete }) {
               onClick={() => {
                 const patient = patients.find(p => p.id === newDiagnosis.patient_id);
                 if (patient) {
-                  // Only send clinical_notes when the user actually entered some;
-                  // sending '' would wipe the patient's existing chart notes.
-                  const data = { primary_diagnosis: newDiagnosis.diagnosis };
-                  if (newDiagnosis.notes?.trim()) {
-                    data.clinical_notes = newDiagnosis.notes;
-                  }
-                  updatePatientDiagnosisMutation.mutate({ id: patient.id, data });
+                  updatePatientDiagnosisMutation.mutate({
+                    patient,
+                    diagnosis: newDiagnosis.diagnosis,
+                  });
                 }
               }}
               disabled={!newDiagnosis.patient_id || !newDiagnosis.diagnosis || updatePatientDiagnosisMutation.isPending}

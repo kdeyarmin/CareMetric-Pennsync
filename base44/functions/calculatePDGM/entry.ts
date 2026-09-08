@@ -10,11 +10,16 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 
 // <<<BEGIN SHARED HELPER: pdgmReimbursementGate — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PDGM_REIMBURSEMENT_ENABLED = false;
+// Independent retirement lock for every legacy PDGM financial surface. A future
+// source edit to the global feature flag must not revive the factorized model.
+const LEGACY_FACTORIZED_PDGM_MODEL_RETIRED = true;
+const PDGM_LEGACY_SURFACES_ENABLED = PDGM_REIMBURSEMENT_ENABLED
+  && !LEGACY_FACTORIZED_PDGM_MODEL_RETIRED;
 const PDGM_REIMBURSEMENT_BLOCKER = 'The app does not yet use a verified CMS HHGS 432-group grouper with golden-case tests.';
 const PDGM_REIMBURSEMENT_ACTION = 'Use the official EMR/CMS-approved grouper for billing and reimbursement decisions.';
 function pdgmUnavailablePayload(extra = {}) {
   return {
-    featureEnabled: PDGM_REIMBURSEMENT_ENABLED,
+    featureEnabled: PDGM_LEGACY_SURFACES_ENABLED,
     calculationStatus: 'blocked',
     paymentAvailable: false,
     payment: null,
@@ -291,8 +296,9 @@ const ICD10_CLINICAL_GROUPS = {
   // mis-grouped every injury diagnosis as skin and inflated the wrong case-mix
   // weight. Injury principal diagnoses now fall through to the text-based mapping
   // (e.g. "fracture" → Surgical Aftercare) and finally MMTA_Other, rather than a
-  // fabricated skin group. (A precise S-code → clinical-group mapping requires
-  // the official CMS PDGM table; see the estimate disclaimer on the result.)
+  // fabricated skin group. A precise S-code → clinical-group mapping requires
+  // the official, date-effective CMS HHGS diagnosis tables; this retired map is
+  // not used to produce payment output.
 };
 
 // Map diagnosis to clinical group with ICD-10 code analysis. `icdMap` is the
@@ -859,7 +865,7 @@ Deno.serve(async (req) => {
     // Do not initialize an authenticated/service-role client or inspect caller
     // data while this global safety gate is off. The response contains only
     // static feature-status metadata.
-    if (!PDGM_REIMBURSEMENT_ENABLED) {
+    if (!PDGM_LEGACY_SURFACES_ENABLED) {
       return Response.json(buildDisabledPdgmResponse(), { status: 409 });
     }
 
@@ -893,10 +899,9 @@ Deno.serve(async (req) => {
     }
     if (!appliedWageIndex) appliedWageIndex = 1.0;
 
-    // Load the admin-editable PDGM rate set (PDGMRateConfig) and merge it over the
-    // built-in defaults, so the agency can keep their case-mix weights / base rate
-    // current. When they've entered + flagged their official CMS numbers, the
-    // result is marked authoritative (isEstimate:false) rather than an estimate.
+    // Legacy, unreachable implementation retained for source archaeology only.
+    // No stored PDGMRateConfig row or is_official flag can authenticate or enable
+    // this factorized approximation as CMS HHGS payment output.
     let rates = DEFAULT_RATES;
     // No stored flag can make the legacy factorized estimator official. The
     // endpoint stays estimate/blocked until a verified 432-group grouper exists.

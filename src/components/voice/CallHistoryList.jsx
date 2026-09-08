@@ -17,6 +17,8 @@ import PhoneTopBar from "@/components/phone/PhoneTopBar";
 import ContactAvatar from "@/components/phone/ContactAvatar";
 import { PhoneEmptyState } from "@/components/phone/PhoneFrame";
 import { isSafeExternalUrl } from "@/components/utils/security";
+import AuthorityBoundAudio from '@/components/ui/AuthorityBoundAudio';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 
 const MODE_LABEL = {
   masked_bridge: "Incoming",
@@ -72,11 +74,11 @@ export default function CallHistoryList() {
     initialData: [],
   });
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ["call-patients", user?.email],
-    queryFn: () => base44.entities.Patient.filter({ assigned_nurses: user.email }, "-created_date", 500),
+  const { data: patients = [] } = useScopedPatients({
+    purpose: 'contact',
+    sort: 'last_name',
+    limit: 500,
     enabled: !!user?.email,
-    initialData: [],
   });
   const patientById = useMemo(() => Object.fromEntries(patients.map((p) => [p.id, p])), [patients]);
   const patientByPhone = useMemo(() => {
@@ -185,7 +187,7 @@ export default function CallHistoryList() {
                     </div>
                   </div>
                   {call.has_voicemail && call.voicemail_url && isSafeExternalUrl(call.voicemail_url) && (
-                    <audio controls preload="none" src={call.voicemail_url} className="mb-2 h-8 w-[calc(100%-1.5rem)] px-3" />
+                    <AuthorityBoundAudio controls preload="none" src={call.voicemail_url} className="mb-2 h-8 w-[calc(100%-1.5rem)] px-3" />
                   )}
                   {call.voicemail_transcription && (
                     <p className="mb-2 px-3 pl-[4.25rem] text-[13px] italic text-slate-600">

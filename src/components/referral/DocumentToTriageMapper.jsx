@@ -1,7 +1,6 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -13,11 +12,17 @@ import { checkExtractedPatientMatch } from "./documentPatientMatch";
 import { findDuplicatesForCandidate } from "../patient/patientDuplicateUtils";
 import { referralPatientReadiness, splitPatientName } from "./referralPatientReadiness";
 import { toast } from "sonner";
+import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
+import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
+import { createAuthorizedReferral } from '@/functions/manageAuthorizedReferral';
+import { useAuth } from '@/lib/AuthContext';
 
 export default function DocumentToTriageMapper({ onTriageCreated }) {
+  const { tenantContext } = useAuth();
+  const patientCreateRequestId = useRef(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const { data: patients = [] } = useScopedPatients({ sort: '-created_date', limit: 1000 });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'deduplication', sort: '-created_date', limit: 1000 });
 
   const [extractedData, setExtractedData] = useState(null);
   const [mapping, setMapping] = useState({
@@ -46,6 +51,7 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
       : null;
 
   const handleDataExtracted = (data) => {
+    patientCreateRequestId.current = createPatientRequestId();
     setExtractedData(data);
     setError(null);
     setResult(null);
@@ -144,10 +150,12 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
           }
         }
 
-        const newPatient = await base44.entities.Patient.create(patientData);
+        const newPatient = await createAuthorizedPatient(patientData, {
+          clientRequestId: patientCreateRequestId.current ||= createPatientRequestId(),
+        });
         patientId = newPatient.id;
         // Persist the created patient immediately so a retry after a later failure
-        // (e.g. Referral.create below) reuses this record instead of creating a
+        // (e.g. the authorized Referral broker below) reuses this record instead of creating a
         // duplicate patient chart.
         setMapping((prev) => ({
           ...prev,
@@ -156,12 +164,31 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
           patientId: newPatient.id,
         }));
       } else if (mapping.updatePatient && patientId && extractedData.clinical) {
-        await base44.entities.Patient.update(patientId, {
-          primary_diagnosis: extractedData.clinical.primary_diagnosis || undefined,
-          secondary_diagnoses: extractedData.clinical.secondary_diagnoses || undefined,
-          allergies: extractedData.clinical.allergies || undefined,
-          current_medications: extractedData.clinical.current_medications || undefined,
-          baseline_vitals: extractedData.vitals || undefined
+        const changes = {
+          ...(extractedData.clinical.primary_diagnosis
+            ? { primary_diagnosis: extractedData.clinical.primary_diagnosis }
+            : {}),
+          ...(extractedData.clinical.secondary_diagnoses?.length
+            ? { secondary_diagnoses: extractedData.clinical.secondary_diagnoses }
+            : {}),
+          ...(extractedData.clinical.allergies
+            ? { allergies: extractedData.clinical.allergies }
+            : {}),
+          // These two fields do not yet have finite server actions. Include
+          // them only when the document actually contains values so the wrapper
+          // rejects the ENTIRE mapping before any supported field is mutated.
+          ...(extractedData.clinical.current_medications?.length
+            ? { current_medications: extractedData.clinical.current_medications }
+            : {}),
+          ...(extractedData.vitals && Object.keys(extractedData.vitals).length
+            ? { baseline_vitals: extractedData.vitals }
+            : {}),
+        };
+        await updatePatientFields({
+          patientId,
+          agencyId: tenantContext?.agency_id,
+          expectedUpdatedDate: selectedPatient?.updated_date,
+          changes,
         });
       }
 
@@ -199,7 +226,9 @@ export default function DocumentToTriageMapper({ onTriageCreated }) {
           },
         };
 
-        const referral = await base44.entities.Referral.create(referralData);
+        const referral = await createAuthorizedReferral(referralData, {
+          agencyId: tenantContext?.agency_id,
+        });
 
         // Refresh the lists this just changed so a newly created patient appears
         // in the "Update Existing Patient" dropdown and app-wide patient/referral lists.

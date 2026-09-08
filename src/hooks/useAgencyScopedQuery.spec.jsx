@@ -10,10 +10,14 @@ vi.mock('@/api/base44Client', () => ({
 
 const { useAgencyScopedQuery } = await import('./useAgencyScopedQuery.js');
 const { resetAgencyRosterCache } = await import('@/lib/agencyRoster.js');
+const {
+  bindTrustedTenantContext,
+  clearTrustedTenantContext,
+} = await import('@/lib/roles.js');
 
 const ROSTER = [
-  { email: 'a@x.com', agency_name: 'Acme' },
-  { email: 'b@x.com', agency_name: 'Other' },
+  { email: 'a@x.com', agency_id: 'agency-a', agency_name: 'Acme' },
+  { email: 'b@x.com', agency_id: 'agency-b', agency_name: 'Other' },
 ];
 const ROWS = [
   { id: 'ours', created_by: 'a@x.com' },
@@ -30,11 +34,28 @@ function wrapper({ children }) {
 
 describe('useAgencyScopedQuery', () => {
   beforeEach(() => {
+    clearTrustedTenantContext();
     resetAgencyRosterCache();
     userList.mockReset().mockResolvedValue(ROSTER);
-    authMe.mockReset().mockResolvedValue({ role: 'admin', agency_name: 'Acme' });
+    const user = { id: 'user-a', email: 'admin@example.com', role: 'admin' };
+    bindTrustedTenantContext(user, {
+      user_id: 'user-a',
+      user_email: 'admin@example.com',
+      membership_id: 'membership-a',
+      membership_key: 'agency-a:user-a',
+      membership_version: 1,
+      agency_id: 'agency-a',
+      tenant_role: 'agency_admin',
+      membership_status: 'active',
+      is_platform_owner: false,
+      agency: { id: 'agency-a', name: 'Acme', status: 'active' },
+    });
+    authMe.mockReset().mockResolvedValue(user);
   });
-  afterEach(() => resetAgencyRosterCache());
+  afterEach(() => {
+    clearTrustedTenantContext();
+    resetAgencyRosterCache();
+  });
 
   it('hides records authored by another agency, keeping departed authors', async () => {
     const { result } = renderHook(() => useAgencyScopedQuery({

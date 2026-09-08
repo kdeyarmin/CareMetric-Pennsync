@@ -6,8 +6,9 @@
   // The built-in rules are the floor; this lets an agency disable rules that
   // don't apply to them, tighten severities, and add their own request items.
   // Written ONLY through the admin-gated saveFollowUpRuleConfig function
-  // (service-role write), read by any authenticated user so the review runs
-  // consistently for everyone who can see the follow-up page.
+  // (service-role write). Browser reads are paused until an immutable
+  // membership-scoped read broker exists; callers safely use the built-in
+  // review rules in the meantime.
   "properties": {
     "disabled_rules": {
       "type": "array",
@@ -33,8 +34,14 @@
   },
   "required": [],
   "rls": {
-    "read": {},
-    "write": {
+    "read": false,
+    "create": {
+      "user_condition": { "role": "__service_role_only__" }
+    },
+    "update": {
+      "user_condition": { "role": "__service_role_only__" }
+    },
+    "delete": {
       "user_condition": { "role": "__service_role_only__" }
     }
   }

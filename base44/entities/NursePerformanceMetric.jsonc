@@ -113,4 +113,11 @@
     "period_start",
     "period_end"
   ]
+  ,
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

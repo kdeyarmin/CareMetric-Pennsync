@@ -9,6 +9,26 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 // Operational debug logs are compiled out in production (the FUNCTIONS_DEBUG
 // secret was retired). console.error/warn remain ungated for visibility.
 const debugLog = (..._args) => {};
@@ -358,6 +378,12 @@ Deno.serve(async (req) => {
 
     if (!condition) return Response.json({ error: 'Condition is required' }, { status: 400 });
     if (!handoutTemplates[condition]) return Response.json({ error: `Invalid condition: ${condition}` }, { status: 400 });
+    if (action === 'email' && !patientEmail) {
+      return Response.json({ error: 'patientEmail is required to email the handout' }, { status: 400 });
+    }
+    if (action === 'email' && !outboundDeliveryReleased()) {
+      return outboundDeliveryPausedResponse('email');
+    }
 
     const template = handoutTemplates[condition];
     diagnostics.totalSections = template.sections?.length || 0;
@@ -707,12 +733,6 @@ Deno.serve(async (req) => {
     } catch (pdfError) {
       console.error('Error generating PDF binary:', pdfError);
       throw new Error(`PDF generation failed: ${pdfError.message}`);
-    }
-
-    // An email request with no recipient previously fell through to the download
-    // path and reported success without sending anything — surface it instead.
-    if (action === 'email' && !patientEmail) {
-      return Response.json({ error: 'patientEmail is required to email the handout' }, { status: 400 });
     }
 
     // Email delivery path.

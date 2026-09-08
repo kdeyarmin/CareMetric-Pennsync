@@ -1,4 +1,3 @@
-import { useLocation } from "react-router";
 import OASISNoAnalysisCard from "@/components/oasis/OASISNoAnalysisCard";
 import OASISDocumentationQualityScorer from "@/components/oasis/OASISDocumentationQualityScorer";
 import AIDocumentReviewer from "@/components/oasis/AIDocumentReviewer";
@@ -8,9 +7,8 @@ import InlineDocumentationAssistant from "@/components/oasis/InlineDocumentation
 
 const OASIS_DOCUMENTATION_REVIEW_ENABLED = false;
 
-function EnabledOASISDocumentationReview() {
-  const location = useLocation();
-  const { analysisResults, pdgmData, navigationData } = location.state || {};
+function EnabledOASISDocumentationReview({ analysisHandoff }) {
+  const { analysisResults, pdgmData, navigationData } = analysisHandoff || {};
 
   if (!analysisResults) {
     return <OASISNoAnalysisCard />;
@@ -54,7 +52,7 @@ function EnabledOASISDocumentationReview() {
   );
 }
 
-export default function OASISDocumentationReview() {
+export default function OASISDocumentationReview({ analysisHandoff }) {
   if (!OASIS_DOCUMENTATION_REVIEW_ENABLED) {
     return (
       <div className="rounded-lg border border-amber-200 bg-amber-50 p-6">
@@ -66,5 +64,5 @@ export default function OASISDocumentationReview() {
       </div>
     );
   }
-  return <EnabledOASISDocumentationReview />;
+  return <EnabledOASISDocumentationReview analysisHandoff={analysisHandoff} />;
 }

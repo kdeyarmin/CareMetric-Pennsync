@@ -27,6 +27,7 @@ import { isAdminLike } from "@/lib/superAdmin";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 // Guarded date formatter: date-only ISO strings must use local calendar parsing
 // (parseISO treats YYYY-MM-DD as UTC midnight and can shift the displayed day).
@@ -173,16 +174,15 @@ export default function AdminCredentialApproval() {
 
                 <div className="mb-3">
                   {cred.uploaded_file_url && isSafeExternalUrl(cred.uploaded_file_url) && (
-                    <a
-                      href={cred.uploaded_file_url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => openAuthorityBoundWindow(cred.uploaded_file_url)}
                       className="inline-flex items-center gap-2 text-sm text-indigo-600 hover:text-indigo-700 hover:underline"
                     >
                       <FileText className="w-4 h-4" />
                       View Document
                       <ExternalLink className="w-3 h-3" />
-                    </a>
+                    </button>
                   )}
                 </div>
 

@@ -94,5 +94,19 @@
   "required": [
     "patient_id",
     "assigned_by"
-  ]
+  ],
+  // Assignment creation must be self-attributed to the authenticated actor.
+  // Cross-clinician patient-chart reads/updates remain legacy-open until a
+  // by-patient broker can authorize the workflow and make provenance durable.
+  "rls": {
+    "read": true,
+    "create": {
+      "$or": [
+        { "data.assigned_by": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": true,
+    "delete": false
+  }
 }

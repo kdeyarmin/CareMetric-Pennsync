@@ -32,6 +32,12 @@ otherwise-consistent discipline.
   `claude-opus-4-8` (runs without thinking when the field is omitted, so the small
   `max_tokens` budget goes entirely to the JSON answer).
 
+> Follow-up (2026-09-07): `generateFaxCoverPage` no longer calls Anthropic at
+> all. It produces the same cover-page object locally with reviewed fixed
+> confidentiality text, so fax-cover formatting needs no provider credential
+> and sends no patient data to an AI service. The model-id note above remains
+> historical context for the SOAP-note path.
+
 ### Training competency & certificate integrity
 - **gradeTrainingAttempt** — pass mark, attempt cap, and retake cooldown were read off
   the learner-writable `TrainingAssignment` row, so a learner could POST

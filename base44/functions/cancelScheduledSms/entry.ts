@@ -8,11 +8,50 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
+// <<<BEGIN SHARED HELPER: activeMembershipAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeMembershipEmail = (value) => String(value || '').trim().toLowerCase();
+async function hasExactActiveAgencyMembership(base44, user) {
+  const userId = typeof user?.id === 'string' ? user.id.trim() : '';
+  const userEmail = normalizeMembershipEmail(user?.email);
+  if (!userId || !userEmail) return false;
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: userId, status: 'active' },
+      undefined,
+      2,
+    );
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) return false;
+  const row = rows[0];
+  return !!row
+    && String(row.user_id || '').trim() === userId
+    && String(row.status || '') === 'active'
+    && normalizeMembershipEmail(row.user_email_normalized) === userEmail
+    && typeof row.agency_id === 'string'
+    && !!row.agency_id.trim();
+}
+// <<<END SHARED HELPER: activeMembershipAuthz>>>
+
 
 /**
  * cancelScheduledSms — cancel a still-pending scheduled text. A nurse may cancel
- * their own; an admin may cancel any. Only 'pending' rows can be canceled (one
- * that's already sending/sent can't be recalled).
+ * their own; only the protected platform owner may cancel another user's.
+ * Only 'pending' rows can be canceled (one that's already sending/sent can't
+ * be recalled).
  */
 
 Deno.serve(async (req) => {
@@ -21,35 +60,36 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-
-    const { scheduled_id } = await req.json();
-    if (!scheduled_id) return Response.json({ error: 'Missing scheduled_id' }, { status: 400 });
-
-    const rows = await base44.asServiceRole.entities.ScheduledSms.filter({ id: scheduled_id }, undefined, 5000).catch(() => []);
-    const row = rows[0];
-    if (!row) return Response.json({ error: 'Scheduled message not found' }, { status: 404 });
-
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    const isAdminLike = isPlatformAdmin || isAgencyScopedAdmin;
-    if (row.nurse_email !== user.email && !isAdminLike) {
-      return Response.json({ error: 'You can only cancel your own scheduled messages' }, { status: 403 });
+    if (user.disabled === true || user.is_service === true || user.is_verified === false) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-    // Agency-scope: facility/agency admins must not cancel another tenant's SMS.
-    // Fail closed when the owner has no agency_name (orphan) — unknown tenant.
-    if (row.nurse_email !== user.email && isAgencyScopedAdmin) {
-      if (!user.agency_name) {
-        return Response.json({ error: 'Forbidden: agency_name is required' }, { status: 403 });
-      }
-      const [owner] = await base44.asServiceRole.entities.User
-        .filter({ email: row.nurse_email }, '-created_date', 1).catch(() => []);
-      if (!owner?.agency_name || owner.agency_name !== user.agency_name) {
-        return Response.json({ error: 'Forbidden: message is outside your agency' }, { status: 403 });
-      }
+    if (!isProtectedSuperAdmin(user)
+      && !(await hasExactActiveAgencyMembership(base44, user))) {
+      return Response.json({ error: 'Forbidden: active agency membership required' }, { status: 403 });
     }
+
+    const body = await req.json().catch(() => null);
+    const scheduledId = typeof body?.scheduled_id === 'string' ? body.scheduled_id.trim() : '';
+    if (!scheduledId || scheduledId.length > 200) {
+      return Response.json({ error: 'scheduled_id is invalid' }, { status: 400 });
+    }
+
+    const protectedOwner = isProtectedSuperAdmin(user);
+    const lookup = protectedOwner
+      ? { id: scheduledId }
+      : { id: scheduledId, nurse_email: user.email };
+    const rows = await base44.asServiceRole.entities.ScheduledSms
+      .filter(lookup, undefined, 2).catch(() => []);
+    const exactRows = Array.isArray(rows)
+      ? rows.filter((candidate) => candidate?.id === scheduledId
+        && (protectedOwner || candidate?.nurse_email === user.email))
+      : [];
+    // Use one normalized not-found response for foreign, missing, malformed,
+    // and ambiguous results so this endpoint cannot be used as a row oracle.
+    if (rows.length !== 1 || exactRows.length !== 1) {
+      return Response.json({ error: 'Scheduled message not found' }, { status: 404 });
+    }
+    const row = exactRows[0];
     if (row.status !== 'pending') {
       return Response.json({ error: `This message can no longer be canceled (status: ${row.status}).` }, { status: 409 });
     }
@@ -64,13 +104,12 @@ Deno.serve(async (req) => {
       canceled_at: new Date().toISOString(),
     });
 
-    await base44.entities.UserActivity.create({
+    await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'sms_schedule_canceled',
       entity_type: 'ScheduledSms',
       entity_id: row.id,
-      details: { to_number: row.to_number, send_at: row.send_at, timestamp: new Date().toISOString() },
       status: 'success',
     }).catch((err) => console.error('Failed to log activity:', err));
 

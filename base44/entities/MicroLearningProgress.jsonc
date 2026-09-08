@@ -86,14 +86,51 @@
   // NurseTrainingHub, LearnerMemoryBoosters) already sets nurse_email to the
   // signed-in user.
   //
-  // Read is deliberately left open, per that same spec note: manager and
-  // staff-overview screens read across nurses, and owner-scoping reads would
-  // need each of those confirmed admin-gated first (checklist §7).
+  // Reads use the same owner-or-protected-admin rule. Every staff-facing reader
+  // filters by the signed-in email; protected admins retain the cross-learner
+  // access required by oversight surfaces without exposing attestations to
+  // unrelated staff.
   "rls": {
-    "write": {
+    "read": {
       "$or": [
         {
-          "nurse_email": "{{user.email}}"
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "create": {
+      "$or": [
+        {
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.nurse_email": "{{user.email}}"
         },
         {
           "user_condition": {

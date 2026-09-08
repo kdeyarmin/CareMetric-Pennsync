@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 /**
  * startMaskedCall — outbound click-to-call masking (nurse -> patient) via the
  * Telnyx Call Control API.
@@ -46,6 +66,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
   { status: 403 },
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
+
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
 
 // <<<BEGIN SHARED HELPER: isAllowedDestination — generated, edit base44/_shared/backendHelpers.mjs>>>
 // Cost-control destination gate. Single source of truth is the frontend
@@ -131,17 +162,17 @@ async function resolveTelnyxCreds(base44) {
       || list.find((r) => r && pick(r.api_key))
       || list[0]
       || null;
-  } catch (err) {
+  } catch {
     // Do NOT collapse this into "not configured". A failed read (this invocation
     // path carries no service token, entity 404, 401/403, rate limit, platform
     // blip) is a completely different problem from an unconfigured integration,
     // and reporting them identically is what sent operators chasing a credential
     // they had already entered correctly.
-    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    readError = 'credential_store_unavailable';
     // The catch used to be bare, so an unreadable credential row left no
     // server-side breadcrumb at all — the only signal was a misleading
     // "not configured" reply. Log it; unattended runs have nowhere else to say so.
-    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
   }
   const rec = record || {};
   return {
@@ -162,7 +193,7 @@ async function resolveTelnyxCreds(base44) {
 function telnyxCredsMessage(creds, what) {
   const label = what || 'credentials';
   if (creds && creds.readError) {
-    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+    return `Could not read Telnyx ${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.`;
   }
   return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
 }
@@ -217,6 +248,16 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    // work_phone_number and personal_cell_e164 are presently custom User fields.
+    // Do not trust them for provider routing until a service-owned binding is
+    // deployed and proven.
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
+      return Response.json({
+        error: 'Masked calling is restricted to the protected platform owner pending telecom-binding migration',
+        code: 'telecom_authority_migration_pending',
+      }, { status: 503 });
+    }
 
     const { patient_id, to_number } = await req.json();
 
@@ -229,40 +270,9 @@ Deno.serve(async (req) => {
     let destination = normalizeE164(to_number);
     let resolvedPatientId = patient_id || null;
     let resolvedPatient = null;
-    // Platform-wide: super_admin or role:admin without agency. Facility admins
-    // with an agency are scoped like agency_admin (parity with updateScopedPatientAlert).
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    let agencyEmailSet = null;
-    const loadAgencyEmails = async () => {
-      if (agencyEmailSet) return agencyEmailSet;
-      if (!isAgencyScopedAdmin) return null;
-      if (!user.agency_name) {
-        agencyEmailSet = new Set();
-        return agencyEmailSet;
-      }
-      const agencyUsers = await base44.asServiceRole.entities.User
-        .list('-created_date', 5000)
-        .catch(() => []);
-      agencyEmailSet = new Set(
-        (agencyUsers || [])
-          .filter((u) => u.agency_name === user.agency_name && u.email)
-          .map((u) => u.email),
-      );
-      return agencyEmailSet;
-    };
     const canAccessPatient = async (p) => {
       if (!p) return false;
-      if (isPlatformAdmin) return true;
-      if (isAgencyScopedAdmin) {
-        const emails = await loadAgencyEmails();
-        if (!emails || emails.size === 0) return false;
-        if (p.created_by && emails.has(p.created_by)) return true;
-        return Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => emails.has(e));
-      }
+      if (isProtectedSuperAdmin(user)) return true;
       if (p.created_by === user.email) return true;
       return Array.isArray(p.assigned_nurses) && p.assigned_nurses.includes(user.email);
     };
@@ -312,6 +322,8 @@ Deno.serve(async (req) => {
     if (!destAllowed.allowed) {
       return Response.json({ error: blockedReasonMessage(destAllowed.reason), reason: destAllowed.reason }, { status: 403 });
     }
+
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('voice');
 
     const callLog = await base44.entities.CallLog.create({
       direction: 'outbound',
@@ -401,7 +413,7 @@ Deno.serve(async (req) => {
     const providerCallId = data?.data?.call_control_id || data?.data?.call_leg_id || null;
     await base44.entities.CallLog.update(callLog.id, { provider_call_id: providerCallId });
 
-    await base44.entities.UserActivity.create({
+    await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'call_initiated',
@@ -409,11 +421,7 @@ Deno.serve(async (req) => {
       entity_id: callLog.id,
       details: {
         provider: 'telnyx',
-        to_number: destination,
-        displayed_number: workNumber,
-        patient_id: resolvedPatientId,
-        provider_call_id: providerCallId,
-        timestamp: new Date().toISOString(),
+        direction: 'outbound',
       },
       status: 'success',
     }).catch((err) => console.error('Failed to log activity:', err));

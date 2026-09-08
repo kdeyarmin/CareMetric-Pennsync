@@ -43,4 +43,11 @@
     "schedule_date",
     "feedback_type"
   ]
+  ,
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

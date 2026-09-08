@@ -1,12 +1,5 @@
-import { useNavigate } from 'react-router';
-import SignatureRequestCreator from '@/components/signer/SignatureRequestCreator';
+import SigningUnavailable from '@/components/signature/SigningUnavailable';
 
 export default function CreateSignatureRequest() {
-  const navigate = useNavigate();
-
-  return (
-    <div className="space-y-4 sm:space-y-6">
-      <SignatureRequestCreator onCancel={() => navigate('/DocumentHub')} />
-    </div>
-  );
+  return <SigningUnavailable title="Signature request creation unavailable" />;
 }

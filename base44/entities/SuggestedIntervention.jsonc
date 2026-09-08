@@ -96,5 +96,11 @@
     "prediction_type",
     "risk_score",
     "suggested_intervention_description"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

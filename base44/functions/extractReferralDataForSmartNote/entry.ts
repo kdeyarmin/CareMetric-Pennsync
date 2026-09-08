@@ -1,46 +1,126 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
-// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
-const isDeactivatedUser = (u) => !!u && u.is_active === false;
-const DEACTIVATED_USER_RESPONSE = () => Response.json(
-  { error: 'Unauthorized - account is deactivated' },
-  { status: 403 },
-);
-// <<<END SHARED HELPER: requireActiveUser>>>
+const MAX_BODY_BYTES = 10_000;
+const MAX_IDENTIFIER_LENGTH = 200;
+const INTAKE_ROLES = new Set(['agency_admin', 'manager', 'office_staff']);
 
+class PublicError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'PublicError';
+    this.status = status;
+  }
+}
+
+function exactIdentifier(value: unknown) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= MAX_IDENTIFIER_LENGTH
+    && value.trim() === value
+    && !value.startsWith('$')
+    && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
+function plainObject(value: unknown): value is Record<string, any> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function exactKeys(value: Record<string, any>, expected: string[]) {
+  const actual = Object.keys(value).sort();
+  return JSON.stringify(actual) === JSON.stringify([...expected].sort());
+}
+
+async function parseInput(req: Request) {
+  if (req.method !== 'POST') {
+    throw new PublicError(405, 'Method not allowed');
+  }
+  const statedLength = Number(req.headers.get('content-length'));
+  if (Number.isFinite(statedLength) && statedLength > MAX_BODY_BYTES) {
+    throw new PublicError(413, 'Request body is too large');
+  }
+  let raw = '';
+  try {
+    raw = await req.text();
+  } catch {
+    throw new PublicError(400, 'Invalid JSON body');
+  }
+  if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
+    throw new PublicError(413, 'Request body is too large');
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    throw new PublicError(400, 'Invalid JSON body');
+  }
+  if (!plainObject(body) || !exactKeys(body, ['agency_id', 'referral_id'])) {
+    throw new PublicError(400, 'Invalid request');
+  }
+  if (!exactIdentifier(body.agency_id) || !exactIdentifier(body.referral_id)) {
+    throw new PublicError(400, 'Invalid request');
+  }
+  return { agencyId: body.agency_id as string, referralId: body.referral_id as string };
+}
+
+function unwrapFunctionResult(value: unknown) {
+  return plainObject(value) && plainObject(value.data) ? value.data : value;
+}
+
+function validateAuthorizedReferralResult(
+  value: unknown,
+  agencyId: string,
+  referralId: string,
+) {
+  if (!plainObject(value) || !exactKeys(value, ['success', 'action', 'referral', 'scope'])) {
+    throw new PublicError(502, 'Referral authorization response was invalid');
+  }
+  const { referral, scope } = value;
+  if (
+    value.success !== true
+    || value.action !== 'get'
+    || !plainObject(referral)
+    || referral.id !== referralId
+    || referral.agency_id !== agencyId
+    || !Number.isSafeInteger(referral.version)
+    || referral.version < 1
+    || !Number.isFinite(Date.parse(referral.created_date))
+    || !Number.isFinite(Date.parse(referral.updated_date))
+    || !plainObject(scope)
+    || !exactKeys(scope, ['agency_id', 'membership_id', 'membership_version', 'tenant_role'])
+    || scope.agency_id !== agencyId
+    || !exactIdentifier(scope.membership_id)
+    || !Number.isSafeInteger(scope.membership_version)
+    || scope.membership_version < 1
+    || !INTAKE_ROLES.has(scope.tenant_role)
+  ) {
+    throw new PublicError(502, 'Referral authorization response was invalid');
+  }
+  return referral;
+}
 
 Deno.serve(async (req) => {
   try {
+    const { agencyId, referralId } = await parseInput(req);
     const base44 = createClientFromRequest(req);
-
-    // Require authentication: previously unauthenticated, so any caller could
-    // read a referral's full demographics/clinical PHI by id (IDOR).
-    const user = await base44.auth.me();
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const brokerResponse = await base44.functions.invoke('manageAuthorizedReferral', {
+      action: 'get',
+      agency_id: agencyId,
+      referral_id: referralId,
+    });
+    const referral = validateAuthorizedReferralResult(
+      unwrapFunctionResult(brokerResponse),
+      agencyId,
+      referralId,
+    );
+    if (!plainObject(referral.extracted_data)) {
+      throw new PublicError(404, 'Referral not found or not processed');
     }
+    const refData = referral.extracted_data;
 
-    const { referral_id } = await req.json();
-
-    if (!referral_id) {
-      return Response.json({ error: 'referral_id is required' }, { status: 400 });
-    }
-
-    // Fetch the referral with the USER-SCOPED client so RLS restricts it to
-    // referrals the caller may see (the frontend reads Referral the same way).
-    // The prior asServiceRole read bypassed RLS — any caller could read any
-    // referral's demographics/clinical PHI by id, despite the "fixed" comment.
-    const referral = await base44.entities.Referral.filter({ id: referral_id }, undefined, 5000);
-    if (!referral?.length || !referral[0].extracted_data) {
-      return Response.json({ error: 'Referral not found or not processed' }, { status: 404 });
-    }
-
-    const refData = referral[0].extracted_data;
-
-    // Extract and format data for Smart Note pre-population
     const smartNoteData = {
-      patient_id: referral[0].patient_id,
+      patient_id: referral.patient_id,
       visit_type: 'admission',
       visit_date: refData.admission_details?.admission_date || new Date().toISOString().split('T')[0],
       
@@ -86,10 +166,33 @@ Deno.serve(async (req) => {
       }
     };
 
-    return Response.json({ smartNoteData });
+    return Response.json({
+      success: true,
+      smartNoteData,
+      scope: {
+        agency_id: agencyId,
+        referral_id: referralId,
+        referral_version: referral.version,
+      },
+    }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
-    console.error('Error extracting referral data:', error);
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
+    if (error instanceof PublicError) {
+      return Response.json(
+        { error: error.message },
+        {
+          status: error.status,
+          headers: {
+            'Cache-Control': 'no-store',
+            ...(error.status === 405 ? { Allow: 'POST' } : {}),
+          },
+        },
+      );
+    }
+    console.error('extractReferralDataForSmartNote failed');
+    return Response.json(
+      { error: 'Internal server error' },
+      { status: 500, headers: { 'Cache-Control': 'no-store' } },
+    );
   }
 });
 

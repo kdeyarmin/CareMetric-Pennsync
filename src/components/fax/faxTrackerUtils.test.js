@@ -24,6 +24,7 @@ test('getStatusCounts normalizes unknown status to pending', () => {
     { status: 'delivered' },
     { status: 'failed' },
     { status: 'queued' },
+    { status: 'submission_unknown' },
     { status: 'in_transit' },
     {}
   ];
@@ -32,7 +33,8 @@ test('getStatusCounts normalizes unknown status to pending', () => {
     delivered: 1,
     failed: 1,
     pending: 2,
-    queued: 1
+    queued: 1,
+    needs_review: 1
   });
 });
 
@@ -50,6 +52,7 @@ test('getStatusCounts handles empty arrays', () => {
     delivered: 0,
     failed: 0,
     pending: 0,
-    queued: 0
+    queued: 0,
+    needs_review: 0
   });
 });

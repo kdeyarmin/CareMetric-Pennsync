@@ -1,4 +1,10 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
+
+// Deployment is intentionally harmless until the notification authority and
+// hosted scheduler/CAS evidence have been reviewed. The native workflow owns
+// the schedule, but this handler needs a separate explicit runtime release.
+const STALE_FOLLOW_UP_WORKFLOW_ENABLED =
+  String(Deno.env.get('WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS') || '').trim() === 'enabled-v1';
 
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
@@ -42,88 +48,567 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-
-// checkStaleFollowUpRequests — scheduled job that escalates provider
-// follow-up requests that were SENT but never answered.
-//
-// Plain Deno.serve endpoint like the other scheduled jobs (no in-repo cron:
-// register a scheduled trigger on the Base44 dashboard, POST with empty body;
-// see docs/LEARNING_CENTER_SCHEDULED_JOBS.md for the registration steps).
-// Recommended cadence: daily.
-//
-// Auth requires either an admin session or the configured `x-internal-secret` scheduler header.
-
 const DEFAULT_STALE_DAYS = 4;
+const MAX_BODY_BYTES = 10_000;
+const MAX_IDENTIFIER_LENGTH = 200;
+const MAX_REFERRAL_SCAN = 5000;
+const MAX_AGENCY_SCAN = 1000;
+const EXACT_ROW_LIMIT = 10;
+const MEMBERSHIP_SCAN_LIMIT = 100;
+const NOTIFICATION_SCAN_LIMIT = 10;
+const CLAIM_LEASE_MS = 10 * 60 * 1000;
+const ENABLED_AGENCY_STATUSES = new Set(['active', 'trial']);
+const MEMBERSHIP_STATUSES = new Set(['pending', 'active', 'suspended', 'revoked']);
+const TENANT_ROLES = new Set([
+  'agency_admin',
+  'manager',
+  'clinician',
+  'office_staff',
+  'social_worker',
+  'spiritual_care',
+]);
+
+class PublicError extends Error {
+  status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'PublicError';
+    this.status = status;
+  }
+}
+
+function exactIdentifier(value: unknown) {
+  if (typeof value !== 'string') return null;
+  if (
+    !value
+    || value.length > MAX_IDENTIFIER_LENGTH
+    || value.trim() !== value
+    || value.startsWith('$')
+    || /[\u0000-\u001f\u007f]/.test(value)
+  ) return null;
+  return value;
+}
+
+function canonicalEmail(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const email = value.trim().toLowerCase();
+  return email && email.length <= 320 && email.includes('@') && !/\s/.test(email)
+    ? email
+    : null;
+}
+
+function plainObject(value: unknown): value is Record<string, any> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function requireRows(value: unknown, label: string) {
+  if (!Array.isArray(value)) throw new Error(`${label} returned a non-array result`);
+  return value as Array<Record<string, any>>;
+}
+
+function validInstant(value: unknown) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function boundedReason(value: unknown) {
+  if (typeof value !== 'string') return null;
+  const reason = value.trim();
+  return reason && reason.length <= 500 ? reason : null;
+}
+
+function sameJson(left: unknown, right: unknown) {
+  return JSON.stringify(left) === JSON.stringify(right);
+}
+
+async function parseInput(req: Request) {
+  if (req.method !== 'POST') throw new PublicError(405, 'Method not allowed');
+  const statedLength = Number(req.headers.get('content-length'));
+  if (Number.isFinite(statedLength) && statedLength > MAX_BODY_BYTES) {
+    throw new PublicError(413, 'Request body is too large');
+  }
+  let raw = '';
+  try {
+    raw = await req.text();
+  } catch {
+    throw new PublicError(400, 'Invalid JSON body');
+  }
+  if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
+    throw new PublicError(413, 'Request body is too large');
+  }
+  let body: unknown;
+  try {
+    body = JSON.parse(raw);
+  } catch {
+    throw new PublicError(400, 'Invalid JSON body');
+  }
+  if (!plainObject(body)) throw new PublicError(400, 'Request body must be an object');
+  if (Object.keys(body).some((key) => !['agency_id', 'stale_days'].includes(key))) {
+    throw new PublicError(400, 'Request contains unsupported fields');
+  }
+  const agencyId = body.agency_id === undefined ? null : exactIdentifier(body.agency_id);
+  const staleDays = body.stale_days === undefined ? DEFAULT_STALE_DAYS : Number(body.stale_days);
+  if (body.agency_id !== undefined && !agencyId) {
+    throw new PublicError(400, 'agency_id is invalid');
+  }
+  if (!Number.isSafeInteger(staleDays) || staleDays < 1 || staleDays > 30) {
+    throw new PublicError(400, 'stale_days is invalid');
+  }
+  return { agencyId, staleDays };
+}
+
+async function loadScheduledAgencyIds(entities: Record<string, any>) {
+  const ids = new Set<string>();
+  for (const status of ENABLED_AGENCY_STATUSES) {
+    const rows = requireRows(
+      await entities.Agency.filter({ status }, undefined, MAX_AGENCY_SCAN),
+      'Agency.filter',
+    );
+    if (rows.length >= MAX_AGENCY_SCAN) {
+      throw new PublicError(409, 'Agency scan is incomplete');
+    }
+    for (const row of rows) {
+      const id = exactIdentifier(row?.id);
+      if (!id || row?.id !== id || row?.status !== status || ids.has(id)) {
+        throw new PublicError(409, 'Agency scan scope could not be verified');
+      }
+      ids.add(id);
+    }
+  }
+  return [...ids].sort();
+}
+
+async function loadEnabledAgency(entities: Record<string, any>, agencyId: string) {
+  const rows = requireRows(
+    await entities.Agency.filter({ id: agencyId }, undefined, EXACT_ROW_LIMIT),
+    'Agency.filter',
+  );
+  if (rows.length >= EXACT_ROW_LIMIT) throw new PublicError(409, 'Agency is ambiguous');
+  if (rows.some((row) => row?.id !== agencyId)) {
+    throw new PublicError(409, 'Agency query scope could not be verified');
+  }
+  if (rows.length !== 1 || !ENABLED_AGENCY_STATUSES.has(String(rows[0].status || ''))) {
+    throw new PublicError(403, 'Agency is unavailable');
+  }
+  return rows[0];
+}
+
+function validateReferral(row: Record<string, any>, agencyId: string) {
+  const id = exactIdentifier(row?.id);
+  const creatorId = exactIdentifier(row?.created_by_user_id);
+  const creatorEmail = canonicalEmail(row?.created_by_user_email_normalized);
+  const requestId = exactIdentifier(row?.client_request_id);
+  if (
+    !id
+    || row.agency_id !== agencyId
+    || !creatorId
+    || !creatorEmail
+    || row.created_by_user_email_normalized !== creatorEmail
+    || canonicalEmail(row.created_by) !== creatorEmail
+    || !requestId
+    || row.referral_creation_key !== `${agencyId}:${creatorId}:${requestId}`
+    || !Number.isSafeInteger(row.version)
+    || row.version < 1
+    || !validInstant(row.created_date)
+    || !validInstant(row.updated_date)
+    || row.archived_at != null
+  ) {
+    throw new PublicError(409, 'Referral integrity check failed');
+  }
+  return row;
+}
+
+async function loadExactReferral(entities: Record<string, any>, agencyId: string, referralId: string) {
+  const rows = requireRows(
+    await entities.Referral.filter(
+      { id: referralId, agency_id: agencyId },
+      undefined,
+      EXACT_ROW_LIMIT,
+    ),
+    'Referral.filter',
+  );
+  if (rows.length >= EXACT_ROW_LIMIT) throw new PublicError(409, 'Referral is ambiguous');
+  if (rows.some((row) => row?.id !== referralId || row?.agency_id !== agencyId)) {
+    throw new PublicError(409, 'Referral query scope could not be verified');
+  }
+  if (rows.length !== 1) throw new PublicError(409, 'Referral changed during escalation');
+  return validateReferral(rows[0], agencyId);
+}
+
+async function loadActiveRecipient(
+  entities: Record<string, any>,
+  agencyId: string,
+  userId: string,
+  normalizedEmail: string,
+) {
+  const rows = requireRows(
+    await entities.AgencyMembership.filter(
+      { agency_id: agencyId, user_id: userId },
+      '-updated_date',
+      MEMBERSHIP_SCAN_LIMIT,
+    ),
+    'AgencyMembership.filter',
+  );
+  if (rows.length >= MEMBERSHIP_SCAN_LIMIT) {
+    throw new PublicError(409, 'Notification recipient membership is ambiguous');
+  }
+  if (rows.some((row) => row?.agency_id !== agencyId || row?.user_id !== userId)) {
+    throw new PublicError(409, 'Notification recipient query scope could not be verified');
+  }
+  if (rows.length !== 1) return null;
+  const row = rows[0];
+  const storedEmail = canonicalEmail(row.user_email_normalized);
+  const transitionEmail = canonicalEmail(row.last_transition_by_email_normalized);
+  const status = String(row.status || '');
+  if (
+    !exactIdentifier(row.id)
+    || row.membership_key !== `${agencyId}:${userId}`
+    || storedEmail !== normalizedEmail
+    || row.user_email_normalized !== storedEmail
+    || !TENANT_ROLES.has(String(row.tenant_role || ''))
+    || !MEMBERSHIP_STATUSES.has(status)
+    || !exactIdentifier(row.created_by_user_id)
+    || !exactIdentifier(row.last_transition_by_user_id)
+    || !transitionEmail
+    || row.last_transition_by_email_normalized !== transitionEmail
+    || !validInstant(row.last_transition_at)
+    || !boundedReason(row.last_transition_reason)
+    || !Number.isSafeInteger(row.version)
+    || row.version < 1
+    || ((status === 'active' || status === 'suspended') && !validInstant(row.activated_at))
+    || (status === 'revoked' && (!validInstant(row.revoked_at) || !boundedReason(row.revocation_reason)))
+  ) {
+    throw new PublicError(409, 'Notification recipient membership integrity check failed');
+  }
+  return status === 'active' ? row : null;
+}
+
+function followUpNotificationKey(agencyId: string, referralId: string, sentAt: string) {
+  const sentMs = Date.parse(sentAt);
+  if (!Number.isFinite(sentMs)) throw new PublicError(409, 'Referral follow-up timestamp is invalid');
+  return `referral-stale:${agencyId}:${referralId}:${sentMs}`;
+}
+
+function expectedNotification(
+  agencyId: string,
+  referralId: string,
+  recipient: Record<string, any>,
+  key: string,
+  staleDays: number,
+) {
+  return {
+    agency_id: agencyId,
+    dedupe_key: key,
+    recipient_user_id: recipient.user_id,
+    recipient_membership_id: recipient.id,
+    recipient_membership_version: recipient.version,
+    authority_version: 1,
+    authority_state: 'active',
+    version: 1,
+    user_email: recipient.user_email_normalized,
+    title: 'Provider follow-up request unanswered',
+    message: `A provider information request has had no response for ${staleDays}+ days. Review it before the start-of-care deadline.`,
+    type: 'info',
+    priority: 'high',
+    metadata: {
+      agency_id: agencyId,
+      related_entity: 'Referral',
+      related_entity_id: referralId,
+      workflow: 'stale_provider_follow_up',
+    },
+    is_read: false,
+    dismissed: false,
+    action_url: `/ReferralFollowUp?id=${encodeURIComponent(referralId)}`,
+  };
+}
+
+function notificationMatches(row: Record<string, any>, expected: Record<string, any>) {
+  return row?.agency_id === expected.agency_id
+    && row?.dedupe_key === expected.dedupe_key
+    && row?.recipient_user_id === expected.recipient_user_id
+    && row?.recipient_membership_id === expected.recipient_membership_id
+    && row?.recipient_membership_version === expected.recipient_membership_version
+    && row?.authority_version === expected.authority_version
+    && row?.authority_state === expected.authority_state
+    && Number.isSafeInteger(row?.version)
+    && row.version >= 1
+    && canonicalEmail(row?.user_email) === expected.user_email
+    && row?.title === expected.title
+    && row?.message === expected.message
+    && row?.type === expected.type
+    && row?.priority === expected.priority
+    && sameJson(row?.metadata, expected.metadata)
+    && typeof row?.is_read === 'boolean'
+    && (row.is_read ? validInstant(row.read_at) : row.read_at == null)
+    && typeof row?.dismissed === 'boolean'
+    && (row.dismissed ? validInstant(row.dismissed_at) : row.dismissed_at == null)
+    && row?.action_url === expected.action_url;
+}
+
+async function findNotification(
+  entities: Record<string, any>,
+  expected: Record<string, any>,
+) {
+  const rows = requireRows(
+    await entities.Notification.filter(
+      {
+        agency_id: expected.agency_id,
+        dedupe_key: expected.dedupe_key,
+        recipient_user_id: expected.recipient_user_id,
+        user_email: expected.user_email,
+      },
+      '-created_date',
+      NOTIFICATION_SCAN_LIMIT,
+    ),
+    'Notification.filter',
+  );
+  if (rows.length >= NOTIFICATION_SCAN_LIMIT || rows.length > 1) {
+    throw new PublicError(409, 'Referral follow-up notification is ambiguous');
+  }
+  if (rows.some((row) => !notificationMatches(row, expected))) {
+    throw new PublicError(409, 'Referral follow-up notification integrity check failed');
+  }
+  return rows[0] || null;
+}
+
+async function conditionalFollowUpUpdate(
+  entities: Record<string, any>,
+  referral: Record<string, any>,
+  followUpRequests: Record<string, any>,
+) {
+  const result = await entities.Referral.updateMany(
+    {
+      id: referral.id,
+      agency_id: referral.agency_id,
+      version: referral.version,
+      updated_date: referral.updated_date,
+    },
+    { $set: { follow_up_requests: followUpRequests }, $inc: { version: 1 } },
+  );
+  return plainObject(result)
+    && result.success === true
+    && result.updated === 1
+    && result.has_more === false;
+}
+
+async function processAgency(
+  entities: Record<string, any>,
+  agencyId: string,
+  staleDays: number,
+  runId: string,
+) {
+  await loadEnabledAgency(entities, agencyId);
+
+  const referrals = requireRows(
+    await entities.Referral.filter(
+      { agency_id: agencyId, archived_at: { $exists: false } },
+      '-created_date',
+      MAX_REFERRAL_SCAN,
+    ),
+    'Referral.filter',
+  );
+  if (referrals.length >= MAX_REFERRAL_SCAN) {
+    throw new PublicError(409, 'Referral scan is incomplete');
+  }
+  if (referrals.some((row) => row?.agency_id !== agencyId || row?.archived_at != null)) {
+    throw new PublicError(409, 'Referral scan scope could not be verified');
+  }
+
+  const cutoffMs = Date.now() - staleDays * 24 * 60 * 60 * 1000;
+  let escalated = 0;
+  let skippedWithoutRecipient = 0;
+  let failed = 0;
+
+  for (const candidate of referrals) {
+    try {
+      const referral = validateReferral(candidate, agencyId);
+      const followUp = referral.follow_up_requests;
+      if (!plainObject(followUp) || followUp.status !== 'sent' || !validInstant(followUp.generated_at)) {
+        continue;
+      }
+      const sentMs = Date.parse(followUp.generated_at);
+      if (sentMs > cutoffMs) continue;
+      if (validInstant(followUp.stale_notified_at)
+        && Date.parse(followUp.stale_notified_at) >= sentMs) continue;
+      if (validInstant(followUp.stale_notification_claimed_at)
+        && Date.parse(followUp.stale_notification_claimed_at) > Date.now() - CLAIM_LEASE_MS) continue;
+
+      const recipient = await loadActiveRecipient(
+        entities,
+        agencyId,
+        referral.created_by_user_id,
+        referral.created_by_user_email_normalized,
+      );
+      if (!recipient) {
+        skippedWithoutRecipient += 1;
+        continue;
+      }
+      const key = followUpNotificationKey(agencyId, referral.id, followUp.generated_at);
+      const claimAt = new Date().toISOString();
+      const claimedFollowUp = {
+        ...followUp,
+        stale_notification_key: key,
+        stale_notification_claimed_by: runId,
+        stale_notification_claimed_at: claimAt,
+      };
+
+      const current = await loadExactReferral(entities, agencyId, referral.id);
+      if (!sameJson(current.follow_up_requests, followUp)) continue;
+      const claimWon = await conditionalFollowUpUpdate(entities, current, claimedFollowUp);
+      if (!claimWon) continue;
+      const claimed = await loadExactReferral(entities, agencyId, referral.id);
+      if (
+        claimed.follow_up_requests?.stale_notification_claimed_by !== runId
+        || claimed.follow_up_requests?.stale_notification_key !== key
+      ) continue;
+
+      const notification = expectedNotification(
+        agencyId,
+        referral.id,
+        recipient,
+        key,
+        staleDays,
+      );
+      let existing = await findNotification(entities, notification);
+      if (!existing) {
+        try {
+          await entities.Notification.create(notification);
+        } catch {
+          await conditionalFollowUpUpdate(entities, claimed, followUp).catch(() => false);
+          failed += 1;
+          continue;
+        }
+        existing = await findNotification(entities, notification);
+        if (!existing) {
+          await conditionalFollowUpUpdate(entities, claimed, followUp).catch(() => false);
+          failed += 1;
+          continue;
+        }
+      }
+
+      await loadEnabledAgency(entities, agencyId);
+      const beforeFinalize = await loadExactReferral(entities, agencyId, referral.id);
+      if (
+        beforeFinalize.follow_up_requests?.stale_notification_claimed_by !== runId
+        || beforeFinalize.follow_up_requests?.stale_notification_key !== key
+      ) continue;
+      const finalizedFollowUp = { ...beforeFinalize.follow_up_requests };
+      delete finalizedFollowUp.stale_notification_claimed_by;
+      delete finalizedFollowUp.stale_notification_claimed_at;
+      finalizedFollowUp.stale_notified_at = new Date().toISOString();
+      finalizedFollowUp.stale_notification_key = key;
+      const finalized = await conditionalFollowUpUpdate(
+        entities,
+        beforeFinalize,
+        finalizedFollowUp,
+      );
+      if (!finalized) continue;
+      const verified = await loadExactReferral(entities, agencyId, referral.id);
+      if (
+        verified.follow_up_requests?.stale_notification_key !== key
+        || !validInstant(verified.follow_up_requests?.stale_notified_at)
+        || verified.follow_up_requests?.stale_notification_claimed_by != null
+      ) throw new Error('Referral stale notification finalization failed');
+      escalated += 1;
+    } catch (error) {
+      if (error instanceof PublicError && error.status >= 400 && error.status < 500) {
+        throw error;
+      }
+      failed += 1;
+    }
+  }
+
+  return {
+    scanned: referrals.length,
+    escalated,
+    skipped_without_active_recipient: skippedWithoutRecipient,
+    failed,
+  };
+}
 
 Deno.serve(async (req) => {
+  if (!STALE_FOLLOW_UP_WORKFLOW_ENABLED) {
+    return Response.json(
+      {
+        error: 'Stale follow-up processing is disabled pending hosted validation',
+        code: 'stale_follow_up_workflow_disabled',
+      },
+      { status: 503, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } },
+    );
+  }
   try {
     const base44 = createClientFromRequest(req);
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
-    if (authError) return authError;
-    if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
-
-    const body = await req.json().catch(() => ({}));
-    const staleDays = Math.min(Math.max(Number(body?.stale_days) || DEFAULT_STALE_DAYS, 1), 30);
-    const cutoffMs = Date.now() - staleDays * 24 * 60 * 60 * 1000;
-    const now = new Date().toISOString();
-
-    // Recent referrals only — a request stale for months has been handled (or
-    // abandoned) outside this loop; don't re-nag forever.
-    const referrals = await base44.asServiceRole.entities.Referral.list('-created_date', 300);
-    let escalated = 0;
-
-    for (const r of referrals || []) {
-      const fu = r.follow_up_requests;
-      if (!fu || fu.status !== 'sent' || !fu.generated_at) continue;
-      const sentMs = Date.parse(fu.generated_at);
-      if (!Number.isFinite(sentMs) || sentMs > cutoffMs) continue;
-      // One escalation per send: skip when already notified for this send.
-      if (fu.stale_notified_at && Date.parse(fu.stale_notified_at) >= sentMs) continue;
-      if (!r.created_by) continue;
-
-      // Claim before notify so overlapping cron runs don't double-escalate, and
-      // only keep the stamp when Notification.create succeeds.
-      const claimAt = now;
-      const priorStale = fu.stale_notified_at || null;
-      try {
-        await base44.asServiceRole.entities.Referral.update(r.id, {
-          follow_up_requests: { ...fu, stale_notified_at: claimAt },
-        });
-      } catch {
-        continue;
-      }
-      const claimCheck = await base44.asServiceRole.entities.Referral
-        .filter({ id: r.id }, '-created_date', 1).catch(() => []);
-      const claimedFu = claimCheck[0]?.follow_up_requests;
-      if (!claimedFu || claimedFu.stale_notified_at !== claimAt) {
-        continue;
-      }
-
-      try {
-        await base44.asServiceRole.entities.Notification.create({
-          user_email: r.created_by,
-          title: '⏰ Provider follow-up request unanswered',
-          message: `The information request for ${r.patient_name || 'a referral'} has had no provider response for ${staleDays}+ days. The SOC clock is running — consider a phone follow-up or re-sending the form.`,
-          type: 'info',
-          priority: 'high',
-          metadata: { related_entity: 'Referral', related_entity_id: r.id },
-          is_read: false,
-          action_url: `/ReferralFollowUp?id=${r.id}`,
-        });
-      } catch (err) {
-        console.error('checkStaleFollowUpRequests: notify failed', err?.message || err);
-        await base44.asServiceRole.entities.Referral.update(r.id, {
-          follow_up_requests: { ...fu, stale_notified_at: priorStale },
-        }).catch(() => {});
-        continue;
-      }
-      escalated += 1;
+    if (authError) {
+      authError.headers.set('Cache-Control', 'no-store');
+      return authError;
+    }
+    if (isDeactivatedUser(me)) {
+      const response = DEACTIVATED_USER_RESPONSE();
+      response.headers.set('Cache-Control', 'no-store');
+      return response;
+    }
+    const { agencyId, staleDays } = await parseInput(req);
+    const entities = base44.asServiceRole.entities;
+    const agencyIds = agencyId ? [agencyId] : await loadScheduledAgencyIds(entities);
+    const runRoot = typeof globalThis.crypto?.randomUUID === 'function'
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const totals = {
+      scanned: 0,
+      escalated: 0,
+      skipped_without_active_recipient: 0,
+      failed: 0,
+    };
+    for (const scheduledAgencyId of agencyIds) {
+      const result = await processAgency(
+        entities,
+        scheduledAgencyId,
+        staleDays,
+        `referral-stale:${scheduledAgencyId}:${runRoot}`,
+      );
+      totals.scanned += result.scanned;
+      totals.escalated += result.escalated;
+      totals.skipped_without_active_recipient += result.skipped_without_active_recipient;
+      totals.failed += result.failed;
     }
 
-    return Response.json({ success: true, escalated, stale_days: staleDays });
+    const result = {
+      success: true,
+      agency_id: agencyId,
+      agencies_processed: agencyIds.length,
+      stale_days: staleDays,
+      ...totals,
+    };
+    if (totals.failed > 0) {
+      return Response.json({
+        ...result,
+        success: false,
+        error: 'One or more stale follow-up escalations failed',
+      }, {
+        status: 500,
+        headers: { 'Cache-Control': 'no-store' },
+      });
+    }
+    return Response.json(result, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
-    console.error('checkStaleFollowUpRequests error:', error);
-    return Response.json({ error: 'Stale follow-up check failed' }, { status: 500 });
+    if (error instanceof PublicError) {
+      return Response.json(
+        { error: error.message },
+        {
+          status: error.status,
+          headers: {
+            'Cache-Control': 'no-store',
+            ...(error.status === 405 ? { Allow: 'POST' } : {}),
+          },
+        },
+      );
+    }
+    console.error('checkStaleFollowUpRequests failed');
+    return Response.json(
+      { error: 'Stale follow-up check failed' },
+      { status: 500, headers: { 'Cache-Control': 'no-store' } },
+    );
   }
 });

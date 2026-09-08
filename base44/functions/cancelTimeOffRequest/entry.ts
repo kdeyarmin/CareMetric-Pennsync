@@ -1,5 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -201,9 +222,15 @@ Deno.serve(async (req) => {
       status: 'cancelled',
     });
 
+    const emailEligible = request.status === 'approved'
+      && !!request.manager_email
+      && request.manager_email !== user.email;
+    const deliveryPaused = emailEligible && !outboundDeliveryReleased();
+    let email = false;
+
     // If a manager had this on their plate, let them know it was withdrawn.
     try {
-      if (request.status === 'approved' && request.manager_email && request.manager_email !== user.email) {
+      if (emailEligible) {
         const who = request.employee_name || request.employee_email;
         const prettyType = request.request_type.replace(/_/g, ' ');
         await base44.asServiceRole.entities.Notification.create({
@@ -216,27 +243,30 @@ Deno.serve(async (req) => {
           action_label: 'View calendar',
           metadata: { time_off_request_id: request_id },
         });
-        await base44.asServiceRole.integrations.Core.SendEmail({
-          to: request.manager_email,
-          from_name: 'PennSync by CareMetric',
-          subject: `Time off cancelled by ${who}`,
-          body: renderBrandedEmail({
-            preheader: `${who} cancelled their previously approved ${prettyType}.`,
-            eyebrow: 'Time off cancelled',
-            title: `Time off cancelled by ${who}`,
-            intro: `${who} has cancelled their previously approved ${prettyType} for ${request.start_date} → ${request.end_date}.`,
-            sections: [
-              { rows: [['Employee', who], ['Type', prettyType], ['Dates', `${request.start_date} → ${request.end_date}`]] },
-              { note: 'View the team calendar in PennSync under Time Off.' },
-            ],
-          }),
-        }).catch(() => null);
+        if (!deliveryPaused) {
+          await base44.asServiceRole.integrations.Core.SendEmail({
+            to: request.manager_email,
+            from_name: 'PennSync by CareMetric',
+            subject: `Time off cancelled by ${who}`,
+            body: renderBrandedEmail({
+              preheader: `${who} cancelled their previously approved ${prettyType}.`,
+              eyebrow: 'Time off cancelled',
+              title: `Time off cancelled by ${who}`,
+              intro: `${who} has cancelled their previously approved ${prettyType} for ${request.start_date} → ${request.end_date}.`,
+              sections: [
+                { rows: [['Employee', who], ['Type', prettyType], ['Dates', `${request.start_date} → ${request.end_date}`]] },
+                { note: 'View the team calendar in PennSync under Time Off.' },
+              ],
+            }),
+          });
+          email = true;
+        }
       }
     } catch (_notifyError) {
       // Best-effort notification.
     }
 
-    return Response.json({ success: true, request: updated });
+    return Response.json({ success: true, request: updated, email, delivery_paused: deliveryPaused });
   } catch (error) {
     console.error('cancelTimeOffRequest failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

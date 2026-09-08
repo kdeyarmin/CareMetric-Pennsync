@@ -8,6 +8,32 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+const normalizeAgency = (value) => String(value || '').trim().toLowerCase();
+
+// `role` is protected by Base44; account_type and the other custom User fields
+// are not. Cross-agency badge processing therefore requires BOTH the protected
+// admin role and the server-only configured owner email.
+function isProtectedSuperAdmin(user, configuredEmail = Deno.env.get('SUPER_ADMIN_EMAIL')) {
+  const expected = normalizeEmail(configuredEmail);
+  return !!expected
+    && user?.role === 'admin'
+    && normalizeEmail(user?.email) === expected;
+}
+
+function canProcessAttemptBadges({ caller, ownerEmail, ownerUser, configuredSuperAdminEmail }) {
+  const normalizedOwner = normalizeEmail(ownerEmail);
+  if (!normalizedOwner || !caller) return false;
+
+  if (normalizeEmail(caller.email) === normalizedOwner) return true;
+  if (caller.role !== 'admin') return false;
+  if (isProtectedSuperAdmin(caller, configuredSuperAdminEmail)) return true;
+
+  const callerAgency = normalizeAgency(caller.agency_name);
+  const ownerAgency = normalizeAgency(ownerUser?.agency_name);
+  return !!callerAgency && !!ownerAgency && callerAgency === ownerAgency;
+}
+
 
 Deno.serve(async (req) => {
   try {
@@ -29,20 +55,6 @@ Deno.serve(async (req) => {
 
     const attemptData = attempt[0];
 
-    // Authorization: a user may only earn badges from their OWN attempt. The
-    // attempt was read with the user-scoped client, but enforce ownership
-    // explicitly so a forwarded/guessed attempt_id can't award to this account.
-    // Fail closed: do NOT short-circuit when attemptData.user_id is falsy — a
-    // legacy/imported attempt with a missing user_id must not award to whoever
-    // forwards its id; treat an unknown owner as not-this-user.
-    // Platform-wide admin only; facility admins with an agency must not award
-    // badges for attempts outside their care (attempt ownership still applies).
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    if (!isPlatformAdmin && attemptData.user_id !== user.email) {
-      return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-
     // Badges/points/streak belong to the attempt's OWNER, never the caller. When
     // an admin (re)processes someone else's attempt, keying the awards to
     // `user.email` credited the ADMIN's leaderboard and left the nurse's attempt
@@ -52,11 +64,23 @@ Deno.serve(async (req) => {
     if (!ownerEmail) {
       return Response.json({ error: 'Attempt has no owner (user_id)' }, { status: 400 });
     }
-    let ownerName = user.full_name;
-    if (ownerEmail !== user.email) {
-      const owners = await base44.asServiceRole.entities.User.filter({ email: ownerEmail }, undefined, 5000).catch(() => []);
-      ownerName = owners?.[0]?.full_name || ownerEmail;
+
+    // Authorization is completed before any service-role access. The built-in
+    // admin role may read User rows under entity RLS, which lets us establish
+    // same-agency scope without bypassing policies. A non-admin never gets to
+    // use this lookup for another user.
+    const ownsAttempt = normalizeEmail(ownerEmail) === normalizeEmail(user.email);
+    let ownerUser = ownsAttempt ? user : null;
+    if (!ownsAttempt && user.role === 'admin') {
+      const owners = await base44.entities.User
+        .filter({ email: ownerEmail }, '-created_date', 1)
+        .catch(() => []);
+      ownerUser = owners?.[0] || null;
     }
+    if (!canProcessAttemptBadges({ caller: user, ownerEmail, ownerUser })) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    const ownerName = ownerUser?.full_name || ownerEmail;
 
     // Idempotency (complete): once an attempt has been processed, re-running is a
     // no-op — this covers attempts that earn NO badge too, which would otherwise
@@ -82,7 +106,10 @@ Deno.serve(async (req) => {
       : `badge-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     const claimAt = new Date().toISOString();
     try {
-      await base44.entities.TrainingAttempt.update(attemptData.id, {
+      // TrainingAttempt mutations are admin/service-role only because a passing
+      // attempt is certificate evidence. This privileged claim is deliberately
+      // reached only after authentication plus ownership/agency authorization.
+      await base44.asServiceRole.entities.TrainingAttempt.update(attemptData.id, {
         badges_processed_at: claimAt,
         badges_claim_token: claimToken,
       });
@@ -122,7 +149,7 @@ Deno.serve(async (req) => {
     const leaderboardEntry = leaderboard[0];
 
     // Get all available badges
-    const allBadges = await base44.entities.SkillBadge.filter({ active: true }, undefined, 5000);
+    const allBadges = await base44.asServiceRole.entities.SkillBadge.filter({ active: true }, undefined, 5000);
 
     // Resolve the assignment and whether this attempt actually PASSED up front, so
     // achievement badges (high score, early completion, streak) and the

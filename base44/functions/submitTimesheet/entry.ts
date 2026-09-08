@@ -1,5 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -540,6 +561,9 @@ Deno.serve(async (req) => {
       }
     }
 
+    let email = false;
+    let deliveryPaused = false;
+
     // Notify the approver(s) only when actually submitted (not for drafts).
     if (status === 'submitted') {
       try {
@@ -560,6 +584,7 @@ Deno.serve(async (req) => {
             recipients = recipients.filter((u) => u.account_type === 'super_admin');
           }
         }
+        deliveryPaused = recipients.length > 0 && !outboundDeliveryReleased();
         const employeeName = user.full_name || user.email;
         const prettyService = service_type === 'hospice' ? 'Hospice' : 'Home Health';
         const period = `${pay_period_start} → ${pay_period_end}`;
@@ -577,41 +602,44 @@ Deno.serve(async (req) => {
             })
           )
         );
-        const timesheetBody = renderBrandedEmail({
-          preheader: `${employeeName} submitted a timesheet for your review.`,
-          eyebrow: 'Timesheet approval',
-          title: `New timesheet from ${employeeName}`,
-          intro: `${employeeName} submitted a ${prettyService} timesheet for the pay period ${period} and needs your review.`,
-          sections: [
-            {
-              rows: [
-                ['Service line', prettyService],
-                ['Pay period', period],
-                ['Regular hours', String(numbers.regular_hours)],
-                ...(numbers.overtime_hours ? [['Overtime', String(numbers.overtime_hours)]] : []),
-                ...(auto_pto_hours ? [['Approved PTO carried in', `${auto_pto_hours} hrs`]] : []),
-                ...(service_type === 'home_health' && numbers.regular_points ? [['Regular points', String(numbers.regular_points)]] : []),
-              ],
-            },
-            { note: 'Review and approve it in PennSync under Timesheets → Approvals.' },
-          ],
-        });
-        await Promise.all(
-          recipients.map((r) =>
-            base44.asServiceRole.integrations.Core.SendEmail({
-              to: r.email,
-              from_name: 'PennSync by CareMetric',
-              subject: `Timesheet from ${employeeName} — ${period}`,
-              body: timesheetBody,
-            }).catch(() => null)
-          )
-        );
+        if (!deliveryPaused) {
+          const timesheetBody = renderBrandedEmail({
+            preheader: `${employeeName} submitted a timesheet for your review.`,
+            eyebrow: 'Timesheet approval',
+            title: `New timesheet from ${employeeName}`,
+            intro: `${employeeName} submitted a ${prettyService} timesheet for the pay period ${period} and needs your review.`,
+            sections: [
+              {
+                rows: [
+                  ['Service line', prettyService],
+                  ['Pay period', period],
+                  ['Regular hours', String(numbers.regular_hours)],
+                  ...(numbers.overtime_hours ? [['Overtime', String(numbers.overtime_hours)]] : []),
+                  ...(auto_pto_hours ? [['Approved PTO carried in', `${auto_pto_hours} hrs`]] : []),
+                  ...(service_type === 'home_health' && numbers.regular_points ? [['Regular points', String(numbers.regular_points)]] : []),
+                ],
+              },
+              { note: 'Review and approve it in PennSync under Timesheets → Approvals.' },
+            ],
+          });
+          const deliveryResults = await Promise.all(
+            recipients.map((r) =>
+              base44.asServiceRole.integrations.Core.SendEmail({
+                to: r.email,
+                from_name: 'PennSync by CareMetric',
+                subject: `Timesheet from ${employeeName} — ${period}`,
+                body: timesheetBody,
+              }).then(() => true).catch(() => false)
+            )
+          );
+          email = deliveryResults.some(Boolean);
+        }
       } catch (_notifyError) {
         // Notifications/emails are best-effort; the dashboard remains the source of truth.
       }
     }
 
-    return Response.json({ success: true, timesheet: saved });
+    return Response.json({ success: true, timesheet: saved, email, delivery_paused: deliveryPaused });
   } catch (error) {
     console.error('submitTimesheet failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

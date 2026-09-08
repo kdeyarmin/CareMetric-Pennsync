@@ -111,5 +111,14 @@
     "recommendation_type",
     "title",
     "description"
-  ]
+  ],
+  // The only UI readers/writers live inside the hard-paused OASIS AI surfaces.
+  // Keep this patient-linked PHI unavailable until those surfaces return behind
+  // a server-owned patient/tenant authorization boundary.
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

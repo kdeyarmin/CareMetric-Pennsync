@@ -92,4 +92,11 @@
     "insight_type",
     "rating"
   ]
+  ,
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

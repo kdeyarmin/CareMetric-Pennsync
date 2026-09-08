@@ -55,5 +55,14 @@
   },
   "required": [
     "name"
-  ]
+  ],
+  // Personal fax templates can contain recipient details and document URLs.
+  // Base44's immutable created_by field is the ownership boundary; shared
+  // tenant templates require the future server-owned membership model.
+  "rls": {
+    "read": { "created_by": "{{user.email}}" },
+    "create": { "created_by": "{{user.email}}" },
+    "update": { "created_by": "{{user.email}}" },
+    "delete": { "created_by": "{{user.email}}" }
+  }
 }

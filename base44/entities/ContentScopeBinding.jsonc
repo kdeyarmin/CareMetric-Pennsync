@@ -1,0 +1,84 @@
+{
+  "name": "ContentScopeBinding",
+  "type": "object",
+  "description": "Service-owned immutable scope provenance for legacy content records. Global content has no agency_id; agency content has exactly one immutable agency_id. Direct CRUD stays denied until purpose-bound content brokers and hosted two-agency proof exist.",
+  "properties": {
+    "binding_key": {
+      "type": "string",
+      "description": "Canonical entity_name:resource_id key. Datastore uniqueness must still be proved before migration."
+    },
+    "entity_name": {
+      "type": "string",
+      "enum": [
+        "CustomValidationRule",
+        "EducationMaterial",
+        "LearningPlan",
+        "LibraryDocument",
+        "PDFTemplate",
+        "TrainingCourse"
+      ],
+      "description": "Allowlisted content entity whose scope is bound by this row. LearningPlanCourse and TrainingModule inherit scope from their verified parent."
+    },
+    "resource_id": {
+      "type": "string",
+      "description": "Exact Base44 id of the bound content record."
+    },
+    "scope_type": {
+      "type": "string",
+      "enum": ["global", "agency"],
+      "description": "Global content is platform-curated; agency content is private to one tenant."
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Agency id for agency scope; absent for global scope."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "quarantined", "retired"],
+      "default": "quarantined"
+    },
+    "created_by_user_id": {
+      "type": "string",
+      "description": "Immutable built-in User id of the broker-authorized creator."
+    },
+    "created_by_user_email_normalized": {
+      "type": "string",
+      "format": "email",
+      "description": "Normalized built-in email retained only as an integrity corroboration."
+    },
+    "last_transition_by_user_id": {
+      "type": "string"
+    },
+    "last_transition_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_transition_reason": {
+      "type": "string"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1
+    }
+  },
+  "required": [
+    "binding_key",
+    "entity_name",
+    "resource_id",
+    "scope_type",
+    "status",
+    "created_by_user_id",
+    "created_by_user_email_normalized",
+    "last_transition_by_user_id",
+    "last_transition_at",
+    "last_transition_reason",
+    "version"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}

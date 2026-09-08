@@ -17,6 +17,7 @@ import PhysicianForm from './PhysicianForm';
 import ProviderCsvImport from './ProviderCsvImport';
 import { formatPhoneDisplay, normalizeE164 } from '@/components/voice/phoneUtils';
 import { toast } from 'sonner';
+import { openAuthorityBoundWindow } from '@/lib/authorityBoundWindows';
 
 export default function PhysicianDirectory({ onSelectPhysician, mode = 'directory' }) {
   const [searchTerm, setSearchTerm] = useState('');
@@ -253,17 +254,18 @@ export default function PhysicianDirectory({ onSelectPhysician, mode = 'director
                           </a>
                         )}
                         {physician.office_address && (
-                          <a
-                            href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([physician.office_address, physician.office_city, physician.office_state, physician.office_zip].filter(Boolean).join(', '))}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              openAuthorityBoundWindow(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([physician.office_address, physician.office_city, physician.office_state, physician.office_zip].filter(Boolean).join(', '))}`);
+                            }}
                             className="flex items-center gap-2 min-h-[36px] text-indigo-600 hover:underline"
                             title="Open address in maps"
                           >
                             <MapPin className="w-3 h-3 shrink-0" />
                             <span>{physician.office_address}, {physician.office_city}, {physician.office_state} {physician.office_zip}</span>
-                          </a>
+                          </button>
                         )}
                       </div>
 

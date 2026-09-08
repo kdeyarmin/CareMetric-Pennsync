@@ -164,6 +164,26 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 
 const reminderOffsets = [90, 60, 30, 14];
 
@@ -177,6 +197,7 @@ Deno.serve(async (req) => {
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
     if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
+    const deliveryReleased = outboundDeliveryReleased();
 
     const today = new Date();
     const runId = crypto.randomUUID();
@@ -232,6 +253,10 @@ Deno.serve(async (req) => {
         ? reminderOffsets.filter((o) => daysUntilExpiration <= o && !sentOffsets.includes(o))
         : [];
       if (dueOffsets.length === 0) continue;
+      // Status expiry above remains active while staging delivery is paused,
+      // but do not claim a reminder tier, create a sent-looking notification,
+      // or enqueue email work that did not run.
+      if (!deliveryReleased) continue;
 
       // Claim offsets BEFORE send so overlapping runs don't double-email, then
       // re-read to confirm we still own the claim. Prior code stamped offsets in
@@ -370,7 +395,12 @@ Deno.serve(async (req) => {
       await Promise.all(chunk.map(fn => fn()));
     }
 
-    return Response.json({ success: true, notifications_sent: notificationsSent });
+    return Response.json({
+      success: true,
+      notifications_sent: notificationsSent,
+      delivery_paused: !deliveryReleased,
+      ...(!deliveryReleased ? { code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED' } : {}),
+    }, { headers: { 'Cache-Control': 'no-store' } });
   } catch (error) {
     console.error('sendPersonnelExpirationNotifications failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

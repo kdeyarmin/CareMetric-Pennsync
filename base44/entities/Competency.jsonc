@@ -53,5 +53,11 @@
     "name",
     "role_target",
     "frequency"
-  ]
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
 }

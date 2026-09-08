@@ -4,14 +4,19 @@ Per-entity row-level-security recommendations for the PHI/private entities that 
 with **no `rls` block** (or an open one). This complements `docs/SECURITY-RLS-CHECKLIST.md` §2
 and the audit in `docs/CODE_REVIEW_2026-06-19.md`.
 
-**Why this is a spec, not a code change.** The repo RLS DSL only matches a field on the row to
-`{{user.email}}` (or `user_condition.role`); it has no cross-entity join. The documented model for
-patient-clinical data is *"by patient access"* (`Patient.assigned_nurses` includes the caller),
-but these rows carry only `patient_id` — so a pure-repo rule can only owner-scope by `created_by`,
-which would hide a colleague's entries from an assigned nurse and break shared clinical views
-(e.g. the medication list). Apply these in the **Base44 dashboard** (where richer relation-based
-rules and the service-role principal are available) and verify with checklist §7 (multi-role test
-of raw network responses) before launch.
+**Authority invariant.** The sole platform owner has built-in `User.role === "admin"`
+and exact backend `SUPER_ADMIN_EMAIL`; that identity is setup/recovery authority only
+and is excluded from tenant assertions. Every tenant actor has built-in `User.role ===
+"user"` plus one valid, active, server-owned `AgencyMembership` bound to immutable
+`user_id`. Patient access additionally requires an active server-owned
+`PatientCareTeamAssignment`, except reviewed agency-wide tenant-admin policy.
+Mutable User claims and `Patient.assigned_nurses` are never authorization inputs.
+
+**Why this is a spec, not a complete code change.** The repo RLS DSL has no
+cross-entity join, so owner rules and dashboard relations cannot by themselves prove
+the authority invariant. Sensitive positive reads must move behind reviewed server
+brokers; direct entity access remains denied. Verify the brokers with checklist §7
+against raw two-agency network responses before launch.
 
 **Already applied in-repo (safe subset):** `OfflineDataCache` (read+write `user_email` +
 admin), `SystemLog` (write → admin), `Message` (write → sender ∨ recipient ∨ admin),
@@ -31,10 +36,11 @@ sites including self-completion); the workable rule is **write `owner(nurse_emai
 (or read `owner(nurse_email)`+admin only after confirming every staff-overview/assignment component —
 `AgencyTrainingManager`, `TrainingCompletionTracker`, `StaffTrainingOverview`, … — is admin-gated via §7).
 
-Notation: `byPatient` = caller is admin OR is in the referenced patient's `assigned_nurses`
-(implement as a relation rule in the dashboard, or a server-scoped function for the shared view —
-the app already does this in `getScopedPatientAlerts`/`getDashboardData`). `owner(field)` =
-`{ $or: [ {field: "{{user.email}}"}, {user_condition:{role:"admin"}} ] }`.
+Notation: `byPatient` means a reviewed broker validated immutable tenant membership
+and either an active exact care-team assignment or agency-wide `agency_admin` policy.
+`owner(field)` is a legacy/narrowing containment check only; it is not tenant authority.
+Table references to “admin” mean tenant `agency_admin` inside a broker, never built-in
+`role:admin`.
 
 ## A. Patient-clinical — read `byPatient`, write clinician-on-own-patient + admin
 
@@ -81,11 +87,13 @@ mirror them. Checklist §2 already flags these as forgeable attestation.)
 
 ## Verification (checklist §7, run after applying)
 
-1. Non-admin with no assigned patients → Dashboard / Patient Alerts / SMS / fax history return
-   **nothing** (check raw network responses, not just the rendered UI).
-2. Non-admin assigned to patient A only → sees A's rows, **not** B's, in raw responses.
-3. Admin → agency-wide unchanged.
-4. IDOR probe (`enhanceNoteOptimized`, `searchPDFs`, `extractReferralDataForSmartNote`, etc.) with
-   another patient's id → `403`/`404`/empty (the code-layer gates added this PR already enforce this).
+1. Clinician-A-empty (built-in `user`, active Agency A `clinician`) receives an
+   empty brokered roster and no patient-child rows.
+2. Clinician-A with one active A1 assignment can read A1 but not unassigned A2 or
+   foreign B1 through reviewed brokers.
+3. Admin-A and Admin-B (built-in `user`, active tenant `agency_admin`) receive only
+   A1/A2 and B1, respectively; platform-owner results are excluded.
+4. IDOR and foreign-agency spoofing through every reviewed broker returns
+   `403`/`404`/empty; direct entity reads by tenant actors never return PHI or authority rows.
 5. Recipient can still mark a `Message` read (`read_by` update) and a signer can still sign a
    `DocumentSignature` via the portal — confirm the owner-scoping didn't break those flows.

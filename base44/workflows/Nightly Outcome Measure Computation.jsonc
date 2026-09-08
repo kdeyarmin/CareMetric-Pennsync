@@ -1,6 +1,6 @@
 {
   "name": "Nightly Outcome Measure Computation",
-  "description": "Computes CMS home-health outcome measures and rolls up agency KPIs nightly",
+  "description": "Dispatches one tenant-bound, idempotent daily outcome computation per active agency",
   "trigger": {
     "condition": null,
     "config": {
@@ -30,7 +30,7 @@
         "run_function": {
           "call": "invoke_backend_function",
           "with": {
-            "function_name": "computeOutcomeMeasures",
+            "function_name": "dispatchNightlyOutcomeMeasures",
             "args": {}
           },
           "then": "end"
@@ -39,6 +39,8 @@
     ]
   },
   "x-base44-migrated-from-automation": {
-    "legacy_payload_function": "computeOutcomeMeasures"
+    "legacy_payload_function": "computeOutcomeMeasures",
+    "replacement_dispatch_function": "dispatchNightlyOutcomeMeasures",
+    "release_state": "inactive_pending_hosted_outcome_validation"
   }
 }

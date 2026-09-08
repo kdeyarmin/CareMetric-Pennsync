@@ -1,4 +1,7 @@
 import { evaluateAccessTokenTrust } from '@/lib/accessTokenTrust';
+import { invalidateBrowserAuthorityEpoch } from '@/lib/browserAuthorityEpoch';
+import { isTrustedBase44BackendHost } from '@/lib/backendOriginTrust';
+import { normalizeBuildPinnedFunctionsVersion } from '@/lib/functionRevisionPolicy';
 
 const isNode = typeof window === 'undefined';
 const memoryStorage = new Map();
@@ -42,7 +45,6 @@ const sanitizeValue = (value) => {
 // localStorage, permanently rerouting ALL API traffic — including the email +
 // password the sign-in screen POSTs and the bearer token/PHI the SDK sends — to
 // the attacker's origin.
-const TRUSTED_BACKEND_SUFFIXES = ['base44.com', 'base44.app', 'base44.io', 'base44.dev'];
 const envBackendHost = (() => {
 	try {
 		return new URL(import.meta.env.VITE_BASE44_BACKEND_URL).host.toLowerCase();
@@ -51,9 +53,7 @@ const envBackendHost = (() => {
 	}
 })();
 const isTrustedBackendHost = (host) => {
-	const h = String(host || '').toLowerCase();
-	if (envBackendHost && h === envBackendHost) return true;
-	return TRUSTED_BACKEND_SUFFIXES.some((s) => h === s || h.endsWith('.' + s));
+  return isTrustedBase44BackendHost(String(host || ''), envBackendHost);
 };
 
 // Stricter gate for the `?access_token=` referrer check. `isTrustedBackendHost`
@@ -158,6 +158,7 @@ export const confirmPendingAccessToken = () => {
 	const pending = storage.getItem(PENDING_ACCESS_TOKEN_KEY);
 	if (!pending) return false;
 	storage.removeItem(PENDING_ACCESS_TOKEN_KEY);
+	invalidateBrowserAuthorityEpoch();
 	setStoredItem('base44_access_token', pending);
 	appParams.token = pending;
 	return true;
@@ -188,17 +189,29 @@ export const plantLoginReturnState = (returnUrl) => {
 	}
 };
 
-// `app_id` (and the `functions_version` that pins its backend code) are taken
-// verbatim from the URL and persisted forever, with no in-app reset. A single
-// crafted or stale `?app_id=bogus` link therefore bricks the device permanently
-// — every SDK call targets the wrong app and only clearing site data recovers.
-// When the build ships its own app id, only accept a URL value that agrees with
-// it; otherwise (no build-time id) keep the previous open behaviour.
+// `app_id` used to be taken verbatim from the URL and persisted forever, with no
+// in-app reset. A single crafted or stale `?app_id=bogus` link therefore bricked
+// the device permanently — every SDK call targeted the wrong app and only
+// clearing site data recovered. When the build ships its own app id, only accept
+// a URL value that agrees with it; otherwise (no build-time id) keep the previous
+// open behaviour.
 const envAppId = import.meta.env.VITE_BASE44_APP_ID;
 const acceptAppId = () => {
 	if (isNode || !envAppId) return true;
 	return new URLSearchParams(window.location.search).get('app_id')?.trim() === envAppId;
 };
+
+// Function revision selection is more sensitive than ordinary app metadata:
+// the SDK turns it into Base44-Functions-Version and can thereby route a request
+// to older deployed backend code. It must never come from URL/localStorage.
+// An optional VITE_ value is substituted into the JavaScript bundle at build
+// time; a missing or unsafe/floating value intentionally means "use the hosted
+// published default" and sends no revision header.
+const rawBuildFunctionsVersion = import.meta.env.VITE_BASE44_FUNCTIONS_VERSION;
+const buildFunctionsVersion = normalizeBuildPinnedFunctionsVersion(rawBuildFunctionsVersion);
+if (rawBuildFunctionsVersion && !buildFunctionsVersion) {
+	console.warn('[app-params] Ignoring invalid or floating build function revision.');
+}
 
 const getAppParamValue = (paramName, { defaultValue = undefined, removeFromUrl = false, sanitize = sanitizeValue, acceptUrlValue = undefined } = {}) => {
 	if (isNode) {
@@ -228,6 +241,7 @@ const getAppParamValue = (paramName, { defaultValue = undefined, removeFromUrl =
 		} else {
 			if (paramName === 'access_token') {
 				storage.removeItem(PENDING_ACCESS_TOKEN_KEY);
+					invalidateBrowserAuthorityEpoch();
 			}
 			setStoredItem(storageKey, searchParam);
 			return searchParam;
@@ -254,17 +268,30 @@ const getAppParams = () => {
 	// affected session self-heals on the next load.
 	if (!isNode) {
 		storage.removeItem('base44_clear_access_token');
+		// Self-heal old clients that persisted a URL-selected revision. Remove it
+		// unconditionally even when this build has an exact immutable pin.
+		storage.removeItem('base44_functions_version');
 		if (new URLSearchParams(window.location.search).get('clear_access_token') === 'true') {
+				invalidateBrowserAuthorityEpoch();
 			storage.removeItem('base44_access_token');
 			storage.removeItem('token');
 			storage.removeItem(PENDING_ACCESS_TOKEN_KEY);
 		}
-		// Capture auth_state BEFORE stripping it so trustedTokenReferrer can
-		// match against the planted sessionStorage value.
+		// Capture auth_state BEFORE stripping it so the token trust check can
+		// match against the planted sessionStorage value. Strip every legacy
+		// runtime function-revision selector in the same history replacement so
+		// it cannot be copied into redirects, bookmarks, logs, or referrers.
 		const cleanParams = new URLSearchParams(window.location.search);
 		landingAuthState = cleanParams.get('auth_state');
-		if (cleanParams.has('auth_state')) {
-			cleanParams.delete('auth_state');
+		const paramsToStrip = [
+			'auth_state',
+			'functions_version',
+			'functionsVersion',
+			'base44_functions_version',
+		];
+		const shouldReplaceUrl = paramsToStrip.some((param) => cleanParams.has(param));
+		for (const param of paramsToStrip) cleanParams.delete(param);
+		if (shouldReplaceUrl) {
 			const newUrl = `${window.location.pathname}${cleanParams.toString() ? `?${cleanParams.toString()}` : ''}${window.location.hash}`;
 			window.history.replaceState({}, document.title, newUrl);
 		}
@@ -292,10 +319,14 @@ const getAppParams = () => {
 		appId,
 		serverUrl,
 		token: getAppParamValue('access_token', { removeFromUrl: true, acceptUrlValue: acceptUrlAccessToken }),
-		functionsVersion: getAppParamValue('functions_version', { acceptUrlValue: acceptAppId })
+		functionsVersion: buildFunctionsVersion
 	};
 };
 
-export const appParams = {
-	...getAppParams()
-};
+export const appParams = getAppParams();
+Object.defineProperty(appParams, 'functionsVersion', {
+	configurable: false,
+	enumerable: true,
+	writable: false,
+	value: appParams.functionsVersion,
+});

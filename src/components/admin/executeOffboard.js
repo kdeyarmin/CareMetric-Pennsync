@@ -1,4 +1,4 @@
-// Executes offboard/reactivate through the server-side offboardUser function.
+// Executes offboarding through the server-side offboardUser function.
 // Keeps UserManagement free of payload assembly details.
 
 import { buildOffboardInvokeArgs } from './runUserOffboard.js';

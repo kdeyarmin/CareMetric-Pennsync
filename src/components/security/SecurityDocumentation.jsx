@@ -95,21 +95,21 @@ export default function SecurityDocumentation() {
           <div>
             <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
               <FileText className="w-5 h-5 text-orange-600" />
-              Comprehensive Audit Logging
-              <Badge className="bg-orange-500">Active</Badge>
+              Audit Logging Coverage
+              <Badge className="bg-amber-600">Verification unavailable</Badge>
             </h3>
-            <Alert className="bg-orange-50 border-orange-200">
-              <AlertDescription className="text-orange-900">
-                <p className="font-semibold mb-2">✓ Complete Audit Trail</p>
-                <p className="mb-2">All security-relevant actions are logged:</p>
+            <Alert className="bg-amber-50 border-amber-300">
+              <AlertDescription className="text-amber-950">
+                <p className="font-semibold mb-2">Coverage is not attested by this view</p>
+                <p className="mb-2">
+                  Purpose-specific server brokers append selected security events. Complete
+                  coverage and tenant-scoped history cannot be verified until SecurityLog rows
+                  have immutable agency provenance and a tenant-authorized read broker.
+                </p>
                 <ul className="list-disc ml-5 space-y-1">
-                  <li>Patient record access and modifications</li>
-                  <li>Visit documentation creation and updates</li>
-                  <li>Failed access attempts</li>
-                  <li>Data exports and email sends</li>
-                  <li>AI API calls for documentation</li>
-                  <li>User login and logout events</li>
-                  <li>Session timeouts</li>
+                  <li>Unavailable history must not be interpreted as zero events.</li>
+                  <li>No all-clear or HIPAA compliance conclusion is produced here.</li>
+                  <li>Audit coverage requires hosted, tenant-isolation evidence.</li>
                 </ul>
               </AlertDescription>
             </Alert>
@@ -170,7 +170,7 @@ export default function SecurityDocumentation() {
                 <p className="mb-2">AI-powered features include security controls:</p>
                 <ul className="list-disc ml-5 space-y-1">
                   <li>Rate limiting (20 calls per minute per user)</li>
-                  <li>All AI calls are logged for audit</li>
+                  <li>AI audit coverage is unverified pending tenant-authorized evidence</li>
                   <li>PHI sent to HIPAA-compliant AI services</li>
                   <li>Business Associate Agreement (BAA) in place</li>
                 </ul>
@@ -182,42 +182,46 @@ export default function SecurityDocumentation() {
           <div>
             <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
               <Shield className="w-5 h-5 text-red-600" />
-              HIPAA Compliance Status
+              HIPAA Security Controls Reference
             </h3>
-            <Alert className="bg-gradient-to-r from-red-50 to-gold-50 border-red-200">
-              <AlertDescription className="text-red-900">
-                <p className="font-semibold mb-3">PennSync HIPAA Security Rule Compliance:</p>
+            <Alert className="bg-amber-50 border-amber-300">
+              <AlertDescription className="text-amber-950">
+                <p className="font-semibold mb-1">Control inventory — not a compliance certification</p>
+                <p className="text-sm mb-3">
+                  These are documented control areas. The list does not attest operating
+                  effectiveness, complete audit coverage, or an all-clear result.
+                </p>
                 <div className="grid grid-cols-2 gap-2">
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <AlertTriangle className="w-4 h-4 text-slate-500" />
                     <span className="text-sm">Encryption at Rest</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <AlertTriangle className="w-4 h-4 text-slate-500" />
                     <span className="text-sm">Encryption in Transit</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <AlertTriangle className="w-4 h-4 text-slate-500" />
                     <span className="text-sm">Access Controls</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
-                    <span className="text-sm">Audit Logging</span>
+                    <AlertTriangle className="w-4 h-4 text-amber-700" />
+                    <span className="text-sm">Audit Logging — verification pending</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <AlertTriangle className="w-4 h-4 text-slate-500" />
                     <span className="text-sm">Session Management</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <AlertTriangle className="w-4 h-4 text-slate-500" />
                     <span className="text-sm">Input Validation</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <AlertTriangle className="w-4 h-4 text-slate-500" />
                     <span className="text-sm">Role-Based Access</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    <AlertTriangle className="w-4 h-4 text-slate-500" />
                     <span className="text-sm">Rate Limiting</span>
                   </div>
                 </div>

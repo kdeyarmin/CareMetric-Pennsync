@@ -52,5 +52,11 @@
     "supply_id",
     "patient_id",
     "quantity_used"
-  ]
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
 }

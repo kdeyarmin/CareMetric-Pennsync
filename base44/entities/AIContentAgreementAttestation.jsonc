@@ -1,0 +1,47 @@
+{
+  "name": "AIContentAgreementAttestation",
+  "type": "object",
+  "description": "Service-owned authority record for AI responsibility agreement acceptance. Legacy User fields and UserActivity rows are not gate authority.",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "Protected Base44 User identifier derived by the acceptance broker"
+    },
+    "user_email_normalized": {
+      "type": "string",
+      "description": "Canonical authenticated email used only for exact identity reconciliation"
+    },
+    "agreement_version": {
+      "type": "string",
+      "description": "Exact agreement version accepted"
+    },
+    "accepted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server-generated acceptance timestamp"
+    },
+    "acknowledgments": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Exact canonical acknowledgments accepted for this version"
+    },
+    "audit_event_id": {
+      "type": "string",
+      "description": "Opaque correlation to the service-appended UserActivity event"
+    }
+  },
+  "required": [
+    "user_id",
+    "user_email_normalized",
+    "agreement_version",
+    "accepted_at",
+    "acknowledgments",
+    "audit_event_id"
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
+}

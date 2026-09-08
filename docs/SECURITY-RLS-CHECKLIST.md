@@ -12,12 +12,18 @@
 
 | Principal | Rule |
 |---|---|
-| **Admin** | `User.role === 'admin'` → may read/write across the agency. |
-| **Nurse / clinician** | May access a patient only when `Patient.assigned_nurses` (array of emails) includes their email. Used by `SmsConversationList`, `ClinicalChart`, and the new `getScopedPatientAlerts` / `getDashboardData`. |
-| **Record owner** | For per-user records, ownership is by `sent_by` / `nurse_email` (faxes, SMS, calls) or `user_id` (certificates). |
+| **Platform owner** | Sole exact `SUPER_ADMIN_EMAIL` identity with built-in `User.role === 'admin'`; setup/recovery only and excluded from tenant-isolation assertions. |
+| **Tenant admin** | Built-in `User.role === 'user'` plus one active, server-owned `AgencyMembership.tenant_role === 'agency_admin'`; agency-wide access only inside reviewed brokers. |
+| **Clinician** | Built-in `User.role === 'user'` plus one active immutable membership and, for patient-scoped access, an active server-owned `PatientCareTeamAssignment`. |
+| **Record owner** | A narrowing condition such as immutable actor id/email; never a substitute for tenant membership and patient authority. |
 | `favorited_patients` | A **UX favorites** list only — never an authorization boundary. |
 
 ## 2. Entity RLS matrix (configure in the Base44 dashboard)
+
+In this document, tenant-admin access always means an active
+`AgencyMembership.tenant_role === "agency_admin"` evaluated inside a
+reviewed server broker. It never means Base44 built-in `role:admin`.
+Sensitive direct entity reads remain denied.
 
 Lock **read** and **write** as below. Where it says "service-role only," clients
 must not be able to write directly; writes go through backend functions.
@@ -47,10 +53,19 @@ is always active. The dashboard-env secret list is therefore just:
 
 | Secret | Purpose | If unset |
 |---|---|---|
-| **`SIGNATURE_HMAC_SECRET`** | Keys the e-signature integrity MAC (forgery-resistant tamper-evidence) | unkeyed sha256 — detects corruption, not forgery — **set it at launch** |
-| `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `HEYGEN_API_KEY` | AI feature gates (transcription / SOAP notes / fax cover pages / training videos) | those features show a "not configured" notice |
+| **`SIGNATURE_HMAC_SECRET`** | Keys the e-signature integrity MAC (forgery-resistant tamper-evidence) | signature token issuance and verification fail closed |
+| `APP_PUBLIC_URL` (non-secret) | Exact per-environment HTTPS origin for account, invitation, signer, and notification links | outbound app-link generation fails closed; there is no production or `APP_URL` fallback |
+| `OUTBOUND_DELIVERY_RELEASE` (release gate, not a credential) | General email/SMS/fax/voice release; authorized manual account invitations are independent | general delivery remains paused; only exact `enabled-v1` releases it |
+| `OPENAI_API_KEY` | Direct audio transcription, including the transcription stage of SOAP-note-from-audio | direct transcription is unavailable; platform-managed application AI is unaffected |
+| `ANTHROPIC_API_KEY` | Direct SOAP-note-from-audio structuring | that optional structuring step is unavailable; deterministic fax covers are unaffected |
+| `HEYGEN_API_KEY` | Training-video generation | optional generated training videos are unavailable |
 
 All `VITE_*` vars are public by design — never put secrets there.
+
+Platform-managed `Core.InvokeLLM` and `Core.SendEmail` do not use separate
+Gemini, Deepgram, Resend, Notifyre, or Twilio environment credentials in the
+current source tree. Do not classify those retired/unimplemented keys as
+security or launch requirements.
 
 ## 4. Scheduled / internal functions — require shared scheduler auth
 
@@ -64,7 +79,7 @@ the endpoint and fall through to privileged `asServiceRole` work.
 The repo's scheduled/internal function family now uses one shared fail-closed
 gate:
 
-- **Admin session** may invoke the function manually.
+- **Protected platform-owner session** may invoke the function manually.
 - **Unattended scheduler/internal caller** must send
   `x-internal-secret: <INTERNAL_FN_SECRET>`.
 - If `INTERNAL_FN_SECRET` is unset, the function returns **500** rather than
@@ -85,8 +100,10 @@ Apply that shared gate to the whole cron family, including:
 `sendTrainingNotifications`, `syncFaxStatuses`, `syncTrainingVideoStatuses`,
 `triggerCorrectiveActionPlan`.
 
-- Enable **only one** scheduled-fax processor (`processScheduledFaxes` **or**
-  `processScheduledFaxesByPriority`) — both running double-sends.
+- Keep the checked-in native `Process Scheduled Faxes` workflow as the sole
+  scheduled-fax definition; it targets `processScheduledFaxes` every 10 minutes.
+  `processScheduledFaxesByPriority` and all legacy/dashboard duplicates must
+  remain unregistered.
 - Likewise enable **only one** schedule for `dispatchScheduledSms` (e.g. every
   5 min). Its `pending → sending` claim is best-effort, not atomic, so two
   overlapping runs could double-send a queued text.
@@ -120,15 +137,17 @@ Apply that shared gate to the whole cron family, including:
 
 ## 7. Verification (do before go-live)
 
-1. As a **non-admin** with no assigned patients: the Dashboard, Patient Alerts,
-   SMS inbox, and call history show **nothing** (and the network responses
-   contain no other patients' data).
-2. As a non-admin assigned to patient A only: you see A's data and **not** B's,
-   including in raw network responses (not just the rendered UI).
-3. As an **admin**: agency-wide data is unchanged.
-4. Attempt an IDOR by calling `predictPatientRisks`/`analyzeClinicalRisks`/
-   `generatePatientChartPDF`/`getScopedPatientAlerts` with another patient's id
-   → expect `403`/`404`/empty.
+1. As **Clinician-A-empty** (built-in `user`, active Agency A `clinician`
+   membership): `getMyTenantContext` succeeds and `listAuthorizedPatients` is empty.
+2. As **Clinician-A** with one active immutable A1 assignment:
+   `getAuthorizedPatient(A1)` succeeds while A2 and foreign B1 return
+   `403`/`404`/empty in raw broker responses.
+3. As **Admin-A** and **Admin-B** (built-in `user`, active tenant
+   `agency_admin` memberships): brokered rosters contain only A1/A2 and B1,
+   respectively. Platform-owner results do not count.
+4. Attempt IDOR and foreign-agency spoofing through every reviewed
+   patient/Visit/OASIS/Document broker; expect `403`/`404`/empty. Direct entity
+   reads by tenant actors must not return PHI or authority rows.
 5. Webhook smoke tests (good/bad signatures) per §5.
 6. Confirm audit rows (`UserActivity`/`SecurityLog`) carry **no PHI** (bodies,
    full numbers).

@@ -3,27 +3,56 @@ import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderWithProviders } from '@/test/testUtils';
 
-const { patientCreate, referralCreate, taskCreate, toastSuccess, toastError, analysisState } = vi.hoisted(() => ({
+const {
+  patientCreate,
+  referralCreate,
+  taskCreate,
+  toastSuccess,
+  toastError,
+  analysisState,
+  tenantState,
+} = vi.hoisted(() => ({
   patientCreate: vi.fn(async () => ({ id: 'patient-1' })),
   referralCreate: vi.fn(async () => ({ id: 'referral-1' })),
   taskCreate: vi.fn(async () => ({ id: 'task-1' })),
   toastSuccess: vi.fn(),
   toastError: vi.fn(),
   analysisState: { value: null },
+  tenantState: { value: { agency_id: 'agency-a', tenant_role: 'manager' } },
 }));
 
 vi.mock('sonner', () => ({ toast: { success: toastSuccess, error: toastError } }));
+
+vi.mock('@/lib/AuthContext', () => ({
+  useAuth: () => ({ tenantContext: tenantState.value }),
+}));
+
+vi.mock('@/functions/manageAuthorizedReferral', () => ({
+  createAuthorizedReferral: (referral, options) => referralCreate(referral, options),
+}));
 
 vi.mock('@/api/base44Client', () => {
   const entities = new Proxy({}, {
     get: (_t, name) => {
       if (name === 'Patient') return { create: patientCreate };
-      if (name === 'Referral') return { create: referralCreate };
       if (name === 'Task') return { create: taskCreate };
       return { create: vi.fn(async () => ({})), filter: vi.fn(async () => []), list: vi.fn(async () => []) };
     },
   });
-  return { base44: { entities, auth: { me: async () => ({ email: 'nurse@x.com', role: 'nurse' }) } } };
+  return {
+    base44: {
+      entities,
+      functions: {
+        invoke: async (name, payload) => {
+          if (name === 'createAuthorizedPatient') {
+            return { data: { patient: await patientCreate(payload) } };
+          }
+          return { data: {} };
+        },
+      },
+      auth: { me: async () => ({ email: 'nurse@x.com', role: 'nurse' }) },
+    },
+  };
 });
 
 vi.mock('@/components/referral/ReferralTriageAnalyzer', () => ({
@@ -45,6 +74,7 @@ const COMPLETE_ANALYSIS = {
 
 beforeEach(() => {
   analysisState.value = { ...COMPLETE_ANALYSIS };
+  tenantState.value = { agency_id: 'agency-a', tenant_role: 'manager' };
   patientCreate.mockClear();
   referralCreate.mockClear();
   taskCreate.mockClear();
@@ -53,6 +83,17 @@ beforeEach(() => {
 });
 
 describe('ReferralTriage — create patient from triage', () => {
+  it('blocks non-intake roles before any patient or referral write', () => {
+    tenantState.value = { agency_id: 'agency-a', tenant_role: 'clinician' };
+    renderWithProviders(<ReferralTriage />);
+
+    expect(screen.getByText('Referral triage unavailable')).toBeInTheDocument();
+    expect(screen.queryByText('run-triage')).not.toBeInTheDocument();
+    expect(patientCreate).not.toHaveBeenCalled();
+    expect(referralCreate).not.toHaveBeenCalled();
+    expect(taskCreate).not.toHaveBeenCalled();
+  });
+
   it('creates a Patient, linked Referral, and task when minimum identity is present', async () => {
     const user = userEvent.setup();
     renderWithProviders(<ReferralTriage />);

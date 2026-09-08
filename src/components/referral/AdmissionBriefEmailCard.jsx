@@ -3,11 +3,9 @@ import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey } from "@/lib/agencyRoster";
 import { ALL_ROWS } from "@/lib/queryLimits";
-import { sendInAppNotification } from "@/lib/notify";
 import { buildAdmissionBriefEmail } from "./admissionBriefEmail.js";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -17,8 +15,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Mail, Send, ShieldAlert, RotateCcw, CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { Mail, Send, ShieldAlert, RotateCcw, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
+import { rejectOutboundDelivery } from '@/lib/outboundDeliveryContainment';
 
 /**
  * Email the admitting nurse a complete admission briefing for an analyzed
@@ -42,12 +41,11 @@ export default function AdmissionBriefEmailCard({
   const [editedBody, setEditedBody] = useState(null); // null = use the generated body
   const [showPreview, setShowPreview] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [sentTo, setSentTo] = useState([]);
 
   // PHI-misdirection guard: when the host switches to a DIFFERENT referral
   // without remounting this card, the previous patient's edited briefing
-  // text, chosen recipient, and sent status must not carry over — otherwise
-  // Send could email patient A's briefing under patient B's subject. (Render-
+  // text and chosen recipient must not carry over — otherwise a future brokered
+  // send could email patient A's briefing under patient B's subject. (Render-
   // time state adjustment per React's "adjusting state when a prop changes"
   // pattern.)
   const [prevReferralData, setPrevReferralData] = useState(referralData);
@@ -55,7 +53,6 @@ export default function AdmissionBriefEmailCard({
     setPrevReferralData(referralData);
     setRecipientEmail("");
     setEditedBody(null);
-    setSentTo([]);
   }
 
   const { data: currentUser } = useQuery({
@@ -113,30 +110,9 @@ export default function AdmissionBriefEmailCard({
     }
     setIsSending(true);
     try {
-      await base44.integrations.Core.SendEmail({
-        to: recipient.email,
-        subject: generated.subject,
-        body,
-      });
-      // Best-effort in-app notification — the email is the deliverable, so a
-      // notification failure must not surface as a send failure. PHI-light on
-      // purpose: notifications render in shared surfaces.
-      try {
-        await sendInAppNotification({
-          user_email: recipient.email,
-          title: "Admission briefing emailed to you",
-          message: `${currentUser?.full_name || "Intake"} emailed you an admission briefing for a new home health referral. Check your email for the full brief and referral documents.`,
-          type: "new_referral",
-          priority: "high",
-        });
-      } catch {
-        /* notification is best-effort */
-      }
-      setSentTo((prev) => [...prev, { email: recipient.email, name: recipient.full_name || recipient.email }]);
-      toast.success(`Admission briefing emailed to ${recipient.full_name || recipient.email}.`);
+      await rejectOutboundDelivery();
     } catch (error) {
-      console.error("Error emailing admission briefing:", error);
-      toast.error("Failed to send the briefing email. Please try again.");
+      toast.error(error?.message || "Outbound delivery is paused in this environment.");
     } finally {
       setIsSending(false);
     }
@@ -230,13 +206,7 @@ export default function AdmissionBriefEmailCard({
         )}
 
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <div className="flex flex-wrap gap-1">
-            {sentTo.map((s, i) => (
-              <Badge key={i} className="bg-green-100 text-green-800 flex items-center gap-1">
-                <CheckCircle2 className="w-3 h-3" /> Sent to {s.name}
-              </Badge>
-            ))}
-          </div>
+          <p className="text-xs text-amber-700">Outbound delivery is paused in this environment.</p>
           <Button type="button" onClick={handleSend} disabled={isSending || !recipient} className="bg-sky-600 hover:bg-sky-700">
             {isSending ? (
               <>

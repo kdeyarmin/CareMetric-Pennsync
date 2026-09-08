@@ -1,33 +1,56 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { AlertCircle, CheckCircle2, User, XCircle, Phone, MapPin, Calendar, FileText } from "lucide-react";
-import { ALL_ROWS } from '@/lib/queryLimits';
+import { useAuthorizedReferralPatients } from './authorizedPatientMatches';
+import { normalizePatientMatchSuggestions } from './patientMatchSuggestions';
 
-export default function PatientMatchReview({ referral, onConfirmMatch, onCreateNew, onClose }) {
+export default function PatientMatchReview({
+  referral,
+  tenantContext,
+  onConfirmMatch,
+  onCreateNew,
+  onClose,
+}) {
   const [selectedMatch, setSelectedMatch] = useState(null);
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'comparison'
   const matchAnalysis = referral.match_analysis;
-  
-  // Fetch full patient details for suggested matches
-  const { data: suggestedPatients = [] } = useQuery({
-    queryKey: ['suggestedPatients', referral.match_suggestions],
-    queryFn: async () => {
-      if (!referral.match_suggestions?.length) return [];
-      // Resolve suggested patients directly by id — paging the newest 500 would
-      // drop matches against older charts, degrading their cards to anonymous
-      // "Match Option N" with no identifying detail to confirm the match.
-      const patientIds = referral.match_suggestions.map(m => m.patient_id).filter(Boolean);
-      if (!patientIds.length) return [];
-      return base44.entities.Patient.filter({ id: { $in: patientIds } }, undefined, ALL_ROWS);
-    },
-    enabled: !!referral.match_suggestions?.length,
-    initialData: []
+  const normalizedSuggestionResult = useMemo(() => normalizePatientMatchSuggestions({
+    preferred: matchAnalysis?.best_match_id ? {
+      patient_id: matchAnalysis.best_match_id,
+      confidence_score: matchAnalysis.confidence_score,
+      reasons: matchAnalysis.match_factors,
+      discrepancies: matchAnalysis.discrepancies,
+    } : null,
+    suggestions: referral.match_suggestions,
+  }), [matchAnalysis, referral.match_suggestions]);
+  const suggestions = normalizedSuggestionResult.suggestions;
+  const invalidOnlySuggestions = normalizedSuggestionResult.invalidCount > 0
+    && suggestions.length === 0;
+  const matchPatientIds = suggestions.map((match) => match.patient_id);
+  const patientLookup = useAuthorizedReferralPatients({
+    tenantContext,
+    patientIds: matchPatientIds,
   });
+  const suggestedPatients = patientLookup.data;
+  const lookupBlocked = invalidOnlySuggestions
+    || (matchPatientIds.length > 0 && !patientLookup.isSuccess);
+  const unavailableCount = patientLookup.isSuccess
+    ? new Set(matchPatientIds).size - suggestedPatients.length
+    : 0;
+  const selectedPatient = suggestedPatients.find((patient) => patient.id === selectedMatch) || null;
+
+  // A fresh authorization lookup can omit a formerly selected record after a
+  // membership/assignment change. Clear the local choice immediately so even
+  // comparison mode cannot retain a stale chart selection.
+  useEffect(() => {
+    if (selectedMatch && (!patientLookup.isSuccess || !selectedPatient)) {
+      setSelectedMatch(null);
+      setViewMode('list');
+    }
+  }, [patientLookup.isSuccess, selectedMatch, selectedPatient]);
 
   if (!matchAnalysis && !referral.match_suggestions) return null;
 
@@ -42,8 +65,6 @@ export default function PatientMatchReview({ referral, onConfirmMatch, onCreateN
 
   const referralData = referral.extracted_data?.demographics || {};
   
-  const selectedPatient = suggestedPatients.find(p => p.id === selectedMatch);
-
   return (
     <div className="space-y-4">
       <Alert className="bg-yellow-50 border-yellow-300">
@@ -51,11 +72,52 @@ export default function PatientMatchReview({ referral, onConfirmMatch, onCreateN
         <AlertDescription className="text-yellow-900">
           <strong>Patient Match Requires Review</strong>
           <p className="mt-1 text-sm">
-            The AI system found {referral.match_suggestions?.length || 0} potential matches. 
+            The AI system found {suggestions.length} potential matches.
             Review the side-by-side comparison and select the best option.
           </p>
         </AlertDescription>
       </Alert>
+
+      {(normalizedSuggestionResult.invalidCount > 0
+        || normalizedSuggestionResult.truncatedCount > 0) && (
+        <Alert variant={invalidOnlySuggestions ? "destructive" : undefined}>
+          <AlertCircle className="w-4 h-4" />
+          <AlertDescription>
+            {invalidOnlySuggestions
+              ? 'Saved patient-match suggestions are malformed. No patient can be matched or created until the referral is reprocessed.'
+              : 'Some saved patient-match suggestions were invalid or exceeded the reviewed limit and were ignored.'}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {patientLookup.isError && (
+        <Alert variant="destructive">
+          <AlertCircle className="w-4 h-4" />
+          <AlertDescription>
+            Patient matches could not be authorized for this agency. Confirmation and new-chart
+            creation stay disabled until the lookup succeeds.
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3 block"
+              onClick={() => patientLookup.refetch()}
+            >
+              Retry authorized lookup
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {!patientLookup.isError && unavailableCount > 0 && (
+        <Alert className="bg-slate-50 border-slate-300">
+          <AlertCircle className="w-4 h-4 text-slate-600" />
+          <AlertDescription>
+            {unavailableCount} suggested record{unavailableCount === 1 ? ' is' : 's are'} no longer
+            available in this agency and cannot be selected.
+          </AlertDescription>
+        </Alert>
+      )}
       
       {/* View Mode Toggle */}
       <div className="flex gap-2 justify-center">
@@ -70,7 +132,7 @@ export default function PatientMatchReview({ referral, onConfirmMatch, onCreateN
           size="sm"
           variant={viewMode === 'comparison' ? 'default' : 'outline'}
           onClick={() => setViewMode('comparison')}
-          disabled={!selectedMatch}
+          disabled={!selectedPatient || lookupBlocked}
         >
           Side-by-Side Comparison
         </Button>
@@ -135,21 +197,40 @@ export default function PatientMatchReview({ referral, onConfirmMatch, onCreateN
       </Card>
       )}
 
-      {viewMode === 'list' && referral.match_suggestions && referral.match_suggestions.length > 0 && (
-        <div className="space-y-3">
-          <h3 className="font-semibold text-slate-900">Potential Matches ({referral.match_suggestions.length})</h3>
+      {viewMode === 'list' && suggestions.length > 0 && (
+        <div
+          className="space-y-3"
+          role="radiogroup"
+          aria-label="Potential patient matches"
+        >
+          <h3 className="font-semibold text-slate-900">Potential Matches ({suggestions.length})</h3>
           
-          {referral.match_suggestions.map((match, index) => {
+          {suggestions.map((match, index) => {
             const patient = suggestedPatients.find(p => p.id === match.patient_id);
+            const canSelect = Boolean(patient) && !lookupBlocked;
             return (
               <Card
                 key={match.patient_id}
-                className={`cursor-pointer transition-all ${
+                role="radio"
+                aria-checked={canSelect && selectedMatch === match.patient_id}
+                aria-disabled={!canSelect}
+                tabIndex={canSelect ? 0 : -1}
+                className={`transition-all ${
+                  canSelect ? 'cursor-pointer' : 'opacity-70'
+                } ${
                   selectedMatch === match.patient_id
                     ? 'border-2 border-blue-500 bg-blue-50'
-                    : 'hover:border-blue-300'
+                    : canSelect ? 'hover:border-blue-300' : ''
                 }`}
-                onClick={() => setSelectedMatch(match.patient_id)}
+                onClick={() => {
+                  if (canSelect) setSelectedMatch(match.patient_id);
+                }}
+                onKeyDown={(event) => {
+                  if (canSelect && (event.key === 'Enter' || event.key === ' ')) {
+                    event.preventDefault();
+                    setSelectedMatch(match.patient_id);
+                  }
+                }}
               >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between">
@@ -198,6 +279,12 @@ export default function PatientMatchReview({ referral, onConfirmMatch, onCreateN
                             </div>
                           )}
                         </div>
+                      )}
+
+                      {!patient && patientLookup.isSuccess && (
+                        <p className="mb-2 text-xs font-medium text-slate-600">
+                          This record is unavailable in the current agency.
+                        </p>
                       )}
                       
                       <div className="text-sm text-slate-700 space-y-2">
@@ -385,8 +472,8 @@ export default function PatientMatchReview({ referral, onConfirmMatch, onCreateN
 
       <div className="flex gap-3 pt-4 border-t">
         <Button
-          onClick={() => selectedMatch && onConfirmMatch(selectedMatch)}
-          disabled={!selectedMatch}
+          onClick={() => selectedPatient && onConfirmMatch(selectedPatient.id)}
+          disabled={!selectedPatient || lookupBlocked}
           className="flex-1 bg-blue-600 hover:bg-blue-700"
         >
           <CheckCircle2 className="w-4 h-4 mr-2" />
@@ -394,6 +481,7 @@ export default function PatientMatchReview({ referral, onConfirmMatch, onCreateN
         </Button>
         <Button
           onClick={onCreateNew}
+          disabled={lookupBlocked}
           variant="outline"
           className="flex-1"
         >

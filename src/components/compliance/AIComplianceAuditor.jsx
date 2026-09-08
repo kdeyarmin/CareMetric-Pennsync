@@ -21,10 +21,12 @@ import {
   BookOpen,
   ChevronRight
 } from "lucide-react";
-import { trackRecommendation } from "../training/RecommendationTracker";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
 import { buildComprehensivePatientHistory, formatHistoryForAI, extractKeyInsights } from "../utils/patientHistoryAnalyzer";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 
 const AI_COMPLIANCE_AUDITOR_ENABLED = false;
 
@@ -39,21 +41,20 @@ function EnabledAIComplianceAuditor({
   const [auditResults, setAuditResults] = useState(null);
   const [_expandedSection, _setExpandedSection] = useState(null);
   const queryClient = useQueryClient();
+  const { tenantContext } = useAuth();
 
-  const { data: patient } = useQuery({
-    queryKey: ['patient', patientId],
-    queryFn: async () => {
-      const rows = await base44.entities.Patient.filter({ id: patientId });
-      return rows[0] || null;
-    },
-    // PatientDetails may have seeded an object under this key — accept both.
-    select: (data) => (Array.isArray(data) ? data[0] : data) || null,
-    enabled: !!patientId,
+  const { data: patient } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'oasis_analysis_context',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
-  const { data: visits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId, 10],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 10),
+  const { data: visits = [] } = useAuthorizedVisits({
+    patientId,
+    purpose: 'documentation',
+    sort: '-visit_date',
+    limit: 10,
     enabled: !!patientId,
   });
 
@@ -79,7 +80,7 @@ function EnabledAIComplianceAuditor({
 
     try {
       // Build comprehensive patient history
-      const patientHistory = await buildComprehensivePatientHistory(patient.id);
+      const patientHistory = await buildComprehensivePatientHistory(patient.id, { patient, visits });
       const historyContext = formatHistoryForAI(patientHistory);
       const keyInsights = extractKeyInsights(patientHistory);
 
@@ -452,24 +453,9 @@ For each area, provide:
 
       setAuditResults(result);
 
-      // Track findings for training
-      if (currentUser?.email && result.critical_findings?.length > 0) {
-        result.critical_findings.forEach(finding => {
-          trackRecommendation({
-            nurseEmail: currentUser.email,
-            type: 'compliance',
-            text: `${finding.category}: ${finding.issue}`,
-            source: 'compliance_checker',
-            severity: finding.risk_level === 'critical' ? 'critical' : finding.risk_level === 'high' ? 'high' : 'medium',
-            patientId: patientId,
-            contextData: {
-              regulation: finding.regulation,
-              required_state: finding.required_state,
-              actionable_steps: finding.actionable_steps
-            }
-          });
-        });
-      }
+      // Client-side AI findings are displayed and stored in ComplianceAudit
+      // below, but are not copied into integrity-sensitive training evidence.
+      // TrainingRecommendation writers must derive findings server-side.
 
       // Log audit activity
       logActivity(ActivityActions.NOTE_COMPLIANCE_CHECK, {

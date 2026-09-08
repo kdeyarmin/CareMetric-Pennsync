@@ -78,9 +78,17 @@ test("isFreshTimestamp enforces a replay window and fails closed", () => {
 
 test("extractTelnyxEvent reads the v2 envelope and tolerates flat payloads", () => {
   const env = extractTelnyxEvent({
-    data: { event_type: "message.finalized", payload: { id: "msg_1", to: [{ status: "delivered" }] } },
+    data: {
+      id: "event_1",
+      occurred_at: "2026-09-05T00:00:00.000Z",
+      event_type: "message.finalized",
+      payload: { id: "msg_1", to: [{ status: "delivered" }] },
+    },
   });
   assert.equal(env.eventType, "message.finalized");
+  assert.equal(env.eventId, "event_1");
+  assert.equal(env.occurredAt, "2026-09-05T00:00:00.000Z");
+  assert.equal(env.resourceId, "msg_1");
   assert.equal(env.id, "msg_1");
   assert.equal(env.payload.to[0].status, "delivered");
 

@@ -152,7 +152,12 @@ export function extractTelnyxEvent(body) {
   const payload = data.payload || {};
   return {
     eventType: data.event_type || b.event_type || null,
-    id: payload.id || data.id || null,
+    eventId: data.id || null,
+    occurredAt: data.occurred_at || null,
+    resourceId: payload.id || null,
+    // Backward-compatible status-resource alias. Never use this as a webhook
+    // replay key; Telnyx envelope data.id is the event identity.
+    id: payload.id || null,
     payload,
   };
 }

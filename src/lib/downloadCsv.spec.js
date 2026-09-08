@@ -1,4 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+
+vi.mock('@/lib/tenantSdkRealmGate', () => ({
+  captureTenantSdkRealmLease: () => Object.freeze({}),
+  assertTenantSdkRealmLeaseCurrent: (lease) => lease,
+}));
+
 import { downloadCsv } from "./downloadCsv.js";
 
 describe("downloadCsv", () => {

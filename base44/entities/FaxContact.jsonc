@@ -49,5 +49,34 @@
     "name",
     "fax_number",
     "user_email"
-  ]
+  ],
+  // Agency-shared contacts remain unavailable until tenant membership is
+  // server-owned. For now every browser operation is pinned to the authenticated
+  // owner's email; Base44 evaluates this rule on each candidate record.
+  "rls": {
+    "read": {
+      "$and": [
+        { "created_by": "{{user.email}}" },
+        { "data.user_email": "{{user.email}}" }
+      ]
+    },
+    "create": {
+      "$and": [
+        { "created_by": "{{user.email}}" },
+        { "data.user_email": "{{user.email}}" }
+      ]
+    },
+    "update": {
+      "$and": [
+        { "created_by": "{{user.email}}" },
+        { "data.user_email": "{{user.email}}" }
+      ]
+    },
+    "delete": {
+      "$and": [
+        { "created_by": "{{user.email}}" },
+        { "data.user_email": "{{user.email}}" }
+      ]
+    }
+  }
 }

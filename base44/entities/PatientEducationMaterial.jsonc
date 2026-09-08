@@ -100,5 +100,11 @@
   "required": [
     "title",
     "content"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

@@ -75,32 +75,12 @@
     "form_name",
     "status"
   ],
+  // This PHI-bearing legacy form has no live client workflow. Keep it
+  // service-role-only pending a patient-access broker.
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "patient_id": "{{user.patient_id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {}
-      ]
-    },
-    "write": {
-      "$or": [
-        {
-          "patient_id": "{{user.patient_id}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {}
-      ]
-    }
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

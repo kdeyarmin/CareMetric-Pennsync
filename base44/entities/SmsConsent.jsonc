@@ -1,7 +1,42 @@
 {
   "name": "SmsConsent",
   "type": "object",
+  "description": "Append-only SMS consent ledger. Authorizing rows are scoped to one immutable Telnyx integration, messaging profile, Agency, and recipient; legacy phone-only rows must never authorize a scoped send.",
   "properties": {
+    "consent_key": {
+      "type": "string",
+      "description": "Canonical telnyx:<integration_secret_id>:<messaging_profile_id>:<agency_id>:<phone_e164> scope key."
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Agency id derived from the service-owned destination binding."
+    },
+    "provider": {
+      "type": "string",
+      "enum": [
+        "telnyx"
+      ]
+    },
+    "integration_secret_id": {
+      "type": "string",
+      "description": "Exact IntegrationSecret id proven by the destination binding."
+    },
+    "messaging_profile_id": {
+      "type": "string",
+      "description": "Exact Telnyx Messaging Profile id; Telnyx opt-in/out state is profile-and-recipient scoped."
+    },
+    "destination_binding_id": {
+      "type": "string",
+      "description": "Exact TelecomDestinationBinding id that authorized this ledger event."
+    },
+    "destination_binding_key": {
+      "type": "string",
+      "description": "Immutable binding key retained for integrity checks and migration diagnostics."
+    },
+    "destination_e164": {
+      "type": "string",
+      "description": "Bound Telnyx destination through which consent was captured or selected."
+    },
     "patient_id": {
       "type": "string",
       "description": "Associated patient if known"
@@ -33,6 +68,19 @@
       "format": "date-time",
       "description": "When consent was captured"
     },
+    "provider_event_id": {
+      "type": "string",
+      "description": "Unique Telnyx webhook event id used for replay-safe keyword capture."
+    },
+    "provider_message_id": {
+      "type": "string",
+      "description": "Telnyx message resource id, distinct from the webhook event id."
+    },
+    "provider_event_occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Provider-authenticated event time used as captured_at so delayed webhooks cannot overwrite newer consent state."
+    },
     "notes": {
       "type": "string",
       "description": "Free-text context for the consent record"
@@ -43,35 +91,9 @@
     "consent_status"
   ],
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "captured_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    },
-    "write": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "captured_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    }
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

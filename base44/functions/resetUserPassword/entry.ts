@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
@@ -143,11 +163,21 @@ function renderBrandedEmail(opts) {
 // <<<END SHARED HELPER: brandedEmail>>>
 
 function getAppBaseUrl() {
-  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
-  if (fromEnv) {
-    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  const configured = String(Deno.env.get('APP_PUBLIC_URL') || '').trim();
+  if (!configured) throw new Error('APP_PUBLIC_URL is required for outbound app links');
+  let parsed;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
   }
-  return 'https://caremetricai.base44.app';
+  if (
+    parsed.protocol !== 'https:' || parsed.username || parsed.password
+    || parsed.pathname !== '/' || parsed.search || parsed.hash
+  ) {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
+  }
+  return parsed.origin;
 }
 
 Deno.serve(async (req) => {
@@ -210,10 +240,14 @@ Deno.serve(async (req) => {
       }
     }
 
+    // Resolve the environment-specific origin before changing the credential.
+    // Invalid configuration must not leave the account reset without its email.
+    const appUrl = getAppBaseUrl();
+
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
+
     // Update user password using service role
     await base44.asServiceRole.auth.updateUserPassword(userEmail, tempPassword);
-
-    const appUrl = getAppBaseUrl();
 
     // Send email with temporary password
     await base44.asServiceRole.integrations.Core.SendEmail({
@@ -272,8 +306,10 @@ Deno.serve(async (req) => {
       message: 'Password reset successfully. Temporary password sent via email.'
     });
 
-  } catch (error) {
-    console.error('Password reset error:', error);
+  } catch {
+    // The delivery request contains the temporary password. SDK error objects
+    // may retain that request body, so never serialize the object or message.
+    console.error('resetUserPassword failed');
     // Generic message — don't leak internals to the client.
     return Response.json({ error: 'Failed to reset password' }, { status: 500 });
   }

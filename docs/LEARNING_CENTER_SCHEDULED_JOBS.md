@@ -1,17 +1,26 @@
 # Learning Center — Scheduled Jobs
 
-These Deno functions are plain HTTP endpoints (`Deno.serve`). They have no
-in-repo cron schedule — **registration happens on the Base44 platform
-dashboard (Functions → schedule/trigger), not in this repo**. Because Base44
-does not automatically block unauthenticated HTTP callers for sensitive
-functions, each privileged scheduled job must require the shared scheduler
-secret: the scheduler sends `x-internal-secret: <INTERNAL_FN_SECRET>`. Most
-shared-scheduler jobs also admit the protected built-in admin role;
-`computeOutcomeMeasures` is stricter and is internal-secret-only.
+These Deno functions are plain HTTP endpoints (`Deno.serve`). Approved migrated
+Base44 schedules live in `base44/workflows/*.jsonc`; each native workflow is the
+sole schedule authority for its target function. The corresponding legacy
+`base44/functions/<target>/function.jsonc` automation metadata must remain absent:
+workflow-enabled apps reject that duplicate configuration, and retaining both
+would create ambiguous ownership. Base44 runs a native workflow as **the user
+who created it**, so `base44.auth.me()` returns that creator — not a scheduler
+service account. Create/deploy privileged workflows only as the intended
+protected platform admin and verify that creator identity in staging before
+runtime release.
+
+The shared scheduler gate admits that protected built-in admin identity. It
+also admits an external/no-session scheduler that sends
+`x-internal-secret: <INTERNAL_FN_SECRET>`; the secret is required for that
+external path, not for a native automation owned by an active protected admin.
+`computeOutcomeMeasures` remains stricter and accepts only the dedicated
+internal-secret or signed-dispatcher authority described below.
 
 The table also carries the two clinical-quality jobs (`computeOutcomeMeasures`,
-`monitorComplianceRisks`) — they are not Learning Center functions, but they are
-registered the same way, on the platform dashboard.
+`monitorComplianceRisks`) — they are not Learning Center functions, but any
+eventual automation uses the same deployment and creator-identity model.
 
 | Function | Purpose | Suggested cadence |
 |---|---|---|
@@ -23,19 +32,28 @@ registered the same way, on the platform dashboard.
 | `computeOutcomeMeasures` | **PAUSED — do not register a global schedule.** The candidate is internal-secret-only and requires one explicit `agency_id`, stable `period_start`/`period_end` ISO dates, and an explicit `period_type` (`daily`, `weekly`, `monthly`, `quarterly`, `yearly`, or `custom`) on every invocation. Use `custom` whenever the dates do not match the named calendar period. Browser reads and recomputation are disabled pending hosted tenant-bound read RLS/server-broker proof. Legacy unscoped rows remain excluded. Complete every blocker in `REPOSITORY_CONSOLIDATION_2026-09-02.md` before any nonproduction schedule is registered. | Per-agency, per-stable-period only after release gates pass |
 | `monitorComplianceRisks` | **PAUSED — do not register or invoke.** The current implementation performs platform-wide service-role Patient/OASIS reads and can write critical alerts from unverified keyword heuristics. Keep it disabled until a server-owned tenant broker, per-agency scope, and clinically validated rules exist. | Only after release gates pass |
 
-## Registration steps (Base44 dashboard)
-1. Set `INTERNAL_FN_SECRET` in the app's function environment.
-2. For each approved function other than `computeOutcomeMeasures` and
-   `monitorComplianceRisks`, add its
-   scheduled trigger with header
-   `x-internal-secret: <INTERNAL_FN_SECRET>` and the function's documented body
-   (the existing jobs default to `{}`).
-3. Do **not** register `computeOutcomeMeasures` or `monitorComplianceRisks` yet.
+## Registration and creator-identity validation
+1. Create/deploy each approved native workflow from the intended protected
+   platform-admin account from its reviewed `base44/workflows/*.jsonc`. Do not
+   recreate legacy function-level automation metadata for the same target. If an
+   external scheduler will call the HTTP endpoint without a user session, also
+   set `INTERNAL_FN_SECRET` and send it as `x-internal-secret`.
+2. In isolated staging, list the deployed workflow, run one canary, and inspect
+   the function response/logs. Confirm that the native run resolves
+   `auth.me()` to the expected active protected admin and returns the expected
+   success payload. A schedule created by a non-admin will be rejected; a
+   schedule whose creator is later deactivated or demoted can stop running and
+   must be recreated under the approved owner.
+3. Negative-test the public endpoint without an admin session or scheduler
+   header (`401`, or `500` when the external-scheduler secret is intentionally
+   unset), and with an authenticated non-admin (`403`). Never put
+   `INTERNAL_FN_SECRET` in browser code or `function_args`.
+4. Do **not** register `computeOutcomeMeasures` or `monitorComplianceRisks` yet.
    After the outcome job's release gates pass,
    orchestrate separate one-agency, stable-period requests such as
    `{ "agency_id": "...", "period_start": "YYYY-MM-DD", "period_end": "YYYY-MM-DD", "period_type": "daily|weekly|monthly|quarterly|yearly|custom" }`.
    Never send `{}` and never expose the internal secret to a browser.
-4. `autoEnrollAnnualPlans` defaults to `scope: "auto"`. To opt a plan into the
+5. `autoEnrollAnnualPlans` defaults to `scope: "auto"`. To opt a plan into the
    daily auto-enroll, set its `LearningPlan.auto_enroll = true` (the seeded
    plans ship with it `false`). The admin **"Enroll All Staff"** button in
    *Admin Training → Annual → Annual Learning Plans* runs `scope: "all"`

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { useQuery } from "@tanstack/react-query";
@@ -9,8 +9,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Loader2, Activity, AlertTriangle, Target, Brain, Calendar, Clock, Shield } from "lucide-react";
 import { formatAge } from "@/lib/age";
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 
 export default function PredictiveOutcomesAnalyzer({ analysisResults, pdgmData, patientId, onPredictionsComplete }) {
+  const { tenantContext } = useAuth();
   // Auto-fired analyses are background work in the app-wide AI budget, so
   // several such cards on one page queue instead of hitting the provider at
   // once. A run the user CLICKED passes interactive priority per call and
@@ -20,28 +24,40 @@ export default function PredictiveOutcomesAnalyzer({ analysisResults, pdgmData, 
   const [autoPredict, setAutoPredict] = useState(false);
 
   // Fetch patient's historical data with enhanced context
-  const { data: patientHistory = [] } = useQuery({
+  const { data: visits = [] } = useAuthorizedVisits({
+    patientId,
+    purpose: 'activity',
+    sort: '-visit_date',
+    limit: 50,
+    enabled: !!patientId,
+  });
+
+  const { data: historicalContext = {} } = useQuery({
     queryKey: ['patientHistory', patientId],
     queryFn: async () => {
-      if (!patientId) return [];
-      const [visits, oasisData, incidents, alerts, tasks, recommendations] = await Promise.all([
-        base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 50),
+      if (!patientId) return {};
+      const [oasisData, incidents, alerts, tasks, recommendations] = await Promise.all([
         base44.entities.OASISUpload.filter({ patient_id: patientId }, '-created_date', 20),
         base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 20),
         base44.entities.PatientAlert.filter({ patient_id: patientId }, '-created_date', 30),
         base44.entities.Task.filter({ patient_id: patientId }, '-created_date', 50),
         base44.entities.PatientRecommendation.filter({ patient_id: patientId }, '-created_date', 30)
       ]);
-      return { visits, oasisData, incidents, alerts, tasks, recommendations };
+      return { oasisData, incidents, alerts, tasks, recommendations };
     },
     enabled: !!patientId
   });
+  const patientHistory = useMemo(
+    () => ({ ...historicalContext, visits }),
+    [historicalContext, visits],
+  );
 
   // Fetch patient details
-  const { data: patient } = useQuery({
-    queryKey: ['patient', patientId],
-    queryFn: () => patientId ? base44.entities.Patient.filter({ id: patientId }).then(p => p[0]) : null,
-    enabled: !!patientId
+  const { data: patient } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'oasis_analysis_context',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
 
   // Fetch population-level benchmarks

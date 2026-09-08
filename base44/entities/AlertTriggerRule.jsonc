@@ -164,4 +164,11 @@
     "trigger_condition",
     "alert_severity"
   ]
+  ,
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

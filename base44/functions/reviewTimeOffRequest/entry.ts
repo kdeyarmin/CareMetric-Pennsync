@@ -1,5 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
+
 
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
@@ -214,6 +235,8 @@ Deno.serve(async (req) => {
       reviewed_at: new Date().toISOString(),
       review_notes: String(note || '').slice(0, 2000),
     });
+    const deliveryPaused = !!request.employee_email && !outboundDeliveryReleased();
+    let email = false;
 
     // Let the employee know the outcome (best-effort), in-app and by email.
     try {
@@ -231,31 +254,34 @@ Deno.serve(async (req) => {
         metadata: { time_off_request_id: request_id, reviewed_by: user.email },
       });
       const approved = decision === 'approved';
-      await base44.asServiceRole.integrations.Core.SendEmail({
-        to: request.employee_email,
-        from_name: 'PennSync by CareMetric',
-        subject: approved ? 'Your time off was approved' : 'Update on your time-off request',
-        body: renderBrandedEmail({
-          preheader: `Your ${prettyType} request for ${request.start_date} → ${request.end_date} was ${decision}.`,
-          eyebrow: approved ? 'Request approved' : 'Request reviewed',
-          title: approved ? 'Your time off was approved' : 'Your time-off request was not approved',
-          intro: `Your ${prettyType} request for ${request.start_date} → ${request.end_date} was ${decision} by ${reviewerName}.`,
-          sections: [
-            {
-              callout: approved
-                ? { tone: 'success', text: 'Your time off has been approved. Enjoy your time away!' }
-                : { tone: 'warn', text: 'Your request was not approved. Please reach out to your reviewer if you have questions.' },
-            },
-            ...(trimmedNote ? [{ rows: [['Note from reviewer', trimmedNote]] }] : []),
-            { note: 'View the details in PennSync under Time Off.' },
-          ],
-        }),
-      }).catch(() => null);
+      if (!deliveryPaused) {
+        await base44.asServiceRole.integrations.Core.SendEmail({
+          to: request.employee_email,
+          from_name: 'PennSync by CareMetric',
+          subject: approved ? 'Your time off was approved' : 'Update on your time-off request',
+          body: renderBrandedEmail({
+            preheader: `Your ${prettyType} request for ${request.start_date} → ${request.end_date} was ${decision}.`,
+            eyebrow: approved ? 'Request approved' : 'Request reviewed',
+            title: approved ? 'Your time off was approved' : 'Your time-off request was not approved',
+            intro: `Your ${prettyType} request for ${request.start_date} → ${request.end_date} was ${decision} by ${reviewerName}.`,
+            sections: [
+              {
+                callout: approved
+                  ? { tone: 'success', text: 'Your time off has been approved. Enjoy your time away!' }
+                  : { tone: 'warn', text: 'Your request was not approved. Please reach out to your reviewer if you have questions.' },
+              },
+              ...(trimmedNote ? [{ rows: [['Note from reviewer', trimmedNote]] }] : []),
+              { note: 'View the details in PennSync under Time Off.' },
+            ],
+          }),
+        });
+        email = true;
+      }
     } catch (_notifyError) {
       // Best-effort notification/email.
     }
 
-    return Response.json({ success: true, request: updated });
+    return Response.json({ success: true, request: updated, email, delivery_paused: deliveryPaused });
   } catch (error) {
     console.error('reviewTimeOffRequest failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

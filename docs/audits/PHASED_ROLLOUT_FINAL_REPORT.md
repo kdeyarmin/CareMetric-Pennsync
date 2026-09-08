@@ -9,6 +9,12 @@ The phased audit/reporting effort is now complete through the repository-verifia
 
 No additional hosted Base44 policy, schema deployment, database migration, authenticated staging workflow, CI enforcement, patient-facing route, SSO integration, EHR/payer/provider sandbox connection, or production rollout has been claimed by this closeout report.
 
+The 2026-09-08 source follow-up adds partial-save retry recovery for Smart Note
+and Visit Scribe within an open draft. The LR-01/LR-02 checklist records its
+tested scope and remaining reload/crash, uncertain auxiliary-response, and
+hosted uniqueness/atomicity limitations. This source follow-up does not attest
+frontend deployment or change LR-02/S4's blocked live status.
+
 ## Phase-by-phase closeout
 
 | Phase | Status | Repository outcome | Remaining external dependency |

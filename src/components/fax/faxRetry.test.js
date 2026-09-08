@@ -6,6 +6,7 @@ import {
   nextRetryDelayMinutes,
   planFaxRetry,
   isFaxRetryDue,
+  canManuallyRetryFax,
 } from "./faxRetry.js";
 
 test("classifyFaxFailure flags permanent failures", () => {
@@ -165,4 +166,44 @@ test("faxRetryConfig falls back to defaults for non-numeric junk", () => {
   const c = faxRetryConfig({ max_retries: "many", retry_delay_minutes: "soon" });
   assert.equal(c.maxRetries, 3);
   assert.equal(c.baseDelayMinutes, 15);
+});
+
+const authorizedManualRetry = {
+  id: "fax-log-1",
+  agency_id: "agency-1",
+  referral_id: "referral-1",
+  document_id: "document-1",
+  sent_by_user_id: "user-1",
+  sent_by_membership_id: "membership-1",
+  sent_by_membership_version: 2,
+  telnyx_fax_id: "provider-fax-1",
+  provider_submission_attempt_id: "submission-attempt-1",
+  status: "failed",
+  provider_submission_state: "accepted",
+  provider_accepted_at: "2026-09-06T12:00:00.000Z",
+  provider_terminal_status: "failed",
+  provider_terminal_at: "2026-09-06T12:05:00.000Z",
+  retry_count: 0,
+  retry_generation: 0,
+};
+
+test("canManuallyRetryFax requires private tenant authority and a signed terminal failure", () => {
+  assert.equal(canManuallyRetryFax(authorizedManualRetry), true);
+  assert.equal(canManuallyRetryFax({ ...authorizedManualRetry, provider_submission_state: "indeterminate" }), false);
+  assert.equal(canManuallyRetryFax({ ...authorizedManualRetry, provider_terminal_status: undefined }), false);
+  assert.equal(canManuallyRetryFax({ ...authorizedManualRetry, provider_submission_attempt_id: undefined }), false);
+  assert.equal(canManuallyRetryFax({ ...authorizedManualRetry, document_url: "https://legacy.example/fax.pdf" }), false);
+  assert.equal(canManuallyRetryFax({ ...authorizedManualRetry, agency_id: undefined }), false);
+  assert.equal(canManuallyRetryFax({ ...authorizedManualRetry, retry_claimed_by: "claim-1" }), false);
+  assert.equal(canManuallyRetryFax({ ...authorizedManualRetry, failure_notify_claimed_by: "notify-1" }), false);
+  assert.equal(canManuallyRetryFax({ ...authorizedManualRetry, retry_generation: 1 }), false);
+  assert.equal(canManuallyRetryFax({
+    ...authorizedManualRetry,
+    provider_terminal_at: "2026-09-06T11:59:59.000Z",
+  }), false);
+  assert.equal(canManuallyRetryFax({
+    ...authorizedManualRetry,
+    retry_count: 11,
+    retry_generation: 10,
+  }), false);
 });

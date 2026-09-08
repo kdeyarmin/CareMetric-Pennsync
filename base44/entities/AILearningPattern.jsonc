@@ -75,4 +75,11 @@
     "provider_email",
     "pattern_rule"
   ]
+  ,
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

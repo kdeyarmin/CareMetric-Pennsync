@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from "react";
 import { base44 } from "@/api/base44Client";
-import { configNotReadyMessage } from "@/lib/aiFeatureError";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -14,7 +13,6 @@ import jsPDF from "jspdf";
 
 export default function FaxCoverSheetGenerator({
   patientId,
-  documentId,
   recipientNumber,
   recipientName,
   pageCount = 1,
@@ -63,7 +61,6 @@ export default function FaxCoverSheetGenerator({
     try {
       const result = await base44.functions.invoke('generateFaxCoverPage', {
         patient_id: patientId || null,
-        document_id: documentId || null,
         recipient_number: recipientNumber || "",
         recipient_name: recipientName || "",
         recipient_organization: form.recipient_organization,
@@ -84,7 +81,7 @@ export default function FaxCoverSheetGenerator({
       onCoverSheetReady?.(pdfUrl, data);
       toast.success("Cover sheet generated");
     } catch (error) {
-      toast.error(configNotReadyMessage(error) || ("Failed to generate cover sheet: " + error.message));
+      toast.error("Failed to generate cover sheet: " + error.message);
     } finally {
       setIsGenerating(false);
     }

@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 // <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveAgencySettings(base44, agencyName) {
   let settings = [];
@@ -121,17 +141,17 @@ async function resolveTelnyxCreds(base44) {
       || list.find((r) => r && pick(r.api_key))
       || list[0]
       || null;
-  } catch (err) {
+  } catch {
     // Do NOT collapse this into "not configured". A failed read (this invocation
     // path carries no service token, entity 404, 401/403, rate limit, platform
     // blip) is a completely different problem from an unconfigured integration,
     // and reporting them identically is what sent operators chasing a credential
     // they had already entered correctly.
-    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    readError = 'credential_store_unavailable';
     // The catch used to be bare, so an unreadable credential row left no
     // server-side breadcrumb at all — the only signal was a misleading
     // "not configured" reply. Log it; unattended runs have nowhere else to say so.
-    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
   }
   const rec = record || {};
   return {
@@ -152,7 +172,7 @@ async function resolveTelnyxCreds(base44) {
 function telnyxCredsMessage(creds, what) {
   const label = what || 'credentials';
   if (creds && creds.readError) {
-    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+    return `Could not read Telnyx ${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.`;
   }
   return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
 }
@@ -166,297 +186,69 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+function retryExactId(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 200
+    && value.trim() === value && !value.startsWith('$')
+    && !/[\u0000-\u001f\u007f]/.test(value) ? value : null;
+}
 
-/**
- * Retry a failed fax transmission
- */
+// Compatibility broker for existing clients. The reviewed referral-fax broker
+// owns every authorization, claim, private-file signing, retry-budget, durable
+// pre-submit log, and provider-certainty decision. This endpoint never elevates
+// a FaxLog write and never accepts legacy URL-based retry inputs.
 Deno.serve(async (req) => {
   try {
+    if (req.method !== 'POST') {
+      return Response.json({ error: 'Method not allowed' }, { status: 405, headers: { Allow: 'POST' } });
+    }
+    const declared = Number(req.headers.get('content-length'));
+    if (Number.isFinite(declared) && declared > 4_000) {
+      return Response.json({ error: 'Request body is too large' }, { status: 413 });
+    }
+    const raw = await req.text();
+    if (new TextEncoder().encode(raw).byteLength > 4_000) {
+      return Response.json({ error: 'Request body is too large' }, { status: 413 });
+    }
+    let body;
+    try { body = JSON.parse(raw); } catch { return Response.json({ error: 'Invalid request' }, { status: 400 }); }
+    if (!body || typeof body !== 'object' || Array.isArray(body)
+      || Object.keys(body).some((key) => key !== 'fax_log_id')) {
+      return Response.json({ error: 'Invalid request' }, { status: 400 });
+    }
+    const faxLogId = retryExactId(body.fax_log_id);
+    if (!faxLogId) return Response.json({ error: 'fax_log_id is invalid' }, { status: 400 });
+
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-
-    if (!user) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { fax_log_id } = await req.json();
-
-    if (!fax_log_id) {
-      return Response.json({ error: 'fax_log_id required' }, { status: 400 });
-    }
-
-    // Fetch the original fax log
-    const faxLogs = await base44.entities.FaxLog.filter({ id: fax_log_id }, undefined, 5000);
-    if (faxLogs.length === 0) {
-      return Response.json({ error: 'FaxLog not found' }, { status: 404 });
-    }
-
-    const originalFax = faxLogs[0];
-
-    // Ownership: only the original sender (or an admin-tier user) may resend a PHI fax.
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    // Fail closed: a non-admin caller must be the KNOWN sender. FaxLog has no
-    // RLS and sent_by is not required, so a legacy/empty sent_by row must not be
-    // retryable by any authenticated user — the old `sent_by && …` guard
-    // short-circuited to "allowed" whenever sent_by was blank.
-    const isOwner = !!originalFax.sent_by && originalFax.sent_by === user.email;
-    if (!isOwner && !isPlatformAdmin && !isAgencyScopedAdmin) {
+    const user = await base44.auth.me().catch(() => null);
+    if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!retryExactId(user.id) || typeof user.email !== 'string' || user.is_active === false
+      || user.disabled === true || user.is_service === true || user.is_verified === false) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-    // Agency-scoped admins may only retry faxes sent by staff in their agency.
-    if (isAgencyScopedAdmin && originalFax.sent_by !== user.email) {
-      if (!user.agency_name || !originalFax.sent_by) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-      const senders = await base44.asServiceRole.entities.User
-        .filter({ email: originalFax.sent_by }, undefined, 5)
-        .catch(() => []);
-      if (!senders?.[0] || senders[0].agency_name !== user.agency_name) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
+    const response = await base44.functions.invoke('sendAuthorizedReferralFax', {
+      retry_fax_log_id: faxLogId,
+    });
+    const data = response?.data && typeof response.data === 'object' ? response.data : response;
+    if (!data || data.success !== true || !retryExactId(data.log_id)
+      || !['queued', 'sending', 'submission_unknown'].includes(String(data.status || ''))) {
+      return Response.json({ error: 'Authorized fax retry response was invalid' }, { status: 502 });
     }
-
-    // Only a FAILED fax may be retried. Without this, a stale UI (or a direct
-    // call) can re-fax a document that is queued/in-flight/delivered — a
-    // duplicate PHI transmission the claim token below does not prevent (it
-    // only guards CONCURRENT retries, not retries of non-failed faxes).
-    if (originalFax.status !== 'failed') {
-      return Response.json({
-        error: `Only failed faxes can be retried (current status: ${originalFax.status || 'unknown'})`,
-        success: false
-      }, { status: 409 });
-    }
-
-    // Honor the admin-configured retry budget (FaxRetryConfig.max_retries) so a
-    // manual retry uses the same limit as the auto-retry cron, instead of a
-    // separate hardcoded value. Resolve by sender agency — never global newest.
-    let senderAgency = user.agency_name || '';
-    if (originalFax.sent_by) {
-      const [sender] = await base44.asServiceRole.entities.User
-        .filter({ email: originalFax.sent_by }, undefined, 1).catch(() => []);
-      if (sender?.agency_name) senderAgency = sender.agency_name;
-    }
-    const retryCfg = (await resolveFaxRetryConfig(base44, senderAgency)) || {};
-    // An UNSET max_retries must mean "use the default", not zero: Number(null)
-    // and Number('') are both 0, so a config row saved without touching the
-    // field would have rejected every manual retry with "Maximum retries (0)
-    // exceeded". Only an explicit 0 blocks. Matches faxRetryConfig in
-    // src/components/fax/faxRetry.js.
-    const rawMax = retryCfg.max_retries;
-    const cfgMax = rawMax === null || rawMax === undefined
-      || (typeof rawMax === 'string' && rawMax.trim() === '')
-      ? NaN
-      : Number(rawMax);
-    const maxRetries = Number.isFinite(cfgMax) && cfgMax >= 0 ? cfgMax : 3;
-
-    // Check retry limit — coerce undefined retry_count to 0 so max_retries: 0
-    // actually blocks (undefined >= 0 is false in JS).
-    if ((Number(originalFax.retry_count) || 0) >= maxRetries) {
-      return Response.json({
-        error: `Maximum retries (${maxRetries}) exceeded`,
-        success: false
-      }, { status: 400 });
-    }
-
-    // SSRF guard: re-validate the STORED document URL before handing it back to
-    // Telnyx as media_url — a tampered or legacy row must not aim the fax
-    // provider at an arbitrary/internal host.
-    if (!isSafeFetchUrl(originalFax.document_url)) {
-      return Response.json({
-        error: 'Invalid or disallowed stored document URL',
-        success: false
-      }, { status: 400 });
-    }
-
-    // Get Telnyx credentials from the in-app IntegrationSecret row. The
-    // dashboard-env path was retired; see src/lib/telnyxConfig.spec.js.
-    const telnyxCreds = await resolveTelnyxCreds(base44);
-    const { apiKey, faxConnectionId } = telnyxCreds;
-    // Resolve the from-number the same way sendFax does: transmit from the
-    // blind outbound line (outbound_fax_number_e164), presented as the office
-    // fax machine; legacy fallback to office_fax_number_e164 as the from.
-    const agencySettings = await resolveAgencySettings(base44, senderAgency);
-    const officeFaxRaw = (agencySettings?.office_fax_number_e164 || '').toString().trim();
-    const outboundFaxRaw = (agencySettings?.outbound_fax_number_e164 || '').toString().trim();
-    const officeFax = normalizeFromE164(officeFaxRaw);
-    const outboundFax = normalizeFromE164(outboundFaxRaw);
-    const fromNumber = outboundFax || officeFax;
-
-    if (!apiKey || !faxConnectionId) {
-      return Response.json({
-        error: telnyxCredsMessage(telnyxCreds, "credentials"),
-        success: false
-      }, { status: 500 });
-    }
-    if (outboundFaxRaw && !outboundFax) {
-      return Response.json({
-        error: `Outbound fax number "${outboundFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650441).`,
-        success: false
-      }, { status: 500 });
-    }
-    if (!fromNumber) {
-      return Response.json({
-        error: officeFaxRaw
-          ? `Office fax number "${officeFaxRaw}" is not a valid phone number — re-enter it in Agency Settings (E.164, e.g. +17244650444).`
-          : 'No outbound fax number configured. Set the outbound fax line (and office fax number) in Agency Settings.',
-        success: false
-      }, { status: 500 });
-    }
-
-    // Claim the fax for retry BEFORE sending so two concurrent retries (e.g. a
-    // double-click, or a manual retry racing the cron) can't both fax the PHI and
-    // double-charge. Flip failed -> retrying with a token, then re-read; if we
-    // don't own the claim, another retry is already in flight. (Telnyx's Fax API
-    // has no client idempotency key, so this claim is the double-send guard.)
-    const runId = crypto.randomUUID();
-    try {
-      await base44.entities.FaxLog.update(fax_log_id, {
-        status: 'retrying',
-        retry_claimed_by: runId,
-        retry_claimed_at: new Date().toISOString(),
-      });
-    } catch {
-      return Response.json({ error: 'Could not claim fax for retry', success: false }, { status: 409 });
-    }
-    const claimCheck = await base44.entities.FaxLog.filter({ id: fax_log_id }, '-created_date', 1).catch(() => []);
-    if (!claimCheck[0] || claimCheck[0].retry_claimed_by !== runId) {
-      return Response.json({ error: 'A retry for this fax is already in progress', success: false }, { status: 409 });
-    }
-
-    // Release the claim back to a retriable 'failed' state if the send doesn't go
-    // through, so a transient error doesn't strand the fax in 'retrying'.
-    const releaseClaim = () => base44.entities.FaxLog.update(fax_log_id, {
-      status: 'failed',
-      retry_claimed_by: null,
-    }).catch(() => {});
-
-    const telnyxUrl = `https://api.telnyx.com/v2/faxes`;
-    // Include the same DLR webhook sendFax uses so the retried fax reports status.
-    // Derive the functions base from this request's own URL — every backend
-    // function (including handleTelnyxStatusWebhook) is served from the same
-    // base, so the status-webhook peer is one path segment over. Replaces the
-    // retired FUNCTIONS_BASE_URL secret; non-https (local dev) derives nothing.
-    const functionsBaseUrl = (() => {
-      try {
-        const u = new URL(req.url);
-        return u.protocol === 'https:' ? (u.origin + u.pathname).replace(/\/+$/, '').replace(/\/[^/]+$/, '') : '';
-      } catch { return ''; }
-    })();
-    const retryPayload = {
-      connection_id: faxConnectionId,
-      from: fromNumber,
-      to: originalFax.to_number,
-      media_url: originalFax.document_url,
-      quality: 'high',
-    };
-    // Mask the blind line: present the office fax number as the caller-id name.
-    const displayName = officeFaxDisplayName(officeFax);
-    if (displayName) retryPayload.from_display_name = displayName;
-    if (functionsBaseUrl) retryPayload.webhook_url = `${functionsBaseUrl}/handleTelnyxStatusWebhook`;
-
-    // Re-verify claim ownership immediately before the provider call. The initial
-    // claim+re-read still has a TOCTOU window where a second retry can overwrite
-    // claimed_by after we passed the first check; abort if we no longer own it.
-    const preSendClaim = await base44.entities.FaxLog.filter({ id: fax_log_id }, '-created_date', 1).catch(() => []);
-    if (!preSendClaim[0] || preSendClaim[0].retry_claimed_by !== runId) {
-      return Response.json({ error: 'A retry for this fax is already in progress', success: false }, { status: 409 });
-    }
-
-    // Re-send the fax
-    let telnyxResponse;
-    try {
-      telnyxResponse = await fetch(telnyxUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(retryPayload)
-      });
-    } catch (sendErr) {
-      await releaseClaim();
-      throw sendErr;
-    }
-
-    if (!telnyxResponse.ok) {
-      const errorData = await telnyxResponse.text();
-      console.error('Telnyx error:', errorData);
-      await releaseClaim();
-      return Response.json({
-        error: 'Failed to send fax via Telnyx',
-        success: false
-      }, { status: telnyxResponse.status });
-    }
-
-    // Bookkeeping AFTER a successful Telnyx send. If any of these steps throws
-    // (json parse, FaxLog.create, the final update), we must NOT fall through to
-    // the outer catch and leave the original stranded in 'retrying' with a live
-    // claim — that orphans an already-sent fax and blocks future retries. The
-    // fax was accepted, so we also must NOT releaseClaim() back to 'failed'
-    // (that would re-send and double-fax). Settle the original to 'retried'.
-    let faxData;
-    let newFaxLog = null;
-    try {
-      faxData = await telnyxResponse.json();
-
-      // Create new FaxLog record for retry
-      newFaxLog = await base44.entities.FaxLog.create({
-        from_number: originalFax.from_number,
-        to_number: originalFax.to_number,
-        to_name: originalFax.to_name,
-        document_url: originalFax.document_url,
-        document_name: originalFax.document_name + ' (Retry)',
-        status: 'queued',
-        telnyx_fax_id: faxData?.data?.id,
-        pages: originalFax.pages,
-        cover_page_details: originalFax.cover_page_details,
-        patient_id: originalFax.patient_id,
-        sent_by: user.email,
-        priority: originalFax.priority,
-        retry_count: (originalFax.retry_count || 0) + 1,
-        estimated_cost: originalFax.estimated_cost
-      });
-
-      // Update original fax to mark it as retried (clears the transient claim).
-      await base44.entities.FaxLog.update(fax_log_id, {
-        status: 'retried',
-        retry_claimed_by: null,
-        failure_reason: `Retry attempt #${(originalFax.retry_count || 0) + 1} initiated`
-      });
-    } catch (postErr) {
-      console.error('retryFailedFax post-send bookkeeping failed:', postErr);
-      // Settle the claim so the already-sent fax isn't orphaned in 'retrying'.
-      await base44.entities.FaxLog.update(fax_log_id, {
-        status: 'retried',
-        retry_claimed_by: null,
-        failure_reason: 'Retry was sent to Telnyx, but follow-up logging failed.'
-      }).catch(() => {});
-      return Response.json({
-        success: true,
-        fax_id: faxData?.data?.id,
-        twilio_fax_id: faxData?.data?.id, // deprecated alias, kept for back-compat
-        warning: 'Fax retry was sent, but recording the new log entry failed.'
-      });
-    }
-
-    return Response.json({
-      success: true,
-      new_fax_log_id: newFaxLog.id,
-      fax_id: faxData?.data?.id,
-      twilio_fax_id: faxData?.data?.id, // deprecated alias, kept for back-compat
-      retry_count: (originalFax.retry_count || 0) + 1,
-      message: `Fax retry #${(originalFax.retry_count || 0) + 1} queued for ${originalFax.to_number}`
+    return Response.json(data, {
+      status: data.requires_reconciliation === true ? 202 : 200,
+      headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' },
     });
   } catch (error) {
-    console.error('Retry fax error:', error);
-    return Response.json({
-      error: 'Failed to retry fax',
-      success: false
-    }, { status: 500 });
+    const payload = error?.response?.data;
+    const status = Number(error?.response?.status);
+    if (payload && typeof payload.error === 'string' && Number.isInteger(status)
+      && status >= 400 && status <= 599) {
+      return Response.json({ error: payload.error }, {
+        status,
+        headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' },
+      });
+    }
+    console.error('retryFailedFax failed');
+    return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

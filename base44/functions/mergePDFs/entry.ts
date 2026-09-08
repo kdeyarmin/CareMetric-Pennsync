@@ -106,8 +106,6 @@ Deno.serve(async (req) => {
       user_name: user.full_name,
       action: 'pdfs_merged',
       details: {
-        source_pdfs: pdf_urls,
-        merged_pdf: uploadResult.file_url,
         pdf_count: pdf_urls.length
       },
       page: 'pdf_merger'

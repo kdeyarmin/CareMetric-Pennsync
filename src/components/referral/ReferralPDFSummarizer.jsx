@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { uploadFailureMessage, MISSING_FILE_URL_MESSAGE } from "@/lib/uploadError";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 import { runReferralExtraction } from "./referralExtraction";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -34,8 +35,6 @@ import {
   ShieldAlert,
   XCircle,
   ExternalLink,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import AIAdmissionNoteGenerator from "./AIAdmissionNoteGenerator";
 import AdmissionPacketCustomizer from "./AdmissionPacketCustomizer";
@@ -79,7 +78,6 @@ export default function ReferralPDFSummarizer({
   const [generatedPdfUrl, setGeneratedPdfUrl] = useState(null);
   // OASIS suggestions applied via the assistant below; retained as state so the
   // assistant's onApplySuggestion has a sink and resets cleanly between documents.
-  const [showPreview, setShowPreview] = useState(true);
   const fileInputRef = useRef(null);
   const progressIntervalRef = useRef(null);
   // Remember the last document we processed so "Try again" can re-run without re-upload.
@@ -95,11 +93,6 @@ export default function ReferralPDFSummarizer({
     const value = extractedData?.extraction_confidence?.[section];
     return typeof value === "number" && !Number.isNaN(value) ? Math.round(value) : fallback;
   };
-
-  // Whether the uploaded source document should render as an image vs. a PDF frame.
-  const previewMime = lastProcessedRef.current?.mime || "";
-  const previewIsImage =
-    previewMime.startsWith("image/") || /\.(png|jpe?g|tiff?|gif|webp)(\?|$)/i.test(fileUrl || "");
 
   // Clear the progress interval if the component unmounts mid-processing.
   React.useEffect(() => () => {
@@ -313,7 +306,7 @@ export default function ReferralPDFSummarizer({
   const downloadAdmissionPacket = async () => {
     if (generatedPdfUrl) {
       // Already generated during extraction — just open it, no re-generation.
-      window.open(generatedPdfUrl, "_blank", "noopener");
+      openAuthorityBoundWindow(generatedPdfUrl);
       return;
     }
     await buildAdmissionPacket(extractedData, { download: true });
@@ -343,6 +336,7 @@ export default function ReferralPDFSummarizer({
           />
 
           <button
+            data-authority-file-drop-zone
             type="button"
             onClick={() => !isUploading && !isProcessing && fileInputRef.current?.click()}
             onDragOver={(e) => { e.preventDefault(); if (!isUploading && !isProcessing) setIsDragging(true); }}
@@ -510,46 +504,25 @@ export default function ReferralPDFSummarizer({
                       Source Document
                     </CardTitle>
                     <div className="flex items-center gap-2">
-                      {fileUrl && (isSafeExternalUrl(fileUrl) || fileUrl.startsWith('blob:')) && (
-                        <a
-                          href={fileUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      {fileUrl && isSafeExternalUrl(fileUrl) && (
+                        <button
+                          type="button"
+                          onClick={() => openAuthorityBoundWindow(fileUrl)}
                           className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1"
                         >
                           <ExternalLink className="w-3 h-3" /> Open
-                        </a>
+                        </button>
                       )}
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2"
-                        onClick={() => setShowPreview((v) => !v)}
-                        aria-label={showPreview ? "Hide source document" : "Show source document"}
-                      >
-                        {showPreview ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      </Button>
                     </div>
                   </div>
                 </CardHeader>
-                {showPreview && (isSafeExternalUrl(fileUrl) || fileUrl.startsWith('blob:')) && (
-                  <CardContent className="p-0">
-                    {previewIsImage ? (
-                      <div className="max-h-[78vh] overflow-auto bg-slate-100">
-                        <img src={fileUrl} alt="Referral source document" className="w-full h-auto" />
-                      </div>
-                    ) : (
-                      <iframe
-                        src={fileUrl}
-                        title="Referral source document"
-                        className="w-full h-[78vh] border-0 bg-slate-100"
-                      />
-                    )}
-                    <p className="text-[11px] text-slate-500 p-2 border-t bg-white">
-                      Compare the AI extraction against this source before clinical or billing use.
-                    </p>
-                  </CardContent>
-                )}
+                <CardContent className="p-4">
+                  <p className="text-sm text-slate-600">
+                    Inline source previews are unavailable because native image/PDF
+                    menus cannot be revoked during a workspace transition. Use the
+                    tracked Open action above to compare the extraction.
+                  </p>
+                </CardContent>
               </Card>
             )}
 

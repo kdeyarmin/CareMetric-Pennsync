@@ -4,6 +4,7 @@ import {
   LOCAL_PHI_KEYS,
   PURGE_FULL_PREFIXES,
   PURGE_AFTER_RETIREMENT_KEYS,
+  QUARANTINED_OFFLINE_KEYS,
   PURGE_SYNCED_KEYS,
   PRESERVE_KEYS,
   NON_PHI_KEYS,
@@ -15,7 +16,7 @@ test("every local PHI key is classified exactly once", () => {
   const all = Object.values(LOCAL_PHI_KEYS);
   const classified = [
     ...PURGE_FULL_PREFIXES, ...PURGE_AFTER_RETIREMENT_KEYS,
-    ...PURGE_SYNCED_KEYS, ...PRESERVE_KEYS, ...NON_PHI_KEYS,
+    ...PURGE_SYNCED_KEYS, ...QUARANTINED_OFFLINE_KEYS, ...PRESERVE_KEYS, ...NON_PHI_KEYS,
   ];
   for (const key of all) {
     const count = classified.filter((k) => k === key).length;
@@ -53,7 +54,7 @@ test("the high-risk re-fetchable / diagnostic PHI keys are in the full-purge set
   assert.deepEqual(PURGE_SYNCED_KEYS, [LOCAL_PHI_KEYS.PENN_PENDING_VISITS, LOCAL_PHI_KEYS.PENN_PENDING_UPDATES]);
 });
 
-test("the retired offline queues are gated behind retirement, not purged outright", () => {
+test("the mapped retired queues are gated behind retirement, not purged outright", () => {
   // They can hold the only copy of a visit note or incident report captured in
   // the field. clearCachedPHI removes them only once retiredOfflineQueue.js has
   // confirmed that work reached the server — purging them on any earlier logout
@@ -62,7 +63,6 @@ test("the retired offline queues are gated behind retirement, not purged outrigh
     LOCAL_PHI_KEYS.SYNC_QUEUE,
     LOCAL_PHI_KEYS.PENDING,
     LOCAL_PHI_KEYS.VISIT_DRAFTS,
-    LOCAL_PHI_KEYS.CONFLICTS,
   ]) {
     assert.ok(PURGE_AFTER_RETIREMENT_KEYS.includes(k), `${k} should be retirement-gated`);
     for (const prefix of PURGE_FULL_PREFIXES) {
@@ -72,4 +72,10 @@ test("the retired offline queues are gated behind retirement, not purged outrigh
       );
     }
   }
+});
+
+test("unresolved legacy conflicts are never removed by an automatic purge", () => {
+  assert.deepEqual(QUARANTINED_OFFLINE_KEYS, [LOCAL_PHI_KEYS.CONFLICTS]);
+  assert.ok(!PURGE_AFTER_RETIREMENT_KEYS.includes(LOCAL_PHI_KEYS.CONFLICTS));
+  assert.ok(!PURGE_FULL_PREFIXES.includes(LOCAL_PHI_KEYS.CONFLICTS));
 });

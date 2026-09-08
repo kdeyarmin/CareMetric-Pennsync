@@ -108,10 +108,9 @@ function DocumentationImpactEnabled() {
   const [afterCo, setAfterCo] = useState("low");
   const [seededFrom, setSeededFrom] = useState("");
 
-  // The agency's saved PDGM rate set — the SAME PDGMRateConfig the backend
-  // calculatePDGM merges over its defaults — so the simulator shows the same
-  // "before" dollars as the OASIS analyzer instead of national defaults.
-  // (Readable by all authenticated users; write is service-role only.)
+  // Legacy PDGMRateConfig support retained inside this fully disabled component
+  // for source archaeology only. These rows and markers are not CMS HHGS and
+  // cannot produce payment output.
   const { data: rateConfig = null } = useQuery({
     queryKey: ["pdgm-rate-config"],
     queryFn: async () => {
@@ -270,12 +269,11 @@ function DocumentationImpactEnabled() {
   // its historical UI code inert until the canonical verified engine exists.
   const impact = { complete: false, paymentDelta: null, paymentPct: null };
 
-  // Which rate set is in effect (shown on the estimate card so an admin can tell
-  // agency-saved numbers from the built-in national defaults at a glance).
+  // Historical source label retained only in the disabled implementation.
   const savedDate = rateConfig?.updated_date ? format(new Date(rateConfig.updated_date), "MMM d, yyyy") : null;
   const rateBasisLabel = rateConfig
-    ? `Agency ${rateConfig.is_official ? "official CMS rates" : "saved rates — estimate"}${savedDate ? ` (saved ${savedDate})` : ""}`
-    : "National defaults (CY2026)";
+    ? `Legacy agency reference values${savedDate ? ` (saved ${savedDate})` : ""}; official marker ignored`
+    : "Retired national reference defaults";
 
   // Admin-only HIPPS reconciliation against the stored official CMS case-mix
   // weight table (uploaded on PDGM Rate Settings). Reference display ONLY — it
@@ -340,7 +338,7 @@ function DocumentationImpactEnabled() {
               </div>
             )}
             {analyzed.length === 0 ? (
-              <p className="text-sm text-slate-500">No analyzed OASIS assessments with an estimated payment yet. As OASIS assessments are analyzed, their estimated PDGM reimbursement appears here.</p>
+              <p className="text-sm text-slate-500">PDGM payment history is unavailable. No retired or legacy estimate is shown.</p>
             ) : filteredAnalyzed.length === 0 ? (
               <p className="text-sm text-slate-500">No analyzed assessments match this filter.</p>
             ) : (
@@ -583,10 +581,9 @@ function DocumentationImpactEnabled() {
                 </div>
                 <p className="text-xs text-slate-400 mt-4">
                   Uses {rateConfig
-                    ? `the agency's ${rateConfig.is_official ? "official CMS rates" : "saved rates (still an estimate until marked official)"}`
-                    : "CY2026 national default rates"} — {money(effectiveRates.basePaymentRate)} base, wage index {wageIndex} — merged and applied with the
-                  same case-mix formula as the agency’s PDGM calculation, so the “before” dollars match the OASIS analyzer. The documentation-driven
-                  <strong> delta</strong> is the point. Not a billing determination.
+                    ? "legacy agency reference values (any official marker is ignored)"
+                    : "retired national reference defaults"} — {money(effectiveRates.basePaymentRate)} base, wage index {wageIndex} — merged and applied with the
+                  retired factorized formula. This disabled historical implementation must not emit or compare payment dollars.
                 </p>
               </>
             )}
@@ -605,7 +602,7 @@ function DocumentationImpactEnabled() {
               <p className="text-xs text-slate-500">
                 Looked up in the stored CMS weight table
                 {storedWeightTable.payment_year ? ` (CY${storedWeightTable.payment_year})` : ""} for this scenario.
-                Reference only — the payment estimate above remains from the PDGM engine.
+                Reference only — PennSync payment remains unavailable.
               </p>
             </CardHeader>
             <CardContent>
@@ -637,7 +634,7 @@ function DocumentationImpactEnabled() {
                 ))}
               </div>
               <p className="text-xs text-slate-400 mt-3">
-                Reference table for analysis — payment estimates remain from the PDGM engine. LUPA thresholds are
+                Reference table for analysis — PennSync payment remains unavailable. LUPA thresholds are
                 informational display only: this companion app does not count visits and raises no LUPA alerts. If a
                 reference weight disagrees with the engine’s weight above, reconcile the rate tables in PDGM Rate
                 Settings rather than quoting two figures.

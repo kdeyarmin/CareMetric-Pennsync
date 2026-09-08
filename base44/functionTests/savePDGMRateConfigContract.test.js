@@ -66,6 +66,8 @@ test("paused rate endpoints contain no service-role data access", async () => {
 
 test("PDGM rate entity remains service-role-only", async () => {
   const schema = JSON.parse(await readFile(new URL("../entities/PDGMRateConfig.jsonc", import.meta.url), "utf8"));
-  assert.deepEqual(schema.rls.read, { user_condition: { role: "__service_role_only__" } });
-  assert.deepEqual(schema.rls.write, { user_condition: { role: "__service_role_only__" } });
+  assert.equal(Object.hasOwn(schema.rls, "write"), false, "legacy write is ignored by hosted Base44");
+  for (const operation of ["create", "read", "update", "delete"]) {
+    assert.equal(schema.rls[operation], false, `${operation} must deny direct API access`);
+  }
 });

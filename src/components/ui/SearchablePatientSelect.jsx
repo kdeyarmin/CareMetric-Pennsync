@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { Check, ChevronsUpDown, Clock, Star, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -26,6 +26,12 @@ import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { base44 } from "@/api/base44Client";
 import { useQueryClient } from "@tanstack/react-query";
+import { createAuthorizedPatient, createPatientRequestId } from '@/functions/createAuthorizedPatient';
+import {
+  assertTenantSdkRealmLeaseCurrent,
+  captureTenantSdkRealmLease,
+  getTenantSdkRealmAbortSignal,
+} from '@/lib/tenantSdkRealmGate';
 
 export default function SearchablePatientSelect({
   patients = [],
@@ -45,6 +51,7 @@ export default function SearchablePatientSelect({
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newPatient, setNewPatient] = useState({ first_name: "", last_name: "" });
   const [creating, setCreating] = useState(false);
+  const patientCreateRequestId = useRef(null);
   const [currentUserEmail, setCurrentUserEmail] = useState("");
   const queryClient = useQueryClient();
   const [localPatients, setLocalPatients] = useState(Array.isArray(patients) ? patients : []);
@@ -63,9 +70,22 @@ export default function SearchablePatientSelect({
   // Load current user and their preferences. Favorites live on User.favorited_patients
   // (sidebar + alerts read that field); localStorage is a fast cache / offline fallback.
   useEffect(() => {
+    let lease;
+    let signal;
+    let active = true;
+    try {
+      lease = captureTenantSdkRealmLease();
+      signal = getTenantSdkRealmAbortSignal(lease);
+    } catch {
+      return undefined;
+    }
+    const expire = () => { active = false; };
+    signal.addEventListener('abort', expire, { once: true });
     const loadUserPreferences = async () => {
       try {
         const user = await base44.auth.me();
+        assertTenantSdkRealmLeaseCurrent(lease);
+        if (!active) return;
         const userEmail = user?.email || 'default';
         setCurrentUserEmail(userEmail);
 
@@ -83,6 +103,7 @@ export default function SearchablePatientSelect({
         if (fromLocal.length > 0 && fromUser.length === 0) {
           // One-time migration: promote localStorage favorites onto the user profile
           // so the sidebar / alerts dashboard can see them.
+          assertTenantSdkRealmLeaseCurrent(lease);
           base44.auth.updateMe({ favorited_patients: merged }).catch(() => {});
         }
       } catch (error) {
@@ -90,10 +111,21 @@ export default function SearchablePatientSelect({
       }
     };
     loadUserPreferences();
+    return () => {
+      active = false;
+      signal.removeEventListener('abort', expire);
+    };
   }, []);
 
   // Save to recent when patient is selected
   const handleSelect = (patientId) => {
+    let lease;
+    try {
+      lease = captureTenantSdkRealmLease();
+      assertTenantSdkRealmLeaseCurrent(lease);
+    } catch {
+      return;
+    }
     handleChange(patientId);
     setOpen(false);
 
@@ -106,7 +138,10 @@ export default function SearchablePatientSelect({
     ].slice(0, 5);
     
     setRecentPatients(updatedRecent);
-    try { localStorage.setItem(`recentPatients_${currentUserEmail}`, JSON.stringify(updatedRecent)); } catch { /* no-op */ }
+    try {
+      assertTenantSdkRealmLeaseCurrent(lease);
+      localStorage.setItem(`recentPatients_${currentUserEmail}`, JSON.stringify(updatedRecent));
+    } catch { /* stale authority or unavailable storage */ }
   };
 
   // Toggle favorite — persist to User.favorited_patients (and local cache) so the
@@ -114,6 +149,13 @@ export default function SearchablePatientSelect({
   const toggleFavorite = (patientId, e) => {
     e.stopPropagation();
     if (!currentUserEmail) return;
+    let lease;
+    try {
+      lease = captureTenantSdkRealmLease();
+      assertTenantSdkRealmLeaseCurrent(lease);
+    } catch {
+      return;
+    }
     
     const isFavorited = favoritedPatients.includes(patientId);
     
@@ -122,7 +164,15 @@ export default function SearchablePatientSelect({
       : [...favoritedPatients, patientId];
     
     setFavoritedPatients(updatedFavorites);
-    try { localStorage.setItem(`favoritedPatients_${currentUserEmail}`, JSON.stringify(updatedFavorites)); } catch { /* no-op */ }
+    try {
+      assertTenantSdkRealmLeaseCurrent(lease);
+      localStorage.setItem(`favoritedPatients_${currentUserEmail}`, JSON.stringify(updatedFavorites));
+    } catch { /* stale authority or unavailable storage */ }
+    try {
+      assertTenantSdkRealmLeaseCurrent(lease);
+    } catch {
+      return;
+    }
     base44.auth.updateMe({ favorited_patients: updatedFavorites }).catch((err) => {
       toast.error(err?.message || 'Could not save favorite');
     });
@@ -131,15 +181,25 @@ export default function SearchablePatientSelect({
   // Create new patient
   const handleCreatePatient = async () => {
     if (!newPatient.first_name || !newPatient.last_name) return;
+    let lease;
+    try {
+      lease = captureTenantSdkRealmLease();
+    } catch {
+      return;
+    }
     
     setCreating(true);
     try {
-      const created = await base44.entities.Patient.create(newPatient);
+      const created = await createAuthorizedPatient(newPatient, {
+        clientRequestId: patientCreateRequestId.current ||= createPatientRequestId(),
+      });
+      assertTenantSdkRealmLeaseCurrent(lease);
       setLocalPatients((current) => [created, ...current]);
       queryClient.invalidateQueries({ queryKey: ['patients'] });
       handleSelect(created.id);
       setCreateDialogOpen(false);
       setNewPatient({ first_name: "", last_name: "" });
+      patientCreateRequestId.current = null;
     } catch (error) {
       // Surface the failure (the dialog stays open so the entry isn't lost).
       toast.error(error?.message || 'Failed to create patient. Please try again.');
@@ -149,6 +209,7 @@ export default function SearchablePatientSelect({
 
   // Pre-fill new patient with search term
   const openCreateDialog = () => {
+    patientCreateRequestId.current = createPatientRequestId();
     const names = search.trim().split(' ');
     setNewPatient({
       first_name: names[0] || "",

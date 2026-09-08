@@ -1,13 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
-const { authMe, userList, sendEmail, notificationCreate } = vi.hoisted(() => ({
+const { authMe, userList, sendEmail, notificationCreate, toastError } = vi.hoisted(() => ({
   authMe: vi.fn(),
   userList: vi.fn(),
   sendEmail: vi.fn(),
   notificationCreate: vi.fn(),
+  toastError: vi.fn(),
 }));
 
 vi.mock('@/api/base44Client', () => ({
@@ -15,13 +16,13 @@ vi.mock('@/api/base44Client', () => ({
     auth: { me: (...a) => authMe(...a) },
     entities: {
       User: { list: (...a) => userList(...a) },
-      Notification: { create: (...a) => notificationCreate(...a) },
     },
+    functions: { invoke: (...a) => notificationCreate(...a) },
     integrations: { Core: { SendEmail: (...a) => sendEmail(...a) } },
   },
 }));
 
-vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { error: toastError, success: vi.fn(), info: vi.fn() } }));
 
 // Radix Select needs real pointer events; shim it with plain buttons so this
 // spec exercises the CARD's logic (roster scoping, brief construction, send
@@ -46,6 +47,10 @@ vi.mock('@/components/ui/select', async () => {
 });
 
 import AdmissionBriefEmailCard from '@/components/referral/AdmissionBriefEmailCard';
+import {
+  bindTrustedTenantContext,
+  clearTrustedTenantContext,
+} from '@/lib/roles';
 
 const referralData = {
   demographics: { full_name: 'Jane Doe', insurance_primary: 'Medicare' },
@@ -53,7 +58,27 @@ const referralData = {
   diagnoses: { primary_diagnosis: 'CHF (I50.9)', primary_icd10: 'I50.9', allergies: 'Penicillin' },
 };
 
-const AGENCY_A = { email: 'intake@a.example', full_name: 'Dana Intake', agency_name: 'Agency A', account_type: 'agency_admin' };
+const AGENCY_A = {
+  id: 'intake-a',
+  email: 'intake@a.example',
+  full_name: 'Dana Intake',
+  role: 'admin',
+  agency_name: 'Agency A',
+  account_type: 'agency_admin',
+};
+
+const TENANT_CONTEXT = {
+  user_id: AGENCY_A.id,
+  user_email: AGENCY_A.email,
+  membership_id: 'membership-intake-a',
+  membership_key: 'agency-a:intake-a',
+  membership_version: 1,
+  agency_id: 'agency-a',
+  tenant_role: 'agency_admin',
+  membership_status: 'active',
+  is_platform_owner: false,
+  agency: { id: 'agency-a', name: 'Agency A', status: 'active' },
+};
 
 const roster = [
   { id: 'u1', email: 'kelly@a.example', full_name: 'Kelly Nurse', credential_type: 'RN', agency_name: 'Agency A', is_active: true },
@@ -70,10 +95,17 @@ const renderCard = (props = {}) =>
   );
 
 beforeEach(() => {
+  clearTrustedTenantContext();
+  bindTrustedTenantContext(AGENCY_A, TENANT_CONTEXT);
   authMe.mockReset().mockResolvedValue(AGENCY_A);
   userList.mockReset().mockResolvedValue(roster);
   sendEmail.mockReset().mockResolvedValue({});
   notificationCreate.mockReset().mockResolvedValue({});
+  toastError.mockReset();
+});
+
+afterEach(() => {
+  clearTrustedTenantContext();
 });
 
 describe('AdmissionBriefEmailCard', () => {
@@ -86,65 +118,20 @@ describe('AdmissionBriefEmailCard', () => {
     expect(screen.getByRole('button', { name: /Email briefing/i })).toBeDisabled();
   });
 
-  it('emails the selected nurse the full brief and records an in-app notification', async () => {
+  it('visibly fails closed without invoking browser email or an in-app sent claim', async () => {
     renderCard({ sourceFileUrl: 'https://files.example/referral.pdf' });
     await userEvent.click(await screen.findByText(/Kelly Nurse, RN — kelly@a\.example/));
     await userEvent.click(screen.getByRole('button', { name: /Email briefing/i }));
 
-    await waitFor(() => expect(sendEmail).toHaveBeenCalledTimes(1));
-    const sent = sendEmail.mock.calls[0][0];
-    expect(sent.to).toBe('kelly@a.example');
-    // Subject carries initials, never the full patient name.
-    expect(sent.subject).toContain('J.D.');
-    expect(sent.subject).not.toContain('Jane');
-    // Body carries the payer-optimized plan, alerts, and the document link.
-    expect(sent.body).toContain('Skilled Nursing: 3/wk × 2 wks');
-    expect(sent.body).toContain('LUPA');
-    expect(sent.body).toContain('Allergies: Penicillin');
-    expect(sent.body).toContain('https://files.example/referral.pdf');
-    // Personalized to the selected nurse.
-    expect(sent.body).toContain('To: Kelly Nurse');
-
-    await waitFor(() => expect(notificationCreate).toHaveBeenCalledTimes(1));
-    expect(notificationCreate.mock.calls[0][0]).toMatchObject({
-      user_email: 'kelly@a.example',
-      type: 'new_referral',
-    });
-    expect(await screen.findByText(/Sent to Kelly Nurse/)).toBeInTheDocument();
-  });
-
-  it('a notification failure does not fail the send', async () => {
-    notificationCreate.mockRejectedValueOnce(new Error('notif down'));
-    renderCard();
-    await userEvent.click(await screen.findByText(/Kelly Nurse, RN — kelly@a\.example/));
-    await userEvent.click(screen.getByRole('button', { name: /Email briefing/i }));
-    await waitFor(() => expect(sendEmail).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText(/Sent to Kelly Nurse/)).toBeInTheDocument();
-  });
-
-  it('a send failure surfaces an error and records no sent badge', async () => {
-    sendEmail.mockRejectedValueOnce(Object.assign(new Error('smtp down'), { status: 500 }));
-    renderCard();
-    await userEvent.click(await screen.findByText(/Kelly Nurse, RN — kelly@a\.example/));
-    await userEvent.click(screen.getByRole('button', { name: /Email briefing/i }));
-    await waitFor(() => expect(sendEmail).toHaveBeenCalledTimes(1));
-    expect(screen.queryByText(/Sent to/)).not.toBeInTheDocument();
+    await waitFor(() => expect(toastError).toHaveBeenCalledWith(
+      'Outbound delivery is paused in this environment.',
+    ));
+    expect(sendEmail).not.toHaveBeenCalled();
     expect(notificationCreate).not.toHaveBeenCalled();
+    expect(screen.getByText('Outbound delivery is paused in this environment.')).toBeInTheDocument();
   });
 
-  it('sends the intake-edited body instead of the generated one', async () => {
-    renderCard();
-    await userEvent.click(await screen.findByText(/Kelly Nurse, RN — kelly@a\.example/));
-    await userEvent.click(screen.getByRole('button', { name: /Preview & edit/i }));
-    const textarea = screen.getByLabelText(/Briefing email body/i);
-    await userEvent.clear(textarea);
-    await userEvent.type(textarea, 'EDITED BODY ONLY');
-    await userEvent.click(screen.getByRole('button', { name: /Email briefing/i }));
-    await waitFor(() => expect(sendEmail).toHaveBeenCalledTimes(1));
-    expect(sendEmail.mock.calls[0][0].body).toBe('EDITED BODY ONLY');
-  });
-
-  it('switching recipients discards a hand-edited body so the old nurse\'s personalization never sends', async () => {
+  it('switching recipients discards a hand-edited body so stale personalization is not retained', async () => {
     renderCard();
     await userEvent.click(await screen.findByText(/Kelly Nurse, RN — kelly@a\.example/));
     await userEvent.click(screen.getByRole('button', { name: /Preview & edit/i }));
@@ -154,15 +141,9 @@ describe('AdmissionBriefEmailCard', () => {
 
     // Intake realizes the wrong nurse is selected and switches to Jordan.
     await userEvent.click(screen.getByText(/Jordan Nurse, RN — jordan@a\.example/));
-    await userEvent.click(screen.getByRole('button', { name: /Email briefing/i }));
-
-    await waitFor(() => expect(sendEmail).toHaveBeenCalledTimes(1));
-    const sent = sendEmail.mock.calls[0][0];
-    expect(sent.to).toBe('jordan@a.example');
-    // The regenerated body is personalized to Jordan — the stale edit (with
-    // Kelly's "To:" line baked in) is gone.
-    expect(sent.body).not.toContain('EDITED FOR KELLY');
-    expect(sent.body).toContain('To: Jordan Nurse');
+    await waitFor(() => expect(textarea).not.toHaveValue('EDITED FOR KELLY'));
+    expect(textarea.value).toContain('To: Jordan Nurse');
+    expect(sendEmail).not.toHaveBeenCalled();
   });
 
   it('switching to a different referral discards the edited body and recipient (PHI guard)', async () => {

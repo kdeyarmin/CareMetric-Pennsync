@@ -102,6 +102,26 @@ export default function VisualEditAgent() {
 	const selectedOverlaysRef = useRef([]); // Multiple overlays for selection
 	const currentHighlightedElementsRef = useRef([]); // Multiple elements for hover
 	const selectedElementIdRef = useRef(null); // Store the visual selector ID
+	const isMountedRef = useRef(false);
+	const pendingLayoutTimeoutsRef = useRef(new Set());
+
+	// Class/content updates and MutationObserver callbacks defer layout reads.
+	// Track that work explicitly so authority-bound unmount cannot leave a timer
+	// retaining a protected DOM element (or touching the next tenant's DOM).
+	const scheduleAfterLayout = useCallback((callback) => {
+		const timeoutId = window.setTimeout(() => {
+			pendingLayoutTimeoutsRef.current.delete(timeoutId);
+			if (isMountedRef.current) callback();
+		}, 50);
+		pendingLayoutTimeoutsRef.current.add(timeoutId);
+	}, []);
+
+	const clearPendingLayoutWork = useCallback(() => {
+		pendingLayoutTimeoutsRef.current.forEach((timeoutId) => {
+			window.clearTimeout(timeoutId);
+		});
+		pendingLayoutTimeoutsRef.current.clear();
+	}, []);
 
 	// Create overlay element
 	const createOverlay = useCallback((isSelected = false) => {
@@ -372,7 +392,7 @@ export default function VisualEditAgent() {
 		});
 
 		// Use a small delay to allow the browser to recalculate layout before repositioning
-		setTimeout(() => {
+		scheduleAfterLayout(() => {
 			// Reposition selected overlays
 			if (selectedElementIdRef.current === visualSelectorId) {
 				selectedOverlaysRef.current.forEach((overlay, index) => {
@@ -393,8 +413,8 @@ export default function VisualEditAgent() {
 					});
 				}
 			}
-		}, 50); // Small delay to ensure the browser has time to recalculate layout
-	}, [findElementsById, positionOverlay]);
+		});
+	}, [findElementsById, positionOverlay, scheduleAfterLayout]);
 
 	// Update element content by visual selector ID
 	const updateElementContent = useCallback((visualSelectorId, content) => {
@@ -411,7 +431,7 @@ export default function VisualEditAgent() {
 		});
 
 		// Use a small delay to allow the browser to recalculate layout before repositioning
-		setTimeout(() => {
+		scheduleAfterLayout(() => {
 			// Reposition selected overlays
 			if (selectedElementIdRef.current === visualSelectorId) {
 				selectedOverlaysRef.current.forEach((overlay, index) => {
@@ -420,8 +440,8 @@ export default function VisualEditAgent() {
 					}
 				});
 			}
-		}, 50); // Small delay to ensure the browser has time to recalculate layout
-	}, [findElementsById, positionOverlay]);
+		});
+	}, [findElementsById, positionOverlay, scheduleAfterLayout]);
 
 	// Toggle visual edit mode
 	const toggleVisualEditMode = useCallback((isEnabled) => {
@@ -459,6 +479,7 @@ export default function VisualEditAgent() {
 
 	// Listen for messages from parent window
 	useEffect(() => {
+		isMountedRef.current = true;
 		// Add IDs to elements that don't have them but have linenumbers
 		const elementsWithLineNumber = document.querySelectorAll('[data-linenumber]:not([data-visual-selector-id])');
 		elementsWithLineNumber.forEach((el, index) => {
@@ -635,6 +656,8 @@ export default function VisualEditAgent() {
 		postToEditors({ type: 'visual-edit-agent-ready' });
 
 		return () => {
+			isMountedRef.current = false;
+			clearPendingLayoutWork();
 			window.removeEventListener('message', handleMessage);
 			window.removeEventListener('scroll', handleScroll, true);
 			document.removeEventListener('scroll', handleScroll, true);
@@ -645,13 +668,13 @@ export default function VisualEditAgent() {
 			// Clean up all overlays
 			clearHoverOverlays();
 
-			selectedOverlaysRef.current.forEach(overlay => {
-				if (overlay && overlay.parentNode) {
-					overlay.remove();
-				}
-			});
+			unselectElement();
+			isVisualEditModeRef.current = false;
+			isPopoverDraggingRef.current = false;
+			isDropdownOpenRef.current = false;
+			document.body.style.cursor = '';
 		};
-	}, [clearHoverOverlays, findElementsById, handleElementClick, handleMouseOut, handleMouseOver, toggleVisualEditMode, unselectElement, updateElementClasses, updateElementContent]);
+	}, [clearHoverOverlays, clearPendingLayoutWork, findElementsById, handleElementClick, handleMouseOut, handleMouseOver, toggleVisualEditMode, unselectElement, updateElementClasses, updateElementContent]);
 
 	// Keep the refs in sync with state changes
 	useEffect(() => {
@@ -722,7 +745,7 @@ export default function VisualEditAgent() {
 
 			if (needsUpdate) {
 				// Use timeout to let browser calculate layout
-				setTimeout(handleResize, 50);
+				scheduleAfterLayout(handleResize);
 			}
 		});
 
@@ -742,7 +765,7 @@ export default function VisualEditAgent() {
 			window.removeEventListener('scroll', handleResize);
 			mutationObserver.disconnect();
 		};
-	}, [findElementsById, positionOverlay]);
+	}, [findElementsById, positionOverlay, scheduleAfterLayout]);
 
 	// No visible UI - all functionality is handled through event listeners and message passing
 	return null;

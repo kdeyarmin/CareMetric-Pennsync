@@ -256,12 +256,12 @@ test('every cross-chart patient read goes through an agency scope', () => {
   // ended up rendering every tenant's charts. The second population read it via
   // `filter({ status: 'active' })` rather than `list()`, which an earlier
   // version of this guard did not cover. New views should use
-  // useScopedPatients; the direct callers all narrow rows before returning them.
-  const HOOK = 'src/hooks/useScopedPatients.js'; // the one place that may read raw
+  // useScopedPatients; its implementation is broker-only too. No production
+  // frontend module is exempt from the direct-read prohibition.
+  const HOOK = 'src/hooks/useScopedPatients.js';
   const unscoped = [];
   for (const file of collectSources(ROOT)) {
     const rel = file.slice(process.cwd().length + 1).replace(/\\/g, '/');
-    if (rel === HOOK) continue;
     const text = readFileSync(file, 'utf8');
     if (usesScopeHelper(text)) continue;
     const reads = crossChartPatientReads(text);

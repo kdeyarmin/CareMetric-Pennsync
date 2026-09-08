@@ -12,6 +12,8 @@ import PhoneTopBar from "@/components/phone/PhoneTopBar";
 import ContactAvatar from "@/components/phone/ContactAvatar";
 import { PhoneEmptyState } from "@/components/phone/PhoneFrame";
 import { isSafeExternalUrl } from "@/components/utils/security";
+import AuthorityBoundAudio from '@/components/ui/AuthorityBoundAudio';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
 
 const REASON_STYLES = {
   "Callback requested": "bg-navy-100 text-navy-800",
@@ -43,11 +45,11 @@ export default function CallbackQueue() {
     initialData: [],
   });
 
-  const { data: patients = [] } = useQuery({
-    queryKey: ["callback-patients", user?.email],
-    queryFn: () => base44.entities.Patient.filter({ assigned_nurses: user.email }, "-created_date", 500),
+  const { data: patients = [] } = useScopedPatients({
+    purpose: 'contact',
+    sort: 'last_name',
+    limit: 500,
     enabled: !!user?.email,
-    initialData: [],
   });
   const patientById = useMemo(() => Object.fromEntries(patients.map((p) => [p.id, p])), [patients]);
   const patientByPhone = useMemo(() => {
@@ -121,7 +123,7 @@ export default function CallbackQueue() {
                     </div>
                     {call.note && <p className="mt-1 text-xs text-slate-600">{call.note}</p>}
                     {call.has_voicemail && call.voicemail_url && isSafeExternalUrl(call.voicemail_url) && (
-                      <audio controls preload="none" src={call.voicemail_url} className="mt-2 h-8 w-full" />
+                      <AuthorityBoundAudio controls preload="none" src={call.voicemail_url} className="mt-2 h-8 w-full" />
                     )}
                     <div className="mt-2 flex items-center gap-2">
                       <Button

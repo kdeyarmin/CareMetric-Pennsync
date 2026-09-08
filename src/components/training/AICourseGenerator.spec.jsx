@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "@/test/testUtils";
 
@@ -6,7 +6,7 @@ vi.mock("@/api/base44Client", async () => {
   const { makeBase44Stub } = await import("@/test/testUtils");
   return {
     base44: makeBase44Stub({
-      auth: { me: async () => ({ role: "admin", email: "educator@example.com" }) },
+      auth: { me: async () => ({ id: "educator-1", role: "admin", email: "educator@example.com" }) },
     }),
   };
 });
@@ -21,10 +21,39 @@ vi.mock("@/components/training/PresenterPicker", () => ({
 
 import AICourseGenerator from "./AICourseGenerator";
 import { generateTrainingCourseStepwise } from "@/functions/generateTrainingCourse";
+import {
+  bindTrustedTenantContext,
+  clearTrustedTenantContext,
+} from "@/lib/roles";
+
+const AUTH_USER = {
+  id: "educator-1",
+  role: "admin",
+  email: "educator@example.com",
+};
+
+const TENANT_CONTEXT = {
+  user_id: AUTH_USER.id,
+  user_email: AUTH_USER.email,
+  membership_id: "membership-educator-1",
+  membership_key: "agency-training:educator-1",
+  membership_version: 1,
+  agency_id: "agency-training",
+  tenant_role: "agency_admin",
+  membership_status: "active",
+  is_platform_owner: false,
+  agency: { id: "agency-training", name: "Training Agency", status: "active" },
+};
 
 describe("AICourseGenerator", () => {
   beforeEach(() => {
+    clearTrustedTenantContext();
+    bindTrustedTenantContext(AUTH_USER, TENANT_CONTEXT);
     generateTrainingCourseStepwise.mockReset();
+  });
+
+  afterEach(() => {
+    clearTrustedTenantContext();
   });
 
   it("makes the topic-first complete course workflow clear", async () => {

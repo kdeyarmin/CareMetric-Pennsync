@@ -60,7 +60,8 @@ platform API — that fakes CAS and misleads reviewers.
 | `generateCarePlansFromReferral` | `Patient.care_plans_gen_claimed_by` | Claim before LLM; skip if active CarePlans exist |
 | `monitorClinicalDataForCarePlanUpdates` | `Patient.care_plan_monitor_claimed_by` | Per-patient claim before LLM + proposal/alert creates |
 | `monitorComplianceRisks` | `Patient.compliance_monitor_claimed_by` | Claim before PatientAlert batch create |
-| `processInboundFaxes` | `IncomingFax.claimed_by` | Claim pending→processing; **re-check after OCR** before attach/write |
+| `processInboundFaxes` | `IncomingFax.claimed_by` + `version`/`updated_date` | Tenant-scoped version-filtered claim, authority re-check after OCR, conditional Referral attach, and interrupted-run reconciliation; hosted atomic semantics remain unproved |
+| `handleTelnyxStatusWebhook` inbound office-fax forward | `IncomingFax.claimed_by` + `version`/`updated_date` | Claim before the irreversible provider call, re-check exact destination authority, and retain ambiguous send claims instead of blindly retransmitting |
 | `retryFailedFax` / `autoRetryFailedFaxes` | `FaxLog.retry_claimed_by` | Claim + pre-send re-check |
 
 True atomic CAS still requires the platform APIs listed above.

@@ -17,6 +17,7 @@ import { act, render } from "@testing-library/react";
 import { MemoryRouter } from "react-router";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ConfirmDialogProvider } from "@/components/ui/confirm-dialog";
+import { PublicCapabilityBoundary } from "@/lib/PublicCapabilityContext";
 // routes.jsx derives ROUTES from nav.manifest.js; import it as the app does so
 // this smoke coverage follows the production route table exactly.
 import { REDIRECTS, ROUTES } from "@/routes";
@@ -68,6 +69,12 @@ vi.mock("@/api/base44Client", () => {
         updateMyUserData: obj,
       },
     },
+    publicCapabilityClient: {
+      validateFollowUpToken: async () => ({
+        data: { valid: false, error: "This smoke-test link is unavailable." },
+      }),
+      submitFollowUpResponse: async () => ({ data: { success: false } }),
+    },
   };
 });
 
@@ -89,10 +96,10 @@ vi.mock("@/lib/AuthContext", () => ({
 const pageModules = import.meta.glob("../pages/*.jsx");
 const importerFor = (name) => pageModules[`../pages/${name}.jsx`];
 
-const publicPages = ["JoinTelehealth", "SignerPortal"];
+const publicPages = ["JoinTelehealth", "SignerPortal", "ProviderFollowUpPortal"];
 const routePages = [...new Set([...ROUTES.map((route) => route.name), ...publicPages])];
 const routePathNames = new Set(ROUTES.map((route) => `/${route.name}`.toLowerCase()));
-const publicPathNames = new Set(["/join", "/signer"]);
+const publicPathNames = new Set(["/join", "/signer", "/followup"]);
 const redirectTargetPath = (to) => `/${to.replace(/^\//, "").split("?")[0]}`.toLowerCase();
 
 function Providers({ children }) {
@@ -125,9 +132,14 @@ describe("routed pages mount without crashing", () => {
     // (We mount the loading state rather than flushing data to the loaded state
     // because some pages start polling/interval queries that never let an async
     // act() settle — that would hang the suite, not catch more real bugs.)
+    const pageContent = page === "ProviderFollowUpPortal" ? (
+      <PublicCapabilityBoundary capabilitySnapshot="followup|route-smoke-test">
+        <Page />
+      </PublicCapabilityBoundary>
+    ) : <Page />;
     const { unmount } = render(
       <Providers>
-        <Page />
+        {pageContent}
       </Providers>,
     );
     unmount();

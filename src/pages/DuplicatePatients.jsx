@@ -1,7 +1,6 @@
-import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useScopedPatients, excludeArchived } from "@/hooks/useScopedPatients";
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -29,6 +28,9 @@ import {
 } from "@/components/patient/mergePatients";
 import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
+import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
+
+const EMPTY_ROWS = Object.freeze([]);
 
 const PATIENT_DEDUPE_UI_ENABLED = false;
 
@@ -41,7 +43,8 @@ function EnabledDuplicatePatients() {
   const [isMergingAll, setIsMergingAll] = useState(false);
   const queryClient = useQueryClient();
 
-  const { data: patients = [], isLoading } = useScopedPatients({
+  const patientQuery = useScopedPatients({
+    purpose: 'deduplication',
     sort: '-created_date',
     limit: 10000,
     // Don't surface already-archived/merged records as fresh duplicates.
@@ -49,24 +52,68 @@ function EnabledDuplicatePatients() {
     // Always pull a fresh roster when the page mounts. Caching let the page show
     // duplicate groups computed from a STALE roster (and from before matching-logic
     // fixes deployed), which looked like "the fix didn't work" when it actually had.
-    staleTime: 0,
-    refetchOnMount: 'always',
   });
+  const patients = patientQuery.isSuccess ? patientQuery.data : EMPTY_ROWS;
 
-  const { data: allVisits = [], isLoading: visitsLoading } = useAgencyScopedQuery({
-    queryKey: ['all-visits-duplicate-analysis'],
-    fetch: () => base44.entities.Visit.list('-created_date', 5000),
-    enabled: patients.length > 0
+  const visitQuery = useAuthorizedVisits({
+    purpose: 'deduplication',
+    sort: '-created_date',
+    limit: 5000,
+    enabled: patientQuery.isSuccess && patients.length > 0
   });
+  const tenantScopesMismatch = patients.length > 0
+    && patientQuery.isSuccess
+    && visitQuery.isSuccess
+    && !sameAuthorizedTenantScope(patientQuery.tenantScope, visitQuery.tenantScope);
+  const scanSnapshot = useMemo(() => (
+    patientQuery.isSuccess
+      && (patients.length === 0 || (visitQuery.isSuccess && !tenantScopesMismatch))
+      ? {
+        patients,
+        visits: patients.length === 0 ? EMPTY_ROWS : visitQuery.data,
+        patientTenantScope: patientQuery.tenantScope,
+        visitTenantScope: patients.length === 0 ? null : visitQuery.tenantScope,
+      }
+      : null
+  ), [
+    patientQuery.isSuccess,
+    patientQuery.tenantScope,
+    patients,
+    tenantScopesMismatch,
+    visitQuery.data,
+    visitQuery.isSuccess,
+    visitQuery.tenantScope,
+  ]);
+  const scanSnapshotRef = useRef(scanSnapshot);
+  scanSnapshotRef.current = scanSnapshot;
+  const scanSequenceRef = useRef(0);
+  const scanTimerRef = useRef(null);
 
-  const runScan = (patientList, visitList) => {
+  useEffect(() => {
+    if (scanSnapshot) return;
+    scanSequenceRef.current += 1;
+    if (scanTimerRef.current !== null) clearTimeout(scanTimerRef.current);
+    scanTimerRef.current = null;
+    setDuplicateGroups([]);
+    setHasScanned(false);
+    setIsScanning(false);
+  }, [scanSnapshot]);
+
+  const runScan = (authorizedSnapshot) => {
+    if (!authorizedSnapshot) return;
+    const scanSequence = ++scanSequenceRef.current;
     setIsScanning(true);
     setDuplicateGroups([]);
     // Yield so the "Scanning..." state paints before the (synchronous) matching
     // work runs.
-    setTimeout(() => {
-      const visitsByPatient = buildVisitsByPatient(visitList);
-      const groups = findDuplicateGroups(patientList, { visitsByPatient });
+    scanTimerRef.current = setTimeout(() => {
+      scanTimerRef.current = null;
+      if (
+        scanSnapshotRef.current !== authorizedSnapshot
+        || scanSequenceRef.current !== scanSequence
+      ) return;
+      const visitsByPatient = buildVisitsByPatient(authorizedSnapshot.visits);
+      const groups = findDuplicateGroups(authorizedSnapshot.patients, { visitsByPatient });
       setDuplicateGroups(groups);
       setHasScanned(true);
       setIsScanning(false);
@@ -78,12 +125,11 @@ function EnabledDuplicatePatients() {
   // Keyed off the actual data identity so a fresh fetch re-scans instead of
   // reusing groups computed from an earlier (possibly stale) roster.
   useEffect(() => {
-    if (isLoading || visitsLoading) return;
-    if (patients.length === 0) return;
-    runScan(patients, allVisits);
-  }, [isLoading, visitsLoading, patients, allVisits]);
+    if (!scanSnapshot || scanSnapshot.patients.length === 0) return;
+    runScan(scanSnapshot);
+  }, [scanSnapshot]);
 
-  const rescan = () => runScan(patients, allVisits);
+  const rescan = () => runScan(scanSnapshotRef.current);
 
   // Merge an entire group into one surviving record: reassign that record's
   // clinical history onto the survivor and archive the rest. `survivor` is the
@@ -194,7 +240,7 @@ function EnabledDuplicatePatients() {
 
   const totalDuplicateRecords = duplicateGroups.reduce((sum, g) => sum + g.duplicates.length, 0);
 
-  if (isLoading) {
+  if (patientQuery.isPending) {
     return (
       <div className="p-6 max-w-7xl mx-auto">
         <Card>
@@ -204,6 +250,19 @@ function EnabledDuplicatePatients() {
           </CardContent>
         </Card>
       </div>
+    );
+  }
+
+  if (patientQuery.isError) {
+    return (
+      <PageContainer>
+        <Alert className="border-amber-300 bg-amber-50" role="status">
+          <AlertTriangle className="h-4 w-4 text-amber-700" />
+          <AlertDescription className="text-amber-950">
+            Duplicate scanning is unavailable because Patient access could not be verified.
+          </AlertDescription>
+        </Alert>
+      </PageContainer>
     );
   }
 
@@ -217,6 +276,17 @@ function EnabledDuplicatePatients() {
         favoritePage="DuplicatePatients"
       />
 
+      {patients.length > 0 && !scanSnapshot && (
+        <Alert className="mb-6 border-amber-300 bg-amber-50" role="status">
+          <AlertTriangle className="h-4 w-4 text-amber-700" />
+          <AlertDescription className="text-amber-950">
+            {visitQuery.isError || tenantScopesMismatch
+              ? 'Duplicate scanning is unavailable because matching Patient and Visit access could not be verified. Platform owners remain blocked until a reviewed agency selector is available.'
+              : 'Reverifying matching Patient and Visit tenant access before duplicate scanning…'}
+          </AlertDescription>
+        </Alert>
+      )}
+
       <Card className="mb-6">
         <CardHeader>
           <CardTitle className="flex items-center justify-between gap-2">
@@ -228,7 +298,7 @@ function EnabledDuplicatePatients() {
               variant="outline"
               size="sm"
               onClick={rescan}
-              disabled={isScanning || patients.length === 0}
+              disabled={isScanning || !scanSnapshot || patients.length === 0}
             >
               {isScanning ? (
                 <>
@@ -246,8 +316,10 @@ function EnabledDuplicatePatients() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-slate-600">
-            We checked all <strong>{patients.length}</strong> patients.
-            {hasScanned && !isScanning && (
+            {scanSnapshot
+              ? <>We checked all <strong>{patients.length}</strong> patients.</>
+              : 'Patient and Visit data must be verified before scanning.'}
+            {scanSnapshot && hasScanned && !isScanning && (
               <>
                 {' '}
                 {duplicateGroups.length > 0 ? (
@@ -262,7 +334,7 @@ function EnabledDuplicatePatients() {
             )}
           </p>
 
-          {hasScanned && !isScanning && duplicateGroups.length > 0 && (
+          {scanSnapshot && hasScanned && !isScanning && duplicateGroups.length > 0 && (
             <div className="flex flex-col sm:flex-row sm:items-center gap-3 rounded-lg border border-orange-200 bg-orange-50 p-3">
               <p className="text-sm text-orange-900 flex-1">
                 Patient merge is temporarily unavailable while an authorized,
@@ -291,7 +363,7 @@ function EnabledDuplicatePatients() {
         </CardContent>
       </Card>
 
-      {isScanning && (
+      {scanSnapshot && isScanning && (
         <Card>
           <CardContent className="p-8 text-center">
             <Loader2 className="w-8 h-8 animate-spin text-blue-600 mx-auto mb-3" />
@@ -300,7 +372,7 @@ function EnabledDuplicatePatients() {
         </Card>
       )}
 
-      {hasScanned && duplicateGroups.length === 0 && !isScanning && (
+      {scanSnapshot && hasScanned && duplicateGroups.length === 0 && !isScanning && (
         <Card className="border-emerald-200 bg-emerald-50">
           <CardContent className="p-8 text-center">
             <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto mb-3" />
@@ -312,7 +384,7 @@ function EnabledDuplicatePatients() {
         </Card>
       )}
 
-      {duplicateGroups.length > 0 && !isScanning && (
+      {scanSnapshot && duplicateGroups.length > 0 && !isScanning && (
         <div className="space-y-6">
           <Alert className="bg-orange-50 border-orange-200">
             <AlertTriangle className="w-4 h-4 text-orange-600" />

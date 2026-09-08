@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { isAdminView } from "@/lib/roles";
+import { isAdminLike } from "@/lib/superAdmin";
 import { useConfirm } from "@/components/ui/confirm-dialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,6 +46,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import LoadingState from "@/components/ui/LoadingState";
 import { formatLocalDate } from "@/lib/dateLocal";
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 export default function MedicareGuidelinesLibrary() {
   const queryClient = useQueryClient();
@@ -68,7 +70,10 @@ export default function MedicareGuidelinesLibrary() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = isAdminView(currentUser);
+  const adminView = isAdminView(currentUser);
+  // The catalog is readable by every signed-in user. Fetching a new CMS entry
+  // and retiring an entry are protected-admin operations in the backend/RLS.
+  const canManageGuidelines = isAdminLike(currentUser);
 
   const { data: guidelines = [], isLoading } = useQuery({
     queryKey: ['medicareGuidelines'],
@@ -78,6 +83,9 @@ export default function MedicareGuidelinesLibrary() {
 
   const fetchGuidelineMutation = useMutation({
     mutationFn: async (data) => {
+      if (!canManageGuidelines) {
+        throw new Error('Protected administrator access is required to add Medicare guidelines.');
+      }
       const response = await base44.functions.invoke('fetchMedicareGuideline', data);
       return response.data;
     },
@@ -95,7 +103,12 @@ export default function MedicareGuidelinesLibrary() {
   });
 
   const deleteGuidelineMutation = useMutation({
-    mutationFn: (id) => base44.entities.MedicareGuideline.update(id, { is_active: false }),
+    mutationFn: (id) => {
+      if (!canManageGuidelines) {
+        throw new Error('Protected administrator access is required to retire Medicare guidelines.');
+      }
+      return base44.entities.MedicareGuideline.update(id, { is_active: false });
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['medicareGuidelines'] });
       setDialogOpen(false);
@@ -170,7 +183,7 @@ export default function MedicareGuidelinesLibrary() {
         title="Medicare Guidelines Library"
         description="Official CMS guidelines and regulations for home health documentation"
         favoritePage="MedicareGuidelinesLibrary"
-        actions={isAdmin && (
+        actions={canManageGuidelines && (
           <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-blue-600 hover:bg-blue-700 w-full sm:w-auto min-h-[44px]">
@@ -286,6 +299,15 @@ export default function MedicareGuidelinesLibrary() {
         )}
       />
 
+      {adminView && !canManageGuidelines && (
+        <Alert className="mb-4 border-blue-200 bg-blue-50">
+          <AlertCircle className="h-4 w-4 text-blue-700" />
+          <AlertDescription className="text-blue-900">
+            The Medicare guideline catalog is read-only for facility administrators. Adding or retiring entries requires protected administrator access.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Search and Filter */}
         <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
           <div className="flex-1 relative">
@@ -327,7 +349,7 @@ export default function MedicareGuidelinesLibrary() {
           description={searchTerm || categoryFilter !== "all"
             ? "No guidelines match your search."
             : "Medicare guidelines will appear here once added."}
-          action={isAdmin && (
+          action={canManageGuidelines && (
             <Button variant="outline" onClick={() => setAddDialogOpen(true)}>
               <Plus className="w-4 h-4 mr-2" />
               Add First Guideline
@@ -421,7 +443,7 @@ export default function MedicareGuidelinesLibrary() {
                       )}
                     </div>
                   </div>
-                  {isAdmin && (
+                  {canManageGuidelines && (
                     <Button
                       variant="ghost"
                       size="icon"
@@ -502,15 +524,14 @@ export default function MedicareGuidelinesLibrary() {
                 {/* Source Link */}
                 <div className="border-t pt-4">
                   {selectedGuideline.url && isSafeExternalUrl(selectedGuideline.url) ? (
-                    <a
-                      href={selectedGuideline.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                    <button
+                      type="button"
+                      onClick={() => openAuthorityBoundWindow(selectedGuideline.url)}
                       className="text-blue-600 hover:text-blue-700 hover:underline text-sm flex items-center gap-1"
                     >
                       View Original on CMS.gov
                       <ExternalLink className="w-3 h-3" />
-                    </a>
+                    </button>
                   ) : null}
                   <p className="text-xs text-slate-500 mt-1">
                     Last fetched: {new Date(selectedGuideline.last_fetched_date).toLocaleString()}

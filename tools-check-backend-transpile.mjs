@@ -45,9 +45,13 @@ async function* sourceFiles(dir) {
 
 const invokePattern = /functions\.(?:invoke|fetch)\(\s*['"]([^'"]+)['"]/g;
 const wrapperInvokePattern = /base44\.functions\.(?:invoke|fetch)\(\s*['"]([^'"]+)['"]/g;
+const tenantAuthorityWrapperPattern = /tenantAuthorityClient\.([A-Za-z][A-Za-z0-9_]*)\s*\(/g;
 
 async function checkInvokedBackendFunctionsExist() {
   for await (const file of sourceFiles(srcRoot)) {
+    // Test doubles intentionally use invented function names and endpoint paths
+    // to prove membranes without coupling the fixture to a deployed handler.
+    if (/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(file)) continue;
     const src = await readFile(file, "utf8");
     for (const match of src.matchAll(invokePattern)) {
       const functionName = match[1];
@@ -65,7 +69,10 @@ async function checkClientWrappersTargetMatchingBackendFunctions() {
     if (/\.(?:spec|test)\.[cm]?[jt]sx?$/.test(file)) continue;
     const wrapperName = relative(wrappersRoot, file).replace(/\.[cm]?[jt]sx?$/, "");
     const src = await readFile(file, "utf8");
-    const targets = [...src.matchAll(wrapperInvokePattern)].map((match) => match[1]);
+    const targets = [...new Set([
+      ...[...src.matchAll(wrapperInvokePattern)].map((match) => match[1]),
+      ...[...src.matchAll(tenantAuthorityWrapperPattern)].map((match) => match[1]),
+    ])];
     if (targets.length !== 1) {
       failures.push(`${file} must invoke exactly one Base44 function, found ${targets.length}`);
       continue;

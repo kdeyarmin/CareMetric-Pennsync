@@ -134,5 +134,11 @@
     "automation_rule_id",
     "rule_name",
     "trigger_reason"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "react-router";
+import { useLocation, useOutletContext } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -33,11 +33,13 @@ export default function Help() {
   const { user } = useAuth();
   const isAdmin = isAdminView(user);
   const location = useLocation();
+  const outletContext = useOutletContext();
 
-  // Help navigation carries only a canonical manifest route in router state.
-  // A direct visit falls back to /Help. buildPennSyncHelpUrl independently
-  // rechecks the value against ROUTER_PATHS before anything leaves the app.
-  const helpSourceRoute = location.state?.helpSourceRoute || location.pathname;
+  // Layout carries only the last canonical manifest route in ephemeral React
+  // context. It never writes identifiers or other page state into browser
+  // history. A direct visit falls back to /Help, and buildPennSyncHelpUrl
+  // independently rechecks the value before anything leaves the app.
+  const helpSourceRoute = outletContext?.helpSourceRoute || location.pathname;
 
   const handleDownloadManual = async () => {
     setDownloading(true);

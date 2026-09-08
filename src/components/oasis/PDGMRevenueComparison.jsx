@@ -42,7 +42,7 @@ import {
   isFinitePdgmNumber,
   PDGM_REIMBURSEMENT_ACTION,
   PDGM_REIMBURSEMENT_BLOCKER,
-  PDGM_REIMBURSEMENT_ENABLED,
+  PDGM_LEGACY_SURFACES_ENABLED,
 } from "@/components/pdgm/pdgmAvailability";
 
 function DataValidationWarnings({ validation }) {
@@ -1084,7 +1084,7 @@ function EnabledPDGMRevenueComparison({ analysisResults, pdgmData, onPaymentCalc
 }
 
 export default function PDGMRevenueComparison(props) {
-  if (!PDGM_REIMBURSEMENT_ENABLED) {
+  if (!PDGM_LEGACY_SURFACES_ENABLED) {
     return (
       <Alert className="border-amber-300 bg-amber-50">
         <AlertTriangle className="h-4 w-4 text-amber-700" />

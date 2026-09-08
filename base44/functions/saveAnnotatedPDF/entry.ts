@@ -150,8 +150,6 @@ Deno.serve(async (req) => {
       user_name: user.full_name,
       action: 'pdf_annotated',
       details: {
-        original_pdf: original_pdf_url,
-        annotated_pdf: uploadResult.file_url,
         annotation_count: annotations.length
       },
       page: 'pdf_editor'

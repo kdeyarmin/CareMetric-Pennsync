@@ -1,7 +1,6 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from "react";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
-import { agencyQueryKey, scopePatientsForCurrentCaller } from "@/lib/agencyRoster";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,9 +25,13 @@ import QuickPhraseTextarea from "../components/smartNote/QuickPhraseTextarea";
 import FacilityRequirementsChecklist from "../components/smartNote/FacilityRequirementsChecklist";
 import ConstrainedNoteReviewer from "../components/smartNote/ConstrainedNoteReviewer";
 import NoteReadinessBar from "../components/smartNote/NoteReadinessBar";
-import { persistVisitNote, OfflineSaveError } from "../components/smartNote/persistVisitNote";
-import { advanceHandoffStatus, buildReviewAcknowledgement } from "../components/smartNote/emrHandoff";
-import { getPriorNote } from "../components/smartNote/noteHelpers";
+import { persistVisitNote, createVisitSaveProgress, OfflineSaveError, PartialVisitSaveError } from "../components/smartNote/persistVisitNote";
+import {
+  advanceHandoffStatus,
+  buildReviewAcknowledgement,
+  EMR_HANDOFF_STATUSES,
+} from "../components/smartNote/emrHandoff";
+import { getPriorNote, mergePatientNoteHistory } from "../components/smartNote/noteHelpers";
 import { evaluateFacilityRules, summarizeFacilityRules } from "../components/smartNote/compliance/facilityDocRules";
 import { describePlaceholders, countPlaceholders, findPlaceholders } from "../components/smartNote/compliance/placeholderGuard";
 import { claimDictation, releaseDictation } from "@/components/smartNote/dictationController";
@@ -37,6 +40,16 @@ import { analyzeVisitForSupplyUsage } from "@/functions/analyzeVisitForSupplyUsa
 import { toast } from "sonner";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { HOME_HEALTH_VISIT_TYPES, HOSPICE_VISIT_TYPES } from "@/components/visit/visitTypes";
+import {
+  advanceVisitHandoff,
+  setVisitReviewAcknowledgement,
+} from '@/functions/updateAuthorizedVisit';
+import { getAuthorizedPatientNoteHistory } from '@/functions/getAuthorizedPatientNoteHistory';
+import { createAuthorityBoundSpeechRecognition } from '@/lib/tenantMediaDevices';
+import { useAuth } from '@/lib/AuthContext';
+import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
+import { useAuthorizedVisit } from '@/hooks/useAuthorizedVisit';
 
 const getVisitTypes = (careScope) => {
   if (careScope === "hospice") return HOSPICE_VISIT_TYPES;
@@ -45,6 +58,19 @@ const getVisitTypes = (careScope) => {
 };
 
 const draftKeyFor = (pid) => `smart_note_draft_v2:${pid || "unassigned"}`;
+
+// The server accepts only immediate, forward-only EMR handoff transitions. The
+// UI intentionally lets a nurse report a later state in one tap, so bridge that
+// gesture through every intermediate state instead of trusting a client-shaped
+// history array or asking the broker to accept a jump.
+async function advancePersistedHandoffTo(visitId, fromStatus, toStatus) {
+  const fromIndex = Math.max(0, EMR_HANDOFF_STATUSES.findIndex((s) => s.id === fromStatus));
+  const toIndex = EMR_HANDOFF_STATUSES.findIndex((s) => s.id === toStatus);
+  if (toIndex <= fromIndex) return;
+  for (let index = fromIndex + 1; index <= toIndex; index += 1) {
+    await advanceVisitHandoff({ visitId, nextStatus: EMR_HANDOFF_STATUSES[index].id });
+  }
+}
 
 const buildExportFindings = (result) => {
   if (!result) return [];
@@ -73,12 +99,29 @@ import AcknowledgeGate from "../components/smartNote/AcknowledgeGate";
 import PageContainer from "@/components/ui/PageContainer";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
 import { ALL_ROWS } from '@/lib/queryLimits';
+import {
+  captureAuthorityDraftLease,
+  isAuthorityDraftLeaseCurrent,
+} from '@/lib/phiStorage';
 
 export default function SmartNoteAssistant({ visitId = null }) {
   const [searchParams] = useSearchParams();
+  // One immutable lease belongs to this component instance. Never recapture
+  // after an awaited save/import: an unmounted A component could otherwise pick
+  // up B's current lease and delete or overwrite B's same-patient draft.
+  const authorityDraftLeaseRef = useRef(undefined);
+  if (authorityDraftLeaseRef.current === undefined) {
+    authorityDraftLeaseRef.current = Object.freeze({
+      lease: captureAuthorityDraftLease(),
+    });
+  }
+  const authorityDraftLease = authorityDraftLeaseRef.current.lease;
   const queryPatientId = searchParams.get("patientId") || searchParams.get("patient_id") || "";
   const queryVisitType = searchParams.get("visitType") || searchParams.get("visit_type") || "";
   const referralHandoff = useMemo(() => {
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) {
+      return { draftNote: "", patientId: "", visitType: "" };
+    }
     if (searchParams.get("referral_mode") !== "true") return { draftNote: "", patientId: "", visitType: "" };
     const referralId = searchParams.get("referral_id");
     if (!referralId) return { draftNote: "", patientId: "", visitType: "" };
@@ -94,7 +137,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     } catch {
       return { draftNote: "", patientId: "", visitType: "" };
     }
-  }, [searchParams]);
+  }, [authorityDraftLease, searchParams]);
   const referralDraftNote = referralHandoff.draftNote;
   const [patientId, setPatientId] = useState(queryPatientId || referralHandoff.patientId);
   const [visitType, setVisitType] = useState(queryVisitType || referralHandoff.visitType || "routine_visit");
@@ -105,8 +148,9 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [saved, setSaved] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState(null);
   const [savedAuditId, setSavedAuditId] = useState(null);
+  const saveProgressRef = useRef(null);
   const [existingVisitId, setExistingVisitId] = useState(null);
-  const boundPatientRef = useRef(null);
+  const boundVisitLocalRef = useRef(null);
   // Facility override captured at save-click time so persistVisitNote can stamp
   // ComplianceAudit.acknowledgment without lifting the render-prop evaluation.
   const facilityOverrideRef = useRef(null);
@@ -128,6 +172,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [reviewAck, setReviewAck] = useState(null);
   const recRef = useRef(null);
   const recStopRef = useRef(null);
+  const recBindingRef = useRef(null);
   const textareaRef = useRef(null);
   const SAVED_PATIENT_KEY = "smart_note_patient_v1";
   const patientIdRef = useRef(patientId);
@@ -138,10 +183,17 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const autosaveBucketRef = useRef(undefined);
   const autosavePrevNoteRef = useRef("");
 
-  const tryRestoreDurableDraft = (pid) => {
+  const tryRestoreDurableDraft = useCallback((pid) => {
+    // The component captured before the dynamic import. If it is unmounted for an
+    // account/tenant transition while the chunk is resolving, the storage seam
+    // rejects the stale lease instead of restoring another authority's note.
     import('@/lib/draftNotes')
-      .then(({ getDraftNoteLocally }) => getDraftNoteLocally(`draft_${pid || 'unassigned'}`))
+      .then(({ getDraftNoteLocally }) => getDraftNoteLocally(
+        `draft_${pid || 'unassigned'}`,
+        authorityDraftLease,
+      ))
       .then((d) => {
+        if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
         if (patientIdRef.current !== pid || noteRef.current?.trim()) return;
         if (!d?.note || d.note.trim().length <= 20) return;
         setNote(d.note);
@@ -149,39 +201,79 @@ export default function SmartNoteAssistant({ visitId = null }) {
         setDraftRestored(true);
       })
       .catch(() => {});
-  };
+  }, [authorityDraftLease]);
 
-  const clearDraft = (pid) => {
+  const clearDraft = useCallback((pid) => {
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
     sessionStorage.removeItem(draftKeyFor(pid));
     import('@/lib/draftNotes')
-      .then(({ deleteDraftNoteLocally }) => deleteDraftNoteLocally(`draft_${pid || 'unassigned'}`))
+      .then(({ deleteDraftNoteLocally }) => deleteDraftNoteLocally(
+        `draft_${pid || 'unassigned'}`,
+        authorityDraftLease,
+      ))
       .catch(() => {});
-  };
+  }, [authorityDraftLease]);
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
+  const { tenantContext } = useAuth();
   const careScope = currentUser?.care_scope || "home_health";
-  const { data: patients = [] } = useQuery({
-    queryKey: ["patients", "active-all", agencyQueryKey(currentUser)],
-    networkMode: 'always',
-    // ALL_ROWS before the agency post-filter so foreign-tenant charts cannot
-    // crowd the picker.
-    queryFn: async () => scopePatientsForCurrentCaller(
-      await base44.entities.Patient.filter({ status: "active" }, "first_name", ALL_ROWS),
-    )
+  const { data: patients = [] } = useScopedPatients({
+    purpose: 'roster',
+    status: 'active',
+    sort: 'first_name',
+    limit: 10000,
   });
-  const patient = patients.find(p => p.id === patientId);
   const { data: complianceRules = [] } = useQuery({
     queryKey: ["medicareComplianceRules"],
     queryFn: () => base44.entities.MedicareComplianceRule.list(undefined, ALL_ROWS),
     initialData: [],
     staleTime: 5 * 60 * 1000,
   });
-  const { data: patientDetail } = useQuery({
-    queryKey: ["patientDetail", patientId],
-    queryFn: () => base44.entities.Patient.get(patientId),
-    enabled: !!patientId,
+  const {
+    data: patientDetail,
+    isSuccess: patientAuthorizationSucceeded,
+    isError: patientAuthorizationFailed,
+    tenantScope: patientTenantScope,
+  } = useAuthorizedPatient({
+    patientId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'smart_note_context',
+    enabled: !!patientId && !!tenantContext?.agency_id,
   });
-  const effectiveCareType = (patientDetail || patient)?.care_type || careScope;
+  const exactPatientReady = Boolean(
+    patientId && patientAuthorizationSucceeded && patientDetail?.id === patientId,
+  );
+  const noteHistoryQuery = useQuery({
+    queryKey: [
+      "authorizedPatientNoteHistory",
+      patientId,
+      patientTenantScope?.user_id ?? null,
+      patientTenantScope?.agency_id ?? null,
+      patientTenantScope?.membership_id ?? null,
+      patientTenantScope?.membership_version ?? null,
+      patientTenantScope?.tenant_role ?? null,
+    ],
+    queryFn: () => getAuthorizedPatientNoteHistory({ patientId }),
+    enabled: exactPatientReady && !!currentUser?.id,
+    retry: false,
+    staleTime: 0,
+    gcTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: 'always',
+    refetchOnReconnect: 'always',
+  });
+  const noteHistoryReady = noteHistoryQuery.isSuccess
+    && noteHistoryQuery.isFetchedAfterMount
+    && noteHistoryQuery.fetchStatus === 'idle'
+    && !noteHistoryQuery.error;
+  const patientChartReady = exactPatientReady && noteHistoryReady;
+  const chartPatient = useMemo(
+    () => (patientChartReady
+      ? mergePatientNoteHistory(patientDetail, noteHistoryQuery.data?.entries)
+      : undefined),
+    [noteHistoryQuery.data?.entries, patientChartReady, patientDetail],
+  );
+  const effectiveCareType = chartPatient?.care_type || careScope;
   const isHospice = effectiveCareType === "hospice";
   const serviceLine = isHospice ? "hospice" : "home_health";
   const VISIT_TYPES = getVisitTypes(effectiveCareType);
@@ -195,14 +287,85 @@ export default function SmartNoteAssistant({ visitId = null }) {
     if (currentUser?.email) logActivity(ActivityActions.PAGE_VISIT, { page: "SmartNoteAssistant" });
   }, [currentUser?.email]);
 
-  const { data: boundVisit } = useQuery({
-    queryKey: ["visit", visitId],
-    queryFn: () => base44.entities.Visit.get(visitId),
-    enabled: !!visitId,
+  const {
+    data: boundVisit,
+    isSuccess: visitAuthorizationSucceeded,
+    isError: visitAuthorizationFailed,
+    tenantScope: boundVisitTenantScope,
+  } = useAuthorizedVisit({
+    visitId,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'documentation',
+    enabled: !!visitId && !!tenantContext?.agency_id,
   });
-  useEffect(() => {
-    if (!boundVisit?.id) return;
-    boundPatientRef.current = boundVisit.patient_id;
+  const visitAuthorizationWithheld = Boolean(visitId && !visitAuthorizationSucceeded);
+  // The exact-Visit hook hides cached PHI during every authority/grant recheck.
+  // The render gate below covers a same-authority recheck without destroying a
+  // nurse's working draft. A settled denial, missing context, different tenant
+  // identity, or different visit is destructive and clears the bound values
+  // before any unrestricted UI can paint.
+  useLayoutEffect(() => {
+    if (!boundVisit?.id) {
+      const previous = boundVisitLocalRef.current;
+      if (!previous) return;
+      const contextChanged = previous.user_id !== currentUser?.id
+        || previous.agency_id !== tenantContext?.agency_id
+        || previous.membership_id !== tenantContext?.membership_id
+        || previous.membership_version !== tenantContext?.membership_version
+        || previous.tenant_role !== tenantContext?.tenant_role;
+      const contextMissing = !currentUser?.id || !tenantContext?.agency_id;
+      const visitChanged = visitId !== previous.id;
+      if (
+        !visitAuthorizationFailed
+        && !contextChanged
+        && !contextMissing
+        && !visitChanged
+      ) return;
+      boundVisitLocalRef.current = null;
+      setExistingVisitId(null);
+      setPatientId((current) => (current === previous.patient_id ? "" : current));
+      setVisitType((current) => (
+        current === previous.visit_type ? "routine_visit" : current
+      ));
+      setNote("");
+      setVitals({});
+      setSaved(false);
+      setSavedVisitId(null);
+      setSavedAuditId(null);
+      saveProgressRef.current = null;
+      setSaving(false);
+      setStep(1);
+      setCopied(false);
+      setDraftRestored(false);
+      setFollowUpTasks([]);
+      setFacilityAck(false);
+      setSaveError(null);
+      setHandoff({ status: "not_started", history: [] });
+      setHandoffError(null);
+      setReviewAck(null);
+      sessionStorage.removeItem(SAVED_PATIENT_KEY);
+      clearDraft(previous.patient_id);
+      autosaveBucketRef.current = undefined;
+      autosavePrevNoteRef.current = "";
+      facilityOverrideRef.current = null;
+      recBindingRef.current?.dispose();
+      recBindingRef.current = null;
+      recRef.current = null;
+      releaseDictation(recStopRef.current);
+      recStopRef.current = null;
+      setListening(false);
+      return;
+    }
+    boundVisitLocalRef.current = {
+      id: boundVisit.id,
+      patient_id: boundVisit.patient_id,
+      visit_type: boundVisit.visit_type,
+      user_id: boundVisitTenantScope?.user_id,
+      agency_id: boundVisitTenantScope?.agency_id,
+      membership_id: boundVisitTenantScope?.membership_id,
+      membership_version: boundVisitTenantScope?.membership_version,
+      tenant_role: boundVisitTenantScope?.tenant_role,
+    };
     setExistingVisitId(boundVisit.id);
     if (boundVisit.patient_id) setPatientId(boundVisit.patient_id);
     if (boundVisit.visit_type) setVisitType(boundVisit.visit_type);
@@ -215,9 +378,22 @@ export default function SmartNoteAssistant({ visitId = null }) {
       history: Array.isArray(boundVisit.emr_handoff_history) ? boundVisit.emr_handoff_history : [],
     });
     setReviewAck(boundVisit.documentation_review_ack || null);
-  }, [boundVisit]);
+  }, [
+    boundVisit,
+    boundVisitTenantScope,
+    clearDraft,
+    currentUser?.id,
+    tenantContext?.agency_id,
+    tenantContext?.membership_id,
+    tenantContext?.membership_version,
+    tenantContext?.tenant_role,
+    visitAuthorizationFailed,
+    visitId,
+  ]);
 
   useEffect(() => {
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
+    if (visitId) return;
     if (queryPatientId || queryVisitType) {
       if (queryPatientId) setPatientId(queryPatientId);
       if (queryVisitType) setVisitType(queryVisitType);
@@ -231,13 +407,17 @@ export default function SmartNoteAssistant({ visitId = null }) {
         if (parsed.visitType) setVisitType(parsed.visitType);
       } catch { /* no-op */ }
     }
-  }, [queryPatientId, queryVisitType]);
+  }, [authorityDraftLease, queryPatientId, queryVisitType, visitId]);
 
   useEffect(() => {
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
+    if (visitAuthorizationWithheld) return;
     sessionStorage.setItem(SAVED_PATIENT_KEY, JSON.stringify({ patientId, visitType }));
-  }, [patientId, visitType]);
+  }, [authorityDraftLease, patientId, visitAuthorizationWithheld, visitType]);
 
   useEffect(() => {
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
+    if (visitAuthorizationWithheld) return;
     if (referralDraftNote) {
       setNote(referralDraftNote);
       setDraftRestored(true);
@@ -253,9 +433,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
         setDraftRestored(true);
       }
     } catch { /* ignore a corrupt draft */ }
-  }, [referralDraftNote]);
+  }, [authorityDraftLease, referralDraftNote, tryRestoreDurableDraft, visitAuthorizationWithheld]);
 
   useEffect(() => {
+    if (visitAuthorizationWithheld) return;
     const prev = prevPatientRef.current;
     if (prev === patientId) return;
     prevPatientRef.current = patientId;
@@ -265,16 +446,22 @@ export default function SmartNoteAssistant({ visitId = null }) {
     // AudioVisitCapture).
     setSavedVisitId(null);
     setSavedAuditId(null);
+    saveProgressRef.current = null;
+    setSaving(false);
     // Same reasoning: a failure recorded against the previous patient's note must
     // not be reported against this one, which no save has been attempted on.
     setSaveError(null);
     // The handoff trail and review record belong to ONE patient's note. Carrying
     // them across a patient switch would attribute "signed in EMR" (and a review
     // acknowledgement) to a chart it was never made against.
-    setHandoff({ status: "not_started", history: [] });
-    setHandoffError(null);
-    setReviewAck(null);
-    if (patientId !== boundPatientRef.current) setExistingVisitId(null);
+    const matchesBoundVisit = patientId === boundVisitLocalRef.current?.patient_id;
+    if (!matchesBoundVisit) {
+      setHandoff({ status: "not_started", history: [] });
+      setHandoffError(null);
+      setReviewAck(null);
+      setExistingVisitId(null);
+    }
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
     let incoming = null;
     const saved = sessionStorage.getItem(draftKeyFor(patientId));
     if (saved) {
@@ -292,10 +479,12 @@ export default function SmartNoteAssistant({ visitId = null }) {
       setDraftRestored(false);
       tryRestoreDurableDraft(patientId);
     }
-  }, [patientId]);
+  }, [authorityDraftLease, patientId, tryRestoreDurableDraft, visitAuthorizationWithheld]);
 
   useEffect(() => {
+    if (visitAuthorizationWithheld) return;
     const pid = patientIdRef.current;
+    if (!isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
     const bucketChanged = autosaveBucketRef.current !== pid;
     const prevNote = autosavePrevNoteRef.current;
     autosaveBucketRef.current = pid;
@@ -305,45 +494,85 @@ export default function SmartNoteAssistant({ visitId = null }) {
       return;
     }
     sessionStorage.setItem(draftKeyFor(pid), JSON.stringify({ note, visitType, patientId: pid }));
-    import('@/lib/draftNotes').then(({ saveDraftNoteLocally }) => {
-        saveDraftNoteLocally({ id: `draft_${pid || 'unassigned'}`, note, visitType, patientId: pid });
-    }).catch(console.error);
-  }, [note, visitType]);
+    import('@/lib/draftNotes')
+      .then(({ saveDraftNoteLocally }) => saveDraftNoteLocally(
+        { id: `draft_${pid || 'unassigned'}`, note, visitType, patientId: pid },
+        authorityDraftLease,
+      ))
+      .catch(console.error);
+  }, [authorityDraftLease, clearDraft, note, visitAuthorizationWithheld, visitType]);
 
   useEffect(() => { if (step === 1) textareaRef.current?.focus(); }, [step]);
 
   useEffect(() => {
     return () => {
-      try { recRef.current?.stop(); } catch { /* already stopped */ }
+      recBindingRef.current?.dispose();
+      recBindingRef.current = null;
+      recRef.current = null;
       releaseDictation(recStopRef.current);
+      recStopRef.current = null;
     };
   }, []);
 
   const startDictation = () => {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) { toast.error("Speech recognition not supported in this browser."); return; }
-    const rec = new SR();
+    let binding;
+    try {
+      binding = createAuthorityBoundSpeechRecognition(SR);
+    } catch {
+      toast.error("Dictation expired because workspace authority changed.");
+      return;
+    }
+    const rec = binding.recognition;
     rec.continuous = true;
     rec.interimResults = false;
     rec.lang = "en-US";
     rec.onresult = (e) => {
+      if (!binding.isCurrent()) return;
       const t = Array.from(e.results).slice(e.resultIndex).map(r => r[0].transcript).join(" ");
       const enhanced = enhanceTranscription(t);
       setNote(prev => prev ? prev + " " + enhanced : enhanced);
     };
-    const stop = () => { try { rec.stop(); } catch { /* already stopped */ } };
+    const stop = () => {
+      if (!binding.isCurrent()) return;
+      try { rec.stop(); } catch { /* already stopped */ }
+    };
     recStopRef.current = stop;
-    rec.onerror = () => { setListening(false); releaseDictation(stop); };
-    rec.onend = () => { setListening(false); releaseDictation(stop); };
+    rec.onerror = () => {
+      if (!binding.isCurrent()) return;
+      setListening(false);
+      releaseDictation(stop);
+    };
+    rec.onend = () => {
+      if (!binding.isCurrent()) return;
+      setListening(false);
+      releaseDictation(stop);
+    };
+    recBindingRef.current?.dispose();
+    recBindingRef.current = binding;
     recRef.current = rec;
     claimDictation(stop);
-    rec.start();
+    try {
+      rec.start();
+    } catch {
+      binding.dispose();
+      recBindingRef.current = null;
+      recRef.current = null;
+      releaseDictation(stop);
+      toast.error("Unable to start dictation.");
+      return;
+    }
     setListening(true);
   };
   const stopDictation = () => { recRef.current?.stop(); setListening(false); releaseDictation(recStopRef.current); };
 
   const startReview = () => {
     if (!note || note.trim().length < 20) return;
+    if (patientId && !patientChartReady) {
+      toast.error("Patient chart access must be verified before reviewing this note.");
+      return;
+    }
     // Blanks are fixable HERE and not on the review screen, so stop at the door
     // rather than letting the nurse discover the hard block a click later.
     const blanks = describePlaceholders(note);
@@ -355,7 +584,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     }
     const facilityResults = evaluateFacilityRules({
       rules: facilityDocRules,
-      patient: patientDetail || patient,
+      patient: chartPatient,
       noteText: note,
       visitType,
     });
@@ -369,16 +598,20 @@ export default function SmartNoteAssistant({ visitId = null }) {
       toast.warning(`Facility requirement${facilitySummary.missing > 1 ? "s" : ""} not yet documented: ${labels}`);
     }
     setSaved(false);
-    setSavedVisitId(null);
-    setSavedAuditId(null);
+    // Returning to review edits the same draft, including a partially saved Visit.
     setFacilityAck(false);
     facilityOverrideRef.current = null;
     setStep(2);
   };
 
   const handleSave = async (api) => {
+    if (saving || saveProgressRef.current?.inFlight) return;
     if (!patientId || !currentUser?.email) {
       toast.error("Select a patient to save this note to their chart.");
+      return;
+    }
+    if (!patientChartReady || !chartPatient) {
+      toast.error("Patient chart access must be verified before saving.");
       return;
     }
     if (api.chartRisk?.hasUnacknowledgedCritical) {
@@ -390,14 +623,17 @@ export default function SmartNoteAssistant({ visitId = null }) {
       return;
     }
     setSaveError(null);
+    setSaved(false);
     setSaving(true);
+    const saveProgress = saveProgressRef.current ||= createVisitSaveProgress();
     try {
       let result = api.result;
       if (api.dirty) {
         result = await api.recheck();
         if (!result) { setSaving(false); return; }
       }
-      const out = await persistNote(result);
+      const out = await persistNote(result, saveProgress);
+      if (saveProgressRef.current !== saveProgress || !isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
       if (!out) {
         // persistVisitNote returns null without throwing when inputs are insufficient
         // — do NOT mark saved or clear the draft (would destroy the only copy).
@@ -407,39 +643,57 @@ export default function SmartNoteAssistant({ visitId = null }) {
       setSaved(true);
       clearDraft(patientId);
     } catch (err) {
+      if (saveProgressRef.current !== saveProgress || !isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
+      if (err instanceof PartialVisitSaveError) {
+        setSavedVisitId(err.visitId);
+        setExistingVisitId(null);
+        if (err.auditId) setSavedAuditId(err.auditId);
+      }
       console.error("Save to chart error:", err);
       // OfflineSaveError carries the one message that tells the nurse their work
       // is safe and what to do; the generic catch used to swallow it.
-      const message = err instanceof OfflineSaveError
+      const message = err instanceof OfflineSaveError || err instanceof PartialVisitSaveError || err?.code === 'VISIT_SAVE_CONTEXT_CHANGED'
         ? err.message
         : "Saving to the chart failed \u2014 your draft is still here. Try again.";
       setSaveError(message);
       toast.error(message);
     } finally {
-      setSaving(false);
+      if (saveProgressRef.current === saveProgress) setSaving(false);
     }
   };
 
-  const persistNote = async (result) => {
+  const persistNote = async (result, saveProgress) => {
+    if (!patientChartReady || !chartPatient) {
+      throw new Error('Patient chart authority is unavailable');
+    }
     const out = await persistVisitNote({
       result, patientId, visitDate, visitType, roughNote: note, vitals,
-      currentUser, patientDiagnosis: patientDetail?.primary_diagnosis || patient?.primary_diagnosis || "",
-      savedVisitId, savedAuditId, existingVisitId,
+      currentUser, patientDiagnosis: chartPatient.primary_diagnosis || "",
+      savedVisitId, savedAuditId, existingVisitId, saveProgress,
       facilityAcknowledgment: facilityOverrideRef.current,
     });
-    if (!out) return null;
+    if (!out || saveProgressRef.current !== saveProgress || !isAuthorityDraftLeaseCurrent(authorityDraftLease)) return null;
     // A handoff step or review acknowledgement reported BEFORE the working copy
     // existed was held in component state; attach it to the record now so the
     // office sees the same trail the nurse saw. Best-effort: a failure here must
     // never surface as "the note didn't save", because it did.
-    if (out.visitId && (handoff.status !== "not_started" || reviewAck)) {
-      const trail = {};
-      if (handoff.status !== "not_started") {
-        trail.emr_handoff_status = handoff.status;
-        trail.emr_handoff_history = handoff.history;
-      }
-      if (reviewAck) trail.documentation_review_ack = reviewAck;
-      base44.entities.Visit.update(out.visitId, trail).catch((err) => {
+    if (out.mode === 'create' && out.visitId && (handoff.status !== "not_started" || reviewAck)) {
+      const persistedStart = boundVisit?.id === out.visitId
+        ? (boundVisit.emr_handoff_status || 'not_started')
+        : 'not_started';
+      Promise.resolve().then(async () => {
+        if (handoff.status !== persistedStart) {
+          await advancePersistedHandoffTo(out.visitId, persistedStart, handoff.status);
+        }
+        if (reviewAck) {
+          await setVisitReviewAcknowledgement({
+            visitId: out.visitId,
+            acknowledged: reviewAck.acknowledged === true,
+            nurseEdited: reviewAck.nurse_edited === true,
+            noteText: out.finalText,
+          });
+        }
+      }).catch((err) => {
         console.error("Failed to attach the EMR handoff trail to the saved visit:", err);
         setHandoffError("Your note saved, but the EMR handoff steps didn't sync. Re-report them to try again.");
       });
@@ -475,7 +729,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
         patientId: patientId || undefined,
         visitId: visitId || undefined,
         visitType,
-        diagnosis: patient?.primary_diagnosis || "",
+        diagnosis: chartPatient?.primary_diagnosis || "",
       });
       if (result?.data?.tasks?.length) {
         setFollowUpTasks(result.data.tasks);
@@ -510,10 +764,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
       return;
     }
     try {
-      await base44.entities.Visit.update(savedVisitId, {
-        emr_handoff_status: next.status,
-        emr_handoff_history: next.history,
-      });
+      await advancePersistedHandoffTo(savedVisitId, handoff.status, next.status);
     } catch (err) {
       console.error("Failed to sync EMR handoff status:", err);
       setHandoffError("Couldn't sync this step to the server. It is recorded on this device — try again.");
@@ -542,7 +793,12 @@ export default function SmartNoteAssistant({ visitId = null }) {
     setReviewAck(ack);
     if (!savedVisitId) return;
     try {
-      await base44.entities.Visit.update(savedVisitId, { documentation_review_ack: ack });
+      await setVisitReviewAcknowledgement({
+        visitId: savedVisitId,
+        acknowledged: ack?.acknowledged === true,
+        nurseEdited: ack?.nurse_edited === true,
+        noteText: finalText,
+      });
     } catch (err) {
       console.error("Failed to persist the documentation review acknowledgement:", err);
       toast.error("Couldn't sync your review record to the server. Try again.");
@@ -551,6 +807,8 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
   const reset = () => {
     setNote(""); setSaved(false); setSavedVisitId(null); setSavedAuditId(null);
+    saveProgressRef.current = null;
+    setSaving(false);
     setStep(1); setDraftRestored(false); setFollowUpTasks([]); setSaveError(null);
     setVitals({}); setExistingVisitId(null); setFacilityAck(false);
     setHandoff({ status: "not_started", history: [] });
@@ -636,12 +894,27 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const step1Facility = useMemo(
     () => summarizeFacilityRules(evaluateFacilityRules({
       rules: facilityDocRules,
-      patient: patientDetail || patient,
+      patient: chartPatient,
       noteText: note,
       visitType,
     })),
-    [facilityDocRules, patientDetail, patient, note, visitType],
+    [facilityDocRules, chartPatient, note, visitType],
   );
+
+  if (visitAuthorizationWithheld) {
+    return (
+      <PageContainer>
+        <div
+          className="bg-white border border-slate-200 rounded-xl p-4 text-sm text-slate-700"
+          role="status"
+        >
+          {visitAuthorizationFailed
+            ? "Visit access could not be verified. Reopen this visit after your access is restored."
+            : "Verifying visit access…"}
+        </div>
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>
@@ -665,13 +938,13 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
       {activeTab === "summary" && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <VisitSummaryGenerator patientId={patientId} />
+          {(!patientId || patientChartReady) && <VisitSummaryGenerator patientId={patientId} />}
         </div>
       )}
 
       {activeTab === "trends" && (
         <div className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm">
-          <VitalsTrendAnalysis patientId={patientId} />
+          {(!patientId || patientChartReady) && <VitalsTrendAnalysis patientId={patientId} />}
         </div>
       )}
 
@@ -706,14 +979,21 @@ export default function SmartNoteAssistant({ visitId = null }) {
                       You can start writing now — a patient is required before this note can be saved to a chart.
                     </p>
                   )}
-                  {patient && (
+                  {patientId && !patientChartReady && (
+                    <p className="text-xs text-amber-700 mt-1.5" role="status">
+                      {patientAuthorizationFailed || noteHistoryQuery.isError
+                        ? "Patient chart access could not be verified."
+                        : "Verifying patient chart access…"}
+                    </p>
+                  )}
+                  {chartPatient && (
                     <div className="flex items-center gap-2 text-xs text-navy-700 bg-navy-50 border border-navy-200 rounded-lg px-3 py-2 mt-2">
                       <User className="w-3.5 h-3.5 shrink-0" />
                       <span>
-                        <strong>{patient.first_name} {patient.last_name}</strong>
-                        {patient.primary_diagnosis ? ` \u00b7 ${patient.primary_diagnosis}` : ""}
-                        {patient.current_medications?.length > 0 ? ` \u00b7 ${patient.current_medications.length} meds` : ""}
-                        {patient.functional_status?.fall_risk === "high" && <span className="ml-2 inline-flex items-center gap-1 text-rose-600 font-bold"><AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" /> High Fall Risk</span>}
+                        <strong>{chartPatient.first_name} {chartPatient.last_name}</strong>
+                        {chartPatient.primary_diagnosis ? ` \u00b7 ${chartPatient.primary_diagnosis}` : ""}
+                        {chartPatient.current_medications?.length > 0 ? ` \u00b7 ${chartPatient.current_medications.length} meds` : ""}
+                        {chartPatient.functional_status?.fall_risk === "high" && <span className="ml-2 inline-flex items-center gap-1 text-rose-600 font-bold"><AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" /> High Fall Risk</span>}
                       </span>
                     </div>
                   )}
@@ -766,7 +1046,9 @@ export default function SmartNoteAssistant({ visitId = null }) {
                   value={note}
                   onChange={setNote}
                   patientId={patientId}
-                  patientName={patient ? `${patient.first_name} ${patient.last_name}` : undefined}
+                  patientName={chartPatient
+                    ? `${chartPatient.first_name} ${chartPatient.last_name}`
+                    : undefined}
                   visitType={visitType}
                   userEmail={currentUser?.email}
                   placeholder={"Enter bullet points or rough draft \u2014 AI will NOT invent information.\n\nType / or .shortcut to insert a saved quick phrase.\n\n\u2022 BP 148/90, HR 82, O2 95% RA, pain 3/10\n\u2022 homebound: unable to leave without considerable effort\n\u2022 skilled need: wound assessment and dressing change\n\u2022 wound R heel 2\u00d73 cm granulating, no odor\n\u2022 taught med schedule, pt verbalized understanding\n\u2022 fall risk \u2014 clutter noted, discussed w/ family"}
@@ -815,7 +1097,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
               <StickyActionBar status={reviewStatus}>
                 <Button
                   onClick={startReview}
-                  disabled={!ready || draftBlanks > 0}
+                  disabled={!ready || draftBlanks > 0 || (!!patientId && !patientChartReady)}
                   className="h-11 px-5 gap-1.5 text-sm font-semibold w-full sm:w-auto"
                 >
                   <ClipboardList className="w-4 h-4" /> Review & Complete <ArrowRight className="w-3.5 h-3.5" />
@@ -848,7 +1130,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                   defaultOpen={step1Facility.missing > 0}
                 >
                   <FacilityRequirementsChecklist
-                    patient={patientDetail || patient}
+                    patient={chartPatient}
                     noteText={note}
                     visitType={visitType}
                   />
@@ -867,14 +1149,14 @@ export default function SmartNoteAssistant({ visitId = null }) {
             </div>
           )}
 
-          {step === 2 && (
+          {step === 2 && (!patientId || patientChartReady) && (
             <ConstrainedNoteReviewer
               roughNote={note}
               serviceLine={serviceLine}
               visitType={visitType}
               vitals={vitals}
-              priorNote={getPriorNote(patientDetail || patient)}
-              patient={patientDetail || patient}
+              priorNote={getPriorNote(chartPatient)}
+              patient={chartPatient}
               currentUser={currentUser}
               complianceRules={complianceRules}
               onEscalate={escalateToTasks}
@@ -882,7 +1164,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
               renderFinalNote={(api) => {
                 const facilityResults = evaluateFacilityRules({
                   rules: facilityDocRules,
-                  patient: patientDetail || patient,
+                  patient: chartPatient,
                   noteText: api.finalNote,
                   visitType,
                 });
@@ -903,7 +1185,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                   )}
 
                   <FacilityRequirementsChecklist
-                    patient={patientDetail || patient}
+                    patient={chartPatient}
                     noteText={api.finalNote}
                     visitType={visitType}
                   />
@@ -929,6 +1211,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                     items={[
                       { label: "Fix the fact-check findings above, then re-check.", blocked: !!api.fixRequired },
                       { label: "Select a patient — a note can only be saved to a chart.", blocked: !patientId },
+                      { label: "Verify access to the selected patient chart.", blocked: !!patientId && !patientChartReady },
                       { label: "Acknowledge the chart safety conflict.", blocked: !!api.chartRisk?.hasUnacknowledgedCritical },
                       { label: "Acknowledge the denial-risk findings.", blocked: !!api.denialRisk?.hasUnacknowledgedCritical },
                       { label: "Document the critical facility requirement, or acknowledge the override.", blocked: facilityBlocked },
@@ -948,7 +1231,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                       }
                     }}
                     copied={copied}
-                    patient={patient}
+                    patient={chartPatient}
                     visitType={visitType}
                     analysisScore={api.coverage}
                     analysis={{ overall_score: api.coverage, compliance_score: api.coverage, findings: buildExportFindings(api.result) }}
@@ -985,7 +1268,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                     }}
                     saving={saving}
                     saved={saved && !api.dirty}
-                    saveDisabled={saving || !!api.fixRequired || !patientId || api.chartRisk?.hasUnacknowledgedCritical || api.denialRisk?.hasUnacknowledgedCritical || facilityBlocked}
+                    saveDisabled={saving || !!api.fixRequired || !patientId || !patientChartReady || api.chartRisk?.hasUnacknowledgedCritical || api.denialRisk?.hasUnacknowledgedCritical || facilityBlocked}
                   />
                 </>
                 );

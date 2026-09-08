@@ -8,10 +8,48 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
+// <<<BEGIN SHARED HELPER: activeMembershipAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeMembershipEmail = (value) => String(value || '').trim().toLowerCase();
+async function hasExactActiveAgencyMembership(base44, user) {
+  const userId = typeof user?.id === 'string' ? user.id.trim() : '';
+  const userEmail = normalizeMembershipEmail(user?.email);
+  if (!userId || !userEmail) return false;
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: userId, status: 'active' },
+      undefined,
+      2,
+    );
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) return false;
+  const row = rows[0];
+  return !!row
+    && String(row.user_id || '').trim() === userId
+    && String(row.status || '') === 'active'
+    && normalizeMembershipEmail(row.user_email_normalized) === userEmail
+    && typeof row.agency_id === 'string'
+    && !!row.agency_id.trim();
+}
+// <<<END SHARED HELPER: activeMembershipAuthz>>>
+
 /**
  * setNurseDutyStatus — self-service duty toggle, scheduled time-off window, and
- * off-duty message editor. A nurse updates their own status; an admin may target
- * another user.
+ * off-duty message editor. A nurse updates their own status; only the protected
+ * platform owner may target another user.
  *
  * No Telnyx call is needed: the inbound VCA/SMS webhooks read duty_status and the
  * scheduled_off_duty_* window live at call/message time, so changes take effect
@@ -24,10 +62,13 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    if (user.account_type === 'agency_admin' && !user.agency_name) {
-      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    if (user.disabled === true || user.is_service === true || user.is_verified === false) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
-
+    if (!isProtectedSuperAdmin(user)
+      && !(await hasExactActiveAgencyMembership(base44, user))) {
+      return Response.json({ error: 'Forbidden: active agency membership required' }, { status: 403 });
+    }
     const {
       duty_status,
       off_duty_message,
@@ -76,25 +117,11 @@ Deno.serve(async (req) => {
     // Resolve who is being updated.
     let target = user;
     if (target_user_email && target_user_email !== user.email) {
-      const isAdminLike = user.role === 'admin'
-        || user.account_type === 'agency_admin'
-        || user.account_type === 'super_admin';
-      if (!isAdminLike) {
-        return Response.json({ error: 'Only administrators can change another user\'s duty status' }, { status: 403 });
+      if (!isProtectedSuperAdmin(user)) {
+        return Response.json({ error: 'Only the protected platform owner can change another user\'s duty status' }, { status: 403 });
       }
       const found = await base44.asServiceRole.entities.User.filter({ email: target_user_email }, undefined, 5000);
       if (!found[0]) return Response.json({ error: 'Target user not found' }, { status: 404 });
-      // Agency-scope: facility admins must not retarget staff in another tenant.
-      const isSuperAdmin = user.account_type === 'super_admin';
-      const isAgencyScopedAdmin = user.account_type === 'agency_admin'
-        || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-      if (isAgencyScopedAdmin
-        && found[0].agency_name && found[0].agency_name !== user.agency_name) {
-        return Response.json({ error: 'Forbidden: user is outside your agency' }, { status: 403 });
-      }
-      if (isAgencyScopedAdmin && !found[0].agency_name) {
-        return Response.json({ error: 'Forbidden: user is outside your agency' }, { status: 403 });
-      }
       target = found[0];
     }
 
@@ -130,20 +157,16 @@ Deno.serve(async (req) => {
 
     await base44.asServiceRole.entities.User.update(target.id, update);
 
-    await base44.entities.UserActivity.create({
+    await base44.asServiceRole.entities.UserActivity.create({
       user_email: user.email,
       user_name: user.full_name,
       action: 'duty_status_changed',
       entity_type: 'User',
       entity_id: target.id,
       details: {
-        target_user_email: target.email,
         duty_status: update.duty_status ?? target.duty_status,
         off_duty_message_set: off_duty_message !== undefined,
-        scheduled_off_duty_start: update.scheduled_off_duty_start,
-        scheduled_off_duty_end: update.scheduled_off_duty_end,
         scheduled_off_duty_recurring: update.scheduled_off_duty_recurring,
-        timestamp: new Date().toISOString(),
       },
       status: 'success',
     }).catch((err) => console.error('Failed to log activity:', err));

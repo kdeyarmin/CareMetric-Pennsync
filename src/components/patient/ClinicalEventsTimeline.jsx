@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { parseLocalDate, formatLocalDate } from "@/lib/dateLocal";
 import PatientTimelineStrip from "@/components/patient/PatientTimelineStrip";
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 
 const EVENT_ICONS = {
   medication_change: Pill,
@@ -51,9 +52,11 @@ export default function ClinicalEventsTimeline({
 
   // Optional related records for the unified (cross-entity) timeline strip.
   // Prefer parent-provided lists to avoid duplicate fetches; fall back to scoped queries.
-  const { data: visitsFetched = [] } = useQuery({
-    queryKey: ['patientVisits', patientId, 100],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 100),
+  const { data: visitsFetched = [] } = useAuthorizedVisits({
+    patientId,
+    purpose: 'activity',
+    sort: '-visit_date',
+    limit: 100,
     enabled: !!patientId && visitsProp === undefined,
   });
   const { data: incidentsFetched = [] } = useQuery({

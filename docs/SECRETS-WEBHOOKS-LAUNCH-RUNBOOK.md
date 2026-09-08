@@ -82,12 +82,35 @@ issuance is protected structurally: `issueCertificate` only trusts a passing
 
 | Secret | Set at launch? | Effect if unset |
 |---|---|---|
-| `SIGNATURE_HMAC_SECRET` | **Yes** | Signature integrity MAC falls back to **unkeyed sha256** — detects corruption, **not** forgery. Set it so e-signature tamper-evidence is forgery-resistant. |
-| `INTERNAL_FN_SECRET` | **Yes** | Every scheduled/internal function (the ~30-function cron family: fax queues, SMS dispatch, renewal reminders, outcome measures, …) authorizes with `x-internal-secret: <INTERNAL_FN_SECRET>` OR an admin session, and **fails closed with a 500 when the secret is unset** and the caller isn't an admin — so unattended cron firings all fail until it is set. See `docs/LEARNING_CENTER_SCHEDULED_JOBS.md` for the registration steps (the platform trigger must send the header). |
+| `SIGNATURE_HMAC_SECRET` | **Yes** | Signature token issuance and verification fail closed when the secret is missing or too short. |
+| `INTERNAL_FN_SECRET` | **Required for external/header-based schedulers; recommended otherwise** | Native Base44 workflows run as the user who created them, so a workflow created by an active protected admin authorizes through `auth.me()` without this header. External/no-session scheduler calls must send `x-internal-secret: <INTERNAL_FN_SECRET>` and fail closed with `500` when it is unset; authenticated non-admin callers fail with `403`. Never place the secret in browser code or workflow `args`. See `docs/LEARNING_CENTER_SCHEDULED_JOBS.md`. |
 
-**Verify scheduled-function auth:** an unauthenticated POST to a cron function
-(e.g. `processScheduledFaxes`) without the header → `401/500`; with
-`x-internal-secret` set correctly → `200`.
+`APP_PUBLIC_URL` is required non-secret backend configuration. Set it separately
+in every environment to that environment's exact HTTPS origin. Account,
+invitation, and notification email paths reject a missing or malformed value;
+they do not fall back to `APP_URL` or a production hostname.
+
+`OUTBOUND_DELIVERY_RELEASE` is a general outbound release gate, not a provider
+credential. Leave it absent or blank in staging: email, SMS, fax, and voice
+delivery then remain fail-closed even when provider credentials are present,
+except authorized manual account invitations. `createUserWithTempPassword`,
+`resendInvitation`, and `userManagement` actions `invite_user`/`resend_invitation`
+operate independently of this gate. Their administrator, active-account,
+tenant, role, and invitation-status checks still apply. Password resets, OTP
+resends, activation notices, and scheduled invitation digests remain gated.
+Only the exact value `enabled-v1`, set after a separate environment-specific
+approval, releases delivery. Never use a `VITE_` variable for this gate.
+
+**Verify scheduled-function auth:** deploy/create checked-in native workflows
+only as the intended protected platform admin. In isolated staging, list the deployed
+workflow, run one canary, and verify that its creator-backed `auth.me()` identity
+is the expected active admin and the response is successful. Also verify an
+unauthenticated POST to a cron function (e.g. `processScheduledFaxes`) without
+the header → `401/500`, with the correct `x-internal-secret` → `200`, and an
+authenticated non-admin call → `403`. If the workflow creator is deactivated
+or demoted, recreate the workflow under the approved owner before releasing its
+handler gate. Do not create dashboard or function-level duplicate schedules for
+targets already defined under `base44/workflows/`.
 
 **Verify certificate issuance:** a direct `issueCertificate` call from a non-admin
 with no passing attempt is rejected; a legitimate completion via
@@ -102,31 +125,89 @@ of the app is unaffected.
 
 | Secret | Powers |
 |---|---|
-| `OPENAI_API_KEY` | Whisper/audio transcription, SOAP-note-from-audio, AI training-course generation, training-attempt grading, corrective-action-plan generation, in-service rebuild |
-| `ANTHROPIC_API_KEY` | AI fax cover-page generation |
+| `OPENAI_API_KEY` | Direct Whisper/audio transcription, including the transcription stage of SOAP-note-from-audio |
+| `ANTHROPIC_API_KEY` | Direct SOAP-note-from-audio structuring |
 | `HEYGEN_API_KEY` | AI training-video generation |
 
 (Telehealth video tokens and outbound fax use the Telnyx config from §2, not these.)
 
-These three plus the §3 `SIGNATURE_HMAC_SECRET` are the **complete** backend
-secret list (four total) — nothing else is read from the dashboard env.
+Most application AI uses platform-managed `Core.InvokeLLM`, and transactional
+email uses platform-managed `Core.SendEmail`; neither consumes an app-managed
+provider key. Fax-cover formatting is deterministic and sends no patient data
+to an AI provider. Gemini, Deepgram, Resend, Notifyre, and Twilio environment
+keys are not runtime requirements in the current source tree and must not be
+treated as launch blockers.
+
+The integration-health report exposes release state separately from credential
+state. A successful read-only provider probe never authorizes traffic.
+`OUTBOUND_DELIVERY_RELEASE` controls general delivery, excluding the authorized
+manual invitation paths listed above, and is fail-closed unless its value is
+exactly `enabled-v1`. Provider/workflow-specific
+pauses (including `OUTCOME_PIPELINE_RELEASE` for the outcome worker) remain
+independent defense-in-depth gates; keep all of them paused in staging except
+for an explicitly approved controlled-destination test.
+
+The fax/follow-up workflows have independent default-false gates, all of which
+must remain unset in staging until their individual hosted proof is approved:
+`WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES`,
+`WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS`,
+`WORKFLOW_RELEASE_POLL_FAX_STATUSES`,
+`WORKFLOW_RELEASE_PROCESS_INBOUND_FAXES`, and
+`WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES`. Only the exact value `enabled-v1`
+releases the corresponding handler, and workflow activation remains a separate
+decision.
+
+These three plus the §3 `SIGNATURE_HMAC_SECRET` are the AI/media and signature
+secrets. Scheduler and Telnyx secrets are documented separately above.
 
 **Verify:** with a key set, the corresponding feature runs; with it unset, it shows the
 not-configured notice rather than erroring.
 
 ---
 
-## 5. Scheduled functions (crons) — enable exactly one of each duplicated pair
+## 5. Scheduled functions (crons) — preserve one authoritative schedule
 
-These run privileged `asServiceRole` work with no `auth.me()` — correct only if the
-platform restricts who can invoke function endpoints (**confirm that**).
+These run privileged `asServiceRole` work after the shared authorization gate.
+Native Base44 runs inherit the workflow creator's identity; external schedulers
+must use the shared-secret header. The seven checked-in definitions under
+`base44/workflows/` are authoritative for their targets. Their legacy
+function-level configs must remain absent, and no dashboard duplicate may be
+created. Workflow presence never releases a handler's default-closed source gate.
+
+### Mandatory backlog census before any delivery release
+
+Copying entities or secrets into an environment does **not** make its queued
+work safe to deliver. A copied production recipient, old retry row, or overdue
+schedule can become live as soon as the global and worker gates are opened.
+While every delivery gate is still closed, complete and retain this review:
+
+1. Census, by tenant and age, all `ScheduledSms` and `ScheduledFax` rows that
+   could dispatch; failed outbound `SmsMessage` rows eligible for redrive;
+   failed `FaxLog` rows eligible for retry; pending signature reminders; and
+   invitation, credential-renewal, personnel-expiration, or other reminder
+   digest work. Record counts plus the oldest/newest due timestamps without
+   exporting message bodies, documents, secret values, or full destinations.
+2. Quarantine or cancel stale, production-copied, ambiguous, and real-recipient
+   work. Do not mark it sent and do not advance a reminder-offset/digest stamp
+   for delivery that did not occur. Resolve duplicate schedules before release.
+3. Create one fresh, explicitly approved canary for a controlled destination in
+   one test tenant. Confirm there is exactly one eligible row and that all other
+   outbound backlogs remain empty or quarantined.
+4. Open `OUTBOUND_DELIVERY_RELEASE` and only the single required worker/channel
+   gate for the bounded canary window. Verify exactly one provider attempt and
+   reconcile the local delivery/audit record with the provider result. Close
+   the gates again before reviewing any additional queue.
+
+Neither `OUTBOUND_DELIVERY_RELEASE` nor any worker-specific gate may be released
+for general staging traffic until this census, quarantine, and one-row canary
+have passed. A read-only provider health check is not a substitute.
 
 | Function | Schedule | Notes |
 |---|---|---|
-| `processScheduledFaxes` **XOR** `processScheduledFaxesByPriority` | one of them, e.g. every 5 min | **Enable only ONE** — both running double-sends faxes. |
+| `processScheduledFaxes` | Native workflow every 10 minutes | Sole scheduled-fax target. Keep `processScheduledFaxesByPriority` unregistered; the handler still requires `WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES=enabled-v1`. |
 | `dispatchScheduledSms` | one schedule, e.g. every 5 min | `pending→sending` claim is best-effort, not atomic — overlapping runs double-send a queued text. One schedule only. |
-| `sendAutomatedSignatureReminders` | per your reminder policy | Idempotency now guards on `last_reminder_sent_at` (schema field exists), so a tick won't re-email every run. |
-| `dispatchScheduledSignatureReminders` | one schedule, e.g. every 15 min | Delivers `ScheduledSignatureReminder` rows queued by `scheduleSignatureReminders` (which is caller-invoked, not a cron). Claim + re-read guards overlapping runs; recipients are re-derived from the document's pending signers at send time. |
+| `sendAutomatedSignatureReminders` | Unregistered | Legacy alternate path remains quarantined; do not schedule it. |
+| `dispatchScheduledSignatureReminders` | Native workflow every 15 minutes | Sole signature-reminder target. Its literal release and atomic-uniqueness gates remain false pending hosted proof. |
 | `sendExpirationNotifications` | daily | Document/credential expirations. |
 | `sendPersonnelExpirationNotifications` | daily | Personnel credential expirations. |
 | `monitorComplianceRisks` | daily/periodic | Compliance risk monitor. |
@@ -134,12 +215,17 @@ platform restricts who can invoke function endpoints (**confirm that**).
 | `deduplicatePatients` | periodic | Patient dedupe. |
 | `autoApproveInvitedUser` | per platform trigger | Confirm cron-only / trigger-only invocation. |
 
-**Verify:** exactly one fax processor and one `dispatchScheduledSms` are enabled; send a
-test scheduled fax and a scheduled SMS and confirm a **single** delivery each.
+**Verify:** read back exactly one native `Process Scheduled Faxes` workflow and
+no legacy/dashboard duplicate, while its handler gate remains closed. Release
+and controlled delivery tests require their own explicit approval.
 
 ---
 
 ## 6. End-to-end channel smoke tests (do before go-live)
+
+Do not run these while `OUTBOUND_DELIVERY_RELEASE` is absent or blank. Release
+the gate only in the specifically approved environment and only for the bounded
+test window and destinations.
 
 1. **SMS out/in:** send an SMS to a test handset (`sendSms`) → delivered; reply
    `STOP` → opt-out recorded (`SmsConsent`), `START` → re-opt-in. Inbound text appears

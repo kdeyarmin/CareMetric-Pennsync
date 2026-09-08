@@ -7,7 +7,7 @@ Instructions for Codex cloud and other AI coding agents working in this reposito
 - The VM's default `node` (`/exec-daemon/node`) is v22 and takes PATH precedence, but this repo requires Node `>=24.18.0`. Node 24.18.0 is installed via nvm and prepended to `PATH` in `~/.bashrc`, so a normal interactive shell already resolves the correct node. If a command reports the wrong version, run `export PATH="$HOME/.nvm/versions/node/v24.18.0/bin:$PATH"` (or `nvm use 24.18.0`) first. The startup update script also runs `nvm use 24.18.0` before `pnpm install`.
 - Frontend-only SPA: `pnpm run dev` serves Vite on `http://localhost:5173`. There is no local backend; `[base44] Proxy not enabled` is expected/harmless.
 - Base44 config comes from `VITE_BASE44_APP_ID` and `VITE_BASE44_BACKEND_URL`, provided as Cursor secrets (Vite reads them at dev-server startup, so restart `pnpm run dev` after they change). When they are set, the app root renders the real branded "Welcome to PennSync" login screen and the sign-in form POSTs to the hosted `base44.app` backend end-to-end; `403 "You must be logged in"` console errors before login are expected. Full authenticated patient/clinical flows additionally require valid login credentials, which are not present by default.
-- When the config secrets are absent, authenticated routes redirect to `/login` and render blank. To verify rendering without config, use the public capability-token pages: `/signer` (renders an "Access Denied" card) and `/join` (renders an "Invalid Visit Link" card). Hitting `/signer?token=...` triggers the real client-side validation call and returns a 404/error card without a valid backend — this is expected, not a crash.
+- When the config secrets are absent, authenticated routes redirect to `/login` and render blank. To verify rendering without config, use `/signer` (renders the signing-unavailable state) or `/join` (renders an "Invalid Visit Link" card). Public signer and provider-follow-up capabilities are quarantined: their pages do not call the backend, and their token URL parameters are removed before the React app imports.
 - Authenticated login/write flows work end-to-end when valid login credentials exist as secrets (e.g. `PENNSYNC_TEST_EMAIL` / `PENNSYNC_TEST_PASSWORD`): sign-in POSTs to `/api/apps/<appId>/auth/login`, and profile writes (`base44.auth.updateMe`, i.e. `PUT /api/apps/<appId>/entities/User/me`) persist. Form fields backed by `base44.auth.me()` (react-query) briefly show empty/grey placeholder text on reload before the real value loads — wait a few seconds before judging persistence.
 - Standard commands (install/dev/build/lint/test/typecheck) are in `package.json` and the table below; do not duplicate them elsewhere.
 
@@ -36,7 +36,7 @@ Use pnpm through Corepack. Do not use npm or yarn for installs.
 Standard scripts are in `package.json` and `README.md`. Notable points:
 
 - `pnpm run dev` starts only the Vite dev server (default `http://localhost:5173`) inside the cloud environment.
-- `pnpm test` runs `test:utils` (node `--test`) then `test:components` (Vitest/jsdom).
+- `pnpm test` runs the utility/core, schema/contract, security, deduplication, and component/page suites.
 - `pnpm run lint` is clean: 0 errors AND 0 warnings. Keep it that way — a new warning is a real finding, not background noise. Coverage includes `src/App.jsx`, `src/main.jsx`, and `src/routes.jsx`.
 - `pnpm run typecheck` is an informational baseline in CI (`continue-on-error`); it may report pre-existing errors and is not a gate.
 - `pnpm run typecheck:signal` **is** a CI gate (CI + Workflow Quality). It filters the checkJs pass to high-signal defect codes; keep it at 0 findings.
@@ -58,14 +58,14 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 
 ## Environment config
 
-The frontend reads `VITE_BASE44_APP_ID` and `VITE_BASE44_BACKEND_URL` (consumed in `src/lib/app-params.js`), plus the optional `VITE_SUPER_ADMIN_EMAIL` override used by `src/lib/superAdmin.js`. The Vite dev server boots regardless, but without a valid app id + backend URL the app shows a blocking config state or redirects to `/login` and renders blank because `/login` is served by the hosted backend, not client-side.
+The frontend reads `VITE_BASE44_APP_ID` and `VITE_BASE44_BACKEND_URL` (consumed in `src/lib/app-params.js`), the optional exact `VITE_BASE44_FUNCTIONS_VERSION`, and the optional `VITE_SUPER_ADMIN_EMAIL` override used by `src/lib/superAdmin.js`. Function-revision URL and storage overrides are scrubbed; floating version aliases are rejected. The Vite dev server boots regardless, but without a valid app id + backend URL the app shows a blocking config state or redirects to `/login` and renders blank because `/login` is served by the hosted backend, not client-side.
 
 App id and backend URL can also be passed via URL params `?app_id=...&server_url=...`, which are persisted to localStorage. Other vars such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `HEYGEN_API_KEY`, and `SIGNATURE_HMAC_SECRET` are backend Deno-function secrets and are not used by the local frontend bundle.
 
 ## Testing the running app in a browser without backend credentials
 
 - Authenticated routes are gated; without a real backend they redirect to `/login` and may appear blank.
-- Public capability-token pages render fully client-side: `/signer` renders an "Access Denied" card with no token, and `/join` renders an "Invalid Visit Link" card with no token. Use these to verify the SPA renders in a browser.
+- `/signer` renders a static signing-unavailable state and `/join` renders an "Invalid Visit Link" card with no token. Use these to verify the SPA renders in a browser. Do not treat the quarantined signer or provider-follow-up routes as end-to-end capability tests.
 - Console 404s against the backend origin such as "App not found" are expected when `VITE_BASE44_APP_ID` or `VITE_BASE44_BACKEND_URL` points at a non-existent app.
 - Core clinical logic (OASIS scoring in `src/components/oasis/`, PDGM grouping in `src/components/pdgm/pdgmGrouper.js`, SmartNote compliance, fax/SMS/voice utils) is pure and covered by the automated test suite.
 

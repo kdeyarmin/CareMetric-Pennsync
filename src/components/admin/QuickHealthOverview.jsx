@@ -17,7 +17,7 @@ export default function QuickHealthOverview() {
   });
 
 
-  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: null, limit: ALL_ROWS });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'data_quality', status: 'active', sort: null, limit: ALL_ROWS });
 
   const { data: users = [] } = useQuery({
     queryKey: ['users-health', agencyQueryKey(currentUser)],

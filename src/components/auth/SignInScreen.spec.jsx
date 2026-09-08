@@ -6,8 +6,8 @@
  * visible with the logo rendered whole (object-contain, never a cropping
  * mask), credentials sign the user in via the direct auth endpoint (NOT the
  * SDK helper whose 401 path forces a logout redirect), a wrong password shows
- * an inline error instead of navigating away, and the password-reset +
- * hosted-page fallbacks work.
+ * an inline error instead of navigating away, and password-reset delivery is
+ * visibly fail-closed while outbound traffic is paused.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render as rtlRender, screen, waitFor } from '@testing-library/react';
@@ -22,7 +22,6 @@ const render = (ui) => rtlRender(<MemoryRouter>{ui}</MemoryRouter>);
 const mocks = vi.hoisted(() => ({
   navigateToLogin: vi.fn(),
   setToken: vi.fn(),
-  resetPasswordRequest: vi.fn(async () => ({})),
   post: vi.fn(),
   peekPendingAccessToken: vi.fn(() => null),
   confirmPendingAccessToken: vi.fn(() => false),
@@ -37,7 +36,6 @@ vi.mock('@/api/base44Client', () => ({
   base44: {
     auth: {
       setToken: mocks.setToken,
-      resetPasswordRequest: mocks.resetPasswordRequest,
     },
   },
 }));
@@ -70,8 +68,10 @@ const fillCredentials = async (user, email = 'nurse@agency.com', password = 'hun
 
 describe('SignInScreen', () => {
   it('renders the PennSync brand with the logo un-cropped', () => {
-    render(<SignInScreen onAuthenticated={vi.fn()} />);
+    const { container } = render(<SignInScreen onAuthenticated={vi.fn()} />);
 
+    expect(document.title).toBe('Sign in | PennSync by CareMetric');
+    expect(container.querySelectorAll('main')).toHaveLength(1);
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Welcome to PennSync');
     expect(screen.getByText(/by caremetric/i)).toBeInTheDocument();
     expect(screen.getByText(/sign in to continue/i)).toBeInTheDocument();
@@ -106,7 +106,7 @@ describe('SignInScreen', () => {
     expect(mocks.post).toHaveBeenCalledWith('/apps/app-1/auth/login', {
       email: 'nurse@agency.com',
       password: 'hunter22',
-    });
+    }, { signal: expect.any(AbortSignal) });
     expect(mocks.setToken).toHaveBeenCalledWith('tok-123');
   });
 
@@ -125,7 +125,31 @@ describe('SignInScreen', () => {
     expect(mocks.navigateToLogin).not.toHaveBeenCalled();
   });
 
-  it('sends a password-reset email from the forgot-password flow', async () => {
+  it('aborts a pending password login and ignores its token after unmount', async () => {
+    let resolveLogin;
+    let capturedSignal;
+    mocks.post.mockImplementationOnce((_url, _body, options) => {
+      capturedSignal = options.signal;
+      return new Promise((resolve) => { resolveLogin = resolve; });
+    });
+    const onAuthenticated = vi.fn();
+    const user = userEvent.setup();
+    const view = render(<SignInScreen onAuthenticated={onAuthenticated} />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    view.unmount();
+
+    expect(capturedSignal.aborted).toBe(true);
+    resolveLogin({ access_token: 'late-token' });
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(mocks.setToken).not.toHaveBeenCalled();
+    expect(onAuthenticated).not.toHaveBeenCalled();
+  });
+
+  it('keeps password-reset delivery visibly paused without reporting success', async () => {
     const user = userEvent.setup();
     render(<SignInScreen onAuthenticated={vi.fn()} />);
 
@@ -135,12 +159,11 @@ describe('SignInScreen', () => {
     await user.type(screen.getByLabelText(/email/i), 'nurse@agency.com');
     await user.click(screen.getByRole('button', { name: /send reset link/i }));
 
-    await waitFor(() =>
-      expect(mocks.resetPasswordRequest).toHaveBeenCalledWith('nurse@agency.com')
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Outbound delivery is paused in this environment.',
     );
-    expect(await screen.findByText(/check your email/i)).toBeInTheDocument();
+    expect(screen.queryByText(/check your email/i)).not.toBeInTheDocument();
 
-    // And the path back to the sign-in form works.
     await user.click(screen.getByRole('button', { name: /back to sign in/i }));
     expect(screen.getByRole('button', { name: /^sign in$/i })).toBeInTheDocument();
   });

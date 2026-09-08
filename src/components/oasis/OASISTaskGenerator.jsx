@@ -1,7 +1,4 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -10,33 +7,21 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   ClipboardList,
   AlertTriangle,
-  CheckCircle2,
-  Loader2,
   Bell,
   Target,
   Shield
 } from "lucide-react";
 
+const TASK_CREATION_BLOCKER =
+  "AI-suggested OASIS task creation is paused pending an atomic, idempotent, patient-authorized broker. No tasks have been created.";
+
 export default function OASISTaskGenerator({ 
   analysisResults, 
   _pdgmData, 
-  patientId,
   patientName,
-  onTasksCreated 
 }) {
   const [suggestedTasks, setSuggestedTasks] = useState([]);
   const [selectedTasks, setSelectedTasks] = useState([]);
-  const [isCreating, setIsCreating] = useState(false);
-  const [tasksCreated, setTasksCreated] = useState(false);
-
-  const queryClient = useQueryClient();
-
-  const createTaskMutation = useMutation({
-    mutationFn: (taskData) => base44.entities.Task.create(taskData),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    },
-  });
 
   // Generate suggested tasks based on analysis
   useEffect(() => {
@@ -142,46 +127,6 @@ export default function OASISTaskGenerator({
     setSelectedTasks(tasks.filter(t => t.priority === 'high').map(t => t.id));
   }, [analysisResults, patientName]);
 
-  const handleCreateTasks = async () => {
-    // assigned_to is required on Task; resolve the user up front and abort if we
-    // can't, so we never attempt a create with assigned_to undefined (which the
-    // backend rejects). Done before setIsCreating(true) so the button isn't stuck.
-    const currentUser = await base44.auth.me().catch(() => null);
-    if (!currentUser?.email) {
-      toast.error('Could not determine the current user. Please refresh and try again.');
-      return;
-    }
-    setIsCreating(true);
-
-    try {
-      const tasksToCreate = suggestedTasks.filter(t => selectedTasks.includes(t.id));
-
-      for (const task of tasksToCreate) {
-        await createTaskMutation.mutateAsync({
-          patient_id: patientId || null,
-          assigned_to: currentUser?.email,
-          title: task.title,
-          description: task.description,
-          type: task.type,
-          priority: task.priority,
-          due_date: task.due_date,
-          source: task.source,
-          ai_reason: task.ai_reason,
-          status: 'pending'
-        });
-      }
-
-      setTasksCreated(true);
-      onTasksCreated?.(tasksToCreate.length);
-      toast.success(`Created ${tasksToCreate.length} task${tasksToCreate.length === 1 ? '' : 's'}.`);
-    } catch (err) {
-      console.error("Error creating tasks:", err);
-      toast.error("Some tasks couldn't be created. Please try again.");
-    }
-    
-    setIsCreating(false);
-  };
-
   const toggleTask = (taskId) => {
     setSelectedTasks(prev => 
       prev.includes(taskId) 
@@ -215,17 +160,14 @@ export default function OASISTaskGenerator({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4 pt-4">
-        {tasksCreated ? (
-          <Alert className="bg-green-50 border-green-200">
-            <CheckCircle2 className="w-4 h-4 text-green-600" />
-            <AlertDescription className="text-green-800">
-              {selectedTasks.length} task(s) created successfully and assigned to your task list.
-            </AlertDescription>
-          </Alert>
-        ) : (
-          <>
+        <Alert className="border-amber-300 bg-amber-50">
+          <AlertTriangle className="h-4 w-4 text-amber-700" />
+          <AlertDescription className="text-amber-900">
+            {TASK_CREATION_BLOCKER}
+          </AlertDescription>
+        </Alert>
             <p className="text-sm text-slate-600">
-              Based on the OASIS analysis, the following tasks are recommended:
+              Based on the OASIS analysis, the following recommendations are available for review only:
             </p>
 
             <div className="space-y-3">
@@ -267,18 +209,11 @@ export default function OASISTaskGenerator({
             </div>
 
             <Button
-              onClick={handleCreateTasks}
-              disabled={isCreating || selectedTasks.length === 0}
+              disabled
               className="w-full"
             >
-              {isCreating ? (
-                <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating Tasks...</>
-              ) : (
-                <><ClipboardList className="w-4 h-4 mr-2" /> Create {selectedTasks.length} Task(s)</>
-              )}
+              <ClipboardList className="mr-2 h-4 w-4" /> Task creation paused
             </Button>
-          </>
-        )}
       </CardContent>
     </Card>
   );

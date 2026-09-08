@@ -1,0 +1,152 @@
+{
+  "name": "PatientCareTeamAssignment",
+  "type": "object",
+  "description": "Server-owned, versioned binding between one immutable Base44 User id and one Patient in one Agency. This relation is the future care-team authority; legacy Patient.assigned_nurses email values are not authority for this entity.",
+  "properties": {
+    "assignment_key": {
+      "type": "string",
+      "description": "Canonical agency_id:patient_id:user_id key. Code must still reject duplicates because datastore uniqueness is not assumed."
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Agency id copied from the exact authorized Patient and AgencyMembership."
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Immutable Patient id whose exact agency_id was verified before the assignment was created."
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Immutable built-in Base44 User id of the care-team member. Never substitute an email or custom User field."
+    },
+    "user_email_normalized": {
+      "type": "string",
+      "format": "email",
+      "description": "Normalized built-in User email retained only as an integrity check; user_id remains authoritative."
+    },
+    "assignee_membership_id": {
+      "type": "string",
+      "description": "Exact same-agency AgencyMembership id verified for the assigned User."
+    },
+    "assignee_membership_version_at_enablement": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "AgencyMembership version observed at the latest grant or activation. Current membership is always revalidated separately."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "active",
+        "suspended",
+        "revoked"
+      ],
+      "description": "Assignment lifecycle. Suspension is reversible; revocation is terminal."
+    },
+    "source": {
+      "type": "string",
+      "enum": [
+        "manual",
+        "patient_creator",
+        "legacy_assigned_nurses",
+        "legacy_provider_patient_assignment"
+      ],
+      "description": "Server-selected assignment provenance. Public callers cannot choose this field."
+    },
+    "created_by_user_id": {
+      "type": "string",
+      "description": "Immutable built-in User id of the protected actor that first created the relation."
+    },
+    "created_by_user_email_normalized": {
+      "type": "string",
+      "format": "email",
+      "description": "Normalized built-in email paired with created_by_user_id for integrity corroboration."
+    },
+    "activated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the latest grant or activation."
+    },
+    "suspended_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the latest suspension, when applicable."
+    },
+    "revoked_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of terminal revocation, when applicable."
+    },
+    "revocation_reason": {
+      "type": "string",
+      "description": "Bounded operator reason retained for terminal revocation."
+    },
+    "last_transition_by_user_id": {
+      "type": "string",
+      "description": "Immutable built-in User id of the actor that performed the latest lifecycle transition."
+    },
+    "last_transition_by_email_normalized": {
+      "type": "string",
+      "format": "email",
+      "description": "Normalized built-in email of the latest lifecycle actor, retained as an integrity check."
+    },
+    "last_transition_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "last_transition_reason": {
+      "type": "string",
+      "description": "Bounded operator reason for the latest server-owned transition."
+    },
+    "last_transition_action": {
+      "type": "string",
+      "enum": [
+        "grant",
+        "activate",
+        "suspend",
+        "revoke"
+      ],
+      "description": "Exact server-owned lifecycle action used to bind retries to one operation."
+    },
+    "last_transition_request_id": {
+      "type": "string",
+      "description": "Caller retry id accepted only by the lifecycle broker and scoped into last_transition_request_key."
+    },
+    "last_transition_request_key": {
+      "type": "string",
+      "description": "Server-built assignment_key:request_id idempotency key for the latest transition."
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic assignment revision maintained only by the server lifecycle broker."
+    }
+  },
+  "required": [
+    "assignment_key",
+    "agency_id",
+    "patient_id",
+    "user_id",
+    "user_email_normalized",
+    "assignee_membership_id",
+    "assignee_membership_version_at_enablement",
+    "status",
+    "source",
+    "created_by_user_id",
+    "created_by_user_email_normalized",
+    "activated_at",
+    "last_transition_by_user_id",
+    "last_transition_by_email_normalized",
+    "last_transition_at",
+    "last_transition_reason",
+    "last_transition_action",
+    "last_transition_request_id",
+    "last_transition_request_key",
+    "version"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}

@@ -14,6 +14,7 @@ import SmartNotesContextPanel from "./SmartNotesContextPanel";
 import DocumentDraftManager from "./DocumentDraftManager";
 import { parseLocalDate } from "@/lib/dateLocal";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 
 export default function ProgressReportGenerator({ patientId, patient }) {
   const [reportDate, setReportDate] = useState(todayEastern());
@@ -24,11 +25,12 @@ export default function ProgressReportGenerator({ patientId, patient }) {
   const ai = useAICall();
   const [additionalContext, setAdditionalContext] = useState("");
 
-  const { data: visits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId, PATIENT_HISTORY_ROWS],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', PATIENT_HISTORY_ROWS),
+  const { data: visits = [] } = useAuthorizedVisits({
+    patientId,
+    purpose: 'documentation',
+    sort: '-visit_date',
+    limit: PATIENT_HISTORY_ROWS,
     enabled: !!patientId,
-    initialData: [],
   });
 
   const { data: incidents = [] } = useQuery({

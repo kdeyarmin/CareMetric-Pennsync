@@ -57,11 +57,6 @@ export default function UserPerformanceTable({ users }) {
               Quality <ArrowUpDown className="w-3 h-3 ml-1 inline" />
             </Button>
           </TableHead>
-          <TableHead>
-            <Button variant="ghost" size="sm" onClick={() => handleSort('aiUtilization')} className={sortButtonClass}>
-              AI Usage <ArrowUpDown className="w-3 h-3 ml-1 inline" />
-            </Button>
-          </TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -80,7 +75,6 @@ export default function UserPerformanceTable({ users }) {
               </div>
             </TableCell>
             <TableCell>{user.avgQuality}%</TableCell>
-            <TableCell>{user.aiUtilization}%</TableCell>
           </TableRow>
         ))}
       </TableBody>

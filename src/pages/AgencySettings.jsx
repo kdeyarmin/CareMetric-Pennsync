@@ -222,10 +222,8 @@ export default function AgencySettings() {
                 />
                 <p className="text-xs text-slate-500">
                   Find your wage index at{' '}
-                  <a 
-                    href="https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health/home-health-pps-wage-index" 
-                    target="_blank" 
-                    rel="noopener noreferrer"
+                  <a
+                    href="https://www.cms.gov/medicare/payment/prospective-payment-systems/home-health/home-health-pps-wage-index"
                     className="text-blue-600 hover:underline"
                   >
                     CMS.gov

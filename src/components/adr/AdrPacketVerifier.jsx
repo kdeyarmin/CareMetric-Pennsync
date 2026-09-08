@@ -22,12 +22,13 @@ import { invokeLLMWithFile } from "@/lib/invokeLLM";
 import { runAdrPacketVerification } from "./adrAnalysis";
 import { summarizePacketVerification, toPersistedVerification } from "./adrPacketReview";
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 const MAX_PACKET_BYTES = 80 * 1024 * 1024; // scanned response packets run large
 
 const processingStages = [
   "Uploading the assembled packet...",
-  "Counting pages...",
+  "Preparing the packet for review...",
   "Reviewing every page against the requirement checklist...",
   "Checking signatures, dates, and CMS compliance points...",
   "Compiling missing items and follow-ups...",
@@ -48,19 +49,6 @@ const statusBadge = (status) => {
 
 const severityText = (severity) =>
   severity === "critical" ? "text-red-700" : severity === "high" ? "text-amber-700" : "text-slate-600";
-
-/** Count pages of a local PDF file without a network round-trip. */
-async function countPdfPages(file) {
-  try {
-    const pdfjsLib = await import("pdfjs-dist");
-    pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
-    const data = await file.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data }).promise;
-    return pdf.numPages;
-  } catch {
-    return 0; // fall back to the AI's page_count_seen during summarization
-  }
-}
 
 /**
  * Upload the assembled response packet, run the page-by-page verification
@@ -128,7 +116,11 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
     try {
       const { file_url } = await base44.integrations.Core.UploadFile({ file });
       setProcessingStage(1);
-      const countedPages = await countPdfPages(file);
+      // Do not parse the packet in a detached pdf.js worker. A worker or native
+      // PDF task can outlive the current browser authority and cannot be
+      // synchronously revoked during tenant teardown. Page count is derived
+      // from the authority-bound backend review below instead.
+      const countedPages = 0;
       await base44.entities.AdrAuditCase.update(adrCase.id, {
         packet_file_url: file_url,
         packet_page_count: countedPages,
@@ -228,6 +220,7 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
         aria-label="Upload the assembled response packet PDF"
       />
       <button
+        data-authority-file-drop-zone
         type="button"
         onClick={() => fileInputRef.current?.click()}
         onDragOver={(e) => {
@@ -419,11 +412,13 @@ export default function AdrPacketVerifier({ adrCase, onUpdated }) {
                 {adrCase.final_packet_url && finalPacketIsCurrent ? "Regenerate final packet" : "Generate final packet"}
               </Button>
               {adrCase.final_packet_url && finalPacketIsCurrent && isSafeExternalUrl(adrCase.final_packet_url) && (
-                <Button asChild variant="outline" className="min-h-[44px] w-full sm:w-auto">
-                  <a href={adrCase.final_packet_url} target="_blank" rel="noopener noreferrer">
-                    <Download className="w-4 h-4 mr-2" />
-                    Download final packet{adrCase.final_packet_pages ? ` (${adrCase.final_packet_pages} pages)` : ""}
-                  </a>
+                <Button
+                  variant="outline"
+                  className="min-h-[44px] w-full sm:w-auto"
+                  onClick={() => openAuthorityBoundWindow(adrCase.final_packet_url)}
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download final packet{adrCase.final_packet_pages ? ` (${adrCase.final_packet_pages} pages)` : ""}
                 </Button>
               )}
             </div>

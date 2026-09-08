@@ -1,20 +1,16 @@
 import { useState } from "react";
 import { openExternalUrl } from "@/components/utils/security";
 import { base44 } from "@/api/base44Client";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { FileText, Search, Download, CheckCircle, XCircle, Clock, Send, AlertCircle, RefreshCw, Star } from "lucide-react";
+import { FileText, Search, Download, CheckCircle, XCircle, Clock, Send, AlertCircle, Star } from "lucide-react";
 import { format } from "date-fns";
-import { toast } from "sonner";
-import { retryFailedFax } from "@/functions/retryFailedFax";
-import { faxRetryConfig } from "@/components/fax/faxRetry";
 
 export default function EnhancedFaxHistory({ patientId }) {
   const [searchTerm, setSearchTerm] = useState("");
-  const queryClient = useQueryClient();
 
   const { data: faxLogs = [], isLoading } = useQuery({
     queryKey: patientId ? ['fax-logs', patientId] : ['fax-logs'],
@@ -23,41 +19,6 @@ export default function EnhancedFaxHistory({ patientId }) {
       : base44.entities.FaxLog.list('-created_date', 100),
     initialData: [],
     refetchInterval: 15000
-  });
-
-  const { data: currentUser } = useQuery({
-    queryKey: ['currentUser'],
-    queryFn: () => base44.auth.me(),
-  });
-
-  // Gate the manual Retry button on the admin-configured budget the backend
-  // actually enforces. Resolve by caller agency — never global newest-row.
-  const { data: retryConfig = null } = useQuery({
-    queryKey: ['fax-retry-config', currentUser?.agency_name || null],
-    queryFn: async () => {
-      const { fetchCallerFaxRetryConfig } = await import('@/lib/agencySettings');
-      return fetchCallerFaxRetryConfig(currentUser?.agency_name);
-    },
-    enabled: !!currentUser,
-    initialData: null,
-  });
-  const maxRetries = faxRetryConfig(retryConfig).maxRetries;
-
-  const retryMutation = useMutation({
-    mutationFn: async (faxLogId) => {
-      const res = await retryFailedFax({ fax_log_id: faxLogId });
-      const data = res?.data ?? res;
-      if (data?.error) throw new Error(data.error);
-      if (data?.success === false) throw new Error(data?.message || 'Fax retry was not started');
-      return data;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['fax-logs'] });
-      toast.success("Fax retry initiated");
-    },
-    onError: (error) => {
-      toast.error(error.message);
-    }
   });
 
   const filteredLogs = faxLogs.filter(log =>
@@ -201,16 +162,6 @@ export default function EnhancedFaxHistory({ patientId }) {
                           onClick={() => openExternalUrl(log.document_url)}
                         >
                           <Download className="w-4 h-4" />
-                        </Button>
-                      )}
-                      {log.status === 'failed' && (Number(log.retry_count) || 0) < maxRetries && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => retryMutation.mutate(log.id)}
-                          disabled={retryMutation.isPending}
-                        >
-                          <RefreshCw className={`w-4 h-4 ${retryMutation.isPending ? 'animate-spin' : ''}`} />
                         </Button>
                       )}
                     </div>

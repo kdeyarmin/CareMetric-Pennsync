@@ -1,5 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -260,9 +281,11 @@ Deno.serve(async (req) => {
 
     // Notify the employee. The decision stands even if the email fails — report
     // the gap instead of failing the review.
-    let emailed = true;
+    const deliveryPaused = !outboundDeliveryReleased();
+    let emailed = false;
     try {
-      await base44.asServiceRole.integrations.Core.SendEmail({
+      if (!deliveryPaused) {
+        await base44.asServiceRole.integrations.Core.SendEmail({
         to: credential.user_id,
         from_name: 'PennSync by CareMetric',
         subject: action === 'approve'
@@ -303,13 +326,21 @@ Deno.serve(async (req) => {
               { paragraphs: ['Please re-upload a corrected document in your Personnel File. If you have questions, please contact your supervisor.'] },
             ],
           }),
-      });
+        });
+        emailed = true;
+      }
     } catch (err) {
       console.error('reviewPersonnelCredential email failed:', err);
-      emailed = false;
     }
 
-    return Response.json({ success: true, action, credential_id: credential.id, superseded, emailed });
+    return Response.json({
+      success: true,
+      action,
+      credential_id: credential.id,
+      superseded,
+      emailed,
+      delivery_paused: deliveryPaused,
+    });
   } catch (error) {
     console.error('reviewPersonnelCredential error:', error);
     return Response.json({ error: 'Failed to review credential' }, { status: 500 });

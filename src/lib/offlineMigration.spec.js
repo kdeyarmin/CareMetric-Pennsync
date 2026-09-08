@@ -34,13 +34,18 @@ describe('migrateLegacyOfflineQueues', () => {
   const one = (action) => calls(action)[0];
 
   it('replays offline_sync_queue visit + task items and clears the store', async () => {
-    const { migrated, storage } = await run({
+    const { migrated, complete, storage } = await run({
       [LOCAL_PHI_KEYS.SYNC_QUEUE]: JSON.stringify([
-        { id: 'offline_1', type: 'visit', data: { patient_id: 'p1', nurse_notes: 'n' } },
+        {
+          id: 'offline_1',
+          type: 'visit',
+          data: { patient_id: 'p1', nurse_notes: 'n', client_request_id: 'untrusted' },
+        },
         { id: 'offline_2', type: 'task', data: { patient_id: 'p1', task_type: 'follow_up' } },
       ]),
     });
     expect(migrated).toBe(2);
+    expect(complete).toBe(true);
     expect(actions().sort()).toEqual(['CREATE_TASK', 'CREATE_VISIT']);
     expect(one('CREATE_VISIT')).toMatchObject({ client_request_id: 'legacy-sq:offline_1', patient_id: 'p1', status: 'completed' });
     // The migrated task carries a stable idempotency key so a crash-retry can't duplicate it.
@@ -88,7 +93,7 @@ describe('migrateLegacyOfflineQueues', () => {
   });
 
   it('PRESERVES the store (enqueues nothing, deletes nothing) when an item cannot be migrated', async () => {
-    const { migrated, storage } = await run({
+    const { migrated, complete, storage } = await run({
       [LOCAL_PHI_KEYS.SYNC_QUEUE]: JSON.stringify([
         { id: 'offline_1', type: 'visit', data: { patient_id: 'p1' } },
         // note referencing an offline_ visit that is neither in-queue nor in the id map
@@ -96,8 +101,23 @@ describe('migrateLegacyOfflineQueues', () => {
       ]),
     });
     expect(migrated).toBe(0);
+    expect(complete).toBe(false);
     expect(enqueue).not.toHaveBeenCalled();
     expect(storage.has(LOCAL_PHI_KEYS.SYNC_QUEUE)).toBe(true); // nothing deleted
+  });
+
+  it('preserves a whole store when a create lacks stable source identity', async () => {
+    const { migrated, complete, storage } = await run({
+      [LOCAL_PHI_KEYS.SYNC_QUEUE]: JSON.stringify([
+        { id: 'stable', type: 'visit', data: { patient_id: 'p1' } },
+        { type: 'task', data: { patient_id: 'p1', task_type: 'follow_up' } },
+      ]),
+    });
+
+    expect(migrated).toBe(0);
+    expect(complete).toBe(false);
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(storage.has(LOCAL_PHI_KEYS.SYNC_QUEUE)).toBe(true);
   });
 
   it('replays offline_pending visit_create / incident_create / visit_update, resolving update ids', async () => {

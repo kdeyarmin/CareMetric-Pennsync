@@ -99,5 +99,11 @@
   // (feedback_type + extracted_name + match fields) and the AI-suggestion panel
   // (visit_id/suggestion_type/... above). They share no common required field,
   // so nothing is marked required to keep both create shapes valid.
-  "required": []
+  "required": [],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

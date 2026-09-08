@@ -1,6 +1,16 @@
 import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { base44 } from "@/api/base44Client";
-import { agencyQueryKey, scopePatientsToCallerAgency } from '@/lib/agencyRoster';
+import { createAuthorizedPatient } from '@/functions/createAuthorizedPatient';
+import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
+import {
+  createAuthorizedReferral,
+  deleteAuthorizedReferral,
+  getAuthorizedReferral,
+  listAuthorizedReferralAssignees,
+  listAuthorizedReferrals,
+  updateAuthorizedReferral,
+} from '@/functions/manageAuthorizedReferral';
+import { useAuth } from '@/lib/AuthContext';
 import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -67,7 +77,6 @@ const safeDate = (value) => {
   return isValid(d) ? format(d, "MM/dd/yyyy") : "N/A";
 };
 import { toast } from "sonner";
-import { parseDob } from "@/components/patient/patientDuplicateUtils";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -88,12 +97,18 @@ import { runReferralQuickScan } from "../components/referral/referralExtraction"
 import { markStartOfCareCompleted } from "../components/referral/intakeToSocTracker";
 import { referralToF2FInput, validateFaceToFace, toFaceToFaceEncounter } from "../components/referral/faceToFaceValidator";
 import { validateIntakeDiagnoses } from "../components/referral/intakeDiagnosisValidator";
-import { referralPatientReadiness, splitPatientName } from "../components/referral/referralPatientReadiness";
+import { referralPatientReadiness } from "../components/referral/referralPatientReadiness";
+import { buildReferralPatientMatchCandidates } from "../components/referral/referralPatientMatching";
+import { normalizePatientMatchSuggestions } from "../components/referral/patientMatchSuggestions";
 import ReferralAgingBoard from "../components/referral/ReferralAgingBoard";
 import PatientMatchReview from "../components/referral/PatientMatchReview";
 import PatientVerificationStep from "../components/referral/PatientVerificationStep";
 import MultiReferralDetector from "../components/referral/MultiReferralDetector";
-import { ALL_ROWS, PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import {
+  listAuthorizedReferralIdentityRoster,
+  resolveAuthorizedReferralPatients,
+} from "../components/referral/authorizedPatientMatches";
+import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 
 const ReferralProcessor = lazy(() => import("@/components/hub-tabs/ReferralProcessor"));
 const ReferralAdmissionNote = lazy(() => import("@/components/hub-tabs/ReferralAdmissionNote"));
@@ -105,6 +120,7 @@ const ReferralAdmissionNote = lazy(() => import("@/components/hub-tabs/ReferralA
 const TAB_KEYS = ["intake", "process", "admission"];
 
 export default function ReferralIntake() {
+  const { tenantContext } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
   const activeTab = TAB_KEYS.includes(requestedTab) ? requestedTab : "intake";
@@ -172,20 +188,22 @@ export default function ReferralIntake() {
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: referrals = [], isLoading } = useQuery({
-    queryKey: ['referrals', 200],
-    queryFn: () => base44.entities.Referral.list('-created_date', 200),
+  const { data: referrals = [], isLoading, isError: referralsUnavailable } = useQuery({
+    queryKey: ['referrals', 'authorized', tenantContext?.agency_id, 200],
+    queryFn: () => listAuthorizedReferrals({
+      agencyId: tenantContext.agency_id,
+      limit: 200,
+    }).then((result) => result.referrals),
+    enabled: !!tenantContext?.agency_id,
     initialData: [],
   });
 
-  const { data: users = [] } = useQuery({
-    queryKey: ['allUsers', ALL_ROWS, agencyQueryKey(currentUser)],
-    queryFn: async () => {
-      const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
-      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
-      return filterUsersByCallerAgency(_rows, currentUser);
-    },
-    enabled: !!currentUser,
+  const { data: referralAssignees = [], isError: assigneesUnavailable } = useQuery({
+    queryKey: ['referralAssignees', 'authorized', tenantContext?.agency_id],
+    queryFn: () => listAuthorizedReferralAssignees({
+      agencyId: tenantContext.agency_id,
+    }).then((result) => result.assignees),
+    enabled: !!tenantContext?.agency_id,
     initialData: [],
   });
 
@@ -370,7 +388,9 @@ export default function ReferralIntake() {
             created_by: currentUser?.email || 'system',
           }];
         }
-        return base44.entities.Referral.create(payload);
+        return createAuthorizedReferral(payload, {
+          agencyId: tenantContext?.agency_id,
+        });
       }));
 
       // Reset form
@@ -398,7 +418,7 @@ export default function ReferralIntake() {
     setIsCreatingReferral(true);
     try {
       // Create referral with AI-enhanced categorization and suggestions
-      const referral = await base44.entities.Referral.create({
+      const referral = await createAuthorizedReferral({
         ...newReferral,
         document_url: uploadedFile,
         status: 'new',
@@ -432,6 +452,8 @@ export default function ReferralIntake() {
           },
           suggested_care_plans: extractedFormData.suggested_care_plans || []
         } : null
+      }, {
+        agencyId: tenantContext?.agency_id,
       });
 
       // Automatically start processing
@@ -452,7 +474,11 @@ export default function ReferralIntake() {
 
   const _handleStatusChange = async (referralId, newStatus) => {
     try {
-      await base44.entities.Referral.update(referralId, { status: newStatus });
+      await updateAuthorizedReferral({
+        agencyId: tenantContext?.agency_id,
+        referralId,
+        changes: { status: newStatus },
+      });
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
     } catch (error) {
       console.error('Error updating status:', error);
@@ -461,72 +487,17 @@ export default function ReferralIntake() {
   };
 
   const handleNurseAssignment = async (referralId, nurseEmail) => {
-    if (nurseEmail === 'unassigned') {
-      try {
-        await base44.entities.Referral.update(referralId, { assigned_to: null });
-        queryClient.invalidateQueries({ queryKey: ['referrals'] });
-      } catch (error) {
-        console.error('Error unassigning nurse:', error);
-      }
-      return;
-    }
-
     try {
-      const referral = referrals.find(r => r.id === referralId);
-      if (!referral) return;
-      const nurse = users.find(u => u.email === nurseEmail);
-
-      // Send secure message to assigned nurse with PROCESSED PDF document (not original upload)
-      const attachmentUrl = referral.processed_document_url || referral.document_url;
-      const messageData = {
-        patient_id: referral.patient_id,
-        thread_id: `referral-${referralId}`,
-        subject: `New Referral Assignment: ${referral.patient_name || 'Unknown Patient'}`,
-        message_text: `You have been assigned a new referral.
-
-Patient: ${referral.patient_name || 'Unknown'}
-Referral Source: ${referral.referral_source || 'N/A'}
-Priority: ${referral.priority}
-Referral Date: ${safeDate(referral.referral_date)}
-
-${referral.extracted_data ? 'Referral has been processed with AI analysis and formatted into an admission packet.' : 'Please process this referral to extract patient information.'}
-
-Actions available:
-• View analyzed referral data
-• Create admission note in Smart Note (prepopulated with referral info)
-• Review patient information
-
-📎 ${referral.processed_document_url ? 'AI-processed admission packet PDF is attached.' : 'Referral document is attached.'}`,
-        sender_name: 'System',
-        sender_email: currentUser?.email,
-        recipients: [nurseEmail],
-        priority: referral.priority === 'urgent' ? 'urgent' : 'high',
-        attachments: attachmentUrl ? [attachmentUrl] : [],
-        related_event_id: referralId,
-        related_event_type: 'referral'
-      };
-
-      // These are two separate writes with no shared transaction. Persist the
-      // assignment first, then notify; if the notification fails, roll the
-      // assignment back to its prior value so the nurse is never left assigned to a
-      // referral they were never told about (the original silent-orphan bug). The
-      // operator then sees the error and can retry cleanly.
-      const priorAssignedTo = referral.assigned_to ?? null;
-      await base44.entities.Referral.update(referralId, { assigned_to: nurseEmail });
-      try {
-        await base44.entities.Message.create(messageData);
-      } catch (notifyErr) {
-        await base44.entities.Referral.update(referralId, { assigned_to: priorAssignedTo }).catch(() => {});
-        throw notifyErr;
-      }
-
-      queryClient.invalidateQueries({ queryKey: ['referrals'] });
-      queryClient.invalidateQueries({ queryKey: ['messages'] });
-      
-      toast.success(`Referral assigned to ${nurse?.full_name || nurseEmail}. Secure message sent.`);
+      await updateAuthorizedReferral({
+        agencyId: tenantContext?.agency_id,
+        referralId,
+        changes: { assigned_to: nurseEmail === 'unassigned' ? null : nurseEmail },
+      });
+      await queryClient.invalidateQueries({ queryKey: ['referrals'] });
+      toast.success(nurseEmail === 'unassigned' ? 'Referral unassigned' : 'Referral assigned');
     } catch (error) {
-      console.error('Error assigning nurse:', error);
-      toast.error('Failed to assign nurse');
+      console.error('Error assigning referral:', error);
+      toast.error('The referral assignment could not be saved. Refresh and try again.');
     }
   };
 
@@ -553,7 +524,10 @@ Actions available:
       // the aging board and CMS timely-initiation tracking (which skip rows
       // with no referral_date) and erased manual entries.
       const existing =
-        (await base44.entities.Referral.filter({ id: referralId }).then((rows) => rows?.[0]).catch(() => null)) ||
+        (await getAuthorizedReferral({
+          agencyId: tenantContext?.agency_id,
+          referralId,
+        }).then((result) => result.referral).catch(() => null)) ||
         referrals.find((r) => r.id === referralId) ||
         {};
 
@@ -622,145 +596,24 @@ Actions available:
       }
 
       // Enhanced patient matching logic
-      const fullName = extractedData.demographics?.full_name || '';
-      const dob = extractedData.demographics?.date_of_birth;
-      const phone = extractedData.demographics?.phone;
-      const address = extractedData.demographics?.address;
-      
       let existingPatient = null;
       // The auto-create path also assigns existingPatient, so the summary below
       // can't tell "created" from "matched" by inspecting it — track it here.
       let createdNewPatient = false;
-      // Match only against charts this agency may see. Matching a referral onto
-      // another tenant's chart would attach PHI to the wrong record; charts with
-      // no agency attribution stay in scope, so this cannot silently duplicate.
-      const allPatients = await scopePatientsToCallerAgency(
-        await base44.entities.Patient.list('-created_date', 500),
-        currentUser,
-      );
-      
-      if (fullName || dob || phone) {
-        // Use the shared splitter so "Last, First" fax forms and placeholder
-        // names ("Unknown" / "Not provided on referral") match triage behavior
-        // instead of creating first_name "Doe," / treating placeholders as real.
-        const { first_name: firstName, last_name: lastName } = splitPatientName(fullName);
-        const middleName = '';
-        
-        // Helper: normalize string for comparison
-        const normalize = (str) => str?.toLowerCase().trim().replace(/[^a-z0-9]/g, '') || '';
-        
-        // Helper: true Levenshtein edit distance. A positional char-by-char compare
-        // (the prior approach) collapses on a single insertion/deletion — "jon" vs
-        // "john" scored 0.5 instead of 0.75 — which distorts the auto-match threshold.
-        const levenshtein = (a, b) => {
-          const m = a.length, n = b.length;
-          if (!m) return n;
-          if (!n) return m;
-          let prev = Array.from({ length: n + 1 }, (_, i) => i);
-          for (let i = 1; i <= m; i++) {
-            const cur = [i];
-            for (let j = 1; j <= n; j++) {
-              cur[j] = a[i - 1] === b[j - 1]
-                ? prev[j - 1]
-                : 1 + Math.min(prev[j - 1], prev[j], cur[j - 1]);
-            }
-            prev = cur;
-          }
-          return prev[n];
-        };
+      // Match only against the broker's purpose-limited identity projection.
+      // The complete authorized keyset roster prevents a chart older than an
+      // arbitrary UI page from being missed and then duplicated.
+      const allPatients = await listAuthorizedReferralIdentityRoster({ tenantContext });
+      const { bestMatch, aiCandidates } = buildReferralPatientMatchCandidates({
+        patients: allPatients,
+        demographics: extractedData.demographics || {},
+      });
 
-        // Helper: calculate string similarity from edit distance (0..1)
-        const similarity = (s1, s2) => {
-          if (!s1 || !s2) return 0;
-          const longerLen = Math.max(s1.length, s2.length);
-          if (longerLen === 0) return 1.0;
-          return (longerLen - levenshtein(s1, s2)) / longerLen;
-        };
-        
-        // Score each patient for match likelihood
-        const scoredPatients = allPatients.map(p => {
-          let score = 0;
-          let nameMatched = false;
-          const reasons = [];
-          
-          // Name matching (40 points max)
-          if (firstName && p.first_name) {
-            const firstNameSim = similarity(normalize(firstName), normalize(p.first_name));
-            if (firstNameSim >= 0.8) {
-              score += firstNameSim * 20;
-              nameMatched = true;
-              reasons.push(`First name: ${(firstNameSim * 100).toFixed(0)}%`);
-            }
-          }
-          
-          if (lastName && p.last_name) {
-            const lastNameSim = similarity(normalize(lastName), normalize(p.last_name));
-            if (lastNameSim >= 0.8) {
-              score += lastNameSim * 20;
-              nameMatched = true;
-              reasons.push(`Last name: ${(lastNameSim * 100).toFixed(0)}%`);
-            }
-          }
-          
-          // Middle name/initial bonus (5 points)
-          if (middleName && p.middle_name) {
-            const m1 = normalize(middleName);
-            const m2 = normalize(p.middle_name);
-            if (m1 === m2 || m1[0] === m2[0]) {
-              score += 5;
-              reasons.push('Middle name match');
-            }
-          }
-          
-          // DOB matching (30 points) — tolerate MM/DD/YYYY vs YYYY-MM-DD via parseDob
-          // (same helper OASIS patient matching already uses).
-          if (dob && p.date_of_birth) {
-            const a = parseDob(dob);
-            const b = parseDob(p.date_of_birth);
-            if (a && b && a.year === b.year && a.month === b.month && a.day === b.day) {
-              score += 30;
-              reasons.push('Exact DOB match');
-            } else if (a && b && a.year === b.year && a.month === b.month) {
-              score += 15;
-              reasons.push('Partial DOB match');
-            }
-          }
-          
-          // Phone matching (15 points)
-          if (phone && p.phone) {
-            const p1 = normalize(phone);
-            const p2 = normalize(p.phone);
-            if (p1 === p2 || p1.includes(p2.slice(-7)) || p2.includes(p1.slice(-7))) {
-              score += 15;
-              reasons.push('Phone match');
-            }
-          }
-          
-          // Address matching (10 points)
-          if (address && p.address) {
-            const a1 = normalize(address);
-            const a2 = normalize(p.address);
-            if (similarity(a1, a2) >= 0.7) {
-              score += 10;
-              reasons.push('Address match');
-            }
-          }
-          
-          return { patient: p, score, nameMatched, reasons };
-        });
-        
-        // Sort by score and get best match
-        const bestMatch = scoredPatients.sort((a, b) => b.score - a.score)[0];
-        
-        // Match threshold: 60+ points = high confidence match. A NAME signal is
-        // also required: without it, exact DOB (30) + phone (15) + address (10)
-        // + middle initial (5) reaches 60 on their own — which is precisely a
-        // twin/household member sharing DOB, phone, and address. Auto-linking a
-        // referral to the WRONG person's chart is a patient-safety error; the
-        // dedupe engine (patientDuplicateUtils) enforces the same identity guard.
-        if (bestMatch && bestMatch.score >= 60 && bestMatch.nameMatched) {
-          existingPatient = bestMatch.patient;
-        }
+      // Match threshold: 60+ points = high confidence match. A NAME signal is
+      // also required: without it, shared demographic/contact information can
+      // auto-link a referral to the wrong household member's chart.
+      if (bestMatch && bestMatch.score >= 60 && bestMatch.nameMatched) {
+        existingPatient = bestMatch.patient;
       }
 
       // Enhanced AI-powered patient matching with detailed analysis
@@ -768,7 +621,7 @@ Actions available:
         // Always run AI matching for comprehensive analysis
         const aiMatchResponse = await base44.functions.invoke('matchPatientWithAI', {
           extractedData,
-          existingPatients: allPatients.slice(0, 100) // Analyze top 100 patients
+          existingPatients: aiCandidates,
         });
 
         const matchAnalysis = aiMatchResponse.data?.matchAnalysis;
@@ -790,18 +643,21 @@ Actions available:
           } else if (matchAnalysis.confidence_level === 'high' && matchAnalysis.best_match_id) {
             // Medium-high confidence (70-89%) - flag for quick review
             updates.requires_manual_review = true;
-            updates.match_suggestions = [
-              { 
+            updates.match_suggestions = normalizePatientMatchSuggestions({
+              preferred: {
                 patient_id: matchAnalysis.best_match_id, 
                 confidence_score: matchAnalysis.confidence_score,
-                reasons: matchAnalysis.match_factors 
+                reasons: matchAnalysis.match_factors,
+                discrepancies: matchAnalysis.discrepancies,
               },
-              ...(matchAnalysis.alternative_matches || [])
-            ];
+              suggestions: matchAnalysis.alternative_matches,
+            }).suggestions;
           } else if (matchAnalysis.confidence_level === 'medium' && matchAnalysis.alternative_matches?.length > 0) {
             // Medium confidence (50-69%) - show multiple options
             updates.requires_manual_review = true;
-            updates.match_suggestions = matchAnalysis.alternative_matches;
+            updates.match_suggestions = normalizePatientMatchSuggestions({
+              suggestions: matchAnalysis.alternative_matches,
+            }).suggestions;
           } else if (matchAnalysis.confidence_level === 'low' || matchAnalysis.recommendation === 'create_new') {
             // Low confidence - likely new patient
           }
@@ -841,7 +697,7 @@ Actions available:
         const lastName = readiness.last_name;
         const middleName = '';
 
-        const newPatient = await base44.entities.Patient.create({
+        const newPatient = await createAuthorizedPatient({
           first_name: firstName,
           middle_name: middleName,
           last_name: lastName,
@@ -884,6 +740,9 @@ Actions available:
           care_type: extractedData.admission_details?.care_type || 'home_health',
           clinical_notes: `Referral received from ${extractedData.demographics.referring_physician || 'physician'} on ${extractedData.admission_details?.referral_date || 'unknown date'}.\n\nReason: ${extractedData.admission_details?.referral_reason || 'Not specified'}`,
           goals_of_care: extractedData.skilled_needs?.goals_of_care ? [extractedData.skilled_needs.goals_of_care] : []
+        }, {
+          agencyId: tenantContext?.agency_id,
+          clientRequestId: `referral:${referralId}`,
         });
 
         updates.patient_id = newPatient.id;
@@ -891,34 +750,30 @@ Actions available:
         createdNewPatient = true;
         }
       } else if (existingPatient) {
-        // Pull MRN from existing patient and update with referral data
-        const updateData = {
-          medical_record_number: existingPatient.medical_record_number || extractedData.demographics?.medical_record_number || extractedData.demographics?.mrn,
-        };
-        
-        // Update fields only if they're missing or empty in existing record
-        if (!existingPatient.physician_name && (extractedData.demographics?.referring_physician || extractedData.demographics?.primary_care_physician)) {
-          updateData.physician_name = extractedData.demographics.referring_physician || extractedData.demographics.primary_care_physician;
+        // Re-authorize the exact match immediately before linking it. Combining
+        // identity_match with the roster projection supplies the current
+        // updated_date without widening either broker purpose. Referral intake
+        // only fills a missing MRN; other clinical/contact merges require their
+        // own reviewed purpose and must not be inferred from omitted fields.
+        const [reauthorizedPatient] = await resolveAuthorizedReferralPatients({
+          tenantContext,
+          patientIds: [existingPatient.id],
+        });
+        if (!reauthorizedPatient) {
+          throw new Error('Matched patient is no longer authorized for this agency');
         }
-        if (!existingPatient.physician_phone && (extractedData.demographics?.referring_physician_contact || extractedData.demographics?.pcp_contact)) {
-          updateData.physician_phone = extractedData.demographics.referring_physician_contact || extractedData.demographics.pcp_contact;
+        existingPatient = reauthorizedPatient;
+
+        const referredMrn = extractedData.demographics?.medical_record_number
+          || extractedData.demographics?.mrn;
+        if (!existingPatient.medical_record_number && referredMrn) {
+          await updatePatientFields({
+            patientId: existingPatient.id,
+            agencyId: tenantContext?.agency_id,
+            expectedUpdatedDate: existingPatient.updated_date,
+            changes: { medical_record_number: referredMrn },
+          });
         }
-        if (!existingPatient.emergency_contact_name && extractedData.demographics?.emergency_contact) {
-          updateData.emergency_contact_name = extractedData.demographics.emergency_contact;
-        }
-        if (!existingPatient.emergency_contact_phone && extractedData.demographics?.emergency_phone) {
-          updateData.emergency_contact_phone = extractedData.demographics.emergency_phone;
-        }
-        if (extractedData.diagnoses?.secondary_diagnoses?.length > 0) {
-          const existingDiagnoses = existingPatient.secondary_diagnoses || [];
-          const newDiagnoses = extractedData.diagnoses.secondary_diagnoses.filter(d => !existingDiagnoses.includes(d));
-          if (newDiagnoses.length > 0) {
-            updateData.secondary_diagnoses = [...existingDiagnoses, ...newDiagnoses];
-          }
-        }
-        
-        // Update patient with new information
-        await base44.entities.Patient.update(existingPatient.id, updateData);
         updates.patient_id = existingPatient.id;
       }
 
@@ -927,7 +782,11 @@ Actions available:
         updates.processed_document_url = generatedPdfUrl;
       }
 
-      await base44.entities.Referral.update(referralId, updates);
+      await updateAuthorizedReferral({
+        agencyId: tenantContext?.agency_id,
+        referralId,
+        changes: updates,
+      });
 
       // Persist + validate the Face-to-Face encounter extracted from the
       // referral packet (42 CFR 424.22). Best-effort exactly like the
@@ -1093,8 +952,11 @@ Actions available:
       
       // If requires manual review, show the verification step
       if (updates.requires_manual_review) {
-        const updatedReferral = await base44.entities.Referral.filter({ id: referralId });
-        setVerificationReferral(updatedReferral[0]);
+        const updatedReferral = await getAuthorizedReferral({
+          agencyId: tenantContext?.agency_id,
+          referralId,
+        });
+        setVerificationReferral(updatedReferral.referral);
       }
       
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
@@ -1108,11 +970,15 @@ Actions available:
   const handleConfirmMatch = async (patientId) => {
     try {
       const referralToUpdate = verificationReferral || matchReviewReferral;
-      await base44.entities.Referral.update(referralToUpdate.id, {
-        patient_id: patientId,
-        requires_manual_review: false,
-        manually_confirmed: true,
-        status: 'ready_for_admission'
+      await updateAuthorizedReferral({
+        agencyId: referralToUpdate.agency_id,
+        referralId: referralToUpdate.id,
+        changes: {
+          patient_id: patientId,
+          requires_manual_review: false,
+          manually_confirmed: true,
+          status: 'ready_for_admission'
+        },
       });
       setMatchReviewReferral(null);
       setVerificationReferral(null);
@@ -1125,21 +991,24 @@ Actions available:
 
   const handleDeleteReferral = async (referralId) => {
     try {
-      await base44.entities.Referral.delete(referralId);
-      queryClient.invalidateQueries({ queryKey: ['referrals'] });
-      toast.success('Referral deleted successfully');
+      await deleteAuthorizedReferral({
+        agencyId: tenantContext?.agency_id,
+        referralId,
+      });
+      await queryClient.invalidateQueries({ queryKey: ['referrals'] });
+      toast.success('Referral removed from intake');
     } catch (error) {
-      console.error('Error deleting referral:', error);
-      toast.error('Failed to delete referral');
+      console.error('Error removing referral:', error);
+      toast.error('The referral could not be removed. Refresh and try again.');
     }
   };
 
   const handleRejectReferral = async (referralId) => {
     try {
-      await base44.entities.Referral.update(referralId, {
-        status: 'declined',
-        rejection_date: new Date().toISOString(),
-        rejected_by: currentUser?.email
+      await updateAuthorizedReferral({
+        agencyId: tenantContext?.agency_id,
+        referralId,
+        changes: { status: 'declined' },
       });
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       toast.success('Referral rejected');
@@ -1165,7 +1034,12 @@ Actions available:
         firstVisitDate: socFirstVisitDate || undefined,
         by: currentUser?.email,
       });
-      await base44.entities.Referral.update(socReferral.id, payload);
+      const { soc_completed_by: _serverStamped, ...changes } = payload;
+      await updateAuthorizedReferral({
+        agencyId: socReferral.agency_id,
+        referralId: socReferral.id,
+        changes,
+      });
       queryClient.invalidateQueries({ queryKey: ['referrals'] });
       toast.success(`Start of care recorded for ${socReferral.patient_name || 'referral'}.`);
       setSocReferral(null);
@@ -1195,7 +1069,7 @@ Actions available:
         return;
       }
       
-      const newPatient = await base44.entities.Patient.create({
+      const newPatient = await createAuthorizedPatient({
         first_name: readiness.first_name,
         middle_name: '',
         last_name: readiness.last_name,
@@ -1222,13 +1096,20 @@ Actions available:
         past_medical_history: data.diagnoses?.past_medical_history || [],
         status: 'active',
         care_type: data.admission_details?.care_type || 'home_health'
+      }, {
+        agencyId: tenantContext?.agency_id,
+        clientRequestId: `referral:${referralToUpdate.id}`,
       });
 
-      await base44.entities.Referral.update(referralToUpdate.id, {
-        patient_id: newPatient.id,
-        requires_manual_review: false,
-        manually_confirmed: true,
-        status: 'ready_for_admission'
+      await updateAuthorizedReferral({
+        agencyId: referralToUpdate.agency_id,
+        referralId: referralToUpdate.id,
+        changes: {
+          patient_id: newPatient.id,
+          requires_manual_review: false,
+          manually_confirmed: true,
+          status: 'ready_for_admission'
+        },
       });
 
       setMatchReviewReferral(null);
@@ -1413,6 +1294,13 @@ Actions available:
         <CardContent className="p-0">
           {isLoading ? (
             <LoadingState label="Loading referrals..." />
+          ) : referralsUnavailable ? (
+            <Alert variant="destructive" className="m-4 sm:m-6">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Referral access could not be authorized. No empty queue is being inferred.
+              </AlertDescription>
+            </Alert>
           ) : filteredReferrals.length === 0 ? (
             <EmptyState
               icon={Inbox}
@@ -1551,22 +1439,30 @@ Actions available:
                         </div>
                       </TableCell>
                       <TableCell className="text-xs sm:text-sm hidden xl:table-cell">
-                        <Select
-                          value={referral.assigned_to || "unassigned"}
-                          onValueChange={(value) => handleNurseAssignment(referral.id, value)}
-                        >
-                          <SelectTrigger className="w-full min-w-[140px] h-11 touch-target">
-                            <SelectValue placeholder="Assign nurse" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="unassigned">Unassigned</SelectItem>
-                            {users.filter(u => u.role === 'user' || u.role === 'admin').map(u => (
-                              <SelectItem key={u.email} value={u.email}>
-                                {u.full_name || u.email}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <div className="space-y-1">
+                          <Select
+                            value={referral.assigned_to || "unassigned"}
+                            onValueChange={(value) => handleNurseAssignment(referral.id, value)}
+                            disabled={assigneesUnavailable}
+                          >
+                            <SelectTrigger className="w-full min-w-[140px] h-11 touch-target">
+                              <SelectValue placeholder="Assign nurse" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="unassigned">Unassigned</SelectItem>
+                              {referralAssignees.map((assignee) => (
+                                <SelectItem key={assignee.membership_id} value={assignee.email}>
+                                  {assignee.full_name || assignee.email}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                          {assigneesUnavailable && (
+                            <p className="max-w-[180px] text-[11px] leading-tight text-red-700">
+                              The authorized nurse roster could not be loaded.
+                            </p>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell>
                        <div className="flex flex-col gap-2 min-w-[120px]">
@@ -1671,7 +1567,7 @@ Actions available:
                               className="text-red-600 hover:bg-red-50 min-h-[36px] text-xs flex-1"
                             >
                               <Trash2 className="w-4 h-4 mr-1" />
-                              Delete
+                              Remove
                             </Button>
                           </div>
                         </div>
@@ -2042,6 +1938,7 @@ Actions available:
             </DialogHeader>
             <PatientVerificationStep
               referral={verificationReferral}
+              tenantContext={tenantContext}
               onConfirmMatch={handleConfirmMatch}
               onCreateNew={handleCreateNewFromReview}
               onSkip={() => setVerificationReferral(null)}
@@ -2062,6 +1959,7 @@ Actions available:
             </DialogHeader>
             <PatientMatchReview
               referral={matchReviewReferral}
+              tenantContext={tenantContext}
               onConfirmMatch={handleConfirmMatch}
               onCreateNew={handleCreateNewFromReview}
               onClose={() => setMatchReviewReferral(null)}
@@ -2073,9 +1971,9 @@ Actions available:
       <AlertDialog open={!!referralToDelete} onOpenChange={(open) => { if (!open) setReferralToDelete(null); }}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Referral</AlertDialogTitle>
+            <AlertDialogTitle>Remove Referral</AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to delete the referral for {referralToDelete?.patient_name || 'this patient'}? This action cannot be undone.
+              Remove the referral for {referralToDelete?.patient_name || 'this patient'} from the intake queue? The record will be archived for audit and recovery instead of permanently erased.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -2083,11 +1981,12 @@ Actions available:
             <AlertDialogAction
               className="bg-red-600 hover:bg-red-700"
               onClick={() => {
-                handleDeleteReferral(referralToDelete.id);
+                const referralId = referralToDelete?.id;
                 setReferralToDelete(null);
+                if (referralId) void handleDeleteReferral(referralId);
               }}
             >
-              Delete
+              Remove
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

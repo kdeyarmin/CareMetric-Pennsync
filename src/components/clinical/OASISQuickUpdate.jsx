@@ -12,6 +12,10 @@ import { optionsForItem, PAIN_FREQUENCY_OPTIONS } from "@/components/oasis/oasis
 import { formatEastern } from "@/components/utils/timezone";
 import { markStartOfCareCompleted } from "@/components/referral/intakeToSocTracker";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import {
+  listAuthorizedReferrals,
+  updateAuthorizedReferral,
+} from '@/functions/manageAuthorizedReferral';
 
 // Each OASIS-E item uses its OWN valid range (M1810/M1845 = 0–3, M1850 = 0–5,
 // M1830/M1860 = 0–6) — see oasisScales.js. A single flat list either truncated the
@@ -52,19 +56,25 @@ const OASIS_QUICK_UPDATE_ENABLED = false;
  * the same non-blocking pattern as the diagnosis-coding step in
  * src/pages/ReferralIntake.jsx.
  */
-export async function completeReferralSocForPatient(patientId, socDate) {
+export async function completeReferralSocForPatient(patientId, socDate, agencyId) {
   try {
-    if (!patientId) return;
-    const openReferrals = await base44.entities.Referral.filter({
-      patient_id: patientId,
-      status: { $in: OPEN_REFERRAL_STATUSES },
-    }, undefined, PATIENT_HISTORY_ROWS);
+    if (!patientId || !agencyId) return;
+    const result = await listAuthorizedReferrals({
+      agencyId,
+      patientId,
+      limit: PATIENT_HISTORY_ROWS,
+    });
+    const openReferrals = result.referrals.filter((referral) => (
+      OPEN_REFERRAL_STATUSES.includes(referral.status)
+    ));
     if (!Array.isArray(openReferrals) || openReferrals.length !== 1) return;
-    const me = await base44.auth.me().catch(() => null);
-    await base44.entities.Referral.update(
-      openReferrals[0].id,
-      markStartOfCareCompleted(openReferrals[0], { socDate, by: me?.email }),
-    );
+    const transition = markStartOfCareCompleted(openReferrals[0], { socDate });
+    const { soc_completed_by: _serverStamped, ...changes } = transition;
+    await updateAuthorizedReferral({
+      agencyId,
+      referralId: openReferrals[0].id,
+      changes,
+    });
   } catch (err) {
     console.error("Referral SOC completion skipped:", err);
   }

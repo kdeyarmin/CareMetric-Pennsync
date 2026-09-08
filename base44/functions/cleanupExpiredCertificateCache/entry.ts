@@ -8,24 +8,43 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-// <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
-const isAdminLike = (u) => !!u && u.role === 'admin';
-// <<<END SHARED HELPER: isAdminLike>>>
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let mismatch = 0;
+  for (let i = 0; i < a.length; i++) mismatch |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return mismatch === 0;
+}
+
+function cleanupAuthorized(req, user) {
+  if (isProtectedSuperAdmin(user)) return true;
+  const expected = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  const provided = String(req.headers.get('x-internal-secret') || '').trim();
+  return !!expected && timingSafeEqual(provided, expected);
+}
 
 
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch(() => null);
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     
-    // Platform-wide cache sweep: super_admin or bare role:admin (no agency).
-    // Agency-scoped admins must not delete other tenants' cache entries.
-    const isPlatformAdmin =
-      user?.account_type === 'super_admin'
-      || (user?.role === 'admin' && !String(user?.agency_name || '').trim());
-    if (!isPlatformAdmin) {
+    // This is a platform-wide destructive sweep. Only the configured platform
+    // owner or a server-held scheduler secret may run it; self-editable custom
+    // account/agency claims never grant access.
+    if (!cleanupAuthorized(req, user)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 

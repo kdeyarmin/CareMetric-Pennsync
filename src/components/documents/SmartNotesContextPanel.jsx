@@ -1,6 +1,5 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -12,9 +11,12 @@ export default function SmartNotesContextPanel({ patientId, onInsertSnippet }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [copiedIndex, setCopiedIndex] = useState(null);
 
-  const { data: visits = [] } = useQuery({
-    queryKey: ['patientVisitsForDocs', patientId],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId, status: 'completed' }, '-visit_date', 20),
+  const { data: visits = [] } = useAuthorizedVisits({
+    patientId,
+    purpose: 'documentation',
+    status: 'completed',
+    sort: '-visit_date',
+    limit: 20,
     enabled: !!patientId,
   });
 

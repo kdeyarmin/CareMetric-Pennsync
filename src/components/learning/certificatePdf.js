@@ -1,4 +1,5 @@
 import { generateTrainingCertificate } from "@/functions/generateTrainingCertificate";
+import { registerAuthorityBoundObjectUrl } from '@/lib/authorityBoundWindows';
 
 /**
  * Generate a training certificate PDF and return an object URL for it (open in a
@@ -18,5 +19,11 @@ export async function createCertificateBlobUrl(certificate) {
     score: certificate.score,
   });
   const blob = new Blob([response.data], { type: "application/pdf" });
-  return window.URL.createObjectURL(blob);
+  const url = window.URL.createObjectURL(blob);
+  const registered = registerAuthorityBoundObjectUrl(url);
+  if (!registered) {
+    window.URL.revokeObjectURL(url);
+    throw new Error('Certificate export expired because workspace authority changed');
+  }
+  return registered;
 }

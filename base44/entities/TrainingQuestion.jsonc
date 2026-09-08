@@ -87,5 +87,30 @@
     "type",
     "prompt",
     "correct_answer_json"
-  ]
+  ],
+  // The entity contains the assessment answer key, rationale, and grading
+  // rubric. Learners receive an answer-free view from
+  // getCoursePlayerQuestions; only protected admins may manage full records.
+  "rls": {
+    "read": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
+    }
+  }
 }

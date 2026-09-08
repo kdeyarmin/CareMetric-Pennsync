@@ -1,5 +1,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -55,109 +66,142 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    const callerEmail = normalizeProtectedEmail(user.email);
+    if (!callerEmail) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
+    const body = await req.json();
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return Response.json({ error: 'Invalid request body' }, { status: 400 });
+    }
     const {
       query,
       document_type,
       patient_id,
       fuzzy = true,
+      count_only = false,
       limit: rawLimit = 50
-    } = await req.json();
+    } = body;
 
     // Clamp the caller-supplied limit: it drives a `limit * 2` fetch cap, so an
     // unbounded value (e.g. 500000) would pull the entire PDFIndex — with its
     // extracted PHI text — into memory per request.
     const limit = Math.min(Math.max(Math.floor(Number(rawLimit) || 50), 1), 200);
 
-    if (!query || query.trim().length < 2) {
+    if (count_only !== true && count_only !== false) {
+      return Response.json({ error: 'count_only must be boolean' }, { status: 400 });
+    }
+    if (!count_only
+      && (typeof query !== 'string' || query.trim().length < 2 || query.trim().length > 500)) {
       return Response.json({ 
-        error: 'Query must be at least 2 characters' 
+        error: 'Query must be between 2 and 500 characters'
       }, { status: 400 });
     }
-
-    // Build filter
-    const filter = {};
-    if (document_type && document_type !== 'all') {
-      filter.document_type = document_type;
+    const searchQuery = count_only ? '' : query.trim();
+    if (fuzzy !== true && fuzzy !== false) {
+      return Response.json({ error: 'fuzzy must be boolean' }, { status: 400 });
     }
-    // Authorize the patient scope. Non-admins may only search PDFs for patients
-    // they are assigned to; without this, omitting patient_id returned EVERY
-    // indexed PDF's extracted PHI agency-wide. Mirrors getScopedPatientAlerts.
-    // Use isAdminLike + agency scope — role==='admin' alone locked out
-    // agency_admin and over-granted facility admins across tenants.
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    const isAdmin = isPlatformAdmin || isAgencyScopedAdmin;
 
-    if (isPlatformAdmin) {
-      if (patient_id) filter.patient_id = patient_id;
-    } else if (isAgencyScopedAdmin) {
-      if (!user.agency_name) return Response.json({ results: [], total: 0 });
-      const agencyUsers = await base44.asServiceRole.entities.User.list('-created_date', 5000).catch(() => []);
-      const agencyEmails = new Set(
-        (agencyUsers || [])
-          .filter((u) => u.agency_name === user.agency_name && u.email)
-          .map((u) => u.email),
-      );
-      if (patient_id) {
-        const [scopePatient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000);
-        const inAgency = (scopePatient?.created_by && agencyEmails.has(scopePatient.created_by))
-          || (Array.isArray(scopePatient?.assigned_nurses)
-            && scopePatient.assigned_nurses.some((e) => agencyEmails.has(e)));
-        if (!inAgency) return Response.json({ error: 'Forbidden' }, { status: 403 });
-        filter.patient_id = patient_id;
-      } else {
-        const agencyPatients = await base44.asServiceRole.entities.Patient
-          .list('-created_date', 2000).catch(() => []);
-        const allowedIds = [...new Set(
-          (agencyPatients || [])
-            .filter((p) =>
-              (p.created_by && agencyEmails.has(p.created_by))
-              || (Array.isArray(p.assigned_nurses) && p.assigned_nurses.some((e) => agencyEmails.has(e)))
-            )
-            .map((p) => p.id)
-            .filter(Boolean),
-        )];
-        if (allowedIds.length === 0) return Response.json({ results: [], total: 0 });
-        filter.patient_id = { $in: allowedIds };
+    const allowedDocumentTypes = new Set([
+      'consent',
+      'assessment',
+      'visit',
+      'care_plan',
+      'signature',
+      'template',
+      'other',
+    ]);
+    const scopedDocumentType = document_type == null || document_type === 'all'
+      ? null
+      : document_type;
+    if (scopedDocumentType !== null
+      && (typeof scopedDocumentType !== 'string' || !allowedDocumentTypes.has(scopedDocumentType))) {
+      return Response.json({ error: 'Invalid document_type' }, { status: 400 });
+    }
+
+    const hasPatientScope = patient_id != null && patient_id !== '';
+    if (hasPatientScope
+      && (typeof patient_id !== 'string' || !patient_id.trim() || patient_id.trim().length > 200)) {
+      return Response.json({ error: 'Invalid patient_id' }, { status: 400 });
+    }
+    const scopedPatientId = hasPatientScope ? patient_id.trim() : null;
+    const callerIsSuperAdmin = isProtectedSuperAdmin(user);
+
+    // Build a bounded service-role query. Patient-specific searches first prove
+    // direct access to that exact Patient row. Unscoped searches cannot safely
+    // infer PDFIndex ownership from the mutable patient_id relationship, so an
+    // ordinary caller is restricted to Base44's immutable created_by field. The
+    // configured protected platform owner is the only cross-owner search path.
+    const filter = {};
+    if (scopedDocumentType) {
+      filter.document_type = scopedDocumentType;
+    }
+    if (scopedPatientId) {
+      const patientRows = await base44.asServiceRole.entities.Patient
+        .filter({ id: scopedPatientId }, '', 1).catch(() => []);
+      const scopePatient = (Array.isArray(patientRows) ? patientRows : [])
+        .find((patient) => String(patient?.id || '').trim() === scopedPatientId);
+      if (!scopePatient) {
+        return Response.json({ error: 'Patient not found' }, { status: 404 });
       }
-    } else if (patient_id) {
-      const [scopePatient] = await base44.asServiceRole.entities.Patient.filter({ id: patient_id }, undefined, 5000);
-      // Mirror the Patient RLS: assigned nurse OR creator OR admin.
-      const allowed = scopePatient?.created_by === user.email
-        || (Array.isArray(scopePatient?.assigned_nurses) && scopePatient.assigned_nurses.includes(user.email));
-      if (!allowed) {
+      const isOwner = normalizeProtectedEmail(scopePatient.created_by) === callerEmail;
+      const isAssigned = Array.isArray(scopePatient.assigned_nurses)
+        && scopePatient.assigned_nurses.some(
+          (email) => normalizeProtectedEmail(email) === callerEmail,
+        );
+      if (!isOwner && !isAssigned && !callerIsSuperAdmin) {
         return Response.json({ error: 'Forbidden' }, { status: 403 });
       }
-      filter.patient_id = patient_id;
-    } else {
-      // All accessible patients: those assigned to the caller OR created by them
-      // (the Patient RLS grants both), de-duplicated by id.
-      const [assignedPatients, createdPatients] = await Promise.all([
-        base44.asServiceRole.entities.Patient.filter({ assigned_nurses: user.email }, '-created_date', 1000).catch(() => []),
-        base44.asServiceRole.entities.Patient.filter({ created_by: user.email }, '-created_date', 1000).catch(() => []),
-      ]);
-      const allowedIds = [...new Set(
-        [...(assignedPatients || []), ...(createdPatients || [])].map((p) => p.id).filter(Boolean)
-      )];
-      if (allowedIds.length === 0) return Response.json({ results: [], total: 0 });
-      filter.patient_id = { $in: allowedIds };
+      filter.patient_id = scopedPatientId;
+    } else if (!callerIsSuperAdmin) {
+      filter.created_by = callerEmail;
     }
 
-    // Fetch all indexed documents
-    const allDocs = await base44.asServiceRole.entities.PDFIndex.filter(
-      filter,
-      '-created_date',
-      limit * 2 // Fetch more to filter
-    );
+    // Count mode is a safe broker for the browser badge. It projects only the
+    // ownership/scope fields needed for the in-memory boundary check, never the
+    // extracted text or per-page PHI. Scan one extra row to make truncation clear.
+    const countLimit = 1000;
+    const returnedDocs = count_only
+      ? await base44.asServiceRole.entities.PDFIndex.filter(
+        filter,
+        '-created_date',
+        countLimit + 1,
+        0,
+        ['id', 'created_by', 'patient_id', 'document_type'],
+      )
+      : await base44.asServiceRole.entities.PDFIndex.filter(
+        filter,
+        '-created_date',
+        limit * 2, // Fetch more to filter
+      );
+    // Treat the backend filter as an optimization, not an authorization boundary.
+    // A regressed/ignored filter must not place another PDF's extracted PHI in the
+    // BM25 corpus or response.
+    const allDocs = (Array.isArray(returnedDocs) ? returnedDocs : []).filter((doc) => {
+      if (!doc || typeof doc !== 'object') return false;
+      if (scopedDocumentType && doc.document_type !== scopedDocumentType) return false;
+      if (scopedPatientId) {
+        return String(doc.patient_id || '').trim() === scopedPatientId;
+      }
+      if (!callerIsSuperAdmin) {
+        return normalizeProtectedEmail(doc.created_by) === callerEmail;
+      }
+      return true;
+    });
+
+    if (count_only) {
+      return Response.json({
+        success: true,
+        accessible_index_count: Math.min(allDocs.length, countLimit),
+        count_is_capped: allDocs.length > countLimit,
+      });
+    }
 
     // Search and score results with BM25 over the fetched corpus (IDF needs the
     // whole set), plus exact-phrase and keyword boosts.
-    const queryLower = query.toLowerCase();
-    const qTerms = [...new Set(tokenize(query))];
+    const queryLower = searchQuery.toLowerCase();
+    const qTerms = [...new Set(tokenize(searchQuery))];
     const model = buildBm25(allDocs.map((d) => ({ text: d.extracted_text || '' })));
 
     const results = allDocs
@@ -167,9 +211,10 @@ Deno.serve(async (req) => {
         const textLower = (doc.extracted_text || '').toLowerCase();
         const exactPhrase = Boolean(queryLower) && textLower.includes(queryLower);
 
-        const keywordMatches = doc.keywords?.filter((k) =>
-          k.includes(queryLower) || queryLower.includes(k)
-        ) || [];
+        const keywordMatches = (Array.isArray(doc.keywords) ? doc.keywords : [])
+          .map((keyword) => String(keyword || '').toLowerCase())
+          .filter((keyword) => keyword
+            && (keyword.includes(queryLower) || queryLower.includes(keyword)));
 
         // Composite relevance: BM25 + exact-phrase + keyword boosts.
         const totalScore = bm + (exactPhrase ? 100 : 0) + keywordMatches.length * 5;
@@ -190,7 +235,7 @@ Deno.serve(async (req) => {
               return {
                 page_number: page.page_number,
                 score: phraseHit ? 100 : 60,
-                snippet: extractSnippet(page.text, query)
+                snippet: extractSnippet(page.text, searchQuery)
               };
             }
             return null;
@@ -202,7 +247,7 @@ Deno.serve(async (req) => {
           search_score: Math.round(totalScore * 100) / 100,
           matched_terms: [...new Set([...matched, ...keywordMatches])],
           page_matches: pageMatches,
-          snippet: extractSnippet(doc.extracted_text, query)
+          snippet: extractSnippet(doc.extracted_text, searchQuery)
         };
       })
       .filter(Boolean)
@@ -215,16 +260,16 @@ Deno.serve(async (req) => {
       user_name: user.full_name,
       action: 'pdf_search',
       details: {
-        query,
         results_count: results.length,
-        filters: { document_type, patient_id }
+        document_type_filter_applied: Boolean(scopedDocumentType),
+        patient_filter_applied: Boolean(scopedPatientId),
       },
       page: 'pdf_search'
     });
 
     return Response.json({
       success: true,
-      query,
+      query: searchQuery,
       results_count: results.length,
       results
     });

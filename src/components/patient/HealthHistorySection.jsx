@@ -17,9 +17,11 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
-import { base44 } from "@/api/base44Client";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
+import { updatePatientFields } from '@/functions/updateAuthorizedPatient';
+import { useAuth } from '@/lib/AuthContext';
+import { useAuthorizedPatient } from '@/hooks/useAuthorizedPatient';
 
 // `Patient.family_medical_history` is an OBJECT in the entity schema (a boolean
 // per condition, an `other_conditions` list, and free-text `notes`) — not the
@@ -63,6 +65,13 @@ export default function HealthHistorySection({ patient }) {
   const [formData, setFormData] = useState({});
   const [rowKeys, setRowKeys] = useState([]);
   const queryClient = useQueryClient();
+  const { tenantContext } = useAuth();
+  const { refetch: refetchWriteBase } = useAuthorizedPatient({
+    patientId: patient?.id,
+    agencyId: tenantContext?.agency_id,
+    purpose: 'health_history_write_base',
+    enabled: !!patient?.id && !!tenantContext?.agency_id,
+  });
   // Snapshot of the array fields when the dialog opened, so the save-time merge
   // can tell entries the user removed (in here, gone from server) from entries a
   // concurrent writer added (absent here, present on server) and not clobber the latter.
@@ -104,10 +113,11 @@ export default function HealthHistorySection({ patient }) {
   const updatePatientMutation = useMutation({
     mutationFn: async (data) => {
       let payload = data;
+      let latest = patient;
       if (ARRAY_FIELDS.some((f) => f in data)) {
         try {
-          const latestArr = await base44.entities.Patient.filter({ id: patient.id });
-          const latest = latestArr?.[0];
+          const latestResult = await refetchWriteBase();
+          latest = latestResult.data || patient;
           if (latest) {
             payload = { ...data };
             for (const f of ARRAY_FIELDS) {
@@ -117,7 +127,12 @@ export default function HealthHistorySection({ patient }) {
           }
         } catch { /* fall back to writing the dialog snapshot */ }
       }
-      return base44.entities.Patient.update(patient.id, payload);
+      return updatePatientFields({
+        patientId: patient.id,
+        agencyId: tenantContext?.agency_id,
+        expectedUpdatedDate: latest.updated_date || patient.updated_date,
+        changes: payload,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['patients'] });
@@ -128,7 +143,7 @@ export default function HealthHistorySection({ patient }) {
       setEditDialog(null);
     },
     onError: (error) => {
-      toast.error('Failed to update health history');
+      toast.error(error?.message || 'Failed to update health history');
       console.error(error);
     }
   });
@@ -268,7 +283,13 @@ export default function HealthHistorySection({ patient }) {
               <Activity className="w-5 h-5 text-navy-600" />
               Surgeries & Hospitalizations
             </div>
-            <Button variant="ghost" size="sm" aria-label="Edit surgeries and hospitalizations" onClick={() => openEditDialog('surgeries')}>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Edit surgeries and hospitalizations"
+              title="Editing requires the dedicated hospitalization-history workflow"
+              disabled
+            >
               <Edit className="w-4 h-4" />
             </Button>
           </CardTitle>
@@ -303,6 +324,9 @@ export default function HealthHistorySection({ patient }) {
           ) : (
             <p className="text-sm text-slate-500 italic">No hospitalizations recorded</p>
           )}
+          <p className="mt-2 text-xs text-slate-500">
+            Hospitalization-history editing is temporarily read-only while its append-only workflow is completed.
+          </p>
         </CardContent>
       </Card>
 
@@ -314,7 +338,13 @@ export default function HealthHistorySection({ patient }) {
               <Users className="w-5 h-5 text-green-600" />
               Family Medical History
             </div>
-            <Button variant="ghost" size="sm" aria-label="Edit family medical history" onClick={() => openEditDialog('family_history')}>
+            <Button
+              variant="ghost"
+              size="sm"
+              aria-label="Edit family medical history"
+              title="Editing requires the dedicated family-history workflow"
+              disabled
+            >
               <Edit className="w-4 h-4" />
             </Button>
           </CardTitle>
@@ -336,6 +366,9 @@ export default function HealthHistorySection({ patient }) {
               )}
             </div>
           )}
+          <p className="mt-2 text-xs text-slate-500">
+            Family-history editing is temporarily read-only while its structured workflow is completed.
+          </p>
         </CardContent>
       </Card>
 

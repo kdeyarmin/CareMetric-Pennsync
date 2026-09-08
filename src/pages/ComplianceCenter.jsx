@@ -1,7 +1,6 @@
 import { lazy, Suspense, useEffect, useState, useMemo } from "react";
 import { useSearchParams } from "react-router";
 import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useAICall } from "@/hooks/useAICall";
@@ -32,6 +31,7 @@ import { isAdminView } from "@/lib/roles";
 import LoadingState from "@/components/ui/LoadingState";
 import { ALL_ROWS } from '@/lib/queryLimits';
 import { parseLocalDate } from "@/lib/dateLocal";
+import { rejectOutboundDelivery } from '@/lib/outboundDeliveryContainment';
 
 /** Calendar-day delta from local midnight today to a date-only value (negative = past). */
 function localDaysUntil(dateStr) {
@@ -113,7 +113,7 @@ export default function ComplianceCenter() {
     initialData: [],
   });
 
-  const { data: _patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
+  const { data: _patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 2000 });
 
   const { data: allUsers = [], refetch: _refetchUsers } = useQuery({
     queryKey: ['allUsers', 5000, agencyQueryKey(currentUser)],
@@ -137,13 +137,6 @@ export default function ComplianceCenter() {
   const { data: personnelCredentials = [], refetch: _refetchCredentials } = useQuery({
     queryKey: ['allPersonnelCredentials'],
     queryFn: () => base44.entities.PersonnelCredential.list('-updated_date', 5000),
-    initialData: [],
-    refetchInterval: 30000,
-  });
-
-  const { data: _visits = [], refetch: _refetchVisits } = useAgencyScopedQuery({
-    queryKey: ['allVisits'],
-    fetch: () => base44.entities.Visit.filter({}, '-visit_date', 5000),
     initialData: [],
     refetchInterval: 30000,
   });
@@ -310,21 +303,13 @@ export default function ComplianceCenter() {
   }, [groupedByUser]);
 
   const sendNotificationMutation = useMutation({
-    mutationFn: async ({ recipients, subject }) => {
-      // Each recipient gets ONLY their own compliance issues — never a combined
-      // roster (that would leak every selected employee's PHI to everyone).
-      return await Promise.all(
-        recipients.map(({ email, message }) =>
-          base44.integrations.Core.SendEmail({ to: email, subject, body: message })
-        )
-      );
-    },
+    mutationFn: () => rejectOutboundDelivery(),
     onSuccess: (_, variables) => {
       toast.success(`Notifications sent to ${variables.recipients.length} employee(s)`);
       setSelectedUsers(new Set());
     },
-    onError: () => {
-      toast.error("Failed to send notifications");
+    onError: (error) => {
+      toast.error(error?.message || "Outbound delivery is paused in this environment.");
     }
   });
 

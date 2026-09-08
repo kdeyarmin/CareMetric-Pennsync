@@ -33,7 +33,7 @@ export default function CentralHelpButton({
 
   return (
     <Button asChild className="bg-navy-700 hover:bg-navy-800 text-white font-semibold shadow-lg min-h-[48px] px-6">
-      <a href={href} target="_blank" rel="noopener noreferrer">
+      <a href={href}>
         <ExternalLink className="w-5 h-5 mr-2" />
         Open CareMetric Help Center
       </a>

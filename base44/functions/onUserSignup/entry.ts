@@ -1,5 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -281,7 +302,9 @@ Deno.serve(async (req) => {
           // start with their real name (not an email-derived placeholder).
           // Fall back to whatever the signup already set so we never wipe a name.
           full_name: invitation.full_name || user.full_name,
-          role: invitation.role,
+          // Facility authority belongs to AgencyMembership. Never promote an
+          // invited facility administrator into Base44's platform admin role.
+          role: 'user',
           care_scope: invitation.care_scope,
           staff_role: invitation.staff_role || 'nurse',
           phone: invitation.phone,
@@ -333,7 +356,14 @@ Deno.serve(async (req) => {
         }
 
         debugLog('Auto-approved invited user', verification.success ? '(verified)' : '(verification pending)');
-        return Response.json({ success: true, auto_approved: true, auth_verified: verification.success, enrollment });
+        return Response.json({
+          success: true,
+          auto_approved: true,
+          auth_verified: verification.success,
+          enrollment,
+          email: verification.email === true,
+          delivery_paused: verification.delivery_paused === true,
+        });
       } catch (updateError) {
         console.error('Failed to auto-approve user:', updateError);
       }
@@ -421,24 +451,32 @@ Deno.serve(async (req) => {
       signoffName: 'The PennSync by CareMetric Security Team',
     });
 
-    // Send a security alert to all admins
-    const emailPromises = admins.map(admin =>
-      base44.asServiceRole.integrations.Core.SendEmail({
-        to: admin.email,
-        subject: 'Security alert: blocked uninvited sign-up · PennSync by CareMetric',
-        from_name: 'PennSync by CareMetric',
-        body: blockedSignupEmail(admin.full_name || 'Admin'),
-      })
-    );
+    const deliveryPaused = admins.length > 0 && !outboundDeliveryReleased();
+    let emailsSent = 0;
+    if (!deliveryPaused) {
+      const emailPromises = admins.map(admin =>
+        base44.asServiceRole.integrations.Core.SendEmail({
+          to: admin.email,
+          subject: 'Security alert: blocked uninvited sign-up · PennSync by CareMetric',
+          from_name: 'PennSync by CareMetric',
+          body: blockedSignupEmail(admin.full_name || 'Admin'),
+        })
+      );
 
-    debugLog('Sending blocked-signup security alert to admins...');
-    await Promise.all(emailPromises);
-    debugLog('Blocked-signup alert complete');
+      debugLog('Sending blocked-signup security alert to admins...');
+      await Promise.all(emailPromises);
+      emailsSent = admins.length;
+      debugLog('Blocked-signup alert complete');
+    }
 
     return Response.json({
       success: true,
       blocked: true,
-      message: `Uninvited sign-up blocked; alerted ${admins.length} admin(s)`
+      message: deliveryPaused
+        ? 'Uninvited sign-up blocked; admin email delivery paused'
+        : `Uninvited sign-up blocked; alerted ${emailsSent} admin(s)`,
+      email: emailsSent > 0,
+      delivery_paused: deliveryPaused,
     });
 
   } catch (error) {
@@ -456,17 +494,26 @@ Deno.serve(async (req) => {
 
 async function verifyInvitedUser(base44, email) {
   try {
-    const config = base44.getConfig();
     let users = await base44.asServiceRole.entities.User.filter({ email }, undefined, 5000);
     let authUser = users?.[0];
 
     if (authUser?.is_verified) {
-      return { success: true, already_verified: true };
+      return { success: true, already_verified: true, email: false, delivery_paused: false };
     }
 
     const otpExpired = !authUser?.otp_code || !authUser?.otp_expires_at || new Date(authUser.otp_expires_at) <= new Date();
 
     if (otpExpired) {
+      if (!outboundDeliveryReleased()) {
+        return {
+          success: false,
+          step: 'resend_delivery_paused',
+          email: false,
+          delivery_paused: true,
+        };
+      }
+
+      const config = base44.getConfig();
       const resendResponse = await fetch(`${config.serverUrl}/api/apps/${config.appId}/auth/resend-otp`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -474,7 +521,7 @@ async function verifyInvitedUser(base44, email) {
       });
 
       if (!resendResponse.ok) {
-        return { success: false, step: 'resend_failed' };
+        return { success: false, step: 'resend_failed', email: false, delivery_paused: false };
       }
 
       users = await base44.asServiceRole.entities.User.filter({ email }, undefined, 5000);
@@ -482,9 +529,10 @@ async function verifyInvitedUser(base44, email) {
     }
 
     if (!authUser?.otp_code) {
-      return { success: false, step: 'missing_otp_code' };
+      return { success: false, step: 'missing_otp_code', email: otpExpired, delivery_paused: false };
     }
 
+    const config = base44.getConfig();
     const verifyResponse = await fetch(`${config.serverUrl}/api/apps/${config.appId}/auth/verify-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -492,9 +540,15 @@ async function verifyInvitedUser(base44, email) {
     });
 
     const result = await verifyResponse.json();
-    return { success: verifyResponse.ok, result };
+    return { success: verifyResponse.ok, result, email: otpExpired, delivery_paused: false };
   } catch (error) {
     console.error('verifyInvitedUser error:', error);
-    return { success: false, step: 'exception', error: String(error?.message || error) };
+    return {
+      success: false,
+      step: 'exception',
+      email: false,
+      delivery_paused: false,
+      error: String(error?.message || error),
+    };
   }
 }

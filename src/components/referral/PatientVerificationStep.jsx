@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,8 +16,6 @@ import {
   ShieldCheck,
   Info
 } from "lucide-react";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
 import { format, isValid } from "date-fns";
 import {
   validateMbi,
@@ -25,7 +23,8 @@ import {
   looksLikeMedicare,
   looksLikeMedicareAdvantage,
 } from "./mbiValidator";
-import { ALL_ROWS } from '@/lib/queryLimits';
+import { useAuthorizedReferralPatients } from './authorizedPatientMatches';
+import { normalizePatientMatchSuggestions } from './patientMatchSuggestions';
 
 // A suggested patient's stored date_of_birth may be a malformed string (patients
 // auto-created from referrals persist the raw AI-extracted DOB). date-fns format()
@@ -55,35 +54,45 @@ const describeCoverage = (insuranceText, policyNumbers) => {
 };
 
 export default function PatientVerificationStep({ 
-  referral, 
-  onConfirmMatch, 
-  onCreateNew, 
-  onSkip 
+  referral,
+  tenantContext,
+  onConfirmMatch,
+  onCreateNew,
+  onSkip,
 }) {
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const [isConfirming, setIsConfirming] = useState(false);
 
   const extractedData = referral.extracted_data;
   const matchAnalysis = referral.match_analysis;
-  const suggestions = referral.match_suggestions || [];
+  const normalizedSuggestionResult = useMemo(() => normalizePatientMatchSuggestions({
+    preferred: matchAnalysis?.best_match_id ? {
+      patient_id: matchAnalysis.best_match_id,
+      confidence_score: matchAnalysis.confidence_score,
+      reasons: matchAnalysis.match_factors,
+      discrepancies: matchAnalysis.discrepancies,
+    } : null,
+    suggestions: referral.match_suggestions,
+  }), [matchAnalysis, referral.match_suggestions]);
+  const suggestions = normalizedSuggestionResult.suggestions;
+  const invalidOnlySuggestions = normalizedSuggestionResult.invalidCount > 0
+    && suggestions.length === 0;
 
   // Resolve the suggested (and best-match) patients directly by id rather than
   // paging the newest 500 — otherwise a match against an older chart is silently
   // dropped, steering staff to create a duplicate record.
-  const matchPatientIds = [
-    ...suggestions.map((s) => s.patient_id),
-    ...(matchAnalysis?.best_match_id ? [matchAnalysis.best_match_id] : []),
-  ].filter(Boolean);
+  const matchPatientIds = suggestions.map((suggestion) => suggestion.patient_id);
 
-  const { data: allPatients = [] } = useQuery({
-    queryKey: ['verification-patients', matchPatientIds],
-    queryFn: () =>
-      matchPatientIds.length
-        ? base44.entities.Patient.filter({ id: { $in: matchPatientIds } }, undefined, ALL_ROWS)
-        : [],
-    enabled: matchPatientIds.length > 0,
-    initialData: [],
+  const patientLookup = useAuthorizedReferralPatients({
+    tenantContext,
+    patientIds: matchPatientIds,
   });
+  const allPatients = patientLookup.data;
+  const lookupBlocked = invalidOnlySuggestions
+    || (matchPatientIds.length > 0 && !patientLookup.isSuccess);
+  const unavailableCount = patientLookup.isSuccess
+    ? new Set(matchPatientIds).size - allPatients.length
+    : 0;
 
   // Get suggested patients
   const suggestedPatients = suggestions.map(sug => {
@@ -91,23 +100,22 @@ export default function PatientVerificationStep({
     return patient ? { ...patient, confidence: sug.confidence_score, reasons: sug.reasons } : null;
   }).filter(Boolean);
 
-  // Add best match from analysis if available
-  if (matchAnalysis?.best_match_id && !suggestedPatients.find(p => p.id === matchAnalysis.best_match_id)) {
-    const bestMatch = allPatients.find(p => p.id === matchAnalysis.best_match_id);
-    if (bestMatch) {
-      suggestedPatients.unshift({
-        ...bestMatch,
-        confidence: matchAnalysis.confidence_score,
-        reasons: matchAnalysis.match_factors
-      });
+  const selectedPatient = suggestedPatients.find((patient) => patient.id === selectedPatientId) || null;
+
+  // Never preserve a selected id after the fresh authority lookup stops
+  // returning that chart. This covers membership changes and patient-level
+  // authorization revocation between selection and confirmation.
+  useEffect(() => {
+    if (selectedPatientId && (!patientLookup.isSuccess || !selectedPatient)) {
+      setSelectedPatientId(null);
     }
-  }
+  }, [patientLookup.isSuccess, selectedPatient, selectedPatientId]);
 
   const handleConfirm = async () => {
-    if (!selectedPatientId) return;
+    if (!selectedPatient || lookupBlocked) return;
     setIsConfirming(true);
     try {
-      await onConfirmMatch(selectedPatientId);
+      await onConfirmMatch(selectedPatient.id);
     } catch (error) {
       console.error('Confirmation error:', error);
     }
@@ -141,6 +149,47 @@ export default function PatientVerificationStep({
           </p>
         </AlertDescription>
       </Alert>
+
+      {(normalizedSuggestionResult.invalidCount > 0
+        || normalizedSuggestionResult.truncatedCount > 0) && (
+        <Alert variant={invalidOnlySuggestions ? "destructive" : undefined}>
+          <AlertTriangle className="w-5 h-5" />
+          <AlertDescription>
+            {invalidOnlySuggestions
+              ? 'Saved patient-match suggestions are malformed. No patient can be matched or created until the referral is reprocessed.'
+              : 'Some saved patient-match suggestions were invalid or exceeded the reviewed limit and were ignored.'}
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {patientLookup.isError && (
+        <Alert variant="destructive">
+          <AlertTriangle className="w-5 h-5" />
+          <AlertDescription>
+            Patient matches could not be authorized for this agency. No match can be confirmed and
+            no replacement chart can be created until the lookup succeeds.
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mt-3 block"
+              onClick={() => patientLookup.refetch()}
+            >
+              Retry authorized lookup
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {!patientLookup.isError && unavailableCount > 0 && (
+        <Alert className="bg-slate-50 border-slate-300">
+          <Info className="w-5 h-5 text-slate-600" />
+          <AlertDescription>
+            {unavailableCount} suggested record{unavailableCount === 1 ? ' is' : 's are'} no longer
+            available in this agency and cannot be selected.
+          </AlertDescription>
+        </Alert>
+      )}
 
       {/* Extracted Patient Info */}
       <Card className="border-2 border-blue-300">
@@ -279,16 +328,29 @@ export default function PatientVerificationStep({
             <UserCheck className="w-5 h-5 text-green-600" />
             Potential Matches ({suggestedPatients.length})
           </h3>
-          <div className="space-y-3">
+          <div
+            className="space-y-3"
+            role="radiogroup"
+            aria-label="Potential patient matches"
+          >
             {suggestedPatients.map((patient) => (
               <Card
                 key={patient.id}
+                role="radio"
+                aria-checked={selectedPatientId === patient.id}
+                tabIndex={0}
                 className={`cursor-pointer transition-all ${
                   selectedPatientId === patient.id
                     ? 'border-2 border-green-500 bg-green-50'
                     : 'border hover:border-slate-400 hover:shadow-md'
                 }`}
                 onClick={() => setSelectedPatientId(patient.id)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setSelectedPatientId(patient.id);
+                  }
+                }}
               >
                 <CardContent className="p-4">
                   <div className="flex items-start justify-between">
@@ -370,7 +432,7 @@ export default function PatientVerificationStep({
       <div className="flex flex-col sm:flex-row gap-3">
         <Button
           onClick={handleConfirm}
-          disabled={!selectedPatientId || isConfirming}
+          disabled={!selectedPatient || isConfirming || lookupBlocked}
           className="flex-1 h-12"
           size="lg"
         >
@@ -389,6 +451,7 @@ export default function PatientVerificationStep({
 
         <Button
           onClick={onCreateNew}
+          disabled={lookupBlocked}
           variant="outline"
           className="flex-1 border-blue-500 text-blue-700 hover:bg-blue-50 h-12"
           size="lg"

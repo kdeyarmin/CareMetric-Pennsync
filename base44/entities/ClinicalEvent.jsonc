@@ -112,5 +112,13 @@
     "event_type",
     "event_date",
     "event_title"
-  ]
+  ],
+  // Existing browser timelines still require a broker before reads can close.
+  // All writers already use service role, so direct mutations fail closed now.
+  "rls": {
+    "read": true,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

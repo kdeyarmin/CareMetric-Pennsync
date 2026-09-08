@@ -20,6 +20,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    // Never pass an absent owner into a service-role filter: some backends omit
+    // undefined fields, which would silently widen this to every tenant's rules.
+    const callerEmail = String(user.email || '').trim().toLowerCase();
+    if (!callerEmail) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const {
       document_name,
@@ -38,10 +44,16 @@ Deno.serve(async (req) => {
     }
 
     // Fetch active priority rules
-    const rules = await base44.asServiceRole.entities.FaxPriorityRule.filter(
-      { is_active: true },
+    const ruleRows = await base44.asServiceRole.entities.FaxPriorityRule.filter(
+      { is_active: true, user_email: callerEmail },
       '-created_date',
       100
+    );
+    // Defend against an ignored/regressed backend filter before a foreign rule
+    // can influence the result or have its match_count updated.
+    const rules = (Array.isArray(ruleRows) ? ruleRows : []).filter((rule) =>
+      rule?.is_active === true
+      && String(rule?.user_email || '').trim().toLowerCase() === callerEmail
     );
 
     // Build analysis text

@@ -87,5 +87,11 @@
     "frequency",
     "route",
     "status"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

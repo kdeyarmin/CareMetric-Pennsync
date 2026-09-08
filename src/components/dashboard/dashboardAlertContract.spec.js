@@ -39,8 +39,9 @@ describe('dashboard alert data contract', () => {
     expect(incidentsPage).not.toMatch(/Incident\.list\("-created_date",\s*500\)/);
   });
 
-  it('Layout active alerts use getScopedPatientAlerts (not truncated entity filter)', () => {
-    expect(layout).toMatch(/getScopedPatientAlerts/);
+  it('Layout does not preload patient alerts outside a purpose-bound tenant broker', () => {
+    expect(layout).not.toMatch(/getScopedPatientAlerts/);
+    expect(layout).not.toMatch(/entities\.PatientAlert/);
     expect(layout).not.toMatch(/PatientAlert\.filter\(\{\s*status:\s*'active'\s*\},\s*'-created_date',\s*50\)/);
   });
 

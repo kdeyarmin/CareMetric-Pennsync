@@ -116,7 +116,7 @@
     "read": {
       "$or": [
         {
-          "user_id": "{{user.email}}"
+          "data.user_id": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -129,7 +129,17 @@
     // server-side (gradeTrainingAttempt, via the service role), and a passing
     // TrainingAttempt row is the evidence issueCertificate trusts. If users
     // could write their own attempts they could mint certificates.
-    "write": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
       "user_condition": {
         "role": "admin"
       }

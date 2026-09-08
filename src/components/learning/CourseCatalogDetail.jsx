@@ -236,8 +236,6 @@ export default function CourseCatalogDetail({
                     {reference.url && isSafeExternalUrl(reference.url) ? (
                       <a
                         href={reference.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
                         className="text-blue-600 hover:underline"
                       >
                         {reference.title || reference.url}

@@ -93,6 +93,15 @@ async function assertPatientAccess(base44, user, patient) {
 }
 
 Deno.serve(async (req) => {
+  // SECURITY CONTAINMENT: keep the legacy bulk Patient writer unreachable
+  // until an immutable tenant-authorized, atomic replacement is available.
+  return Response.json({
+    error: 'Legacy Patient service-role writer is temporarily unavailable',
+    code: 'legacy_patient_service_writer_paused',
+    reason: 'immutable_tenant_authorization_and_atomic_write_broker_required',
+    endpoint: 'predictPatientRisks',
+  }, { status: 503 });
+
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();

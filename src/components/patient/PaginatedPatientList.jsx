@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/select";
 import { Search } from "lucide-react";
 import { Link } from "react-router";
-import { createPageUrl } from "@/utils";
+import { createPatientDetailsRouteHref } from '@/lib/patientDetailsRoute';
 import { getPatientDisplayName, getPatientInitials, getPatientDisplayParts } from "@/components/patient/patientDisplay";
 import { clampPageSize, paginateRows } from "@/lib/pagination";
 import ListPaginationControls from "@/components/ui/ListPaginationControls";
@@ -37,7 +37,8 @@ export default function PaginatedPatientList({
   // NOT re-sort: it used to always apply its own "name" sort to the prop, which
   // silently discarded the caller's order — a page-level "Newest"/"Most visits"
   // choice was reordered back to name and the control looked dead.
-  sortable = true
+  sortable = true,
+  patientDetailsAgencyId = null,
 }) {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -158,7 +159,12 @@ export default function PaginatedPatientList({
 
       {/* Patient Cards */}
       <div className="flex flex-wrap justify-center gap-4">
-        {paginatedPatients.map((patient) => (
+        {paginatedPatients.map((patient) => {
+          const patientDetailsHref = createPatientDetailsRouteHref(
+            patient.id,
+            patientDetailsAgencyId,
+          );
+          return (
           <Card key={patient.id} className="w-full md:w-[calc(50%-0.5rem)] lg:w-[calc(33.333%-0.75rem)] hover:shadow-lg transition-shadow">
             <CardContent className="relative p-5 flex flex-col items-center text-center">
               {showCheckboxes && (
@@ -198,11 +204,15 @@ export default function PaginatedPatientList({
               </div>
 
               <div className="mt-4 flex items-center justify-center gap-2 w-full">
-                <Link to={createPageUrl("PatientDetails") + `?id=${patient.id}`}>
-                  <Button size="sm" variant="outline" className="text-xs h-9">
+                {patientDetailsHref ? (
+                  <Button asChild size="sm" variant="outline" className="text-xs h-9">
+                    <Link to={patientDetailsHref}>View Details</Link>
+                  </Button>
+                ) : (
+                  <Button disabled size="sm" variant="outline" className="text-xs h-9">
                     View Details
                   </Button>
-                </Link>
+                )}
                 {onPatientSelect && (
                   <Button
                     size="sm"
@@ -215,7 +225,8 @@ export default function PaginatedPatientList({
               </div>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       <ListPaginationControls

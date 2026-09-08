@@ -9,6 +9,8 @@
  *   - nextRetryDelayMinutes— config-aware exponential backoff, priority-scaled
  *   - planFaxRetry         — what the status webhook should do on a failure
  *   - isFaxRetryDue        — whether the cron should re-dispatch a failed fax now
+ *   - canManuallyRetryFax  — whether a row has complete private-document and
+ *                            signed-provider failure authority for a new send
  *
  * The single-file Deno functions keep inline copies of these; a drift guard
  * (base44/functions/faxRetryInlineParity.test.js) asserts they stay identical.
@@ -130,4 +132,49 @@ export function isFaxRetryDue(fax, now = Date.now(), config) {
   if ((Number(fax.retry_count) || 0) > c.maxRetries) return false;
   const t = new Date(fax.next_retry_at).getTime();
   return Number.isFinite(t) && now >= t;
+}
+
+const exactRetryIdentifier = (value) => typeof value === "string"
+  && value.length > 0
+  && value.length <= 200
+  && value.trim() === value
+  && !value.startsWith("$")
+  && ![...value].some((character) => {
+    const codePoint = character.codePointAt(0);
+    return codePoint <= 31 || codePoint === 127;
+  });
+
+const validRetryInstant = (value) => typeof value === "string"
+  && Number.isFinite(Date.parse(value));
+
+/**
+ * Manual resend is available only for the private, tenant-bound referral-fax
+ * path and only after a signed Telnyx event proves the accepted transmission
+ * ended in failure. A rejected or indeterminate create request, a legacy stored
+ * URL, or an incomplete identity must go to operator reconciliation instead.
+ */
+export function canManuallyRetryFax(fax) {
+  if (!fax || fax.status !== "failed") return false;
+  if (fax.provider_submission_state !== "accepted") return false;
+  if (fax.provider_terminal_status !== "failed") return false;
+  if (!validRetryInstant(fax.provider_accepted_at) || !validRetryInstant(fax.provider_terminal_at)) return false;
+  if (Date.parse(fax.provider_terminal_at) < Date.parse(fax.provider_accepted_at)) return false;
+  if (fax.document_url != null) return false;
+  if (fax.retry_claimed_by != null || fax.retry_claimed_at != null || fax.retry_claimed_by_user_id != null) return false;
+  if (fax.failure_notify_claimed_by != null || fax.failure_notify_claimed_at != null) return false;
+  if (!Number.isSafeInteger(fax.sent_by_membership_version) || fax.sent_by_membership_version < 1) return false;
+  if (!Number.isSafeInteger(fax.retry_count) || fax.retry_count < 0) return false;
+  if (!Number.isSafeInteger(fax.retry_generation) || fax.retry_generation < 0) return false;
+  if (fax.retry_count > 10 || fax.retry_generation > 10) return false;
+  if (fax.retry_generation > fax.retry_count) return false;
+  return [
+    fax.id,
+    fax.agency_id,
+    fax.referral_id,
+    fax.document_id,
+    fax.sent_by_user_id,
+    fax.sent_by_membership_id,
+    fax.telnyx_fax_id,
+    fax.provider_submission_attempt_id,
+  ].every(exactRetryIdentifier);
 }

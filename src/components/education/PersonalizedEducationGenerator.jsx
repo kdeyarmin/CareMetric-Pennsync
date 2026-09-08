@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from 'sonner';
+import { rejectOutboundDelivery } from '@/lib/outboundDeliveryContainment';
 
 export default function PersonalizedEducationGenerator({ patient, carePlans = [], recentVisits = [] }) {
   const ai = useAICall();
@@ -186,23 +186,12 @@ Return JSON with the complete material:`,
 
     setIsSending(true);
     try {
-      const fullText = `${educationMaterial.title}\n\n${educationMaterial.introduction}\n\n` +
-        (educationMaterial.sections || []).map(s => `${s.section_title}\n${s.content}\n`).join('\n') +
-        `\n${educationMaterial.summary}`;
-
-      await base44.integrations.Core.SendEmail({
-        to: patient.email,
-        from_name: "PennSync by CareMetric Care Team",
-        subject: `Your Personal Health Education Guide - ${educationMaterial.title}`,
-        body: fullText
-      });
-
-      toast.success(`Education material sent to ${patient.email}`);
+      await rejectOutboundDelivery();
     } catch (error) {
-      console.error("Email error:", error);
-      toast.error("Failed to send email. Please try again.");
+      toast.error(error?.message || "Outbound delivery is paused in this environment.");
+    } finally {
+      setIsSending(false);
     }
-    setIsSending(false);
   };
 
   return (
@@ -403,10 +392,11 @@ Return JSON with the complete material:`,
                 <Button
                   variant="outline"
                   className="flex-1"
-                  onClick={() => window.print()}
+                  disabled
+                  title="Separate print previews are unavailable until they can be revoked with workspace authority."
                 >
                   <Download className="w-4 h-4 mr-2" />
-                  Print
+                  Print unavailable
                 </Button>
               </div>
             </CardContent>

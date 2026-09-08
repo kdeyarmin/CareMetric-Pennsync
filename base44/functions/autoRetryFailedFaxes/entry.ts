@@ -1,5 +1,37 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
+// Deploying source must not make a provider-facing retry worker runnable. The
+// native workflow owns the schedule, while this exact reviewed revision still
+// requires an explicit runtime release before the SDK is constructed.
+const AUTO_RETRY_FAILED_FAXES_ENABLED =
+  String(Deno.env.get('WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES') || '').trim() === 'enabled-v1';
+
+const AUTO_RETRY_SCAN_PAGE_SIZE = 200;
+const AUTO_RETRY_SCAN_LIMIT = 1_000;
+const AUTO_RETRY_DEFER_MAX_ATTEMPTS = 12;
+const AUTO_RETRY_DEFER_BASE_MINUTES = 15;
+const AUTO_RETRY_DEFER_MAX_MINUTES = 360;
+
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
@@ -33,6 +65,35 @@ function getSchedulerAuthError(req, user) {
   );
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
+
+async function createFaxInternalCapability(action, resourceId, claimId) {
+  const secret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (secret.length < 32) throw new Error('Internal fax capability signing is unavailable');
+  const issuedAt = Date.now();
+  const capability = {
+    version: 1,
+    action,
+    resource_id: resourceId,
+    claim_id: claimId,
+    issued_at: issuedAt,
+    expires_at: issuedAt + 300_000,
+    nonce: crypto.randomUUID(),
+  };
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const payload = JSON.stringify([
+    capability.version, capability.action, capability.resource_id, capability.claim_id,
+    capability.issued_at, capability.expires_at, capability.nonce,
+  ]);
+  const signature = new Uint8Array(await crypto.subtle.sign(
+    'HMAC', key, new TextEncoder().encode(payload),
+  ));
+  return {
+    ...capability,
+    mac: Array.from(signature, (byte) => byte.toString(16).padStart(2, '0')).join(''),
+  };
+}
 
 
 
@@ -248,17 +309,17 @@ async function resolveTelnyxCreds(base44) {
       || list.find((r) => r && pick(r.api_key))
       || list[0]
       || null;
-  } catch (err) {
+  } catch {
     // Do NOT collapse this into "not configured". A failed read (this invocation
     // path carries no service token, entity 404, 401/403, rate limit, platform
     // blip) is a completely different problem from an unconfigured integration,
     // and reporting them identically is what sent operators chasing a credential
     // they had already entered correctly.
-    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    readError = 'credential_store_unavailable';
     // The catch used to be bare, so an unreadable credential row left no
     // server-side breadcrumb at all — the only signal was a misleading
     // "not configured" reply. Log it; unattended runs have nowhere else to say so.
-    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
   }
   const rec = record || {};
   return {
@@ -279,7 +340,7 @@ async function resolveTelnyxCreds(base44) {
 function telnyxCredsMessage(creds, what) {
   const label = what || 'credentials';
   if (creds && creds.readError) {
-    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+    return `Could not read Telnyx ${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.`;
   }
   return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
 }
@@ -427,373 +488,467 @@ function isFaxRetryDue(fax, now, config) {
   return Number.isFinite(t) && now >= t;
 }
 
+function autoPlainObject(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function autoExactId(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 200
+    && value.trim() === value && !value.startsWith('$')
+    && !/[\u0000-\u001f\u007f]/.test(value) ? value : null;
+}
+
+function autoValidInstant(value) {
+  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function autoRequireRows(value, label) {
+  if (!Array.isArray(value)) throw new Error(`${label} returned a non-array result`);
+  return value;
+}
+
+function autoSuccessfulCas(value) {
+  return autoPlainObject(value) && value.success === true && value.updated === 1 && value.has_more === false;
+}
+
+async function loadDueAutomaticRetryRows(entities, dueBefore) {
+  const rows = [];
+  let afterId = null;
+  while (rows.length < AUTO_RETRY_SCAN_LIMIT) {
+    const query = {
+      status: 'failed',
+      next_retry_at: { $lte: dueBefore },
+      ...(afterId ? { id: { $gt: afterId } } : {}),
+    };
+    const pageSize = Math.min(AUTO_RETRY_SCAN_PAGE_SIZE, AUTO_RETRY_SCAN_LIMIT - rows.length);
+    const page = autoRequireRows(
+      await entities.FaxLog.filter(query, 'id', pageSize),
+      'FaxLog.filter',
+    );
+    if (page.length === 0) break;
+    let lastId = afterId;
+    for (const row of page) {
+      const id = autoExactId(row?.id);
+      if (!id || (lastId && id <= lastId)) {
+        throw new Error('FaxLog.filter returned an invalid retry scan cursor');
+      }
+      rows.push(row);
+      lastId = id;
+    }
+    afterId = lastId;
+    if (page.length < pageSize) break;
+  }
+  rows.sort((left, right) => {
+    const timeDelta = Date.parse(left?.next_retry_at) - Date.parse(right?.next_retry_at);
+    return (Number.isFinite(timeDelta) && timeDelta !== 0)
+      ? timeDelta
+      : String(left?.id || '').localeCompare(String(right?.id || ''));
+  });
+  return rows;
+}
+
+function automaticRetryBackoff(row, nowMs = Date.now()) {
+  const current = Number.isSafeInteger(row?.automatic_retry_queue_attempts)
+    && row.automatic_retry_queue_attempts >= 0
+    ? Math.min(row.automatic_retry_queue_attempts, AUTO_RETRY_DEFER_MAX_ATTEMPTS)
+    : 0;
+  const attempts = Math.min(current + 1, AUTO_RETRY_DEFER_MAX_ATTEMPTS);
+  const minutes = Math.min(
+    AUTO_RETRY_DEFER_MAX_MINUTES,
+    AUTO_RETRY_DEFER_BASE_MINUTES * (2 ** Math.min(attempts - 1, 5)),
+  );
+  return {
+    attempts,
+    exhausted: attempts >= AUTO_RETRY_DEFER_MAX_ATTEMPTS,
+    nextRetryAt: attempts >= AUTO_RETRY_DEFER_MAX_ATTEMPTS
+      ? null
+      : new Date(nowMs + minutes * 60_000).toISOString(),
+  };
+}
+
+function automaticRetryQueueCasFilter(row) {
+  if (!autoExactId(row?.id) || row?.status !== 'failed'
+    || !autoValidInstant(row?.next_retry_at) || !autoValidInstant(row?.updated_date)) return null;
+  return {
+    id: row.id,
+    status: 'failed',
+    next_retry_at: row.next_retry_at,
+    updated_date: row.updated_date,
+  };
+}
+
+async function quarantineAutomaticRetry(entities, row, code, nowMs = Date.now()) {
+  const filter = automaticRetryQueueCasFilter(row);
+  if (!filter) return false;
+  const result = await entities.FaxLog.updateMany(filter, { $set: {
+    next_retry_at: null,
+    automatic_retry_last_error_code: code,
+    automatic_retry_quarantined_at: new Date(nowMs).toISOString(),
+  } });
+  return autoSuccessfulCas(result);
+}
+
+async function deferAutomaticRetry(entities, row, code, nowMs = Date.now()) {
+  const filter = automaticRetryQueueCasFilter(row);
+  if (!filter) return null;
+  const backoff = automaticRetryBackoff(row, nowMs);
+  const result = await entities.FaxLog.updateMany(filter, { $set: {
+    next_retry_at: backoff.nextRetryAt,
+    automatic_retry_queue_attempts: backoff.attempts,
+    automatic_retry_last_error_code: backoff.exhausted ? `${code}_retry_exhausted` : code,
+    automatic_retry_quarantined_at: backoff.exhausted
+      ? new Date(nowMs).toISOString()
+      : null,
+  } });
+  return autoSuccessfulCas(result) ? (backoff.exhausted ? 'quarantined' : 'deferred') : null;
+}
+
+function automaticRetryHasConflictingClaim(row) {
+  return row?.retry_claimed_by != null || row?.retry_claimed_at != null
+    || row?.retry_claimed_by_user_id != null || row?.failure_notify_claimed_by != null
+    || row?.failure_notify_claimed_at != null;
+}
+
+function strictAutomaticRetryCandidate(row, now) {
+  return !!row
+    && !!autoExactId(row.id)
+    && !!autoExactId(row.agency_id)
+    && !!autoExactId(row.referral_id)
+    && !!autoExactId(row.document_id)
+    && !!autoExactId(row.document_binding_id)
+    && row.document_binding_version === 2
+    && /^[a-f0-9]{64}$/.test(String(row.document_content_sha256 || ''))
+    && !!autoExactId(row.sent_by_user_id)
+    && !!autoExactId(row.sent_by_membership_id)
+    && typeof row.sent_by === 'string'
+    && row.sent_by === row.sent_by.trim().toLowerCase()
+    && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(row.sent_by)
+    && /^\+\d{8,15}$/.test(String(row.to_number || ''))
+    && Number.isSafeInteger(row.sent_by_membership_version)
+    && row.sent_by_membership_version >= 1
+    && row.status === 'failed'
+    && row.provider_submission_state === 'accepted'
+    && row.provider_terminal_status === 'failed'
+    && !!autoExactId(row.provider_submission_attempt_id)
+    && !!autoExactId(row.telnyx_fax_id)
+    && row.provider === 'telnyx'
+    && !!autoExactId(row.integration_secret_id)
+    && autoValidInstant(row.integration_secret_updated_at)
+    && !!autoExactId(row.fax_connection_id)
+    && !!autoExactId(row.sender_telecom_binding_id)
+    && Number.isSafeInteger(row.sender_telecom_binding_version)
+    && row.sender_telecom_binding_version >= 1
+    && !!autoExactId(row.sender_provider_number_id)
+    && !!autoExactId(row.sender_settings_id)
+    && autoValidInstant(row.sender_settings_updated_at)
+    && autoValidInstant(row.provider_accepted_at)
+    && autoValidInstant(row.provider_terminal_at)
+    && autoValidInstant(row.next_retry_at)
+    && Date.parse(row.next_retry_at) <= now
+    && autoValidInstant(row.updated_date)
+    && Number.isSafeInteger(row.retry_count)
+    && row.retry_count >= 0
+    && Number.isSafeInteger(row.retry_generation)
+    && row.retry_generation >= 0
+    && row.retry_count === row.retry_generation + 1
+    && row.retry_claimed_by == null
+    && row.retry_claimed_at == null
+    && row.retry_claimed_by_user_id == null
+    && row.failure_notify_claimed_by == null
+    && row.failure_notify_claimed_at == null
+    && row.document_url == null;
+}
+
+async function loadAutomaticRetryPolicy(entities, fax) {
+  const agencyRows = autoRequireRows(
+    await entities.Agency.filter({ id: fax.agency_id }, undefined, 10),
+    'Agency.filter',
+  );
+  if (agencyRows.length !== 1 || agencyRows[0]?.id !== fax.agency_id
+    || !['active', 'trial'].includes(String(agencyRows[0]?.status || ''))
+    || !autoExactId(agencyRows[0]?.agency_code)) return null;
+  const sameCode = autoRequireRows(
+    await entities.Agency.filter({ agency_code: agencyRows[0].agency_code }, undefined, 10),
+    'Agency.filter',
+  );
+  if (sameCode.length !== 1 || sameCode[0]?.id !== fax.agency_id) return null;
+  const exact = autoRequireRows(
+    await entities.FaxRetryConfig.filter({ agency_id: fax.agency_id }, undefined, 10),
+    'FaxRetryConfig.filter',
+  );
+  if (exact.length > 1 || exact.some((row) => row?.agency_id !== fax.agency_id)) return null;
+  let config = exact[0] || null;
+  if (!config) {
+    const legacy = autoRequireRows(
+      await entities.FaxRetryConfig.filter({ agency_name: agencyRows[0].agency_code }, undefined, 10),
+      'FaxRetryConfig.filter',
+    );
+    if (legacy.length > 1 || legacy.some((row) => row?.agency_name !== agencyRows[0].agency_code
+      || (row.agency_id != null && row.agency_id !== fax.agency_id))) return null;
+    config = legacy[0] || null;
+  }
+  if (!config || config.is_active === false) return null;
+  if ((config.max_retries != null && (!Number.isSafeInteger(Number(config.max_retries))
+    || Number(config.max_retries) < 0 || Number(config.max_retries) > 10))
+    || (config.retry_delay_minutes != null && (!Number.isFinite(Number(config.retry_delay_minutes))
+      || Number(config.retry_delay_minutes) <= 0 || Number(config.retry_delay_minutes) > 360))) return null;
+  const policy = faxRetryConfig(config);
+  if (!policy.enabled || fax.retry_count > policy.maxRetries
+    || fax.retry_generation >= policy.maxRetries) return null;
+  return { config, policy };
+}
+
+async function claimAutomaticRetry(entities, fax) {
+  const claimId = crypto.randomUUID();
+  const claimedAt = new Date().toISOString();
+  const result = await entities.FaxLog.updateMany({
+    id: fax.id,
+    agency_id: fax.agency_id,
+    referral_id: fax.referral_id,
+    document_id: fax.document_id,
+    document_binding_id: fax.document_binding_id,
+    document_binding_version: fax.document_binding_version,
+    document_content_sha256: fax.document_content_sha256,
+    sent_by_user_id: fax.sent_by_user_id,
+    sent_by_membership_id: fax.sent_by_membership_id,
+    sent_by_membership_version: fax.sent_by_membership_version,
+    to_number: fax.to_number,
+    status: 'failed',
+    provider_submission_state: 'accepted',
+    provider_submission_attempt_id: fax.provider_submission_attempt_id,
+    provider_accepted_at: fax.provider_accepted_at,
+    provider_terminal_status: 'failed',
+    provider_terminal_at: fax.provider_terminal_at,
+    telnyx_fax_id: fax.telnyx_fax_id,
+    provider: 'telnyx',
+    integration_secret_id: fax.integration_secret_id,
+    integration_secret_updated_at: fax.integration_secret_updated_at,
+    fax_connection_id: fax.fax_connection_id,
+    sender_telecom_binding_id: fax.sender_telecom_binding_id,
+    sender_telecom_binding_version: fax.sender_telecom_binding_version,
+    sender_provider_number_id: fax.sender_provider_number_id,
+    sender_settings_id: fax.sender_settings_id,
+    sender_settings_updated_at: fax.sender_settings_updated_at,
+    retry_count: fax.retry_count,
+    retry_generation: fax.retry_generation,
+    next_retry_at: fax.next_retry_at,
+    updated_date: fax.updated_date,
+  }, { $set: {
+    status: 'retrying',
+    retry_claimed_by: claimId,
+    retry_claimed_at: claimedAt,
+    retry_claimed_by_user_id: fax.sent_by_user_id,
+    next_retry_at: null,
+    automatic_retry_queue_attempts: 0,
+    automatic_retry_last_error_code: null,
+    automatic_retry_quarantined_at: null,
+  } });
+  if (!autoSuccessfulCas(result)) return null;
+  const rows = autoRequireRows(
+    await entities.FaxLog.filter({ id: fax.id }, undefined, 10),
+    'FaxLog.filter',
+  );
+  if (rows.length !== 1 || rows[0]?.id !== fax.id || rows[0]?.status !== 'retrying'
+    || rows[0]?.retry_claimed_by !== claimId || rows[0]?.retry_claimed_at !== claimedAt
+    || rows[0]?.retry_claimed_by_user_id !== fax.sent_by_user_id
+    || rows[0]?.agency_id !== fax.agency_id || rows[0]?.referral_id !== fax.referral_id
+    || rows[0]?.document_id !== fax.document_id || rows[0]?.to_number !== fax.to_number
+    || rows[0]?.document_binding_id !== fax.document_binding_id
+    || rows[0]?.document_binding_version !== fax.document_binding_version
+    || rows[0]?.document_content_sha256 !== fax.document_content_sha256
+    || rows[0]?.sent_by_membership_id !== fax.sent_by_membership_id
+    || rows[0]?.sent_by_membership_version !== fax.sent_by_membership_version
+    || rows[0]?.provider_submission_attempt_id !== fax.provider_submission_attempt_id
+    || rows[0]?.telnyx_fax_id !== fax.telnyx_fax_id
+    || !autoValidInstant(rows[0]?.updated_date)) return null;
+  return { row: rows[0], claimId, claimedAt };
+}
+
+async function settleAutomaticRetry(entities, claim, fax, changes) {
+  const result = await entities.FaxLog.updateMany({
+    id: fax.id,
+    status: 'retrying',
+    retry_claimed_by: claim.claimId,
+    retry_claimed_at: claim.claimedAt,
+    retry_claimed_by_user_id: fax.sent_by_user_id,
+    updated_date: claim.row.updated_date,
+  }, { $set: {
+    ...changes,
+    retry_claimed_by: null,
+    retry_claimed_at: null,
+    retry_claimed_by_user_id: null,
+  } });
+  return autoSuccessfulCas(result);
+}
+
 Deno.serve(async (req) => {
   try {
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
+    if (!AUTO_RETRY_FAILED_FAXES_ENABLED) {
+      return Response.json(
+        { error: 'Automatic failed-fax retry workflow is not released' },
+        { status: 503, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } },
+      );
+    }
     const base44 = createClientFromRequest(req);
-
-    // Authorization: privileged scheduled job (mirrors pollFaxStatuses /
-    // processScheduledFaxes). This reads FaxLog PHI and dispatches billable
-    // Telnyx fax sends under the service role. Admins can run it with session auth; scheduled/internal callers must send `x-internal-secret`; every other caller is rejected.
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
     if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
-    const runId = crypto.randomUUID();
+    const entities = base44.asServiceRole.entities;
+    const now = Date.now();
+    const rows = await loadDueAutomaticRetryRows(entities, new Date(now).toISOString());
+    let retried = 0;
+    let rejected = 0;
+    let reconciliation = 0;
+    let skipped = 0;
+    let quarantined = 0;
+    let deferred = 0;
+    let policyErrors = 0;
 
-    // Get all faxes that are failed and have a scheduled next_retry_at
-    const allFailed = await base44.asServiceRole.entities.FaxLog.filter(
-      { status: 'failed' },
-      '-updated_date',
-      200
-    );
-
-    const now = new Date();
-    let retriedCount = 0;
-    let skippedCount = 0;
-
-    // Per-sender agency retry policy (cached). Global newest-row would apply
-    // Agency A's disable/budget to Agency B's failed faxes.
-    const agencyCfgCache = new Map();
-    const resolveCfgForSender = async (sentBy) => {
-      let agencyName = '';
-      if (sentBy) {
-        const [sender] = await base44.asServiceRole.entities.User
-          .filter({ email: sentBy }, undefined, 1).catch(() => []);
-        agencyName = sender?.agency_name || '';
-      }
-      const cacheKey = agencyName || '__default__';
-      if (agencyCfgCache.has(cacheKey)) return agencyCfgCache.get(cacheKey);
-      const cfg = (await resolveFaxRetryConfig(base44, agencyName)) || {};
-      agencyCfgCache.set(cacheKey, cfg);
-      return cfg;
-    };
-
-    // Filter to faxes that are actually due for retry before resolving
-    // credentials — if nothing is due, there's no need to check Telnyx config
-    // (which may legitimately be absent on agencies that don't use fax).
-    const dueFaxes = [];
-    for (const fax of allFailed) {
-      const cfg = await resolveCfgForSender(fax.sent_by);
-      const c = faxRetryConfig(cfg);
-      if (!c.enabled) {
-        skippedCount++;
+    for (const fax of rows) {
+      if (!strictAutomaticRetryCandidate(fax, now)) {
+        const conflictingClaim = automaticRetryHasConflictingClaim(fax);
+        const disposition = conflictingClaim
+          ? await deferAutomaticRetry(entities, fax, 'retry_claim_conflict', now).catch(() => null)
+          : await quarantineAutomaticRetry(
+            entities,
+            fax,
+            'legacy_or_invalid_retry_provenance',
+            now,
+          ).then((applied) => applied ? 'quarantined' : null).catch(() => null);
+        if (disposition === 'deferred') deferred++;
+        else if (disposition === 'quarantined') quarantined++;
+        else skipped++;
         continue;
       }
-      if (isFaxRetryDue(fax, now.getTime(), cfg)) dueFaxes.push({ fax, cfg, c });
-      else skippedCount++;
-    }
-    if (dueFaxes.length === 0) {
-      return Response.json({
-        success: true,
-        retried: 0,
-        skipped: skippedCount || allFailed.length,
-        timestamp: now.toISOString()
-      });
-    }
-
-    const telnyxCreds = await resolveTelnyxCreds(base44);
-
-    const { apiKey, faxConnectionId } = telnyxCreds;
-    // Include the same DLR webhook sendFax uses so the retried fax reports status.
-    // Derive the functions base from this request's own URL — every backend
-    // function (including handleTelnyxStatusWebhook) is served from the same
-    // base, so the status-webhook peer is one path segment over. Replaces the
-    // retired FUNCTIONS_BASE_URL secret; non-https (local dev) derives nothing.
-    const functionsBaseUrl = (() => {
+      let loadedPolicy = null;
       try {
-        const u = new URL(req.url);
-        return u.protocol === 'https:' ? (u.origin + u.pathname).replace(/\/+$/, '').replace(/\/[^/]+$/, '') : '';
-      } catch { return ''; }
-    })();
-    const webhookUrl = functionsBaseUrl ? `${functionsBaseUrl}/handleTelnyxStatusWebhook` : undefined;
-
-    if (!apiKey || !faxConnectionId) {
-      // Use the shared credential message so a failed READ ("could not read the
-      // stored credential") is not reported as "not configured" — telling an
-      // operator to re-enter a key they already stored is what caused two
-      // reverted env-fallback regressions.
-      return Response.json({ error: telnyxCredsMessage(telnyxCreds, 'API key / fax connection ID') }, { status: 500 });
-    }
-
-    // Per-sender agency fax lines (cached). Newest-row-wins would transmit
-    // Agency A's PHI on Agency B's outbound line in multi-tenant deployments.
-    const agencyFaxCache = new Map();
-    const resolveFaxFromForSender = async (sentBy) => {
-      let agencyName = '';
-      if (sentBy) {
-        const [sender] = await base44.asServiceRole.entities.User
-          .filter({ email: sentBy }, undefined, 1).catch(() => []);
-        agencyName = sender?.agency_name || '';
-      }
-      const cacheKey = agencyName || '__default__';
-      if (agencyFaxCache.has(cacheKey)) return agencyFaxCache.get(cacheKey);
-      const settings = await resolveAgencySettings(base44, agencyName);
-      const officeFaxRaw = (settings?.office_fax_number_e164 || '').toString().trim();
-      const outboundFaxRaw = (settings?.outbound_fax_number_e164 || '').toString().trim();
-      const officeFax = normalizeFromE164(officeFaxRaw);
-      const outboundFax = normalizeFromE164(outboundFaxRaw);
-      const resolved = {
-        fromNumber: outboundFax || officeFax,
-        faxFromDisplayName: officeFaxDisplayName(officeFax),
-        officeFaxRaw,
-        outboundFaxRaw,
-        outboundFax,
-        settings,
-      };
-      agencyFaxCache.set(cacheKey, resolved);
-      return resolved;
-    };
-
-    for (const { fax, cfg, c } of dueFaxes) {
-      // SSRF guard: re-validate the STORED document URL before handing it back
-      // to Telnyx as media_url — a tampered or legacy row must not aim the fax
-      // provider at an arbitrary/internal host. Clearing next_retry_at stops
-      // future runs from re-processing the row (isFaxRetryDue requires it).
-      if (!isSafeFetchUrl(fax.document_url)) {
-        await base44.asServiceRole.entities.FaxLog.update(fax.id, {
-          next_retry_at: null,
-          failure_reason: 'Invalid or disallowed stored document URL',
-        }).catch(() => {});
-        skippedCount++;
-        continue;
-      }
-
-      // Claim with a per-run token, then RE-READ to confirm we own it. Flipping
-      // to 'queued' also removes it from a second run's failed-filter, so two
-      // overlapping runs can't both re-send the same document.
-      try {
-        await base44.asServiceRole.entities.FaxLog.update(fax.id, {
-          status: 'queued', retry_claimed_by: runId, next_retry_at: null,
-        });
+        loadedPolicy = await loadAutomaticRetryPolicy(entities, fax);
       } catch {
-        skippedCount++;
+        policyErrors++;
+        const disposition = await deferAutomaticRetry(
+          entities,
+          fax,
+          'retry_policy_read_failed',
+          now,
+        ).catch(() => null);
+        if (disposition === 'deferred') deferred++;
+        else if (disposition === 'quarantined') quarantined++;
+        else skipped++;
         continue;
       }
-      const check = await base44.asServiceRole.entities.FaxLog.filter({ id: fax.id }, '-updated_date', 1).catch(() => []);
-      if (!check[0] || check[0].retry_claimed_by !== runId) {
-        skippedCount++;
+      if (!loadedPolicy) {
+        if (await quarantineAutomaticRetry(
+          entities,
+          fax,
+          'retry_policy_unavailable',
+          now,
+        ).catch(() => false)) quarantined++;
+        else skipped++;
         continue;
       }
-
-      // Attempt the retry via Telnyx
+      const claim = await claimAutomaticRetry(entities, fax);
+      if (!claim) {
+        skipped++;
+        continue;
+      }
       try {
-        const faxLine = await resolveFaxFromForSender(fax.sent_by);
-        if (faxLine.outboundFaxRaw && !faxLine.outboundFax) {
-          await base44.asServiceRole.entities.FaxLog.update(fax.id, {
-            status: 'failed',
-            next_retry_at: null,
-            failure_reason: `Outbound fax number "${faxLine.outboundFaxRaw}" is not a valid phone number`,
-            retry_claimed_by: null,
-          }).catch(() => {});
-          skippedCount++;
-          continue;
-        }
-        if (!faxLine.fromNumber) {
-          await base44.asServiceRole.entities.FaxLog.update(fax.id, {
-            status: 'failed',
-            next_retry_at: null,
-            failure_reason: 'No outbound fax number configured for sender agency',
-            retry_claimed_by: null,
-          }).catch(() => {});
-          skippedCount++;
-          continue;
-        }
-        // Re-gate the STORED destination through the same cost-control allowlist
-        // sendFax applies. FaxLog write RLS is owner + service-role, so a sender
-        // could edit their row's to_number to a premium/international number
-        // (and set status:failed, next_retry_at:now) and have this cron dispatch
-        // the PHI document anywhere on the agency's Telnyx account; a policy
-        // change made after the original send (e.g. international disabled) is
-        // likewise re-applied here. A blocked destination is terminal.
-        const destAllowed = isAllowedDestination(fax.to_number, faxLine.settings);
-        if (!destAllowed.allowed) {
-          await base44.asServiceRole.entities.FaxLog.update(fax.id, {
-            status: 'failed',
-            next_retry_at: null,
-            failure_reason: `Destination blocked at retry time: ${destAllowed.reason}`,
-            retry_claimed_by: null,
-          }).catch(() => {});
-          skippedCount++;
-          continue;
-        }
-        const retryPayload = {
-          connection_id: faxConnectionId,
-          from: faxLine.fromNumber,
-          to: fax.to_number,
-          media_url: fax.document_url,
-          quality: 'high'
-        };
-        // Mask the blind line: present the office fax number as the caller-id name.
-        if (faxLine.faxFromDisplayName) retryPayload.from_display_name = faxLine.faxFromDisplayName;
-        if (webhookUrl) retryPayload.webhook_url = webhookUrl;
-        const telnyxResp = await fetch('https://api.telnyx.com/v2/faxes', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${apiKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(retryPayload)
+        const capability = await createFaxInternalCapability('dispatch_retry', fax.id, claim.claimId);
+        const response = await base44.asServiceRole.functions.invoke('sendBatchFax', {
+          action: 'dispatch_retry',
+          fax_log_id: fax.id,
+          retry_claim_id: claim.claimId,
+          capability,
         });
-
-        if (telnyxResp.ok) {
-          const telnyxData = await telnyxResp.json();
-          // Reset status to queued with new Telnyx fax id — webhook will update from here
-          await base44.asServiceRole.entities.FaxLog.update(fax.id, {
-            status: 'queued',
-            telnyx_fax_id: telnyxData?.data?.id,
-            next_retry_at: null,
-            failure_reason: null,
-            retry_claimed_by: null,
-          });
-          retriedCount++;
-          console.log(`Fax retry attempt ${fax.retry_count} dispatched successfully`);
-        } else {
-          const errText = await telnyxResp.text();
-          console.error('Telnyx error on fax retry:', errText);
-          // Classify the provider rejection instead of treating every non-OK
-          // response as permanent. A 401/403/429/5xx (or a transient-pattern
-          // body) is infrastructure — an outage, a rate limit, a temporarily bad
-          // key — that clears on its own; terminal-failing here destroyed up to a
-          // full batch of queued PHI faxes on their FIRST retry during any Telnyx
-          // blip and emailed every sender a false "could not be delivered" notice.
-          // Reschedule within budget, consuming one attempt (same accounting as
-          // the network-error catch below), and reserve handleRetryExhausted for
-          // a genuinely permanent 4xx rejection or an exhausted budget.
-          const status = telnyxResp.status;
-          const transient = classifyFaxFailure(String(status), errText) === 'transient'
-            || status === 401 || status === 403 || status === 429 || status >= 500;
-          if (transient) {
-            const attempts = Number(fax.retry_count) || 0;
-            const nextCount = attempts + 1;
-            // Mirror the webhook's planFaxRetry budget EXACTLY: it schedules while
-            // the CURRENT retry_count is < maxRetries (willRetry = attempts <
-            // maxRetries), producing a retry_count up to and INCLUDING maxRetries —
-            // which isFaxRetryDue still honors (it drops only retry_count >
-            // maxRetries). Gating on `nextCount < maxRetries` exhausted one attempt
-            // early, so the same fax got fewer retries here than via the webhook.
-            const within = attempts < c.maxRetries;
-            const delayMin = nextRetryDelayMinutes(attempts, cfg, fax.priority || 'normal');
-            await base44.asServiceRole.entities.FaxLog.update(fax.id, {
-              status: 'failed',
-              retry_claimed_by: null,
-              retry_count: nextCount,
-              next_retry_at: within ? new Date(now.getTime() + delayMin * 60000).toISOString() : null,
-            }).catch(() => {});
-            if (!within) await handleRetryExhausted(base44, { ...fax, retry_count: nextCount }, `Telnyx rejected retry: ${errText}`, c.maxRetries, c.notifyOnFinalFailure);
-          } else {
-            await base44.asServiceRole.entities.FaxLog.update(fax.id, { status: 'failed', retry_claimed_by: null }).catch(() => {});
-            await handleRetryExhausted(base44, fax, `Telnyx rejected retry: ${errText}`, c.maxRetries, c.notifyOnFinalFailure);
-          }
+        const data = autoPlainObject(response?.data) ? response.data : response;
+        const nextGeneration = fax.retry_generation + 1;
+        if (!autoPlainObject(data) || data.success !== true || data.total !== 1
+          || data.retry_source_fax_log_id !== fax.id
+          || data.retry_generation !== nextGeneration
+          || ![data.accepted, data.failed, data.unknown]
+            .every((value) => Number.isSafeInteger(value) && value >= 0)
+          || data.accepted + data.failed + data.unknown !== 1) {
+          // The invocation crossed an asynchronous boundary. Leave the exact
+          // claim in place; pollFaxStatuses reconciles it from the durable child
+          // FaxLog and never assumes an interrupted request was not submitted.
+          reconciliation++;
+          continue;
         }
-      } catch (err) {
-        console.error('Network error retrying fax:', err.message);
-        // Transient: the dispatch itself failed, so NOTHING was sent to Telnyx and
-        // no status webhook will ever fire to advance retry_count for this attempt.
-        // Consume a retry attempt HERE — otherwise a persistently-unreachable Telnyx
-        // leaves retry_count at 0, `within` permanently true, and the flat backoff
-        // re-queues this fax at the base interval forever, never reaching
-        // handleRetryExhausted. Reschedule (within budget) using the SAME
-        // config-aware, priority-scaled backoff as the webhook; otherwise exhaust +
-        // notify. Boundary mirrors the webhook's planFaxRetry (willRetry = current
-        // retry_count < maxRetries), which schedules a retry_count up to and
-        // INCLUDING maxRetries; isFaxRetryDue honors those (it drops only
-        // retry_count > maxRetries), so the last allowed send is not stranded.
-        const attempts = Number(fax.retry_count) || 0;
-        const nextCount = attempts + 1;
-        const within = attempts < c.maxRetries;
-        const delayMin = nextRetryDelayMinutes(attempts, cfg, fax.priority || 'normal');
-        await base44.asServiceRole.entities.FaxLog.update(fax.id, {
-          status: 'failed',
-          retry_claimed_by: null,
-          retry_count: nextCount,
-          next_retry_at: within ? new Date(now.getTime() + delayMin * 60000).toISOString() : null,
-        }).catch(() => {});
-        if (!within) await handleRetryExhausted(base44, { ...fax, retry_count: nextCount }, err.message, c.maxRetries, c.notifyOnFinalFailure);
+        if (data.requires_reconciliation === true || Number(data.unknown) > 0) {
+          const settled = await settleAutomaticRetry(entities, claim, fax, {
+            status: 'retried',
+            retry_count: nextGeneration,
+            retry_generation: nextGeneration,
+            next_retry_at: null,
+            failure_reason: 'Automatic retry submission requires provider reconciliation',
+          });
+          if (settled) reconciliation++;
+          continue;
+        }
+        if (Number(data.accepted) === 1) {
+          const settled = await settleAutomaticRetry(entities, claim, fax, {
+            status: 'retried',
+            retry_count: nextGeneration,
+            retry_generation: nextGeneration,
+            next_retry_at: null,
+            failure_reason: `Automatic retry attempt #${nextGeneration} accepted by provider`,
+          });
+          if (settled) retried++;
+          continue;
+        }
+        if (Number(data.failed) === 1) {
+          const withinBudget = nextGeneration < loadedPolicy.policy.maxRetries;
+          const delay = nextRetryDelayMinutes(
+            nextGeneration,
+            loadedPolicy.config,
+            fax.priority || 'normal',
+          );
+          const settled = await settleAutomaticRetry(entities, claim, fax, {
+            status: 'failed',
+            retry_count: withinBudget ? nextGeneration + 1 : nextGeneration,
+            retry_generation: nextGeneration,
+            next_retry_at: withinBudget ? new Date(Date.now() + delay * 60_000).toISOString() : null,
+            ...(!withinBudget ? {
+              // The poller's recoverable notification outbox owns final notices.
+              // Leave the marker false when notification is enabled; never mark
+              // a notice sent before its dedupe-keyed Notification is durable.
+              final_failure_notified: !loadedPolicy.policy.notifyOnFinalFailure,
+              failure_notify_claimed_by: null,
+              failure_notify_claimed_at: null,
+            } : {}),
+            failure_reason: 'Fax provider rejected the automatic retry before acceptance',
+          });
+          if (settled) {
+            rejected++;
+          }
+          continue;
+        }
+        reconciliation++;
+      } catch {
+        // Do not release or retry here. The child broker creates and verifies a
+        // FaxLog before contacting Telnyx, so an invocation failure may represent
+        // a submitted fax. The status poller safely reconciles stale claims.
+        reconciliation++;
       }
     }
 
     return Response.json({
       success: true,
-      retried: retriedCount,
-      skipped: skippedCount,
-      timestamp: now.toISOString()
-    });
-
-  } catch (error) {
-    console.error('autoRetryFailedFaxes error:', error);
+      retried,
+      provider_rejected: rejected,
+      requires_reconciliation: reconciliation,
+      skipped,
+      quarantined,
+      deferred,
+      policy_errors: policyErrors,
+      scanned: rows.length,
+      scan_limit_reached: rows.length === AUTO_RETRY_SCAN_LIMIT,
+      timestamp: new Date().toISOString(),
+    }, { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
+  } catch {
+    console.error('autoRetryFailedFaxes failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });
-
-/**
- * Mark fax as permanently failed and notify user (only called when all retries exhausted).
- */
-async function handleRetryExhausted(base44, fax, reason, maxRetries = 3, notify = true) {
-  if (fax.final_failure_notified || !notify) {
-    await base44.asServiceRole.entities.FaxLog.update(fax.id, {
-      next_retry_at: null, final_failure_notified: true, failure_reason: reason || fax.failure_reason,
-    }).catch(() => {});
-    return;
-  }
-  const MAX_RETRIES = maxRetries;
-
-  await base44.asServiceRole.entities.FaxLog.update(fax.id, {
-    next_retry_at: null,
-    final_failure_notified: true,
-    failure_reason: reason || fax.failure_reason
-  });
-
-  if (!fax.sent_by) return;
-
-  const docName = fax.document_name || 'your document';
-  const recipient = fax.to_name ? `${fax.to_name} (${fax.to_number})` : fax.to_number;
-
-  // In-app notification
-  try {
-    await base44.asServiceRole.entities.Notification.create({
-      user_email: fax.sent_by,
-      title: '❌ Fax Failed — All Retries Exhausted',
-      message: `"${docName}" to ${recipient} could not be delivered after ${MAX_RETRIES} attempts.`,
-      type: 'fax_failed',
-      priority: 'high',
-      metadata: { related_entity: 'FaxLog', related_entity_id: fax.id },
-      is_read: false,
-      // Route paths come from the page name (SendFax); the hyphenated form matches
-      // no route or redirect and dropped the notification's button on PageNotFound.
-      action_url: `/SendFax?fax_id=${fax.id}`
-    });
-  } catch (e) {
-    console.error('Failed to create in-app notification:', e.message);
-  }
-
-  // Email notification
-  try {
-    await base44.asServiceRole.integrations.Core.SendEmail({
-      to: fax.sent_by,
-      from_name: 'PennSync by CareMetric',
-      subject: `Fax failed after ${MAX_RETRIES} attempts`,
-      body: renderBrandedEmail({
-        preheader: `Your fax to ${recipient} could not be delivered after ${MAX_RETRIES} attempts.`,
-        eyebrow: 'Fax failed',
-        tone: 'urgent',
-        title: 'Your fax could not be delivered',
-        intro: `Your fax could not be delivered after ${MAX_RETRIES} automatic retry attempts.`,
-        sections: [
-          {
-            rows: [
-              ['Document', docName],
-              ['Recipient', recipient],
-              ['Last error', fax.failure_reason || reason || 'Unknown'],
-            ],
-          },
-          {
-            note: 'Please verify the recipient fax number and resend manually from the Fax Center.',
-          },
-        ],
-      }),
-    });
-  } catch (e) {
-    console.error('Failed to send final failure email:', e.message);
-  }
-}

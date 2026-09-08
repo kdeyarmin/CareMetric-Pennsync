@@ -13,6 +13,7 @@
 
 import jsPDF from "jspdf";
 import { totalsRow } from "./payrollExport.js";
+import { downloadAuthorityBoundBlob } from '@/lib/downloadBlob';
 
 const NAVY = [33, 58, 118];
 const INK = [17, 26, 43];
@@ -144,5 +145,5 @@ export function generatePayrollPDF(table, { generatedOn = new Date() } = {}) {
 /** Build and trigger a browser download of a payroll PDF. */
 export function downloadPayrollPDF(table, filename, opts = {}) {
   const doc = generatePayrollPDF(table, opts);
-  doc.save(filename);
+  return downloadAuthorityBoundBlob(doc.output('blob'), filename);
 }

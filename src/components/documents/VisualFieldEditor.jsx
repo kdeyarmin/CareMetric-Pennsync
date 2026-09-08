@@ -119,14 +119,10 @@ export default function VisualFieldEditor({ pdfUrl, onFieldsChange, initialField
             onDrop={handleDrop}
           >
             {safePdfUrl ? (
-              <>
-                <iframe
-                  src={safePdfUrl}
-                  title="PDF template preview"
-                  className="absolute inset-0 h-full w-full pointer-events-none bg-white"
-                />
-                <div className="absolute inset-0 bg-white/10" />
-              </>
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-50 p-6 text-center text-sm text-slate-500">
+                Inline PDF preview is unavailable because native viewer controls
+                cannot be revoked during a workspace transition.
+              </div>
             ) : (
               <div className="absolute inset-0 flex items-center justify-center text-slate-500 bg-slate-50">
                 Upload a PDF to place fields.

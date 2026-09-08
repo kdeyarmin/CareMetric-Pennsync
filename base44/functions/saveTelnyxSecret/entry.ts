@@ -163,7 +163,7 @@ Deno.serve(async (req) => {
       user_role: user.role,
       action: 'telnyx_secret_saved',
       details: {
-        api_key_last_four: lastFour(apiKey),
+        api_key_set: true,
         public_key_set: Boolean(update.public_key ?? existing[0]?.public_key),
         messaging_profile_set: Boolean(update.messaging_profile_id ?? existing[0]?.messaging_profile_id),
       },

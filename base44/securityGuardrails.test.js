@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import JSON5 from 'json5';
 
 const HERE = dirname(fileURLToPath(import.meta.url)); // base44/
 const REPO = join(HERE, '..');
@@ -76,7 +77,6 @@ test('ReportsCenter clinical CSV escapes the diagnosis cell', () => {
 //    slipping in unsanitized.
 test('dangerouslySetInnerHTML stays within the reviewed, sanitized allowlist', () => {
   const ALLOW = new Set([
-    'src/pages/SignDocument.jsx',                       // injects via sanitizeHtml() (DOMPurify)
     'src/components/documents/PDFSearchInterface.jsx',  // highlightText() HTML-escapes text + terms
     'src/components/ui/chart.jsx',                       // shadcn: emits CSS from a dev config, not user data
   ]);
@@ -153,14 +153,18 @@ const PHI_READ_SCOPED_ENTITIES = {
 for (const [entity, ownerFields] of Object.entries(PHI_READ_SCOPED_ENTITIES)) {
   test(`${entity} scopes read RLS (PHI not bulk-listable by any authenticated user)`, () => {
     const src = read(`base44/entities/${entity}.jsonc`);
+    const readRule = JSON.stringify(JSON5.parse(src).rls?.read);
     assert.ok(
       /"rls"\s*:/.test(src) && /"read"\s*:/.test(src),
       `${entity} must define an rls.read policy — without one, any authenticated user can list every patient's rows.`,
     );
+    // A hard-deny is a stricter interim posture for disabled/dormant workflows.
+    if (readRule === 'false') return;
     for (const field of ownerFields) {
+      const ruleField = field === 'created_by' ? field : `data.${field}`;
       assert.ok(
-        new RegExp(`"${field}"\\s*:\\s*"\\{\\{user\\.email\\}\\}"`).test(src),
-        `${entity} rls.read must scope by ${field} ({{user.email}}) so non-admin reads stay limited to the caller's own rows.`,
+        readRule.includes(`"${ruleField}":"{{user.email}}"`),
+        `${entity} rls.read must scope by ${ruleField} ({{user.email}}) so non-admin reads stay limited to the caller's own rows.`,
       );
     }
   });
@@ -172,52 +176,24 @@ for (const [entity, ownerFields] of Object.entries(PHI_READ_SCOPED_ENTITIES)) {
 //    rule is admin-only; staff submissions go through submitPersonnelCredential
 //    (which pins status=pending_approval) and decisions through the admin-gated
 //    reviewPersonnelCredential.
-test('PersonnelCredential write RLS is admin-only (no self-approval)', () => {
-  const src = read('base44/entities/PersonnelCredential.jsonc');
-  const writeBlock = src.slice(src.indexOf('"write"'));
-  assert.ok(
-    !/"user_id"\s*:\s*"\{\{user\.email\}\}"/.test(writeBlock),
-    'PersonnelCredential write RLS must NOT include the owner (user_id) — owner write access lets staff self-approve their own credential (status is a single field; RLS cannot restrict it).',
-  );
-  assert.ok(
-    /"user_condition"\s*:\s*\{\s*"role"\s*:\s*"admin"/.test(writeBlock),
-    'PersonnelCredential write RLS must be admin-only.',
-  );
+test('PersonnelCredential mutation RLS is admin-only (no self-approval)', () => {
+  const rls = JSON5.parse(read('base44/entities/PersonnelCredential.jsonc')).rls;
+  for (const operation of ['create', 'update', 'delete']) {
+    const rule = JSON.stringify(rls[operation]);
+    assert.ok(
+      !rule.includes('user_id'),
+      `PersonnelCredential rls.${operation} must NOT include the owner (user_id) — owner mutation access lets staff self-approve their own credential (status is a single field; RLS cannot restrict it).`,
+    );
+    assert.match(
+      rule,
+      /"user_condition":\{"role":"admin"\}/,
+      `PersonnelCredential rls.${operation} must be admin-only.`,
+    );
+  }
   const submitFn = read('base44/functions/submitPersonnelCredential/entry.ts');
   assert.ok(
     /status\s*:\s*'pending_approval'/.test(submitFn),
     "submitPersonnelCredential must pin status to 'pending_approval' on every staff submission.",
-  );
-});
-
-// 9. scheduleSignatureReminders must QUEUE future reminders (it used to create
-//    the signer notifications immediately no matter how far out the reminder
-//    time was). A future reminder becomes a ScheduledSignatureReminder row that
-//    dispatchScheduledSignatureReminders (cron) delivers when due.
-test('scheduleSignatureReminders queues future reminders instead of sending immediately', () => {
-  const src = read('base44/functions/scheduleSignatureReminders/entry.ts');
-  assert.ok(
-    /ScheduledSignatureReminder\.create/.test(src),
-    'scheduleSignatureReminders must create a ScheduledSignatureReminder row for a future reminder time.',
-  );
-  const dispatcher = read('base44/functions/dispatchScheduledSignatureReminders/entry.ts');
-  assert.ok(
-    /status:\s*'sending',\s*claimed_by/.test(dispatcher),
-    'dispatchScheduledSignatureReminders must claim rows (pending->sending with a run token) so overlapping runs cannot double-notify.',
-  );
-  // The queue rows are consumed by a SERVICE-ROLE dispatcher, so direct client
-  // writes must stay admin-only: an owner write rule would let any user queue a
-  // reminder for an arbitrary document_id, bypassing scheduleSignatureReminders'
-  // ownership/role checks (the scheduling function itself writes via service role).
-  const entity = read('base44/entities/ScheduledSignatureReminder.jsonc');
-  const writeBlock = entity.slice(entity.indexOf('"write"'));
-  assert.ok(
-    !/"(created_by|requested_by)"\s*:\s*"\{\{user\.email\}\}"/.test(writeBlock),
-    'ScheduledSignatureReminder write RLS must NOT include an owner rule — a direct client create would make the service-role dispatcher notify signers of a document the caller does not control.',
-  );
-  assert.ok(
-    /"user_condition"\s*:\s*\{\s*"role"\s*:\s*"admin"/.test(writeBlock),
-    'ScheduledSignatureReminder write RLS must be admin-only.',
   );
 });
 
@@ -248,9 +224,7 @@ const SCHEDULER_AUTH_FILES = [
   'base44/functions/autoRetryFailedFaxes/entry.ts',
   'base44/functions/checkAdrDeadlines/entry.ts',
   'base44/functions/checkExpiredInvitations/entry.ts',
-  'base44/functions/checkPendingSignatureRequests/entry.ts',
   'base44/functions/checkStaleFollowUpRequests/entry.ts',
-  'base44/functions/dispatchScheduledSignatureReminders/entry.ts',
   'base44/functions/dispatchScheduledSms/entry.ts',
   'base44/functions/enforceStaffRoleIntegrity/entry.ts',
   'base44/functions/monitorComplianceRisks/entry.ts',
@@ -262,9 +236,7 @@ const SCHEDULER_AUTH_FILES = [
   'base44/functions/processTrainingRenewals/entry.ts',
   'base44/functions/redriveFailedSms/entry.ts',
   'base44/functions/scheduledGuidelineSync/entry.ts',
-  'base44/functions/sendAutomatedSignatureReminders/entry.ts',
   'base44/functions/sendCredentialRenewalReminders/entry.ts',
-  'base44/functions/sendDocumentReminderEmails/entry.ts',
   'base44/functions/sendExpirationNotifications/entry.ts',
   'base44/functions/sendPersonnelExpirationNotifications/entry.ts',
   'base44/functions/sendRenewalReminders/entry.ts',
@@ -291,31 +263,70 @@ for (const file of SCHEDULER_AUTH_FILES) {
   });
 }
 
-test('computeOutcomeMeasures is internal-secret-only and never authorizes from User or Agency claims', () => {
+test('computeOutcomeMeasures accepts only internal or signed dispatcher authority and never User or Agency claims', () => {
   const src = read('base44/functions/computeOutcomeMeasures/entry.ts');
   const dedicatedGate = src.slice(
     src.indexOf('function hasValidInternalSecret'),
     src.indexOf('// computeOutcomeMeasures'),
   );
   const handler = src.slice(src.indexOf('Deno.serve'));
-  assert.ok(/getOutcomeInitialAuthError\(req\)/.test(handler));
+  assert.ok(/getOutcomeInitialAuthError\(req, body\)/.test(handler));
   assert.ok(/INTERNAL_FN_SECRET/.test(dedicatedGate));
+  assert.ok(/verifyOutcomeDispatchProof/.test(dedicatedGate));
   assert.ok(!/auth\.me\(/.test(handler));
   assert.ok(!/account_type|admin_user_ids|admin_email/.test(dedicatedGate));
   assert.ok(/agency_id is required/.test(handler));
   assert.ok(/valid period_start and period_end/.test(handler));
 });
 
-test('outcome metric and KPI direct reads and writes remain service-role-only', () => {
-  for (const entity of ['PatientOutcomeMetric', 'AgencyKPI']) {
+test('the outcome worker and native-workflow dispatcher remain runtime-gated by default', () => {
+  const src = read('base44/functions/computeOutcomeMeasures/entry.ts');
+  const workerConfig = JSON5.parse(read('base44/functions/computeOutcomeMeasures/function.jsonc'));
+  const dispatcher = read('base44/functions/dispatchNightlyOutcomeMeasures/entry.ts');
+  const workflow = JSON5.parse(read('base44/workflows/Nightly Outcome Measure Computation.jsonc'));
+  const gate = src.indexOf('if (!OUTCOME_COMPUTATION_ENABLED)');
+  const client = src.indexOf('createClientFromRequest(req)');
+  const dispatchGate = dispatcher.indexOf('if (!OUTCOME_DISPATCH_ENABLED)');
+  const dispatchClient = dispatcher.indexOf('createClientFromRequest(req)');
+
+  assert.match(src, /Deno\.env\.get\('OUTCOME_PIPELINE_RELEASE'\)/);
+  assert.match(src, /=== 'enabled-v1'/);
+  assert.ok(gate > 0 && gate < client, 'hard pause must return before SDK client creation');
+  assert.equal(workerConfig.name, 'computeOutcomeMeasures');
+  assert.equal(workerConfig.entry, 'entry.ts');
+  assert.deepEqual(workerConfig.automations, [], 'the one-agency worker must explicitly remove its unsafe empty-payload schedule');
+  assert.match(dispatcher, /Deno\.env\.get\('OUTCOME_PIPELINE_RELEASE'\)/);
+  assert.match(dispatcher, /=== 'enabled-v1'/);
+  assert.ok(dispatchGate > 0 && dispatchGate < dispatchClient,
+    'dispatcher pause must return before SDK client creation');
+  assert.equal(workflow.name, 'Nightly Outcome Measure Computation');
+  assert.equal(workflow.trigger?.config?.trigger_type, 'scheduled');
+  assert.equal(workflow.trigger?.config?.schedule_mode, 'recurring');
+  assert.equal(workflow.trigger?.config?.cron_expression, '0 6 * * *');
+  assert.equal(
+    workflow.definition?.do?.[0]?.run_function?.with?.function_name,
+    'dispatchNightlyOutcomeMeasures',
+  );
+  assert.deepEqual(workflow.definition?.do?.[0]?.run_function?.with?.args, {});
+  assert.equal(
+    existsSync(join(REPO, 'base44/functions/dispatchNightlyOutcomeMeasures/function.jsonc')),
+    false,
+    'native workflow ownership requires the legacy function automation config to stay absent',
+  );
+  assert.match(dispatcher, /Object\.keys\(body\)\.length !== 0/);
+  assert.match(dispatcher, /loadScheduledAgencyIds/);
+  assert.match(dispatcher, /requireExactEnabledAgency/);
+  assert.match(dispatcher, /createOutcomeDispatchProof/);
+  assert.match(dispatcher, /asServiceRole\.functions\.invoke\(\s*'computeOutcomeMeasures'/);
+});
+
+test('computed outcome and PDGM rows use hosted operation-specific service-role-only RLS', () => {
+  for (const entity of ['PatientOutcomeMetric', 'AgencyKPI', 'PDGMRateConfig']) {
     const src = read(`base44/entities/${entity}.jsonc`);
-    for (const operation of ['read', 'write']) {
-      const operationStart = src.indexOf(`"${operation}"`);
-      const operationBlock = src.slice(operationStart, operationStart + 150);
-      assert.ok(
-        /"user_condition"\s*:\s*\{\s*"role"\s*:\s*"__service_role_only__"/.test(operationBlock),
-        `${entity} ${operation} RLS must keep computed outcome rows behind service role.`,
-      );
+    assert.doesNotMatch(src, /"write"\s*:/, `${entity} must not use the ignored legacy write key.`);
+    for (const operation of ['create', 'read', 'update', 'delete']) {
+      assert.match(src, new RegExp(`"${operation}"\\s*:\\s*false`),
+        `${entity} ${operation} must deny direct hosted API access.`);
     }
   }
 });
@@ -325,6 +336,11 @@ test('browser outcome surfaces do not read outcome entities or invoke the secret
     existsSync(join(REPO, 'src/functions/computeOutcomeMeasures.js')),
     false,
     'the dormant browser invoker must stay removed; the outcome job is internal-secret-only.',
+  );
+  assert.equal(
+    existsSync(join(REPO, 'src/functions/dispatchNightlyOutcomeMeasures.js')),
+    false,
+    'the global scheduler dispatcher must never be exposed through a browser wrapper.',
   );
   for (const file of [
     'src/components/oasis/OutcomeMeasuresSection.jsx',
@@ -347,14 +363,13 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
   const oasisUploadEntity = read('base44/entities/OASISUpload.jsonc');
   const oasisWriter = read('base44/functions/saveOasisResponses/entry.ts');
   const dashboard = read('src/components/reports/KPIDashboard.jsx');
-  assert.ok(
-    /"write"\s*:\s*\{\s*"user_condition"\s*:\s*\{\s*"role"\s*:\s*"__service_role_only__"/.test(oasisEntity),
-    'OASISAssessment direct writes must stay service-role-only.',
-  );
-  assert.ok(
-    /"write"\s*:\s*\{\s*"user_condition"\s*:\s*\{\s*"role"\s*:\s*"__service_role_only__"/.test(oasisUploadEntity),
-    'OASISUpload direct writes must stay service-role-only.',
-  );
+  for (const [name, source] of [['OASISAssessment', oasisEntity], ['OASISUpload', oasisUploadEntity]]) {
+    assert.doesNotMatch(source, /"write"\s*:/, `${name} must not use the ignored legacy write key.`);
+    for (const operation of ['create', 'update', 'delete']) {
+      assert.match(source, new RegExp(`"${operation}"\\s*:\\s*false`),
+        `${name} ${operation} must deny direct hosted API mutation.`);
+    }
+  }
   assert.ok(/const OASIS_V2_WRITES_PAUSED = true;/.test(oasisWriter));
   const handler = oasisWriter.slice(oasisWriter.indexOf('Deno.serve'));
   assert.ok(
@@ -387,7 +402,19 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
     assert.match(surface, new RegExp(`if \\(!${gate}\\)`));
   }
   const merge = read('src/components/patient/mergePatients.js');
-  assert.match(merge, /SERVER_MERGE_REQUIRED_ENTITIES\s*=\s*\["OASISAssessment",\s*"PatientOutcomeMetric"\]/);
+  const serverMergeRequired = merge.match(
+    /SERVER_MERGE_REQUIRED_ENTITIES\s*=\s*\[([\s\S]*?)\]/,
+  );
+  assert.ok(serverMergeRequired, 'server-only patient references must stay explicit');
+  for (const entity of [
+    'DocumentTenantBinding',
+    'OASISAssessment',
+    'PatientCareTeamAssignment',
+    'PatientNoteHistoryEntry',
+    'PatientOutcomeMetric',
+  ]) {
+    assert.match(serverMergeRequired[1], new RegExp(`"${entity}"`));
+  }
   assert.match(merge, /PATIENT_MERGE_PAUSED_MESSAGE/);
   const mergeBoundary = merge.slice(
     merge.indexOf('export async function mergePatientInto'),
@@ -419,83 +446,89 @@ test('OASIS writes and browser KPI reporting remain paused behind server-owned t
   }
 });
 
-// 12. notifySignerOfPackage is an unauthenticated entity trigger that mints a
-//     30-day signer-portal bearer token. It must claim the signer_notified_at
-//     idempotency marker before doing that privileged work, so a trigger
-//     re-fire (or a re-POST of a real package id) cannot re-mint and re-email
-//     portal links indefinitely.
-test('notifySignerOfPackage claims the signer_notified_at idempotency marker', () => {
-  const src = read('base44/functions/notifySignerOfPackage/entry.ts');
-  assert.ok(
-    /if \(pkg\.signer_notified_at\)/.test(src),
-    'notifySignerOfPackage must skip packages whose signer has already been notified.',
-  );
-  assert.ok(
-    /DocumentPackage\.update\(pkg\.id,\s*\{\s*signer_notified_at:/.test(src),
-    'notifySignerOfPackage must claim signer_notified_at before minting the signer token.',
-  );
-  const entity = read('base44/entities/DocumentPackage.jsonc');
-  assert.ok(
-    /"signer_notified_at"/.test(entity),
-    'DocumentPackage must define the signer_notified_at idempotency field.',
-  );
-});
+// 12-14. Residual document-signing capabilities remain static early 503s.
+// Five rebuilt brokers retain dormant implementations behind fail-closed source
+// gates and have a separate contract below.
+const HARD_PAUSED_CAPABILITY_FUNCTIONS = [
+  'submitDocumentSignatures',
+  'notifySignerOfPackage',
+  'sendSignatureReminder',
+  'sendAutomatedSignatureReminders',
+  'checkPendingSignatureRequests',
+  'sendDocumentReminderEmails',
+  'archiveSignedDocument',
+  'bulkCreateDocumentPackages',
+  'generateDocumentPackageFromTemplate',
+  'generateSignatureCertificate',
+  'signatureIntegrity',
+  'stampSignatureOnPDF',
+  'embedAnnotationsToPDF',
+  'notifyAdminOfSignedDocument',
+  'onDocumentSigned',
+];
 
-// 13. validateSignerToken is a public endpoint whose access tracking stores
-//     caller-controlled values (x-forwarded-for, user-agent). The arrays must
-//     stay capped so a client cycling spoofed values cannot grow the token
-//     record without bound.
-test('validateSignerToken caps its ip/user-agent access tracking', () => {
-  const src = read('base44/functions/validateSignerToken/entry.ts');
-  assert.ok(
-    /MAX_TRACKED_ENTRIES/.test(src) && /\.slice\(-MAX_TRACKED_ENTRIES\)/.test(src),
-    'validateSignerToken must cap ip_addresses/user_agents (slice(-MAX_TRACKED_ENTRIES)) — they store caller-controlled header values on a public endpoint.',
-  );
-});
+for (const functionName of HARD_PAUSED_CAPABILITY_FUNCTIONS) {
+  test(`${functionName} is a no-store early 503 with no privileged continuation`, () => {
+    const src = read(`base44/functions/${functionName}/entry.ts`);
+    assert.match(src, /Deno\.serve\(\(\)\s*=>\s*Response\.json/);
+    assert.match(src, /status:\s*503/);
+    assert.match(src, /['"]Cache-Control['"]:\s*['"]no-store['"]/);
+    assert.match(src, /Pragma:\s*['"]no-cache['"]/);
+    assert.doesNotMatch(
+      src,
+      /createClient(?:FromRequest)?|\breq\.(?:json|text|arrayBuffer|formData)\(|auth\.me\(|asServiceRole|entities\.|integrations\.|functions\.invoke|UploadFile|SendEmail|pdf_url|portalLink/,
+      `${functionName} must fail before SDK construction, body parsing, data access, upload, or link release.`,
+    );
+  });
+}
 
-// 13b. Signer tokens must snapshot package document membership at mint so a
-//      later add/swap of DocumentSignature ids cannot expand the PHI the
-//      public signing link can read or sign.
-test('signer tokens snapshot document_ids at mint and intersect on validate/submit', () => {
-  const mint = read('base44/functions/generateSignerToken/entry.ts');
-  const validate = read('base44/functions/validateSignerToken/entry.ts');
-  const submit = read('base44/functions/submitSignerSignature/entry.ts');
-  const entity = read('base44/entities/DocumentPackageToken.jsonc');
-  assert.ok(
-    /document_ids:\s*mintedDocumentIds/.test(mint) || /document_ids:\s*mintedDocumentIds/.test(mint.replace(/\s+/g, ' ')),
-    'generateSignerToken must persist document_ids from the package at mint time.',
-  );
-  assert.ok(
-    /document_ids/.test(mint) && /document_signatures/.test(mint),
-    'generateSignerToken must snapshot package document_signatures into document_ids.',
-  );
-  assert.ok(
-    /tokenRecord\.document_ids/.test(validate) && /snapshot/.test(validate),
-    'validateSignerToken must intersect live membership with the mint-time document_ids snapshot.',
-  );
-  // Empty arrays are valid snapshots (package had no docs at mint). Treating
-  // `snapshot.length > 0` as "no snapshot" would expand PHI if docs are added later.
-  assert.ok(
-    !/snapshot\s*&&\s*snapshot\.length\s*>\s*0/.test(validate)
-    && !/snapshot\s*&&\s*snapshot\.length\s*>\s*0/.test(submit),
-    'Empty document_ids snapshots must still intersect (do not fall back to live membership).',
-  );
-  assert.ok(
-    /snapshot\s*!==\s*null/.test(validate) && /snapshot\s*!==\s*null/.test(submit),
-    'validate/submit must distinguish absent snapshot from empty array via !== null.',
-  );
-  assert.ok(
-    /tokenRecord\.document_ids/.test(submit) && /allowedIds/.test(submit),
-    'submitSignerSignature must require document_id ∈ snapshot ∩ live package membership.',
-  );
-  assert.ok(
-    /"document_ids"/.test(entity),
-    'DocumentPackageToken must define the document_ids snapshot field.',
-  );
-});
+const DORMANT_SIGNATURE_BROKERS = {
+  validateSignerToken: { releaseMarker: 'PUBLIC_SIGNATURE_RELEASE_ENABLED' },
+  submitSignerSignature: { releaseMarker: 'PUBLIC_SIGNATURE_RELEASE_ENABLED' },
+  generateSignerToken: { releaseMarker: 'PUBLIC_SIGNATURE_RELEASE_ENABLED' },
+  scheduleSignatureReminders: {
+    releaseMarker: 'SIGNATURE_REMINDER_RELEASE_ENABLED',
+    proofMarker: 'SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN',
+  },
+  dispatchScheduledSignatureReminders: {
+    releaseMarker: 'SIGNATURE_REMINDER_DISPATCH_ENABLED',
+    proofMarker: 'SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN',
+  },
+};
+
+for (const [functionName, { releaseMarker, proofMarker }] of Object.entries(DORMANT_SIGNATURE_BROKERS)) {
+  test(`${functionName} retains a dormant implementation behind its early release gate`, () => {
+    const src = read(`base44/functions/${functionName}/entry.ts`);
+    assert.match(src, new RegExp(`const ${releaseMarker} = false;`));
+    if (proofMarker) assert.match(src, new RegExp(`const ${proofMarker} = false;`));
+    assert.match(src, /npm:\@base44\/sdk\@0\.8\.46/);
+    const handlerIndex = src.indexOf('Deno.serve(async (req) =>');
+    const guardIndex = src.indexOf(`if (!${releaseMarker}`, handlerIndex);
+    const clientIndex = src.indexOf('createClientFromRequest(req)', handlerIndex);
+    assert.notEqual(handlerIndex, -1);
+    assert.notEqual(guardIndex, -1);
+    assert.notEqual(clientIndex, -1);
+    assert.ok(guardIndex < clientIndex, `${functionName} must gate before SDK construction`);
+    if (proofMarker) {
+      const proofDeclarationIndex = src.indexOf(`const ${proofMarker} = false;`);
+      const proofGuardIndex = src.indexOf(`!${proofMarker}`, guardIndex);
+      assert.ok(proofDeclarationIndex < handlerIndex, `${functionName} must declare its atomic proof gate before the handler`);
+      assert.ok(proofGuardIndex > guardIndex && proofGuardIndex < clientIndex,
+        `${functionName} must require atomic uniqueness proof before SDK construction`);
+    }
+    for (const bodyCall of ['req.text()', 'req.formData()', 'req.json()', 'req.arrayBuffer()']) {
+      const bodyIndex = src.indexOf(bodyCall, handlerIndex);
+      if (bodyIndex !== -1) assert.ok(guardIndex < bodyIndex, `${functionName} must gate before ${bodyCall}`);
+    }
+    const guardedPrefix = src.slice(guardIndex, clientIndex);
+    assert.match(guardedPrefix, /status:\s*503/);
+    assert.match(guardedPrefix, /['"]Cache-Control['"]:\s*['"]no-store['"]/);
+    assert.match(guardedPrefix, /Pragma:\s*['"]no-cache['"]/);
+  });
+}
 
 // Codex P1/P2 regression locks (PR review on deep-app-review).
-test('Codex review: SoR and FaxRetry stay in scope across loops', () => {
+test('Codex review: SoR and automatic fax retry stay in scope across loops', () => {
   const monitor = read('base44/functions/monitorComplianceRisks/entry.ts');
   const autoRetry = read('base44/functions/autoRetryFailedFaxes/entry.ts');
   assert.ok(
@@ -506,29 +539,14 @@ test('Codex review: SoR and FaxRetry stay in scope across loops', () => {
     /if\s*\(\s*agencyName\s*\)\s*\{[\s\S]*?sorCache\.set\(\s*key\s*,\s*false\s*\)/.test(monitor),
     'monitorComplianceRisks must fail closed on keyed AgencySettings miss.',
   );
-  assert.ok(
-    /dueFaxes\.push\(\s*\{\s*fax\s*,\s*cfg\s*,\s*c\s*\}\s*\)/.test(autoRetry)
-    && /for\s*\(\s*const\s*\{\s*fax\s*,\s*cfg\s*,\s*c\s*\}\s*of\s*dueFaxes\s*\)/.test(autoRetry),
-    'autoRetryFailedFaxes must carry cfg/c into the dispatch loop.',
-  );
+  assert.ok(/strictAutomaticRetryCandidate\(fax, now\)/.test(autoRetry)
+    && /loadAutomaticRetryPolicy\(entities, fax\)/.test(autoRetry)
+    && /action:\s*'dispatch_retry'/.test(autoRetry),
+  'autoRetryFailedFaxes must validate each exact source and policy before delegated dispatch.');
 });
 
-test('Codex review: follow-up claim before finalize; invitation fail-closed', () => {
-  const followUp = read('base44/functions/submitFollowUpResponse/entry.ts');
+test('Codex review: invitation actions fail closed without an agency', () => {
   const userMgmt = read('base44/functions/userManagement/entry.ts');
-  assert.ok(
-    /submit_claimed_by:\s*claimToken/.test(followUp)
-    && /Referral\.update/.test(followUp)
-    && /submitted_at:\s*now/.test(followUp),
-    'submitFollowUpResponse must claim, merge Referral, then set terminal fields.',
-  );
-  const claimIdx = followUp.indexOf('submit_claimed_by: claimToken');
-  const mergeIdx = followUp.indexOf('Referral.update');
-  const terminalIdx = followUp.indexOf("status: 'delivered'");
-  assert.ok(
-    claimIdx >= 0 && mergeIdx > claimIdx && terminalIdx > mergeIdx,
-    'Terminal follow-up fields must be stamped after the Referral merge.',
-  );
   assert.ok(
     /async function resendInvitation[\s\S]*account_type === 'agency_admin' && !String\(currentUser\.agency_name/.test(userMgmt)
     && /async function cancelInvitation[\s\S]*account_type === 'agency_admin' && !String\(currentUser\.agency_name/.test(userMgmt),
@@ -536,13 +554,14 @@ test('Codex review: follow-up claim before finalize; invitation fail-closed', ()
   );
 });
 
-test('Codex review: scheduleSms auth, digests, fax sender agency, audit cohort', () => {
+test('Codex review: scheduleSms auth, digests, fax authority, audit pause', () => {
   const sms = read('base44/functions/scheduleSms/entry.ts');
   const digest = read('base44/functions/sendCredentialRenewalReminders/entry.ts');
   const batch = read('base44/functions/sendBatchFax/entry.ts');
   const retry = read('base44/functions/retryFailedFax/entry.ts');
   const timesheet = read('base44/functions/submitTimesheet/entry.ts');
   const audit = read('base44/functions/runSecurityAudit/entry.ts');
+  const smsConsent = read('base44/functions/manageSmsConsent/entry.ts');
   assert.ok(
     /canAccessPatient\(match\)/.test(sms),
     'scheduleSms must authorize every phone-resolved patient before linking.',
@@ -552,40 +571,31 @@ test('Codex review: scheduleSms auth, digests, fax sender agency, audit cohort',
     && /never unscoped/.test(digest),
     'Agency credential digests must exclude unscoped items.',
   );
-  assert.ok(
-    /senderAgency/.test(batch) && /senderEmail/.test(batch),
-    'sendBatchFax must resolve AgencySettings from the attributed sender.',
-  );
-  assert.ok(
-    /senderAgency/.test(retry) && /originalFax\.sent_by/.test(retry),
-    'retryFailedFax must resolve fax settings from the original sender agency.',
-  );
+  assert.ok(/AgencyMembership\.filter/.test(batch)
+    && /DocumentTenantBinding\.filter/.test(batch)
+    && /TelecomDestinationBinding\.filter/.test(batch)
+    && /CreateFileSignedUrl/.test(batch),
+  'sendBatchFax must re-prove tenant, private document, and sender authority.');
+  assert.ok(/functions\.invoke\('sendAuthorizedReferralFax'/.test(retry)
+    && /retry_fax_log_id:\s*faxLogId/.test(retry),
+  'retryFailedFax must delegate exact retry authority to the referral fax broker.');
   assert.ok(
     /legacy\.length === 1/.test(timesheet) && /VisitPointConfig/.test(timesheet),
     'submitTimesheet must adopt a single unscoped VisitPointConfig legacy row.',
   );
   assert.ok(
-    /filter\(\{\s*agency_name:\s*agency/.test(audit)
-    && /filter\(\{\s*created_by:\s*email/.test(audit)
+    /Deno\.serve\(\(\)\s*=>\s*Response\.json/.test(audit)
     && /status:\s*503/.test(audit)
-    && /status:\s*422/.test(audit),
-    'runSecurityAudit must query agency cohort first and fail on incomplete/empty reads.',
-  );
-});
-
-// 14. submitDocumentSignatures must authorize with the platform's real role
-//     model (role 'admin' + account_type agency/super admin). 'clinician' and
-//     'nurse_manager' are not role values in this platform — branches keyed on
-//     them silently never fire, masking the intended authorization behavior.
-test('submitDocumentSignatures uses the real admin role model', () => {
-  const src = read('base44/functions/submitDocumentSignatures/entry.ts');
-  assert.ok(
-    !/===\s*'clinician'|===\s*'nurse_manager'/.test(src),
-    "submitDocumentSignatures must not gate on nonexistent role values ('clinician'/'nurse_manager').",
+    && /Cache-Control['"]?:\s*['"]no-store['"]/.test(audit)
+    && !/createClientFromRequest|auth\.me\(|req\.(?:json|text|arrayBuffer|formData)\(|entities\.|integrations\./.test(audit),
+    'runSecurityAudit must fail before SDK construction, auth, request parsing, data reads, or AI calls.',
   );
   assert.ok(
-    /account_type === 'agency_admin'/.test(src) && /account_type === 'super_admin'/.test(src),
-    'submitDocumentSignatures must accept the agency_admin/super_admin account types like the rest of the backend.',
+    /isProtectedSuperAdmin\(user\)/.test(smsConsent)
+    && /isProtectedSuperAdmin\(freshUser\)/.test(smsConsent)
+    && /SUPER_ADMIN_EMAIL/.test(smsConsent)
+    && !/user\.account_type|user\.agency_name/.test(smsConsent),
+    'manageSmsConsent must never derive global consent authority from mutable User claims.',
   );
 });
 
@@ -593,7 +603,7 @@ test('submitDocumentSignatures uses the real admin role model', () => {
 //     through the SHARED isAllowedDestination helper (generated from the
 //     frontend costControls.js). Hand-maintained inline copies are exactly how
 //     the malformed-+1 bypass drifted in before.
-for (const fn of ['sendSms', 'sendFax', 'sendBatchFax', 'startMaskedCall', 'dispatchScheduledSms', 'autoRetryFailedFaxes']) {
+for (const fn of ['sendSms', 'sendFax', 'sendBatchFax', 'startMaskedCall', 'dispatchScheduledSms']) {
   test(`${fn} consumes the shared isAllowedDestination helper`, () => {
     const src = read(`base44/functions/${fn}/entry.ts`);
     assert.ok(
@@ -608,10 +618,10 @@ for (const fn of ['sendSms', 'sendFax', 'sendBatchFax', 'startMaskedCall', 'disp
 }
 
 // 16. Telehealth guest join tokens are bearer capabilities for live A/V access.
-//     They must be stored HASHED at rest (join_token_hash) — the create flows
-//     must never persist the plaintext token (the old invite_link pattern), and
-//     the backend must validate guests against the hash.
-test('telehealth join tokens are hashed at rest, never persisted in plaintext', () => {
+//     The dormant backend must retain hashed-at-rest validation, while every
+//     browser creation/join surface stays static until server-owned session and
+//     provider-room authority is hosted.
+test('telehealth join tokens stay hashed while browser session flows remain paused', () => {
   const backend = read('base44/functions/createTelehealthToken/entry.ts');
   assert.ok(
     /join_token_hash/.test(backend),
@@ -625,14 +635,18 @@ test('telehealth join tokens are hashed at rest, never persisted in plaintext', 
   for (const file of ['src/pages/Telehealth.jsx', 'src/components/telehealth/PatientTelehealthPanel.jsx']) {
     const src = read(file);
     assert.ok(
-      !/invite_link:/.test(src),
-      `${file} must not persist a plaintext invite_link on session create — store join_token_hash and keep the raw link in-tab (rememberJoinLink).`,
+      /TELEHEALTH_UNAVAILABLE_MESSAGE/.test(src),
+      `${file} must render the explicit telehealth migration boundary.`,
     );
     assert.ok(
-      /join_token_hash:\s*await hashJoinToken/.test(src),
-      `${file} must persist only the hashed join token at session create.`,
+      !/base44\.entities\.TelehealthSession|join_token_hash:|invite_link:|base44\.|useQuery|useMutation/.test(src),
+      `${file} must not read, create, or update caller-shaped sessions while migration is paused.`,
     );
   }
+
+  const joinPage = read('src/pages/JoinTelehealth.jsx');
+  assert.ok(/TELEHEALTH_UNAVAILABLE_MESSAGE/.test(joinPage));
+  assert.ok(!/TelehealthCall|PreJoinDeviceCheck|VideoRoom|useSearchParams/.test(joinPage));
 });
 
 // 17. Operational logs from backend service-role functions must not include
@@ -704,8 +718,8 @@ test('functions with agency_name scope gates refuse agency_admin without agency_
 
 // A direct provider Messages-API call must send a REAL model id, never the
 // Base44 InvokeLLM sentinel 'automatic' (which 404s on api.anthropic.com and
-// made every SOAP-note / fax-cover-sheet generation silently fail).
-for (const fn of ['transcribeAndGenerateSOAPNote', 'generateFaxCoverPage']) {
+// made SOAP-note generation silently fail).
+for (const fn of ['transcribeAndGenerateSOAPNote']) {
   test(`${fn} does not send model:'automatic' to the direct Anthropic API`, () => {
     const src = read(`base44/functions/${fn}/entry.ts`);
     assert.ok(/api\.anthropic\.com/.test(src), `${fn} is expected to call the Anthropic Messages API directly.`);
@@ -716,10 +730,18 @@ for (const fn of ['transcribeAndGenerateSOAPNote', 'generateFaxCoverPage']) {
   });
 }
 
+test('generateFaxCoverPage formats deterministically without sending PHI to an AI provider', () => {
+  const src = read('base44/functions/generateFaxCoverPage/entry.ts');
+  assert.ok(/function buildFaxCoverPage\(/.test(src));
+  assert.ok(/FAX_CONFIDENTIALITY_NOTICE/.test(src));
+  assert.ok(!/api\.anthropic\.com|ANTHROPIC_API_KEY|InvokeLLM/.test(src));
+});
+
 // gradeTrainingAttempt must derive the pass mark from the ADMIN-OWNED course,
-// not solely from the learner-writable TrainingAssignment row — otherwise a
-// learner sets passing_score_required:1 and mints a compliance certificate.
-test('gradeTrainingAttempt derives the pass mark from the course, not the learner-writable assignment', () => {
+// not solely from TrainingAssignment. Direct assignment writes are now closed,
+// but the independent course floor preserves integrity if hosted policy drifts
+// or a legacy assignment contains a weakened threshold.
+test('gradeTrainingAttempt derives the pass mark from the course, not solely from the assignment', () => {
   const src = read('base44/functions/gradeTrainingAttempt/entry.ts');
   assert.ok(
     /Number\(course\?\.passing_score/.test(src) && /Math\.max\(courseFloorScore/.test(src),
@@ -804,32 +826,25 @@ test('dispatchScheduledSms resolves agency config per row', () => {
 // autoRetryFailedFaxes must classify a non-OK Telnyx response instead of
 // terminal-failing every queued fax on the first provider error, and must
 // re-gate the stored destination through isAllowedDestination.
-test('autoRetryFailedFaxes classifies provider errors and re-gates the destination', () => {
+test('autoRetryFailedFaxes claims only strict terminal private attempts and delegates dispatch', () => {
   const src = read('base44/functions/autoRetryFailedFaxes/entry.ts');
   assert.ok(
-    /classifyFaxFailure\(String\(status\), errText\)/.test(src),
-    'autoRetryFailedFaxes must classify the non-OK Telnyx status (transient 401/403/429/5xx reschedule) rather than always exhausting.',
+    /provider_submission_state === 'accepted'/.test(src)
+    && /provider_terminal_status === 'failed'/.test(src)
+    && /row\.document_url == null/.test(src),
+    'autoRetryFailedFaxes must require accepted, signed-terminal, private-document provenance.',
   );
   assert.ok(
-    /isAllowedDestination\(fax\.to_number, faxLine\.settings\)/.test(src),
-    'autoRetryFailedFaxes must re-validate the stored to_number against the cost-control allowlist before dispatch.',
+    /FaxLog\.updateMany/.test(src) && /action:\s*'dispatch_retry'/.test(src),
+    'autoRetryFailedFaxes must atomically claim then delegate to the authority/destination broker.',
   );
 });
 
-// AI report generators must assertPatientAccess after the patient load so a
-// facility admin (bare role:admin RLS is platform-wide) cannot pull another
-// agency's chart into an LLM prompt.
-for (const file of [
-  'base44/functions/generateDischargeSummary/entry.ts',
-  'base44/functions/generateMessageSuggestions/entry.ts',
-  'base44/functions/generatePatientEducation/entry.ts',
-  'base44/functions/summarizeMessageThread/entry.ts',
-  'base44/functions/generateFaxCoverPage/entry.ts',
-  'base44/functions/messagingAssistant/entry.ts',
-  'base44/functions/getPatientContext/entry.ts',
-  'base44/functions/processCompletedVisit/entry.ts',
-]) {
-  test(`${file} gates patient PHI with assertPatientAccess`, () => {
+// Every directly authorized retained AI implementation must assertPatientAccess
+// after the patient load so a facility admin (bare role:admin RLS is
+// platform-wide) cannot pull another agency's chart into an LLM prompt.
+for (const file of ['base44/functions/generateFaxCoverPage/entry.ts']) {
+  test(`${file} retained implementation gates patient PHI with assertPatientAccess`, () => {
     const src = read(file);
     assert.ok(
       /async function assertPatientAccess\(/.test(src),
@@ -841,6 +856,84 @@ for (const file of [
     );
   });
 }
+
+// These generators cannot retain a safe implementation until their output
+// entities have immutable tenant provenance and a reviewed brokered lifecycle.
+// Their route-level pause must remain before SDK construction, chart reads,
+// model invocation, or sink access.
+for (const [file, pauseCode] of [
+  [
+    'base44/functions/generateDischargeSummary/entry.ts',
+    'DISCHARGE_SUMMARY_GENERATION_PAUSED',
+  ],
+  [
+    'base44/functions/generatePatientEducation/entry.ts',
+    'PATIENT_EDUCATION_GENERATION_PAUSED',
+  ],
+]) {
+  test(`${file} remains statically quarantined before any PHI access or side effect`, () => {
+    const src = read(file);
+    assert.match(src, new RegExp(`code:\\s*['"]${pauseCode}['"]`));
+    assert.match(src, /status:\s*503/);
+    assert.match(src, /'Cache-Control':\s*'no-store'/);
+    assert.doesNotMatch(
+      src,
+      /createClientFromRequest|@base44\/sdk|asServiceRole|\.entities\b|InvokeLLM|\bfetch\s*\(/,
+    );
+  });
+}
+
+// The two purpose-bound message AI brokers use their v2 tenant authority and
+// exact PatientCareTeamAssignment provenance rather than the older helper
+// signature. The dynamic message broker contract exercises these dormant paths.
+for (const file of [
+  'base44/functions/generateMessageSuggestions/entry.ts',
+  'base44/functions/summarizeMessageThread/entry.ts',
+]) {
+  test(`${file} gates patient PHI with exact secure-message assignment authority`, () => {
+    const src = read(file);
+    assert.match(src, /const SECURE_MESSAGE_DOMAIN_PAUSED = true;/);
+    assert.match(src, /async function requirePatientAccess\(/);
+    assert.match(src, /entities\.PatientCareTeamAssignment\.filter\(/);
+    assert.match(src, /await requirePatientAccess\(entities,\s*patient,\s*authority\);/);
+    assert.match(src, /assignment\.version % 2 !== 1/);
+    assert.match(src, /Date\.parse\(assignment\.updated_date\) < Date\.parse\(assignment\.last_transition_at\)/);
+  });
+}
+
+test('messagingAssistant remains a static purpose-bound retirement boundary', () => {
+  const src = read('base44/functions/messagingAssistant/entry.ts');
+  assert.match(src, /const SECURE_MESSAGE_DOMAIN_PAUSED = true;/);
+  assert.match(src, /if \(SECURE_MESSAGE_DOMAIN_PAUSED\) return secureMessageUnavailable\(\);/);
+  assert.match(src, /code:\s*'secure_message_purpose_broker_required'/);
+  assert.doesNotMatch(src, /createClientFromRequest\s*\(/);
+  assert.doesNotMatch(src, /\b_req\.(?:json|text|arrayBuffer|formData)\(/);
+});
+
+test('processCompletedVisit delegates PHI reads and Visit writes through updateAuthorizedVisit', () => {
+  const src = read('base44/functions/processCompletedVisit/entry.ts');
+  const markerIndex = src.indexOf('const PROCESS_COMPLETED_VISIT_PAUSED = true;');
+  const handlerIndex = src.indexOf('Deno.serve(async (req) =>');
+  const guardIndex = src.indexOf('if (PROCESS_COMPLETED_VISIT_PAUSED)', handlerIndex);
+  const clientIndex = src.indexOf('createClientFromRequest(req)', handlerIndex);
+  assert.ok(markerIndex !== -1 && markerIndex < handlerIndex
+    && handlerIndex < guardIndex && guardIndex < clientIndex,
+  'processCompletedVisit must pause before SDK construction');
+  assert.match(src.slice(guardIndex, clientIndex), /status:\s*503/);
+  assert.match(src, /base44\.functions\.fetch\('\/updateAuthorizedVisit'/);
+  for (const action of ['read_ai_processing_source', 'claim_ai_processing', 'publish_ai_processing']) {
+    assert.match(src, new RegExp(`action: '${action}'`));
+  }
+  assert.doesNotMatch(src, /asServiceRole\.entities\.(?:Visit|Patient)\b/);
+});
+
+test('getPatientContext is a static permanent-retirement boundary', () => {
+  const src = read('base44/functions/getPatientContext/entry.ts');
+  assert.match(src, /status:\s*410/);
+  assert.match(src, /code:\s*'legacy_patient_context_retired'/);
+  assert.match(src, /reason:\s*'purpose_bound_immutable_tenant_read_brokers_required'/);
+  assert.doesNotMatch(src, /createClientFromRequest|\.auth\.|\.entities\.|asServiceRole|req\.|await\s+/);
+});
 
 // getDashboardData must ship recent completed visits (and care plans) so
 // RealTimePatientAlerts can compute overdue / high-risk / goal alerts — today's
@@ -919,4 +1012,29 @@ test('HighRiskPatientsWidget uses getScopedPatientAlerts', () => {
     !/overall_risk_level/.test(src),
     'HighRiskPatientsWidget must not filter on non-schema overall_risk_level.',
   );
+});
+
+test('broker-only Document binding v2 keeps storage private and signs only exact downloads', () => {
+  const document = JSON5.parse(read('base44/entities/Document.jsonc'));
+  const binding = JSON5.parse(read('base44/entities/DocumentTenantBinding.jsonc'));
+  const create = read('base44/functions/createAuthorizedDocument/entry.ts');
+  const get = read('base44/functions/getAuthorizedDocument/entry.ts');
+  const list = read('base44/functions/listAuthorizedDocuments/entry.ts');
+
+  assert.equal(document.required.includes('file_url'), false);
+  assert.equal(document.rls.read, false);
+  assert.equal(document.rls.create, false);
+  assert.deepEqual(binding.properties.storage_mode.enum, ['private']);
+  assert.equal(binding.properties.version.default, 2);
+  assert.equal(binding.required.includes('file_uri'), true);
+  assert.equal(Object.hasOwn(binding.properties, 'file_url'), false);
+
+  assert.match(create, /\.UploadPrivateFile\s*\(/);
+  assert.doesNotMatch(create, /\.UploadFile\s*\(/);
+  assert.match(create, /storage_mode:\s*'private'/);
+  assert.match(create, /version:\s*2/);
+  assert.match(get, /CreateFileSignedUrl\s*\(/);
+  assert.match(get, /SIGNED_URL_TTL_SECONDS\s*=\s*60/);
+  assert.match(get, /'Cache-Control':\s*'no-store'/);
+  assert.doesNotMatch(list, /CreateFileSignedUrl\s*\(/);
 });

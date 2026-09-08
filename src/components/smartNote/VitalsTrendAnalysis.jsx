@@ -1,7 +1,6 @@
 import { useMemo } from "react";
-import { base44 } from "@/api/base44Client";
 import { formatLocalDate } from "@/lib/dateLocal";
-import { useQuery } from "@tanstack/react-query";
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -9,9 +8,11 @@ import { AlertCircle, TrendingUp, Activity } from "lucide-react";
 
 export default function VitalsTrendAnalysis({ patientId }) {
   // Fetch all visits for the patient
-  const { data: visits = [], isLoading } = useQuery({
-    queryKey: ["patient-visits", patientId, "all", 100],
-    queryFn: () => patientId ? base44.entities.Visit.filter({ patient_id: patientId }, "-visit_date", 100) : Promise.resolve([]),
+  const { data: visits = [], isLoading } = useAuthorizedVisits({
+    patientId,
+    purpose: 'vitals_trend',
+    sort: '-visit_date',
+    limit: 100,
     enabled: !!patientId,
   });
 

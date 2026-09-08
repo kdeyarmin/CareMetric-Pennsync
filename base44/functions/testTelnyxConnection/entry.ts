@@ -20,6 +20,33 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 const isSet = (v) => typeof v === 'string' && v.trim() !== '';
 
 const PROBE_TIMEOUT_MS = 8000;
+const CREDENTIAL_STORE_UNAVAILABLE = 'credential_store_unavailable';
+
+function storedCredentialCheck(creds, {
+  id,
+  label,
+  value,
+  missingStatus = 'warn',
+  configuredDetail,
+  missingDetail,
+}) {
+  if (creds?.readError) {
+    return {
+      id,
+      label,
+      status: 'fail',
+      category: CREDENTIAL_STORE_UNAVAILABLE,
+      detail: 'Configuration status is unavailable because the credential store could not be read. Retry; no traffic was sent.',
+    };
+  }
+  return {
+    id,
+    label,
+    status: value ? 'ok' : missingStatus,
+    category: value ? 'configured' : 'not_configured',
+    detail: value ? configuredDetail : missingDetail,
+  };
+}
 
 // <<<BEGIN SHARED HELPER: resolveTelnyxCreds — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveTelnyxCreds(base44) {
@@ -38,17 +65,17 @@ async function resolveTelnyxCreds(base44) {
       || list.find((r) => r && pick(r.api_key))
       || list[0]
       || null;
-  } catch (err) {
+  } catch {
     // Do NOT collapse this into "not configured". A failed read (this invocation
     // path carries no service token, entity 404, 401/403, rate limit, platform
     // blip) is a completely different problem from an unconfigured integration,
     // and reporting them identically is what sent operators chasing a credential
     // they had already entered correctly.
-    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    readError = 'credential_store_unavailable';
     // The catch used to be bare, so an unreadable credential row left no
     // server-side breadcrumb at all — the only signal was a misleading
     // "not configured" reply. Log it; unattended runs have nowhere else to say so.
-    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
   }
   const rec = record || {};
   return {
@@ -69,7 +96,7 @@ async function resolveTelnyxCreds(base44) {
 function telnyxCredsMessage(creds, what) {
   const label = what || 'credentials';
   if (creds && creds.readError) {
-    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+    return `Could not read Telnyx ${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.`;
   }
   return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
 }
@@ -131,24 +158,42 @@ async function probeTelnyxApi(apiKey) {
     const resp = await fetch(url, {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
+      // A credential-bearing diagnostic must never follow redirects.
+      redirect: 'error',
       signal: controller.signal,
     });
     const latencyMs = Date.now() - startedAt;
-    await resp.text().catch(() => '');
+    try { await resp.body?.cancel(); } catch { /* no response body to discard */ }
     if (resp.status === 401 || resp.status === 403) {
-      return { status: 'fail', detail: `Telnyx rejected the credentials (HTTP ${resp.status}). Check the API key.`, latencyMs };
+      return {
+        status: 'fail',
+        category: 'authentication_rejected',
+        detail: `Telnyx rejected the credentials (HTTP ${resp.status}). Check the API key.`,
+        latencyMs,
+      };
     }
     if (resp.ok) {
-      return { status: 'ok', detail: `Authenticated and reachable (HTTP ${resp.status}, ${latencyMs} ms).`, latencyMs };
+      return {
+        status: 'ok',
+        category: 'authenticated',
+        detail: `Authenticated and reachable (HTTP ${resp.status}, ${latencyMs} ms).`,
+        latencyMs,
+      };
     }
-    return { status: 'warn', detail: `Reached Telnyx but received an unexpected response (HTTP ${resp.status}). Credentials were not rejected — send a test text to verify end to end.`, latencyMs };
-  } catch (err) {
-    const aborted = err?.name === 'AbortError';
+    return {
+      status: 'warn',
+      category: 'provider_response_unexpected',
+      detail: `Reached Telnyx but received an unexpected response (HTTP ${resp.status}). Authentication was not confirmed; review provider status before enabling traffic.`,
+      latencyMs,
+    };
+  } catch (error) {
+    const aborted = error?.name === 'AbortError';
     return {
       status: 'fail',
+      category: aborted ? 'provider_timeout' : 'provider_unreachable',
       detail: aborted
         ? `Timed out after ${PROBE_TIMEOUT_MS} ms reaching api.telnyx.com. Check that the function has network egress.`
-        : `Could not reach api.telnyx.com — verify network egress. (${err.message})`,
+        : 'Could not complete the bounded Telnyx read-only probe; authentication was not confirmed.',
       latencyMs: Date.now() - startedAt,
     };
   } finally {
@@ -173,50 +218,46 @@ Deno.serve(async (req) => {
     const checks = [];
 
     // --- API key (presence only — never echo the value) ---
-    checks.push({
+    checks.push(storedCredentialCheck(creds, {
       id: 'telnyx_api_key',
       label: 'Telnyx API key',
-      status: creds.apiKey ? 'ok' : 'fail',
-      detail: creds.apiKey
-        ? 'Telnyx API key is configured.'
-        : 'No Telnyx API key found. Add it on the Administration → Super Admin page.',
-    });
+      value: creds.apiKey,
+      missingStatus: 'fail',
+      configuredDetail: 'Telnyx API key is configured.',
+      missingDetail: 'No Telnyx API key found. Add it on the Administration → Super Admin page.',
+    }));
 
     // --- Webhook signature verification (Ed25519 public key) ---
-    checks.push({
+    checks.push(storedCredentialCheck(creds, {
       id: 'telnyx_public_key',
       label: 'Webhook signature verification',
-      status: creds.publicKey ? 'ok' : 'warn',
-      detail: creds.publicKey
-        ? 'Inbound Telnyx webhooks are verified with the Ed25519 public key (telnyx-signature-ed25519).'
-        : 'No Telnyx public key — inbound delivery/status webhooks will be rejected fail-closed until you add it (Portal → Account → Keys & Credentials → Public Key).',
-    });
+      value: creds.publicKey,
+      configuredDetail: 'Inbound Telnyx webhooks are verified with the Ed25519 public key (telnyx-signature-ed25519).',
+      missingDetail: 'No Telnyx public key — inbound delivery/status webhooks will be rejected fail-closed until you add it (Portal → Account → Keys & Credentials → Public Key).',
+    }));
 
     // --- Per-channel resource ids ---
-    checks.push({
+    checks.push(storedCredentialCheck(creds, {
       id: 'telnyx_messaging_profile',
       label: 'Text (messaging profile)',
-      status: creds.messagingProfileId ? 'ok' : 'warn',
-      detail: creds.messagingProfileId
-        ? 'Messaging profile configured for outbound SMS/MMS.'
-        : 'No messaging profile id — Telnyx can still send from a number, but setting one enables profile-level routing/opt-out handling.',
-    });
-    checks.push({
+      value: creds.messagingProfileId,
+      configuredDetail: 'Messaging profile configured for outbound SMS/MMS.',
+      missingDetail: 'No messaging profile id — Telnyx can still send from a number, but setting one enables profile-level routing/opt-out handling.',
+    }));
+    checks.push(storedCredentialCheck(creds, {
       id: 'telnyx_voice_connection',
       label: 'Voice (Call Control connection)',
-      status: creds.voiceConnectionId ? 'ok' : 'warn',
-      detail: creds.voiceConnectionId
-        ? 'Call Control connection configured for outbound/masked voice.'
-        : 'No voice connection id — outbound Call Control calls require a Call Control Application connection id.',
-    });
-    checks.push({
+      value: creds.voiceConnectionId,
+      configuredDetail: 'Call Control connection configured for outbound/masked voice.',
+      missingDetail: 'No voice connection id — outbound Call Control calls require a Call Control Application connection id.',
+    }));
+    checks.push(storedCredentialCheck(creds, {
       id: 'telnyx_fax_connection',
       label: 'Fax (Programmable Fax connection)',
-      status: creds.faxConnectionId ? 'ok' : 'warn',
-      detail: creds.faxConnectionId
-        ? 'Fax connection configured for Programmable Fax.'
-        : 'No fax connection id — outbound fax requires a Programmable Fax / FAX Application connection id.',
-    });
+      value: creds.faxConnectionId,
+      configuredDetail: 'Fax connection configured for Programmable Fax.',
+      missingDetail: 'No fax connection id — outbound fax requires a Programmable Fax / FAX Application connection id.',
+    }));
 
     // --- Fax numbers (saved AgencySettings, strict-ish E.164) ---
     // Faxes TRANSMIT from the single blind outbound line and are PRESENTED
@@ -241,6 +282,9 @@ Deno.serve(async (req) => {
       id: 'telnyx_fax_from',
       label: 'Outbound fax line',
       status: faxFromValid ? 'ok' : 'warn',
+      category: faxFromValid
+        ? 'configured'
+        : outboundFaxRaw || officeFaxRaw ? 'invalid_configuration' : 'not_configured',
       detail: outboundFaxValid
         ? `Blind outbound fax line configured (${outboundFaxRaw}) — all faxes transmit from it.`
         : officeFaxValid
@@ -253,17 +297,38 @@ Deno.serve(async (req) => {
       id: 'telnyx_fax_reply',
       label: 'Office fax machine (reply-to)',
       status: officeFaxValid ? 'ok' : 'warn',
+      category: officeFaxValid ? 'configured' : 'not_configured',
       detail: officeFaxValid
         ? `Recipients are shown ${officeFaxRaw} as the sender, so fax replies go straight to the office machine.`
         : 'No office fax machine number saved — recipients won\'t be pointed at the office for replies.',
     });
 
     // --- Live Telnyx API probe ---
-    if (!creds.apiKey) {
-      checks.push({ id: 'telnyx_api_live', label: 'Live Telnyx API', status: 'fail', detail: 'Skipped — Telnyx API key not configured.' });
+    if (creds.readError) {
+      checks.push({
+        id: 'telnyx_api_live',
+        label: 'Live Telnyx API',
+        status: 'fail',
+        category: CREDENTIAL_STORE_UNAVAILABLE,
+        detail: 'Skipped — credential-store access is unavailable, so authentication cannot be checked.',
+      });
+    } else if (!creds.apiKey) {
+      checks.push({
+        id: 'telnyx_api_live',
+        label: 'Live Telnyx API',
+        status: 'fail',
+        category: 'not_configured',
+        detail: 'Skipped — Telnyx API key not configured.',
+      });
     } else {
       const probe = await probeTelnyxApi(creds.apiKey);
-      checks.push({ id: 'telnyx_api_live', label: 'Live Telnyx API', status: probe.status, detail: probe.detail });
+      checks.push({
+        id: 'telnyx_api_live',
+        label: 'Live Telnyx API',
+        status: probe.status,
+        category: probe.category,
+        detail: probe.detail,
+      });
     }
 
     // Provisioning stats — rendered by PhoneProvisioningPanel under the live
@@ -280,8 +345,11 @@ Deno.serve(async (req) => {
     };
 
     return Response.json({ success: true, checks, stats, generated_at: new Date().toISOString() });
-  } catch (error) {
-    console.error('testTelnyxConnection error:', error);
-    return Response.json({ error: 'Internal server error' }, { status: 500 });
+  } catch {
+    console.error('testTelnyxConnection diagnostic failed');
+    return Response.json({
+      error: 'Telnyx connection diagnostic is unavailable',
+      code: 'diagnostic_unavailable',
+    }, { status: 500 });
   }
 });

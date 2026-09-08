@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import LoadingState from "@/components/ui/LoadingState";
 import { HideWhenEmbedded } from "@/components/ui/embeddedPage";
 import { formatLocalDate } from "@/lib/dateLocal";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 const formatDate = (value) => formatLocalDate(value) || "—";
 
@@ -34,7 +35,7 @@ export default function AnnualTranscriptCenter() {
 
   const printCertificate = async (certificate) => {
     const url = await createCertificateBlobUrl(certificate);
-    const printWindow = window.open(url, '_blank');
+    const printWindow = openAuthorityBoundWindow(url);
     // Popup blockers and installed-app webviews (iOS standalone/WKWebView)
     // return null — surface a hint instead of failing silently.
     if (!printWindow) {

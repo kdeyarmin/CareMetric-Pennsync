@@ -1,20 +1,18 @@
 import React, { useState } from "react";
 import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
+import { getAuthorizedDocument } from '@/functions/getAuthorizedDocument';
+import { useAuthorizedDocuments } from '@/hooks/useAuthorizedDocuments';
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Send, Loader2, PenLine, CheckCircle, X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Send, Loader2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
 import { sendFax } from "@/functions/sendFax";
 import FaxAddressBook from "./FaxAddressBook";
-import FaxSignaturePanel from "./FaxSignaturePanel";
 import FaxOCRExtractor from "./FaxOCRExtractor";
 import FaxCoverSheetGenerator from "./FaxCoverSheetGenerator";
-import PDFAnnotator from "./PDFAnnotator";
 
 export default function DocumentFaxSender({ patientId, prefilledData }) {
   const [selectedDocId, setSelectedDocId] = useState("");
@@ -25,30 +23,61 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
     if (prefilledData?.recipient_fax_number) setToNumber(prefilledData.recipient_fax_number);
   }, [prefilledData]);
   const [isSending, setIsSending] = useState(false);
-  const [signatureDataUrl, setSignatureDataUrl] = useState(null);
   const [coverSheetUrl, setCoverSheetUrl] = useState(null);
-  const [showAnnotator, setShowAnnotator] = useState(false);
-  const [annotatedUrl, setAnnotatedUrl] = useState(null);
+  const [authorizedFileUrl, setAuthorizedFileUrl] = useState(null);
+  const [isAuthorizingDocument, setIsAuthorizingDocument] = useState(false);
+  const authorizationRequestRef = React.useRef(0);
 
-  const { data: documents = [] } = useAgencyScopedQuery({
-    // DocumentList reads 500 rows under these same keys; without the limit in
-    // the key the larger list was silently truncated to 100 (or this picker
-    // over-fetched) depending on mount order. Prefix invalidation still works.
-    queryKey: patientId ? ['patient-documents', patientId, 100] : ['documents', 100],
-    fetch: () => patientId
-      ? base44.entities.Document.filter({ patient_id: patientId }, '-created_date', 100)
-      : base44.entities.Document.list('-created_date', 100),
-    // Only the unpinned branch reads across charts. Scoping the patient_id
-    // branch would drop a document from the fax picker on the very chart it
-    // belongs to, if a clinician outside this agency uploaded it.
-    scoped: !patientId,
-    authorOf: (d) => d.uploaded_by || d.created_by,
-    initialData: []
-  });
+  const documentQuery = useAuthorizedDocuments({ patientId: patientId || null });
+  const documents = documentQuery.data;
+  const agencyId = documentQuery.tenantScope?.agency_id || null;
+
+  React.useEffect(() => {
+    if (documentQuery.isSuccess && agencyId) return;
+    authorizationRequestRef.current += 1;
+    setSelectedDocId('');
+    setAuthorizedFileUrl(null);
+    setCoverSheetUrl(null);
+  }, [agencyId, documentQuery.isSuccess]);
+
+  React.useEffect(() => {
+    if (!authorizedFileUrl) return undefined;
+    const timeout = window.setTimeout(() => setAuthorizedFileUrl(null), 55_000);
+    return () => window.clearTimeout(timeout);
+  }, [authorizedFileUrl]);
 
   const pdfDocuments = documents.filter(doc =>
     doc.file_type?.includes('pdf') || doc.file_name?.toLowerCase().endsWith('.pdf')
   );
+
+  const authorizeSelectedDocument = async (documentId) => {
+    const requestNumber = authorizationRequestRef.current + 1;
+    authorizationRequestRef.current = requestNumber;
+    setSelectedDocId(documentId);
+    setCoverSheetUrl(null);
+    setAuthorizedFileUrl(null);
+    if (!documentId || !agencyId) return;
+
+    setIsAuthorizingDocument(true);
+    try {
+      const result = await getAuthorizedDocument({
+        agencyId,
+        documentId,
+        purpose: 'download',
+      });
+      if (authorizationRequestRef.current === requestNumber) {
+        setAuthorizedFileUrl(result.delivery.download_url);
+      }
+    } catch {
+      if (authorizationRequestRef.current === requestNumber) {
+        toast.error('Document access could not be authorized');
+      }
+    } finally {
+      if (authorizationRequestRef.current === requestNumber) {
+        setIsAuthorizingDocument(false);
+      }
+    }
+  };
 
   const handleSendFax = async () => {
     if (!selectedDocId || !toNumber.trim()) {
@@ -60,15 +89,14 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
 
     setIsSending(true);
     try {
-      // Use annotated version if available
-      let fileUrl = annotatedUrl || doc.file_url;
-      if (signatureDataUrl) {
-        const result = await base44.functions.invoke('stampSignatureOnPDF', {
-          pdf_url: fileUrl,
-          signature_data_url: signatureDataUrl
-        });
-        fileUrl = result.data.file_url;
-      }
+      // Signed URLs are intentionally short-lived, so refresh the authorized
+      // original at send time.
+      const authorized = await getAuthorizedDocument({
+        agencyId,
+        documentId: doc.id,
+        purpose: 'download',
+      });
+      let fileUrl = authorized.delivery.download_url;
       // Prepend cover sheet if generated
       if (coverSheetUrl) {
         const merged = await base44.functions.invoke('mergePDFs', {
@@ -87,9 +115,8 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
       setSelectedDocId("");
       setToNumber("");
       setToName("");
-      setSignatureDataUrl(null);
       setCoverSheetUrl(null);
-      setAnnotatedUrl(null);
+      setAuthorizedFileUrl(null);
     } catch (error) {
       toast.error("Failed to send fax: " + error.message);
     } finally {
@@ -104,13 +131,8 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
           <Label className="text-sm font-semibold text-slate-700">Select Document</Label>
           <Select
             value={selectedDocId}
-            onValueChange={(id) => {
-              // Reset any per-document artifacts so the previously annotated PDF /
-              // stale OCR / cover sheet can't be faxed under the new document's name.
-              setSelectedDocId(id);
-              setAnnotatedUrl(null);
-              setCoverSheetUrl(null);
-            }}
+            onValueChange={authorizeSelectedDocument}
+            disabled={documentQuery.isLoading || documentQuery.isError}
           >
             <SelectTrigger className="h-11">
               <SelectValue placeholder="Choose a PDF document" />
@@ -128,40 +150,27 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
         </div>
 
         {selectedDocId && (() => {
-          const doc = pdfDocuments.find(d => d.id === selectedDocId);
-          if (!doc?.file_url) return null;
+          if (isAuthorizingDocument) {
+            return <p className="text-sm text-slate-500">Authorizing private document...</p>;
+          }
+          if (!authorizedFileUrl) return null;
           return (
             <>
-              <FaxOCRExtractor fileUrl={doc.file_url} />
+              <FaxOCRExtractor fileUrl={authorizedFileUrl} />
 
-              {/* Annotate button */}
-              <div className="flex items-center gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowAnnotator(true)}
-                  className="gap-2 text-indigo-700 border-indigo-300 hover:bg-indigo-50"
-                >
-                  <PenLine className="w-4 h-4" />
-                  Annotate / Sign / Date PDF
-                </Button>
-                {annotatedUrl && (
-                  <Badge className="bg-green-100 text-green-700 border-green-200 gap-1">
-                    <CheckCircle className="w-3 h-3" /> Annotated
-                    <button onClick={() => setAnnotatedUrl(null)} className="ml-1 hover:text-red-600">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </Badge>
-                )}
+              <div
+                role="status"
+                className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"
+              >
+                <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <div>
+                  <p className="font-medium">Secure PDF annotation unavailable</p>
+                  <p className="mt-1 text-amber-800">
+                    Annotation is paused until PDFs use a self-hosted, authority-bound renderer.
+                    You can still fax the original authorized document.
+                  </p>
+                </div>
               </div>
-
-              {showAnnotator && (
-                <PDFAnnotator
-                  pdfUrl={annotatedUrl || doc.file_url}
-                  onAnnotatedReady={(url) => { setAnnotatedUrl(url); setShowAnnotator(false); }}
-                  onClose={() => setShowAnnotator(false)}
-                />
-              )}
             </>
           );
         })()}
@@ -178,18 +187,15 @@ export default function DocumentFaxSender({ patientId, prefilledData }) {
           <FaxAddressBook onSelectContact={(c) => { setToNumber(c.fax_number); setToName(c.name || ""); }} />
         </div>
 
-        <FaxSignaturePanel onSignatureReady={setSignatureDataUrl} />
-
         <FaxCoverSheetGenerator
           patientId={patientId}
-          documentId={selectedDocId || undefined}
           recipientNumber={toNumber}
           recipientName={toName || undefined}
           pageCount={1}
           onCoverSheetReady={(url) => setCoverSheetUrl(url)}
         />
 
-        <Button onClick={handleSendFax} disabled={isSending || !selectedDocId || !toNumber.trim()} className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 text-base font-semibold shadow-md">
+        <Button onClick={handleSendFax} disabled={isSending || !selectedDocId || !toNumber.trim() || !agencyId} className="w-full bg-indigo-600 hover:bg-indigo-700 h-12 text-base font-semibold shadow-md">
           {isSending ? <Loader2 className="w-5 h-5 mr-2 animate-spin" /> : <Send className="w-5 h-5 mr-2" />}
           {isSending ? "Sending..." : "Send Fax"}
         </Button>

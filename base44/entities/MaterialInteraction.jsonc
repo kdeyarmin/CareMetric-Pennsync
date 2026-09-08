@@ -62,19 +62,12 @@
     "user_email",
     "interaction_type"
   ],
+  // No current workflow consumes this potentially patient-linked telemetry.
+  // Keep it service-role-only until a tenant-aware event broker exists.
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_email": "{{user.email}}"
-        }
-      ]
-    },
-    "write": {}
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

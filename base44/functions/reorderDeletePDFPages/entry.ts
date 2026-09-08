@@ -111,8 +111,6 @@ Deno.serve(async (req) => {
       user_name: user.full_name,
       action: 'pdf_pages_modified',
       details: {
-        original_pdf: pdf_url,
-        modified_pdf: uploadResult.file_url,
         original_page_count: originalPdf.getPageCount(),
         final_page_count: page_order.length
       },

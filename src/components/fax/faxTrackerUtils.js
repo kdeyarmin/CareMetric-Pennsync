@@ -12,7 +12,13 @@ export const filterRecentFaxLogs = (logs = [], now = Date.now(), rangeMs = TWENT
 // mid-retry ('retrying') is in flight, so it counts as queued; a 'retried' fax
 // is a failed attempt that was superseded by a new FaxLog row, so it counts as
 // failed (the retry row reports its own outcome).
-const STATUS_GROUP = { sent: 'delivered', sending: 'queued', retrying: 'queued', retried: 'failed' };
+const STATUS_GROUP = {
+  sent: 'delivered',
+  sending: 'queued',
+  retrying: 'queued',
+  retried: 'failed',
+  submission_unknown: 'needs_review',
+};
 
 // Normalize a raw fax status to its canonical bucket so the row/detail display
 // and the summary counts agree (a 'sent' fax reads/counts as delivered, a
@@ -23,7 +29,7 @@ export const normalizeStatus = (raw) => {
 };
 
 export const getStatusCounts = (logs = []) => {
-  const counts = { delivered: 0, failed: 0, pending: 0, queued: 0 };
+  const counts = { delivered: 0, failed: 0, pending: 0, queued: 0, needs_review: 0 };
 
   logs.forEach((log) => {
     const status = normalizeStatus(log.status);

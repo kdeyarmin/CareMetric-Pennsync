@@ -73,7 +73,7 @@
     "read": {
       "$or": [
         {
-          "applied_by": "{{user.email}}"
+          "data.applied_by": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -82,10 +82,34 @@
         }
       ]
     },
-    "write": {
+    "create": {
       "$or": [
         {
-          "applied_by": "{{user.email}}"
+          "data.applied_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.applied_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.applied_by": "{{user.email}}"
         },
         {
           "user_condition": {

@@ -107,7 +107,7 @@
     "read": {
       "$or": [
         {
-          "nurse_email": "{{user.email}}"
+          "data.nurse_email": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -116,17 +116,10 @@
         }
       ]
     },
-    "write": {
-      "$or": [
-        {
-          "nurse_email": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    }
+    // Legacy completion evidence is read-only. The live grading flow records
+    // server-derived evidence in TrainingAssignment/TrainingAttempt instead.
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

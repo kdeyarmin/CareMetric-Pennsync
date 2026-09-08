@@ -14,6 +14,7 @@ import TemplateLibrary from "@/components/documents/TemplateLibrary";
 import PDFTemplateBuilder from "@/components/documents/PDFTemplateBuilder";
 import DocumentAnalytics from "@/components/documents/DocumentAnalytics";
 import { isAdminView } from "@/lib/roles";
+import { isAdminLike } from "@/lib/superAdmin";
 
 const DocumentSignatures = lazy(() => import("@/components/hub-tabs/DocumentSignatures"));
 const CreateSignatureRequest = lazy(() => import("@/components/hub-tabs/CreateSignatureRequest"));
@@ -43,9 +44,12 @@ export default function DocumentHub() {
     queryFn: () => base44.auth.me(),
   });
 
-  const isAdmin = isAdminView(currentUser);
+  const adminView = isAdminView(currentUser);
+  // Keep the audit tab limited to protected administrators even while the
+  // signing audit surface itself is deliberately unavailable.
+  const canReadDocumentAudit = isAdminLike(currentUser);
 
-  const validTabKeys = isAdmin ? [...TAB_KEYS, "audit"] : TAB_KEYS;
+  const validTabKeys = canReadDocumentAudit ? [...TAB_KEYS, "audit"] : TAB_KEYS;
 
   const [searchParams, setSearchParams] = useSearchParams();
   const requestedTab = searchParams.get("tab");
@@ -90,7 +94,7 @@ export default function DocumentHub() {
         title="Document Hub"
         description="Manage signatures, documents, discharge summaries, templates, and analytics"
         favoritePage="DocumentHub"
-        actions={activeTab === "library" && isAdmin && (
+        actions={activeTab === "library" && adminView && (
           <Button
             onClick={() => setShowTemplateBuilder(true)}
             variant="outline"
@@ -126,7 +130,7 @@ export default function DocumentHub() {
               <BarChart3 className="h-4 w-4 mr-2" />
               Analytics
             </TabsTrigger>
-            {isAdmin && (
+            {canReadDocumentAudit && (
               <TabsTrigger value="audit" className="min-h-[44px] px-4 text-sm whitespace-nowrap">
                 <Archive className="h-4 w-4 mr-2" />
                 Audit Logs
@@ -218,7 +222,7 @@ export default function DocumentHub() {
         </TabsContent>
 
         {/* Audit Logs Tab (Admin Only) */}
-        {isAdmin && (
+        {canReadDocumentAudit && (
           <TabsContent value="audit" className="space-y-6">
             <Suspense fallback={SpokeFallback}>
               <DocumentAuditLogs />

@@ -1,21 +1,16 @@
 import { useMemo } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { formatLocalDate } from "@/lib/dateLocal";
 
 export default function VitalSignsTrendDashboard({ patientId }) {
-  const { data: visits = [], isLoading } = useQuery({
-    // Distinct key: the bare ["patientVisits", patientId] key is shared by other
-    // components (PatientDetails seeds it with the full list) — reusing it here
-    // with a 10-record slice would corrupt what those siblings read.
-    queryKey: ["patientVisits", patientId, "recent10"],
-    queryFn: () =>
-      patientId
-        ? base44.entities.Visit.filter({ patient_id: patientId }, "-visit_date", 10)
-        : Promise.resolve([]),
+  const { data: visits = [], isLoading } = useAuthorizedVisits({
+    patientId,
+    purpose: 'vitals_trend',
+    sort: '-visit_date',
+    limit: 10,
     enabled: !!patientId,
   });
 

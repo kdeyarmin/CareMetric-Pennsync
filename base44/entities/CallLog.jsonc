@@ -118,10 +118,10 @@
           "created_by": "{{user.email}}"
         },
         {
-          "nurse_email": "{{user.email}}"
+          "data.nurse_email": "{{user.email}}"
         },
         {
-          "sent_by": "{{user.email}}"
+          "data.sent_by": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -130,16 +130,52 @@
         }
       ]
     },
-    "write": {
+    "create": {
       "$or": [
         {
           "created_by": "{{user.email}}"
         },
         {
-          "nurse_email": "{{user.email}}"
+          "data.nurse_email": "{{user.email}}"
         },
         {
-          "sent_by": "{{user.email}}"
+          "data.sent_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "data.sent_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "data.sent_by": "{{user.email}}"
         },
         {
           "user_condition": {

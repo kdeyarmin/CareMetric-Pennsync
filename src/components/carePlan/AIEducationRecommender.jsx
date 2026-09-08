@@ -125,7 +125,10 @@ Return JSON:`,
 
     setIsAssigning(true);
     try {
-      const assignedBy = (await base44.auth.me()).email;
+      const assignedBy = (await base44.auth.me())?.email;
+      if (!assignedBy) {
+        throw new Error('Your session identity is unavailable. Please reload and try again.');
+      }
 
       const results = await Promise.allSettled(
         selected.map((topic) =>

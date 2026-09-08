@@ -1,11 +1,9 @@
 import { useState } from "react";
-import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
-import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { useAuthorizedDocuments } from '@/hooks/useAuthorizedDocuments';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Upload, TrendingUp, Users, FolderOpen } from "lucide-react";
+import { FileText, Upload, TrendingUp, Users, FolderOpen, ShieldAlert } from "lucide-react";
 import DocumentUploader from "@/components/documents/DocumentUploader";
 import DocumentList from "@/components/documents/DocumentList";
 
@@ -13,15 +11,9 @@ export default function DocumentManagement() {
   const [isUploaderOpen, setIsUploaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("all");
 
-  const { data: documents = [] } = useAgencyScopedQuery({
-    queryKey: ['documents', 500],
-    fetch: () => base44.entities.Document.list('-created_date', 500),
-    initialData: [],
-    // Document records its author under uploaded_by, falling back to created_by.
-    authorOf: (d) => d.uploaded_by || d.created_by,
-  });
-
-  const { data: _patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
+  const documentQuery = useAuthorizedDocuments();
+  const documents = documentQuery.data;
+  const agencyId = documentQuery.tenantScope?.agency_id || null;
 
   const stats = {
     total: documents.length,
@@ -38,11 +30,24 @@ export default function DocumentManagement() {
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex justify-end">
-        <Button onClick={() => setIsUploaderOpen(true)} size="lg">
+        <Button
+          onClick={() => setIsUploaderOpen(true)}
+          size="lg"
+          disabled={!agencyId}
+        >
           <Upload className="w-5 h-5 mr-2" />
           Upload Document
         </Button>
       </div>
+
+      {documentQuery.isError && (
+        <Card className="border-amber-200 bg-amber-50">
+          <CardContent className="flex items-center gap-3 p-4 text-sm text-amber-900">
+            <ShieldAlert className="h-5 w-5 flex-shrink-0" aria-hidden="true" />
+            Documents are unavailable until a current agency and document grant can be verified.
+          </CardContent>
+        </Card>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
@@ -119,19 +124,37 @@ export default function DocumentManagement() {
               <TabsTrigger value="unassigned">Unassigned</TabsTrigger>
             </TabsList>
             <TabsContent value="all" className="mt-6">
-              <DocumentList showPatientInfo={true} />
+              <DocumentList
+                documents={documents}
+                agencyId={agencyId}
+                isLoading={documentQuery.isLoading}
+                showPatientInfo={true}
+              />
             </TabsContent>
             <TabsContent value="with-patient" className="mt-6">
-              <DocumentList showPatientInfo={true} assignment="with_patient" />
+              <DocumentList
+                documents={documents}
+                agencyId={agencyId}
+                isLoading={documentQuery.isLoading}
+                showPatientInfo={true}
+                assignment="with_patient"
+              />
             </TabsContent>
             <TabsContent value="unassigned" className="mt-6">
-              <DocumentList showPatientInfo={false} assignment="unassigned" />
+              <DocumentList
+                documents={documents}
+                agencyId={agencyId}
+                isLoading={documentQuery.isLoading}
+                showPatientInfo={false}
+                assignment="unassigned"
+              />
             </TabsContent>
           </Tabs>
         </CardContent>
       </Card>
 
       <DocumentUploader
+        agencyId={agencyId}
         open={isUploaderOpen}
         onOpenChange={setIsUploaderOpen}
         onUploadComplete={() => setIsUploaderOpen(false)}

@@ -191,7 +191,7 @@
     "read": {
       "$or": [
         {
-          "assigned_to": "{{user.email}}"
+          "data.assigned_to": "{{user.email}}"
         },
         {
           "created_by": "{{user.email}}"
@@ -202,14 +202,44 @@
           }
         },
         {
-          "is_sample": true
+          "data.is_sample": true
         }
       ]
     },
-    "write": {
+    "create": {
       "$or": [
         {
-          "assigned_to": "{{user.email}}"
+          "data.assigned_to": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.assigned_to": "{{user.email}}"
+        },
+        {
+          "created_by": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.assigned_to": "{{user.email}}"
         },
         {
           "created_by": "{{user.email}}"

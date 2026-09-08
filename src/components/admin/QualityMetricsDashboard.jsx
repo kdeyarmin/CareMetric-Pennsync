@@ -1,7 +1,8 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,12 +42,29 @@ import {
 } from "lucide-react";
 import { format, subDays, differenceInMinutes } from "date-fns";
 import { escapeCsvField } from "@/components/admin/csvExport";
+import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
+import { getTrustedTenantContext } from '@/lib/roles';
+
+const EMPTY_ROWS = Object.freeze([]);
+
+function freshQuerySuccess(query) {
+  return query.isSuccess
+    && query.isFetchedAfterMount
+    && query.fetchStatus === 'idle'
+    && !query.error
+    && !query.isFetching;
+}
 
 export default function QualityMetricsDashboard() {
-  const { data: currentUser } = useQuery({
+  const currentUserQuery = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
+    retry: false,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
+  const currentUser = currentUserQuery.data;
+  const auxiliaryTenantScope = getTrustedTenantContext(currentUser);
 
 
   const [timeRange, setTimeRange] = useState("30");
@@ -54,31 +72,54 @@ export default function QualityMetricsDashboard() {
   const [aiInsights, setAiInsights] = useState(null); // State for AI insights
   const [isGenerating, setIsGenerating] = useState(false); // State for AI insights loading
 
-  // Calculate date range
-  const getDateRange = () => {
+  // Keep the React Query selector stable across unrelated renders so an
+  // in-flight insight run is not self-cancelled by a fresh array identity.
+  const dateRange = useMemo(() => {
     const today = new Date();
     const daysAgo = parseInt(timeRange, 10);
     return {
       start: format(subDays(today, daysAgo), 'yyyy-MM-dd'),
       end: format(today, 'yyyy-MM-dd')
     };
-  };
-
-  const dateRange = getDateRange();
+  }, [timeRange]);
+  const selectVisitsInRange = useMemo(() => (
+    (visits) => visits.filter(
+      (visit) => visit.visit_date >= dateRange.start && visit.visit_date <= dateRange.end,
+    )
+  ), [dateRange.end, dateRange.start]);
 
   // Fetch data
-  const { data: allVisits, isLoading: visitsLoading } = useAgencyScopedQuery({
-    queryKey: ['allVisitsMetrics', timeRange],
-    fetch: async () => {
-      const visits = await base44.entities.Visit.list('-visit_date', 1000);
-      return visits.filter(v => v.visit_date >= dateRange.start && v.visit_date <= dateRange.end);
-    },
-    initialData: [],
+  const visitQuery = useAuthorizedVisits({
+    purpose: 'operations_analytics',
+    sort: '-visit_date',
+    limit: 1000,
+    select: selectVisitsInRange,
   });
-
-  const { data: allPatients } = useScopedPatients({ sort: '-updated_date', limit: 5000 });
-
-  const { data: allIncidents } = useAgencyScopedQuery({
+  const patientQuery = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 5000 });
+  const tenantScopesMismatch = patientQuery.isSuccess
+    && visitQuery.isSuccess
+    && !sameAuthorizedTenantScope(patientQuery.tenantScope, visitQuery.tenantScope);
+  const tenantSnapshot = useMemo(() => (
+    patientQuery.isSuccess
+      && visitQuery.isSuccess
+      && !tenantScopesMismatch
+      ? {
+        visits: visitQuery.data,
+        patients: patientQuery.data,
+        patientTenantScope: patientQuery.tenantScope,
+        visitTenantScope: visitQuery.tenantScope,
+      }
+      : null
+  ), [
+    patientQuery.data,
+    patientQuery.isSuccess,
+    patientQuery.tenantScope,
+    tenantScopesMismatch,
+    visitQuery.data,
+    visitQuery.isSuccess,
+    visitQuery.tenantScope,
+  ]);
+  const incidentQuery = useAgencyScopedQuery({
     queryKey: ['allIncidentsMetrics', timeRange],
     fetch: async () => {
       const incidents = await base44.entities.Incident.list('-incident_date', 500);
@@ -87,7 +128,7 @@ export default function QualityMetricsDashboard() {
     initialData: [],
   });
 
-  const { data: allUsers } = useQuery({
+  const userQuery = useQuery({
     queryKey: ['allUsersMetrics', agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list('-created_date', 1000);
@@ -96,33 +137,44 @@ export default function QualityMetricsDashboard() {
     },
     enabled: !!currentUser,
     initialData: [],
+    initialDataUpdatedAt: 0,
+    retry: false,
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
+  const currentUserFresh = freshQuerySuccess(currentUserQuery);
+  const incidentFresh = freshQuerySuccess(incidentQuery);
+  const userFresh = freshQuerySuccess(userQuery);
 
-  const { data: securityLogs } = useQuery({
-    queryKey: ['securityLogsMetrics', timeRange],
-    queryFn: async () => {
-      const logs = await base44.entities.SecurityLog.list('-timestamp', 1000);
-      return logs.filter(log => {
-        if (!log.timestamp) return false;
-        const logDate = format(new Date(log.timestamp), 'yyyy-MM-dd');
-        return logDate >= dateRange.start && logDate <= dateRange.end;
-      });
-    },
-    initialData: [],
-  });
-
-  const { data: noteConversions = [] } = useQuery({
-    queryKey: ['noteConversionsMetrics', timeRange],
-    queryFn: async () => {
-      const conversions = await base44.entities.NoteConversion.list('-created_date', 10000);
-      return conversions.filter(nc => {
-        if (!nc.created_date) return false;
-        const conversionDate = format(new Date(nc.created_date), 'yyyy-MM-dd');
-        return conversionDate >= dateRange.start && conversionDate <= dateRange.end;
-      });
-    },
-    initialData: [],
-  });
+  const analyticsSnapshot = useMemo(() => (
+    tenantSnapshot
+      && currentUserFresh
+      && sameAuthorizedTenantScope(auxiliaryTenantScope, patientQuery.tenantScope)
+      && incidentFresh
+      && userFresh
+      ? {
+        ...tenantSnapshot,
+        auxiliaryTenantScope,
+        incidents: incidentQuery.data,
+        users: userQuery.data,
+      }
+      : null
+  ), [
+    auxiliaryTenantScope,
+    currentUserFresh,
+    incidentQuery.data,
+    incidentFresh,
+    patientQuery.tenantScope,
+    tenantSnapshot,
+    userQuery.data,
+    userFresh,
+  ]);
+  const visitSnapshotRef = useRef(analyticsSnapshot);
+  visitSnapshotRef.current = analyticsSnapshot;
+  const allVisits = analyticsSnapshot?.visits || EMPTY_ROWS;
+  const allPatients = analyticsSnapshot?.patients || EMPTY_ROWS;
+  const allIncidents = analyticsSnapshot?.incidents || EMPTY_ROWS;
+  const allUsers = analyticsSnapshot?.users || EMPTY_ROWS;
 
   // Filter visits by selected nurse
   const filteredVisits = useMemo(() => {
@@ -187,12 +239,6 @@ export default function QualityMetricsDashboard() {
       ? Math.round(Object.values(patientVisitCounts).reduce((a, b) => a + b, 0) / Object.keys(patientVisitCounts).length * 10) / 10
       : 0;
 
-    // Quality scores from security logs
-    const qaLogs = securityLogs.filter(log => log.action === 'NOTE_SCRUBBER_COMPLETED');
-    const avgQualityScore = qaLogs.length > 0
-      ? Math.round(qaLogs.reduce((sum, log) => sum + (log.details?.score || 0), 0) / qaLogs.length)
-      : 0;
-
     // Nurse productivity
     const nurseStats = {};
     allUsers.filter(u => u.role === 'user').forEach(nurse => {
@@ -225,10 +271,6 @@ export default function QualityMetricsDashboard() {
       }
     });
 
-    // Time saved by AI (using note enhancements)
-    const totalTimeSavedMinutes = noteConversions.length * 20; // 20 minutes saved per enhanced note
-    const totalTimeSavedHours = Math.round(totalTimeSavedMinutes / 60);
-
     return {
       totalVisits,
       completedVisits,
@@ -242,12 +284,26 @@ export default function QualityMetricsDashboard() {
       hospitalizationRate,
       fallRate,
       avgVisitsPerPatient,
-      avgQualityScore,
+      // SecurityLog has no immutable tenant provenance, so a missing quality
+      // score is represented as unavailable rather than a misleading zero.
+      avgQualityScore: null,
       nurseStats,
       activePatients,
-      totalTimeSavedHours
+      // NoteConversion has no reviewed tenant-authorized aggregate source.
+      totalTimeSavedHours: null
     };
-  }, [filteredVisits, allVisits, allIncidents, allPatients, allUsers, securityLogs, noteConversions]);
+  }, [filteredVisits, allVisits, allIncidents, allPatients, allUsers]);
+  const metricsRef = useRef(metrics);
+  metricsRef.current = metrics;
+  const generationSequenceRef = useRef(0);
+
+  // Visit-derived insights are PHI-bearing output. A fresh authorization pass,
+  // denial, changed time range, or changed nurse selection invalidates them.
+  useEffect(() => {
+    generationSequenceRef.current += 1;
+    setAiInsights(null);
+    setIsGenerating(false);
+  }, [analyticsSnapshot, metrics]);
 
   const getMetricStatus = (value, thresholds) => {
     if (value >= thresholds.excellent) return { color: 'text-green-600', bg: 'bg-green-50', label: 'Excellent' };
@@ -257,6 +313,7 @@ export default function QualityMetricsDashboard() {
   };
 
   const exportMetrics = () => {
+    if (!visitSnapshotRef.current) return;
     const csvContent = `PennSync by CareMetric Quality Metrics Report
 Time Range: Last ${timeRange} days (${dateRange.start} to ${dateRange.end})
 Generated: ${format(new Date(), 'PPpp')}
@@ -266,7 +323,7 @@ Total Visits,${metrics.totalVisits}
 Completed Visits,${metrics.completedVisits}
 Completion Rate,${metrics.completionRate}%
 Average Documentation Time,${metrics.avgDocTime} minutes
-Average Quality Score,${metrics.avgQualityScore}/100
+Average Quality Score,Unavailable pending tenant-authorized audit provenance
 
 === PATIENT OUTCOMES ===
 Active Patients,${metrics.activePatients}
@@ -280,7 +337,7 @@ Total Hospitalizations,${metrics.hospitalizations}
 Medication Errors,${metrics.medErrors}
 
 === AI IMPACT ===
-Total Time Saved,${metrics.totalTimeSavedHours} hours
+Total Time Saved,Unavailable pending tenant-authorized NoteConversion provenance
 
 === NURSE PRODUCTIVITY ===
 Nurse,Total Visits,Completed,Completion Rate,Avg Doc Time
@@ -300,55 +357,60 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
   };
 
   const generateAIInsights = async () => {
+    const authorizedVisitSnapshot = visitSnapshotRef.current;
+    const authorizedMetrics = metricsRef.current;
+    if (!authorizedVisitSnapshot) return;
+    const generationSequence = ++generationSequenceRef.current;
     setIsGenerating(true);
     setAiInsights(null); // Clear previous insights
     await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate AI analysis time
+    if (
+      visitSnapshotRef.current !== authorizedVisitSnapshot
+      || metricsRef.current !== authorizedMetrics
+      || generationSequenceRef.current !== generationSequence
+    ) return;
 
     let insightsText = ``;
 
     insightsText += `Based on the data for the last ${timeRange} days (${dateRange.start} to ${dateRange.end}):\n\n`;
 
     insightsText += `### Overall Performance Summary:\n`;
-    if (metrics.completionRate >= 90 && metrics.avgQualityScore >= 85 && metrics.avgDocTime <= 45 && metrics.fallRate < 10 && metrics.hospitalizationRate < 15) {
-        insightsText += `- Your agency is demonstrating **Excellent** overall performance! All key metrics are meeting or exceeding targets. Keep up the outstanding work.\n`;
-    } else if (metrics.completionRate >= 80 && metrics.avgQualityScore >= 75 && metrics.fallRate < 15 && metrics.hospitalizationRate < 20) {
-        insightsText += `- Performance is **Good**, with some areas for potential optimization to achieve top-tier quality.\n`;
+    if (authorizedMetrics.completionRate >= 90 && authorizedMetrics.avgDocTime <= 45 && authorizedMetrics.fallRate < 10 && authorizedMetrics.hospitalizationRate < 15) {
+        insightsText += `- The currently available operational and patient-outcome metrics are meeting their targets. Documentation quality is excluded because its tenant-authorized source is unavailable.\n`;
+    } else if (authorizedMetrics.completionRate >= 80 && authorizedMetrics.fallRate < 15 && authorizedMetrics.hospitalizationRate < 20) {
+        insightsText += `- The currently available metrics show generally good performance, with some areas for potential optimization. Documentation quality is excluded.\n`;
     } else {
         insightsText += `- Performance indicates **Areas for Improvement**, particularly in key quality and patient outcome metrics. Targeted interventions are recommended.\n`;
     }
-    insightsText += `* Current Visit Completion Rate: ${metrics.completionRate}% (Target: 90%+)\n`;
-    insightsText += `* Average Quality Score: ${metrics.avgQualityScore}/100 (Target: 85+/100)\n`;
-    insightsText += `* Average Documentation Time: ${metrics.avgDocTime} minutes (Target: <45 min)\n\n`;
+    insightsText += `* Current Visit Completion Rate: ${authorizedMetrics.completionRate}% (Target: 90%+)\n`;
+    insightsText += `* Average Quality Score: unavailable pending tenant-authorized audit provenance\n`;
+    insightsText += `* Average Documentation Time: ${authorizedMetrics.avgDocTime} minutes (Target: <45 min)\n\n`;
 
     insightsText += `### Key Recommendations:\n`;
     let hasRecommendations = false;
 
-    if (metrics.completionRate < 85) {
-        insightsText += `- **Boost Completion Rate:** Your completion rate of ${metrics.completionRate}% is below the desired target. Consider reviewing visit scheduling, staff availability, and common reasons for cancellations to improve adherence. Targeted training on visit protocols could also help.\n`;
+    if (authorizedMetrics.completionRate < 85) {
+        insightsText += `- **Boost Completion Rate:** Your completion rate of ${authorizedMetrics.completionRate}% is below the desired target. Consider reviewing visit scheduling, staff availability, and common reasons for cancellations to improve adherence. Targeted training on visit protocols could also help.\n`;
         hasRecommendations = true;
     }
-    if (metrics.avgQualityScore < 80) {
-        insightsText += `- **Enhance Quality Scores:** With an average score of ${metrics.avgQualityScore}/100, there's room to improve documentation quality. Leverage PennSync AI assistance features more extensively to ensure comprehensive and compliant records, focusing on areas identified by the scrubber.\n`;
+    if (authorizedMetrics.avgDocTime > 50) {
+        insightsText += `- **Optimize Documentation Efficiency:** The average documentation time of ${authorizedMetrics.avgDocTime} minutes suggests potential inefficiencies. Encourage nurses to utilize PennSync voice dictation and smart templates to streamline their workflow and reduce administrative burden. Review individual nurse times for specific coaching.\n`;
         hasRecommendations = true;
     }
-    if (metrics.avgDocTime > 50) {
-        insightsText += `- **Optimize Documentation Efficiency:** The average documentation time of ${metrics.avgDocTime} minutes suggests potential inefficiencies. Encourage nurses to utilize PennSync voice dictation and smart templates to streamline their workflow and reduce administrative burden. Review individual nurse times for specific coaching.\n`;
+    if (authorizedMetrics.fallRate > 10) {
+        insightsText += `- **Address Elevated Fall Rate:** An elevated fall rate of ${authorizedMetrics.fallRate} per 1000 visits is a critical concern. Implement enhanced fall prevention strategies, patient education on safety, and ensure thorough risk assessments during each visit. Analyze incident reports for common themes.\n`;
         hasRecommendations = true;
     }
-    if (metrics.fallRate > 10) {
-        insightsText += `- **Address Elevated Fall Rate:** An elevated fall rate of ${metrics.fallRate} per 1000 visits is a critical concern. Implement enhanced fall prevention strategies, patient education on safety, and ensure thorough risk assessments during each visit. Analyze incident reports for common themes.\n`;
+    if (authorizedMetrics.hospitalizationRate > 15) {
+        insightsText += `- **Reduce Hospitalizations:** A hospitalization rate of ${authorizedMetrics.hospitalizationRate} per 100 patients is higher than desired. Focus on proactive patient management, early identification of deteriorating conditions, and close coordination with primary care providers to prevent avoidable hospital readmissions.\n`;
         hasRecommendations = true;
     }
-    if (metrics.hospitalizationRate > 15) {
-        insightsText += `- **Reduce Hospitalizations:** A hospitalization rate of ${metrics.hospitalizationRate} per 100 patients is higher than desired. Focus on proactive patient management, early identification of deteriorating conditions, and close coordination with primary care providers to prevent avoidable hospital readmissions.\n`;
-        hasRecommendations = true;
-    }
-    if (metrics.medErrors > 0) {
-        insightsText += `- **Minimize Medication Errors:** There were ${metrics.medErrors} medication errors reported. This highlights a need for stricter medication management protocols, double-checking procedures, and continuous education on safe medication administration. Review dispensing and administration processes.\n`;
+    if (authorizedMetrics.medErrors > 0) {
+        insightsText += `- **Minimize Medication Errors:** There were ${authorizedMetrics.medErrors} medication errors reported. This highlights a need for stricter medication management protocols, double-checking procedures, and continuous education on safe medication administration. Review dispensing and administration processes.\n`;
         hasRecommendations = true;
     }
     
-    const strugglingNurses = Object.entries(metrics.nurseStats)
+    const strugglingNurses = Object.entries(authorizedMetrics.nurseStats)
         .filter(([, stats]) => stats.completionRate < 70 || stats.avgDocTime > 60)
         .map(([, s]) => s.name);
     if (strugglingNurses.length > 0) {
@@ -361,26 +423,42 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
     }
 
     insightsText += `\n### PennSync AI Impact & Value:\n`;
-    insightsText += `- PennSync AI has saved an estimated **${metrics.totalTimeSavedHours} hours** of documentation time during this period. This translates to nurses dedicating more time directly to patient care rather than administrative tasks.\n`;
-    insightsText += `- The average quality score of **${metrics.avgQualityScore}/100** suggests effective use of AI-driven quality checks and compliance support, reducing errors and improving record accuracy.\n`;
+    insightsText += `- AI time-saved metrics are unavailable pending a tenant-authorized NoteConversion aggregate source.\n`;
+    insightsText += `- Documentation quality scoring is excluded until an immutable, tenant-authorized audit source is available.\n`;
 
-    setAiInsights(insightsText);
-    setIsGenerating(false);
+    if (
+      visitSnapshotRef.current === authorizedVisitSnapshot
+      && metricsRef.current === authorizedMetrics
+      && generationSequenceRef.current === generationSequence
+    ) {
+      setAiInsights(insightsText);
+      setIsGenerating(false);
+    }
 };
 
-  if (visitsLoading) {
+  if (!analyticsSnapshot) {
     return (
       <Card>
-        <CardContent className="p-12 text-center text-slate-500">
-          Loading quality metrics...
+        <CardContent className="p-12">
+          <Alert className="border-amber-300 bg-amber-50" role="status">
+            <AlertTriangle className="h-4 w-4 text-amber-700" />
+            <AlertDescription className="text-amber-950">
+              {visitQuery.isError
+                || patientQuery.isError
+                || tenantScopesMismatch
+                || currentUserQuery.isError
+                || incidentQuery.isError
+                || userQuery.isError
+                ? 'Quality metrics are unavailable because one or more authorized data sources could not be verified. Platform owners remain blocked until a reviewed agency selector is available.'
+                : 'Reverifying matching tenant access and every metric source before loading quality metrics…'}
+            </AlertDescription>
+          </Alert>
         </CardContent>
       </Card>
     );
   }
 
   const _completionStatus = getMetricStatus(metrics.completionRate, { excellent: 95, good: 85, fair: 75 });
-  const _qualityStatus = getMetricStatus(metrics.avgQualityScore, { excellent: 90, good: 80, fair: 70 });
-
   return (
     <div className="space-y-6">
       {/* PennSync by CareMetric Branded Header */}
@@ -397,6 +475,16 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
           </div>
         </CardContent>
       </Card>
+
+      <Alert className="border-amber-300 bg-amber-50">
+        <AlertTriangle className="w-4 h-4 text-amber-700" />
+        <AlertDescription className="text-amber-950">
+          <p className="font-semibold">Documentation quality and AI time-saved metrics unavailable</p>
+          <p className="text-sm">
+            Security audit and NoteConversion rows do not yet have reviewed tenant-authorized aggregate sources, so this dashboard does not read them or interpret missing values as zero.
+          </p>
+        </AlertDescription>
+      </Alert>
 
       {/* Filters and Export Button */}
       <Card>
@@ -436,6 +524,7 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
               <Button
                 variant="outline"
                 onClick={exportMetrics}
+                disabled={!analyticsSnapshot}
                 className="gap-2"
               >
                 <Download className="w-4 h-4" />
@@ -675,12 +764,12 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
             </Alert>
           )}
 
-          {metrics.completionRate >= 90 && metrics.avgQualityScore >= 85 && metrics.avgDocTime <= 45 && metrics.fallRate < 10 && metrics.hospitalizationRate < 15 && (
+          {metrics.completionRate >= 90 && metrics.avgDocTime <= 45 && metrics.fallRate < 10 && metrics.hospitalizationRate < 15 && (
             <Alert className="bg-green-50 border-green-200">
               <CheckCircle2 className="w-4 h-4 text-green-600" />
               <AlertDescription className="text-green-900">
-                <p className="font-semibold">🎉 Excellent Agency Performance!</p>
-                <p className="text-sm">All key metrics are meeting or exceeding targets. Keep up the great work!</p>
+                <p className="font-semibold">Available metrics are meeting targets</p>
+                <p className="text-sm">Documentation quality scoring is excluded until its tenant-authorized source is available.</p>
               </AlertDescription>
             </Alert>
           )}
@@ -708,6 +797,7 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
               </div>
               <Button
                 onClick={generateAIInsights}
+                disabled={!analyticsSnapshot}
                 variant="outline"
                 className="bg-slate-100 hover:bg-slate-200 text-slate-800 gap-2 mt-4"
               >
@@ -719,6 +809,7 @@ ${Object.entries(metrics.nurseStats).map(([_email, stats]) =>
             <div className="text-center py-8">
               <Button
                 onClick={generateAIInsights}
+                disabled={!analyticsSnapshot}
                 className="bg-navy-600 hover:bg-navy-700 gap-2"
               >
                 <Sparkles className="w-4 h-4" />

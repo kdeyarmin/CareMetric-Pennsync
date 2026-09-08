@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { formatDistanceToNow } from "date-fns";
+import { canManuallyRetryFax } from "@/components/fax/faxRetry";
 
 // Filter buttons map to groups of terminal/transient statuses so that, e.g., the
 // 'Sent' filter also shows the terminal 'delivered' status and 'Queued' shows 'sending'.
@@ -20,6 +21,7 @@ const STATUS_GROUPS = {
   sent: ['sent', 'delivered'],
   queued: ['queued', 'sending'],
   failed: ['failed'],
+  review: ['submission_unknown'],
 };
 
 export default function FaxLogsDashboard() {
@@ -52,6 +54,7 @@ export default function FaxLogsDashboard() {
     sent: faxLogs.filter(f => f.status === 'sent' || f.status === 'delivered').length,
     failed: faxLogs.filter(f => f.status === 'failed').length,
     pending: faxLogs.filter(f => f.status === 'queued' || f.status === 'sending').length,
+    review: faxLogs.filter(f => f.status === 'submission_unknown').length,
   };
 
   const failedLogs = faxLogs.filter(f => f.status === 'failed');
@@ -117,11 +120,15 @@ Provide actionable insights in a structured format with clear sections.`,
 
   const retryFax = async (faxId) => {
     try {
-      const res = await base44.functions.invoke('retryFailedFax', { fax_log_id: faxId });
+      const res = await base44.functions.invoke('sendAuthorizedReferralFax', { retry_fax_log_id: faxId });
       const data = res?.data ?? res;
       if (data?.error) throw new Error(data.error);
       if (data?.success === false) throw new Error(data?.message || 'Fax retry was not started');
-      toast.success("Fax retry initiated");
+      if (data?.requires_reconciliation || data?.status === 'submission_unknown') {
+        toast.warning("Telnyx may have accepted the retry. Review the provider record before any further send.");
+      } else {
+        toast.success("Fax retry initiated");
+      }
       refetch();
     } catch (error) {
       toast.error("Failed to retry fax: " + error.message);
@@ -135,6 +142,8 @@ Provide actionable insights in a structured format with clear sections.`,
         return 'bg-green-100 text-green-800 border-green-200';
       case 'failed':
         return 'bg-red-100 text-red-800 border-red-200';
+      case 'submission_unknown':
+        return 'bg-amber-100 text-amber-900 border-amber-300';
       case 'sending':
       case 'queued':
         return 'bg-blue-100 text-blue-800 border-blue-200';
@@ -150,6 +159,8 @@ Provide actionable insights in a structured format with clear sections.`,
         return <CheckCircle2 className="w-4 h-4" />;
       case 'failed':
         return <AlertCircle className="w-4 h-4" />;
+      case 'submission_unknown':
+        return <AlertCircle className="w-4 h-4 text-amber-700" />;
       default:
         return <Clock className="w-4 h-4" />;
     }
@@ -179,7 +190,7 @@ Provide actionable insights in a structured format with clear sections.`,
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card>
           <CardContent className="pt-6">
             <div className="flex items-center justify-between">
@@ -224,6 +235,18 @@ Provide actionable insights in a structured format with clear sections.`,
                 <p className="text-2xl font-bold text-blue-600 mt-1">{stats.pending}</p>
               </div>
               <Clock className="w-8 h-8 text-blue-400" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm text-slate-600">Needs Review</p>
+                <p className="text-2xl font-bold text-amber-700 mt-1">{stats.review}</p>
+              </div>
+              <AlertCircle className="w-8 h-8 text-amber-500" />
             </div>
           </CardContent>
         </Card>
@@ -356,14 +379,14 @@ Provide actionable insights in a structured format with clear sections.`,
               />
             </div>
             <div className="flex gap-2">
-              {['all', 'sent', 'failed', 'queued'].map(status => (
+              {['all', 'sent', 'failed', 'queued', 'review'].map(status => (
                 <Button
                   key={status}
                   variant={selectedStatus === status ? "default" : "outline"}
                   size="sm"
                   onClick={() => setSelectedStatus(status)}
                 >
-                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                  {status === 'review' ? 'Needs Review' : status.charAt(0).toUpperCase() + status.slice(1)}
                 </Button>
               ))}
             </div>
@@ -409,10 +432,15 @@ Provide actionable insights in a structured format with clear sections.`,
                       </div>
 
                       {log.failure_reason && (
-                        <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                          <p className="text-sm text-red-800">
+                        <div className={`${log.status === 'submission_unknown' ? 'bg-amber-50 border-amber-200' : 'bg-red-50 border-red-200'} border rounded-lg p-3`}>
+                          <p className={`text-sm ${log.status === 'submission_unknown' ? 'text-amber-900' : 'text-red-800'}`}>
                             <strong>Failure Reason:</strong> {log.failure_reason}
                           </p>
+                          {log.status === 'submission_unknown' && (
+                            <p className="text-sm text-amber-900 mt-1">
+                              Check the Telnyx provider record before sending again; this request may already have been accepted.
+                            </p>
+                          )}
                         </div>
                       )}
 
@@ -424,7 +452,7 @@ Provide actionable insights in a structured format with clear sections.`,
                     </div>
 
                     <div className="flex flex-col gap-2">
-                      {log.status === 'failed' && (
+                      {canManuallyRetryFax(log) && (
                         <Button
                           size="sm"
                           variant="outline"

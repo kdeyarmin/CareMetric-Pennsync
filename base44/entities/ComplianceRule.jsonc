@@ -93,5 +93,13 @@
     "rule_category",
     "description",
     "severity"
-  ]
+  ],
+  // ComplianceRule is consumed only by the protected Compliance Center's
+  // regulatory-review workflow. No production workflow deletes policy rows.
+  "rls": {
+    "read": { "user_condition": { "role": "admin" } },
+    "create": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": false
+  }
 }

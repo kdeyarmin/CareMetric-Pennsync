@@ -4,7 +4,35 @@
   "properties": {
     "agency_id": {
       "type": "string",
-      "description": "Tenant key copied from the explicitly scoped outcome-measure run. New computeOutcomeMeasures writes and upserts require it; legacy unscoped metrics are never updated or retired by that function."
+      "description": "Tenant key copied from the explicitly scoped outcome-measure run. New computeOutcomeMeasures output is append-only; legacy unscoped metrics are never updated or retired by that function."
+    },
+    "outcome_computation_run_id": {
+      "type": "string",
+      "description": "OutcomeComputationRun record that gates this append-only derived row. The row is authoritative only when that run has status published."
+    },
+    "outcome_computation_attempt_id": {
+      "type": "string",
+      "description": "Unique attempt id copied from the run. Rows from failed or superseded attempts remain unpublished audit debris and must not be returned to consumers."
+    },
+    "generation_fingerprint": {
+      "type": "string",
+      "description": "SHA-256 copied from the planned generation and reconciled before the run can publish."
+    },
+    "row_content_hash": {
+      "type": "string",
+      "description": "Deterministic SHA-256 of every domain, result, and provenance field owned by computeOutcomeMeasures, excluding only Base44-injected metadata and this hash field. Consumers must recompute it before trusting a published row."
+    },
+    "optional_fields_present": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": [
+          "discharge_disposition",
+          "primary_diagnosis",
+          "internal_gg_18_item_raw_sum"
+        ]
+      },
+      "description": "Authoritative presence map for optional derived values. New outcome attempts are append-only, so an unavailable value cannot inherit a stale value from an older generation."
     },
     "patient_id": {
       "type": "string"
@@ -127,7 +155,7 @@
     },
     "calculation_version": {
       "type": "string",
-      "description": "Version of the deterministic outcome core that produced this record. Bumped when the rules change meaning, so stale records can be retired rather than silently re-read under new rules."
+      "description": "Version of the deterministic outcome core that produced this record. Bumped when the rules change meaning, so a complete published generation supersedes stale records."
     },
     "retired_reason": {
       "type": "string",
@@ -140,7 +168,7 @@
     },
     "outcome_measure_source": {
       "type": "string",
-      "description": "Provenance of the internal outcome metric. 'oasis_change_score' is a current proxy; retired values include 'retired_unverified_schema', 'retired_ambiguous_duplicate_discharge', 'retired_missing_scoped_patient', and 'retired_duplicate_metric'. Retired rows stay auditable but are excluded from current proxy aggregates."
+      "description": "Legacy provenance field. New run-scoped rows remain 'outcome_run_staged' permanently and are authoritative only through a published OutcomeComputationRun; older values are retained for stored-data compatibility."
     },
     "pph_prevention": {
       "type": "object",
@@ -223,15 +251,9 @@
     "episode_start"
   ],
   "rls": {
-    "read": {
-      "user_condition": {
-        "role": "__service_role_only__"
-      }
-    },
-    "write": {
-      "user_condition": {
-        "role": "__service_role_only__"
-      }
-    }
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
   }
 }

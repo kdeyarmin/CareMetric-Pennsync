@@ -1,6 +1,5 @@
 import { useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
@@ -19,14 +18,13 @@ const VITAL_CONFIG = [
 ];
 
 export default function VitalsChart({ patientId }) {
-  const { data: visits = [], isLoading } = useQuery({
-    queryKey: ["patient-visits-vitals", patientId],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId, status: "completed" }, "-visit_date", 30),
+  const { data: visits = [], isLoading } = useAuthorizedVisits({
+    patientId,
+    purpose: 'vitals_trend',
+    status: 'completed',
+    sort: '-visit_date',
+    limit: 30,
     enabled: !!patientId,
-    // No `initialData: []` — seeding it marks the query successful on mount, so
-    // `isLoading` never turns true and the in-flight fetch shows the definitive
-    // "no vitals recorded" card instead of the skeleton. The `= []` destructure
-    // default already covers the empty case.
   });
 
   const chartData = useMemo(() =>

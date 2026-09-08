@@ -128,7 +128,9 @@
     "risk_score"
   ],
   "rls": {
-    "read": {},
-    "write": {}
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

@@ -11,8 +11,11 @@ const { uploadFile, invokeLLM, referralUpdate } = vi.hoisted(() => ({
 vi.mock('@/api/base44Client', () => ({
   base44: {
     integrations: { Core: { UploadFile: (...a) => uploadFile(...a), InvokeLLM: (...a) => invokeLLM(...a) } },
-    entities: { Referral: { update: (...a) => referralUpdate(...a) } },
   },
+}));
+
+vi.mock('@/functions/manageAuthorizedReferral', () => ({
+  updateAuthorizedReferral: (input) => referralUpdate(input),
 }));
 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() } }));
@@ -29,7 +32,7 @@ const tracking = {
   ],
 };
 
-const referral = { id: 'ref1' };
+const referral = { id: 'ref1', agency_id: 'agency-a' };
 
 const chooseFile = () => {
   const file = new File(['scan'], 'response.pdf', { type: 'application/pdf' });
@@ -77,9 +80,9 @@ describe('ScannedResponseUpload', () => {
     await userEvent.click(screen.getByRole('button', { name: /Apply 1 answer$/ }));
 
     await waitFor(() => expect(referralUpdate).toHaveBeenCalledTimes(1));
-    const [id, payload] = referralUpdate.mock.calls[0];
-    expect(id).toBe('ref1');
-    const fu = payload.follow_up_requests;
+    const [request] = referralUpdate.mock.calls[0];
+    expect(request).toMatchObject({ agencyId: 'agency-a', referralId: 'ref1' });
+    const fu = request.changes.follow_up_requests;
     expect(fu.status).toBe('received');
     expect(fu.response_scan).toMatchObject({ document_url: 'https://files.example/scan.pdf', auto_answered_count: 1 });
     const f2f = fu.items.find((it) => it.id === 'f2f_missing');

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { base44 } from '@/api/base44Client';
 import {
@@ -12,8 +12,9 @@ import { useAuth } from '@/lib/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { ArrowLeft, Eye, EyeOff, Loader2, MailCheck, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Eye, EyeOff, Loader2, ShieldAlert } from 'lucide-react';
 import { BRAND_LOGO_URL, APP_NAME, PLATFORM_NAME } from '@/lib/brand';
+import { OUTBOUND_DELIVERY_PAUSED_MESSAGE } from '@/lib/outboundDeliveryContainment';
 import {
   CENTRAL_SUPPORT_EMAIL,
   CENTRAL_SUPPORT_EMAIL_HREF,
@@ -30,8 +31,9 @@ import {
  * the URL never changes, so after sign-in the user lands exactly where they
  * were headed.
  *
- * Flows handled here: email/password sign-in and the password-reset request.
- * Everything else (sign-up for invited users, OTP verification, captcha
+ * Flows handled here: email/password sign-in and a fail-closed password-reset
+ * notice while outbound delivery is paused. Everything else (sign-up for
+ * invited users, OTP verification, captcha
  * challenges) falls back to the platform-hosted page via navigateToLogin().
  *
  * Also handles a pending `?access_token=` handoff that arrived without a
@@ -46,13 +48,26 @@ const reloadApp = () => window.location.reload();
 
 const SignInScreen = ({ onAuthenticated = reloadApp }) => {
   const { navigateToLogin } = useAuth();
-  const [mode, setMode] = useState('signin'); // 'signin' | 'reset' | 'reset-sent'
+  const [mode, setMode] = useState('signin'); // 'signin' | 'reset'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [pendingToken, setPendingToken] = useState(() => peekPendingAccessToken());
+  const mountedRef = useRef(true);
+  const authOperationRef = useRef(0);
+  const loginAbortRef = useRef(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      authOperationRef.current += 1;
+      loginAbortRef.current?.abort();
+      loginAbortRef.current = null;
+    };
+  }, []);
 
   const switchMode = (nextMode) => {
     setMode(nextMode);
@@ -82,6 +97,10 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
     if (busy) return;
     setError('');
     setBusy(true);
+    const operation = ++authOperationRef.current;
+    loginAbortRef.current?.abort();
+    const controller = new AbortController();
+    loginAbortRef.current = controller;
     try {
       // Call the login endpoint directly rather than through
       // base44.auth.loginViaEmailPassword: the SDK helper reacts to a 401
@@ -92,10 +111,16 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
         headers: { 'X-App-Id': appParams.appId },
         interceptResponses: true,
       });
-      const result = await authClient.post(`/apps/${appParams.appId}/auth/login`, {
-        email: email.trim(),
-        password,
-      });
+      const result = await authClient.post(
+        `/apps/${appParams.appId}/auth/login`,
+        { email: email.trim(), password },
+        { signal: controller.signal },
+      );
+      if (
+        !mountedRef.current
+        || operation !== authOperationRef.current
+        || controller.signal.aborted
+      ) return;
       if (!result?.access_token) {
         // e.g. the account still needs OTP/email verification — that flow
         // lives on the hosted page.
@@ -108,6 +133,11 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
       base44.auth.setToken(result.access_token);
       onAuthenticated();
     } catch (err) {
+      if (
+        !mountedRef.current
+        || operation !== authOperationRef.current
+        || controller.signal.aborted
+      ) return;
       const status = err?.status;
       if (/turnstile|captcha/i.test(String(err?.message || ''))) {
         setError('Additional verification is required. Please continue on the standard sign-in page (link below).');
@@ -125,27 +155,21 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
           : msg);
       }
     } finally {
-      setBusy(false);
+      if (operation === authOperationRef.current) loginAbortRef.current = null;
+      if (mountedRef.current && operation === authOperationRef.current) setBusy(false);
     }
   };
 
-  const handleResetRequest = async (e) => {
+  const handleResetRequest = (e) => {
     e.preventDefault();
     if (busy) return;
-    setError('');
-    setBusy(true);
-    try {
-      await base44.auth.resetPasswordRequest(email.trim());
-      setMode('reset-sent');
-    } catch {
-      setError('Couldn’t send the reset email. Please try again, or use the standard sign-in page (link below).');
-    } finally {
-      setBusy(false);
-    }
+    setError(OUTBOUND_DELIVERY_PAUSED_MESSAGE);
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-navy-50 via-white to-navy-100 p-4">
+    <>
+      <title>{`Sign in | ${APP_NAME} by ${PLATFORM_NAME}`}</title>
+      <main className="flex min-h-screen items-center justify-center bg-gradient-to-br from-navy-50 via-white to-navy-100 p-4">
       <div className="w-full max-w-md">
         {/* Brand hero: logo shown whole (object-contain in a padded tile — never
             masked/cropped) above the PennSync lockup. */}
@@ -278,7 +302,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Reset your password</h2>
                   <p className="mt-1 text-sm text-slate-500">
-                    Enter your email and we’ll send you a link to reset it.
+                    {OUTBOUND_DELIVERY_PAUSED_MESSAGE}
                   </p>
                 </div>
                 <div className="space-y-2">
@@ -312,21 +336,6 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
               </form>
             )}
 
-            {!pendingToken && mode === 'reset-sent' && (
-              <div className="text-center">
-                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-navy-50 ring-1 ring-inset ring-navy-200/60">
-                  <MailCheck className="h-7 w-7 text-navy-600" />
-                </div>
-                <h2 className="text-lg font-semibold text-slate-900">Check your email</h2>
-                <p className="mt-2 text-sm text-slate-600">
-                  If an account exists for <span className="font-medium text-slate-800">{email}</span>,
-                  a password-reset link is on its way.
-                </p>
-                <Button variant="outline" onClick={() => switchMode('signin')} className="mt-6 w-full">
-                  <ArrowLeft className="mr-2 h-4 w-4" /> Back to sign in
-                </Button>
-              </div>
-            )}
           </div>
         </div>
 
@@ -356,7 +365,8 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
           </Link>
         </p>
       </div>
-    </div>
+      </main>
+    </>
   );
 };
 

@@ -123,11 +123,11 @@
     },
     "agency_id": {
       "type": "string",
-      "description": "Agency ID for enterprise users"
+      "description": "Legacy tenant display/migration hint only. AgencyMembership is the server-owned authorization source; never authorize from this self-editable profile field."
     },
     "agency_name": {
       "type": "string",
-      "description": "Tenant agency display name / office key. Used at runtime to distinguish platform facility admins (role:admin with empty agency_name) from agency-scoped facility admins (role:admin with agency_name) and agency_admin accounts. Declared here so schema matches the fields backend functions and the SPA already read/write; entity RLS still cannot express role:admin ∧ agency_name — see docs/HOSTED-RLS-PROOF.md §5."
+      "description": "Legacy tenant display/settings hint only. This custom profile field is self-editable and must never grant authorization; AgencyMembership is authoritative."
     },
     "agency_role": {
       "type": "string",
@@ -172,7 +172,7 @@
     },
     "account_type": {
       "type": "string",
-      "description": "Account type (e.g. super_admin)"
+      "description": "Legacy presentation/migration label only. This custom profile field is self-editable and must never grant authorization."
     },
     "care_scope": {
       "type": "string",
@@ -223,29 +223,29 @@
     },
     "work_phone_number": {
       "type": "string",
-      "description": "Assigned work phone number (E.164)"
+      "description": "Legacy cached work number (E.164). It is not provider-routing authority; a service-owned telecom binding is required before delegated sends/calls are enabled."
     },
     "twilio_phone_number_sid": {
       "type": "string",
-      "description": "Twilio SID for the assigned work phone number"
+      "description": "Legacy provider number identifier cache; never authorization or routing authority."
     },
     "personal_cell_e164": {
       "type": "string",
-      "description": "Nurse personal cell number in E.164 format"
+      "description": "Legacy cached nurse cell (E.164). It is not provider-routing authority pending a service-owned telecom binding."
     },
     "ai_content_agreement_accepted": {
       "type": "boolean",
       "default": false,
-      "description": "Whether the user has signed off on the AI-generated content responsibility agreement (responsible for proofreading/editing AI output and attesting to any material they submit)"
+      "description": "Legacy display/compatibility field only; never authorization or agreement-gate authority"
     },
     "ai_content_agreement_accepted_at": {
       "type": "string",
       "format": "date-time",
-      "description": "Timestamp when the user accepted the AI-generated content responsibility agreement"
+      "description": "Legacy display/compatibility timestamp only; never agreement-gate authority"
     },
     "ai_content_agreement_version": {
       "type": "string",
-      "description": "Version of the AI-generated content responsibility agreement the user accepted; a bump re-prompts the user for re-acceptance"
+      "description": "Legacy display/compatibility version only; the service-owned AIContentAgreementAttestation controls re-prompting"
     },
     "offboarded_at": {
       "type": "string",
@@ -287,37 +287,23 @@
           "user_condition": {
             "role": "admin"
           }
-        },
-        {
-          "user_condition": {
-            "account_type": "agency_admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "super_admin"
-          }
         }
       ]
     },
-    "write": {
-      "$or": [
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "agency_admin"
-          }
-        },
-        {
-          "user_condition": {
-            "account_type": "super_admin"
-          }
-        }
-      ]
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
+      "user_condition": {
+        "role": "admin"
+      }
     }
   }
 }

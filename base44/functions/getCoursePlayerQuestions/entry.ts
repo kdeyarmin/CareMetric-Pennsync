@@ -18,6 +18,43 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 // entirely server-side (gradeTrainingAttempt), so the player only needs an
 // answer-free view. For matching questions we keep ONLY the left prompts (the
 // right/answer side is removed); the selectable options come from options_json.
+function sanitizeTrainingQuestionOptions(options) {
+  if (!Array.isArray(options)) return [];
+  return options.map((option) => {
+    if (!option || typeof option !== 'object' || Array.isArray(option)) {
+      return { value: option, label: String(option ?? '') };
+    }
+    // Older/imported rows may contain editor-only flags such as `correct` or
+    // per-option feedback. Allow-list only what the learner renderer needs.
+    return { value: option.value, label: option.label };
+  });
+}
+
+function sanitizeTrainingQuestionForLearner(q) {
+  const safe = {
+    id: q.id,
+    course_id: q.course_id,
+    type: q.type,
+    prompt: q.prompt,
+    options_json: sanitizeTrainingQuestionOptions(q.options_json),
+    difficulty: q.difficulty,
+    points: q.points,
+    order_index: q.order_index,
+    active: q.active,
+  };
+  // Matching questions need the LEFT prompts to render; strip the RIGHT
+  // (answer) side so the correct mapping is never sent to the browser.
+  if (q.type === 'matching') {
+    const pairs = Array.isArray(q.correct_answer_json?.answer?.pairs)
+      ? q.correct_answer_json.answer.pairs
+      : [];
+    safe.correct_answer_json = { answer: { pairs: pairs.map((p) => ({ left: p?.left })) } };
+  }
+  // Everything else (correct_answer_json for MCQ/true-false/multi-select,
+  // rationale, rubric, source_citations_json) is intentionally omitted.
+  return safe;
+}
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -36,30 +73,7 @@ Deno.serve(async (req) => {
     const rows = await base44.asServiceRole.entities.TrainingQuestion
       .filter({ course_id: courseId, active: true }, 'order_index', 500);
 
-    const questions = (rows || []).map((q) => {
-      const safe = {
-        id: q.id,
-        course_id: q.course_id,
-        type: q.type,
-        prompt: q.prompt,
-        options_json: q.options_json,
-        difficulty: q.difficulty,
-        points: q.points,
-        order_index: q.order_index,
-        active: q.active,
-      };
-      // Matching questions need the LEFT prompts to render; strip the RIGHT
-      // (answer) side so the correct mapping is never sent to the browser.
-      if (q.type === 'matching') {
-        const pairs = Array.isArray(q.correct_answer_json?.answer?.pairs)
-          ? q.correct_answer_json.answer.pairs
-          : [];
-        safe.correct_answer_json = { answer: { pairs: pairs.map((p) => ({ left: p?.left })) } };
-      }
-      // Everything else (correct_answer_json for MCQ/true-false/multi-select,
-      // rationale, rubric, source_citations_json) is intentionally omitted.
-      return safe;
-    });
+    const questions = (rows || []).map(sanitizeTrainingQuestionForLearner);
 
     return Response.json({ success: true, questions });
   } catch (error) {

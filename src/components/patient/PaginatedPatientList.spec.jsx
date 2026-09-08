@@ -72,3 +72,26 @@ describe('PaginatedPatientList caller-owned ordering', () => {
     expect(renderedNames()).toEqual(['Alice Adams', 'Mo Miller', 'Zoe Zhang']);
   });
 });
+
+describe('PaginatedPatientList PatientDetails route scope', () => {
+  const patient = {
+    id: 'patient /?&=one',
+    first_name: 'Ada',
+    last_name: 'Lovelace',
+    agency_id: 'mutable-patient-agency-must-not-authorize',
+  };
+
+  it('encodes both the exact patient and immutable agency identifiers', () => {
+    renderList([patient], { patientDetailsAgencyId: 'agency /?&=two' });
+    expect(screen.getByRole('link', { name: 'View Details' })).toHaveAttribute(
+      'href',
+      '/PatientDetails?id=patient+%2F%3F%26%3Done&agencyId=agency+%2F%3F%26%3Dtwo',
+    );
+  });
+
+  it('renders a disabled button and no chart link without valid route scope', () => {
+    renderList([patient]);
+    expect(screen.queryByRole('link', { name: 'View Details' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'View Details' })).toBeDisabled();
+  });
+});

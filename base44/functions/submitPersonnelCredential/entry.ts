@@ -1,5 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
+
 // <<<BEGIN SHARED HELPER: isAdminLike — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isAdminLike = (u) => !!u && u.role === 'admin';
 // <<<END SHARED HELPER: isAdminLike>>>
@@ -242,6 +263,9 @@ Deno.serve(async (req) => {
       saved = await svc.create({ ...payload, reminder_offsets_sent: [] });
     }
 
+    let email = false;
+    let deliveryPaused = false;
+
     // Renewal flow: stamp the old credential so reviewers can see a renewal is
     // in flight. Status of the old credential is untouched — it stays approved
     // until reviewPersonnelCredential supersedes it.
@@ -274,36 +298,46 @@ Deno.serve(async (req) => {
         } else {
           admins = admins.filter((u) => u.account_type === 'super_admin');
         }
-        await Promise.all(admins.map((admin) =>
-          base44.asServiceRole.integrations.Core.SendEmail({
-            to: admin.email,
-            from_name: 'PennSync by CareMetric',
-            subject: `Credential renewal submitted — ${fields.title}`,
-            body: renderBrandedEmail({
-              preheader: `${payload.user_name} submitted a credential renewal for approval.`,
-              eyebrow: 'Approval needed',
-              title: 'Credential renewal submitted',
-              intro: 'A credential renewal has been submitted and is waiting for review.',
-              sections: [
-                {
-                  rows: [
-                    ['Employee', payload.user_name],
-                    ['Credential', fields.title],
-                    ['Type', fields.item_type],
-                    ['New expiration', fields.expiration_date],
-                  ],
-                },
-                { paragraphs: ['Review it under Pending Credential Approvals in the admin console.'] },
-              ],
-            }),
-          })
-        ));
+        deliveryPaused = admins.length > 0 && !outboundDeliveryReleased();
+        if (!deliveryPaused) {
+          await Promise.all(admins.map((admin) =>
+            base44.asServiceRole.integrations.Core.SendEmail({
+              to: admin.email,
+              from_name: 'PennSync by CareMetric',
+              subject: `Credential renewal submitted — ${fields.title}`,
+              body: renderBrandedEmail({
+                preheader: `${payload.user_name} submitted a credential renewal for approval.`,
+                eyebrow: 'Approval needed',
+                title: 'Credential renewal submitted',
+                intro: 'A credential renewal has been submitted and is waiting for review.',
+                sections: [
+                  {
+                    rows: [
+                      ['Employee', payload.user_name],
+                      ['Credential', fields.title],
+                      ['Type', fields.item_type],
+                      ['New expiration', fields.expiration_date],
+                    ],
+                  },
+                  { paragraphs: ['Review it under Pending Credential Approvals in the admin console.'] },
+                ],
+              }),
+            })
+          ));
+          email = admins.length > 0;
+        }
       } catch (err) {
         console.error('submitPersonnelCredential admin notification failed:', err);
       }
     }
 
-    return Response.json({ success: true, credential_id: saved?.id || credential_id, status: 'pending_approval' });
+    return Response.json({
+      success: true,
+      credential_id: saved?.id || credential_id,
+      status: 'pending_approval',
+      email,
+      delivery_paused: deliveryPaused,
+    });
   } catch (error) {
     console.error('submitPersonnelCredential error:', error);
     return Response.json({ error: 'Failed to submit credential' }, { status: 500 });

@@ -193,10 +193,10 @@
           "created_by": "{{user.email}}"
         },
         {
-          "employee_email": "{{user.email}}"
+          "data.employee_email": "{{user.email}}"
         },
         {
-          "manager_email": "{{user.email}}"
+          "data.manager_email": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -205,7 +205,17 @@
         }
       ]
     },
-    "write": {
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
       "user_condition": {
         "role": "admin"
       }

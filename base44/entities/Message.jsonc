@@ -1,7 +1,109 @@
 {
   "name": "Message",
   "type": "object",
+  "description": "Service-owned secure-message record. Only provenance_status=verified_v2 rows with complete immutable tenant, thread, sender, membership, participant, and idempotency bindings are eligible for the dormant v2 brokers. All legacy or incomplete rows are quarantined by those brokers and remain inaccessible through RLS.",
   "properties": {
+    "provenance_version": {
+      "type": "integer",
+      "enum": [2],
+      "description": "Static secure-message provenance contract version. Missing or non-v2 rows are quarantined."
+    },
+    "provenance_status": {
+      "type": "string",
+      "enum": [
+        "verified_v2",
+        "quarantined_legacy"
+      ],
+      "description": "Only verified_v2 is broker-readable. Legacy and ambiguous rows are never upgraded from request claims."
+    },
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Agency id selected through an exact active AgencyMembership and stamped by the server broker."
+    },
+    "sender_user_id": {
+      "type": "string",
+      "description": "Immutable built-in Base44 User id derived from auth.me(); never accepted from a caller."
+    },
+    "sender_membership_id": {
+      "type": "string",
+      "description": "Exact active AgencyMembership id observed for sender_user_id at creation."
+    },
+    "sender_membership_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "AgencyMembership version observed for the sender at creation. Current membership is revalidated on every broker operation."
+    },
+    "participant_user_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Sorted immutable set of built-in User ids in the thread, stamped by the server."
+    },
+    "participant_membership_bindings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "user_id": { "type": "string" },
+          "user_email_normalized": { "type": "string", "format": "email" },
+          "membership_id": { "type": "string" },
+          "membership_version": { "type": "integer", "minimum": 1 },
+          "tenant_role": {
+            "type": "string",
+            "enum": [
+              "agency_admin",
+              "manager",
+              "clinician",
+              "office_staff",
+              "social_worker",
+              "spiritual_care"
+            ]
+          }
+        },
+        "required": [
+          "user_id",
+          "user_email_normalized",
+          "membership_id",
+          "membership_version",
+          "tenant_role"
+        ]
+      },
+      "description": "Immutable, sorted membership snapshot for every thread participant."
+    },
+    "participant_set_sha256": {
+      "type": "string",
+      "description": "Server-derived SHA-256 over the immutable agency/thread participant bindings."
+    },
+    "recipient_user_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Server-derived participant User ids excluding sender_user_id."
+    },
+    "thread_subject": {
+      "type": "string",
+      "description": "Immutable normalized subject copied identically to every message in the verified thread."
+    },
+    "client_request_id": {
+      "type": "string",
+      "description": "Caller retry id accepted only by the broker and scoped into message_creation_key."
+    },
+    "message_creation_key": {
+      "type": "string",
+      "description": "Server-derived thread_id:sender_user_id:client_request_id key. Duplicate rows are quarantined because datastore uniqueness is not assumed."
+    },
+    "payload_sha256": {
+      "type": "string",
+      "description": "Server-derived digest binding the idempotency key to normalized immutable content and provenance."
+    },
+    "read_by_user_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Built-in User ids that acknowledged this message through the broker."
+    },
+    "state_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Monotonic server-owned read-state revision used in updateMany compare-and-set predicates."
+    },
     "patient_id": {
       "type": "string",
       "description": "Reference to Patient entity"
@@ -141,40 +243,14 @@
       "description": "Email addresses of users who have read the message"
     }
   },
-  // Message backs two disjoint shapes: outbound delivery (patient_id/body/
-  // delivery_method/status) and in-app care-team messages (message_text/
-  // recipients/sender_email, e.g. Messages.jsx + referral assignment). They
-  // share no universal field, so nothing is required to avoid rejecting either.
+  // Message contains legacy rows without immutable selected-tenant provenance.
+  // Keep every direct operation closed until those rows are backfilled or
+  // quarantined and a tenant-authorized message broker is proven in hosted tests.
   "required": [],
   "rls": {
-    "read": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "recipients": {
-            "$contains": "{{user.email}}"
-          }
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    },
-    "write": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    }
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

@@ -8,6 +8,8 @@ import { agencyQueryKey } from '@/lib/agencyRoster';
 import { generateTrainingCourseStepwise } from "@/functions/generateTrainingCourse";
 import { assignInService } from "@/functions/assignInService";
 import { duplicateInService } from "@/functions/duplicateInService";
+import { recordTrainingAuditEvent } from "@/functions/recordTrainingAuditEvent";
+import { listTenantTrainingIntegrityRecords } from "@/functions/listTenantTrainingIntegrityRecords";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -80,7 +82,14 @@ export default function AIComplianceInServicesHub() {
   const { data: assignments = [] } = useQuery({ queryKey: ["in-service-assignments"], queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 1000), initialData: [] });
   const { data: _certificates = [] } = useQuery({ queryKey: ["in-service-certificates"], queryFn: () => base44.entities.TrainingCertificate.list('-issued_at', 500), initialData: [] });
   const { data: templates = [] } = useQuery({ queryKey: ["training-templates"], queryFn: () => base44.entities.TrainingTemplate.list('-created_date', 100), initialData: [] });
-  const { data: planEnrollments = [] } = useQuery({ queryKey: ["plan-enrollments-admin"], queryFn: () => base44.entities.PlanEnrollment.list('-enrolled_at', 300), initialData: [] });
+  const { data: planEnrollments = [] } = useQuery({
+    queryKey: ["plan-enrollments-admin"],
+    queryFn: async () => {
+      const response = await listTenantTrainingIntegrityRecords({ resource: 'plan_enrollments', limit: 300 });
+      return (response?.data || response)?.records || [];
+    },
+    initialData: [],
+  });
 
   const inServices = useMemo(() => courses.filter((course) => course.training_type === 'in_service' || course.ai_generated), [courses]);
   const now = new Date();
@@ -106,17 +115,8 @@ export default function AIComplianceInServicesHub() {
     averageScore,
   };
 
-  const createAuditLog = async (action, entityId, afterJson, reason = "") => {
-    await base44.entities.TrainingAuditLog.create({
-      actor_id: currentUser?.email,
-      actor_name: currentUser?.full_name,
-      action,
-      entity_type: 'TrainingCourse',
-      entity_id: entityId,
-      after_json: afterJson,
-      reason,
-      severity: 'info'
-    });
+  const createAuditLog = async (action, entityId) => {
+    await recordTrainingAuditEvent({ action, courseId: entityId });
   };
 
   const useTemplate = (template) => {
@@ -179,12 +179,13 @@ export default function AIComplianceInServicesHub() {
         employee_audience: 'employee',
         learning_objectives: [],
         ai_generated: false,
+        created_by: currentUser?.email,
         requires_attestation: true,
         enable_certificate: true,
         short_description: manualDraft.description,
         test_settings_json: { show_correct_answers_after_completion: false }
       });
-      await createAuditLog('course_created', created.id, { title: created.title, status: 'draft' }, 'created');
+      await createAuditLog('course_created', created.id);
       setManualDraft({ title: "", description: "", category: "compliance", business_line_scope: "all", passing_score: 80 });
       queryClient.invalidateQueries({ queryKey: ["in-service-courses"] });
       toast.success("Draft course created.");
@@ -219,7 +220,7 @@ export default function AIComplianceInServicesHub() {
         published_date: status === 'published' ? new Date().toISOString() : course.published_date,
         archived_status: status === 'archived'
       });
-      await createAuditLog(status === 'published' ? 'course_published' : 'course_archived', course.id, { status }, status === 'published' ? 'published' : 'archived');
+      await createAuditLog(status === 'published' ? 'course_published' : 'course_archived', course.id);
       queryClient.invalidateQueries({ queryKey: ["in-service-courses"] });
       toast.success(status === 'published' ? "Course published." : "Course archived.");
     } catch {

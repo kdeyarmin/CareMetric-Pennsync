@@ -7,6 +7,12 @@ import { Mic, MicOff, X, CheckCircle2, AlertCircle, Loader2, FileAudio } from "l
 import { toast } from "sonner";
 import { enhanceTranscription } from "../utils/medicalDictionary";
 import DictationSectionMapper from "./DictationSectionMapper";
+import { getAuthorityBoundUserMedia, stopMediaStream } from '@/lib/tenantMediaDevices';
+import AuthorityBoundAudio from '@/components/ui/AuthorityBoundAudio';
+import {
+  getTenantSdkRealmAbortSignal,
+  isTenantSdkRealmLeaseCurrent,
+} from '@/lib/tenantSdkRealmGate';
 
 // One unified record-and-transcribe control for Step 1, replacing the two separate
 // recorders. The recording itself is mode-agnostic; only the post-stop processing
@@ -36,12 +42,18 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
   const timerRef = useRef(null);
+  const mediaAcquisitionRef = useRef(0);
+  const mountedRef = useRef(true);
+  const readerRef = useRef(null);
+  const recordingLeaseRef = useRef(null);
   // Capture the mode at stop time so the async onstop handler doesn't read a stale
   // closure if the toggle changes after recording starts.
   const modeRef = useRef(mode);
   modeRef.current = mode;
 
   const startRecording = async () => {
+    const acquisition = ++mediaAcquisitionRef.current;
+    let acquiredStream = null;
     try {
       setError(null);
       // Clear any prior result so a new recording starts clean — otherwise a stale
@@ -49,16 +61,40 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
       setSoapPreview(null);
       setTranscript(null);
       setShowMapper(false);
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const { realmLease, stream } = await getAuthorityBoundUserMedia({ audio: true });
+      acquiredStream = stream;
+      if (
+        !mountedRef.current
+        || acquisition !== mediaAcquisitionRef.current
+        || !isTenantSdkRealmLeaseCurrent(realmLease)
+      ) {
+        stopMediaStream(stream);
+        return;
+      }
+      recordingLeaseRef.current = realmLease;
       streamRef.current = stream;
       const mediaRecorder = new MediaRecorder(stream);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
-      mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) audioChunksRef.current.push(e.data); };
+      mediaRecorder.ondataavailable = (e) => {
+        if (
+          mountedRef.current
+          && acquisition === mediaAcquisitionRef.current
+          && isTenantSdkRealmLeaseCurrent(realmLease)
+          && e.data.size > 0
+        ) {
+          audioChunksRef.current.push(e.data);
+        }
+      };
       mediaRecorder.onstop = async () => {
+        if (
+          !mountedRef.current
+          || acquisition !== mediaAcquisitionRef.current
+          || !isTenantSdkRealmLeaseCurrent(realmLease)
+        ) return;
         if (modeRef.current === "soap") {
-          await processSOAP();
+          await processSOAP(realmLease, acquisition);
         } else {
           // Use the recorder's actual container type. MediaRecorder with no
           // explicit mimeType produces audio/webm (Opus) in Chromium, so
@@ -66,7 +102,7 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
           const type = mediaRecorderRef.current?.mimeType || "audio/webm";
           const blob = new Blob(audioChunksRef.current, { type });
           setAudioUrl(URL.createObjectURL(blob));
-          await processNarrative(blob);
+          await processNarrative(blob, realmLease, acquisition);
         }
       };
 
@@ -75,7 +111,19 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
       setRecordingTime(0);
       timerRef.current = setInterval(() => setRecordingTime((p) => p + 1), 1000);
     } catch {
-      setError("Microphone access denied. Please enable microphone in browser settings.");
+      stopMediaStream(acquiredStream);
+      if (streamRef.current === acquiredStream) streamRef.current = null;
+      const recorder = mediaRecorderRef.current;
+      if (recorder) {
+        recorder.onstop = null;
+        recorder.ondataavailable = null;
+      }
+      if (recorder && recorder.state !== 'inactive') {
+        try { recorder.stop(); } catch { /* already stopped */ }
+      }
+      if (acquisition === mediaAcquisitionRef.current) {
+        setError("Microphone access denied. Please enable microphone in browser settings.");
+      }
     }
   };
 
@@ -90,42 +138,80 @@ export default function VisitAudioRecorder({ onTranscribed, disabled = false }) 
 
   // Narrative: upload the recorded Blob as a File (multipart, with auth) to the
   // Whisper backend, enhance medical terms, then hand to the section mapper.
-  const processNarrative = async (blob) => {
+  const processNarrative = async (blob, realmLease, acquisition) => {
     setProcessing(true);
     try {
       const mime = blob.type || "audio/webm";
       const ext = mime.split(";")[0].split("/")[1] || "webm";
       const audioFile = new File([blob], `recording-${Date.now()}.${ext}`, { type: mime });
       const response = await base44.functions.invoke("transcribeAudioWithWhisper", { file: audioFile });
+      if (
+        !mountedRef.current
+        || acquisition !== mediaAcquisitionRef.current
+        || !isTenantSdkRealmLeaseCurrent(realmLease)
+      ) return;
       const enhanced = enhanceTranscription(response.data?.text || "");
       setTranscript(enhanced);
       setShowMapper(true);
     } catch (err) {
+      if (
+        !mountedRef.current
+        || acquisition !== mediaAcquisitionRef.current
+        || !isTenantSdkRealmLeaseCurrent(realmLease)
+      ) return;
       const friendly = configNotReadyMessage(err);
       setError(friendly || `Transcription error: ${err.message}`);
       if (!friendly) console.error("Transcription error:", err);
     } finally {
-      setProcessing(false);
+      if (
+        mountedRef.current
+        && acquisition === mediaAcquisitionRef.current
+        && isTenantSdkRealmLeaseCurrent(realmLease)
+      ) setProcessing(false);
     }
   };
 
   // SOAP: send the audio as base64 to the SOAP backend, which transcribes AND
   // structures it; append the formatted block.
-  const processSOAP = async () => {
+  const processSOAP = async (realmLease, acquisition) => {
     const blob = new Blob(audioChunksRef.current, { type: "audio/webm" });
     if (blob.size === 0) return;
     setProcessing(true);
     try {
+      const signal = getTenantSdkRealmAbortSignal(realmLease);
       const base64 = await new Promise((resolve, reject) => {
         const reader = new FileReader();
-        reader.onloadend = () => resolve(reader.result.split(",")[1]);
+        readerRef.current = reader;
+        const abort = () => {
+          try { reader.abort(); } catch { /* already complete */ }
+          reject(new Error('Audio processing expired because workspace authority changed'));
+        };
+        signal.addEventListener('abort', abort, { once: true });
+        reader.onload = () => resolve(String(reader.result || '').split(",")[1] || '');
         reader.onerror = reject;
+        reader.onabort = () => reject(
+          new Error('Audio processing expired because workspace authority changed'),
+        );
         reader.readAsDataURL(blob);
+        reader.addEventListener('loadend', () => {
+          signal.removeEventListener('abort', abort);
+          if (readerRef.current === reader) readerRef.current = null;
+        }, { once: true });
       });
+      if (
+        !mountedRef.current
+        || acquisition !== mediaAcquisitionRef.current
+        || !isTenantSdkRealmLeaseCurrent(realmLease)
+      ) return;
       const res = await base44.functions.invoke("transcribeAndGenerateSOAPNote", {
         audio_base64: base64,
         mime_type: blob.type,
       });
+      if (
+        !mountedRef.current
+        || acquisition !== mediaAcquisitionRef.current
+        || !isTenantSdkRealmLeaseCurrent(realmLease)
+      ) return;
       if (res.data && res.data.success) {
         const soap = res.data.data;
         const rawTranscript = (soap.raw_transcript || "").trim();
@@ -158,11 +244,20 @@ Plan: ${soap.plan || "N/A"}
         toast.error("Failed to generate SOAP note.");
       }
     } catch (err) {
+      if (
+        !mountedRef.current
+        || acquisition !== mediaAcquisitionRef.current
+        || !isTenantSdkRealmLeaseCurrent(realmLease)
+      ) return;
       const friendly = configNotReadyMessage(err);
       if (friendly) toast.error(friendly);
       else { console.error("SOAP processing error:", err); toast.error("Error processing audio."); }
     } finally {
-      setProcessing(false);
+      if (
+        mountedRef.current
+        && acquisition === mediaAcquisitionRef.current
+        && isTenantSdkRealmLeaseCurrent(realmLease)
+      ) setProcessing(false);
     }
   };
 
@@ -179,13 +274,23 @@ Plan: ${soap.plan || "N/A"}
   // FIRST so cleanup only releases the mic — it must not upload PHI audio for a
   // recording the user never accepted, nor setState after unmount.
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
+      mediaAcquisitionRef.current += 1;
       const mr = mediaRecorderRef.current;
-      if (mr && mr.state !== "inactive") {
+      if (mr) {
         mr.onstop = null;
+        mr.ondataavailable = null;
+      }
+      if (mr && mr.state !== "inactive") {
         try { mr.stop(); } catch { /* already stopped */ }
       }
-      streamRef.current?.getTracks().forEach((t) => t.stop());
+      try { readerRef.current?.abort(); } catch { /* already complete */ }
+      readerRef.current = null;
+      recordingLeaseRef.current = null;
+      audioChunksRef.current = [];
+      stopMediaStream(streamRef.current);
       if (timerRef.current) clearInterval(timerRef.current);
     };
   }, []);
@@ -253,7 +358,7 @@ Plan: ${soap.plan || "N/A"}
             </span>
           </div>
           <div className="flex items-center gap-2">
-            <audio src={audioUrl} controls className="flex-1 h-8 text-xs" />
+            <AuthorityBoundAudio src={audioUrl} controls className="flex-1 h-8 text-xs" />
             <Button onClick={clearRecording} variant="ghost" size="sm" className="h-8 w-8 p-0 shrink-0" title="Clear recording" aria-label="Clear recording">
               <X className="w-4 h-4" />
             </Button>

@@ -7,89 +7,185 @@ import { pathToFileURL } from "node:url";
 import { transpileTs } from "../../tools-transpile-ts.mjs";
 
 /**
- * Behavioral contracts for the hard-paused OASIS write path and its dormant
- * validator. Production-source tests leave the pause intact. Validator tests
- * rewrite the literal only in a temporary transpiled copy; there is no runtime
- * bypass in the deployed function.
+ * Behavioral contract for the hard-paused OASIS write broker.
  *
- * `OASISAssessment` is reachable directly, so this function is the only thing
- * standing between a client and an arbitrary `oasis_items[]`. These tests run
- * the REAL handler against an injected client and assert what it refuses — a
- * validator that is only exercised through the UI is not a validator.
+ * Production-source tests never bypass the pause. Dormant-path tests rewrite
+ * the literal in an isolated transpiled copy and inject a complete service-role
+ * store. This proves the code below the pause without introducing a deployed
+ * runtime, environment, feature-flag, or administrator bypass.
  */
 
 const V2 = "pennsync-oasis-response-v2-cms-e2";
-const V1 = "pennsync-oasis-response-v1-legacy";
 const FLAG = "oasis_response_schema_v2_enabled";
+const NOW = "2026-06-01T10:00:00.000Z";
 
-function row(overrides = {}) {
+const USER = {
+  id: "u1",
+  email: "rn@example.com",
+  role: "user",
+  is_active: true,
+  disabled: false,
+  is_service: false,
+  is_verified: true,
+  // Mutable legacy claims are deliberately wrong. They are never authority.
+  agency_id: "foreign-agency",
+  agency_name: "Foreign Agency",
+};
+
+const AGENCY = {
+  id: "ag1",
+  agency_code: "MAPLE-HH",
+  status: "active",
+};
+
+const MEMBERSHIP = {
+  id: "mem1",
+  membership_key: "ag1:u1",
+  agency_id: "ag1",
+  user_id: "u1",
+  user_email_normalized: "rn@example.com",
+  tenant_role: "clinician",
+  status: "active",
+  created_by_user_id: "u-admin",
+  activated_at: "2026-01-01T00:00:00.000Z",
+  revoked_at: null,
+  revocation_reason: null,
+  last_transition_by_user_id: "u-admin",
+  last_transition_by_email_normalized: "admin@example.com",
+  last_transition_at: "2026-01-01T00:00:00.000Z",
+  last_transition_reason: "initial activation",
+  version: 3,
+};
+
+const PATIENT = {
+  id: "p1",
+  agency_id: "ag1",
+  created_by_user_id: "u-creator",
+  created_by_user_email_normalized: "creator@example.com",
+  created_by: "creator@example.com",
+  client_request_id: "patient-request-1",
+  patient_creation_key: "ag1:u-creator:patient-request-1",
+  is_sample: false,
+  is_archived: false,
+  status: "active",
+  updated_date: "2026-05-01T00:00:00.000Z",
+};
+
+const ASSIGNMENT = {
+  id: "assign1",
+  assignment_key: "ag1:p1:u1",
+  agency_id: "ag1",
+  patient_id: "p1",
+  user_id: "u1",
+  user_email_normalized: "rn@example.com",
+  assignee_membership_id: "mem1",
+  assignee_membership_version_at_enablement: 3,
+  status: "active",
+  source: "manual",
+  created_by_user_id: "u-admin",
+  created_by_user_email_normalized: "admin@example.com",
+  activated_at: "2026-01-02T00:00:00.000Z",
+  suspended_at: null,
+  revoked_at: null,
+  revocation_reason: null,
+  last_transition_by_user_id: "u-admin",
+  last_transition_by_email_normalized: "admin@example.com",
+  last_transition_at: "2026-01-02T00:00:00.000Z",
+  last_transition_reason: "assigned to chart",
+  last_transition_action: "grant",
+  last_transition_request_id: "assignment-request-1",
+  last_transition_request_key: "ag1:p1:u1:assignment-request-1",
+  version: 2,
+};
+
+const VISIT = {
+  id: "v1",
+  agency_id: "ag1",
+  patient_id: "p1",
+  created_by_user_id: "u-creator",
+  created_by_user_email_normalized: "creator@example.com",
+  created_by: "creator@example.com",
+  client_request_id: "visit-request-1",
+  is_sample: false,
+  visit_date: "2026-06-01",
+  visit_type: "discharge",
+  status: "completed",
+  updated_date: "2026-06-01T09:00:00.000Z",
+};
+
+const SETTINGS = {
+  id: "settings1",
+  agency_code: "MAPLE-HH",
+  [FLAG]: true,
+  oasis_response_writes_disabled: false,
+  updated_date: "2026-05-15T00:00:00.000Z",
+};
+
+function minimalRow(overrides = {}) {
   return {
     definition_id: "m1830_cms_e2",
-    item_number: "M1830",
-    item_name: "Bathing",
-    item_source: "cms_item",
-    item_spec_version: "oasis-e2",
-    response_schema_id: V2,
-    response_shape: "single",
     response_value: { code: "6" },
-    response_origin: "clinician_selected",
-    selected_by: "rn@example.com",
-    selected_at: "2026-06-01T10:00:00.000Z",
-    ai_suggested: false,
     ...overrides,
   };
 }
 
 function payload(overrides = {}) {
   return {
+    operation: "create_draft",
+    agency_id: "ag1",
     patient_id: "p1",
+    visit_id: "v1",
     visit_type: "Discharge",
     assessment_date: "2026-06-01",
-    oasis_items: [row()],
+    oasis_items: [minimalRow()],
     ...overrides,
   };
 }
 
-const AGENCY = "Maple Home Health";
-const OTHER_AGENCY = "Birch Home Health";
-const DEFAULT_USER = { id: "u1", email: "rn@example.com", agency_id: "ag1", agency_name: AGENCY, is_active: true };
-
-/** An AgencySettings row as the entity actually defines it: flat boolean fields. */
-function settingsRow(agencyName, fields = {}) {
-  return { id: `set_${agencyName}`, agency_code: agencyName, office_name: agencyName, created_date: "2026-01-01", ...fields };
-}
-
-/**
- * A multi-tenant AgencySettings store with the two read shapes the shared
- * `resolveAgencySettings` helper uses. Newest first, so a newest-row-wins bug
- * has a wrong row available to pick.
- */
-function agencySettingsStore(rows) {
-  const newestFirst = [...rows].sort((a, b) => String(b.created_date || "").localeCompare(String(a.created_date || "")));
+function initialState(overrides = {}) {
   return {
-    list: async (_sort, limit) => newestFirst.slice(0, limit ?? newestFirst.length),
-    filter: async (where, _sort, limit) => {
-      const [[field, value]] = Object.entries(where);
-      return newestFirst.filter((r) => r[field] === value).slice(0, limit ?? newestFirst.length);
-    },
+    agencies: [structuredClone(AGENCY)],
+    memberships: [structuredClone(MEMBERSHIP)],
+    patients: [structuredClone(PATIENT)],
+    assignments: [structuredClone(ASSIGNMENT)],
+    visits: [structuredClone(VISIT)],
+    settings: [structuredClone(SETTINGS)],
+    assessments: [],
+    ...structuredClone(overrides),
   };
 }
 
+function matches(row, query) {
+  return Object.entries(query).every(([key, value]) => row?.[key] === value);
+}
+
+function defaultRows(entity, query, state) {
+  const store = {
+    Agency: state.agencies,
+    AgencyMembership: state.memberships,
+    Patient: state.patients,
+    PatientCareTeamAssignment: state.assignments,
+    Visit: state.visits,
+    AgencySettings: state.settings,
+    OASISAssessment: state.assessments,
+  }[entity];
+  return (store || []).filter((row) => matches(row, query));
+}
+
 async function loadHandler({
-  settings = { [FLAG]: true },
-  settingsRows = null,
-  user = DEFAULT_USER,
-  exerciseDormantValidator = true,
+  exerciseDormantBroker = true,
+  user = USER,
+  state: stateOverrides = {},
+  onAuth = null,
+  onFilter = null,
+  onCreate = null,
 } = {}) {
-  // The store is a LIST of tenant rows, and the handler must find the caller's
-  // own. A single-row store cannot tell a correctly-scoped read from a
-  // newest-row-wins one, which is how the cross-tenant defect survived the
-  // first round of these tests. `settings` is the shorthand for "one row,
-  // belonging to the caller's agency".
-  const rows = settingsRows || (settings ? [settingsRow(user?.agency_name || AGENCY, settings)] : []);
   let src = await readFile(new URL("../functions/saveOasisResponses/entry.ts", import.meta.url), "utf8");
-  src = src.replace(/import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/, "const createClientFromRequest = globalThis.__soMakeClient;");
-  if (exerciseDormantValidator) {
+  src = src.replace(
+    /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
+    "const createClientFromRequest = globalThis.__soMakeClient;",
+  );
+  if (exerciseDormantBroker) {
     src = src.replace(
       "const OASIS_V2_WRITES_PAUSED = true;",
       "const OASIS_V2_WRITES_PAUSED = false;",
@@ -99,350 +195,560 @@ async function loadHandler({
   const tmp = join(tmpdir(), `soctr_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   await writeFile(tmp, js);
 
-  const written = [];
-  const runtime = { clientCreations: 0 };
+  const state = initialState(stateOverrides);
+  const runtime = {
+    clientCreations: 0,
+    authCalls: 0,
+    serviceCreates: [],
+    serviceFilters: [],
+    userEntityAccesses: 0,
+  };
+  const filterCounts = new Map();
   let handler;
-  globalThis.Deno = { serve: (h) => { handler = h; }, env: { get: () => undefined } };
+
+  const serviceEntities = {};
+  for (const entity of [
+    "Agency",
+    "AgencyMembership",
+    "Patient",
+    "PatientCareTeamAssignment",
+    "Visit",
+    "AgencySettings",
+    "OASISAssessment",
+  ]) {
+    serviceEntities[entity] = {
+      filter: async (query, sort, limit, skip, fields) => {
+        const count = (filterCounts.get(entity) || 0) + 1;
+        filterCounts.set(entity, count);
+        runtime.serviceFilters.push({ entity, query: structuredClone(query), sort, limit, skip, fields, count });
+        const overridden = onFilter?.({ entity, query, count, state, runtime });
+        const rows = overridden === undefined ? defaultRows(entity, query, state) : overridden;
+        return structuredClone(rows);
+      },
+    };
+  }
+  serviceEntities.OASISAssessment.create = async (record) => {
+    runtime.serviceCreates.push(structuredClone(record));
+    if (onCreate) {
+      const result = await onCreate({ record, state, runtime });
+      if (result !== undefined) return result;
+    }
+    const stored = {
+      id: `oa${state.assessments.length + 1}`,
+      ...structuredClone(record),
+      created_by: "service@example.com",
+      created_date: NOW,
+      updated_date: NOW,
+    };
+    state.assessments.push(stored);
+    return { id: stored.id };
+  };
+
+  globalThis.Deno = { serve: (fn) => { handler = fn; }, env: { get: () => undefined } };
   globalThis.__soMakeClient = () => {
     runtime.clientCreations += 1;
-    return ({
-    // `user` may legitimately be null (anonymous), so no ?? fallback here —
-    // that would make the anonymous case untestable.
-    auth: { me: async () => user },
-    // The rollout flag lives on AgencySettings: Agency has no feature object
-    // and its read RLS is admin-only, so a clinician could never resolve it.
-    // Resolution goes through the shared agency-scoped helper, which reads via
-    // asServiceRole — so the harness must provide one, backed by the same store.
-    asServiceRole: { entities: { AgencySettings: agencySettingsStore(rows) } },
-    entities: {
-      AgencySettings: agencySettingsStore(rows),
-      OASISAssessment: {
-        create: async (rec) => { written.push({ op: "create", rec }); return { id: "new1", ...rec }; },
-        update: async (id, rec) => { written.push({ op: "update", id, rec }); return { id, ...rec }; },
+    return {
+      auth: {
+        me: async () => {
+          runtime.authCalls += 1;
+          const overridden = onAuth?.({ count: runtime.authCalls, state, runtime });
+          return overridden === undefined ? user : overridden;
+        },
       },
-    },
-    });
+      asServiceRole: { entities: serviceEntities },
+      get entities() {
+        runtime.userEntityAccesses += 1;
+        throw new Error("user-mode entities must never be used");
+      },
+    };
   };
+
   try {
     await import(pathToFileURL(tmp).href);
   } finally {
     await unlink(tmp).catch(() => {});
   }
-  return { handler, written, runtime };
+  return { handler, runtime, state };
 }
 
-async function post(handler, body) {
-  const res = await handler(new Request("http://local/saveOasisResponses", {
-    method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body),
-  }));
-  return { status: res.status, json: await res.json() };
+async function request(handler, body, { method = "POST", headers = {} } = {}) {
+  const init = { method, headers: { "content-type": "application/json", ...headers } };
+  if (body !== undefined) init.body = typeof body === "string" ? body : JSON.stringify(body);
+  const res = await handler(new Request("http://local/saveOasisResponses", init));
+  const result = { status: res.status, headers: res.headers, json: await res.json() };
+  assert.equal(result.headers.get("cache-control"), "no-store", "all broker responses must be non-cacheable");
+  return result;
 }
 
-const reasonOf = (json) => (json.errors || []).map((e) => e.reason);
+const reasons = (json) => (json.errors || []).map((error) => error.reason);
 
-// ── the happy path ──────────────────────────────────────────────────────────
-
-test("production OASIS v2 writes are hard-paused before any Base44 client or data access", async () => {
-  const { handler, written, runtime } = await loadHandler({ exerciseDormantValidator: false });
-  const { status, json } = await post(handler, payload());
-  assert.equal(status, 503);
-  assert.equal(json.reason, "tenant_security_validation_pending");
-  assert.match(json.error, /tenant and patient-access security validation/i);
-  assert.equal(runtime.clientCreations, 0, "the pause must precede auth, settings and service queries");
-  assert.deepEqual(written, []);
+test("production writes are hard-paused before body parsing, client creation, auth, or data access", async () => {
+  const { handler, runtime } = await loadHandler({ exerciseDormantBroker: false });
+  const result = await request(handler, "{ definitely not json");
+  assert.equal(result.status, 503);
+  assert.equal(result.json.reason, "tenant_security_validation_pending");
+  assert.equal(runtime.clientCreations, 0);
+  assert.equal(runtime.authCalls, 0);
+  assert.deepEqual(runtime.serviceCreates, []);
+  assert.deepEqual(runtime.serviceFilters, []);
 });
 
-test("the dormant validator accepts a valid v2 write and stamps provenance", async () => {
-  const { handler, written } = await loadHandler();
-  const { status, json } = await post(handler, payload());
-  assert.equal(status, 200, JSON.stringify(json));
-  assert.equal(json.ok, true);
-  assert.equal(written.length, 1);
-  const rec = written[0].rec;
-  assert.equal(rec.response_schema_id, V2);
-  assert.equal(rec.instrument_version, "oasis-e2");
-  assert.equal(rec.migration_status, "native_v2");
-  assert.equal(rec.response_schema_source, "final-oasis-e2-all-item-04-01-2026");
-  assert.equal(rec.oasis_items[0].response_value.code, "6");
-  // The server sets these itself rather than trusting the client.
-  assert.equal(rec.oasis_items[0].response_origin, "clinician_selected");
-  assert.equal(rec.oasis_items[0].ai_suggested, false);
-  assert.equal(rec.last_written_by, "rn@example.com");
-});
+test("the dormant broker creates only a tenant-stamped canonical draft through service role", async () => {
+  const { handler, runtime } = await loadHandler();
+  const result = await request(handler, payload());
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  assert.equal(result.json.ok, true);
+  assert.equal(result.json.operation, "create_draft");
+  assert.deepEqual(Object.keys(result.json.assessment).sort(), [
+    "assessment_date",
+    "id",
+    "instrument_version",
+    "migration_status",
+    "patient_id",
+    "response_schema_id",
+    "status",
+    "visit_id",
+    "visit_type",
+  ]);
+  assert.equal(result.json.assessment.status, "draft");
+  assert.equal(result.json.scope.agency_id, "ag1");
+  assert.equal(result.json.scope.membership_id, "mem1");
+  assert.equal(result.json.scope.membership_version, 3);
+  assert.equal(result.json.scope.chart_access_basis, "care_team_assignment");
 
-// ── the flag and the kill switch ────────────────────────────────────────────
+  assert.equal(runtime.serviceCreates.length, 1);
+  assert.equal(runtime.userEntityAccesses, 0);
+  const record = runtime.serviceCreates[0];
+  assert.equal(record.agency_id, "ag1");
+  assert.equal(record.patient_id, "p1");
+  assert.equal(record.visit_id, "v1");
+  assert.equal(record.status, "draft");
+  assert.equal(record.response_schema_id, V2);
+  assert.equal(record.instrument_version, "oasis-e2");
+  assert.equal(record.response_schema_source, "final-oasis-e2-all-item-04-01-2026");
+  assert.equal(record.migration_status, "native_v2");
+  assert.equal(record.last_written_by, "rn@example.com");
+  assert.equal(record.oasis_items[0].definition_id, "m1830_cms_e2");
+  assert.equal(record.oasis_items[0].item_number, "M1830");
+  assert.equal(record.oasis_items[0].item_source, "cms_item");
+  assert.equal(record.oasis_items[0].item_spec_version, "oasis-e2");
+  assert.equal(record.oasis_items[0].response_shape, "single");
+  assert.equal(record.oasis_items[0].response_origin, "clinician_selected");
+  assert.equal(record.oasis_items[0].selected_by, "rn@example.com");
+  assert.equal(record.oasis_items[0].selected_at, record.last_written_at);
+  assert.equal(record.oasis_items[0].ai_suggested, false);
 
-test("the feature flag gates the write and defaults closed", async () => {
-  for (const settings of [null, {}, { [FLAG]: false }, { [FLAG]: "true" }]) {
-    const { handler, written } = await loadHandler({ settings });
-    const { status, json } = await post(handler, payload());
-    assert.equal(status, 403, JSON.stringify(json));
-    assert.equal(json.reason, "feature_disabled");
-    assert.equal(written.length, 0, "nothing may be written while the flag is off");
-  }
-});
-
-test("the kill switch stops writes without a deploy", async () => {
-  const { handler, written } = await loadHandler({
-    settings: { [FLAG]: true, oasis_response_writes_disabled: true },
-  });
-  const { status, json } = await post(handler, payload());
-  assert.equal(status, 423);
-  assert.equal(json.reason, "write_kill_switch");
-  assert.equal(written.length, 0);
-});
-
-// ── the flags belong to ONE agency ──────────────────────────────────────────
-//
-// AgencySettings read RLS is open, so a `list('-created_date', 1)` returns
-// whichever tenant saved last, not the caller's. That is a rollout flag and an
-// incident kill switch answerable by a stranger. Both directions are tested
-// because only one of them fails safe.
-
-test("another agency's enabled flag does not enable this agency", async () => {
-  const { handler, written } = await loadHandler({
-    settingsRows: [
-      // Newest row wins a global read, and it belongs to somebody else.
-      settingsRow(OTHER_AGENCY, { [FLAG]: true, created_date: "2026-08-01" }),
-      settingsRow(AGENCY, { [FLAG]: false, created_date: "2026-01-01" }),
-    ],
-  });
-  const { status, json } = await post(handler, payload());
-  assert.equal(status, 403, JSON.stringify(json));
-  assert.equal(json.reason, "feature_disabled");
-  assert.equal(written.length, 0, "a tenant not approved for v2 must not be enabled by another tenant's row");
-});
-
-test("this agency's kill switch stops this agency, even under a newer foreign row", async () => {
-  // The direction that fails OPEN: an agency containing an incident flips its
-  // own switch, and a global newest-row read answers with somebody else's
-  // `false`. The write would proceed during the incident the switch exists for.
-  const { handler, written } = await loadHandler({
-    settingsRows: [
-      settingsRow(OTHER_AGENCY, { [FLAG]: true, oasis_response_writes_disabled: false, created_date: "2026-08-01" }),
-      settingsRow(AGENCY, { [FLAG]: true, oasis_response_writes_disabled: true, created_date: "2026-01-01" }),
-    ],
-  });
-  const { status, json } = await post(handler, payload());
-  assert.equal(status, 423, JSON.stringify(json));
-  assert.equal(json.reason, "write_kill_switch");
-  assert.equal(written.length, 0);
-});
-
-test("an agency with no settings row of its own is not enabled by anyone else's", async () => {
-  const { handler, written } = await loadHandler({
-    settingsRows: [settingsRow(OTHER_AGENCY, { [FLAG]: true, created_date: "2026-08-01" })],
-  });
-  const { status, json } = await post(handler, payload());
-  assert.equal(status, 403, JSON.stringify(json));
-  assert.equal(json.reason, "feature_disabled");
-  assert.equal(written.length, 0);
-});
-
-test("a caller with no agency_name is not enabled by a multi-tenant store", async () => {
-  // No agency hint and more than one tenant row: the helper cannot tell which
-  // is the caller's, so it resolves nothing and the write is refused.
-  const { handler, written } = await loadHandler({
-    user: { ...DEFAULT_USER, agency_name: "" },
-    settingsRows: [
-      settingsRow(AGENCY, { [FLAG]: true, created_date: "2026-08-01" }),
-      settingsRow(OTHER_AGENCY, { [FLAG]: true, created_date: "2026-01-01" }),
-    ],
-  });
-  const { status, json } = await post(handler, payload());
-  assert.equal(status, 403, JSON.stringify(json));
-  assert.equal(json.reason, "feature_disabled");
-  assert.equal(written.length, 0);
-});
-
-test("the caller's own row is found by office_name when agency_code does not match", async () => {
-  const row = settingsRow(AGENCY, { [FLAG]: true });
-  delete row.agency_code;
-  const { handler, written } = await loadHandler({ settingsRows: [row] });
-  const { status, json } = await post(handler, payload());
-  assert.equal(status, 200, JSON.stringify(json));
-  assert.equal(written.length, 1);
-});
-
-// ── stale clients ───────────────────────────────────────────────────────────
-
-test("a stale client writing the obsolete v1 schema is rejected with an actionable message", async () => {
-  const { handler, written } = await loadHandler();
-  const { status, json } = await post(handler, payload({
-    oasis_items: [row({ response_schema_id: V1 })],
-  }));
-  assert.equal(status, 409);
-  assert.equal(json.reason, "stale_client");
-  assert.match(json.error, /older version of PennSync/i);
-  assert.match(json.error, /Refresh/i);
-  assert.ok(reasonOf(json).includes("obsolete_response_schema"));
-  assert.equal(written.length, 0);
-});
-
-test("an assessment-level obsolete schema is rejected before any row is read", async () => {
-  const { handler, written } = await loadHandler();
-  const { status, json } = await post(handler, payload({ response_schema_id: V1 }));
-  assert.equal(status, 409);
-  assert.equal(json.reason, "stale_client");
-  assert.equal(written.length, 0);
-});
-
-// ── everything the validator must refuse ────────────────────────────────────
-
-test("the validator rejects each disallowed write, and writes nothing", async () => {
-  const cases = [
-    ["missing response schema", payload({ oasis_items: [row({ response_schema_id: undefined })] }), "missing_response_schema"],
-    ["unknown response schema", payload({ oasis_items: [row({ response_schema_id: "pennsync-oasis-response-v9" })] }), "unknown_response_schema"],
-    ["unknown definition", payload({ oasis_items: [row({ definition_id: "m9999_cms_e2" })] }), "unknown_definition"],
-    ["invalid code", payload({ oasis_items: [row({ response_value: { code: "9" } })] }), "invalid_code"],
-    ["numeric code", payload({ oasis_items: [row({ response_value: { code: 6 } })] }), "invalid_code"],
-    ["invalid response shape", payload({ oasis_items: [row({ response_value: { codes: ["6"] } })] }), "invalid_response_shape"],
-    ["declared shape mismatch", payload({ oasis_items: [row({ response_shape: "grid" })] }), "invalid_response_shape"],
-    ["item at an inapplicable timepoint", payload({
-      visit_type: "Start of Care",
-      oasis_items: [row({ definition_id: "m2420_cms_e2", item_number: "M2420", response_value: { code: "1" } })],
-    }), "item_not_applicable_at_timepoint"],
-    ["screening item wearing an M-number", payload({
-      oasis_items: [row({ definition_id: "ps_hospitalization_risk_tier", item_number: "M1033", item_source: "pennsync_screening", response_value: { code: "high" } })],
-    }), "screening_item_wearing_m_number"],
-    ["official response with no clinician selection", payload({ oasis_items: [row({ response_origin: "system" })] }), "response_not_clinician_selected"],
-    ["AI-originated official response", payload({ oasis_items: [row({ ai_suggested: true })] }), "ai_originated_response"],
-    ["missing selection timestamp", payload({ oasis_items: [row({ selected_at: "nonsense" })] }), "missing_selection_timestamp"],
-    ["mixed schema metadata", payload({ oasis_items: [row({ item_spec_version: "oasis-e1" })] }), "inconsistent_instrument_version"],
-    ["inconsistent item source", payload({ oasis_items: [row({ item_source: "pennsync_screening" })] }), "inconsistent_item_source"],
-    ["item number mismatch", payload({ oasis_items: [row({ item_number: "M1860" })] }), "item_number_mismatch"],
-    ["duplicate normalized item", payload({ oasis_items: [row(), row({ definition_id: "m1860_cms_e2", item_number: "m-1830", response_value: { code: "5" } })] }), "duplicate_item_or_definition"],
-    ["duplicate normalized definition", payload({ oasis_items: [row(), row({ item_number: "M1860", response_value: { code: "5" } })] }), "duplicate_item_or_definition"],
-    ["missing assessment date", payload({ assessment_date: undefined }), "missing_assessment_date"],
-    ["invalid assessment date", payload({ assessment_date: "not-a-date" }), "invalid_assessment_date"],
-    ["assessment before OASIS-E2", payload({ assessment_date: "2025-06-01" }), "assessment_predates_oasis_e2"],
-    ["unresolved timepoint", payload({ visit_type: "Routine Visit" }), "unresolved_timepoint"],
-  ];
-
-  for (const [name, body, expected] of cases) {
-    const { handler, written } = await loadHandler();
-    const { status, json } = await post(handler, body);
-    assert.ok(status === 422 || status === 409, `${name}: expected a rejection, got ${status}`);
-    assert.ok(reasonOf(json).includes(expected), `${name}: expected "${expected}", got ${JSON.stringify(reasonOf(json))}`);
-    assert.equal(written.length, 0, `${name}: nothing may be written on a rejection`);
-  }
-});
-
-test("the validator still requires a selector, even though the handler injects one", async () => {
-  // The injection is convenience; this is the guarantee. If the handler's
-  // injection were ever removed, the validator must still refuse a row with no
-  // selecting clinician rather than storing an unattributed official response.
-  const src = await readFile(new URL("../functions/saveOasisResponses/entry.ts", import.meta.url), "utf8");
-  assert.ok(
-    /missing_selecting_clinician/.test(src),
-    "the shared validator must keep its selector presence check",
+  assert.equal(runtime.authCalls, 3, "authority is established initially and rechecked before and after create");
+  assert.equal(
+    runtime.serviceFilters.filter(({ entity }) => entity === "OASISAssessment").length,
+    2,
+    "the service-role create is read back twice around the post-write authority recheck",
   );
 });
 
-test("a mutually exclusive M1740 combination is refused server-side", async () => {
-  const { handler, written } = await loadHandler();
-  const { json } = await post(handler, payload({
-    oasis_items: [row({ definition_id: "m1740_cms_e2", item_number: "M1740", response_shape: "multi_select", response_value: { codes: ["7", "1"] } })],
-  }));
-  assert.ok(reasonOf(json).includes("mutually_exclusive_response"));
-  assert.equal(written.length, 0);
+test("method and request shape are exact; updates, lifecycle transitions, and client-owned fields are refused", async () => {
+  const get = await loadHandler();
+  const getResult = await request(get.handler, undefined, { method: "GET" });
+  assert.equal(getResult.status, 405);
+  assert.equal(getResult.headers.get("allow"), "POST");
+
+  for (const operation of ["update", "submit", "approve"]) {
+    const ctx = await loadHandler();
+    const result = await request(ctx.handler, payload({ operation, assessment_id: "oa-existing" }));
+    assert.equal(result.status, 409, operation);
+    assert.equal(result.json.reason, "updates_paused", operation);
+    assert.equal(ctx.runtime.clientCreations, 0, operation);
+  }
+
+  const unsupportedBodies = [
+    payload({ status: "submitted" }),
+    payload({ assessment_id: "oa-existing" }),
+    payload({ response_schema_id: V2 }),
+    payload({ oasis_items: [minimalRow({ selected_by: "other@example.com" })] }),
+    payload({ oasis_items: [minimalRow({ response_origin: "clinician_selected" })] }),
+  ];
+  for (const body of unsupportedBodies) {
+    const ctx = await loadHandler();
+    const result = await request(ctx.handler, body);
+    assert.ok(result.status === 400 || result.status === 422, JSON.stringify(result.json));
+    assert.equal(ctx.runtime.clientCreations, 0);
+    assert.deepEqual(ctx.runtime.serviceCreates, []);
+  }
 });
 
-test("an M2401 grid missing a required row is refused server-side", async () => {
-  const { handler, written } = await loadHandler();
-  const { json } = await post(handler, payload({
-    oasis_items: [row({ definition_id: "m2401_cms_e2", item_number: "M2401", response_shape: "grid", response_value: { rows: [{ row_id: "b", code: "1" }] } })],
-  }));
-  assert.ok(reasonOf(json).includes("missing_grid_row"));
-  assert.equal(written.length, 0);
+test("body size, exact identifiers, calendar dates, and item count are bounded before auth", async () => {
+  const cases = [
+    [payload({ agency_id: { $ne: null } }), "invalid_identifier"],
+    [payload({ agency_id: "$ne" }), "invalid_identifier"],
+    [payload({ patient_id: " p1" }), "invalid_identifier"],
+    [payload({ visit_id: "" }), "invalid_identifier"],
+    [payload({ assessment_date: "2026-02-31" }), "invalid_assessment_date"],
+    [payload({ assessment_date: "06/01/2026" }), "invalid_assessment_date"],
+    [payload({ assessment_date: "2025-12-31" }), "assessment_predates_oasis_e2"],
+    [payload({ visit_type: " Discharge" }), "invalid_visit_type"],
+    [payload({ visit_type: "Discharge " }), "invalid_visit_type"],
+    [payload({ visit_type: "Death at Home" }), "invalid_visit_type"],
+    [payload({ oasis_items: [] }), "invalid_oasis_items"],
+    [payload({ oasis_items: Array.from({ length: 501 }, () => minimalRow()) }), "invalid_oasis_items"],
+  ];
+  for (const [body, reason] of cases) {
+    const ctx = await loadHandler();
+    const result = await request(ctx.handler, body);
+    assert.equal(result.json.reason, reason, JSON.stringify(result.json));
+    assert.equal(ctx.runtime.clientCreations, 0);
+  }
+
+  const oversized = await loadHandler();
+  const oversizedResult = await request(
+    oversized.handler,
+    JSON.stringify(payload()) + " ".repeat(100_001),
+  );
+  assert.equal(oversizedResult.status, 413);
+  assert.equal(oversizedResult.json.reason, "body_too_large");
+  assert.equal(oversized.runtime.clientCreations, 0);
 });
 
-test("M1620's UK is refused at DC and accepted at SOC, per CMS", async () => {
-  const uk = row({ definition_id: "m1620_cms_e2", item_number: "M1620", response_value: { code: "UK" } });
-  const dc = await loadHandler();
-  assert.ok(reasonOf((await post(dc.handler, payload({ oasis_items: [uk] }))).json).includes("invalid_code"));
-  const soc = await loadHandler();
-  const res = await post(soc.handler, payload({
-    visit_type: "Start of Care",
-    oasis_items: [uk],
-  }));
-  assert.equal(res.status, 200, JSON.stringify(res.json));
+test("anonymous, inactive, disabled, service, unverified, and built-in admin identities cannot author responses", async () => {
+  const users = [
+    null,
+    { ...USER, is_active: false },
+    { ...USER, disabled: true },
+    { ...USER, is_service: true },
+    { ...USER, is_verified: false },
+    { ...USER, role: "admin" },
+    { ...USER, id: "" },
+    { ...USER, email: "not-an-email" },
+  ];
+  for (const user of users) {
+    const ctx = await loadHandler({ user });
+    const result = await request(ctx.handler, payload());
+    assert.ok(result.status === 401 || result.status === 403, JSON.stringify(result.json));
+    assert.deepEqual(ctx.runtime.serviceCreates, []);
+  }
 });
 
-test("one bad row rejects the whole write — no partial assessment is persisted", async () => {
-  const { handler, written } = await loadHandler();
-  const { status, json } = await post(handler, payload({
-    oasis_items: [row(), row({ definition_id: "m2420_cms_e2", item_number: "M2420", response_value: { code: "9" } })],
-  }));
-  assert.equal(status, 422);
-  assert.equal(json.errors.length, 1);
-  assert.equal(json.errors[0].index, 1, "the failing row is identified by index");
-  assert.equal(written.length, 0);
-});
-
-test("leading zeros survive the server round-trip", async () => {
-  const { handler, written } = await loadHandler();
-  const { status } = await post(handler, payload({
-    visit_type: "Start of Care",
-    oasis_items: [row({ definition_id: "m1100_cms_e2", item_number: "M1100", response_shape: "matrix_choice", response_value: { code: "07" } })],
-  }));
-  assert.equal(status, 200);
-  assert.equal(written[0].rec.oasis_items[0].response_value.code, "07");
-});
-
-test("auth is required and a deactivated account is refused", async () => {
-  const anon = await loadHandler({ user: null });
-  assert.equal((await post(anon.handler, payload())).status, 401);
-  const off = await loadHandler({ user: { id: "u1", email: "x@y.com", agency_id: "ag1", is_active: false } });
-  assert.equal((await post(off.handler, payload())).status, 403);
-  assert.equal(off.written.length, 0);
-});
-
-test("only POST is accepted", async () => {
-  const { handler } = await loadHandler();
-  const res = await handler(new Request("http://local/saveOasisResponses", { method: "GET" }));
-  assert.equal(res.status, 405);
-});
-
-// ── the selector is the authenticated user, never a client-supplied string ──
-
-test("a response is stamped with the AUTHENTICATED user, not the submitted selected_by", async () => {
-  const { handler, written } = await loadHandler();
-  // The client omits selected_by entirely; the server supplies it.
-  const { status } = await post(handler, payload({ oasis_items: [row({ selected_by: undefined })] }));
-  assert.equal(status, 200);
-  assert.equal(written[0].rec.oasis_items[0].selected_by, "rn@example.com");
-});
-
-test("claiming another clinician selected the response is REFUSED, not rewritten", async () => {
-  // Without this, any authenticated caller could record a response as having
-  // been chosen by a colleague — the exact attestation provenance this path
-  // exists to establish.
-  const { handler, written } = await loadHandler();
-  const { status, json } = await post(handler, payload({
-    oasis_items: [row({ selected_by: "someone.else@example.com" })],
-  }));
-  assert.equal(status, 403);
-  assert.equal(json.reason, "selector_mismatch");
-  assert.equal(json.errors[0].index, 0);
-  assert.equal(written.length, 0, "nothing may be written on an impersonated selection");
-});
-
-test("the selector comparison ignores case and surrounding whitespace", async () => {
-  const { handler, written } = await loadHandler();
-  const { status } = await post(handler, payload({
-    oasis_items: [row({ selected_by: "  RN@Example.COM  " })],
-  }));
-  assert.equal(status, 200, "the same person in different casing is not an impostor");
-  assert.equal(written[0].rec.oasis_items[0].selected_by, "rn@example.com", "stored canonically");
-});
-
-test("an authenticated user with no email cannot record a selection", async () => {
-  const { handler, written } = await loadHandler({
-    user: { id: "u1", agency_id: "ag1", is_active: true },
+test("an exact active immutable clinician membership is required; mutable User agency claims are ignored", async () => {
+  const allowed = await loadHandler({
+    user: { ...USER, agency_id: "other", agency_name: "Other" },
   });
-  const { status, json } = await post(handler, payload());
-  assert.equal(status, 403);
-  assert.equal(json.reason, "no_selector_identity");
-  assert.equal(written.length, 0);
+  assert.equal((await request(allowed.handler, payload())).status, 200);
+
+  const cases = [
+    { memberships: [] },
+    { memberships: [{ ...MEMBERSHIP, status: "suspended" }] },
+    { memberships: [{ ...MEMBERSHIP, agency_id: "ag2", membership_key: "ag2:u1" }] },
+    { memberships: [{ ...MEMBERSHIP, tenant_role: "manager" }] },
+    { memberships: [{ ...MEMBERSHIP, tenant_role: "agency_admin" }] },
+    { memberships: [{ ...MEMBERSHIP, user_email_normalized: "other@example.com" }] },
+    { memberships: [{ ...MEMBERSHIP }, { ...MEMBERSHIP, id: "mem2" }] },
+  ];
+  for (const state of cases) {
+    const ctx = await loadHandler({ state });
+    const result = await request(ctx.handler, payload());
+    assert.ok([403, 409].includes(result.status), JSON.stringify(result.json));
+    assert.deepEqual(ctx.runtime.serviceCreates, []);
+  }
+});
+
+test("the exact active Agency and its unique agency code bind all settings lookups", async () => {
+  const good = await loadHandler();
+  const result = await request(good.handler, payload());
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  const settingsReads = good.runtime.serviceFilters.filter(({ entity }) => entity === "AgencySettings");
+  assert.ok(settingsReads.length >= 3);
+  for (const { query } of settingsReads) assert.deepEqual(query, { agency_code: "MAPLE-HH" });
+
+  const cases = [
+    { agencies: [] },
+    { agencies: [{ ...AGENCY, status: "suspended" }] },
+    { agencies: [{ ...AGENCY, agency_code: "" }] },
+    { agencies: [{ ...AGENCY }, { ...AGENCY, id: "ag2" }] },
+  ];
+  for (const state of cases) {
+    const ctx = await loadHandler({ state });
+    const rejected = await request(ctx.handler, payload());
+    assert.ok([403, 409].includes(rejected.status), JSON.stringify(rejected.json));
+    assert.deepEqual(ctx.runtime.serviceCreates, []);
+  }
+});
+
+test("the agency-scoped feature flag defaults closed and its kill switch wins", async () => {
+  const cases = [
+    [{ settings: [] }, 403, "feature_disabled"],
+    [{ settings: [{ ...SETTINGS, [FLAG]: false }] }, 403, "feature_disabled"],
+    [{ settings: [{ ...SETTINGS, [FLAG]: "true" }] }, 409, "settings_integrity_failed"],
+    [{ settings: [{ ...SETTINGS, updated_date: "not-an-instant" }] }, 409, "settings_integrity_failed"],
+    [{ settings: [{ ...SETTINGS }, { ...SETTINGS, id: "settings2" }] }, 409, "settings_integrity_failed"],
+    [{ settings: [{ ...SETTINGS, agency_code: "OTHER" }] }, 403, "feature_disabled"],
+    [{ settings: [{ ...SETTINGS, oasis_response_writes_disabled: true }] }, 423, "write_kill_switch"],
+  ];
+  for (const [state, status, reason] of cases) {
+    const ctx = await loadHandler({ state });
+    const result = await request(ctx.handler, payload());
+    assert.equal(result.status, status, JSON.stringify(result.json));
+    assert.equal(result.json.reason, reason, JSON.stringify(result.json));
+    assert.deepEqual(ctx.runtime.serviceCreates, []);
+  }
+});
+
+test("Patient tenant provenance and chart access are exact; a bound active assignment or immutable creator is required", async () => {
+  const patientCases = [
+    { patients: [] },
+    { patients: [{ ...PATIENT, agency_id: "ag2" }] },
+    { patients: [{ ...PATIENT, is_sample: true }] },
+    { patients: [{ ...PATIENT, is_archived: true }] },
+    { patients: [{ ...PATIENT, patient_creation_key: "forged" }] },
+    { patients: [{ ...PATIENT }, { ...PATIENT, updated_date: "2026-05-02T00:00:00.000Z" }] },
+  ];
+  for (const state of patientCases) {
+    const ctx = await loadHandler({ state });
+    const result = await request(ctx.handler, payload());
+    assert.ok([404, 409].includes(result.status), JSON.stringify(result.json));
+    assert.deepEqual(ctx.runtime.serviceCreates, []);
+  }
+
+  const assignmentCases = [
+    { assignments: [] },
+    { assignments: [{ ...ASSIGNMENT, status: "revoked", revoked_at: NOW, revocation_reason: "removed", last_transition_action: "revoke" }] },
+    { assignments: [{ ...ASSIGNMENT, assignee_membership_id: "mem-other" }] },
+    { assignments: [{ ...ASSIGNMENT, assignee_membership_version_at_enablement: 2 }] },
+    { assignments: [{ ...ASSIGNMENT, user_email_normalized: "other@example.com" }] },
+    { assignments: [{ ...ASSIGNMENT }, { ...ASSIGNMENT, id: "assign2" }] },
+  ];
+  for (const state of assignmentCases) {
+    const ctx = await loadHandler({ state });
+    const result = await request(ctx.handler, payload());
+    assert.ok([404, 409].includes(result.status), JSON.stringify(result.json));
+    assert.deepEqual(ctx.runtime.serviceCreates, []);
+  }
+
+  const creator = await loadHandler({
+    state: {
+      patients: [{
+        ...PATIENT,
+        created_by_user_id: "u1",
+        created_by_user_email_normalized: "rn@example.com",
+        created_by: "rn@example.com",
+        patient_creation_key: "ag1:u1:patient-request-1",
+      }],
+      assignments: [],
+    },
+  });
+  const creatorResult = await request(creator.handler, payload());
+  assert.equal(creatorResult.status, 200, JSON.stringify(creatorResult.json));
+  assert.equal(creatorResult.json.scope.chart_access_basis, "patient_creator");
+});
+
+test("an optional Visit must be an exact non-sample same-agency row for the same Patient", async () => {
+  const visitCases = [
+    { visits: [] },
+    { visits: [{ ...VISIT, agency_id: "ag2" }] },
+    { visits: [{ ...VISIT, patient_id: "p2" }] },
+    { visits: [{ ...VISIT, is_sample: true }] },
+    { visits: [{ ...VISIT, created_by_user_email_normalized: "other@example.com" }] },
+    { visits: [{ ...VISIT }, { ...VISIT, updated_date: NOW }] },
+  ];
+  for (const state of visitCases) {
+    const ctx = await loadHandler({ state });
+    const result = await request(ctx.handler, payload());
+    assert.ok([404, 409].includes(result.status), JSON.stringify(result.json));
+    assert.deepEqual(ctx.runtime.serviceCreates, []);
+  }
+
+  const withoutVisit = await loadHandler();
+  const body = payload();
+  delete body.visit_id;
+  const result = await request(withoutVisit.handler, body);
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  assert.equal(withoutVisit.runtime.serviceCreates[0].visit_id, null);
+  assert.equal(withoutVisit.runtime.serviceFilters.some(({ entity }) => entity === "Visit"), false);
+});
+
+test("CMS definitions, applicability, codes, exclusivity, grid completeness, and row uniqueness are enforced", async () => {
+  const cases = [
+    [minimalRow({ definition_id: "m9999_cms_e2" }), "unknown_definition"],
+    [minimalRow({ response_value: { code: "9" } }), "invalid_code"],
+    [minimalRow({ definition_id: "m2420_cms_e2", response_value: { code: "1" } }), null],
+    [minimalRow({ definition_id: "m1740_cms_e2", response_value: { codes: ["7", "1"] } }), "mutually_exclusive_response"],
+    [minimalRow({ definition_id: "m2401_cms_e2", response_value: { rows: [{ row_id: "b", code: "1" }] } }), "missing_grid_row"],
+  ];
+  for (const [item, reason] of cases) {
+    const ctx = await loadHandler();
+    const body = payload({ oasis_items: [item] });
+    if (item.definition_id === "m2401_cms_e2") body.visit_type = "Transfer";
+    const result = await request(ctx.handler, body);
+    if (reason === null) {
+      assert.equal(result.status, 200, JSON.stringify(result.json));
+    } else {
+      assert.equal(result.status, 422, JSON.stringify(result.json));
+      assert.ok(reasons(result.json).includes(reason), JSON.stringify(result.json));
+      assert.deepEqual(ctx.runtime.serviceCreates, []);
+    }
+  }
+
+  const duplicate = await loadHandler();
+  const duplicateResult = await request(duplicate.handler, payload({ oasis_items: [minimalRow(), minimalRow()] }));
+  assert.equal(duplicateResult.status, 422);
+  assert.ok(reasons(duplicateResult.json).includes("duplicate_item_or_definition"));
+  assert.deepEqual(duplicate.runtime.serviceCreates, []);
+});
+
+test("leading-zero CMS codes and screening responses survive while all metadata is server-derived", async () => {
+  const ctx = await loadHandler();
+  const result = await request(ctx.handler, payload({
+    visit_type: "Start of Care",
+    oasis_items: [
+      minimalRow({ definition_id: "m1100_cms_e2", response_value: { code: "07" } }),
+      minimalRow({ definition_id: "ps_hospitalization_risk_tier", response_value: { code: "high" } }),
+    ],
+  }));
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  const [cms, screening] = ctx.runtime.serviceCreates[0].oasis_items;
+  assert.equal(cms.response_value.code, "07");
+  assert.equal(cms.item_number, "M1100");
+  assert.equal(cms.response_shape, "matrix_choice");
+  assert.equal(screening.item_number, null);
+  assert.equal(screening.item_source, "pennsync_screening");
+  assert.equal(screening.item_spec_version, null);
+  assert.equal(screening.response_shape, "single");
+});
+
+test("authority, Patient, care-team, Visit, and feature controls are rechecked before mutation", async () => {
+  const cases = [
+    {
+      label: "membership version",
+      onFilter: ({ entity, count, state }) => entity === "AgencyMembership" && count === 2
+        ? [{ ...state.memberships[0], version: 4 }]
+        : undefined,
+      expected: "authority_changed",
+    },
+    {
+      label: "patient snapshot",
+      onFilter: ({ entity, count, state }) => entity === "Patient" && count === 2
+        ? [{ ...state.patients[0], updated_date: NOW }]
+        : undefined,
+      expected: "authority_changed",
+    },
+    {
+      label: "assignment revoked",
+      onFilter: ({ entity, count, state }) => entity === "PatientCareTeamAssignment" && count === 2
+        ? [{
+          ...state.assignments[0],
+          status: "revoked",
+          revoked_at: NOW,
+          revocation_reason: "removed",
+          last_transition_action: "revoke",
+          last_transition_at: NOW,
+          version: 3,
+        }]
+        : undefined,
+      expected: "authority_changed",
+    },
+    {
+      label: "visit snapshot",
+      onFilter: ({ entity, count, state }) => entity === "Visit" && count === 2
+        ? [{ ...state.visits[0], updated_date: NOW }]
+        : undefined,
+      expected: "authority_changed",
+    },
+    {
+      label: "kill switch",
+      onFilter: ({ entity, count, state }) => entity === "AgencySettings" && count === 2
+        ? [{ ...state.settings[0], oasis_response_writes_disabled: true, updated_date: NOW }]
+        : undefined,
+      expected: "write_kill_switch",
+    },
+  ];
+  for (const { label, onFilter, expected } of cases) {
+    const ctx = await loadHandler({ onFilter });
+    const result = await request(ctx.handler, payload());
+    assert.equal(result.json.reason, expected, `${label}: ${JSON.stringify(result.json)}`);
+    assert.deepEqual(ctx.runtime.serviceCreates, [], `${label}: no write may occur after drift`);
+  }
+});
+
+test("post-write authority drift prevents a success response and exact readback must stay stable", async () => {
+  const drift = await loadHandler({
+    onFilter: ({ entity, count, state }) => entity === "AgencyMembership" && count === 3
+      ? [{ ...state.memberships[0], version: 4 }]
+      : undefined,
+  });
+  const driftResult = await request(drift.handler, payload());
+  assert.equal(driftResult.status, 409, JSON.stringify(driftResult.json));
+  assert.equal(driftResult.json.reason, "authority_changed");
+  assert.equal(drift.runtime.serviceCreates.length, 1, "the revocation raced after service-role create");
+
+  const changedReadback = await loadHandler({
+    onFilter: ({ entity, count, state }) => {
+      if (entity !== "OASISAssessment" || count !== 2) return undefined;
+      return [{ ...state.assessments[0], status: "submitted" }];
+    },
+  });
+  const changedResult = await request(changedReadback.handler, payload());
+  assert.equal(changedResult.status, 409, JSON.stringify(changedResult.json));
+  assert.equal(changedResult.json.reason, "write_verification_failed");
+});
+
+test("foreign, missing, duplicate, or tampered service-role readback is never reported as success", async () => {
+  const variants = [
+    () => [],
+    ({ state }) => [{ ...state.assessments[0], agency_id: "ag2" }],
+    ({ state }) => [{ ...state.assessments[0], patient_id: "p2" }],
+    ({ state }) => [{ ...state.assessments[0] }, { ...state.assessments[0], id: "oa2" }],
+    ({ state }) => [{ ...state.assessments[0], oasis_items: [] }],
+    ({ state }) => [{ ...state.assessments[0], created_by: " Service@Example.com " }],
+  ];
+  for (const variant of variants) {
+    const ctx = await loadHandler({
+      onFilter: (context) => context.entity === "OASISAssessment" && context.count === 1
+        ? variant(context)
+        : undefined,
+    });
+    const result = await request(ctx.handler, payload());
+    assert.equal(result.status, 409, JSON.stringify(result.json));
+    assert.equal(result.json.reason, "write_verification_failed");
+    assert.equal(result.json.assessment, undefined);
+  }
+});
+
+test("provider failures are redacted and never expose predicates or PHI", async () => {
+  const marker = "SECRET-PATIENT-NAME predicate agency_id=ag1";
+  const filterFailure = await loadHandler({
+    onFilter: ({ entity }) => {
+      if (entity === "Patient") throw new Error(marker);
+      return undefined;
+    },
+  });
+  const filterResult = await request(filterFailure.handler, payload());
+  assert.equal(filterResult.status, 500);
+  assert.deepEqual(filterResult.json, { error: "Internal server error" });
+  assert.doesNotMatch(JSON.stringify(filterResult.json), /SECRET|agency_id/);
+
+  const createFailure = await loadHandler({
+    onCreate: () => { throw new Error(marker); },
+  });
+  const createResult = await request(createFailure.handler, payload());
+  assert.equal(createResult.status, 500);
+  assert.deepEqual(createResult.json, { error: "Internal server error" });
+  assert.doesNotMatch(JSON.stringify(createResult.json), /SECRET|agency_id/);
+});
+
+test("static containment keeps the hard pause first, service-role-only create, and no update path", async () => {
+  const source = await readFile(new URL("../functions/saveOasisResponses/entry.ts", import.meta.url), "utf8");
+  assert.match(source, /const OASIS_V2_WRITES_PAUSED = true;/);
+  assert.match(source, /no cross-entity transaction/i);
+  assert.match(source, /idempotency key, so a retry/i);
+  assert.match(source, /Visit-policy proofs are\s+\/\/ all activation blockers/i);
+  const handler = source.slice(source.indexOf("Deno.serve"));
+  assert.ok(handler.indexOf("if (OASIS_V2_WRITES_PAUSED)") < handler.indexOf("parseRequest(req)"));
+  assert.ok(handler.indexOf("if (OASIS_V2_WRITES_PAUSED)") < handler.indexOf("createClientFromRequest(req)"));
+  assert.match(source, /const entities = base44\.asServiceRole\.entities;/);
+  assert.match(source, /await entities\.OASISAssessment\.create\(record\)/);
+  assert.doesNotMatch(source, /base44\.entities\.OASISAssessment/);
+  assert.doesNotMatch(source, /OASISAssessment\.update\s*\(/);
+  assert.doesNotMatch(source, /user\??\.agency_(?:id|name)/);
+  assert.match(source, /body\.operation === 'update'/);
+  assert.match(source, /'updates_paused'/);
+  assert.match(source, /console\.error\('saveOasisResponses failed'\)/);
+  assert.doesNotMatch(source, /detail:\s*String|console\.error\([^)]*error/);
 });

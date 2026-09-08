@@ -1,7 +1,9 @@
 /**
  * localPhiKeys — the SINGLE registry of every local-storage key the app has ever
- * used to hold PHI, plus how each is treated by the logout/idle purge
- * (clearCachedPHI).
+ * used to hold PHI, plus how each is treated by the generic stale-cache purge
+ * (`clearCachedPHI`). AuthContext applies the stricter authority lifecycle on
+ * top: live drafts are separately authority-bound and destructively purged on
+ * logout, idle timeout, or a definitive authority change.
  *
  * OFFLINE MODE HAS BEEN REMOVED. Nothing in the app writes an offline queue or
  * patient cache any more. The keys below are kept for one reason: a returning
@@ -19,9 +21,10 @@
  *                      notes and incident reports captured in the field.
  *   PURGE_SYNCED       legacy work queues that tag already-synced items → drop
  *                      those, keep anything still marked pending until recovered.
- *   PRESERVE           LIVE unsynced local drafts → never wiped (wiping on a
- *                      15-minute idle timeout mid-visit would be silent loss of
- *                      documented care).
+ *   PRESERVE           LIVE unsynced local drafts → excluded from the generic
+ *                      stale-cache purge. The authority-draft lifecycle still
+ *                      purges them on logout/idle/definitive transition and
+ *                      preserves them only across same-authority revalidation.
  *   NON_PHI            bookkeeping/metadata (timestamps, id maps) — no purge.
  *
  * On the retirement gate: the recovery flush needs a connection and a successful
@@ -99,19 +102,28 @@ export const OFFLINE_RETIRED_FLAG = 'pennsync_offline_retired';
  * timeout that happened while the device was offline.
  */
 export const PURGE_AFTER_RETIREMENT_KEYS = [
-  K.PENDING, K.VISIT_DRAFTS, K.CONFLICTS, K.SYNC_QUEUE,
+  K.PENDING, K.VISIT_DRAFTS, K.SYNC_QUEUE,
 ];
+
+/**
+ * Manual-resolution records were never part of the automated replay mapper and
+ * may contain both the only local clinical edit and a conflicting server copy.
+ * They stay quarantined even if an old build set the retirement flag; only a
+ * supervised recovery workflow may remove them.
+ */
+export const QUARANTINED_OFFLINE_KEYS = [K.CONFLICTS];
 
 /** Offline-work queues: drop the synced entries, keep what's still pending. */
 export const PURGE_SYNCED_KEYS = [K.PENN_PENDING_VISITS, K.PENN_PENDING_UPDATES];
 
 /**
- * LIVE unsynced local drafts — intentionally preserved across logout/idle.
+ * LIVE unsynced local drafts — preserved only by the generic cache cleanup.
  *
  * Only the visit-draft autosave remains (the OASIS assessment editor writes
  * `visit_draft_oasis_<patient>_<type>`). It is a refresh-recovery draft, not an
- * offline queue, so it survives the removal of offline mode — and wiping it on
- * an idle timeout mid-assessment would discard work the nurse is still typing.
+ * offline queue, so it survives the removal of offline mode. AuthContext's
+ * separate authority-bound draft purge removes it on logout/idle or definitive
+ * tenant change; same-authority transient revalidation may preserve it.
  */
 export const PRESERVE_KEYS = [K.VISIT_DRAFT_PREFIX];
 

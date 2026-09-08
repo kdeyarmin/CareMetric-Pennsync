@@ -1,5 +1,3 @@
-import { base44 } from "@/api/base44Client";
-
 /**
  * Comprehensive audit logging utility for tracking all user actions
  */
@@ -64,59 +62,11 @@ export const AuditActions = {
  * @param {string} entityId - ID of the affected entity
  * @param {Object} changes - Before/after values for updates
  */
-export async function logAudit({ 
-  action, 
-  details = {}, 
-  entityType = null, 
-  entityId = null,
-  changes = null,
-  severity = 'info' // info, warning, critical
-}) {
-  try {
-    const user = await base44.auth.me();
-    
-    const auditData = {
-      user_email: user?.email || 'system',
-      user_name: user?.full_name || 'System',
-      action,
-      details: {
-        ...details,
-        timestamp: new Date().toISOString(),
-        user_agent: navigator.userAgent,
-        page: window.location.pathname,
-        // severity is not a top-level UserActivity field (it was silently dropped);
-        // keep it inside the free-form details object so it is actually recorded.
-        severity,
-      },
-      entity_type: entityType,
-      entity_id: entityId,
-    };
-
-    // Add change tracking if provided
-    if (changes) {
-      auditData.details.changes = changes;
-    }
-
-    // Log to UserActivity entity
-    await base44.entities.UserActivity.create(auditData);
-
-    // Also log critical actions to SecurityLog
-    if (severity === 'critical' || action.includes('delete') || action.includes('supervisor')) {
-      await base44.entities.SecurityLog.create({
-        timestamp: new Date().toISOString(),
-        user_email: user?.email || 'system',
-        user_role: user?.role || 'unknown',
-        action,
-        details: auditData.details,
-        ip_address: '', // Would need server-side to get real IP
-        user_agent: navigator.userAgent,
-      });
-    }
-
-  } catch (error) {
-    console.error('Audit logging failed:', error);
-    // Don't throw - audit logging shouldn't break the app
-  }
+// A browser cannot attest actor, action, record state, or before/after values.
+// Keep the API stable for existing callers, but only purpose-specific backend
+// brokers may append compliance events.
+export async function logAudit(_event) {
+  return undefined;
 }
 
 /**

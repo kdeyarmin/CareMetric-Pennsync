@@ -5,6 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { configNotReadyMessage } from "@/lib/aiFeatureError";
 import { distributePolicyAcknowledgment } from "@/functions/distributePolicyAcknowledgment";
 import { policyAcknowledgment } from "@/functions/policyAcknowledgment";
+import { listPolicyLibrary } from "@/functions/listPolicyLibrary";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,6 +18,8 @@ import { escapeCsvField } from "@/components/admin/csvExport";
 import { toast } from "sonner";
 import { isPastLocalDueDate } from '@/lib/dateLocal';
 import { isSafeExternalUrl } from "@/components/utils/security";
+import { isAdminLike } from "@/lib/superAdmin";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 export default function PolicyAcknowledgmentManager() {
   const queryClient = useQueryClient();
@@ -26,17 +29,25 @@ export default function PolicyAcknowledgmentManager() {
   const [result, setResult] = useState(null);
 
   const { data: currentUser } = useQuery({ queryKey: ["currentUser"], queryFn: () => base44.auth.me() });
-  const isAdminUser = currentUser?.role === "admin" || currentUser?.account_type === "agency_admin" || currentUser?.account_type === "super_admin";
+  // Roster reads, acknowledgment status, distribution, and full policy history
+  // all require Base44's protected built-in admin role today.
+  const isProtectedAdmin = isAdminLike(currentUser);
 
   const { data: users = [] } = useQuery({ queryKey: ["policy-users", agencyQueryKey(currentUser)], queryFn: async () => {
       const _rows = await base44.entities.User.list("-created_date", 500);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
-    }, initialData: [], enabled: isAdminUser });
-  const { data: policies = [] } = useQuery({ queryKey: ["policy-library"], queryFn: () => base44.entities.PolicyLibrary.list("-created_date", 200), initialData: [], enabled: isAdminUser });
-  // Read org-wide acknowledgments through the service-role `list` action so
-  // account_type admins (agency_admin/super_admin) see all rows, not just their
-  // own (the entity read RLS follows the codebase `role: admin` convention).
+    }, initialData: [], enabled: isProtectedAdmin });
+  const { data: policies = [] } = useQuery({
+    queryKey: ["policy-library", isProtectedAdmin ? "all" : "active"],
+    queryFn: async () => {
+      const response = await listPolicyLibrary({ mode: isProtectedAdmin ? "all" : "active" });
+      return (response?.data || response)?.policies || [];
+    },
+    initialData: [],
+    enabled: isProtectedAdmin,
+  });
+  // Full status is returned only to the protected built-in admin role.
   const { data: acks = [] } = useQuery({
     queryKey: ["policy-acks"],
     queryFn: async () => {
@@ -44,7 +55,7 @@ export default function PolicyAcknowledgmentManager() {
       return (res?.data || res)?.acknowledgments || [];
     },
     initialData: [],
-    enabled: isAdminUser,
+    enabled: isProtectedAdmin,
   });
 
   const activePolicies = useMemo(() => policies.filter((p) => p.status !== "archived"), [policies]);
@@ -111,8 +122,8 @@ export default function PolicyAcknowledgmentManager() {
     URL.revokeObjectURL(url);
   };
 
-  if (currentUser && !isAdminUser) {
-    return <AccessDeniedState description="Policy distribution is available to Agency Admin and Super Admin users only." />;
+  if (currentUser && !isProtectedAdmin) {
+    return <AccessDeniedState description="Policy distribution requires protected administrator access. Facility-admin distribution remains unavailable until policy and roster operations use immutable tenant-membership authorization." />;
   }
 
   return (
@@ -148,7 +159,18 @@ export default function PolicyAcknowledgmentManager() {
           {selectedPolicy && (
             <p className="text-sm text-slate-500">
               {selectedPolicy.policy_number ? `${selectedPolicy.policy_number} · ` : ""}Version {selectedPolicy.version || "1"}
-              {selectedPolicy.doc_url && isSafeExternalUrl(selectedPolicy.doc_url) ? <> · <a className="text-blue-600 underline hover:text-blue-700" href={selectedPolicy.doc_url} target="_blank" rel="noopener noreferrer">Document</a></> : null}
+              {selectedPolicy.doc_url && isSafeExternalUrl(selectedPolicy.doc_url) ? (
+                <>
+                  {' · '}
+                  <button
+                    type="button"
+                    className="text-blue-600 underline hover:text-blue-700"
+                    onClick={() => openAuthorityBoundWindow(selectedPolicy.doc_url)}
+                  >
+                    Document
+                  </button>
+                </>
+              ) : null}
             </p>
           )}
           {result && !result.error && (

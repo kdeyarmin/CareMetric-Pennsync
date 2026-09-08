@@ -13,6 +13,7 @@ export default function FolderTreeView({
   onRenameFolder,
   onDeleteFolder,
   onChangeColor,
+  canEditFolder = (_folder) => false,
   templatesCount = {}
 }) {
   const [expandedFolders, setExpandedFolders] = useState(new Set());
@@ -65,6 +66,7 @@ export default function FolderTreeView({
         const isSelected = selectedFolderId === folder.id;
         const hasChildren = folders.some(f => f.parent_folder_id === folder.id);
         const count = templatesCount[folder.id] || 0;
+        const canEdit = canEditFolder(folder) === true;
 
         return (
           <div key={folder.id}>
@@ -99,7 +101,7 @@ export default function FolderTreeView({
                 <Folder className={cn("w-4 h-4", colorClasses[folder.color])} />
               )}
 
-              {editingFolderId === folder.id ? (
+              {editingFolderId === folder.id && canEdit ? (
                 <Input
                   value={editingName}
                   onChange={(e) => setEditingName(e.target.value)}
@@ -126,54 +128,59 @@ export default function FolderTreeView({
                 </>
               )}
 
-              <div className="opacity-0 group-hover:opacity-100 flex gap-0.5" onClick={(e) => e.stopPropagation()}>
-                <Popover open={colorPickerOpen === folder.id} onOpenChange={(open) => setColorPickerOpen(open ? folder.id : null)}>
-                  <PopoverTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-6 w-6"
-                    >
-                      <Palette className="w-3 h-3" />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-auto p-2" align="start">
-                    <div className="grid grid-cols-4 gap-1">
-                      {colorOptions.map(color => (
-                        <button
-                          key={color.value}
-                          onClick={() => {
-                            onChangeColor(folder.id, color.value);
-                            setColorPickerOpen(null);
-                          }}
-                          className={cn(
-                            "w-8 h-8 rounded border-2 hover:scale-110 transition-transform",
-                            color.bg,
-                            folder.color === color.value && "border-slate-900 scale-110"
-                          )}
-                          title={color.value}
-                        />
-                      ))}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6"
-                  onClick={() => startEdit(folder)}
-                >
-                  <Edit2 className="w-3 h-3" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="h-6 w-6 hover:text-red-600"
-                  onClick={() => onDeleteFolder(folder.id)}
-                >
-                  <Trash2 className="w-3 h-3" />
-                </Button>
-              </div>
+              {canEdit && (
+                <div className="opacity-0 group-hover:opacity-100 flex gap-0.5" onClick={(e) => e.stopPropagation()}>
+                  <Popover open={colorPickerOpen === folder.id} onOpenChange={(open) => setColorPickerOpen(open ? folder.id : null)}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6"
+                        aria-label={`Change color for ${folder.name}`}
+                      >
+                        <Palette className="w-3 h-3" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-auto p-2" align="start">
+                      <div className="grid grid-cols-4 gap-1">
+                        {colorOptions.map(color => (
+                          <button
+                            key={color.value}
+                            onClick={() => {
+                              onChangeColor(folder.id, color.value);
+                              setColorPickerOpen(null);
+                            }}
+                            className={cn(
+                              "w-8 h-8 rounded border-2 hover:scale-110 transition-transform",
+                              color.bg,
+                              folder.color === color.value && "border-slate-900 scale-110"
+                            )}
+                            title={color.value}
+                          />
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6"
+                    onClick={() => startEdit(folder)}
+                    aria-label={`Rename ${folder.name}`}
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-6 w-6 hover:text-red-600"
+                    onClick={() => onDeleteFolder(folder.id)}
+                    aria-label={`Delete ${folder.name}`}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
+                </div>
+              )}
             </div>
             {isExpanded && buildFolderTree(folder.id, depth + 1)}
           </div>

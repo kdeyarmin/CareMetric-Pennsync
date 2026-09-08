@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { base44 } from "@/api/base44Client";
+import { updateAuthorizedReferral } from '@/functions/manageAuthorizedReferral';
 import { invokeLLMWithFile } from "@/lib/invokeLLM";
 import { validateReferralFile, resolveMimeType, REFERRAL_ACCEPT_ATTR } from "./referralUploadUtils";
 import {
@@ -106,16 +107,20 @@ export default function ScannedResponseUpload({ referral, tracking, onApplied })
     setBusy(true);
     try {
       const merged = applyFaxAnswersToItems(items, toApply, undefined, "scan");
-      await base44.entities.Referral.update(referral.id, {
-        follow_up_requests: {
-          ...tracking,
-          items: merged.items,
-          status: "received",
-          received_at: new Date().toISOString(),
-          response_scan: {
-            document_url: docUrl,
-            uploaded_at: new Date().toISOString(),
-            auto_answered_count: merged.answeredCount,
+      await updateAuthorizedReferral({
+        agencyId: referral.agency_id,
+        referralId: referral.id,
+        changes: {
+          follow_up_requests: {
+            ...tracking,
+            items: merged.items,
+            status: "received",
+            received_at: new Date().toISOString(),
+            response_scan: {
+              document_url: docUrl,
+              uploaded_at: new Date().toISOString(),
+              auto_answered_count: merged.answeredCount,
+            },
           },
         },
       });

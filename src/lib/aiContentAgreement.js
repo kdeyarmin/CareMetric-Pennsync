@@ -8,12 +8,10 @@
  * submit using that material. The gate that enforces this lives in App.jsx
  * (rendered after authentication, before any app route); this module is the
  * single source of truth for the agreement's version, copy, and the pure
- * "has this user accepted?" check so the gate and its tests stay in step.
- *
- * Acceptance is persisted on the User record via base44.auth.updateMe:
- *   - ai_content_agreement_accepted     (boolean)
- *   - ai_content_agreement_accepted_at  (ISO timestamp)
- *   - ai_content_agreement_version      (the version string below)
+ * "has the protected attestation broker verified acceptance?" check so the
+ * gate and its tests stay in step. Custom User fields and legacy UserActivity
+ * rows are not gate authority; the application trusts only the immutable,
+ * service-owned AIContentAgreementAttestation returned by the status broker.
  *
  * Bumping AI_CONTENT_AGREEMENT_VERSION invalidates prior acceptances, so a
  * material change to the responsibilities below re-prompts every user.
@@ -55,32 +53,16 @@ export const AI_CONTENT_AGREEMENT_ACKNOWLEDGMENTS = [
 ];
 
 /**
- * Whether a user has accepted the CURRENT agreement version. A prior acceptance
- * of an older version does not count — that's the versioning mechanism that lets
- * a wording change re-prompt everyone.
+ * Whether the protected status broker verified acceptance of the CURRENT
+ * agreement version. A prior acceptance of an older version does not count.
  *
- * @param {object|null|undefined} user - The authenticated user record.
+ * @param {object|null|undefined} status - The broker's narrow status response.
  * @returns {boolean}
  */
-export function hasAcceptedAiContentAgreement(user) {
-  if (!user) return false;
+export function hasAcceptedAiContentAgreement(status) {
+  if (!status) return false;
   return (
-    user.ai_content_agreement_accepted === true &&
-    user.ai_content_agreement_version === AI_CONTENT_AGREEMENT_VERSION
+    status.accepted === true &&
+    status.agreement_version === AI_CONTENT_AGREEMENT_VERSION
   );
-}
-
-/**
- * Build the patch written to the User record when the user accepts. Kept here so
- * the field names live next to the schema they mirror and can be unit-tested.
- *
- * @param {string} acceptedAtIso - ISO timestamp of acceptance.
- * @returns {{ai_content_agreement_accepted: boolean, ai_content_agreement_accepted_at: string, ai_content_agreement_version: string}}
- */
-export function buildAiContentAgreementAcceptance(acceptedAtIso) {
-  return {
-    ai_content_agreement_accepted: true,
-    ai_content_agreement_accepted_at: acceptedAtIso,
-    ai_content_agreement_version: AI_CONTENT_AGREEMENT_VERSION,
-  };
 }

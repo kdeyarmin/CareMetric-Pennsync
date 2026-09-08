@@ -126,6 +126,7 @@ export default function AdrLetterAnalyzer({ onComplete, onProcessingChange }) {
         aria-label="Upload ADR or audit letter"
       />
       <button
+        data-authority-file-drop-zone
         type="button"
         onClick={() => fileInputRef.current?.click()}
         onDragOver={(e) => {

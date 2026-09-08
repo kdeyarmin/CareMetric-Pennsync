@@ -17,6 +17,7 @@ describe('VisualEditAgent preview click handling', () => {
   afterEach(() => {
     cleanup();
     document.body.style.cursor = '';
+    vi.useRealTimers();
     vi.restoreAllMocks();
   });
 
@@ -123,5 +124,39 @@ describe('VisualEditAgent preview click handling', () => {
       expect.objectContaining({ type: 'element-selected' }),
       expect.anything()
     );
+  });
+
+  it('releases protected DOM overlays, cursor state, and deferred layout work on unmount', () => {
+    vi.useFakeTimers();
+    const clearTimeout = vi.spyOn(window, 'clearTimeout');
+    const { unmount } = render(
+      <>
+        <VisualEditAgent />
+        <div data-source-location="patient-summary">Jane Doe clinical summary</div>
+      </>
+    );
+
+    enableVisualEditMode();
+    const protectedElement = screen.getByText('Jane Doe clinical summary');
+    fireEvent.mouseOver(protectedElement);
+    fireEvent.click(protectedElement);
+    fireEvent(window, new MessageEvent('message', {
+      data: {
+        type: 'update-classes',
+        data: { visualSelectorId: 'patient-summary', classes: 'font-semibold' },
+      },
+      source: window.parent,
+      origin: window.location.origin,
+    }));
+
+    expect(document.body.style.cursor).toBe('crosshair');
+    expect(document.body.querySelectorAll('div[style*="z-index: 9999"]')).not.toHaveLength(0);
+
+    unmount();
+
+    expect(document.body.style.cursor).toBe('');
+    expect(document.body.querySelectorAll('div[style*="z-index: 9999"]')).toHaveLength(0);
+    expect(clearTimeout).toHaveBeenCalled();
+    vi.runOnlyPendingTimers();
   });
 });

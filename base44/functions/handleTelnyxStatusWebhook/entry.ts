@@ -1,4 +1,24 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.40';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
+
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
 
 /**
  * handleTelnyxStatusWebhook — the single inbound webhook for the whole Telnyx
@@ -37,17 +57,17 @@ async function resolveTelnyxCreds(base44) {
       || list.find((r) => r && pick(r.api_key))
       || list[0]
       || null;
-  } catch (err) {
+  } catch {
     // Do NOT collapse this into "not configured". A failed read (this invocation
     // path carries no service token, entity 404, 401/403, rate limit, platform
     // blip) is a completely different problem from an unconfigured integration,
     // and reporting them identically is what sent operators chasing a credential
     // they had already entered correctly.
-    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    readError = 'credential_store_unavailable';
     // The catch used to be bare, so an unreadable credential row left no
     // server-side breadcrumb at all — the only signal was a misleading
     // "not configured" reply. Log it; unattended runs have nowhere else to say so.
-    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
   }
   const rec = record || {};
   return {
@@ -68,11 +88,364 @@ async function resolveTelnyxCreds(base44) {
 function telnyxCredsMessage(creds, what) {
   const label = what || 'credentials';
   if (creds && creds.readError) {
-    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+    return `Could not read Telnyx ${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.`;
   }
   return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
 }
 // <<<END SHARED HELPER: resolveTelnyxCreds>>>
+
+// <<<BEGIN SHARED HELPER: telnyxSmsAuthority — generated, edit base44/_shared/backendHelpers.mjs>>>
+const TELNYX_SMS_BINDING_SCAN_LIMIT = 500;
+const TELNYX_SMS_CONSENT_SCAN_LIMIT = 500;
+
+function normalizeTelnyxSmsE164(raw) {
+  if (!raw) return null;
+  const trimmed = String(raw).trim();
+  const digits = trimmed.replace(/[^\d]/g, '');
+  if (trimmed.startsWith('+')) {
+    return digits.length >= 8 && digits.length <= 15 && digits[0] !== '0' ? `+${digits}` : null;
+  }
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits.startsWith('1')) return `+${digits}`;
+  return null;
+}
+
+const boundedTelnyxAuthorityId = (value) => {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized
+    && normalized === value
+    && normalized.length <= 200
+    && !normalized.startsWith('$')
+    && !/[\u0000-\u001f\u007f]/.test(normalized)
+    ? normalized
+    : null;
+};
+
+const isCanonicalTelnyxAuthorityEmail = (value) => {
+  if (typeof value !== 'string' || value.length > 254) return false;
+  const normalized = value.trim().toLowerCase();
+  return value === normalized && /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized);
+};
+
+function telnyxSmsConsentKey(authority, recipientE164) {
+  return [
+    'telnyx',
+    authority.integrationSecretId,
+    authority.messagingProfileId,
+    authority.agencyId,
+    recipientE164,
+  ].join(':');
+}
+
+async function resolveActiveTelnyxSmsBinding(base44, input) {
+  const integrationSecretId = boundedTelnyxAuthorityId(input?.integrationSecretId);
+  const messagingProfileId = boundedTelnyxAuthorityId(input?.messagingProfileId);
+  const hasClaimedMessagingProfile = Object.prototype.hasOwnProperty.call(input || {}, 'claimedMessagingProfileId');
+  const claimedMessagingProfileId = hasClaimedMessagingProfile
+    ? boundedTelnyxAuthorityId(input.claimedMessagingProfileId)
+    : messagingProfileId;
+  const destinationE164 = normalizeTelnyxSmsE164(input?.destinationE164);
+  if (input?.integrationProvider !== 'telnyx'
+    || input?.integrationIsActive !== true
+    || (input?.requireClaimedProfile === true && !hasClaimedMessagingProfile)
+    || !integrationSecretId || input?.integrationSecretId !== integrationSecretId
+    || !messagingProfileId || input?.messagingProfileId !== messagingProfileId
+    || !claimedMessagingProfileId
+    || (hasClaimedMessagingProfile && input?.claimedMessagingProfileId !== claimedMessagingProfileId)
+    || claimedMessagingProfileId !== messagingProfileId || !destinationE164) {
+    return { ok: false, reason: 'invalid_sms_binding_input' };
+  }
+
+  // Re-read the service-owned credential at the authority boundary. Exactly one
+  // active Telnyx integration may own SMS routing; a stale selection or two
+  // concurrently-active credential rows cannot be resolved safely.
+  let integrationRows;
+  try {
+    integrationRows = await base44.asServiceRole.entities.IntegrationSecret.filter({
+      provider: 'telnyx',
+      is_active: true,
+    }, undefined, 2);
+  } catch {
+    return { ok: false, reason: 'sms_integration_read_failed' };
+  }
+  if (!Array.isArray(integrationRows) || integrationRows.length !== 1) {
+    return { ok: false, reason: 'sms_integration_ambiguous' };
+  }
+  const activeIntegration = integrationRows[0];
+  if (activeIntegration?.id !== integrationSecretId
+    || activeIntegration?.provider !== 'telnyx'
+    || activeIntegration?.is_active !== true
+    || activeIntegration?.messaging_profile_id !== messagingProfileId) {
+    return { ok: false, reason: 'sms_integration_integrity_failed' };
+  }
+
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.TelecomDestinationBinding.filter({
+      provider: 'telnyx',
+      integration_secret_id: integrationSecretId,
+      messaging_profile_id: messagingProfileId,
+      status: 'active',
+    }, undefined, TELNYX_SMS_BINDING_SCAN_LIMIT + 1);
+  } catch {
+    return { ok: false, reason: 'sms_binding_read_failed' };
+  }
+  if (!Array.isArray(rows) || rows.length === 0 || rows.length > TELNYX_SMS_BINDING_SCAN_LIMIT) {
+    return { ok: false, reason: rows?.length ? 'sms_binding_scan_ambiguous' : 'sms_binding_not_found' };
+  }
+
+  const agencies = new Set();
+  const bindingIds = new Set();
+  const bindingKeys = new Set();
+  const bindingDestinations = new Set();
+  const profileBindingProvenance = [];
+  const exactDestinations = [];
+  for (const row of rows) {
+    const rowId = boundedTelnyxAuthorityId(row?.id);
+    const agencyId = boundedTelnyxAuthorityId(row?.agency_id);
+    const providerNumberId = boundedTelnyxAuthorityId(row?.provider_number_id);
+    const phoneNumberId = boundedTelnyxAuthorityId(row?.phone_number_id);
+    const creatorId = boundedTelnyxAuthorityId(row?.created_by_user_id);
+    const transitionActorId = boundedTelnyxAuthorityId(row?.last_transition_by_user_id);
+    const transitionRequestId = boundedTelnyxAuthorityId(row?.last_transition_request_id);
+    const transitionRequestKey = boundedTelnyxAuthorityId(row?.last_transition_request_key);
+    const transitionAction = typeof row?.last_transition_action === 'string'
+      ? row.last_transition_action
+      : '';
+    const transitionReason = typeof row?.last_transition_reason === 'string'
+      ? row.last_transition_reason.trim()
+      : '';
+    const rowDestination = normalizeTelnyxSmsE164(row?.destination_e164);
+    const createdAtMs = Date.parse(row?.created_at || '');
+    const activatedAtMs = Date.parse(row?.activated_at || '');
+    const transitionedAtMs = Date.parse(row?.last_transition_at || '');
+    const hasSuspendedAt = row?.suspended_at != null;
+    const suspendedAtMs = hasSuspendedAt ? Date.parse(row.suspended_at) : null;
+    const hasRevokedAt = row?.revoked_at != null;
+    const hasRevocationReason = row?.revocation_reason != null;
+    const expectedKey = rowDestination
+      ? `telnyx:${integrationSecretId}:${rowDestination}`
+      : null;
+    const expectedTransitionRequestKey = expectedKey && transitionRequestId
+      ? `${expectedKey}:${transitionRequestId}`
+      : null;
+    const isInitialActiveBinding = transitionAction === 'bind'
+      && row?.version === 1
+      && !hasSuspendedAt
+      && createdAtMs === activatedAtMs
+      && activatedAtMs === transitionedAtMs
+      && creatorId === transitionActorId
+      && row?.created_by_user_email_normalized === row?.last_transition_by_email_normalized;
+    const isReactivatedBinding = transitionAction === 'activate'
+      && Number.isSafeInteger(row?.version) && row.version >= 2
+      && hasSuspendedAt && Number.isFinite(suspendedAtMs)
+      && createdAtMs <= suspendedAtMs && suspendedAtMs < activatedAtMs
+      && activatedAtMs === transitionedAtMs;
+    if (!rowId || row?.id !== rowId
+      || !agencyId || row?.agency_id !== agencyId
+      || !providerNumberId || row?.provider_number_id !== providerNumberId
+      || !phoneNumberId || row?.phone_number_id !== phoneNumberId
+      || !creatorId || row?.created_by_user_id !== creatorId
+      || !transitionActorId || row?.last_transition_by_user_id !== transitionActorId
+      || !transitionRequestId || row?.last_transition_request_id !== transitionRequestId
+      || !transitionRequestKey || row?.last_transition_request_key !== transitionRequestKey
+      || !isCanonicalTelnyxAuthorityEmail(row?.created_by_user_email_normalized)
+      || !isCanonicalTelnyxAuthorityEmail(row?.last_transition_by_email_normalized)
+      || row?.provider !== 'telnyx'
+      || row?.integration_secret_id !== integrationSecretId
+      || row?.messaging_profile_id !== messagingProfileId
+      || typeof row?.sms_inbound_enabled !== 'boolean'
+      || typeof row?.sms_outbound_enabled !== 'boolean'
+      || typeof row?.voice_inbound_enabled !== 'boolean'
+      || typeof row?.fax_inbound_enabled !== 'boolean'
+      || (row.voice_inbound_enabled === true
+        && (!boundedTelnyxAuthorityId(row?.voice_connection_id)
+          || row.voice_connection_id !== boundedTelnyxAuthorityId(row.voice_connection_id)))
+      || (row.fax_inbound_enabled === true
+        && (!boundedTelnyxAuthorityId(row?.fax_connection_id)
+          || row.fax_connection_id !== boundedTelnyxAuthorityId(row.fax_connection_id)))
+      || row?.status !== 'active'
+      || !['manual', 'telnyx_purchase', 'legacy_backfill'].includes(row?.source)
+      || (!isInitialActiveBinding && !isReactivatedBinding)
+      || !transitionReason || row?.last_transition_reason !== transitionReason
+      || transitionReason.length > 500
+      || transitionRequestKey !== expectedTransitionRequestKey
+      || !Number.isFinite(createdAtMs) || !Number.isFinite(activatedAtMs)
+      || !Number.isFinite(transitionedAtMs)
+      || createdAtMs > activatedAtMs || activatedAtMs > transitionedAtMs
+      || hasRevokedAt || hasRevocationReason
+      || row?.destination_e164 !== rowDestination
+      || row?.binding_key !== expectedKey
+      || !Number.isSafeInteger(row?.version) || row.version < 1) {
+      return { ok: false, reason: 'sms_binding_integrity_failed' };
+    }
+    if (bindingIds.has(rowId)
+      || bindingKeys.has(row.binding_key)
+      || bindingDestinations.has(rowDestination)) {
+      return { ok: false, reason: 'sms_binding_identity_ambiguous' };
+    }
+    bindingIds.add(rowId);
+    bindingKeys.add(row.binding_key);
+    bindingDestinations.add(rowDestination);
+    agencies.add(agencyId);
+    profileBindingProvenance.push({
+      bindingId: rowId,
+      bindingKey: row.binding_key,
+      destinationE164: rowDestination,
+    });
+    if (rowDestination === destinationE164) exactDestinations.push(row);
+  }
+  if (agencies.size !== 1) return { ok: false, reason: 'sms_profile_cross_tenant' };
+  if (exactDestinations.length !== 1) {
+    return { ok: false, reason: exactDestinations.length ? 'sms_destination_ambiguous' : 'sms_destination_not_found' };
+  }
+
+  const binding = exactDestinations[0];
+  if (input?.requireInbound === true && binding.sms_inbound_enabled !== true) {
+    return { ok: false, reason: 'sms_inbound_not_enabled' };
+  }
+  if (input?.requireOutbound === true && binding.sms_outbound_enabled !== true) {
+    return { ok: false, reason: 'sms_outbound_not_enabled' };
+  }
+  return {
+    ok: true,
+    binding,
+    bindingId: binding.id,
+    bindingKey: binding.binding_key,
+    agencyId: binding.agency_id,
+    integrationSecretId,
+    messagingProfileId,
+    destinationE164,
+    profileBindingProvenance,
+  };
+}
+
+async function loadLatestScopedSmsConsent(base44, authority, rawRecipient) {
+  if (!authority?.ok) return { ok: false, reason: 'sms_binding_required' };
+  const phoneE164 = normalizeTelnyxSmsE164(rawRecipient);
+  if (!phoneE164) return { ok: false, reason: 'invalid_sms_consent_recipient' };
+  const consentKey = telnyxSmsConsentKey(authority, phoneE164);
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.SmsConsent.filter({
+      consent_key: consentKey,
+      provider: 'telnyx',
+      integration_secret_id: authority.integrationSecretId,
+      messaging_profile_id: authority.messagingProfileId,
+      agency_id: authority.agencyId,
+      phone_e164: phoneE164,
+    }, '-captured_at', TELNYX_SMS_CONSENT_SCAN_LIMIT + 1);
+  } catch {
+    return { ok: false, reason: 'sms_consent_read_failed' };
+  }
+  if (!Array.isArray(rows) || rows.length > TELNYX_SMS_CONSENT_SCAN_LIMIT) {
+    return { ok: false, reason: 'sms_consent_read_invalid' };
+  }
+  for (const row of rows) {
+    const provenanceMatches = Array.isArray(authority.profileBindingProvenance)
+      && authority.profileBindingProvenance.some((candidate) =>
+        row?.destination_binding_id === candidate.bindingId
+        && row?.destination_binding_key === candidate.bindingKey
+        && row?.destination_e164 === candidate.destinationE164);
+    const source = typeof row?.consent_source === 'string' ? row.consent_source : '';
+    const status = typeof row?.consent_status === 'string' ? row.consent_status : '';
+    const isKeywordStop = source === 'keyword_stop';
+    const isKeywordStart = source === 'keyword_start';
+    const isKeyword = isKeywordStop || isKeywordStart;
+    const providerEventId = boundedTelnyxAuthorityId(row?.provider_event_id);
+    const providerMessageId = boundedTelnyxAuthorityId(row?.provider_message_id);
+    const capturedAtMs = Date.parse(row?.captured_at || '');
+    const occurredAtMs = Date.parse(row?.provider_event_occurred_at || '');
+    const capturedBy = isCanonicalTelnyxAuthorityEmail(row?.captured_by)
+      ? row.captured_by
+      : null;
+    const manualSourceMatches = (source === 'manual_opt_in' && status === 'opted_in')
+      || (source === 'manual_opt_out' && status === 'opted_out')
+      || (source === 'admin_manual' && ['opted_in', 'opted_out', 'unknown'].includes(status));
+    const keywordSourceMatches = isKeyword
+      && status === (isKeywordStop ? 'opted_out' : 'opted_in')
+      && (row?.captured_by ?? null) === null
+      && !!providerEventId && row?.provider_event_id === providerEventId
+      && !!providerMessageId && row?.provider_message_id === providerMessageId
+      && Number.isFinite(occurredAtMs)
+      && row?.provider_event_occurred_at === row?.captured_at;
+    const manualProvenanceMatches = manualSourceMatches
+      && !!capturedBy
+      && row?.captured_by === capturedBy
+      && row?.provider_event_id == null
+      && row?.provider_message_id == null
+      && row?.provider_event_occurred_at == null;
+    if (row?.consent_key !== consentKey
+      || row?.provider !== 'telnyx'
+      || row?.integration_secret_id !== authority.integrationSecretId
+      || row?.messaging_profile_id !== authority.messagingProfileId
+      || row?.agency_id !== authority.agencyId
+      || row?.phone_e164 !== phoneE164
+      || !provenanceMatches
+      || !Number.isFinite(capturedAtMs)
+      || (!keywordSourceMatches && !manualProvenanceMatches)) {
+      return { ok: false, reason: 'sms_consent_integrity_failed' };
+    }
+  }
+  for (let index = 1; index < rows.length; index += 1) {
+    const newest = Date.parse(rows[index - 1].captured_at);
+    const runnerUp = Date.parse(rows[index].captured_at);
+    if (newest <= runnerUp) {
+      return { ok: false, reason: newest === runnerUp
+        ? 'sms_consent_latest_ambiguous'
+        : 'sms_consent_order_invalid' };
+    }
+  }
+  const newestKeyword = rows.find((row) =>
+    row.consent_source === 'keyword_stop' || row.consent_source === 'keyword_start');
+  const keywordStopActive = newestKeyword?.consent_source === 'keyword_stop';
+  return {
+    ok: true,
+    row: rows[0] || null,
+    effectiveStatus: keywordStopActive ? 'opted_out' : (rows[0]?.consent_status || 'unknown'),
+    keywordStopActive,
+    phoneE164,
+    consentKey,
+  };
+}
+// <<<END SHARED HELPER: telnyxSmsAuthority>>>
+
+// Webhook mutations must be bound to one exact, active Telnyx credential row.
+// The generic resolver intentionally supports legacy callers by choosing a
+// preferred row; that fallback is unsafe for a signed webhook because two
+// active rows would make both signature authority and fax provenance ambiguous.
+const TELNYX_WEBHOOK_CREDENTIAL_ROW_LIMIT = 2;
+async function resolveExactActiveTelnyxWebhookCredentials(base44) {
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.IntegrationSecret.filter(
+      { provider: 'telnyx', is_active: true },
+      undefined,
+      TELNYX_WEBHOOK_CREDENTIAL_ROW_LIMIT,
+    );
+  } catch {
+    return null;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) return null;
+  const record = rows[0];
+  const pick = (value) => (typeof value === 'string' && value.trim() === value && value
+    ? value
+    : null);
+  if (record?.provider !== 'telnyx'
+    || record?.is_active !== true
+    || boundedTelnyxAuthorityId(record?.id) !== record?.id
+    || !Number.isFinite(Date.parse(record?.updated_date || ''))
+    || !pick(record?.public_key)) return null;
+  return {
+    apiKey: pick(record.api_key),
+    publicKey: pick(record.public_key),
+    messagingProfileId: pick(record.messaging_profile_id),
+    voiceConnectionId: pick(record.voice_connection_id),
+    faxConnectionId: pick(record.fax_connection_id),
+    record,
+    readError: null,
+  };
+}
 
 // <<<BEGIN SHARED HELPER: resolveFaxRetryConfig — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveFaxRetryConfig(base44, agencyName) {
@@ -145,7 +518,16 @@ function extractTelnyxEvent(body) {
   const b = body || {};
   const data = b.data || b;
   const payload = data.payload || {};
-  return { eventType: data.event_type || b.event_type || null, id: payload.id || data.id || null, payload };
+  return {
+    eventType: data.event_type || b.event_type || null,
+    eventId: data.id || null,
+    occurredAt: data.occurred_at || null,
+    resourceId: payload.id || null,
+    // Backward-compatible status-resource alias. Never use this as a webhook
+    // replay key; Telnyx envelope data.id is the event identity.
+    id: payload.id || null,
+    payload,
+  };
 }
 function buildSignedPayload(timestamp, rawBody) {
   return `${String(timestamp ?? '')}|${String(rawBody ?? '')}`;
@@ -405,6 +787,36 @@ function decodeClientState(b64) {
   try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { return null; }
 }
 
+// Inbound patient communications cannot be routed safely until dialed Telnyx
+// numbers, tenant ownership, and destinations are resolved from a service-owned
+// binding instead of mutable User profile fields. SMS and voice remain behind
+// literal release gates. Inbound fax now crosses only a dedicated, exact
+// service-owned destination binding; it never uses mutable User fields or a
+// newest/single-row AgencySettings fallback as tenant authority.
+const INBOUND_PATIENT_SMS_ROUTING_PAUSED = true;
+const INBOUND_PATIENT_CALL_ROUTING_PAUSED = true;
+const INBOUND_PATIENT_CALL_STATES = new Set([
+  'inbound_ivr',
+  'inbound_after_greet',
+  'ringdown',
+  'voicemail',
+]);
+
+function isInboundPatientCallEvent(eventType, payload) {
+  if (!String(eventType || '').startsWith('call.')) return false;
+  if (String(payload?.direction || '').toLowerCase() === 'incoming') return true;
+  const state = decodeClientState(payload?.client_state);
+  return INBOUND_PATIENT_CALL_STATES.has(String(state?.t || '').toLowerCase());
+}
+
+function inboundRoutingPausedResponse(channel) {
+  return Response.json({
+    error: `Inbound patient ${channel} routing is temporarily unavailable during the service-owned telecom binding migration`,
+    code: 'INBOUND_TELECOM_BINDING_MIGRATION_PAUSED',
+    retryable: true,
+  }, { status: 503, headers: { 'Retry-After': '300' } });
+}
+
 // ---- Call Control command helper ----
 // Returns { ok, status } so callers can fall back on failure instead of
 // silently stranding a live (billed) call leg.
@@ -413,6 +825,7 @@ function decodeClientState(b64) {
 // (max_length) / transcription_start (transcription_engine_config.language)
 // and hangup_cause enum values are verified against Telnyx v2 docs/SDK.
 async function callCommand(apiKey, callControlId, command, payload = {}) {
+  if (!outboundDeliveryReleased()) return { ok: false, status: 503, paused: true };
   try {
     const resp = await fetch(`https://api.telnyx.com/v2/calls/${encodeURIComponent(callControlId)}/actions/${command}`, {
       method: 'POST',
@@ -431,6 +844,7 @@ const SPEAK_DEFAULTS = { voice: 'female', language: 'en-US' };
 
 // ---- Telnyx outbound SMS (auto-reply) ----
 async function sendAutoReply(apiKey, messagingProfileId, from, to, text) {
+  if (!outboundDeliveryReleased()) return null;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 10000);
   try {
@@ -526,6 +940,127 @@ const STOP_WORDS = ['STOP', 'STOPALL', 'UNSUBSCRIBE', 'CANCEL', 'END', 'QUIT'];
 const START_WORDS = ['START', 'UNSTOP', 'YES'];
 const HELP_WORDS = ['HELP', 'INFO'];
 
+function providerConsentKeyword(payload) {
+  if (String(payload?.direction || '').toLowerCase() !== 'inbound') return null;
+  const keyword = String(payload?.autoresponse_type || '').trim().toUpperCase();
+  return keyword === 'STOP' || keyword === 'START' ? keyword : null;
+}
+
+function keywordConsentMatches(row, expected) {
+  return !!row
+    && row.consent_key === expected.consent_key
+    && row.agency_id === expected.agency_id
+    && row.provider === expected.provider
+    && row.integration_secret_id === expected.integration_secret_id
+    && row.messaging_profile_id === expected.messaging_profile_id
+    && row.destination_binding_id === expected.destination_binding_id
+    && row.destination_binding_key === expected.destination_binding_key
+    && row.destination_e164 === expected.destination_e164
+    && (row.patient_id ?? null) === expected.patient_id
+    && row.phone_e164 === expected.phone_e164
+    && row.consent_status === expected.consent_status
+    && row.consent_source === expected.consent_source
+    && row.provider_event_id === expected.provider_event_id
+    && row.provider_message_id === expected.provider_message_id
+    && row.provider_event_occurred_at === expected.provider_event_occurred_at
+    && row.captured_at === expected.captured_at
+    && (row.captured_by ?? null) === expected.captured_by
+    && row.notes === expected.notes;
+}
+
+async function handleInboundConsentKeyword(base44, telnyxCreds, event, payload) {
+  const keyword = providerConsentKeyword(payload);
+  if (!keyword) return null;
+
+  const eventId = boundedTelnyxAuthorityId(event?.eventId);
+  const providerMessageId = boundedTelnyxAuthorityId(event?.resourceId);
+  const occurredAtMs = Date.parse(event?.occurredAt || '');
+  const source = payload?.from?.phone_number || payload?.from;
+  const destination = Array.isArray(payload?.to) ? payload.to[0]?.phone_number : payload?.to;
+  const phoneE164 = normalizeTelnyxSmsE164(source);
+  if (!eventId || !providerMessageId || !phoneE164 || !Number.isFinite(occurredAtMs)
+    || (keyword === 'START' && occurredAtMs > Date.now() + 24 * 60 * 60 * 1000)) {
+    return inboundRoutingPausedResponse('SMS consent');
+  }
+  const occurredAt = new Date(occurredAtMs).toISOString();
+
+  const authority = await resolveActiveTelnyxSmsBinding(base44, {
+    integrationSecretId: telnyxCreds?.record?.id,
+    integrationProvider: telnyxCreds?.record?.provider,
+    integrationIsActive: telnyxCreds?.record?.is_active === true,
+    messagingProfileId: telnyxCreds?.messagingProfileId,
+    claimedMessagingProfileId: payload?.messaging_profile_id,
+    requireClaimedProfile: true,
+    requireInbound: true,
+    destinationE164: destination,
+  });
+  if (!authority.ok) return inboundRoutingPausedResponse('SMS consent');
+
+  const expected = {
+    consent_key: telnyxSmsConsentKey(authority, phoneE164),
+    agency_id: authority.agencyId,
+    provider: 'telnyx',
+    integration_secret_id: authority.integrationSecretId,
+    messaging_profile_id: authority.messagingProfileId,
+    destination_binding_id: authority.bindingId,
+    destination_binding_key: authority.bindingKey,
+    destination_e164: authority.destinationE164,
+    patient_id: null,
+    phone_e164: phoneE164,
+    consent_status: keyword === 'STOP' ? 'opted_out' : 'opted_in',
+    consent_source: keyword === 'STOP' ? 'keyword_stop' : 'keyword_start',
+    captured_by: null,
+    captured_at: occurredAt,
+    provider_event_id: eventId,
+    provider_message_id: providerMessageId,
+    provider_event_occurred_at: occurredAt,
+    notes: 'Provider-classified Telnyx consent keyword',
+  };
+
+  let prior;
+  try {
+    prior = await base44.asServiceRole.entities.SmsConsent
+      .filter({ provider_event_id: eventId }, undefined, 2);
+  } catch {
+    return inboundRoutingPausedResponse('SMS consent');
+  }
+  if (!Array.isArray(prior) || prior.length > 1) {
+    return inboundRoutingPausedResponse('SMS consent');
+  }
+  if (prior.length === 1) {
+    if (!keywordConsentMatches(prior[0], expected)) {
+      return inboundRoutingPausedResponse('SMS consent');
+    }
+    return Response.json({
+      success: true,
+      consent_status: expected.consent_status,
+      deduped: true,
+    });
+  }
+
+  try {
+    await base44.asServiceRole.entities.SmsConsent.create(expected);
+  } catch {
+    return inboundRoutingPausedResponse('SMS consent');
+  }
+
+  let committed;
+  try {
+    committed = await base44.asServiceRole.entities.SmsConsent
+      .filter({ provider_event_id: eventId }, undefined, 2);
+  } catch {
+    return inboundRoutingPausedResponse('SMS consent');
+  }
+  if (!Array.isArray(committed) || committed.length !== 1
+    || !keywordConsentMatches(committed[0], expected)) {
+    return inboundRoutingPausedResponse('SMS consent');
+  }
+
+  // Telnyx sends the carrier-compliant keyword autoresponse. Sending another
+  // Messages API request here would be both duplicate and non-idempotent.
+  return Response.json({ success: true, consent_status: expected.consent_status });
+}
+
 // ============================ MESSAGING ============================
 // Monotonic rank so a late/out-of-order delivery webhook can't downgrade a
 // terminal state (e.g. a re-delivered 'sending' arriving after 'sent'). Mirrors
@@ -590,7 +1125,7 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
   if (!nurse) {
     await base44.asServiceRole.entities.UserActivity.create({
       user_email: 'system', action: 'sms_received_unresolved',
-      details: { destination: workNum, timestamp: new Date().toISOString() }, status: 'failure',
+      details: { direction: 'inbound' }, status: 'failure',
     }).catch(() => {});
     return Response.json({ success: true, skipped: 'unresolved work number' });
   }
@@ -643,7 +1178,7 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
     await sendReply('You have been unsubscribed and will no longer receive texts from your care team. Reply START to opt back in.');
     await base44.asServiceRole.entities.UserActivity.create({
       user_email: 'system', action: 'sms_opt_out', entity_type: 'SmsMessage', entity_id: inboundRow.id,
-      details: { phone: patientNum, nurse_email: nurse.email, patient_id: patientId }, status: 'success',
+      details: { consent_status: 'opted_out', source: 'keyword' }, status: 'success',
     }).catch(() => {});
     return Response.json({ success: true, opted_out: true });
   }
@@ -697,12 +1232,12 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
     type: 'sms_received', priority: 'medium', metadata: { related_entity: 'SmsMessage', related_entity_id: inboundRow.id }, is_read: false,
   }).catch((err) => console.error('notification failed:', err));
 
-  // Audit — never log message body.
+  // SmsMessage holds endpoints, patient linkage, thread, and content metadata.
+  // Keep the broad activity stream limited to routing outcome categories.
   await base44.asServiceRole.entities.UserActivity.create({
     user_email: 'system', action: 'sms_received', entity_type: 'SmsMessage', entity_id: inboundRow.id,
     details: {
-      from_number: patientNum, to_number: workNum, nurse_email: nurse.email, patient_id: patientId,
-      thread_id: inboundRow.thread_id, body_length: text.length, off_duty: offDuty, agency_closed: agencyClosed, urgent: urgency.urgent,
+      direction: 'inbound', off_duty: offDuty, agency_closed: agencyClosed, urgent: urgency.urgent,
     }, status: 'success',
   }).catch(() => {});
 
@@ -721,131 +1256,913 @@ async function handleInboundMessage(base44, apiKey, messagingProfileId, payload)
 // and cause a duplicate PHI transmission on top of the in-flight attempt.
 const FAX_RANK = { queued: 1, sending: 2, sent: 3, delivered: 4, failed: 4, retrying: 4, retried: 5 };
 
-// Inbound fax handling: Telnyx delivers a received fax as `fax.received` with
-// the media URL. The app does NOT expect inbound faxes by default — outbound
-// faxes transmit from a blind Telnyx line but are PRESENTED under the office
-// fax machine's number, so fax-backs are dialed straight to the office. Any
-// stray fax that still lands on the blind line (e.g. a machine auto-redialing
-// the transmitting number) is passed straight through to the office fax
-// machine. Opt-in ingestion (fax_receiving_enabled) keeps the legacy behavior:
-// an IncomingFax row that the processInboundFaxes job OCRs and matches to
-// referral follow-ups.
-async function handleInboundFax(base44, payload) {
-  const providerId = payload?.id;
-  if (!providerId) return Response.json({ success: true, skipped: 'no fax id' });
-  // `fax.received` is inbound-only at Telnyx, but keep the direction check as
-  // a guard against provider payload quirks.
-  if (payload?.direction && payload.direction !== 'inbound') {
-    return Response.json({ success: true, skipped: 'not inbound' });
-  }
-  const mediaUrl = payload?.media_url || payload?.original_media_url;
-  if (!mediaUrl) return Response.json({ success: true, skipped: 'no media url' });
+const INBOUND_FAX_EXACT_ROW_LIMIT = 10;
+const OUTBOUND_FAX_EXACT_ROW_LIMIT = 10;
+const INBOUND_FAX_NO_STORE_HEADERS = { 'Cache-Control': 'no-store', Pragma: 'no-cache' };
 
-  // Idempotency: Telnyx re-delivers webhooks. Suppress a redelivery only once
-  // the fax is SETTLED — either routed to the office (status 'routed') or
-  // captured in-app for OCR (the ingestion path, processing_status 'pending').
-  // A FAILED office-forward row (created 'completed' but never 'routed') is
-  // left retryable so a redelivery can complete the forward — otherwise a
-  // transient forward error silently dropped the fax forever.
-  const existing = await base44.asServiceRole.entities.IncomingFax.filter({ telnyx_fax_id: providerId }, undefined, 5000).catch(() => []);
-  const settled = (Array.isArray(existing) ? existing : []).find(
-    (r) => r?.status === 'routed' || r?.processing_status === 'pending',
-  );
-  if (settled) {
-    return Response.json({ success: true, deduped: true });
-  }
-
-  // Match the dialed fax line to the owning agency's settings. Fail closed when
-  // the dialed number doesn't match any agency — newest-row would mis-route PHI.
-  const dialedFax = normalizeE164(payload?.to) || payload?.to || '';
-  const settings = await resolveAgencySettingsByNumber(base44, dialedFax);
-  if (!settings) {
-    console.error('inbound fax: no AgencySettings match for dialed line');
-    return Response.json({ success: true, skipped: 'unresolved fax line' });
-  }
-
-  if (settings?.fax_receiving_enabled) {
-    // Opt-in ingestion: keep the fax in-app for OCR + referral matching.
-    const record = await base44.asServiceRole.entities.IncomingFax.create({
-      // Route to whoever owns the agency settings (an admin) until the
-      // processing job matches it to a patient/referral.
-      user_email: settings.created_by || 'unassigned',
-      sender_fax_number: payload?.from || '',
-      received_at: new Date().toISOString(),
-      document_url: mediaUrl,
-      page_count: Number.isFinite(payload?.page_count) ? payload.page_count : undefined,
-      telnyx_fax_id: providerId,
-      processing_status: 'pending',
-      status: 'unread',
-    });
-    return Response.json({ success: true, incoming_fax_id: record.id });
-  }
-
-  // Default posture: pass the fax straight through to the office machine.
-  // Requires the office fax number + fax creds; the self-loop guard skips the
-  // forward if the office number IS the line that received it (misconfig).
-  const officeFax = normalizeE164(settings?.office_fax_number_e164);
-  const receivedOn = normalizeE164(payload?.to);
-  const creds = await resolveTelnyxCreds(base44);
-  if (!creds.apiKey || !creds.faxConnectionId || !officeFax || !receivedOn || officeFax === receivedOn) {
-    return Response.json({ success: true, skipped: 'fax receiving disabled' });
-  }
-
-  // The row is the at-most-once guard; marked 'routed' on success, left
-  // 'unread' on failure so a stray fax is never silently dropped (it stays
-  // visible to admins with its media URL). processing_status 'completed' keeps
-  // the OCR job away from it. On a redelivery after a failed forward, REUSE the
-  // prior unrouted row instead of creating a duplicate.
-  const record = (Array.isArray(existing) ? existing : []).find(
-    (r) => r?.processing_status === 'completed' && r?.status !== 'routed',
-  ) || await base44.asServiceRole.entities.IncomingFax.create({
-    user_email: settings?.created_by || 'unassigned',
-    sender_fax_number: payload?.from || '',
-    received_at: new Date().toISOString(),
-    document_url: mediaUrl,
-    page_count: Number.isFinite(payload?.page_count) ? payload.page_count : undefined,
-    telnyx_fax_id: providerId,
-    processing_status: 'completed',
-    status: 'unread',
-  });
-  let forwarded = false;
+function exactInboundFaxHttpsUrl(value) {
+  if (typeof value !== 'string' || !value || value.length > 8192 || value.trim() !== value) return null;
   try {
-    const resp = await fetch('https://api.telnyx.com/v2/faxes', {
+    const url = new URL(value);
+    return url.protocol === 'https:' && !url.username && !url.password && !url.hash
+      ? url.toString()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function inboundFaxUnavailable(status = 503, code = 'INBOUND_FAX_BINDING_UNAVAILABLE') {
+  return Response.json(
+    { success: false, error: 'Inbound fax routing is temporarily unavailable', code },
+    {
+      status,
+      headers: {
+        ...INBOUND_FAX_NO_STORE_HEADERS,
+        ...(status === 503 ? { 'Retry-After': '300' } : {}),
+      },
+    },
+  );
+}
+
+function successfulInboundFaxUpdate(value) {
+  return !!value && typeof value === 'object' && !Array.isArray(value)
+    && value.success === true && value.updated === 1 && value.has_more === false;
+}
+
+function outboundFaxHasStatusAuthority(row) {
+  const referralAuthority = boundedTelnyxAuthorityId(row?.referral_id) === row?.referral_id
+    && boundedTelnyxAuthorityId(row?.sent_by_user_id) === row?.sent_by_user_id
+    && boundedTelnyxAuthorityId(row?.sent_by_membership_id) === row?.sent_by_membership_id
+    && Number.isSafeInteger(row?.sent_by_membership_version)
+    && row.sent_by_membership_version >= 1;
+  const bindingAuthority = boundedTelnyxAuthorityId(row?.sender_telecom_binding_id)
+      === row?.sender_telecom_binding_id
+    && Number.isSafeInteger(row?.sender_telecom_binding_version)
+    && row.sender_telecom_binding_version >= 1
+    && boundedTelnyxAuthorityId(row?.sender_provider_number_id)
+      === row?.sender_provider_number_id;
+  return !!row
+    && boundedTelnyxAuthorityId(row.id) === row.id
+    && boundedTelnyxAuthorityId(row.agency_id) === row.agency_id
+    && boundedTelnyxAuthorityId(row.document_id) === row.document_id
+    && (referralAuthority || bindingAuthority)
+    && row.provider === 'telnyx'
+    && boundedTelnyxAuthorityId(row.integration_secret_id) === row.integration_secret_id
+    && Number.isFinite(Date.parse(row.integration_secret_updated_at || ''))
+    && boundedTelnyxAuthorityId(row.fax_connection_id) === row.fax_connection_id
+    && boundedTelnyxAuthorityId(row.sender_settings_id) === row.sender_settings_id
+    && Number.isFinite(Date.parse(row.sender_settings_updated_at || ''))
+    && boundedTelnyxAuthorityId(row.telnyx_fax_id) === row.telnyx_fax_id
+    && boundedTelnyxAuthorityId(row.provider_submission_attempt_id)
+      === row.provider_submission_attempt_id
+    && row.provider_submission_state === 'accepted'
+    && Number.isFinite(Date.parse(row.provider_accepted_at || ''))
+    && row.document_url == null;
+}
+
+function outboundFaxHasRetryAuthority(row) {
+  return outboundFaxHasStatusAuthority(row)
+    && boundedTelnyxAuthorityId(row.referral_id) === row.referral_id
+    && boundedTelnyxAuthorityId(row.sent_by_user_id) === row.sent_by_user_id
+    && boundedTelnyxAuthorityId(row.sent_by_membership_id) === row.sent_by_membership_id
+    && Number.isSafeInteger(row.sent_by_membership_version)
+    && row.sent_by_membership_version >= 1
+    && Number.isSafeInteger(row.retry_count)
+    && row.retry_count >= 0
+    && Number.isSafeInteger(row.retry_generation)
+    && row.retry_generation >= 0
+    && row.retry_generation <= row.retry_count;
+}
+
+const OUTBOUND_FAX_MAX_RETRY_ATTEMPTS = 10;
+
+function boundedOutboundFaxRetryPolicy(config) {
+  const source = config && typeof config === 'object' && !Array.isArray(config)
+    ? config
+    : {};
+  const unset = (value) => value == null
+    || (typeof value === 'string' && value.trim() === '');
+  const rawMaxRetries = Number(source.max_retries);
+  const rawDelayMinutes = Number(source.retry_delay_minutes);
+  // Treat service-owned policy rows as untrusted input too. Malformed values
+  // must fail closed instead of authorizing another transmission.
+  const valid = (unset(source.max_retries)
+      || (Number.isSafeInteger(rawMaxRetries)
+        && rawMaxRetries >= 0
+        && rawMaxRetries <= OUTBOUND_FAX_MAX_RETRY_ATTEMPTS))
+    && (unset(source.retry_delay_minutes)
+      || (Number.isFinite(rawDelayMinutes)
+        && rawDelayMinutes >= 1
+        && rawDelayMinutes <= 360))
+    && (source.is_active == null || typeof source.is_active === 'boolean')
+    && (source.auto_retry_enabled == null || typeof source.auto_retry_enabled === 'boolean')
+    && (source.notify_on_final_failure == null
+      || typeof source.notify_on_final_failure === 'boolean');
+  const boundedConfig = {
+    ...source,
+    ...(source.is_active === false ? { auto_retry_enabled: false } : {}),
+  };
+  return { valid, config: boundedConfig, normalized: faxRetryConfig(boundedConfig) };
+}
+
+async function resolveFaxRetryConfigByAgency(base44, agencyId) {
+  let exact;
+  try {
+    exact = await base44.asServiceRole.entities.FaxRetryConfig.filter(
+      { agency_id: agencyId },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+  } catch {
+    return { ok: false, config: null };
+  }
+  if (!Array.isArray(exact) || exact.length > 1
+    || exact.some((row) => row?.agency_id !== agencyId)) {
+    return { ok: false, config: null };
+  }
+  if (exact.length === 1) return { ok: true, config: exact[0] };
+
+  let agencies;
+  try {
+    agencies = await base44.asServiceRole.entities.Agency.filter(
+      { id: agencyId },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+  } catch {
+    return { ok: false, config: null };
+  }
+  if (!Array.isArray(agencies) || agencies.length !== 1 || agencies[0]?.id !== agencyId
+    || !boundedTelnyxAuthorityId(agencies[0]?.agency_code)) {
+    return { ok: false, config: null };
+  }
+  let duplicates;
+  let legacy;
+  try {
+    duplicates = await base44.asServiceRole.entities.Agency.filter(
+      { agency_code: agencies[0].agency_code },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+    legacy = await base44.asServiceRole.entities.FaxRetryConfig.filter(
+      { agency_name: agencies[0].agency_code },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+  } catch {
+    return { ok: false, config: null };
+  }
+  if (!Array.isArray(duplicates) || duplicates.length !== 1 || duplicates[0]?.id !== agencyId
+    || !Array.isArray(legacy) || legacy.length > 1
+    || legacy.some((row) => row?.agency_name !== agencies[0].agency_code
+      || (row?.agency_id != null && row.agency_id !== agencyId))) {
+    return { ok: false, config: null };
+  }
+  return { ok: true, config: legacy[0] || null };
+}
+
+const FAX_NOTIFICATION_EXACT_ROW_LIMIT = 10;
+const FAX_NOTIFICATION_MEMBERSHIP_SCAN_LIMIT = 100;
+const FAX_NOTIFICATION_MEMBERSHIP_STATUSES = new Set([
+  'pending',
+  'active',
+  'suspended',
+  'revoked',
+]);
+const FAX_NOTIFICATION_TENANT_ROLES = new Set([
+  'agency_admin',
+  'manager',
+  'clinician',
+  'office_staff',
+  'social_worker',
+  'spiritual_care',
+]);
+
+const canonicalFaxNotificationEmail = (value) => {
+  if (typeof value !== 'string' || value.length > 320) return null;
+  const email = value.trim().toLowerCase();
+  return email && email.includes('@') && !/\s/.test(email) ? email : null;
+};
+
+const exactFaxNotificationInstant = (value) => typeof value === 'string'
+  && Number.isFinite(Date.parse(value));
+
+const boundedFaxNotificationReason = (value) => {
+  if (typeof value !== 'string') return null;
+  const reason = value.trim();
+  return reason && reason.length <= 500 ? reason : null;
+};
+
+async function loadActiveOutboundFaxNotificationRecipient(base44, fax) {
+  const agencyId = boundedTelnyxAuthorityId(fax?.agency_id);
+  const userId = boundedTelnyxAuthorityId(fax?.sent_by_user_id);
+  const membershipId = boundedTelnyxAuthorityId(fax?.sent_by_membership_id);
+  const sentMembershipVersion = fax?.sent_by_membership_version;
+  const senderEmail = canonicalFaxNotificationEmail(fax?.sent_by);
+  if (!agencyId || !userId || !membershipId || !senderEmail
+    || fax.sent_by !== senderEmail
+    || !Number.isSafeInteger(sentMembershipVersion) || sentMembershipVersion < 1) return null;
+
+  const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+    { agency_id: agencyId, user_id: userId },
+    '-updated_date',
+    FAX_NOTIFICATION_MEMBERSHIP_SCAN_LIMIT,
+  );
+  if (!Array.isArray(rows)
+    || rows.length >= FAX_NOTIFICATION_MEMBERSHIP_SCAN_LIMIT
+    || rows.length !== 1
+    || rows.some((row) => row?.agency_id !== agencyId || row?.user_id !== userId)) return null;
+
+  const recipient = rows[0];
+  const recipientEmail = canonicalFaxNotificationEmail(recipient?.user_email_normalized);
+  const transitionEmail = canonicalFaxNotificationEmail(recipient?.last_transition_by_email_normalized);
+  const status = String(recipient?.status || '');
+  if (boundedTelnyxAuthorityId(recipient?.id) !== membershipId
+    || recipient.id !== membershipId
+    || recipient.membership_key !== `${agencyId}:${userId}`
+    || recipientEmail !== senderEmail
+    || recipient.user_email_normalized !== recipientEmail
+    || !FAX_NOTIFICATION_TENANT_ROLES.has(String(recipient.tenant_role || ''))
+    || !FAX_NOTIFICATION_MEMBERSHIP_STATUSES.has(status)
+    || !boundedTelnyxAuthorityId(recipient.created_by_user_id)
+    || !boundedTelnyxAuthorityId(recipient.last_transition_by_user_id)
+    || !transitionEmail
+    || recipient.last_transition_by_email_normalized !== transitionEmail
+    || !exactFaxNotificationInstant(recipient.last_transition_at)
+    || !boundedFaxNotificationReason(recipient.last_transition_reason)
+    || !Number.isSafeInteger(recipient.version)
+    || recipient.version < sentMembershipVersion
+    || ((status === 'active' || status === 'suspended')
+      && !exactFaxNotificationInstant(recipient.activated_at))
+    || (status === 'revoked'
+      && (!exactFaxNotificationInstant(recipient.revoked_at)
+        || !boundedFaxNotificationReason(recipient.revocation_reason)))) return null;
+  return status === 'active' ? recipient : null;
+}
+
+function outboundFaxNotificationMessage(kind, fax) {
+  const documentName = fax.document_name || 'Document';
+  const recipient = fax.to_name || fax.to_number;
+  return kind === 'delivery'
+    ? `Fax "${documentName}" delivered to ${recipient}`
+    : `Fax "${documentName}" failed to ${recipient}. Reason: ${fax.failure_reason || 'Unknown'}`;
+}
+
+function outboundFaxNotificationSpec(fax, recipient, kind) {
+  const delivered = kind === 'delivery';
+  const agencyId = fax.agency_id;
+  const dedupeKey = `fax:${agencyId}:${fax.id}:${delivered ? 'delivered' : 'failed'}`;
+  return {
+    markerField: delivered ? 'delivery_confirmation_sent' : 'final_failure_notified',
+    claimField: delivered ? 'delivery_notify_claimed_by' : 'failure_notify_claimed_by',
+    claimedAtField: delivered ? 'delivery_notify_claimed_at' : 'failure_notify_claimed_at',
+    dedupeKey,
+    payload: {
+      agency_id: agencyId,
+      dedupe_key: dedupeKey,
+      recipient_user_id: recipient.user_id,
+      recipient_membership_id: recipient.id,
+      recipient_membership_version: recipient.version,
+      authority_version: 1,
+      authority_state: 'active',
+      version: 1,
+      user_email: recipient.user_email_normalized,
+      title: delivered ? 'Fax Status Update' : 'Fax Failed',
+      message: outboundFaxNotificationMessage(kind, fax),
+      type: delivered ? 'fax_delivered' : 'fax_failed',
+      priority: delivered ? 'medium' : 'high',
+      metadata: {
+        agency_id: agencyId,
+        related_entity: 'FaxLog',
+        related_entity_id: fax.id,
+        workflow: delivered ? 'fax_delivery_confirmation' : 'fax_final_failure',
+      },
+      is_read: false,
+      dismissed: false,
+    },
+  };
+}
+
+function outboundFaxNotificationMatches(row, spec) {
+  return !!row
+    && boundedTelnyxAuthorityId(row.id) === row.id
+    && row.agency_id === spec.payload.agency_id
+    && row.dedupe_key === spec.dedupeKey
+    && row.recipient_user_id === spec.payload.recipient_user_id
+    && row.recipient_membership_id === spec.payload.recipient_membership_id
+    && row.recipient_membership_version === spec.payload.recipient_membership_version
+    && row.authority_version === 1
+    && row.authority_state === spec.payload.authority_state
+    && Number.isSafeInteger(row.version)
+    && row.version >= 1
+    && row.user_email === spec.payload.user_email
+    && canonicalFaxNotificationEmail(row.user_email) === spec.payload.user_email
+    && row.type === spec.payload.type
+    && row.title === spec.payload.title
+    && row.message === spec.payload.message
+    && row.priority === spec.payload.priority
+    && row.metadata?.agency_id === spec.payload.metadata.agency_id
+    && row.metadata?.related_entity === 'FaxLog'
+    && row.metadata?.related_entity_id === spec.payload.metadata.related_entity_id
+    && row.metadata?.workflow === spec.payload.metadata.workflow
+    && Object.keys(row.metadata || {}).length === Object.keys(spec.payload.metadata).length
+    && typeof row.is_read === 'boolean'
+    && (row.is_read ? exactFaxNotificationInstant(row.read_at) : row.read_at == null)
+    && typeof row.dismissed === 'boolean'
+    && (row.dismissed ? exactFaxNotificationInstant(row.dismissed_at) : row.dismissed_at == null)
+    && row.action_url == null;
+}
+
+async function loadOutboundFaxNotifications(base44, spec) {
+  const rows = await base44.asServiceRole.entities.Notification.filter(
+    // This purpose key is shared with the poller. A legacy or malformed row
+    // that already owns it must remain visible and fail closed; narrowing the
+    // query to recipient fields could otherwise hide it and permit a duplicate.
+    { dedupe_key: spec.dedupeKey },
+    '-created_date',
+    FAX_NOTIFICATION_EXACT_ROW_LIMIT,
+  );
+  if (!Array.isArray(rows) || rows.length >= FAX_NOTIFICATION_EXACT_ROW_LIMIT
+    || rows.some((row) => !outboundFaxNotificationMatches(row, spec))) return null;
+  return rows;
+}
+
+async function finalizeOutboundFaxNotification(base44, fax, spec, claimToken) {
+  const rows = await base44.asServiceRole.entities.FaxLog.filter(
+    { id: fax.id },
+    undefined,
+    OUTBOUND_FAX_EXACT_ROW_LIMIT,
+  ).catch(() => null);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== fax.id
+    || rows[0]?.telnyx_fax_id !== fax.telnyx_fax_id) return false;
+  if (rows[0][spec.markerField] === true) return true;
+  if (rows[0][spec.claimField] !== claimToken
+    || !Number.isFinite(Date.parse(rows[0][spec.claimedAtField] || ''))
+    || !Number.isFinite(Date.parse(rows[0]?.updated_date || ''))) return false;
+  const result = await base44.asServiceRole.entities.FaxLog.updateMany(
+    {
+      id: fax.id,
+      telnyx_fax_id: fax.telnyx_fax_id,
+      status: fax.status,
+      [spec.claimField]: claimToken,
+      updated_date: rows[0].updated_date,
+    },
+    { $set: {
+      [spec.markerField]: true,
+      [spec.claimField]: null,
+      [spec.claimedAtField]: null,
+    } },
+  ).catch(() => null);
+  if (successfulInboundFaxUpdate(result)) return true;
+  const concurrent = await base44.asServiceRole.entities.FaxLog.filter(
+    { id: fax.id },
+    undefined,
+    OUTBOUND_FAX_EXACT_ROW_LIMIT,
+  ).catch(() => null);
+  return Array.isArray(concurrent) && concurrent.length === 1
+    && concurrent[0]?.id === fax.id
+    && concurrent[0]?.telnyx_fax_id === fax.telnyx_fax_id
+    && concurrent[0]?.[spec.markerField] === true;
+}
+
+async function sendClaimedOutboundFaxNotification(base44, fax, kind, claimToken) {
+  const recipient = await loadActiveOutboundFaxNotificationRecipient(base44, fax).catch(() => null);
+  if (!recipient) return false;
+  const spec = outboundFaxNotificationSpec(fax, recipient, kind);
+  let existing = await loadOutboundFaxNotifications(base44, spec).catch(() => null);
+  if (existing?.length) {
+    return finalizeOutboundFaxNotification(base44, fax, spec, claimToken);
+  }
+  if (existing === null) return false;
+  let created = null;
+  try {
+    created = await base44.asServiceRole.entities.Notification.create(spec.payload);
+  } catch {
+    // A create response can be lost after the row committed. Reconcile by the
+    // purpose-specific key before ever allowing another notification attempt.
+    existing = await loadOutboundFaxNotifications(base44, spec).catch(() => null);
+    if (existing?.length) {
+      return finalizeOutboundFaxNotification(base44, fax, spec, claimToken);
+    }
+    return false;
+  }
+  if (!outboundFaxNotificationMatches(created, spec)) {
+    existing = await loadOutboundFaxNotifications(base44, spec).catch(() => null);
+    if (!existing?.length) return false;
+  }
+  return finalizeOutboundFaxNotification(base44, fax, spec, claimToken);
+}
+
+async function resolveActiveTelnyxFaxBinding(base44, telnyxCreds, rawDestination) {
+  const record = telnyxCreds?.record;
+  const integrationSecretId = boundedTelnyxAuthorityId(record?.id);
+  const faxConnectionId = boundedTelnyxAuthorityId(telnyxCreds?.faxConnectionId);
+  const destinationE164 = normalizeE164(rawDestination);
+  if (record?.provider !== 'telnyx'
+    || record?.is_active !== true
+    || !integrationSecretId || record.id !== integrationSecretId
+    || !faxConnectionId || record.fax_connection_id !== faxConnectionId
+    || !destinationE164) {
+    return { ok: false, reason: 'invalid_fax_binding_input' };
+  }
+
+  let activeIntegrations;
+  try {
+    activeIntegrations = await base44.asServiceRole.entities.IntegrationSecret.filter(
+      { provider: 'telnyx', is_active: true },
+      undefined,
+      2,
+    );
+  } catch {
+    return { ok: false, reason: 'fax_integration_read_failed' };
+  }
+  if (!Array.isArray(activeIntegrations) || activeIntegrations.length !== 1) {
+    return { ok: false, reason: 'fax_integration_ambiguous' };
+  }
+  const activeIntegration = activeIntegrations[0];
+  if (activeIntegration?.id !== integrationSecretId
+    || activeIntegration?.provider !== 'telnyx'
+    || activeIntegration?.is_active !== true
+    || activeIntegration?.fax_connection_id !== faxConnectionId) {
+    return { ok: false, reason: 'fax_integration_integrity_failed' };
+  }
+
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.TelecomDestinationBinding.filter({
+      provider: 'telnyx',
+      integration_secret_id: integrationSecretId,
+      destination_e164: destinationE164,
+      status: 'active',
+    }, undefined, INBOUND_FAX_EXACT_ROW_LIMIT);
+  } catch {
+    return { ok: false, reason: 'fax_binding_read_failed' };
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) {
+    return { ok: false, reason: rows?.length ? 'fax_binding_ambiguous' : 'fax_binding_not_found' };
+  }
+  const binding = rows[0];
+  const bindingId = boundedTelnyxAuthorityId(binding?.id);
+  const agencyId = boundedTelnyxAuthorityId(binding?.agency_id);
+  const providerNumberId = boundedTelnyxAuthorityId(binding?.provider_number_id);
+  const phoneNumberId = boundedTelnyxAuthorityId(binding?.phone_number_id);
+  const creatorId = boundedTelnyxAuthorityId(binding?.created_by_user_id);
+  const transitionActorId = boundedTelnyxAuthorityId(binding?.last_transition_by_user_id);
+  const transitionRequestId = boundedTelnyxAuthorityId(binding?.last_transition_request_id);
+  const transitionReason = typeof binding?.last_transition_reason === 'string'
+    ? binding.last_transition_reason.trim()
+    : '';
+  const expectedBindingKey = `telnyx:${integrationSecretId}:${destinationE164}`;
+  const expectedTransitionKey = transitionRequestId
+    ? `${expectedBindingKey}:${transitionRequestId}`
+    : null;
+  const createdAt = Date.parse(binding?.created_at || '');
+  const activatedAt = Date.parse(binding?.activated_at || '');
+  const transitionedAt = Date.parse(binding?.last_transition_at || '');
+  const suspendedAt = binding?.suspended_at == null ? null : Date.parse(binding.suspended_at);
+  const initialActive = binding?.last_transition_action === 'bind'
+    && binding?.version === 1
+    && suspendedAt == null
+    && createdAt === activatedAt
+    && activatedAt === transitionedAt
+    && creatorId === transitionActorId
+    && binding?.created_by_user_email_normalized === binding?.last_transition_by_email_normalized;
+  const reactivated = binding?.last_transition_action === 'activate'
+    && Number.isSafeInteger(binding?.version) && binding.version >= 2
+    && Number.isFinite(suspendedAt)
+    && createdAt <= suspendedAt && suspendedAt < activatedAt
+    && activatedAt === transitionedAt;
+  if (!bindingId || binding.id !== bindingId
+    || !agencyId || binding.agency_id !== agencyId
+    || !providerNumberId || binding.provider_number_id !== providerNumberId
+    || !phoneNumberId || binding.phone_number_id !== phoneNumberId
+    || !creatorId || binding.created_by_user_id !== creatorId
+    || !transitionActorId || binding.last_transition_by_user_id !== transitionActorId
+    || !transitionRequestId || binding.last_transition_request_id !== transitionRequestId
+    || !isCanonicalTelnyxAuthorityEmail(binding?.created_by_user_email_normalized)
+    || !isCanonicalTelnyxAuthorityEmail(binding?.last_transition_by_email_normalized)
+    || binding?.provider !== 'telnyx'
+    || binding?.integration_secret_id !== integrationSecretId
+    || binding?.destination_e164 !== destinationE164
+    || binding?.binding_key !== expectedBindingKey
+    || binding?.fax_connection_id !== faxConnectionId
+    || binding?.fax_inbound_enabled !== true
+    || typeof binding?.sms_inbound_enabled !== 'boolean'
+    || typeof binding?.sms_outbound_enabled !== 'boolean'
+    || typeof binding?.voice_inbound_enabled !== 'boolean'
+    || binding?.status !== 'active'
+    || !['manual', 'telnyx_purchase', 'legacy_backfill'].includes(binding?.source)
+    || (!initialActive && !reactivated)
+    || !transitionReason || binding.last_transition_reason !== transitionReason
+    || transitionReason.length > 500
+    || binding?.last_transition_request_key !== expectedTransitionKey
+    || !Number.isFinite(createdAt) || !Number.isFinite(activatedAt) || !Number.isFinite(transitionedAt)
+    || createdAt > activatedAt || activatedAt > transitionedAt
+    || binding?.revoked_at != null || binding?.revocation_reason != null
+    || !Number.isSafeInteger(binding?.version) || binding.version < 1) {
+    return { ok: false, reason: 'fax_binding_integrity_failed' };
+  }
+
+  let agencies;
+  try {
+    agencies = await base44.asServiceRole.entities.Agency.filter(
+      { id: agencyId },
+      undefined,
+      INBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+  } catch {
+    return { ok: false, reason: 'fax_agency_read_failed' };
+  }
+  if (!Array.isArray(agencies) || agencies.length !== 1
+    || agencies[0]?.id !== agencyId
+    || !['active', 'trial'].includes(agencies[0]?.status)
+    || !boundedTelnyxAuthorityId(agencies[0]?.agency_code)) {
+    return { ok: false, reason: 'fax_agency_unavailable' };
+  }
+  const agency = agencies[0];
+  const duplicateAgencies = await base44.asServiceRole.entities.Agency.filter(
+    { agency_code: agency.agency_code },
+    undefined,
+    INBOUND_FAX_EXACT_ROW_LIMIT,
+  ).catch(() => null);
+  if (!Array.isArray(duplicateAgencies) || duplicateAgencies.length !== 1
+    || duplicateAgencies[0]?.id !== agencyId) {
+    return { ok: false, reason: 'fax_agency_identity_ambiguous' };
+  }
+  const settingsRows = await base44.asServiceRole.entities.AgencySettings.filter(
+    { agency_code: agency.agency_code },
+    '-updated_date',
+    INBOUND_FAX_EXACT_ROW_LIMIT,
+  ).catch(() => null);
+  if (!Array.isArray(settingsRows) || settingsRows.length !== 1
+    || settingsRows[0]?.agency_code !== agency.agency_code
+    || (settingsRows[0]?.agency_id != null && settingsRows[0].agency_id !== agencyId)) {
+    return { ok: false, reason: 'fax_settings_unavailable' };
+  }
+  return {
+    ok: true,
+    binding,
+    bindingId,
+    bindingKey: expectedBindingKey,
+    bindingVersion: binding.version,
+    integrationSecretId,
+    destinationE164,
+    agencyId,
+    settings: settingsRows[0],
+  };
+}
+
+function inboundFaxRowMatches(row, authority, providerId, mediaUrl) {
+  return !!row
+    && boundedTelnyxAuthorityId(row.id) === row.id
+    && row.agency_id === authority.agencyId
+    && row.ingress_binding_id === authority.bindingId
+    && row.ingress_binding_key === authority.bindingKey
+    && Number.isSafeInteger(row.ingress_binding_version)
+    && row.ingress_binding_version >= 1
+    && row.ingress_binding_version <= authority.bindingVersion
+    && row.integration_secret_id === authority.integrationSecretId
+    && row.received_to_number === authority.destinationE164
+    && row.telnyx_fax_id === providerId
+    && row.document_url === mediaUrl
+    && Number.isSafeInteger(row.version)
+    && row.version >= 1
+    && Number.isFinite(Date.parse(row.created_date || ''))
+    && Number.isFinite(Date.parse(row.updated_date || ''));
+}
+
+function sameInboundFaxAuthority(left, right) {
+  return left?.ok === true
+    && right?.ok === true
+    && left.bindingId === right.bindingId
+    && left.bindingKey === right.bindingKey
+    && left.bindingVersion === right.bindingVersion
+    && left.integrationSecretId === right.integrationSecretId
+    && left.destinationE164 === right.destinationE164
+    && left.agencyId === right.agencyId
+    && JSON.stringify(left.binding) === JSON.stringify(right.binding)
+    && JSON.stringify(left.settings) === JSON.stringify(right.settings);
+}
+
+async function loadExactInboundFax(base44, authority, providerId, mediaUrl) {
+  const rows = await base44.asServiceRole.entities.IncomingFax.filter(
+    { telnyx_fax_id: providerId },
+    undefined,
+    INBOUND_FAX_EXACT_ROW_LIMIT,
+  );
+  if (!Array.isArray(rows) || rows.length > 1) return { ok: false, rows: [] };
+  if (rows.some((row) => !inboundFaxRowMatches(row, authority, providerId, mediaUrl))) {
+    return { ok: false, rows };
+  }
+  return { ok: true, rows };
+}
+
+async function createInboundFax(base44, authority, payload, providerId, mediaUrl, processingStatus) {
+  const sender = normalizeE164(payload?.from) || '';
+  const pageCount = Number.isSafeInteger(payload?.page_count) && payload.page_count > 0
+    ? payload.page_count
+    : undefined;
+  const receivedAt = new Date().toISOString();
+  const created = await base44.asServiceRole.entities.IncomingFax.create({
+    agency_id: authority.agencyId,
+    ingress_binding_id: authority.bindingId,
+    ingress_binding_key: authority.bindingKey,
+    ingress_binding_version: authority.bindingVersion,
+    integration_secret_id: authority.integrationSecretId,
+    received_to_number: authority.destinationE164,
+    user_email: authority.binding.created_by_user_email_normalized,
+    sender_fax_number: sender,
+    received_at: receivedAt,
+    document_url: mediaUrl,
+    ...(pageCount ? { page_count: pageCount } : {}),
+    telnyx_fax_id: providerId,
+    processing_status: processingStatus,
+    status: 'unread',
+    version: 1,
+  });
+  const createdId = boundedTelnyxAuthorityId(created?.id);
+  if (!createdId) throw new Error('IncomingFax.create returned no exact id');
+  const loaded = await loadExactInboundFax(base44, authority, providerId, mediaUrl);
+  if (!loaded.ok || loaded.rows.length !== 1 || loaded.rows[0]?.id !== createdId
+    || loaded.rows[0]?.processing_status !== processingStatus
+    || loaded.rows[0]?.status !== 'unread'
+    || loaded.rows[0]?.received_at !== receivedAt) {
+    throw new Error('Inbound fax creation failed verification');
+  }
+  return loaded.rows[0];
+}
+
+async function claimInboundFaxForward(base44, authority, record) {
+  const priorVersion = record.version;
+  const claimId = typeof globalThis.crypto?.randomUUID === 'function'
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  const claimedAt = new Date().toISOString();
+  const result = await base44.asServiceRole.entities.IncomingFax.updateMany(
+    {
+      id: record.id,
+      agency_id: authority.agencyId,
+      version: record.version,
+      updated_date: record.updated_date,
+      processing_status: 'completed',
+      status: 'unread',
+    },
+    {
+      $set: {
+        status: 'reviewing',
+        routed_to: 'office_fax_pending',
+        claimed_by: claimId,
+        claimed_at: claimedAt,
+      },
+      $inc: { version: 1 },
+    },
+  );
+  if (!successfulInboundFaxUpdate(result)) return null;
+  const loaded = await loadExactInboundFax(
+    base44,
+    authority,
+    record.telnyx_fax_id,
+    record.document_url,
+  );
+  if (!loaded.ok || loaded.rows.length !== 1) {
+    throw new Error('Inbound fax forward claim failed verification');
+  }
+  const claimed = loaded.rows[0];
+  if (claimed.id !== record.id
+    || claimed.version !== priorVersion + 1
+    || claimed.processing_status !== 'completed'
+    || claimed.status !== 'reviewing'
+    || claimed.routed_to !== 'office_fax_pending'
+    || claimed.claimed_by !== claimId
+    || claimed.claimed_at !== claimedAt) {
+    throw new Error('Inbound fax forward claim failed verification');
+  }
+  return claimed;
+}
+
+async function releaseInboundFaxForwardClaim(base44, authority, record) {
+  const result = await base44.asServiceRole.entities.IncomingFax.updateMany(
+    {
+      id: record.id,
+      agency_id: authority.agencyId,
+      version: record.version,
+      updated_date: record.updated_date,
+      processing_status: 'completed',
+      status: 'reviewing',
+      routed_to: 'office_fax_pending',
+      claimed_by: record.claimed_by,
+    },
+    {
+      $set: {
+        status: 'unread',
+        routed_to: null,
+        claimed_by: null,
+        claimed_at: null,
+      },
+      $inc: { version: 1 },
+    },
+  );
+  return successfulInboundFaxUpdate(result);
+}
+
+// Signed Telnyx fax ingress. The exact dialed destination is resolved through
+// TelecomDestinationBinding before any tenant setting, media row, or forward
+// command is touched. `fax_receiving_enabled` selects in-app OCR versus office
+// forwarding only after that immutable tenant boundary is established.
+async function handleInboundFax(base44, telnyxCreds, payload) {
+  const providerId = boundedTelnyxAuthorityId(payload?.id);
+  const mediaUrl = exactInboundFaxHttpsUrl(payload?.media_url || payload?.original_media_url);
+  const receivedOn = normalizeE164(payload?.to);
+  if (!providerId || payload?.id !== providerId || payload?.direction !== 'inbound'
+    || !mediaUrl || !receivedOn) {
+    return inboundFaxUnavailable(400, 'INVALID_INBOUND_FAX_EVENT');
+  }
+  let authority = await resolveActiveTelnyxFaxBinding(base44, telnyxCreds, receivedOn);
+  if (!authority.ok) return inboundFaxUnavailable();
+
+  const existing = await loadExactInboundFax(base44, authority, providerId, mediaUrl).catch(() => null);
+  if (!existing?.ok) return inboundFaxUnavailable(409, 'INBOUND_FAX_IDENTITY_CONFLICT');
+  const finalAuthority = await resolveActiveTelnyxFaxBinding(base44, telnyxCreds, receivedOn);
+  if (!sameInboundFaxAuthority(authority, finalAuthority)) return inboundFaxUnavailable();
+  authority = finalAuthority;
+  if (authority.settings.fax_receiving_enabled === true) {
+    if (existing.rows.length === 1) {
+      return Response.json(
+        { success: true, deduped: true, incoming_fax_id: existing.rows[0].id },
+        { headers: INBOUND_FAX_NO_STORE_HEADERS },
+      );
+    }
+    const record = await createInboundFax(
+      base44,
+      authority,
+      payload,
+      providerId,
+      mediaUrl,
+      'pending',
+    );
+    return Response.json(
+      { success: true, incoming_fax_id: record.id },
+      { headers: INBOUND_FAX_NO_STORE_HEADERS },
+    );
+  }
+
+  const officeFax = normalizeE164(authority.settings.office_fax_number_e164);
+  if (!telnyxCreds.apiKey || !officeFax || officeFax === receivedOn) {
+    return inboundFaxUnavailable(409, 'INBOUND_FAX_FORWARDING_UNAVAILABLE');
+  }
+  let record = existing.rows[0];
+  if (record?.status === 'routed') {
+    if (record.processing_status !== 'completed'
+      || record.routed_to !== 'office_fax'
+      || !Number.isFinite(Date.parse(record.routed_at || ''))) {
+      return inboundFaxUnavailable(409, 'INBOUND_FAX_IDENTITY_CONFLICT');
+    }
+    return Response.json(
+      { success: true, deduped: true, forwarded_to_office: true, incoming_fax_id: record.id },
+      { headers: INBOUND_FAX_NO_STORE_HEADERS },
+    );
+  }
+  if (!record) {
+    record = await createInboundFax(
+      base44,
+      authority,
+      payload,
+      providerId,
+      mediaUrl,
+      'completed',
+    );
+  } else if (record.processing_status !== 'completed' || record.status !== 'unread') {
+    return inboundFaxUnavailable(409, 'INBOUND_FAX_IDENTITY_CONFLICT');
+  }
+
+  // Persist signed inbound fax ingress even while forwarding is paused. A 503
+  // leaves the unclaimed row replayable without crossing the provider boundary.
+  if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
+
+  // Telnyx Fax has no client idempotency key. Claim this exact inbound row
+  // before the irreversible provider call so overlapping webhook deliveries
+  // cannot both forward the same PHI document. An ambiguous post-send failure
+  // deliberately leaves the row in `reviewing`; a replay must not blindly send
+  // again when the first provider outcome is unknown.
+  const claimed = await claimInboundFaxForward(base44, authority, record);
+  if (!claimed) return inboundFaxUnavailable(409, 'INBOUND_FAX_FORWARD_ALREADY_CLAIMED');
+  record = claimed;
+  const preSendAuthority = await resolveActiveTelnyxFaxBinding(base44, telnyxCreds, receivedOn);
+  if (!sameInboundFaxAuthority(authority, preSendAuthority)) {
+    await releaseInboundFaxForwardClaim(base44, authority, record).catch(() => false);
+    return inboundFaxUnavailable();
+  }
+  authority = preSendAuthority;
+
+  let response;
+  try {
+    response = await fetch('https://api.telnyx.com/v2/faxes', {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${creds.apiKey}`, 'Content-Type': 'application/json' },
+      headers: { Authorization: `Bearer ${telnyxCreds.apiKey}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        connection_id: creds.faxConnectionId,
+        connection_id: authority.binding.fax_connection_id,
         from: receivedOn,
         to: officeFax,
         media_url: mediaUrl,
         quality: 'high',
       }),
     });
-    forwarded = resp.ok;
-    if (!resp.ok) console.error('inbound fax office-forward rejected', { status: resp.status });
-  } catch (err) {
-    console.error('inbound fax office-forward failed:', err?.message);
+  } catch {
+    // The provider may have accepted a request even when the client never saw a
+    // response. Preserve the claim for operator reconciliation; auto-release
+    // here would turn a harmless webhook retry into a duplicate fax.
+    return inboundFaxUnavailable(502, 'INBOUND_FAX_FORWARD_FAILED');
   }
-  if (forwarded) {
-    await base44.asServiceRole.entities.IncomingFax.update(record.id, {
-      status: 'routed',
-      routed_to: `office fax ${officeFax}`,
-    }).catch(() => {});
+  if (!response.ok) {
+    const released = await releaseInboundFaxForwardClaim(base44, authority, record).catch(() => false);
+    return released
+      ? inboundFaxUnavailable(502, 'INBOUND_FAX_FORWARD_FAILED')
+      : inboundFaxUnavailable(503, 'INBOUND_FAX_FORWARD_CONFIRMATION_INTERRUPTED');
   }
-  return Response.json({ success: true, forwarded_to_office: forwarded, incoming_fax_id: record.id });
+  const recordVersion = record.version;
+  const update = await base44.asServiceRole.entities.IncomingFax.updateMany(
+    {
+      id: record.id,
+      agency_id: authority.agencyId,
+      version: recordVersion,
+      updated_date: record.updated_date,
+      processing_status: 'completed',
+      status: 'reviewing',
+      routed_to: 'office_fax_pending',
+      claimed_by: record.claimed_by,
+    },
+    {
+      $set: {
+        status: 'routed',
+        routed_to: 'office_fax',
+        routed_at: new Date().toISOString(),
+        claimed_by: null,
+        claimed_at: null,
+      },
+      $inc: { version: 1 },
+    },
+  );
+  if (!successfulInboundFaxUpdate(update)) {
+    return inboundFaxUnavailable(503, 'INBOUND_FAX_FORWARD_CONFIRMATION_INTERRUPTED');
+  }
+  const verified = await loadExactInboundFax(base44, authority, providerId, mediaUrl);
+  if (!verified.ok || verified.rows.length !== 1
+    || verified.rows[0]?.id !== record.id
+    || verified.rows[0]?.status !== 'routed'
+    || verified.rows[0]?.version !== recordVersion + 1) {
+    return inboundFaxUnavailable(503, 'INBOUND_FAX_FORWARD_CONFIRMATION_INTERRUPTED');
+  }
+  return Response.json(
+    { success: true, forwarded_to_office: true, incoming_fax_id: record.id },
+    { headers: INBOUND_FAX_NO_STORE_HEADERS },
+  );
 }
 
-async function handleFaxEvent(base44, payload) {
-  const providerId = payload?.id;
+async function handleFaxEvent(base44, telnyxCreds, payload) {
+  const rawProviderId = payload?.id;
+  const providerId = boundedTelnyxAuthorityId(rawProviderId);
   const mapped = mapFaxStatus(payload?.status);
-  if (!providerId) return Response.json({ success: true, skipped: 'no fax id' });
+  if (!rawProviderId) return Response.json({ success: true, skipped: 'no fax id' });
+  if (!providerId || providerId !== rawProviderId) {
+    return Response.json({ success: false, message: 'Invalid fax id' }, { status: 400 });
+  }
   if (!mapped) return Response.json({ success: true, skipped: 'unknown status', status: payload?.status });
 
-  const rows = await base44.asServiceRole.entities.FaxLog.filter({ telnyx_fax_id: providerId }, undefined, 5000).catch(() => []);
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.FaxLog.filter(
+      { telnyx_fax_id: providerId },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    );
+  } catch {
+    return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
+  }
   // 404 so Telnyx redelivers after the sender persists telnyx_fax_id (senders
   // write the id only after the API call, so a fast status callback can race it).
+  if (!Array.isArray(rows)) {
+    return Response.json({ success: false, message: 'Fax status temporarily unavailable' }, { status: 503 });
+  }
   if (!rows.length) return Response.json({ success: false, message: 'FaxLog not found' }, { status: 404 });
+  if (rows.length !== 1 || rows.some((row) => row?.telnyx_fax_id !== providerId)) {
+    return Response.json({ success: false, message: 'Fax identity is ambiguous' }, { status: 409 });
+  }
   const faxLog = rows[0];
+  if (!outboundFaxHasStatusAuthority(faxLog)
+    || !Number.isFinite(Date.parse(faxLog?.updated_date || ''))) {
+    return Response.json({ success: false, message: 'Fax identity is incomplete' }, { status: 409 });
+  }
+  const credential = telnyxCreds?.record;
+  if (faxLog.provider !== 'telnyx'
+    || faxLog.integration_secret_id !== credential?.id
+    || faxLog.integration_secret_updated_at !== credential?.updated_date
+    || faxLog.fax_connection_id !== credential?.fax_connection_id
+    || boundedTelnyxAuthorityId(credential?.id) !== credential?.id
+    || boundedTelnyxAuthorityId(credential?.fax_connection_id) !== credential?.fax_connection_id
+    || !Number.isFinite(Date.parse(credential?.updated_date || ''))) {
+    return Response.json({ success: false, message: 'Fax provider authority is stale or incomplete' }, { status: 409 });
+  }
   // Idempotency + forward-only: ignore an unchanged or out-of-order (lower-rank)
   // transition. Telnyx re-delivers webhooks and can deliver them out of order, so
   // this ack's without re-running side effects (critically, without re-bumping
@@ -854,33 +2171,55 @@ async function handleFaxEvent(base44, payload) {
     return Response.json({ success: true, status: faxLog.status, deduped: true });
   }
 
+  const transitionedAt = new Date().toISOString();
   const update = {
     status: mapped,
     // Don't let a legitimate 0-page report fall through to the old value.
     pages: Number.isFinite(payload?.page_count) ? payload.page_count : faxLog.pages,
     failure_reason: null,
     next_retry_at: null,
+    provider_submission_state: 'accepted',
+    provider_accepted_at: Number.isFinite(Date.parse(faxLog.provider_accepted_at || ''))
+      ? faxLog.provider_accepted_at
+      : transitionedAt,
+    ...(mapped === 'delivered' || mapped === 'failed' ? {
+      provider_terminal_status: mapped,
+      provider_terminal_at: transitionedAt,
+    } : {}),
   };
 
-  let exhaustedNow = false;
+  let notificationKind = null;
+  let notificationClaimToken = null;
+  if (mapped === 'delivered' && faxLog.sent_by && !faxLog.delivery_confirmation_sent) {
+    notificationKind = 'delivery';
+    notificationClaimToken = typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `fax-del-${Date.now()}`;
+    update.delivery_confirmation_sent = false;
+    update.delivery_notify_claimed_by = notificationClaimToken;
+    update.delivery_notify_claimed_at = transitionedAt;
+  }
   if (mapped === 'failed') {
     const failureReason = payload?.failure_reason || payload?.failover?.failure_reason || 'Fax delivery failed';
-    // Honor the admin FaxRetryConfig for the sender's agency (never global newest).
-    let senderAgency = '';
-    if (faxLog.sent_by) {
-      const [sender] = await base44.asServiceRole.entities.User
-        .filter({ email: faxLog.sent_by }, undefined, 1).catch(() => []);
-      senderAgency = sender?.agency_name || '';
-    }
-    const cfg = (await resolveFaxRetryConfig(base44, senderAgency)) || {};
-    const retryCfg = faxRetryConfig(cfg);
-    const plan = planFaxRetry({
-      retryCount: faxLog.retry_count || 0,
-      errorCode: payload?.failure_code || payload?.error_code,
-      errorMessage: failureReason,
-      priority: faxLog.priority || 'normal',
-      config: cfg,
-    });
+    // Only a private-document fax with immutable tenant/member authority may
+    // receive a retry schedule. Legacy URL-bearing rows and incomplete rows are
+    // terminal: a background worker must never reconstruct and resend them.
+    const retryAuthority = outboundFaxHasRetryAuthority(faxLog);
+    const retryPolicy = retryAuthority
+      ? await resolveFaxRetryConfigByAgency(base44, faxLog.agency_id)
+      : { ok: false, config: null };
+    const boundedPolicy = boundedOutboundFaxRetryPolicy(retryPolicy.config);
+    const cfg = boundedPolicy.config;
+    const retryCfg = boundedPolicy.normalized;
+    const plan = retryAuthority && retryPolicy.ok && boundedPolicy.valid
+      ? planFaxRetry({
+        retryCount: faxLog.retry_count || 0,
+        errorCode: payload?.failure_code || payload?.error_code,
+        errorMessage: failureReason,
+        priority: faxLog.priority || 'normal',
+        config: cfg,
+      })
+      : { willRetry: false };
     // planFaxRetry already encodes the budget (attempts < maxRetries). Schedule
     // whenever it says willRetry — including nextRetryCount === maxRetries, which
     // is the last allowed send (isFaxRetryDue uses `>` so the cron still honors it).
@@ -888,74 +2227,93 @@ async function handleFaxEvent(base44, payload) {
       update.next_retry_at = plan.nextRetryAt;
       update.retry_count = plan.nextRetryCount;
     } else {
-      exhaustedNow = retryCfg.notifyOnFinalFailure && !faxLog.final_failure_notified;
-      update.final_failure_notified = true;
-      if (exhaustedNow) {
-        update.failure_notify_claimed_by = typeof crypto !== 'undefined' && crypto.randomUUID
+      // If retry authority/policy cannot be proven, notify instead of silently
+      // leaving a failed fax in a state that appears eligible for automation.
+      const shouldNotify = (retryAuthority && retryPolicy.ok && boundedPolicy.valid
+        ? retryCfg.notifyOnFinalFailure
+        : true) && !!faxLog.sent_by;
+      if (shouldNotify && !faxLog.final_failure_notified) {
+        notificationKind = 'failure';
+        notificationClaimToken = typeof crypto !== 'undefined' && crypto.randomUUID
           ? crypto.randomUUID()
           : `fax-fail-${Date.now()}`;
+        update.final_failure_notified = false;
+        update.failure_notify_claimed_by = notificationClaimToken;
+        update.failure_notify_claimed_at = transitionedAt;
+      } else {
+        update.final_failure_notified = true;
       }
     }
     update.failure_reason = failureReason;
   }
 
-  await base44.asServiceRole.entities.FaxLog.update(faxLog.id, update);
-
-  // Tell the sender when a fax was delivered successfully (parity with the old
-  // handleTwilioFaxWebhook). Claim + re-read so poller/webhook races don't
-  // double-notify; release stamp if create fails so a later run can retry.
-  if (mapped === 'delivered' && faxLog.sent_by && !faxLog.delivery_confirmation_sent) {
-    const claimToken = typeof crypto !== 'undefined' && crypto.randomUUID
-      ? crypto.randomUUID()
-      : `fax-del-${Date.now()}`;
-    await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
-      delivery_confirmation_sent: true,
-      delivery_notify_claimed_by: claimToken,
-    }).catch(() => {});
-    const claimCheck = await base44.asServiceRole.entities.FaxLog
-      .filter({ id: faxLog.id }, '-created_date', 1).catch(() => []);
-    if (claimCheck[0]?.delivery_notify_claimed_by === claimToken) {
-      const recipientName = faxLog.to_name ? `${faxLog.to_name} (${faxLog.to_number})` : faxLog.to_number;
-      try {
-        await base44.asServiceRole.entities.Notification.create({
-          user_email: faxLog.sent_by,
-          title: '✅ Fax delivered',
-          message: `Your fax to ${recipientName} was delivered successfully (${update.pages || faxLog.pages || 'N/A'} pages).`,
-          type: 'fax_delivered', priority: 'medium', metadata: { related_entity: 'FaxLog', related_entity_id: faxLog.id },
-          is_read: false, action_url: `/SendFax?tab=logs&fax_id=${faxLog.id}`,
-        });
-      } catch (err) {
-        console.error('Failed to send fax delivered notification:', err);
-        await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
-          delivery_confirmation_sent: false,
-          delivery_notify_claimed_by: '',
-        }).catch(() => {});
-      }
-    }
+  // Retry-policy reads above cross multiple await boundaries. Re-prove the
+  // provider id still identifies this one unchanged row immediately before the
+  // CAS so a concurrently inserted duplicate (including another tenant's row)
+  // cannot inherit this signed status event.
+  const currentIdentityRows = await base44.asServiceRole.entities.FaxLog.filter(
+    { telnyx_fax_id: providerId },
+    undefined,
+    OUTBOUND_FAX_EXACT_ROW_LIMIT,
+  ).catch(() => null);
+  if (!Array.isArray(currentIdentityRows) || currentIdentityRows.length !== 1
+    || currentIdentityRows[0]?.id !== faxLog.id
+    || currentIdentityRows[0]?.telnyx_fax_id !== providerId
+    || currentIdentityRows[0]?.status !== faxLog.status
+    || currentIdentityRows[0]?.updated_date !== faxLog.updated_date) {
+    return Response.json({ success: false, message: 'Fax identity changed during status processing' }, { status: 409 });
   }
 
-  // Tell the sender when a fax has permanently failed (no retries left).
-  if (exhaustedNow && faxLog.sent_by && update.failure_notify_claimed_by) {
-    const claimCheck = await base44.asServiceRole.entities.FaxLog
-      .filter({ id: faxLog.id }, '-created_date', 1).catch(() => []);
-    if (claimCheck[0]?.failure_notify_claimed_by === update.failure_notify_claimed_by) {
-      const recipient = faxLog.to_name ? `${faxLog.to_name} (${faxLog.to_number})` : faxLog.to_number;
-      try {
-        await base44.asServiceRole.entities.Notification.create({
-          user_email: faxLog.sent_by,
-          title: '❌ Fax failed',
-          message: `"${faxLog.document_name || 'Your document'}" to ${recipient} could not be delivered (${update.failure_reason}). Verify the number and resend.`,
-          type: 'fax_failed', priority: 'high', metadata: { related_entity: 'FaxLog', related_entity_id: faxLog.id },
-          is_read: false, action_url: `/SendFax?fax_id=${faxLog.id}`,
-        });
-      } catch (err) {
-        console.error('Failed to send fax failure notification:', err);
-        await base44.asServiceRole.entities.FaxLog.update(faxLog.id, {
-          final_failure_notified: false,
-          failure_notify_claimed_by: '',
-        }).catch(() => {});
-      }
+  const transitionResult = await base44.asServiceRole.entities.FaxLog.updateMany(
+    {
+      id: faxLog.id,
+      telnyx_fax_id: providerId,
+      status: faxLog.status,
+      updated_date: faxLog.updated_date,
+    },
+    { $set: update },
+  ).catch(() => null);
+  if (!successfulInboundFaxUpdate(transitionResult)) {
+    const concurrent = await base44.asServiceRole.entities.FaxLog.filter(
+      { telnyx_fax_id: providerId },
+      undefined,
+      OUTBOUND_FAX_EXACT_ROW_LIMIT,
+    ).catch(() => null);
+    if (Array.isArray(concurrent) && concurrent.length === 1
+      && concurrent[0]?.telnyx_fax_id === providerId
+      && (FAX_RANK[concurrent[0]?.status] || 0) >= (FAX_RANK[mapped] || 0)) {
+      return Response.json({ success: true, status: concurrent[0].status, deduped: true });
     }
+    return Response.json({ success: false, message: 'Fax status update interrupted' }, { status: 503 });
+  }
+  const verifiedRows = await base44.asServiceRole.entities.FaxLog.filter(
+    { telnyx_fax_id: providerId },
+    undefined,
+    OUTBOUND_FAX_EXACT_ROW_LIMIT,
+  ).catch(() => null);
+  if (!Array.isArray(verifiedRows) || verifiedRows.length !== 1
+    || verifiedRows[0]?.id !== faxLog.id
+    || verifiedRows[0]?.telnyx_fax_id !== providerId
+    || verifiedRows[0]?.status !== mapped
+    || verifiedRows[0]?.provider_submission_state !== 'accepted'
+    || ((mapped === 'delivered' || mapped === 'failed')
+      && (verifiedRows[0]?.provider_terminal_status !== mapped
+        || !Number.isFinite(Date.parse(verifiedRows[0]?.provider_terminal_at || ''))))) {
+    return Response.json({ success: false, message: 'Fax status confirmation interrupted' }, { status: 503 });
+  }
+  const transitionedFaxLog = verifiedRows[0];
+
+  // The transition owns the notification claim before this irreversible create.
+  // If the create response is lost, the purpose-specific Notification key lets
+  // the poller reconcile the committed row without creating a duplicate.
+  if (notificationKind && notificationClaimToken) {
+    const notified = await sendClaimedOutboundFaxNotification(
+      base44,
+      transitionedFaxLog,
+      notificationKind,
+      notificationClaimToken,
+    ).catch(() => false);
+    if (!notified) console.error('Outbound fax notification remains pending for poller recovery');
   }
   return Response.json({ success: true, status: mapped });
 }
@@ -1093,7 +2451,7 @@ async function logInboundCall(base44, callControlId, callerNum, workNum, route) 
   }).catch(() => null);
   await base44.asServiceRole.entities.UserActivity.create({
     user_email: 'system', action: 'inbound_call_received', entity_type: 'CallLog', entity_id: logRow?.id,
-    details: { call_mode: callMode, nurse_email: route.nurse?.email || null, provider_call_id: callControlId }, status: 'success',
+    details: { call_mode: callMode, direction: 'inbound' }, status: 'success',
   }).catch(() => {});
 }
 
@@ -1389,7 +2747,13 @@ async function saveVoicemail(base44, payload) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const telnyxCreds = await resolveTelnyxCreds(base44);
+    const telnyxCreds = await resolveExactActiveTelnyxWebhookCredentials(base44);
+    if (!telnyxCreds) {
+      return Response.json(
+        { error: 'Webhook credential is not configured uniquely' },
+        { status: 503, headers: { 'Retry-After': '300' } },
+      );
+    }
     const { apiKey, publicKey, messagingProfileId } = telnyxCreds;
 
     // Read the raw body ONCE — signature is over the exact bytes.
@@ -1397,26 +2761,45 @@ Deno.serve(async (req) => {
     const signature = req.headers.get('telnyx-signature-ed25519');
     const timestamp = req.headers.get('telnyx-timestamp');
 
-    if (!(await verifyTelnyxSignature(rawBody, signature, timestamp, publicKey))) {
+    const activeWebhookCredential = telnyxCreds?.record?.provider === 'telnyx'
+      && telnyxCreds?.record?.is_active === true
+      && !!boundedTelnyxAuthorityId(telnyxCreds?.record?.id);
+    if (!activeWebhookCredential
+      || !(await verifyTelnyxSignature(rawBody, signature, timestamp, publicKey))) {
       return Response.json({ error: 'Invalid signature' }, { status: 401 });
     }
 
     let body = {};
     try { body = JSON.parse(rawBody); } catch { /* leave empty */ }
-    const { eventType, payload } = extractTelnyxEvent(body);
+    const event = extractTelnyxEvent(body);
+    const { eventType, payload } = event;
 
     if (!eventType) return Response.json({ success: true, skipped: 'no event type' });
 
+    // These checks intentionally run only after signature verification and
+    // before any inbound handler can perform a mutable User/AgencySettings
+    // lookup. Only Telnyx-classified STOP/START may cross the SMS pause, and
+    // then only through an exact service-owned destination/profile binding.
+    if (eventType === 'message.received' && INBOUND_PATIENT_SMS_ROUTING_PAUSED) {
+      const keywordResponse = await handleInboundConsentKeyword(base44, telnyxCreds, event, payload);
+      if (keywordResponse) return keywordResponse;
+      return inboundRoutingPausedResponse('SMS');
+    }
+    if (INBOUND_PATIENT_CALL_ROUTING_PAUSED && isInboundPatientCallEvent(eventType, payload)) {
+      return inboundRoutingPausedResponse('call');
+    }
+
     if (eventType === 'message.received') return await handleInboundMessage(base44, apiKey, messagingProfileId, payload);
     if (eventType.startsWith('message.')) return await handleOutboundMessageStatus(base44, payload);
-    if (eventType === 'fax.received') return await handleInboundFax(base44, payload);
-    if (eventType.startsWith('fax.')) return await handleFaxEvent(base44, payload);
+    if (eventType === 'fax.received') return await handleInboundFax(base44, telnyxCreds, payload);
+    if (eventType.startsWith('fax.')) return await handleFaxEvent(base44, telnyxCreds, payload);
     if (eventType.startsWith('call.')) return await handleCallEvent(base44, apiKey, eventType, payload);
 
     return Response.json({ success: true, skipped: 'unhandled event', event: eventType });
-  } catch (error) {
-    // Don't echo raw error text (may contain PHI such as numbers/URLs).
-    console.error('handleTelnyxStatusWebhook error:', error?.message);
+  } catch {
+    // Do not log the raw provider/error text; it may contain phone numbers,
+    // profile ids, media URLs, or message content.
+    console.error('handleTelnyxStatusWebhook failed');
     return Response.json({ error: 'Failed to process webhook' }, { status: 500 });
   }
 });

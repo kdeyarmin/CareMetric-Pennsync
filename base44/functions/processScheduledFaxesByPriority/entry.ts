@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
 const SCHEDULER_SECRET_HEADER = 'x-internal-secret';
 function isSchedulerAdmin(user) {
@@ -34,6 +54,30 @@ function getSchedulerAuthError(req, user) {
 }
 // <<<END SHARED HELPER: schedulerAuth>>>
 
+async function createFaxInternalCapability(action, resourceId, claimId) {
+  const secret = String(Deno.env.get('INTERNAL_FN_SECRET') || '').trim();
+  if (secret.length < 32) throw new Error('Internal fax capability signing is unavailable');
+  const issuedAt = Date.now();
+  const capability = {
+    version: 1, action, resource_id: resourceId, claim_id: claimId,
+    issued_at: issuedAt, expires_at: issuedAt + 300_000, nonce: crypto.randomUUID(),
+  };
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  const payload = JSON.stringify([
+    capability.version, capability.action, capability.resource_id, capability.claim_id,
+    capability.issued_at, capability.expires_at, capability.nonce,
+  ]);
+  const signature = new Uint8Array(await crypto.subtle.sign(
+    'HMAC', key, new TextEncoder().encode(payload),
+  ));
+  return {
+    ...capability,
+    mac: Array.from(signature, (byte) => byte.toString(16).padStart(2, '0')).join(''),
+  };
+}
+
 // <<<BEGIN SHARED HELPER: batchNeverDispatched — generated, edit base44/_shared/backendHelpers.mjs>>>
 function batchNeverDispatched(payload, status) {
   const d = payload || {};
@@ -58,179 +102,29 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
-
+// Kept as a compatibility entry point for older admin links. There is exactly
+// one implementation and one automation now: processScheduledFaxes performs
+// the same urgent/normal/low ordering behind atomic ScheduledFax claims.
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-
-    // Authorization: privileged scheduled job (mirrors processTrainingRenewals /
-    // syncFaxStatuses). Admins can run it with session auth; scheduled/internal callers must send `x-internal-secret`; every other caller is rejected.
     const me = await base44.auth.me().catch(() => null);
     const authError = getSchedulerAuthError(req, me);
     if (authError) return authError;
     if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
-
-    const now = new Date();
-
-    // Get pending faxes that are actually DUE, earliest-scheduled first. The old
-    // query fetched the newest 200 by '-scheduled_time' (furthest-future first)
-    // and filtered due in code, so under a >200 backlog the most-overdue faxes
-    // fell off the end and were never sent. Mirror processScheduledFaxes: filter
-    // server-side on scheduled_time and sort ASCENDING so the page is the
-    // most-overdue rows. (Belt-and-suspenders: still filter due in code.)
-    const scheduledFaxes = await base44.asServiceRole.entities.ScheduledFax.filter({
-      status: 'pending',
-      scheduled_time: { "$lte": now.toISOString() }
-    }, 'scheduled_time', 200);
-
-    // Separate into due and priority groups
-    const dueFaxes = scheduledFaxes.filter(fax =>
-      new Date(fax.scheduled_time) <= now
+    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
+    const capability = await createFaxInternalCapability(
+      'process_scheduled', 'scheduled-fax-processor', crypto.randomUUID(),
     );
-
-    if (dueFaxes.length === 0) {
-      return Response.json({ 
-        message: 'No faxes due for sending',
-        pending: scheduledFaxes.length 
-      });
-    }
-
-    // Sort by priority (urgent first, then high, normal, low)
-    const priorityOrder = { urgent: 0, high: 1, normal: 2, low: 3 };
-    dueFaxes.sort((a, b) => {
-      const aPriority = priorityOrder[a.priority] ?? 2;
-      const bPriority = priorityOrder[b.priority] ?? 2;
-      if (aPriority !== bPriority) return aPriority - bPriority;
-      // If same priority, sort by scheduled time (earliest first)
-      return new Date(a.scheduled_time) - new Date(b.scheduled_time);
+    const response = await base44.asServiceRole.functions.invoke('processScheduledFaxes', {
+      capability,
     });
-
-    let sentCount = 0;
-    let failedCount = 0;
-
-    // NOTE: only ONE scheduled-fax processor should be enabled in the platform
-    // scheduler (this OR processScheduledFaxes) — running both double-sends.
-
-    // Process faxes in priority order
-    for (const scheduledFax of dueFaxes) {
-      // Claim with a token + RE-READ before sending. A bare status flip isn't
-      // atomic, so two overlapping runs (or this + processScheduledFaxes, which
-      // share the same 'pending' population) both flip and both send. The
-      // claim-token + re-read lets the loser detect it lost and skip.
-      const runId = crypto.randomUUID();
-      try {
-        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-          status: 'processing', claimed_by: runId, claimed_at: new Date().toISOString(),
-        });
-      } catch (claimErr) {
-        console.error('Could not claim scheduled fax; skipping', claimErr?.message || claimErr);
-        continue;
-      }
-      const claimCheck = await base44.asServiceRole.entities.ScheduledFax
-        .filter({ id: scheduledFax.id }, '-created_date', 1).catch(() => []);
-      if (!claimCheck[0] || claimCheck[0].claimed_by !== runId) {
-        // Another run claimed it first — skip to avoid a duplicate send.
-        continue;
-      }
-      // Honor durable cancel stamp (parity with processScheduledFaxes / SMS).
-      if (claimCheck[0].canceled_at || claimCheck[0].status === 'cancelled') {
-        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-          status: 'cancelled', claimed_by: '', claimed_at: null,
-        }).catch(() => {});
-        continue;
-      }
-      try {
-        // Send to all recipients via the batch sender, invoked with the service
-        // role. The previous per-recipient base44.functions.invoke('sendFax')
-        // ran user-scoped, but the scheduler has no end user — sendFax returned
-        // 401, so sendResult.data.success was undefined and EVERY scheduled fax
-        // was wrongly marked 'failed'. This mirrors the working
-        // processScheduledFaxes sibling.
-        const sendResult = await base44.asServiceRole.functions.invoke('sendBatchFax', {
-          file_url: scheduledFax.document_url,
-          to_numbers: scheduledFax.to_numbers,
-          from_number: scheduledFax.from_number,
-          document_name: scheduledFax.document_name,
-          patient_id: scheduledFax.patient_id,
-          cover_page_details: scheduledFax.cover_page_details,
-          priority: scheduledFax.priority,
-          sent_by: scheduledFax.created_by || me?.email || 'scheduler@system',
-          internal_secret: Deno.env.get('INTERNAL_FN_SECRET') || '',
-        });
-
-        const data = sendResult?.data || {};
-        const recipientCount = scheduledFax.to_numbers?.length || 0;
-        const successful = data.successful || 0;
-        const failed = data.failed ?? (recipientCount - successful);
-
-        // The batch was rejected before any recipient was attempted (bad
-        // credentials, disallowed file_url, agency config). Marking it 'failed'
-        // destroys the queued PHI document — this processor only ever reads
-        // status 'pending', and no UI can requeue a failed row. Release the claim
-        // so a later run sends it. Requeue ONLY when nothing was transmitted:
-        // Telnyx fax has no idempotency key, so requeueing a partially-sent batch
-        // would re-fax PHI. Mirrors the processScheduledFaxes sibling.
-        if (batchNeverDispatched(data, sendResult?.status)) {
-          console.error('A scheduled fax was not dispatched and has been requeued:', data.error);
-          const mid = await base44.asServiceRole.entities.ScheduledFax
-            .filter({ id: scheduledFax.id }, '-created_date', 1).catch(() => []);
-          if (mid[0]?.canceled_at || mid[0]?.status === 'cancelled') {
-            await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-              status: 'cancelled', claimed_by: '', claimed_at: null,
-            }).catch(() => {});
-            continue;
-          }
-          await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-            status: 'pending', claimed_by: '', claimed_at: null,
-          }).catch((err) => console.error('Failed to requeue scheduled fax:', err?.message || err));
-          continue;
-        }
-
-        sentCount += successful;
-        failedCount += failed;
-
-        // Only mark fully 'sent' when every recipient succeeded; otherwise
-        // 'failed' so the partial failure is visible and recoverable.
-        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-          status: failed > 0 ? 'failed' : 'sent'
-        });
-
-      } catch (error) {
-        console.error('Failed to process scheduled fax:', error?.message || error);
-        // A non-2xx from sendBatchFax rejects rather than resolving, so the
-        // never-dispatched signal arrives here too — requeue, don't destroy.
-        if (batchNeverDispatched(error?.response?.data, error?.response?.status)) {
-          const mid = await base44.asServiceRole.entities.ScheduledFax
-            .filter({ id: scheduledFax.id }, '-created_date', 1).catch(() => []);
-          if (mid[0]?.canceled_at || mid[0]?.status === 'cancelled') {
-            await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-              status: 'cancelled', claimed_by: '', claimed_at: null,
-            }).catch(() => {});
-            continue;
-          }
-          await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-            status: 'pending', claimed_by: '', claimed_at: null,
-          }).catch((err) => console.error('Failed to requeue scheduled fax:', err?.message || err));
-          continue;
-        }
-        await base44.asServiceRole.entities.ScheduledFax.update(scheduledFax.id, {
-          status: 'failed'
-        });
-        failedCount++;
-      }
-    }
-
-    return Response.json({
-      success: true,
-      processed: dueFaxes.length,
-      sent: sentCount,
-      failed: failedCount,
-      priority_order: ['urgent', 'high', 'normal', 'low'],
-      timestamp: new Date().toISOString()
+    const data = response?.data && typeof response.data === 'object' ? response.data : response;
+    return Response.json({ ...data, compatibility_entry_point: true }, {
+      headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' },
     });
-
-  } catch (error) {
-    console.error('Scheduled fax processing error:', error);
+  } catch {
+    console.error('processScheduledFaxesByPriority failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

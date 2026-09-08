@@ -29,6 +29,7 @@ import { buildActionItemsFromReview, actionItemKey } from "./reviewActionItems.j
 import { reviewFingerprint } from "./reviewFreshness.js";
 import { isAICancellation } from "@/lib/aiScheduler";
 import { computeAge } from "@/lib/age";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 // Only the clinically relevant slice of the patient record goes to the LLM —
 // contact info and direct identifiers (name, DOB, address, phone, email,
@@ -66,15 +67,14 @@ function CmsGuidelineLink({ regulation, aiLink, fallback, children }) {
   const href = resolveCmsGuidelineLink(regulation, aiLink) || fallback || null;
   if (!href) return null;
   return (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
+    <button
+      type="button"
+      onClick={() => openAuthorityBoundWindow(href)}
       className="text-sm text-indigo-600 hover:text-indigo-700 underline flex items-center gap-1"
     >
       <ExternalLink className="w-3 h-3" />
       {children}
-    </a>
+    </button>
   );
 }
 

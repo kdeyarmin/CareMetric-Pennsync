@@ -234,7 +234,7 @@ export default function PatientEducationHub() {
     }
   }, [requestedTab, activeTab, setSearchParams]);
 
-  const { data: patients = [] } = useScopedPatients({ sort: '-updated_date', limit: 2000 });
+  const { data: patients = [] } = useScopedPatients({ purpose: 'education_delivery', sort: '-updated_date', limit: 2000 });
 
   const selectedPatient = patients.find(p => p.id === patientId);
 

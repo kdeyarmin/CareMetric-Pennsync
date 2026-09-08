@@ -36,7 +36,7 @@ import { reconcileScenario } from "../pdgm/caseMixReconciliation.js";
 import {
   PDGM_REIMBURSEMENT_ACTION,
   PDGM_REIMBURSEMENT_BLOCKER,
-  PDGM_REIMBURSEMENT_ENABLED,
+  PDGM_LEGACY_SURFACES_ENABLED,
 } from "../pdgm/pdgmAvailability.js";
 
 // HIPPS position 1: timing × admission source.
@@ -156,7 +156,7 @@ const stringList = (value) => list(value).map(String);
  * complete $0 result remains available.
  */
 export function getPdgmPaymentAvailability(pdgm) {
-  if (!PDGM_REIMBURSEMENT_ENABLED) {
+  if (!PDGM_LEGACY_SURFACES_ENABLED) {
     return {
       available: false,
       amount: null,

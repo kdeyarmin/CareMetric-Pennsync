@@ -96,6 +96,11 @@ export default function FaxContactsPage() {
 
   const queryClient = useQueryClient();
 
+  const { data: currentUser } = useQuery({
+    queryKey: ['currentUser'],
+    queryFn: () => base44.auth.me(),
+  });
+
   const { data: contacts = [], isLoading } = useQuery({
     // Row limit is part of the identity — FaxAddressBook reads 500 under the
     // same root, and a shared entry truncated this directory to 500 contacts
@@ -106,7 +111,10 @@ export default function FaxContactsPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data) => base44.entities.FaxContact.create(data),
+    mutationFn: (data) => base44.entities.FaxContact.create({
+      ...data,
+      user_email: currentUser?.email,
+    }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['fax-contacts'] });
       setIsDialogOpen(false);
@@ -140,6 +148,10 @@ export default function FaxContactsPage() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (!currentUser?.email) {
+      toast.error("Your signed-in account could not be verified.");
+      return;
+    }
     if (!formData.name.trim() || !formData.fax_number.trim()) {
       toast.error("Name and fax number are required");
       return;
@@ -210,11 +222,16 @@ export default function FaxContactsPage() {
             name,
             fax_number: faxNumber,
             organization: orgIndex !== -1 ? stripFormulaGuard(values[orgIndex]) : "",
-            notes: notesIndex !== -1 ? stripFormulaGuard(values[notesIndex]) : ""
+            notes: notesIndex !== -1 ? stripFormulaGuard(values[notesIndex]) : "",
+            user_email: currentUser?.email,
           });
         }
       }
 
+      if (!currentUser?.email) {
+        toast.error("Your signed-in account could not be verified.");
+        return;
+      }
       if (contactsToAdd.length === 0) {
         toast.error("No valid contacts found in CSV");
         return;

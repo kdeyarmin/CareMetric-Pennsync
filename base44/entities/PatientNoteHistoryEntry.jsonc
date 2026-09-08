@@ -1,0 +1,107 @@
+{
+  "name": "PatientNoteHistoryEntry",
+  "type": "object",
+  "description": "Immutable, server-authored clinical-note revision. Each save creates a new tenant-stamped event; Patient.enhanced_notes_history is retained only as a legacy migration source.",
+  "properties": {
+    "agency_id": {
+      "type": "string",
+      "description": "Immutable Agency id proven from the Patient and active AgencyMembership."
+    },
+    "patient_id": {
+      "type": "string",
+      "description": "Immutable Patient id proven server-side."
+    },
+    "visit_id": {
+      "type": "string",
+      "description": "Immutable Visit id proven to belong to the same Patient and Agency."
+    },
+    "logical_note_key": {
+      "type": "string",
+      "description": "SHA-256 of the Agency, Patient, and Visit identity. Revisions with the same key replace one another only in the authorized reader projection; stored events are never updated or deleted."
+    },
+    "event_key": {
+      "type": "string",
+      "description": "SHA-256 idempotency key scoped to Agency, Patient, Visit, and the caller event id or canonical payload. Duplicate physical rows remain semantically harmless because readers collapse identical keys."
+    },
+    "payload_fingerprint": {
+      "type": "string",
+      "description": "SHA-256 of the canonical immutable note payload, used to detect idempotency-key conflicts without exposing note text in keys."
+    },
+    "source_entry_id": {
+      "type": "string",
+      "description": "Optional bounded caller retry id. It is never used as an authorization input and is scoped before hashing into event_key."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["append", "update"],
+      "description": "Whether the event created the logical Visit note or revised it. Both modes append an immutable event."
+    },
+    "visit_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "visit_type": {
+      "type": "string"
+    },
+    "visit_revision_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "The stored Visit.updated_date observed by the authorizing writer. Readers use this logical revision time instead of physical event creation time so a late concurrent duplicate cannot replace a newer note revision."
+    },
+    "note": {
+      "type": "string",
+      "description": "Clinical narrative for this immutable revision."
+    },
+    "clinical_notes": {
+      "type": "string",
+      "description": "Compatibility copy of the current narrative supplied by the reviewed Smart Note flow."
+    },
+    "compliance_score": {
+      "type": "number"
+    },
+    "actor_user_id": {
+      "type": "string",
+      "description": "Immutable built-in Base44 User id stamped from the authenticated session."
+    },
+    "actor_email_normalized": {
+      "type": "string",
+      "format": "email",
+      "description": "Normalized built-in User email retained as an integrity check."
+    },
+    "membership_id": {
+      "type": "string",
+      "description": "AgencyMembership id authorizing the write."
+    },
+    "membership_version": {
+      "type": "number",
+      "description": "AgencyMembership revision authorizing the write."
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server-generated event time. created_date and id remain deterministic tie breakers in the reader."
+    }
+  },
+  "required": [
+    "agency_id",
+    "patient_id",
+    "visit_id",
+    "logical_note_key",
+    "event_key",
+    "payload_fingerprint",
+    "mode",
+    "visit_revision_at",
+    "note",
+    "actor_user_id",
+    "actor_email_normalized",
+    "membership_id",
+    "membership_version",
+    "recorded_at"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}

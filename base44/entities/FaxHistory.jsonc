@@ -153,5 +153,11 @@
     "user_email",
     "recipient_fax_number",
     "status"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

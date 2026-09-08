@@ -1,5 +1,11 @@
 export const PDGM_UNAVAILABLE_LABEL = "Unavailable";
 export const PDGM_REIMBURSEMENT_ENABLED = false;
+// Permanent lock for the factorized base × clinical × functional × comorbidity
+// approximation retained only for source archaeology. Supplying rate rows or
+// flipping a UI flag must never make that approximation a CMS HHGS result.
+export const LEGACY_FACTORIZED_PDGM_MODEL_RETIRED = true;
+export const PDGM_LEGACY_SURFACES_ENABLED = PDGM_REIMBURSEMENT_ENABLED
+  && !LEGACY_FACTORIZED_PDGM_MODEL_RETIRED;
 export const PDGM_REIMBURSEMENT_BLOCKER =
   "The app does not yet use a verified CMS HHGS 432-group grouper with golden-case tests.";
 export const PDGM_REIMBURSEMENT_ACTION =
@@ -14,7 +20,7 @@ function uniqueStrings(values) {
 }
 
 export function getPdgmPaymentState(result) {
-  const available = PDGM_REIMBURSEMENT_ENABLED
+  const available = PDGM_LEGACY_SURFACES_ENABLED
     && Boolean(result)
     && result.incomplete !== true
     && result.paymentAvailable === true

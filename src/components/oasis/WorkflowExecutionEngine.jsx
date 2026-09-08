@@ -18,6 +18,10 @@ const ACTION_LABELS = {
   flag_for_review: "Flag for review"
 };
 
+const OASIS_AUTOMATION_EXECUTION_PAUSED = true;
+const AUTOMATION_EXECUTION_BLOCKER =
+  'Automated OASIS actions are paused pending one atomic, idempotent, patient-authorized broker. No tasks, alerts, notifications, or workflow records have been created.';
+
 /**
  * Renders UI for evaluating and executing automation rules against the provided analysis and PDGM data.
  *
@@ -81,12 +85,14 @@ export default function WorkflowExecutionEngine({
     // "N active automation rules ready") whenever an admin had opened the
     // settings page first. Prefix-invalidated by the settings page's writes.
     queryKey: ['automationRules', 'active'],
-    queryFn: () => base44.entities.OASISAutomationRule.filter({ is_active: true }, undefined, ALL_ROWS)
+    queryFn: () => base44.entities.OASISAutomationRule.filter({ is_active: true }, undefined, ALL_ROWS),
+    enabled: !OASIS_AUTOMATION_EXECUTION_PAUSED,
   });
 
   const { data: currentUser, isLoading: isLoadingUser, error: userError } = useQuery({
     queryKey: ["currentUser"],
-    queryFn: () => base44.auth.me()
+    queryFn: () => base44.auth.me(),
+    enabled: !OASIS_AUTOMATION_EXECUTION_PAUSED,
   });
 
   const createWorkflowMutation = useMutation({
@@ -270,6 +276,10 @@ export default function WorkflowExecutionEngine({
   }, [executeSingleAction]);
 
   const executeWorkflows = useCallback(async () => {
+    if (OASIS_AUTOMATION_EXECUTION_PAUSED) {
+      setLastExecutionError(AUTOMATION_EXECUTION_BLOCKER);
+      return;
+    }
     if (executingRef.current || !analysisResults || !automationRules || automationRules.length === 0) {
       return;
     }
@@ -423,6 +433,7 @@ export default function WorkflowExecutionEngine({
   ]);
 
   useEffect(() => {
+    if (OASIS_AUTOMATION_EXECUTION_PAUSED) return;
     // Wait for user data to load before auto-executing (needed for notify_clinician)
     if (isLoadingUser || !currentUser?.email) {
       return;
@@ -450,6 +461,27 @@ export default function WorkflowExecutionEngine({
   }, [autoExecute, executeWorkflows, analysisResults, executing, automationRules, isLoadingRules, isLoadingUser, currentUser?.email, generateIdempotencyKey, queryClient]);
 
   if (!analysisResults) return null;
+
+  if (OASIS_AUTOMATION_EXECUTION_PAUSED) {
+    return (
+      <Card className="border-2 border-amber-300">
+        <CardHeader className="bg-amber-50">
+          <CardTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-5 w-5 text-amber-700" />
+            Automated Workflow Execution Paused
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4">
+          <Alert className="border-amber-300 bg-amber-50">
+            <Info className="h-4 w-4 text-amber-700" />
+            <AlertDescription className="text-amber-900">
+              {AUTOMATION_EXECUTION_BLOCKER}
+            </AlertDescription>
+          </Alert>
+        </CardContent>
+      </Card>
+    );
+  }
 
   // Show loading state while rules are loading
   if (isLoadingRules || isLoadingUser) {

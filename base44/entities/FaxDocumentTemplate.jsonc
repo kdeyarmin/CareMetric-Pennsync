@@ -85,15 +85,21 @@
     "read": {
       "$or": [
         {
-          "user_email": "{{user.email}}"
+          "data.user_email": "{{user.email}}"
         },
         {
-          "is_shared": true
+          "data.is_shared": true
         }
       ]
     },
-    "write": {
-      "user_email": "{{user.email}}"
+    "create": {
+      "data.user_email": "{{user.email}}"
+    },
+    "update": {
+      "data.user_email": "{{user.email}}"
+    },
+    "delete": {
+      "data.user_email": "{{user.email}}"
     }
   }
 }

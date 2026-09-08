@@ -9,6 +9,44 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
+// <<<BEGIN SHARED HELPER: activeMembershipAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeMembershipEmail = (value) => String(value || '').trim().toLowerCase();
+async function hasExactActiveAgencyMembership(base44, user) {
+  const userId = typeof user?.id === 'string' ? user.id.trim() : '';
+  const userEmail = normalizeMembershipEmail(user?.email);
+  if (!userId || !userEmail) return false;
+  let rows;
+  try {
+    rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: userId, status: 'active' },
+      undefined,
+      2,
+    );
+  } catch {
+    return false;
+  }
+  if (!Array.isArray(rows) || rows.length !== 1) return false;
+  const row = rows[0];
+  return !!row
+    && String(row.user_id || '').trim() === userId
+    && String(row.status || '') === 'active'
+    && normalizeMembershipEmail(row.user_email_normalized) === userEmail
+    && typeof row.agency_id === 'string'
+    && !!row.agency_id.trim();
+}
+// <<<END SHARED HELPER: activeMembershipAuthz>>>
+
 // SSRF guard: only fetch https URLs on the app's own storage/app hosts, never
 // internal IPs / metadata. The allowlist is hardcoded (always-on, fail-closed)
 // rather than env-configured; add a host here if file storage ever moves.
@@ -60,8 +98,15 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 401 });
     }
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    if (user.disabled === true || user.is_service === true || user.is_verified === false) {
+      return Response.json({ error: 'Forbidden' }, { status: 403 });
+    }
+    if (!isProtectedSuperAdmin(user)
+      && !(await hasExactActiveAgencyMembership(base44, user))) {
+      return Response.json({ error: 'Forbidden: active agency membership required' }, { status: 403 });
+    }
 
-    const { 
+    const {
       pdf_template_url, 
       patient_info,
       patient_id,
@@ -75,59 +120,50 @@ Deno.serve(async (req) => {
         error: 'Missing required fields: pdf_template_url, patient_info' 
       }, { status: 400 });
     }
+    if (patient_id !== undefined && patient_id !== null
+      && (typeof patient_id !== 'string' || !patient_id.trim() || patient_id.length > 200)) {
+      return Response.json({ error: 'patient_id is invalid' }, { status: 400 });
+    }
+    if (!Array.isArray(field_mappings)) {
+      return Response.json({ error: 'field_mappings must be an array' }, { status: 400 });
+    }
 
     // Fetch additional patient data if mappings require it
     let patientData = null;
     let visitData = null;
 
     if (patient_id && field_mappings.length > 0) {
-      try {
-        const [claimed] = await base44.asServiceRole.entities.Patient
-          .filter({ id: patient_id }, '', 1).catch(() => []);
-        if (!claimed) {
-          return Response.json({ error: 'Patient not found' }, { status: 404 });
-        }
-        const isSuperAdmin = user.account_type === 'super_admin';
-        const isAgencyScopedAdmin =
-          user.account_type === 'agency_admin'
-          || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-        const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-        const isAssigned = Array.isArray(claimed.assigned_nurses)
-          && claimed.assigned_nurses.includes(user.email);
-        if (!isPlatformAdmin && !isAgencyScopedAdmin && claimed.created_by !== user.email && !isAssigned) {
-          return Response.json({ error: 'Forbidden' }, { status: 403 });
-        }
-        if (isAgencyScopedAdmin) {
-          if (!user.agency_name) {
-            return Response.json({ error: 'Forbidden' }, { status: 403 });
-          }
-          const agencyUsers = await base44.asServiceRole.entities.User
-            .list('-created_date', 5000).catch(() => []);
-          const agencyEmails = new Set(
-            (agencyUsers || [])
-              .filter((u) => u.agency_name === user.agency_name && u.email)
-              .map((u) => u.email),
-          );
-          const inAgency = (claimed.created_by && agencyEmails.has(claimed.created_by))
-            || (Array.isArray(claimed.assigned_nurses)
-              && claimed.assigned_nurses.some((e) => agencyEmails.has(e)));
-          if (!inAgency) {
-            return Response.json({ error: 'Forbidden' }, { status: 403 });
-          }
-        }
-        patientData = claimed;
+      const normalizedPatientId = patient_id.trim();
+      const patientRows = await base44.asServiceRole.entities.Patient
+        .filter({ id: normalizedPatientId }, '', 2).catch(() => []);
+      const exactPatients = Array.isArray(patientRows)
+        ? patientRows.filter((row) => row?.id === normalizedPatientId)
+        : [];
+      if (patientRows.length !== 1 || exactPatients.length !== 1) {
+        return Response.json({ error: exactPatients.length ? 'Patient lookup is ambiguous' : 'Patient not found' }, {
+          status: exactPatients.length ? 409 : 404,
+        });
+      }
+      const claimed = exactPatients[0];
+      const isAssigned = Array.isArray(claimed.assigned_nurses)
+        && claimed.assigned_nurses.includes(user.email);
+      if (!isProtectedSuperAdmin(user) && claimed.created_by !== user.email && !isAssigned) {
+        return Response.json({ error: 'Forbidden' }, { status: 403 });
+      }
+      patientData = claimed;
 
-        // Get latest visit if needed
-        if (field_mappings.some(m => m.data_source === 'visit')) {
-          const visits = await base44.asServiceRole.entities.Visit.filter(
-            { patient_id },
-            '-visit_date',
-            1
-          );
-          if (visits.length > 0) visitData = visits[0];
+      // Get latest visit if needed, using only the exact verified Patient id.
+      if (field_mappings.some(m => m?.data_source === 'visit')) {
+        const visits = await base44.asServiceRole.entities.Visit.filter(
+          { patient_id: claimed.id },
+          '-visit_date',
+          2
+        );
+        if (!Array.isArray(visits)
+          || visits.some((visit) => visit?.patient_id !== claimed.id)) {
+          return Response.json({ error: 'Patient visit data could not be verified' }, { status: 409 });
         }
-      } catch (e) {
-        console.warn('Error fetching additional data:', e.message);
+        if (visits.length > 0) visitData = visits[0];
       }
     }
 
@@ -292,9 +328,6 @@ Deno.serve(async (req) => {
       action: 'pdf_prepared',
       details: {
         document_type,
-        patient_id,
-        patient_name: patient_info.patient_name,
-        prepared_pdf: uploadResult.file_url
       },
       page: 'pdf_preparation'
     });

@@ -9,6 +9,7 @@ import {
   Mic, MicOff, Loader2, FileText, Copy, Check, RefreshCw,
   Stethoscope, ClipboardList, AlertCircle, Wand2
 } from "lucide-react";
+import { createAuthorityBoundSpeechRecognition } from '@/lib/tenantMediaDevices';
 
 const VISIT_TYPES = [
   { value: "skilled_nursing", label: "Skilled Nursing Visit", tag: "SN" },
@@ -104,13 +105,21 @@ export default function RealTimeDictationScribe({ currentUser }) {
       return;
     }
 
-    const recognition = new SpeechRecognition();
+    let binding;
+    try {
+      binding = createAuthorityBoundSpeechRecognition(SpeechRecognition);
+    } catch {
+      setError("Dictation expired because workspace authority changed.");
+      return;
+    }
+    const recognition = binding.recognition;
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
     recognition.maxAlternatives = 1;
 
     recognition.onresult = (event) => {
+      if (!binding.isCurrent()) return;
       let interim = "";
       let finalChunk = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
@@ -129,6 +138,7 @@ export default function RealTimeDictationScribe({ currentUser }) {
     };
 
     recognition.onerror = (event) => {
+      if (!binding.isCurrent()) return;
       if (event.error !== "no-speech") {
         setError(`Microphone error: ${event.error}. Please allow microphone access.`);
         setIsListening(false);
@@ -136,6 +146,7 @@ export default function RealTimeDictationScribe({ currentUser }) {
     };
 
     recognition.onend = () => {
+      if (!binding.isCurrent()) return;
       // Auto-restart if still supposed to be listening
       if (recognitionRef.current && recognitionRef.current._shouldBeListening) {
         try { recognition.start(); } catch { /* no-op */ }
@@ -150,8 +161,9 @@ export default function RealTimeDictationScribe({ currentUser }) {
     return () => {
       if (recognitionRef.current) {
         recognitionRef.current._shouldBeListening = false;
-        try { recognitionRef.current.stop(); } catch { /* no-op */ }
       }
+      binding.dispose();
+      recognitionRef.current = null;
     };
   }, []);
 

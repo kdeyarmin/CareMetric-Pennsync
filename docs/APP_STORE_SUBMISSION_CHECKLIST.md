@@ -1,10 +1,37 @@
 # Apple App Store Submission Checklist — PennSync iOS
 
 Companion to `docs/BASE44_APPSTORE_COMPAT_REVIEW_2026-07-22.md` (§5) and `ios/README.md`.
-Code-side items are implemented in the repo; the items below are the App Store Connect /
-process steps that cannot be done from code.
+Some code-side foundations are present; the items below include the repository gaps and App
+Store Connect/process steps that must be resolved before another native submission.
 
-## Before first submission
+> Existing-listing correction (verified 2026-09-03): CareMetric AI is already live as
+> Apple ID `6757097720` with four in-app purchases. This repository does not contain the
+> original purchase-entitlement implementation or complete signing projects. Do not generate
+> or upload a replacement IPA/AAB until those assets and the existing store configuration are
+> recovered and verified.
+
+## No-native-upload gate
+
+> **STOP:** No new IPA or AAB may be uploaded to App Store Connect or Google
+> Play, including TestFlight or Play testing tracks, until every gate below has
+> current evidence.
+
+- [ ] **Apple and Google privacy disclosures.** Reconcile App Store privacy
+      labels, Google Play Data safety, and `ios/PennSync/PrivacyInfo.xcprivacy`
+      with the app's actual web and native data handling.
+- [ ] **Signing/distribution continuity.** Recover and verify the original Apple
+      signing/provisioning assets for `com.caremetric.ai` and Google signing/Play
+      App Signing continuity for `com.caremetic.ai`; do not substitute a new
+      identity or signing key.
+- [ ] **IAP/billing continuity.** Reconcile the existing Apple in-app purchases
+      and any Google billing configuration with product IDs, purchase/receipt
+      validation, restore behavior, entitlements, and server state.
+- [ ] **Physical iOS and Android devices.** Using non-PHI test data, verify
+      permanent-origin launch and login, deep links, camera/microphone,
+      downloads/sharing, idle timeout and logout, network loss/recovery, and
+      purchase/restore behavior.
+
+## Before next native submission
 
 - [ ] **Distribution route decision (Guideline 4.2).** PennSync is a workforce clinical tool.
       Recommended: distribute via **Apple Business Manager** (unlisted app or custom app for the
@@ -20,9 +47,21 @@ process steps that cannot be done from code.
       Apple must be added. (Checked 2026-07-22 from the app origin: `/login` serves the SPA
       itself, no third-party buttons — but re-verify on the real backend origin before
       submitting.)
-- [ ] **Privacy policy URL.** The in-app policy now lives at `/privacy` (public route,
-      `src/pages/PrivacyPolicy.jsx`). Enter `https://<app-domain>/privacy` as the Privacy Policy
-      URL in App Store Connect. **Have counsel review the draft text before submission.**
+- [ ] **Privacy policy URLs.** The canonical in-app policy lives at `/privacy`.
+      The source now defines public no-login aliases at `/privacy-policy` (the
+      intended hyphenated compatibility route) and `/privacypolicy` (the existing
+      store-linked route). Verify all three on the staged permanent origin before
+      release. **Have counsel review the draft text before submission.**
+- [ ] **EULA URL.** The live Apple metadata currently points at `/eula`, but this
+      repository has no approved in-app EULA route. A separate external page is
+      present at `https://caremetricai.com/eula`, but it remains unverified as
+      approved governing terms for the installed apps. Do not copy, route, or
+      submit it until the owner and counsel approve its exact text and
+      applicability.
+- [ ] **Existing IAP continuity.** Reconcile the four live products (Monthly `$29.99`, Quarterly
+      `$79.99`, Semi Annual `$149.99`, Annual `$264.99`) with their product IDs, receipt/entitlement
+      validation, restore-purchase flow, and server-side subscription state. None of that native
+      implementation is present in this repository.
 - [ ] **Privacy nutrition labels.** Declare (all "linked to identity", none used for tracking):
   - Health & Fitness → Health (patient clinical data processed in-app)
   - Contact Info → Name, Email Address

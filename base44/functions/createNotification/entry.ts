@@ -1,4 +1,24 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 
 // <<<BEGIN SHARED HELPER: resolveAgencySettings — generated, edit base44/_shared/backendHelpers.mjs>>>
 async function resolveAgencySettings(base44, agencyName) {
@@ -36,16 +56,6 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
   { status: 403 },
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
-
-// <<<BEGIN SHARED HELPER: requireAgencyAdminAgency — generated, edit base44/_shared/backendHelpers.mjs>>>
-function agencyAdminMissingAgencyResponse(user) {
-  if (user && user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
-    return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
-  }
-  return null;
-}
-// <<<END SHARED HELPER: requireAgencyAdminAgency>>>
-
 
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
@@ -186,131 +196,318 @@ function renderBrandedEmail(opts) {
  */
 
 function getAppBaseUrl() {
-  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
-  if (fromEnv) {
-    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  const configured = String(Deno.env.get('APP_PUBLIC_URL') || '').trim();
+  if (!configured) throw new Error('APP_PUBLIC_URL is required for outbound app links');
+  let parsed;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
   }
-  return 'https://caremetricai.base44.app';
+  if (
+    parsed.protocol !== 'https:' || parsed.username || parsed.password
+    || parsed.pathname !== '/' || parsed.search || parsed.hash
+  ) {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
+  }
+  return parsed.origin;
+}
+
+const MAX_BODY_BYTES = 20_000;
+const MAX_IDENTIFIER_LENGTH = 200;
+const MAX_TITLE_LENGTH = 500;
+const MAX_MESSAGE_LENGTH = 5_000;
+const MAX_ACTION_LABEL_LENGTH = 200;
+const MAX_ACTION_URL_LENGTH = 1_000;
+const LOOKUP_LIMIT = 20;
+const ACTIVE_AGENCY_STATUSES = new Set(['active', 'trial']);
+const TENANT_ROLES = new Set([
+  'agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care',
+]);
+const ALLOWED_TYPES = new Set([
+  'report_ready', 'compliance_alert', 'critical_alert', 'patient_alert',
+  'task_assigned', 'task_due_soon', 'new_referral', 'referral_urgent',
+  'training_due', 'system_update', 'message_received', 'sms_failed',
+  'sms_urgent', 'sms_received', 'fax_delivered', 'fax_failed', 'voicemail',
+  'info', 'expiration_warning', 'credential_expiration',
+  'admin_expiration_summary', 'care_plan_proposal', 'signature_request',
+]);
+const NON_ADMIN_TYPES = new Set([
+  'system_update', 'info', 'message_received', 'task_assigned', 'task_due_soon',
+]);
+const ALLOWED_PRIORITIES = new Set(['low', 'medium', 'high', 'critical']);
+
+class PublicError extends Error {
+  constructor(status, message) {
+    super(message);
+    this.name = 'PublicError';
+    this.status = status;
+  }
+}
+
+function exactIdentifier(value) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= MAX_IDENTIFIER_LENGTH
+    && value.trim() === value
+    && !value.startsWith('$')
+    && !/[\u0000-\u001f\u007f]/.test(value)
+    ? value
+    : null;
+}
+
+function canonicalEmail(value) {
+  if (typeof value !== 'string') return null;
+  const email = value.trim().toLowerCase();
+  return email.length > 2 && email.length <= 320 && email.includes('@') && !/\s/.test(email)
+    ? email
+    : null;
+}
+
+function boundedText(value, maximum) {
+  return typeof value === 'string'
+    && value.length > 0
+    && value.length <= maximum
+    && !/[\u0000\u007f]/.test(value)
+    ? value
+    : null;
+}
+
+function exactKeys(value, allowed) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return Object.keys(value).every((key) => allowed.has(key));
+}
+
+function safeRelativeActionUrl(value) {
+  if (value == null) return null;
+  if (
+    typeof value !== 'string'
+    || !value.startsWith('/')
+    || value.startsWith('//')
+    || value.includes('\\')
+    || value.length > MAX_ACTION_URL_LENGTH
+    || /[\u0000-\u001f\u007f]/.test(value)
+  ) throw new PublicError(400, 'action_url must be a safe relative in-app path');
+  return value;
+}
+
+function requireRows(value, label) {
+  if (!Array.isArray(value)) throw new Error(`${label} returned a non-array result`);
+  return value;
+}
+
+async function parseBody(req) {
+  if (req.method !== 'POST') throw new PublicError(405, 'Method not allowed');
+  const stated = req.headers.get('content-length');
+  if (stated != null && (!/^\d+$/.test(stated) || Number(stated) > MAX_BODY_BYTES)) {
+    throw new PublicError(413, 'Request body is too large');
+  }
+  const raw = await req.text().catch(() => { throw new PublicError(400, 'Invalid JSON body'); });
+  if (new TextEncoder().encode(raw).byteLength > MAX_BODY_BYTES) {
+    throw new PublicError(413, 'Request body is too large');
+  }
+  let body;
+  try { body = JSON.parse(raw); } catch { throw new PublicError(400, 'Invalid JSON body'); }
+  const allowed = new Set([
+    'agency_id', 'user_email', 'title', 'message', 'type', 'priority',
+    'action_url', 'action_label', 'metadata', 'patient_id',
+  ]);
+  if (!exactKeys(body, allowed)) throw new PublicError(400, 'Request contains unsupported fields');
+  const recipientEmail = canonicalEmail(body.user_email);
+  const title = boundedText(body.title, MAX_TITLE_LENGTH);
+  const message = boundedText(body.message, MAX_MESSAGE_LENGTH);
+  const type = typeof body.type === 'string' && ALLOWED_TYPES.has(body.type) ? body.type : null;
+  if (!recipientEmail || !title || !message || !type) {
+    throw new PublicError(400, 'Notification requires a valid user_email, title, message, and type');
+  }
+  const agencyId = body.agency_id == null ? null : exactIdentifier(body.agency_id);
+  if (body.agency_id != null && !agencyId) throw new PublicError(400, 'agency_id is invalid');
+  const patientId = body.patient_id == null ? null : exactIdentifier(body.patient_id);
+  if (body.patient_id != null && !patientId) throw new PublicError(400, 'patient_id is invalid');
+  const actionLabel = body.action_label == null
+    ? null
+    : boundedText(body.action_label, MAX_ACTION_LABEL_LENGTH);
+  if (body.action_label != null && !actionLabel) throw new PublicError(400, 'action_label is invalid');
+  if (body.metadata != null && (!body.metadata || typeof body.metadata !== 'object' || Array.isArray(body.metadata))) {
+    throw new PublicError(400, 'metadata must be an object');
+  }
+  return {
+    recipientEmail,
+    title,
+    message,
+    type,
+    priority: ALLOWED_PRIORITIES.has(body.priority) ? body.priority : 'medium',
+    actionUrl: safeRelativeActionUrl(body.action_url),
+    actionLabel,
+    metadata: body.metadata ?? null,
+    patientId,
+    requestedAgencyId: agencyId,
+  };
+}
+
+function protectedPlatformOwner(user) {
+  const configured = canonicalEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configured && user?.role === 'admin' && canonicalEmail(user?.email) === configured;
+}
+
+function validateUser(user) {
+  const id = exactIdentifier(user?.id);
+  const email = canonicalEmail(user?.email);
+  if (!id || !email || user?.is_active === false || user?.disabled === true || user?.is_service === true) {
+    throw new PublicError(403, 'Forbidden');
+  }
+  return { id, email, role: user.role, isPlatformOwner: protectedPlatformOwner(user) };
+}
+
+async function loadExactUser(entities, email) {
+  const rows = requireRows(
+    await entities.User.filter({ email }, undefined, LOOKUP_LIMIT),
+    'User.filter',
+  );
+  if (rows.length !== 1 || rows[0]?.email !== email) {
+    throw new PublicError(rows.length === 0 ? 404 : 409, 'Notification recipient is unavailable');
+  }
+  return validateUser(rows[0]);
+}
+
+async function loadMemberships(entities, user) {
+  const rows = requireRows(
+    await entities.AgencyMembership.filter({ user_id: user.id, status: 'active' }, '-updated_date', LOOKUP_LIMIT),
+    'AgencyMembership.filter',
+  );
+  if (rows.length >= LOOKUP_LIMIT) throw new PublicError(409, 'Tenant membership set is ambiguous');
+  const seen = new Set();
+  return rows.map((row) => {
+    const id = exactIdentifier(row?.id);
+    const agencyId = exactIdentifier(row?.agency_id);
+    const membershipEmail = canonicalEmail(row?.user_email_normalized);
+    if (
+      !id || !agencyId || seen.has(agencyId)
+      || row.membership_key !== `${agencyId}:${user.id}`
+      || row.user_id !== user.id
+      || membershipEmail !== user.email
+      || row.user_email_normalized !== membershipEmail
+      || !TENANT_ROLES.has(String(row.tenant_role || ''))
+      || !Number.isSafeInteger(row.version) || row.version < 1
+    ) throw new PublicError(409, 'Tenant membership set is ambiguous');
+    seen.add(agencyId);
+    return { id, agencyId, tenantRole: row.tenant_role, version: row.version };
+  });
+}
+
+async function resolveScope(entities, caller, recipient, requestedAgencyId) {
+  const callerMemberships = await loadMemberships(entities, caller);
+  const recipientMemberships = await loadMemberships(entities, recipient);
+  const callerAgencyIds = new Set(callerMemberships.map((row) => row.agencyId));
+  let shared = recipientMemberships.filter((row) => callerAgencyIds.has(row.agencyId));
+  if (requestedAgencyId) shared = shared.filter((row) => row.agencyId === requestedAgencyId);
+
+  if (caller.isPlatformOwner && shared.length === 0) {
+    shared = requestedAgencyId
+      ? recipientMemberships.filter((row) => row.agencyId === requestedAgencyId)
+      : recipientMemberships;
+  }
+  if (shared.length !== 1) throw new PublicError(403, 'Recipient is not in one exact authorized agency');
+  const recipientMembership = shared[0];
+  const callerMembership = callerMemberships.find((row) => row.agencyId === recipientMembership.agencyId) || null;
+  if (!callerMembership && !caller.isPlatformOwner) throw new PublicError(403, 'Forbidden');
+
+  const agencies = requireRows(
+    await entities.Agency.filter({ id: recipientMembership.agencyId }, undefined, 10),
+    'Agency.filter',
+  );
+  if (
+    agencies.length !== 1
+    || agencies[0]?.id !== recipientMembership.agencyId
+    || !ACTIVE_AGENCY_STATUSES.has(String(agencies[0]?.status || ''))
+  ) throw new PublicError(403, 'Agency is unavailable');
+
+  return { agency: agencies[0], callerMembership, recipientMembership };
+}
+
+function sameMembershipSnapshot(left, right) {
+  if (left == null || right == null) return left === right;
+  return left.id === right.id
+    && left.agencyId === right.agencyId
+    && left.tenantRole === right.tenantRole
+    && left.version === right.version;
+}
+
+function sameUserSnapshot(left, right) {
+  return left.id === right.id
+    && left.email === right.email
+    && left.role === right.role
+    && left.isPlatformOwner === right.isPlatformOwner;
+}
+
+async function revalidateResolvedScope(
+  entities,
+  caller,
+  recipient,
+  requestedAgencyId,
+  expectedScope,
+) {
+  const currentCaller = await loadExactUser(entities, caller.email);
+  const currentRecipient = caller.id === recipient.id
+    ? currentCaller
+    : await loadExactUser(entities, recipient.email);
+  if (
+    !sameUserSnapshot(currentCaller, caller)
+    || !sameUserSnapshot(currentRecipient, recipient)
+  ) throw new PublicError(403, 'Notification authority changed; retry');
+
+  const currentScope = await resolveScope(
+    entities,
+    currentCaller,
+    currentRecipient,
+    requestedAgencyId,
+  );
+  if (
+    currentScope.agency?.id !== expectedScope.agency?.id
+    || !sameMembershipSnapshot(currentScope.callerMembership, expectedScope.callerMembership)
+    || !sameMembershipSnapshot(currentScope.recipientMembership, expectedScope.recipientMembership)
+  ) throw new PublicError(403, 'Notification authority changed; retry');
+  return currentScope;
 }
 
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    
-    // Authenticate user
-    const currentUser = await base44.auth.me();
-    if (!currentUser) {
-      return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    }
+    const currentUser = await base44.auth.me().catch(() => null);
+    if (!currentUser) throw new PublicError(401, 'Unauthorized');
     if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
-
-    {
-      const _agencyAdminGate = agencyAdminMissingAgencyResponse(currentUser);
-      if (_agencyAdminGate) return _agencyAdminGate;
+    const caller = validateUser(currentUser);
+    const input = await parseBody(req);
+    const entities = base44.asServiceRole.entities;
+    const recipient = await loadExactUser(entities, input.recipientEmail);
+    const scope = await resolveScope(entities, caller, recipient, input.requestedAgencyId);
+    const callerIsAdmin = caller.role === 'admin'
+      || scope.callerMembership?.tenantRole === 'agency_admin'
+      || scope.callerMembership?.tenantRole === 'manager';
+    if (!callerIsAdmin && !NON_ADMIN_TYPES.has(input.type)) {
+      throw new PublicError(403, 'Only authorized administrators can create this notification type');
     }
-    const body = await req.json();
-    const { user_email, title, message, type, priority = 'medium', action_url, action_label, metadata, patient_id } = body;
-
-    // Validate required fields FIRST — otherwise a missing user_email would fall
-    // into the patient-authorization query below as created_by: undefined and
-    // return a misleading 403 ("has not charted") instead of a 400.
-    if (!user_email || !title || !message || !type) {
-      return Response.json({
-        error: 'Missing required fields: user_email, title, message, type'
-      }, { status: 400 });
-    }
-
-    // This endpoint is callable by any authenticated user (e.g. to notify admins
-    // of an account-deletion request), so the recipient must stay flexible — but
-    // that also means a caller could otherwise spoof a system alert to anyone with
-    // an arbitrary type and an EXTERNAL link (in-app + email phishing). Constrain
-    // the attacker-controlled fields: `type`/`priority` to their schema enums, and
-    // `action_url` to a relative in-app path (no absolute/external URLs).
-    const ALLOWED_TYPES = new Set([
-      'report_ready', 'compliance_alert', 'critical_alert', 'patient_alert',
-      'task_assigned', 'task_due_soon', 'new_referral', 'referral_urgent',
-      'training_due', 'system_update', 'message_received', 'sms_failed',
-      'sms_urgent', 'sms_received', 'fax_delivered', 'fax_failed', 'voicemail',
-      'info', 'expiration_warning', 'credential_expiration',
-      'admin_expiration_summary', 'care_plan_proposal', 'signature_request',
-    ]);
-    if (!ALLOWED_TYPES.has(type)) {
-      return Response.json({ error: 'Invalid notification type' }, { status: 400 });
-    }
-    const safePriority = ['low', 'medium', 'high', 'critical'].includes(priority) ? priority : 'medium';
-    // Reject anything that isn't a same-app relative path ("/Foo?x=1"). Protocol-
-    // relative ("//evil") and absolute ("https://evil") links are disallowed.
-    let safeActionUrl = action_url;
-    if (action_url != null) {
-      const a = String(action_url);
-      if (!a.startsWith('/') || a.startsWith('//')) {
-        return Response.json({ error: 'action_url must be a relative in-app path' }, { status: 400 });
-      }
-    }
-
-    const isAdminLike = (u) => !!u && (
-      u.role === 'admin' || u.account_type === 'agency_admin' || u.account_type === 'super_admin'
-    );
-    const callerIsAdmin = isAdminLike(currentUser);
-    // Non-admins may only create low-risk peer/admin-notify types (account
-    // deletion uses system_update → admins). High-severity clinical/system
-    // types are admin-only.
-    const NON_ADMIN_TYPES = new Set([
-      'system_update', 'info', 'message_received', 'task_assigned', 'task_due_soon',
-    ]);
-    if (!callerIsAdmin && !NON_ADMIN_TYPES.has(type)) {
-      return Response.json({ error: 'Only admins can create this notification type' }, { status: 403 });
-    }
-    const recipientEmail = String(user_email).trim().toLowerCase();
-    const callerEmail = String(currentUser.email || '').trim().toLowerCase();
-    // Resolve the recipient once for peer-notify and agency-admin tenant gates.
-    const recipientRows = await base44.asServiceRole.entities.User
-      .filter({ email: recipientEmail }, undefined, 1)
-      .catch(() => []);
-    const recipient = recipientRows?.[0] || null;
-    if (!callerIsAdmin && recipientEmail !== callerEmail) {
-      // Peer notify: recipient must be an admin (e.g. account-deletion request).
-      if (!recipient || !isAdminLike(recipient)) {
-        return Response.json({
-          error: 'Non-admins may only notify themselves or an administrator',
-        }, { status: 403 });
-      }
-    }
-    // Agency-scoped admins (and peer-notifies from agency-scoped staff) may only
-    // target users in their own agency — otherwise createNotification is a
-    // cross-tenant spam / phishing channel via service-role Notification + email.
-    const callerIsAgencyScoped = currentUser.account_type !== 'super_admin'
-      && currentUser.agency_name
-      && (currentUser.account_type === 'agency_admin' || currentUser.role === 'admin');
-    if (callerIsAgencyScoped ||
-        (!callerIsAdmin && recipientEmail !== callerEmail)) {
-      if (!currentUser.agency_name || !recipient ||
-          recipient.agency_name !== currentUser.agency_name) {
-        return Response.json({
-          error: 'Forbidden: recipient is outside your agency',
-        }, { status: 403 });
-      }
+    if (!callerIsAdmin && recipient.email !== caller.email && recipient.role !== 'admin') {
+      throw new PublicError(403, 'Non-admins may only notify themselves or an administrator');
     }
 
     // If this is a patient-related notification, verify the recipient has charted on this patient
-    if (patient_id && type !== 'compliance_alert' && type !== 'report_ready' && type !== 'training_due') {
-      const chartedVisits = await base44.asServiceRole.entities.Visit.filter({
-        patient_id: patient_id,
-        created_by: user_email
-      }, undefined, 5000);
+    if (input.patientId && !['compliance_alert', 'report_ready', 'training_due'].includes(input.type)) {
+      const chartedVisits = requireRows(await entities.Visit.filter({
+        patient_id: input.patientId,
+        agency_id: scope.recipientMembership.agencyId,
+        created_by: recipient.email,
+      }, undefined, LOOKUP_LIMIT), 'Visit.filter');
 
-      if (!chartedVisits || chartedVisits.length === 0) {
-        return Response.json({
-          error: 'Unauthorized: User has not charted on this patient',
-          notificationCreated: false
-        }, { status: 403 });
-      }
+      if (chartedVisits.length === 0 || chartedVisits.some((row) =>
+        row?.patient_id !== input.patientId || row?.agency_id !== scope.recipientMembership.agencyId
+      )) throw new PublicError(403, 'Recipient is not authorized for this patient');
     }
 
     // Get user's notification preferences
-    const preferences = await base44.asServiceRole.entities.NotificationPreference.filter({
-      user_email: user_email
-    }, undefined, 5000);
+    const preferences = requireRows(await entities.NotificationPreference.filter({
+      user_email: recipient.email,
+    }, '-updated_date', LOOKUP_LIMIT), 'NotificationPreference.filter');
 
     const userPrefs = preferences[0] || {
       email_notifications_enabled: true,
@@ -325,34 +522,20 @@ Deno.serve(async (req) => {
     };
 
     // Check if notification type is enabled for in-app
-    const typePrefs = userPrefs.preferences?.[type] || { 
+    const typePrefs = userPrefs.preferences?.[input.type] || {
       email: true, 
       in_app: true, 
       push: false 
     };
 
-    // Always create in-app notification if in_app is enabled
-    if (userPrefs.in_app_notifications_enabled && typePrefs.in_app !== false) {
-      await base44.asServiceRole.entities.Notification.create({
-        user_email,
-        title,
-        message,
-        type,
-        priority: safePriority,
-        action_url: safeActionUrl,
-        action_label,
-        metadata,
-        is_read: false,
-        email_sent: false,
-        push_sent: false,
-        dismissed: false
-      });
-    }
-
-    // Check if should send email
+    const shouldCreateInApp = userPrefs.in_app_notifications_enabled
+      && typePrefs.in_app !== false;
     const shouldSendEmail = userPrefs.email_notifications_enabled && 
                            typePrefs.email !== false &&
                            userPrefs.digest_mode === 'instant';
+    const outboundDeliveryIsReleased = outboundDeliveryReleased();
+    let emailPermittedNow = false;
+    let appBase = null;
 
     if (shouldSendEmail) {
       // Check quiet hours. Quiet-hour start/end times are entered relative to the
@@ -361,7 +544,7 @@ Deno.serve(async (req) => {
       // Evaluate the current HH:MM in that agency timezone (default America/New_York).
       const agencySettingsRow = await resolveAgencySettings(
         base44,
-        recipient?.agency_name || currentUser?.agency_name,
+        scope.agency?.agency_code || scope.agency?.agency_name,
       );
       const tz = agencySettingsRow?.business_hours_timezone || agencySettingsRow?.duty_timezone || 'America/New_York';
       let currentTime;
@@ -387,33 +570,82 @@ Deno.serve(async (req) => {
         }
       }
 
-      // Send email if not in quiet hours or if critical priority
-      if (!inQuietHours || safePriority === 'critical') {
-        try {
-          // Deep-link the in-app action_url (a relative path) into an absolute URL
-          // so the email button actually works.
-          const appBase = getAppBaseUrl();
-          await base44.asServiceRole.integrations.Core.SendEmail({
-            to: user_email,
-            from_name: 'PennSync by CareMetric',
-            subject: `${title} · PennSync by CareMetric`,
-            body: renderBrandedEmail({
-              preheader: message,
-              eyebrow: 'Notification',
-              tone: safePriority === 'critical' ? 'urgent' : 'brand',
-              title,
-              intro: message,
-              sections: [
-                ...(safeActionUrl
-                  ? [{ button: { href: `${appBase}${safeActionUrl}`, label: action_label || 'View in PennSync' } }]
-                  : []),
-              ],
-              footerNote: 'You’re receiving this because email notifications are enabled for this alert type. Manage your preferences on the Notification Settings page in PennSync.',
-            }),
-          });
-        } catch (emailError) {
-          console.error('Failed to send email:', emailError);
-        }
+      emailPermittedNow = !inQuietHours || input.priority === 'critical';
+      if (emailPermittedNow && outboundDeliveryIsReleased) {
+        // Resolve a link origin before creating an in-app notification or
+        // attempting email. Invalid staging configuration must not leave a
+        // partial notification whose email silently linked another environment.
+        appBase = input.actionUrl ? getAppBaseUrl() : null;
+      }
+    }
+    const deliveryPaused = emailPermittedNow && !outboundDeliveryIsReleased;
+
+    if (shouldCreateInApp) {
+      const inAppScope = await revalidateResolvedScope(
+        entities,
+        caller,
+        recipient,
+        input.requestedAgencyId,
+        scope,
+      );
+      await entities.Notification.create({
+        agency_id: inAppScope.recipientMembership.agencyId,
+        recipient_user_id: recipient.id,
+        recipient_membership_id: inAppScope.recipientMembership.id,
+        recipient_membership_version: inAppScope.recipientMembership.version,
+        authority_version: 1,
+        authority_state: 'active',
+        version: 1,
+        user_email: recipient.email,
+        title: input.title,
+        message: input.message,
+        type: input.type,
+        priority: input.priority,
+        action_url: input.actionUrl,
+        action_label: input.actionLabel,
+        metadata: input.metadata,
+        is_read: false,
+        read_at: null,
+        email_sent: false,
+        push_sent: false,
+        dismissed: false,
+        dismissed_at: null,
+      });
+    }
+
+    let emailSent = false;
+    if (emailPermittedNow && outboundDeliveryIsReleased) {
+      try {
+        await revalidateResolvedScope(
+          entities,
+          caller,
+          recipient,
+          input.requestedAgencyId,
+          scope,
+        );
+        await base44.asServiceRole.integrations.Core.SendEmail({
+          to: recipient.email,
+          from_name: 'PennSync by CareMetric',
+          subject: `${input.title} · PennSync by CareMetric`,
+          body: renderBrandedEmail({
+            preheader: input.message,
+            eyebrow: 'Notification',
+            tone: input.priority === 'critical' ? 'urgent' : 'brand',
+            title: input.title,
+            intro: input.message,
+            sections: [
+              ...(input.actionUrl
+                ? [{ button: { href: `${appBase}${input.actionUrl}`, label: input.actionLabel || 'View in PennSync' } }]
+                : []),
+            ],
+            footerNote: 'You’re receiving this because email notifications are enabled for this alert type. Manage your preferences on the Notification Settings page in PennSync.',
+          }),
+        });
+        emailSent = true;
+      } catch {
+        // Notification bodies may contain PHI, and SDK errors can retain the
+        // request payload. Keep operational logging constant and payload-free.
+        console.error('Notification email delivery failed');
       }
     }
 
@@ -421,14 +653,19 @@ Deno.serve(async (req) => {
       success: true, 
       message: 'Notification created',
       channels: {
-        in_app: userPrefs.in_app_notifications_enabled && typePrefs.in_app !== false,
-        email: shouldSendEmail,
-        push: userPrefs.push_notifications_enabled && typePrefs.push !== false
-      }
+        in_app: shouldCreateInApp,
+        email: emailSent,
+        // No push provider is invoked by this broker.
+        push: false,
+      },
+      delivery_paused: deliveryPaused,
     });
 
   } catch (error) {
-    console.error('Error creating notification:', error);
+    if (error instanceof PublicError) {
+      return Response.json({ error: error.message }, { status: error.status });
+    }
+    console.error('createNotification failed');
     return Response.json({ 
       error: 'Internal server error' 
     }, { status: 500 });

@@ -9,18 +9,17 @@ go-live** from what can ship and be fixed forward.
 
 ---
 
-## Verdict: **CONDITIONAL GO**
+## Verdict: **NO GO FOR PRODUCTION — STAGING VALIDATION ONLY**
 
-The **code is launch-ready.** It builds clean, lints clean of errors, and the full
-test suite passes. The widespread issues called out in the June reviews
-(entity-contract drift, fabricated AI scores, security-theater banners, the dead
-signature pipeline) have been **fixed and verified in this tree**.
-
-What stands between the app and a safe production launch is **not code** — it is
-**operational configuration that lives in the Base44 dashboard and backend secrets,
-not in this repo**, plus two product decisions. Those items are concrete and listed
-below. Until they are done and verified (especially RLS), **do not go live with real
-PHI.**
+> **Safety correction (2026-09-07):** this historical June review is superseded by
+> the current staging hardening work. The source tree builds and its automated
+> checks pass, but that is not sufficient to call the system launch-ready. Hosted
+> Base44 behavior is still unproven for datastore uniqueness, strict conditional
+> updates, queue filters, and native workflow authentication. FaxLog browser RLS
+> also cannot express the required live membership join. Exact credential parity,
+> multi-role tenant tests, and provider delivery have not been verified. Keep every
+> workflow and outbound/domain release gate closed; do not deploy this state to
+> production or use real PHI.
 
 ---
 
@@ -39,11 +38,10 @@ files.** Routing derives from a single source of truth (`src/lib/nav.manifest.js
 
 ### Verified-landed fixes (spot-checked against source, not just docs)
 
-- **Signature pipeline** — `submitSignerSignature` no longer writes the non-schema
-  `status:'signed'`; it embeds the signature into the PDF (`embedSignatureToPDF`
-  wired into the submit path) and the reminder-idempotency field
-  `last_reminder_sent_at` now exists on `DocumentSignature`. The completion pipeline
-  is live, not dead.
+- **Signature pipeline (superseded posture)** — the retained implementation has
+  stricter provenance and reminder-idempotency protections, but signing and reminder
+  paths are intentionally fail-closed. Reminder scheduling and dispatch each also
+  require a separate literal atomic-uniqueness proof gate that remains `false`.
 - **AI trustworthiness** — fabricated `data_quality_score`/`quality_score` writes are
   gone; LLM-generated clinical content is gated behind nurse review before persist.
 - **Security honesty** — `EncryptionStatusIndicator` now separates *verified* vs
@@ -52,16 +50,17 @@ files.** Routing derives from a single source of truth (`src/lib/nav.manifest.js
   guarantee); `RegulatoryMonitor` never auto-mutates `ComplianceRule` and gates on
   human confirmation; `VulnerabilityAssessment` labels platform/manual-review items
   honestly.
-- **PDGM honesty** — the grouper returns `null` rather than guessing for unknown
-  codes and discloses `isEstimate` until an admin loads official CMS tables
-  (`isOfficial`/`is_official` path in `calculatePDGM`).
+- **PDGM honesty (superseded posture)** — payment is now globally unavailable,
+  and the legacy factorized approximation is independently retirement-locked.
+  An admin-loaded table or stored `is_official` flag cannot enable or
+  authenticate payment output. See `docs/pdgm-cy2026.md`.
 
 ---
 
 ## 2. Go-live BLOCKERS (P0 — must complete before real PHI)
 
-These are **not in this repo** — they are platform/operations configuration. The code
-already assumes they are done.
+These include both hosted platform behavior and operations configuration. The code
+fails closed where the required behavior has not yet been proven.
 
 ### 2.1 Row-Level Security (the single most important item)
 Client-side role checks and query filters in this app are **cosmetic (UX only)**. The
@@ -97,10 +96,19 @@ Per `.env.example` and the checklist:
   > env vars, watch sends keep failing, and report Telnyx as broken — twice ending
   > in an env-fallback patch that had to be reverted. The public key is required
   > for inbound webhooks, which are fail-closed without it.
-- **`OPENAI_API_KEY`** (transcription, SOAP-from-audio, training generation/grading),
-  **`ANTHROPIC_API_KEY`** (fax cover pages), **`HEYGEN_API_KEY`** (training video) —
+- **`APP_PUBLIC_URL`** — required non-secret configuration set to this
+  environment's exact HTTPS origin. Outbound account/invitation/notification
+  links fail closed when it is missing or malformed; there is no `APP_URL` or
+  production-host fallback.
+- **`OPENAI_API_KEY`** (direct audio transcription, including the transcription
+  stage of SOAP-from-audio), **`ANTHROPIC_API_KEY`** (direct SOAP-note
+  structuring), **`HEYGEN_API_KEY`** (training video) —
   each feature shows a clear "not configured" notice until set, so these gate
   *features*, not launch.
+- Most application AI and email use Base44-managed `Core.InvokeLLM` and
+  `Core.SendEmail`. Fax-cover formatting is deterministic. Gemini, Deepgram,
+  Resend, Notifyre, and Twilio environment keys are not current runtime
+  requirements and are not launch blockers.
 - `SIGNUP_WEBHOOK_SECRET` (optional) locks `onUserSignup` to the trusted trigger.
 
 ### 2.3 Webhooks + signature verification
@@ -110,19 +118,23 @@ Per `.env.example` and the checklist:
   rejected). Idempotency de-dups on provider message/call ids, so retries can't
   double-process.
 
-### 2.4 Scheduled functions — exactly one dispatcher each
-Privileged cron functions run `asServiceRole` with no `auth.me()` — confirm the
-platform restricts who can invoke function endpoints. **Enable only one** scheduled-
-fax processor (`processScheduledFaxes` **or** `processScheduledFaxesByPriority`) and
-**only one** `dispatchScheduledSms` schedule — the pending→sending claim is
-best-effort, not atomic, so overlapping runs double-send.
+### 2.4 Scheduled functions — keep runtime gates closed pending hosted proof
+The native files under `base44/workflows/` are the sole schedule authority for
+the seven migrated workflows. Their duplicate legacy function automation configs
+must remain absent. Keep every handler's default-closed release gate in place.
+Before any later runtime release, prove in staging that native workflow ticks carry
+the expected protected authority, `$exists`/`$lte` filters behave as assumed, and
+exact one-row `updateMany` claims are single-winner. Establish datastore-enforced
+uniqueness for signature reminder schedule keys and validate scheduled-fax
+idempotency across the lease boundary. Never recreate a legacy automation for a
+native workflow target.
 
-### 2.5 PDGM rates — product decision (payment/compliance risk)
-PDGM grouping/case-mix weights need **official CMS 2026 tables**, not invented
-numbers. The live path correctly discloses `isEstimate` until an admin loads official
-values. **Decide before billing relies on it:** load the agency's official CMS files
-(then results flip to `isOfficial`), or keep PDGM output explicitly labeled as an
-estimate and not used for claims.
+### 2.5 PDGM grouper — active payment/compliance blocker
+PDGM payment is **unavailable**, not estimated and not $0. Loading tables or
+setting `is_official` is insufficient: the app must integrate a date-effective
+official CMS HHGS implementation, match the pinned CMS fixtures, and pass the
+tenant/provenance/operational gates in `docs/pdgm-cy2026.md`. Use the official
+EMR/CMS-approved grouper meanwhile.
 
 ---
 
@@ -163,18 +175,22 @@ estimate and not used for claims.
 
 ## 4. Recommended launch sequence
 
-1. Apply RLS (§2.1) and set backend secrets (§2.2) in the platform.
-2. Configure webhooks + verify signatures (§2.3); smoke-test SMS/voice/fax round-trip.
-3. Enable exactly one of each scheduled dispatcher (§2.4).
+1. Apply RLS (§2.1) and establish hosted uniqueness/CAS/filter behavior while all
+   release gates and workflows remain closed (§2.4).
+2. Set and independently verify the required environment-specific backend secrets
+   (§2.2); never infer parity from matching secret names.
+3. Configure webhooks and verify signatures with non-PHI fixtures (§2.3). Perform
+   delivery tests only as a separately approved controlled operation.
 4. Run the multi-role RLS verification (checklist §7) against **raw network
    responses** — this is the launch gate for a PHI app.
-5. Decide the PDGM rate posture (§2.5).
-6. Launch. Track §3 as fast-follow.
+5. Complete the verified CMS HHGS integration and parity gate (§2.5).
+6. Obtain a new security and production go/no-go review. Activation and production
+   deployment are separate changes and are not authorized by a staging validation.
 
-**Bottom line:** the application itself is in strong, launch-ready condition — the
-remaining work is platform configuration and verification, dominated by RLS. Get RLS
-right and verified, set the secrets and webhooks, pick exactly one cron per
-dispatcher, and settle the PDGM-rate posture, and PennSync is ready to go live.
+**Bottom line:** this source state is suitable for fail-closed staging validation,
+not production launch. Keep workflows and outbound/domain gates inactive until the
+hosted datastore, scheduler-auth, RLS, credential, and controlled-provider evidence
+above is complete and independently reviewed.
 
 ---
 
@@ -189,30 +205,31 @@ this repo). It does not assert what is configured in the live environment.
 integration: inbound SMS + delivery status, fax status, and voice (Call Control IVR,
 masked-bridge, call status). Verified in source:
 - **Ed25519 signature verification** (`verifyTelnyxSignature`) over the raw body, and
-  it **fails closed** — a missing `TELNYX_PUBLIC_KEY`, missing/invalid signature, or a
-  stale timestamp all return `false` → the event is rejected (no PHI delivery-state
-  mutation on an unverified event).
+  it **fails closed** — a missing configured Telnyx public key, missing/invalid
+  signature, or a stale timestamp all return `false` → the event is rejected
+  (no PHI delivery-state mutation on an unverified event).
 - **Replay guard** — `isFreshTimestamp` enforces a timestamp tolerance window.
 - **Idempotency** — status mapping de-dups by provider message/call id (per checklist
   §5), so Telnyx retries can't double-process.
 
-→ **Outstanding (platform):** set `TELNYX_PUBLIC_KEY`; point each Telnyx number's
-messaging/voice/fax webhooks at this function URL; run the good-/bad-signature smoke
-test.
+→ **Outstanding (platform):** store the Telnyx public key in the in-app
+`IntegrationSecret`; point each staging-owned Telnyx number's
+messaging/voice/fax webhooks at this function URL; run the good-/bad-signature
+smoke test without directing production numbers to staging.
 
-### Secrets — every documented secret is referenced in code
-`Deno.env.get` references confirmed for all launch-relevant secrets: `TELNYX_API_KEY`,
-`TELNYX_PUBLIC_KEY`, `TELNYX_VOICE_CONNECTION_ID` (+`TELNYX_CONNECTION_ID` alias),
-`TELNYX_MESSAGING_PROFILE_ID`, `TELNYX_FAX_CONNECTION_ID`, `TELNYX_FAX_NUMBER`,
-`INTERNAL_FN_SECRET` (13 sites), `FILE_URL_ALLOWED_HOSTS` (+`FILE_URL_STRICT`),
-`SIGNATURE_HMAC_SECRET` (keyed signature MAC), `SIGNUP_WEBHOOK_SECRET`,
-`OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `HEYGEN_API_KEY`. Telnyx creds also fall back to
-the in-app `IntegrationSecret` record when the env var is unset.
+### Current configuration boundaries
+Telnyx credentials and resource identifiers are read only from the in-app
+`IntegrationSecret` record; retired Telnyx/Twilio environment variables are not
+fallbacks. `APP_PUBLIC_URL`, `INTERNAL_FN_SECRET`, `SIGNATURE_HMAC_SECRET`, and
+`SUPER_ADMIN_EMAIL` are backend configuration/security inputs. Direct-provider
+feature keys are limited to OpenAI audio transcription, Anthropic SOAP-note
+structuring, and HeyGen training-video generation. Platform-managed LLM and
+email capabilities require no separate provider secret, and deterministic fax
+covers require none.
 
 → **Outstanding (platform):** the actual values cannot be verified from the repo — set
-them per §2.2. Note `SIGNATURE_HMAC_SECRET`: without it the signature integrity MAC
-falls back to an unkeyed `sha256` (detects corruption, **not** forgery) — set it so
-the tamper-evidence is forgery-resistant.
+them per §2.2. Signature token issuance and verification fail closed when
+`SIGNATURE_HMAC_SECRET` is missing or too short.
 
 ### RLS — 47 of 117 entities carry an in-repo block; the rest are dashboard-by-design
 - **In-repo `rls` blocks (47):** includes `Patient`, `Visit`, `CarePlan`, `Incident`,

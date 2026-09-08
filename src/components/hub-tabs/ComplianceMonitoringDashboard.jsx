@@ -1,8 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
 import { agencyQueryKey } from '@/lib/agencyRoster';
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import StatCard from "@/components/ui/stat-card";
 import { Button } from "@/components/ui/button";
@@ -32,6 +31,7 @@ import { toast } from "sonner";
 import { isAdminView } from "@/lib/roles";
 import { ALL_ROWS } from '@/lib/queryLimits';
 import { parseLocalDate, formatLocalDate } from "@/lib/dateLocal";
+import { rejectOutboundDelivery } from '@/lib/outboundDeliveryContainment';
 
 /** Calendar-day delta from local midnight today to a date-only value (negative = past). */
 function localDaysUntil(dateStr) {
@@ -46,65 +46,71 @@ export default function ComplianceMonitoringDashboard() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [selectedUsers, setSelectedUsers] = useState(new Set());
-  const _queryClient = useQueryClient();
-
-  const { data: currentUser } = useQuery({
+  const {
+    data: currentUser,
+    isPending: userPending,
+    isFetching: userFetching,
+    isFetchedAfterMount: userFetchedAfterMount,
+    isError: userError,
+  } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
 
-  const { data: allUsers = [], refetch: refetchUsers } = useQuery({
+  const {
+    data: allUsers = [],
+    refetch: refetchUsers,
+    isPending: usersPending,
+    isFetching: usersFetching,
+    isFetchedAfterMount: usersFetchedAfterMount,
+    isError: usersError,
+  } = useQuery({
     queryKey: ['allUsers', ALL_ROWS, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list(undefined, ALL_ROWS);
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     },
-    initialData: [],
-    enabled: !!currentUser,
-    refetchInterval: 30000, // Refresh every 30 seconds
+    enabled: isAdminView(currentUser),
   });
 
-  const { data: trainingAssignments = [], refetch: refetchAssignments } = useQuery({
+  const {
+    data: trainingAssignments = [],
+    refetch: refetchAssignments,
+    isPending: assignmentsPending,
+    isFetching: assignmentsFetching,
+    isFetchedAfterMount: assignmentsFetchedAfterMount,
+    isError: assignmentsError,
+  } = useQuery({
     queryKey: ['allTrainingAssignments', '-updated_date', 500],
     queryFn: () => base44.entities.TrainingAssignment.list('-updated_date', 5000),
-    initialData: [],
-    refetchInterval: 30000,
+    enabled: isAdminView(currentUser),
   });
 
-  const { data: personnelCredentials = [], refetch: refetchCredentials } = useQuery({
+  const {
+    data: personnelCredentials = [],
+    refetch: refetchCredentials,
+    isPending: credentialsPending,
+    isFetching: credentialsFetching,
+    isFetchedAfterMount: credentialsFetchedAfterMount,
+    isError: credentialsError,
+  } = useQuery({
     queryKey: ['allPersonnelCredentials'],
     queryFn: () => base44.entities.PersonnelCredential.list('-updated_date', 5000),
-    initialData: [],
-    refetchInterval: 30000,
+    enabled: isAdminView(currentUser),
   });
-
-  const { data: visits = [], refetch: refetchVisits } = useAgencyScopedQuery({
-    queryKey: ['allVisits'],
-    fetch: () => base44.entities.Visit.filter({}, '-visit_date', 5000),
-    initialData: [],
-    refetchInterval: 30000,
-  });
+  // Documentation compliance needs a server-side date-bounded aggregate.
+  // Paging the entire Visit population on a timer is operationally unsafe.
+  const visitComplianceAvailable = false;
 
   const sendNotificationMutation = useMutation({
-    mutationFn: async ({ userEmails, message, subject }) => {
-      const results = await Promise.all(
-        userEmails.map(email => 
-          base44.integrations.Core.SendEmail({
-            to: email,
-            subject: subject,
-            body: message
-          })
-        )
-      );
-      return results;
-    },
+    mutationFn: () => rejectOutboundDelivery(),
     onSuccess: (_, variables) => {
       toast.success(`Notifications sent to ${variables.userEmails.length} employee(s)`);
       setSelectedUsers(new Set());
     },
-    onError: () => {
-      toast.error("Failed to send notifications");
+    onError: (error) => {
+      toast.error(error?.message || "Outbound delivery is paused in this environment.");
     }
   });
 
@@ -167,65 +173,15 @@ export default function ComplianceMonitoringDashboard() {
       }
     });
 
-    // Check missing documentation (visits without proper notes in last 7 days)
-    const recentVisits = visits.filter(v => {
-      if (!v.visit_date) return false;
-      // Without the lower bound, future-dated scheduled visits (which have no notes
-      // yet) counted as "recent" and were flagged as incomplete documentation.
-      const daysUntil = localDaysUntil(v.visit_date);
-      if (daysUntil == null) return false;
-      const daysAgo = -daysUntil;
-      return daysAgo >= 0 && daysAgo <= 7;
-    });
-
-    const userVisitCounts = {};
-    const userIncompleteVisits = {};
-
-    recentVisits.forEach(visit => {
-      if (!userVisitCounts[visit.created_by]) {
-        userVisitCounts[visit.created_by] = 0;
-        userIncompleteVisits[visit.created_by] = 0;
-      }
-      userVisitCounts[visit.created_by]++;
-      
-      // Check if visit has minimal documentation. The Visit entity stores the
-      // narrative in `nurse_notes` (there are no `assessment`/`interventions`
-      // fields — reading those flagged every visit as 100% incomplete).
-      if (!visit.nurse_notes || visit.nurse_notes.length < 50) {
-        userIncompleteVisits[visit.created_by]++;
-      }
-    });
-
-    Object.entries(userIncompleteVisits).forEach(([userEmail, count]) => {
-      if (count > 0) {
-        const user = allUsers.find(u => u.email === userEmail);
-        if (user) {
-          const totalVisits = userVisitCounts[userEmail];
-          const percentage = Math.round((count / totalVisits) * 100);
-          
-          issues.push({
-            type: 'incomplete_documentation',
-            severity: percentage >= 50 ? 'high' : 'medium',
-            userId: user.email,
-            userName: user.full_name,
-            userRole: user.role,
-            title: 'Incomplete Visit Documentation',
-            count,
-            total: totalVisits,
-            percentage,
-            details: `${count} of ${totalVisits} recent visits (${percentage}%) have incomplete documentation`
-          });
-        }
-      }
-    });
-
     return issues;
-  }, [trainingAssignments, personnelCredentials, visits, allUsers]);
+  }, [trainingAssignments, personnelCredentials, allUsers]);
 
   // Filter, group and count (shared with the Compliance Center page).
   const { filteredIssues, groupedByUser, criticalCount, highCount, affectedUsers, overdueTraining, expiringCreds } =
     deriveComplianceIssueStats(complianceIssues, { searchTerm, categoryFilter, severityFilter });
-  const incompleteDoc = complianceIssues.filter(i => i.type === 'incomplete_documentation').length;
+  const incompleteDoc = visitComplianceAvailable
+    ? complianceIssues.filter(i => i.type === 'incomplete_documentation').length
+    : null;
 
   // Prune selections that fall out of view when filters change, so a stale
   // selected email can't reach handleNotifySelected with no matching issue data.
@@ -286,13 +242,18 @@ Compliance Management System`;
   };
 
   const handleRefreshAll = () => {
+    const refresh = Promise.all([
+      refetchUsers({ throwOnError: true }),
+      refetchAssignments({ throwOnError: true }),
+      refetchCredentials({ throwOnError: true }),
+    ]).then((results) => {
+      if (results.some((result) => result.isError || result.error)) {
+        throw new Error('One or more compliance sources failed to refresh');
+      }
+      return results;
+    });
     toast.promise(
-      Promise.all([
-        refetchUsers(),
-        refetchAssignments(),
-        refetchCredentials(),
-        refetchVisits()
-      ]),
+      refresh,
       {
         loading: 'Refreshing compliance data...',
         success: 'Data refreshed successfully',
@@ -300,6 +261,69 @@ Compliance Management System`;
       }
     );
   };
+
+  const userUnavailable = userPending || userFetching || !userFetchedAfterMount;
+  const sourcePending = usersPending
+    || usersFetching
+    || !usersFetchedAfterMount
+    || assignmentsPending
+    || assignmentsFetching
+    || !assignmentsFetchedAfterMount
+    || credentialsPending
+    || credentialsFetching
+    || !credentialsFetchedAfterMount;
+  const sourceError = userError || usersError || assignmentsError || credentialsError;
+
+  if (userError) {
+    return (
+      <Card className="border-amber-300 bg-amber-50">
+        <CardContent className="py-12 text-center text-amber-900">
+          Compliance access could not be authorized. No cached metrics are displayed.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (userUnavailable) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-slate-600">
+          Compliance data is being authorized and loaded…
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!isAdminView(currentUser)) {
+    return (
+      <div className="p-8 max-w-2xl mx-auto text-center">
+        <AlertTriangle className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold mb-2">Admin Access Required</h2>
+        <p className="text-slate-600">This dashboard is only accessible to administrators.</p>
+      </div>
+    );
+  }
+
+  if (sourceError) {
+    return (
+      <Card className="border-amber-300 bg-amber-50">
+        <CardContent className="py-12 text-center text-amber-900">
+          Compliance metrics are unavailable because one or more authorized data sources failed.
+          No empty result is being reported as compliant.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (sourcePending) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-slate-600">
+          Compliance data is being reauthorized and loaded; cached metrics are withheld.
+        </CardContent>
+      </Card>
+    );
+  }
 
   const getSeverityColor = (severity) => {
     switch (severity) {
@@ -328,20 +352,10 @@ Compliance Management System`;
     }
   };
 
-  if (!isAdminView(currentUser)) {
-    return (
-      <div className="p-8 max-w-2xl mx-auto text-center">
-        <AlertTriangle className="w-16 h-16 text-yellow-500 mx-auto mb-4" />
-        <h2 className="text-2xl font-bold mb-2">Admin Access Required</h2>
-        <p className="text-slate-600">This dashboard is only accessible to administrators.</p>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-slate-600">Real-time compliance tracking and alerts</p>
+        <p className="text-sm text-slate-600">Compliance tracking from manually refreshed authorized sources</p>
         <Button
           variant="outline"
           size="sm"
@@ -352,6 +366,15 @@ Compliance Management System`;
         </Button>
       </div>
 
+      {!visitComplianceAvailable && (
+        <Card className="border-amber-300 bg-amber-50">
+          <CardContent className="p-4 text-sm text-amber-900">
+            Visit-documentation compliance is unavailable pending a bounded, tenant-scoped aggregate
+            broker. No missing-documentation count or all-clear conclusion is inferred from absent data.
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-4 mb-6">
         <StatCard label="Critical Issues" value={criticalCount} icon={AlertTriangle} tone="red" />
@@ -359,7 +382,7 @@ Compliance Management System`;
         <StatCard label="Affected Staff" value={affectedUsers} icon={Users} tone="navy" />
         <StatCard label="Overdue Training" value={overdueTraining} icon={Clock} tone="slate" />
         <StatCard label="Expiring Creds" value={expiringCreds} icon={Award} tone="gold" />
-        <StatCard label="Incomplete Docs" value={incompleteDoc} icon={FileWarning} tone="navy" />
+        <StatCard label="Incomplete Docs" value={incompleteDoc ?? "—"} icon={FileWarning} tone="slate" />
       </div>
 
       {/* Filters and Actions */}
@@ -383,7 +406,7 @@ Compliance Management System`;
                 <SelectItem value="all">All Categories</SelectItem>
                 <SelectItem value="overdue_training">Overdue Training</SelectItem>
                 <SelectItem value="expiring_credential">Expiring Credentials</SelectItem>
-                <SelectItem value="incomplete_documentation">Incomplete Docs</SelectItem>
+                <SelectItem value="incomplete_documentation" disabled>Incomplete Docs (unavailable)</SelectItem>
               </SelectContent>
             </Select>
             <Select value={severityFilter} onValueChange={setSeverityFilter}>
@@ -423,8 +446,8 @@ Compliance Management System`;
         <Card>
           <CardContent className="py-12 text-center">
             <CheckCircle2 className="w-16 h-16 text-green-500 mx-auto mb-4" />
-            <h3 className="text-xl font-semibold text-slate-900 mb-2">All Clear!</h3>
-            <p className="text-slate-600">No compliance issues found matching your filters.</p>
+            <h3 className="text-xl font-semibold text-slate-900 mb-2">No available issues match</h3>
+            <p className="text-slate-600">No issues were found in the currently available non-Visit sources.</p>
           </CardContent>
         </Card>
       ) : (

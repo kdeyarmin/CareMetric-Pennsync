@@ -6,9 +6,25 @@
       "type": "string",
       "description": "Reference to Agency if multi-agency"
     },
+    "outcome_computation_run_id": {
+      "type": "string",
+      "description": "OutcomeComputationRun record that gates this append-only KPI generation. Consumers must require the referenced run to be published."
+    },
+    "outcome_computation_attempt_id": {
+      "type": "string",
+      "description": "Unique attempt id copied from the publication-gated run."
+    },
+    "generation_fingerprint": {
+      "type": "string",
+      "description": "SHA-256 copied from the planned generation and reconciled before the run can publish."
+    },
+    "row_content_hash": {
+      "type": "string",
+      "description": "Deterministic SHA-256 of every domain, result, and provenance field owned by computeOutcomeMeasures, excluding only Base44-injected metadata and this hash field. Consumers must recompute it before trusting a published row."
+    },
     "is_current": {
       "type": "boolean",
-      "description": "Whether this row is the current result for its agency, measure, and period. Outcome dashboards read only true; a no-denominator rerun marks a prior row false without deleting its audit history."
+      "description": "Legacy publication hint retained for stored-data compatibility. New run-scoped rows keep this false permanently; the referenced OutcomeComputationRun is the only publication gate."
     },
     "retired_reason": {
       "type": "string",
@@ -126,15 +142,9 @@
     "metric_value"
   ],
   "rls": {
-    "read": {
-      "user_condition": {
-        "role": "__service_role_only__"
-      }
-    },
-    "write": {
-      "user_condition": {
-        "role": "__service_role_only__"
-      }
-    }
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
   }
 }

@@ -2,10 +2,8 @@ import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Shield, ChevronLeft, ChevronRight, Sparkles, Users, LogOut, Search } from "lucide-react";
+import { Shield, ChevronLeft, ChevronRight, LogOut, Search } from "lucide-react";
 import { BRAND_LOGO_URL } from "@/lib/brand";
-import { base44 } from "@/api/base44Client";
-import { useQuery } from "@tanstack/react-query";
 import { userRoleLabel } from "@/lib/roles";
 
 // Active nav item: light navy tint with a gold left indicator bar.
@@ -25,25 +23,8 @@ export default function DesktopSidebar({
   collapsed, onToggleCollapse,
   currentUser, isAdmin,
   navCategories, adminItems,
-  isActive, helpSourceRoute, onLogout,
+  isActive, onLogout,
 }) {
-  const favoriteIds = (currentUser?.favorited_patients || [])
-    .map((p) => (typeof p === 'string' ? p : p?.id))
-    .filter(Boolean);
-  // Resolve display names for favorited patient IDs (schema stores strings).
-  const { data: favoritePatients = [] } = useQuery({
-    queryKey: ['sidebar-favorite-patients', favoriteIds.join(',')],
-    queryFn: async () => {
-      if (favoriteIds.length === 0) return [];
-      const rows = await base44.entities.Patient.filter({ id: { $in: favoriteIds } }, undefined, favoriteIds.length);
-      return rows || [];
-    },
-    enabled: favoriteIds.length > 0,
-    staleTime: 60_000,
-  });
-  const favoriteNameById = Object.fromEntries(
-    favoritePatients.map((p) => [p.id, `${p.first_name || ''} ${p.last_name || ''}`.trim() || p.id])
-  );
   return (
     <aside className={`hidden md:flex flex-col bg-navy-800 border-r border-navy-900 transition-all duration-300 ${collapsed ? 'w-16' : 'w-56'} print:hidden h-screen sticky top-0 flex-shrink-0`}>
       {/* Logo */}
@@ -96,32 +77,6 @@ export default function DesktopSidebar({
           </div>
         )}
 
-        {/* Favorites */}
-        {favoriteIds.length > 0 && (
-          <>
-            {!collapsed && (
-              <p className="px-3 py-1 text-xs font-semibold text-gold-600 uppercase flex items-center gap-1 mt-2">
-                <Sparkles className="w-3 h-3" /> Favorites
-              </p>
-            )}
-            {favoriteIds.map((id) => {
-              const label = favoriteNameById[id] || id;
-              return (
-                <Link
-                  key={`fav-patient-${id}`}
-                  to={createPageUrl(`PatientDetails?id=${id}`)}
-                  className="flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-slate-200 hover:bg-navy-700 hover:text-white"
-                  title={collapsed ? label : undefined}
-                >
-                  <Users className="w-4 h-4 flex-shrink-0" />
-                  {!collapsed && <span className="truncate">{label}</span>}
-                </Link>
-              );
-            })}
-            <div className="border-t border-navy-700 my-2" />
-          </>
-        )}
-
         {navCategories.map((category, catIndex) => (
           <div key={catIndex}>
             {category.category && !collapsed && (
@@ -135,7 +90,6 @@ export default function DesktopSidebar({
                 <Link
                   key={item.page}
                   to={createPageUrl(item.page)}
-                  state={item.page === 'Help' && helpSourceRoute ? { helpSourceRoute } : undefined}
                   className={navItemClasses(active)}
                   title={collapsed ? item.name : undefined}
                 >

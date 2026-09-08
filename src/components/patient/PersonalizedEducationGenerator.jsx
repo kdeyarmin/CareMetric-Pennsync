@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { isSafeExternalUrl } from "@/components/utils/security";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +17,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 import { formatAge } from "@/lib/age";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
+import { rejectOutboundDelivery } from '@/lib/outboundDeliveryContainment';
 
 export default function PersonalizedEducationGenerator({ patient, complianceData, visits }) {
   const ai = useAICall();
@@ -114,10 +115,6 @@ Format each section clearly with headers.`,
     }
   };
 
-  const handlePrint = () => {
-    window.print();
-  };
-
   const handleCopy = () => {
     const fullText = `
 PATIENT EDUCATION MATERIALS
@@ -167,40 +164,10 @@ ${educationMaterials.key_takeaways?.map(k => `• ${k}`).join('\n')}
       return;
     }
 
-    const emailContent = `
-<h2>Patient Education Materials</h2>
-<p><strong>For:</strong> ${patient.first_name} ${patient.last_name}</p>
-<p><strong>Date:</strong> ${new Date().toLocaleDateString()}</p>
-
-<h3>Condition Overview</h3>
-<p>${educationMaterials.condition_overview}</p>
-
-<h3>Medication Guide</h3>
-<p>${educationMaterials.medication_guide}</p>
-
-<h3>Self-Care Instructions</h3>
-<p>${educationMaterials.self_care_instructions}</p>
-
-<h3>⚠️ Warning Signs - Call 911 If:</h3>
-<ul>${educationMaterials.warning_signs?.map(s => `<li>${s}</li>`).join('')}</ul>
-
-<h3>Lifestyle Recommendations</h3>
-<p>${educationMaterials.lifestyle_recommendations}</p>
-
-<h3>Key Takeaways</h3>
-<ul>${educationMaterials.key_takeaways?.map(k => `<li>${k}</li>`).join('')}</ul>
-    `;
-
     try {
-      await base44.integrations.Core.SendEmail({
-        to: patient.caregiver_email || patient.email,
-        subject: `Patient Education Materials - ${patient.first_name} ${patient.last_name}`,
-        body: emailContent
-      });
-      toast.success('Education materials sent successfully!');
+      await rejectOutboundDelivery();
     } catch (error) {
-      console.error('Email error:', error);
-      toast.error('Failed to send email');
+      toast.error(error?.message || 'Outbound delivery is paused in this environment.');
     }
   };
 
@@ -256,7 +223,12 @@ ${educationMaterials.key_takeaways?.map(k => `• ${k}`).join('\n')}
             <Button size="sm" variant="outline" onClick={handleEmail} disabled={!patient.email && !patient.caregiver_email}>
               <Mail className="w-4 h-4" />
             </Button>
-            <Button size="sm" variant="outline" onClick={handlePrint}>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled
+              title="Separate print previews are unavailable until they can be revoked with workspace authority."
+            >
               <Printer className="w-4 h-4" />
             </Button>
           </div>
@@ -350,15 +322,14 @@ ${educationMaterials.key_takeaways?.map(k => `• ${k}`).join('\n')}
                         <p className="font-semibold text-sm text-slate-900">{resource.name}</p>
                         <p className="text-xs text-slate-600 mt-1">{resource.description}</p>
                       </div>
-                      {resource.link && (
-                        <a
-                          href={isSafeExternalUrl(resource.link) ? resource.link : undefined}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                      {resource.link && isSafeExternalUrl(resource.link) && (
+                        <button
+                          type="button"
+                          onClick={() => openAuthorityBoundWindow(resource.link)}
                           className="ml-2 text-blue-600 hover:text-blue-700"
                         >
                           <Badge variant="outline" className="cursor-pointer">Visit</Badge>
-                        </a>
+                        </button>
                       )}
                     </div>
                   </div>

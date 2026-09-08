@@ -1,4 +1,3 @@
-import { useLocation } from "react-router";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Stethoscope } from "lucide-react";
@@ -11,9 +10,8 @@ import PredictiveOutcomesAnalyzer from "@/components/oasis/PredictiveOutcomesAna
 
 const OASIS_CLINICAL_AI_ENABLED = false;
 
-function EnabledOASISClinicalReview() {
-  const location = useLocation();
-  const { analysisResults, pdgmData, patientName, patientId } = location.state || {};
+function EnabledOASISClinicalReview({ analysisHandoff }) {
+  const { analysisResults, pdgmData, patientName, patientId } = analysisHandoff || {};
 
   if (!analysisResults || !pdgmData) {
     return <OASISNoAnalysisCard />;
@@ -110,7 +108,7 @@ function EnabledOASISClinicalReview() {
   );
 }
 
-export default function OASISClinicalReview() {
+export default function OASISClinicalReview({ analysisHandoff }) {
   if (!OASIS_CLINICAL_AI_ENABLED) {
     return (
       <Card className="border-2 border-amber-300">
@@ -126,5 +124,5 @@ export default function OASISClinicalReview() {
       </Card>
     );
   }
-  return <EnabledOASISClinicalReview />;
+  return <EnabledOASISClinicalReview analysisHandoff={analysisHandoff} />;
 }

@@ -1,3 +1,5 @@
+import { downloadAuthorityBoundBlob } from '@/lib/downloadBlob';
+
 /**
  * downloadCsv — the browser "download UI" layer for CSV exports.
  *
@@ -20,15 +22,7 @@
 export function downloadCsv(filename, csv, { onError } = {}) {
   try {
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    return true;
+    return downloadAuthorityBoundBlob(blob, filename);
   } catch (error) {
     // Download unsupported/blocked in this environment — never throw out of the
     // caller's click handler; let the caller optionally surface the failure.

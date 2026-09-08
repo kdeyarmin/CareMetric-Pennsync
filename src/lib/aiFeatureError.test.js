@@ -9,7 +9,7 @@ test("matches each provider's 'not configured' message", () => {
   );
   assert.match(
     configNotReadyMessage(new Error("Anthropic API key not configured")),
-    /AI fax cover-page generation/,
+    /SOAP-note structuring/,
   );
   assert.match(
     configNotReadyMessage(new Error("HeyGen API key not configured")),

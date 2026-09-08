@@ -1,7 +1,54 @@
 import base44 from "@base44/vite-plugin"
 import react from '@vitejs/plugin-react'
 import { defineConfig } from 'vite'
+import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
+
+const tenantSonnerModule = fileURLToPath(new URL('./src/lib/tenantSonner.js', import.meta.url))
+const rawSonnerModule = fileURLToPath(new URL('./node_modules/sonner/dist/index.mjs', import.meta.url))
+const repositoryRoot = fileURLToPath(new URL('.', import.meta.url))
+
+function normalizeAssetRevision(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 64)
+}
+
+function gitText(args) {
+  try {
+    return execFileSync('git', args, {
+      cwd: repositoryRoot,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim()
+  } catch {
+    return ''
+  }
+}
+
+function resolveBuildAssetRevision() {
+  for (const key of ['PENNSYNC_ASSET_REVISION', 'GITHUB_SHA', 'RENDER_GIT_COMMIT']) {
+    const explicitRevision = normalizeAssetRevision(process.env[key])
+    if (explicitRevision) return explicitRevision
+  }
+
+  const commitRevision = normalizeAssetRevision(gitText(['rev-parse', '--short=12', 'HEAD']))
+  if (commitRevision) {
+    const dirty = gitText(['status', '--porcelain', '--untracked-files=normal']).length > 0
+    return dirty ? `${commitRevision}-dirty-${Date.now().toString(36)}` : commitRevision
+  }
+
+  return `build-${Date.now().toString(36)}`
+}
+
+// Base44 currently caches immutable-looking JS chunk paths for up to a week.
+// Vite's content hash alone can leave an unchanged lazy route pointing at a
+// previously cached dependency graph, so include the source/build revision in
+// every emitted filename and force each release onto a fresh asset namespace.
+const buildAssetRevision = resolveBuildAssetRevision()
 
 // The Base44 runtime delivers app secrets (VITE_BASE44_APP_ID,
 // VITE_BASE44_BACKEND_URL, ...) to /run/base44/app.env — an out-of-repo file the
@@ -29,6 +76,12 @@ export default defineConfig(({ command }) => ({
   // URLs need to be relative instead of rooted at `/`. Dev stays root-based so
   // Vite's local server and HMR keep their normal behavior.
   base: command === 'build' ? './' : '/',
+  resolve: {
+    alias: [
+      { find: 'tenant-sonner-raw', replacement: rawSonnerModule },
+      { find: /^sonner$/, replacement: tenantSonnerModule },
+    ],
+  },
   // HIPAA: strip all console.* and debugger statements from PRODUCTION builds.
   // The app logs entities/responses/transcripts in many places, and anything left
   // in the shipped bundle executes in the clinician/patient browser (devtools,
@@ -41,6 +94,9 @@ export default defineConfig(({ command }) => ({
     chunkSizeWarningLimit: 1500,
     rollupOptions: {
       output: {
+        entryFileNames: `assets/[name]-[hash]-${buildAssetRevision}.js`,
+        chunkFileNames: `assets/[name]-[hash]-${buildAssetRevision}.js`,
+        assetFileNames: `assets/[name]-[hash]-${buildAssetRevision}[extname]`,
         // Pull the heaviest leaf dependencies into their own cacheable chunks
         // so they are downloaded once and shared across the routes that use
         // them, instead of being duplicated into multiple lazy page bundles.

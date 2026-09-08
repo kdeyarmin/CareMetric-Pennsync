@@ -1,6 +1,9 @@
 import { defineConfig } from 'vitest/config';
 import { fileURLToPath } from 'node:url';
 
+const tenantSonnerModule = fileURLToPath(new URL('./src/lib/tenantSonner.js', import.meta.url));
+const rawSonnerModule = fileURLToPath(new URL('./node_modules/sonner/dist/index.mjs', import.meta.url));
+
 // Component / integration test runner (React Testing Library + jsdom).
 //
 // This is intentionally SEPARATE from the existing pure-logic unit tests, which
@@ -17,9 +20,11 @@ export default defineConfig({
     jsxImportSource: 'react',
   },
   resolve: {
-    alias: {
-      '@': fileURLToPath(new URL('./src', import.meta.url)),
-    },
+    alias: [
+      { find: '@', replacement: fileURLToPath(new URL('./src', import.meta.url)) },
+      { find: 'tenant-sonner-raw', replacement: rawSonnerModule },
+      { find: /^sonner$/, replacement: tenantSonnerModule },
+    ],
   },
   test: {
     environment: 'jsdom',

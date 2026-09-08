@@ -24,19 +24,13 @@
     "patient_id",
     "note"
   ],
+  // No live browser consumer exists. Keep patient-linked collaboration notes
+  // inaccessible until a by-patient broker can enforce immutable membership
+  // and care-team authority.
   "rls": {
-    "read": {},
-    "write": {
-      "$or": [
-        {
-          "created_by": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    }
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
   }
 }

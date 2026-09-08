@@ -2,6 +2,10 @@
   "name": "ComplianceAudit",
   "type": "object",
   "properties": {
+    "recovery_request_id": {
+      "type": "string",
+      "description": "Stable save key bound to the authenticated creator and authorized Visit for exact reconciliation after an unconfirmed create; not a unique constraint"
+    },
     "visit_id": {
       "type": "string",
       "description": "Reference to the Visit entity"
@@ -129,7 +133,7 @@
     "read": {
       "$or": [
         {
-          "nurse_email": "{{user.email}}"
+          "data.nurse_email": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -138,10 +142,34 @@
         }
       ]
     },
-    "write": {
+    "create": {
       "$or": [
         {
-          "nurse_email": "{{user.email}}"
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "data.nurse_email": "{{user.email}}"
+        },
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "data.nurse_email": "{{user.email}}"
         },
         {
           "user_condition": {

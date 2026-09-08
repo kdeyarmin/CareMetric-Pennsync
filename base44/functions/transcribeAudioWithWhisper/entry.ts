@@ -75,7 +75,7 @@ Deno.serve(async (req) => {
 
     // Log activity
     try {
-      await base44.entities.UserActivity.create({
+      await base44.asServiceRole.entities.UserActivity.create({
         user_email: user.email,
         user_name: user.full_name,
         action: "audio_transcribed",

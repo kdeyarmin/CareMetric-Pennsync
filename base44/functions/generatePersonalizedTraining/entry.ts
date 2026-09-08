@@ -53,15 +53,14 @@ Deno.serve(async (req) => {
     const targetEmail = nurse_email || user.email;
 
     // Fetch nurse performance data
-    const [recommendations, audits, activities] = await Promise.all([
+    const [recommendations, audits] = await Promise.all([
       // Fetch ALL recommendations (not just addressed:false) so the acceptance
       // rate below is real — filtering to addressed:false first made
       // `filter(r => r.addressed)` always empty, pinning the rate at 0%.
       base44.asServiceRole.entities.TrainingRecommendation.filter({
         nurse_email: targetEmail
       }, undefined, 5000),
-      base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }, undefined, 5000),
-      base44.asServiceRole.entities.UserActivity.filter({ user_email: targetEmail }, undefined, 5000)
+      base44.asServiceRole.entities.ComplianceAudit.filter({ nurse_email: targetEmail }, undefined, 5000)
     ]);
 
     // Calculate specific deficits

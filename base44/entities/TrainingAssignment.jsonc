@@ -246,7 +246,7 @@
     "read": {
       "$or": [
         {
-          "assigned_to_user_id": "{{user.email}}"
+          "data.assigned_to_user_id": "{{user.email}}"
         },
         {
           "user_condition": {
@@ -255,17 +255,12 @@
         }
       ]
     },
-    "write": {
-      "$or": [
-        {
-          "assigned_to_user_id": "{{user.email}}"
-        },
-        {
-          "user_condition": {
-            "role": "admin"
-          }
-        }
-      ]
-    }
+    // Assignment lifecycle and completion evidence are server-owned. Browser
+    // flows use selfEnrollCourse, startTrainingAssignment, and
+    // gradeTrainingAttempt, whose service-role writes derive identity, status,
+    // score, and completion timestamps from authenticated/server data.
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

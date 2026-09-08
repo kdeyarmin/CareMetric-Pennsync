@@ -8,6 +8,17 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 
 /**
  * searchPurchaseTelnyxNumbers — admin-only. Search Telnyx for available local
@@ -75,17 +86,17 @@ async function resolveTelnyxCreds(base44) {
       || list.find((r) => r && pick(r.api_key))
       || list[0]
       || null;
-  } catch (err) {
+  } catch {
     // Do NOT collapse this into "not configured". A failed read (this invocation
     // path carries no service token, entity 404, 401/403, rate limit, platform
     // blip) is a completely different problem from an unconfigured integration,
     // and reporting them identically is what sent operators chasing a credential
     // they had already entered correctly.
-    readError = (err && err.message) ? String(err.message) : 'IntegrationSecret read failed';
+    readError = 'credential_store_unavailable';
     // The catch used to be bare, so an unreadable credential row left no
     // server-side breadcrumb at all — the only signal was a misleading
     // "not configured" reply. Log it; unattended runs have nowhere else to say so.
-    console.error('resolveTelnyxCreds: could not read the Telnyx IntegrationSecret row:', readError);
+    console.error('resolveTelnyxCreds: Telnyx credential lookup failed');
   }
   const rec = record || {};
   return {
@@ -106,7 +117,7 @@ async function resolveTelnyxCreds(base44) {
 function telnyxCredsMessage(creds, what) {
   const label = what || 'credentials';
   if (creds && creds.readError) {
-    return `Could not read Telnyx ${label} — the stored-credential lookup failed (${creds.readError}). This is NOT a missing key, so re-entering it will not help. Retry; if it persists, this function is running without service-role access to IntegrationSecret.`;
+    return `Could not read Telnyx ${label} — the credential store is temporarily unavailable. This is NOT a missing-key result, so re-entering it will not help. Retry and check the function's credential-store access if it persists.`;
   }
   return `Telnyx ${label} not configured — add the API key in Admin › Telnyx (it is stored on the IntegrationSecret row; TELNYX_* environment variables are not read).`;
 }
@@ -175,16 +186,12 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
-    // Purchases can incur charges. Only Base44's protected built-in role may
-    // authorize them; account_type is a self-mutable custom User field.
-    const isAdmin = user.role === 'admin';
-    if (!isAdmin) return Response.json({ error: 'Only administrators can manage numbers.' }, { status: 403 });
-    // Fail closed: an agency_admin without an agency_name would resolve to no
-    // agency, so a fax provision would overwrite a lone tenant's outbound fax
-    // line or create an unscoped AgencySettings row that no sender ever resolves
-    // (reporting success while every send stays "not configured").
-    if (user.account_type === 'agency_admin' && !String(user.agency_name || '').trim()) {
-      return Response.json({ error: 'Forbidden: agency_name is required.' }, { status: 403 });
+    // Searches expose account inventory and purchases incur charges. The
+    // protected built-in admin role plus configured owner email is the only
+    // current authority; self-editable profile fields grant nothing.
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Only the protected platform owner can manage numbers.' }, { status: 403 });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -200,11 +207,11 @@ Deno.serve(async (req) => {
 
     const authHeaders = { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' };
 
-    const audit = (auditAction, details) =>
+    const audit = (auditAction, entityId) =>
       base44.asServiceRole.entities.UserActivity.create({
         user_email: user.email, user_name: user.full_name,
-        action: auditAction, entity_type: 'PhoneNumber',
-        details: { ...details, timestamp: new Date().toISOString() }, status: 'success',
+        action: auditAction, entity_type: 'PhoneNumber', entity_id: entityId,
+        status: 'success',
       }).catch(() => {});
 
     // Point an already-owned Telnyx number at the Programmable Fax connection
@@ -245,7 +252,7 @@ Deno.serve(async (req) => {
       if (poolRows[0]?.id && poolRows[0].twilio_phone_number_sid !== numberId) {
         await base44.asServiceRole.entities.PhoneNumber.update(poolRows[0].id, { twilio_phone_number_sid: numberId }).catch(() => {});
       }
-      await audit('fax_capacity_provisioned', { e164, telnyx_number_id: numberId, set_as_outbound_fax: setAsOutboundFax });
+      await audit('fax_capacity_provisioned', poolRows[0]?.id || null);
       return Response.json({ success: true, e164, telnyx_number_id: numberId, fax_connection_id: faxConnectionId, outbound_fax_set: setAsOutboundFax });
     }
 
@@ -371,7 +378,7 @@ Deno.serve(async (req) => {
       await base44.asServiceRole.entities.UserActivity.create({
         user_email: user.email, user_name: user.full_name,
         action: 'phone_number_purchased', entity_type: 'PhoneNumber', entity_id: row.id,
-        details: { e164, telnyx_number_id: telnyxNumberId, purpose, set_as_outbound_fax: setAsOutboundFax, campaign_assigned: campaignAssigned, warnings, timestamp: new Date().toISOString() }, status: 'success',
+        details: { purpose, set_as_outbound_fax: setAsOutboundFax, campaign_assigned: campaignAssigned }, status: 'success',
       }).catch(() => {});
       return Response.json({ success: true, e164, id: row.id, telnyx_number_id: telnyxNumberId, purpose, outbound_fax_set: setAsOutboundFax, campaign_assigned: campaignAssigned, warnings });
     }

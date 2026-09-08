@@ -22,7 +22,7 @@ export default function TemplateLibrary() {
   const [templateContent, setTemplateContent] = useState('');
   const [copied, setCopied] = useState(false);
 
-  const { data: patients } = useScopedPatients({ status: 'active', sort: null, limit: ALL_ROWS });
+  const { data: patients } = useScopedPatients({ purpose: 'roster', status: 'active', sort: null, limit: ALL_ROWS });
 
   const handleSelectTemplate = (data) => {
     setSelectedTemplateData(data);

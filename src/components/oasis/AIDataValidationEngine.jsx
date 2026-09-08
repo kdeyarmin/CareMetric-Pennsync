@@ -17,6 +17,7 @@ import {
   Shield
 } from "lucide-react";
 import { motion } from "framer-motion";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 export default function AIDataValidationEngine({
   oasisData,
@@ -344,15 +345,14 @@ For each finding, provide:
                               CMS Regulation
                             </p>
                             <p className="text-xs text-indigo-800 mb-2">{issue.cms_regulation}</p>
-                            {issue.cms_reference_link && (
-                              <a 
-                                href={isSafeExternalUrl(issue.cms_reference_link) ? issue.cms_reference_link : undefined}
-                                target="_blank" 
-                                rel="noopener noreferrer"
+                            {issue.cms_reference_link && isSafeExternalUrl(issue.cms_reference_link) && (
+                              <button
+                                type="button"
+                                onClick={() => openAuthorityBoundWindow(issue.cms_reference_link)}
                                 className="text-xs text-indigo-600 underline hover:text-indigo-700"
                               >
                                 View Official Guideline →
-                              </a>
+                              </button>
                             )}
                           </div>
                         )}
@@ -509,15 +509,14 @@ For each finding, provide:
                             CMS Regulation
                           </p>
                           <p className="text-xs text-indigo-800 mb-1">{risk.cms_regulation}</p>
-                          {risk.cms_reference_link && (
-                            <a 
-                              href={isSafeExternalUrl(risk.cms_reference_link) ? risk.cms_reference_link : undefined}
-                              target="_blank" 
-                              rel="noopener noreferrer"
+                          {risk.cms_reference_link && isSafeExternalUrl(risk.cms_reference_link) && (
+                            <button
+                              type="button"
+                              onClick={() => openAuthorityBoundWindow(risk.cms_reference_link)}
                               className="text-xs text-indigo-600 underline hover:text-indigo-700"
                             >
                               View Official CMS Guideline →
-                            </a>
+                            </button>
                           )}
                         </div>
                       )}
@@ -590,15 +589,14 @@ For each finding, provide:
                           CMS Requirement
                         </p>
                         <p className="text-xs text-indigo-800 mb-1">{exp.cms_requirement}</p>
-                        {exp.cms_reference_link && (
-                          <a 
-                            href={isSafeExternalUrl(exp.cms_reference_link) ? exp.cms_reference_link : undefined} 
-                            target="_blank" 
-                            rel="noopener noreferrer"
+                        {exp.cms_reference_link && isSafeExternalUrl(exp.cms_reference_link) && (
+                          <button
+                            type="button"
+                            onClick={() => openAuthorityBoundWindow(exp.cms_reference_link)}
                             className="text-xs text-indigo-600 underline hover:text-indigo-700"
                           >
                             View Official CMS Guideline →
-                          </a>
+                          </button>
                         )}
                       </div>
 

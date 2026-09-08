@@ -58,6 +58,8 @@ test('account and credential mutation paths use protected authorization', () => 
     ['base44/functions/saveTelnyxSecret/entry.ts', /const isSuperAdmin = isProtectedSuperAdmin\(user\)/],
     ['base44/functions/discoverTelnyxResources/entry.ts', /if \(!isProtectedSuperAdmin\(user\)\)/],
     ['base44/functions/backfillTcpaQuietHours/entry.ts', /if \(!isProtectedSuperAdmin\(user\)\)/],
+    ['base44/functions/searchPurchaseTelnyxNumbers/entry.ts', /!isProtectedSuperAdmin\(user\)/],
+    ['base44/functions/managePhoneNumberPool/entry.ts', /!isProtectedSuperAdmin\(user\)/],
   ];
 
   for (const [file, ...patterns] of expectations) {
@@ -67,10 +69,8 @@ test('account and credential mutation paths use protected authorization', () => 
   }
 });
 
-test('billable and integration-admin entry gates reject account_type-only callers', () => {
+test('remaining integration-admin entry gates reject account_type-only callers', () => {
   const roleOnlyGates = [
-    'base44/functions/searchPurchaseTelnyxNumbers/entry.ts',
-    'base44/functions/managePhoneNumberPool/entry.ts',
     'base44/functions/getTelnyxSecretStatus/entry.ts',
     'base44/functions/testTelnyxConnection/entry.ts',
     'base44/functions/checkAllIntegrations/entry.ts',
@@ -81,7 +81,14 @@ test('billable and integration-admin entry gates reject account_type-only caller
 
   for (const file of roleOnlyGates) {
     const source = read(file);
-    assert.match(source, /const isAdmin = user\??\.role === 'admin';/, file);
+    const adminPredicate = source.match(/const isAdmin = ([\s\S]*?);/);
+    assert.ok(adminPredicate, `${file} must define an isAdmin predicate`);
+    assert.match(adminPredicate[1], /user\??\.role === 'admin'/, file);
+    assert.doesNotMatch(
+      adminPredicate[1],
+      /account_type|agency_|is_manager|staff_role|is_approved/,
+      `${file} must not trust mutable admin-like claims`,
+    );
   }
 });
 

@@ -181,30 +181,25 @@
     "patient_id",
     "visit_type"
   ],
-  // PHI read-scoping: with no read rule, ANY authenticated user could bulk-
-  // .list() every row (an assessment row carries patient answers/scores).
-  // Reads retain the existing owner/admin policy for compatibility; this is
-  // not tenant-bound and must be replaced/proved before OASIS workflows return.
+  // Response-bearing assessment reads are service-role-only. The former
+  // owner/admin rule was not tenant-bound, so a platform admin could read every
+  // agency's assessment rows and owner identity alone could not prove current
+  // chart access. The reviewed browser consumers remain hard-paused; any future
+  // UI must use the finite readAuthorizedOASISAssessments broker after hosted
+  // two-agency proof rather than reopening direct entity access.
   "rls": {
-    "read": {
-      "$or": [
-        { "created_by": "{{user.email}}" },
-        { "user_condition": { "role": "admin" } }
-      ]
-    },
+    "read": false,
     // Response-bearing assessment writes are service-role-only. Owner/admin
     // direct writes bypassed the rollout flag, provenance validation, duplicate
     // rejection, and tenant/patient authorization. saveOasisResponses is also
     // hard-paused until a server-owned tenant + chart-access broker is proved.
     //
-    // NOTE — hosted validation is still OUTSTANDING. This file is the declared
-    // contract; whether the hosted Base44 app enforces it has not been proven
-    // in this environment. See docs/oasis/OASIS_RESPONSE_SCHEMA_MIGRATION.md
-    // ("Hosted schema / RLS status") — v2 entry stays disabled until it is.
-    "write": {
-      "user_condition": {
-        "role": "__service_role_only__"
-      }
-    }
+    // Base44's hosted schema uses operation-specific rules. The legacy
+    // `write` key is accepted by the CLI but does not protect create requests.
+    // False still allows trusted backend service-role access while denying
+    // every direct browser/API mutation.
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

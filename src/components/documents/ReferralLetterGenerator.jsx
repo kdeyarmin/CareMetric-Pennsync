@@ -12,6 +12,7 @@ import { Loader2, FileText, Sparkles } from "lucide-react";
 import { todayEastern } from "../utils/timezone";
 import SmartNotesContextPanel from "./SmartNotesContextPanel";
 import DocumentDraftManager from "./DocumentDraftManager";
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 
 export default function ReferralLetterGenerator({ patientId, patient }) {
   const [referralDate, setReferralDate] = useState(todayEastern());
@@ -23,11 +24,12 @@ export default function ReferralLetterGenerator({ patientId, patient }) {
   const ai = useAICall();
   const [additionalContext, setAdditionalContext] = useState("");
 
-  const { data: visits = [] } = useQuery({
-    queryKey: ['patientVisits', patientId, 5],
-    queryFn: () => base44.entities.Visit.filter({ patient_id: patientId }, '-visit_date', 5),
+  const { data: visits = [] } = useAuthorizedVisits({
+    patientId,
+    purpose: 'documentation',
+    sort: '-visit_date',
+    limit: 5,
     enabled: !!patientId,
-    initialData: [],
   });
 
   const { data: currentUser } = useQuery({

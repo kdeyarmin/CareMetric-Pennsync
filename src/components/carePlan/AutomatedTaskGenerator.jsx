@@ -1,5 +1,4 @@
-import { useState } from "react";
-import { base44 } from "@/api/base44Client";
+import { useEffect, useRef, useState } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,28 +9,40 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   ClipboardList,
   Loader2,
-  CheckCircle2,
   Calendar,
   AlertCircle,
   Zap,
   Target
 } from "lucide-react";
-import { format, addDays } from "date-fns";
 import { toast } from 'sonner';
+
+const TASK_CREATION_BLOCKER =
+  "AI-generated care-plan task creation is paused pending an atomic, idempotent, patient-authorized broker. No tasks have been created.";
 
 export default function AutomatedTaskGenerator({
   patient,
   carePlans = [],
-  onTasksGenerated
 }) {
   const ai = useAICall();
   const [generatedTasks, setGeneratedTasks] = useState([]);
   const [selectedTasks, setSelectedTasks] = useState({});
-  const [isCreating, setIsCreating] = useState(false);
+  const generationRequestRef = useRef(0);
+
+  useEffect(() => {
+    // Keep recommendations bound to the patient that produced them and
+    // invalidate any response still in flight for the previous patient.
+    generationRequestRef.current += 1;
+    setGeneratedTasks([]);
+    setSelectedTasks({});
+    return () => {
+      generationRequestRef.current += 1;
+    };
+  }, [patient?.id]);
 
   const generateTasks = async () => {
     if (!patient || carePlans.length === 0) return;
 
+    const requestId = ++generationRequestRef.current;
     try {
       const activeCarePlans = carePlans.filter(cp => cp.status === 'active');
 
@@ -100,6 +111,7 @@ Return JSON:`,
         }
       });
 
+      if (generationRequestRef.current !== requestId) return;
       setGeneratedTasks(result.tasks || []);
       
       // Auto-select high priority tasks
@@ -112,6 +124,7 @@ Return JSON:`,
       setSelectedTasks(autoSelected);
 
     } catch (error) {
+      if (generationRequestRef.current !== requestId) return;
       console.error("Task generation error:", error);
       toast.error("Failed to generate tasks. Please try again.");
     }
@@ -130,62 +143,6 @@ Return JSON:`,
       allSelected[idx] = true;
     });
     setSelectedTasks(allSelected);
-  };
-
-  const createSelectedTasks = async () => {
-    if (!patient) return;
-
-    const selected = generatedTasks.filter((_, idx) => selectedTasks[idx]);
-    if (selected.length === 0) {
-      toast.error("Please select at least one task to create.");
-      return;
-    }
-
-    setIsCreating(true);
-    try {
-      // Get current user
-      const currentUser = await base44.auth.me();
-      
-      const createdTasks = [];
-      for (const task of selected) {
-        // `?? 7`, not `|| 7`: the schema's own due_timeframe enum starts at
-        // "today", whose suggested_due_days is 0 — and `|| 7` pushed exactly
-        // those urgent tasks a week out while the card above still read
-        // "Due: 0 day(s) from now". Clamp negatives so an out-of-range model
-        // answer can't back-date a task.
-        const suggestedDays = Number(task.suggested_due_days);
-        const dueInDays = Number.isFinite(suggestedDays) ? Math.max(0, suggestedDays) : 7;
-        const dueDate = format(addDays(new Date(), dueInDays), 'yyyy-MM-dd');
-        
-        const newTask = await base44.entities.Task.create({
-          patient_id: patient.id,
-          title: task.title,
-          description: task.description,
-          type: task.type,
-          priority: task.priority,
-          status: 'pending',
-          due_date: dueDate,
-          due_timeframe: task.due_timeframe,
-          source: 'care_plan',
-          ai_reason: task.rationale,
-          assigned_to: currentUser?.email
-        });
-        createdTasks.push(newTask);
-      }
-
-      if (onTasksGenerated) {
-        onTasksGenerated(createdTasks);
-      }
-
-      toast.success(`Successfully created ${createdTasks.length} task(s)!`);
-      setGeneratedTasks([]);
-      setSelectedTasks({});
-
-    } catch (error) {
-      console.error("Task creation error:", error);
-      toast.error("Failed to create tasks. Please try again.");
-    }
-    setIsCreating(false);
   };
 
   const getPriorityColor = (priority) => {
@@ -225,8 +182,8 @@ Return JSON:`,
           <div className="space-y-3">
             <Alert className="bg-indigo-50 border-indigo-200">
               <AlertDescription className="text-sm text-indigo-900">
-                Automatically generate nurse tasks based on {activeCarePlansCount} active care plan(s). 
-                Tasks will be prioritized and scheduled based on care plan goals.
+                Generate nurse-task recommendations from {activeCarePlansCount} active care plan(s).
+                Recommendations are review-only while task creation is paused.
               </AlertDescription>
             </Alert>
             <Button
@@ -248,6 +205,12 @@ Return JSON:`,
           </div>
         ) : (
           <div className="space-y-4">
+            <Alert className="border-amber-300 bg-amber-50">
+              <AlertCircle className="h-4 w-4 text-amber-700" />
+              <AlertDescription className="text-amber-900">
+                {TASK_CREATION_BLOCKER}
+              </AlertDescription>
+            </Alert>
             {/* Selection Controls */}
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">
@@ -346,14 +309,9 @@ Return JSON:`,
             <div className="flex gap-2 pt-4 border-t">
               <Button
                 className="flex-1 bg-indigo-600 hover:bg-indigo-700"
-                onClick={createSelectedTasks}
-                disabled={selectedCount === 0 || isCreating}
+                disabled
               >
-                {isCreating ? (
-                  <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating...</>
-                ) : (
-                  <><CheckCircle2 className="w-4 h-4 mr-2" /> Create {selectedCount} Task(s)</>
-                )}
+                <AlertCircle className="mr-2 h-4 w-4" /> Task creation paused ({selectedCount} selected)
               </Button>
               <Button
                 variant="outline"

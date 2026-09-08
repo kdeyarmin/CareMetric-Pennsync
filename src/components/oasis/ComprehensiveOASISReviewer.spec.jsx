@@ -4,10 +4,11 @@ import userEvent from '@testing-library/user-event';
 
 // Controllable LLM stub — each test decides when/what each call resolves, so we
 // can exercise auto-run gating, loading, error, and raced completions.
-const { invokeLLM, actionItemFilter, actionItemBulkCreate } = vi.hoisted(() => ({
+const { invokeLLM, actionItemFilter, actionItemBulkCreate, openAuthorityBoundWindow } = vi.hoisted(() => ({
   invokeLLM: vi.fn(),
   actionItemFilter: vi.fn(),
   actionItemBulkCreate: vi.fn(),
+  openAuthorityBoundWindow: vi.fn(),
 }));
 vi.mock('@/api/base44Client', () => ({
   base44: {
@@ -20,6 +21,10 @@ vi.mock('@/api/base44Client', () => ({
 
 vi.mock('sonner', () => ({
   toast: { error: vi.fn(), success: vi.fn(), info: vi.fn() },
+}));
+
+vi.mock('@/lib/authorityBoundWindows', () => ({
+  openAuthorityBoundWindow,
 }));
 
 import ComprehensiveOASISReviewer from '@/components/oasis/ComprehensiveOASISReviewer';
@@ -65,6 +70,7 @@ beforeEach(() => {
   actionItemBulkCreate.mockReset();
   actionItemFilter.mockResolvedValue([]);
   actionItemBulkCreate.mockResolvedValue([]);
+  openAuthorityBoundWindow.mockReset();
   toast.error.mockReset?.();
   toast.success.mockReset?.();
   toast.info.mockReset?.();
@@ -223,10 +229,19 @@ describe('ComprehensiveOASISReviewer', () => {
       }));
     });
 
-    const links = screen.getAllByRole('link', { name: /View Official CMS Guideline/i });
-    expect(links).toHaveLength(2);
-    expect(links[0]).toHaveAttribute('href', 'https://www.ecfr.gov/current/title-42/section-484.55');
-    expect(links[1]).toHaveAttribute('href', 'https://www.cms.gov/files/document/oasis-e-manual.pdf');
+    const buttons = screen.getAllByRole('button', { name: /View Official CMS Guideline/i });
+    expect(buttons).toHaveLength(2);
+    const user = userEvent.setup();
+    await user.click(buttons[0]);
+    await user.click(buttons[1]);
+    expect(openAuthorityBoundWindow).toHaveBeenNthCalledWith(
+      1,
+      'https://www.ecfr.gov/current/title-42/section-484.55',
+    );
+    expect(openAuthorityBoundWindow).toHaveBeenNthCalledWith(
+      2,
+      'https://www.cms.gov/files/document/oasis-e-manual.pdf',
+    );
   });
 
   it('restores a persisted review without a billed LLM call and shows when it ran', async () => {

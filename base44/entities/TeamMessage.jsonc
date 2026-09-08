@@ -82,5 +82,13 @@
     "sender_email",
     "body",
     "channel"
-  ]
+  ],
+  // No live client workflow uses this parallel team-message model. Keep it
+  // service-role-only until all participants are server-validated.
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

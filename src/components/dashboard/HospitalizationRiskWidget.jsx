@@ -1,8 +1,6 @@
-import React, { useState, useCallback, useRef } from "react";
-import { useQueryClient } from "@tanstack/react-query";
-import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
+import React, { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { useScopedPatients } from '@/hooks/useScopedPatients';
+import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { invokeLLM } from "@/lib/invokeLLM";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,34 +14,82 @@ import { Link } from "react-router";
 import { createPageUrl } from "@/utils";
 import { toast } from 'sonner';
 import { formatAge } from "@/lib/age";
-import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
+import { sameAuthorizedTenantScope } from '@/lib/authorizedTenantScope';
 
 export default function HospitalizationRiskWidget({ autoAnalyze = false }) {
-  const queryClient = useQueryClient();
   const [analyzing, setAnalyzing] = useState(false);
   const [riskScores, setRiskScores] = useState(null);
   const [lastAnalyzed, setLastAnalyzed] = useState(null);
   // Guards against a second concurrent run (the analysis spans many LLM calls and
-  // writes PatientAlert rows; riskScores stays null throughout, so the effect's
+  // riskScores stays null throughout, so the effect's
   // !riskScores guard alone can't prevent re-entrant runs on query invalidation).
-  const runningRef = useRef(false);
+  const runningRef = useRef(null);
+  const analysisSequenceRef = useRef(0);
 
-  const { data: patients = [] } = useScopedPatients({ status: 'active', sort: '-updated_date', limit: 100 });
-
-  const { data: recentVisits = [] } = useAgencyScopedQuery({
-    queryKey: ['allRecentVisits'],
-    fetch: () => base44.entities.Visit.filter({ status: 'completed' }, '-visit_date', 500),
-    initialData: [],
+  const patientQuery = useScopedPatients({ purpose: 'risk_analysis', status: 'active', sort: '-updated_date', limit: 100 });
+  const visitQuery = useAuthorizedVisits({
+    purpose: 'hospitalization_risk',
+    status: 'completed',
+    sort: '-visit_date',
+    limit: 500,
   });
+  const tenantScopesMismatch = patientQuery.isSuccess
+    && visitQuery.isSuccess
+    && !sameAuthorizedTenantScope(patientQuery.tenantScope, visitQuery.tenantScope);
+  const analysisSnapshot = useMemo(() => (
+    patientQuery.isSuccess
+      && visitQuery.isSuccess
+      && !tenantScopesMismatch
+      ? {
+        patients: patientQuery.data,
+        visits: visitQuery.data,
+        patientTenantScope: patientQuery.tenantScope,
+        visitTenantScope: visitQuery.tenantScope,
+      }
+      : null
+  ), [
+    patientQuery.data,
+    patientQuery.isSuccess,
+    patientQuery.tenantScope,
+    tenantScopesMismatch,
+    visitQuery.data,
+    visitQuery.isSuccess,
+    visitQuery.tenantScope,
+  ]);
+  const analysisSnapshotRef = useRef(analysisSnapshot);
+  analysisSnapshotRef.current = analysisSnapshot;
+  const patients = analysisSnapshot?.patients || [];
+
+  // Risk results include patient names and Visit-derived clinical conclusions.
+  // Hide and discard them as soon as either authority starts a fresh recheck or
+  // settles denied; a late LLM response is rejected by the snapshot identity.
+  useEffect(() => {
+    if (analysisSnapshot) return;
+    analysisSequenceRef.current += 1;
+    runningRef.current = null;
+    setAnalyzing(false);
+    setRiskScores(null);
+    setLastAnalyzed(null);
+  }, [analysisSnapshot]);
 
   const analyzeHospitalizationRisk = useCallback(async () => {
-    if (runningRef.current) return; // already analyzing — don't start a duplicate run
-    runningRef.current = true;
+    const authorizedSnapshot = analysisSnapshotRef.current;
+    if (!authorizedSnapshot) {
+      toast.error('Patient and visit access must be verified before risk analysis.');
+      return;
+    }
+    if (runningRef.current !== null) return; // already analyzing — don't start a duplicate run
+    const analysisSequence = ++analysisSequenceRef.current;
+    runningRef.current = analysisSequence;
+    const isCurrentRun = () => (
+      analysisSnapshotRef.current === authorizedSnapshot
+      && analysisSequenceRef.current === analysisSequence
+    );
     setAnalyzing(true);
     try {
-      const analysisPromises = patients.map(async (patient) => {
+      const analysisPromises = authorizedSnapshot.patients.map(async (patient) => {
         // Get patient-specific data
-        const patientVisits = recentVisits
+        const patientVisits = authorizedSnapshot.visits
           .filter(v => v.patient_id === patient.id)
           .slice(0, 10);
         
@@ -172,6 +218,7 @@ Return detailed risk assessment:`,
       });
 
       const results = await Promise.all(analysisPromises);
+      if (!isCurrentRun()) return;
       
       // Sort by risk score
       const sortedResults = results
@@ -181,60 +228,22 @@ Return detailed risk assessment:`,
       setRiskScores(sortedResults);
       setLastAnalyzed(new Date());
 
-      // Create alerts for high/critical risk patients
-      const highRiskPatients = sortedResults.filter(r => 
-        r.risk_level === 'high' || r.risk_level === 'critical'
-      );
-
-      for (const patientRisk of highRiskPatients) {
-        const alertData = {
-          patient_id: patientRisk.patient_id,
-          alert_type: 'readmission_risk',
-          severity: patientRisk.risk_level === 'critical' ? 'critical' : 'high',
-          title: `High Hospitalization Risk: ${patientRisk.patient_name}`,
-          message: `Risk Score: ${patientRisk.risk_score}/100 - ${patientRisk.trending_direction}\n\nKey Factors:\n${patientRisk.risk_factors?.slice(0, 3).join('\n')}`,
-          recommended_actions: patientRisk.immediate_actions?.length
-            ? patientRisk.immediate_actions
-            : ['Review patient immediately'],
-          status: 'active'
-        };
-        try {
-          // Idempotent: update the patient's existing active readmission_risk
-          // alert rather than inserting a duplicate on every re-analysis.
-          const existing = await base44.entities.PatientAlert.filter({
-            patient_id: patientRisk.patient_id,
-            alert_type: 'readmission_risk',
-            status: 'active'
-          }, undefined, PATIENT_HISTORY_ROWS);
-          if (existing?.length > 0) {
-            await base44.entities.PatientAlert.update(existing[0].id, alertData);
-          } else {
-            await base44.entities.PatientAlert.create(alertData);
-          }
-          queryClient.invalidateQueries({ queryKey: ['patientAlerts'] });
-          queryClient.invalidateQueries({ queryKey: ['patientRiskAlerts'] });
-          queryClient.invalidateQueries({ queryKey: ['allPatientRiskAlerts'] });
-          queryClient.invalidateQueries({ queryKey: ['patientActiveAlerts'] });
-          queryClient.invalidateQueries({ queryKey: ['patientContext', patientRisk.patient_id] });
-        } catch (err) {
-          console.error('Failed to upsert hospitalization risk alert:', err);
-        }
-      }
-
     } catch (error) {
       console.error('Risk analysis error:', error);
-      toast.error('Failed to analyze hospitalization risk');
+      if (isCurrentRun()) toast.error('Failed to analyze hospitalization risk');
     } finally {
-      setAnalyzing(false);
-      runningRef.current = false;
+      if (runningRef.current === analysisSequence) {
+        setAnalyzing(false);
+        runningRef.current = null;
+      }
     }
-  }, [patients, recentVisits, queryClient]);
+  }, []);
 
   React.useEffect(() => {
-    if (autoAnalyze && patients.length > 0 && !riskScores) {
+    if (autoAnalyze && analysisSnapshot && patients.length > 0 && !riskScores) {
       analyzeHospitalizationRisk();
     }
-  }, [autoAnalyze, patients.length, riskScores, analyzeHospitalizationRisk]);
+  }, [analysisSnapshot, autoAnalyze, patients.length, riskScores, analyzeHospitalizationRisk]);
 
   const getRiskColor = (level) => {
     switch(level) {
@@ -246,8 +255,9 @@ Return detailed risk assessment:`,
     }
   };
 
-  const highRiskCount = riskScores?.filter(r => r.risk_level === 'high' || r.risk_level === 'critical').length || 0;
-  const criticalRiskCount = riskScores?.filter(r => r.risk_level === 'critical').length || 0;
+  const visibleRiskScores = analysisSnapshot ? riskScores : null;
+  const highRiskCount = visibleRiskScores?.filter(r => r.risk_level === 'high' || r.risk_level === 'critical').length || 0;
+  const criticalRiskCount = visibleRiskScores?.filter(r => r.risk_level === 'critical').length || 0;
 
   return (
     <Card className={`${criticalRiskCount > 0 ? 'border-red-300 bg-red-50' : highRiskCount > 0 ? 'border-orange-300 bg-orange-50' : ''}`}>
@@ -264,7 +274,7 @@ Return detailed risk assessment:`,
           </CardTitle>
           <Button
             onClick={analyzeHospitalizationRisk}
-            disabled={analyzing || patients.length === 0}
+            disabled={analyzing || !analysisSnapshot || patients.length === 0}
             size="sm"
             variant="outline"
             className="min-h-[44px]"
@@ -275,7 +285,24 @@ Return detailed risk assessment:`,
         </div>
       </CardHeader>
       <CardContent>
-        {!riskScores && !analyzing && (
+        <Alert className="mb-4 border-slate-300 bg-slate-50">
+          <AlertCircle className="h-4 w-4 text-slate-600" />
+          <AlertDescription className="text-slate-800">
+            Risk analysis is display-only. Persisting Patient alerts is unavailable until an authorized atomic alert broker is reviewed.
+          </AlertDescription>
+        </Alert>
+        {!analysisSnapshot && (
+          <Alert className="border-amber-300 bg-amber-50" role="status">
+            <AlertTriangle className="h-4 w-4 text-amber-700" />
+            <AlertDescription className="text-amber-950">
+              {visitQuery.isError || patientQuery.isError || tenantScopesMismatch
+                ? 'Hospitalization risk analysis is unavailable because matching Patient and Visit access could not be verified. Platform owners remain blocked until a reviewed agency selector is available.'
+                : 'Reverifying matching Patient and Visit tenant access before hospitalization risk analysis…'}
+            </AlertDescription>
+          </Alert>
+        )}
+
+        {analysisSnapshot && !visibleRiskScores && !analyzing && (
           <div className="text-center py-8">
             <Activity className="w-12 h-12 text-slate-300 mx-auto mb-3" />
             <p className="text-slate-600 mb-4">Click "Analyze" to assess hospitalization risk for all active patients</p>
@@ -291,7 +318,7 @@ Return detailed risk assessment:`,
           </div>
         )}
 
-        {riskScores && (
+        {visibleRiskScores && (
           <div className="space-y-4">
             {/* Summary Stats */}
             <div className="grid grid-cols-4 gap-2">
@@ -301,19 +328,19 @@ Return detailed risk assessment:`,
               </div>
               <div className="text-center p-3 bg-orange-50 rounded-lg border border-orange-200">
                 <div className="text-2xl font-bold text-orange-600">
-                  {riskScores.filter(r => r.risk_level === 'high').length}
+                  {visibleRiskScores.filter(r => r.risk_level === 'high').length}
                 </div>
                 <div className="text-xs text-orange-700">High</div>
               </div>
               <div className="text-center p-3 bg-yellow-50 rounded-lg border border-yellow-200">
                 <div className="text-2xl font-bold text-yellow-600">
-                  {riskScores.filter(r => r.risk_level === 'moderate').length}
+                  {visibleRiskScores.filter(r => r.risk_level === 'moderate').length}
                 </div>
                 <div className="text-xs text-yellow-700">Moderate</div>
               </div>
               <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
                 <div className="text-2xl font-bold text-green-600">
-                  {riskScores.filter(r => r.risk_level === 'low').length}
+                  {visibleRiskScores.filter(r => r.risk_level === 'low').length}
                 </div>
                 <div className="text-xs text-green-700">Low</div>
               </div>
@@ -327,7 +354,7 @@ Return detailed risk assessment:`,
                   <span className="font-semibold text-sm">High-Risk Patients Requiring Attention</span>
                 </div>
                 
-                {riskScores
+                {visibleRiskScores
                   .filter(r => r.risk_level === 'critical' || r.risk_level === 'high')
                   .slice(0, 5)
                   .map((risk, idx) => (
@@ -394,7 +421,7 @@ Return detailed risk assessment:`,
                     </Link>
                   ))}
 
-                {riskScores.filter(r => r.risk_level === 'critical' || r.risk_level === 'high').length > 5 && (
+                {visibleRiskScores.filter(r => r.risk_level === 'critical' || r.risk_level === 'high').length > 5 && (
                   <Button
                     asChild
                     variant="outline"
@@ -410,7 +437,7 @@ Return detailed risk assessment:`,
             )}
 
             {/* All Low Risk */}
-            {highRiskCount === 0 && riskScores.length > 0 && (
+            {highRiskCount === 0 && visibleRiskScores.length > 0 && (
               <Alert className="bg-green-50 border-green-300">
                 <CheckCircle2 className="w-4 h-4 text-green-600" />
                 <AlertDescription className="text-green-900">
@@ -423,7 +450,7 @@ Return detailed risk assessment:`,
             {/* Last Analyzed */}
             {lastAnalyzed && (
               <div className="text-xs text-slate-500 text-center pt-2 border-t">
-                Last analyzed: {lastAnalyzed.toLocaleTimeString()} • {riskScores.length} patients assessed
+                Last analyzed: {lastAnalyzed.toLocaleTimeString()} • {visibleRiskScores.length} patients assessed
               </div>
             )}
           </div>

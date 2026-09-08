@@ -88,5 +88,11 @@
     "outcome_date",
     "outcome_type",
     "outcome_category"
-  ]
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

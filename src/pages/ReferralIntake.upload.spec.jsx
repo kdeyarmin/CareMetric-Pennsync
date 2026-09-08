@@ -21,6 +21,18 @@ vi.mock('@/lib/invokeLLM', () => ({
   invokeLLMWithFile: (...args) => invokeLLM(...args),
 }));
 
+vi.mock('@/lib/AuthContext', () => ({
+  useAuth: () => ({ tenantContext: { agency_id: 'agency-a' } }),
+}));
+
+vi.mock('@/functions/manageAuthorizedReferral', () => ({
+  createAuthorizedReferral: vi.fn(async () => ({ id: 'referral-a', agency_id: 'agency-a', version: 1 })),
+  deleteAuthorizedReferral: vi.fn(),
+  getAuthorizedReferral: vi.fn(),
+  listAuthorizedReferrals: vi.fn(async () => ({ referrals: [] })),
+  updateAuthorizedReferral: vi.fn(),
+}));
+
 vi.mock('@/api/base44Client', async () => {
   const { makeBase44Stub } = await import('@/test/testUtils');
   const stub = makeBase44Stub({ auth: { me: async () => ({ email: 'intake@x.com', role: 'admin' }) } });

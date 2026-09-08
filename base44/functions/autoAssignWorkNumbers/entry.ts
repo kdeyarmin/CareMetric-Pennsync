@@ -37,9 +37,20 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 );
 // <<<END SHARED HELPER: requireActiveUser>>>
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 
 /**
- * autoAssignWorkNumbers — admin-only, one-click bulk provisioning. Gives every
+ * autoAssignWorkNumbers — protected-owner-only bulk provisioning. Gives every
  * user who doesn't yet have a personal voice/SMS work number the next available
  * number from the pool, so an admin never has to assign them one at a time.
  *
@@ -78,16 +89,11 @@ Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
-    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
-    // Same admin surface as managePhoneNumberPool / the isAdminLike frontend
-    // gate — an agency_admin can reach the panel, so the backend must accept them.
-    const isAdmin =
-      user.role === 'admin' ||
-      user.account_type === 'super_admin' ||
-      user.account_type === 'agency_admin';
-    if (!isAdmin) {
-      return Response.json({ error: 'Only administrators can provision work numbers' }, { status: 403 });
+    if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    if (user.disabled === true || user.is_service === true || user.is_verified === false
+      || !isProtectedSuperAdmin(user)) {
+      return Response.json({ error: 'Only the protected platform owner can provision work numbers' }, { status: 403 });
     }
 
     const body = await req.json().catch(() => ({}));
@@ -116,21 +122,9 @@ Deno.serve(async (req) => {
       if (norm) inUse.add(norm);
     }
 
-    // Agency-scoped admins (agency_admin or role:admin with agency) may only
-    // auto-assign within their own agency.
-    const isAgencyScoped = user.account_type !== 'super_admin'
-      && user.agency_name
-      && (user.account_type === 'agency_admin' || user.role === 'admin');
-    // Only agency_admin accounts require agency_name. A bare role:admin with no
-    // agency is the platform-wide facility admin and may assign across tenants.
-    if (user.account_type === 'agency_admin' && !user.agency_name) {
-      return Response.json({ error: 'Forbidden: agency_name is required to auto-assign work numbers.' }, { status: 403 });
-    }
-
     // Candidate users: those missing a work number (optionally limited to `emails`).
     const candidates = allUsers.filter((u) => {
       if (!isBlank(u.work_phone_number)) return false;
-      if (isAgencyScoped && u.agency_name !== user.agency_name) return false;
       if (onlyEmails && !onlyEmails.includes(String(u.email || '').trim().toLowerCase())) return false;
       return true;
     });

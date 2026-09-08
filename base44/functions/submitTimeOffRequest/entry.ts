@@ -1,5 +1,26 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
+
 // <<<BEGIN SHARED HELPER: brandedEmail — generated, edit base44/_shared/backendHelpers.mjs>>>
 const BRAND_EMAIL = {
   navy: '#213a76', navyDeep: '#1c2f5e', gold: '#c7901f',
@@ -251,6 +272,8 @@ Deno.serve(async (req) => {
       coverage: String(coverage || '').slice(0, 2000),
       status: 'pending',
     });
+    let email = false;
+    let deliveryPaused = false;
 
     // Notify the approver(s) — a designated manager directly, otherwise admins
     // so unassigned requests still surface. Best-effort: never fail the request.
@@ -270,6 +293,7 @@ Deno.serve(async (req) => {
           recipients = recipients.filter((u) => u.account_type === 'super_admin');
         }
       }
+      deliveryPaused = recipients.length > 0 && !outboundDeliveryReleased();
       const requesterName = user.full_name || user.email;
       const prettyType = request_type.replace(/_/g, ' ');
       const summary = `${total} day(s) of ${prettyType} (${start_date} → ${end_date})`;
@@ -287,40 +311,44 @@ Deno.serve(async (req) => {
           })
         )
       );
-      // Email the approver(s) in addition to the in-app notification.
-      const timeOffBody = renderBrandedEmail({
-        preheader: `${requesterName} has requested time off and needs your review.`,
-        eyebrow: 'Time-off request',
-        title: `New time-off request from ${requesterName}`,
-        intro: `${requesterName} has requested time off and needs your review.`,
-        sections: [
-          {
-            rows: [
-              ['Type', prettyType],
-              ['Dates', `${start_date} → ${end_date}`],
-              ['Business days', String(total)],
-              ...(reason ? [['Reason', reason]] : []),
-              ...(coverage ? [['Coverage', coverage]] : []),
-            ],
-          },
-          { note: 'Review it in PennSync under Time Off → Approvals.' },
-        ],
-      });
-      await Promise.all(
-        recipients.map((r) =>
-          base44.asServiceRole.integrations.Core.SendEmail({
-            to: r.email,
-            from_name: 'PennSync by CareMetric',
-            subject: `Time-off request from ${requesterName}`,
-            body: timeOffBody,
-          }).catch(() => null)
-        )
-      );
+      // Email the approver(s) in addition to the in-app notification, unless
+      // outbound human delivery is paused for this environment.
+      if (!deliveryPaused) {
+        const timeOffBody = renderBrandedEmail({
+          preheader: `${requesterName} has requested time off and needs your review.`,
+          eyebrow: 'Time-off request',
+          title: `New time-off request from ${requesterName}`,
+          intro: `${requesterName} has requested time off and needs your review.`,
+          sections: [
+            {
+              rows: [
+                ['Type', prettyType],
+                ['Dates', `${start_date} → ${end_date}`],
+                ['Business days', String(total)],
+                ...(reason ? [['Reason', reason]] : []),
+                ...(coverage ? [['Coverage', coverage]] : []),
+              ],
+            },
+            { note: 'Review it in PennSync under Time Off → Approvals.' },
+          ],
+        });
+        const deliveryResults = await Promise.all(
+          recipients.map((r) =>
+            base44.asServiceRole.integrations.Core.SendEmail({
+              to: r.email,
+              from_name: 'PennSync by CareMetric',
+              subject: `Time-off request from ${requesterName}`,
+              body: timeOffBody,
+            }).then(() => true).catch(() => false)
+          )
+        );
+        email = deliveryResults.some(Boolean);
+      }
     } catch (_notifyError) {
       // Notifications/emails are best-effort; the dashboard remains the source of truth.
     }
 
-    return Response.json({ success: true, request: created });
+    return Response.json({ success: true, request: created, email, delivery_paused: deliveryPaused });
   } catch (error) {
     console.error('submitTimeOffRequest failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });

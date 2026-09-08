@@ -121,5 +121,13 @@
     "category",
     "description",
     "severity"
-  ]
+  ],
+  // Clinicians read this shared rule library while drafting/reviewing notes.
+  // Only the protected Compliance Center seeder writes it.
+  "rls": {
+    "read": true,
+    "create": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": false
+  }
 }

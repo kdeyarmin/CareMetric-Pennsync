@@ -1,5 +1,16 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: protectedUserAuthz — generated, edit base44/_shared/backendHelpers.mjs>>>
+const normalizeProtectedEmail = (value) => String(value || '').trim().toLowerCase();
+const isProtectedAdmin = (user) => !!user && user.role === 'admin';
+function isProtectedSuperAdmin(user) {
+  const configuredEmail = normalizeProtectedEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  return !!configuredEmail
+    && isProtectedAdmin(user)
+    && normalizeProtectedEmail(user.email) === configuredEmail;
+}
+// <<<END SHARED HELPER: protectedUserAuthz>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -14,6 +25,8 @@ Deno.serve(async (req) => {
     const user = await base44.auth.me();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
+    const callerEmail = normalizeProtectedEmail(user.email);
+    if (!callerEmail) return Response.json({ error: 'Forbidden' }, { status: 403 });
 
     const { fax_log_id, analysis_type = 'full' } = await req.json();
 
@@ -28,29 +41,15 @@ Deno.serve(async (req) => {
     }
 
     const fax = faxLog[0];
-    // Ownership: only the sender (or an admin) may analyze a fax's PHI content.
+    // Ownership: only the sender (or the configured platform administrator) may
+    // analyze a fax's PHI content. account_type and agency_name are mutable User
+    // fields, so neither is authorization to cross an ownership boundary.
     // Fail CLOSED on a missing sender: a legacy/system fax with no sent_by must
-    // not be readable by any authenticated user who guesses its id — treat an
-    // unknown owner as not-this-caller and require admin.
-    const isSuperAdmin = user.account_type === 'super_admin';
-    const isAgencyScopedAdmin =
-      user.account_type === 'agency_admin'
-      || (user.role === 'admin' && !!user.agency_name && !isSuperAdmin);
-    const isPlatformAdmin = isSuperAdmin || (user.role === 'admin' && !user.agency_name);
-    if (!isPlatformAdmin && !isAgencyScopedAdmin && fax.sent_by !== user.email) {
+    // not be readable by a caller who guesses its id. A configured protected
+    // super admin remains the sole cross-owner break-glass path.
+    const isOwner = normalizeProtectedEmail(fax.sent_by) === callerEmail;
+    if (!isOwner && !isProtectedSuperAdmin(user)) {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
-    }
-    // Agency-scoped admins may only analyze faxes sent by staff in their agency.
-    if (isAgencyScopedAdmin) {
-      if (!user.agency_name || !fax.sent_by) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
-      const senders = await base44.asServiceRole.entities.User
-        .filter({ email: fax.sent_by }, undefined, 5)
-        .catch(() => []);
-      if (!senders?.[0] || senders[0].agency_name !== user.agency_name) {
-        return Response.json({ error: 'Forbidden' }, { status: 403 });
-      }
     }
     const ocrText = fax.ocr_text || '';
 
@@ -82,8 +81,20 @@ ${ocrText.length > 4000 ? '...(truncated)' : ''}
     let suggestedContacts = [];
     let alerts = [];
 
-    // Fetch contacts for suggestion matching
-    const allContacts = await base44.asServiceRole.entities.FaxContact.list('-created_date', 500);
+    // Fetch only the caller's address-book rows. FaxContact has no immutable,
+    // server-verified agency membership key, so a mutable agency claim must not
+    // widen this service-role read. Re-check every returned row in memory in case
+    // the backend ever ignores or regresses the filter.
+    const contactRows = await base44.asServiceRole.entities.FaxContact.filter(
+      { user_email: callerEmail },
+      '-created_date',
+      500
+    );
+    const allContacts = (Array.isArray(contactRows) ? contactRows : [])
+      .filter((contact) =>
+        normalizeProtectedEmail(contact?.user_email) === callerEmail
+        && normalizeProtectedEmail(contact?.created_by) === callerEmail
+      );
 
     // Perform analysis based on type
     if (analysis_type === 'full' || analysis_type === 'summary') {

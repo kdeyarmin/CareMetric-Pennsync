@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { useAgencyScopedQuery } from '@/hooks/useAgencyScopedQuery';
+import { listAuthorizedVisits } from '@/functions/listAuthorizedVisits';
+import { useAuth } from '@/lib/AuthContext';
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -44,7 +45,24 @@ function AlertBanner({ alerts, onDismiss }) {
 }
 
 export default function SystemHealthMonitor() {
-  const { data: currentUser } = useQuery({
+  const { tenantContext } = useAuth();
+  const probeAgencyId = tenantContext?.agency_id ?? null;
+  const probeMembershipId = tenantContext?.membership_id ?? null;
+  const probeMembershipVersion = tenantContext?.membership_version ?? null;
+  const probeTenantRole = tenantContext?.tenant_role ?? null;
+  const tenantProbeScope = JSON.stringify([
+    probeAgencyId,
+    probeMembershipId,
+    probeMembershipVersion,
+    probeTenantRole,
+  ]);
+  const {
+    data: currentUser,
+    isSuccess: currentUserReady,
+    isFetching: currentUserFetching,
+    isFetchedAfterMount: currentUserFetchedAfterMount,
+    isError: currentUserError,
+  } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
@@ -55,23 +73,24 @@ export default function SystemHealthMonitor() {
   const [alerts, setAlerts] = useState([]);
   const [dismissed, setDismissed] = useState([]);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
-  const [autoRefresh, _setAutoRefresh] = useState(true);
   // Real measured latency + observed availability (replaces simulated values).
-  const [measured, setMeasured] = useState({ apiLatency: null, dbLatency: null });
-  const upProbesRef = useRef({ ok: 0, total: 0 });
-  // Track the latest metrics in a ref so `refresh` doesn't depend on `metrics`
-  // state (which it sets) — that dependency would re-create the callback and
-  // re-fire the effect that calls it, an infinite update loop.
-  const metricsRef = useRef({});
-
-  // Fetch real entity counts for actual system data
-  const { data: visits = [] } = useAgencyScopedQuery({
-    queryKey: ["health-visits"],
-    fetch: () => base44.entities.Visit.list("-created_date", 500),
-    initialData: [],
-    refetchInterval: autoRefresh ? 30000 : false,
+  const [measured, setMeasured] = useState({
+    scope: null,
+    apiLatency: null,
+    dbLatency: null,
+    apiOk: null,
   });
-  const { data: users = [] } = useQuery({
+  const upProbesRef = useRef({ ok: 0, total: 0 });
+  // Visit volume/error-rate metrics require a reviewed bounded aggregate.
+  // Do not poll the paginated PHI broker and misrepresent denial as zero data.
+  const visitAggregatesAvailable = false;
+  const {
+    data: users = [],
+    isSuccess: usersReady,
+    isFetching: usersFetching,
+    isFetchedAfterMount: usersFetchedAfterMount,
+    isError: usersError,
+  } = useQuery({
     queryKey: ["health-users", agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = await base44.entities.User.list("-created_date", 200);
@@ -79,61 +98,81 @@ export default function SystemHealthMonitor() {
       return filterUsersByCallerAgency(_rows, currentUser);
     },
     enabled: !!currentUser,
-    initialData: [],
-    refetchInterval: autoRefresh ? 30000 : false,
   });
-  const { data: incidents = [] } = useAgencyScopedQuery({
-    queryKey: ["health-incidents"],
-    fetch: () => base44.entities.Incident.filter({ status: "reported" }, "-created_date", 500),
-    initialData: [],
-    refetchInterval: autoRefresh ? 30000 : false,
-  });
+  const userMetricsAvailable = currentUserReady
+    && currentUserFetchedAfterMount
+    && !currentUserFetching
+    && !currentUserError
+    && usersReady
+    && usersFetchedAfterMount
+    && !usersFetching
+    && !usersError;
 
   // Probe real backend latency and observed availability every 30s.
   useEffect(() => {
     let cancelled = false;
+    upProbesRef.current = { ok: 0, total: 0 };
     const probe = async () => {
       // Time a real authenticated API round-trip.
       const apiStart = performance.now();
-      let ok = true;
-      try { await base44.auth.me(); } catch { ok = false; }
+      let apiOk = true;
+      try { await base44.auth.me(); } catch { apiOk = false; }
       const apiLatency = Math.round(performance.now() - apiStart);
 
       // Time a real DB-bound query round-trip.
-      const dbStart = performance.now();
-      try { await base44.entities.Visit.list("-created_date", 1); } catch { ok = false; }
-      const dbLatency = Math.round(performance.now() - dbStart);
-
-      upProbesRef.current.total += 1;
-      if (ok) upProbesRef.current.ok += 1;
-      if (!cancelled) setMeasured({ apiLatency, dbLatency });
+      let dbLatency = null;
+      if (probeAgencyId) {
+        let dbOk = true;
+        const dbStart = performance.now();
+        try {
+          const result = await listAuthorizedVisits({
+            agencyId: probeAgencyId,
+            purpose: 'activity',
+            sort: 'id_asc',
+            pageSize: 1,
+          });
+          if (
+            result.scope.membership_id !== probeMembershipId
+            || result.scope.membership_version !== probeMembershipVersion
+            || result.scope.tenant_role !== probeTenantRole
+          ) throw new Error('Visit authority changed during health probe');
+        } catch { dbOk = false; }
+        dbLatency = Math.round(performance.now() - dbStart);
+        upProbesRef.current.total += 1;
+        if (apiOk && dbOk) upProbesRef.current.ok += 1;
+      }
+      if (!cancelled) setMeasured({
+        scope: tenantProbeScope,
+        apiLatency,
+        dbLatency,
+        apiOk,
+      });
     };
     probe();
     const id = setInterval(probe, 30000);
     return () => { cancelled = true; clearInterval(id); };
-  }, []);
+  }, [probeAgencyId, probeMembershipId, probeMembershipVersion, probeTenantRole, tenantProbeScope]);
+
+  const scopedApiLatency = measured.scope === tenantProbeScope ? measured.apiLatency : null;
+  const scopedDbLatency = measured.scope === tenantProbeScope ? measured.dbLatency : null;
+  const scopedApiOk = measured.scope === tenantProbeScope ? measured.apiOk : null;
 
   const refresh = useCallback(() => {
     const today = new Date();
-    const recentVisits = visits.filter(v => {
-      const d = new Date(v.created_date);
-      return (today - d) < 24 * 60 * 60 * 1000;
-    });
 
     const probes = upProbesRef.current;
     const newMetrics = {
-      api_response: measured.apiLatency ?? 0,
-      error_rate: parseFloat((incidents.length / Math.max(visits.length, 1) * 100).toFixed(2)),
-      uptime: probes.total ? parseFloat(((probes.ok / probes.total) * 100).toFixed(3)) : 100,
-      active_users: users.filter(u => {
+      api_response: scopedApiLatency ?? undefined,
+      error_rate: undefined,
+      uptime: probes.total ? parseFloat(((probes.ok / probes.total) * 100).toFixed(3)) : undefined,
+      active_users: userMetricsAvailable ? users.filter(u => {
         const d = new Date(u.updated_date || u.created_date);
         return (today - d) < 60 * 60 * 1000;
-      }).length,
-      db_latency: measured.dbLatency ?? 0,
-      visits_today: recentVisits.length,
-      total_users: users.length,
+      }).length : undefined,
+      db_latency: scopedDbLatency ?? undefined,
+      visits_today: undefined,
+      total_users: userMetricsAvailable ? users.length : undefined,
     };
-    metricsRef.current = newMetrics;
     setMetrics(newMetrics);
     setLastUpdated(new Date());
 
@@ -144,20 +183,15 @@ export default function SystemHealthMonitor() {
     else if (newMetrics.error_rate > 2) newAlerts.push({ level: "warn", title: "Elevated Error Rate", message: `Error rate at ${newMetrics.error_rate}% — above normal.` });
     if (newMetrics.api_response > 800) newAlerts.push({ level: "critical", title: "API Slow Response", message: `API responding in ${newMetrics.api_response}ms — check backend load.` });
     else if (newMetrics.api_response > 400) newAlerts.push({ level: "warn", title: "API Response Degraded", message: `API at ${newMetrics.api_response}ms — slightly elevated.` });
+    if (scopedApiOk === false) newAlerts.push({ level: "critical", title: "API Probe Failed", message: "The authenticated API probe failed." });
     if (newMetrics.uptime < 99) newAlerts.push({ level: "critical", title: "Uptime Below Threshold", message: `System uptime at ${newMetrics.uptime}% — investigate immediately.` });
     setAlerts(newAlerts);
     setDismissed([]);
-  }, [visits, users, incidents, notificationsEnabled, measured]);
+  }, [users, userMetricsAvailable, notificationsEnabled, scopedApiLatency, scopedDbLatency, scopedApiOk]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
-
-  useEffect(() => {
-    if (!autoRefresh) return;
-    const interval = setInterval(refresh, 30000);
-    return () => clearInterval(interval);
-  }, [autoRefresh, refresh]);
 
   const getStatus = (key, value) => {
     const m = METRICS.find(m => m.key === key);
@@ -172,9 +206,20 @@ export default function SystemHealthMonitor() {
   const metricTone = (value, status) => (Number.isFinite(value) ? STATUS_TONE[status] : "slate");
 
   const visibleAlerts = alerts.filter((_, i) => !dismissed.includes(i));
-  const overallStatus = visibleAlerts.some(a => a.level === "critical") ? "critical" : visibleAlerts.some(a => a.level === "warn") ? "warn" : "good";
+  const overallStatus = visibleAlerts.some(a => a.level === "critical")
+    ? "critical"
+    : visibleAlerts.some(a => a.level === "warn")
+      || !visitAggregatesAvailable
+      || !userMetricsAvailable
+      || !tenantContext?.agency_id
+      ? "warn"
+      : "good";
 
-  const statusLabel = { good: "All Systems Operational", warn: "Performance Degraded", critical: "Critical Issues Detected" };
+  const statusLabel = {
+    good: "All Systems Operational",
+    warn: visitAggregatesAvailable ? "Performance Degraded" : "Partial Metrics Unavailable",
+    critical: "Critical Issues Detected",
+  };
   const statusBg = { good: "border-green-300 bg-green-50", warn: "border-yellow-300 bg-yellow-50", critical: "border-red-300 bg-red-50" };
   const StatusIcon = { good: CheckCircle2, warn: AlertTriangle, critical: XCircle }[overallStatus];
 
@@ -208,6 +253,23 @@ export default function SystemHealthMonitor() {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
+        {!visitAggregatesAvailable && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Visit volume and Visit-derived error-rate metrics are unavailable until a bounded,
+            tenant-scoped aggregate broker is reviewed. They are not reported as zero.
+          </div>
+        )}
+        {!tenantContext?.agency_id && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            Select a verified tenant before DB latency or observed availability can be measured.
+          </div>
+        )}
+        {!userMetricsAvailable && (
+          <div className="rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            User activity metrics are unavailable while their authorization is pending, refreshing,
+            or denied. Cached counts are withheld.
+          </div>
+        )}
         {/* Overall status */}
         <div className={`flex items-center gap-3 rounded-xl border-2 px-4 py-3 ${statusBg[overallStatus]}`}>
           <StatusIcon className={`w-5 h-5 ${overallStatus === "good" ? "text-green-600" : overallStatus === "warn" ? "text-yellow-600" : "text-red-600"}`} />
@@ -238,7 +300,7 @@ export default function SystemHealthMonitor() {
             label="Error Rate"
             value={metricValue(metrics.error_rate, "%")}
             tone={metricTone(metrics.error_rate, getStatus("error_rate", metrics.error_rate))}
-            sub="vs last check"
+            sub="Visit aggregate paused"
             icon={AlertTriangle}
           />
           <StatCard
@@ -274,7 +336,7 @@ export default function SystemHealthMonitor() {
           ))}
         </div>
 
-        <p className="text-xs text-slate-400 text-center">Auto-refreshes every 30s · API &amp; DB latency and availability measured live; entity counts are live</p>
+        <p className="text-xs text-slate-400 text-center">Bounded API and DB latency probes refresh every 30s; full-list Visit polling is paused</p>
       </CardContent>
     </Card>
   );

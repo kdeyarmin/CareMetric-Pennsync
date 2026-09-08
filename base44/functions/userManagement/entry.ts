@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
+const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
+function outboundDeliveryReleased() {
+  return Deno.env.get(OUTBOUND_DELIVERY_RELEASE_ENV)
+    === OUTBOUND_DELIVERY_RELEASE_VALUE;
+}
+function outboundDeliveryPausedResponse(channel = 'outbound') {
+  return Response.json({
+    error: 'Outbound delivery is disabled in this environment.',
+    code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED',
+    channel,
+    retryable: false,
+  }, {
+    status: 503,
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+// <<<END SHARED HELPER: outboundDeliveryGate>>>
+
 // <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>
 const isDeactivatedUser = (u) => !!u && u.is_active === false;
 const DEACTIVATED_USER_RESPONSE = () => Response.json(
@@ -188,11 +208,21 @@ function randomInt(max) {
 }
 
 function getAppBaseUrl() {
-  const fromEnv = String(Deno.env.get('APP_PUBLIC_URL') || Deno.env.get('APP_URL') || '').trim().replace(/\/+$/, '');
-  if (fromEnv) {
-    try { return new URL(fromEnv).origin; } catch { /* fall through */ }
+  const configured = String(Deno.env.get('APP_PUBLIC_URL') || '').trim();
+  if (!configured) throw new Error('APP_PUBLIC_URL is required for outbound app links');
+  let parsed;
+  try {
+    parsed = new URL(configured);
+  } catch {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
   }
-  return 'https://caremetricai.base44.app';
+  if (
+    parsed.protocol !== 'https:' || parsed.username || parsed.password
+    || parsed.pathname !== '/' || parsed.search || parsed.hash
+  ) {
+    throw new Error('APP_PUBLIC_URL must be an absolute HTTPS origin');
+  }
+  return parsed.origin;
 }
 
 const STAFF_ROLES = ['nurse', 'office_staff', 'social_worker', 'spiritual_care'];
@@ -246,11 +276,31 @@ async function upsertAcceptedUserInvitationForUser(base44, currentUser, targetUs
 
 Deno.serve(async (req) => {
   try {
+    // These administrator routes require a user Bearer token. Reject absent
+    // or malformed credentials before SDK construction, which may throw before
+    // auth.me(). This syntax check grants no authority; the SDK verifies it.
+    if (!/^Bearer [^\s,]+$/.test(req.headers.get('Authorization') || '')) {
+      return Response.json({
+        error: 'Authentication required',
+        code: 'AUTHENTICATION_REQUIRED',
+      }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
+    }
     const base44 = createClientFromRequest(req);
-    const { action, ...params } = await req.json();
 
     // Verify admin for most actions
-    const currentUser = await base44.auth.me();
+    const currentUser = await base44.auth.me().catch((error) => {
+      // The SDK throws for missing/expired sessions; these are authentication
+      // denials, not invitation-send failures. Preserve real transport errors.
+      const status = error?.status ?? error?.response?.status;
+      if (status === 401 || status === 403) return null;
+      throw error;
+    });
+    if (!currentUser) {
+      return Response.json({
+        error: 'Authentication required',
+        code: 'AUTHENTICATION_REQUIRED',
+      }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
+    }
     if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
     // `account_type` is self-mutable through auth.updateMe. Only Base44's
     // protected built-in role may enter user/password-management actions.
@@ -260,6 +310,7 @@ Deno.serve(async (req) => {
     // fixUserAccount): a plain facility admin must not be able to mint another
     // facility admin without super-admin oversight.
     const callerIsSuperAdmin = isProtectedSuperAdmin(currentUser);
+    const { action, ...params } = await req.json();
 
     switch (action) {
       case 'invite_user':
@@ -277,6 +328,7 @@ Deno.serve(async (req) => {
         if (!isAdmin) {
           return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
         }
+        if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
         return await checkExpiredInvitations(base44);
 
       case 'cancel_invitation':
@@ -288,8 +340,8 @@ Deno.serve(async (req) => {
       default:
         return Response.json({ error: 'Invalid action' }, { status: 400 });
     }
-  } catch (error) {
-    console.error('User management error:', error);
+  } catch {
+    console.error('userManagement failed');
     // Return a generic message and keep the detail server-side only (matches
     // validateSignerToken / resetUserPassword) — the top-level catch wraps the
     // whole handler including pre-authorization failures, so leaking error.message
@@ -330,6 +382,12 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     return Response.json({ error: 'Only a super admin can invite a user with the admin role.' }, { status: 403 });
   }
 
+  // Validate the environment-specific origin before creating an invitation row.
+  // A bad deployment configuration must not create a partial invite flow.
+  getAppBaseUrl();
+
+  // Authorized manual invitations are independent of the general delivery pause.
+
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
@@ -345,47 +403,61 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     agency_name: currentUser.agency_name || null,
     status: 'pending',
     expires_at: expiresAt.toISOString(),
-    last_sent_at: now.toISOString(),
     resend_count: 0
   });
 
   // Send invitation email
   try {
-    const signupUrl = getAppBaseUrl();
-    await base44.asServiceRole.integrations.Core.SendEmail({
-      to: email,
-      subject: 'You’re invited to join PennSync by CareMetric',
-      from_name: 'PennSync by CareMetric',
-      body: renderBrandedEmail({
-        preheader: 'You’ve been invited to join PennSync by CareMetric. Create your account to get started.',
-        eyebrow: 'You’re invited',
-        title: `Welcome, ${full_name}!`,
-        intro: 'You’ve been invited to join PennSync by CareMetric — an AI-powered home health documentation and analytics platform. Create your account to get started.',
-        sections: [
-          { rows: [['Email', email], ['Role', role || 'user']] },
-          { button: { href: signupUrl, label: 'Create your account' } },
-          { callout: { tone: 'warn', text: `This invitation expires in 7 days (on ${expiresAt.toLocaleDateString()}).` } },
-        ],
-      }),
-    });
-  } catch (emailError) {
-    console.error('Email send failed (non-critical):', emailError.message);
+    // Core.SendEmail only accepts registered users; onboarding uses the native invite.
+    await base44.users.inviteUser(email, 'user');
+  } catch {
+    console.error('Invitation email delivery failed');
+    // The pending row exists, but a provider error (including a timeout) is not
+    // evidence of delivery. Preserve its id so the operator can inspect/resend
+    // this invitation instead of creating another one. Never stamp it as sent.
+    return Response.json({
+      success: false,
+      code: 'INVITATION_EMAIL_UNCONFIRMED',
+      error: 'Invitation saved, but email delivery could not be confirmed. Check this invitation before resending.',
+      invitation_id: invitation.id,
+      expires_at: expiresAt.toISOString(),
+      delivery_status: 'unconfirmed',
+    }, { status: 502 });
   }
 
-  // Log activity
-  await base44.asServiceRole.entities.UserActivity.create({
-    user_email: currentUser.email,
-    user_name: currentUser.full_name,
-    action: 'user_invited',
-    details: { invited_email: email, invited_name: full_name, role },
-    page: 'UserManagement',
-    entity_type: 'UserInvitation',
-    entity_id: invitation.id
-  });
+  // Email has been submitted. Later metadata/audit failures must not turn this
+  // into a retryable send failure and trigger duplicate invitations.
+  const warnings = [];
+  try {
+    await base44.asServiceRole.entities.UserInvitation.update(invitation.id, {
+      last_sent_at: new Date().toISOString(),
+    });
+  } catch {
+    console.error('Invitation stamp failed after email sent');
+    warnings.push('DELIVERY_METADATA_UNCONFIRMED');
+  }
+  try {
+    await base44.asServiceRole.entities.UserActivity.create({
+      user_email: currentUser.email,
+      user_name: currentUser.full_name,
+      action: 'user_invited',
+      details: { invited_email: email, invited_name: full_name, role },
+      page: 'UserManagement',
+      entity_type: 'UserInvitation',
+      entity_id: invitation.id
+    });
+  } catch {
+    console.error('Invitation activity logging failed after email sent');
+    warnings.push('DELIVERY_AUDIT_UNCONFIRMED');
+  }
 
   return Response.json({ 
     success: true, 
-    message: 'Invitation sent successfully',
+    message: warnings.length
+      ? 'Invitation email submitted, but some delivery record saves could not be confirmed. Check the invitation before resending.'
+      : 'Invitation email submitted successfully',
+    delivery_status: 'submitted',
+    warnings,
     invitation_id: invitation.id,
     expires_at: expiresAt.toISOString()
   });
@@ -448,31 +520,25 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
     resend_count: invitation.resend_count || 0,
   };
 
-  // Send email FIRST, then stamp — otherwise a SendEmail failure still extends
+  // Submit the platform invitation FIRST, then stamp — otherwise a provider failure extends
   // expiry and looks like a successful resend.
-  const signupUrl = getAppBaseUrl();
+  getAppBaseUrl();
+  // Authorized manual invitations are independent of the general delivery pause.
   try {
-    await base44.asServiceRole.integrations.Core.SendEmail({
-      to: invitation.email,
-      subject: 'Reminder: your invitation to PennSync by CareMetric',
-      from_name: 'PennSync by CareMetric',
-      body: renderBrandedEmail({
-        preheader: 'A reminder that you’ve been invited to join PennSync by CareMetric.',
-        eyebrow: 'Invitation reminder',
-        title: `Hello ${invitation.full_name},`,
-        intro: 'This is a friendly reminder that you’ve been invited to join PennSync by CareMetric. Your invitation is still waiting — create your account to get started.',
-        sections: [
-          { rows: [['Email', invitation.email], ['Role', invitation.role || 'user']] },
-          { button: { href: signupUrl, label: 'Create your account' } },
-          { callout: { tone: 'warn', text: `This invitation expires in 7 days (on ${newExpiresAt.toLocaleDateString()}).` } },
-        ],
-      }),
-    });
-  } catch (emailError) {
-    console.error('Failed to resend invitation email:', emailError?.message || emailError);
-    return Response.json({ error: 'Failed to send invitation email. Please try again.' }, { status: 502 });
+    // Core.SendEmail only accepts registered users; onboarding uses the native invite.
+    await base44.users.inviteUser(invitation.email, 'user');
+  } catch {
+    console.error('Invitation resend delivery failed');
+    return Response.json({
+      success: false,
+      code: 'INVITATION_EMAIL_UNCONFIRMED',
+      error: 'Invitation email delivery could not be confirmed. Check this invitation before resending.',
+      invitation_id,
+      delivery_status: 'unconfirmed',
+    }, { status: 502 });
   }
 
+  const warnings = [];
   try {
     await base44.asServiceRole.entities.UserInvitation.update(invitation_id, {
       status: 'pending',
@@ -480,30 +546,46 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
       last_sent_at: now.toISOString(),
       resend_count: prior.resend_count + 1
     });
-  } catch (stampError) {
-    console.error('Invitation stamp failed after email sent:', stampError?.message || stampError);
-    // Email already went out — leave prior row; report soft success with warning.
+  } catch {
+    console.error('Invitation stamp failed after email sent');
+    // A write can commit before its response times out. Do not claim either
+    // the previous or the requested metadata is confirmed after an exception.
+    warnings.push('DELIVERY_METADATA_UNCONFIRMED');
   }
+  const deliveryMetadataStatus = warnings.includes('DELIVERY_METADATA_UNCONFIRMED')
+    ? 'unconfirmed' : 'saved';
 
   // Log activity
-  await base44.asServiceRole.entities.UserActivity.create({
-    user_email: currentUser.email,
-    user_name: currentUser.full_name,
-    action: 'invitation_resent',
-    details: {
-      invited_email: invitation.email,
-      resend_count: prior.resend_count + 1,
-      new_expires_at: newExpiresAt.toISOString()
-    },
-    page: 'UserManagement',
-    entity_type: 'UserInvitation',
-    entity_id: invitation_id
-  });
+  try {
+    await base44.asServiceRole.entities.UserActivity.create({
+      user_email: currentUser.email,
+      user_name: currentUser.full_name,
+      action: 'invitation_resent',
+      details: {
+        invited_email: invitation.email,
+        resend_count: deliveryMetadataStatus === 'saved' ? prior.resend_count + 1 : null,
+        new_expires_at: deliveryMetadataStatus === 'saved' ? newExpiresAt.toISOString() : null,
+        delivery_metadata_status: deliveryMetadataStatus,
+      },
+      page: 'UserManagement',
+      entity_type: 'UserInvitation',
+      entity_id: invitation_id
+    });
+  } catch {
+    console.error('Invitation resend activity logging failed after email sent');
+    warnings.push('DELIVERY_AUDIT_UNCONFIRMED');
+  }
 
   return Response.json({ 
     success: true, 
-    message: 'Invitation resent successfully',
-    new_expires_at: newExpiresAt.toISOString()
+    message: warnings.length
+      ? 'Invitation email submitted, but some delivery record saves could not be confirmed. Check the invitation before resending.'
+      : 'Invitation email resubmitted successfully',
+    delivery_status: 'submitted',
+    delivery_metadata_status: deliveryMetadataStatus,
+    invitation_id,
+    warnings,
+    new_expires_at: deliveryMetadataStatus === 'saved' ? newExpiresAt.toISOString() : null
   });
 }
 
@@ -543,6 +625,8 @@ async function resetPassword(base44, currentUser, params, isAdmin, callerIsSuper
       return Response.json({ error: 'Forbidden: target user is outside your agency.' }, { status: 403 });
     }
   }
+
+  if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
 
   // Generate a temporary password from a CSPRNG with a guaranteed length and
   // character mix. `Math.random().toString(36).slice(-8)` is non-cryptographic
@@ -666,8 +750,8 @@ async function checkExpiredInvitations(base44) {
           }),
         });
         emailsSent += 1;
-      } catch (emailError) {
-        console.error('Failed to send email to admin:', emailError?.message || emailError);
+      } catch {
+        console.error('Expired-invitation admin email delivery failed');
       }
     }
     if (emailsSent > 0 && expiringSoon.length > 0) {

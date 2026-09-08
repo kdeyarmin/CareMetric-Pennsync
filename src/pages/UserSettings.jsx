@@ -55,9 +55,12 @@ import CareScopeBadge from "../components/profile/CareScopeBadge";
 import DutyStatusCard from "../components/voice/DutyStatusCard";
 import { ALL_ROWS } from '@/lib/queryLimits';
 import { getStaffRole, staffRoleLabel } from "@/lib/roles";
+import { useAuth } from "@/lib/AuthContext";
+import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 
 export default function UserSettings() {
   const queryClient = useQueryClient();
+  const { logout } = useAuth();
   const [isSaving, setIsSaving] = useState(false);
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -249,7 +252,7 @@ export default function UserSettings() {
       ));
 
       toast.success('Your account deletion request has been submitted. An administrator will process it. You will be signed out now.');
-      await base44.auth.logout();
+      await logout();
     } catch (error) {
       console.error('Error requesting account deletion:', error);
       toast.error('Failed to submit account deletion request. Please contact support.');
@@ -517,9 +520,13 @@ export default function UserSettings() {
                             <p className="text-sm text-slate-500">#{item.credential_number}</p>
                           )}
                           {item.uploaded_file_url && isSafeExternalUrl(item.uploaded_file_url) && (
-                            <a href={item.uploaded_file_url} target="_blank" rel="noopener noreferrer" className="text-sm text-indigo-600 underline hover:text-indigo-700 mt-2 inline-block">
+                            <button
+                              type="button"
+                              onClick={() => openAuthorityBoundWindow(item.uploaded_file_url)}
+                              className="text-sm text-indigo-600 underline hover:text-indigo-700 mt-2 inline-block"
+                            >
                               View Document
-                            </a>
+                            </button>
                           )}
                           {item.rejection_reason && (
                             <p className="text-sm text-red-600 mt-2 bg-red-50 p-2 rounded">

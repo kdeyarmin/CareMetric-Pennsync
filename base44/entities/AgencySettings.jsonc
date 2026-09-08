@@ -208,6 +208,7 @@
     },
     "business_hours_timezone": {
       "type": "string",
+      "default": "America/New_York",
       "description": "IANA timezone for business hours"
     },
     "business_hours": {
@@ -282,8 +283,18 @@
     }
   },
   "rls": {
-    "read": {},
-    "write": {
+    "read": true,
+    "create": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "update": {
+      "user_condition": {
+        "role": "admin"
+      }
+    },
+    "delete": {
       "user_condition": {
         "role": "admin"
       }

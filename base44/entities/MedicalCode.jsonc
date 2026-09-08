@@ -99,14 +99,14 @@
           }
         },
         {
-          "selected_by": "{{user.email}}"
+          "data.selected_by": "{{user.email}}"
         },
         {
-          "approved_by": "{{user.email}}"
+          "data.approved_by": "{{user.email}}"
         }
       ]
     },
-    "write": {
+    "create": {
       "$or": [
         {
           "user_condition": {
@@ -114,7 +114,31 @@
           }
         },
         {
-          "selected_by": "{{user.email}}"
+          "data.selected_by": "{{user.email}}"
+        }
+      ]
+    },
+    "update": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.selected_by": "{{user.email}}"
+        }
+      ]
+    },
+    "delete": {
+      "$or": [
+        {
+          "user_condition": {
+            "role": "admin"
+          }
+        },
+        {
+          "data.selected_by": "{{user.email}}"
         }
       ]
     }

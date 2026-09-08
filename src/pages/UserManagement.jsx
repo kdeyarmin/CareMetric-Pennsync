@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey } from '@/lib/agencyRoster';
-import { isAdminView } from "@/lib/roles";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -69,12 +68,13 @@ import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import ListPaginationControls from "@/components/ui/ListPaginationControls";
 import { paginateRows, clampPageSize } from "@/lib/pagination";
 import { format } from "date-fns";
-import { formatEastern } from "@/components/utils/timezone";
 import { toast } from "sonner";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
 import UserActivityPanel from "@/components/admin/UserActivityPanel";
+import UserActivityUnavailable from "@/components/security/UserActivityUnavailable";
 import { buildOffboardInvokeArgs } from "@/components/admin/runUserOffboard";
 import { STAFF_ROLE_OPTIONS, getStaffRole, staffRoleLabel } from "@/lib/roles";
+import { isAdminLike, isSuperAdmin } from "@/lib/superAdmin";
 
 export default function UserManagement() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -84,7 +84,6 @@ export default function UserManagement() {
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDisableDialog, setShowDisableDialog] = useState(false);
   const [showPasswordResetDialog, setShowPasswordResetDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [resetPasswordResult, setResetPasswordResult] = useState(null);
   const [editedRole, setEditedRole] = useState("");
   const [editForm, setEditForm] = useState({ full_name: '', phone: '', credential_type: '', staff_role: 'nurse' });
@@ -103,6 +102,11 @@ export default function UserManagement() {
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+  // Every roster/invitation read and every mutation on this page is
+  // protected by built-in role === 'admin' today. Membership-backed facility
+  // admins must not be shown controls that those APIs will reject.
+  const canManageUsers = isAdminLike(currentUser);
+  const canManageOffboarding = isSuperAdmin(currentUser);
 
   const { data: allUsers = [], isLoading } = useQuery({
     queryKey: ['allUsersManagement', agencyQueryKey(currentUser)],
@@ -111,13 +115,7 @@ export default function UserManagement() {
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return filterUsersByCallerAgency(_rows, currentUser);
     },
-    enabled: isAdminView(currentUser),
-  });
-
-  const { data: userActivities = [] } = useQuery({
-    queryKey: ['userActivitiesSummary'],
-    queryFn: () => base44.entities.UserActivity.list('-created_date', 1000),
-    enabled: isAdminView(currentUser),
+    enabled: canManageUsers,
   });
 
   const { data: invitations = [] } = useQuery({
@@ -127,7 +125,7 @@ export default function UserManagement() {
       const userEmails = new Set(allUsers.map(u => (u.email || '').toLowerCase()).filter(Boolean));
       return allInvitations.filter(inv => !userEmails.has((inv.email || '').toLowerCase()));
     },
-    enabled: isAdminView(currentUser) && allUsers.length > 0,
+    enabled: canManageUsers && allUsers.length > 0,
   });
 
   // No client-side User.update mutation here on purpose. User write RLS admits
@@ -169,17 +167,6 @@ export default function UserManagement() {
     onError: (error) => {
       setResetPasswordResult({ success: false, error: error?.message || 'Failed to reset password' });
       toast.error('Failed to reset password: ' + (error?.message || 'Unknown error'));
-    },
-  });
-
-  const deleteUserMutation = useMutation({
-    mutationFn: (userId) => base44.entities.User.delete(userId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
-      queryClient.invalidateQueries({ queryKey: ['allUsers'] });
-      queryClient.invalidateQueries({ queryKey: ['users'] });
-      setShowDeleteDialog(false);
-      setSelectedUser(null);
     },
   });
 
@@ -275,21 +262,32 @@ export default function UserManagement() {
   };
 
   const handleToggleActive = (user) => {
+    if (user?.is_active === false) {
+      toast.error('User reactivation is temporarily unavailable pending retirement of legacy PHI grants.');
+      return;
+    }
     setSelectedUser(user);
     setShowDisableDialog(true);
   };
 
   const confirmToggleActive = async () => {
     if (!selectedUser) return;
-    const enabling = selectedUser.is_active === false;
+    if (!canManageOffboarding) {
+      toast.error('Offboarding is restricted to the protected platform owner while tenant membership migration is in progress.');
+      return;
+    }
+    if (selectedUser.is_active === false) {
+      toast.error('User reactivation is temporarily unavailable pending retirement of legacy PHI grants.');
+      setShowDisableDialog(false);
+      setSelectedUser(null);
+      return;
+    }
     try {
       const args = buildOffboardInvokeArgs({
         targetUser: selectedUser,
         currentUser,
-        enabling,
-        reason: enabling
-          ? undefined
-          : `Disabled via User Management by ${currentUser?.email || 'admin'}`,
+        enabling: false,
+        reason: `Disabled via User Management by ${currentUser?.email || 'admin'}`,
       });
       const res = await base44.functions.invoke('offboardUser', args);
       queryClient.invalidateQueries({ queryKey: ['allUsersManagement'] });
@@ -299,17 +297,15 @@ export default function UserManagement() {
       // Log only after the invoke resolves. Logging first meant a rejected
       // offboard (e.g. the server's super-admin-only check) still left an audit
       // row asserting a disable that never happened.
-      logActivity(enabling ? ActivityActions.USER_ENABLED : ActivityActions.USER_DISABLED, {
+      logActivity(ActivityActions.USER_DISABLED, {
         user_email: selectedUser.email,
         user_name: selectedUser.full_name,
         entity_type: 'User',
         entity_id: selectedUser.id,
-        offboarding: !enabling,
+        offboarding: true,
         revocation_complete: payload.complete !== false,
       });
-      if (enabling) {
-        toast.success('User reactivated.');
-      } else if (payload.complete === false) {
+      if (payload.complete === false) {
         // The account is deactivated, but some access was not revoked. Telling
         // the admin this succeeded would leave live PHI access unnoticed.
         toast.warning(
@@ -346,11 +342,6 @@ export default function UserManagement() {
     resetPasswordMutation.mutate(selectedUser.email);
   };
 
-  const handleDeleteUser = (user) => {
-    setSelectedUser(user);
-    setShowDeleteDialog(true);
-  };
-
   const handleCreateUser = () => {
     if (!setupFormData.email || !setupFormData.full_name) {
       toast.error('Email and full name are required');
@@ -367,17 +358,6 @@ export default function UserManagement() {
       ...setupFormData,
       staff_role: setupFormData.role === 'user' ? setupFormData.staff_role : 'nurse',
     });
-  };
-
-  const confirmDeleteUser = () => {
-    if (!selectedUser) return;
-    logActivity(ActivityActions.USER_DELETED, {
-      user_email: selectedUser.email,
-      user_name: selectedUser.full_name,
-      entity_type: 'User',
-      entity_id: selectedUser.id
-    });
-    deleteUserMutation.mutate(selectedUser.id);
   };
 
   const filteredUsers = useMemo(() => allUsers.filter(user => {
@@ -407,22 +387,6 @@ export default function UserManagement() {
     [filteredUsers, userPage, pageSize],
   );
   const pagedUsers = userPageWindow.items;
-
-  const activityByEmail = useMemo(() => {
-    const m = new Map();
-    for (const a of userActivities) {
-      const entry = m.get(a.user_email);
-      if (entry) {
-        entry.count += 1;
-      } else {
-        m.set(a.user_email, { count: 1, last: a.created_date });
-      }
-    }
-    return m;
-  }, [userActivities]);
-
-  const getUserActivityCount = (email) => activityByEmail.get(email)?.count || 0;
-  const getUserLastActivity = (email) => activityByEmail.get(email)?.last || null;
 
   const now = new Date();
   const pendingInvitations = invitations.filter(i => i.status === 'pending' && new Date(i.expires_at) >= now);
@@ -455,11 +419,11 @@ export default function UserManagement() {
     );
   };
 
-  if (!isAdminView(currentUser)) {
+  if (!canManageUsers) {
     return (
       <AccessDeniedState
-        title="Access Restricted"
-        description="Only administrators can access User Management."
+        title="Protected administrator access required"
+        description="User Management is temporarily unavailable to facility administrators until its roster, invitation, activity, and account-change APIs use immutable tenant-membership authorization."
       />
     );
   }
@@ -473,6 +437,10 @@ export default function UserManagement() {
         description="Manage user accounts, roles, and permissions"
         favoritePage="UserManagement"
       />
+
+      <div className="mb-4 sm:mb-6">
+        <UserActivityUnavailable title="User activity summaries unavailable" />
+      </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <StatCard label="Total Users" value={stats.total} icon={Users} tone="slate" />
@@ -711,10 +679,8 @@ export default function UserManagement() {
                     <TableHead className="text-xs sm:text-sm">Actions</TableHead>
                   </TableRow>
                 </TableHeader>
-                <TableBody>
+                  <TableBody>
                   {pagedUsers.map((user) => {
-                    const activityCount = getUserActivityCount(user.email);
-                    const lastActivity = getUserLastActivity(user.email);
                     const isActive = user.is_active !== false;
                     return (
                       <React.Fragment key={user.id}>
@@ -746,17 +712,10 @@ export default function UserManagement() {
                           </Badge>
                         </TableCell>
                         <TableCell className="text-xs sm:text-sm hidden lg:table-cell">
-                          {activityCount > 0 ? `${activityCount} actions` : 'No activity'}
+                          Unavailable
                         </TableCell>
                         <TableCell className="text-xs sm:text-sm text-slate-600 hidden lg:table-cell">
-                          {lastActivity ? (
-                            <div className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3" />
-                              {formatEastern(lastActivity, 'MMM d, yyyy')}
-                            </div>
-                          ) : (
-                            'Never'
-                          )}
+                          Unavailable
                         </TableCell>
                         <TableCell>
                           <div className="flex items-center gap-1 sm:gap-2">
@@ -765,7 +724,7 @@ export default function UserManagement() {
                               size="sm"
                               onClick={() => setExpandedActivityUser(expandedActivityUser === user.id ? null : user.id)}
                               className="text-blue-600 hover:text-blue-700 hover:bg-blue-50 min-h-[44px] w-10 sm:w-auto p-2"
-                              title="View activity"
+                              title="Why activity history is unavailable"
                             >
                               <Activity className="w-4 h-4" />
                             </Button>
@@ -791,22 +750,16 @@ export default function UserManagement() {
                             <Button
                               variant="ghost"
                               size="sm"
-                              onClick={() => handleToggleActive(user)}
-                              disabled={currentUser.email === user.email}
+                              onClick={isActive ? () => handleToggleActive(user) : undefined}
+                              disabled={!isActive || currentUser.email === user.email || !canManageOffboarding}
                               className={`min-h-[44px] w-10 sm:w-auto p-2 ${isActive ? 'text-red-600 hover:text-red-700' : 'text-emerald-600 hover:text-emerald-700'}`}
-                              title={isActive ? 'Disable / offboard user' : 'Enable user'}
+                              title={!isActive
+                                ? 'Reactivation temporarily unavailable pending retirement of legacy PHI grants'
+                                : !canManageOffboarding
+                                ? 'Protected platform owner only while tenant membership migration is in progress'
+                                : 'Disable / offboard user'}
                             >
                               {isActive ? <UserX className="w-4 h-4" /> : <UserCheck className="w-4 h-4" />}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteUser(user)}
-                              disabled={currentUser.email === user.email}
-                              className="text-red-600 hover:text-red-700 hover:bg-red-50 min-h-[44px] w-10 sm:w-auto p-2"
-                              title="Delete user permanently"
-                            >
-                              <Trash2 className="w-4 h-4" />
                             </Button>
                           </div>
                         </TableCell>
@@ -941,44 +894,18 @@ export default function UserManagement() {
       <AlertDialog open={showDisableDialog} onOpenChange={setShowDisableDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {selectedUser?.is_active === false ? 'Enable User' : 'Disable / Offboard User'}
-            </AlertDialogTitle>
+            <AlertDialogTitle>Disable / Offboard User</AlertDialogTitle>
             <AlertDialogDescription>
-              {selectedUser?.is_active === false ? (
-                <>Are you sure you want to enable <strong>{selectedUser?.full_name}</strong>? They will be able to access the system again.</>
-              ) : (
-                <>Are you sure you want to offboard <strong>{selectedUser?.full_name}</strong>? This deactivates the account, unassigns patients, releases the work number, clears on-call shifts, and records audit metadata. Platform-level rejection of inactive sessions still requires hosted RLS verification (LR-01).</>
-              )}
+              <>Are you sure you want to offboard <strong>{selectedUser?.full_name}</strong>? This first revokes every validated tenant membership, then deactivates the account, unassigns patients, releases the work number, clears on-call shifts, and records audit metadata. Platform-level rejection of inactive sessions still requires hosted RLS verification (LR-01).</>
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmToggleActive}
-              className={selectedUser?.is_active === false ? 'bg-emerald-600' : 'bg-red-600'}
+              className="bg-red-600"
             >
-              {selectedUser?.is_active === false ? 'Enable' : 'Offboard'}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2 text-red-600">
-              <Trash2 className="w-5 h-5" />
-              Delete User Permanently
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to permanently delete <strong>{selectedUser?.full_name}</strong>?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteUser} disabled={deleteUserMutation.isPending} className="bg-red-600 hover:bg-red-700">
-              Delete User
+              Offboard
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
