@@ -99,7 +99,7 @@ test('health reports exact public-link configuration and outbound release state'
   assert.match(source, /OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE'/);
   assert.match(source, /OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1'/);
   assert.match(source, /release_state: outboundDeliveryIsReleased \? 'released' : 'paused'/);
-  assert.match(source, /provider health never authorizes traffic/i);
+  assert.match(source, /provider health is not delivery proof/i);
   assert.match(source, /outbound_actions_performed: false/);
 });
 
@@ -234,6 +234,11 @@ test('missing optional provider keys produce no direct provider requests or phan
     assert.equal(byId.outbound_delivery_release.release_state, 'paused');
     assert.equal(byId.outbound_delivery_release.configured, false);
     assert.equal(byId.outbound_delivery_release.status, 'warn');
+    assert.deepEqual(byId.outbound_delivery_release.excluded_actions, [
+      'createUserWithTempPassword', 'resendInvitation',
+      'userManagement.invite_user', 'userManagement.resend_invitation',
+    ]);
+    assert.match(byId.outbound_delivery_release.detail, /manual account invitations remain available/);
     for (const id of Object.keys(WORKFLOW_GATES)) {
       assert.equal(byId[id].release_state, 'paused');
       assert.equal(byId[id].status, 'warn');

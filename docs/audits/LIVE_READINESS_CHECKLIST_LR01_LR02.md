@@ -97,16 +97,22 @@ A bare platform invitation or completed email verification does not establish
 PennSync approval. The supported invitation brokers (`createUserWithTempPassword`
 or `userManagement`) establish the pending UserInvitation consumed by the signup
 or approval handler. That invitation must have a valid, future expiry when it is
-consumed. The brokers reject delivery while `OUTBOUND_DELIVERY_RELEASE` is paused;
-do not use direct SDK invitations, entity writes, or patched verification flags
-to bypass the application gate. A provider accepting email is not proof of inbox
+consumed. Following the 2026-09-08 authorization to remove the invitation pause,
+manual invitations and resends operate independently of
+`OUTBOUND_DELIVERY_RELEASE`: `createUserWithTempPassword`, `resendInvitation`,
+and `userManagement` actions `invite_user`/`resend_invitation`. Deploy those
+reviewed changes before relying on this behavior in staging. Their administrator,
+active-account, tenant, role, and invitation-status checks still apply; direct
+SDK invitations or patched verification flags do not replace these brokers.
+Password resets, OTP resends, activation notices, and other delivery remain gated.
+A provider accepting email is not proof of inbox
 delivery, and a saved invitation whose send returned an error is not a successful
 send. Inspect the existing invitation before retrying an uncertain delivery.
 
 Account activation writes approval, invitation, and audit records and may enroll
 training. Read-only preflight approval does not authorize those writes or the
-application-wide delivery release. Before activation, resolve the approved
-staging-only delivery/setup path and its exact write scope. Keep fixture agencies,
+general delivery release. Use the approved staging invitation/setup path and
+its exact write scope. Keep fixture agencies,
 memberships, patients, and assignments unprovisioned for the pristine preflight.
 Connected User/entity reads can establish missing accounts and collisions, but
 do not substitute for the protected preflight or authenticated tenant sessions.

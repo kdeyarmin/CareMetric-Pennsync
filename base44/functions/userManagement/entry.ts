@@ -365,7 +365,7 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
   // A bad deployment configuration must not create a partial invite flow.
   const signupUrl = getAppBaseUrl();
 
-  if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
+  // Authorized manual invitations are independent of the general delivery pause.
 
   const now = new Date();
   const expiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -516,7 +516,7 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   // Send email FIRST, then stamp — otherwise a SendEmail failure still extends
   // expiry and looks like a successful resend.
   const signupUrl = getAppBaseUrl();
-  if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('email');
+  // Authorized manual invitations are independent of the general delivery pause.
   try {
     await base44.asServiceRole.integrations.Core.SendEmail({
       to: invitation.email,

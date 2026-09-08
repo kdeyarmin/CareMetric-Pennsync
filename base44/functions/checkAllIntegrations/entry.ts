@@ -392,7 +392,7 @@ Deno.serve(async (req) => {
     const outboundDeliveryIsReleased = outboundDeliveryReleased();
     integrations.push({
       id: 'outbound_delivery_release',
-      label: 'Application-wide outbound delivery gate',
+      label: 'General outbound delivery gate',
       category: 'Release gate',
       capability: 'outbound_delivery_control',
       configured: outboundDeliveryReleaseConfigured,
@@ -401,9 +401,13 @@ Deno.serve(async (req) => {
       probe: 'local-validation',
       release_state: outboundDeliveryIsReleased ? 'released' : 'paused',
       delivery_verified: false,
+      excluded_actions: [
+        'createUserWithTempPassword', 'resendInvitation',
+        'userManagement.invite_user', 'userManagement.resend_invitation',
+      ],
       detail: outboundDeliveryIsReleased
-        ? 'OUTBOUND_DELIVERY_RELEASE is enabled-v1. Provider health still does not authorize traffic, and this check performed no delivery.'
-        : 'Application-wide outbound delivery is paused. Only the exact reviewed value enabled-v1 releases it; provider health never authorizes traffic.',
+        ? 'OUTBOUND_DELIVERY_RELEASE is enabled-v1. Manual account invitations operate independently. Provider health is not delivery proof; this check performed no delivery.'
+        : 'General outbound delivery is paused; authorized manual account invitations remain available. Password resets, OTP resends, activation notices, and other delivery still require enabled-v1. This check performed no delivery.',
     });
 
     for (const gate of WORKFLOW_RELEASE_GATES) {

@@ -67,14 +67,16 @@ const VOICE_SENDERS = [
 // is deliberately explicit: mixed state-transition handlers keep their primary
 // mutation live while skipping delivery; platform-boundary handlers invoke a
 // Base44-managed invite/OTP primitive; provider wrappers define a low-level
-// Telnyx helper above the handler but gate every reachable invocation.
+// Telnyx helper above the handler but gate every reachable invocation. Protected
+// manual invitations are explicitly released independently of the general gate;
+// mixed invitation handlers retain that gate on their other delivery actions.
 const BACKEND_DELIVERY_CLASSIFICATION = {
   adminResetPassword: 'platform-boundary',
   autoApproveInvitedUser: 'mixed-state-transition',
   cancelTimeOffRequest: 'mixed-state-transition',
   checkExpiredInvitations: 'scheduled-maintenance',
   createNotification: 'mixed-state-transition',
-  createUserWithTempPassword: 'platform-boundary',
+  createUserWithTempPassword: 'manual-invitation',
   dispatchScheduledSignatureReminders: 'scheduled-worker',
   dispatchScheduledSms: 'provider-wrapper',
   generateAIReport: 'direct',
@@ -84,7 +86,7 @@ const BACKEND_DELIVERY_CLASSIFICATION = {
   manageUserVerification: 'platform-boundary',
   onUserSignup: 'mixed-platform-boundary',
   redriveFailedSms: 'provider-wrapper',
-  resendInvitation: 'platform-boundary',
+  resendInvitation: 'manual-invitation',
   resetUserPassword: 'direct',
   reviewPersonnelCredential: 'mixed-state-transition',
   reviewTimeOffRequest: 'mixed-state-transition',
@@ -105,7 +107,7 @@ const BACKEND_DELIVERY_CLASSIFICATION = {
   submitStateReportableIncident: 'mixed-state-transition',
   submitTimeOffRequest: 'mixed-state-transition',
   submitTimesheet: 'mixed-state-transition',
-  userManagement: 'mixed-platform-boundary',
+  userManagement: 'mixed-with-manual-invitation',
 };
 
 const PROVIDER_PRIMITIVE = /(?:\.SendEmail\s*\(|\.inviteUser\s*\(|\.resendOtp\s*\(|\/auth\/resend-otp|\/v2\/(?:messages|faxes|calls))/g;
@@ -231,7 +233,7 @@ test('backend delivery primitive inventory cannot grow unnoticed', async () => {
   );
 });
 
-test('every inventoried backend sender is classified and fail-closed before delivery', async () => {
+test('every backend sender is gated or an explicitly scoped protected manual invitation', async () => {
   const sources = await functionSources();
   const inventory = new Set([
     ...EMAIL_SENDERS,
@@ -247,6 +249,20 @@ test('every inventoried backend sender is classified and fail-closed before deli
     [...inventory].sort(),
     'every primitive-bearing function must have an explicit delivery classification',
   );
+  assert.deepEqual(
+    Object.entries(BACKEND_DELIVERY_CLASSIFICATION)
+      .filter(([, classification]) => classification === 'manual-invitation')
+      .map(([name]) => name).sort(),
+    ['createUserWithTempPassword', 'resendInvitation'],
+    'only the two protected invitation endpoints omit the general gate',
+  );
+  assert.deepEqual(
+    Object.entries(BACKEND_DELIVERY_CLASSIFICATION)
+      .filter(([, classification]) => classification === 'mixed-with-manual-invitation')
+      .map(([name]) => name),
+    ['userManagement'],
+    'mixed exceptions are restricted to userManagement invitation actions',
+  );
 
   for (const [name, classification] of Object.entries(BACKEND_DELIVERY_CLASSIFICATION)) {
     const source = sources.get(name);
@@ -254,15 +270,24 @@ test('every inventoried backend sender is classified and fail-closed before deli
     assert.ok(
       ['direct', 'mixed-state-transition', 'scheduled-maintenance', 'scheduled-worker',
         'provider-wrapper', 'mixed-channel', 'platform-boundary',
-        'mixed-platform-boundary'].includes(classification),
+        'mixed-platform-boundary', 'manual-invitation',
+        'mixed-with-manual-invitation'].includes(classification),
       `${name}: known classification`,
     );
 
     const marker = source.indexOf('BEGIN SHARED HELPER: outboundDeliveryGate');
     PROVIDER_PRIMITIVE.lastIndex = 0;
     const firstPrimitive = PROVIDER_PRIMITIVE.exec(source)?.index ?? -1;
-    assert.notEqual(marker, -1, `${name}: canonical gate marker exists`);
     assert.notEqual(firstPrimitive, -1, `${name}: provider primitive exists`);
+    if (classification === 'manual-invitation') {
+      assert.equal(marker, -1, `${name}: unused general gate is absent`);
+      assert.doesNotMatch(source, /outboundDeliveryReleased\s*\(/);
+      const primitives = [...source.matchAll(new RegExp(PROVIDER_PRIMITIVE.source, 'g'))];
+      assert.equal(primitives.length, name === 'createUserWithTempPassword' ? 2 : 1,
+        `${name}: only its reviewed invitation delivery primitives are exempt`);
+      continue;
+    }
+    assert.notEqual(marker, -1, `${name}: canonical gate marker exists`);
     assert.ok(marker < firstPrimitive, `${name}: gate helper is declared before its first provider primitive`);
 
     const releaseChecks = [...source.matchAll(/outboundDeliveryReleased\s*\(\s*\)/g)]
@@ -274,8 +299,34 @@ test('every inventoried backend sender is classified and fail-closed before deli
     effectPattern.lastIndex = 0;
     const effects = [...source.matchAll(effectPattern)].map((match) => match.index);
     assert.ok(effects.length > 0, `${name}: classified delivery effect exists`);
+    let gatedEffects = effects;
+    if (classification === 'mixed-with-manual-invitation') {
+      const manualRanges = [
+        ['inviteUser', 'resendInvitation'],
+        ['resendInvitation', 'resetPassword'],
+      ].map(([startName, endName]) => {
+        const start = source.indexOf(`async function ${startName}(`);
+        const end = source.indexOf(`async function ${endName}(`);
+        assert.ok(start >= 0 && end > start, `${name}: exact ${startName} action exists`);
+        const action = source.slice(start, end);
+        assert.doesNotMatch(action, /outboundDeliveryReleased\s*\(/,
+          `${name}: ${startName} remains independent of the general gate`);
+        assert.equal([...action.matchAll(PROVIDER_PRIMITIVE)].length, 1,
+          `${name}: ${startName} exempts only its invitation email`);
+        return { start, end };
+      });
+      gatedEffects = effects.filter((effect) => !manualRanges.some(({ start, end }) => effect >= start && effect < end));
+      assert.equal(gatedEffects.length, 2,
+        `${name}: password-recovery and expiry-digest emails remain under the general gate`);
+      const resetAction = source.slice(source.indexOf('async function resetPassword('));
+      const resetGate = resetAction.indexOf('!outboundDeliveryReleased()');
+      assert.ok(resetGate >= 0 && resetGate < resetAction.indexOf('.SendEmail('),
+        `${name}: password recovery retains its own gate`);
+      assert.match(source, /case 'check_expired_invitations':[\s\S]*?if \(!outboundDeliveryReleased\(\)\) return outboundDeliveryPausedResponse\('email'\);[\s\S]*?return await checkExpiredInvitations\(base44\);/,
+        `${name}: expiry digests retain their dispatch gate`);
+    }
     if (classification !== 'provider-wrapper') {
-      for (const effect of effects) {
+      for (const effect of gatedEffects) {
         assert.ok(
           releaseChecks.some((check) => check < effect),
           `${name}: release check precedes provider primitive at source offset ${effect}`,

@@ -55,7 +55,7 @@ is always active. The dashboard-env secret list is therefore just:
 |---|---|---|
 | **`SIGNATURE_HMAC_SECRET`** | Keys the e-signature integrity MAC (forgery-resistant tamper-evidence) | signature token issuance and verification fail closed |
 | `APP_PUBLIC_URL` (non-secret) | Exact per-environment HTTPS origin for account, invitation, signer, and notification links | outbound app-link generation fails closed; there is no production or `APP_URL` fallback |
-| `OUTBOUND_DELIVERY_RELEASE` (release gate, not a credential) | Application-wide email/SMS/fax/voice release | delivery remains paused; only exact `enabled-v1` releases it |
+| `OUTBOUND_DELIVERY_RELEASE` (release gate, not a credential) | General email/SMS/fax/voice release; authorized manual account invitations are independent | general delivery remains paused; only exact `enabled-v1` releases it |
 | `OPENAI_API_KEY` | Direct audio transcription, including the transcription stage of SOAP-note-from-audio | direct transcription is unavailable; platform-managed application AI is unaffected |
 | `ANTHROPIC_API_KEY` | Direct SOAP-note-from-audio structuring | that optional structuring step is unavailable; deterministic fax covers are unaffected |
 | `HEYGEN_API_KEY` | Training-video generation | optional generated training videos are unavailable |

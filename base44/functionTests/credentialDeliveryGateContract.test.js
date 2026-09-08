@@ -179,23 +179,13 @@ const DIRECT_CASES = [
     openCall: 'updateUserPassword',
   },
   {
-    name: 'createUserWithTempPassword',
-    body: { email: 'staff@example.com', full_name: 'Staff User', role: 'user' },
-    openCall: 'inviteUser',
-  },
-  {
-    name: 'resendInvitation',
-    body: { invitation_id: 'invite-1' },
-    openCall: 'inviteUser',
-  },
-  {
     name: 'manageUserVerification',
     body: { action: 'resend', email: 'staff@example.com' },
     openCall: 'resendOtp',
   },
 ];
 
-test('credential, invite, and OTP delivery paths fail closed with zero mutations', async () => {
+test('password recovery and OTP delivery paths fail closed with zero mutations', async () => {
   for (const testCase of DIRECT_CASES) {
     const runtime = fixture();
     const handler = await loadHandler(testCase.name, runtime);
@@ -212,7 +202,7 @@ test('credential, invite, and OTP delivery paths fail closed with zero mutations
   }
 });
 
-test('only the exact enabled-v1 sentinel reaches credential, invite, and OTP mocks', async () => {
+test('only the exact enabled-v1 sentinel reaches password recovery and OTP mocks', async () => {
   for (const testCase of DIRECT_CASES) {
     const runtime = fixture();
     const handler = await loadHandler(testCase.name, runtime, { release: 'enabled-v1' });
@@ -258,22 +248,97 @@ test('manageUserVerification leaves OTP verification available while resend is p
   assert.equal(callCount(runtime, 'resendOtp'), 0);
 });
 
-const USER_MANAGEMENT_DELIVERY_CASES = [
+const MANUAL_INVITATION_CASES = [
   {
-    body: { action: 'invite_user', email: 'staff@example.com', full_name: 'Staff User', role: 'user' },
-    openCall: 'UserInvitation.create',
+    name: 'createUserWithTempPassword',
+    body: { email: 'staff@example.com', full_name: 'Staff User', role: 'user' },
+    openCall: 'inviteUser',
+    initial: true,
   },
   {
+    name: 'resendInvitation',
+    body: { invitation_id: 'invite-1' },
+    openCall: 'inviteUser',
+  },
+  {
+    name: 'userManagement',
+    body: { action: 'invite_user', email: 'staff@example.com', full_name: 'Staff User', role: 'user' },
+    openCall: 'UserInvitation.create',
+    initial: true,
+  },
+  {
+    name: 'userManagement',
     body: { action: 'resend_invitation', invitation_id: 'invite-1' },
     openCall: 'sendEmail',
   },
+];
+
+for (const testCase of MANUAL_INVITATION_CASES) {
+  const label = testCase.body.action || testCase.name;
+  test(`${label} permits a protected manual invitation while general delivery is paused`, async () => {
+    const runtime = fixture();
+    const handler = await loadHandler(testCase.name, runtime);
+    const response = await handler(request(testCase.body));
+    assert.equal(response.status, 200);
+    assert.ok(callCount(runtime, testCase.openCall) > 0);
+    assert.equal(callCount(runtime, 'updateUserPassword'), 0);
+    assert.equal(callCount(runtime, 'resendOtp'), 0);
+  });
+
+  for (const [guard, user] of [
+    ['ordinary user', adminUser({ role: 'user', account_type: 'staff' })],
+    ['deactivated admin', adminUser({ is_active: false })],
+    ['agency admin without an agency', adminUser({ account_type: 'agency_admin', agency_name: null })],
+  ]) {
+    test(`${label} still rejects ${guard} before any mutation while general delivery is paused`, async () => {
+      const runtime = fixture({ user });
+      const handler = await loadHandler(testCase.name, runtime);
+      const response = await handler(request(testCase.body));
+      assert.equal(response.status, 403);
+      assertNoDeliveryMutations(runtime, label);
+    });
+  }
+
+  if (testCase.initial) {
+    test(`${label} keeps admin-role grants restricted to the protected owner while general delivery is paused`, async () => {
+      const runtime = fixture({ user: adminUser({ email: 'other-admin@example.com' }) });
+      const handler = await loadHandler(testCase.name, runtime);
+      const response = await handler(request({ ...testCase.body, role: 'admin' }));
+      assert.equal(response.status, 403);
+      assertNoDeliveryMutations(runtime, label);
+    });
+  } else {
+    test(`${label} still rejects another agency's invitation while general delivery is paused`, async () => {
+      const runtime = fixture({
+        user: adminUser({ account_type: 'agency_admin', agency_name: 'Agency Two' }),
+      });
+      const handler = await loadHandler(testCase.name, runtime);
+      const response = await handler(request(testCase.body));
+      assert.equal(response.status, 403);
+      assertNoDeliveryMutations(runtime, label);
+    });
+
+    for (const status of ['accepted', 'cancelled']) {
+      test(`${label} cannot reopen an ${status} invitation while general delivery is paused`, async () => {
+        const runtime = fixture();
+        runtime.invitation.status = status;
+        const handler = await loadHandler(testCase.name, runtime);
+        const response = await handler(request(testCase.body));
+        assert.ok([400, 409].includes(response.status));
+        assertNoDeliveryMutations(runtime, label);
+      });
+    }
+  }
+}
+
+const USER_MANAGEMENT_DELIVERY_CASES = [
   {
     body: { action: 'reset_password', userEmail: 'staff@example.com' },
     openCall: 'updateUserPassword',
   },
 ];
 
-test('userManagement gates only its delivery actions before their first mutation', async () => {
+test('userManagement keeps password recovery and expiry digests gated before mutations', async () => {
   for (const testCase of USER_MANAGEMENT_DELIVERY_CASES) {
     const closed = fixture();
     const closedHandler = await loadHandler('userManagement', closed);

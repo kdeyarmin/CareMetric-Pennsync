@@ -12,7 +12,7 @@ const payloads = {
   resend_invitation: { invitation_id: 'invitation-1' },
 };
 
-function fixture({ sendFails = false, stampFails = false, stampCommitsThenFails = false, auditFails = false, released = true, user = owner } = {}) {
+function fixture({ sendFails = false, stampFails = false, stampCommitsThenFails = false, auditFails = false, released = false, user = owner } = {}) {
   const state = {
     calls: [],
     audits: [],
@@ -150,12 +150,13 @@ for (const action of Object.keys(payloads)) {
     });
   }
 
-  test(`${action} keeps the paused gate ahead of every write and send`, async () => {
+  test(`${action} submits authorized manual invitations while general delivery remains paused`, async () => {
     const runtime = fixture({ released: false });
     const result = await runtime.invoke(action);
-    assert.equal(result.status, 503);
-    assert.equal(result.body.code, 'OUTBOUND_DELIVERY_RELEASE_PAUSED');
-    assert.deepEqual(runtime.state.calls, []);
+    assert.equal(result.status, 200);
+    assert.equal(result.body.success, true);
+    assert.equal(result.body.delivery_status, 'submitted');
+    assert.equal(runtime.state.calls.filter((call) => call === 'send').length, 1);
   });
 
   test(`${action} does not let an ordinary user send or mutate invitations`, async () => {

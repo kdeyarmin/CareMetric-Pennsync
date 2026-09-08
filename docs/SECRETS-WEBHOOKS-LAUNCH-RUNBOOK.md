@@ -90,9 +90,14 @@ in every environment to that environment's exact HTTPS origin. Account,
 invitation, and notification email paths reject a missing or malformed value;
 they do not fall back to `APP_URL` or a production hostname.
 
-`OUTBOUND_DELIVERY_RELEASE` is an application-wide release gate, not a provider
+`OUTBOUND_DELIVERY_RELEASE` is a general outbound release gate, not a provider
 credential. Leave it absent or blank in staging: email, SMS, fax, and voice
-delivery then remain fail-closed even when provider credentials are present.
+delivery then remain fail-closed even when provider credentials are present,
+except authorized manual account invitations. `createUserWithTempPassword`,
+`resendInvitation`, and `userManagement` actions `invite_user`/`resend_invitation`
+operate independently of this gate. Their administrator, active-account,
+tenant, role, and invitation-status checks still apply. Password resets, OTP
+resends, activation notices, and scheduled invitation digests remain gated.
 Only the exact value `enabled-v1`, set after a separate environment-specific
 approval, releases delivery. Never use a `VITE_` variable for this gate.
 
@@ -135,8 +140,9 @@ treated as launch blockers.
 
 The integration-health report exposes release state separately from credential
 state. A successful read-only provider probe never authorizes traffic.
-`OUTBOUND_DELIVERY_RELEASE` is the application-wide delivery switch and is
-fail-closed unless its value is exactly `enabled-v1`. Provider/workflow-specific
+`OUTBOUND_DELIVERY_RELEASE` controls general delivery, excluding the authorized
+manual invitation paths listed above, and is fail-closed unless its value is
+exactly `enabled-v1`. Provider/workflow-specific
 pauses (including `OUTCOME_PIPELINE_RELEASE` for the outcome worker) remain
 independent defense-in-depth gates; keep all of them paused in staging except
 for an explicitly approved controlled-destination test.
