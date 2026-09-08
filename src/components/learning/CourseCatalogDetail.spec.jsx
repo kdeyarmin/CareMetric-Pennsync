@@ -4,16 +4,12 @@ import { renderWithProviders } from "@/test/testUtils";
 
 const mocks = vi.hoisted(() => ({
   moduleFilter: vi.fn(async () => []),
-  openAuthorityBoundWindow: vi.fn(),
 }));
 
 vi.mock("@/api/base44Client", () => ({
   base44: { entities: { TrainingModule: { filter: mocks.moduleFilter } } },
 }));
 
-vi.mock("@/lib/authorityBoundWindows", () => ({
-  openAuthorityBoundWindow: mocks.openAuthorityBoundWindow,
-}));
 
 import CourseCatalogDetail from "./CourseCatalogDetail";
 
@@ -44,7 +40,6 @@ const course = {
 describe("CourseCatalogDetail", () => {
   beforeEach(() => {
     mocks.moduleFilter.mockReset();
-    mocks.openAuthorityBoundWindow.mockReset();
     mocks.moduleFilter.mockResolvedValue([
       { id: "m1", title: "Spotting hazards", estimated_minutes: 20, video_url: "https://example.org/v.mp4" },
       { id: "m2", title: "Safe transfers", estimated_minutes: 25 },
@@ -69,8 +64,9 @@ describe("CourseCatalogDetail", () => {
     expect(screen.getByText("Regulatory alignment")).toBeInTheDocument();
     expect(screen.getByText("42 CFR §484.60 — Care planning")).toBeInTheDocument();
     expect(screen.getByText("Why this matters now")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "CDC STEADI" }));
-    expect(mocks.openAuthorityBoundWindow).toHaveBeenCalledWith("https://example.org/steadi");
+    const referenceLink = screen.getByRole("link", { name: "CDC STEADI" });
+    expect(referenceLink).toHaveAttribute("href", "https://example.org/steadi");
+    expect(referenceLink).not.toHaveAttribute("target");
 
     // The lesson outline comes from the course's real modules.
     expect(await screen.findByText("Spotting hazards")).toBeInTheDocument();

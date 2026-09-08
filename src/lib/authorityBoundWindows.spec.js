@@ -630,17 +630,34 @@ describe('authority-bound auxiliary-window containment', () => {
     expect(main).toMatch(/window\.history\.replaceState\(\{\}/);
   });
 
-  it('enforces the narrow no-descendant-context CSP and quarantines the active referral iframe', () => {
+  it('limits descendant frames to privacy-enhanced YouTube education and keeps auxiliary links same-tab', () => {
     const html = readFileSync(join(process.cwd(), 'index.html'), 'utf8');
+    const education = readFileSync(
+      join(process.cwd(), 'src/pages/NurseEducationVideos.jsx'),
+      'utf8',
+    );
     const referral = readFileSync(
       join(process.cwd(), 'src/components/hub-tabs/ReferralAdmissionNote.jsx'),
       'utf8',
     );
+    const sameTabLinks = [
+      ['src/components/learning/CourseCatalogDetail.jsx', '<a'],
+      ['src/components/training/TrainingVideoStudio.jsx', '<a'],
+      ['src/pages/AgencySettings.jsx', '<a'],
+    ];
 
     expect(html).toMatch(
-      /Content-Security-Policy[^>]+object-src 'none'; base-uri 'none'; frame-src 'none'; form-action 'self'/,
+      /Content-Security-Policy[^>]+object-src 'none'; base-uri 'none'; frame-src https:\/\/www\.youtube-nocookie\.com; form-action 'self'/,
     );
+    expect(education).toContain('https://www.youtube-nocookie.com/embed/');
+    expect(education).not.toContain('https://www.youtube.com/embed/');
     expect(referral).not.toMatch(/<iframe\b/i);
     expect(referral).toContain('Continue to Smart Note');
+
+    for (const [path, anchorMarker] of sameTabLinks) {
+      const source = readFileSync(join(process.cwd(), path), 'utf8');
+      expect(source).toContain(anchorMarker);
+      expect(source).not.toContain('openAuthorityBoundWindow');
+    }
   });
 });
