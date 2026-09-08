@@ -15,6 +15,7 @@ const payloads = {
 function fixture({ sendFails = false, stampFails = false, stampCommitsThenFails = false, auditFails = false, released = false, user = owner } = {}) {
   const state = {
     calls: [],
+    invitations: [],
     audits: [],
     row: {
       id: 'invitation-1', email: 'invitee@example.test', full_name: 'Test Invitee',
@@ -24,6 +25,12 @@ function fixture({ sendFails = false, stampFails = false, stampCommitsThenFails 
   };
   const client = {
     auth: { me: async () => user },
+    users: { inviteUser: async (email, role) => {
+      state.calls.push('send');
+      state.invitations.push({ email, role });
+      if (sendFails) throw new Error('private-provider-detail');
+      return { accepted: true };
+    } },
     asServiceRole: {
       entities: {
         UserInvitation: {
@@ -50,9 +57,7 @@ function fixture({ sendFails = false, stampFails = false, stampCommitsThenFails 
         } },
       },
       integrations: { Core: { SendEmail: async () => {
-        state.calls.push('send');
-        if (sendFails) throw new Error('private-provider-detail');
-        return { accepted: true };
+        throw new Error('Core.SendEmail only supports registered app users');
       } } },
     },
   };
@@ -111,12 +116,13 @@ test('resend email error leaves expiry, sent time and resend count unchanged', a
 });
 
 for (const action of Object.keys(payloads)) {
-  test(`${action} records a send only after the provider accepts it`, async () => {
+  test(`${action} invites an unregistered account through the native platform API`, async () => {
     const runtime = fixture();
     const result = await runtime.invoke(action);
     assert.equal(result.status, 200);
     assert.equal(result.body.delivery_status, 'submitted');
     assert.deepEqual(result.body.warnings, []);
+    assert.deepEqual(runtime.state.invitations, [{ email: 'invitee@example.test', role: 'user' }]);
     assert.deepEqual(runtime.state.calls, action === 'invite_user'
       ? ['create', 'send', 'stamp', 'audit'] : ['send', 'stamp', 'audit']);
     assert.ok(Date.parse(runtime.state.row.last_sent_at) > Date.parse('2020-01-01'));

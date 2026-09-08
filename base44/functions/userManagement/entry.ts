@@ -384,7 +384,7 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
 
   // Validate the environment-specific origin before creating an invitation row.
   // A bad deployment configuration must not create a partial invite flow.
-  const signupUrl = getAppBaseUrl();
+  getAppBaseUrl();
 
   // Authorized manual invitations are independent of the general delivery pause.
 
@@ -408,22 +408,8 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
 
   // Send invitation email
   try {
-    await base44.asServiceRole.integrations.Core.SendEmail({
-      to: email,
-      subject: 'You’re invited to join PennSync by CareMetric',
-      from_name: 'PennSync by CareMetric',
-      body: renderBrandedEmail({
-        preheader: 'You’ve been invited to join PennSync by CareMetric. Create your account to get started.',
-        eyebrow: 'You’re invited',
-        title: `Welcome, ${full_name}!`,
-        intro: 'You’ve been invited to join PennSync by CareMetric — an AI-powered home health documentation and analytics platform. Create your account to get started.',
-        sections: [
-          { rows: [['Email', email], ['Role', role || 'user']] },
-          { button: { href: signupUrl, label: 'Create your account' } },
-          { callout: { tone: 'warn', text: `This invitation expires in 7 days (on ${expiresAt.toLocaleDateString()}).` } },
-        ],
-      }),
-    });
+    // Core.SendEmail only accepts registered users; onboarding uses the native invite.
+    await base44.users.inviteUser(email, role || 'user');
   } catch {
     console.error('Invitation email delivery failed');
     // The pending row exists, but a provider error (including a timeout) is not
@@ -534,27 +520,13 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
     resend_count: invitation.resend_count || 0,
   };
 
-  // Send email FIRST, then stamp — otherwise a SendEmail failure still extends
+  // Submit the platform invitation FIRST, then stamp — otherwise a provider failure extends
   // expiry and looks like a successful resend.
-  const signupUrl = getAppBaseUrl();
+  getAppBaseUrl();
   // Authorized manual invitations are independent of the general delivery pause.
   try {
-    await base44.asServiceRole.integrations.Core.SendEmail({
-      to: invitation.email,
-      subject: 'Reminder: your invitation to PennSync by CareMetric',
-      from_name: 'PennSync by CareMetric',
-      body: renderBrandedEmail({
-        preheader: 'A reminder that you’ve been invited to join PennSync by CareMetric.',
-        eyebrow: 'Invitation reminder',
-        title: `Hello ${invitation.full_name},`,
-        intro: 'This is a friendly reminder that you’ve been invited to join PennSync by CareMetric. Your invitation is still waiting — create your account to get started.',
-        sections: [
-          { rows: [['Email', invitation.email], ['Role', invitation.role || 'user']] },
-          { button: { href: signupUrl, label: 'Create your account' } },
-          { callout: { tone: 'warn', text: `This invitation expires in 7 days (on ${newExpiresAt.toLocaleDateString()}).` } },
-        ],
-      }),
-    });
+    // Core.SendEmail only accepts registered users; onboarding uses the native invite.
+    await base44.users.inviteUser(invitation.email, invitation.role || 'user');
   } catch {
     console.error('Invitation resend delivery failed');
     return Response.json({

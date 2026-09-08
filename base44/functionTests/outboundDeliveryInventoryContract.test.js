@@ -40,6 +40,7 @@ const INVITE_SENDERS = [
   'adminResetPassword',
   'createUserWithTempPassword',
   'resendInvitation',
+  'userManagement',
 ];
 
 const SMS_SENDERS = [

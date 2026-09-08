@@ -274,13 +274,13 @@ const MANUAL_INVITATION_CASES = [
   {
     name: 'userManagement',
     body: { action: 'invite_user', email: 'staff@example.com', full_name: 'Staff User', role: 'user' },
-    openCall: 'UserInvitation.create',
+    openCall: 'inviteUser',
     initial: true,
   },
   {
     name: 'userManagement',
     body: { action: 'resend_invitation', invitation_id: 'invite-1' },
-    openCall: 'sendEmail',
+    openCall: 'inviteUser',
   },
 ];
 
