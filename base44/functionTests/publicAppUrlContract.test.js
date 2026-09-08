@@ -72,7 +72,7 @@ test('APP_PUBLIC_URL is resolved before each affected outbound side effect', asy
     ['createUserWithTempPassword', 'const appUrl = getAppBaseUrl();', 'await base44.users.inviteUser('],
     ['generateFollowUpPortalToken', 'const portalOrigin = getAppBaseUrl();', 'base44 = createClientFromRequest(req);'],
     ['resetUserPassword', 'const appUrl = getAppBaseUrl();', 'await base44.asServiceRole.auth.updateUserPassword('],
-    ['userManagement', 'const signupUrl = getAppBaseUrl();', 'const invitation = await base44.asServiceRole.entities.UserInvitation.create('],
+    ['userManagement', 'getAppBaseUrl();', 'const invitation = await base44.asServiceRole.entities.UserInvitation.create('],
   ];
 
   for (const [functionName, resolveMarker, effectMarker] of expectations) {
