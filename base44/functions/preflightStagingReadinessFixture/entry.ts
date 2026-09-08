@@ -183,10 +183,15 @@ function isProtectedPlatformOwner(user: Record<string, unknown>) {
 function eligibleCallerSnapshot(user: Record<string, unknown>) {
   const id = exactIdentifier(user.id);
   const email = canonicalEmail(user.email);
+  // Legacy protected-owner rows can predate the self-editable is_active field.
+  // Normalize only true/unset as active; explicit false and malformed values fail closed.
+  const hasSupportedActiveState = user.is_active === true
+    || user.is_active === null
+    || user.is_active === undefined;
   if (
     !id
     || !email
-    || user.is_active !== true
+    || !hasSupportedActiveState
     || (user.disabled !== false && user.disabled !== null)
     || user.is_service !== false
     || user.is_verified !== true

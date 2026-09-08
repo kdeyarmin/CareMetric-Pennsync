@@ -682,6 +682,33 @@ test('owner contamination and provider scope failures cannot be mistaken for rea
   assert.equal(duplicateEmailResult.response.status, 409);
 });
 
+test('legacy protected-owner active state is normalized without weakening deactivation', async () => {
+  const ownerWithoutActiveState = { ...OWNER };
+  delete ownerWithoutActiveState.is_active;
+  for (const caller of [
+    ownerWithoutActiveState,
+    { ...OWNER, is_active: null },
+  ]) {
+    const { handler } = await loadHandler({ callers: [caller, caller, caller] });
+    const { response, json } = await invoke(handler);
+    assert.equal(response.status, 200);
+    assert.equal(json.status, 'point_in_time_read_only_preflight_passed');
+  }
+
+  const deactivated = await loadHandler({
+    callers: [{ ...OWNER, is_active: false }],
+  });
+  const deactivatedResult = await invoke(deactivated.handler);
+  assert.equal(deactivatedResult.response.status, 403);
+  assert.equal(deactivated.calls.filters.length, 0);
+
+  const drifted = await loadHandler({
+    callers: [ownerWithoutActiveState, { ...OWNER, is_active: false }],
+  });
+  const driftedResult = await invoke(drifted.handler);
+  assert.equal(driftedResult.response.status, 409);
+});
+
 test('malformed or incomplete lifecycle fields never become eligible by coercion', async () => {
   for (const caller of [
     { ...OWNER, is_active: 'true' },
