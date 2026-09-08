@@ -5,6 +5,7 @@ const visitCreate = vi.fn(async (p) => ({ id: "visit-1", ...p }));
 const visitUpdate = vi.fn(async () => ({}));
 const visitFilter = vi.fn(async () => []);
 const noteConvCreate = vi.fn(async () => ({}));
+const noteConvFilter = vi.fn(async () => []);
 const auditCreate = vi.fn(async () => ({ id: "audit-1" }));
 const auditUpdate = vi.fn(async () => ({}));
 const auditFilter = vi.fn(async () => []);
@@ -31,7 +32,10 @@ vi.mock("@/api/base44Client", () => ({
         update: (...a) => visitUpdate(...a),
         filter: (...a) => visitFilter(...a),
       },
-      NoteConversion: { create: (...a) => noteConvCreate(...a) },
+      NoteConversion: {
+        create: (...a) => noteConvCreate(...a),
+        filter: (...a) => noteConvFilter(...a),
+      },
       ComplianceAudit: {
         create: (...a) => auditCreate(...a),
         update: (...a) => auditUpdate(...a),
@@ -66,6 +70,10 @@ const baseArgs = {
   visitType: "routine_visit", roughNote: "rough", currentUser,
 };
 
+function storedSupportingRow(id, fields) {
+  return JSON.parse(JSON.stringify({ id, ...fields, created_by: currentUser.email }));
+}
+
 function setOnline(value) {
   Object.defineProperty(navigator, "onLine", { value, configurable: true });
 }
@@ -74,12 +82,13 @@ describe("persistVisitNote", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     functionsInvoke.mockReset().mockImplementation(defaultInvoke);
-    noteConvCreate.mockReset().mockResolvedValue({});
-    auditCreate.mockReset().mockResolvedValue({ id: 'audit-1' });
+    noteConvCreate.mockReset().mockImplementation(async (fields) => storedSupportingRow('conversion-1', fields));
+    noteConvFilter.mockReset().mockResolvedValue([]);
+    auditCreate.mockReset().mockImplementation(async (fields) => storedSupportingRow('audit-1', fields));
     auditUpdate.mockReset().mockResolvedValue({});
     setOnline(true);
     visitFilter.mockResolvedValue([]);
-    auditFilter.mockResolvedValue([]);
+    auditFilter.mockReset().mockResolvedValue([]);
   });
   afterEach(() => setOnline(true));
 
@@ -106,6 +115,8 @@ describe("persistVisitNote", () => {
       patient_id: "p1",
       status: "completed",
       nurse_notes: "Final note text",
+      raw_transcription: "rough",
+      documentation_source: "smart_note",
       vital_signs: { heart_rate: 80 },
       grounding_pending: false,
     }));
@@ -116,6 +127,50 @@ describe("persistVisitNote", () => {
       patient_id: "p1", mode: "append", clinical_notes: "Final note text",
       entry: expect.objectContaining({ visit_id: "visit-1", note: "Final note text" }),
     }));
+  });
+
+  it.each(['smart_note', 'audio'])(
+    'retains completion and transcript through a failed first documentation save for %s',
+    async (source) => {
+      const saveProgress = createVisitSaveProgress();
+      let failDocumentation = true;
+      functionsInvoke.mockImplementation(async (name, payload) => {
+        if (name === 'updateAuthorizedVisit' && failDocumentation) {
+          failDocumentation = false;
+          throw new Error('Documentation response lost');
+        }
+        return defaultInvoke(name, payload);
+      });
+      await expect(persistVisitNote({ ...baseArgs, source, saveProgress }))
+        .rejects.toMatchObject({ visitId: 'visit-1', pendingRecords: ['documentation'] });
+      expect(noteConvCreate).not.toHaveBeenCalled();
+      await expect(persistVisitNote({
+        ...baseArgs, source, savedVisitId: 'visit-1', saveProgress,
+      })).resolves.toMatchObject({ visitId: 'visit-1' });
+      const updates = functionsInvoke.mock.calls.filter(([name]) => name === 'updateAuthorizedVisit');
+      expect(updates).toHaveLength(2);
+      for (const [, payload] of updates) {
+        expect(payload).toMatchObject({
+          visit_id: 'visit-1', status: 'completed', raw_transcription: 'rough',
+          documentation_source: source,
+        });
+      }
+      expect(functionsInvoke.mock.calls.filter(([name]) => name === 'createAuthorizedVisit'))
+        .toHaveLength(1);
+    },
+  );
+
+  it('saves changed raw text even when the final note is unchanged', async () => {
+    const saveProgress = createVisitSaveProgress();
+    await persistVisitNote({ ...baseArgs, saveProgress });
+    await persistVisitNote({ ...baseArgs, roughNote: 'corrected transcript', saveProgress });
+    const updates = functionsInvoke.mock.calls.filter(([name]) => name === 'updateAuthorizedVisit');
+    expect(updates).toHaveLength(2);
+    expect(updates[1][1]).toMatchObject({
+      visit_id: 'visit-1', nurse_notes: baseResult.finalNote,
+      raw_transcription: 'corrected transcript', documentation_source: 'smart_note',
+    });
+    expect(updates[1][1]).not.toHaveProperty('status');
   });
 
   it("completes an existing (deep-linked) visit instead of creating a duplicate", async () => {
@@ -226,7 +281,7 @@ describe("persistVisitNote", () => {
       finding_ids: expect.arrayContaining(["facility:spo2_on_o2"]),
     });
   });
-  it('retains the confirmed Visit and finishes only the failed supporting stage on retry', async () => {
+  it('retains the confirmed Visit and reconciles only the unconfirmed supporting stage on retry', async () => {
     const saveProgress = createVisitSaveProgress();
     auditCreate.mockRejectedValueOnce(new Error('provider details must stay private'));
     let failure;
@@ -236,13 +291,21 @@ describe("persistVisitNote", () => {
     expect(failure.message).not.toContain('provider details');
     expect(saveProgress).toMatchObject({ visitId: 'visit-1', noteConversionSaved: true });
 
+    auditFilter.mockResolvedValueOnce([storedSupportingRow('audit-1', auditCreate.mock.calls[0][0])]);
     const out = await persistVisitNote({ ...baseArgs, savedVisitId: failure.visitId, saveProgress });
     expect(out).toMatchObject({ mode: 'create', visitId: 'visit-1', auditId: 'audit-1' });
     expect(functionsInvoke.mock.calls.filter(([name]) => name === 'createAuthorizedVisit')).toHaveLength(1);
     expect(functionsInvoke.mock.calls.filter(([name]) => name === 'appendPatientNoteHistory')).toHaveLength(1);
     expect(functionsInvoke.mock.calls.filter(([name]) => name === 'updateAuthorizedVisit')).toHaveLength(1);
     expect(noteConvCreate).toHaveBeenCalledTimes(1);
-    expect(auditCreate).toHaveBeenCalledTimes(2);
+    expect(auditCreate).toHaveBeenCalledTimes(1);
+    expect(auditFilter).toHaveBeenCalledWith({
+      recovery_request_id: auditCreate.mock.calls[0][0].recovery_request_id,
+      created_by: currentUser.email,
+      nurse_email: currentUser.email,
+      patient_id: 'p1',
+      visit_id: 'visit-1',
+    }, '-created_date', 2);
   });
 
   it('waits for a late audit confirmation after another supporting write fails', async () => {
@@ -258,13 +321,14 @@ describe("persistVisitNote", () => {
     await vi.waitFor(() => expect(resolveAudit).toBeTypeOf('function'));
     expect(settled).toBe(false);
     expect(saveProgress.visitId).toBe('visit-1');
-    resolveAudit({ id: 'late-audit' });
+    resolveAudit(storedSupportingRow('late-audit', auditCreate.mock.calls[0][0]));
     const error = await pending;
     expect(error).toMatchObject({ auditId: 'late-audit', pendingRecords: ['conversion'] });
+    noteConvFilter.mockResolvedValueOnce([storedSupportingRow('conversion-1', noteConvCreate.mock.calls[0][0])]);
     await persistVisitNote({ ...baseArgs, saveProgress });
     expect(auditCreate).toHaveBeenCalledTimes(1);
     expect(auditUpdate).not.toHaveBeenCalled();
-    expect(noteConvCreate).toHaveBeenCalledTimes(2);
+    expect(noteConvCreate).toHaveBeenCalledTimes(1);
   });
 
   it('replays the exact creation identity and body after an unknown response, then applies edits', async () => {
@@ -301,6 +365,7 @@ describe("persistVisitNote", () => {
     const saveProgress = createVisitSaveProgress();
     noteConvCreate.mockRejectedValueOnce(new Error('conversion unavailable'));
     await expect(persistVisitNote({ ...baseArgs, saveProgress })).rejects.toBeInstanceOf(PartialVisitSaveError);
+    noteConvFilter.mockResolvedValueOnce([storedSupportingRow('conversion-1', noteConvCreate.mock.calls[0][0])]);
     await persistVisitNote({
       ...baseArgs, saveProgress,
       result: { ...baseResult, finalNote: 'Edited note', coverageScore: 95, acknowledgment: {
@@ -367,6 +432,111 @@ describe("persistVisitNote", () => {
     expect(error).not.toHaveProperty('auditId');
     expect(functionsInvoke).not.toHaveBeenCalled();
     expect(auditCreate).not.toHaveBeenCalled();
+  });
+
+  it.each(['conversion', 'audit'])(
+    'recovers a committed %s after its response is lost without another create',
+    async (kind) => {
+      const saveProgress = createVisitSaveProgress();
+      const create = kind === 'conversion' ? noteConvCreate : auditCreate;
+      const filter = kind === 'conversion' ? noteConvFilter : auditFilter;
+      const rows = [];
+      create.mockImplementationOnce(async (fields) => {
+        rows.push(storedSupportingRow(`${kind}-committed`, fields));
+        throw new Error('Response lost after commit');
+      });
+      filter.mockImplementation(async () => rows);
+      await expect(persistVisitNote({ ...baseArgs, saveProgress }))
+        .rejects.toMatchObject({ pendingRecords: [kind] });
+      await expect(persistVisitNote({ ...baseArgs, saveProgress }))
+        .resolves.toMatchObject({ visitId: 'visit-1' });
+      expect(rows).toHaveLength(1);
+      expect(create).toHaveBeenCalledTimes(1);
+      expect(filter).toHaveBeenCalledWith({
+        recovery_request_id: rows[0].recovery_request_id,
+        created_by: currentUser.email,
+        nurse_email: currentUser.email,
+        patient_id: 'p1',
+        ...(kind === 'audit' ? { visit_id: 'visit-1' } : {}),
+      }, '-created_date', 2);
+      if (kind === 'audit') expect(saveProgress.auditId).toBe('audit-committed');
+    },
+  );
+
+  it.each(['conversion', 'audit'])(
+    'treats a malformed %s create response as ambiguous and only reconciles it',
+    async (kind) => {
+      const saveProgress = createVisitSaveProgress();
+      const create = kind === 'conversion' ? noteConvCreate : auditCreate;
+      const filter = kind === 'conversion' ? noteConvFilter : auditFilter;
+      create.mockResolvedValueOnce({});
+      await expect(persistVisitNote({ ...baseArgs, saveProgress }))
+        .rejects.toMatchObject({ pendingRecords: [kind] });
+      filter.mockResolvedValueOnce([storedSupportingRow(`${kind}-committed`, create.mock.calls[0][0])]);
+      await persistVisitNote({ ...baseArgs, saveProgress });
+      expect(create).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each(['conversion', 'audit'])(
+    'never repeats an ambiguous %s create when reconciliation cannot prove one exact row',
+    async (kind) => {
+      const saveProgress = createVisitSaveProgress();
+      const create = kind === 'conversion' ? noteConvCreate : auditCreate;
+      const filter = kind === 'conversion' ? noteConvFilter : auditFilter;
+      create.mockRejectedValueOnce(new Error('Unknown commit outcome'));
+      await expect(persistVisitNote({ ...baseArgs, saveProgress }))
+        .rejects.toMatchObject({ pendingRecords: [kind] });
+      const row = storedSupportingRow(`${kind}-committed`, create.mock.calls[0][0]);
+      const invalidResults = [
+        [],
+        [row, { ...row, id: 'duplicate' }],
+        null,
+        [{ ...row, id: '$invalid' }],
+        [{ ...row, created_by: 'another-nurse@example.com' }],
+        [{ ...row, nurse_email: 'another-nurse@example.com' }],
+        [{ ...row, patient_id: 'other-patient' }],
+        [{ ...row, recovery_request_id: 'other-save' }],
+        [{ ...row, ...(kind === 'audit' ? { visit_id: 'other-visit' } : { quality_score: 42 }) }],
+      ];
+      for (const result of invalidResults) {
+        filter.mockResolvedValueOnce(result);
+        await expect(persistVisitNote({ ...baseArgs, saveProgress }))
+          .rejects.toMatchObject({ pendingRecords: [kind] });
+      }
+      filter.mockRejectedValueOnce(new Error('Read unavailable'));
+      await expect(persistVisitNote({ ...baseArgs, saveProgress }))
+        .rejects.toMatchObject({ pendingRecords: [kind] });
+      expect(create).toHaveBeenCalledTimes(1);
+      if (kind === 'audit') expect(auditUpdate).not.toHaveBeenCalled();
+      // A later visible exact row can finish recovery, still without a create.
+      filter.mockResolvedValueOnce([row]);
+      await persistVisitNote({ ...baseArgs, saveProgress });
+      expect(create).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it('reconciles the original audit before applying edits made during its ambiguous create', async () => {
+    const saveProgress = createVisitSaveProgress();
+    let originalRow;
+    auditCreate.mockImplementationOnce(async (fields) => {
+      originalRow = storedSupportingRow('audit-committed', fields);
+      throw new Error('Response lost after commit');
+    });
+    await expect(persistVisitNote({ ...baseArgs, saveProgress }))
+      .rejects.toMatchObject({ pendingRecords: ['audit'] });
+    auditFilter.mockImplementationOnce(async () => [originalRow]);
+    await persistVisitNote({
+      ...baseArgs, saveProgress,
+      result: { ...baseResult, finalNote: 'Edited during recovery', acknowledgment: {
+        acknowledged: true, justification: 'Updated finding reviewed', finding_ids: ['finding-new'],
+      } },
+    });
+    expect(auditCreate).toHaveBeenCalledTimes(1);
+    expect(auditUpdate).toHaveBeenCalledWith('audit-committed', expect.objectContaining({
+      acknowledgment: expect.objectContaining({ justification: 'Updated finding reviewed' }),
+    }));
+    expect(auditFilter.mock.invocationCallOrder[0]).toBeLessThan(auditUpdate.mock.invocationCallOrder[0]);
   });
 
 });

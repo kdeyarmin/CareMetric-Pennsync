@@ -2,6 +2,10 @@
   "name": "ComplianceAudit",
   "type": "object",
   "properties": {
+    "recovery_request_id": {
+      "type": "string",
+      "description": "Stable save key bound to the authenticated creator and authorized Visit for exact reconciliation after an unconfirmed create; not a unique constraint"
+    },
     "visit_id": {
       "type": "string",
       "description": "Reference to the Visit entity"
