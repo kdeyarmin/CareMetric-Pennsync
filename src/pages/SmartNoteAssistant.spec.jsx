@@ -19,6 +19,8 @@ const authorizationMocks = vi.hoisted(() => ({
   visitId: null,
   forceRender: null,
   persist: vi.fn(),
+  handoff: vi.fn(),
+  reviewAck: vi.fn(),
 }));
 
 // No backend: the page's entity queries resolve empty, which is enough to render
@@ -99,6 +101,12 @@ vi.mock("@/lib/draftNotes", () => ({
   deleteDraftNoteLocally: draftStorageMocks.remove,
 }));
 
+vi.mock('@/functions/updateAuthorizedVisit', async (importOriginal) => ({
+  ...await importOriginal(),
+  advanceVisitHandoff: authorizationMocks.handoff,
+  setVisitReviewAcknowledgement: authorizationMocks.reviewAck,
+}));
+
 vi.mock('@/components/smartNote/persistVisitNote', async (importOriginal) => ({
   ...await importOriginal(),
   persistVisitNote: authorizationMocks.persist,
@@ -114,9 +122,11 @@ vi.mock('@/components/smartNote/ConstrainedNoteReviewer', () => ({
 }));
 
 vi.mock('@/components/smartNote/FinalNoteDisplay', () => ({
-  default: ({ onSave, onReset, saveDisabled, saved }) => <>
+  default: ({ onSave, onReset, saveDisabled, saved, onReportHandoffStatus, onReviewAck }) => <>
     <button disabled={saveDisabled} onClick={onSave}>Save test note</button>
     <button onClick={onReset}>Discard test note</button>
+    <button onClick={() => onReportHandoffStatus('copied_to_emr')}>Report test handoff</button>
+    <button onClick={() => onReviewAck(true)}>Acknowledge test review</button>
     {saved && <span>Test note fully saved</span>}
   </>,
 }));
@@ -154,6 +164,8 @@ describe("SmartNoteAssistant — Step 1 gate on template blanks", () => {
   beforeEach(() => {
     sessionStorage.clear();
     authorizationMocks.persist.mockReset();
+    authorizationMocks.handoff.mockReset().mockResolvedValue({});
+    authorizationMocks.reviewAck.mockReset().mockResolvedValue({});
     draftStorageMocks.captureLease.mockReset();
     draftStorageMocks.captureLease.mockReturnValue(draftStorageMocks.lease);
     draftStorageMocks.isLeaseCurrent.mockReset();
@@ -394,6 +406,50 @@ describe("SmartNoteAssistant — Step 1 gate on template blanks", () => {
     await waitFor(() => expect(authorizationMocks.persist).toHaveBeenCalledTimes(2));
     expect(authorizationMocks.persist.mock.calls[1][0].saveProgress.clientRequestId)
       .not.toBe(first.clientRequestId);
+  });
+
+  it('attaches pre-save handoff and review once when a partially saved Visit first completes', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    authorizationMocks.persist.mockImplementationOnce(async ({ saveProgress }) => {
+      saveProgress.visitId = 'partial-visit';
+      throw new PartialVisitSaveError(saveProgress, ['history']);
+    }).mockImplementationOnce(async ({ saveProgress }) => ({
+      mode: 'create', visitId: saveProgress.visitId, auditId: 'confirmed-audit',
+      finalText: DRAFT_FILLED, coverageScore: 88,
+    })).mockImplementationOnce(async ({ saveProgress }) => ({
+      mode: 'update', visitId: saveProgress.visitId, auditId: 'confirmed-audit',
+      finalText: DRAFT_FILLED, coverageScore: 88,
+    }));
+    renderWithProviders(<SmartNoteAssistant />, { route: '/SmartNoteAssistant?patientId=patient-a' });
+    await typeDraft(DRAFT_FILLED);
+    await waitFor(() => expect(reviewButton()).toBeEnabled());
+    fireEvent.click(reviewButton());
+    fireEvent.click(await screen.findByRole('button', { name: 'Report test handoff' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge test review' }));
+    expect(authorizationMocks.handoff).not.toHaveBeenCalled();
+    expect(authorizationMocks.reviewAck).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save test note' }));
+    expect(await screen.findByText(/The visit is saved, but some supporting records/)).toBeInTheDocument();
+    expect(authorizationMocks.handoff).not.toHaveBeenCalled();
+    expect(authorizationMocks.reviewAck).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save test note' }));
+    expect(await screen.findByText('Test note fully saved')).toBeInTheDocument();
+    expect(authorizationMocks.persist.mock.calls[1][0].savedVisitId).toBe('partial-visit');
+    await waitFor(() => expect(authorizationMocks.reviewAck).toHaveBeenCalledTimes(1));
+    expect(authorizationMocks.handoff).toHaveBeenCalledExactlyOnceWith({
+      visitId: 'partial-visit', nextStatus: 'copied_to_emr',
+    });
+    expect(authorizationMocks.reviewAck).toHaveBeenCalledWith({
+      visitId: 'partial-visit', acknowledged: true, nurseEdited: false, noteText: DRAFT_FILLED,
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Save test note' }));
+    await waitFor(() => expect(authorizationMocks.persist).toHaveBeenCalledTimes(3));
+    expect(await screen.findByText('Test note fully saved')).toBeInTheDocument();
+    expect(authorizationMocks.handoff).toHaveBeenCalledTimes(1);
+    expect(authorizationMocks.reviewAck).toHaveBeenCalledTimes(1);
   });
 
 });

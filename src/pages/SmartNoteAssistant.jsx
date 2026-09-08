@@ -677,7 +677,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     // existed was held in component state; attach it to the record now so the
     // office sees the same trail the nurse saw. Best-effort: a failure here must
     // never surface as "the note didn't save", because it did.
-    if (!savedVisitId && out.visitId && (handoff.status !== "not_started" || reviewAck)) {
+    if (out.mode === 'create' && out.visitId && (handoff.status !== "not_started" || reviewAck)) {
       const persistedStart = boundVisit?.id === out.visitId
         ? (boundVisit.emr_handoff_status || 'not_started')
         : 'not_started';
