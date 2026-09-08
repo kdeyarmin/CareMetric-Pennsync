@@ -276,11 +276,31 @@ async function upsertAcceptedUserInvitationForUser(base44, currentUser, targetUs
 
 Deno.serve(async (req) => {
   try {
+    // These administrator routes require a user Bearer token. Reject absent
+    // or malformed credentials before SDK construction, which may throw before
+    // auth.me(). This syntax check grants no authority; the SDK verifies it.
+    if (!/^Bearer [^\s,]+$/.test(req.headers.get('Authorization') || '')) {
+      return Response.json({
+        error: 'Authentication required',
+        code: 'AUTHENTICATION_REQUIRED',
+      }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
+    }
     const base44 = createClientFromRequest(req);
-    const { action, ...params } = await req.json();
 
     // Verify admin for most actions
-    const currentUser = await base44.auth.me();
+    const currentUser = await base44.auth.me().catch((error) => {
+      // The SDK throws for missing/expired sessions; these are authentication
+      // denials, not invitation-send failures. Preserve real transport errors.
+      const status = error?.status ?? error?.response?.status;
+      if (status === 401 || status === 403) return null;
+      throw error;
+    });
+    if (!currentUser) {
+      return Response.json({
+        error: 'Authentication required',
+        code: 'AUTHENTICATION_REQUIRED',
+      }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
+    }
     if (isDeactivatedUser(currentUser)) return DEACTIVATED_USER_RESPONSE();
     // `account_type` is self-mutable through auth.updateMe. Only Base44's
     // protected built-in role may enter user/password-management actions.
@@ -290,6 +310,7 @@ Deno.serve(async (req) => {
     // fixUserAccount): a plain facility admin must not be able to mint another
     // facility admin without super-admin oversight.
     const callerIsSuperAdmin = isProtectedSuperAdmin(currentUser);
+    const { action, ...params } = await req.json();
 
     switch (action) {
       case 'invite_user':

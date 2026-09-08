@@ -18,6 +18,7 @@ const authorizationMocks = vi.hoisted(() => ({
   patientCalls: [],
   visitId: null,
   forceRender: null,
+  persist: vi.fn(),
 }));
 
 // No backend: the page's entity queries resolve empty, which is enough to render
@@ -98,6 +99,29 @@ vi.mock("@/lib/draftNotes", () => ({
   deleteDraftNoteLocally: draftStorageMocks.remove,
 }));
 
+vi.mock('@/components/smartNote/persistVisitNote', async (importOriginal) => ({
+  ...await importOriginal(),
+  persistVisitNote: authorizationMocks.persist,
+}));
+
+vi.mock('@/components/smartNote/ConstrainedNoteReviewer', () => ({
+  default: ({ roughNote, renderFinalNote, onBack }) => <>
+    <button onClick={onBack}>Edit draft</button>
+    {renderFinalNote({ finalNote: roughNote, coverage: 88, result: {
+      finalNote: roughNote, presence: [], required: [],
+    } })}
+  </>,
+}));
+
+vi.mock('@/components/smartNote/FinalNoteDisplay', () => ({
+  default: ({ onSave, onReset, saveDisabled, saved }) => <>
+    <button disabled={saveDisabled} onClick={onSave}>Save test note</button>
+    <button onClick={onReset}>Discard test note</button>
+    {saved && <span>Test note fully saved</span>}
+  </>,
+}));
+
+import { PartialVisitSaveError } from '@/components/smartNote/persistVisitNote';
 import SmartNoteAssistant from "./SmartNoteAssistant";
 
 function SmartNoteHarness() {
@@ -129,6 +153,7 @@ async function typeDraft(text) {
 describe("SmartNoteAssistant — Step 1 gate on template blanks", () => {
   beforeEach(() => {
     sessionStorage.clear();
+    authorizationMocks.persist.mockReset();
     draftStorageMocks.captureLease.mockReset();
     draftStorageMocks.captureLease.mockReturnValue(draftStorageMocks.lease);
     draftStorageMocks.isLeaseCurrent.mockReset();
@@ -321,4 +346,54 @@ describe("SmartNoteAssistant — Step 1 gate on template blanks", () => {
     expect(screen.queryByText(/Ada Lovelace/, { selector: 'strong' })).not.toBeInTheDocument();
     expect(reviewButton()).toBeDisabled();
   });
+  it('keeps the partial Visit and request identity through Retry and returning to review', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    authorizationMocks.persist.mockImplementationOnce(async ({ saveProgress }) => {
+      saveProgress.visitId = 'partial-visit';
+      saveProgress.auditId = 'confirmed-audit';
+      throw new PartialVisitSaveError(saveProgress, ['history']);
+    }).mockImplementationOnce(async ({ saveProgress }) => ({
+      mode: 'update', visitId: saveProgress.visitId, auditId: saveProgress.auditId,
+      finalText: DRAFT_FILLED, coverageScore: 88,
+    }));
+    renderWithProviders(<SmartNoteAssistant />, { route: '/SmartNoteAssistant?patientId=patient-a' });
+    await typeDraft(DRAFT_FILLED);
+    await waitFor(() => expect(reviewButton()).toBeEnabled());
+    fireEvent.click(reviewButton());
+    fireEvent.click(await screen.findByRole('button', { name: 'Save test note' }));
+    expect(await screen.findByText(/The visit is saved, but some supporting records/)).toBeInTheDocument();
+    expect(screen.queryByText('Test note fully saved')).not.toBeInTheDocument();
+    expect(draftStorageMocks.remove).not.toHaveBeenCalled();
+    const first = authorizationMocks.persist.mock.calls[0][0];
+    fireEvent.click(screen.getByRole('button', { name: 'Edit draft' }));
+    expect(await screen.findByPlaceholderText(/enter bullet points or rough draft/i)).toHaveValue(DRAFT_FILLED);
+    fireEvent.click(reviewButton());
+    fireEvent.click(await screen.findByRole('button', { name: 'Save test note' }));
+    expect(await screen.findByText('Test note fully saved')).toBeInTheDocument();
+    const retry = authorizationMocks.persist.mock.calls[1][0];
+    expect(retry.savedVisitId).toBe('partial-visit');
+    expect(retry.savedAuditId).toBe('confirmed-audit');
+    expect(retry.saveProgress).toBe(first.saveProgress);
+  });
+
+  it('starts a new creation identity only after the prior draft is discarded', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    authorizationMocks.persist.mockRejectedValue(new Error('response lost'));
+    renderWithProviders(<SmartNoteAssistant />, { route: '/SmartNoteAssistant?patientId=patient-a' });
+    await typeDraft(DRAFT_FILLED);
+    await waitFor(() => expect(reviewButton()).toBeEnabled());
+    fireEvent.click(reviewButton());
+    fireEvent.click(await screen.findByRole('button', { name: 'Save test note' }));
+    await waitFor(() => expect(authorizationMocks.persist).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save test note' })).toBeEnabled());
+    const first = authorizationMocks.persist.mock.calls[0][0].saveProgress;
+    fireEvent.click(screen.getByRole('button', { name: 'Discard test note' }));
+    await typeDraft(DRAFT_FILLED);
+    fireEvent.click(reviewButton());
+    fireEvent.click(await screen.findByRole('button', { name: 'Save test note' }));
+    await waitFor(() => expect(authorizationMocks.persist).toHaveBeenCalledTimes(2));
+    expect(authorizationMocks.persist.mock.calls[1][0].saveProgress.clientRequestId)
+      .not.toBe(first.clientRequestId);
+  });
+
 });

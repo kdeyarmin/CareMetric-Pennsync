@@ -71,7 +71,9 @@ function fixture({ sendFails = false, stampFails = false, stampCommitsThenFails 
     state,
     invoke: async (action) => {
       const response = await handler(new Request('https://staging.example.test', {
-        method: 'POST', headers: { 'content-type': 'application/json' },
+        method: 'POST', headers: {
+          'content-type': 'application/json', Authorization: 'Bearer test-only-admin-session',
+        },
         body: JSON.stringify({ action, ...payloads[action] }),
       }));
       return { status: response.status, body: await response.json() };

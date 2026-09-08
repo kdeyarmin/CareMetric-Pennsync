@@ -10,7 +10,7 @@ import AudioRecorder from "./AudioRecorder";
 import VitalSignsForm from "./VitalSignsForm";
 import ConstrainedNoteReviewer from "../smartNote/ConstrainedNoteReviewer";
 import FinalNoteDisplay from "../smartNote/FinalNoteDisplay";
-import { persistVisitNote } from "../smartNote/persistVisitNote";
+import { persistVisitNote, createVisitSaveProgress, PartialVisitSaveError } from "../smartNote/persistVisitNote";
 import { getPriorNote, mergePatientNoteHistory } from "../smartNote/noteHelpers";
 import SearchablePatientSelect from "@/components/ui/SearchablePatientSelect";
 import { logActivity, ActivityActions } from "../utils/activityLogger";
@@ -66,6 +66,8 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
   const [vitals, setVitals] = useState({});
   const [savedVisitId, setSavedVisitId] = useState(null);
   const [savedAuditId, setSavedAuditId] = useState(null);
+  const saveProgressRef = useRef(null);
+  const [saveError, setSaveError] = useState(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -197,6 +199,9 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
       setVitals({});
       setSavedVisitId(null);
       setSavedAuditId(null);
+      saveProgressRef.current = null;
+      setSaving(false);
+      setSaveError(null);
       setSaved(false);
       setCopied(false);
       setSignatureImage(null);
@@ -246,6 +251,9 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
     setActiveTab("record");
     setSavedVisitId(null);
     setSavedAuditId(null);
+    saveProgressRef.current = null;
+    setSaving(false);
+    setSaveError(null);
     setSaved(false);
     setCopied(false);
     setVitals({});
@@ -281,7 +289,10 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
       setRoughNote(transcription || payload.generatedNote || "");
       setSavedVisitId(null);
       setSavedAuditId(null);
-        setSaved(false);
+      saveProgressRef.current = null;
+      setSaving(false);
+      setSaveError(null);
+      setSaved(false);
       setNoteSeq(n => n + 1);
       logActivity(ActivityActions.NOTE_AI_GENERATED, { page: 'ClinicalDocumentation', source: 'audio_recording' });
     },
@@ -327,6 +338,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
   };
 
   const handleSave = async (api) => {
+    if (saving || saveProgressRef.current?.inFlight) return;
     if (!patientId || !currentUser?.email) {
       toast.error("Select a patient to save this note to their chart.");
       return;
@@ -339,7 +351,10 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
       toast.error("Acknowledge the chart safety conflict before saving to the chart.");
       return;
     }
+    setSaved(false);
     setSaving(true);
+    setSaveError(null);
+    const saveProgress = saveProgressRef.current ||= createVisitSaveProgress();
     try {
       let result = api.result;
       if (api.dirty) {
@@ -349,9 +364,10 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
       const out = await persistVisitNote({
         result, patientId, visitDate, visitType, roughNote, vitals,
         currentUser, patientDiagnosis: chartPatient.primary_diagnosis || "",
-        savedVisitId, savedAuditId, existingVisitId,
+        savedVisitId, savedAuditId, existingVisitId, saveProgress,
         source: "audio",
       });
+      if (saveProgressRef.current !== saveProgress) return;
       if (out) {
         if (out.mode === 'create') {
           setSavedVisitId(out.visitId);
@@ -364,10 +380,20 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
         setSaved(true);
       }
     } catch (err) {
+      if (saveProgressRef.current !== saveProgress) return;
+      if (err instanceof PartialVisitSaveError) {
+        setSavedVisitId(err.visitId);
+        setExistingVisitId(null);
+        if (err.auditId) setSavedAuditId(err.auditId);
+      }
       console.error("Save to chart error:", err);
-      toast.error(err?.code === "OFFLINE_SAVE_BLOCKED" ? err.message : "Saving to the chart failed.");
+      const message = ['OFFLINE_SAVE_BLOCKED', 'VISIT_SUPPORTING_RECORDS_UNCONFIRMED', 'VISIT_SAVE_CONTEXT_CHANGED'].includes(err?.code)
+        ? err.message
+        : "Saving to the chart failed. Your note is still here.";
+      setSaveError(message);
+      toast.error(message);
     } finally {
-      setSaving(false);
+      if (saveProgressRef.current === saveProgress) setSaving(false);
     }
   };
 
@@ -379,6 +405,9 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
     setVitals({});
     setSavedVisitId(null);
     setSavedAuditId(null);
+    saveProgressRef.current = null;
+    setSaving(false);
+    setSaveError(null);
     setSaved(false);
     setSignatureImage(null);
     setExistingVisitId(null);
@@ -549,6 +578,11 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
         </Card>
       )}
 
+      {saveError && (
+        <Alert variant="destructive" role="alert">
+          <AlertDescription>{saveError}</AlertDescription>
+        </Alert>
+      )}
       {hasRoughNote && (
         <ConstrainedNoteReviewer
           key={`${visitType}|${noteSeq}`}

@@ -26,9 +26,30 @@ const isAdminLike = (u) => !!u && u.role === 'admin';
 
 Deno.serve(async (req) => {
   try {
+    // These administrator routes require a user Bearer token. Reject absent
+    // or malformed credentials before SDK construction, which may throw before
+    // auth.me(). This syntax check grants no authority; the SDK verifies it.
+    if (!/^Bearer [^\s,]+$/.test(req.headers.get('Authorization') || '')) {
+      return Response.json({
+        error: 'Authentication required',
+        code: 'AUTHENTICATION_REQUIRED',
+      }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
+    }
     const base44 = createClientFromRequest(req);
     
-    const user = await base44.auth.me();
+    const user = await base44.auth.me().catch((error) => {
+      // The SDK throws for missing/expired sessions; these are authentication
+      // denials, not invitation-send failures. Preserve real transport errors.
+      const status = error?.status ?? error?.response?.status;
+      if (status === 401 || status === 403) return null;
+      throw error;
+    });
+    if (!user) {
+      return Response.json({
+        error: 'Authentication required',
+        code: 'AUTHENTICATION_REQUIRED',
+      }, { status: 401, headers: { 'Cache-Control': 'no-store' } });
+    }
     if (!isAdminLike(user)) {
       return Response.json({ error: 'Unauthorized - Admin access required' }, { status: 403 });
     }

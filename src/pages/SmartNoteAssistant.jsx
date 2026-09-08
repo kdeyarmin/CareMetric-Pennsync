@@ -25,7 +25,7 @@ import QuickPhraseTextarea from "../components/smartNote/QuickPhraseTextarea";
 import FacilityRequirementsChecklist from "../components/smartNote/FacilityRequirementsChecklist";
 import ConstrainedNoteReviewer from "../components/smartNote/ConstrainedNoteReviewer";
 import NoteReadinessBar from "../components/smartNote/NoteReadinessBar";
-import { persistVisitNote, OfflineSaveError } from "../components/smartNote/persistVisitNote";
+import { persistVisitNote, createVisitSaveProgress, OfflineSaveError, PartialVisitSaveError } from "../components/smartNote/persistVisitNote";
 import {
   advanceHandoffStatus,
   buildReviewAcknowledgement,
@@ -148,6 +148,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [saved, setSaved] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState(null);
   const [savedAuditId, setSavedAuditId] = useState(null);
+  const saveProgressRef = useRef(null);
   const [existingVisitId, setExistingVisitId] = useState(null);
   const boundVisitLocalRef = useRef(null);
   // Facility override captured at save-click time so persistVisitNote can stamp
@@ -331,6 +332,8 @@ export default function SmartNoteAssistant({ visitId = null }) {
       setSaved(false);
       setSavedVisitId(null);
       setSavedAuditId(null);
+      saveProgressRef.current = null;
+      setSaving(false);
       setStep(1);
       setCopied(false);
       setDraftRestored(false);
@@ -443,6 +446,8 @@ export default function SmartNoteAssistant({ visitId = null }) {
     // AudioVisitCapture).
     setSavedVisitId(null);
     setSavedAuditId(null);
+    saveProgressRef.current = null;
+    setSaving(false);
     // Same reasoning: a failure recorded against the previous patient's note must
     // not be reported against this one, which no save has been attempted on.
     setSaveError(null);
@@ -593,14 +598,14 @@ export default function SmartNoteAssistant({ visitId = null }) {
       toast.warning(`Facility requirement${facilitySummary.missing > 1 ? "s" : ""} not yet documented: ${labels}`);
     }
     setSaved(false);
-    setSavedVisitId(null);
-    setSavedAuditId(null);
+    // Returning to review edits the same draft, including a partially saved Visit.
     setFacilityAck(false);
     facilityOverrideRef.current = null;
     setStep(2);
   };
 
   const handleSave = async (api) => {
+    if (saving || saveProgressRef.current?.inFlight) return;
     if (!patientId || !currentUser?.email) {
       toast.error("Select a patient to save this note to their chart.");
       return;
@@ -618,14 +623,17 @@ export default function SmartNoteAssistant({ visitId = null }) {
       return;
     }
     setSaveError(null);
+    setSaved(false);
     setSaving(true);
+    const saveProgress = saveProgressRef.current ||= createVisitSaveProgress();
     try {
       let result = api.result;
       if (api.dirty) {
         result = await api.recheck();
         if (!result) { setSaving(false); return; }
       }
-      const out = await persistNote(result);
+      const out = await persistNote(result, saveProgress);
+      if (saveProgressRef.current !== saveProgress || !isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
       if (!out) {
         // persistVisitNote returns null without throwing when inputs are insufficient
         // — do NOT mark saved or clear the draft (would destroy the only copy).
@@ -635,30 +643,36 @@ export default function SmartNoteAssistant({ visitId = null }) {
       setSaved(true);
       clearDraft(patientId);
     } catch (err) {
+      if (saveProgressRef.current !== saveProgress || !isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
+      if (err instanceof PartialVisitSaveError) {
+        setSavedVisitId(err.visitId);
+        setExistingVisitId(null);
+        if (err.auditId) setSavedAuditId(err.auditId);
+      }
       console.error("Save to chart error:", err);
       // OfflineSaveError carries the one message that tells the nurse their work
       // is safe and what to do; the generic catch used to swallow it.
-      const message = err instanceof OfflineSaveError
+      const message = err instanceof OfflineSaveError || err instanceof PartialVisitSaveError || err?.code === 'VISIT_SAVE_CONTEXT_CHANGED'
         ? err.message
         : "Saving to the chart failed \u2014 your draft is still here. Try again.";
       setSaveError(message);
       toast.error(message);
     } finally {
-      setSaving(false);
+      if (saveProgressRef.current === saveProgress) setSaving(false);
     }
   };
 
-  const persistNote = async (result) => {
+  const persistNote = async (result, saveProgress) => {
     if (!patientChartReady || !chartPatient) {
       throw new Error('Patient chart authority is unavailable');
     }
     const out = await persistVisitNote({
       result, patientId, visitDate, visitType, roughNote: note, vitals,
       currentUser, patientDiagnosis: chartPatient.primary_diagnosis || "",
-      savedVisitId, savedAuditId, existingVisitId,
+      savedVisitId, savedAuditId, existingVisitId, saveProgress,
       facilityAcknowledgment: facilityOverrideRef.current,
     });
-    if (!out) return null;
+    if (!out || saveProgressRef.current !== saveProgress || !isAuthorityDraftLeaseCurrent(authorityDraftLease)) return null;
     // A handoff step or review acknowledgement reported BEFORE the working copy
     // existed was held in component state; attach it to the record now so the
     // office sees the same trail the nurse saw. Best-effort: a failure here must
@@ -793,6 +807,8 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
   const reset = () => {
     setNote(""); setSaved(false); setSavedVisitId(null); setSavedAuditId(null);
+    saveProgressRef.current = null;
+    setSaving(false);
     setStep(1); setDraftRestored(false); setFollowUpTasks([]); setSaveError(null);
     setVitals({}); setExistingVisitId(null); setFacilityAck(false);
     setHandoff({ status: "not_started", history: [] });

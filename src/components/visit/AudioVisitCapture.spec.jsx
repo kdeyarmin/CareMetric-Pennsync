@@ -9,6 +9,7 @@ const audioMocks = vi.hoisted(() => ({
   forceRender: null,
   uploadFile: vi.fn(),
   invoke: vi.fn(),
+  persist: vi.fn(),
 }));
 
 const scope = {
@@ -111,10 +112,26 @@ vi.mock('@/components/ui/SearchablePatientSelect', () => ({
 }));
 
 vi.mock('../smartNote/ConstrainedNoteReviewer', () => ({
-  default: ({ roughNote }) => <div data-testid="reviewer-note">{roughNote}</div>,
+  default: ({ roughNote, renderFinalNote }) => <>
+    <div data-testid="reviewer-note">{roughNote}</div>
+    {renderFinalNote({ finalNote: roughNote, coverage: 88, result: { finalNote: roughNote } })}
+  </>,
 }));
 
-vi.mock('../smartNote/FinalNoteDisplay', () => ({ default: () => null }));
+vi.mock('../smartNote/FinalNoteDisplay', () => ({
+  default: ({ onSave, onReset, saveDisabled, saved }) => <>
+    <button disabled={saveDisabled} onClick={onSave}>Save test note</button>
+    <button onClick={onReset}>Discard test note</button>
+    {saved && <span>Test note fully saved</span>}
+  </>,
+}));
+
+vi.mock('../smartNote/persistVisitNote', async (importOriginal) => ({
+  ...await importOriginal(),
+  persistVisitNote: audioMocks.persist,
+}));
+
+import { PartialVisitSaveError } from '../smartNote/persistVisitNote';
 
 const { default: AudioVisitCapture } = await import('./AudioVisitCapture.jsx');
 
@@ -161,6 +178,7 @@ function deferred() {
 describe('AudioVisitCapture authority binding', () => {
   beforeEach(() => {
     audioMocks.visitId = null;
+    audioMocks.persist.mockReset();
     audioMocks.forceRender = null;
     audioMocks.visitState = {
       data: undefined,
@@ -260,4 +278,29 @@ describe('AudioVisitCapture authority binding', () => {
     expect(screen.queryByText('Patient A secret transcription.')).not.toBeInTheDocument();
     expect(screen.queryByTestId('reviewer-note')).not.toBeInTheDocument();
   });
+  it('retains the confirmed partial Visit and audit when the supporting write is retried', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    audioMocks.persist.mockImplementationOnce(async ({ saveProgress }) => {
+      saveProgress.visitId = 'partial-audio-visit';
+      saveProgress.auditId = 'confirmed-audit';
+      throw new PartialVisitSaveError(saveProgress, ['history']);
+    }).mockImplementationOnce(async ({ saveProgress }) => ({
+      mode: 'create', visitId: saveProgress.visitId, auditId: saveProgress.auditId,
+    }));
+    renderWithProviders(<AudioHarness />);
+    fireEvent.change(screen.getByLabelText('Patient'), { target: { value: 'patient-a' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Record test audio' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save test note' }));
+    expect(await screen.findByText(/The visit is saved, but some supporting records/)).toBeInTheDocument();
+    expect(screen.getByTestId('reviewer-note')).toHaveTextContent('Authorized transcription.');
+    expect(screen.queryByText('Test note fully saved')).not.toBeInTheDocument();
+    const first = audioMocks.persist.mock.calls[0][0];
+    fireEvent.click(screen.getByRole('button', { name: 'Save test note' }));
+    expect(await screen.findByText('Test note fully saved')).toBeInTheDocument();
+    const retry = audioMocks.persist.mock.calls[1][0];
+    expect(retry.savedVisitId).toBe('partial-audio-visit');
+    expect(retry.savedAuditId).toBe('confirmed-audit');
+    expect(retry.saveProgress).toBe(first.saveProgress);
+  });
+
 });

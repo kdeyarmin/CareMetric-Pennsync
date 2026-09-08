@@ -127,6 +127,24 @@ writes, or protected function invocation occurred during this checkpoint;
 actor setup and hosted evidence remain outstanding. These results describe
 the queried state at that time, not future collision clearance.
 
+The later 2026-09-08 connected read also returned no UserInvitation records for
+the four intended actors. The invitation handlers now reject missing/malformed
+user Bearer headers before SDK construction and normalize SDK 401/403 session
+denials to `401 AUTHENTICATION_REQUIRED` with `Cache-Control: no-store`.
+Executable contracts preserve administrator/tenant checks and verify no SDK
+construction, account reads, or delivery on the early denial path.
+
+Those three source files were read back from the staging workspace and passed
+its 270-function syntax check. Checkpoint `6aa056a053dacc77cab1a393` captures
+editor commit `d7f95913a32bb7604b029b64338a5a5155a6777f`. However, unsigned
+requests with no recipient or record id to all four invitation actions still
+returned HTTP 500 at `2026-09-08T18:40:00.497Z`. Workspace synchronization is
+not public-runtime verification: deployment/runtime diagnosis and the expected
+401 response remain outstanding. No invitation was sent or record written by
+these probes. The connected tools do not expose authenticated function
+invocation; the local CLI install was blocked by its dependency policy. No new
+device-code login or policy override was attempted.
+
 The default-off hosted `preflightStagingReadinessFixture` can report only a
 bounded point-in-time state. Its successful status is
 `point_in_time_read_only_preflight_passed`; it checks canonical Agency-code
@@ -160,6 +178,24 @@ clinical or tenant-authority entity CRUD, or legacy assignment fields, to
 manufacture a passing matrix. Run S3/S4 only against the synchronized candidate
 and retain blocked or failed results honestly; neither flow clears the release
 gates by itself.
+
+The 2026-09-08 source candidate also fixes partial-save retries in Smart Note
+and Visit Scribe. A receipt held in the open component retains the exact initial
+Visit creation request and its `client_request_id` until the broker confirms
+the Visit. Confirmed Visit/audit ids and successful supporting-write stages
+survive a failed attempt. An unchanged retry skips confirmed stages; edits are
+applied to the same confirmed Visit before its history/audit are refreshed.
+Both screens preserve the draft and report a partial save until the remaining
+records are confirmed. A new capture, patient, or discarded draft starts a new
+creation identity. Local helper and UI regression tests cover these behaviors.
+
+This receipt is in memory only: reload/crash recovery is not established, and
+no new persistent clinical-data store was added. An uncertain ComplianceAudit
+or NoteConversion response can still require reconciliation; this change does
+not establish exactly-once auxiliary writes, hosted creation-key uniqueness,
+or datastore atomicity. It does not prove the frontend was deployed or that S4
+passed. Retain authenticated S4 evidence for the exact deployed candidate,
+including its Visit and required supporting artifacts, before claiming a pass.
 
 The fixture registry still lacks fields for the Referral and Visit ids produced
 by S3/S4, so deterministic teardown is not complete. Do not provision those

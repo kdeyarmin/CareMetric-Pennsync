@@ -49,7 +49,7 @@ function targetUser(overrides = {}) {
   };
 }
 
-function fixture({ user = adminUser(), target = targetUser() } = {}) {
+function fixture({ user = adminUser(), target = targetUser(), authError, clientError } = {}) {
   const calls = new Map();
   const bump = (name) => calls.set(name, (calls.get(name) || 0) + 1);
   const invitation = {
@@ -65,7 +65,11 @@ function fixture({ user = adminUser(), target = targetUser() } = {}) {
   };
   const client = {
     auth: {
-      me: async () => user,
+      me: async () => {
+        bump('auth.me');
+        if (authError) throw authError;
+        return user;
+      },
       resendOtp: async () => { bump('resendOtp'); return { accepted: true }; },
       verifyOtp: async () => { bump('verifyOtp'); return { verified: true }; },
     },
@@ -99,7 +103,7 @@ function fixture({ user = adminUser(), target = targetUser() } = {}) {
       },
     },
   };
-  return { calls, bump, client, invitation };
+  return { calls, bump, client, invitation, clientError };
 }
 
 function callCount(runtime, name) {
@@ -112,10 +116,13 @@ function assertNoDeliveryMutations(runtime, label) {
   }
 }
 
-function request(body) {
+function request(body, authorization = 'Bearer test-only-admin-session') {
   return new Request('https://functions.example.test', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: {
+      'content-type': 'application/json',
+      ...(authorization === null ? {} : { Authorization: authorization }),
+    },
     body: JSON.stringify(body),
   });
 }
@@ -153,7 +160,11 @@ async function loadHandler(name, runtime, {
     SUPER_ADMIN_EMAIL: OWNER_EMAIL,
     ...(release === undefined ? {} : { OUTBOUND_DELIVERY_RELEASE: release }),
   };
-  globalThis.__credentialGateCreateClient = () => runtime.client;
+  globalThis.__credentialGateCreateClient = () => {
+    runtime.bump('createClientFromRequest');
+    if (runtime.clientError) throw runtime.clientError;
+    return runtime.client;
+  };
   globalThis.__credentialGateLoadAuthority = async () => runtime.signerAuthority;
   globalThis.__credentialGateLoadPackage = async () => runtime.signerPackage;
   globalThis.Deno = {
@@ -275,6 +286,74 @@ const MANUAL_INVITATION_CASES = [
 
 for (const testCase of MANUAL_INVITATION_CASES) {
   const label = testCase.body.action || testCase.name;
+  test(`${label} rejects missing or malformed authorization before SDK construction or body parsing`, async () => {
+    for (const authorization of [null, '', 'Basic test-only-token', 'Bearer', 'Bearer ', 'Bearer one two', 'Bearer one,two', 'bearer test-only-token']) {
+      const runtime = fixture({ clientError: new Error('SDK construction must not run') });
+      const handler = await loadHandler(testCase.name, runtime);
+      const response = await handler(new Request('https://functions.example.test', {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          ...(authorization === null ? {} : { Authorization: authorization }),
+          // A service credential cannot substitute for the user session.
+          'Base44-Service-Authorization': 'Bearer test-only-service-session',
+        },
+        body: '{',
+      }));
+      assert.equal(response.status, 401, String(authorization));
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.deepEqual(await response.json(), {
+        error: 'Authentication required', code: 'AUTHENTICATION_REQUIRED',
+      });
+      assert.equal(callCount(runtime, 'createClientFromRequest'), 0);
+      assert.equal(callCount(runtime, 'auth.me'), 0);
+      assertNoDeliveryMutations(runtime, label);
+    }
+  });
+
+  test(`${label} preserves SDK configuration failures when a user Bearer token is present`, async () => {
+    const runtime = fixture({ clientError: new Error('private SDK configuration details') });
+    const handler = await loadHandler(testCase.name, runtime);
+    const response = await handler(request(testCase.body));
+    assert.equal(response.status, 500);
+    assert.equal(callCount(runtime, 'createClientFromRequest'), 1);
+    assert.equal(callCount(runtime, 'auth.me'), 0);
+    assert.doesNotMatch(JSON.stringify(await response.json()), /private SDK configuration details/);
+    assertNoDeliveryMutations(runtime, label);
+  });
+
+  for (const [failure, options] of [
+    ['missing session', { user: null }],
+    ['SDK 401', { authError: Object.assign(new Error('private-auth-detail'), { status: 401 }) }],
+    ['SDK 403', { authError: Object.assign(new Error('private-auth-detail'), { status: 403 }) }],
+    ['wrapped HTTP 403', { authError: Object.assign(new Error('private-auth-detail'), { response: { status: 403 } }) }],
+  ]) {
+    test(`${label} reports ${failure} as authentication required before reads or delivery`, async () => {
+      const runtime = fixture(options);
+      const handler = await loadHandler(testCase.name, runtime);
+      const response = await handler(request(testCase.body));
+      assert.equal(response.status, 401);
+      assert.equal(response.headers.get('cache-control'), 'no-store');
+      assert.deepEqual(await response.json(), {
+        error: 'Authentication required', code: 'AUTHENTICATION_REQUIRED',
+      });
+      assertNoDeliveryMutations(runtime, label);
+      assert.equal(callCount(runtime, 'User.filter'), 0);
+      assert.equal(callCount(runtime, 'UserInvitation.filter'), 0);
+    });
+  }
+
+  test(`${label} does not misreport an authentication-service outage as a missing session`, async () => {
+    const runtime = fixture({ authError: Object.assign(new Error('private-auth-detail'), { status: 503 }) });
+    const handler = await loadHandler(testCase.name, runtime);
+    const response = await handler(request(testCase.body));
+    assert.equal(response.status, 500);
+    const body = await response.json();
+    assert.notEqual(body.code, 'AUTHENTICATION_REQUIRED');
+    assert.doesNotMatch(JSON.stringify(body), /private-auth-detail/);
+    assertNoDeliveryMutations(runtime, label);
+  });
+
   test(`${label} permits a protected manual invitation while general delivery is paused`, async () => {
     const runtime = fixture();
     const handler = await loadHandler(testCase.name, runtime);

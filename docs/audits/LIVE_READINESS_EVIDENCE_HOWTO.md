@@ -27,11 +27,12 @@ Turn the gated live-readiness matrix into real hosted evidence so
    candidate checkout.
 
    The command still reports hosted readiness as blocked. It does **not** run
-   those local contract tests, encode the S3 Referral or S4 Visit action/result,
+   those local contract tests or produce an S3 Referral or S4 Visit result,
    create identities or rows, prove deployed parity, authenticate a user, prove
    hosted platform behavior, or clear LR-01/LR-02. Run `pnpm run test:contracts`
    and `pnpm run test:security` separately for executable source-only coverage;
-   their mocks are not hosted evidence.
+   their mocks are not hosted evidence. The manifest does encode canonical
+   plan-only S3/S4 request inputs; its pure assembler never invokes them.
 
    Source-contract v4 is the true union of the readiness and tenant-architecture
    artifact families. It pins the canonical frozen actor/Agency/Patient
@@ -92,6 +93,15 @@ Turn the gated live-readiness matrix into real hosted evidence so
      than pre-seeding them; the hosted workflow result is the evidence LR-02
      needs. S4 remains blocked until the canonical A1 assignment can be
      provisioned without direct entity CRUD.
+   - The 2026-09-08 Smart Note/Visit Scribe source fix retains the initial create
+     request identity, confirmed Visit/audit ids, and confirmed supporting
+     stages while the draft remains open. Local retry tests do not establish a
+     frontend deployment or an S4 pass. For hosted S4, retain the actual Visit
+     and required supporting artifacts; a partial-save message is incomplete
+     evidence. In-memory retry state does not survive reload/crash, uncertain
+     auxiliary responses still need reconciliation, and hosted uniqueness and
+     atomicity remain unproved. See the checklist's source checkpoint for the
+     exact implemented scope.
 
    `src/test/entityFixtures.js` is a UI loaded-state helper, not a hosted seed
    source. It does not encode the immutable two-agency authority topology and
