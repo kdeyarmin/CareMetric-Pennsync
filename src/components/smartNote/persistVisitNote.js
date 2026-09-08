@@ -229,6 +229,7 @@ async function persistVisitNoteWithProgress({
       progress.visitId = visit.id;
       // Creation is scheduling-only. Force the dedicated mutation broker to
       // persist documentation and perform its checked scheduled→completed transition.
+      documentationFields.status = visitFields.status;
       progress.documentationKey = null;
       progress.visitDate = progress.pendingCreate.fields.visit_date;
       progress.visitType = progress.pendingCreate.fields.visit_type;
