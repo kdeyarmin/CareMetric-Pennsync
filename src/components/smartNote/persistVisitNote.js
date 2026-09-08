@@ -214,14 +214,22 @@ async function persistVisitNoteWithProgress({
     } else {
       if (!progress.pendingCreate) {
         progress.pendingCreate = structuredClone({
-          fields: visitFields,
+          fields: {
+            patient_id: patientId,
+            visit_date: visitDate,
+            visit_type: visitType,
+            status: 'scheduled',
+            client_request_id: progress.clientRequestId,
+          },
           documentationKey,
         });
       }
       const { visit } = await createAuthorizedVisit(progress.pendingCreate.fields);
       // Record the confirmed identity before any subsequent asynchronous write.
       progress.visitId = visit.id;
-      progress.documentationKey = progress.pendingCreate.documentationKey;
+      // Creation is scheduling-only. Force the dedicated mutation broker to
+      // persist documentation and perform its checked scheduled→completed transition.
+      progress.documentationKey = null;
       progress.visitDate = progress.pendingCreate.fields.visit_date;
       progress.visitType = progress.pendingCreate.fields.visit_type;
       progress.pendingCreate = null;

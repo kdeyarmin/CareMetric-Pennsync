@@ -151,18 +151,112 @@ async function loadExact(entities: Record<string, any>, entityName: string, id: 
   return exact[0];
 }
 
-function canonicalAssignments(value: unknown) {
-  if (value === undefined || value === null) return [];
-  if (!Array.isArray(value) || value.length > 500) {
-    throw new PublicError(409, 'Patient care-team integrity check failed');
+const ASSIGNMENT_STATUSES = new Set(['active', 'suspended', 'revoked']);
+const ASSIGNMENT_SOURCES = new Set([
+  'manual',
+  'patient_creator',
+  'legacy_assigned_nurses',
+  'legacy_provider_patient_assignment',
+]);
+
+function assignmentKey(agencyId: string, patientId: string, userId: string) {
+  return `${agencyId}:${patientId}:${userId}`;
+}
+
+function assignmentLifecycleIsCoherent(row: Record<string, any>) {
+  if (row.last_transition_action === 'grant') {
+    return row.version === 1
+      && row.activated_at === row.last_transition_at
+      && row.suspended_at == null;
   }
-  return value.map((email) => {
-    const normalized = canonicalEmail(email);
-    if (!normalized || email !== normalized) {
-      throw new PublicError(409, 'Patient care-team integrity check failed');
-    }
-    return normalized;
-  });
+  if (row.last_transition_action === 'activate') {
+    return row.version >= 3
+      && row.version % 2 === 1
+      && validInstant(row.suspended_at)
+      && row.activated_at === row.last_transition_at;
+  }
+  return false;
+}
+
+async function loadExactActiveAssignment(
+  entities: Record<string, any>,
+  patientId: string,
+  agencyId: string,
+  userId: string,
+  normalizedEmail: string,
+  membership: Record<string, any>,
+) {
+  const key = assignmentKey(agencyId, patientId, userId);
+  const rows = requireRows(
+    await entities.PatientCareTeamAssignment.filter(
+      { assignment_key: key, agency_id: agencyId, patient_id: patientId, user_id: userId },
+      '-updated_date',
+      EXACT_ROW_LIMIT,
+    ),
+    'PatientCareTeamAssignment.filter',
+  );
+  if (rows.length >= EXACT_ROW_LIMIT || rows.length > 1) {
+    throw new PublicError(409, 'Care-team assignment is ambiguous');
+  }
+  if (rows.some((row) => (
+    row?.assignment_key !== key
+    || row?.agency_id !== agencyId
+    || row?.patient_id !== patientId
+    || row?.user_id !== userId
+  ))) {
+    throw new PublicError(409, 'Care-team assignment query scope could not be verified');
+  }
+  if (rows.length !== 1) throw new PublicError(403, 'Patient is unavailable');
+  const row = rows[0];
+  const storedEmail = canonicalEmail(row.user_email_normalized);
+  if (
+    !exactIdentifier(row.id)
+    || row.assignment_key !== key
+    || row.status !== 'active'
+    || !ASSIGNMENT_STATUSES.has(String(row.status || ''))
+    || !ASSIGNMENT_SOURCES.has(String(row.source || ''))
+    || !storedEmail
+    || row.user_email_normalized !== storedEmail
+    || storedEmail !== normalizedEmail
+    || row.assignee_membership_id !== membership.id
+    || row.assignee_membership_version_at_enablement !== membership.version
+    || !exactIdentifier(row.created_by_user_id)
+    || !canonicalEmail(row.created_by_user_email_normalized)
+    || !validInstant(row.activated_at)
+    || !exactIdentifier(row.last_transition_by_user_id)
+    || !canonicalEmail(row.last_transition_by_email_normalized)
+    || !validInstant(row.last_transition_at)
+    || !boundedReason(row.last_transition_reason)
+    || !exactIdentifier(row.last_transition_request_id)
+    || row.last_transition_request_key !== `${key}:${row.last_transition_request_id}`
+    || !Number.isSafeInteger(row.version)
+    || !assignmentLifecycleIsCoherent(row)
+  ) {
+    throw new PublicError(409, 'Care-team assignment integrity check failed');
+  }
+  return row;
+}
+
+function assignmentSnapshot(row: Record<string, any> | null) {
+  if (!row) return null;
+  return {
+    id: row.id,
+    assignment_key: row.assignment_key,
+    agency_id: row.agency_id,
+    patient_id: row.patient_id,
+    user_id: row.user_id,
+    user_email_normalized: row.user_email_normalized,
+    assignee_membership_id: row.assignee_membership_id,
+    assignee_membership_version_at_enablement: row.assignee_membership_version_at_enablement,
+    status: row.status,
+    source: row.source,
+    activated_at: row.activated_at,
+    last_transition_action: row.last_transition_action,
+    last_transition_request_id: row.last_transition_request_id,
+    last_transition_request_key: row.last_transition_request_key,
+    last_transition_at: row.last_transition_at,
+    version: row.version,
+  };
 }
 
 function validateMembership(
@@ -243,14 +337,16 @@ async function loadAuthority(
     'AgencyMembership.filter',
   );
   const membership = validateMembership(membershipRows, userId, normalizedEmail, agencyId);
-  const assignments = canonicalAssignments(patient.assigned_nurses);
-  if (
-    !AGENCY_WIDE_ROLES.has(String(membership.tenant_role || ''))
-    && normalizeEmail(patient.created_by) !== normalizedEmail
-    && !assignments.includes(normalizedEmail)
-  ) {
-    throw new PublicError(403, 'Patient is unavailable');
-  }
+  const careTeamAssignment = AGENCY_WIDE_ROLES.has(String(membership.tenant_role || ''))
+    ? null
+    : await loadExactActiveAssignment(
+      entities,
+      patientId,
+      agencyId,
+      userId,
+      normalizedEmail,
+      membership,
+    );
   return {
     agencyId,
     snapshot: {
@@ -260,9 +356,8 @@ async function loadAuthority(
         status: patient.status,
         is_archived: patient.is_archived === true,
         is_sample: patient.is_sample === true,
-        created_by: normalizeEmail(patient.created_by),
-        assigned_nurses: assignments,
       },
+      care_team_assignment: assignmentSnapshot(careTeamAssignment),
       agency: { id: agency.id, status: agency.status },
       membership: {
         id: membership.id,

@@ -354,7 +354,7 @@ test('Visit provenance fields exist, direct create is disabled, and the wrapper 
 
 test('authorized creation stamps immutable tenant identity and returns a narrow row', async () => {
   const { handler, calls } = await loadBroker();
-  const { response, json } = await invokeBroker(handler, visitInput({ nurse_notes: 'Clinical note' }));
+  const { response, json } = await invokeBroker(handler, visitInput());
 
   assert.equal(response.status, 200);
   assert.equal(json.created, true);
@@ -377,7 +377,10 @@ test('authorized creation stamps immutable tenant identity and returns a narrow 
   assert.equal(calls.assignmentFilters.length, 3);
   assert.deepEqual(calls.agencyFilters[0].query, { id: 'agency-a' });
   assert.deepEqual(calls.creates[0], {
-    ...visitInput({ nurse_notes: 'Clinical note' }),
+    ...visitInput(),
+    emr_handoff_status: 'not_started',
+    emr_handoff_history: [],
+    documentation_review_ack: null,
     agency_id: 'agency-a',
     created_by_user_id: 'user-1',
     created_by_user_email_normalized: 'clinician@agency.test',
@@ -397,6 +400,9 @@ test('anonymous, deactivated, service, unverified, malformed, and spoofed calls 
     { caller: USER, body: { ...visitInput(), created_by_user_email_normalized: 'attacker@example.test' }, status: 400 },
     { caller: USER, body: { ...visitInput(), is_sample: true }, status: 400 },
     { caller: USER, body: { ...visitInput(), ai_process_claimed_by: 'attacker' }, status: 400 },
+    { caller: USER, body: { ...visitInput(), emr_handoff_status: 'signed_in_emr' }, status: 400 },
+    { caller: USER, body: { ...visitInput(), emr_handoff_history: [{ status: 'signed_in_emr' }] }, status: 400 },
+    { caller: USER, body: { ...visitInput(), documentation_review_ack: { acknowledged: true } }, status: 400 },
     { caller: USER, body: { ...visitInput(), patient_id: { $ne: null } }, status: 400 },
   ];
   for (const scenario of cases) {
@@ -552,6 +558,9 @@ test('idempotent replay is authority-bound and a post-create stamp mismatch is r
   const existing = {
     id: 'visit-existing',
     ...visitInput({ client_request_id: 'request-a' }),
+    emr_handoff_status: 'not_started',
+    emr_handoff_history: [],
+    documentation_review_ack: null,
     agency_id: 'agency-a',
     created_by_user_id: 'user-1',
     created_by_user_email_normalized: 'clinician@agency.test',
@@ -596,7 +605,7 @@ test('idempotent replay is authority-bound and a post-create stamp mismatch is r
     payloadConflict.handler,
     visitInput({ client_request_id: 'request-a', status: 'completed' }),
   );
-  assert.equal(payloadConflictResult.response.status, 409);
+  assert.equal(payloadConflictResult.response.status, 400);
   assert.equal(payloadConflict.calls.creates.length, 0);
 
   const regressedLookup = await loadBroker({

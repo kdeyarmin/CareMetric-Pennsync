@@ -93,8 +93,19 @@ describe("persistVisitNote", () => {
     const out = await persistVisitNote({ ...baseArgs, vitals: { heart_rate: 80 } });
     expect(out).toMatchObject({ mode: "create", visitId: "visit-1", auditId: "audit-1" });
     expect(visitCreate).not.toHaveBeenCalled();
-    expect(functionsInvoke).toHaveBeenCalledWith("createAuthorizedVisit", expect.objectContaining({
-      patient_id: "p1", visit_type: "routine_visit", nurse_notes: "Final note text",
+    expect(functionsInvoke).toHaveBeenCalledWith("createAuthorizedVisit", {
+      patient_id: "p1",
+      visit_date: "2026-06-21",
+      visit_type: "routine_visit",
+      status: "scheduled",
+      client_request_id: expect.any(String),
+    });
+    expect(functionsInvoke).toHaveBeenCalledWith("updateAuthorizedVisit", expect.objectContaining({
+      action: "save_documentation",
+      visit_id: "visit-1",
+      patient_id: "p1",
+      status: "completed",
+      nurse_notes: "Final note text",
       vital_signs: { heart_rate: 80 },
       grounding_pending: false,
     }));
@@ -229,7 +240,7 @@ describe("persistVisitNote", () => {
     expect(out).toMatchObject({ mode: 'create', visitId: 'visit-1', auditId: 'audit-1' });
     expect(functionsInvoke.mock.calls.filter(([name]) => name === 'createAuthorizedVisit')).toHaveLength(1);
     expect(functionsInvoke.mock.calls.filter(([name]) => name === 'appendPatientNoteHistory')).toHaveLength(1);
-    expect(functionsInvoke.mock.calls.filter(([name]) => name === 'updateAuthorizedVisit')).toHaveLength(0);
+    expect(functionsInvoke.mock.calls.filter(([name]) => name === 'updateAuthorizedVisit')).toHaveLength(1);
     expect(noteConvCreate).toHaveBeenCalledTimes(1);
     expect(auditCreate).toHaveBeenCalledTimes(2);
   });

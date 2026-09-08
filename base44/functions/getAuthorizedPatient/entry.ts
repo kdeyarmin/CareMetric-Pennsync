@@ -89,6 +89,8 @@ const PURPOSE_FIELDS: Record<string, readonly string[]> = {
     'past_hospitalizations',
     'updated_date',
   ],
+  // Authorized Smart Note loads need the legacy migration source until all
+  // PatientNoteHistoryEntry backfills have completed.
   smart_note_context: [
     'id',
     'first_name',
@@ -106,6 +108,8 @@ const PURPOSE_FIELDS: Record<string, readonly string[]> = {
     'allergies',
     'functional_status',
     'wounds',
+    'enhanced_notes_history',
+    'clinical_notes',
     'updated_date',
   ],
   oasis_analysis_context: [

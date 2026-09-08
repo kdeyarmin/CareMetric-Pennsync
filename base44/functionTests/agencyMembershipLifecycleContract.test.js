@@ -997,3 +997,19 @@ test('post-create duplicates and non-committing updates cannot return false succ
   assert.equal(collateral.state.memberships[0].status, 'active');
   assert.equal(collateral.state.memberships[0].created_by_user_id, 'unexpected-actor');
 });
+
+test('facility-admin invitations retain a non-platform User role for membership provisioning', async () => {
+  const sources = await Promise.all([
+    '../functions/userManagement/entry.ts',
+    '../functions/onUserSignup/entry.ts',
+    '../functions/autoApproveInvitedUser/entry.ts',
+    '../functions/resendInvitation/entry.ts',
+  ].map((relative) => readFile(new URL(relative, import.meta.url), 'utf8')));
+  for (const source of sources) {
+    assert.doesNotMatch(source, /users\.inviteUser\([^\n]*invitation\.role/);
+  }
+  assert.match(sources[0], /users\.inviteUser\(email, 'user'\)/);
+  assert.match(sources[1], /role:\s*'user'/);
+  assert.match(sources[2], /role:\s*'user'/);
+  assert.match(sources[3], /users\.inviteUser\(invitation\.email, 'user'\)/);
+});

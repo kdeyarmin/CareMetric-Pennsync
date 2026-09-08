@@ -101,7 +101,18 @@ function visit(overrides = {}) {
       self_reported: true,
       note: 'Copied by the assigned clinician.',
     }],
-    documentation_review_ack: { acknowledged: false, is_clinical_signature: false },
+    documentation_review_ack: {
+      acknowledged: true,
+      acknowledged_by: 'clinician@agency.test',
+      acknowledged_at: '2026-09-03T12:29:00.000Z',
+      note_hash: '4f9f2cab',
+      note_sha256: '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
+      note_length: 5,
+      ai_assisted: true,
+      nurse_edited: true,
+      statement: 'I reviewed this suggested documentation for accuracy before copying it to the EMR.',
+      is_clinical_signature: false,
+    },
     secret_claim: 'must never cross the projection boundary',
     created_date: '2026-09-03T09:00:00.000Z',
     updated_date: '2026-09-03T12:30:00.000Z',
@@ -779,9 +790,17 @@ test('exact documentation returns the reviewed handoff fields and no unreviewed 
     note: 'Copied by the assigned clinician.',
   }]);
   assert.deepEqual(result.json.visit.documentation_review_ack, {
-    acknowledged: false,
-    is_clinical_signature: false,
-  });
+      acknowledged: true,
+      acknowledged_by: 'clinician@agency.test',
+      acknowledged_at: '2026-09-03T12:29:00.000Z',
+      note_hash: '4f9f2cab',
+      note_sha256: '2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824',
+      note_length: 5,
+      ai_assisted: true,
+      nurse_edited: true,
+      statement: 'I reviewed this suggested documentation for accuracy before copying it to the EMR.',
+      is_clinical_signature: false,
+    });
   assert.equal(result.json.visit.secret_claim, undefined);
   assert.ok(fixture.calls.visits[0].fields.includes('emr_handoff_status'));
   assert.ok(fixture.calls.visits[0].fields.includes('emr_handoff_history'));

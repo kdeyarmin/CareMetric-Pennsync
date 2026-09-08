@@ -20,13 +20,6 @@ const VISIT_TYPES = new Set([
   'routine_visit',
   'prn',
 ]);
-const VISIT_STATUSES = new Set([
-  'scheduled',
-  'in_progress',
-  'completed',
-  'pending_review',
-  'cancelled',
-]);
 const MEMBERSHIP_STATUSES = new Set(['pending', 'active', 'suspended', 'revoked']);
 const TENANT_ROLES = new Set([
   'agency_admin',
@@ -47,8 +40,9 @@ const ASSIGNMENT_SOURCES = new Set([
 ]);
 const ASSIGNMENT_ACTIONS = new Set(['grant', 'activate', 'suspend', 'revoke']);
 
-// These are clinical Visit fields accepted from the authenticated caller. All
-// tenant/identity stamps and automation claim fields are deliberately absent.
+// Creation accepts scheduling input only. Documentation, workflow status,
+// handoff history, and review acknowledgement are server-owned and may change
+// only through updateAuthorizedVisit's dedicated, transition-checked actions.
 const CLIENT_VISIT_FIELDS = new Set([
   'patient_id',
   'visit_date',
@@ -57,31 +51,7 @@ const CLIENT_VISIT_FIELDS = new Set([
   'status',
   'start_time',
   'end_time',
-  'nurse_notes',
-  'audio_url',
-  'raw_transcription',
-  'vital_signs',
-  'family_update_sent',
-  'family_update_date',
-  'family_update_text',
-  'ai_tags',
-  'telehealth_room_id',
-  'telehealth_room_name',
-  'telehealth_call_duration',
-  'telehealth_summary',
-  'telehealth_shared_files',
-  'telehealth_recording_url',
   'client_request_id',
-  'compliance_score',
-  'compliance_issues',
-  'homebound_status_verified',
-  'skilled_intervention_documented',
-  'homebound_justification',
-  'documentation_source',
-  'grounding_pending',
-  'emr_handoff_status',
-  'emr_handoff_history',
-  'documentation_review_ack',
   // Optional selector for users with more than one active membership. It is
   // validated against AgencyMembership and then overwritten by the server.
   'agency_id',
@@ -176,16 +146,23 @@ async function parseVisitInput(req: Request) {
   if (typeof record.visit_type !== 'string' || !VISIT_TYPES.has(record.visit_type)) {
     throw new PublicError(400, 'visit_type is invalid');
   }
-  if (record.status !== undefined && !VISIT_STATUSES.has(String(record.status))) {
-    throw new PublicError(400, 'status is invalid');
+  if (record.status !== undefined && record.status !== 'scheduled') {
+    throw new PublicError(400, 'New Visits must start as scheduled');
   }
 
-  const visitFields: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(record)) {
-    if (key === 'agency_id' || value === undefined || value === null) continue;
-    visitFields[key] = value;
+  const visitFields: Record<string, unknown> = {
+    patient_id: patientId,
+    visit_date: record.visit_date,
+    visit_type: record.visit_type,
+    status: 'scheduled',
+    emr_handoff_status: 'not_started',
+    emr_handoff_history: [],
+    documentation_review_ack: null,
+  };
+  for (const key of ['visit_time', 'start_time', 'end_time']) {
+    const value = record[key];
+    if (value !== undefined && value !== null) visitFields[key] = value;
   }
-  visitFields.patient_id = patientId;
   if (clientRequestId) visitFields.client_request_id = clientRequestId;
   return { patientId, requestedAgencyId, clientRequestId, visitFields };
 }

@@ -382,7 +382,7 @@ const EXACT_PURPOSE_FIELDS = {
     'medical_record_number', 'status', 'care_type', 'primary_diagnosis',
     'secondary_diagnoses', 'chronic_conditions', 'past_medical_history',
     'current_medications', 'allergies', 'functional_status', 'wounds',
-    'updated_date',
+    'enhanced_notes_history', 'clinical_notes', 'updated_date',
   ],
   oasis_analysis_context: [
     'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',

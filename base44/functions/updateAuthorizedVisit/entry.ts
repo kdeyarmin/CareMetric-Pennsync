@@ -320,7 +320,11 @@ function sanitizeVitals(value: unknown) {
   if (!plainObject(value)) throw new PublicError(400, 'vital_signs is invalid');
   const output: Record<string, number> = {};
   for (const [key, item] of Object.entries(value)) {
-    if (!VITAL_FIELDS.has(key) || typeof item !== 'number' || !Number.isFinite(item) || Math.abs(item) > 1_000_000) {
+    if (!VITAL_FIELDS.has(key)) throw new PublicError(400, 'vital_signs is invalid');
+    // The form preserves a cleared field as null. Treat that as removal so a
+    // clinician can clear a previously entered vital without blocking the save.
+    if (item === null) continue;
+    if (typeof item !== 'number' || !Number.isFinite(item) || Math.abs(item) > 1_000_000) {
       throw new PublicError(400, 'vital_signs is invalid');
     }
     output[key] = item;

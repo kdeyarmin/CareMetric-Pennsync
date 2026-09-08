@@ -30,7 +30,7 @@ const PURPOSE_FIELDS = Object.freeze({
     'medical_record_number', 'status', 'care_type', 'primary_diagnosis',
     'secondary_diagnoses', 'chronic_conditions', 'past_medical_history',
     'current_medications', 'allergies', 'functional_status', 'wounds',
-    'updated_date',
+    'enhanced_notes_history', 'clinical_notes', 'updated_date',
   ]),
   oasis_analysis_context: new Set([
     'id', 'first_name', 'middle_name', 'last_name', 'date_of_birth',
@@ -72,6 +72,7 @@ const STRING_FIELDS = new Set([
   'allergies',
   'physician_name',
   'admission_source',
+  'clinical_notes',
 ]);
 const VISIBLE_STATUSES = new Set(['active', 'hospitalized', 'discharged']);
 const CARE_TYPES = new Set(['home_health', 'hospice']);
@@ -149,6 +150,11 @@ function validProjectedField(field, value, patientId) {
     return Array.isArray(value) && value.every((entry) => typeof entry === 'string');
   }
   if (field === 'past_hospitalizations') return validHospitalizations(value);
+  if (field === 'enhanced_notes_history') {
+    return Array.isArray(value)
+      && value.length <= 5_000
+      && value.every((entry) => entry && typeof entry === 'object' && !Array.isArray(entry));
+  }
   if (field === 'chronic_conditions' || field === 'current_medications' || field === 'wounds') {
     return Array.isArray(value)
       && value.length <= 500

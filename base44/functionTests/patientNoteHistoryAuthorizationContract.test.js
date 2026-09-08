@@ -49,6 +49,32 @@ const membership = (overrides = {}) => ({
   ...overrides,
 });
 
+
+const assignment = (overrides = {}) => ({
+  id: 'assignment-1',
+  assignment_key: 'agency-1:patient-1:user-1',
+  agency_id: 'agency-1',
+  patient_id: 'patient-1',
+  user_id: 'user-1',
+  user_email_normalized: 'clinician@agency.test',
+  assignee_membership_id: 'membership-1',
+  assignee_membership_version_at_enablement: 3,
+  status: 'active',
+  source: 'manual',
+  created_by_user_id: 'owner-1',
+  created_by_user_email_normalized: 'owner@platform.test',
+  activated_at: '2026-09-03T12:00:00.000Z',
+  last_transition_by_user_id: 'owner-1',
+  last_transition_by_email_normalized: 'owner@platform.test',
+  last_transition_at: '2026-09-03T12:00:00.000Z',
+  last_transition_reason: 'Assigned for direct care',
+  last_transition_action: 'grant',
+  last_transition_request_id: 'assignment-request-1',
+  last_transition_request_key: 'agency-1:patient-1:user-1:assignment-request-1',
+  version: 1,
+  ...overrides,
+});
+
 const visit = (overrides = {}) => ({
   id: 'visit-1',
   patient_id: 'patient-1',
@@ -112,6 +138,7 @@ async function loadWriter({
   patients = [patient()],
   agencies = [agency()],
   memberships = [membership()],
+  assignments = [assignment()],
   visits = [visit()],
   events = [],
   mutateAfterCreate = null,
@@ -120,6 +147,7 @@ async function loadWriter({
     patients: structuredClone(patients),
     agencies: structuredClone(agencies),
     memberships: structuredClone(memberships),
+    assignments: structuredClone(assignments),
     visits: structuredClone(visits),
     events: structuredClone(events),
   };
@@ -135,6 +163,7 @@ async function loadWriter({
     Patient: makeEntity('Patient', state.patients),
     Agency: makeEntity('Agency', state.agencies),
     AgencyMembership: makeEntity('AgencyMembership', state.memberships),
+    PatientCareTeamAssignment: makeEntity('PatientCareTeamAssignment', state.assignments),
     Visit: makeEntity('Visit', state.visits),
     PatientNoteHistoryEntry: {
       ...makeEntity('PatientNoteHistoryEntry', state.events),
@@ -170,6 +199,7 @@ async function loadReader({
   patients = [patient()],
   agencies = [agency()],
   memberships = [membership()],
+  assignments = [assignment()],
   events = [],
 } = {}) {
   const calls = { filters: [] };
@@ -185,6 +215,7 @@ async function loadReader({
     Patient: makeEntity('Patient', patients),
     Agency: makeEntity('Agency', agencies),
     AgencyMembership: makeEntity('AgencyMembership', memberships),
+    PatientCareTeamAssignment: makeEntity('PatientCareTeamAssignment', assignments),
     PatientNoteHistoryEntry: makeEntity('PatientNoteHistoryEntry', events),
   };
   const client = {
@@ -262,7 +293,7 @@ test('writer enforces exact tenant, patient, Visit, membership, role, and care-t
     { memberships: [membership({ status: 'revoked', revoked_at: '2026-09-03T13:00:00Z', revocation_reason: 'Offboarded' })] },
     { memberships: [membership(), membership({ id: 'membership-2' })] },
     { memberships: [membership({ tenant_role: 'office_staff' })] },
-    { patients: [patient({ created_by: 'other@agency.test', assigned_nurses: [] })] },
+    { assignments: [] },
     { patients: [patient({ agency_id: 'agency-2' })] },
     { visits: [visit({ patient_id: 'patient-2' })] },
     { visits: [visit({ agency_id: 'agency-2' })] },

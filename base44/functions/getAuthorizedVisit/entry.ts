@@ -73,6 +73,7 @@ const REVIEW_FIELDS = new Set([
   'acknowledged_by',
   'acknowledged_at',
   'note_hash',
+  'note_sha256',
   'note_length',
   'ai_assisted',
   'nurse_edited',
@@ -318,7 +319,9 @@ function validReviewAcknowledgement(value: unknown) {
       || (typeof value.acknowledged_by === 'string' && value.acknowledged_by.length <= 320))
     && (value.acknowledged_at === undefined || validInstant(value.acknowledged_at))
     && (value.note_hash === undefined
-      || (typeof value.note_hash === 'string' && /^[a-f0-9]{64}$/.test(value.note_hash)))
+      || (typeof value.note_hash === 'string' && /^(?:[a-f0-9]{8}|[a-f0-9]{64})$/.test(value.note_hash)))
+    && (value.note_sha256 === undefined
+      || (typeof value.note_sha256 === 'string' && /^[a-f0-9]{64}$/.test(value.note_sha256)))
     && (value.note_length === undefined
       || (Number.isSafeInteger(value.note_length) && Number(value.note_length) >= 0))
     && (value.ai_assisted === undefined || typeof value.ai_assisted === 'boolean')

@@ -296,7 +296,9 @@ Deno.serve(async (req) => {
         if (!user.is_approved) {
           await base44.asServiceRole.entities.User.update(user.id, {
             is_approved: true,
-            role: invitation.role || 'user',
+            // Invitation.role is a facility-role label; platform role remains
+            // non-admin and tenant authority is granted by AgencyMembership.
+            role: 'user',
             care_scope: invitation.care_scope || 'home_health',
             staff_role: invitation.staff_role || 'nurse',
             ...(invitation.phone && { phone: invitation.phone }),

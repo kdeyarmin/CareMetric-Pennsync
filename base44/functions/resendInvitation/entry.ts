@@ -114,7 +114,7 @@ Deno.serve(async (req) => {
     const newExpiresAt = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
     // Use platform invite (handles email natively)
-    await base44.users.inviteUser(invitation.email, invitation.role || 'user');
+    await base44.users.inviteUser(invitation.email, 'user');
 
     console.log('✓ Re-invite sent');
 

@@ -302,7 +302,9 @@ Deno.serve(async (req) => {
           // start with their real name (not an email-derived placeholder).
           // Fall back to whatever the signup already set so we never wipe a name.
           full_name: invitation.full_name || user.full_name,
-          role: invitation.role,
+          // Facility authority belongs to AgencyMembership. Never promote an
+          // invited facility administrator into Base44's platform admin role.
+          role: 'user',
           care_scope: invitation.care_scope,
           staff_role: invitation.staff_role || 'nurse',
           phone: invitation.phone,

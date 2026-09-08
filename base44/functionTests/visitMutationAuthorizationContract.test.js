@@ -402,7 +402,7 @@ test('save_documentation updates bounded clinical fields, treats patient_id only
     status: 'completed',
     grounding_pending: false,
     nurse_notes: 'Updated clinical note',
-    vital_signs: { heart_rate: 78, oxygen_saturation: 97 },
+    vital_signs: { heart_rate: 78, oxygen_saturation: 97, temperature: null },
     compliance_score: 92,
     compliance_issues: [],
     ai_tags: ['trend:heart_rate:stable'],
@@ -417,6 +417,10 @@ test('save_documentation updates bounded clinical fields, treats patient_id only
   assert.equal(result.json.visit.nurse_notes, undefined);
   assert.equal(loaded.calls.updates.length, 1);
   assert.equal(loaded.calls.updates[0].payload.patient_id, undefined);
+  assert.deepEqual(loaded.calls.updates[0].payload.vital_signs, {
+    heart_rate: 78,
+    oxygen_saturation: 97,
+  });
   assert.equal(loaded.state.visits[0].agency_id, 'agency-a');
   assert.equal(loaded.state.visits[0].created_by_user_id, 'user-1');
   assert.equal(loaded.calls.visitFilters.length, 3);

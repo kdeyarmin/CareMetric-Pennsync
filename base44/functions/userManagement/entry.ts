@@ -409,7 +409,7 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
   // Send invitation email
   try {
     // Core.SendEmail only accepts registered users; onboarding uses the native invite.
-    await base44.users.inviteUser(email, role || 'user');
+    await base44.users.inviteUser(email, 'user');
   } catch {
     console.error('Invitation email delivery failed');
     // The pending row exists, but a provider error (including a timeout) is not
@@ -526,7 +526,7 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
   // Authorized manual invitations are independent of the general delivery pause.
   try {
     // Core.SendEmail only accepts registered users; onboarding uses the native invite.
-    await base44.users.inviteUser(invitation.email, invitation.role || 'user');
+    await base44.users.inviteUser(invitation.email, 'user');
   } catch {
     console.error('Invitation resend delivery failed');
     return Response.json({
