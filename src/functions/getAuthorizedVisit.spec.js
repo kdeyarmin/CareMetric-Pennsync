@@ -129,6 +129,68 @@ describe('getAuthorizedVisit wrapper', () => {
     }
   });
 
+  it.each(['documentation', 'compliance_review'])(
+    'accepts current and legacy review acknowledgements for %s',
+    async (purpose) => {
+      for (const hashes of [
+        { note_hash: '1234abcd', note_sha256: 'a'.repeat(64) },
+        { note_hash: 'b'.repeat(64) },
+      ]) {
+        const acknowledgement = {
+          acknowledged: true,
+          acknowledged_by: 'nurse@example.com',
+          acknowledged_at: '2026-09-03T12:30:00.000Z',
+          ...hashes,
+          note_length: 4,
+          ai_assisted: true,
+          nurse_edited: true,
+          statement: 'Reviewed for accuracy',
+          is_clinical_signature: false,
+        };
+        const visit = scheduleVisit({ documentation_review_ack: acknowledgement });
+        if (purpose === 'compliance_review') delete visit.visit_time;
+        invoke.mockResolvedValueOnce({
+          data: { success: true, purpose, visit, scope: clinicianScope },
+        });
+        await expect(getAuthorizedVisit({
+          agencyId: 'agency-a', visitId: 'visit-a', purpose,
+        })).resolves.toMatchObject({
+          visit: { documentation_review_ack: acknowledgement },
+        });
+      }
+    },
+  );
+
+  it.each([
+    { note_hash: 'a'.repeat(7) },
+    { note_hash: 'a'.repeat(9) },
+    { note_hash: 'g'.repeat(8) },
+    { note_hash: 'a'.repeat(63) },
+    { note_hash: 'a'.repeat(65) },
+    { note_sha256: 'a'.repeat(8) },
+    { note_sha256: 'g'.repeat(64) },
+    { note_sha256: null },
+    { hidden_phi: 'leak' },
+  ])('rejects malformed review acknowledgement fields: %j', async (invalidFields) => {
+    invoke.mockResolvedValueOnce({
+      data: {
+        success: true,
+        purpose: 'documentation',
+        visit: scheduleVisit({
+          documentation_review_ack: {
+            note_hash: '1234abcd',
+            note_sha256: 'a'.repeat(64),
+            ...invalidFields,
+          },
+        }),
+        scope: clinicianScope,
+      },
+    });
+    await expect(getAuthorizedVisit({
+      agencyId: 'agency-a', visitId: 'visit-a', purpose: 'documentation',
+    })).rejects.toThrow(/lookup failed/);
+  });
+
   it('accepts the protected platform-owner agency-wide scope', async () => {
     invoke.mockResolvedValue({
       success: true,
