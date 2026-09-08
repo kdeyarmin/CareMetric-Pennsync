@@ -19,7 +19,7 @@ import SmartRouteOptimizer from "@/components/scheduling/SmartRouteOptimizer";
 import ProactiveClinicalSupport from "@/components/clinical/ProactiveClinicalSupport";
 import AnnouncementsWidget from "@/components/dashboard/AnnouncementsWidget";
 import UpcomingTelehealthWidget from "@/components/dashboard/UpcomingTelehealthWidget";
-import TodayPriorities from "@/components/dashboard/TodayPriorities";
+import TodayPriorities from "@/components/dashboard/TodayPriorities.jsx";
 import CoreWorkQueuesStrip from "@/components/dashboard/CoreWorkQueuesStrip";
 import DashboardSkeleton from "@/components/loading/DashboardSkeleton";
 import { logActivity, ActivityActions } from "@/components/utils/activityLogger";
