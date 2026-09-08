@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  PHYSICIAN_AGENCY_OVERLAY_FIELDS,
+  PHYSICIAN_MASTER_FIELDS,
   READINESS_FIXTURE_TARGET,
   buildReadinessFixturePlan,
   inheritContentScope,
@@ -25,10 +27,21 @@ test('readiness fixture is pinned to the reviewed isolated staging target and ex
     'admin_a', 'clinician_a', 'clinician_a_empty', 'admin_b',
   ]);
   assert.deepEqual(Object.keys(plan.agencies), ['agency_a', 'agency_b']);
+  assert.deepEqual(plan.agencies, {
+    agency_a: { status: 'active', adminActor: 'admin_a' },
+    agency_b: { status: 'active', adminActor: 'admin_b' },
+  });
   assert.deepEqual(Object.keys(plan.patients), ['a1', 'a2', 'b1']);
   assert.deepEqual(plan.assignments, [
     { patient: 'a1', actor: 'clinician_a', status: 'active', source: 'manual' },
   ]);
+  assert.deepEqual(plan.patients.a1, {
+    agency: 'agency_a',
+    creator: 'admin_a',
+    status: 'active',
+    isSample: false,
+    isArchived: false,
+  });
   assert.deepEqual(plan.forbiddenData, ['password', 'token', 'secret', 'production_phi']);
 });
 
@@ -123,12 +136,58 @@ test('physician master and agency-private overlay fields cannot be mixed acciden
     npi_number: '1234567893',
   });
   assert.deepEqual(split.overlay, {
+    status: 'quarantined',
     notes: 'Agency-private note',
     tags: ['preferred'],
     referral_count: 2,
   });
+  assert.deepEqual(splitPhysicianMasterAndAgencyOverlay({
+    full_name: 'Active Example, MD',
+    fax_number: '5550001002',
+    is_active: true,
+  }).overlay, { status: 'active' });
+  assert.deepEqual(splitPhysicianMasterAndAgencyOverlay({
+    full_name: 'Inactive Example, MD',
+    fax_number: '5550001001',
+    is_active: false,
+  }).overlay, { status: 'inactive' });
+  assert.throws(
+    () => splitPhysicianMasterAndAgencyOverlay({
+      full_name: 'X', fax_number: '1', is_active: 'yes',
+    }),
+    /must be a boolean/,
+  );
+  assert.throws(
+    () => splitPhysicianMasterAndAgencyOverlay({
+      full_name: 'X', fax_number: '1', referral_count: 1.5,
+    }),
+    /non-negative integer/,
+  );
   assert.throws(
     () => splitPhysicianMasterAndAgencyOverlay({ full_name: 'X', fax_number: '1', agency_id: 'a' }),
     /Unsupported Physician field/,
   );
+});
+
+test('physician split fields are backed by their exact persisted schemas', async () => {
+  const { readFile } = await import('node:fs/promises');
+  const JSON5 = (await import('json5')).default;
+  const physician = JSON5.parse(await readFile(
+    new URL('../../base44/entities/Physician.jsonc', import.meta.url),
+    'utf8',
+  ));
+  const profile = JSON5.parse(await readFile(
+    new URL('../../base44/entities/PhysicianAgencyProfile.jsonc', import.meta.url),
+    'utf8',
+  ));
+
+  assert.deepEqual(
+    PHYSICIAN_MASTER_FIELDS.filter((field) => !physician.properties[field]),
+    [],
+  );
+  assert.deepEqual(
+    PHYSICIAN_AGENCY_OVERLAY_FIELDS.filter((field) => !profile.properties[field]),
+    [],
+  );
+  assert.equal(profile.properties.is_active, undefined);
 });

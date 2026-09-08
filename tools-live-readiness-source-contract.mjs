@@ -3,12 +3,17 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import JSON5 from "json5";
 import {
+  LIVE_READINESS_FIXTURE_ACTORS,
+  LIVE_READINESS_FIXTURE_AGENCIES,
+  LIVE_READINESS_FIXTURE_ASSIGNMENTS,
   LIVE_READINESS_FIXTURE_ENTITY_FIELDS,
+  LIVE_READINESS_FIXTURE_PATIENTS,
   LIVE_READINESS_FIXTURE_SET_ID,
+  LIVE_READINESS_STAGING_TARGET,
   validateLiveReadinessFixtureManifest,
 } from "./src/lib/liveReadinessFixtureManifest.js";
 
-export const LIVE_READINESS_SOURCE_CONTRACT_VERSION = 2;
+export const LIVE_READINESS_SOURCE_CONTRACT_VERSION = 3;
 
 const CANONICAL_FIXTURE_PATH =
   "docs/audits/live-readiness-fixture-manifest.template.json";
@@ -21,6 +26,7 @@ const ENTITY_PATHS = Object.freeze({
   Referral: "base44/entities/Referral.jsonc",
   IncomingFax: "base44/entities/IncomingFax.jsonc",
   TelecomDestinationBinding: "base44/entities/TelecomDestinationBinding.jsonc",
+  StagingReadinessFixture: "base44/entities/StagingReadinessFixture.jsonc",
 });
 
 const BROKER_MARKERS = Object.freeze({
@@ -59,6 +65,17 @@ const BROKER_MARKERS = Object.freeze({
     "CARE_TEAM_ASSIGNMENT_MUTATIONS_ENABLED = false",
     "PatientCareTeamAssignment.create",
     "care_team_assignment_mutations_paused",
+  ]),
+  "base44/functions/preflightStagingReadinessFixture/entry.ts": Object.freeze([
+    "Deno.serve",
+    "STAGING_READINESS_PREFLIGHT_RELEASE",
+    "Base44-App-Id",
+    "X-Data-Env",
+    "APP_PUBLIC_URL",
+    "createPinnedSdkRequest",
+    "entities.AgencyMembership",
+    "StagingReadinessFixture.filter",
+    "data_mutations_performed: false",
   ]),
   "base44/functions/createAuthorizedVisit/entry.ts": Object.freeze([
     "Deno.serve",
@@ -130,6 +147,7 @@ const CONTRACT_TEST_PATHS = Object.freeze([
   "base44/functionTests/inboundReferralFaxAuthorizationContract.test.js",
   "base44/functionTests/inboundReferralFaxDocumentAuthorizationContract.test.js",
   "base44/functionTests/trainingIntegrityAuthorizationContract.test.js",
+  "base44/functionTests/stagingReadinessFixturePreflightContract.test.js",
 ]);
 
 const REFERRAL_BROWSER_PATHS = Object.freeze([
@@ -161,6 +179,8 @@ const READINESS_TOOL_PATHS = Object.freeze([
   "src/lib/liveReadinessFixtureManifest.js",
   "src/lib/liveReadinessGate.js",
   "src/lib/liveReadinessInputValidation.js",
+  "src/lib/tenantArchitecture.js",
+  "src/lib/tenantArchitecture.contract.js",
   "src/lib/liveReadinessReleaseLedger.js",
   "src/lib/liveReadinessCiReport.js",
   "tools-live-readiness-source-contract.mjs",
@@ -245,6 +265,22 @@ const REQUIRED_SCHEMA_FIELDS = Object.freeze({
     "status",
     "version",
   ]),
+  StagingReadinessFixture: Object.freeze([
+    "fixture_set_id",
+    "environment",
+    "app_id",
+    "origin",
+    "status",
+    "actor_user_ids",
+    "agency_ids",
+    "patient_ids",
+    "assignment_ids",
+    "created_by_user_id",
+    "created_at",
+    "expires_at",
+    "last_transition_at",
+    "version",
+  ]),
 });
 
 const SOURCE_LIMITATIONS = Object.freeze([
@@ -255,6 +291,9 @@ const SOURCE_LIMITATIONS = Object.freeze([
   "base44_atomic_assignment_uniqueness_not_available_or_proved",
   "base44_atomic_patient_and_visit_creation_uniqueness_not_available_or_proved",
   "base44_atomic_referral_creation_uniqueness_not_available_or_proved",
+  "staging_preflight_does_not_prove_login_credentials_or_later_writes",
+  "staging_preflight_cannot_prove_agency_key_collision_absence_without_a_canonical_key",
+  "staging_preflight_does_not_inspect_legacy_email_or_profile_links",
 ]);
 
 function defaultReadArtifact(relativePath) {
@@ -345,6 +384,46 @@ function requireClientWritesDenied(errors, schema, entityName, operations) {
         "Source authority contract requires this direct client operation to be denied.",
       );
     }
+  }
+}
+
+function requirePropertyShape(errors, schema, entityName, field, expected) {
+  const property = schema?.properties?.[field];
+  for (const [key, value] of Object.entries(expected)) {
+    if (property?.[key] !== value) {
+      addError(
+        errors,
+        `entities.${entityName}.properties.${field}`,
+        "Fixture registry field shape does not match the source authority contract.",
+      );
+      return;
+    }
+  }
+}
+
+function requireExactStringMap(errors, schema, entityName, field, expectedKeys) {
+  const property = schema?.properties?.[field];
+  const actualKeys = isObject(property?.properties)
+    ? Object.keys(property.properties).sort()
+    : [];
+  const requiredKeys = Array.isArray(property?.required)
+    ? [...property.required].sort()
+    : [];
+  const wantedKeys = [...expectedKeys].sort();
+  const exactKeys = JSON.stringify(actualKeys) === JSON.stringify(wantedKeys)
+    && JSON.stringify(requiredKeys) === JSON.stringify(wantedKeys);
+  const stringValues = actualKeys.every((key) => property.properties[key]?.type === "string");
+  if (
+    property?.type !== "object"
+    || property?.additionalProperties !== false
+    || !exactKeys
+    || !stringValues
+  ) {
+    addError(
+      errors,
+      `entities.${entityName}.properties.${field}`,
+      "Fixture registry identity map must contain only the exact canonical string aliases.",
+    );
   }
 }
 
@@ -445,6 +524,222 @@ function validateEntitySchemas(artifacts, errors) {
       ["create", "read", "update", "delete"],
     );
   }
+  if (schemas.StagingReadinessFixture) {
+    requireEnumValue(
+      errors,
+      schemas.StagingReadinessFixture,
+      "StagingReadinessFixture",
+      "environment",
+      "staging",
+    );
+    requireEnumValue(
+      errors,
+      schemas.StagingReadinessFixture,
+      "StagingReadinessFixture",
+      "status",
+      "preflight",
+    );
+    for (const field of [
+      "fixture_set_id",
+      "environment",
+      "app_id",
+      "origin",
+      "status",
+      "created_by_user_id",
+      "created_at",
+      "expires_at",
+      "last_transition_at",
+    ]) {
+      requirePropertyShape(
+        errors,
+        schemas.StagingReadinessFixture,
+        "StagingReadinessFixture",
+        field,
+        { type: "string" },
+      );
+    }
+    for (const field of ["origin"]) {
+      requirePropertyShape(
+        errors,
+        schemas.StagingReadinessFixture,
+        "StagingReadinessFixture",
+        field,
+        { format: "uri" },
+      );
+    }
+    for (const field of ["created_at", "expires_at", "last_transition_at"]) {
+      requirePropertyShape(
+        errors,
+        schemas.StagingReadinessFixture,
+        "StagingReadinessFixture",
+        field,
+        { format: "date-time" },
+      );
+    }
+    requireExactStringMap(
+      errors,
+      schemas.StagingReadinessFixture,
+      "StagingReadinessFixture",
+      "actor_user_ids",
+      Object.keys(LIVE_READINESS_FIXTURE_ACTORS).filter((key) => key !== "platform_owner"),
+    );
+    requireExactStringMap(
+      errors,
+      schemas.StagingReadinessFixture,
+      "StagingReadinessFixture",
+      "agency_ids",
+      Object.keys(LIVE_READINESS_FIXTURE_AGENCIES),
+    );
+    requireExactStringMap(
+      errors,
+      schemas.StagingReadinessFixture,
+      "StagingReadinessFixture",
+      "patient_ids",
+      Object.keys(LIVE_READINESS_FIXTURE_PATIENTS),
+    );
+    requirePropertyShape(
+      errors,
+      schemas.StagingReadinessFixture,
+      "StagingReadinessFixture",
+      "assignment_ids",
+      {
+        type: "array",
+        minItems: LIVE_READINESS_FIXTURE_ASSIGNMENTS.length,
+        maxItems: LIVE_READINESS_FIXTURE_ASSIGNMENTS.length,
+      },
+    );
+    requirePropertyShape(
+      errors,
+      schemas.StagingReadinessFixture,
+      "StagingReadinessFixture",
+      "version",
+      { type: "integer", minimum: 1, default: 1 },
+    );
+    if (schemas.StagingReadinessFixture.properties?.assignment_ids?.items?.type !== "string") {
+      addError(
+        errors,
+        "entities.StagingReadinessFixture.properties.assignment_ids",
+        "Fixture registry assignment ids must be strings.",
+      );
+    }
+    requireClientWritesDenied(
+      errors,
+      schemas.StagingReadinessFixture,
+      "StagingReadinessFixture",
+      ["create", "read", "update", "delete"],
+    );
+  }
+}
+
+const PREFLIGHT_MUTATION_CALL = /\.(?:create|update|delete|deleteMany|bulkCreate|updateMany|bulkUpdate|importEntities|updateMe|inviteUser|register|verifyOtp|resendOtp|resetPasswordRequest|resetPassword|changePassword)\s*\(/;
+const REVIEWED_PREFLIGHT_BASE44_FRAGMENTS = Object.freeze([
+  Object.freeze({
+    source: "import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';",
+    count: 1,
+  }),
+  Object.freeze({
+    source: `const STAGING_ORIGIN = '${LIVE_READINESS_STAGING_TARGET.origin}';`,
+    count: 1,
+  }),
+  Object.freeze({
+    source: "// <<<BEGIN SHARED HELPER: requireActiveUser — generated, edit base44/_shared/backendHelpers.mjs>>>",
+    count: 1,
+  }),
+  Object.freeze({
+    source: "const base44 = createClientFromRequest(createPinnedSdkRequest(req));",
+    count: 1,
+  }),
+  Object.freeze({ source: "base44.auth.me()", count: 2 }),
+  Object.freeze({ source: "const entities = base44.asServiceRole.entities;", count: 1 }),
+]);
+const REVIEWED_PREFLIGHT_ENTITY_FRAGMENTS = Object.freeze([
+  Object.freeze({ source: "entities: Record<string, any>", count: 3 }),
+  Object.freeze({ source: "await entities.User.filter(", count: 2 }),
+  Object.freeze({ source: "await entities.StagingReadinessFixture.filter(", count: 1 }),
+  Object.freeze({ source: "entities.AgencyMembership,", count: 2 }),
+  Object.freeze({ source: "entities.Patient,", count: 1 }),
+  Object.freeze({ source: "entities.PatientCareTeamAssignment,", count: 1 }),
+  Object.freeze({ source: "loadExactActor(entities, binding)", count: 1 }),
+  Object.freeze({ source: "loadFixtureRegistry(entities)", count: 1 }),
+  Object.freeze({ source: "const entities = base44.asServiceRole.entities;", count: 1 }),
+  Object.freeze({
+    source: "inspectPreflight(entities, input, String(owner.id))",
+    count: 2,
+  }),
+]);
+const REVIEWED_PREFLIGHT_HANDLER_FRAGMENTS = Object.freeze([
+  Object.freeze({ source: "handler: Record<string, any>,", count: 1 }),
+  Object.freeze({ source: "await handler.filter(", count: 1 }),
+]);
+const REVIEWED_PREFLIGHT_DENO_FRAGMENTS = Object.freeze([
+  Object.freeze({
+    source: "Deno.env.get('STAGING_READINESS_PREFLIGHT_RELEASE')",
+    count: 1,
+  }),
+  Object.freeze({ source: "Deno.env.get('APP_PUBLIC_URL')", count: 1 }),
+  Object.freeze({ source: "Deno.env.get('SUPER_ADMIN_EMAIL')", count: 1 }),
+  Object.freeze({ source: "Deno.serve(", count: 1 }),
+]);
+
+function exactFragmentCount(source, fragment) {
+  return source.split(fragment).length - 1;
+}
+
+function sourceUsesOnlyReviewedIdentifier(source, identifier, fragments) {
+  if (!fragments.every(({ source: fragment, count }) => (
+    exactFragmentCount(source, fragment) === count
+  ))) {
+    return false;
+  }
+  let remainder = source;
+  for (const { source: fragment } of fragments) {
+    remainder = remainder.split(fragment).join("");
+  }
+  return !(new RegExp(`\\b${identifier}\\b`)).test(remainder);
+}
+
+function preflightUsesOnlyReviewedCapabilities(source) {
+  return sourceUsesOnlyReviewedIdentifier(
+    source,
+    "base44",
+    REVIEWED_PREFLIGHT_BASE44_FRAGMENTS,
+  )
+    && sourceUsesOnlyReviewedIdentifier(
+      source,
+      "entities",
+      REVIEWED_PREFLIGHT_ENTITY_FRAGMENTS,
+    )
+    && sourceUsesOnlyReviewedIdentifier(
+      source,
+      "handler",
+      REVIEWED_PREFLIGHT_HANDLER_FRAGMENTS,
+    )
+    && sourceUsesOnlyReviewedIdentifier(
+      source,
+      "Deno",
+      REVIEWED_PREFLIGHT_DENO_FRAGMENTS,
+    )
+    && (source.match(/\bcreateClientFromRequest\b/g) || []).length === 2;
+}
+
+function stagingPreflightIsReadOnlyAndTargetBound(source) {
+  const actorKeys = Object.keys(LIVE_READINESS_FIXTURE_ACTORS)
+    .filter((key) => key !== "platform_owner")
+    .map((key) => `'${key}'`)
+    .join(", ");
+  return typeof source === "string"
+    && source.includes(`const FIXTURE_SET_ID = '${LIVE_READINESS_FIXTURE_SET_ID}';`)
+    && source.includes(`const STAGING_APP_ID = '${LIVE_READINESS_STAGING_TARGET.app_id}';`)
+    && source.includes(`const STAGING_ORIGIN = '${LIVE_READINESS_STAGING_TARGET.origin}';`)
+    && source.includes(`const ACTOR_KEYS = [${actorKeys}] as const;`)
+    && source.includes("STAGING_READINESS_PREFLIGHT_RELEASE")
+    && source.includes("createPinnedSdkRequest")
+    && source.includes("X-Data-Env")
+    && source.includes("StagingReadinessFixture.filter")
+    && source.includes("data_mutations_performed: false")
+    && preflightUsesOnlyReviewedCapabilities(source)
+    && !PREFLIGHT_MUTATION_CALL.test(source)
+    && !/\bfetch\s*\(|\bWebSocket\b|\bEventSource\b|\bXMLHttpRequest\b|\bimport\s*\(|\bDeno\.(?:connect|connectTls|open|writeFile|writeTextFile|remove|rename)\b/.test(source);
 }
 
 function validateSourceMarkers(artifacts, errors) {
@@ -461,6 +756,14 @@ function validateSourceMarkers(artifacts, errors) {
     if (!source.includes("node:test") || !source.includes("assert")) {
       addError(errors, path, "Required local authority contract test source is absent or malformed.");
     }
+  }
+  const preflightPath = "base44/functions/preflightStagingReadinessFixture/entry.ts";
+  if (!stagingPreflightIsReadOnlyAndTargetBound(artifacts[preflightPath])) {
+    addError(
+      errors,
+      preflightPath,
+      "Staging readiness preflight must remain read-only and canonically target-bound.",
+    );
   }
 }
 
@@ -533,6 +836,11 @@ export function createLiveReadinessSourceContract({
   const assignmentMutationsPaused =
     assignmentSource.includes("CARE_TEAM_ASSIGNMENT_MUTATIONS_ENABLED = false")
     && assignmentSource.includes("!CARE_TEAM_ASSIGNMENT_MUTATIONS_ENABLED");
+  const stagingPreflightSource = artifacts[
+    "base44/functions/preflightStagingReadinessFixture/entry.ts"
+  ] || "";
+  const stagingReadinessPreflightPresent =
+    stagingPreflightIsReadOnlyAndTargetBound(stagingPreflightSource);
   const referralSchemaSource = artifacts["base44/entities/Referral.jsonc"] || "";
   const visitCreateSource = artifacts["base44/functions/createAuthorizedVisit/entry.ts"] || "";
   const referralDirectOperationPathPresent =
@@ -603,6 +911,7 @@ export function createLiveReadinessSourceContract({
       source_release_gates_recorded: SOURCE_RELEASE_GATE_PATHS
         .every((path) => typeof artifacts[path] === "string"),
       care_team_assignment_mutations_paused: assignmentMutationsPaused,
+      staging_readiness_read_only_preflight_present: stagingReadinessPreflightPresent,
       referral_direct_mutation_path_present: referralDirectOperationPathPresent,
       referral_immutable_tenant_broker_present: referralImmutableTenantBrokerPresent,
       referral_inbound_fax_paths_secured: referralInboundFaxPathsSecured,

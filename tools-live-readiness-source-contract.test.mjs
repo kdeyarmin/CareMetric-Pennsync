@@ -23,6 +23,7 @@ test("source contract deterministically binds the canonical fixture, schemas, br
   assert.equal(first.checks.hosted_writes, false);
   assert.equal(first.checks.authenticated_hosted_probes_executed, false);
   assert.equal(first.checks.care_team_assignment_mutations_paused, true);
+  assert.equal(first.checks.staging_readiness_read_only_preflight_present, true);
   assert.equal(first.checks.referral_direct_mutation_path_present, false);
   assert.equal(first.checks.referral_immutable_tenant_broker_present, true);
   assert.equal(first.checks.referral_inbound_fax_paths_secured, true);
@@ -37,6 +38,12 @@ test("source contract deterministically binds the canonical fixture, schemas, br
   );
   assert.ok(first.source_limitations.includes(
     "base44_atomic_patient_and_visit_creation_uniqueness_not_available_or_proved",
+  ));
+  assert.ok(first.source_limitations.includes(
+    "staging_preflight_does_not_prove_login_credentials_or_later_writes",
+  ));
+  assert.ok(first.source_limitations.includes(
+    "staging_preflight_does_not_inspect_legacy_email_or_profile_links",
   ));
   assert.equal(
     first.source_limitations.includes(
@@ -102,6 +109,110 @@ test("source contract rejects removal of the dormant assignment mutation gate wi
   const formatted = formatLiveReadinessSourceContractErrors(weakened.errors);
   assert.match(formatted, /reviewed-broker source marker is absent/);
   assert.equal(formatted.includes("MUTATIONS_ENABLED = true"), false);
+});
+
+test("source contract rejects every installed SDK entity mutator in the staging preflight", () => {
+  const changedPath = "base44/functions/preflightStagingReadinessFixture/entry.ts";
+  for (const method of [
+    "create",
+    "update",
+    "delete",
+    "deleteMany",
+    "bulkCreate",
+    "updateMany",
+    "bulkUpdate",
+    "importEntities",
+  ]) {
+    const weakened = createLiveReadinessSourceContract({
+      readArtifact: (path) => path === changedPath
+        ? `${readArtifact(path)}\nentities.StagingReadinessFixture.${method}({});`
+        : readArtifact(path),
+    });
+
+    assert.equal(weakened.status, "invalid_source_authority_contract", method);
+    assert.equal(weakened.source_authority_contract_sha256, null, method);
+    assert.equal(weakened.checks.staging_readiness_read_only_preflight_present, false, method);
+    assert.ok(weakened.errors.some((error) => error.path === changedPath), method);
+  }
+});
+
+test("source contract rejects non-entity Base44 side effects in the staging preflight", () => {
+  const changedPath = "base44/functions/preflightStagingReadinessFixture/entry.ts";
+  for (const injectedCall of [
+    "base44.asServiceRole.agents.createConversation({});",
+    "base44.appLogs.logUserInApp('preflight');",
+    "base44.fetchWithAuth('/mutating-route', { method: 'POST' });",
+    "base44.asServiceRole.connectors.disconnectAppUser('connector');",
+  ]) {
+    const weakened = createLiveReadinessSourceContract({
+      readArtifact: (path) => path === changedPath
+        ? `${readArtifact(path)}\n${injectedCall}`
+        : readArtifact(path),
+    });
+
+    assert.equal(weakened.status, "invalid_source_authority_contract", injectedCall);
+    assert.equal(weakened.source_authority_contract_sha256, null, injectedCall);
+    assert.equal(
+      weakened.checks.staging_readiness_read_only_preflight_present,
+      false,
+      injectedCall,
+    );
+    assert.ok(weakened.errors.some((error) => error.path === changedPath), injectedCall);
+  }
+});
+
+test("source contract rejects indirect mutations through approved entity handles", () => {
+  const changedPath = "base44/functions/preflightStagingReadinessFixture/entry.ts";
+  for (const injectedCall of [
+    "entities.Patient['create']({});",
+    "const { deleteMany } = entities.Patient; deleteMany({});",
+    "const mutate = entities.Patient.create; mutate({});",
+    "const mutate = entities.Patient[\"deleteMany\"]; mutate({});",
+    "handler['create']({});",
+    "const { bulkUpdate } = handler; bulkUpdate([]);",
+  ]) {
+    const weakened = createLiveReadinessSourceContract({
+      readArtifact: (path) => path === changedPath
+        ? `${readArtifact(path)}\n${injectedCall}`
+        : readArtifact(path),
+    });
+
+    assert.equal(weakened.status, "invalid_source_authority_contract", injectedCall);
+    assert.equal(weakened.source_authority_contract_sha256, null, injectedCall);
+    assert.equal(
+      weakened.checks.staging_readiness_read_only_preflight_present,
+      false,
+      injectedCall,
+    );
+    assert.ok(weakened.errors.some((error) => error.path === changedPath), injectedCall);
+  }
+});
+
+test("source contract rejects weakened staging fixture registry identity shapes", () => {
+  const changedPath = "base44/entities/StagingReadinessFixture.jsonc";
+  const weakened = createLiveReadinessSourceContract({
+    readArtifact: (path) => {
+      if (path !== changedPath) return readArtifact(path);
+      const schema = JSON.parse(readArtifact(path));
+      schema.properties.actor_user_ids = { type: "string" };
+      schema.properties.assignment_ids.items.type = "number";
+      schema.properties.version.type = "number";
+      return JSON.stringify(schema);
+    },
+  });
+
+  assert.equal(weakened.status, "invalid_source_authority_contract");
+  assert.equal(weakened.source_authority_contract_sha256, null);
+  assert.equal(weakened.checks.authority_schema_semantics, false);
+  assert.ok(weakened.errors.some((error) => (
+    error.path === "entities.StagingReadinessFixture.properties.actor_user_ids"
+  )));
+  assert.ok(weakened.errors.some((error) => (
+    error.path === "entities.StagingReadinessFixture.properties.assignment_ids"
+  )));
+  assert.ok(weakened.errors.some((error) => (
+    error.path === "entities.StagingReadinessFixture.properties.version"
+  )));
 });
 
 test("source contract handles unreadable or malformed pinned artifacts without leaking contents", () => {

@@ -1,22 +1,58 @@
+import {
+  LIVE_READINESS_FIXTURE_ACTORS,
+  LIVE_READINESS_FIXTURE_AGENCIES,
+  LIVE_READINESS_FIXTURE_ASSIGNMENTS,
+  LIVE_READINESS_FIXTURE_PATIENTS,
+  LIVE_READINESS_FIXTURE_SET_ID,
+  LIVE_READINESS_STAGING_TARGET,
+} from './liveReadinessFixtureManifest.js';
+
+const TENANT_ACTOR_KEYS = Object.freeze(
+  Object.keys(LIVE_READINESS_FIXTURE_ACTORS)
+    .filter((actorKey) => actorKey !== 'platform_owner'),
+);
+
+const READINESS_FIXTURE_ADMIN_ACTORS = Object.freeze(Object.fromEntries(
+  Object.keys(LIVE_READINESS_FIXTURE_AGENCIES).map((agencyKey) => {
+    const adminActors = TENANT_ACTOR_KEYS.filter((actorKey) => {
+      const actor = LIVE_READINESS_FIXTURE_ACTORS[actorKey];
+      return actor.agency === agencyKey && actor.tenant_role === 'agency_admin';
+    });
+    if (adminActors.length !== 1) {
+      throw new Error(`Readiness fixture ${agencyKey} must have exactly one agency admin`);
+    }
+    return [agencyKey, adminActors[0]];
+  }),
+));
+
 export const READINESS_FIXTURE_TARGET = Object.freeze({
-  environment: 'staging',
-  appId: '6a9881683dc68a0bd54f1ef7',
-  origin: 'https://caremetric-pennsync-staging-2026-09-d54f1ef7.base44.app/',
-  fixtureSetId: 'lr01-lr02-two-agency-v1',
+  environment: LIVE_READINESS_STAGING_TARGET.environment,
+  appId: LIVE_READINESS_STAGING_TARGET.app_id,
+  origin: LIVE_READINESS_STAGING_TARGET.origin,
+  fixtureSetId: LIVE_READINESS_FIXTURE_SET_ID,
 });
 
-export const READINESS_FIXTURE_ACTORS = Object.freeze({
-  admin_a: Object.freeze({ agency: 'agency_a', tenantRole: 'agency_admin' }),
-  clinician_a: Object.freeze({ agency: 'agency_a', tenantRole: 'clinician' }),
-  clinician_a_empty: Object.freeze({ agency: 'agency_a', tenantRole: 'clinician' }),
-  admin_b: Object.freeze({ agency: 'agency_b', tenantRole: 'agency_admin' }),
-});
+export const READINESS_FIXTURE_ACTORS = Object.freeze(Object.fromEntries(
+  TENANT_ACTOR_KEYS.map((actorKey) => {
+    const actor = LIVE_READINESS_FIXTURE_ACTORS[actorKey];
+    return [actorKey, Object.freeze({
+      agency: actor.agency,
+      tenantRole: actor.tenant_role,
+    })];
+  }),
+));
 
-export const READINESS_FIXTURE_PATIENTS = Object.freeze({
-  a1: Object.freeze({ agency: 'agency_a', creator: 'admin_a' }),
-  a2: Object.freeze({ agency: 'agency_a', creator: 'admin_a' }),
-  b1: Object.freeze({ agency: 'agency_b', creator: 'admin_b' }),
-});
+export const READINESS_FIXTURE_PATIENTS = Object.freeze(Object.fromEntries(
+  Object.entries(LIVE_READINESS_FIXTURE_PATIENTS).map(([patientKey, patient]) => (
+    [patientKey, Object.freeze({
+      agency: patient.agency,
+      creator: patient.creator,
+      status: patient.status,
+      isSample: patient.is_sample,
+      isArchived: patient.is_archived,
+    })]
+  )),
+));
 
 export const SCOPED_CONTENT_ROOTS = Object.freeze([
   'CustomValidationRule',
@@ -54,7 +90,7 @@ export const PHYSICIAN_MASTER_FIELDS = Object.freeze([
   'state_license',
 ]);
 
-export const PHYSICIAN_AGENCY_OVERLAY_FIELDS = Object.freeze([
+export const PHYSICIAN_LEGACY_AGENCY_OVERLAY_FIELDS = Object.freeze([
   'accepts_home_health',
   'accepts_hospice',
   'preferred_contact_method',
@@ -66,10 +102,15 @@ export const PHYSICIAN_AGENCY_OVERLAY_FIELDS = Object.freeze([
   'referral_count',
 ]);
 
-const ACTOR_KEYS = Object.freeze(Object.keys(READINESS_FIXTURE_ACTORS));
+export const PHYSICIAN_AGENCY_OVERLAY_FIELDS = Object.freeze([
+  'status',
+  ...PHYSICIAN_LEGACY_AGENCY_OVERLAY_FIELDS.filter((field) => field !== 'is_active'),
+]);
+
+const ACTOR_KEYS = TENANT_ACTOR_KEYS;
 const CONTENT_ROOT_SET = new Set(SCOPED_CONTENT_ROOTS);
 const PHYSICIAN_MASTER_SET = new Set(PHYSICIAN_MASTER_FIELDS);
-const PHYSICIAN_OVERLAY_SET = new Set(PHYSICIAN_AGENCY_OVERLAY_FIELDS);
+const PHYSICIAN_LEGACY_OVERLAY_SET = new Set(PHYSICIAN_LEGACY_AGENCY_OVERLAY_FIELDS);
 
 function exactIdentifier(value, label) {
   const hasControlCharacter = typeof value === 'string'
@@ -137,14 +178,16 @@ export function buildReadinessFixturePlan(bindings) {
   return Object.freeze({
     target: READINESS_FIXTURE_TARGET,
     actors,
-    agencies: Object.freeze({
-      agency_a: Object.freeze({ status: 'active', adminActor: 'admin_a' }),
-      agency_b: Object.freeze({ status: 'active', adminActor: 'admin_b' }),
-    }),
+    agencies: Object.freeze(Object.fromEntries(
+      Object.entries(LIVE_READINESS_FIXTURE_AGENCIES).map(([agencyKey, agency]) => (
+        [agencyKey, Object.freeze({
+          status: agency.status,
+          adminActor: READINESS_FIXTURE_ADMIN_ACTORS[agencyKey],
+        })]
+      )),
+    )),
     patients: READINESS_FIXTURE_PATIENTS,
-    assignments: Object.freeze([
-      Object.freeze({ patient: 'a1', actor: 'clinician_a', status: 'active', source: 'manual' }),
-    ]),
+    assignments: LIVE_READINESS_FIXTURE_ASSIGNMENTS,
     forbiddenData: Object.freeze(['password', 'token', 'secret', 'production_phi']),
   });
 }
@@ -200,10 +243,18 @@ export function splitPhysicianMasterAndAgencyOverlay(input) {
     throw new Error('Physician payload must be an object');
   }
   const master = {};
-  const overlay = {};
+  const overlay = { status: 'quarantined' };
   for (const [field, value] of Object.entries(input)) {
     if (PHYSICIAN_MASTER_SET.has(field)) master[field] = value;
-    else if (PHYSICIAN_OVERLAY_SET.has(field)) overlay[field] = value;
+    else if (field === 'is_active') {
+      if (typeof value !== 'boolean') throw new Error('Physician is_active must be a boolean');
+      overlay.status = value ? 'active' : 'inactive';
+    } else if (field === 'referral_count') {
+      if (!Number.isSafeInteger(value) || value < 0) {
+        throw new Error('Physician referral_count must be a non-negative integer');
+      }
+      overlay[field] = value;
+    } else if (PHYSICIAN_LEGACY_OVERLAY_SET.has(field)) overlay[field] = value;
     else throw new Error(`Unsupported Physician field: ${field}`);
   }
   if (typeof master.full_name !== 'string' || !master.full_name.trim()) {

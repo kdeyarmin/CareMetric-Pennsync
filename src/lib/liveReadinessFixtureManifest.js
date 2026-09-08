@@ -67,6 +67,22 @@ export const LIVE_READINESS_FIXTURE_ENTITY_FIELDS = Object.freeze({
     "last_transition_request_key",
     "version",
   ]),
+  StagingReadinessFixture: Object.freeze([
+    "fixture_set_id",
+    "environment",
+    "app_id",
+    "origin",
+    "status",
+    "actor_user_ids",
+    "agency_ids",
+    "patient_ids",
+    "assignment_ids",
+    "created_by_user_id",
+    "created_at",
+    "expires_at",
+    "last_transition_at",
+    "version",
+  ]),
 });
 
 const TOP_LEVEL_KEYS = [
@@ -87,7 +103,7 @@ const AGENCY_KEYS = ["status"];
 const PATIENT_KEYS = ["agency", "creator", "status", "is_sample", "is_archived"];
 const ASSIGNMENT_KEYS = ["patient", "actor", "status", "source"];
 
-const CANONICAL_ACTORS = Object.freeze({
+export const LIVE_READINESS_FIXTURE_ACTORS = Object.freeze({
   platform_owner: Object.freeze({
     email_env: "SUPER_ADMIN_EMAIL",
     built_in_role: "admin",
@@ -120,12 +136,12 @@ const CANONICAL_ACTORS = Object.freeze({
   }),
 });
 
-const CANONICAL_AGENCIES = Object.freeze({
+export const LIVE_READINESS_FIXTURE_AGENCIES = Object.freeze({
   agency_a: Object.freeze({ status: "active" }),
   agency_b: Object.freeze({ status: "active" }),
 });
 
-const CANONICAL_PATIENTS = Object.freeze({
+export const LIVE_READINESS_FIXTURE_PATIENTS = Object.freeze({
   a1: Object.freeze({
     agency: "agency_a",
     creator: "admin_a",
@@ -149,12 +165,19 @@ const CANONICAL_PATIENTS = Object.freeze({
   }),
 });
 
-const CANONICAL_ASSIGNMENT = Object.freeze({
-  patient: "a1",
-  actor: "clinician_a",
-  status: "active",
-  source: "manual",
-});
+export const LIVE_READINESS_FIXTURE_ASSIGNMENTS = Object.freeze([
+  Object.freeze({
+    patient: "a1",
+    actor: "clinician_a",
+    status: "active",
+    source: "manual",
+  }),
+]);
+
+const CANONICAL_ACTORS = LIVE_READINESS_FIXTURE_ACTORS;
+const CANONICAL_AGENCIES = LIVE_READINESS_FIXTURE_AGENCIES;
+const CANONICAL_PATIENTS = LIVE_READINESS_FIXTURE_PATIENTS;
+const CANONICAL_ASSIGNMENT = LIVE_READINESS_FIXTURE_ASSIGNMENTS[0];
 
 const SAFE_MANIFEST_PATH_KEYS = new Set([
   ...TOP_LEVEL_KEYS,

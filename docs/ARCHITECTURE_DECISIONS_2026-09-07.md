@@ -14,11 +14,26 @@ The only approved fixture topology is
 `6a9881683dc68a0bd54f1ef7` at the origin pinned by
 `docs/audits/live-readiness-fixture-manifest.template.json`.
 
-The source contract in `src/lib/tenantArchitecture.js` requires four distinct
-non-owner test identities, two agencies, three synthetic patients, and only the
-A1-to-Clinician-A assignment. Passwords, tokens, provider secrets, and
-production PHI are not part of the fixture plan. `StagingReadinessFixture` is a
-service-only metadata registry for a future one-time bootstrap and teardown.
+`src/lib/liveReadinessFixtureManifest.js` remains the canonical topology source.
+`src/lib/tenantArchitecture.js` derives its four distinct non-owner identity
+bindings, two agencies, three synthetic patients, and sole
+A1-to-Clinician-A assignment from that canonical model. Passwords, tokens,
+provider secrets, and production PHI are not part of the fixture plan.
+`StagingReadinessFixture` is a service-only metadata registry for a future
+one-time bootstrap and teardown.
+
+The source now also contains `preflightStagingReadinessFixture`, a default-off,
+protected-platform-owner, read-only preflight. It validates the exact staging
+app/origin/release sentinel and production data partition, strips caller-supplied
+SDK routing/state headers, checks the four immutable User id/email bindings and
+approval state, and detects an existing registry row or immutable-ID-linked
+membership, patient, and care-team-assignment rows using bounded projections.
+Its response labels only the narrower immutable-authority preflight result and
+contains fixed aliases, states, counts, and false side-effect flags. It does not
+inspect legacy email/profile links and cannot prove login credentials,
+agency-key collision absence, datastore uniqueness, transactionality, or
+authorization for a later write. It is not deployed or invoked by this source
+tranche.
 
 The registry does not make provisioning safe by itself. Base44 still lacks a
 documented unique/create-if-absent or cross-entity transaction for membership,
@@ -59,9 +74,13 @@ public professional and practice facts. `PhysicianAgencyProfile` is the private
 tenant overlay for agency preferences, relationship notes, tags, active state,
 and referral metrics. Direct overlay CRUD is denied.
 
-The exact field split is encoded in `src/lib/tenantArchitecture.js`. The 420
-legacy Physician rows are not migrated by this decision because their tenant
-provenance is not established. Before activation, a reviewed broker must:
+The exact field split is encoded in `src/lib/tenantArchitecture.js`. Legacy
+`Physician.is_active` is translated explicitly into the overlay's service-owned
+`status` (`active` or `inactive`); when that legacy flag is absent, the overlay
+remains fail-closed as `quarantined`. `is_active` is not a persisted
+`PhysicianAgencyProfile` field. The 420 legacy Physician rows are not migrated
+by this decision because their tenant provenance is not established. Before
+activation, a reviewed broker must:
 
 1. resolve or create a canonical shared master without duplicate-NPI races;
 2. authorize the caller from immutable AgencyMembership state;
@@ -72,7 +91,8 @@ provenance is not established. Before activation, a reviewed broker must:
 
 ## Release boundary
 
-These schemas and contracts are a fail-closed foundation. They intentionally do
-not claim hosted parity, migration completion, atomicity, authenticated RLS
-proof, or production readiness. The existing PR #143 release blockers and all
+These schemas, the read-only preflight, and readiness source-contract v3 are a
+fail-closed foundation. They intentionally do not claim hosted parity,
+migration completion, atomicity, authenticated RLS proof, or production
+readiness. The existing PR #143 release blockers and all
 application/workflow/outbound gates remain in force.

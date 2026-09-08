@@ -33,6 +33,17 @@ Turn the gated live-readiness matrix into real hosted evidence so
    and `pnpm run test:security` separately for executable source-only coverage;
    their mocks are not hosted evidence.
 
+   Source-contract v3 also pins the default-off
+   `preflightStagingReadinessFixture` implementation and its executable
+   contract test. That function is read-only and emits no identities or PHI,
+   but it remains unavailable unless the exact staging-only release sentinel,
+   app id, public origin, production data partition, and protected owner
+   configuration all match. Its narrow pass state covers immutable authority
+   links only and does not inspect legacy email/profile links. A green local
+   test or preflight response does not provision the fixture, prove login
+   credentials, authorize a later write, provide an atomic uniqueness
+   guarantee, or clear LR-01/LR-02.
+
 2. **Provision the plan through reviewed paths when the hosted prerequisites
    are available:**
    - Create/invite as needed, then resolve the five actor identities from the

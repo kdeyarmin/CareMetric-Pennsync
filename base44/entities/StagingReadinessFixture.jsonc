@@ -24,17 +24,40 @@
     },
     "actor_user_ids": {
       "type": "object",
+      "properties": {
+        "admin_a": { "type": "string" },
+        "clinician_a": { "type": "string" },
+        "clinician_a_empty": { "type": "string" },
+        "admin_b": { "type": "string" }
+      },
+      "required": ["admin_a", "clinician_a", "clinician_a_empty", "admin_b"],
+      "additionalProperties": false,
       "description": "Role-keyed immutable User ids only; credentials are forbidden."
     },
     "agency_ids": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "agency_a": { "type": "string" },
+        "agency_b": { "type": "string" }
+      },
+      "required": ["agency_a", "agency_b"],
+      "additionalProperties": false
     },
     "patient_ids": {
-      "type": "object"
+      "type": "object",
+      "properties": {
+        "a1": { "type": "string" },
+        "a2": { "type": "string" },
+        "b1": { "type": "string" }
+      },
+      "required": ["a1", "a2", "b1"],
+      "additionalProperties": false
     },
     "assignment_ids": {
       "type": "array",
-      "items": { "type": "string" }
+      "items": { "type": "string" },
+      "minItems": 1,
+      "maxItems": 1
     },
     "created_by_user_id": {
       "type": "string"
@@ -64,6 +87,9 @@
     "origin",
     "status",
     "actor_user_ids",
+    "agency_ids",
+    "patient_ids",
+    "assignment_ids",
     "created_by_user_id",
     "created_at",
     "expires_at",
