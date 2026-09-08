@@ -382,7 +382,6 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     agency_name: currentUser.agency_name || null,
     status: 'pending',
     expires_at: expiresAt.toISOString(),
-    last_sent_at: now.toISOString(),
     resend_count: 0
   });
 
@@ -406,22 +405,52 @@ async function inviteUser(base44, currentUser, params, isAdmin, callerIsSuperAdm
     });
   } catch {
     console.error('Invitation email delivery failed');
+    // The pending row exists, but a provider error (including a timeout) is not
+    // evidence of delivery. Preserve its id so the operator can inspect/resend
+    // this invitation instead of creating another one. Never stamp it as sent.
+    return Response.json({
+      success: false,
+      code: 'INVITATION_EMAIL_UNCONFIRMED',
+      error: 'Invitation saved, but email delivery could not be confirmed. Check this invitation before resending.',
+      invitation_id: invitation.id,
+      expires_at: expiresAt.toISOString(),
+      delivery_status: 'unconfirmed',
+    }, { status: 502 });
   }
 
-  // Log activity
-  await base44.asServiceRole.entities.UserActivity.create({
-    user_email: currentUser.email,
-    user_name: currentUser.full_name,
-    action: 'user_invited',
-    details: { invited_email: email, invited_name: full_name, role },
-    page: 'UserManagement',
-    entity_type: 'UserInvitation',
-    entity_id: invitation.id
-  });
+  // Email has been submitted. Later metadata/audit failures must not turn this
+  // into a retryable send failure and trigger duplicate invitations.
+  const warnings = [];
+  try {
+    await base44.asServiceRole.entities.UserInvitation.update(invitation.id, {
+      last_sent_at: new Date().toISOString(),
+    });
+  } catch {
+    console.error('Invitation stamp failed after email sent');
+    warnings.push('DELIVERY_METADATA_UNCONFIRMED');
+  }
+  try {
+    await base44.asServiceRole.entities.UserActivity.create({
+      user_email: currentUser.email,
+      user_name: currentUser.full_name,
+      action: 'user_invited',
+      details: { invited_email: email, invited_name: full_name, role },
+      page: 'UserManagement',
+      entity_type: 'UserInvitation',
+      entity_id: invitation.id
+    });
+  } catch {
+    console.error('Invitation activity logging failed after email sent');
+    warnings.push('DELIVERY_AUDIT_UNCONFIRMED');
+  }
 
   return Response.json({ 
     success: true, 
-    message: 'Invitation sent successfully',
+    message: warnings.length
+      ? 'Invitation email submitted, but some delivery record saves could not be confirmed. Check the invitation before resending.'
+      : 'Invitation email submitted successfully',
+    delivery_status: 'submitted',
+    warnings,
     invitation_id: invitation.id,
     expires_at: expiresAt.toISOString()
   });
@@ -507,9 +536,16 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
     });
   } catch {
     console.error('Invitation resend delivery failed');
-    return Response.json({ error: 'Failed to send invitation email. Please try again.' }, { status: 502 });
+    return Response.json({
+      success: false,
+      code: 'INVITATION_EMAIL_UNCONFIRMED',
+      error: 'Invitation email delivery could not be confirmed. Check this invitation before resending.',
+      invitation_id,
+      delivery_status: 'unconfirmed',
+    }, { status: 502 });
   }
 
+  const warnings = [];
   try {
     await base44.asServiceRole.entities.UserInvitation.update(invitation_id, {
       status: 'pending',
@@ -519,28 +555,44 @@ async function resendInvitation(base44, currentUser, params, isAdmin) {
     });
   } catch {
     console.error('Invitation stamp failed after email sent');
-    // Email already went out — leave prior row; report soft success with warning.
+    // A write can commit before its response times out. Do not claim either
+    // the previous or the requested metadata is confirmed after an exception.
+    warnings.push('DELIVERY_METADATA_UNCONFIRMED');
   }
+  const deliveryMetadataStatus = warnings.includes('DELIVERY_METADATA_UNCONFIRMED')
+    ? 'unconfirmed' : 'saved';
 
   // Log activity
-  await base44.asServiceRole.entities.UserActivity.create({
-    user_email: currentUser.email,
-    user_name: currentUser.full_name,
-    action: 'invitation_resent',
-    details: {
-      invited_email: invitation.email,
-      resend_count: prior.resend_count + 1,
-      new_expires_at: newExpiresAt.toISOString()
-    },
-    page: 'UserManagement',
-    entity_type: 'UserInvitation',
-    entity_id: invitation_id
-  });
+  try {
+    await base44.asServiceRole.entities.UserActivity.create({
+      user_email: currentUser.email,
+      user_name: currentUser.full_name,
+      action: 'invitation_resent',
+      details: {
+        invited_email: invitation.email,
+        resend_count: deliveryMetadataStatus === 'saved' ? prior.resend_count + 1 : null,
+        new_expires_at: deliveryMetadataStatus === 'saved' ? newExpiresAt.toISOString() : null,
+        delivery_metadata_status: deliveryMetadataStatus,
+      },
+      page: 'UserManagement',
+      entity_type: 'UserInvitation',
+      entity_id: invitation_id
+    });
+  } catch {
+    console.error('Invitation resend activity logging failed after email sent');
+    warnings.push('DELIVERY_AUDIT_UNCONFIRMED');
+  }
 
   return Response.json({ 
     success: true, 
-    message: 'Invitation resent successfully',
-    new_expires_at: newExpiresAt.toISOString()
+    message: warnings.length
+      ? 'Invitation email submitted, but some delivery record saves could not be confirmed. Check the invitation before resending.'
+      : 'Invitation email resubmitted successfully',
+    delivery_status: 'submitted',
+    delivery_metadata_status: deliveryMetadataStatus,
+    invitation_id,
+    warnings,
+    new_expires_at: deliveryMetadataStatus === 'saved' ? newExpiresAt.toISOString() : null
   });
 }
 

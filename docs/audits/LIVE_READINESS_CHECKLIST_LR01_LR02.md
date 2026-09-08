@@ -83,6 +83,44 @@ no authenticated hosted probe ran, and lists every source limitation. Preserve
 the emitted source-contract digest for the evidence packet; the report command
 recomputes it from the exact clean checkout and rejects drift.
 
+### Hosted actor activation prerequisites
+
+All four actors require distinct, real Base44 User ids and normalized email
+addresses, separate from the protected platform owner. Each must have built-in
+`role: "user"`, `is_active: true`, `is_verified: true`, `is_approved: true`,
+`is_service: false`, and `disabled: false` or `null`. Admin-A and Admin-B acquire
+tenant administration later through reviewed AgencyMembership provisioning;
+do not grant them the built-in Base44 `admin` role. Mail aliases are acceptable
+only when delivery is confirmed and the platform maintains four distinct users.
+
+A bare platform invitation or completed email verification does not establish
+PennSync approval. The supported invitation brokers (`createUserWithTempPassword`
+or `userManagement`) establish the pending UserInvitation consumed by the signup
+or approval handler. That invitation must have a valid, future expiry when it is
+consumed. The brokers reject delivery while `OUTBOUND_DELIVERY_RELEASE` is paused;
+do not use direct SDK invitations, entity writes, or patched verification flags
+to bypass the application gate. A provider accepting email is not proof of inbox
+delivery, and a saved invitation whose send returned an error is not a successful
+send. Inspect the existing invitation before retrying an uncertain delivery.
+
+Account activation writes approval, invitation, and audit records and may enroll
+training. Read-only preflight approval does not authorize those writes or the
+application-wide delivery release. Before activation, resolve the approved
+staging-only delivery/setup path and its exact write scope. Keep fixture agencies,
+memberships, patients, and assignments unprovisioned for the pristine preflight.
+Connected User/entity reads can establish missing accounts and collisions, but
+do not substitute for the protected preflight or authenticated tenant sessions.
+
+Connected read checkpoint on 2026-09-08 for staging app
+`6a9881683dc68a0bd54f1ef7`: the exact four intended actor email queries returned
+no User rows. The protected owner exists as a verified platform admin and is
+not a substitute actor. No `lr01-lr02-two-agency-v1` StagingReadinessFixture,
+`LR-A`/`LR-B` Agency, or owner AgencyMembership rows were returned. These bounded
+reads required no new device login. No invitations, account activation, fixture
+writes, or protected function invocation occurred during this checkpoint;
+actor setup and hosted evidence remain outstanding. These results describe
+the queried state at that time, not future collision clearance.
+
 The default-off hosted `preflightStagingReadinessFixture` can report only a
 bounded point-in-time state. Its successful status is
 `point_in_time_read_only_preflight_passed`; it checks canonical Agency-code

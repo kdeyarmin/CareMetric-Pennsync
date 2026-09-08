@@ -250,6 +250,19 @@ Deno.serve(async (req) => {
     // Process invitations sequentially with early exits
     for (const invitation of invitations) {
       try {
+        // A pending row may outlive its expiry until the maintenance sweep.
+        // Match onUserSignup's fail-closed expiry check before granting access.
+        const expiresAtMs = typeof invitation.expires_at === 'string'
+          ? Date.parse(invitation.expires_at)
+          : NaN;
+        if (!Number.isFinite(expiresAtMs) || expiresAtMs <= Date.now()) {
+          await base44.asServiceRole.entities.UserInvitation.update(invitation.id, {
+            status: 'expired',
+          });
+          skippedCount++;
+          continue;
+        }
+
         // Find the registered user
         const matchingUsers = await base44.asServiceRole.entities.User.filter({ email: invitation.email }, undefined, 5000);
         if (!matchingUsers || matchingUsers.length === 0) {
@@ -258,6 +271,16 @@ Deno.serve(async (req) => {
         }
 
         const user = matchingUsers[0];
+
+        // The remote lookup may cross the expiry boundary. Recheck at the
+        // approval point so a once-valid invitation cannot grant late access.
+        if (expiresAtMs <= Date.now()) {
+          await base44.asServiceRole.entities.UserInvitation.update(invitation.id, {
+            status: 'expired',
+          });
+          skippedCount++;
+          continue;
+        }
 
         // If already approved and verified, just mark invitation as accepted
         if (user.is_approved && user.is_verified) {
