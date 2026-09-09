@@ -83,5 +83,20 @@ test('workflow stays manual, production-protected, site-only and sequential', ()
   assert.ok(source.indexOf('pnpm test') < source.indexOf('site deploy'));
   assert.ok(source.indexOf('site deploy') < source.indexOf('node tools-live-frontend-sync.mjs'));
   assert.match(source, /path: \$\{\{ runner.temp \}\}\/pennsync-publication-verification.json/);
-  assert.doesNotMatch(source, /path:.*base44-(?:whoami|site-receipt|site\.log)/);
+  assert.doesNotMatch(source, /path:.*base44-(?:whoami|access-check|site-receipt|site\.log)/);
+});
+
+test('workspace-key acknowledgement is not mistaken for authenticated production access', () => {
+  const yaml = readFileSync(new URL('./.github/workflows/publish-production-frontend.yml', import.meta.url), 'utf8');
+  const source = yaml.split('\n').filter((line) => !line.trimStart().startsWith('#')).join('\n');
+  assert.doesNotMatch(source, /\bwhoami\b/);
+  assert.match(source, /\$cli" --app-id 694ec16e72e01b60d22f7cbf\s*\\\n\s*--json functions list/);
+  const probe = source.indexOf('--json functions list');
+  const upload = source.indexOf('--json site deploy');
+  assert.ok(probe > 0 && probe < upload);
+  const refusalBoundary = source.slice(probe, upload);
+  assert.match(refusalBoundary, /BASE44_PRODUCTION_ACCESS_CHECK_FAILED/);
+  assert.match(refusalBoundary, /exit 2\s+fi/);
+  assert.match(refusalBoundary, /base44-access-check\.json/);
+  assert.doesNotMatch(source, /(?:cat|tee)\s+[^\n]*base44-access-check/);
 });
