@@ -14,7 +14,7 @@ export function checkPublishingAccess(env) {
     return { allowed: false, code: 'MANUAL_PRODUCTION_WORKFLOW_REQUIRED' };
   }
   const key = env.BASE44_API_KEY?.trim();
-  if (!key || !/^b44k_[A-Za-z0-9_-]+$/.test(key)) {
+  if (!key || !key.startsWith('b44k_') || key.length <= 5 || /\s/.test(key)) {
     return { allowed: false, code: 'BASE44_PUBLISH_KEY_REQUIRED' };
   }
   return { allowed: true, code: 'CREDENTIAL_INPUT_PRESENT_NOT_YET_VALIDATED' };
