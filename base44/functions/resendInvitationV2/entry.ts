@@ -160,4 +160,4 @@ Deno.serve(async (req) => {
     }, { status: 500 });
   }
 });
-// Production replacement endpoint: resendInvitationV2 (registered 2026-09-09)
+// Production replacement endpoint: resendInvitationV2

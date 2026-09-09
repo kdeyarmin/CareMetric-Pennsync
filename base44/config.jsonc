@@ -2,7 +2,7 @@
   "name": "PennSync",
   "site": {
     "installCommand": "npx --yes --package=node@24.18.0 --package=pnpm@11.9.0 --call 'pnpm install --frozen-lockfile'",
-    "buildCommand": "npx --yes --package=node@24.18.0 --package=pnpm@11.9.0 --call 'pnpm run build'",
+    "buildCommand": "npx --yes --package=node@24.18.0 --package=pnpm@11.9.0 --call 'VITE_SUPER_ADMIN_EMAIL=kdeyarmin@comcast.net VITE_BASE44_FUNCTIONS_VERSION= pnpm run build'", 
     "serveCommand": "npx --yes --package=node@24.18.0 --package=pnpm@11.9.0 --call 'pnpm run dev'", 
     "outputDirectory": "./dist"
   }

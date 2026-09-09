@@ -941,4 +941,4 @@ async function cancelInvitation(base44, currentUser, params, isAdmin) {
     message: 'Invitation cancelled successfully' 
   });
 }
-// Production replacement endpoint: userManagementV2 (registered 2026-09-09)
+// Production replacement endpoint: userManagementV2
