@@ -1,0 +1,135 @@
+name: Publish production frontend (site only)
+
+# Deliberately manual. A source sync, successful test, or account invitation is
+# not a publication request. No backend/schema/auth/data/DNS changes are made.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: caremetric-pennsync-production-site-publication
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'kdeyarmin/CareMetric-Pennsync' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 40
+    steps:
+      - name: Checkout the explicitly requested revision
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Stop before invoking Base44 when persistent publishing access is missing
+        env:
+          BASE44_API_KEY: ${{ secrets.BASE44_API_KEY }}
+        run: node tools-production-publish-preflight.mjs
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+
+      - name: Install locked application dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Validate the candidate before publication
+        run: |
+          pnpm run lint:actions
+          pnpm run lint
+          pnpm test
+          pnpm run check:oasis-worksheet
+          pnpm run check:shared-helpers
+          pnpm run check:backend-transpile
+          pnpm run typecheck:signal
+
+      - name: Build once for the production app and exact workflow commit
+        env:
+          VITE_BASE44_APP_ID: '694ec16e72e01b60d22f7cbf'
+          VITE_BASE44_BACKEND_URL: https://base44.app
+          VITE_BASE44_FUNCTIONS_VERSION: ''
+          VITE_SUPER_ADMIN_EMAIL: kdeyarmin@comcast.net
+          PENNSYNC_ASSET_REVISION: ${{ github.sha }}
+        run: pnpm run build
+
+      - name: Require that exact artifact before upload
+        env:
+          BASE44_API_KEY: ${{ secrets.BASE44_API_KEY }}
+        run: node tools-production-publish-preflight.mjs --artifact
+
+      - name: Publish only the prepared static frontend with workspace-key authentication
+        id: publication
+        env:
+          BASE44_API_KEY: ${{ secrets.BASE44_API_KEY }}
+          CI: 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          # Check again directly before the CLI; no absent-key fallback to login.
+          node tools-production-publish-preflight.mjs --artifact
+          cli_dir="$RUNNER_TEMP/base44-publish-cli"
+          mkdir -p "$cli_dir"
+          printf '{"private":true}\n' > "$cli_dir/package.json"
+          # Install the current supported CLI once, outside the app dependency
+          # tree. The same resolved executable handles auth and site upload.
+          pnpm --dir "$cli_dir" add --ignore-scripts base44 > "$RUNNER_TEMP/base44-cli-install.log" 2>&1
+          cli="$cli_dir/node_modules/.bin/base44"
+          if ! timeout --kill-after=5s 45s "$cli" --json whoami \
+            > "$RUNNER_TEMP/base44-whoami.json" 2> "$RUNNER_TEMP/base44-whoami.log" < /dev/null; then
+            echo 'BASE44_AUTHENTICATION_FAILED: no publication was attempted.'
+            exit 2
+          fi
+          # --no-build prevents an unnoticed second build after validation.
+          # Do NOT replace this with base44 deploy: that also changes resources.
+          if ! timeout --kill-after=10s 600s "$cli" --app-id 694ec16e72e01b60d22f7cbf \
+            --json site deploy --yes --no-build \
+            > "$RUNNER_TEMP/base44-site-receipt.json" 2> "$RUNNER_TEMP/base44-site.log" < /dev/null; then
+            echo 'BASE44_SITE_PUBLICATION_FAILED: the live release is not verified; inspect Base44 deployment status before retrying.'
+            exit 2
+          fi
+          echo 'The CLI reported site-upload success. Exact live verification is still required.'
+          # Never upload raw CLI auth/deployment responses: they may contain
+          # account information or temporary signed URLs.
+
+      - name: Verify every emitted asset on both production addresses
+        env:
+          VERIFY_REPORT: ${{ runner.temp }}/pennsync-publication-verification.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            if node tools-live-frontend-sync.mjs --json > "$VERIFY_REPORT"; then
+              cat "$VERIFY_REPORT"
+              {
+                echo '## Exact frontend publication verified'
+                echo 'Both production addresses matched every emitted build asset.'
+                echo 'This does NOT mark authenticated tenant isolation, legacy data migration, or gated clinical/outbound workflows complete.'
+              } >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then sleep 15; fi
+          done
+          cat "$VERIFY_REPORT"
+          echo 'Publication is NOT verified. Do not label this release complete.' >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+
+      - name: Preserve sanitized verification result only
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: production-frontend-verification
+          path: ${{ runner.temp }}/pennsync-publication-verification.json
+          if-no-files-found: ignore
+          retention-days: 14
