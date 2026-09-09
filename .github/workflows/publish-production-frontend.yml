@@ -83,14 +83,20 @@ jobs:
           mkdir -p "$cli_dir"
           printf '{"private":true}\n' > "$cli_dir/package.json"
           # Install the current supported CLI once, outside the app dependency
-          # tree. The same resolved executable handles auth and site upload.
+          # tree. The same resolved executable checks access and uploads the site.
           pnpm --dir "$cli_dir" add --ignore-scripts base44 > "$RUNNER_TEMP/base44-cli-install.log" 2>&1
           cli="$cli_dir/node_modules/.bin/base44"
-          if ! timeout --kill-after=5s 45s "$cli" --json whoami \
-            > "$RUNNER_TEMP/base44-whoami.json" 2> "$RUNNER_TEMP/base44-whoami.log" < /dev/null; then
-            echo 'BASE44_AUTHENTICATION_FAILED: no publication was attempted.'
+          # `whoami` only acknowledges a workspace-key prefix locally; it does
+          # not verify the key with Base44 or prove access to this app. Require
+          # a successful protected metadata read before attempting publication.
+          if ! timeout --kill-after=5s 45s "$cli" --app-id 694ec16e72e01b60d22f7cbf \
+            --json functions list \
+            > "$RUNNER_TEMP/base44-access-check.json" 2> "$RUNNER_TEMP/base44-access-check.log" < /dev/null; then
+            echo 'BASE44_PRODUCTION_ACCESS_CHECK_FAILED: no publication was attempted.'
             exit 2
           fi
+          # Read access is necessary but does not prove site-write permission;
+          # the following upload must independently succeed before verification.
           # --no-build prevents an unnoticed second build after validation.
           # Do NOT replace this with base44 deploy: that also changes resources.
           if ! timeout --kill-after=10s 600s "$cli" --app-id 694ec16e72e01b60d22f7cbf \
