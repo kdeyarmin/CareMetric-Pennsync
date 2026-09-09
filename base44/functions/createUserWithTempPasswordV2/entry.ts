@@ -458,4 +458,4 @@ Deno.serve(async (req) => {
   }
 });
 
-// Production replacement endpoint: createUserWithTempPasswordV2
+// Production replacement endpoint: createUserWithTempPasswordV2 (registered 2026-09-09)
