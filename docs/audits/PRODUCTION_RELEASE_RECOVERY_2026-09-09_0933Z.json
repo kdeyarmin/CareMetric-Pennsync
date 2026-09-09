@@ -1,0 +1,281 @@
+{
+  "recorded_at": "2026-09-09T09:56:37.462Z",
+  "app_id": "694ec16e72e01b60d22f7cbf",
+  "tested_source_commit": "791974360da2b4ff30f0b0de219f313376f03016",
+  "tests": {
+    "contracts": {
+      "tests": 256,
+      "passed": 256,
+      "failed": 0
+    },
+    "security": {
+      "tests": 750,
+      "passed": 750,
+      "failed": 0
+    },
+    "deduplication": {
+      "tests": 47,
+      "passed": 47,
+      "failed": 0
+    },
+    "core_backend": {
+      "tests": 2202,
+      "passed": 2202,
+      "failed": 0
+    },
+    "components": {
+      "files": 204,
+      "passed": 1565,
+      "shards": [
+        {
+          "shard": 1,
+          "files": 51,
+          "passed": 374
+        },
+        {
+          "shard": 2,
+          "files": 51,
+          "passed": 471
+        },
+        {
+          "shard": 3,
+          "files": 51,
+          "passed": 333
+        },
+        {
+          "shard": 4,
+          "files": 51,
+          "passed": 387
+        }
+      ]
+    }
+  },
+  "automated_pass_count": 4820,
+  "lint_exit_code": 0,
+  "typecheck": {
+    "exit_code": 0,
+    "high_signal_findings": 0,
+    "total_informational_diagnostics": 15673,
+    "compiler_did_execute": true
+  },
+  "shared_helper_consumers": 220,
+  "backend_function_transpile_count": 278,
+  "account_and_tenant_boundary_probes": {
+    "checked_at": "2026-09-09T09:42:46.689Z",
+    "scope": "unauthenticated_read_only_boundary_checks",
+    "data_access_attempted": false,
+    "results": [
+      {
+        "name": "userManagementV2",
+        "method": "GET",
+        "status": 405,
+        "code": "METHOD_NOT_ALLOWED",
+        "cache_control": "no-store",
+        "allow": "POST"
+      },
+      {
+        "name": "userManagementV2",
+        "method": "POST",
+        "status": 401,
+        "code": "AUTHENTICATION_REQUIRED",
+        "cache_control": "no-store",
+        "allow": null
+      },
+      {
+        "name": "resendInvitationV2",
+        "method": "GET",
+        "status": 405,
+        "code": "METHOD_NOT_ALLOWED",
+        "cache_control": "no-store",
+        "allow": "POST"
+      },
+      {
+        "name": "resendInvitationV2",
+        "method": "POST",
+        "status": 401,
+        "code": "AUTHENTICATION_REQUIRED",
+        "cache_control": "no-store",
+        "allow": null
+      },
+      {
+        "name": "createUserWithTempPasswordV2",
+        "method": "GET",
+        "status": 405,
+        "code": "METHOD_NOT_ALLOWED",
+        "cache_control": "no-store",
+        "allow": "POST"
+      },
+      {
+        "name": "createUserWithTempPasswordV2",
+        "method": "POST",
+        "status": 401,
+        "code": "AUTHENTICATION_REQUIRED",
+        "cache_control": "no-store",
+        "allow": null
+      },
+      {
+        "name": "getMyTenantContext",
+        "method": "GET",
+        "status": 405,
+        "code": null,
+        "cache_control": "no-store",
+        "allow": "POST"
+      },
+      {
+        "name": "getMyTenantContext",
+        "method": "POST",
+        "status": 401,
+        "code": null,
+        "cache_control": "no-store",
+        "allow": null
+      },
+      {
+        "name": "listMyTenantMemberships",
+        "method": "GET",
+        "status": 405,
+        "code": null,
+        "cache_control": "no-store",
+        "allow": "POST"
+      },
+      {
+        "name": "listMyTenantMemberships",
+        "method": "POST",
+        "status": 401,
+        "code": null,
+        "cache_control": "no-store",
+        "allow": null
+      }
+    ]
+  },
+  "read_broker_probes": {
+    "checked_at": "2026-09-09T09:47:32.176Z",
+    "auth": "none",
+    "request": "empty_object",
+    "results": [
+      {
+        "name": "listAuthorizedPatients",
+        "status": 400,
+        "code": null,
+        "no_store": true
+      },
+      {
+        "name": "getAuthorizedPatient",
+        "status": 400,
+        "code": null,
+        "no_store": true
+      },
+      {
+        "name": "listAuthorizedVisits",
+        "status": 400,
+        "code": null,
+        "no_store": true
+      },
+      {
+        "name": "getAuthorizedVisit",
+        "status": 400,
+        "code": null,
+        "no_store": true
+      },
+      {
+        "name": "getAuthorizedPatientNoteHistory",
+        "status": 401,
+        "code": null,
+        "no_store": false
+      },
+      {
+        "name": "listAuthorizedDocuments",
+        "status": 400,
+        "code": null,
+        "no_store": false
+      },
+      {
+        "name": "getAuthorizedDocument",
+        "status": 400,
+        "code": null,
+        "no_store": false
+      },
+      {
+        "name": "getAiContentAgreementStatus",
+        "status": 401,
+        "code": null,
+        "no_store": true
+      },
+      {
+        "name": "getMyTrainingGamification",
+        "status": 401,
+        "code": null,
+        "no_store": false
+      },
+      {
+        "name": "getPublishedOutcomeMeasures",
+        "status": 401,
+        "code": null,
+        "no_store": false
+      },
+      {
+        "name": "listTenantTrainingIntegrityRecords",
+        "status": 401,
+        "code": null,
+        "no_store": false
+      },
+      {
+        "name": "readAuthorizedOASISAssessments",
+        "status": 400,
+        "code": null,
+        "no_store": false
+      }
+    ]
+  },
+  "artifact_comparison": {
+    "checked_at": "2026-09-09T09:54:37.905Z",
+    "source_commit": "791974360da2b4ff30f0b0de219f313376f03016",
+    "build": {
+      "exit_code": 0,
+      "entry": "./assets/index-CZ88BGjF-791974360da2.js",
+      "entry_sha256": "1f2929e17d6eafb63b702db8bdf4440e4d9d53f665ca00c04d7ac68137677f7f",
+      "js_asset_count": 496,
+      "production_binding_in_app_params": true,
+      "staging_app_id_asset_count": 0,
+      "v2_account_route_asset_count": 2
+    },
+    "published": [
+      {
+        "origin": "https://app.caremetricai.com",
+        "status": 200,
+        "entry": "./assets/index-B6MQIGw5.js",
+        "asset_status": 200,
+        "entry_sha256": "8ce86376581a031d37fefbfca410aa925cec8a645fcb81b56f9a6622984f874e",
+        "matches_build": false
+      },
+      {
+        "origin": "https://caremetricai.base44.app",
+        "status": 200,
+        "entry": "./assets/index-B6MQIGw5.js",
+        "asset_status": 200,
+        "entry_sha256": "8ce86376581a031d37fefbfca410aa925cec8a645fcb81b56f9a6622984f874e",
+        "matches_build": false
+      }
+    ],
+    "published_matches_build": false,
+    "production_ready_claimed": false
+  },
+  "publish_receipt": null,
+  "authenticated_hosted_workflow_tested": false,
+  "production_ready": false,
+  "mutations_performed": {
+    "source_code": true,
+    "patient_records": false,
+    "user_records": false,
+    "invitations": false,
+    "secrets": false,
+    "dns": false,
+    "schedules": false
+  },
+  "publishing_access": {
+    "connector_static_site_publish_tool": false,
+    "cli_auth_file_present": false,
+    "workspace_key_present": false,
+    "access_token_present": false,
+    "existing_github_publish_workflow": false
+  }
+}
