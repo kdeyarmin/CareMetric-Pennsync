@@ -33,8 +33,12 @@ The workflow performs these stages in order:
    high-signal type-check gates.
 4. Build once with the production app ID, production backend, published-function
    selector and exact workflow commit in the asset filenames.
-5. Check the build identity, install the current Base44 CLI in an isolated
-   temporary directory, and validate workspace-key authentication.
+5. Check the build identity and install the current Base44 CLI in an isolated
+   temporary directory. Require a successful protected `functions list` read
+   against the fixed production app before uploading. The CLI's `whoami` command
+   only acknowledges the format of a workspace key locally and is not an
+   authentication test. A successful metadata read proves read access, not
+   site-write permission; the subsequent upload must independently succeed.
 6. Execute only `site deploy --yes --no-build` against the fixed production app.
    It never substitutes the broader `base44 deploy` resource-synchronization
    command, which could also change schemas, functions, connectors or auth.
@@ -102,5 +106,7 @@ in the existing release-recovery record outstanding.
 - GitHub sync versus publishing: https://docs.base44.com/developers/app-code/local-development/github
 - Workspace-key support was inspected in installed Base44 CLI 0.1.14. Its auth
   middleware recognizes the `BASE44_API_KEY` workspace-key prefix and does not
-  use the device-login fallback for that credential type. The provider remains
-  responsible for validating the key and its app permissions.
+  use the device-login fallback for that credential type. Its `whoami` action
+  performs no provider request in workspace-key mode. The publication workflow
+  therefore checks protected production metadata instead. The provider remains
+  responsible for validating the key and its read and site-write permissions.
