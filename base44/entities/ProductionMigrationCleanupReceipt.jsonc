@@ -1,0 +1,28 @@
+{
+  "name": "ProductionMigrationCleanupReceipt",
+  "type": "object",
+  "description": "One-time PHI-free migration cleanup receipt. Not runtime authority.",
+  "properties": {
+    "cleanup_key": {
+      "type": "string"
+    },
+    "removed_count": {
+      "type": "integer"
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "cleanup_key",
+    "removed_count",
+    "completed_at"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}
