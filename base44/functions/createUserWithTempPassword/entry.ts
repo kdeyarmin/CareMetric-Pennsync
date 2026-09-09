@@ -292,6 +292,13 @@ function getAppBaseUrl() {
 }
 
 Deno.serve(async (req) => {
+  // Reject unsupported transport before SDK, authentication, or account work.
+  if (req.method !== 'POST') {
+    return Response.json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, {
+      status: 405,
+      headers: { Allow: 'POST', 'Cache-Control': 'no-store' },
+    });
+  }
   try {
     // These administrator routes require a user Bearer token. Reject absent
     // or malformed credentials before SDK construction, which may throw before

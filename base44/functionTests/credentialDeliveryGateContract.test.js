@@ -178,6 +178,45 @@ async function loadHandler(name, runtime, {
   return handler;
 }
 
+test('all canonical and recovery invitation routes reject non-POST methods before credential access', async () => {
+  for (const baseName of ['userManagement', 'resendInvitation', 'createUserWithTempPassword']) {
+    for (const name of [baseName, `${baseName}V2`]) {
+      const runtime = fixture({ clientError: new Error('SDK must not run') });
+      const handler = await loadHandler(name, runtime);
+      for (const method of ['GET', 'HEAD', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']) {
+        const response = await handler({
+          method,
+          get headers() { assert.fail('unsupported method must not inspect credentials'); },
+          json() { assert.fail('unsupported method must not parse input'); },
+        });
+        assert.equal(response.status, 405, `${name}:${method}`);
+        assert.equal(response.headers.get('allow'), 'POST');
+        assert.equal(response.headers.get('cache-control'), 'no-store');
+        assert.equal((await response.json()).code, 'METHOD_NOT_ALLOWED');
+        assertNoDeliveryMutations(runtime, `${name}:${method}`);
+      }
+    }
+  }
+});
+
+test('production recovery routes contain the exact canonical implementation, not a reduced substitute', async () => {
+  for (const name of ['userManagement', 'resendInvitation', 'createUserWithTempPassword']) {
+    const canonical = await readFile(new URL(`functions/${name}/entry.ts`, ROOT), 'utf8');
+    const recovery = await readFile(new URL(`functions/${name}V2/entry.ts`, ROOT), 'utf8');
+    const withoutRegistrationComment = recovery.replace(/\n\/\/ (?:Production|Sandbox) replacement endpoint: [^\n]+\s*$/, '');
+    assert.equal(withoutRegistrationComment.trim(), canonical.trim(), `${name}V2 implementation drift`);
+    const runtime = fixture({ clientError: new Error('SDK must not run without credentials') });
+    const handler = await loadHandler(`${name}V2`, runtime);
+    const response = await handler(new Request('https://functions.example.test', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+    }));
+    assert.equal(response.status, 401);
+    assert.equal(response.headers.get('cache-control'), 'no-store');
+    assert.equal((await response.json()).code, 'AUTHENTICATION_REQUIRED');
+    assertNoDeliveryMutations(runtime, name);
+  }
+});
+
 const DIRECT_CASES = [
   {
     name: 'adminResetPassword',

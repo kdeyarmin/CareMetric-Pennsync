@@ -1,4 +1,4 @@
-import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
 // <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
 const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
@@ -275,6 +275,13 @@ async function upsertAcceptedUserInvitationForUser(base44, currentUser, targetUs
 }
 
 Deno.serve(async (req) => {
+  // Reject unsupported transport before SDK, authentication, or account work.
+  if (req.method !== 'POST') {
+    return Response.json({ error: 'Method not allowed', code: 'METHOD_NOT_ALLOWED' }, {
+      status: 405,
+      headers: { Allow: 'POST', 'Cache-Control': 'no-store' },
+    });
+  }
   try {
     // These administrator routes require a user Bearer token. Reject absent
     // or malformed credentials before SDK construction, which may throw before
@@ -342,13 +349,18 @@ Deno.serve(async (req) => {
     }
   } catch {
     console.error('userManagement failed');
-    // Return a generic message and keep the detail server-side only (matches
-    // validateSignerToken / resetUserPassword) — the top-level catch wraps the
-    // whole handler including pre-authorization failures, so leaking error.message
-    // here would aid reconnaissance.
+    // Fixed public category and revision only: never expose SDK messages,
+    // request values, credentials, or account details on this failure boundary.
     return Response.json({
-      error: 'Internal server error'
-    }, { status: 500 });
+      error: 'Internal server error',
+      code: 'ACCOUNT_MANAGEMENT_UNAVAILABLE',
+    }, {
+      status: 500,
+      headers: {
+        'Cache-Control': 'no-store',
+        'X-Pennsync-Handler-Revision': 'account-management-20260909-v2',
+      },
+    });
   }
 });
 

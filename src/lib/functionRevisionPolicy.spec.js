@@ -29,6 +29,8 @@ describe('Base44 function revision policy', () => {
     'old revision',
     'old\nrevision',
     'latest',
+    'preview',
+    'PREVIEW',
     'DRAFT',
     'production',
     'a'.repeat(201),
@@ -170,9 +172,9 @@ describe('app parameter function revision selection', () => {
     expect(window.location.search).toBe('');
   });
 
-  it('fails closed to the published default for a floating build selector', async () => {
+  it.each(['latest', 'preview', 'PREVIEW'])('fails closed to the published default for floating selector %s', async (buildRevision) => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { appParams } = await loadAppParams({ buildRevision: 'latest' });
+    const { appParams } = await loadAppParams({ buildRevision });
 
     expect(appParams.functionsVersion).toBeNull();
     expect(warn).toHaveBeenCalledWith(

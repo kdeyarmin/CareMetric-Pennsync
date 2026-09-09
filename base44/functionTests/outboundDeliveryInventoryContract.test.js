@@ -14,6 +14,7 @@ const EMAIL_SENDERS = [
   'checkExpiredInvitations',
   'createNotification',
   'createUserWithTempPassword',
+  'createUserWithTempPasswordV2',
   'dispatchScheduledSignatureReminders',
   'generateAIReport',
   'generatePatientHandout',
@@ -34,13 +35,17 @@ const EMAIL_SENDERS = [
   'submitTimeOffRequest',
   'submitTimesheet',
   'userManagement',
+  'userManagementV2',
 ];
 
 const INVITE_SENDERS = [
   'adminResetPassword',
   'createUserWithTempPassword',
+  'createUserWithTempPasswordV2',
   'resendInvitation',
+  'resendInvitationV2',
   'userManagement',
+  'userManagementV2',
 ];
 
 const SMS_SENDERS = [
@@ -78,6 +83,7 @@ const BACKEND_DELIVERY_CLASSIFICATION = {
   checkExpiredInvitations: 'scheduled-maintenance',
   createNotification: 'mixed-state-transition',
   createUserWithTempPassword: 'manual-invitation',
+  createUserWithTempPasswordV2: 'manual-invitation',
   dispatchScheduledSignatureReminders: 'scheduled-worker',
   dispatchScheduledSms: 'provider-wrapper',
   generateAIReport: 'direct',
@@ -88,6 +94,7 @@ const BACKEND_DELIVERY_CLASSIFICATION = {
   onUserSignup: 'mixed-platform-boundary',
   redriveFailedSms: 'provider-wrapper',
   resendInvitation: 'manual-invitation',
+  resendInvitationV2: 'manual-invitation',
   resetUserPassword: 'direct',
   reviewPersonnelCredential: 'mixed-state-transition',
   reviewTimeOffRequest: 'mixed-state-transition',
@@ -109,6 +116,7 @@ const BACKEND_DELIVERY_CLASSIFICATION = {
   submitTimeOffRequest: 'mixed-state-transition',
   submitTimesheet: 'mixed-state-transition',
   userManagement: 'mixed-with-manual-invitation',
+  userManagementV2: 'mixed-with-manual-invitation',
 };
 
 const PROVIDER_PRIMITIVE = /(?:\.SendEmail\s*\(|\.inviteUser\s*\(|\.resendOtp\s*\(|\/auth\/resend-otp|\/v2\/(?:messages|faxes|calls))/g;
@@ -254,14 +262,14 @@ test('every backend sender is gated or an explicitly scoped protected manual inv
     Object.entries(BACKEND_DELIVERY_CLASSIFICATION)
       .filter(([, classification]) => classification === 'manual-invitation')
       .map(([name]) => name).sort(),
-    ['createUserWithTempPassword', 'resendInvitation'],
-    'only the two protected invitation endpoints omit the general gate',
+    ['createUserWithTempPassword', 'createUserWithTempPasswordV2', 'resendInvitation', 'resendInvitationV2'],
+    'only the protected invitation endpoints omit the general gate',
   );
   assert.deepEqual(
     Object.entries(BACKEND_DELIVERY_CLASSIFICATION)
       .filter(([, classification]) => classification === 'mixed-with-manual-invitation')
       .map(([name]) => name),
-    ['userManagement'],
+    ['userManagement', 'userManagementV2'],
     'mixed exceptions are restricted to userManagement invitation actions',
   );
 
@@ -284,7 +292,7 @@ test('every backend sender is gated or an explicitly scoped protected manual inv
       assert.equal(marker, -1, `${name}: unused general gate is absent`);
       assert.doesNotMatch(source, /outboundDeliveryReleased\s*\(/);
       const primitives = [...source.matchAll(new RegExp(PROVIDER_PRIMITIVE.source, 'g'))];
-      assert.equal(primitives.length, name === 'createUserWithTempPassword' ? 2 : 1,
+      assert.equal(primitives.length, name.startsWith('createUserWithTempPassword') ? 2 : 1,
         `${name}: only its reviewed invitation delivery primitives are exempt`);
       continue;
     }
