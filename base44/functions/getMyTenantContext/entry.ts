@@ -2,6 +2,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
 /**
  * Resolve one exact, current, server-owned tenant context.
+ * Production registration: 2026-09-09; read-only, with no account or data migration.
  *
  * The caller may optionally bind an explicit selector choice to the observed
  * membership id/version. This is optimistic read binding only: every authority
