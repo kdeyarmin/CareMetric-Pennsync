@@ -1,9 +1,9 @@
 {
   "name": "PennSync",
   "site": {
-    "installCommand": "pnpm install --frozen-lockfile",
-    "buildCommand": "pnpm run build",
-    "serveCommand": "pnpm run dev",
+    "installCommand": "npx --yes --package=node@24.18.0 --package=pnpm@11.9.0 --call 'pnpm install --frozen-lockfile'",
+    "buildCommand": "npx --yes --package=node@24.18.0 --package=pnpm@11.9.0 --call 'pnpm run build'",
+    "serveCommand": "npx --yes --package=node@24.18.0 --package=pnpm@11.9.0 --call 'pnpm run dev'", 
     "outputDirectory": "./dist"
   }
 }
