@@ -19,10 +19,10 @@ importers:
     dependencies:
       '@base44/sdk':
         specifier: ^0.8.48
-        version: 0.8.48
+        version: 0.8.48(supports-color@7.2.0)
       '@base44/vite-plugin':
-        specifier: ^1.0.35
-        version: 1.0.35
+        specifier: ^1.0.36
+        version: 1.0.36
       '@caremetric/help-sdk':
         specifier: file:vendor/caremetric-help-sdk-0.1.0.tgz
         version: file:vendor/caremetric-help-sdk-0.1.0.tgz
@@ -346,8 +346,8 @@ packages:
   '@base44/sdk@0.8.48':
     resolution: {integrity: sha512-AXDLduglymT+RM6OZu+VFQtsLe++FhXZlvn/I/M2PFOVAC3MTpdmqnm5zL5D0BPK86JBeNpeK5vd9tkKFmAdZQ==}
 
-  '@base44/vite-plugin@1.0.35':
-    resolution: {integrity: sha512-pX0cxwlhtSP2TRQwRWmgMfHNvTRgKGpK1rUoE+xj8Jp+vFzo7Pk6IMlcE8+JKivLOBJhtMnMMfX9+P+0p5Jn0Q==}
+  '@base44/vite-plugin@1.0.36':
+    resolution: {integrity: sha512-9pThANye7ycOiQA8FePD9mix90JbUYJhjpSqoqI/+DDD/dfoNn62uXcsSdtGsDX83UA7T7yngTHGqzga99GGAQ==}
 
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
@@ -4061,11 +4061,11 @@ snapshots:
       '@babel/helper-string-parser': 7.29.7
       '@babel/helper-validator-identifier': 7.29.7
 
-  '@base44/sdk@0.8.48':
+  '@base44/sdk@0.8.48(supports-color@7.2.0)':
     dependencies:
-      axios: 1.18.1
+      axios: 1.18.1(supports-color@7.2.0)
       partysocket: 0.0.23
-      socket.io-client: 4.8.3
+      socket.io-client: 4.8.3(supports-color@7.2.0)
       uuid: 13.0.2
     transitivePeerDependencies:
       - bufferutil
@@ -4073,7 +4073,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@base44/vite-plugin@1.0.35':
+  '@base44/vite-plugin@1.0.36':
     dependencies:
       '@babel/generator': 7.29.7
       '@babel/parser': 7.29.7
@@ -5308,7 +5308,7 @@ snapshots:
 
   actionlint@2.0.6: {}
 
-  agent-base@6.0.2:
+  agent-base@6.0.2(supports-color@7.2.0):
     dependencies:
       debug: 4.4.3(supports-color@7.2.0)
     transitivePeerDependencies:
@@ -5423,11 +5423,11 @@ snapshots:
 
   axe-core@4.13.0: {}
 
-  axios@1.18.1:
+  axios@1.18.1(supports-color@7.2.0):
     dependencies:
       follow-redirects: 1.16.0
       form-data: 4.0.6
-      https-proxy-agent: 5.0.1
+      https-proxy-agent: 5.0.1(supports-color@7.2.0)
       proxy-from-env: 2.1.0
     transitivePeerDependencies:
       - debug
@@ -5707,7 +5707,7 @@ snapshots:
 
   emoji-regex@9.2.2: {}
 
-  engine.io-client@6.6.6:
+  engine.io-client@6.6.6(supports-color@7.2.0):
     dependencies:
       '@socket.io/component-emitter': 3.1.2
       debug: 4.4.3(supports-color@7.2.0)
@@ -6202,9 +6202,9 @@ snapshots:
       css-line-break: 2.1.0
       text-segmentation: 1.0.3
 
-  https-proxy-agent@5.0.1:
+  https-proxy-agent@5.0.1(supports-color@7.2.0):
     dependencies:
-      agent-base: 6.0.2
+      agent-base: 6.0.2(supports-color@7.2.0)
       debug: 4.4.3(supports-color@7.2.0)
     transitivePeerDependencies:
       - supports-color
@@ -7301,18 +7301,18 @@ snapshots:
 
   signature_pad@2.3.2: {}
 
-  socket.io-client@4.8.3:
+  socket.io-client@4.8.3(supports-color@7.2.0):
     dependencies:
       '@socket.io/component-emitter': 3.1.2
       debug: 4.4.3(supports-color@7.2.0)
-      engine.io-client: 6.6.6
-      socket.io-parser: 4.2.7
+      engine.io-client: 6.6.6(supports-color@7.2.0)
+      socket.io-parser: 4.2.7(supports-color@7.2.0)
     transitivePeerDependencies:
       - bufferutil
       - supports-color
       - utf-8-validate
 
-  socket.io-parser@4.2.7:
+  socket.io-parser@4.2.7(supports-color@7.2.0):
     dependencies:
       '@socket.io/component-emitter': 3.1.2
       debug: 4.4.3(supports-color@7.2.0)
