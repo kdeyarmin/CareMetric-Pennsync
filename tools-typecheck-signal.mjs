@@ -16,32 +16,22 @@
 //
 // Usage:  node tools-typecheck-signal.mjs [--list]
 //   --list   print every signal diagnostic and exit 0 (survey mode)
-// Exit code 1 if any signal diagnostic is found (CI gate), 0 otherwise.
+// Exit 0 for a completed check without signal diagnostics, 1 for findings,
+// and 2 for an unavailable/broken compiler or invalid arguments.
 
-import { execFileSync } from 'node:child_process';
-import { writeFileSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { readFileSync, writeFileSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import process from 'node:process';
 
-/**
- * Error codes that indicate a real defect in untyped JS, with why each is kept.
- * Deliberately excludes TS2322/TS2559/TS2739/TS2740/TS2741/TS2345, which in this
- * codebase are overwhelmingly "component prop has no declared type".
- */
 const SIGNAL_CODES = new Map([
   ['TS2367', 'comparison is always false — the two types cannot overlap'],
   ['TS2554', 'wrong number of arguments'],
   ['TS2555', 'too few arguments'],
   ['TS2556', 'spread argument count cannot satisfy the signature'],
   ['TS2349', 'value is not callable'],
-  // NOT included: TS2362/TS2363/TS2365 (arithmetic/relational operand is not a
-  // number). In this codebase they are almost entirely `dateA - dateB` and
-  // `date > timestamp`, which are correct JS — Date coerces via valueOf — and
-  // they accounted for 137 of 159 hits when this tool was first tuned. Keeping
-  // them would have made the gate pure noise.
-  // NOT included: TS2551 (property does not exist, did you mean…), which here
-  // only ever fires on real browser globals TS's DOM lib omits
-  // (window.SpeechRecognition, window.webkitAudioContext).
   ['TS2447', 'bitwise operator applied to a non-number'],
   ['TS2538', 'value cannot be used as an index type'],
   ['TS2539', 'assignment to something that is not a variable'],
@@ -54,9 +44,6 @@ const SIGNAL_CODES = new Map([
   ['TS18047', 'value is possibly null at a dereference'],
 ]);
 
-// Files whose diagnostics are ignored: test/spec files build deliberately
-// partial fixtures (`const rows = []` then `rows[0].id`), which is exactly the
-// shape TS18048/TS2493 flag, and is intentional there.
 const isIgnoredFile = (file) => /\.(test|spec)\.(js|jsx|mjs)$/.test(file);
 
 const CONFIG = {
@@ -83,30 +70,82 @@ const CONFIG = {
 
 const DIAGNOSTIC = /^(?<file>[^(]+)\((?<line>\d+),(?<col>\d+)\): error (?<code>TS\d+): (?<message>.*)$/;
 
-function runTsc(configPath) {
-  try {
-    return execFileSync('npx', ['tsc', '-p', configPath], {
-      cwd: process.cwd(),
-      encoding: 'utf8',
-      maxBuffer: 128 * 1024 * 1024,
-    });
-  } catch (error) {
-    // tsc exits non-zero whenever it reports anything; the diagnostics are on stdout.
-    return `${error.stdout || ''}${error.stderr || ''}`;
+export class CompilerExecutionError extends Error {
+  constructor() {
+    super('TypeScript did not complete a valid diagnostic run. Check the installed compiler and build environment.');
+    this.name = 'CompilerExecutionError';
   }
 }
 
-function main() {
-  const listMode = process.argv.includes('--list');
-  // Written at the repo root, not a temp dir: a tsconfig's `include` globs
-  // resolve relative to the config file's own location, so a temp-dir config
-  // silently matches zero files and reports a clean run.
+export function readCompilerOutput(result) {
+  const output = `${result?.stdout || ''}${result?.stderr || ''}`;
+  const lines = output.split(/\r?\n/);
+  const hasFileDiagnostic = lines.some((line) => DIAGNOSTIC.test(line.trim()));
+  const hasGlobalDiagnostic = lines.some((line) => /^error TS\d+:/.test(line.trim()));
+  const hasUnexpectedOutput = lines.some((line) => line.trim()
+    && !DIAGNOSTIC.test(line.trim())
+    && !/^\s+\S/.test(line));
+  if (
+    !result
+    || result.error
+    || result.signal
+    || !Number.isInteger(result.status)
+    || ![0, 1, 2].includes(result.status)
+    || hasGlobalDiagnostic
+    || hasUnexpectedOutput
+    || (typeof result.stderr === 'string' && result.stderr.trim())
+    || (result.status !== 0 && !hasFileDiagnostic)
+    || (result.status === 0 && hasFileDiagnostic)
+    || (output.trim() && !hasFileDiagnostic)
+  ) {
+    throw new CompilerExecutionError();
+  }
+  return output;
+}
+
+export function runTsc(configPath, { run = spawnSync, cwd = process.cwd() } = {}) {
+  let compilerPath;
+  try {
+    const require = createRequire(join(cwd, 'package.json'));
+    const packagePath = require.resolve('typescript/package.json');
+    const manifest = JSON.parse(readFileSync(packagePath, 'utf8'));
+    const entry = typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.tsc;
+    if (typeof entry !== 'string' || !entry) throw new CompilerExecutionError();
+    compilerPath = resolve(dirname(packagePath), entry);
+  } catch {
+    throw new CompilerExecutionError();
+  }
+  let result;
+  try {
+    result = run(process.execPath, [compilerPath, '-p', configPath, '--pretty', 'false'], {
+      cwd,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      maxBuffer: 128 * 1024 * 1024,
+      timeout: 120_000,
+      killSignal: 'SIGKILL',
+    });
+  } catch {
+    throw new CompilerExecutionError();
+  }
+  return readCompilerOutput(result);
+}
+
+export function main(args = process.argv.slice(2), { compile = runTsc } = {}) {
+  if (args.some((arg) => arg !== '--list') || args.length > 1) {
+    console.error('Usage: node tools-typecheck-signal.mjs [--list]');
+    return 2;
+  }
+  const listMode = args.includes('--list');
   const configPath = join(process.cwd(), 'tsconfig.typecheck-signal.json');
   writeFileSync(configPath, JSON.stringify(CONFIG, null, 2));
 
   let output;
   try {
-    output = runTsc(configPath);
+    output = compile(configPath);
+  } catch {
+    console.error('✖ TypeScript execution failed; type-check results are unavailable (not a pass).');
+    return 2;
   } finally {
     rmSync(configPath, { force: true });
   }
@@ -140,4 +179,6 @@ function main() {
   return 1;
 }
 
-process.exit(main());
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = main();
+}
