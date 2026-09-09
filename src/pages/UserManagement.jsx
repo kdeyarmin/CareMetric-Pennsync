@@ -145,7 +145,7 @@ export default function UserManagement() {
           entity_id: invitationId
         });
       }
-      const res = await base44.functions.invoke('resendInvitation', { invitation_id: invitationId });
+      const res = await base44.functions.invoke('resendInvitationV2', { invitation_id: invitationId });
       const data = res?.data ?? res;
       if (data?.error) throw new Error(data.error);
       return data;
@@ -181,7 +181,7 @@ export default function UserManagement() {
           entity_id: invitationId
         });
       }
-      const res = await base44.functions.invoke('userManagement', { action: 'cancel_invitation', invitation_id: invitationId });
+      const res = await base44.functions.invoke('userManagementV2', { action: 'cancel_invitation', invitation_id: invitationId });
       const data = res?.data ?? res;
       if (data?.error) throw new Error(data.error);
       return data;
@@ -199,7 +199,7 @@ export default function UserManagement() {
 
   const createUserMutation = useMutation({
     mutationFn: async (data) => {
-      const res = await base44.functions.invoke('createUserWithTempPassword', data);
+      const res = await base44.functions.invoke('createUserWithTempPasswordV2', data);
       const body = res?.data ?? res;
       if (body?.error) throw new Error(body.error);
       return body;
@@ -232,7 +232,7 @@ export default function UserManagement() {
     if (!selectedUser) return;
     setIsSavingUser(true);
     try {
-      await base44.functions.invoke('userManagement', {
+      await base44.functions.invoke('userManagementV2', {
         action: 'update_user',
         user_id: selectedUser.id,
         full_name: editForm.full_name,
