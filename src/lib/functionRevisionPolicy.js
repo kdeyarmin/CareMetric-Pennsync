@@ -9,6 +9,7 @@ const FLOATING_REVISION_SELECTORS = new Set([
   'draft',
   'latest',
   'main',
+  'preview',
   'prod',
   'production',
 ]);
