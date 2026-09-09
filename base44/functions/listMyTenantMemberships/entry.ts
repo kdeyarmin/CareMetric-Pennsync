@@ -3,6 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 /**
  * Finite, read-only selector source for an authenticated user's exact active
  * tenant memberships.
+ * Production registration: 2026-09-09; existing accounts and records are not modified.
  *
  * This broker deliberately returns no selected tenant. It exposes only the
  * minimum immutable membership authority needed to render a selector and the
