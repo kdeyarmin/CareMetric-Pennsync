@@ -1,0 +1,59 @@
+name: Base44 publishing access (read-only)
+
+# A diagnostic, not a deployment. It checks only the availability of the three
+# documented CLI credential inputs; it never prints credentials or starts login.
+# Production environment protection rules, when configured, remain in force.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/base44-publishing-access.yml'
+
+permissions: {}
+
+concurrency:
+  group: base44-publishing-access
+  cancel-in-progress: false
+
+jobs:
+  inspect:
+    name: Check configured publishing access without login or deployment
+    if: github.repository == 'kdeyarmin/CareMetric-Pennsync' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 3
+    steps:
+      - name: Report credential availability only
+        env:
+          BASE44_API_KEY: ${{ secrets.BASE44_API_KEY }}
+          BASE44_ACCESS_TOKEN: ${{ secrets.BASE44_ACCESS_TOKEN }}
+          BASE44_REFRESH_TOKEN: ${{ secrets.BASE44_REFRESH_TOKEN }}
+        shell: bash
+        run: |
+          node <<'NODE'
+          const fs = require('node:fs');
+          const workspaceKey = typeof process.env.BASE44_API_KEY === 'string'
+            && process.env.BASE44_API_KEY.trim().startsWith('b44k_');
+          const accessToken = Boolean(process.env.BASE44_ACCESS_TOKEN?.trim());
+          const refreshToken = Boolean(process.env.BASE44_REFRESH_TOKEN?.trim());
+          const report = {
+            operation: 'credential_availability_only',
+            target_app_id: '694ec16e72e01b60d22f7cbf',
+            workspace_key_configured: workspaceKey,
+            access_token_configured: accessToken,
+            refresh_token_configured: refreshToken,
+            supported_credentials_configured: workspaceKey || (accessToken && refreshToken),
+            credentials_validated: false,
+            login_attempted: false,
+            deployment_attempted: false,
+            production_deployed: false,
+          };
+          console.log(JSON.stringify(report, null, 2));
+          const state = report.supported_credentials_configured
+            ? 'A supported credential input is configured. Validity and deployment are NOT yet verified.'
+            : 'BLOCKED: no supported Base44 publishing credential is configured for this production job.';
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY,
+            '# Base44 publishing access — diagnostic only\n\n' + state
+            + '\n\nNo secret values were emitted. No login, site publication, backend deployment, data mutation, or DNS change was performed.\n');
+          NODE
