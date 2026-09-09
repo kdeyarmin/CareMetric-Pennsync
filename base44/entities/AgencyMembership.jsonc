@@ -1,7 +1,7 @@
 {
   "name": "AgencyMembership",
   "type": "object",
-  "description": "Server-owned tenant authorization binding between an immutable Base44 User id and an Agency. User profile custom fields are not authorization inputs.",
+  "description": "Server-owned tenant authorization binding between an immutable Base44 User id and an Agency. User profile custom fields are not authorization inputs. Additive production registration does not create memberships or change patient ownership.",
   "properties": {
     "membership_key": {
       "type": "string",
