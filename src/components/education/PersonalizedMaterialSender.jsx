@@ -84,10 +84,17 @@ export default function PersonalizedMaterialSender({ material, onClose, onSent }
         notes: notes
       });
 
-      await base44.entities.EducationMaterial.update(material.id, {
-        usage_count: (material.usage_count || 0) + 1,
-        last_used_date: new Date().toISOString()
-      });
+      // The usage counter is catalog analytics, not part of the send. Only
+      // protected admins may update EducationMaterial, so a clinician's bump is
+      // denied by RLS; that must not turn an already-recorded send into an error.
+      try {
+        await base44.entities.EducationMaterial.update(material.id, {
+          usage_count: (material.usage_count || 0) + 1,
+          last_used_date: new Date().toISOString()
+        });
+      } catch {
+        // Best-effort only.
+      }
 
       return sent;
     },
