@@ -88,25 +88,14 @@
       "description": "Date the education was completed"
     }
   },
-  // AI-generated education (AIEducationRecommender, CarePlanManagement) creates
-  // by topic/content without a material library id, so material_id is not
-  // required; patient_id + assigned_by are common to both shapes.
   "required": [
     "patient_id",
     "assigned_by"
   ],
-  // Assignment creation must be self-attributed to the authenticated actor.
-  // Cross-clinician patient-chart reads/updates remain legacy-open until a
-  // by-patient broker can authorize the workflow and make provenance durable.
   "rls": {
-    "read": true,
-    "create": {
-      "$or": [
-        { "data.assigned_by": "{{user.email}}" },
-        { "user_condition": { "role": "admin" } }
-      ]
-    },
-    "update": true,
+    "read": false,
+    "create": false,
+    "update": false,
     "delete": false
   }
 }
