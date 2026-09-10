@@ -766,9 +766,10 @@ test('known RLS debt cannot grow or change without explicit review', () => {
       RLS_POLICY_DECISION_PENDING_NAMES_SHA256,
     ],
     // 2026-09-10 interim lockdown: open mutation debt eliminated (10 -> 0) and
-    // open read debt shrunk (21 -> 16) — see the RLS policy-decision worksheet.
+    // open read debt shrunk (21 -> 15; ClinicalEvent closed after the invite-only
+    // rollback) — see the RLS policy-decision worksheet.
     openMutation: [0, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'],
-    openRead: [16, '3c927bc606817f1fcc7ca9c37ae15e27901d9696d5823a8eb5d25857fa89e923'],
+    openRead: [15, '598feb3418658ebb48d08f0c2863748009a3e3bc8c029134ab31e3a1ad8de96f'],
   };
   const bad = [];
   for (const [kind, names] of Object.entries(inventories)) {
