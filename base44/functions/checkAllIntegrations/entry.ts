@@ -99,14 +99,24 @@ async function probe(url, options, okDetail, failLabel) {
   try {
     // Credential-bearing diagnostics must never follow a redirect. Fetch can
     // otherwise forward non-standard auth headers (for example x-api-key) to a
-    // redirected host.
+    // redirected host. Use the 'manual' mode and refuse any redirect below:
+    // Base44's function runtime rejects the 'error' redirect mode outright, so
+    // every probe threw before a request was sent and each provider was
+    // reported as "could not complete" regardless of its credential.
     const res = await fetch(url, {
       ...options,
-      redirect: 'error',
+      redirect: 'manual',
       signal: controller.signal,
     });
     const status = res.status;
     try { await res.body?.cancel(); } catch { /* no body to discard */ }
+    if (res.type === 'opaqueredirect' || (status >= 300 && status < 400)) {
+      return {
+        status: 'fail',
+        detail: `${failLabel} answered the read-only probe with a redirect (HTTP ${status}); it was not followed, so authentication was not confirmed.`,
+        probe: 'authenticated-read',
+      };
+    }
     if (res.ok) return { status: 'ok', detail: okDetail, probe: 'authenticated-read' };
     if (status === 401 || status === 403) {
       return {
@@ -134,10 +144,15 @@ async function probe(url, options, okDetail, failLabel) {
       detail: `${failLabel} rejected the read-only probe (HTTP ${status}); authentication was not confirmed.`,
       probe: 'authenticated-read',
     };
-  } catch {
+  } catch (error) {
+    // Only the error class is inspected; provider/runtime messages are never
+    // returned or logged.
+    const timedOut = error?.name === 'AbortError';
     return {
       status: 'warn',
-      detail: `Could not complete the bounded ${failLabel} read-only probe; authentication was not confirmed.`,
+      detail: timedOut
+        ? `${failLabel} did not answer the read-only probe within ${PROBE_TIMEOUT_MS / 1000} seconds; authentication was not confirmed.`
+        : `Could not complete the bounded ${failLabel} read-only probe; authentication was not confirmed.`,
       probe: 'authenticated-read',
     };
   } finally {
