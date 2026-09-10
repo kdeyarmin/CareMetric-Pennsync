@@ -80,10 +80,12 @@ a gate or converting its response to success would not prove restored behavior.
 
 These commands select the production app explicitly and require existing Base44
 authentication. They read metadata and errors; they do not invoke workflows.
+Telemetry is disabled as required by the validation environment, and `--yes`
+avoids an interactive installation prompt if the CLI is not already cached.
 
 ```sh
-npx base44 --app-id 694ec16e72e01b60d22f7cbf workflows runs --status failed --since 3d --limit 40
-npx base44 --app-id 694ec16e72e01b60d22f7cbf --json workflows list --limit 30
+BASE44_DISABLE_TELEMETRY=1 npx --yes base44 --app-id 694ec16e72e01b60d22f7cbf workflows runs --status failed --since 3d --limit 40
+BASE44_DISABLE_TELEMETRY=1 npx --yes base44 --app-id 694ec16e72e01b60d22f7cbf --json workflows list --limit 30
 ```
 
 The relative three-day window reproduces the inspection method, not a permanent
