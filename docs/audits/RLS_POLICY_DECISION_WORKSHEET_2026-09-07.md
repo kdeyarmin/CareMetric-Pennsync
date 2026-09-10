@@ -21,9 +21,18 @@ the longer-term agency-scoped content model described in this worksheet.
   protected admin; update/delete denied.
 - `PatientEducationAssignment` and `PatientEducationDelivery`: every direct
   operation denied (no live UI or backend consumer).
-- Hosted app visibility moved from "Public (login required)" to invite-only the
-  same day, matching `onUserSignup`'s invite-only design, so "signed-in user"
-  means an invited account.
+- Hosted app visibility was moved to invite-only ("Private") the same day and
+  rolled back to "Public (login required)" within the hour: Private mode sends
+  every logged-out page load to Base44's login screen, which broke the public
+  capability routes (`/join`, `/followup`, `/signer`, `/consent`) and the
+  privacy-policy URLs (`/privacy`, `/privacy-policy`, `/privacypolicy`). A
+  "signed-in user" can therefore still be an uninvited sign-up. Such accounts
+  get no `AgencyMembership`, so tenant data stays closed to them, but they can
+  read every open-read table.
+- `ClinicalEvent`: every direct operation denied (read closed at the rollback).
+  It carries per-patient clinical detail, every writer and analyzer runs as
+  service role, and its only browser reader (`ClinicalEventsTimeline`) is not
+  mounted. 0 rows at decision time.
 
 Hosted row counts at decision time: `LearningPlan` 6, `LearningPlanCourse` 48,
 `TrainingModule` 23; every other affected table 0. Still open: agency-scoped
