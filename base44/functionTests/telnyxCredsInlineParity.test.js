@@ -302,6 +302,57 @@ test('testTelnyxConnection classifies credential-store and provider failures wit
   );
 });
 
+test('testTelnyxConnection probes with a supported no-follow redirect mode and refuses redirects', async () => {
+  // Base44's function runtime rejects redirect: 'error' — the probe threw
+  // before sending and every live check read "provider unreachable". The probe
+  // must use 'manual' and classify any 3xx itself, never following it.
+  const credentialRows = [{ provider: 'telnyx', api_key: 'KEYprobe-secret-value', is_active: true }];
+  const seen = [];
+  const outcomes = [
+    [() => new Response(null, { status: 200 }), 'ok', 'authenticated'],
+    [() => new Response(null, {
+      status: 302,
+      headers: { location: 'https://redirect-target.example/collect' },
+    }), 'fail', 'provider_redirected'],
+    [() => new Response(null, { status: 401 }), 'fail', 'authentication_rejected'],
+  ];
+  for (const [makeResponse, status, category] of outcomes) {
+    await withTestTelnyxHandler(
+      diagnosticClient({ credentialRows }),
+      async (url, options) => {
+        seen.push({ url: String(url), options });
+        return makeResponse();
+      },
+      async (handler) => {
+        const response = await handler({ method: 'POST' });
+        const report = await response.json();
+        const live = report.checks.find((check) => check.id === 'telnyx_api_live');
+        assert.equal(response.status, 200);
+        assert.equal(live.status, status, category);
+        assert.equal(live.category, category);
+        assert.doesNotMatch(JSON.stringify(report), /KEYprobe-secret-value|redirect-target\.example/);
+      },
+    );
+  }
+  assert.equal(seen.length, outcomes.length);
+  for (const { url, options } of seen) {
+    assert.equal(url, 'https://api.telnyx.com/v2/whoami');
+    assert.equal(options.redirect, 'manual');
+    assert.ok(options.signal, 'the probe must stay bounded by its abort signal');
+  }
+
+  await withTestTelnyxHandler(
+    diagnosticClient({ credentialRows }),
+    async () => { throw new DOMException('aborted', 'AbortError'); },
+    async (handler) => {
+      const report = await (await handler({ method: 'POST' })).json();
+      const live = report.checks.find((check) => check.id === 'telnyx_api_live');
+      assert.equal(live.status, 'fail');
+      assert.equal(live.category, 'provider_timeout');
+    },
+  );
+});
+
 test('testTelnyxConnection outer SDK failures use a fixed response category and log message', async () => {
   const sdkFailure = 'auth SDK retained request body for patient Jane Example';
   const logged = [];
