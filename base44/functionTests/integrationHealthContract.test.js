@@ -105,6 +105,10 @@ async function runProviderProbes(fetchImpl) {
 test('provider probes send with a supported no-follow redirect mode', async () => {
   const { calls, byId } = await runProviderProbes(async () => new Response(null, { status: 200 }));
   assert.equal(calls.length, PROVIDER_IDS.length);
+  // HeyGen's full avatar catalog routinely exceeds the 5 s bound; probe the
+  // lightweight quota read instead.
+  assert.ok(calls.some((call) => call.url === 'https://api.heygen.com/v2/user/remaining_quota'));
+  assert.ok(!calls.some((call) => call.url.includes('api.heygen.com/v2/avatars')));
   for (const call of calls) {
     assert.equal(call.options.redirect, 'manual', `${call.url} must not follow or use redirect: 'error'`);
     assert.ok(call.options.signal, `${call.url} must stay bounded by the abort signal`);
