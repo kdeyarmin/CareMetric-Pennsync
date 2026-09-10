@@ -1,3 +1,5 @@
+import CentralLearningPortal from '@/components/learning/CentralLearningPortal';
+import { CENTRAL_LEARNING_ENABLED } from '@/lib/centralLearning';
 import { useState, useMemo, useEffect, useCallback, lazy, Suspense } from 'react';
 import { useQueryClient, useMutation, useQuery } from '@tanstack/react-query';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -171,7 +173,7 @@ const daysUntil = (date) => {
   return Math.round((target - now) / (1000 * 60 * 60 * 24));
 };
 
-export default function LearningCenter() {
+function LegacyLearningCenter() {
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
   const [businessLineFilter, setBusinessLineFilter] = useState('all');
@@ -1570,4 +1572,8 @@ export default function LearningCenter() {
       )}
     </PageContainer>
   );
+}
+
+export default function LearningCenter(props) {
+  return CENTRAL_LEARNING_ENABLED ? <CentralLearningPortal authoring={false} /> : <LegacyLearningCenter {...props} />;
 }

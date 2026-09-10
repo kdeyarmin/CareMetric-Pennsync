@@ -88,6 +88,7 @@ export function buildPennSyncHelpUrl({ pathname, knownRoutes, appVersion, enviro
   const safeEnvironment = resolveHelpEnvironment(environment);
 
   return buildHelpUrl({
+    routeAllowlist: knownRoutes,
     context: {
       product: PENNSYNC_HELP_PRODUCT,
       ...(route ? { route } : {}),

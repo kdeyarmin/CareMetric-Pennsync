@@ -246,6 +246,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized - admin access required' }, { status: 403 });
     }
 
+    if (Deno.env.get('CENTRAL_LEARNING_RELEASE') === 'hub-runtime-v1') {
+      return Response.json({ error: 'Course creation and video publishing have moved to the CareMetric Support Hub.', code: 'LEARNING_MOVED', hub_url: 'https://support-hub-web-production.up.railway.app/library' }, { status: 410 });
+    }
+
     const { action = 'status', course_id, module_id, avatar_id, voice_id } = await req.json();
     const heygenApiKey = getHeyGenApiKey();
     const svc = base44.asServiceRole.entities;

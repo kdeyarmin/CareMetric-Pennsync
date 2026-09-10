@@ -83,6 +83,21 @@ const PROVIDER_KEYS = {
 };
 const PROVIDER_IDS = ['openai_transcription', 'anthropic_soap', 'heygen'];
 
+test('central learning cutover removes HeyGen from provider requirements and probes', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => { calls.push(String(url)); return new Response(null, { status: 200 }); };
+  try {
+    const handler = await loadHandler({ env: { ...PROVIDER_KEYS, CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
+    const response = await handler({});
+    const report = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(report.integrations.some(item => item.id === 'heygen'), false);
+    assert.equal(report.integrations.find(item => item.id === 'central_learning').delivery_verified, false);
+    assert.equal(calls.some(url => url.includes('heygen.com')), false);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
 async function runProviderProbes(fetchImpl) {
   const calls = [];
   const originalFetch = globalThis.fetch;
