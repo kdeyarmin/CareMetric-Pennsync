@@ -10,6 +10,7 @@ const readEntry = (name) => read(`base44/functions/${name}/entry.ts`);
 
 const REVIEWED_FUNCTIONS = [
   'analyzeAndGenerateClinicalTasks',
+  'analyzeClinicalData',
   'cancelScheduledSms',
   'deduplicatePatients',
   'dispatchScheduledSms',
@@ -83,6 +84,20 @@ test('provenance-derived security audit is unavailable before SDK or request wor
   assert.doesNotMatch(
     source,
     /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|account_type|agency_name/,
+  );
+});
+
+test('unused clinical data analysis is unavailable before SDK, request, data, or AI work', () => {
+  // Its patient gate trusted the self-editable account_type claim as platform
+  // admin authority, and nothing in the app calls it (2026-09-10 security scan).
+  const source = readEntry('analyzeClinicalData');
+
+  assert.match(source, /code:\s*'CLINICAL_DATA_ANALYSIS_PAUSED'/);
+  assert.match(source, /status:\s*503/);
+  assert.match(source, /'Cache-Control':\s*'no-store'/);
+  assert.doesNotMatch(
+    source,
+    /createClientFromRequest|auth\.me|req\.(?:json|text)|asServiceRole|entities\.|InvokeLLM|account_type|agency_name/,
   );
 });
 
