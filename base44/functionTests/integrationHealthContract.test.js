@@ -62,13 +62,97 @@ async function loadHandler({ env = {}, client } = {}) {
 test('provider probes are bounded, parallel, and never report non-2xx as working', () => {
   assert.match(source, /new AbortController\(\)/);
   assert.match(source, /setTimeout\(\(\) => controller\.abort\(\), PROBE_TIMEOUT_MS\)/);
-  assert.match(source, /redirect: 'error'/);
+  // Base44's function runtime rejects the 'error' redirect mode (every probe
+  // threw before sending), so probes use 'manual' and refuse any 3xx explicitly.
+  assert.match(source, /redirect: 'manual'/);
+  assert.doesNotMatch(source, /redirect: 'error'/);
+  assert.doesNotMatch(source, /redirect: 'follow'/);
+  assert.match(source, /res\.type === 'opaqueredirect' \|\| \(status >= 300 && status < 400\)/);
   assert.match(source, /await Promise\.all\(\[/);
   assert.match(source, /if \(res\.ok\) return \{ status: 'ok'/);
   assert.doesNotMatch(source, /Other non-2xx[\s\S]*status: 'ok'/);
   for (const status of ['401', '403', '429', '500']) {
     assert.ok(source.includes(status), `missing explicit ${status} handling`);
   }
+});
+
+const PROVIDER_KEYS = {
+  OPENAI_API_KEY: 'openai-probe-key-secret',
+  ANTHROPIC_API_KEY: 'anthropic-probe-key-secret',
+  HEYGEN_API_KEY: 'heygen-probe-key-secret',
+};
+const PROVIDER_IDS = ['openai_transcription', 'anthropic_soap', 'heygen'];
+
+async function runProviderProbes(fetchImpl) {
+  const calls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url, options) => {
+    calls.push({ url: String(url), options });
+    return fetchImpl(url, options);
+  };
+  try {
+    const handler = await loadHandler({ env: PROVIDER_KEYS });
+    const response = await handler({});
+    const report = await response.json();
+    assert.equal(response.status, 200);
+    const byId = Object.fromEntries(report.integrations.map((item) => [item.id, item]));
+    return { calls, byId, serialized: JSON.stringify(report) };
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+test('provider probes send with a supported no-follow redirect mode', async () => {
+  const { calls, byId } = await runProviderProbes(async () => new Response(null, { status: 200 }));
+  assert.equal(calls.length, PROVIDER_IDS.length);
+  for (const call of calls) {
+    assert.equal(call.options.redirect, 'manual', `${call.url} must not follow or use redirect: 'error'`);
+    assert.ok(call.options.signal, `${call.url} must stay bounded by the abort signal`);
+  }
+  for (const id of PROVIDER_IDS) {
+    assert.equal(byId[id].status, 'ok', id);
+    assert.equal(byId[id].configured, true, id);
+    assert.equal(byId[id].probe, 'authenticated-read', id);
+  }
+});
+
+test('a redirected provider probe is refused and never reported as working', async () => {
+  const { byId, serialized } = await runProviderProbes(async () => new Response(null, {
+    status: 302,
+    headers: { location: 'https://redirect-target.example/steal' },
+  }));
+  for (const id of PROVIDER_IDS) {
+    assert.equal(byId[id].status, 'fail', id);
+    assert.match(byId[id].detail, /redirect \(HTTP 302\); it was not followed/, id);
+  }
+  assert.doesNotMatch(serialized, /redirect-target\.example/);
+  for (const value of Object.values(PROVIDER_KEYS)) assert.doesNotMatch(serialized, new RegExp(value));
+});
+
+test('rejected credentials, timeouts, and runtime errors are classified without echoing details', async () => {
+  const rejected = await runProviderProbes(async () => new Response(null, { status: 401 }));
+  for (const id of PROVIDER_IDS) {
+    assert.equal(rejected.byId[id].status, 'fail', id);
+    assert.match(rejected.byId[id].detail, /rejected the configured credential \(HTTP 401\)/, id);
+  }
+
+  const timedOut = await runProviderProbes(async () => {
+    throw new DOMException('provider timeout echoed heygen-probe-key-secret', 'AbortError');
+  });
+  for (const id of PROVIDER_IDS) {
+    assert.equal(timedOut.byId[id].status, 'warn', id);
+    assert.match(timedOut.byId[id].detail, /did not answer the read-only probe within 5 seconds/, id);
+  }
+  assert.doesNotMatch(timedOut.serialized, /probe-key-secret|provider timeout echoed/);
+
+  const runtimeError = await runProviderProbes(async () => {
+    throw new TypeError('runtime failure echoed openai-probe-key-secret');
+  });
+  for (const id of PROVIDER_IDS) {
+    assert.equal(runtimeError.byId[id].status, 'warn', id);
+    assert.match(runtimeError.byId[id].detail, /Could not complete the bounded .* read-only probe/, id);
+  }
+  assert.doesNotMatch(runtimeError.serialized, /probe-key-secret|runtime failure echoed/);
 });
 
 test('legacy non-runtime providers are not treated as credential requirements', () => {
