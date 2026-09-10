@@ -281,9 +281,11 @@ Deno.serve(async (req) => {
         : Promise.resolve(null),
       heygenKey
         ? probe(
-          'https://api.heygen.com/v2/avatars',
+          // The lightweight quota read answers well inside the probe timeout;
+          // the full /v2/avatars catalog routinely takes longer than 5 s.
+          'https://api.heygen.com/v2/user/remaining_quota',
           { headers: { 'x-api-key': heygenKey } },
-          'The HeyGen credential authenticated against its read-only avatar catalog; video generation is not proven.',
+          'The HeyGen credential authenticated against its read-only quota endpoint; video generation is not proven.',
           'HeyGen',
         )
         : Promise.resolve(null),
