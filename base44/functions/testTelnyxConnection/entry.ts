@@ -145,6 +145,7 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
  * Read-only probe of the Telnyx `/v2/whoami` endpoint, bounded by an
  * AbortController timeout so a slow/blackholed host can't hang the diagnostic.
  *   - network error / timeout → host unreachable or no egress (fail)
+ *   - 3xx redirect            → refused, never followed (fail)
  *   - 401 / 403               → credentials rejected — definitive (fail)
  *   - 200                     → authenticated and reachable (ok)
  *   - other                   → reached Telnyx but unexpected response (warn)
@@ -158,12 +159,23 @@ async function probeTelnyxApi(apiKey) {
     const resp = await fetch(url, {
       method: 'GET',
       headers: { 'Authorization': `Bearer ${apiKey}`, 'Accept': 'application/json' },
-      // A credential-bearing diagnostic must never follow redirects.
-      redirect: 'error',
+      // A credential-bearing diagnostic must never follow redirects. Base44's
+      // function runtime rejects the 'error' redirect mode outright (the fetch
+      // threw before any request was sent, which surfaced as a false "provider
+      // unreachable"), so use 'manual' and refuse any redirect explicitly below.
+      redirect: 'manual',
       signal: controller.signal,
     });
     const latencyMs = Date.now() - startedAt;
     try { await resp.body?.cancel(); } catch { /* no response body to discard */ }
+    if (resp.type === 'opaqueredirect' || (resp.status >= 300 && resp.status < 400)) {
+      return {
+        status: 'fail',
+        category: 'provider_redirected',
+        detail: `Telnyx answered with a redirect (HTTP ${resp.status}); it was not followed, so authentication was not confirmed.`,
+        latencyMs,
+      };
+    }
     if (resp.status === 401 || resp.status === 403) {
       return {
         status: 'fail',
