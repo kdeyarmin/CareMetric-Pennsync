@@ -22,8 +22,8 @@ const WORKFLOW_GATES = {
   release_process_scheduled_faxes: 'WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES',
 };
 
-async function loadHandler({ env = {}, client } = {}) {
-  const rewritten = source.replace(
+async function loadHandler({ env = {}, client, entrySource = source } = {}) {
+  const rewritten = entrySource.replace(
     /import\s+\{\s*createClientFromRequest\s*\}\s+from\s+'npm:[^']+';/,
     'const createClientFromRequest = () => globalThis.__integrationHealthClient;',
   );
@@ -82,6 +82,22 @@ const PROVIDER_KEYS = {
   HEYGEN_API_KEY: 'heygen-probe-key-secret',
 };
 const PROVIDER_IDS = ['openai_transcription', 'anthropic_soap', 'heygen'];
+
+for (const name of ['generateTrainingCourse', 'manageTrainingVideos', 'syncTrainingVideoStatuses']) {
+  test(`${name} stops local generation after the central cutover without touching course data`, async () => {
+    const entrySource = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
+    const client = {
+      auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: true }) },
+      get asServiceRole() { throw new Error('Retired operation accessed service-owned data'); },
+    };
+    const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
+    const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: '{}' }));
+    const data = await response.json();
+    assert.equal(response.status, name === 'syncTrainingVideoStatuses' ? 200 : 410);
+    if (name === 'syncTrainingVideoStatuses') assert.equal(data.reason, 'central_learning');
+    else assert.equal(data.code, 'LEARNING_MOVED');
+  });
+}
 
 test('central learning cutover removes HeyGen from provider requirements and probes', async () => {
   const originalFetch = globalThis.fetch;
