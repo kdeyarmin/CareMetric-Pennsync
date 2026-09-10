@@ -379,6 +379,84 @@ async function hasExactActiveAgencyMembership(base44, user) {
     && !!row.agency_id.trim();
 }`,
 
+  // Boundary hardening for legacy handlers that still branch on caller profile
+  // claims. Base44 auth.updateMe lets every signed-in account rewrite every custom
+  // User field on its own record, so account_type / agency_name / agency_id /
+  // is_approved read straight from auth.me() are caller-controlled: anyone who
+  // can sign up could claim super_admin or another agency. Wrap every auth.me()
+  // result in these handlers so those claims are rebuilt from protected sources
+  // before any handler logic reads them:
+  //   - protected built-in admins (role admin, owner included): unchanged, since
+  //     that platform-protected role already grants platform-level RLS and its
+  //     self-scoping claims cannot widen access;
+  //   - tenant authority: exactly one active, service-owned AgencyMembership
+  //     bound to the immutable user id and built-in email, whose Agency is
+  //     active (its tenant_role and agency name become the claims);
+  //   - everyone else: no agency, not approved, and never a privileged type.
+  // Built-in fields (id, email, role) pass through untouched; a missing caller
+  // (null/undefined) is returned as-is so existing 401 branches still run.
+  trustedCallerClaims: `const PRIVILEGED_PROFILE_ACCOUNT_TYPES = new Set(['super_admin', 'agency_admin']);
+const TRUSTED_CLAIM_AGENCY_STATUSES = new Set(['active', 'trial']);
+const normalizeClaimEmail = (value) => String(value || '').trim().toLowerCase();
+async function loadTrustedTenantClaim(base44, profileId, email) {
+  if (!profileId || !email) return null;
+  let membership = null;
+  try {
+    const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: profileId, status: 'active' },
+      undefined,
+      2,
+    );
+    const row = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+    if (row
+      && String(row.user_id || '').trim() === profileId
+      && String(row.status || '') === 'active'
+      && normalizeClaimEmail(row.user_email_normalized) === email
+      && typeof row.agency_id === 'string'
+      && row.agency_id.trim()) {
+      membership = row;
+    }
+  } catch {
+    membership = null;
+  }
+  if (!membership) return null;
+  try {
+    const agencyId = membership.agency_id.trim();
+    const rows = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
+    const agency = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+    const agencyName = String(agency?.agency_name || '').trim();
+    if (!agency || agency.id !== agencyId || !TRUSTED_CLAIM_AGENCY_STATUSES.has(String(agency.status || ''))
+      || !agencyName) {
+      return null;
+    }
+    return { tenantRole: String(membership.tenant_role || ''), agencyId, agencyName };
+  } catch {
+    return null;
+  }
+}
+async function withTrustedClaims(base44, profile) {
+  if (!profile || typeof profile !== 'object') return profile;
+  // Protected built-in admins (the platform owner included) already hold
+  // platform-level RLS authority, so their legacy self-scoping claims cannot
+  // widen access; leave them exactly as the handler saw them before.
+  if (profile.role === 'admin') return profile;
+  const email = normalizeClaimEmail(profile.email);
+  const profileId = typeof profile.id === 'string' ? profile.id.trim() : '';
+  const tenant = await loadTrustedTenantClaim(base44, profileId, email);
+  const claimedType = String(profile.account_type || '');
+  const baseType = PRIVILEGED_PROFILE_ACCOUNT_TYPES.has(claimedType) ? 'user' : claimedType;
+  if (tenant) {
+    return {
+      ...profile,
+      account_type: tenant.tenantRole === 'agency_admin' ? 'agency_admin' : baseType,
+      agency_name: tenant.agencyName,
+      agency_id: tenant.agencyId,
+      is_approved: true,
+    };
+  }
+  return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false };
+}`,
+
   // Offboarding sets is_active:false but deliberately leaves role/account_type
   // intact (history and audit joins key off them), and the Base44 platform does
   // not reject entity-API calls from a deactivated session. So an offboarded
