@@ -83,7 +83,14 @@ const PROVIDER_KEYS = {
 };
 const PROVIDER_IDS = ['openai_transcription', 'anthropic_soap', 'heygen'];
 
-for (const name of ['generateTrainingCourse', 'manageTrainingVideos', 'syncTrainingVideoStatuses']) {
+const retiredLearningFunctions = [
+  'generateTrainingCourse', 'manageTrainingVideos', 'syncTrainingVideoStatuses',
+  'duplicateInService', 'rebuildExistingInServices', 'seedYearlyRequiredInServices',
+  'seedAnnualMandatoryEducationSamples', 'generateCourseQuiz', 'triggerCorrectiveActionPlan',
+];
+const learningSchedulers = new Set(['syncTrainingVideoStatuses', 'triggerCorrectiveActionPlan']);
+
+for (const name of retiredLearningFunctions) {
   test(`${name} stops local generation after the central cutover without touching course data`, async () => {
     const entrySource = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
     const client = {
@@ -93,9 +100,20 @@ for (const name of ['generateTrainingCourse', 'manageTrainingVideos', 'syncTrain
     const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
     const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: '{}' }));
     const data = await response.json();
-    assert.equal(response.status, name === 'syncTrainingVideoStatuses' ? 200 : 410);
-    if (name === 'syncTrainingVideoStatuses') assert.equal(data.reason, 'central_learning');
+    assert.equal(response.status, learningSchedulers.has(name) ? 200 : 410);
+    if (learningSchedulers.has(name)) assert.equal(data.reason, 'central_learning');
     else assert.equal(data.code, 'LEARNING_MOVED');
+  });
+
+  test(`${name} still rejects deactivated callers after central cutover`, async () => {
+    const entrySource = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
+    const client = {
+      auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: false }) },
+      get asServiceRole() { throw new Error('Unauthorized caller accessed course data'); },
+    };
+    const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
+    const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: '{}' }));
+    assert.equal(response.status, 403);
   });
 }
 

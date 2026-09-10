@@ -112,6 +112,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Unauthorized' }, { status: 403 });
     }
 
+    if (Deno.env.get('CENTRAL_LEARNING_RELEASE') === 'hub-runtime-v1') {
+      return Response.json({ error: 'Course creation and video publishing have moved to the CareMetric Support Hub.', code: 'LEARNING_MOVED', hub_url: 'https://support-hub-web-production.up.railway.app/library' }, { status: 410 });
+    }
+
     // Default limit=1: each course requires a full LLM generation (~15-30s),
     // so processing many courses in a single invocation would exceed the
     // platform's 120s execution timeout. The admin calls this repeatedly to
