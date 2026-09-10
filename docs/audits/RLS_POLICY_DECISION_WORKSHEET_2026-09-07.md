@@ -1,5 +1,37 @@
 # RLS policy-decision worksheet — 2026-09-07
 
+## Interim decision — 2026-09-10 (owner-approved)
+
+After Base44's pre-publish security scan flagged these eight schemas plus three
+patient-education tables, the platform owner (Kevin Deyarmin) approved an
+**interim lockdown** on 2026-09-10. It is implemented in source and hosted
+production, and it supersedes the "no RLS" state below. It does **not** complete
+the longer-term agency-scoped content model described in this worksheet.
+
+- Shared content (`LearningPlan`, `LearningPlanCourse`, `LibraryDocument`,
+  `PDFTemplate`, `Physician`, `TrainingModule`): any signed-in user may read;
+  create/update/delete require Base44's protected `role: admin`. Service-role
+  jobs are unaffected.
+- `CustomValidationRule`: every operation requires protected admin (its only
+  consumer is the admin-only Agency Settings page).
+- `EducationMaterial`: read is published rows or protected admin; every write
+  requires protected admin. The clinician send flow keeps its usage-counter bump
+  best-effort so a denied bump cannot fail an already-recorded send.
+- `SentEducationMaterial`: read/create limited to the sender (`data.sent_by`) or
+  protected admin; update/delete denied.
+- `PatientEducationAssignment` and `PatientEducationDelivery`: every direct
+  operation denied (no live UI or backend consumer).
+- Hosted app visibility moved from "Public (login required)" to invite-only the
+  same day, matching `onUserSignup`'s invite-only design, so "signed-in user"
+  means an invited account.
+
+Hosted row counts at decision time: `LearningPlan` 6, `LearningPlanCourse` 48,
+`TrainingModule` 23; every other affected table 0. Still open: agency-scoped
+content ownership, a sanitized learner broker for `TrainingModule`
+(`content`/`content_json` answer material), `PDFTemplate` version families, and
+the two-agency authenticated matrix in "Required evidence" below.
+
+
 ## Scope and guardrail
 
 The eight entities below currently have no entity-level RLS. This worksheet records an accepted **source-direction model** and the decisions required before any policy is implemented; it does **not** approve CRUD authority, a policy, a migration, or continued open access. Every create/read/update/delete cell and every approver/date remains pending human review.
@@ -66,14 +98,14 @@ existing open access.
 
 | Entity | Data owner/classification | Read authority | Create authority | Update authority | Delete authority | Broker required? | Legacy rows/backfill or quarantine | Approver and date | Evidence link |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `CustomValidationRule` | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
-| `EducationMaterial` | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
-| `LearningPlan` | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
-| `LearningPlanCourse` | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
-| `LibraryDocument` | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
-| `PDFTemplate` | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
-| `Physician` | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
-| `TrainingModule` | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending | Pending |
+| `CustomValidationRule` | Agency configuration (admin-managed) | Protected admin | Protected admin | Protected admin | Protected admin | Not for interim | None (0 rows) | Kevin Deyarmin, 2026-09-10 | Interim decision above |
+| `EducationMaterial` | Patient-education catalog (admin-curated) | Published rows or protected admin | Protected admin | Protected admin | Protected admin | Not for interim | None (0 rows) | Kevin Deyarmin, 2026-09-10 | Interim decision above |
+| `LearningPlan` | Training plans (admin-managed) | Any signed-in user | Protected admin | Protected admin | Protected admin | Service role for enrollment jobs | 6 rows kept | Kevin Deyarmin, 2026-09-10 | Interim decision above |
+| `LearningPlanCourse` | Plan-course links (admin-managed) | Any signed-in user | Protected admin | Protected admin | Protected admin | Service role for enrollment jobs | 48 rows kept | Kevin Deyarmin, 2026-09-10 | Interim decision above |
+| `LibraryDocument` | Shared document library (admin-managed) | Any signed-in user | Protected admin | Protected admin | Protected admin | Not for interim | None (0 rows) | Kevin Deyarmin, 2026-09-10 | Interim decision above |
+| `PDFTemplate` | Document templates (admin-managed) | Any signed-in user | Protected admin | Protected admin | Protected admin | Version families still open | None (0 rows) | Kevin Deyarmin, 2026-09-10 | Interim decision above |
+| `Physician` | Shared provider directory (admin-managed) | Any signed-in user | Protected admin | Protected admin | Protected admin | Service role for CSV import | None (0 rows) | Kevin Deyarmin, 2026-09-10 | Interim decision above |
+| `TrainingModule` | Training content (admin-authored) | Any signed-in user | Protected admin | Protected admin | Protected admin | Sanitized learner broker still open | 23 rows kept | Kevin Deyarmin, 2026-09-10 | Interim decision above |
 
 ## Required evidence before implementation
 
