@@ -109,27 +109,51 @@ describe('residual RLS source containment', () => {
     expect(complianceCenter).toMatch(/\{isAdmin\s*&&\s*<MedicareRuleSeeder\s*\/>\}/);
   });
 
-  it('keeps education generation quarantined without breaking shared care-team updates', () => {
-    const assignments = entity('PatientEducationAssignment').rls;
-    expect(assignments.read).toBe(true);
-    expect(assignments.create).toEqual(ownerOrAdmin('assigned_by'));
-    expect(assignments.update).toBe(true);
-    expect(assignments.delete).toBe(false);
-
-    const deliveries = entity('PatientEducationDelivery').rls;
-    expect(deliveries).toEqual({ read: true, create: false, update: true, delete: false });
+  it('locks patient education records to their sender or protected admins', () => {
+    // 2026-09-10 owner-approved interim lockdown: the assignment and delivery
+    // tables have no live consumer, so every direct operation is denied.
+    const closed = { read: false, create: false, update: false, delete: false };
+    expect(entity('PatientEducationAssignment').rls).toEqual(closed);
+    expect(entity('PatientEducationDelivery').rls).toEqual(closed);
     expect(directConsumers('PatientEducationDelivery')).toEqual([]);
+    // The recommender and tracker that touch assignments are not mounted anywhere.
+    for (const component of ['AIEducationRecommender', 'EducationTracker']) {
+      expect(sourcesContaining(`/${component}`, [`src/components/carePlan/${component}.jsx`]), component)
+        .toEqual([]);
+    }
     const generator = read('base44/functions/generatePatientEducation/entry.ts');
     expect(generator).toMatch(/code:\s*'PATIENT_EDUCATION_GENERATION_PAUSED'/);
     expect(generator).toMatch(/status:\s*503/);
     expect(generator).not.toMatch(/createClientFromRequest|\.entities\b|InvokeLLM/);
 
     const sent = entity('SentEducationMaterial').rls;
-    expect(sent.read).toBe(true);
+    expect(sent.read).toEqual(ownerOrAdmin('sent_by'));
     expect(sent.create).toEqual(ownerOrAdmin('sent_by'));
     expect(sent.update).toBe(false);
     expect(sent.delete).toBe(false);
     expect(directConsumers('SentEducationMaterial', 'update')).toEqual([]);
+  });
+
+  it('lets staff read shared content while only protected admins change it', () => {
+    const adminWrites = { create: ADMIN, update: ADMIN, delete: ADMIN };
+    for (const name of ['LearningPlan', 'LearningPlanCourse', 'LibraryDocument', 'PDFTemplate', 'Physician', 'TrainingModule']) {
+      expect(entity(name).rls, name).toEqual({ read: true, ...adminWrites });
+    }
+    expect(entity('CustomValidationRule').rls).toEqual({ read: ADMIN, ...adminWrites });
+    expect(entity('EducationMaterial').rls).toEqual({
+      read: { $or: [{ 'data.is_published': true }, ADMIN] },
+      ...adminWrites,
+    });
+
+    // Clinicians only read the published catalog, and a denied usage bump must
+    // never turn an already-recorded send into a failure.
+    for (const file of ['src/pages/EducationLibrary.jsx', 'src/components/carePlan/AICarePlanSuggestionEngine.jsx']) {
+      expect(read(file), file).toMatch(/EducationMaterial\.filter\(\{ is_published: true \}/);
+    }
+    const sender = read('src/components/education/PersonalizedMaterialSender.jsx');
+    expect(sender).toMatch(
+      /try \{\s*await base44\.entities\.EducationMaterial\.update\([\s\S]*?\}\);\s*\} catch \{/,
+    );
   });
 
   it('stamps remaining browser-created education records and keeps the portal unavailable', () => {
