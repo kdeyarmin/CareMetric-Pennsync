@@ -54,7 +54,18 @@ function guardedClient(user = ADMIN) {
   const entity = new Proxy({}, {
     get: (_target, name) => unexpected(`entity.${String(name)}`),
   });
-  const entities = new Proxy({}, { get: () => entity });
+  // withTrustedClaims reads only the caller's own AgencyMembership (read-only)
+  // to rebuild self-editable profile claims. Record it distinctly; any other
+  // entity access is still unexpected.
+  const membership = {
+    filter: async (query) => {
+      calls.push(`membership.lookup:${query?.user_id ?? ''}`);
+      return [];
+    },
+  };
+  const entities = new Proxy({}, {
+    get: (_target, name) => (name === 'AgencyMembership' ? membership : entity),
+  });
   const sendEmail = unexpected('SendEmail');
   return {
     calls,
@@ -322,7 +333,16 @@ test('authorization failures still win over the global release pause', async () 
     const handler = await loadHandler(name, runtime.client);
     const response = await handler(request(body));
     assert.equal(response.status, status, name);
-    assert.deepEqual(runtime.calls, ['auth.me'], `${name}: unauthorized run has no effect`);
+    const lookups = runtime.calls.filter((call) => call.startsWith('membership.lookup:'));
+    assert.ok(
+      lookups.every((call) => call === `membership.lookup:${user?.id ?? ''}`),
+      `${name}: only the caller's own membership may be read`,
+    );
+    assert.deepEqual(
+      runtime.calls.filter((call) => !call.startsWith('membership.lookup:')),
+      ['auth.me'],
+      `${name}: unauthorized run has no effect`,
+    );
   }
 
   const signature = guardedClient(null);
