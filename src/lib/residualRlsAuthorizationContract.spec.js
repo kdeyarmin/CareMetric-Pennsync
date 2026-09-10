@@ -170,6 +170,16 @@ describe('residual RLS source containment', () => {
     expect(portal).not.toMatch(/base44|PatientEducationDelivery/);
   });
 
+  it('fails every ClinicalEvent operation closed while its only browser reader stays unmounted', () => {
+    // 2026-09-10 owner-approved: per-patient clinical detail was readable by any
+    // signed-in account, including an uninvited sign-up. Writers and analyzers
+    // run as service role, so direct access stays denied until a scoped broker.
+    expect(entity('ClinicalEvent').rls).toEqual({ read: false, create: false, update: false, delete: false });
+    expect(directConsumers('ClinicalEvent')).toEqual(['src/components/patient/ClinicalEventsTimeline.jsx']);
+    expect(sourcesContaining('/ClinicalEventsTimeline', ['src/components/patient/ClinicalEventsTimeline.jsx']))
+      .toEqual([]);
+  });
+
   it('fails every ClinicalPathway operation closed while all direct hosts remain literally paused', () => {
     expect(entity('ClinicalPathway').rls).toEqual({
       read: false,
