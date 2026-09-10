@@ -1,5 +1,10 @@
 # Base44 workflow migration audit — 2026-09-06
 
+For the subsequent production failures, the live stale-follow-up schedule pause,
+and the verified inactive production inventory, see the
+[September 10 workflow failure investigation](WORKFLOW_FAILURE_INVESTIGATION_2026-09-10.md).
+That operational change does not satisfy the handler release requirements below.
+
 ## Scope and conclusion
 
 Commit `35ef5e12` added six Base44 workflow definitions that preserve the reviewed schedules. This branch also adds the inbound referral-fax processor. All seven native workflow files have valid single-function targets, exact schedules, and explicit empty arguments. They are the sole repository schedule authorities: the corresponding legacy per-function automation configs are absent. `base44/workflowMigrationContract.test.js` and `base44/functionAutomationConfigContract.test.js` protect that ownership and every handler's default-closed runtime release boundary.
