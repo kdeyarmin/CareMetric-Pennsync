@@ -2,7 +2,7 @@
  * Unified clinical data analysis (event extraction, event analysis, trends).
  *
  * Paused 2026-09-10 (owner-approved). Nothing in the app calls this function,
- * and its patient gate treated the self-editable User.account_type claim as
+ * and its patient gate treated a self-editable profile claim (account type) as
  * platform-admin authority, so any signed-in account could self-promote and run
  * service-role analysis over another agency's patient, visit, and clinical-event
  * rows. Its extract_events action also ran service-role AI over caller text for
