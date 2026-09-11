@@ -64,6 +64,12 @@ function canonicalEmail(value: unknown) {
   return email;
 }
 
+function isPrivateFileUri(value: unknown) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 4096
+    && !/\s/.test(value) && (value.startsWith('private/') || value.startsWith('private://')
+      || /^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value));
+}
+
 function validInstant(value: unknown) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
@@ -91,7 +97,7 @@ function htmlEscape(value: unknown) {
 function dueDateEnd(value: unknown) {
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const millis = Date.parse(`${value}T23:59:59.999Z`);
-  return Number.isFinite(millis) ? millis : null;
+  return Number.isFinite(millis) && new Date(millis).toISOString().slice(0, 10) === value ? millis : null;
 }
 
 function canonicalJson(value: unknown): unknown {
@@ -268,6 +274,11 @@ async function loadPackageSnapshot(entities: Record<string, any>, input: Record<
     if (packageDue === null) throw new PublicError(409, 'Signature package deadline is invalid');
     maxTokenExpiry = Math.min(maxTokenExpiry, packageDue);
   }
+  for (const deadline of [pkg.expires_at, pkg.expiration_date]) {
+    if (deadline == null) continue;
+    if (!validInstant(deadline)) throw new PublicError(409, 'Signature package deadline is invalid');
+    maxTokenExpiry = Math.min(maxTokenExpiry, Date.parse(deadline));
+  }
   for (const documentId of documentIds as string[]) {
     const rows = requireRows(await entities.DocumentSignature.filter(
       { id: documentId, agency_id: input.agencyId }, undefined, EXACT_ROW_LIMIT,
@@ -297,6 +308,11 @@ async function loadPackageSnapshot(entities: Record<string, any>, input: Record<
       throw new PublicError(409, 'Signature document integrity check failed');
     }
     if (signer.status === 'pending') pendingForSigner += 1;
+    if (signature.due_date != null) {
+      const due = dueDateEnd(signature.due_date);
+      if (due === null) throw new PublicError(409, 'Signature document deadline is invalid');
+      maxTokenExpiry = Math.min(maxTokenExpiry, due);
+    }
     for (const deadline of [signature.expires_at, signature.expiration_date]) {
       if (deadline == null) continue;
       if (!validInstant(deadline)) throw new PublicError(409, 'Signature document deadline is invalid');
@@ -311,7 +327,7 @@ async function loadPackageSnapshot(entities: Record<string, any>, input: Record<
         || bindings[0].patient_id !== patientId
         || bindings[0].content_sha256 !== signature.document_content_sha256
         || typeof bindings[0].file_uri !== 'string'
-        || (!bindings[0].file_uri.startsWith('private/') && !bindings[0].file_uri.startsWith('private://'))) {
+        || !isPrivateFileUri(bindings[0].file_uri)) {
       throw new PublicError(409, 'Signature source-document binding is invalid');
     }
     signatures.push({
@@ -322,6 +338,7 @@ async function loadPackageSnapshot(entities: Record<string, any>, input: Record<
       document_content_sha256: signature.document_content_sha256,
       status: signature.status,
       signer_status: signer.status,
+      due_date: signature.due_date ?? null,
       expires_at: signature.expires_at ?? null,
       expiration_date: signature.expiration_date ?? null,
     });
@@ -337,6 +354,7 @@ async function loadPackageSnapshot(entities: Record<string, any>, input: Record<
       created_by_user_id: creatorId, creator_membership_id: membershipId,
       creator_membership_version: pkg.creator_membership_version,
       due_date: pkg.due_date ?? null,
+      expires_at: pkg.expires_at ?? null, expiration_date: pkg.expiration_date ?? null,
       max_token_expires_at: new Date(maxTokenExpiry).toISOString(),
       token_issue_claimed_by: pkg.token_issue_claimed_by ?? null,
       token_issue_claimed_at: pkg.token_issue_claimed_at ?? null,

@@ -35,8 +35,39 @@ function exactDigest(value: unknown) {
   return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : null;
 }
 
+function isPrivateFileUri(value: unknown) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 4096
+    && !/\s/.test(value) && (value.startsWith('private/') || value.startsWith('private://')
+      || /^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value));
+}
+
 function validInstant(value: unknown) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function currentDeadline(token: Record<string, any>, pkg: Record<string, any>, signatures: Array<Record<string, any>>) {
+  const deadlines = [Date.parse(token.expires_at)];
+  for (const row of [pkg, ...signatures]) {
+    if (row.due_date != null) {
+      const value = row.due_date;
+      const millis = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+        ? Date.parse(`${value}T23:59:59.999Z`) : NaN;
+      if (!Number.isFinite(millis) || new Date(millis).toISOString().slice(0, 10) !== value) {
+        throw new PublicError(401, 'Invalid or expired signing authority');
+      }
+      deadlines.push(millis);
+    }
+    for (const field of ['expires_at', 'expiration_date']) {
+      if (row[field] == null) continue;
+      if (!validInstant(row[field])) throw new PublicError(401, 'Invalid or expired signing authority');
+      deadlines.push(Date.parse(row[field]));
+    }
+  }
+  const deadline = Math.min(...deadlines);
+  if (!Number.isFinite(deadline) || Date.now() >= deadline || Date.parse(token.expires_at) > deadline) {
+    throw new PublicError(401, 'Invalid or expired signing authority');
+  }
+  return new Date(deadline).toISOString();
 }
 
 function requireRows(value: unknown, label: string) {
@@ -276,6 +307,17 @@ async function loadContext(
   }, 'Patient');
   if (patient.id !== patientId) throw new PublicError(409, 'Signature patient authority is invalid');
   const signature = await exactOne(entities.DocumentSignature, { id: input.documentId, agency_id: agencyId }, 'DocumentSignature');
+  // Exact completed retries may reconcile their existing artifact after expiry;
+  // they cannot create a new signature. Every new act uses current deadlines.
+  if (!tokenCompletedForRequest || !grantCompletedForRequest) {
+    const authoritySignatures = [signature];
+    for (const id of documentIds) {
+      if (id !== input.documentId) authoritySignatures.push(await exactOne(
+        entities.DocumentSignature, { id, agency_id: agencyId }, 'DocumentSignature',
+      ));
+    }
+    currentDeadline(token, pkg, authoritySignatures);
+  }
   const signers = Array.isArray(signature.signers) ? signature.signers : [];
   const signerIndex = signers.findIndex((candidate) => candidate?.signer_id === signerId);
   const signer = signerIndex >= 0 ? validateSigner(signers[signerIndex], signerId, signerEmail) : null;
@@ -301,7 +343,7 @@ async function loadContext(
       || binding.content_sha256 !== signature.document_content_sha256
       || binding.id !== grant.document_binding_id || binding.version !== grant.document_binding_version
       || typeof binding.file_uri !== 'string'
-      || (!binding.file_uri.startsWith('private/') && !binding.file_uri.startsWith('private://'))) {
+      || !isPrivateFileUri(binding.file_uri)) {
     throw new PublicError(409, 'Signature source-document binding is invalid');
   }
   const signerRosterDigest = await sha256(JSON.stringify(canonicalJson(signerAuthorityRoster(signers))));
@@ -363,7 +405,7 @@ function validateArtifact(
       || artifact.package_id !== context.packageId || artifact.document_signature_id !== input.documentId
       || artifact.signer_id !== context.signerId || artifact.token_id !== context.tokenId
       || artifact.client_request_id !== input.clientRequestId || artifact.storage_mode !== 'private'
-      || (!fileUri.startsWith('private/') && !fileUri.startsWith('private://')) || fileUri.length > 4096
+      || !isPrivateFileUri(fileUri) || fileUri.length > 4096
       || artifact.file_type !== input.fileType || artifact.file_size !== input.file.size
       || artifact.content_sha256 !== signatureDigest || artifact.typed_name_hmac_sha256 !== typedNameDigest
       || artifact.agreement_version !== input.agreementVersion
@@ -525,6 +567,7 @@ async function finalizeRecordedSignature(
         consumed_at: signerPackageComplete ? occurredAt : null,
         claimed_at: null, claimed_by_request_id: null, claimed_by_operation_id: null,
         claimed_document_id: null,
+        submission_upload_operation_id: null, submission_upload_started_at: null,
         last_completed_request_id: input.clientRequestId,
         last_completed_document_id: input.documentId,
         authority_version: tokenVersion + 1,
@@ -538,6 +581,7 @@ async function finalizeRecordedSignature(
           || currentToken.last_completed_document_id !== input.documentId
           || currentToken.claimed_by_operation_id != null
           || currentToken.claimed_document_id != null
+          || currentToken.submission_upload_operation_id != null || currentToken.submission_upload_started_at != null
           || currentToken.authority_version !== tokenVersion + 1) {
         throw new PublicError(409, 'Signer token completion requires reconciliation');
       }
@@ -637,6 +681,10 @@ Deno.serve(async (req) => {
         document_completed: result.documentCompleted, all_signed: result.allSigned },
       { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
     }
+    if (context.token.submission_upload_operation_id != null || context.token.submission_upload_started_at != null) {
+      irreversible = true;
+      throw new PublicError(409, 'Prior signature upload requires reconciliation');
+    }
     if (context.signer.status === 'completed') throw new PublicError(409, 'This signer has already completed the document');
     if (context.signer.status !== 'pending') throw new PublicError(409, 'This signature can no longer be submitted');
 
@@ -672,6 +720,7 @@ Deno.serve(async (req) => {
     const tokenClaimFilter: Record<string, any> = {
       id: context.tokenId, token: tokenDigest,
       status: context.token.status, authority_version: context.token.authority_version,
+      submission_upload_operation_id: null, submission_upload_started_at: null,
     };
     if (context.token.status === 'claimed') {
       if (!context.tokenClaimedForRequest || !exactIdentifier(context.token.claimed_by_operation_id)
@@ -732,11 +781,44 @@ Deno.serve(async (req) => {
       occurred_at: now,
     });
 
-    const upload = await base44.asServiceRole.integrations.Core.UploadPrivateFile({ file: input.file });
+    context = await loadContext(entities, input, tokenDigest, grantDigest, agreementTextDigest, operationId);
+    if (!context.tokenClaimedForOperation || !context.grantClaimedForOperation
+        || context.token.authority_version !== tokenClaim.version
+        || context.grant.authority_version !== grantClaim.version
+        || Date.parse(context.token.claimed_at) <= Date.now() - CLAIM_LEASE_MS
+        || Date.parse(context.grant.claimed_at) <= Date.now() - CLAIM_LEASE_MS) {
+      throw new PublicError(409, 'Signing claim changed before upload');
+    }
+    // Persist the irreversible boundary before invoking private storage. An
+    // unacknowledged marker or upload must never make stale takeover re-upload.
     irreversible = true;
+    const uploadStartedAt = new Date().toISOString();
+    const uploadStart = await entities.DocumentPackageToken.updateMany({
+      id: context.tokenId, token: tokenDigest, status: 'claimed', is_active: true,
+      authority_version: tokenClaim.version, claimed_by_operation_id: operationId,
+      claimed_by_request_id: input.clientRequestId, claimed_document_id: input.documentId,
+      submission_upload_operation_id: null, submission_upload_started_at: null,
+    }, { $set: { submission_upload_operation_id: operationId, submission_upload_started_at: uploadStartedAt,
+      authority_version: tokenClaim.version + 1 } });
+    if (!successfulSingleUpdate(uploadStart)) throw new PublicError(409, 'Signature upload boundary requires reconciliation');
+    tokenClaim.version += 1;
+    context = await loadContext(entities, input, tokenDigest, grantDigest, agreementTextDigest, operationId);
+    if (!context.tokenClaimedForOperation || !context.grantClaimedForOperation
+        || context.token.authority_version !== tokenClaim.version
+        || context.token.submission_upload_operation_id !== operationId
+        || context.token.submission_upload_started_at !== uploadStartedAt) {
+      throw new PublicError(409, 'Signature upload boundary requires reconciliation');
+    }
+    const upload = await base44.asServiceRole.integrations.Core.UploadPrivateFile({ file: input.file });
     const fileUri = typeof upload?.file_uri === 'string' ? upload.file_uri : '';
-    if (!fileUri || (!fileUri.startsWith('private/') && !fileUri.startsWith('private://')) || fileUri.length > 4096) {
+    if (!fileUri || !isPrivateFileUri(fileUri) || fileUri.length > 4096) {
       throw new Error('Private signature upload failed');
+    }
+    context = await loadContext(entities, input, tokenDigest, grantDigest, agreementTextDigest, operationId);
+    if (!context.tokenClaimedForOperation || !context.grantClaimedForOperation
+        || context.token.authority_version !== tokenClaim.version
+        || context.token.submission_upload_operation_id !== operationId) {
+      throw new PublicError(409, 'Signature authority changed during upload');
     }
     const artifact = await entities.SignatureArtifactBinding.create({
       artifact_key: artifactKey, agency_id: context.agencyId, package_id: context.packageId,

@@ -9,6 +9,7 @@ const MAX_PACKAGE_DOCUMENTS = 25;
 const SIGNED_URL_TTL_SECONDS = 60;
 const REVIEW_GRANT_TTL_MS = 10 * 60 * 1000;
 const AGREEMENT_VERSION = 'signature-consent-v1';
+const MAX_REVIEW_ACCESSES = 20;
 
 class PublicError extends Error {
   status: number;
@@ -32,8 +33,39 @@ function canonicalEmail(value: unknown) {
   return email && email.length <= 320 && email.includes('@') && !/\s/.test(email) ? email : null;
 }
 
+function isPrivateFileUri(value: unknown) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 4096
+    && !/\s/.test(value) && (value.startsWith('private/') || value.startsWith('private://')
+      || /^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value));
+}
+
 function validInstant(value: unknown) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
+}
+
+function currentDeadline(token: Record<string, any>, pkg: Record<string, any>, signatures: Array<Record<string, any>>) {
+  const deadlines = [Date.parse(token.expires_at)];
+  for (const row of [pkg, ...signatures]) {
+    if (row.due_date != null) {
+      const value = row.due_date;
+      const millis = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
+        ? Date.parse(`${value}T23:59:59.999Z`) : NaN;
+      if (!Number.isFinite(millis) || new Date(millis).toISOString().slice(0, 10) !== value) {
+        throw new PublicError(401, 'Invalid or expired signing authority');
+      }
+      deadlines.push(millis);
+    }
+    for (const field of ['expires_at', 'expiration_date']) {
+      if (row[field] == null) continue;
+      if (!validInstant(row[field])) throw new PublicError(401, 'Invalid or expired signing authority');
+      deadlines.push(Date.parse(row[field]));
+    }
+  }
+  const deadline = Math.min(...deadlines);
+  if (!Number.isFinite(deadline) || Date.now() >= deadline || Date.parse(token.expires_at) > deadline) {
+    throw new PublicError(401, 'Invalid or expired signing authority');
+  }
+  return new Date(deadline).toISOString();
 }
 
 function exactDigest(value: unknown) {
@@ -162,6 +194,7 @@ async function loadTokenContext(entities: Record<string, any>, tokenDigest: stri
   if (!tokenId || !agencyId || !packageId || !signerId || !signerEmail || token.signer_email !== signerEmail
       || token.status !== 'active' || token.is_active !== true || token.token_hashed !== true
       || !Number.isSafeInteger(token.authority_version) || token.authority_version < 1
+      || !Number.isSafeInteger(token.access_count) || token.access_count < 0 || token.access_count > MAX_REVIEW_ACCESSES
       || !validInstant(token.token_created_at) || !validInstant(token.expires_at)
       || documentIds.length < 1 || documentIds.length > MAX_PACKAGE_DOCUMENTS || documentIds.includes(null)
       || new Set(documentIds).size !== documentIds.length || !exactIdentifier(token.token_request_id)) {
@@ -214,6 +247,7 @@ async function loadTokenContext(entities: Record<string, any>, tokenDigest: stri
   }
 
   const documents: Array<Record<string, any>> = [];
+  const authoritySignatures: Array<Record<string, any>> = [];
   for (const signatureId of documentIds as string[]) {
     const signatureRows = requireRows(await entities.DocumentSignature.filter(
       { id: signatureId, agency_id: agencyId }, undefined, EXACT_ROW_LIMIT,
@@ -222,6 +256,7 @@ async function loadTokenContext(entities: Record<string, any>, tokenDigest: stri
       throw new PublicError(401, 'Invalid or expired token');
     }
     const signature = signatureRows[0];
+    authoritySignatures.push(signature);
     const signers = (Array.isArray(signature.signers) ? signature.signers : [])
       .map(validateCanonicalSigner);
     if (new Set(signers.map((candidate) => candidate.signer_id)).size !== signers.length) {
@@ -249,7 +284,7 @@ async function loadTokenContext(entities: Record<string, any>, tokenDigest: stri
         || binding?.storage_mode !== 'private' || binding?.version !== 2
         || binding?.content_sha256 !== signature.document_content_sha256
         || typeof binding?.file_uri !== 'string'
-        || (!binding.file_uri.startsWith('private/') && !binding.file_uri.startsWith('private://'))) {
+        || !isPrivateFileUri(binding.file_uri)) {
       throw new PublicError(401, 'Invalid or expired token');
     }
     documents.push({
@@ -266,11 +301,13 @@ async function loadTokenContext(entities: Record<string, any>, tokenDigest: stri
       binding_version: binding.version,
     });
   }
+  const deadline = currentDeadline(token, pkg, authoritySignatures);
   return {
     token: {
       id: tokenId, agency_id: agencyId, package_id: packageId, signer_id: signerId,
       signer_email: signerEmail, signer_name: token.signer_name,
       expires_at: token.expires_at, authority_version: token.authority_version,
+      access_count: token.access_count,
     },
     package: {
       id: packageId, agency_id: agencyId, patient_id: patientId, package_name: pkg.package_name,
@@ -278,7 +315,32 @@ async function loadTokenContext(entities: Record<string, any>, tokenDigest: stri
       document_signatures: liveIds,
     },
     documents,
+    deadline,
   };
+}
+
+async function claimReviewAccess(entities: Record<string, any>, tokenDigest: string, initial: Record<string, any>) {
+  if (initial.token.access_count >= MAX_REVIEW_ACCESSES) {
+    throw new PublicError(429, 'This signing link has reached its review limit; request a new link');
+  }
+  const result = await entities.DocumentPackageToken.updateMany({
+    id: initial.token.id, token: tokenDigest, token_hashed: true,
+    status: 'active', is_active: true, authority_version: initial.token.authority_version,
+    access_count: initial.token.access_count, expires_at: initial.token.expires_at,
+  }, { $set: {
+    access_count: initial.token.access_count + 1,
+    authority_version: initial.token.authority_version + 1,
+    last_accessed_at: new Date().toISOString(),
+  } });
+  if (result?.success !== true || result?.updated !== 1 || result?.has_more !== false) {
+    throw new PublicError(409, 'Signing access changed; retry document review');
+  }
+  const expected = { ...initial, token: { ...initial.token,
+    access_count: initial.token.access_count + 1, authority_version: initial.token.authority_version + 1,
+  } };
+  const confirmed = await loadTokenContext(entities, tokenDigest);
+  if (!sameValue(expected, confirmed)) throw new PublicError(409, 'Signing authority changed during document review');
+  return confirmed;
 }
 
 Deno.serve(async (req) => {
@@ -294,7 +356,7 @@ Deno.serve(async (req) => {
     const agreement = await configuredAgreement();
     const base44 = createClientFromRequest(req);
     const entities = base44.asServiceRole.entities;
-    const initial = await loadTokenContext(entities, tokenDigest);
+    const initial = await claimReviewAccess(entities, tokenDigest, await loadTokenContext(entities, tokenDigest));
     const requestId = crypto.randomUUID();
     const occurredAt = new Date().toISOString();
     const ip = String(req.headers.get('cf-connecting-ip')
@@ -313,6 +375,7 @@ Deno.serve(async (req) => {
 
     const signedDocuments = [];
     for (const document of initial.documents) {
+      if (document.status !== 'pending') continue;
       const reviewNonce = generateOpaqueSecret();
       const grantDigest = await sha256(reviewNonce);
       const grantExpiresAt = new Date(Math.min(

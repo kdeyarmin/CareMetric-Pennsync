@@ -56,6 +56,12 @@ function canonicalEmail(value: unknown) {
   return email && email.length <= 320 && email.includes('@') && !/\s/.test(email) ? email : null;
 }
 
+function isPrivateFileUri(value: unknown) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 4096
+    && !/\s/.test(value) && (value.startsWith('private/') || value.startsWith('private://')
+      || /^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value));
+}
+
 function validInstant(value: unknown) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
@@ -77,6 +83,11 @@ function deriveAuthorityDeadline(pkg: Record<string, any>, signatures: Array<Rec
     const packageDeadline = dueDateEnd(pkg.due_date);
     if (packageDeadline == null) throw new PublicError(409, 'Signature package deadline is invalid');
     deadlines.push(packageDeadline);
+  }
+  for (const field of ['expires_at', 'expiration_date']) {
+    if (pkg[field] == null) continue;
+    if (!validInstant(pkg[field])) throw new PublicError(409, 'Signature package deadline is invalid');
+    deadlines.push(Date.parse(pkg[field]));
   }
   for (const signature of signatures) {
     if (signature?.due_date != null) {
@@ -239,6 +250,7 @@ async function loadDispatchTarget(entities: Record<string, any>, reminder: Recor
       id: signature.document_binding_id, agency_id: reminder.agencyId, document_id: signature.document_id,
     }, 'DocumentTenantBinding');
     if (binding.patient_id !== patientId || binding.storage_mode !== 'private' || binding.version !== 2
+        || !isPrivateFileUri(binding.file_uri)
         || binding.content_sha256 !== signature.document_content_sha256) {
       throw new PublicError(409, 'Signature source binding is invalid');
     }
