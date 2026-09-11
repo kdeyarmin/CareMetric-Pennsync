@@ -13,9 +13,10 @@ const MAX_SCAN = 10000;
 export const centralAdminOperations = [
   'capabilities', 'overview', 'organizations.list', 'users.list',
   'billing.overview', 'billing.subscriptions.list',
+  'support.identity.resolve',
 ] as const;
 type OperationName = typeof centralAdminOperations[number];
-type Operation = { operation: OperationName; search: string; limit: number; offset: number };
+type Operation = { operation: OperationName; search: string; limit: number; offset: number; sourceUserId?:string;sourceAccountId?:string };
 type Row = Record<string, unknown>;
 type Env = (name: string) => string | undefined;
 type Entity = { filter: (query: Row, sort: string, limit: number, offset: number, fields: string[]) => Promise<unknown> };
@@ -157,6 +158,10 @@ function parseOperation(value: unknown): Operation {
     const row = object(value);
     if (!centralAdminOperations.includes(row.operation as OperationName)) return fail();
     const operation = row.operation as OperationName;
+    if(operation==='support.identity.resolve') {
+      if(Object.keys(row).sort().join(',')!=='operation,sourceAccountId,sourceUserId')return fail();
+      return {operation,sourceUserId:nativeId(row.sourceUserId),sourceAccountId:nativeId(row.sourceAccountId),search:'',limit:20,offset:0};
+    }
     const allowed = operation.endsWith('.list') ? ['operation', 'limit', 'offset', 'search'] : ['operation'];
     if (Object.keys(row).some(key => !allowed.includes(key))) return fail();
     const limit = row.limit ?? 20;
@@ -170,7 +175,9 @@ function parseOperation(value: unknown): Operation {
 }
 
 function matchesSmsOperation(value: unknown, operation: Operation): boolean {
-  const expected: Row = operation.operation.endsWith('.list')
+  const expected: Row = operation.operation==='support.identity.resolve'
+    ? {operation:operation.operation,sourceUserId:operation.sourceUserId,sourceAccountId:operation.sourceAccountId}
+    : operation.operation.endsWith('.list')
     ? { operation: operation.operation, limit: operation.limit, offset: operation.offset, ...(operation.search ? { search: operation.search } : {}) }
     : { operation: operation.operation };
   const actual = object(value);
@@ -278,6 +285,7 @@ export function createCentralAdminHandler({
       try { operation = parseOperation(await readJson(request, 2048, signal)); }
       catch { return fail(400, 'invalid_request'); }
       stage = 'hub_authorization';
+      if(operation.operation==='support.identity.resolve'&&!sms)return fail(401,'unauthenticated');
       const response = await fetcher(sms ? SMS_AUTHORIZATION_URL : `${HUB_ORIGIN}/rest/v1/rpc/authorize_platform_admin`, {
         // Hosted fetch fails at redirect:'error' before exposing a response.
         // Manual mode never follows Location; reject redirects below before any
@@ -385,6 +393,23 @@ export function createCentralAdminHandler({
       let data: unknown;
       if (operation.operation === 'capabilities') {
         data = { apiVersion: 1, operations: [...centralAdminOperations], sourceRevision: config.revision };
+      } else if (operation.operation === 'support.identity.resolve') {
+        const sourceUserId=nativeId(operation.sourceUserId),sourceAccountId=nativeId(operation.sourceAccountId);
+        const membershipKey=`${sourceAccountId}:${sourceUserId}`;
+        const [targetRows,accountRows,membershipRows]=await Promise.all([
+          bounded(entities.User.filter({id:sourceUserId},'id',2,0,['id','role','is_active','updated_date']),signal),
+          bounded(entities.Agency.filter({id:sourceAccountId},'id',2,0,['id','status','updated_date']),signal),
+          bounded(entities.AgencyMembership.filter({membership_key:membershipKey},'id',2,0,['id','user_id','agency_id','membership_key','tenant_role','status','version','revoked_at']),signal),
+        ]);
+        const targets=rows(targetRows,2),accounts=rows(accountRows,2),members=rows(membershipRows,2);
+        const u=targets[0],a=accounts[0],m=members[0];
+        if(targets.length!==1||accounts.length!==1||members.length!==1||u.id!==sourceUserId||!['admin','user'].includes(String(u.role))||u.is_active===false
+          ||a.id!==sourceAccountId||!['active','trial'].includes(String(a.status))||m.user_id!==sourceUserId||m.agency_id!==sourceAccountId||m.membership_key!==membershipKey
+          ||m.status!=='active'||m.revoked_at!=null||!['agency_admin','manager','clinician','office_staff','social_worker','spiritual_care'].includes(String(m.tenant_role))
+          ||typeof m.version!=='number'||!Number.isSafeInteger(m.version)||m.version<1) return fail(403,'forbidden');
+        const evidence=JSON.stringify(['pennsync',APP_ID,sourceUserId,sourceAccountId,u.role,timestamp(u.updated_date),a.status,timestamp(a.updated_date),nativeId(m.id),m.tenant_role,m.version]);
+        const revision=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(evidence))),b=>b.toString(16).padStart(2,'0')).join('');
+        data={product:'pennsync',sourceUserId,sourceAccountId,accountKind:'agency',relationship:'agency_member',revision};
       } else if (operation.operation === 'overview') {
         const [agencies, profiles, subscriptions] = await Promise.all([
           scan('Agency', {}, ['id']), staff(['id', 'role']), scan('Subscription', {}, ['id']),

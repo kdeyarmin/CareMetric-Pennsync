@@ -50,6 +50,9 @@ jobs:
       - name: Run tests
         run: pnpm test
 
+      - name: Verify protected support account proof
+        run: node --test base44/functionTests/supportIdentityContract.test.js
+
       # BLOCKING gate. The worksheet is the artifact a clinical reviewer signs,
       # so a drifted copy means the review on file describes item definitions the
       # app no longer has.

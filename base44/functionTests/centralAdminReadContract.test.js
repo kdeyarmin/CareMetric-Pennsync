@@ -171,7 +171,7 @@ for (const headers of [
     assert.equal(fixture.requests.length, 0);
   });
 }
-for (const operation of nativeModule.centralAdminOperations) {
+for (const operation of nativeModule.centralAdminOperations.filter(name=>name!=='support.identity.resolve')) {
   test(`actual ${operation} producer contains only safe SaaS metadata`, async () => {
     const fixture = makeFixture({ extraFields: true });
     const { response, body } = await result(fixture, { operation });
