@@ -161,7 +161,9 @@ export function createCentralAdminHandler({
       const config = readCentralAdminConfig(getEnv);
       if (!config) return fail(503, 'unconfigured');
       if (request.method !== 'POST') return fail(405, 'method_not_allowed');
-      if (request.headers.has('Origin') || request.headers.has('Cookie')) return fail(403, 'forbidden');
+      // Empty proxy fields carry neither a browser origin nor cookie credentials.
+      // Reject every nonempty value, including the browser's literal null origin.
+      if (request.headers.get('Origin')?.trim() || request.headers.get('Cookie')?.trim()) return fail(403, 'forbidden');
       if (request.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
         return fail(415, 'unsupported_content_type');
       }
