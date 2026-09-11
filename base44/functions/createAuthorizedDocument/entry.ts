@@ -1,5 +1,110 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: builtInCreatorMatches — generated, edit base44/_shared/backendHelpers.mjs>>>
+function builtInCreatorMatches(row, userId, email) {
+  if (typeof userId !== 'string' || !userId || userId.trim() !== userId
+    || typeof email !== 'string' || !email.includes('@') || email !== email.trim().toLowerCase()) return false;
+  return (row?.created_by_id != null || row?.created_by != null)
+    && (row.created_by_id == null || row.created_by_id === userId)
+    && (row.created_by == null || row.created_by === email);
+}
+// <<<END SHARED HELPER: builtInCreatorMatches>>>
+
+// <<<BEGIN SHARED HELPER: backendThrottleResponse — generated, edit base44/_shared/backendHelpers.mjs>>>
+function backendThrottleResponse(error) {
+  const status = Number(error?.response?.status ?? error?.status);
+  if (status !== 429 && status !== 503) return null;
+  return Response.json({ error: 'Service temporarily busy; retry the same request.',
+    code: 'backend_temporarily_unavailable', retry_with_same_key: true },
+    { status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '60' } });
+}
+// <<<END SHARED HELPER: backendThrottleResponse>>>
+
+// <<<BEGIN SHARED HELPER: faxQueueCreationReservation — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function faxQueueCreationKey(kind, resourceKey) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(JSON.stringify([kind, resourceKey]))));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+async function reserveFaxQueueCreation(entities, agencyId, kind, resourceKey) {
+  const key = await faxQueueCreationKey(kind, resourceKey);
+  const rows = await entities.Agency.filter({ id: agencyId }, undefined, 2);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== agencyId
+    || !['active', 'trial'].includes(rows[0].status)
+    || !Number.isFinite(Date.parse(rows[0].updated_date || ''))) return null;
+  const agency = rows[0];
+  const previous = agency.fax_workflow_reservations;
+  if (previous != null && (typeof previous !== 'object' || Array.isArray(previous))) return null;
+  const reservations = previous || {};
+  if (Object.keys(reservations).length >= 500 || Object.hasOwn(reservations, key)) return null;
+  const token = crypto.randomUUID();
+  const result = await entities.Agency.updateMany({
+    id: agencyId, status: agency.status, updated_date: agency.updated_date,
+    fax_workflow_reservations: Object.hasOwn(agency, 'fax_workflow_reservations')
+      ? previous : { $exists: false },
+  }, { $set: { fax_workflow_reservations: { ...reservations, [key]: token } } }).catch(() => null);
+  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) {
+    await releaseFaxQueueCreation(entities, { agencyId, key, token }).catch(() => false);
+    return null;
+  }
+  const verified = await entities.Agency.filter({ id: agencyId }, undefined, 2).catch(() => null);
+  if (!Array.isArray(verified) || verified.length !== 1 || verified[0]?.id !== agencyId
+    || verified[0].fax_workflow_reservations?.[key] !== token) {
+    await releaseFaxQueueCreation(entities, { agencyId, key, token }).catch(() => false);
+    return null;
+  }
+  return { agencyId, key, token };
+}
+async function releaseFaxQueueCreation(entities, reservation) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let rows;
+    try {
+      rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
+    } catch (error) {
+      if (await waitFaxReservationThrottle(error, attempt)) continue;
+      return false;
+    }
+    if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== reservation.agencyId) return false;
+    const row = rows[0];
+    const previous = row.fax_workflow_reservations;
+    if (previous == null || !Object.hasOwn(previous, reservation.key)) return true;
+    if (previous[reservation.key] !== reservation.token) return false;
+    const remaining = { ...previous };
+    delete remaining[reservation.key];
+    let writeError;
+    const result = await entities.Agency.updateMany({
+      id: row.id, updated_date: row.updated_date, fax_workflow_reservations: previous,
+    }, { $set: { fax_workflow_reservations: remaining } }).catch(error => { writeError = error; return null; });
+    if (result?.success === true && result.updated === 1 && result.has_more === false) return true;
+    if (writeError && Number(writeError.response?.status ?? writeError.status) === 429
+      && !await waitFaxReservationThrottle(writeError, attempt)) return false;
+    // A different key can change this shared map. Reload without dropping that
+    // writer's entry; a lost successful response is also recovered by absence.
+  }
+  return false;
+}
+async function waitFaxReservationThrottle(error, attempt) {
+  if (Number(error?.response?.status ?? error?.status) !== 429 || attempt >= 4) return false;
+  const retryAfterRaw = error?.response?.headers?.['retry-after'] ?? error?.headers?.['retry-after'] ?? 0;
+  const retryAfter = Number.isFinite(Number(retryAfterRaw)) ? Number(retryAfterRaw)
+    : (Date.parse(String(retryAfterRaw)) - Date.now()) / 1000;
+  // Longer throttles remain fenced for the next same-key request. Short ones
+  // get at most 11 seconds of total backoff; never retry a known longer limit early.
+  const delay = Math.min(1000 * 2 ** attempt, 4000);
+  if (Number.isFinite(retryAfter) && retryAfter * 1000 > delay) return false;
+  await new Promise(resolve => setTimeout(resolve, delay));
+  return true;
+}
+async function releaseRecoveredFaxQueueCreation(entities, agencyId, kind, resourceKey, child) {
+  const token = child?.queue_creation_reservation_token;
+  if (token == null) return true; // Pre-protocol children have no reservation.
+  if (typeof token !== 'string' || !/^[a-f0-9-]{36}$/.test(token)) return false;
+  return releaseFaxQueueCreation(entities, {
+    agencyId, key: await faxQueueCreationKey(kind, resourceKey), token,
+  });
+}
+// <<<END SHARED HELPER: faxQueueCreationReservation>>>
+
 /**
  * Source-only Document creation authority boundary.
  *
@@ -328,6 +433,7 @@ function patientAuthoritySnapshot(row: Record<string, any>) {
     created_by_user_id: row.created_by_user_id,
     created_by_user_email_normalized: row.created_by_user_email_normalized,
     created_by: row.created_by,
+    created_by_id: row.created_by_id,
     client_request_id: row.client_request_id,
     patient_creation_key: row.patient_creation_key,
     status: row.status,
@@ -469,7 +575,7 @@ async function loadExactAuthorizedPatient(
     !creatorId
     || !creatorEmail
     || patient.created_by_user_email_normalized !== creatorEmail
-    || canonicalEmail(patient.created_by) !== creatorEmail
+    || !builtInCreatorMatches(patient, creatorId, creatorEmail)
     || !clientRequestId
     || patient.patient_creation_key !== `${agencyId}:${creatorId}:${clientRequestId}`
     || !PATIENT_STATUSES.has(String(patient.status || ''))
@@ -597,7 +703,8 @@ function exactPrivateFileUri(value: unknown) {
     || value.trim() !== value
     || /[\u0000-\u0020\u007f]/.test(value)
   ) return null;
-  if (!value.startsWith('private/') && !value.startsWith('private://')) return null;
+  if (!value.startsWith('private/') && !value.startsWith('private://')
+    && !/^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value)) return null;
   return value;
 }
 
@@ -618,6 +725,7 @@ function documentMatches(
     purpose: string;
     patientId: string | null;
     normalizedEmail: string;
+    userId: string;
     documentDate: string;
   },
 ) {
@@ -631,8 +739,7 @@ function documentMatches(
     && optionalPatientMatches(row.patient_id, expected.patientId)
     && row.uploaded_by === expected.normalizedEmail
     && canonicalEmail(row.uploaded_by) === expected.normalizedEmail
-    && row.created_by === expected.normalizedEmail
-    && canonicalEmail(row.created_by) === expected.normalizedEmail
+    && builtInCreatorMatches(row, expected.userId, expected.normalizedEmail)
     && row.document_date === expected.documentDate
     && sameJson(row.tags, [expected.purpose])
     && row.is_sensitive === true;
@@ -667,6 +774,8 @@ function bindingMatchesReplay(
     && row.membership_version >= 1
     && row.document_created_by_email_normalized === expected.actor.normalizedEmail
     && canonicalEmail(row.document_created_by_email_normalized) === expected.actor.normalizedEmail
+    && (row.document_created_by_id == null || !!exactIdentifier(row.document_created_by_id))
+    && (row.queue_creation_reservation_token == null || /^[a-f0-9-]{36}$/.test(row.queue_creation_reservation_token))
     && row.storage_mode === 'private'
     && !!exactPrivateFileUri(row.file_uri)
     && row.file_name === expected.fileName
@@ -685,6 +794,8 @@ function bindingMatchesCreation(
   expected: Record<string, any>,
 ) {
   return bindingMatchesReplay(row, expected)
+    && (row.document_created_by_id ?? null) === (expected.documentCreatorId ?? null)
+    && row.queue_creation_reservation_token === expected.reservationToken
     && row.document_id === expected.documentId
     && row.membership_version === expected.membershipVersion
     && row.storage_mode === 'private'
@@ -776,6 +887,7 @@ async function resolveReplay(
     purpose: expected.purpose,
     patientId: expected.patientId,
     normalizedEmail: expected.actor.normalizedEmail,
+    userId: binding.document_created_by_id ?? expected.actor.userId,
     documentDate: String(binding.created_at).slice(0, 10),
   };
   if (!documentMatches(document, documentExpected)) {
@@ -785,6 +897,10 @@ async function resolveReplay(
 }
 
 Deno.serve(async (req) => {
+  let failureStage = 'authorize';
+  let reservation = null;
+  let reservationEntities = null;
+  let documentCreateStarted = false;
   try {
     if (req.method !== 'POST') {
       return Response.json(
@@ -827,19 +943,39 @@ Deno.serve(async (req) => {
     const replay = await resolveReplay(initial.entities, existingRows, replayExpected, initial);
     if (replay) {
       await loadAuthority(base44, input, initial.snapshot);
+      if (!await releaseRecoveredFaxQueueCreation(initial.entities, input.agencyId, 'document', bindingKey, existingRows[0])) {
+        throw new PublicError(503, 'Document upload recovery is pending');
+      }
       return Response.json(replay);
+    }
+
+    // The existing protected Agency serializes the entire upload/create path.
+    // A timed-out create retains ownership; an empty query cannot prove that a
+    // delayed Document or binding write will never commit.
+    reservationEntities = initial.entities;
+    reservation = await reserveFaxQueueCreation(initial.entities, input.agencyId, 'document', bindingKey);
+    if (!reservation) throw new PublicError(409, 'Document upload is already in progress or requires recovery');
+    const reservedRows = await loadBindingRows(initial.entities, bindingKey);
+    const reservedReplay = await resolveReplay(initial.entities, reservedRows, replayExpected, initial);
+    if (reservedReplay) {
+      await loadAuthority(base44, input, initial.snapshot);
+      if (!await releaseFaxQueueCreation(initial.entities, reservation)) throw new PublicError(503, 'Document upload recovery is pending');
+      reservation = null;
+      return Response.json(reservedReplay);
     }
 
     // Re-prove immediately before the irreversible private upload. File deletion
     // is not exposed by this SDK; an authority change after this point can leave
     // an unbound private object, which remains reconciliation debt.
     await loadAuthority(base44, input, initial.snapshot);
+    failureStage = 'private_upload';
     const uploadResult = await base44.asServiceRole.integrations.Core.UploadPrivateFile({
       file: input.file,
     });
     const fileUri = exactPrivateFileUri(uploadResult?.file_uri);
     if (!fileUri) throw new Error('UploadPrivateFile returned an invalid URI');
 
+    failureStage = 'pre_create_authority';
     const beforeCreate = await loadAuthority(base44, input, initial.snapshot);
     const concurrentRows = await loadBindingRows(beforeCreate.entities, bindingKey);
     const concurrentReplay = await resolveReplay(
@@ -850,6 +986,8 @@ Deno.serve(async (req) => {
     );
     if (concurrentReplay) {
       await loadAuthority(base44, input, initial.snapshot);
+      if (!await releaseFaxQueueCreation(initial.entities, reservation)) throw new PublicError(503, 'Document upload recovery is pending');
+      reservation = null;
       return Response.json(concurrentReplay);
     }
 
@@ -868,11 +1006,18 @@ Deno.serve(async (req) => {
       created_by: initial.actor.normalizedEmail,
       is_sensitive: true,
     };
+    failureStage = 'document_create';
+    documentCreateStarted = true;
     const createdDocument = await beforeCreate.entities.Document.create(documentPayload);
     const documentId = exactIdentifier(createdDocument?.id);
     if (!documentId) throw new Error('Document.create returned no exact id');
+    const documentCreatorId = exactIdentifier(createdDocument.created_by_id);
+    if (createdDocument.created_by_id != null && (!documentCreatorId
+      || (documentCreatorId !== initial.actor.userId && !/^service_[a-f0-9-]{36}$/.test(documentCreatorId)))) {
+      throw new Error('Document.create returned invalid platform provenance');
+    }
 
-    try {
+    {
       const bindingPayload = {
         binding_key: bindingKey,
         document_id: documentId,
@@ -883,6 +1028,8 @@ Deno.serve(async (req) => {
         membership_id: initial.membership.id,
         membership_version: initial.membership.version,
         document_created_by_email_normalized: initial.actor.normalizedEmail,
+        ...(documentCreatorId ? { document_created_by_id: documentCreatorId } : {}),
+        queue_creation_reservation_token: reservation.token,
         storage_mode: 'private',
         file_uri: fileUri,
         file_name: input.fileName,
@@ -895,10 +1042,12 @@ Deno.serve(async (req) => {
         created_at: now,
         last_verified_at: now,
       };
+      failureStage = 'binding_create';
       const createdBinding = await beforeCreate.entities.DocumentTenantBinding.create(bindingPayload);
       const bindingId = exactIdentifier(createdBinding?.id);
       if (!bindingId) throw new Error('DocumentTenantBinding.create returned no exact id');
 
+      failureStage = 'verify_document';
       const exactDocument = await loadExactDocument(beforeCreate.entities, documentId);
       if (!documentMatches(exactDocument, {
         documentId,
@@ -909,16 +1058,20 @@ Deno.serve(async (req) => {
         purpose: input.purpose,
         patientId: input.patientId,
         normalizedEmail: initial.actor.normalizedEmail,
+        userId: documentCreatorId ?? initial.actor.userId,
         documentDate,
       })) {
         throw new Error('Document post-create verification failed');
       }
 
+      failureStage = 'verify_binding';
       const exactBindings = await loadBindingRows(beforeCreate.entities, bindingKey);
       const exactBinding = exactBindings.length === 1 ? exactBindings[0] : null;
       const bindingExpected = {
         ...replayExpected,
         documentId,
+        documentCreatorId,
+        reservationToken: reservation.token,
         membershipVersion: initial.membership.version,
         fileUri,
         createdAt: now,
@@ -932,22 +1085,26 @@ Deno.serve(async (req) => {
         throw new PublicError(409, 'Document binding post-create verification failed');
       }
 
+      failureStage = 'final_authority';
       const finalAuthority = await loadAuthority(base44, input, initial.snapshot);
+      if (!await releaseFaxQueueCreation(initial.entities, reservation)) throw new PublicError(503, 'Document upload recovery is pending');
+      reservation = null;
       return Response.json(narrowResult(true, exactDocument, exactBinding, finalAuthority));
-    } catch (error) {
-      // Never delete a replayed/pre-existing record. Only the Document created
-      // in this request is compensated; Base44 exposes no transaction or private
-      // file deletion primitive, and binding rows are immutable evidence.
-      await beforeCreate.entities.Document.delete(documentId).catch(() => {});
-      throw error;
     }
   } catch (error) {
+    // A binding may commit after a lost acknowledgement. Keep its Document and
+    // reservation once creation starts; an empty read cannot authorize deletion.
+    if (reservation && reservationEntities && !documentCreateStarted) {
+      await releaseFaxQueueCreation(reservationEntities, reservation).catch(() => false);
+    }
     if (error instanceof PublicError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
+    const throttled = backendThrottleResponse(error);
+    if (throttled) return throttled;
     // Static only: filenames, patient identifiers, storage pointers, and SDK details
     // can contain PHI and must never be emitted to function logs.
-    console.error('createAuthorizedDocument failed');
+    console.error('createAuthorizedDocument failed at stage:', failureStage);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
 });

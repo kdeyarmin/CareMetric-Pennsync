@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: builtInCreatorMatches — generated, edit base44/_shared/backendHelpers.mjs>>>
+function builtInCreatorMatches(row, userId, email) {
+  if (typeof userId !== 'string' || !userId || userId.trim() !== userId
+    || typeof email !== 'string' || !email.includes('@') || email !== email.trim().toLowerCase()) return false;
+  return (row?.created_by_id != null || row?.created_by != null)
+    && (row.created_by_id == null || row.created_by_id === userId)
+    && (row.created_by == null || row.created_by === email);
+}
+// <<<END SHARED HELPER: builtInCreatorMatches>>>
+
+// <<<BEGIN SHARED HELPER: backendThrottleResponse — generated, edit base44/_shared/backendHelpers.mjs>>>
+function backendThrottleResponse(error) {
+  const status = Number(error?.response?.status ?? error?.status);
+  if (status !== 429 && status !== 503) return null;
+  return Response.json({ error: 'Service temporarily busy; retry the same request.',
+    code: 'backend_temporarily_unavailable', retry_with_same_key: true },
+    { status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '60' } });
+}
+// <<<END SHARED HELPER: backendThrottleResponse>>>
+
 // <<<BEGIN SHARED HELPER: outboundDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
 const OUTBOUND_DELIVERY_RELEASE_ENV = 'OUTBOUND_DELIVERY_RELEASE';
 const OUTBOUND_DELIVERY_RELEASE_VALUE = 'enabled-v1';
@@ -57,7 +77,13 @@ async function reserveFaxQueueCreation(entities, agencyId, kind, resourceKey) {
 }
 async function releaseFaxQueueCreation(entities, reservation) {
   for (let attempt = 0; attempt < 5; attempt++) {
-    const rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
+    let rows;
+    try {
+      rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
+    } catch (error) {
+      if (await waitFaxReservationThrottle(error, attempt)) continue;
+      return false;
+    }
     if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== reservation.agencyId) return false;
     const row = rows[0];
     const previous = row.fax_workflow_reservations;
@@ -65,14 +91,29 @@ async function releaseFaxQueueCreation(entities, reservation) {
     if (previous[reservation.key] !== reservation.token) return false;
     const remaining = { ...previous };
     delete remaining[reservation.key];
+    let writeError;
     const result = await entities.Agency.updateMany({
       id: row.id, updated_date: row.updated_date, fax_workflow_reservations: previous,
-    }, { $set: { fax_workflow_reservations: remaining } }).catch(() => null);
+    }, { $set: { fax_workflow_reservations: remaining } }).catch(error => { writeError = error; return null; });
     if (result?.success === true && result.updated === 1 && result.has_more === false) return true;
+    if (writeError && Number(writeError.response?.status ?? writeError.status) === 429
+      && !await waitFaxReservationThrottle(writeError, attempt)) return false;
     // A different key can change this shared map. Reload without dropping that
     // writer's entry; a lost successful response is also recovered by absence.
   }
   return false;
+}
+async function waitFaxReservationThrottle(error, attempt) {
+  if (Number(error?.response?.status ?? error?.status) !== 429 || attempt >= 4) return false;
+  const retryAfterRaw = error?.response?.headers?.['retry-after'] ?? error?.headers?.['retry-after'] ?? 0;
+  const retryAfter = Number.isFinite(Number(retryAfterRaw)) ? Number(retryAfterRaw)
+    : (Date.parse(String(retryAfterRaw)) - Date.now()) / 1000;
+  // Longer throttles remain fenced for the next same-key request. Short ones
+  // get at most 11 seconds of total backoff; never retry a known longer limit early.
+  const delay = Math.min(1000 * 2 ** attempt, 4000);
+  if (Number.isFinite(retryAfter) && retryAfter * 1000 > delay) return false;
+  await new Promise(resolve => setTimeout(resolve, delay));
+  return true;
 }
 async function releaseRecoveredFaxQueueCreation(entities, agencyId, kind, resourceKey, child) {
   const token = child?.queue_creation_reservation_token;
@@ -406,7 +447,8 @@ function validInstant(value: unknown) {
 function exactPrivateFileUri(value: unknown) {
   if (typeof value !== 'string' || !value || value.length > 4096 || value.trim() !== value
     || /[\u0000-\u0020\u007f]/.test(value)) return null;
-  return value.startsWith('private/') || value.startsWith('private://') ? value : null;
+  return value.startsWith('private/') || value.startsWith('private://')
+    || /^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value) ? value : null;
 }
 
 function exactHttpsUrl(value: unknown) {
@@ -598,7 +640,9 @@ async function loadInteractiveAuthority(base44: Record<string, any>, agencyId: s
   const userId = exactIdentifier(user?.id);
   const email = canonicalEmail(user?.email);
   if (!user) throw new PublicError(401, 'Unauthorized', 'unauthorized');
-  if (!userId || !email || user.role !== 'user' || user.is_active === false
+  const ownerEmail = canonicalEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  const protectedOwner = user.role === 'admin' && !!ownerEmail && email === ownerEmail;
+  if (!userId || !email || (user.role !== 'user' && !protectedOwner) || user.is_active === false
     || user.disabled === true || user.is_service === true || user.is_verified === false) {
     throw new PublicError(403, 'Forbidden', 'forbidden');
   }
@@ -760,7 +804,7 @@ async function loadBindingSnapshot(entities: Record<string, any>, agencyId: stri
     || document.file_type !== binding.file_type || document.file_size !== binding.file_size
     || document.category !== expectedCategory || (document.patient_id ?? null) !== patientId
     || canonicalEmail(document.uploaded_by) !== creatorEmail || document.uploaded_by !== creatorEmail
-    || canonicalEmail(document.created_by) !== creatorEmail || document.created_by !== creatorEmail
+    || !builtInCreatorMatches(document, binding.document_created_by_id ?? binding.created_by_user_id, creatorEmail)
     || document.document_date !== String(binding.created_at).slice(0, 10)
     || !sameValue(document.tags, [binding.purpose])
     || document.is_sensitive !== true || !validInstant(document.updated_date)) {
@@ -1476,7 +1520,7 @@ async function createSchedule(base44: Record<string, any>, input: Record<string,
       || durable.authorized_by_membership_id !== authority.membershipId
       || durable.integration_secret_id !== credentials.secretId
       || durable.sender_telecom_binding_id !== senderBinding.id) {
-      throw new Error('ScheduledFax could not be verified');
+      throw new PublicError(503, 'Scheduled fax creation verification is pending', 'fax_creation_verification_pending');
     }
     const uniqueSchedules = requireRows(await base44.asServiceRole.entities.ScheduledFax.filter(
       { schedule_key: scheduleKey }, '-created_date', BATCH_EXACT_LIMIT,
@@ -1502,7 +1546,7 @@ async function createSchedule(base44: Record<string, any>, input: Record<string,
   } finally {
     if (!creationStarted || creationVerified) {
       if (!await releaseFaxQueueCreation(base44.asServiceRole.entities, reservation).catch(() => false)) {
-        throw new Error('Confirmed fax creation reservation could not be released');
+        throw new PublicError(503, 'Scheduled fax creation reservation release is pending', 'fax_creation_release_pending');
       }
     }
   }
@@ -1851,6 +1895,8 @@ Deno.serve(async (req) => {
         } : {}),
       }, { status: error.status, headers: NO_STORE_HEADERS });
     }
+    const throttled = backendThrottleResponse(error);
+    if (throttled) return throttled;
     // Do not log request/provider detail: it may include destinations or PHI.
     console.error('sendBatchFax failed');
     return Response.json({

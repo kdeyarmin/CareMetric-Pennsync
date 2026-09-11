@@ -1,5 +1,25 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: builtInCreatorMatches — generated, edit base44/_shared/backendHelpers.mjs>>>
+function builtInCreatorMatches(row, userId, email) {
+  if (typeof userId !== 'string' || !userId || userId.trim() !== userId
+    || typeof email !== 'string' || !email.includes('@') || email !== email.trim().toLowerCase()) return false;
+  return (row?.created_by_id != null || row?.created_by != null)
+    && (row.created_by_id == null || row.created_by_id === userId)
+    && (row.created_by == null || row.created_by === email);
+}
+// <<<END SHARED HELPER: builtInCreatorMatches>>>
+
+// <<<BEGIN SHARED HELPER: backendThrottleResponse — generated, edit base44/_shared/backendHelpers.mjs>>>
+function backendThrottleResponse(error) {
+  const status = Number(error?.response?.status ?? error?.status);
+  if (status !== 429 && status !== 503) return null;
+  return Response.json({ error: 'Service temporarily busy; retry the same request.',
+    code: 'backend_temporarily_unavailable', retry_with_same_key: true },
+    { status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '60' } });
+}
+// <<<END SHARED HELPER: backendThrottleResponse>>>
+
 /**
  * Bounded, keyset-paginated Document list broker.
  *
@@ -95,15 +115,15 @@ const MEMBERSHIP_AUTHORITY_FIELDS = [
 const BINDING_AUTHORITY_FIELDS = [
   'id', 'binding_key', 'document_id', 'agency_id', 'patient_id', 'created_by_user_id',
   'created_by_user_email_normalized', 'membership_id', 'membership_version',
-  'document_created_by_email_normalized', 'storage_mode', 'file_uri', 'file_name', 'file_type', 'file_size',
+  'document_created_by_email_normalized', 'document_created_by_id', 'storage_mode', 'file_uri', 'file_name', 'file_type', 'file_size',
   'content_sha256', 'client_request_id', 'purpose', 'version', 'created_at', 'last_verified_at',
 ];
 const DOCUMENT_AUTHORITY_FIELDS = [
-  'id', 'title', 'file_url', 'file_name', 'file_size', 'file_type', 'category', 'patient_id',
+  'id', 'created_by_id', 'title', 'file_url', 'file_name', 'file_size', 'file_type', 'category', 'patient_id',
   'tags', 'document_date', 'uploaded_by', 'created_by', 'is_sensitive', 'updated_date',
 ];
 const PATIENT_AUTHORITY_FIELDS = [
-  'id', 'agency_id', 'created_by_user_id', 'created_by_user_email_normalized', 'created_by',
+  'id', 'created_by_id', 'agency_id', 'created_by_user_id', 'created_by_user_email_normalized', 'created_by',
   'client_request_id', 'patient_creation_key', 'is_sample', 'is_archived', 'status', 'updated_date',
 ];
 const ASSIGNMENT_AUTHORITY_FIELDS = [
@@ -169,7 +189,8 @@ function exactPrivateFileUri(value: unknown) {
     || value.trim() !== value
     || /[\u0000-\u0020\u007f]/.test(value)
   ) return null;
-  if (!value.startsWith('private/') && !value.startsWith('private://')) return null;
+  if (!value.startsWith('private/') && !value.startsWith('private://')
+    && !/^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value)) return null;
   return value;
 }
 
@@ -442,17 +463,9 @@ async function loadAuthority(
     'AgencyMembership.filter',
   );
   let selected: Record<string, any> | null = null;
-  if (isPlatformOwner) {
-    if (rawMemberships.length >= MEMBERSHIP_SCAN_LIMIT) {
-      throw new PublicError(409, 'Tenant membership is ambiguous');
-    }
-    if (rawMemberships.some((row) => row?.user_id !== userId)) {
-      throw new PublicError(409, 'Tenant membership query scope could not be verified');
-    }
-    if (rawMemberships.length !== 0) {
-      throw new PublicError(409, 'Platform owner tenant membership must not exist');
-    }
-  } else {
+  // Match the upload/fax tenant scope for an enrolled protected owner. Never
+  // fall back to owner scope when an existing enrollment is revoked or foreign.
+  if (!isPlatformOwner || rawMemberships.length > 0) {
     const memberships = validateMembershipRows(rawMemberships, userId, normalizedEmail);
     selected = memberships.find(
       (row) => row.agency_id === agencyId && row.status === 'active',
@@ -519,8 +532,8 @@ function validatePatientIntegrity(row: Record<string, any>, patientId: string, a
   const clientRequestId = exactIdentifier(row?.client_request_id);
   if (
     row?.id !== patientId || row.agency_id !== agencyId || !creatorId || !creatorEmail
-    || row.created_by_user_email_normalized !== creatorEmail || row.created_by !== creatorEmail
-    || canonicalEmail(row.created_by) !== creatorEmail || !clientRequestId
+    || row.created_by_user_email_normalized !== creatorEmail
+    || !builtInCreatorMatches(row, creatorId, creatorEmail) || !clientRequestId
     || row.patient_creation_key !== `${agencyId}:${creatorId}:${clientRequestId}`
     || row.is_sample !== false || row.is_archived !== false
     || !PATIENT_STATUSES.has(String(row.status || '')) || !validInstant(row.updated_date)
@@ -734,8 +747,7 @@ function validateDocumentIntegrity(
     || row.category !== PURPOSE_CATEGORY[binding.purpose] || patientId !== binding.patient_id
     || row.uploaded_by !== binding.document_created_by_email_normalized
     || canonicalEmail(row.uploaded_by) !== binding.document_created_by_email_normalized
-    || row.created_by !== binding.document_created_by_email_normalized
-    || canonicalEmail(row.created_by) !== binding.document_created_by_email_normalized
+    || !builtInCreatorMatches(row, binding.document_created_by_id ?? binding.created_by_user_id, binding.document_created_by_email_normalized)
     || row.document_date !== String(binding.created_at).slice(0, 10)
     || !sameValue(row.tags, [binding.purpose]) || row.is_sensitive !== true
     || !validInstant(row.updated_date)
@@ -1011,6 +1023,8 @@ Deno.serve(async (req) => {
     if (error instanceof PublicError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
+    const throttled = backendThrottleResponse(error);
+    if (throttled) return throttled;
     // Never log provider details that may embed predicates, filenames, URLs, or PHI.
     console.error('listAuthorizedDocuments failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });

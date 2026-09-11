@@ -39,7 +39,15 @@
     "document_created_by_email_normalized": {
       "type": "string",
       "format": "email",
-      "description": "Exact normalized email stamped into Document.created_by and Document.uploaded_by."
+      "description": "Exact normalized actor email stamped into Document.uploaded_by and legacy Document.created_by when supported."
+    },
+    "document_created_by_id": {
+      "type": "string",
+      "description": "Exact platform creator id returned by the service-owned Document.create operation. The hosted service account differs from the authenticated human creator retained in created_by_user_id."
+    },
+    "queue_creation_reservation_token": {
+      "type": "string",
+      "description": "Opaque owner token for the protected Agency reservation that serialized this document upload. Used only to release this exact completed creation after a lost acknowledgement."
     },
     "storage_mode": {
       "type": "string",
