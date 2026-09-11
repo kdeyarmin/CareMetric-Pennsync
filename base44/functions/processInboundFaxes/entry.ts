@@ -867,7 +867,8 @@ async function loadActiveRecipient(
   if (rows.length >= MEMBERSHIP_SCAN_LIMIT || rows.some((row) => (
     row?.agency_id !== referral.agency_id || row?.user_id !== referral.created_by_user_id
   ))) throw new PublicError(409, 'Notification recipient scope is ambiguous');
-  if (rows.length !== 1) return null;
+  if (rows.length > 1) throw new PublicError(409, 'Notification recipient scope is ambiguous');
+  if (rows.length === 0) return null;
   const membership = rows[0];
   const email = canonicalEmail(membership.user_email_normalized);
   const transitionEmail = canonicalEmail(membership.last_transition_by_email_normalized);
@@ -1021,7 +1022,15 @@ async function ensureNotification(
     }
   } else {
     recipient = await loadActiveRecipient(entities, referral);
-    if (!recipient) throw new Error('Inbound fax notification recipient is unavailable');
+    if (!recipient) {
+      if (fax.processing_notification_state !== 'ready' || fax.processing_notification_intent != null) {
+        throw new Error('Inbound fax notification requires reconciliation');
+      }
+      // A legitimately absent recipient is terminal for this alert, not an OCR
+      // failure. Keep the completed document available to authorized staff.
+      await finalizeFax(entities, fax, { ...completion, processing_notification_state: 'skipped_no_recipient' });
+      return;
+    }
   }
   const expected = faxNotification(referral, fax.id, recipient, kind);
   const query = { dedupe_key: expected.dedupe_key };

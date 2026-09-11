@@ -193,7 +193,7 @@ function validateFax(
       || row.routed_to !== `ReferralFollowUp:${input.referralId}`
     ) : (
       row.status !== 'unread' || row.ai_category !== 'referral'
-      || row.suggested_routing !== 'admin' || row.processing_notification_state !== 'completed'
+      || row.suggested_routing !== 'admin' || !['completed', 'skipped_no_recipient'].includes(row.processing_notification_state)
     ))
     || row.suggested_referral_id !== input.referralId
   ) throw new PublicError(409, 'Referral fax document is unavailable');

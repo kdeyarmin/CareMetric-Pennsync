@@ -514,14 +514,20 @@ test('future retries and quarantined rows never enter OCR', async () => {
   }
 });
 
-test('missing recipients defer the fax and report failure without completing it', async () => {
-  const runtime = makeRuntime();
-  runtime.data.AgencyMembership = [];
-  const handler = await loadHandler(() => runtime.client);
-  assert.equal((await handler(request())).status, 500);
-  assert.equal(runtime.data.IncomingFax[0].processing_status, 'pending');
-  assert.ok(runtime.data.IncomingFax[0].processing_next_attempt_at);
-  assert.equal(runtime.data.Notification.length, 0);
+test('missing or inactive recipients finish the document once without publishing an alert', async () => {
+  for (const state of ['missing', 'suspended', 'revoked']) {
+    const runtime = makeRuntime();
+    if (state === 'missing') runtime.data.AgencyMembership = [];
+    else Object.assign(runtime.data.AgencyMembership[0], { status: state, ...(state === 'revoked' ? { revoked_at: new Date().toISOString(), revocation_reason: 'Test revocation' } : {}) });
+    const handler = await loadHandler(() => runtime.client);
+    assert.equal((await handler(request())).status, 200, state);
+    assert.equal(runtime.data.IncomingFax[0].processing_status, 'completed');
+    assert.equal(runtime.data.IncomingFax[0].processing_notification_state, 'skipped_no_recipient');
+    assert.equal(runtime.data.IncomingFax[0].processing_next_attempt_at, null);
+    assert.equal(runtime.data.Notification.length, 0);
+    assert.equal((await handler(request())).status, 200);
+    assert.equal(runtime.getLlmCalls(), 1, 'replay never repeats billable OCR');
+  }
 });
 
 test('uncertain notification creates reconcile once without repeating OCR or publishing again', async () => {

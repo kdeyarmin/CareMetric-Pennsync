@@ -97,8 +97,8 @@
     },
     "processing_notification_state": {
       "type": "string",
-      "enum": ["ready", "started", "completed"],
-      "description": "Producer-assigned one-shot notification fence. Legacy absence and started intents are reconciliation-only. Never default to ready."
+      "enum": ["ready", "started", "completed", "skipped_no_recipient"],
+      "description": "Producer-assigned one-shot notification fence. Legacy absence and started intents are reconciliation-only. A ready publication with no active recipient may finish as skipped_no_recipient, leaving the completed document available. Never default to ready."
     },
     "processing_notification_intent": {
       "type": "object",

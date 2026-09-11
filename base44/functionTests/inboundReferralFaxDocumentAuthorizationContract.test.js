@@ -188,6 +188,19 @@ test('a suggestion can be reviewed without pretending it is an accepted referral
   assert.equal((await response.json()).delivery.download_url, 'https://media.telnyx.test/incoming-a.pdf');
   assert.equal(state.calls.filter((call) => call.type === 'invoke').length, 2);
 });
+test('a completed suggestion remains reviewable when its recipient alert was skipped', async () => {
+  const state = runtime({
+    referral: referralResult({ follow_up_requests: { status: 'sent', items: [] } }),
+    fax: faxRow({ status: 'unread', routed_to: null, routed_at: null,
+      ai_category: 'referral', suggested_routing: 'admin', processing_notification_state: 'skipped_no_recipient' }),
+  });
+  const handler = await loadHandler(() => state.client);
+  const response = await handler(request({ agency_id: 'agency-a', referral_id: 'referral-a',
+    incoming_fax_id: 'incoming-a', relationship: 'suggested' }));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).delivery.download_url, 'https://media.telnyx.test/incoming-a.pdf');
+  assert.equal(state.calls.filter((call) => call.type === 'invoke').length, 2);
+});
 
 test('suggestion requests cannot expose another referral fax or an unfinished result', async () => {
   for (const invalid of [{ suggested_referral_id: 'referral-b' }, { processing_status: 'processing' },
