@@ -20,6 +20,70 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
 }
 // <<<END SHARED HELPER: outboundDeliveryGate>>>
 
+// <<<BEGIN SHARED HELPER: faxQueueCreationReservation — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function faxQueueCreationKey(kind, resourceKey) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(JSON.stringify([kind, resourceKey]))));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+async function reserveFaxQueueCreation(entities, agencyId, kind, resourceKey) {
+  const key = await faxQueueCreationKey(kind, resourceKey);
+  const rows = await entities.Agency.filter({ id: agencyId }, undefined, 2);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== agencyId
+    || !['active', 'trial'].includes(rows[0].status)
+    || !Number.isFinite(Date.parse(rows[0].updated_date || ''))) return null;
+  const agency = rows[0];
+  const previous = agency.fax_workflow_reservations;
+  if (previous != null && (typeof previous !== 'object' || Array.isArray(previous))) return null;
+  const reservations = previous || {};
+  if (Object.keys(reservations).length >= 500 || Object.hasOwn(reservations, key)) return null;
+  const token = crypto.randomUUID();
+  const result = await entities.Agency.updateMany({
+    id: agencyId, status: agency.status, updated_date: agency.updated_date,
+    fax_workflow_reservations: Object.hasOwn(agency, 'fax_workflow_reservations')
+      ? previous : { $exists: false },
+  }, { $set: { fax_workflow_reservations: { ...reservations, [key]: token } } }).catch(() => null);
+  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) {
+    await releaseFaxQueueCreation(entities, { agencyId, key, token }).catch(() => false);
+    return null;
+  }
+  const verified = await entities.Agency.filter({ id: agencyId }, undefined, 2).catch(() => null);
+  if (!Array.isArray(verified) || verified.length !== 1 || verified[0]?.id !== agencyId
+    || verified[0].fax_workflow_reservations?.[key] !== token) {
+    await releaseFaxQueueCreation(entities, { agencyId, key, token }).catch(() => false);
+    return null;
+  }
+  return { agencyId, key, token };
+}
+async function releaseFaxQueueCreation(entities, reservation) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
+    if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== reservation.agencyId) return false;
+    const row = rows[0];
+    const previous = row.fax_workflow_reservations;
+    if (previous == null || !Object.hasOwn(previous, reservation.key)) return true;
+    if (previous[reservation.key] !== reservation.token) return false;
+    const remaining = { ...previous };
+    delete remaining[reservation.key];
+    const result = await entities.Agency.updateMany({
+      id: row.id, updated_date: row.updated_date, fax_workflow_reservations: previous,
+    }, { $set: { fax_workflow_reservations: remaining } }).catch(() => null);
+    if (result?.success === true && result.updated === 1 && result.has_more === false) return true;
+    // A different key can change this shared map. Reload without dropping that
+    // writer's entry; a lost successful response is also recovered by absence.
+  }
+  return false;
+}
+async function releaseRecoveredFaxQueueCreation(entities, agencyId, kind, resourceKey, child) {
+  const token = child?.queue_creation_reservation_token;
+  if (token == null) return true; // Pre-protocol children have no reservation.
+  if (typeof token !== 'string' || !/^[a-f0-9-]{36}$/.test(token)) return false;
+  return releaseFaxQueueCreation(entities, {
+    agencyId, key: await faxQueueCreationKey(kind, resourceKey), token,
+  });
+}
+// <<<END SHARED HELPER: faxQueueCreationReservation>>>
+
 /**
  * handleTelnyxStatusWebhook — the single inbound webhook for the whole Telnyx
  * integration: messaging (inbound SMS + delivery status), fax status, and voice
@@ -1871,33 +1935,56 @@ async function createInboundFax(base44, authority, payload, providerId, mediaUrl
     ? payload.page_count
     : undefined;
   const receivedAt = new Date().toISOString();
-  const created = await base44.asServiceRole.entities.IncomingFax.create({
-    agency_id: authority.agencyId,
-    ingress_binding_id: authority.bindingId,
-    ingress_binding_key: authority.bindingKey,
-    ingress_binding_version: authority.bindingVersion,
-    integration_secret_id: authority.integrationSecretId,
-    received_to_number: authority.destinationE164,
-    user_email: authority.binding.created_by_user_email_normalized,
-    sender_fax_number: sender,
-    received_at: receivedAt,
-    document_url: mediaUrl,
-    ...(pageCount ? { page_count: pageCount } : {}),
-    telnyx_fax_id: providerId,
-    processing_status: processingStatus,
-    status: 'unread',
-    version: 1,
-  });
-  const createdId = boundedTelnyxAuthorityId(created?.id);
-  if (!createdId) throw new Error('IncomingFax.create returned no exact id');
-  const loaded = await loadExactInboundFax(base44, authority, providerId, mediaUrl);
-  if (!loaded.ok || loaded.rows.length !== 1 || loaded.rows[0]?.id !== createdId
-    || loaded.rows[0]?.processing_status !== processingStatus
-    || loaded.rows[0]?.status !== 'unread'
-    || loaded.rows[0]?.received_at !== receivedAt) {
-    throw new Error('Inbound fax creation failed verification');
+  const reservation = await reserveFaxQueueCreation(
+    base44.asServiceRole.entities, authority.agencyId, 'inbound', providerId,
+  );
+  if (!reservation) throw new Error('Inbound fax creation is reserved or unconfirmed');
+  let creationStarted = false;
+  let creationVerified = false;
+  try {
+    const current = await loadExactInboundFax(base44, authority, providerId, mediaUrl);
+    if (!current.ok) throw new Error('Inbound fax creation identity changed');
+    if (current.rows.length === 1) return current.rows[0];
+    creationStarted = true;
+    const created = await base44.asServiceRole.entities.IncomingFax.create({
+      agency_id: authority.agencyId,
+      queue_creation_reservation_token: reservation.token,
+      ingress_binding_id: authority.bindingId,
+      ingress_binding_key: authority.bindingKey,
+      ingress_binding_version: authority.bindingVersion,
+      integration_secret_id: authority.integrationSecretId,
+      received_to_number: authority.destinationE164,
+      user_email: authority.binding.created_by_user_email_normalized,
+      sender_fax_number: sender,
+      received_at: receivedAt,
+      document_url: mediaUrl,
+      ...(pageCount ? { page_count: pageCount } : {}),
+      telnyx_fax_id: providerId,
+      processing_status: processingStatus,
+      processing_notification_state: 'ready',
+      status: 'unread',
+      version: 1,
+    });
+    const createdId = boundedTelnyxAuthorityId(created?.id);
+    if (!createdId) throw new Error('IncomingFax.create returned no exact id');
+    const loaded = await loadExactInboundFax(base44, authority, providerId, mediaUrl);
+    if (!loaded.ok || loaded.rows.length !== 1 || loaded.rows[0]?.id !== createdId
+      || loaded.rows[0]?.processing_status !== processingStatus
+      || loaded.rows[0]?.status !== 'unread'
+      || loaded.rows[0]?.received_at !== receivedAt
+      || loaded.rows[0]?.processing_notification_state !== 'ready'
+      || loaded.rows[0]?.queue_creation_reservation_token !== reservation.token) {
+      throw new Error('Inbound fax creation failed verification');
+    }
+    creationVerified = true;
+    return loaded.rows[0];
+  } finally {
+    if (!creationStarted || creationVerified) {
+      if (!await releaseFaxQueueCreation(base44.asServiceRole.entities, reservation).catch(() => false)) {
+        throw new Error('Confirmed inbound reservation could not be released');
+      }
+    }
   }
-  return loaded.rows[0];
 }
 
 async function claimInboundFaxForward(base44, authority, record) {
@@ -1993,6 +2080,17 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
   const finalAuthority = await resolveActiveTelnyxFaxBinding(base44, telnyxCreds, receivedOn);
   if (!sameInboundFaxAuthority(authority, finalAuthority)) return inboundFaxUnavailable();
   authority = finalAuthority;
+  if (existing.rows.length === 1) {
+    const child = existing.rows[0];
+    if (['pending', 'processing'].includes(child.processing_status)
+      && !['ready', 'started', 'completed'].includes(child.processing_notification_state)) {
+      return inboundFaxUnavailable(409, 'INBOUND_FAX_PUBLICATION_STATE_MISSING');
+    }
+    if (!await releaseRecoveredFaxQueueCreation(base44.asServiceRole.entities,
+      authority.agencyId, 'inbound', providerId, child)) {
+      return inboundFaxUnavailable(503, 'INBOUND_FAX_RESERVATION_UNCONFIRMED');
+    }
+  }
   if (authority.settings.fax_receiving_enabled === true) {
     if (existing.rows.length === 1) {
       return Response.json(
@@ -2082,6 +2180,9 @@ async function handleInboundFax(base44, telnyxCreds, payload) {
     return inboundFaxUnavailable(502, 'INBOUND_FAX_FORWARD_FAILED');
   }
   if (!response.ok) {
+    if (response.status < 400 || response.status >= 500 || [408, 409, 425].includes(response.status)) {
+      return inboundFaxUnavailable(502, 'INBOUND_FAX_FORWARD_REQUIRES_RECONCILIATION');
+    }
     const released = await releaseInboundFaxForwardClaim(base44, authority, record).catch(() => false);
     return released
       ? inboundFaxUnavailable(502, 'INBOUND_FAX_FORWARD_FAILED')
@@ -2234,6 +2335,7 @@ async function handleFaxEvent(base44, telnyxCreds, payload) {
     if (plan.willRetry) {
       update.next_retry_at = plan.nextRetryAt;
       update.retry_count = plan.nextRetryCount;
+      if (plan.nextRetryAt) update.retry_submission_state = 'ready';
     } else {
       // If retry authority/policy cannot be proven, notify instead of silently
       // leaving a failed fax in a state that appears eligible for automation.

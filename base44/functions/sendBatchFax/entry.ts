@@ -20,6 +20,77 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
 }
 // <<<END SHARED HELPER: outboundDeliveryGate>>>
 
+// <<<BEGIN SHARED HELPER: faxQueueCreationReservation — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function faxQueueCreationKey(kind, resourceKey) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(JSON.stringify([kind, resourceKey]))));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+async function reserveFaxQueueCreation(entities, agencyId, kind, resourceKey) {
+  const key = await faxQueueCreationKey(kind, resourceKey);
+  const rows = await entities.Agency.filter({ id: agencyId }, undefined, 2);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== agencyId
+    || !['active', 'trial'].includes(rows[0].status)
+    || !Number.isFinite(Date.parse(rows[0].updated_date || ''))) return null;
+  const agency = rows[0];
+  const previous = agency.fax_workflow_reservations;
+  if (previous != null && (typeof previous !== 'object' || Array.isArray(previous))) return null;
+  const reservations = previous || {};
+  if (Object.keys(reservations).length >= 500 || Object.hasOwn(reservations, key)) return null;
+  const token = crypto.randomUUID();
+  const result = await entities.Agency.updateMany({
+    id: agencyId, status: agency.status, updated_date: agency.updated_date,
+    fax_workflow_reservations: Object.hasOwn(agency, 'fax_workflow_reservations')
+      ? previous : { $exists: false },
+  }, { $set: { fax_workflow_reservations: { ...reservations, [key]: token } } }).catch(() => null);
+  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) {
+    await releaseFaxQueueCreation(entities, { agencyId, key, token }).catch(() => false);
+    return null;
+  }
+  const verified = await entities.Agency.filter({ id: agencyId }, undefined, 2).catch(() => null);
+  if (!Array.isArray(verified) || verified.length !== 1 || verified[0]?.id !== agencyId
+    || verified[0].fax_workflow_reservations?.[key] !== token) {
+    await releaseFaxQueueCreation(entities, { agencyId, key, token }).catch(() => false);
+    return null;
+  }
+  return { agencyId, key, token };
+}
+async function releaseFaxQueueCreation(entities, reservation) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
+    if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== reservation.agencyId) return false;
+    const row = rows[0];
+    const previous = row.fax_workflow_reservations;
+    if (previous == null || !Object.hasOwn(previous, reservation.key)) return true;
+    if (previous[reservation.key] !== reservation.token) return false;
+    const remaining = { ...previous };
+    delete remaining[reservation.key];
+    const result = await entities.Agency.updateMany({
+      id: row.id, updated_date: row.updated_date, fax_workflow_reservations: previous,
+    }, { $set: { fax_workflow_reservations: remaining } }).catch(() => null);
+    if (result?.success === true && result.updated === 1 && result.has_more === false) return true;
+    // A different key can change this shared map. Reload without dropping that
+    // writer's entry; a lost successful response is also recovered by absence.
+  }
+  return false;
+}
+async function releaseRecoveredFaxQueueCreation(entities, agencyId, kind, resourceKey, child) {
+  const token = child?.queue_creation_reservation_token;
+  if (token == null) return true; // Pre-protocol children have no reservation.
+  if (typeof token !== 'string' || !/^[a-f0-9-]{36}$/.test(token)) return false;
+  return releaseFaxQueueCreation(entities, {
+    agencyId, key: await faxQueueCreationKey(kind, resourceKey), token,
+  });
+}
+// <<<END SHARED HELPER: faxQueueCreationReservation>>>
+
+// <<<BEGIN SHARED HELPER: faxWorkflowDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+function faxWorkflowDeliveryReleased() {
+  return outboundDeliveryReleased()
+    || Deno.env.get('OUTBOUND_FAX_WORKFLOW_RELEASE') === 'enabled-v1';
+}
+// <<<END SHARED HELPER: faxWorkflowDeliveryGate>>>
+
 /**
  * Resolve Telnyx credentials from the in-app IntegrationSecret row with
  * provider 'telnyx'.
@@ -1285,7 +1356,7 @@ async function createSchedule(base44: Record<string, any>, input: Record<string,
   if ((initialDelivery.document.patient_id ?? null) !== binding.patientId) {
     throw new PublicError(409, 'Private document fax authority changed', 'fax_authority_unavailable');
   }
-  if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
+  if (!faxWorkflowDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
   const sender = await loadAgencyConfiguration(base44.asServiceRole.entities, input.agencyId);
   const credentials = await loadExactTelnyxCredentials(base44.asServiceRole.entities);
   const senderBinding = await loadExactOutboundFaxBinding(
@@ -1333,74 +1404,108 @@ async function createSchedule(base44: Record<string, any>, input: Record<string,
       || row.document_url != null || row.from_number != null) {
       throw new PublicError(409, 'Scheduled fax request identity was reused with different data', 'fax_identity_conflict');
     }
+    if (['pending', 'deferred'].includes(row.status) && row.dispatch_submission_state !== 'ready') {
+      throw new PublicError(409, 'Scheduled fax submission permission is unavailable', 'fax_authority_unavailable');
+    }
+    if (!await releaseRecoveredFaxQueueCreation(base44.asServiceRole.entities, input.agencyId, 'scheduled', scheduleKey, row)) {
+      throw new PublicError(503, 'Recovered fax reservation could not be released', 'fax_creation_reserved');
+    }
     return { success: true, scheduled: true, deduped: true, scheduled_fax_id: row.id, status: row.status };
   }
-  const row = await base44.asServiceRole.entities.ScheduledFax.create({
-    schedule_key: scheduleKey,
-    client_request_id: input.clientRequestId,
-    authorization_version: 1,
-    agency_id: input.agencyId,
-    document_id: input.documentId,
-    document_binding_id: binding.binding.id,
-    document_binding_version: binding.binding.version,
-    document_content_sha256: binding.binding.content_sha256,
-    provider: 'telnyx',
-    integration_secret_id: credentials.secretId,
-    integration_secret_updated_at: credentials.updatedAt,
-    fax_connection_id: credentials.connectionId,
-    sender_number_e164: sender.fromNumber,
-    sender_telecom_binding_id: senderBinding.id,
-    sender_telecom_binding_version: senderBinding.version,
-    sender_provider_number_id: senderBinding.provider_number_id,
-    sender_settings_id: sender.settings.id,
-    sender_settings_updated_at: sender.settings.updated_date,
-    authorized_by_user_id: authority.userId,
-    authorized_by_email_normalized: authority.email,
-    authorized_by_membership_id: authority.membershipId,
-    authorized_by_membership_version: authority.membershipVersion,
-    authorized_tenant_role: authority.tenantRole,
-    patient_id: binding.patientId,
-    scheduled_time: input.scheduledTime,
-    to_numbers: input.recipients,
-    document_name: input.documentName || initialDelivery.document.file_name,
-    cover_page_details: input.coverPageDetails,
-    priority: input.priority,
-    status: 'pending',
-    accepted_count: 0,
-    failed_count: 0,
-    unknown_count: 0,
-  });
-  const id = exactIdentifier(row?.id);
-  if (!id) throw new Error('ScheduledFax.create returned no exact id');
-  const durable = await findExactSchedule(base44.asServiceRole.entities, id);
-  if (!durable || durable.schedule_key !== scheduleKey || durable.status !== 'pending'
-    || durable.document_url != null || durable.from_number != null
-    || durable.document_binding_id !== binding.binding.id
-    || durable.authorized_by_membership_id !== authority.membershipId
-    || durable.integration_secret_id !== credentials.secretId
-    || durable.sender_telecom_binding_id !== senderBinding.id) {
-    throw new Error('ScheduledFax could not be verified');
+  const reservation = await reserveFaxQueueCreation(
+    base44.asServiceRole.entities, input.agencyId, 'scheduled', scheduleKey,
+  );
+  if (!reservation) throw new PublicError(503, 'Scheduled fax creation is busy or unconfirmed', 'fax_creation_reserved');
+  let creationStarted = false;
+  let creationVerified = false;
+  try {
+    // Recheck after acquiring the existing-row reservation: another creator may
+    // have committed and released while this request was still waiting.
+    const current = await base44.asServiceRole.entities.ScheduledFax.filter(
+      { schedule_key: scheduleKey }, undefined, BATCH_EXACT_LIMIT,
+    );
+    if (!Array.isArray(current) || current.length !== 0) {
+      throw new PublicError(409, 'Scheduled fax creation changed; retry the same request', 'fax_creation_changed');
+    }
+    creationStarted = true;
+    const row = await base44.asServiceRole.entities.ScheduledFax.create({
+      schedule_key: scheduleKey,
+      queue_creation_reservation_token: reservation.token,
+      dispatch_submission_state: 'ready',
+      client_request_id: input.clientRequestId,
+      authorization_version: 1,
+      agency_id: input.agencyId,
+      document_id: input.documentId,
+      document_binding_id: binding.binding.id,
+      document_binding_version: binding.binding.version,
+      document_content_sha256: binding.binding.content_sha256,
+      provider: 'telnyx',
+      integration_secret_id: credentials.secretId,
+      integration_secret_updated_at: credentials.updatedAt,
+      fax_connection_id: credentials.connectionId,
+      sender_number_e164: sender.fromNumber,
+      sender_telecom_binding_id: senderBinding.id,
+      sender_telecom_binding_version: senderBinding.version,
+      sender_provider_number_id: senderBinding.provider_number_id,
+      sender_settings_id: sender.settings.id,
+      sender_settings_updated_at: sender.settings.updated_date,
+      authorized_by_user_id: authority.userId,
+      authorized_by_email_normalized: authority.email,
+      authorized_by_membership_id: authority.membershipId,
+      authorized_by_membership_version: authority.membershipVersion,
+      authorized_tenant_role: authority.tenantRole,
+      patient_id: binding.patientId,
+      scheduled_time: input.scheduledTime,
+      to_numbers: input.recipients,
+      document_name: input.documentName || initialDelivery.document.file_name,
+      cover_page_details: input.coverPageDetails,
+      priority: input.priority,
+      status: 'pending',
+      accepted_count: 0,
+      failed_count: 0,
+      unknown_count: 0,
+    });
+    const id = exactIdentifier(row?.id);
+    if (!id) throw new Error('ScheduledFax.create returned no exact id');
+    const durable = await findExactSchedule(base44.asServiceRole.entities, id);
+    if (!durable || durable.schedule_key !== scheduleKey || durable.status !== 'pending'
+      || durable.queue_creation_reservation_token !== reservation.token
+      || durable.dispatch_submission_state !== 'ready'
+      || durable.document_url != null || durable.from_number != null
+      || durable.document_binding_id !== binding.binding.id
+      || durable.authorized_by_membership_id !== authority.membershipId
+      || durable.integration_secret_id !== credentials.secretId
+      || durable.sender_telecom_binding_id !== senderBinding.id) {
+      throw new Error('ScheduledFax could not be verified');
+    }
+    const uniqueSchedules = requireRows(await base44.asServiceRole.entities.ScheduledFax.filter(
+      { schedule_key: scheduleKey }, '-created_date', BATCH_EXACT_LIMIT,
+    ), 'ScheduledFax.filter');
+    if (uniqueSchedules.length !== 1 || uniqueSchedules[0]?.id !== id) {
+      await base44.asServiceRole.entities.ScheduledFax.updateMany(
+        { id, status: 'pending', updated_date: durable.updated_date },
+        { $set: { status: 'blocked', last_error_code: 'duplicate_schedule_key' } },
+      ).catch(() => null);
+      throw new PublicError(409, 'Scheduled fax identity became ambiguous', 'fax_identity_ambiguous');
+    }
+    creationVerified = true;
+    const finalAuthority = await loadInteractiveAuthority(base44, input.agencyId);
+    const finalDelivery = await loadInteractiveDelivery(base44, finalAuthority, input.documentId);
+    if (!sameValue(finalAuthority, authority) || !sameValue(finalDelivery.document, initialDelivery.document)) {
+      await base44.asServiceRole.entities.ScheduledFax.updateMany(
+        { id, status: 'pending', updated_date: durable.updated_date },
+        { $set: { status: 'blocked', last_error_code: 'fax_authority_changed' } },
+      ).catch(() => null);
+      throw new PublicError(409, 'Fax authority changed while scheduling', 'fax_authority_unavailable');
+    }
+    return { success: true, scheduled: true, deduped: false, scheduled_fax_id: id, status: 'pending' };
+  } finally {
+    if (!creationStarted || creationVerified) {
+      if (!await releaseFaxQueueCreation(base44.asServiceRole.entities, reservation).catch(() => false)) {
+        throw new Error('Confirmed fax creation reservation could not be released');
+      }
+    }
   }
-  const uniqueSchedules = requireRows(await base44.asServiceRole.entities.ScheduledFax.filter(
-    { schedule_key: scheduleKey }, '-created_date', BATCH_EXACT_LIMIT,
-  ), 'ScheduledFax.filter');
-  if (uniqueSchedules.length !== 1 || uniqueSchedules[0]?.id !== id) {
-    await base44.asServiceRole.entities.ScheduledFax.updateMany(
-      { id, status: 'pending', updated_date: durable.updated_date },
-      { $set: { status: 'blocked', last_error_code: 'duplicate_schedule_key' } },
-    ).catch(() => null);
-    throw new PublicError(409, 'Scheduled fax identity became ambiguous', 'fax_identity_ambiguous');
-  }
-  const finalAuthority = await loadInteractiveAuthority(base44, input.agencyId);
-  const finalDelivery = await loadInteractiveDelivery(base44, finalAuthority, input.documentId);
-  if (!sameValue(finalAuthority, authority) || !sameValue(finalDelivery.document, initialDelivery.document)) {
-    await base44.asServiceRole.entities.ScheduledFax.updateMany(
-      { id, status: 'pending', updated_date: durable.updated_date },
-      { $set: { status: 'blocked', last_error_code: 'fax_authority_changed' } },
-    ).catch(() => null);
-    throw new PublicError(409, 'Fax authority changed while scheduling', 'fax_authority_unavailable');
-  }
-  return { success: true, scheduled: true, deduped: false, scheduled_fax_id: id, status: 'pending' };
 }
 
 function validateScheduledRow(row: Record<string, any>, id: string, dispatchAttemptId: string) {
@@ -1454,17 +1559,68 @@ function validateScheduledRow(row: Record<string, any>, id: string, dispatchAtte
   return { row, recipients, expected };
 }
 
+// This fence belongs to an existing queue row. Query/create recipient dedupe
+// alone cannot exclude a concurrent, delayed child creation on another request.
+async function claimQueueSubmission(entities, entityName, row, stateField, claimField, claimId) {
+  if (!exactIdentifier(row?.id) || !exactIdentifier(row?.agency_id)
+    || !validInstant(row?.updated_date) || !exactIdentifier(claimId)
+    || row[claimField] !== claimId || row[stateField] !== 'ready') return false;
+  const result = await entities[entityName].updateMany({
+    id: row.id, agency_id: row.agency_id, status: row.status,
+    updated_date: row.updated_date, [claimField]: claimId, [stateField]: 'ready',
+  }, { $set: { [stateField]: 'started' } });
+  if (!successfulExactUpdate(result)) return false;
+  const rows = await entities[entityName].filter({ id: row.id }, undefined, BATCH_EXACT_LIMIT);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== row.id
+    || rows[0].agency_id !== row.agency_id || rows[0].status !== row.status
+    || rows[0][claimField] !== claimId || rows[0][stateField] !== 'started'
+    || !validInstant(rows[0].updated_date)) return false;
+  return true;
+}
+
+async function preserveUnstartedScheduledRecipients(entities, id, claimId) {
+  const rows = await entities.ScheduledFax.filter({ id }, undefined, BATCH_EXACT_LIMIT);
+  const row = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+  if (!row || row.id !== id || row.status !== 'processing' || row.claimed_by !== claimId
+    || row.dispatch_attempt_id !== claimId || row.dispatch_submission_state !== 'started'
+    || !validInstant(row.updated_date)) return false;
+  const updated = await entities.ScheduledFax.updateMany({
+    id, status: 'processing', claimed_by: claimId, dispatch_attempt_id: claimId,
+    updated_date: row.updated_date, dispatch_submission_state: 'started',
+  }, { $set: { dispatch_submission_state: 'ready' } });
+  if (!successfulExactUpdate(updated)) return false;
+  const verified = await entities.ScheduledFax.filter({ id }, undefined, BATCH_EXACT_LIMIT);
+  return Array.isArray(verified) && verified.length === 1 && verified[0]?.id === id
+    && verified[0].status === 'processing' && verified[0].claimed_by === claimId
+    && verified[0].dispatch_attempt_id === claimId && verified[0].dispatch_submission_state === 'ready';
+}
+
+function unverifiedQueueSubmission(recipients, extra) {
+  return summarizeResults(recipients.map((toNumber) => ({
+    to_number: toNumber, success: true, requires_reconciliation: true, dispatch_started: true,
+  })), recipients.length, extra);
+}
+
 async function dispatchScheduled(base44: Record<string, any>, req: Request, input: Record<string, any>) {
   const row = await findExactSchedule(base44.asServiceRole.entities, input.scheduledFaxId);
   if (!row) throw new PublicError(409, 'Scheduled fax identity is ambiguous', 'fax_identity_ambiguous');
   const scheduled = validateScheduledRow(row, input.scheduledFaxId, input.dispatchAttemptId);
   const expectedKey = await sha256Text(`${scheduled.expected.agencyId}\u0000${scheduled.expected.userId}\u0000${row.client_request_id}`);
   if (expectedKey !== row.schedule_key) throw new PublicError(409, 'Scheduled fax provenance is invalid', 'fax_authority_unavailable');
+  const initialDelivery = await createInternalDelivery(base44, scheduled.expected);
+  if (!await claimQueueSubmission(base44.asServiceRole.entities, 'ScheduledFax', row,
+    'dispatch_submission_state', 'claimed_by', input.dispatchAttemptId)) {
+    return unverifiedQueueSubmission(scheduled.recipients, {
+      scheduled_fax_id: row.id, dispatch_attempt_id: input.dispatchAttemptId,
+    });
+  }
   const results = [];
   for (let index = 0; index < scheduled.recipients.length; index += 1) {
     const toNumber = scheduled.recipients[index];
+    let submissionBegan = false;
     try {
-      const delivery = await createInternalDelivery(base44, scheduled.expected);
+      const delivery = index === 0 ? initialDelivery : await createInternalDelivery(base44, scheduled.expected);
+      submissionBegan = true;
       results.push(await submitOneFax(base44, req, {
         ...scheduled.expected,
         ...delivery,
@@ -1476,12 +1632,20 @@ async function dispatchScheduled(base44: Record<string, any>, req: Request, inpu
         priority: normalizePriority(row.priority),
       }));
     } catch (error) {
-      if (results.length === 0 && !(error instanceof PublicError && error.dispatchStarted)) throw error;
+      // Only preparation failures before submitOneFax can prove these remaining
+      // recipients unsent. Earlier accepted/rejected results have durable dedupe
+      // rows (or were rejected before dispatch), so a resumed batch can revisit
+      // them without another transmission. Never reopen after an unknown result.
+      const safelyDeferred = !submissionBegan
+        && results.every((result) => result.accepted === true || result.rejected === true)
+        && await preserveUnstartedScheduledRecipients(base44.asServiceRole.entities,
+          row.id, input.dispatchAttemptId).catch(() => false);
       for (const remaining of scheduled.recipients.slice(index)) {
         results.push({
           to_number: remaining,
           success: true,
-          requires_reconciliation: true,
+          requires_reconciliation: !safelyDeferred,
+          not_started: safelyDeferred,
           dispatch_started: error instanceof PublicError && error.dispatchStarted,
           reason: 'Batch dispatch was interrupted; review durable recipient attempts before resending',
         });
@@ -1489,7 +1653,8 @@ async function dispatchScheduled(base44: Record<string, any>, req: Request, inpu
       break;
     }
   }
-  return summarizeResults(results, scheduled.recipients.length, { scheduled_fax_id: row.id });
+  return summarizeResults(results, scheduled.recipients.length, { scheduled_fax_id: row.id, dispatch_attempt_id: input.dispatchAttemptId,
+    retryable_not_started: results.some((result) => result.not_started === true) });
 }
 
 function validateRetrySource(row: Record<string, any>, id: string, retryClaimId: string) {
@@ -1560,6 +1725,12 @@ async function dispatchRetry(base44: Record<string, any>, req: Request, input: R
   }
   const generation = source.retry_generation + 1;
   const requestKey = await sha256Text(`retry\u0000${source.id}\u0000${generation}`);
+  if (!await claimQueueSubmission(base44.asServiceRole.entities, 'FaxLog', source,
+    'retry_submission_state', 'retry_claimed_by', input.retryClaimId)) {
+    return unverifiedQueueSubmission([toNumber], {
+      retry_source_fax_log_id: source.id, retry_generation: generation,
+    });
+  }
   const result = await submitOneFax(base44, req, {
     ...retry.expected, ...delivery, downloadUrl: delivery.downloadUrl,
   }, toNumber, requestKey, {
@@ -1583,6 +1754,9 @@ function summarizeResults(results: Array<Record<string, any>>, total: number, ex
     accepted,
     failed,
     unknown,
+    ...(results.some((result) => result.not_started === true) ? {
+      not_started: results.filter((result) => result.not_started === true).length,
+    } : {}),
     requires_reconciliation: unknown > 0,
     results,
     ...extra,
@@ -1648,10 +1822,11 @@ async function sendInteractive(base44: Record<string, any>, req: Request, input:
 }
 
 Deno.serve(async (req) => {
+  let input;
   try {
-    const input = await parseBatchRequest(req);
+    input = await parseBatchRequest(req);
     if ((input.action === 'dispatch_scheduled' || input.action === 'dispatch_retry')
-      && !outboundDeliveryReleased()) {
+      && !faxWorkflowDeliveryReleased()) {
       return outboundDeliveryPausedResponse('fax');
     }
     const base44 = createClientFromRequest(req);
@@ -1671,6 +1846,9 @@ Deno.serve(async (req) => {
         error: error.message,
         code: error.code,
         dispatch_started: error.dispatchStarted,
+        ...(input?.action === 'dispatch_scheduled' ? {
+          scheduled_fax_id: input.scheduledFaxId, dispatch_attempt_id: input.dispatchAttemptId,
+        } : {}),
       }, { status: error.status, headers: NO_STORE_HEADERS });
     }
     // Do not log request/provider detail: it may include destinations or PHI.

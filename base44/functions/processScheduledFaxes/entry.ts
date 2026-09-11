@@ -20,6 +20,13 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
 }
 // <<<END SHARED HELPER: outboundDeliveryGate>>>
 
+// <<<BEGIN SHARED HELPER: faxWorkflowDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+function faxWorkflowDeliveryReleased() {
+  return outboundDeliveryReleased()
+    || Deno.env.get('OUTBOUND_FAX_WORKFLOW_RELEASE') === 'enabled-v1';
+}
+// <<<END SHARED HELPER: faxWorkflowDeliveryGate>>>
+
 // Deploying source must not make a provider-facing queue runnable. The native
 // workflow owns the schedule, while staging must opt in to this exact reviewed
 // revision before the SDK is constructed.
@@ -151,6 +158,7 @@ function scheduledSuccessfulCas(value) {
 }
 
 function scheduledQueueStateIsDispatchable(row, nowMs = Date.now()) {
+  if (row?.dispatch_submission_state !== 'ready') return false;
   if (row?.status === 'pending') return row.next_dispatch_attempt_at == null;
   if (row?.status !== 'deferred' || !scheduledValidInstant(row.next_dispatch_attempt_at)
     || Date.parse(row.next_dispatch_attempt_at) > nowMs
@@ -407,6 +415,9 @@ async function reconcileStaleScheduledClaims(entities) {
     ),
     'ScheduledFax.filter',
   );
+  if (rows.length > SCHEDULED_STALE_SCAN_LIMIT || rows.some((row) => row?.status !== 'processing')) {
+    throw new Error('Scheduled stale claim scan is invalid');
+  }
   let reconciled = 0;
   let quarantined = 0;
   let errors = 0;
@@ -419,7 +430,10 @@ async function reconcileStaleScheduledClaims(entities) {
       continue;
     }
     try {
-      const outcome = await scheduledOutcomeFromLogs(entities, row);
+      const outcome = row.dispatch_submission_state === 'ready'
+        ? { ...scheduledDispatchBackoff(row), accepted: row.accepted_count || 0,
+          failed: row.failed_count || 0, code: 'scheduled_dispatch_not_started' }
+        : await scheduledOutcomeFromLogs(entities, row);
       if (await settleScheduledFax(entities, row, outcome)) reconciled++;
       else errors++;
     } catch {
@@ -436,15 +450,23 @@ async function reconcileStaleScheduledClaims(entities) {
   };
 }
 
-function scheduledResultOutcome(data, total) {
-  const accepted = Number(data?.accepted);
-  const failed = Number(data?.failed);
-  const unknown = Number(data?.unknown);
-  if (![accepted, failed, unknown].every((value) => Number.isSafeInteger(value) && value >= 0)
-    || accepted + failed + unknown !== total) {
+function scheduledResultOutcome(data, total, scheduledFaxId, dispatchAttemptId, current = {}) {
+  const accepted = data?.accepted;
+  const failed = data?.failed;
+  const unknown = data?.unknown;
+  const notStarted = data?.not_started ?? 0;
+  if (!scheduledExactId(scheduledFaxId) || !scheduledExactId(dispatchAttemptId)
+    || data?.success !== true || data.total !== total
+    || data.scheduled_fax_id !== scheduledFaxId || data.dispatch_attempt_id !== dispatchAttemptId
+    || ![accepted, failed, unknown, notStarted].every((value) => Number.isSafeInteger(value) && value >= 0)
+    || accepted + failed + unknown + notStarted !== total) {
     return { status: 'needs_review', accepted: 0, failed: 0, unknown: total, code: 'invalid_broker_result' };
   }
-  if (unknown > 0 || data.requires_reconciliation === true) {
+  if (notStarted > 0 && unknown === 0 && data.retryable_not_started === true
+    && current.dispatch_submission_state === 'ready') {
+    return { ...scheduledDispatchBackoff(current), accepted, failed, unknown: 0 };
+  }
+  if (notStarted > 0 || unknown > 0 || data.requires_reconciliation === true) {
     return { status: 'needs_review', accepted, failed, unknown, code: 'provider_submission_reconciliation' };
   }
   return {
@@ -456,9 +478,20 @@ function scheduledResultOutcome(data, total) {
   };
 }
 
+async function loadOwnedScheduledClaim(entities, id, attemptId) {
+  const rows = await entities.ScheduledFax.filter({ id }, undefined, 10);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== id
+    || rows[0].status !== 'processing' || rows[0].claimed_by !== attemptId
+    || rows[0].dispatch_attempt_id !== attemptId || !scheduledProvenanceIsComplete(rows[0])
+    || !scheduledValidInstant(rows[0].updated_date)) {
+    throw new Error('Scheduled fax claim readback is invalid');
+  }
+  return rows[0];
+}
+
 Deno.serve(async (req) => {
   try {
-    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
+    if (!faxWorkflowDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
     if (!PROCESS_SCHEDULED_FAXES_ENABLED) {
       return Response.json(
         { error: 'Scheduled fax processing workflow is not released' },
@@ -487,6 +520,11 @@ Deno.serve(async (req) => {
       ...scheduledRequireRows(pendingRows, 'ScheduledFax.filter'),
       ...scheduledRequireRows(deferredRows, 'ScheduledFax.filter'),
     ];
+    if (pendingRows.length > 200 || deferredRows.length > 200
+      || pendingRows.some((row) => row?.status !== 'pending')
+      || deferredRows.some((row) => row?.status !== 'deferred')) {
+      throw new Error('Scheduled fax queue scope is invalid');
+    }
     rows.sort((left, right) => {
       const rank = { urgent: 0, normal: 1, low: 2 };
       const delta = (rank[left.priority] ?? 1) - (rank[right.priority] ?? 1);
@@ -500,8 +538,13 @@ Deno.serve(async (req) => {
     let blocked = 0;
     let inFlight = 0;
     let deferred = 0;
+    let queueErrors = 0;
 
     for (const row of rows) {
+      if (!scheduledExactId(row?.id) || !scheduledValidInstant(row?.updated_date)) {
+        queueErrors++;
+        continue;
+      }
       if (!scheduledProvenanceIsComplete(row)
         || !scheduledQueueStateIsDispatchable(row, Date.parse(now))) {
         const blockedResult = await entities.ScheduledFax.updateMany({
@@ -515,6 +558,7 @@ Deno.serve(async (req) => {
           completed_at: new Date().toISOString(),
         } }).catch(() => null);
         if (scheduledSuccessfulCas(blockedResult)) blocked++;
+        else queueErrors++;
         continue;
       }
       const expectedScheduleKey = await scheduledSha256(
@@ -529,18 +573,21 @@ Deno.serve(async (req) => {
           completed_at: new Date().toISOString(),
         } }).catch(() => null);
         if (scheduledSuccessfulCas(blockedResult)) blocked++;
+        else queueErrors++;
         continue;
       }
       const sameKey = await entities.ScheduledFax.filter(
         { schedule_key: row.schedule_key }, undefined, 10,
       ).catch(() => null);
-      if (!Array.isArray(sameKey) || sameKey.length !== 1 || sameKey[0]?.id !== row.id) {
+      if (!Array.isArray(sameKey)) { queueErrors++; continue; }
+      if (sameKey.length !== 1 || sameKey[0]?.id !== row.id) {
         const blockedResult = await entities.ScheduledFax.updateMany({
           id: row.id, status: row.status, updated_date: row.updated_date,
         }, { $set: {
           status: 'blocked', last_error_code: 'duplicate_schedule_key', completed_at: new Date().toISOString(),
         } }).catch(() => null);
         if (scheduledSuccessfulCas(blockedResult)) blocked++;
+        else queueErrors++;
         continue;
       }
 
@@ -550,6 +597,7 @@ Deno.serve(async (req) => {
         id: row.id,
         status: row.status,
         schedule_key: row.schedule_key,
+        dispatch_submission_state: 'ready',
         authorization_version: 1,
         agency_id: row.agency_id,
         document_id: row.document_id,
@@ -574,16 +622,22 @@ Deno.serve(async (req) => {
         dispatch_attempt_id: dispatchAttemptId,
         last_dispatch_attempt_at: claimedAt,
       } }).catch(() => null);
-      if (!scheduledSuccessfulCas(claim)) continue;
+      if (!scheduledSuccessfulCas(claim)) {
+        if (claim?.success !== true || claim.updated !== 0 || claim.has_more !== false) queueErrors++;
+        continue;
+      }
       const claimedRows = await entities.ScheduledFax.filter({ id: row.id }, undefined, 10).catch(() => null);
       const claimed = Array.isArray(claimedRows) && claimedRows.length === 1 ? claimedRows[0] : null;
       if (!claimed || claimed.id !== row.id || claimed.status !== 'processing' || claimed.claimed_by !== dispatchAttemptId
         || claimed.claimed_at !== claimedAt || claimed.dispatch_attempt_id !== dispatchAttemptId
-        || !scheduledValidInstant(claimed.updated_date)) continue;
+        || !scheduledValidInstant(claimed.updated_date) || !scheduledProvenanceIsComplete(claimed)) {
+        queueErrors++;
+        continue;
+      }
       if (claimed.canceled_at != null) {
-        await settleScheduledFax(entities, claimed, {
+        if (!await settleScheduledFax(entities, claimed, {
           status: 'cancelled', accepted: 0, failed: 0, unknown: 0, code: 'fax_cancelled',
-        });
+        }).catch(() => false)) queueErrors++;
         continue;
       }
 
@@ -598,21 +652,22 @@ Deno.serve(async (req) => {
           capability,
         });
         const data = scheduledPlainObject(response?.data) ? response.data : response;
-        const [current] = await entities.ScheduledFax.filter({ id: row.id }, undefined, 10).catch(() => []);
-        if (!current || current.status !== 'processing' || current.claimed_by !== dispatchAttemptId) continue;
-        const outcome = scheduledResultOutcome(data, row.to_numbers.length);
+        const current = await loadOwnedScheduledClaim(entities, row.id, dispatchAttemptId).catch(() => null);
+        if (!current) { queueErrors++; continue; }
+        const outcome = scheduledResultOutcome(data, row.to_numbers.length, row.id, dispatchAttemptId, current);
         if (await settleScheduledFax(entities, current, outcome)) {
           processed++;
           if (outcome.status === 'sent') sent++;
           else if (outcome.status === 'needs_review') needsReview++;
           else failed++;
-        }
+        } else queueErrors++;
       } catch (error) {
         const payload = error?.response?.data;
         const status = Number(error?.response?.status);
-        const [current] = await entities.ScheduledFax.filter({ id: row.id }, undefined, 10).catch(() => []);
-        if (!current || current.status !== 'processing' || current.claimed_by !== dispatchAttemptId) continue;
-        if (scheduledPlainObject(payload) && payload.dispatch_started === false && Number.isFinite(status)) {
+        const current = await loadOwnedScheduledClaim(entities, row.id, dispatchAttemptId).catch(() => null);
+        if (!current) { queueErrors++; continue; }
+        if (scheduledPlainObject(payload) && payload.dispatch_started === false && Number.isFinite(status)
+          && payload.scheduled_fax_id === row.id && payload.dispatch_attempt_id === dispatchAttemptId) {
           const transient = status >= 500 && payload.code === 'fax_configuration_unavailable';
           const outcome = transient
             ? scheduledDispatchBackoff(current)
@@ -628,7 +683,7 @@ Deno.serve(async (req) => {
           if (await settleScheduledFax(entities, current, outcome)) {
             if (outcome.status === 'deferred') deferred++;
             else blocked++;
-          }
+          } else queueErrors++;
         } else {
           // An invoke error without a verified pre-dispatch response may have
           // happened after Telnyx accepted a request. Preserve the claim for the
@@ -638,8 +693,10 @@ Deno.serve(async (req) => {
       }
     }
 
+    const degraded = queueErrors > 0 || staleClaims.errors > 0 || inFlight > 0 || needsReview > 0;
     return Response.json({
-      success: true,
+      success: !degraded,
+      queue_errors: queueErrors,
       due: rows.length,
       processed,
       sent,
@@ -653,7 +710,7 @@ Deno.serve(async (req) => {
       stale_claim_errors: staleClaims.errors,
       stale_scan_limit_reached: staleClaims.scanLimitReached,
       timestamp: new Date().toISOString(),
-    }, { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
+    }, { status: degraded ? 503 : 200, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
   } catch {
     console.error('processScheduledFaxes failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });

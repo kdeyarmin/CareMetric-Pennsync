@@ -54,7 +54,7 @@ test('sendBatchFax preserves user authorization and internal capability ordering
     1,
   );
   assert.equal(
-    (source.match(/!outboundDeliveryReleased\(\)/g) || []).length,
+    (source.match(/!(?:faxWorkflowDeliveryReleased|outboundDeliveryReleased)\(\)/g) || []).length,
     3,
     'schedule, interactive-send, and internal delivery paths are independently gated',
   );
@@ -63,8 +63,8 @@ test('sendBatchFax preserves user authorization and internal capability ordering
     source.indexOf('async function createSchedule'),
     source.indexOf('async function loadScheduledAuthority'),
   );
-  assert.ok(schedule.indexOf('loadInteractiveAuthority') < schedule.indexOf('!outboundDeliveryReleased()'));
-  assert.ok(schedule.indexOf('!outboundDeliveryReleased()') < schedule.indexOf('loadAgencyConfiguration'));
+  assert.ok(schedule.indexOf('loadInteractiveAuthority') < schedule.indexOf('!faxWorkflowDeliveryReleased()'));
+  assert.ok(schedule.indexOf('!faxWorkflowDeliveryReleased()') < schedule.indexOf('loadAgencyConfiguration'));
 
   const interactive = source.slice(
     source.indexOf('async function sendInteractive'),
@@ -74,7 +74,7 @@ test('sendBatchFax preserves user authorization and internal capability ordering
   assert.ok(interactive.indexOf('!outboundDeliveryReleased()') < interactive.indexOf('submitOneFax'));
 
   const handler = source.slice(source.indexOf('Deno.serve'));
-  const capability = handler.indexOf('const input = await parseBatchRequest(req)');
+  const capability = handler.indexOf('input = await parseBatchRequest(req)');
   const internalGate = handler.indexOf("input.action === 'dispatch_scheduled'");
   const sdk = handler.indexOf('const base44 = createClientFromRequest(req)');
   assert.ok(capability < internalGate, 'the signed internal request is verified before the gate');

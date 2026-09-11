@@ -339,6 +339,11 @@
       "type": "string",
       "description": "Why the last OCR attempt failed. Distinct from failure_reason (which records fax SEND/delivery failures) so a transient OCR error does not overwrite the real send-failure reason that retry/polling/UI read."
     },
+    "retry_submission_state": {
+      "type": "string",
+      "enum": ["ready", "started"],
+      "description": "One-shot queue provider submission fence. Set ready only by a verified terminal failure or definite rejection that schedules a new retry generation. Claiming a queue row never creates submission permission."
+    },
     "retry_claimed_by": {
       "type": "string",
       "description": "Per-run token claiming this fax for a retry send (concurrency guard)"

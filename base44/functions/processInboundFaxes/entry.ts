@@ -391,7 +391,9 @@ function validateReferral(row: Record<string, any>, agencyId: string) {
     || !creatorId
     || !creatorEmail
     || row.created_by_user_email_normalized !== creatorEmail
-    || canonicalEmail(row.created_by) !== creatorEmail
+    || (row.created_by_id == null && row.created_by == null)
+    || (row.created_by_id != null && row.created_by_id !== creatorId)
+    || (row.created_by != null && canonicalEmail(row.created_by) !== creatorEmail)
     || !requestId
     || row.referral_creation_key !== `${agencyId}:${creatorId}:${requestId}`
     || !Number.isSafeInteger(row.version)
@@ -460,7 +462,7 @@ async function loadFaxDestination(
 async function loadReferralScan(entities: Record<string, any>, agencyId: string) {
   const rows = requireRows(
     await entities.Referral.filter(
-      { agency_id: agencyId, archived_at: { $exists: false } },
+      { agency_id: agencyId, $or: [{ archived_at: { $exists: false } }, { archived_at: null }] },
       '-created_date',
       MAX_REFERRAL_SCAN,
     ),
@@ -607,7 +609,10 @@ async function claimFax(
       $inc: { version: 1 },
     },
   );
-  if (!successfulSingleUpdate(result)) return null;
+  if (!successfulSingleUpdate(result)) {
+    if (result?.success === true && result.updated === 0 && result.has_more === false) return null;
+    throw new Error('Inbound fax claim outcome is unverified');
+  }
   const claimed = await loadExactIncomingFax(entities, fax.agency_id, fax.id);
   if (
     claimed.version !== fax.version + 1
@@ -725,8 +730,10 @@ async function loadIncomingFaxQueue(
       query: {
         agency_id: agencyId,
         processing_status: status,
-        processing_quarantined_at: { $exists: false },
-        processing_next_attempt_at: { $exists: false },
+        $and: [
+          { $or: [{ processing_quarantined_at: { $exists: false } }, { processing_quarantined_at: null }] },
+          { $or: [{ processing_next_attempt_at: { $exists: false } }, { processing_next_attempt_at: null }] },
+        ],
       },
       sort: 'received_at',
     },
@@ -734,8 +741,8 @@ async function loadIncomingFaxQueue(
       query: {
         agency_id: agencyId,
         processing_status: status,
-        processing_quarantined_at: { $exists: false },
-        processing_next_attempt_at: { $lte: now },
+        $or: [{ processing_quarantined_at: { $exists: false } }, { processing_quarantined_at: null }],
+        processing_next_attempt_at: { $lte: now, $ne: null },
       },
       sort: 'processing_next_attempt_at',
     },
@@ -744,6 +751,12 @@ async function loadIncomingFaxQueue(
       await entities.IncomingFax.filter(spec.query, spec.sort, MAX_INCOMING_SCAN),
       'IncomingFax.filter',
     );
+    if (rows.length > MAX_INCOMING_SCAN || rows.some((row) => (
+      row?.agency_id !== agencyId || row.processing_status !== status
+      || row.processing_quarantined_at != null
+      || (row.processing_next_attempt_at != null
+        && (!validInstant(row.processing_next_attempt_at) || row.processing_next_attempt_at > now))
+    ))) throw new PublicError(409, 'Inbound fax queue scope or eligibility is invalid');
     buckets.push(rows);
   }
   const rows = [];
@@ -810,7 +823,9 @@ async function quarantineClaimedFax(
 }
 
 async function runOcr(base44: Record<string, any>, fax: Record<string, any>) {
-  return base44.asServiceRole.integrations.Core.InvokeLLM({
+  let timer;
+  try {
+    const result = await Promise.race([base44.asServiceRole.integrations.Core.InvokeLLM({
     model: 'automatic',
     prompt: 'Transcribe this received fax completely and accurately, including typed and handwritten text. Extract only the requested fields and do not infer missing values.',
     file_urls: [fax.document_url],
@@ -824,7 +839,16 @@ async function runOcr(base44: Record<string, any>, fax: Record<string, any>) {
         summary: { type: 'string' },
       },
     },
-  });
+    }), new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Inbound OCR timed out')), 90_000);
+    })]);
+    if (!plainObject(result) || typeof result.full_text !== 'string' || !result.full_text.trim()) {
+      throw new Error('Inbound OCR returned no transcription');
+    }
+    return result;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 
@@ -843,7 +867,8 @@ async function loadActiveRecipient(
   if (rows.length >= MEMBERSHIP_SCAN_LIMIT || rows.some((row) => (
     row?.agency_id !== referral.agency_id || row?.user_id !== referral.created_by_user_id
   ))) throw new PublicError(409, 'Notification recipient scope is ambiguous');
-  if (rows.length !== 1) return null;
+  if (rows.length > 1) throw new PublicError(409, 'Notification recipient scope is ambiguous');
+  if (rows.length === 0) return null;
   const membership = rows[0];
   const email = canonicalEmail(membership.user_email_normalized);
   const transitionEmail = canonicalEmail(membership.last_transition_by_email_normalized);
@@ -904,12 +929,14 @@ function faxNotification(
     },
     is_read: false,
     dismissed: false,
-    action_url: `/ReferralFollowUp?id=${encodeURIComponent(referral.id)}`,
+    action_url: `/ReferralFollowUp?id=${encodeURIComponent(referral.id)}`
+      + (kind === 'suggested' ? `&incoming_fax_id=${encodeURIComponent(incomingFaxId)}` : ''),
   };
 }
 
 function faxNotificationMatches(row: Record<string, any>, expected: Record<string, any>) {
-  return row?.agency_id === expected.agency_id
+  return !!exactIdentifier(row?.id)
+    && row.agency_id === expected.agency_id
     && row?.dedupe_key === expected.dedupe_key
     && row?.recipient_user_id === expected.recipient_user_id
     && row?.recipient_membership_id === expected.recipient_membership_id
@@ -932,26 +959,103 @@ function faxNotificationMatches(row: Record<string, any>, expected: Record<strin
     && row?.action_url === expected.action_url;
 }
 
+function validateNotificationCompletion(completion, referral, kind) {
+  const common = ['ocr_text', 'ai_summary', 'extracted_info', 'status', 'suggested_patient_id',
+    'suggested_referral_id', 'ai_category', 'notes', 'confidence_score'];
+  const keys = [...common, ...(kind === 'matched' ? ['routed_at', 'routed_to'] : ['suggested_routing'])];
+  if (!plainObject(completion) || Object.keys(completion).sort().join('|') !== keys.sort().join('|')
+    || typeof completion.ocr_text !== 'string' || completion.ocr_text.length > 50_000
+    || (completion.ai_summary !== null && (typeof completion.ai_summary !== 'string' || completion.ai_summary.length > 4_000))
+    || !plainObject(completion.extracted_info)
+    || Object.keys(completion.extracted_info).sort().join('|') !== 'patient_dob|patient_name|provider_name'
+    || Object.entries(completion.extracted_info).some(([key, value]) => value !== null
+      && (typeof value !== 'string' || value.length > (key === 'patient_dob' ? 100 : 300)))
+    || completion.suggested_referral_id !== referral.id
+    || completion.suggested_patient_id !== (referral.patient_id || null)
+    || (completion.suggested_patient_id != null && !exactIdentifier(completion.suggested_patient_id))
+    || completion.ai_category !== 'referral' || typeof completion.notes !== 'string' || completion.notes.length > 500
+    || !Number.isFinite(completion.confidence_score) || completion.confidence_score < 0 || completion.confidence_score > 100
+    || (kind === 'matched' ? (completion.status !== 'routed' || !validInstant(completion.routed_at)
+      || completion.routed_to !== `ReferralFollowUp:${referral.id}`)
+      : (completion.status !== 'unread' || completion.suggested_routing !== 'admin'))) {
+    throw new PublicError(409, 'Inbound fax completion intent is invalid');
+  }
+  return completion;
+}
+
+function persistedNotificationRecipient(fax, referral, kind) {
+  const intent = fax.processing_notification_intent;
+  if (!plainObject(intent) || intent.recipient_user_id !== referral.created_by_user_id
+    || !exactIdentifier(intent.recipient_membership_id)
+    || !Number.isSafeInteger(intent.recipient_membership_version) || intent.recipient_membership_version < 1
+    || intent.user_email !== referral.created_by_user_email_normalized) {
+    throw new PublicError(409, 'Inbound fax notification intent is invalid');
+  }
+  const recipient = {
+    user_id: intent.recipient_user_id, id: intent.recipient_membership_id,
+    version: intent.recipient_membership_version, user_email_normalized: intent.user_email,
+  };
+  const expected = faxNotification(referral, fax.id, recipient, kind);
+  if (!sameValue(intent, expected)) throw new PublicError(409, 'Inbound fax notification intent is invalid');
+  return recipient;
+}
+
+// The producer marks only new ingress rows ready. Absence on a legacy row is
+// not proof that an earlier create was never submitted. Once started, the
+// persisted intent is reconciliation-only, even after a worker lease expires.
 async function ensureNotification(
   entities: Record<string, any>,
   referral: Record<string, any>,
-  incomingFaxId: string,
+  fax: Record<string, any>,
   kind: 'matched' | 'suggested',
+  completion: Record<string, any>,
 ) {
-  const recipient = await loadActiveRecipient(entities, referral);
-  if (!recipient) return false;
-  const expected = faxNotification(referral, incomingFaxId, recipient, kind);
-  // Query the purpose key without authority predicates so a legacy or corrupt
-  // row cannot be hidden by its missing provenance and followed by a duplicate.
+  validateNotificationCompletion(completion, referral, kind);
+  const started = fax.processing_notification_state === 'started';
+  let recipient;
+  if (started) {
+    // Reconcile the already submitted payload even if its recipient is no
+    // longer active. Notification read authority independently denies access.
+    recipient = persistedNotificationRecipient(fax, referral, kind);
+    if (!sameValue(fax.processing_completion, completion)) {
+      throw new PublicError(409, 'Inbound fax completion intent changed');
+    }
+  } else {
+    recipient = await loadActiveRecipient(entities, referral);
+    if (!recipient) {
+      if (fax.processing_notification_state !== 'ready' || fax.processing_notification_intent != null) {
+        throw new Error('Inbound fax notification requires reconciliation');
+      }
+      // A legitimately absent recipient is terminal for this alert, not an OCR
+      // failure. Keep the completed document available to authorized staff.
+      await finalizeFax(entities, fax, { ...completion, processing_notification_state: 'skipped_no_recipient' });
+      return;
+    }
+  }
+  const expected = faxNotification(referral, fax.id, recipient, kind);
   const query = { dedupe_key: expected.dedupe_key };
   let rows = requireRows(
     await entities.Notification.filter(query, '-created_date', NOTIFICATION_SCAN_LIMIT),
     'Notification.filter',
   );
-  if (rows.length >= NOTIFICATION_SCAN_LIMIT || rows.length > 1) {
-    throw new PublicError(409, 'Inbound fax notification is ambiguous');
-  }
-  if (!rows.length) {
+  if (rows.length > 1) throw new PublicError(409, 'Inbound fax notification is ambiguous');
+  if (!rows.length && fax.processing_notification_state === 'ready') {
+    const updated = await conditionalFaxUpdate(entities, fax, {
+      processing_notification_state: 'started',
+      processing_notification_intent: expected,
+      processing_completion: completion,
+    });
+    if (!updated) throw new Error('Inbound fax publication claim is unverified');
+    const owned = await loadExactIncomingFax(entities, fax.agency_id, fax.id);
+    if (owned.version !== fax.version + 1 || owned.claimed_by !== fax.claimed_by
+      || owned.claimed_at !== fax.claimed_at || owned.processing_status !== 'processing'
+      || owned.processing_notification_state !== 'started'
+      || !sameValue(owned.processing_notification_intent, expected)
+      || !sameValue(owned.processing_completion, completion)) {
+      throw new Error('Inbound fax publication claim failed verification');
+    }
+    Object.assign(fax, owned);
+    // A timeout, absent readback, or delayed write must never reset this fence.
     await entities.Notification.create(expected);
     rows = requireRows(
       await entities.Notification.filter(query, '-created_date', NOTIFICATION_SCAN_LIMIT),
@@ -959,9 +1063,12 @@ async function ensureNotification(
     );
   }
   if (rows.length !== 1 || !faxNotificationMatches(rows[0], expected)) {
-    throw new Error('Inbound fax notification failed verification');
+    throw new Error('Inbound fax notification requires reconciliation');
   }
-  return true;
+  await finalizeFax(entities, fax, {
+    ...completion,
+    processing_notification_state: 'completed',
+  });
 }
 
 function attachedReferralForFax(
@@ -993,10 +1100,12 @@ async function finalizeFax(
   fields: Record<string, any>,
 ) {
   const finalized = await conditionalFaxUpdate(entities, fax, {
+    ...fields,
     processing_status: 'completed',
     claimed_by: null,
     claimed_at: null,
-    ...fields,
+    processing_next_attempt_at: null,
+    processing_last_error_code: null,
   });
   if (!finalized) throw new Error('Inbound fax changed before finalization');
 }
@@ -1007,6 +1116,25 @@ async function processClaimedFax(
   referrals: Array<Record<string, any>>,
   candidates: Array<Record<string, any>>,
 ) {
+  const entities = base44.asServiceRole.entities;
+  if (faxSnapshot.processing_notification_state === 'started') {
+    const intent = faxSnapshot.processing_notification_intent;
+    const completion = faxSnapshot.processing_completion;
+    const referralId = exactIdentifier(intent?.metadata?.related_entity_id);
+    const kind = intent?.metadata?.workflow === 'inbound_referral_fax_matched' ? 'matched'
+      : intent?.metadata?.workflow === 'inbound_referral_fax_suggested' ? 'suggested' : null;
+    if (!referralId || !kind || !plainObject(completion)
+      || completion.suggested_referral_id !== referralId) {
+      throw new PublicError(409, 'Inbound fax publication intent is invalid');
+    }
+    const referral = await loadExactReferral(entities, faxSnapshot.agency_id, referralId);
+    if ((referral.patient_id || null) !== completion.suggested_patient_id
+      || (kind === 'matched' && referral.follow_up_requests?.fax_back?.incoming_fax_id !== faxSnapshot.id)) {
+      throw new PublicError(409, 'Inbound fax publication authority changed');
+    }
+    await ensureNotification(entities, referral, faxSnapshot, kind, completion);
+    return { processed: 1, matched: kind === 'matched' ? 1 : 0, suggested: kind === 'suggested' ? 1 : 0, failed: 0 };
+  }
   let ocr: Record<string, any>;
   try {
     ocr = await runOcr(base44, faxSnapshot);
@@ -1015,7 +1143,6 @@ async function processClaimedFax(
     return { processed: 0, matched: 0, suggested: 0, failed: 1 };
   }
   const ocrText = typeof ocr?.full_text === 'string' ? ocr.full_text : '';
-  const entities = base44.asServiceRole.entities;
   const fax = await loadExactIncomingFax(entities, faxSnapshot.agency_id, faxSnapshot.id);
   if (
     fax.version !== faxSnapshot.version
@@ -1031,8 +1158,8 @@ async function processClaimedFax(
     if (attached.follow_up_requests?.fax_back?.incoming_fax_id !== fax.id) {
       throw new PublicError(409, 'Referral fax attachment changed during reconciliation');
     }
-    await ensureNotification(entities, attached, fax.id, 'matched');
-    await finalizeFax(entities, fax, {
+    Object.assign(faxSnapshot, fax);
+    await ensureNotification(entities, attached, faxSnapshot, 'matched', {
       ...ocrFields(ocr, ocrText),
       status: 'routed',
       routed_at: new Date().toISOString(),
@@ -1074,8 +1201,8 @@ async function processClaimedFax(
   if (!sameValue(suggestedReferral, referralSnapshot)) {
     throw new PublicError(409, 'Referral changed during inbound fax suggestion');
   }
-  await ensureNotification(entities, suggestedReferral, fax.id, 'suggested');
-  await finalizeFax(entities, fax, {
+  Object.assign(faxSnapshot, fax);
+  await ensureNotification(entities, suggestedReferral, faxSnapshot, 'suggested', {
     ...ocrFields(ocr, ocrText),
     status: 'unread',
     ai_category: 'referral',
@@ -1138,6 +1265,13 @@ async function processAgency(
       continue;
     }
     try {
+      const identities = requireRows(await entities.IncomingFax.filter(
+        { telnyx_fax_id: fax.telnyx_fax_id }, undefined, EXACT_ROW_LIMIT,
+      ), 'IncomingFax.filter');
+      if (identities.length !== 1 || identities[0]?.id !== fax.id
+        || identities[0]?.agency_id !== agencyId) {
+        throw new PublicError(409, 'Inbound provider fax identity is ambiguous');
+      }
       await loadIngressAuthority(entities, fax);
     } catch (error) {
       if (error instanceof PublicError) {

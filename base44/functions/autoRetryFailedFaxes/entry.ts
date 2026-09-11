@@ -20,6 +20,13 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
 }
 // <<<END SHARED HELPER: outboundDeliveryGate>>>
 
+// <<<BEGIN SHARED HELPER: faxWorkflowDeliveryGate — generated, edit base44/_shared/backendHelpers.mjs>>>
+function faxWorkflowDeliveryReleased() {
+  return outboundDeliveryReleased()
+    || Deno.env.get('OUTBOUND_FAX_WORKFLOW_RELEASE') === 'enabled-v1';
+}
+// <<<END SHARED HELPER: faxWorkflowDeliveryGate>>>
+
 // Deploying source must not make a provider-facing retry worker runnable. The
 // native workflow owns the schedule, while this exact reviewed revision still
 // requires an explicit runtime release before the SDK is constructed.
@@ -517,7 +524,7 @@ async function loadDueAutomaticRetryRows(entities, dueBefore) {
   while (rows.length < AUTO_RETRY_SCAN_LIMIT) {
     const query = {
       status: 'failed',
-      next_retry_at: { $lte: dueBefore },
+      next_retry_at: { $lte: dueBefore, $ne: null },
       ...(afterId ? { id: { $gt: afterId } } : {}),
     };
     const pageSize = Math.min(AUTO_RETRY_SCAN_PAGE_SIZE, AUTO_RETRY_SCAN_LIMIT - rows.length);
@@ -525,11 +532,13 @@ async function loadDueAutomaticRetryRows(entities, dueBefore) {
       await entities.FaxLog.filter(query, 'id', pageSize),
       'FaxLog.filter',
     );
+    if (page.length > pageSize) throw new Error('Fax retry scan exceeded its bound');
     if (page.length === 0) break;
     let lastId = afterId;
     for (const row of page) {
       const id = autoExactId(row?.id);
-      if (!id || (lastId && id <= lastId)) {
+      if (!id || (lastId && id <= lastId) || row.status !== 'failed'
+        || !autoValidInstant(row.next_retry_at) || row.next_retry_at > dueBefore) {
         throw new Error('FaxLog.filter returned an invalid retry scan cursor');
       }
       rows.push(row);
@@ -627,6 +636,7 @@ function strictAutomaticRetryCandidate(row, now) {
     && Number.isSafeInteger(row.sent_by_membership_version)
     && row.sent_by_membership_version >= 1
     && row.status === 'failed'
+    && row.retry_submission_state === 'ready'
     && row.provider_submission_state === 'accepted'
     && row.provider_terminal_status === 'failed'
     && !!autoExactId(row.provider_submission_attempt_id)
@@ -731,6 +741,7 @@ async function claimAutomaticRetry(entities, fax) {
     sender_settings_updated_at: fax.sender_settings_updated_at,
     retry_count: fax.retry_count,
     retry_generation: fax.retry_generation,
+    retry_submission_state: 'ready',
     next_retry_at: fax.next_retry_at,
     updated_date: fax.updated_date,
   }, { $set: {
@@ -739,11 +750,13 @@ async function claimAutomaticRetry(entities, fax) {
     retry_claimed_at: claimedAt,
     retry_claimed_by_user_id: fax.sent_by_user_id,
     next_retry_at: null,
-    automatic_retry_queue_attempts: 0,
     automatic_retry_last_error_code: null,
     automatic_retry_quarantined_at: null,
   } });
-  if (!autoSuccessfulCas(result)) return null;
+  if (!autoSuccessfulCas(result)) {
+    if (result?.success === true && result.updated === 0 && result.has_more === false) return null;
+    throw new Error('Automatic retry claim was not acknowledged');
+  }
   const rows = autoRequireRows(
     await entities.FaxLog.filter({ id: fax.id }, undefined, 10),
     'FaxLog.filter',
@@ -760,18 +773,25 @@ async function claimAutomaticRetry(entities, fax) {
     || rows[0]?.sent_by_membership_version !== fax.sent_by_membership_version
     || rows[0]?.provider_submission_attempt_id !== fax.provider_submission_attempt_id
     || rows[0]?.telnyx_fax_id !== fax.telnyx_fax_id
-    || !autoValidInstant(rows[0]?.updated_date)) return null;
+    || !autoValidInstant(rows[0]?.updated_date)) throw new Error('Automatic retry claim readback is invalid');
   return { row: rows[0], claimId, claimedAt };
 }
 
 async function settleAutomaticRetry(entities, claim, fax, changes) {
+  const rows = await entities.FaxLog.filter({ id: fax.id }, undefined, 10);
+  const current = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+  if (!current || current.id !== fax.id || !autoValidInstant(current.updated_date)
+    || Object.entries(claim.row).some(([key, value]) => (
+      !['updated_date', 'retry_submission_state'].includes(key)
+      && JSON.stringify(current[key]) !== JSON.stringify(value)
+    ))) return false;
   const result = await entities.FaxLog.updateMany({
     id: fax.id,
     status: 'retrying',
     retry_claimed_by: claim.claimId,
     retry_claimed_at: claim.claimedAt,
     retry_claimed_by_user_id: fax.sent_by_user_id,
-    updated_date: claim.row.updated_date,
+    updated_date: current.updated_date,
   }, { $set: {
     ...changes,
     retry_claimed_by: null,
@@ -783,7 +803,7 @@ async function settleAutomaticRetry(entities, claim, fax, changes) {
 
 Deno.serve(async (req) => {
   try {
-    if (!outboundDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
+    if (!faxWorkflowDeliveryReleased()) return outboundDeliveryPausedResponse('fax');
     if (!AUTO_RETRY_FAILED_FAXES_ENABLED) {
       return Response.json(
         { error: 'Automatic failed-fax retry workflow is not released' },
@@ -806,6 +826,7 @@ Deno.serve(async (req) => {
     let quarantined = 0;
     let deferred = 0;
     let policyErrors = 0;
+    let queueErrors = 0;
 
     for (const fax of rows) {
       if (!strictAutomaticRetryCandidate(fax, now)) {
@@ -820,7 +841,7 @@ Deno.serve(async (req) => {
           ).then((applied) => applied ? 'quarantined' : null).catch(() => null);
         if (disposition === 'deferred') deferred++;
         else if (disposition === 'quarantined') quarantined++;
-        else skipped++;
+        else queueErrors++;
         continue;
       }
       let loadedPolicy = null;
@@ -836,7 +857,7 @@ Deno.serve(async (req) => {
         ).catch(() => null);
         if (disposition === 'deferred') deferred++;
         else if (disposition === 'quarantined') quarantined++;
-        else skipped++;
+        else queueErrors++;
         continue;
       }
       if (!loadedPolicy) {
@@ -846,10 +867,17 @@ Deno.serve(async (req) => {
           'retry_policy_unavailable',
           now,
         ).catch(() => false)) quarantined++;
-        else skipped++;
+        else queueErrors++;
         continue;
       }
-      const claim = await claimAutomaticRetry(entities, fax);
+      let claim;
+      try {
+        claim = await claimAutomaticRetry(entities, fax);
+      } catch {
+        queueErrors++;
+        await deferAutomaticRetry(entities, fax, 'retry_claim_unverified', now).catch(() => null);
+        continue;
+      }
       if (!claim) {
         skipped++;
         continue;
@@ -877,25 +905,22 @@ Deno.serve(async (req) => {
           continue;
         }
         if (data.requires_reconciliation === true || Number(data.unknown) > 0) {
-          const settled = await settleAutomaticRetry(entities, claim, fax, {
-            status: 'retried',
-            retry_count: nextGeneration,
-            retry_generation: nextGeneration,
-            next_retry_at: null,
-            failure_reason: 'Automatic retry submission requires provider reconciliation',
-          });
-          if (settled) reconciliation++;
+          // No child may exist yet. Keep the source retrying and its claim intact
+          // so the poller's stale-claim reconciler can find a delayed attempt.
+          reconciliation++;
           continue;
         }
         if (Number(data.accepted) === 1) {
           const settled = await settleAutomaticRetry(entities, claim, fax, {
             status: 'retried',
+            automatic_retry_queue_attempts: 0,
             retry_count: nextGeneration,
             retry_generation: nextGeneration,
             next_retry_at: null,
             failure_reason: `Automatic retry attempt #${nextGeneration} accepted by provider`,
           });
           if (settled) retried++;
+          else queueErrors++;
           continue;
         }
         if (Number(data.failed) === 1) {
@@ -907,6 +932,8 @@ Deno.serve(async (req) => {
           );
           const settled = await settleAutomaticRetry(entities, claim, fax, {
             status: 'failed',
+            automatic_retry_queue_attempts: 0,
+            ...(withinBudget ? { retry_submission_state: 'ready' } : {}),
             retry_count: withinBudget ? nextGeneration + 1 : nextGeneration,
             retry_generation: nextGeneration,
             next_retry_at: withinBudget ? new Date(Date.now() + delay * 60_000).toISOString() : null,
@@ -924,7 +951,7 @@ Deno.serve(async (req) => {
           });
           if (settled) {
             rejected++;
-          }
+          } else queueErrors++;
           continue;
         }
         reconciliation++;
@@ -936,8 +963,10 @@ Deno.serve(async (req) => {
       }
     }
 
+    const degraded = queueErrors > 0 || policyErrors > 0 || reconciliation > 0;
     return Response.json({
-      success: true,
+      success: !degraded,
+      queue_errors: queueErrors,
       retried,
       provider_rejected: rejected,
       requires_reconciliation: reconciliation,
@@ -948,7 +977,7 @@ Deno.serve(async (req) => {
       scanned: rows.length,
       scan_limit_reached: rows.length === AUTO_RETRY_SCAN_LIMIT,
       timestamp: new Date().toISOString(),
-    }, { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
+    }, { status: degraded ? 503 : 200, headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
   } catch {
     console.error('autoRetryFailedFaxes failed');
     return Response.json({ error: 'Internal server error' }, { status: 500 });

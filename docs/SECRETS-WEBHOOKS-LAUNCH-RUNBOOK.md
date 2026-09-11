@@ -147,6 +147,12 @@ pauses (including `OUTCOME_PIPELINE_RELEASE` for the outcome worker) remain
 independent defense-in-depth gates; keep all of them paused in staging except
 for an explicitly approved controlled-destination test.
 
+`OUTBOUND_FAX_WORKFLOW_RELEASE=enabled-v1` permits schedule creation and internal
+scheduled/retry fax dispatch without opening general email, SMS, voice or
+interactive batch delivery. `checkAllIntegrations` reports this prerequisite
+and the effective state of the two fax queue workers. Leave the general gate
+closed when releasing only these queues.
+
 The fax/follow-up workflows have independent default-false gates, all of which
 must remain unset in staging until their individual hosted proof is approved:
 `WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES`,
@@ -193,7 +199,8 @@ While every delivery gate is still closed, complete and retain this review:
 3. Create one fresh, explicitly approved canary for a controlled destination in
    one test tenant. Confirm there is exactly one eligible row and that all other
    outbound backlogs remain empty or quarantined.
-4. Open `OUTBOUND_DELIVERY_RELEASE` and only the single required worker/channel
+4. For scheduled/retry fax queues, open `OUTBOUND_FAX_WORKFLOW_RELEASE`; for other
+   delivery, use `OUTBOUND_DELIVERY_RELEASE`. Open only the single required worker/channel
    gate for the bounded canary window. Verify exactly one provider attempt and
    reconcile the local delivery/audit record with the provider result. Close
    the gates again before reviewing any additional queue.
