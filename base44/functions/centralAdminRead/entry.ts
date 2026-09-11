@@ -186,9 +186,10 @@ export function createCentralAdminHandler({
       const config = readCentralAdminConfig(getEnv);
       if (!config) return fail(503, 'unconfigured');
       if (request.method !== 'POST') return fail(405, 'method_not_allowed');
-      // Empty proxy fields carry neither a browser origin nor cookie credentials.
-      // Reject every nonempty value, including the browser's literal null origin.
-      if (request.headers.get('Origin')?.trim() || request.headers.get('Cookie')?.trim()) {
+      // Hosted Base44 adds a Cookie even to anonymous server requests. It is
+      // never authorization and is never forwarded to the pinned native SDK.
+      // Reject every nonempty browser origin, including the literal null origin.
+      if (request.headers.get('Origin')?.trim()) {
         const diagnostic = transportDiagnostic(request);
         const key = JSON.stringify(diagnostic);
         if (reportedTransport.size < 10 && !reportedTransport.has(key)) {

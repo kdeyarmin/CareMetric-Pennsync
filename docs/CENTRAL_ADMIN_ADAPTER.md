@@ -30,8 +30,8 @@ propagated. The SDK uses its fixed default `https://base44.app` API. A non-prod
 `X-Data-Env` is denied. No service token is configured in the Hub or frontend.
 
 The Hub sends `Content-Type: application/json` and the fixed header
-`X-CareMetric-Hub-Authorization: Bearer <token>`. A browser Origin or Cookie
-header is denied. There is no CORS grant. Accepted methods and body fields are
+`X-CareMetric-Hub-Authorization: Bearer <token>`. Every nonempty browser Origin,
+including literal `null`, is denied. There is no CORS grant. Accepted methods and body fields are
 closed; no caller-controlled table, destination, header name, or query operator
 is accepted.
 
@@ -41,10 +41,14 @@ only a fixed event name, Origin category (`absent`, `empty`, `app_origin`, `plat
 `other`), Cookie category (`absent`, `empty`, `present`), and booleans indicating an exact request
 origin match or literal `null` origin. Raw header values, request URLs, bodies, tokens and
 identities are never logged. Diagnostic failures leave the same rejection response in place.
-These categories are observations, not trusted authorization evidence; all current Origin/Cookie,
-Hub capability, explicit identity and native-role checks remain in force. The diagnostic-only
-change does not establish the hosted forwarding behavior until the exact function is deployed
-and server probes are correlated with its logs.
+These categories are observations, not trusted authorization evidence. At 2026-09-11T17:39:07Z,
+an anonymous Node POST sent no Origin, Cookie or Authorization header; the deployed diagnostic
+at commit `7d3a0d095dee50cb55e227297e1b59b31f4bf453` observed an absent Origin and present Cookie.
+Therefore Cookie presence is not a transport veto: the hosted gateway adds it even for server
+calls. Cookies are ignored for authorization and omitted from both the Hub request and pinned
+native SDK request. The mandatory custom Hub token, exact SMS operation binding, explicit
+identity mapping and current protected native role remain authoritative. Missing or malformed
+custom tokens return 401 with or without a hosted cookie; an injected cookie cannot create a session.
 
 ## Current authorization on every request
 
