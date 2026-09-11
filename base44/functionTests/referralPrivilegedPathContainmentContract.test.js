@@ -256,7 +256,9 @@ test('stale follow-up worker is tenant-bound, conditional, and duplicate-safe', 
   assert.ok(runtime.state.filters.some(({ entity, query }) => (
     entity === 'Notification'
     && query.agency_id === 'agency-a'
-    && query.user_email === 'intake@example.test'
+    && query.dedupe_key === runtime.state.creates[0].dedupe_key
+    && !('recipient_user_id' in query)
+    && !('user_email' in query)
   )));
 
   const secondResponse = await handler(staleFollowUpRequest());
@@ -481,6 +483,78 @@ test('a Referral read outage after publication CAS cannot strand an unattempted 
   assert.equal(recovered.status, 200);
   assert.equal((await recovered.json()).escalated, 1);
   assert.equal(runtime.state.creates.length, 1);
+  assert.ok(runtime.state.referrals[0].follow_up_requests.stale_notified_at);
+});
+
+test('a concurrent response retaining claim markers is preserved without an obsolete alert', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  const entities = runtime.client.asServiceRole.entities;
+  const update = entities.Referral.updateMany;
+  let responded = false;
+  entities.Referral.updateMany = async (...args) => {
+    const result = await update(...args);
+    if (!responded && result.updated === 1) {
+      responded = true;
+      const row = runtime.state.referrals[0];
+      await update({ id: row.id, version: row.version }, {
+        $set: { follow_up_requests: {
+          ...row.follow_up_requests,
+          status: 'received',
+          items: [{ item_id: 'item-a', item_status: 'received', answer: 'Synthetic response' }],
+        } },
+        $inc: { version: 1 },
+      });
+    }
+    return result;
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  const response = await handler(staleFollowUpRequest());
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).escalated, 0);
+  assert.equal(runtime.state.creates.length, 0);
+  assert.equal(runtime.state.referrals[0].follow_up_requests.status, 'received');
+  assert.equal(runtime.state.referrals[0].follow_up_requests.items[0].answer, 'Synthetic response');
+  assert.equal(runtime.state.referrals[0].follow_up_requests.stale_notification_publish_started_at, undefined);
+});
+
+test('a conflicting recipient on an existing generation never permits a second alert', async () => {
+  for (const recipient of [undefined, 'other-user']) {
+    const runtime = createStaleFollowUpRuntime();
+    const original = structuredClone(runtime.state.referrals[0].follow_up_requests);
+    const handler = await loadStaleFollowUpHandler(() => runtime.client,
+      new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+    assert.equal((await handler(staleFollowUpRequest())).status, 200);
+    runtime.state.referrals[0].follow_up_requests = original;
+    runtime.state.notifications[0].recipient_user_id = recipient;
+    runtime.state.notifications[0].user_email = 'conflicting@example.test';
+    const response = await handler(staleFollowUpRequest());
+    assert.equal(response.status, 500);
+    assert.equal((await response.json()).failed, 1);
+    assert.equal(runtime.state.creates.length, 1);
+    assert.equal(runtime.state.notifications.length, 1);
+  }
+});
+
+test('a changed stale-day threshold can reconcile an earlier publication without resending', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  const entities = runtime.client.asServiceRole.entities;
+  const filter = entities.Notification.filter;
+  let unavailable = true;
+  entities.Notification.filter = async (...args) => {
+    if (unavailable && runtime.state.notifications.length) throw new Error('read response lost');
+    return filter(...args);
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  assert.equal((await handler(staleFollowUpRequest())).status, 500);
+  assert.match(runtime.state.notifications[0].message, /4\+ days/);
+  unavailable = false;
+  const recovered = await handler(staleFollowUpRequest({ agency_id: 'agency-a', stale_days: 5 }));
+  assert.equal(recovered.status, 200);
+  assert.equal((await recovered.json()).escalated, 1);
+  assert.equal(runtime.state.creates.length, 1);
+  assert.match(runtime.state.notifications[0].message, /4\+ days/);
   assert.ok(runtime.state.referrals[0].follow_up_requests.stale_notified_at);
 });
 

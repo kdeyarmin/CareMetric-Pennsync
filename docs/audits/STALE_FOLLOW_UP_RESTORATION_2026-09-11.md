@@ -42,6 +42,8 @@ Review identified a read between the successful publication CAS and create that 
 
 Additional review fixes reject empty/marker-only follow-up edits without touching the existing request, and continue reporting unresolved publication attempts as failures after recipient suspension or removal. Regression tests verify both behaviors and ensure authority loss never causes another create.
 
+Collapsed review notes also identified three recovery/concurrency cases. The worker now stops if the claimed request changed before publication, including a received response that retains claim markers. Dedupe lookup uses agency and generation key without recipient filters so conflicting provenance is detected instead of hidden. Reconciliation accepts the original supported threshold in the notification message while still requiring exact immutable identity/authority fields. Regression cases verify response preservation, no duplicate after conflicting recipient provenance, and successful recovery when a retry changes the threshold from four to five days.
+
 ## Release and recovery
 
 The source still defaults to HTTP 503 before SDK construction unless the exact environment flag is enabled. The native workflow remains the only schedule owner; no legacy function automation is introduced. Production activation must follow review, green CI and hosted checks. Preserve the production schedule `0 12 * * *` in UTC.

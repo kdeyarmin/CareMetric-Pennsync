@@ -338,7 +338,10 @@ function notificationMatches(row: Record<string, any>, expected: Record<string, 
     && row.version >= 1
     && canonicalEmail(row?.user_email) === expected.user_email
     && row?.title === expected.title
-    && row?.message === expected.message
+    // The threshold can change between attempts; it is presentation, not the
+    // immutable agency/referral/generation identity used for reconciliation.
+    && typeof row?.message === 'string'
+    && /^A provider information request has had no response for (?:[1-9]|[12][0-9]|30)\+ days\. Review it before the start-of-care deadline\.$/.test(row.message)
     && row?.type === expected.type
     && row?.priority === expected.priority
     && sameJson(row?.metadata, expected.metadata)
@@ -358,8 +361,6 @@ async function findNotification(
       {
         agency_id: expected.agency_id,
         dedupe_key: expected.dedupe_key,
-        recipient_user_id: expected.recipient_user_id,
-        user_email: expected.user_email,
       },
       '-created_date',
       NOTIFICATION_SCAN_LIMIT,
@@ -473,6 +474,9 @@ async function processAgency(
       if (
         claimed.follow_up_requests?.stale_notification_claimed_by !== runId
         || claimed.follow_up_requests?.stale_notification_key !== key
+        // A response can retain our claim markers while changing the request.
+        // Do not overwrite that newer state or publish an obsolete alert.
+        || !sameJson(claimed.follow_up_requests, claimedFollowUp)
       ) continue;
 
       const notification = expectedNotification(
@@ -501,7 +505,7 @@ async function processAgency(
           continue;
         }
         const publishingFollowUp = {
-          ...claimedFollowUp,
+          ...claimed.follow_up_requests,
           stale_notification_publish_started_at: new Date().toISOString(),
         };
         if (!await conditionalFollowUpUpdate(entities, claimed, publishingFollowUp)) continue;
