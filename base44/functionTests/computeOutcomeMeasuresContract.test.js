@@ -122,6 +122,7 @@ async function loadHandler({
   user = { id: "u1", role: "admin", account_type: "agency_admin", agency_id: AGENCY_A, is_active: true },
   internalSecret = "scheduler-secret",
   ignoreFilters = false,
+  ignoreLimits = [],
   filterFailures = [],
   createFailures = [],
   unpersistedCreates = [],
@@ -137,9 +138,11 @@ async function loadHandler({
   onRunUpdateMany = null,
   updateFailures = [],
   onQuery = null,
+  onAgencyUpdate = null,
+  afterAgencyUpdate = null,
   outcomeComputationEnabled = true,
 } = {}) {
-  let src = await readFile(new URL("../functions/computeOutcomeMeasures/entry.ts", import.meta.url), "utf8");
+  let src = await readFile(new URL("../functions/computeOutcomeMeasuresV2/entry.ts", import.meta.url), "utf8");
   src = src.replace(
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     "const createClientFromRequest = globalThis.__omMakeClient;",
@@ -154,6 +157,8 @@ async function loadHandler({
     runs: [], runCreates: [], runUpdates: [],
     events: [],
   };
+  const agencyRows = agencies.map(row => ({ status: "active", updated_date: "2026-09-01T00:00:00.000Z", ...structuredClone(row) }));
+  const patientRows = patients.map(row => ({ updated_date: "2026-09-01T00:00:00.000Z", ...row }));
   const runRows = outcomeRuns.map((row) => ({ ...row }));
   const metricRows = outcomeMetrics.map((row) => ({ ...row }));
   const kpiRows = agencyKpis.map((row) => ({ ...row }));
@@ -165,6 +170,9 @@ async function loadHandler({
       if (value.$exists !== undefined && (rowValue !== undefined) !== value.$exists) return false;
       if (value.$eq !== undefined && !sameStoredValue(rowValue, value.$eq)) return false;
       if (value.$ne !== undefined && sameStoredValue(rowValue, value.$ne)) return false;
+      if (value.$in !== undefined && !value.$in.includes(rowValue)) return false;
+      if (!Object.keys(value).some(key => key.startsWith("$"))) return sameStoredValue(rowValue, value);
+      if (value.$gt !== undefined && String(rowValue) <= String(value.$gt)) return false;
       if (value.$gte !== undefined && String(rowValue) < String(value.$gte)) return false;
       if (value.$lte !== undefined && String(rowValue) > String(value.$lte)) return false;
       return true;
@@ -172,7 +180,6 @@ async function loadHandler({
     return sameStoredValue(rowValue, value);
   };
   const matching = (rows, q) => {
-    if (ignoreFilters) return rows;
     return rows.filter((row) => Object.entries(q || {}).every(
       ([key, value]) => matchesQueryField(row, key, value),
     ));
@@ -181,8 +188,9 @@ async function loadHandler({
     queries.push({ entity, q: { ...(q || {}) }, sort, limit, skip });
     onQuery?.({ entity, rows, q, sort, limit, skip, queries });
     if (filterFailures.includes(entity)) throw new Error(`${entity} filter failed`);
-    const scoped = matching(rows, q);
-    return Number.isFinite(limit) ? scoped.slice(skip, skip + limit) : scoped;
+    const scoped = (ignoreFilters === true || (Array.isArray(ignoreFilters) && ignoreFilters.includes(entity))) ? [...rows] : matching(rows, q);
+    if (sort === "id") scoped.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    return Number.isFinite(limit) && !ignoreLimits.includes(entity) ? scoped.slice(skip, skip + limit) : scoped;
   };
   const pendingApplyThenThrowStatuses = new Set(applyThenThrowRunUpdateStatuses);
   let handler;
@@ -202,11 +210,23 @@ async function loadHandler({
     auth: { me: async () => user },
     asServiceRole: {
       entities: {
-        Agency: { filter: async (q, sort, limit, skip) => queried("Agency", agencies, q, sort, limit, skip) },
+        Agency: {
+          filter: async (q, sort, limit, skip) => queried("Agency", agencyRows, q, sort, limit, skip),
+          updateMany: async (q, op) => {
+            await onAgencyUpdate?.({ q, op, rows: agencyRows });
+            const matched = matching(agencyRows, q);
+            for (const row of matched) {
+              Object.assign(row, structuredClone(op.$set));
+              row.updated_date = new Date(Date.parse(row.updated_date) + 1).toISOString();
+            }
+            await afterAgencyUpdate?.({ q, op, rows: agencyRows, matched });
+            return { success: true, updated: matched.length, has_more: false };
+          },
+        },
         OASISAssessment: {
           filter: async (q, sort, limit, skip) => queried("OASISAssessment", assessments, q, sort, limit, skip),
         },
-        Patient: { filter: async (q, sort, limit, skip) => queried("Patient", patients, q, sort, limit, skip) },
+        Patient: { filter: async (q, sort, limit, skip) => queried("Patient", patientRows, q, sort, limit, skip) },
         PatientOutcomeMetric: {
           filter: async (q, sort, limit, skip) => queried("PatientOutcomeMetric", metricRows, q, sort, limit, skip),
           create: async (payload) => {
@@ -258,7 +278,7 @@ async function loadHandler({
             if (updateFailures.includes("OutcomeComputationRun")) throw new Error("run update failed");
             const payload = { ...(operations.$set || {}) };
             const status = payload.status || "metadata";
-            mutateBeforeRunUpdateMany?.({ runRows, query, operations, status });
+            await mutateBeforeRunUpdateMany?.({ runRows, query, operations, status });
             const indexes = runRows
               .map((row, index) => ({ row, index }))
               .filter(({ row }) => Object.entries(query || {}).every(
@@ -318,7 +338,7 @@ async function loadHandler({
     handler,
     written,
     queries,
-    stored: { runRows, metricRows, kpiRows },
+    stored: { runRows, metricRows, kpiRows, agencyRows, patientRows },
   };
 }
 
@@ -352,6 +372,111 @@ function pair({ startCodes, dcCodes, startSchema = V2, dcSchema = V2, startRowsR
   ];
 }
 
+test("large outcome cohorts batch both passes of history and Patient metadata", async () => {
+  const ids = Array.from({ length: 80 }, (_, index) => `patient-${String(index).padStart(3, '0')}`);
+  const fixture = await loadHandler({
+    assessments: ids.flatMap(patientId => pair({ patientId, startCodes: { M1860: '3' }, dcCodes: { M1860: '1' } })),
+    patients: ids.map(id => ({ id, agency_id: AGENCY_A })),
+  });
+  const result = await run(fixture.handler);
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  assert.equal(fixture.written.metricCreates.length, 80);
+  assert.equal(fixture.queries.filter(query => query.entity === 'OASISAssessment').length, 6);
+  assert.equal(fixture.queries.filter(query => query.entity === 'Patient').length, 4);
+});
+
+test("missing scoped patients exclude only their episodes and their absence is rechecked", async () => {
+  for (const count of [2, 10]) {
+    const ids = Array.from({ length: count }, (_, index) => `patient-${index}`);
+    const fixture = await loadHandler({
+      assessments: ids.flatMap(patientId => pair({ patientId, startCodes: { M1860: '3' }, dcCodes: { M1860: '1' } })),
+      patients: ids.slice(1).map(id => ({ id, agency_id: AGENCY_A })),
+    });
+    const result = await run(fixture.handler);
+    assert.equal(result.status, 200, JSON.stringify(result.json));
+    assert.equal(fixture.written.metricCreates.length, count - 1);
+    assert.equal(result.json.skipped_patient_not_found_in_agency_scope, 1);
+    assert.equal(result.json.excluded_episode_count, 1);
+    assert.equal(result.json.source_snapshot.missing_patient_count, 1);
+  }
+});
+
+test("a missing patient appearing during snapshot verification prevents publication", async () => {
+  let reads = 0;
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: '3' }, dcCodes: { M1860: '1' } }),
+    onQuery: ({ entity, rows }) => {
+      if (entity === 'Patient' && ++reads === 2) rows.push({ id: 'p1', agency_id: AGENCY_A, updated_date: new Date().toISOString() });
+    },
+  });
+  assert.equal((await run(fixture.handler)).status, 500);
+  assert.equal(fixture.written.metricCreates.length, 0);
+});
+
+test("mutation during the batched Patient verification prevents derived writes", async () => {
+  const ids = Array.from({ length: 10 }, (_, index) => `patient-${index}`);
+  let patientCalls = 0;
+  const fixture = await loadHandler({
+    assessments: ids.flatMap(patientId => pair({ patientId, startCodes: { M1860: '3' }, dcCodes: { M1860: '1' } })),
+    patients: ids.map(id => ({ id, agency_id: AGENCY_A })),
+    onQuery: ({ entity, rows }) => {
+      if (entity === 'Patient' && ++patientCalls === 2) rows[0].updated_date = new Date().toISOString();
+    },
+  });
+  assert.equal((await run(fixture.handler)).status, 500);
+  assert.equal(fixture.written.metricCreates.length, 0);
+});
+
+test("Agency mutation RLS protects outcome and fax claim maps from direct admin writes", async () => {
+  const schema = JSON.parse(await readFile(new URL('../entities/Agency.jsonc', import.meta.url), 'utf8'));
+  for (const action of ['create', 'update', 'delete']) assert.equal(schema.rls[action], false);
+  assert.ok(schema.rls.read);
+});
+
+test("an oversized run page is rejected before allocating a new generation", async () => {
+  const fixture = await loadHandler({
+    outcomeRuns: Array.from({ length: 101 }, (_, index) => ({ id: `oversized-${index}` })),
+    ignoreFilters: ['OutcomeComputationRun'],
+    ignoreLimits: ['OutcomeComputationRun'],
+  });
+  assert.equal((await run(fixture.handler)).status, 500);
+  assert.equal(fixture.written.runCreates.length, 0);
+  assert.equal(fixture.queries.filter(query => query.entity === 'OutcomeComputationRun').length, 1);
+});
+
+test("hosted null defaults publish and replay with exact terminal preimages", async () => {
+  const terminalDefaults = Object.fromEntries([
+    "benchmark_value", "published_at", "failed_at", "failure_stage",
+    "patient_outcome_metric_count", "agency_kpi_count", "generation_fingerprint",
+    "result_summary", "result_summary_hash",
+  ].map(field => [field, null]));
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+    mutateCreatedRun: terminalDefaults,
+    onQuery: ({ entity, rows }) => {
+      for (const row of rows) {
+        if (entity === "PatientOutcomeMetric") {
+          row.primary_diagnosis ??= null;
+          row.functional_improvement.bathing_improved ??= null;
+        }
+        if (entity === "AgencyKPI") row.benchmark_value ??= null;
+      }
+    },
+  });
+  const first = await run(fixture.handler);
+  assert.equal(first.status, 200, JSON.stringify(first.json));
+  const replay = await run(fixture.handler);
+  assert.equal(replay.status, 200, JSON.stringify(replay.json));
+  assert.equal(replay.json.idempotent_replay, true);
+  assert.equal(fixture.written.runCreates.length, 1);
+  assert.equal(fixture.written.metricCreates.length, 1);
+  const publication = fixture.written.runUpdates.find(update => update.payload.status === "published");
+  assert.equal(publication.query.failed_at, null);
+  assert.equal(publication.query.result_summary, null);
+  assert.deepEqual(fixture.stored.agencyRows[0].outcome_window_claims, {});
+});
+
 test("outcome computation is hard-paused before SDK access for every request shape", async () => {
   const fixture = await loadHandler({ outcomeComputationEnabled: false });
   const requests = [
@@ -381,7 +506,7 @@ test("outcome computation is hard-paused before SDK access for every request sha
     const response = await fixture.handler(request);
     assert.equal(response.status, 503);
     assert.deepEqual(await response.json(), {
-      error: "Outcome computation is paused pending hosted atomicity and tenant validation",
+      error: "Outcome computation is paused until the pipeline release is enabled",
     });
   }
   assert.deepEqual(fixture.queries, []);
@@ -425,7 +550,7 @@ test("outcome run and derived-row schemas make the server-only publication gate 
 
 test("outcome run transitions pin SDK 0.8.46 and use exact full-preimage updateMany", async () => {
   const [source, runSchema] = await Promise.all([
-    readFile(new URL("../functions/computeOutcomeMeasures/entry.ts", import.meta.url), "utf8"),
+    readFile(new URL("../functions/computeOutcomeMeasuresV2/entry.ts", import.meta.url), "utf8"),
     readFile(new URL("../entities/OutcomeComputationRun.jsonc", import.meta.url), "utf8")
       .then(JSON.parse),
   ]);
@@ -484,7 +609,7 @@ test("corrupt or identity-changed create preimages never reach derived writes", 
 
 test("derived outcome cohorts remain append-only in the computation function", async () => {
   const source = await readFile(
-    new URL("../functions/computeOutcomeMeasures/entry.ts", import.meta.url),
+    new URL("../functions/computeOutcomeMeasuresV2/entry.ts", import.meta.url),
     "utf8",
   );
   for (const entity of ["PatientOutcomeMetric", "AgencyKPI"]) {
@@ -986,7 +1111,7 @@ test("conditional run transitions reject zero updates, partial batches, and unsu
       ...scenario.options,
     });
     const first = await run(fixture.handler);
-    assert.equal(first.status, 500, scenario.name);
+    assert.equal(first.status, scenario.committed ? 500 : 503, scenario.name);
     assert.equal(
       fixture.stored.runRows[0].status,
       scenario.committed ? "published" : "building",
@@ -1007,14 +1132,14 @@ test("publication readback rejects a set applied without its version increment",
     ignoreRunVersionIncrementStatuses: ["published"],
   });
   const first = await run(fixture.handler);
-  assert.equal(first.status, 500);
+  assert.equal(first.status, 503);
   assert.equal(fixture.stored.runRows[0].status, "published");
   assert.equal(fixture.stored.runRows[0].transition_version, 1);
   const attempted = fixture.written.runUpdates.find(({ payload }) => payload.status === "published");
   assert.deepEqual(attempted.operations.$inc, { transition_version: 1 });
   const replay = await run(fixture.handler);
   assert.equal(replay.status, 409);
-  assert.match(replay.json.error, /not replayable/i);
+  assert.match(replay.json.error, /owns this window/i);
 });
 
 test("an optional terminal field appearing before CAS prevents publication", async () => {
@@ -1030,7 +1155,7 @@ test("an optional terminal field appearing before CAS prevents publication", asy
     },
   });
   const result = await run(fixture.handler);
-  assert.equal(result.status, 500);
+  assert.equal(result.status, 503);
   assert.equal(injected, true);
   assert.equal(fixture.stored.runRows[0].status, "building");
   assert.equal(fixture.stored.runRows[0].transition_version, 1);
@@ -1069,10 +1194,11 @@ test("an expired building lease is failed by full-preimage CAS before a separate
   // Simulate a process whose publication transition never became durable and
   // whose catch block intentionally left the ambiguous building row alone.
   const interrupted = await run(fixture.handler);
-  assert.equal(interrupted.status, 500);
+  assert.equal(interrupted.status, 503);
   assert.equal(fixture.stored.runRows.length, 1);
   assert.equal(fixture.stored.runRows[0].status, "building");
   noOpStatuses.length = 0;
+  fixture.stored.agencyRows[0].outcome_window_claims = {}; // Unowned legacy run.
 
   fixture.stored.runRows[0].started_at = "2026-06-01T00:00:00.000Z";
   fixture.stored.runRows[0].lease_expires_at = "2026-06-01T01:00:00.000Z";
@@ -1114,13 +1240,13 @@ test("an unexpired building lease remains live and is never reclaimed", async ()
     noOpRunUpdateStatuses: noOpStatuses,
   });
   const interrupted = await run(fixture.handler);
-  assert.equal(interrupted.status, 500);
+  assert.equal(interrupted.status, 503);
   noOpStatuses.length = 0;
   const terminalUpdatesBeforeRetry = fixture.written.runUpdates.length;
 
   const retry = await run(fixture.handler);
   assert.equal(retry.status, 409);
-  assert.match(retry.json.error, /unpublished attempt already holds/i);
+  assert.match(retry.json.error, /owns this window/i);
   assert.equal(fixture.stored.runRows[0].status, "building");
   assert.equal(fixture.stored.runRows[0].transition_version, 1);
   assert.equal(fixture.written.runUpdates.length, terminalUpdatesBeforeRetry);
@@ -1135,8 +1261,9 @@ test("expired-run reconciliation is capped and requires another request for the 
     noOpRunUpdateStatuses: noOpStatuses,
   });
   const interrupted = await run(fixture.handler);
-  assert.equal(interrupted.status, 500);
+  assert.equal(interrupted.status, 503);
   noOpStatuses.length = 0;
+  fixture.stored.agencyRows[0].outcome_window_claims = {}; // Unowned legacy run.
 
   const original = fixture.stored.runRows[0];
   original.started_at = "2026-06-01T00:00:00.000Z";
@@ -1187,8 +1314,9 @@ test("expired-run recovery loses safely to a concurrent terminal transition", as
     },
   });
   const interrupted = await run(fixture.handler);
-  assert.equal(interrupted.status, 500);
+  assert.equal(interrupted.status, 503);
   noOpStatuses.length = 0;
+  fixture.stored.agencyRows[0].outcome_window_claims = {}; // Unowned legacy run.
   fixture.stored.runRows[0].started_at = "2026-06-01T00:00:00.000Z";
   fixture.stored.runRows[0].lease_expires_at = "2026-06-01T01:00:00.000Z";
 
@@ -1210,8 +1338,9 @@ test("a building run without exact lease evidence fails closed for operator revi
     noOpRunUpdateStatuses: noOpStatuses,
   });
   const interrupted = await run(fixture.handler);
-  assert.equal(interrupted.status, 500);
+  assert.equal(interrupted.status, 503);
   noOpStatuses.length = 0;
+  fixture.stored.agencyRows[0].outcome_window_claims = {}; // Unowned legacy run.
   delete fixture.stored.runRows[0].lease_expires_at;
   const updatesBeforeRetry = fixture.written.runUpdates.length;
 
@@ -1250,25 +1379,16 @@ test("post-publication window readback reports a newly visible competing publica
   assert.equal(fixture.stored.runRows.filter((row) => row.status === "published").length, 2);
 });
 
-test("distinct run rows remain outside the scope of per-record full-preimage CAS", async () => {
-  const source = await readFile(
-    new URL("../functions/computeOutcomeMeasures/entry.ts", import.meta.url),
-    "utf8",
-  );
-  const sameWindow = "shared-window-key";
-  const contenders = [
-    { id: "run-a", window_key: sameWindow, status: "building", transition_version: 1 },
-    { id: "run-b", window_key: sameWindow, status: "building", transition_version: 1 },
-  ];
-  const ownPreimageMatches = (row, preimage) => Object.entries(preimage).every(
-    ([field, value]) => row[field] === value,
-  );
-  assert.equal(ownPreimageMatches(contenders[0], contenders[0]), true);
-  assert.equal(ownPreimageMatches(contenders[1], contenders[1]), true);
-  assert.notEqual(contenders[0].id, contenders[1].id);
-  assert.equal(contenders[0].window_key, contenders[1].window_key);
-  assert.match(source, /cannot close the[\s\S]*final phantom window/);
-  assert.match(source, /datastore uniqueness or a proved[\s\S]*single-record lease/);
+test("concurrent requests publish only one run for a reporting window", async () => {
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+  });
+  const results = await Promise.all([run(fixture.handler), run(fixture.handler, { agency_id: AGENCY_A, idempotency_key: "different-request-0002" })]);
+  assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);
+  assert.equal(fixture.written.runCreates.length, 1);
+  assert.equal(fixture.stored.runRows.filter(row => row.status === "published").length, 1);
+  assert.deepEqual(fixture.stored.agencyRows[0].outcome_window_claims, {});
 });
 
 test("append-only output cannot inherit optional values from an older metric", async () => {
@@ -1401,7 +1521,7 @@ test("an ambiguous publication response never returns false success", async () =
     updateFailures: ["OutcomeComputationRun"],
   });
   const { status, json } = await run(handler);
-  assert.equal(status, 500);
+  assert.equal(status, 503);
   assert.equal(json.success, false);
   assert.equal(written.metricCreates.length, 1);
   assert.ok(written.kpiCreates.length > 0);
@@ -1415,7 +1535,7 @@ test("a nonthrowing no-op publication update is caught by run readback", async (
     noOpRunUpdateStatuses: ["published"],
   });
   const { status, json } = await run(handler);
-  assert.equal(status, 500);
+  assert.equal(status, 503);
   assert.equal(json.success, false);
   assert.equal(written.runUpdates.at(-1).payload.status, "published", "the update was attempted");
   assert.equal(stored.runRows[0].status, "building", "the mocked datastore did not apply it");
@@ -1612,7 +1732,9 @@ test("discharge reads paginate beyond the first 500 rows", async () => {
   });
   assert.deepEqual(dischargeQueries.map(({ limit, skip }) => ({ limit, skip })), [
     { limit: 500, skip: 0 },
-    { limit: 500, skip: 500 },
+    { limit: 500, skip: 0 },
+    { limit: 500, skip: 0 },
+    { limit: 500, skip: 0 },
   ]);
   assert.deepEqual(written.metrics, []);
 });
@@ -1641,7 +1763,7 @@ test("more than 50,000 lifetime discharges do not block a small provider-scoped 
   assert.equal(json.discharges_in_period, 1);
   const dischargeQueries = queries.filter(({ entity, q }) =>
     entity === "OASISAssessment" && q.visit_type === "Discharge");
-  assert.equal(dischargeQueries.length, 1, "the out-of-period lifetime rows never consume paging capacity");
+  assert.equal(dischargeQueries.length, 2, "the out-of-period lifetime rows never consume paging capacity");
 });
 
 test("patient history pagination can find a start assessment beyond row 500", async () => {
@@ -1678,47 +1800,18 @@ test("patient history pagination can find a start assessment beyond row 500", as
     entity === "OASISAssessment" && q.patient_id === "p-paged");
   assert.deepEqual(priorQueries.map(({ limit, skip }) => ({ limit, skip })), [
     { limit: 500, skip: 0 },
-    { limit: 500, skip: 500 },
+    { limit: 500, skip: 0 },
+    { limit: 500, skip: 0 },
+    { limit: 500, skip: 0 },
   ]);
 });
 
-test("cross-tenant rows leaked by a service response are rejected in memory", async () => {
-  const assessments = [
-    ...pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" }, agencyId: AGENCY_A, patientId: "pa" }),
-    ...pair({ startCodes: { M1860: "6" }, dcCodes: { M1860: "5" }, agencyId: AGENCY_B, patientId: "pb" }),
-  ];
-  const { handler, written } = await loadHandler({
-    assessments,
-    patients: [
-      { id: "pa", agency_id: AGENCY_A },
-      { id: "pb", agency_id: AGENCY_B },
-    ],
-    outcomeMetrics: [{
-      id: "foreign-existing-metric",
-      agency_id: AGENCY_B,
-      patient_id: "pa",
-      episode_start: "2026-05-01",
-      episode_end: "2026-06-01",
-    }],
-    agencyKpis: [{
-      id: "foreign-existing-kpi",
-      agency_id: AGENCY_B,
-      metric_name: "Improvement in Ambulation/Locomotion",
-      metric_category: "quality",
-      period_start: "2026-06-01",
-      period_end: "2026-06-01",
-    }],
-    ignoreFilters: true,
-  });
-  const { status, json } = await run(handler);
-  assert.equal(status, 200);
-  assert.equal(json.discharges_evaluated, 1);
-  assert.equal(written.metricCreates.length, 1);
-  assert.equal(written.metricCreates[0].agency_id, AGENCY_A);
-  assert.equal(written.metricCreates[0].patient_id, "pa");
-  assert.deepEqual(written.metricUpdates, [], "a foreign metric must never become an upsert target");
-  assert.deepEqual(written.kpiUpdates, [], "a foreign KPI must never become an upsert target");
-  assert.ok(written.kpiCreates.every((row) => row.agency_id === AGENCY_A));
+test("an ambiguous Agency response fails before any source reads or writes", async () => {
+  const fixture = await loadHandler({ ignoreFilters: ["Agency"] });
+  const result = await run(fixture.handler);
+  assert.equal(result.status, 404);
+  assert.equal(fixture.written.runCreates.length, 0);
+  assert.ok(fixture.queries.every(q => q.entity === "Agency"));
 });
 
 test("an excluded generation supersedes stale metrics without mutating any historical row", async () => {
@@ -1742,7 +1835,7 @@ test("an excluded generation supersedes stale metrics without mutating any histo
       { id: "metric-b", agency_id: AGENCY_B, ...sharedWindow },
       { id: "metric-unscoped", ...sharedWindow },
     ],
-    ignoreFilters: true,
+    ignoreFilters: ["PatientOutcomeMetric", "AgencyKPI"],
   });
   const { status, json } = await run(handler);
   assert.equal(status, 200);
@@ -1881,7 +1974,7 @@ test("a no-denominator run publishes an empty KPI generation without mutating st
       { id: "kpi-b", agency_id: AGENCY_B, is_current: true, ...kpiWindow },
       { id: "kpi-unscoped", is_current: true, ...kpiWindow },
     ],
-    ignoreFilters: true,
+    ignoreFilters: ["PatientOutcomeMetric", "AgencyKPI"],
   });
   const { status, json } = await run(handler);
   assert.equal(status, 200);
@@ -1923,7 +2016,7 @@ test("a zero-discharge run publishes an empty stable window and preserves KPI au
         ...currentWindow,
       },
     ],
-    ignoreFilters: true,
+    ignoreFilters: ["PatientOutcomeMetric", "AgencyKPI"],
   });
   const { status, json } = await run(handler);
   assert.equal(status, 200);
@@ -2235,7 +2328,7 @@ test("M2420 code 3 is a non-institutional hospice, not a facility", async () => 
 // ── frontend / backend parity ───────────────────────────────────────────────
 
 test("the inlined backend core matches the frontend engine measure-for-measure", async () => {
-  const src = await readFile(new URL("../functions/computeOutcomeMeasures/entry.ts", import.meta.url), "utf8");
+  const src = await readFile(new URL("../functions/computeOutcomeMeasuresV2/entry.ts", import.meta.url), "utf8");
   // The backend keeps its own copy (Deno cannot import the frontend module), so
   // the risk is drift. Every measure's identity, definition, ordinal order and
   // exclusions must match, or a rule fixed in one place silently persists in
@@ -2262,4 +2355,124 @@ test("the inlined backend core matches the frontend engine measure-for-measure",
   // And the backend must not have reverted to numeric coercion of codes.
   assert.ok(!/toNum\(\s*startAns\[/.test(src), "backend still coerces a start code to a number");
   assert.ok(!/toNum\(\s*dcAns\['m2420'\]\s*\)/.test(src), "backend still coerces the M2420 code to a number");
+});
+
+
+test("window claims tolerate lost acknowledgements in acquisition, commit and release", async () => {
+  const lost = new Set();
+  const fixture = await loadHandler({
+    afterAgencyUpdate: ({ op, matched }) => {
+      if (!matched.length) return;
+      const phase = Object.values(op.$set.outcome_window_claims)[0]?.phase || "release";
+      if (!lost.has(phase)) { lost.add(phase); throw new Error("response lost after apply"); }
+    },
+  });
+  const result = await run(fixture.handler);
+  assert.equal(result.status, 200);
+  assert.deepEqual([...lost].sort(), ["building", "committing", "release"]);
+  assert.deepEqual(fixture.stored.agencyRows[0].outcome_window_claims, {});
+  assert.equal((await run(fixture.handler)).json.idempotent_replay, true);
+});
+
+test("independent windows preserve each other's Agency claims under concurrency", async () => {
+  const fixture = await loadHandler();
+  const results = await Promise.all([
+    run(fixture.handler),
+    run(fixture.handler, { agency_id: AGENCY_A, period_start: "2026-06-02", period_end: "2026-06-02" }),
+    run(fixture.handler, { agency_id: AGENCY_B }),
+  ]);
+  assert.deepEqual(results.map(r => r.status), [200, 200, 200]);
+  assert.equal(fixture.stored.runRows.filter(row => row.status === "published").length, 3);
+  assert.ok(fixture.stored.agencyRows.every(row => Object.keys(row.outcome_window_claims).length === 0));
+});
+
+test("expired committing ownership terminates the run before a delayed publisher can complete", async () => {
+  let releaseWrite;
+  let reachedWrite;
+  const arrived = new Promise(resolve => { reachedWrite = resolve; });
+  const delay = new Promise(resolve => { releaseWrite = resolve; });
+  let held = false;
+  const fixture = await loadHandler({
+    mutateBeforeRunUpdateMany: async ({ status }) => {
+      if (status === "published" && !held) { held = true; reachedWrite(); await delay; }
+    },
+  });
+  const originalNow = Date.now;
+  const pending = run(fixture.handler);
+  try {
+    await arrived;
+    assert.equal(Object.values(fixture.stored.agencyRows[0].outcome_window_claims)[0].phase, "committing");
+    Date.now = () => originalNow() + 61 * 60_000;
+    const recovery = await run(fixture.handler);
+    assert.equal(recovery.status, 409);
+    assert.equal(recovery.json.window_publication_reconciled, true);
+    assert.equal(fixture.stored.runRows[0].status, "failed");
+    releaseWrite();
+    assert.equal((await pending).status, 500);
+    const replacement = await run(fixture.handler);
+    assert.equal(replacement.status, 200);
+    assert.equal(fixture.stored.runRows.filter(row => row.status === "published").length, 1);
+    assert.equal(fixture.stored.runRows[0].status, "failed");
+  } finally { Date.now = originalNow; releaseWrite(); await pending; }
+});
+
+test("changed source assessments or Patient revisions prevent all derived writes", async () => {
+  for (const target of ["OASISAssessment", "Patient"]) {
+    let mutated = false;
+    const fixture = await loadHandler({
+      assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+      patients: [{ id: "p1", agency_id: AGENCY_A }],
+      onQuery: ({ entity, rows, q, queries }) => {
+        if (mutated || entity !== target) return;
+        const matchingReads = queries.filter(x => x.entity === entity && (target === "Patient" || x.q.visit_type === "Discharge"));
+        if (matchingReads.length !== 2 || (target === "OASISAssessment" && q.visit_type !== "Discharge")) return;
+        if (target === "Patient") { rows[0].status = "deceased"; rows[0].updated_date = "2026-09-02T00:00:00.000Z"; }
+        else rows.push(assessment({ id: "new-discharge", patientId: "p1", visitType: "Discharge", date: "2026-06-01", rows: [] }));
+        mutated = true;
+      },
+    });
+    assert.equal((await run(fixture.handler)).status, 500, target);
+    assert.equal(mutated, true, target);
+    assert.deepEqual(fixture.written.metricCreates, [], target);
+    assert.deepEqual(fixture.written.kpiCreates, [], target);
+    assert.equal(fixture.stored.runRows[0].failure_stage, "verify_source_snapshot", target);
+  }
+});
+
+test("source cursor violations and tenant leaks never publish a partial cohort", async () => {
+  for (const mode of ["duplicate", "tenant", "ignored-cursor"]) {
+    const rows = Array.from({ length: mode === "ignored-cursor" ? 501 : 2 }, (_, i) => assessment({
+      id: `dc-${String(i).padStart(4, "0")}`, patientId: "", visitType: "Discharge", date: "2026-06-01", rows: [],
+    }));
+    if (mode === "duplicate") rows[1].id = rows[0].id;
+    if (mode === "tenant") rows[1].agency_id = AGENCY_B;
+    const fixture = await loadHandler({ assessments: rows, ignoreFilters: ["OASISAssessment"] });
+    assert.equal((await run(fixture.handler)).status, 500, mode);
+    assert.deepEqual(fixture.written.kpiCreates, [], mode);
+    assert.deepEqual(fixture.written.metricCreates, [], mode);
+  }
+});
+
+test("suspended and malformed Agency ownership fail before derived writes", async () => {
+  for (const extra of [{ status: "suspended" }, { outcome_window_claims: { bad: {} } }]) {
+    const fixture = await loadHandler({ agencies: [{ id: AGENCY_A, ...extra }] });
+    const response = await run(fixture.handler);
+    assert.ok(response.status >= 400);
+    assert.equal(fixture.written.runCreates.length, 0);
+    assert.deepEqual(fixture.written.kpiCreates, []);
+  }
+});
+
+test("published summaries bind the verified source snapshot", async () => {
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: "3" }, dcCodes: { M1860: "1" } }),
+    patients: [{ id: "p1", agency_id: AGENCY_A }],
+  });
+  const result = await run(fixture.handler);
+  assert.equal(result.status, 200);
+  assert.match(result.json.source_snapshot.source_hash, /^[a-f0-9]{64}$/);
+  assert.equal(result.json.source_snapshot.assessment_cohort_count, 2);
+  assert.equal(result.json.source_snapshot.assessment_row_count, 3);
+  assert.equal(result.json.source_snapshot.patient_count, 1);
+  assert.equal(fixture.stored.runRows[0].result_summary_hash, canonicalSha256(fixture.stored.runRows[0].result_summary));
 });

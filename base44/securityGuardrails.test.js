@@ -264,7 +264,7 @@ for (const file of SCHEDULER_AUTH_FILES) {
 }
 
 test('computeOutcomeMeasures accepts only internal or signed dispatcher authority and never User or Agency claims', () => {
-  const src = read('base44/functions/computeOutcomeMeasures/entry.ts');
+  const src = read('base44/functions/computeOutcomeMeasuresV2/entry.ts');
   const dedicatedGate = src.slice(
     src.indexOf('function hasValidInternalSecret'),
     src.indexOf('// computeOutcomeMeasures'),
@@ -280,19 +280,19 @@ test('computeOutcomeMeasures accepts only internal or signed dispatcher authorit
 });
 
 test('the outcome worker and native-workflow dispatcher remain runtime-gated by default', () => {
-  const src = read('base44/functions/computeOutcomeMeasures/entry.ts');
-  const workerConfig = JSON5.parse(read('base44/functions/computeOutcomeMeasures/function.jsonc'));
+  const src = read('base44/functions/computeOutcomeMeasuresV2/entry.ts');
+  const workerConfig = JSON5.parse(read('base44/functions/computeOutcomeMeasuresV2/function.jsonc'));
   const dispatcher = read('base44/functions/dispatchNightlyOutcomeMeasures/entry.ts');
   const workflow = JSON5.parse(read('base44/workflows/Nightly Outcome Measure Computation.jsonc'));
-  const gate = src.indexOf('if (!OUTCOME_COMPUTATION_ENABLED)');
+  const gate = src.indexOf('if (!OUTCOME_COMPUTATION_ENABLED())');
   const client = src.indexOf('createClientFromRequest(req)');
-  const dispatchGate = dispatcher.indexOf('if (!OUTCOME_DISPATCH_ENABLED)');
+  const dispatchGate = dispatcher.indexOf('if (!OUTCOME_DISPATCH_ENABLED())');
   const dispatchClient = dispatcher.indexOf('createClientFromRequest(req)');
 
   assert.match(src, /Deno\.env\.get\('OUTCOME_PIPELINE_RELEASE'\)/);
   assert.match(src, /=== 'enabled-v1'/);
   assert.ok(gate > 0 && gate < client, 'hard pause must return before SDK client creation');
-  assert.equal(workerConfig.name, 'computeOutcomeMeasures');
+  assert.equal(workerConfig.name, 'computeOutcomeMeasuresV2');
   assert.equal(workerConfig.entry, 'entry.ts');
   assert.deepEqual(workerConfig.automations, [], 'the one-agency worker must explicitly remove its unsafe empty-payload schedule');
   assert.match(dispatcher, /Deno\.env\.get\('OUTCOME_PIPELINE_RELEASE'\)/);
@@ -317,7 +317,7 @@ test('the outcome worker and native-workflow dispatcher remain runtime-gated by 
   assert.match(dispatcher, /loadScheduledAgencyIds/);
   assert.match(dispatcher, /requireExactEnabledAgency/);
   assert.match(dispatcher, /createOutcomeDispatchProof/);
-  assert.match(dispatcher, /asServiceRole\.functions\.invoke\(\s*'computeOutcomeMeasures'/);
+  assert.match(dispatcher, /asServiceRole\.functions\.invoke\(\s*'computeOutcomeMeasuresV2'/);
 });
 
 test('computed outcome and PDGM rows use hosted operation-specific service-role-only RLS', () => {

@@ -3,7 +3,7 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 // Source deployment is harmless by default. The native workflow owns the
 // schedule, but staging must explicitly set OUTCOME_PIPELINE_RELEASE=enabled-v1
 // only after the hosted datastore/tenant evidence is reviewed.
-const OUTCOME_DISPATCH_ENABLED =
+const OUTCOME_DISPATCH_ENABLED = () =>
   String(Deno.env.get('OUTCOME_PIPELINE_RELEASE') || '').trim() === 'enabled-v1';
 
 // <<<BEGIN SHARED HELPER: schedulerAuth — generated, edit base44/_shared/backendHelpers.mjs>>>
@@ -270,7 +270,7 @@ async function invokeOneAgency(
   for (let attempt = 1; attempt <= 2; attempt += 1) {
     try {
       const response = await base44.asServiceRole.functions.invoke(
-        'computeOutcomeMeasures',
+        'computeOutcomeMeasuresV2',
         signedRequest,
       );
       const data = resultPayload(response);
@@ -281,6 +281,7 @@ async function invokeOneAgency(
       return { success: false, idempotentReplay: false };
     } catch (error) {
       const failure = invocationFailure(error);
+      console.warn('Outcome worker invocation rejected', { status: failure.status });
       if (attempt === 1 && retryableFailure(failure.status, failure.data)) continue;
       return { success: false, idempotentReplay: false };
     }
@@ -289,7 +290,7 @@ async function invokeOneAgency(
 }
 
 Deno.serve(async (req) => {
-  if (!OUTCOME_DISPATCH_ENABLED) {
+  if (!OUTCOME_DISPATCH_ENABLED()) {
     return Response.json(
       { error: 'Nightly outcome dispatch is disabled pending hosted validation' },
       { status: 503, headers: { 'Cache-Control': 'no-store' } },
@@ -326,23 +327,30 @@ Deno.serve(async (req) => {
     let succeeded = 0;
     let idempotentReplays = 0;
     let failed = 0;
-    for (const agencyId of agencyIds) {
-      try {
-        await requireExactEnabledAgency(entities, agencyId);
-        const result = await invokeOneAgency(base44, secret, {
-          agency_id: agencyId,
-          ...requestBase,
-        });
-        if (result.success) {
-          succeeded += 1;
-          if (result.idempotentReplay) idempotentReplays += 1;
-        } else {
+    let nextAgency = 0;
+    const processAgencies = async () => {
+      while (nextAgency < agencyIds.length) {
+        const agencyId = agencyIds[nextAgency++];
+        try {
+          await requireExactEnabledAgency(entities, agencyId);
+          const result = await invokeOneAgency(base44, secret, {
+            agency_id: agencyId,
+            ...requestBase,
+          });
+          if (result.success) {
+            succeeded += 1;
+            if (result.idempotentReplay) idempotentReplays += 1;
+          } else {
+            failed += 1;
+          }
+        } catch {
           failed += 1;
         }
-      } catch {
-        failed += 1;
       }
-    }
+    };
+    // Bound hosted fan-out while avoiding one tenant's runtime delaying every
+    // subsequent tenant. Each worker retains its exact signed scope and retry key.
+    await Promise.all(Array.from({ length: Math.min(8, agencyIds.length) }, processAgencies));
 
     const summary = {
       success: failed === 0,

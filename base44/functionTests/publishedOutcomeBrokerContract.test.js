@@ -9,7 +9,7 @@ import { transpileTs } from '../../tools-transpile-ts.mjs';
 
 const functionUrl = new URL('../functions/getPublishedOutcomeMeasures/entry.ts', import.meta.url);
 const wrapperUrl = new URL('../../src/functions/getPublishedOutcomeMeasures.js', import.meta.url);
-const writerUrl = new URL('../functions/computeOutcomeMeasures/entry.ts', import.meta.url);
+const writerUrl = new URL('../functions/computeOutcomeMeasuresV2/entry.ts', import.meta.url);
 
 const REQUEST = {
   agency_id: 'agency-a',
@@ -346,6 +346,21 @@ test('broker and wrapper expose only the read path', async () => {
   )?.[0];
   assert.ok(hashBlock(source));
   assert.equal(hashBlock(source), hashBlock(writer));
+});
+
+test('hosted optional null defaults preserve hashes but replacing recorded values with null is rejected', async () => {
+  const row = metric();
+  row.primary_diagnosis = null;
+  row.functional_improvement.bathing_improved = null;
+  row.measure_results[0].exclusion_reason = null;
+  const noBenchmark = kpi();
+  delete noBenchmark.benchmark_value;
+  noBenchmark.row_content_hash = contentHash(noBenchmark, KPI_CONTENT_FIELDS);
+  noBenchmark.benchmark_value = null;
+  const { handler } = await loadHandler({ metricRows: [row], kpiRows: [noBenchmark] });
+  assert.equal((await invoke(handler)).response.status, 200);
+  row.functional_improvement.ambulation_improved = null;
+  assert.equal((await invoke(handler)).response.status, 409);
 });
 
 test('canonical row hashes ignore object-key insertion order but preserve the same domain content', async () => {

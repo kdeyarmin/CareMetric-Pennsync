@@ -123,6 +123,35 @@ function expectedProofSignature(payload) {
   return createHmac('sha256', 'scheduler-secret').update(message).digest('hex');
 }
 
+test('tenant dispatch runs concurrently with at most eight active workers', { timeout: 3000 }, async () => {
+  const agencies = Array.from({ length: 16 }, (_, index) => ({ id: `agency-${index}`, status: 'active' }));
+  let active = 0;
+  let maximum = 0;
+  let waiting = [];
+  const fixture = await loadHandler({
+    filterAgency: agencyFilter(agencies),
+    invokeOutcome: async (name, payload) => {
+      active += 1;
+      maximum = Math.max(maximum, active);
+      await new Promise(resolve => {
+        waiting.push(resolve);
+        if (waiting.length === 8) {
+          const batch = waiting;
+          waiting = [];
+          batch.forEach(release => release());
+        }
+      });
+      active -= 1;
+      return { data: publishedResult(payload) };
+    },
+  });
+  const response = await fixture.handler(schedulerRequest());
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).agencies_succeeded, 16);
+  assert.equal(maximum, 8);
+  assert.equal(new Set(fixture.calls.invocations.map(call => call.payload.agency_id)).size, 16);
+});
+
 test('outcome dispatcher is disabled before SDK construction by default', async () => {
   const fixture = await loadHandler({ enabled: false });
   const response = await fixture.handler(schedulerRequest());
@@ -187,8 +216,8 @@ test('one empty scheduler tick signs an exact prior-UTC-day request for each ver
   assert.deepEqual(
     fixture.calls.invocations.map(({ name, payload }) => [name, payload.agency_id]),
     [
-      ['computeOutcomeMeasures', 'agency-a'],
-      ['computeOutcomeMeasures', 'agency-z'],
+      ['computeOutcomeMeasuresV2', 'agency-a'],
+      ['computeOutcomeMeasuresV2', 'agency-z'],
     ],
   );
   for (const { payload } of fixture.calls.invocations) {
