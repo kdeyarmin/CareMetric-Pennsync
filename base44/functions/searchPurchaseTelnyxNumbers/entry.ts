@@ -222,7 +222,17 @@ Deno.serve(async (req) => {
       // Resolve the Telnyx phone-number id by looking the number up in the
       // account (authoritative — the locally stored id can be a number-ORDER id
       // from an old purchase, which the phone_numbers PATCH would reject).
-      const poolRows = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 5000).catch(() => []);
+      const poolRows = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 10);
+      if (!Array.isArray(poolRows) || poolRows.length > 1 || poolRows.some((row) => row.e164 !== e164)) {
+        return Response.json({ error: 'Fax inventory is ambiguous.' }, { status: 409 });
+      }
+      if (poolRows.some((row) => !['available', 'reserved'].includes(row.status) || row.assigned_to_email)) {
+        return Response.json({ error: 'Release the nurse assignment before reserving this number for fax.' }, { status: 409 });
+      }
+      const holders = await base44.asServiceRole.entities.User.filter({ work_phone_number: e164 }, undefined, 2);
+      if (!Array.isArray(holders) || holders.length !== 0) {
+        return Response.json({ error: 'This number is assigned to a work-number user.' }, { status: 409 });
+      }
       const lookup = await fetchJson(
         `${TELNYX_API_BASE}/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`,
         { method: 'GET', headers: authHeaders },
@@ -231,11 +241,33 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Could not look the number up in Telnyx.', status: lookup.status, details: lookup.data }, { status: 502 });
       }
       const owned = Array.isArray(lookup.data?.data) ? lookup.data.data : [];
-      const numberId = owned[0]?.id || null;
+      const numberId = owned.length === 1 && owned[0]?.phone_number === e164 ? owned[0]?.id : null;
       if (!numberId) {
         return Response.json({ error: `${e164} isn't in your Telnyx account. Purchase it first, then provision fax on it.` }, { status: 404 });
       }
 
+      // Reserve inventory before changing provider routing. Assignment endpoints
+      // conditionally claim only available rows, so a concurrent nurse claim wins
+      // or this reservation wins; neither can overwrite the other.
+      let poolRow = poolRows[0];
+      if (poolRow) {
+        const reserved = await base44.asServiceRole.entities.PhoneNumber.updateMany({
+          id: poolRow.id, e164, status: poolRow.status, assigned_to_email: poolRow.assigned_to_email ?? null,
+        }, { $set: { status: 'reserved', assigned_to_email: '', twilio_phone_number_sid: numberId } });
+        if (reserved?.success !== true || reserved.updated !== 1 || reserved.has_more !== false) {
+          return Response.json({ error: 'Fax inventory changed; retry provisioning.' }, { status: 409 });
+        }
+      } else {
+        poolRow = await base44.asServiceRole.entities.PhoneNumber.create({
+          e164, status: 'reserved', label: 'Outbound fax line', twilio_phone_number_sid: numberId,
+          notes: 'Existing Telnyx number reserved for dedicated fax use.',
+        });
+      }
+      const confirmed = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 10);
+      if (!Array.isArray(confirmed) || confirmed.length !== 1 || confirmed[0].id !== poolRow?.id
+        || confirmed[0].e164 !== e164 || confirmed[0].status !== 'reserved' || confirmed[0].assigned_to_email) {
+        return Response.json({ error: 'Fax reservation requires reconciliation.' }, { status: 409 });
+      }
       const patch = await fetchJson(`${TELNYX_API_BASE}/phone_numbers/${encodeURIComponent(numberId)}`, {
         method: 'PATCH',
         headers: { ...authHeaders, 'Content-Type': 'application/json' },
@@ -247,12 +279,7 @@ Deno.serve(async (req) => {
       }
 
       if (setAsOutboundFax) await setOutboundFaxNumber(base44, e164, user?.agency_name);
-      // Refresh the stored id from the authoritative lookup (it may hold a
-      // number-order id from an old in-app purchase).
-      if (poolRows[0]?.id && poolRows[0].twilio_phone_number_sid !== numberId) {
-        await base44.asServiceRole.entities.PhoneNumber.update(poolRows[0].id, { twilio_phone_number_sid: numberId }).catch(() => {});
-      }
-      await audit('fax_capacity_provisioned', poolRows[0]?.id || null);
+      await audit('fax_capacity_provisioned', poolRow.id);
       return Response.json({ success: true, e164, telnyx_number_id: numberId, fax_connection_id: faxConnectionId, outbound_fax_set: setAsOutboundFax });
     }
 
@@ -296,7 +323,10 @@ Deno.serve(async (req) => {
       // Don't double-buy: if it's already in the pool, just report it — but a
       // fax-purpose "purchase" of an owned number still provisions fax on it,
       // so the admin's intent (make this my fax line) is honored either way.
-      const existing = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 5000).catch(() => []);
+      const existing = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 10);
+      if (!Array.isArray(existing) || existing.length > 1 || existing.some((row) => row.e164 !== e164)) {
+        return Response.json({ error: 'Number inventory is ambiguous.' }, { status: 409 });
+      }
       if (existing.length > 0) {
         if (purpose === 'fax') return await provisionExistingFax(e164, { setAsOutboundFax });
         return Response.json({ success: true, already_in_pool: true, e164 });
@@ -340,7 +370,7 @@ Deno.serve(async (req) => {
         label: typeof body.label === 'string' && body.label.trim()
           ? body.label.trim()
           : (purpose === 'fax' ? 'Outbound fax line' : ''),
-        status: 'available',
+        status: purpose === 'fax' ? 'reserved' : 'available',
         twilio_phone_number_sid: telnyxNumberId || '',
         notes: purpose === 'fax'
           ? 'Purchased in-app via Telnyx numbers API (fax line — attached to the Programmable Fax connection)'

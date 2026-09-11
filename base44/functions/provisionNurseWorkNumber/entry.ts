@@ -140,6 +140,16 @@ Deno.serve(async (req) => {
     if (poolMatches.some((row) => row.status === 'reserved')) {
       return Response.json({ error: 'This number is reserved for office/fax use.' }, { status: 409 });
     }
+    if (poolRow?.status === 'available') {
+      const claim = await base44.asServiceRole.entities.PhoneNumber.updateMany({
+        id: poolRow.id, e164: poolRow.e164, status: 'available',
+      }, { $set: { status: 'assigned', assigned_to_email: target_user_email } });
+      if (claim?.success !== true || claim.updated !== 1 || claim.has_more !== false) {
+        return Response.json({ error: 'Number inventory changed; retry assignment.' }, { status: 409 });
+      }
+    } else if (poolRow && (poolRow.status !== 'assigned' || poolRow.assigned_to_email !== target_user_email)) {
+      return Response.json({ error: 'This number is not available for assignment.' }, { status: 409 });
+    }
 
     const update = {};
     if (workNum) update.work_phone_number = workNum;
@@ -157,16 +167,12 @@ Deno.serve(async (req) => {
     // a manually-typed assignment left the pool row 'available' — wrong counts,
     // and the number stayed offered to auto-assign/remove.
     if (workNum) {
-      if (poolRow) {
-        await base44.asServiceRole.entities.PhoneNumber.update(poolRow.id, {
-          status: 'assigned', assigned_to_email: target_user_email,
-        }).catch(() => {});
-      }
       const priorRows = await base44.asServiceRole.entities.PhoneNumber.filter({ assigned_to_email: target_user_email }, undefined, 5000).catch(() => []);
       for (const pr of priorRows) {
         if (pr.status === 'reserved') continue;
         if (!poolRow || pr.id !== poolRow.id) {
-          await base44.asServiceRole.entities.PhoneNumber.update(pr.id, { status: 'available', assigned_to_email: '' }).catch(() => {});
+          await base44.asServiceRole.entities.PhoneNumber.updateMany({ id: pr.id, status: 'assigned', assigned_to_email: target_user_email },
+            { $set: { status: 'available', assigned_to_email: '' } }).catch(() => {});
         }
       }
     }

@@ -154,9 +154,10 @@ Deno.serve(async (req) => {
       // assigns cannot hand the same E.164 to two nurses. Re-read to confirm
       // we still own the claim (loser sees the winner's assigned_to_email).
       try {
-        await base44.asServiceRole.entities.PhoneNumber.update(chosen.row.id, {
-          status: 'assigned', assigned_to_email: target.email,
-        });
+        const claim = await base44.asServiceRole.entities.PhoneNumber.updateMany({
+          id: chosen.row.id, e164: chosen.row.e164, status: 'available',
+        }, { $set: { status: 'assigned', assigned_to_email: target.email } });
+        if (claim?.success !== true || claim.updated !== 1 || claim.has_more !== false) continue;
       } catch (err) {
         console.error('pool claim failed:', err?.message);
         continue;
@@ -177,9 +178,9 @@ Deno.serve(async (req) => {
         .then(() => true).catch((err) => { console.error('work number assignment failed:', err?.message); return false; });
       if (!ok) {
         // Release the pool claim so another run can reuse the number.
-        await base44.asServiceRole.entities.PhoneNumber.update(chosen.row.id, {
-          status: 'available', assigned_to_email: '',
-        }).catch(() => {});
+        await base44.asServiceRole.entities.PhoneNumber.updateMany({
+          id: chosen.row.id, status: 'assigned', assigned_to_email: target.email,
+        }, { $set: { status: 'available', assigned_to_email: '' } }).catch(() => {});
         continue;
       }
 

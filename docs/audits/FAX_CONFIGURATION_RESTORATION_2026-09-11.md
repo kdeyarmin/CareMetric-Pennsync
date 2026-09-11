@@ -11,3 +11,9 @@ PR #161 merged as `ff577b31f22076cd9453c329550f2bc7ed64cddb` with both CI checks
 - No provider fax has been sent. Controlled provider delivery awaits a test destination and authorization. Scheduled sends, automatic retries and signature reminders remain disabled pending their respective verification.
 
 The backfill must preserve fax receiving as false and leave SMS/voice authority disabled on the fax binding. It performs no provider writes or messages.
+
+## Review corrections
+
+All fax purchase/provisioning writers now reserve inventory, including an existing owned number whose stored provider id is already correct. Existing nurse assignments are rejected before provider routing changes. New nurse purchases remain available. Nurse assignment and fax conversion use conditional inventory transitions so a competing claim cannot overwrite the winner. Removal uses an exact conditional delete, and release/cleanup cannot reopen a concurrently reserved row. The pool UI excludes reserved inventory from its available count and hides ordinary mutation controls.
+
+All 75 Telnyx/telecom contracts pass, including both fax producers and competing assignment/removal/release operations. Lint, signal checking, build and all 280 backend transpilation checks pass. These tests use fake provider calls; no real number was purchased or reconfigured.

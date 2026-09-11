@@ -132,7 +132,10 @@ Deno.serve(async (req) => {
       if (row.status === 'assigned') {
         return Response.json({ error: 'Release this number from its nurse before removing it.' }, { status: 409 });
       }
-      await base44.asServiceRole.entities.PhoneNumber.delete(id);
+      const removed = await base44.asServiceRole.entities.PhoneNumber.deleteMany({ id, e164: row.e164, status: 'available' });
+      if (removed?.success !== true || removed.deleted !== 1) {
+        return Response.json({ error: 'Number inventory changed; removal was not confirmed.' }, { status: 409 });
+      }
       await audit('phone_number_removed', row.id);
       return Response.json({ success: true });
     }
@@ -147,6 +150,7 @@ Deno.serve(async (req) => {
       const row = rows[0];
       if (!row) return Response.json({ error: 'Number not found.' }, { status: 404 });
       if (row.status === 'reserved') return Response.json({ error: 'Reserved office/fax inventory cannot be assigned.' }, { status: 409 });
+      if (row.status !== 'available') return Response.json({ error: 'Release the current assignment before assigning this number.' }, { status: 409 });
       const e164 = normalizeE164(row.e164);
       if (!e164) return Response.json({ error: 'Pool number is malformed.' }, { status: 400 });
 
@@ -179,7 +183,13 @@ Deno.serve(async (req) => {
         return Response.json({ error: `${e164} is already assigned to ${conflict.email}.` }, { status: 409 });
       }
 
-      // Update the nurse's masking record.
+      const claim = await base44.asServiceRole.entities.PhoneNumber.updateMany({
+        id, e164: row.e164, status: 'available',
+      }, { $set: { status: 'assigned', assigned_to_email: targetEmail } });
+      if (claim?.success !== true || claim.updated !== 1 || claim.has_more !== false) {
+        return Response.json({ error: 'Number inventory changed; retry assignment.' }, { status: 409 });
+      }
+      // Update the nurse only after winning the inventory claim.
       const update = { work_phone_number: e164 };
       if (cellNum) update.personal_cell_e164 = cellNum;
       if (row.twilio_phone_number_sid) update.twilio_phone_number_sid = row.twilio_phone_number_sid;
@@ -192,11 +202,10 @@ Deno.serve(async (req) => {
       for (const pr of priorRows) {
         if (pr.status === 'reserved') continue;
         if (pr.id !== id) {
-          await base44.asServiceRole.entities.PhoneNumber.update(pr.id, { status: 'available', assigned_to_email: '' }).catch(() => {});
+          await base44.asServiceRole.entities.PhoneNumber.updateMany({ id: pr.id, status: 'assigned', assigned_to_email: targetEmail },
+            { $set: { status: 'available', assigned_to_email: '' } }).catch(() => {});
         }
       }
-      await base44.asServiceRole.entities.PhoneNumber.update(id, { status: 'assigned', assigned_to_email: targetEmail });
-
       await audit('phone_number_assigned', row.id);
       return Response.json({ success: true, e164, target_user_email: targetEmail });
     }
@@ -218,7 +227,12 @@ Deno.serve(async (req) => {
           await base44.asServiceRole.entities.User.update(target.id, { work_phone_number: '' }).catch(() => {});
         }
       }
-      await base44.asServiceRole.entities.PhoneNumber.update(id, { status: 'available', assigned_to_email: '' });
+      const released = await base44.asServiceRole.entities.PhoneNumber.updateMany({
+        id, e164: row.e164, status: row.status, assigned_to_email: row.assigned_to_email ?? null,
+      }, { $set: { status: 'available', assigned_to_email: '' } });
+      if (released?.success !== true || released.updated !== 1 || released.has_more !== false) {
+        return Response.json({ error: 'Number inventory changed; release was not confirmed.' }, { status: 409 });
+      }
       await audit('phone_number_released', row.id);
       return Response.json({ success: true, e164 });
     }
