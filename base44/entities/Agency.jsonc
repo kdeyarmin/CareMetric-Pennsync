@@ -149,6 +149,10 @@
     "notes": {
       "type": "string",
       "description": "Internal notes about the agency"
+    },
+    "fax_workflow_reservations": {
+      "type": "object",
+      "description": "Bounded service-owned queue creation reservations keyed by a digest, containing only opaque ownership tokens. Retained on uncertain creates; never cleared just because a child query is empty."
     }
   },
   "required": [
