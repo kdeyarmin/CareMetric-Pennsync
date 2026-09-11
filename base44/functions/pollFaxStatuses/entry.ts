@@ -1210,6 +1210,12 @@ Deno.serve(async (req) => {
             ...(definitelyRejected ? {
               retry_count: Math.max(fax.retry_count, children[0].retry_generation),
               retry_generation: children[0].retry_generation,
+              // This handoff may publish a new final alert only when no earlier
+              // publication started. A legacy claim is uncertain as well.
+              failure_notify_publication_state: fax.failure_notify_publication_state === 'ready'
+                || (fax.failure_notify_publication_state == null
+                  && fax.failure_notify_claimed_by == null && fax.failure_notify_claimed_at == null)
+                ? 'ready' : 'started',
             } : {}),
             ...(children.length === 1 ? { next_retry_at: null } : {}),
             failure_reason: nextStatus === 'failed'

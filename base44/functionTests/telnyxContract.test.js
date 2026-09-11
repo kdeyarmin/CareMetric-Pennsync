@@ -1380,6 +1380,7 @@ test("pollFaxStatuses releases a stale retry only with an exactly rejected child
   const writes = [];
   const state = {
     IntegrationSecret: [activeTelnyxSecret()],
+    AgencyMembership: [activeFaxSenderMembership()],
     FaxLog: [outboundFax({
       status: "retrying",
       provider_terminal_status: "failed",
@@ -1389,7 +1390,7 @@ test("pollFaxStatuses releases a stale retry only with an exactly rejected child
       retry_claimed_by: "retry_claim_1",
       retry_claimed_by_user_id: "user_a",
       retry_claimed_at: "2020-01-01T00:00:00.000Z",
-      final_failure_notified: true,
+      final_failure_notified: false,
     })],
     Notification: [],
   };
@@ -1407,6 +1408,9 @@ test("pollFaxStatuses releases a stale retry only with an exactly rejected child
   assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
   assert.equal((await response.json()).released_stale_retries, 1);
   assert.equal(state.FaxLog[0].status, "failed");
+  assert.equal(state.Notification.length, 1);
+  assert.equal(state.FaxLog[0].final_failure_notified, true);
+  assert.equal(state.FaxLog[0].failure_notify_publication_state, "started");
   const release = writes.find((write) => (
     write.entity === "FaxLog"
     && write.op === "updateMany"
@@ -2369,4 +2373,35 @@ test('terminal notification recovery leaves scheduled retries to the retry queue
   assert.equal(state.Notification.length, 1);
   assert.equal(state.FaxLog.at(-1).final_failure_notified, true);
   assert.equal(writes.some((write) => write.query?.id?.startsWith('pending_retry_')), false);
+});
+
+
+test('stale rejected-child handoff preserves prior publication uncertainty', async () => {
+  for (const previous of [
+    { failure_notify_publication_state: 'started' },
+    { failure_notify_claimed_by: 'legacy_claim', failure_notify_claimed_at: '2020-01-01T00:00:00.000Z' },
+  ]) {
+    const state = { IntegrationSecret: [activeTelnyxSecret()],
+      AgencyMembership: [activeFaxSenderMembership()], Notification: [],
+      FaxLog: [outboundFax({ status: 'retrying', provider_terminal_status: 'failed',
+        provider_terminal_at: '2026-09-06T12:05:00.000Z', retry_count: 1,
+        retry_claimed_by: 'retry_claim', retry_claimed_by_user_id: 'user_a',
+        retry_claimed_at: '2020-01-01T00:00:00.000Z', ...previous,
+      }), outboundFax({ id: 'rejected_child', status: 'failed',
+        retry_of_fax_log_id: 'FaxLog_1', retry_generation: 1, retry_count: 1,
+        provider_submission_state: 'rejected', telnyx_fax_id: null,
+      })],
+    };
+    const handler = await loadHandler('../functions/pollFaxStatuses/entry.ts', {
+      env: pollFaxStatusesReleased, makeClient: () => makeSpyBase44({ data: state }),
+      fetchImpl: makeFetch([]).impl,
+    });
+    const response = await handler(new Request('https://app/functions/pollFaxStatuses'));
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).recovery_failures, 1);
+    assert.equal(state.FaxLog[0].status, 'failed');
+    assert.equal(state.FaxLog[0].failure_notify_publication_state, 'started');
+    assert.equal(state.FaxLog[0].final_failure_notified, false);
+    assert.equal(state.Notification.length, 0);
+  }
 });
