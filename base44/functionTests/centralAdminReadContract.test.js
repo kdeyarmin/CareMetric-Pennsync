@@ -171,7 +171,8 @@ for (const headers of [
     assert.equal(fixture.requests.length, 0);
   });
 }
-for (const operation of nativeModule.centralAdminOperations.filter(name=>name!=='support.identity.resolve')) {
+// Purpose-bound source/history transport has its own SMS-only projection tests.
+for (const operation of nativeModule.centralAdminOperations.filter(name=>!['support.identity.resolve','learning.source.snapshot'].includes(name))) {
   test(`actual ${operation} producer contains only safe SaaS metadata`, async () => {
     const fixture = makeFixture({ extraFields: true });
     const { response, body } = await result(fixture, { operation });

@@ -14,6 +14,7 @@ export const centralAdminOperations = [
   'capabilities', 'overview', 'organizations.list', 'users.list',
   'billing.overview', 'billing.subscriptions.list',
   'support.identity.resolve',
+  'learning.source.snapshot',
 ] as const;
 type OperationName = typeof centralAdminOperations[number];
 type Operation = { operation: OperationName; search: string; limit: number; offset: number; sourceUserId?:string;sourceAccountId?:string };
@@ -285,7 +286,7 @@ export function createCentralAdminHandler({
       try { operation = parseOperation(await readJson(request, 2048, signal)); }
       catch { return fail(400, 'invalid_request'); }
       stage = 'hub_authorization';
-      if(operation.operation==='support.identity.resolve'&&!sms)return fail(401,'unauthenticated');
+      if(['support.identity.resolve','learning.source.snapshot'].includes(operation.operation)&&!sms)return fail(401,'unauthenticated');
       const response = await fetcher(sms ? SMS_AUTHORIZATION_URL : `${HUB_ORIGIN}/rest/v1/rpc/authorize_platform_admin`, {
         // Hosted fetch fails at redirect:'error' before exposing a response.
         // Manual mode never follows Location; reject redirects below before any
@@ -393,6 +394,10 @@ export function createCentralAdminHandler({
       let data: unknown;
       if (operation.operation === 'capabilities') {
         data = { apiVersion: 1, operations: [...centralAdminOperations], sourceRevision: config.revision };
+      } else if (operation.operation === 'learning.source.snapshot') {
+        data = await bounded(readPennsyncLearningSource(entities,signal),signal);
+        const current = rows(await bounded(entities.User.filter({id:native},'id',2,0,['id','role','is_active']),signal),2);
+        if(current.length!==1||current[0].id!==native||current[0].role!=='admin'||current[0].is_active===false)return fail(403,'forbidden');
       } else if (operation.operation === 'support.identity.resolve') {
         const sourceUserId=nativeId(operation.sourceUserId),sourceAccountId=nativeId(operation.sourceAccountId);
         const membershipKey=`${sourceAccountId}:${sourceUserId}`;
@@ -452,5 +457,91 @@ export function createCentralAdminHandler({
     } finally { try { client?.cleanup?.(); } catch { /* Never log credential-bearing native errors. */ } }
   };
 }
+
+// BEGIN PENNSYNC LEARNING SOURCE
+// Embedded into centralAdminRead by tools-sync-pennsync-learning-source.mjs.
+// Only the current, mapped protected administrator can invoke this reader.
+type LearningRow = Record<string, unknown>;
+type LearningEntity = { filter: (query: LearningRow, sort: string, limit: number, offset: number, fields: string[]) => Promise<unknown> };
+const pennsyncSourceFields: Record<string, string[]> = {"TrainingCourse":["id","created_date","updated_date","title","short_description","description","training_type","annual_cycle_year","category","business_line_scope","employee_audience","purpose","reading_level","role_targets","tags","estimated_minutes","status","version","created_by","published_by","published_date","approved_by","approved_at","learning_objectives","passing_score","certificate_valid_months","is_mandatory","recurrence_rule","ai_generated","needs_sme_review","policy_references","citation_count","enable_certificate","requires_attestation","attestation_text","ceu_hours","allow_answer_review","include_case_scenarios","include_key_takeaways","certificate_wording","references_json","ai_prompt_json","retake_settings_json","test_settings_json","attachment_urls","attachment_names","archived_status","real_world_relevance","regulatory_crosswalk_json","competency_skills_json","pre_assessment_json","brain_sparks_json"],"TrainingModule":["id","created_date","updated_date","title","description","category","module_type","content_type","content","related_diagnoses","related_skills","prerequisites","duration_minutes","difficulty_level","is_required","required_for_onboarding","recertification_months","passing_score","content_url","is_active","order","course_id","type","content_json","order_index","estimated_minutes","attachment_urls","attachment_names","video_url","video_thumbnail_url","video_duration_seconds","video_status","video_generated_at","video_error","video_job_id","video_avatar_id","video_voice_id"],"TrainingQuestion":["id","created_date","updated_date","course_id","type","prompt","options_json","correct_answer_json","rationale","rubric","difficulty","question_bank_tag","version","active","source_citations_json","order_index","points"],"TrainingCompletion":["id","created_date","updated_date","nurse_email","training_module_id","completion_date","score","status","due_date","expiration_date","certificate_url","feedback","effectiveness_rating","difficulty_rating","relevance_rating","would_recommend","improvement_suggestions","performance_metrics"],"TrainingAssignment":["id","created_date","updated_date","course_id","course_title","plan_id","assigned_to_user_id","assigned_to_role","assigned_to_department","assigned_to_location","assigned_to_business_line","assigned_by","assigned_date","due_date","annual_cycle_year","priority","status","required","passing_score_required","max_attempts","waiting_period_hours","regenerate_test_on_retake","retake_required","latest_attempt_number","score_percentage","pass_fail_result","recurrence_rule","renewal_frequency","renewal_due_date","certificate_id","attestation_required","acknowledgement_completed","reminder_sent","last_reminder_date","reminder_offsets_sent","training_due_offsets_sent","reminder_claimed_by","reminder_claimed_at","expiration_note_offsets_sent","expiration_note_claimed_by","completion_date","notes","remediation_message","progress_percentage","started_date","last_accessed","archived_status","submitted_at","certificate_issue_claimed_by"],"TrainingAttempt":["id","created_date","updated_date","assignment_id","course_id","user_id","started_at","submitted_at","score","objective_score","short_answer_score","passed","pass_fail_result","answers_json","grading_method","ai_grading_confidence","randomized_question_order","time_spent_minutes","attempt_number","remediation_message","ip_address","badges_processed_at","badges_claim_token","corrective_plan_claimed_by"],"TrainingAttestation":["id","created_date","updated_date","assignment_id","course_id","user_id","statement","acknowledged","signed_name","attestation_timestamp","device_metadata","ip_address"],"TrainingCertificate":["id","created_date","updated_date","user_id","user_name","assignment_id","course_id","course_title","training_category","business_line","annual_cycle_year","certificate_id","issued_at","completion_date","expiration_date","certificate_pdf_url","score","hours","verification_hash","revoked","revoked_by","revoked_reason","last_renewal_reminder_date","renewal_reminder_offsets_sent","renewal_assignment_claimed_by","renewal_assignment_claimed_at"],"LearningPlan":["id","created_date","updated_date","name","description","business_line_scope","year","start_date","end_date","plan_type","global_due_date","active","auto_enroll","auto_enroll_criteria","created_by","total_courses","estimated_hours"],"LearningPlanCourse":["id","created_date","updated_date","plan_id","course_id","course_title","order_index","due_date_offset_days","specific_due_date","is_required"],"User":["id","email","role","is_active","updated_date"],"Agency":["id","status","updated_date"],"AgencyMembership":["id","user_id","agency_id","membership_key","tenant_role","status","version","revoked_at"]};
+const learningEncoder = new TextEncoder();
+const learningIdPattern = /^[0-9a-f]{24}$/;
+function sourceCanonical(value: unknown): string {
+  if (value === null || ['string','boolean','number'].includes(typeof value)) return JSON.stringify(value);
+  if (Array.isArray(value)) return '[' + value.map(sourceCanonical).join(',') + ']';
+  if (!value || typeof value !== 'object') throw new Error('Invalid source value');
+  return '{' + Object.keys(value).sort().map(key => JSON.stringify(key) + ':' + sourceCanonical((value as LearningRow)[key])).join(',') + '}';
+}
+async function sourceHash(value: string): Promise<string> {
+  return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',learningEncoder.encode(value))),b=>b.toString(16).padStart(2,'0')).join('');
+}
+export async function readPennsyncLearningSource(entities: Record<string, LearningEntity>, signal: AbortSignal) {
+  const read = async (name: string): Promise<LearningRow[]> => {
+    const result: LearningRow[] = []; let previous = '';
+    for (let offset=0;offset<=10000;offset+=250) {
+      signal.throwIfAborted();
+      const limit=Math.min(250,10001-offset);
+      const page=await entities[name].filter({},'id',limit,offset,pennsyncSourceFields[name]);
+      signal.throwIfAborted();
+      if (!Array.isArray(page)||page.length>limit) throw new Error('Invalid source page');
+      for(const row of page) {
+        if(!row||typeof row!=='object'||Array.isArray(row)||typeof row.id!=='string'||!learningIdPattern.test(row.id)||row.id<=previous) throw new Error('Invalid source order');
+        previous=row.id;
+        const projected=Object.fromEntries(pennsyncSourceFields[name].filter(key=>row[key]!==undefined).map(key=>[key,row[key]]));
+        if(learningEncoder.encode(sourceCanonical(projected)).length>750000) throw new Error('Oversized source record');
+        result.push(projected);
+      }
+      if(result.length>10000)throw new Error('Source scan incomplete');
+      if(page.length<limit)return result;
+    }
+    throw new Error('Source scan incomplete');
+  };
+  const scan = async () => {
+    const result:Record<string,LearningRow[]>={}; const names=Object.keys(pennsyncSourceFields).sort();
+    // Bound platform load while reading all pages, including empty entities.
+    for(let index=0;index<names.length;index+=4) {
+      const group=names.slice(index,index+4);
+      const values=await Promise.all(group.map(read));
+      group.forEach((name,i)=>{result[name]=values[i];});
+    }
+    if(learningEncoder.encode(sourceCanonical(result)).length>6000000)throw new Error('Oversized source cohort');
+    return result;
+  };
+  const first=await scan(), second=await scan();
+  // Base44 has no cross-entity snapshot transaction. Require two identical,
+  // complete reads; the Hub re-reads the same source before committing it.
+  if(sourceCanonical(first)!==sourceCanonical(second))throw new Error('Source changed during read');
+  const references:Array<{entity:string;sourceId:string;path:string;sha256:string;kind:string}>=[];
+  const scrub=async(value:unknown,entity:string,sourceId:string,path:string,depth=0):Promise<unknown>=>{
+    if(depth>20)throw new Error('Source nesting exceeds limit');
+    const key=path.split('/').at(-1)??'';
+    const sensitiveKey=/(?:url|uri|token|secret|password|authorization|api_key|ai_prompt_json)$/i.test(key);
+    if(value!=null&&value!==''&&(sensitiveKey||(typeof value==='string'&&/(?:https?:\/\/|Bearer\s+|[?&](?:token|signature|key|x-amz-[a-z-]+)=)/i.test(value)))) {
+      if(references.length>=10000)throw new Error('Too many source references');
+      const sha256=await sourceHash(sourceCanonical(value));
+      references.push({entity,sourceId,path,sha256,kind:sensitiveKey?'source_reference':'embedded_reference'});
+      return {sourceReferenceSha256:sha256};
+    }
+    if(Array.isArray(value))return Promise.all(value.map((item,i)=>scrub(item,entity,sourceId,path+'/'+i,depth+1)));
+    if(value&&typeof value==='object') {
+      const out:LearningRow={};
+      for(const name of Object.keys(value).sort()) {
+        if(['__proto__','prototype','constructor'].includes(name)||name.length>160)throw new Error('Invalid source key');
+        out[name]=await scrub((value as LearningRow)[name],entity,sourceId,path+'/'+name,depth+1);
+      }
+      return out;
+    }
+    return value;
+  };
+  const records:Record<string,Array<{id:string;revision:string;fields:unknown}>>={};
+  for(const [name,values] of Object.entries(second)) {
+    records[name]=[];
+    for(const row of values) records[name].push({id:String(row.id),revision:await sourceHash(sourceCanonical(row)),fields:await scrub(row,name,String(row.id),'')});
+  }
+  const payload=sourceCanonical({contract:'pennsync.learning-source.v1',sourceAppId:'694ec16e72e01b60d22f7cbf',scope:'private-administrator-migration',records,references});
+  if(learningEncoder.encode(payload).length>7000000)throw new Error('Oversized source payload');
+  return {payload,sourceRevision:await sourceHash(payload)};
+}
+// END PENNSYNC LEARNING SOURCE
 
 Deno.serve(createCentralAdminHandler({ getEnv: (name) => Deno.env.get(name) }));

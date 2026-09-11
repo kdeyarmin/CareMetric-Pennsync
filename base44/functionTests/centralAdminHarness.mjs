@@ -46,7 +46,7 @@ export function makeFixture(options = {}) {
   };
   const createClient = request => {
     requests.push(request);
-    const entities = Object.fromEntries(['User', 'Agency', 'AgencyMembership', 'Subscription'].map(entity => [entity, {
+    const entities = Object.fromEntries(Object.keys(data).map(entity => [entity, {
       filter: async (query, sort, limit, offset, fields) => {
         const call = { entity, query, sort, limit, offset, fields };
         calls.push(call);
