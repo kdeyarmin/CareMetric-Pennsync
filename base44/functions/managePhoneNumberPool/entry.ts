@@ -81,6 +81,35 @@ function normalizeE164(raw) {
   return null;
 }
 
+// <<<BEGIN SHARED HELPER: assignUserFromClaimedNumber — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function assignUserFromClaimedNumber(base44, poolId, targetId, targetEmail, patch) {
+  const entities = base44.asServiceRole.entities;
+  const claims = await entities.PhoneNumber.filter({ id: poolId }, undefined, 2);
+  const claim = Array.isArray(claims) && claims.length === 1 ? claims[0] : null;
+  if (!claim || claim.id !== poolId || claim.status !== 'assigned' || claim.assigned_to_email !== targetEmail
+    || claim.e164 !== patch.work_phone_number || typeof claim.updated_date !== 'string') {
+    throw new Error('Work-number claim requires reconciliation');
+  }
+  try {
+    return await entities.User.update(targetId, patch);
+  } catch {
+    let users;
+    try { users = await entities.User.filter({ id: targetId }, undefined, 2); }
+    catch { throw new Error('Work-number assignment requires reconciliation'); }
+    if (!Array.isArray(users) || users.length !== 1 || users[0]?.id !== targetId) {
+      throw new Error('Work-number assignment requires reconciliation');
+    }
+    if (Object.entries(patch).every(([key, value]) => users[0][key] === value)) return users[0];
+    if (users[0].work_phone_number !== patch.work_phone_number) {
+      await entities.PhoneNumber.updateMany({ id: poolId, e164: claim.e164, status: 'assigned',
+        assigned_to_email: targetEmail, updated_date: claim.updated_date },
+      { $set: { status: 'available', assigned_to_email: '' } });
+    }
+    throw new Error('Work-number assignment was not confirmed');
+  }
+}
+// <<<END SHARED HELPER: assignUserFromClaimedNumber>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -194,7 +223,7 @@ Deno.serve(async (req) => {
       if (cellNum) update.personal_cell_e164 = cellNum;
       if (row.twilio_phone_number_sid) update.twilio_phone_number_sid = row.twilio_phone_number_sid;
       if (target.duty_status === undefined || target.duty_status === null) update.duty_status = 'off_duty';
-      await base44.asServiceRole.entities.User.update(target.id, update);
+      await assignUserFromClaimedNumber(base44, id, target.id, targetEmail, update);
 
       // Free any OTHER pool entry this nurse used to hold, so one nurse maps to
       // one pool number.
@@ -228,7 +257,9 @@ Deno.serve(async (req) => {
         }
       }
       const released = await base44.asServiceRole.entities.PhoneNumber.updateMany({
-        id, e164: row.e164, status: row.status, assigned_to_email: row.assigned_to_email ?? null,
+        id, e164: row.e164, status: row.status,
+        ...(row.assigned_to_email == null ? { $or: [{ assigned_to_email: null }, { assigned_to_email: { $exists: false } }] }
+          : { assigned_to_email: row.assigned_to_email }),
       }, { $set: { status: 'available', assigned_to_email: '' } });
       if (released?.success !== true || released.updated !== 1 || released.has_more !== false) {
         return Response.json({ error: 'Number inventory changed; release was not confirmed.' }, { status: 409 });

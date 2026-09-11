@@ -252,7 +252,9 @@ Deno.serve(async (req) => {
       let poolRow = poolRows[0];
       if (poolRow) {
         const reserved = await base44.asServiceRole.entities.PhoneNumber.updateMany({
-          id: poolRow.id, e164, status: poolRow.status, assigned_to_email: poolRow.assigned_to_email ?? null,
+          id: poolRow.id, e164, status: poolRow.status,
+          ...(poolRow.assigned_to_email == null ? { $or: [{ assigned_to_email: null }, { assigned_to_email: { $exists: false } }] }
+            : { assigned_to_email: poolRow.assigned_to_email }),
         }, { $set: { status: 'reserved', assigned_to_email: '', twilio_phone_number_sid: numberId } });
         if (reserved?.success !== true || reserved.updated !== 1 || reserved.has_more !== false) {
           return Response.json({ error: 'Fax inventory changed; retry provisioning.' }, { status: 409 });

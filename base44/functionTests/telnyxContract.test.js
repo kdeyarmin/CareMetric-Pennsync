@@ -588,7 +588,7 @@ function makeSpyBase44({ user = { email: "a@x.com", role: "admin", full_name: "A
             const offset = Number.isSafeInteger(skip) && skip >= 0 ? skip : 0;
             rows = rows.slice(offset, offset + limit);
           }
-          return name === 'FaxLog' ? structuredClone(rows) : rows;
+          return ['FaxLog', 'PhoneNumber', 'User'].includes(name) ? structuredClone(rows) : rows;
         },
         list: async () => data[name] || [],
       };
@@ -764,6 +764,51 @@ test('a concurrent fax reservation prevents pool removal or release', async () =
     assert.equal(response.status, 409, action);
     assert.equal(data.PhoneNumber.length, 1);
     assert.equal(data.PhoneNumber[0].status, 'reserved');
+  }
+});
+
+test('manual nurse provisioning cannot assign an untracked number while fax inventory is being created', async () => {
+  const writes = [];
+  const client = makeSpyBase44({ data: { User: [{ id: 'u1', email: 'n@x.com' }], PhoneNumber: [] }, writes });
+  const handler = await loadHandler('../functions/provisionNurseWorkNumber/entry.ts', {
+    env: { SUPER_ADMIN_EMAIL: 'a@x.com' }, makeClient: () => client, fetchImpl: makeFetch([]).impl,
+  });
+  const response = await handler(new Request('https://app/functions/test', { method: 'POST', body: JSON.stringify({
+    target_user_email: 'n@x.com', work_phone_number: '+12155550188',
+  }) }));
+  assert.equal(response.status, 409);
+  assert.deepEqual(writes, []);
+});
+
+test('nurse assignment reconciles failed and lost-acknowledgement User writes', async () => {
+  for (const name of ['managePhoneNumberPool', 'provisionNurseWorkNumber', 'autoAssignWorkNumbers']) {
+    for (const mode of ['rejected', 'accepted_ack_lost', 'read_unknown', 'newer_claim']) {
+      const data = { User: [{ id: 'u1', email: 'n@x.com' }], AgencySettings: [],
+        PhoneNumber: [{ id: 'p1', e164: '+12155550188', status: 'available' }] };
+      const client = makeSpyBase44({ data });
+      const originalUpdate = client.asServiceRole.entities.User.update;
+      const originalRead = client.asServiceRole.entities.User.filter;
+      let attempted = false;
+      client.asServiceRole.entities.User.update = async (...args) => {
+        attempted = true;
+        if (mode === 'accepted_ack_lost') await originalUpdate(...args);
+        if (mode === 'newer_claim') data.PhoneNumber[0].updated_date = new Date(Date.now() + 60_000).toISOString();
+        throw new Error('simulated User write failure');
+      };
+      client.asServiceRole.entities.User.filter = async (...args) => {
+        if (attempted && mode === 'read_unknown') throw new Error('unavailable confirmation');
+        return originalRead(...args);
+      };
+      const handler = await loadHandler(`../functions/${name}/entry.ts`, {
+        env: { SUPER_ADMIN_EMAIL: 'a@x.com' }, makeClient: () => client, fetchImpl: makeFetch([]).impl,
+      });
+      const response = await handler(new Request('https://app/functions/test', { method: 'POST', body: JSON.stringify({
+        action: 'assign', id: 'p1', target_user_email: 'n@x.com', work_phone_number: '+12155550188',
+      }) }));
+      assert.equal(response.status, mode === 'accepted_ack_lost' || name === 'autoAssignWorkNumbers' ? 200 : 500, `${name}/${mode}`);
+      assert.equal(data.PhoneNumber[0].status, mode === 'rejected' ? 'available' : 'assigned', `${name}/${mode}`);
+      assert.equal(data.User[0].work_phone_number, mode === 'accepted_ack_lost' ? '+12155550188' : undefined, `${name}/${mode}`);
+    }
   }
 });
 
