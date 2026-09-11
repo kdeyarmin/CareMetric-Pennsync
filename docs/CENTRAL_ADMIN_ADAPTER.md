@@ -149,6 +149,11 @@ and successful requests do not produce these failure events. Use the stage to
 distinguish Hub transport/identity rejection from native credential, SDK factory,
 current administrator and projected data failures. A diagnostic is evidence for
 the next investigation; it does not authorize relaxing that stage's checks.
+A closed failure-kind enum distinguishes timeout, abort, DNS, TLS, redirect,
+permission, connection, invalid fetch receiver, signal-option, unsupported,
+generic type-error and unknown failures. A boolean reports whether the incoming
+request was aborted. Exception messages are only matched against fixed markers
+inside the classifier; neither matched text nor native error codes are emitted.
 
 `pnpm run test:central-admin` runs native producer/authentication/transport tests
 through the repository's esbuild-based TypeScript harness, including SMS

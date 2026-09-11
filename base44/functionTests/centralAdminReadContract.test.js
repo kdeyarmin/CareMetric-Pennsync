@@ -365,7 +365,7 @@ test('failure diagnostics distinguish Hub transport, identity and native stages 
     assert.ok(failed.response.status >= 400);
     assert.equal(fixture.failures.length, 1);
     const event = fixture.failures[0];
-    assert.deepEqual(Object.keys(event).sort(), ['event', 'stage', 'status', 'hubStatus', 'nativeStatus', 'nativeApp', 'dataEnvironment', 'serviceCredential'].sort());
+    assert.deepEqual(Object.keys(event).sort(), ['event', 'stage', 'status', 'hubStatus', 'nativeStatus', 'nativeApp', 'dataEnvironment', 'serviceCredential', 'failureKind', 'requestAborted'].sort());
     assert.equal(event.event, 'central_admin_request_failed');
     assert.equal(event.stage, stage);
     assert.equal(event.hubStatus, hubStatus);
@@ -420,4 +420,33 @@ test('successful requests and routine anonymous input do not emit failure diagno
   assert.equal((await result(fixture, undefined, { headers: { 'Content-Type': 'text/plain' } })).response.status, 415);
   assert.equal((await result(fixture, { operation: 'unsupported' })).response.status, 400);
   assert.deepEqual(fixture.failures, []);
+});
+
+test('hosted fetch failure classification emits only known condition enums, never exception values', async () => {
+  for (const [error, expected] of [
+    [new DOMException('private details', 'TimeoutError'), 'timeout'],
+    [new DOMException('private details', 'AbortError'), 'aborted'],
+    [Object.assign(new TypeError('private details'), { cause: { code: 'ENOTFOUND' } }), 'dns'],
+    [new Error('certificate invalid private-host'), 'tls'],
+    [new Error('redirect to private-host'), 'redirect'],
+    [new Error('permission denied private-host'), 'permission'],
+    [new Error('connection refused private-host'), 'connection'],
+    [new TypeError('Illegal invocation private details'), 'invalid_fetch_receiver'],
+    [new TypeError('AbortSignal invalid private details'), 'signal_option'],
+    [new Error('unsupported private option'), 'unsupported'],
+    [new TypeError('private details'), 'type_error'],
+    [new Error('private details'), 'other'],
+  ]) {
+    const fixture = makeFixture({ fetcher: () => { throw error; } });
+    const response = await result(fixture);
+    assert.equal(response.response.status, 503);
+    assert.equal(fixture.failures[0].failureKind, expected);
+    assert.equal(fixture.failures[0].requestAborted, false);
+    assert.doesNotMatch(JSON.stringify(fixture.failures), /private|ENOTFOUND|details|invocation/);
+  }
+  const hostile = new Error('private details');
+  Object.defineProperty(hostile, 'message', { get() { throw new Error('private getter'); } });
+  const fixture = makeFixture({ fetcher: () => { throw hostile; } });
+  assert.equal((await result(fixture)).response.status, 503);
+  assert.equal(fixture.failures[0].failureKind, 'other');
 });

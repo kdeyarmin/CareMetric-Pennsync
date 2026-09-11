@@ -32,6 +32,8 @@ type RequestStage = 'configuration' | 'transport' | 'request_body' | 'hub_author
 type FailureDiagnostic = Readonly<{
   event: 'central_admin_request_failed'; stage: RequestStage; status: number;
   hubStatus: number | null; nativeStatus: number | null;
+  failureKind: 'timeout' | 'aborted' | 'dns' | 'tls' | 'redirect' | 'permission' | 'connection'
+    | 'invalid_fetch_receiver' | 'signal_option' | 'unsupported' | 'type_error' | 'other'; requestAborted: boolean;
   nativeApp: 'absent' | 'expected' | 'other'; dataEnvironment: 'absent' | 'empty' | 'prod' | 'other';
   serviceCredential: 'absent' | 'empty' | 'bearer' | 'other';
 }>;
@@ -51,6 +53,27 @@ function nativeErrorStatus(error: unknown): number | null {
   } catch { return null; }
 }
 
+/** Match only known transport conditions; no exception text leaves this function. */
+function failureKind(error: unknown): FailureDiagnostic['failureKind'] {
+  try {
+    if (!error || typeof error !== 'object') return 'other';
+    const row = error as { name?: unknown; message?: unknown; cause?: { code?: unknown } };
+    const message = typeof row.message === 'string' ? row.message.slice(0, 2048) : '';
+    const code = typeof row.cause?.code === 'string' ? row.cause.code.slice(0, 80) : '';
+    if (row.name === 'TimeoutError' || /ETIMEDOUT|timed? ?out/i.test(code + ' ' + message)) return 'timeout';
+    if (row.name === 'AbortError') return 'aborted';
+    if (/ENOTFOUND|EAI_AGAIN|dns|resolve.*host|name.*resolution/i.test(code + ' ' + message)) return 'dns';
+    if (/certificate|tls|ssl|invalid peer|cert_|unknownissuer/i.test(code + ' ' + message)) return 'tls';
+    if (/redirect/i.test(message)) return 'redirect';
+    if (row.name === 'NotCapable' || row.name === 'PermissionDenied' || /permission|not allowed|denied/i.test(message)) return 'permission';
+    if (/ECONN|connection (?:refused|reset|closed)|network.*unreachable/i.test(code + ' ' + message)) return 'connection';
+    if (/illegal invocation|invalid receiver/i.test(message)) return 'invalid_fetch_receiver';
+    if (/AbortSignal|signal/i.test(message)) return 'signal_option';
+    if (/unsupported|not supported|not implemented/i.test(message)) return 'unsupported';
+    return row.name === 'TypeError' ? 'type_error' : 'other';
+  } catch { return 'other'; }
+}
+
 function failureDiagnostic(request: Request, stage: RequestStage, status: number, hubStatus: number | null, error: unknown): FailureDiagnostic {
   const app = request.headers.get('Base44-App-Id');
   const dataEnvironment = request.headers.get('X-Data-Env');
@@ -58,6 +81,7 @@ function failureDiagnostic(request: Request, stage: RequestStage, status: number
   return Object.freeze({
     event: 'central_admin_request_failed', stage, status, hubStatus,
     nativeStatus: stage.startsWith('native_') ? nativeErrorStatus(error) : null,
+    failureKind: failureKind(error), requestAborted: request.signal.aborted,
     nativeApp: app === null ? 'absent' : app === APP_ID ? 'expected' : 'other',
     dataEnvironment: dataEnvironment === null ? 'absent' : !dataEnvironment.trim() ? 'empty' : dataEnvironment === 'prod' ? 'prod' : 'other',
     serviceCredential: credential === null ? 'absent' : !credential.trim() ? 'empty'
