@@ -385,6 +385,34 @@ test("large outcome cohorts batch both passes of history and Patient metadata", 
   assert.equal(fixture.queries.filter(query => query.entity === 'Patient').length, 4);
 });
 
+test("missing scoped patients exclude only their episodes and their absence is rechecked", async () => {
+  for (const count of [2, 10]) {
+    const ids = Array.from({ length: count }, (_, index) => `patient-${index}`);
+    const fixture = await loadHandler({
+      assessments: ids.flatMap(patientId => pair({ patientId, startCodes: { M1860: '3' }, dcCodes: { M1860: '1' } })),
+      patients: ids.slice(1).map(id => ({ id, agency_id: AGENCY_A })),
+    });
+    const result = await run(fixture.handler);
+    assert.equal(result.status, 200, JSON.stringify(result.json));
+    assert.equal(fixture.written.metricCreates.length, count - 1);
+    assert.equal(result.json.skipped_patient_not_found_in_agency_scope, 1);
+    assert.equal(result.json.excluded_episode_count, 1);
+    assert.equal(result.json.source_snapshot.missing_patient_count, 1);
+  }
+});
+
+test("a missing patient appearing during snapshot verification prevents publication", async () => {
+  let reads = 0;
+  const fixture = await loadHandler({
+    assessments: pair({ startCodes: { M1860: '3' }, dcCodes: { M1860: '1' } }),
+    onQuery: ({ entity, rows }) => {
+      if (entity === 'Patient' && ++reads === 2) rows.push({ id: 'p1', agency_id: AGENCY_A, updated_date: new Date().toISOString() });
+    },
+  });
+  assert.equal((await run(fixture.handler)).status, 500);
+  assert.equal(fixture.written.metricCreates.length, 0);
+});
+
 test("mutation during the batched Patient verification prevents derived writes", async () => {
   const ids = Array.from({ length: 10 }, (_, index) => `patient-${index}`);
   let patientCalls = 0;

@@ -1222,6 +1222,7 @@ Deno.serve(async (req) => {
       if (!exactOutcomeId(patientId)) throw new Error('Invalid outcome patient identity');
       beforeSourceCall();
       const rows = await base44.asServiceRole.entities.Patient.filter({ agency_id: agencyId, id: patientId }, undefined, 2);
+      if (Array.isArray(rows) && rows.length === 0) return null;
       if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== patientId || rows[0]?.agency_id !== agencyId
         || typeof rows[0].updated_date !== 'string' || !Number.isFinite(Date.parse(rows[0].updated_date))) {
         throw new Error('Outcome source patient is missing, ambiguous, or unrevisioned');
@@ -1237,8 +1238,8 @@ Deno.serve(async (req) => {
       const rows = await base44.asServiceRole.entities.Patient.filter(
         { agency_id: agencyId, id: { $in: ids } }, 'id', ids.length + 1,
       );
-      if (!Array.isArray(rows) || rows.length !== ids.length
-        || new Set(rows.map(row => row?.id)).size !== ids.length
+      if (!Array.isArray(rows) || rows.length > ids.length
+        || new Set(rows.map(row => row?.id)).size !== rows.length
         || rows.some(row => !ids.includes(row?.id) || row.agency_id !== agencyId
           || typeof row.updated_date !== 'string' || !Number.isFinite(Date.parse(row.updated_date)))) {
         throw new Error('Outcome source patient batch is missing, ambiguous, or unrevisioned');
@@ -1266,9 +1267,9 @@ Deno.serve(async (req) => {
         }
         const patients = await readPatientBatch(batch);
         patientBatches.push({ ids: batch, hash: await resultSummaryHash(patients) });
-        for (const patient of patients) {
-          patientSources.set(patient.id, patient);
-          batchedPatientIds.add(patient.id);
+        for (const id of batch) {
+          patientSources.set(id, patients.find(patient => patient.id === id) ?? null);
+          batchedPatientIds.add(id);
         }
       }
     };
@@ -1297,7 +1298,8 @@ Deno.serve(async (req) => {
       return { version: 'verified_source_cohorts_v1', boundary_at: boundary,
         source_hash: await resultSummaryHash(fingerprints.sort((a, b) => a[0].localeCompare(b[0]))),
         assessment_row_count: sourceRowCount, assessment_cohort_count: sourceCohorts.size,
-        patient_count: patientSources.size };
+        patient_count: [...patientSources.values()].filter(Boolean).length,
+        missing_patient_count: [...patientSources.values()].filter(patient => patient === null).length };
     };
     // The raw idempotency key is caller-controlled and never stored. Its hash
     // is scoped to one tenant/window/version, so a retry can safely replay only
@@ -1698,6 +1700,7 @@ Deno.serve(async (req) => {
     let skippedAmbiguousStartAssessment = 0;
     let skippedPriorQueryCap = 0;
     let skippedNotScorable = 0;
+    let skippedPatientNotFound = 0;
     let skippedDuplicateEpisodeRows = 0;
     const metricPayloads = [];
     const skipReasons = [];
@@ -1846,6 +1849,12 @@ Deno.serve(async (req) => {
 
       const dcAns = scorableCodesFromAssessment(dc).codes;
       const patient = await capturePatient(dc.patient_id);
+      if (!patient) {
+        skippedPatientNotFound += 1;
+        skipReasons.push({ patient_id: dc.patient_id, episode_end: dc.assessment_date,
+          reasons: ['patient_not_found_in_agency_scope'] });
+        continue;
+      }
       const dischargeDisposition = dispositionFromAnswers(dcAns, patient);
 
       // WHOLE assessments, not bare item arrays: eligibility depends on the
@@ -1914,6 +1923,7 @@ Deno.serve(async (req) => {
       skippedAmbiguousStartAssessment +
       skippedMissingStartDate +
       skippedInvalidStartDate +
+      skippedPatientNotFound +
       skippedNotScorable +
       duplicateKeysHandled.size;
     const rollup = rollupMeasures(outcomes);
@@ -2092,6 +2102,7 @@ Deno.serve(async (req) => {
       // Excluded episodes are REPORTED, never silently dropped: a rate that
       // covers fewer episodes than the reader assumes is a false quality claim.
       skipped_not_proxy_scorable: skippedNotScorable,
+      skipped_patient_not_found_in_agency_scope: skippedPatientNotFound,
       patient_outcome_metrics_retired: 0,
       calculation_version: OUTCOME_CALCULATION_VERSION,
       period_type: periodType,

@@ -327,23 +327,30 @@ Deno.serve(async (req) => {
     let succeeded = 0;
     let idempotentReplays = 0;
     let failed = 0;
-    for (const agencyId of agencyIds) {
-      try {
-        await requireExactEnabledAgency(entities, agencyId);
-        const result = await invokeOneAgency(base44, secret, {
-          agency_id: agencyId,
-          ...requestBase,
-        });
-        if (result.success) {
-          succeeded += 1;
-          if (result.idempotentReplay) idempotentReplays += 1;
-        } else {
+    let nextAgency = 0;
+    const processAgencies = async () => {
+      while (nextAgency < agencyIds.length) {
+        const agencyId = agencyIds[nextAgency++];
+        try {
+          await requireExactEnabledAgency(entities, agencyId);
+          const result = await invokeOneAgency(base44, secret, {
+            agency_id: agencyId,
+            ...requestBase,
+          });
+          if (result.success) {
+            succeeded += 1;
+            if (result.idempotentReplay) idempotentReplays += 1;
+          } else {
+            failed += 1;
+          }
+        } catch {
           failed += 1;
         }
-      } catch {
-        failed += 1;
       }
-    }
+    };
+    // Bound hosted fan-out while avoiding one tenant's runtime delaying every
+    // subsequent tenant. Each worker retains its exact signed scope and retry key.
+    await Promise.all(Array.from({ length: Math.min(8, agencyIds.length) }, processAgencies));
 
     const summary = {
       success: failed === 0,

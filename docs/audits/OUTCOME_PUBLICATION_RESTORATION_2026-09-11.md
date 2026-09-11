@@ -32,3 +32,7 @@ Concurrency can return HTTP 409 from the worker and 502 from a dispatcher whose 
 ## Review corrections
 
 Large cohorts batch assessment history and Patient metadata in groups of 64 and repeat the same batches during snapshot verification. An 80-patient contract case uses six OASIS calls and four Patient calls across both passes. A hard 512-call/two-minute collection budget prevents unbounded remote fanout. Oversized run/staged/overflow pages are rejected before appending. Replacing a recorded value with null still fails the derived-content hash; optional hosted null defaults remain readable.
+
+The dispatcher processes up to eight tenants concurrently with isolated signed requests and bounded retries. Missing/deleted/legacy-unscoped patients exclude only their episodes; absence is rechecked alongside present-row revisions before publication. A patient appearing during verification invalidates the snapshot. Source/storage failures and ambiguous or foreign patient rows still fail closed.
+
+Hosted review validation confirmed a normal administrator's Agency update returns 403 and leaves the row unchanged. With the tightened RLS, service-role batch computation for nine synthetic patients published nine metrics and one KPI and replayed without duplicates. That test agency (`6aa478b0f05d1d0aeb943d18`) was suspended after validation. Production rollout must include the reviewed Agency RLS change before enabling the outcome flag.

@@ -1158,9 +1158,7 @@ function validateEntitySchemas(artifacts, errors) {
 
   if (schemas.Agency) {
     requireEnumValue(errors, schemas.Agency, "Agency", "status", "active");
-    if (schemas.Agency.rls?.create?.user_condition?.role !== "admin") {
-      addError(errors, "entities.Agency.rls.create", "Agency creation must remain platform-admin-only.");
-    }
+    requireClientWritesDenied(errors, schemas.Agency, "Agency", ["create", "update", "delete"]);
   }
   if (schemas.AgencyMembership) {
     requireEnumValue(errors, schemas.AgencyMembership, "AgencyMembership", "tenant_role", "agency_admin");
