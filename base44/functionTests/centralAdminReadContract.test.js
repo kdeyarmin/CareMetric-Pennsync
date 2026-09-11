@@ -30,6 +30,7 @@ for (const [key, value] of [
 for (const [options, expected] of [
   [{ method: 'GET' }, 405],
   [{ headers: { Origin: 'https://caremetricai.base44.app' } }, 403],
+  [{ headers: { Origin: 'null' } }, 403],
   [{ headers: { Cookie: 'session=anything' } }, 403],
   [{ headers: { 'Content-Type': 'text/plain' } }, 415],
   [{ headers: { 'X-CareMetric-Hub-Authorization': null, Authorization: TOKEN } }, 401],
@@ -41,6 +42,18 @@ for (const [options, expected] of [
     const fixture = makeFixture();
     assert.equal((await result(fixture, undefined, options)).response.status, expected);
     assert.equal(fixture.hubs.length + fixture.requests.length, 0);
+  });
+}
+for (const headers of [{ Origin: '' }, { Cookie: '' }, { Origin: ' ', Cookie: ' ' }]) {
+  test(`empty proxy fields still require independent Hub authorization ${JSON.stringify(headers)}`, async () => {
+    const fixture = makeFixture();
+    const missing = await result(fixture, { operation: 'capabilities' }, { headers: { ...headers, 'X-CareMetric-Hub-Authorization': null } });
+    assert.equal(missing.response.status, 401);
+    assert.equal(fixture.hubs.length + fixture.requests.length, 0);
+    const allowed = await result(fixture, { operation: 'capabilities' }, { headers });
+    assert.equal(allowed.response.status, 200);
+    assert.equal(fixture.hubs.length, 1);
+    assert.equal(fixture.requests.length, 1);
   });
 }
 for (const body of [
