@@ -2405,3 +2405,28 @@ test('stale rejected-child handoff preserves prior publication uncertainty', asy
     assert.equal(state.Notification.length, 0);
   }
 });
+
+
+test('recovered retry rejection honors disabled final-failure notifications', async () => {
+  const state = { IntegrationSecret: [activeTelnyxSecret()],
+    AgencyMembership: [activeFaxSenderMembership()], Notification: [],
+    FaxRetryConfig: [{ agency_id: 'agency_a', notify_on_final_failure: false }],
+    FaxLog: [outboundFax({ status: 'retrying', provider_terminal_status: 'failed',
+      provider_terminal_at: '2026-09-06T12:05:00.000Z', retry_count: 1,
+      retry_claimed_by: 'retry_claim', retry_claimed_by_user_id: 'user_a',
+      retry_claimed_at: '2020-01-01T00:00:00.000Z',
+    }), outboundFax({ id: 'rejected_child', status: 'failed',
+      retry_of_fax_log_id: 'FaxLog_1', retry_generation: 1, retry_count: 1,
+      provider_submission_state: 'rejected', telnyx_fax_id: null,
+    })],
+  };
+  const handler = await loadHandler('../functions/pollFaxStatuses/entry.ts', {
+    env: pollFaxStatusesReleased, makeClient: () => makeSpyBase44({ data: state }),
+    fetchImpl: makeFetch([]).impl,
+  });
+  const response = await handler(new Request('https://app/functions/pollFaxStatuses'));
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  assert.equal(state.FaxLog[0].status, 'failed');
+  assert.equal(state.FaxLog[0].final_failure_notified, true);
+  assert.equal(state.Notification.length, 0);
+});

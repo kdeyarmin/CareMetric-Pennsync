@@ -1183,6 +1183,14 @@ Deno.serve(async (req) => {
           && child.status === 'failed'
           && child.provider_submission_state === 'rejected';
         const nextStatus = definitelyRejected ? 'failed' : 'retried';
+        let notifyOnFinalFailure = true;
+        if (definitelyRejected) {
+          const retryPolicy = await resolveFaxPollRetryPolicy(base44, fax.agency_id);
+          const boundedPolicy = boundedFaxRetryPolicy(retryPolicy.config);
+          if (retryPolicy.ok && boundedPolicy.valid) {
+            notifyOnFinalFailure = boundedPolicy.normalized.notifyOnFinalFailure;
+          }
+        }
         const result = await base44.asServiceRole.entities.FaxLog.updateMany(
           {
             id: fax.id,
@@ -1210,6 +1218,7 @@ Deno.serve(async (req) => {
             ...(definitelyRejected ? {
               retry_count: Math.max(fax.retry_count, children[0].retry_generation),
               retry_generation: children[0].retry_generation,
+              final_failure_notified: fax.final_failure_notified === true || !notifyOnFinalFailure,
               // This handoff may publish a new final alert only when no earlier
               // publication started. A legacy claim is uncertain as well.
               failure_notify_publication_state: fax.failure_notify_publication_state === 'ready'
