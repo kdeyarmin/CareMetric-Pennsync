@@ -31,7 +31,7 @@ for (const [options, expected] of [
   [{ method: 'GET' }, 405],
   [{ headers: { Origin: 'https://caremetricai.base44.app' } }, 403],
   [{ headers: { Origin: 'null' } }, 403],
-  [{ headers: { Cookie: 'session=anything' } }, 403],
+  [{ headers: { Cookie: 'session=anything', 'X-CareMetric-Hub-Authorization': null } }, 401],
   [{ headers: { 'Content-Type': 'text/plain' } }, 415],
   [{ headers: { 'X-CareMetric-Hub-Authorization': null, Authorization: TOKEN } }, 401],
   [{ headers: { 'X-CareMetric-Hub-Authorization': 'Bearer notjwt' } }, 401],
@@ -56,6 +56,41 @@ for (const headers of [{ Origin: '' }, { Cookie: '' }, { Origin: ' ', Cookie: ' 
     assert.equal(fixture.requests.length, 1);
   });
 }
+test('transport diagnostics report only closed categories and never change authorization rejection', async () => {
+  const fixture = makeFixture();
+  for (const [headers, expected] of [
+    [{ Origin: 'https://caremetricai.base44.app', Cookie: 'sensitive-session=secret' }, { origin: 'app_origin', cookie: 'present', originMatchesRequest: true, literalNullOrigin: false }],
+    [{ Origin: 'https://caremetricai.base44.app' }, { origin: 'app_origin', cookie: 'absent', originMatchesRequest: true, literalNullOrigin: false }],
+    [{ Origin: 'https://app.base44.com', Cookie: ' ' }, { origin: 'platform_origin', cookie: 'empty', originMatchesRequest: false, literalNullOrigin: false }],
+    [{ Origin: 'null' }, { origin: 'other', cookie: 'absent', originMatchesRequest: false, literalNullOrigin: true }],
+    [{ Origin: 'https://sensitive.example/secret-path', Cookie: 'private=credential' }, { origin: 'other', cookie: 'present', originMatchesRequest: false, literalNullOrigin: false }],
+  ]) {
+    const denied = await result(fixture, undefined, { headers });
+    assert.equal(denied.response.status, 403);
+    assert.deepEqual(denied.body, { error: { code: 'forbidden' } });
+    assert.deepEqual(fixture.reports.at(-1), { event: 'central_admin_transport_rejected', ...expected });
+    assert.equal(Object.isFrozen(fixture.reports.at(-1)), true);
+  }
+  assert.doesNotMatch(JSON.stringify(fixture.reports), /sensitive|secret|credential|fixture\.header|native-hosted|private=/);
+  assert.equal(fixture.hubs.length + fixture.requests.length, 0);
+});
+test('transport diagnostic categories are deduplicated and capped per function instance', async () => {
+  const fixture = makeFixture();
+  for (const Origin of [null, '', 'https://caremetricai.base44.app', 'https://app.base44.com', 'https://other.example', 'null']) {
+    for (const Cookie of [null, '', 'private=value']) {
+      for (let repeat = 0; repeat < 5; repeat += 1) await result(fixture, undefined, { headers: { Origin, Cookie } });
+    }
+  }
+  assert.equal(fixture.reports.length, 10);
+  assert.equal(new Set(fixture.reports.map(value => JSON.stringify(value))).size, 10);
+});
+test('diagnostic sink failures never bypass the browser transport guard', async () => {
+  const fixture = makeFixture({ reportTransport: () => { throw new Error('private sink'); } });
+  const denied = await result(fixture, undefined, { headers: { Origin: 'null' } });
+  assert.equal(denied.response.status, 403);
+  assert.deepEqual(denied.body, { error: { code: 'forbidden' } });
+  assert.equal(fixture.hubs.length + fixture.requests.length, 0);
+});
 for (const body of [
   { operation: 'users.delete' }, { operation: 'overview', limit: 20 },
   { operation: 'users.list', limit: 51 }, { operation: 'users.list', limit: '1' },
@@ -113,7 +148,7 @@ test('pins Hub issuer and native service destination; never forwards Hub JWT int
   const fixture = makeFixture();
   const response = await result(fixture, { operation: 'capabilities' }, { headers: {
     'Base44-Api-Url': 'https://outside.example', 'Base44-State': 'attacker-state',
-    'Base44-Functions-Version': 'preview', Authorization: 'Bearer unrelated-native-token',
+    'Base44-Functions-Version': 'preview', Authorization: 'Bearer unrelated-native-token', Cookie: 'hosted-session=private',
   } });
   assert.equal(response.response.status, 200);
   assert.equal(fixture.hubs[0].url, 'https://xgauehtwksmnoqhgqegm.supabase.co/rest/v1/rpc/authorize_platform_admin');
@@ -222,7 +257,7 @@ test('single-use SMS authorization uses only the fixed PennSync introspection en
     consumed = true;
     return Response.json({ user_id: ACTOR, role: 'platform_admin', method: 'sms', operation: { operation: 'users.list', offset: 0, limit: 20 } });
   } });
-  const options = { headers: { 'X-CareMetric-Hub-Authorization': SMS } };
+  const options = { headers: { 'X-CareMetric-Hub-Authorization': SMS, Cookie: 'hosted-session=private' } };
   assert.equal((await result(fixture, { operation: 'users.list' }, options)).response.status, 200);
   assert.equal((await result(fixture, { operation: 'users.list' }, options)).response.status, 403);
   assert.equal(fixture.requests.length, 1);
@@ -236,7 +271,7 @@ for (const change of [
 ]) {
   test(`SMS capability closed response and exact operation binding ${JSON.stringify(change)}`, async () => {
     const fixture = makeFixture({ actor: { user_id: ACTOR, role: 'platform_admin', method: 'sms', operation: { operation: 'users.list', limit: 20, offset: 0 }, ...change } });
-    assert.equal((await result(fixture, { operation: 'users.list' }, { headers: { 'X-CareMetric-Hub-Authorization': SMS } })).response.status, 403);
+    assert.equal((await result(fixture, { operation: 'users.list' }, { headers: { 'X-CareMetric-Hub-Authorization': SMS, Cookie: 'hosted-session=private' } })).response.status, 403);
     assert.equal(fixture.requests.length, 0);
   });
 }
@@ -251,4 +286,64 @@ test('SMS still requires current native protected admin authority', async () => 
   const fixture = makeFixture({ actor: { user_id: ACTOR, role: 'platform_admin', method: 'sms', operation: { operation: 'capabilities' } } });
   fixture.data.User[0].role = 'user';
   assert.equal((await result(fixture, { operation: 'capabilities' }, { headers: { 'X-CareMetric-Hub-Authorization': SMS } })).response.status, 403);
+});
+
+test('hosted cookies never substitute for the mandatory Hub header or authorize simple browser requests', async () => {
+  for (const Cookie of [null, '', 'hosted-session=private']) {
+    for (const token of [null, 'Bearer notjwt', 'Bearer cmh_short']) {
+      const fixture = makeFixture();
+      const denied = await result(fixture, { operation: 'capabilities' }, { headers: {
+        Cookie, 'X-CareMetric-Hub-Authorization': token, Authorization: TOKEN,
+      } });
+      assert.equal(denied.response.status, 401);
+      assert.deepEqual(denied.body, { error: { code: 'unauthenticated' } });
+      assert.equal(fixture.hubs.length + fixture.requests.length, 0);
+    }
+    for (const contentType of ['text/plain', 'application/x-www-form-urlencoded', 'multipart/form-data; boundary=fixture']) {
+      const fixture = makeFixture();
+      const denied = await result(fixture, undefined, { headers: { Cookie, 'Content-Type': contentType } });
+      assert.equal(denied.response.status, 415);
+      assert.equal(fixture.hubs.length + fixture.requests.length, 0);
+    }
+  }
+});
+
+test('browser origins remain forbidden with cookies and even a structurally valid Hub capability', async () => {
+  for (const Origin of ['null', 'https://caremetricai.base44.app', 'https://app.base44.com', 'https://outside.example']) {
+    for (const token of [null, TOKEN, SMS]) {
+      const fixture = makeFixture();
+      const denied = await result(fixture, { operation: 'capabilities' }, { headers: {
+        Origin, Cookie: 'hosted-session=private', 'X-CareMetric-Hub-Authorization': token,
+      } });
+      assert.equal(denied.response.status, 403);
+      assert.equal(denied.response.headers.get('Access-Control-Allow-Origin'), null);
+      assert.equal(fixture.hubs.length + fixture.requests.length, 0);
+    }
+  }
+});
+
+test('cookie-bearing requests still recheck Hub authority and current native protected role on every call', async () => {
+  for (const token of [TOKEN, SMS]) {
+    const actor = token === SMS
+      ? { user_id: ACTOR, role: 'platform_admin', method: 'sms', operation: { operation: 'capabilities' } }
+      : { user_id: ACTOR, role: 'platform_admin', aal: 'aal2' };
+    let hubStatus = 200;
+    const fixture = makeFixture({ fetcher: async () => Response.json(actor, { status: hubStatus }) });
+    const options = { headers: { Cookie: 'hosted-session=private', 'X-CareMetric-Hub-Authorization': token } };
+    assert.equal((await result(fixture, { operation: 'capabilities' }, options)).response.status, 200);
+    assert.equal(fixture.hubs.length, 1);
+    assert.equal(fixture.requests[0].headers.get('Cookie'), null);
+    assert.equal(new Headers(fixture.hubs[0].init.headers).get('Cookie'), null);
+    fixture.data.User[0].role = 'user';
+    assert.equal((await result(fixture, { operation: 'capabilities' }, options)).response.status, 403);
+    fixture.data.User[0].role = 'admin';
+    fixture.data.User[0].is_active = false;
+    assert.equal((await result(fixture, { operation: 'capabilities' }, options)).response.status, 403);
+    fixture.data.User[0].is_active = true;
+    hubStatus = 403;
+    const nativeRequests = fixture.requests.length;
+    assert.equal((await result(fixture, { operation: 'capabilities' }, options)).response.status, 403);
+    assert.equal(fixture.requests.length, nativeRequests);
+    assert.equal(fixture.hubs.length, 4);
+  }
 });
