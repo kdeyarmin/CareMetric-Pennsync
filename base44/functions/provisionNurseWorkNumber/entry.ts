@@ -130,9 +130,16 @@ Deno.serve(async (req) => {
     // If the typed number is tracked in the pool, adopt its stored Telnyx id so
     // the User record stays complete without the admin re-entering it.
     const poolMatches = workNum
-      ? await base44.asServiceRole.entities.PhoneNumber.filter({ e164: workNum }, undefined, 5000).catch(() => [])
+      ? await base44.asServiceRole.entities.PhoneNumber.filter({ e164: workNum }, undefined, 5000)
       : [];
+    if (!Array.isArray(poolMatches) || poolMatches.length > 1
+      || poolMatches.some((row) => normalizeE164(row.e164) !== workNum)) {
+      return Response.json({ error: 'Work-number inventory could not be verified.' }, { status: 409 });
+    }
     const poolRow = poolMatches[0] || null;
+    if (poolMatches.some((row) => row.status === 'reserved')) {
+      return Response.json({ error: 'This number is reserved for office/fax use.' }, { status: 409 });
+    }
 
     const update = {};
     if (workNum) update.work_phone_number = workNum;
@@ -157,6 +164,7 @@ Deno.serve(async (req) => {
       }
       const priorRows = await base44.asServiceRole.entities.PhoneNumber.filter({ assigned_to_email: target_user_email }, undefined, 5000).catch(() => []);
       for (const pr of priorRows) {
+        if (pr.status === 'reserved') continue;
         if (!poolRow || pr.id !== poolRow.id) {
           await base44.asServiceRole.entities.PhoneNumber.update(pr.id, { status: 'available', assigned_to_email: '' }).catch(() => {});
         }

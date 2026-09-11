@@ -14,10 +14,11 @@
       "type": "string",
       "enum": [
         "available",
-        "assigned"
+        "assigned",
+        "reserved"
       ],
       "default": "available",
-      "description": "Whether the number is unassigned (available) or currently assigned to a nurse."
+      "description": "Available for a nurse, assigned to a nurse, or reserved for a dedicated office/fax purpose. Reserved inventory cannot be assigned, released, or removed through ordinary work-number operations."
     },
     "assigned_to_email": {
       "type": "string",

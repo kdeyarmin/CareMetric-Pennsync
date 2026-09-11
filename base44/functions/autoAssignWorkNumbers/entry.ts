@@ -144,6 +144,7 @@ Deno.serve(async (req) => {
       let chosen = null;
       while (poolIdx < pool.length) {
         const cand = pool[poolIdx++];
+        if (cand.status !== 'available') continue;
         const e164 = normalizeE164(cand.e164);
         if (e164 && !inUse.has(e164)) { chosen = { row: cand, e164 }; break; }
       }

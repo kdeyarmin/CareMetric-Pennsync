@@ -128,6 +128,7 @@ Deno.serve(async (req) => {
       const rows = await base44.asServiceRole.entities.PhoneNumber.filter({ id }, undefined, 5000).catch(() => []);
       const row = rows[0];
       if (!row) return Response.json({ error: 'Number not found.' }, { status: 404 });
+      if (row.status === 'reserved') return Response.json({ error: 'Reserved office/fax inventory cannot be removed.' }, { status: 409 });
       if (row.status === 'assigned') {
         return Response.json({ error: 'Release this number from its nurse before removing it.' }, { status: 409 });
       }
@@ -145,6 +146,7 @@ Deno.serve(async (req) => {
       const rows = await base44.asServiceRole.entities.PhoneNumber.filter({ id }, undefined, 5000).catch(() => []);
       const row = rows[0];
       if (!row) return Response.json({ error: 'Number not found.' }, { status: 404 });
+      if (row.status === 'reserved') return Response.json({ error: 'Reserved office/fax inventory cannot be assigned.' }, { status: 409 });
       const e164 = normalizeE164(row.e164);
       if (!e164) return Response.json({ error: 'Pool number is malformed.' }, { status: 400 });
 
@@ -188,6 +190,7 @@ Deno.serve(async (req) => {
       // one pool number.
       const priorRows = await base44.asServiceRole.entities.PhoneNumber.filter({ assigned_to_email: targetEmail }, undefined, 5000).catch(() => []);
       for (const pr of priorRows) {
+        if (pr.status === 'reserved') continue;
         if (pr.id !== id) {
           await base44.asServiceRole.entities.PhoneNumber.update(pr.id, { status: 'available', assigned_to_email: '' }).catch(() => {});
         }
@@ -204,6 +207,7 @@ Deno.serve(async (req) => {
       const rows = await base44.asServiceRole.entities.PhoneNumber.filter({ id }, undefined, 5000).catch(() => []);
       const row = rows[0];
       if (!row) return Response.json({ error: 'Number not found.' }, { status: 404 });
+      if (row.status === 'reserved') return Response.json({ error: 'Reserved office/fax inventory cannot be released.' }, { status: 409 });
       const e164 = normalizeE164(row.e164) || row.e164;
 
       // Clear the nurse's work number only if it still matches this pool number.

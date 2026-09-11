@@ -963,6 +963,43 @@ test("autoAssignWorkNumbers skips the shared office fax / main office numbers", 
   assert.equal(userWrite?.patch.work_phone_number, "+12155550101");
 });
 
+test("reserved fax inventory cannot be assigned, released, removed, or manually provisioned without settings", async () => {
+  for (const action of ['assign', 'release', 'remove', 'provision']) {
+    const writes = [];
+    const { impl, calls } = makeFetch([]);
+    const name = action === 'provision' ? 'provisionNurseWorkNumber' : 'managePhoneNumberPool';
+    const handler = await loadHandler(`../functions/${name}/entry.ts`, {
+      env: { SUPER_ADMIN_EMAIL: 'a@x.com' }, fetchImpl: impl,
+      makeClient: () => makeSpyBase44({ user: { id: 'admin-1', email: 'a@x.com', role: 'admin' }, writes,
+        data: { User: [{ id: 'u1', email: 'n@x.com' }], AgencySettings: [],
+          PhoneNumber: [{ id: 'fax-1', e164: '+12155550190', status: 'reserved' }] } }),
+    });
+    const response = await handler(new Request('https://app/functions/test', { method: 'POST', body: JSON.stringify({
+      action, id: 'fax-1', target_user_email: 'n@x.com', work_phone_number: '+12155550190',
+    }) }));
+    assert.equal(response.status, 409, action);
+    assert.deepEqual(writes, [], action);
+    assert.deepEqual(calls, [], action);
+  }
+});
+
+test("automatic work-number assignment skips reserved inventory even without agency settings", async () => {
+  const writes = [];
+  const { impl } = makeFetch([]);
+  const handler = await loadHandler('../functions/autoAssignWorkNumbers/entry.ts', {
+    env: { SUPER_ADMIN_EMAIL: 'a@x.com' }, fetchImpl: impl,
+    makeClient: () => makeSpyBase44({ user: { id: 'admin-1', email: 'a@x.com', role: 'admin' }, writes,
+      data: { User: [{ id: 'u1', email: 'n@x.com' }], AgencySettings: [], PhoneNumber: [
+        { id: 'fax-1', e164: '+12155550190', status: 'reserved' },
+        { id: 'nurse-1', e164: '+12155550101', status: 'available' },
+      ] } }),
+  });
+  const response = await handler(new Request('https://app/functions/test', { method: 'POST', body: '{}' }));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).assigned[0].e164, '+12155550101');
+  assert.equal(writes.some((write) => write.id === 'fax-1'), false);
+});
+
 // ============================ VIDEO TOKEN ============================
 test("createTelehealthToken provisions a room and mints a join token", async () => {
   const { impl, calls } = makeFetch([
