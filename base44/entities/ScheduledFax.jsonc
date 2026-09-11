@@ -3,10 +3,6 @@
   "type": "object",
   "description": "Server-owned queue for authority-bound private-document fax batches. Legacy URL/from-number rows remain readable to service workers only and are rejected at dispatch when versioned provenance is absent.",
   "properties": {
-    "queue_creation_reservation_token": {
-      "type": "string",
-      "description": "Opaque owner of the Agency creation reservation, retained to release only that owner after an uncertain create is recovered."
-    },
     "schedule_key": {
       "type": "string",
       "description": "SHA-256 idempotency key scoped to Agency, immutable authorizing User id, and client_request_id. Runtime still detects duplicates because datastore uniqueness is not assumed."
@@ -167,11 +163,6 @@
       "type": "string",
       "format": "date-time"
     },
-    "dispatch_submission_state": {
-      "type": "string",
-      "enum": ["ready", "started"],
-      "description": "One-shot queue provider submission fence. Initialized ready by the scheduling producer. Only a verified preparation failure with no uncertain recipients may restore ready for the remaining recipients; queue claims never reset it."
-    },
     "dispatch_attempt_id": {
       "type": "string",
       "description": "Opaque identity for the current processor-to-broker dispatch attempt."
@@ -223,6 +214,18 @@
     "canceled_by": {
       "type": "string",
       "description": "Email of the user who canceled the scheduled fax"
+    },
+    "dispatch_submission_state": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "started"
+      ],
+      "description": "One-shot queue provider submission fence. Initialized ready by the scheduling producer. Only a verified preparation failure with no uncertain recipients may restore ready for the remaining recipients; queue claims never reset it."
+    },
+    "queue_creation_reservation_token": {
+      "type": "string",
+      "description": "Opaque owner of the Agency creation reservation, retained to release only that owner after an uncertain create is recovered."
     }
   },
   "required": [
