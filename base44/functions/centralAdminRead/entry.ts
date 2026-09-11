@@ -27,8 +27,67 @@ type TransportDiagnostic = Readonly<{
   originMatchesRequest: boolean;
   literalNullOrigin: boolean;
 }>;
+type RequestStage = 'configuration' | 'transport' | 'request_body' | 'hub_authorization'
+  | 'hub_identity' | 'native_transport' | 'native_factory' | 'native_identity' | 'native_read' | 'response';
+type FailureDiagnostic = Readonly<{
+  event: 'central_admin_request_failed'; stage: RequestStage; status: number;
+  hubStatus: number | null; nativeStatus: number | null;
+  failureKind: 'timeout' | 'aborted' | 'dns' | 'tls' | 'redirect' | 'permission' | 'connection'
+    | 'invalid_fetch_receiver' | 'signal_option' | 'unsupported' | 'type_error' | 'other'; requestAborted: boolean;
+  nativeApp: 'absent' | 'expected' | 'other'; dataEnvironment: 'absent' | 'empty' | 'prod' | 'other';
+  serviceCredential: 'absent' | 'empty' | 'bearer' | 'other';
+}>;
 type Options = { getEnv: Env; createClient?: (request: Request) => Client; fetcher?: typeof fetch; now?: () => Date;
-  reportTransport?: (event: TransportDiagnostic) => void };
+  reportTransport?: (event: TransportDiagnostic) => void; reportFailure?: (event: FailureDiagnostic) => void };
+
+function httpStatus(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 100 && value <= 599 ? value : null;
+}
+
+/** Numeric status only; exception text, headers, bodies and identities must never enter diagnostics. */
+function nativeErrorStatus(error: unknown): number | null {
+  try {
+    if (!error || typeof error !== 'object') return null;
+    const row = error as { status?: unknown; response?: { status?: unknown } };
+    return httpStatus(row.status) ?? httpStatus(row.response?.status);
+  } catch { return null; }
+}
+
+/** Match only known transport conditions; no exception text leaves this function. */
+function failureKind(error: unknown): FailureDiagnostic['failureKind'] {
+  try {
+    if (!error || typeof error !== 'object') return 'other';
+    const row = error as { name?: unknown; message?: unknown; cause?: { code?: unknown } };
+    const message = typeof row.message === 'string' ? row.message.slice(0, 2048) : '';
+    const code = typeof row.cause?.code === 'string' ? row.cause.code.slice(0, 80) : '';
+    if (row.name === 'TimeoutError' || /ETIMEDOUT|timed? ?out/i.test(code + ' ' + message)) return 'timeout';
+    if (row.name === 'AbortError') return 'aborted';
+    if (/ENOTFOUND|EAI_AGAIN|dns|resolve.*host|name.*resolution/i.test(code + ' ' + message)) return 'dns';
+    if (/certificate|tls|ssl|invalid peer|cert_|unknownissuer/i.test(code + ' ' + message)) return 'tls';
+    if (/redirect/i.test(message)) return 'redirect';
+    if (row.name === 'NotCapable' || row.name === 'PermissionDenied' || /permission|not allowed|denied/i.test(message)) return 'permission';
+    if (/ECONN|connection (?:refused|reset|closed)|network.*unreachable/i.test(code + ' ' + message)) return 'connection';
+    if (/illegal invocation|invalid receiver/i.test(message)) return 'invalid_fetch_receiver';
+    if (/AbortSignal|signal/i.test(message)) return 'signal_option';
+    if (/unsupported|not supported|not implemented/i.test(message)) return 'unsupported';
+    return row.name === 'TypeError' ? 'type_error' : 'other';
+  } catch { return 'other'; }
+}
+
+function failureDiagnostic(request: Request, stage: RequestStage, status: number, hubStatus: number | null, error: unknown): FailureDiagnostic {
+  const app = request.headers.get('Base44-App-Id');
+  const dataEnvironment = request.headers.get('X-Data-Env');
+  const credential = request.headers.get('Base44-Service-Authorization');
+  return Object.freeze({
+    event: 'central_admin_request_failed', stage, status, hubStatus,
+    nativeStatus: stage.startsWith('native_') ? nativeErrorStatus(error) : null,
+    failureKind: failureKind(error), requestAborted: request.signal.aborted,
+    nativeApp: app === null ? 'absent' : app === APP_ID ? 'expected' : 'other',
+    dataEnvironment: dataEnvironment === null ? 'absent' : !dataEnvironment.trim() ? 'empty' : dataEnvironment === 'prod' ? 'prod' : 'other',
+    serviceCredential: credential === null ? 'absent' : !credential.trim() ? 'empty'
+      : /^Bearer [^\s,]+$/.test(credential) && credential.length <= 8192 ? 'bearer' : 'other',
+  });
+}
 
 /** Fixed categories only: never retain or log raw headers, URLs, credentials or request bodies. */
 function transportDiagnostic(request: Request): TransportDiagnostic {
@@ -174,17 +233,22 @@ function pinnedSdkRequest(request: Request) {
 export function createCentralAdminHandler({
   getEnv, createClient = createClientFromRequest, fetcher = fetch, now = () => new Date(),
   reportTransport = event => console.info(JSON.stringify(event)),
+  reportFailure = event => console.info(JSON.stringify(event)),
 }: Options) {
   // Deduplicate categories and bound logs for the lifetime of this function instance.
   const reportedTransport = new Set<string>();
+  const reportedFailures = new Set<string>();
   const json = (payload: unknown, status = 200) => Response.json(payload, {
     status, headers: { 'Cache-Control': 'no-store, private', 'X-Content-Type-Options': 'nosniff' },
   });
   return async (request: Request): Promise<Response> => {
     let client: Client | undefined;
+    let stage: RequestStage = 'configuration';
+    let hubStatus: number | null = null;
     try {
       const config = readCentralAdminConfig(getEnv);
       if (!config) return fail(503, 'unconfigured');
+      stage = 'transport';
       if (request.method !== 'POST') return fail(405, 'method_not_allowed');
       // Hosted Base44 adds a Cookie even to anonymous server requests. It is
       // never authorization and is never forwarded to the pinned native SDK.
@@ -209,21 +273,29 @@ export function createCentralAdminHandler({
         return fail(401, 'unauthenticated');
       }
       const signal = AbortSignal.any([request.signal, AbortSignal.timeout(12000)]);
+      stage = 'request_body';
       let operation: Operation;
       try { operation = parseOperation(await readJson(request, 2048, signal)); }
       catch { return fail(400, 'invalid_request'); }
+      stage = 'hub_authorization';
       const response = await fetcher(sms ? SMS_AUTHORIZATION_URL : `${HUB_ORIGIN}/rest/v1/rpc/authorize_platform_admin`, {
-        method: 'POST', redirect: 'error', signal,
+        // Hosted fetch fails at redirect:'error' before exposing a response.
+        // Manual mode never follows Location; reject redirects below before any
+        // authorization body can be trusted. The capability stays at this URL.
+        method: 'POST', redirect: 'manual', signal,
         headers: {
           Authorization: authorization, 'Content-Type': 'application/json',
           ...(sms ? {} : { apikey: config.hubKey, 'Content-Profile': 'hub' }),
         },
         body: '{}',
       });
+      hubStatus = httpStatus(response.status);
+      if (response.redirected || (response.status >= 300 && response.status < 400)) return fail();
       if (!response.ok) return fail(
         response.status === 401 ? 401 : response.status === 403 ? 403 : 503,
         response.status === 401 ? 'unauthenticated' : response.status === 403 ? 'forbidden' : 'upstream',
       );
+      stage = 'hub_identity';
       let native: string | undefined;
       try {
         const actor = object(await readJson(response, 4096, signal));
@@ -236,8 +308,12 @@ export function createCentralAdminHandler({
       } catch { return fail(403, 'forbidden'); }
       if (!native) return fail(403, 'forbidden');
 
-      client = createClient(pinnedSdkRequest(request));
+      stage = 'native_transport';
+      const sdkRequest = pinnedSdkRequest(request);
+      stage = 'native_factory';
+      client = createClient(sdkRequest);
       const entities = client.asServiceRole.entities;
+      stage = 'native_identity';
       // A mapped id is necessary, but the CURRENT platform-protected role must
       // still be admin. Custom is_active is only an additional deny, never a grant.
       const actors = rows(await bounded(entities.User.filter(
@@ -246,6 +322,7 @@ export function createCentralAdminHandler({
       if (actors.length !== 1 || actors[0].id !== native || actors[0].role !== 'admin' || actors[0].is_active === false) {
         return fail(403, 'forbidden');
       }
+      stage = 'native_read';
 
       const scan = async (entity: 'Agency' | 'AgencyMembership' | 'User' | 'Subscription', query: Row, fields: string[]) => {
         const result: Row[] = [];
@@ -334,9 +411,19 @@ export function createCentralAdminHandler({
         })), row => row.providerSubscriptionId), source: SOURCE };
       }
       signal.throwIfAborted();
+      stage = 'response';
       return json({ contractVersion: 1, product: 'pennsync', operation: operation.operation, generatedAt: now().toISOString(), data });
     } catch (error) {
-      return json({ error: { code: error instanceof AdminError ? error.code : 'upstream' } }, error instanceof AdminError ? error.status : 503);
+      const status = error instanceof AdminError ? error.status : 503;
+      if (status >= 500 || !['configuration', 'transport', 'request_body'].includes(stage)) {
+        const diagnostic = failureDiagnostic(request, stage, status, hubStatus, error);
+        const key = JSON.stringify(diagnostic);
+        if (reportedFailures.size < 20 && !reportedFailures.has(key)) {
+          reportedFailures.add(key);
+          try { reportFailure(diagnostic); } catch { /* Diagnostics cannot change the response. */ }
+        }
+      }
+      return json({ error: { code: error instanceof AdminError ? error.code : 'upstream' } }, status);
     } finally { try { client?.cleanup?.(); } catch { /* Never log credential-bearing native errors. */ } }
   };
 }
