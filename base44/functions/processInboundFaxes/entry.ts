@@ -391,7 +391,9 @@ function validateReferral(row: Record<string, any>, agencyId: string) {
     || !creatorId
     || !creatorEmail
     || row.created_by_user_email_normalized !== creatorEmail
-    || canonicalEmail(row.created_by) !== creatorEmail
+    || (row.created_by_id == null && row.created_by == null)
+    || (row.created_by_id != null && row.created_by_id !== creatorId)
+    || (row.created_by != null && canonicalEmail(row.created_by) !== creatorEmail)
     || !requestId
     || row.referral_creation_key !== `${agencyId}:${creatorId}:${requestId}`
     || !Number.isSafeInteger(row.version)
@@ -460,7 +462,7 @@ async function loadFaxDestination(
 async function loadReferralScan(entities: Record<string, any>, agencyId: string) {
   const rows = requireRows(
     await entities.Referral.filter(
-      { agency_id: agencyId, archived_at: { $exists: false } },
+      { agency_id: agencyId, $or: [{ archived_at: { $exists: false } }, { archived_at: null }] },
       '-created_date',
       MAX_REFERRAL_SCAN,
     ),

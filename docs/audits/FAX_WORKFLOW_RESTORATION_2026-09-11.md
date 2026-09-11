@@ -25,7 +25,7 @@ Deploy schemas before the reviewed revisions of `handleTelnyxStatusWebhook`, `pr
 
 ## Validation so far
 
-- 155 focused fax, authorization, provider, replay, queue, notification and readiness contracts pass, including the review regression cases.
+- 158 focused fax, authorization, provider, replay, queue, notification and readiness contracts pass, including the review and hosted-data regression cases.
 - Lint: zero errors/warnings. High-signal typecheck: zero findings. Shared helper parity: 219 consumers. All 279 backend functions transpile.
 - Full local test invocation was attempted. Windows shell command-length, path-separator/file-URL, symlink permission and mode-bit assumptions fail existing platform-dependent tests. Node suites were also invoked directly to bypass the shell limit. Linux CI remains required before merging.
 - Staging schema readback confirms all additive fields and unchanged RLS, including recovered-creation tokens. The connector returned HTTP 504 on some successful changes; no destructive schema push was used. The initial six-function deployment and empty-queue invocations passed; reviewed revisions are being redeployed.
@@ -46,3 +46,6 @@ Stale follow-up checks and fax status polling are already restored. Outcome comp
 - Integration readiness includes the dedicated fax-delivery prerequisite. Environment and release documentation now describe the flag.
 - Hosted reservation tests on absent/null/empty maps proved one winner under concurrent claims, exclusion during uncertain creation, independent keys, and preservation of another key during release. All synthetic agencies were suspended after the proof.
 - A hosted OCR exercise stalled during private upload before IncomingFax creation; it is not counted as a successful OCR proof. The execution was stopped, its synthetic membership revoked, and its binding and agency suspended. No provider transmission occurred.
+- Subsequent hosted OCR validation passed with a private synthetic PDF: two concurrent invocations processed it exactly once, persisted a suggested match and completed notification state, and created exactly one notification. A replay processed zero rows and left the notification count at one. The synthetic membership was revoked and the binding/agency suspended after verification.
+- Hosted referrals store nullable `archived_at` and may identify their creator through `created_by_id` rather than the legacy email field. The scan and creator validator now support those persisted forms while retaining exact immutable creator provenance checks. Regression tests reject conflicting and missing creator metadata.
+- Reconciliation of a definitely rejected retry advances the generation and schedules another attempt when policy budget remains. Disabled/exhausted policies settle terminally; unavailable or malformed policy reads retain the claim and report recovery failure. This addresses the additional review-body finding before merge.

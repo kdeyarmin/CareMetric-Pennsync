@@ -1382,6 +1382,7 @@ test("pollFaxStatuses releases a stale retry only with an exactly rejected child
   const writes = [];
   const state = {
     IntegrationSecret: [activeTelnyxSecret()],
+    FaxRetryConfig: [{ agency_id: 'agency_a', max_retries: 1 }],
     AgencyMembership: [activeFaxSenderMembership()],
     FaxLog: [outboundFax({
       status: "retrying",
@@ -2384,7 +2385,8 @@ test('stale rejected-child handoff preserves prior publication uncertainty', asy
     { failure_notify_claimed_by: 'legacy_claim', failure_notify_claimed_at: '2020-01-01T00:00:00.000Z' },
   ]) {
     const state = { IntegrationSecret: [activeTelnyxSecret()],
-      AgencyMembership: [activeFaxSenderMembership()], Notification: [],
+      FaxRetryConfig: [{ agency_id: 'agency_a', max_retries: 1 }],
+    AgencyMembership: [activeFaxSenderMembership()], Notification: [],
       FaxLog: [outboundFax({ status: 'retrying', provider_terminal_status: 'failed',
         provider_terminal_at: '2026-09-06T12:05:00.000Z', retry_count: 1,
         retry_claimed_by: 'retry_claim', retry_claimed_by_user_id: 'user_a',
@@ -2412,7 +2414,7 @@ test('stale rejected-child handoff preserves prior publication uncertainty', asy
 test('recovered retry rejection honors disabled final-failure notifications', async () => {
   const state = { IntegrationSecret: [activeTelnyxSecret()],
     AgencyMembership: [activeFaxSenderMembership()], Notification: [],
-    FaxRetryConfig: [{ agency_id: 'agency_a', notify_on_final_failure: false }],
+    FaxRetryConfig: [{ agency_id: 'agency_a', max_retries: 1, notify_on_final_failure: false }],
     FaxLog: [outboundFax({ status: 'retrying', provider_terminal_status: 'failed',
       provider_terminal_at: '2026-09-06T12:05:00.000Z', retry_count: 1,
       retry_claimed_by: 'retry_claim', retry_claimed_by_user_id: 'user_a',
@@ -2592,5 +2594,42 @@ test('inbound forwarding retains uncertain provider failures and releases only d
   assert.equal(state.IncomingFax[0].status, definite ? 'unread' : 'reviewing');
   await handler(signedWebhook(privateKey, event));
   assert.equal(calls.length, definite ? 2 : 1);
+  }
+});
+
+
+test('recovered rejected retries preserve remaining policy budget and uncertain policy reads preserve claims', async () => {
+  for (const policy of [ { max_retries: 3 }, { max_retries: 3, auto_retry_enabled: false }, { max_retries: 100 }, null ]) {
+    const state = { IntegrationSecret: [activeTelnyxSecret()], Notification: [],
+      AgencyMembership: [activeFaxSenderMembership()],
+      FaxRetryConfig: policy ? [{ agency_id: 'agency_a', retry_delay_minutes: 15, ...policy }] : [],
+      FaxLog: [outboundFax({ status: 'retrying', provider_terminal_status: 'failed',
+        provider_terminal_at: '2026-09-06T12:05:00.000Z', retry_count: 1, retry_generation: 0,
+        retry_claimed_by: 'retry_claim', retry_claimed_by_user_id: 'user_a',
+        retry_claimed_at: '2020-01-01T00:00:00.000Z', retry_submission_state: 'started',
+      }), outboundFax({ id: 'rejected_child', status: 'failed', retry_of_fax_log_id: 'FaxLog_1',
+        retry_generation: 1, retry_count: 1, provider_submission_state: 'rejected', telnyx_fax_id: null })],
+    };
+    const handler = await loadHandler('../functions/pollFaxStatuses/entry.ts', {
+      env: pollFaxStatusesReleased, makeClient: () => makeSpyBase44({ data: state }), fetchImpl: makeFetch([]).impl,
+    });
+    const response = await handler(new Request('https://app/functions/pollFaxStatuses'));
+    const invalidPolicy = !policy || policy.max_retries === 100;
+    assert.equal(response.status, invalidPolicy ? 503 : 200);
+    if (invalidPolicy) {
+      assert.equal(state.FaxLog[0].status, 'retrying');
+      assert.equal(state.FaxLog[0].retry_claimed_by, 'retry_claim');
+      assert.equal(state.Notification.length, 0);
+    } else if (policy.auto_retry_enabled === false) {
+      assert.equal(state.FaxLog[0].next_retry_at, null);
+      assert.equal(state.Notification.length, 1);
+    } else {
+      assert.equal(state.FaxLog[0].status, 'failed');
+      assert.equal(state.FaxLog[0].retry_generation, 1);
+      assert.equal(state.FaxLog[0].retry_count, 2);
+      assert.equal(state.FaxLog[0].retry_submission_state, 'ready');
+      assert.ok(Date.parse(state.FaxLog[0].next_retry_at) > Date.now());
+      assert.equal(state.Notification.length, 0);
+    }
   }
 });

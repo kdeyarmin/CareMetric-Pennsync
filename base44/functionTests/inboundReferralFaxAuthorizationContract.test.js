@@ -642,3 +642,29 @@ test('persisted completion cannot overwrite tenant, notification, or processing 
     assert.equal(runtime.data.Notification.length, 1);
   }
 });
+
+
+test('hosted null archive fields do not hide a current referral from fax matching', async () => {
+  const runtime = makeRuntime();
+  runtime.data.Referral[0].archived_at = null;
+  const handler = await loadHandler(() => runtime.client);
+  const response = await handler(request());
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).suggested, 1);
+  assert.equal(runtime.data.Notification.length, 1);
+});
+
+
+test('current hosted creator ids authorize referral matching while conflicting provenance fails closed', async () => {
+  for (const creator of ['user-a', 'foreign-user', null]) {
+    const runtime = makeRuntime();
+    delete runtime.data.Referral[0].created_by;
+    runtime.data.Referral[0].created_by_id = creator;
+    runtime.data.Referral[0].archived_at = null;
+    const handler = await loadHandler(() => runtime.client);
+    const response = await handler(request());
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).suggested, creator === 'user-a' ? 1 : 0);
+    assert.equal(runtime.data.Notification.length, creator === 'user-a' ? 1 : 0);
+  }
+});
