@@ -22,8 +22,8 @@ const WORKFLOW_GATES = {
   release_process_scheduled_faxes: 'WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES',
 };
 
-async function loadHandler({ env = {}, client } = {}) {
-  const rewritten = source.replace(
+async function loadHandler({ env = {}, client, entrySource = source } = {}) {
+  const rewritten = entrySource.replace(
     /import\s+\{\s*createClientFromRequest\s*\}\s+from\s+'npm:[^']+';/,
     'const createClientFromRequest = () => globalThis.__integrationHealthClient;',
   );
@@ -82,6 +82,55 @@ const PROVIDER_KEYS = {
   HEYGEN_API_KEY: 'heygen-probe-key-secret',
 };
 const PROVIDER_IDS = ['openai_transcription', 'anthropic_soap', 'heygen'];
+
+const retiredLearningFunctions = [
+  'generateTrainingCourse', 'manageTrainingVideos', 'syncTrainingVideoStatuses',
+  'duplicateInService', 'rebuildExistingInServices', 'seedYearlyRequiredInServices',
+  'seedAnnualMandatoryEducationSamples', 'generateCourseQuiz', 'triggerCorrectiveActionPlan',
+];
+const learningSchedulers = new Set(['syncTrainingVideoStatuses', 'triggerCorrectiveActionPlan']);
+
+for (const name of retiredLearningFunctions) {
+  test(`${name} stops local generation after the central cutover without touching course data`, async () => {
+    const entrySource = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
+    const client = {
+      auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: true }) },
+      get asServiceRole() { throw new Error('Retired operation accessed service-owned data'); },
+    };
+    const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
+    const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: '{}' }));
+    const data = await response.json();
+    assert.equal(response.status, learningSchedulers.has(name) ? 200 : 410);
+    if (learningSchedulers.has(name)) assert.equal(data.reason, 'central_learning');
+    else assert.equal(data.code, 'LEARNING_MOVED');
+  });
+
+  test(`${name} still rejects deactivated callers after central cutover`, async () => {
+    const entrySource = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
+    const client = {
+      auth: { me: async () => ({ id: 'admin-a', role: 'admin', is_active: false }) },
+      get asServiceRole() { throw new Error('Unauthorized caller accessed course data'); },
+    };
+    const handler = await loadHandler({ entrySource, client, env: { CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
+    const response = await handler(new Request('https://example.invalid/function', { method: 'POST', body: '{}' }));
+    assert.equal(response.status, 403);
+  });
+}
+
+test('central learning cutover removes HeyGen from provider requirements and probes', async () => {
+  const originalFetch = globalThis.fetch;
+  const calls = [];
+  globalThis.fetch = async (url) => { calls.push(String(url)); return new Response(null, { status: 200 }); };
+  try {
+    const handler = await loadHandler({ env: { ...PROVIDER_KEYS, CENTRAL_LEARNING_RELEASE: 'hub-runtime-v1' } });
+    const response = await handler({});
+    const report = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(report.integrations.some(item => item.id === 'heygen'), false);
+    assert.equal(report.integrations.find(item => item.id === 'central_learning').delivery_verified, false);
+    assert.equal(calls.some(url => url.includes('heygen.com')), false);
+  } finally { globalThis.fetch = originalFetch; }
+});
 
 async function runProviderProbes(fetchImpl) {
   const calls = [];

@@ -1,3 +1,5 @@
+import CentralLearningPortal from '@/components/learning/CentralLearningPortal';
+import { CENTRAL_LEARNING_ENABLED } from '@/lib/centralLearning';
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -27,7 +29,7 @@ import { isPastLocalDueDate, parseLocalDate, formatLocalDate, startOfLocalDay } 
 
 const formatDate = (value) => formatLocalDate(value) || "—";
 
-export default function AIComplianceInServicesHub() {
+function LegacyAIComplianceInServicesHub() {
   const queryClient = useQueryClient();
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [dueDate, setDueDate] = useState("");
@@ -612,4 +614,8 @@ export default function AIComplianceInServicesHub() {
       </Tabs>
     </div>
   );
+}
+
+export default function AIComplianceInServicesHub(props) {
+  return CENTRAL_LEARNING_ENABLED ? <CentralLearningPortal authoring={true} /> : <LegacyAIComplianceInServicesHub {...props} />;
 }

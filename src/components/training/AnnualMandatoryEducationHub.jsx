@@ -1,3 +1,5 @@
+import CentralLearningPortal from '@/components/learning/CentralLearningPortal';
+import { CENTRAL_LEARNING_ENABLED } from '@/lib/centralLearning';
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Archive, CheckCircle2, Copy, Send, Sparkles, Loader2, BarChart3, Shield } from "lucide-react";
@@ -31,7 +33,7 @@ import { isAdminLike } from "@/lib/superAdmin";
 
 const formatDate = (value) => formatLocalDate(value) || "—";
 
-export default function AnnualMandatoryEducationHub() {
+function LegacyAnnualMandatoryEducationHub() {
   const queryClient = useQueryClient();
   const year = new Date().getFullYear();
   const [selectedCourseId, setSelectedCourseId] = useState("");
@@ -507,4 +509,8 @@ export default function AnnualMandatoryEducationHub() {
       </Tabs>
     </div>
   );
+}
+
+export default function AnnualMandatoryEducationHub(props) {
+  return CENTRAL_LEARNING_ENABLED ? <CentralLearningPortal authoring={true} /> : <LegacyAnnualMandatoryEducationHub {...props} />;
 }

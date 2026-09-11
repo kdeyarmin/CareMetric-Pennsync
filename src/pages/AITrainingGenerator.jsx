@@ -1,3 +1,5 @@
+import CentralLearningPortal from '@/components/learning/CentralLearningPortal';
+import { CENTRAL_LEARNING_ENABLED } from '@/lib/centralLearning';
 import { useState } from 'react';
 import { useNavigate } from 'react-router';
 import { configNotReadyMessage } from '@/lib/aiFeatureError';
@@ -18,7 +20,7 @@ import { listPolicyLibrary } from '@/functions/listPolicyLibrary';
 import { toast } from 'sonner';
 import { createPageUrl } from '@/utils';
 
-export default function AITrainingGenerator() {
+function LegacyAITrainingGenerator() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [progress, setProgress] = useState(null);
@@ -357,4 +359,8 @@ export default function AITrainingGenerator() {
       )}
     </PageContainer>
   );
+}
+
+export default function AITrainingGenerator(props) {
+  return CENTRAL_LEARNING_ENABLED ? <CentralLearningPortal authoring={true} /> : <LegacyAITrainingGenerator {...props} />;
 }
