@@ -78,7 +78,7 @@ test('live fax reconciliation never releases an unproved replacement for another
   const poller = await readEntry('pollFaxStatuses');
   assert.match(poller, /\{\s*retry_of_fax_log_id:\s*fax\.id\s*\}/);
   assert.match(poller, /provider_submission_state\s*===\s*'rejected'/);
-  assert.match(poller, /const nextStatus = children\.length === 0 \|\| definitelyRejected \? 'failed' : 'retried'/);
+  assert.match(poller, /const nextStatus = definitelyRejected \? 'failed' : 'retried'/);
   assert.match(poller, /entities\.FaxLog\.updateMany\s*\(/);
   assert.doesNotMatch(
     poller.slice(poller.indexOf('Deno.serve')),

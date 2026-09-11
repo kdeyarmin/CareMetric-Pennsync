@@ -914,6 +914,9 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
   let failures = 0;
   const nowMs = Date.now();
   const now = new Date(nowMs).toISOString();
+  // A retry child that never reached provider acceptance has no terminal alert.
+  // Its source owns rejection handling; filter before the bounded page limit.
+  const terminalAttempt = { $or: [unsetFaxField('retry_of_fax_log_id'), { provider_submission_state: 'accepted' }] };
   for (const status of ['delivered', 'failed']) {
     const markerField = status === 'delivered'
       ? 'delivery_confirmation_sent'
@@ -926,7 +929,7 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
         query: {
           status,
           [markerField]: false,
-          $and: [unsetFaxField('notification_recovery_quarantined_at'), unsetFaxField('notification_recovery_next_attempt_at')],
+          $and: [unsetFaxField('notification_recovery_quarantined_at'), unsetFaxField('notification_recovery_next_attempt_at'), terminalAttempt],
         },
         sort: 'updated_date',
       },
@@ -934,7 +937,7 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
         query: {
           status,
           [markerField]: false,
-          ...unsetFaxField('notification_recovery_quarantined_at'),
+          $and: [unsetFaxField('notification_recovery_quarantined_at'), terminalAttempt],
           notification_recovery_next_attempt_at: { $lte: now },
         },
         sort: 'notification_recovery_next_attempt_at',
@@ -1082,7 +1085,8 @@ Deno.serve(async (req) => {
         successfulRetryScans++;
         for (const row of page) {
           const id = exactFaxAuthorityId(row?.id);
-          if (!id || seenRetryIds.has(id)) continue;
+          if (!id) { recoveryFailures++; continue; }
+          if (seenRetryIds.has(id)) continue;
           seenRetryIds.add(id);
           retrying.push(row);
           if (retrying.length >= 20) break;
@@ -1097,7 +1101,7 @@ Deno.serve(async (req) => {
           'retry',
           recoveryNowMs,
         );
-        if (!fax) continue;
+        if (!fax) { recoveryFailures++; continue; }
         if (!faxHasPrivateRetryAuthority(fax)
           || !exactFaxAuthorityId(fax?.retry_claimed_by)
           || !exactFaxAuthorityId(fax?.retry_claimed_by_user_id)
@@ -1117,6 +1121,7 @@ Deno.serve(async (req) => {
             'retry',
             'invalid_stale_retry_claim',
           );
+          recoveryFailures++;
           continue;
         }
         const children = await base44.asServiceRole.entities.FaxLog.filter(
@@ -1132,6 +1137,7 @@ Deno.serve(async (req) => {
             'retry',
             'ambiguous_stale_retry_children',
           );
+          recoveryFailures++;
           continue;
         }
         const child = children[0] || null;
@@ -1142,7 +1148,7 @@ Deno.serve(async (req) => {
           recoveryFailures++;
           continue;
         }
-        const exactChild = !child || (
+        const exactChild = (
           !!exactFaxAuthorityId(child.id)
           && child.agency_id === fax.agency_id
           && child.referral_id === fax.referral_id
@@ -1169,12 +1175,13 @@ Deno.serve(async (req) => {
             'retry',
             'invalid_stale_retry_child',
           );
+          recoveryFailures++;
           continue;
         }
         const definitelyRejected = children.length === 1
           && child.status === 'failed'
           && child.provider_submission_state === 'rejected';
-        const nextStatus = children.length === 0 || definitelyRejected ? 'failed' : 'retried';
+        const nextStatus = definitelyRejected ? 'failed' : 'retried';
         const result = await base44.asServiceRole.entities.FaxLog.updateMany(
           {
             id: fax.id,
@@ -1218,6 +1225,7 @@ Deno.serve(async (req) => {
             'retry',
             'stale_retry_recovery_unresolved',
           );
+          recoveryFailures++;
         }
       }
     } catch {
