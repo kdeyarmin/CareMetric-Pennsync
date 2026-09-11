@@ -47,6 +47,23 @@ ${isAllowedDestination.toString()}`;
 }
 
 export const SHARED_HELPERS = {
+  backendThrottleResponse: `function backendThrottleResponse(error) {
+  const status = Number(error?.response?.status ?? error?.status);
+  if (status !== 429 && status !== 503) return null;
+  return Response.json({ error: 'Service temporarily busy; retry the same request.',
+    code: 'backend_temporarily_unavailable', retry_with_same_key: true },
+    { status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '60' } });
+}`,
+  // Built-in creator metadata differs between hosted entity generations. A
+  // present field must always match; neither null pair nor conflicting fields
+  // can establish provenance. Caller-owned display fields are insufficient.
+  builtInCreatorMatches: `function builtInCreatorMatches(row, userId, email) {
+  if (typeof userId !== 'string' || !userId || userId.trim() !== userId
+    || typeof email !== 'string' || !email.includes('@') || email !== email.trim().toLowerCase()) return false;
+  return (row?.created_by_id != null || row?.created_by != null)
+    && (row.created_by_id == null || row.created_by_id === userId)
+    && (row.created_by == null || row.created_by === email);
+}`,
   // Application-wide human-delivery release gate. This is intentionally
   // fail-closed: deploying code or copying an environment's existing secrets
   // cannot release email, SMS, fax, or voice traffic. A future release requires
@@ -115,7 +132,13 @@ async function reserveFaxQueueCreation(entities, agencyId, kind, resourceKey) {
 }
 async function releaseFaxQueueCreation(entities, reservation) {
   for (let attempt = 0; attempt < 5; attempt++) {
-    const rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
+    let rows;
+    try {
+      rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
+    } catch (error) {
+      if (await waitFaxReservationThrottle(error, attempt)) continue;
+      return false;
+    }
     if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== reservation.agencyId) return false;
     const row = rows[0];
     const previous = row.fax_workflow_reservations;
@@ -123,14 +146,29 @@ async function releaseFaxQueueCreation(entities, reservation) {
     if (previous[reservation.key] !== reservation.token) return false;
     const remaining = { ...previous };
     delete remaining[reservation.key];
+    let writeError;
     const result = await entities.Agency.updateMany({
       id: row.id, updated_date: row.updated_date, fax_workflow_reservations: previous,
-    }, { $set: { fax_workflow_reservations: remaining } }).catch(() => null);
+    }, { $set: { fax_workflow_reservations: remaining } }).catch(error => { writeError = error; return null; });
     if (result?.success === true && result.updated === 1 && result.has_more === false) return true;
+    if (writeError && Number(writeError.response?.status ?? writeError.status) === 429
+      && !await waitFaxReservationThrottle(writeError, attempt)) return false;
     // A different key can change this shared map. Reload without dropping that
     // writer's entry; a lost successful response is also recovered by absence.
   }
   return false;
+}
+async function waitFaxReservationThrottle(error, attempt) {
+  if (Number(error?.response?.status ?? error?.status) !== 429 || attempt >= 4) return false;
+  const retryAfterRaw = error?.response?.headers?.['retry-after'] ?? error?.headers?.['retry-after'] ?? 0;
+  const retryAfter = Number.isFinite(Number(retryAfterRaw)) ? Number(retryAfterRaw)
+    : (Date.parse(String(retryAfterRaw)) - Date.now()) / 1000;
+  // Longer throttles remain fenced for the next same-key request. Short ones
+  // get at most 11 seconds of total backoff; never retry a known longer limit early.
+  const delay = Math.min(1000 * 2 ** attempt, 4000);
+  if (Number.isFinite(retryAfter) && retryAfter * 1000 > delay) return false;
+  await new Promise(resolve => setTimeout(resolve, delay));
+  return true;
 }
 async function releaseRecoveredFaxQueueCreation(entities, agencyId, kind, resourceKey, child) {
   const token = child?.queue_creation_reservation_token;

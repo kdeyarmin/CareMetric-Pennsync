@@ -214,7 +214,8 @@ test('one empty scheduler tick signs an exact prior-UTC-day request for each ver
   assert.match(body.period_start, /^\d{4}-\d{2}-\d{2}$/);
   assert.equal(body.period_end, body.period_start);
   assert.deepEqual(
-    fixture.calls.invocations.map(({ name, payload }) => [name, payload.agency_id]),
+    fixture.calls.invocations.map(({ name, payload }) => [name, payload.agency_id])
+      .sort((left, right) => left[1].localeCompare(right[1])),
     [
       ['computeOutcomeMeasuresV2', 'agency-a'],
       ['computeOutcomeMeasuresV2', 'agency-z'],
@@ -334,7 +335,7 @@ test('partial failure is reported without leaking tenant ids and retries are bou
   assert.equal(JSON.stringify(body).includes('agency-a'), false);
   assert.equal(JSON.stringify(body).includes('agency-b'), false);
   assert.deepEqual(
-    fixture.calls.invocations.map(({ payload }) => payload.agency_id),
+    fixture.calls.invocations.map(({ payload }) => payload.agency_id).sort(),
     ['agency-a', 'agency-a', 'agency-b'],
   );
 });

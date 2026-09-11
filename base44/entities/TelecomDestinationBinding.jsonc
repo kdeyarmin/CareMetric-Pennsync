@@ -35,7 +35,7 @@
     },
     "messaging_profile_id": {
       "type": "string",
-      "description": "Exact Telnyx Messaging Profile id. SMS opt-in/out state is scoped by this profile and recipient."
+      "description": "Exact Telnyx Messaging Profile id, required by the SMS authority checks whenever SMS is enabled. Omit for fax-only or voice-only numbers without a messaging profile."
     },
     "voice_connection_id": {
       "type": "string",
@@ -150,7 +150,6 @@
     "provider_number_id",
     "phone_number_id",
     "agency_id",
-    "messaging_profile_id",
     "sms_inbound_enabled",
     "sms_outbound_enabled",
     "voice_inbound_enabled",

@@ -31,6 +31,56 @@ async function loadInline(entryPath, names) {
 
 const NOW = Date.parse('2026-09-06T12:00:00.000Z');
 
+test('fax document authority accepts exact hosted service provenance and rejects creator drift', async () => {
+  const { loadBindingSnapshot, sha256Text, loadExactOutboundFaxBinding } = await loadInline(
+    '../functions/sendBatchFax/entry.ts', ['loadBindingSnapshot', 'sha256Text', 'loadExactOutboundFaxBinding']);
+  const stamp = new Date(NOW).toISOString();
+  const creator = 'service_00000000-0000-4000-8000-000000000001';
+  const binding = {
+    id: 'binding', agency_id: 'agency', document_id: 'document', version: 2, storage_mode: 'private',
+    file_uri: 'mp/private/6a9881683dc68a0bd54f1ef7/document.pdf', file_name: 'document.pdf', file_type: 'application/pdf',
+    file_size: 50, content_sha256: 'a'.repeat(64), created_by_user_id: 'user', created_by_user_email_normalized: 'user@agency.test',
+    document_created_by_email_normalized: 'user@agency.test', document_created_by_id: creator,
+    membership_id: 'membership', membership_version: 1, client_request_id: 'request', purpose: 'patient_document',
+    patient_id: 'patient', created_at: stamp, last_verified_at: stamp,
+    binding_key: await sha256Text('agency\u0000user\u0000request'),
+  };
+  const document = { id: 'document', title: 'document.pdf', file_name: 'document.pdf', file_type: 'application/pdf',
+    file_size: 50, category: 'other', patient_id: 'patient', uploaded_by: 'user@agency.test', created_by: null,
+    created_by_id: creator, document_date: stamp.slice(0, 10), tags: ['patient_document'], is_sensitive: true, updated_date: stamp };
+  const entities = {
+    DocumentTenantBinding: { filter: async () => [binding] }, Document: { filter: async () => [document] },
+    AgencyMembership: { filter: async () => [{ id: 'membership', agency_id: 'agency', user_id: 'user', membership_key: 'agency:user',
+      user_email_normalized: 'user@agency.test', tenant_role: 'agency_admin', status: 'active', version: 1 }] },
+    TelecomDestinationBinding: { filter: async () => [{ id: 'sender', provider: 'telnyx', integration_secret_id: 'secret',
+      destination_e164: '+12025550123', binding_key: 'telnyx:secret:+12025550123', agency_id: 'agency', fax_connection_id: 'fax-app',
+      provider_number_id: 'provider-number', phone_number_id: 'inventory', status: 'active', source: 'manual', version: 1,
+      created_at: stamp, activated_at: stamp, last_transition_at: stamp, messaging_profile_id: null }] },
+  };
+  assert.equal((await loadBindingSnapshot(entities, 'agency', 'document')).fileUri, binding.file_uri);
+  assert.equal((await loadExactOutboundFaxBinding(entities, { agencyId: 'agency', fromNumber: '+12025550123' },
+    { secretId: 'secret', connectionId: 'fax-app' })).id, 'sender');
+  document.created_by_id = 'different-service';
+  await assert.rejects(() => loadBindingSnapshot(entities, 'agency', 'document'), /integrity check/);
+});
+
+test('fax owner enrollment uses exact protected identity and never skips tenant membership', async () => {
+  const { loadInteractiveAuthority } = await loadInline('../functions/sendBatchFax/entry.ts', ['loadInteractiveAuthority']);
+  const priorGet = globalThis.Deno.env.get;
+  globalThis.Deno.env.get = key => key === 'SUPER_ADMIN_EMAIL' ? 'owner@agency.test' : priorGet(key);
+  const user = { id: 'owner', email: 'owner@agency.test', role: 'admin' };
+  let rows = [{ id: 'membership', agency_id: 'agency', user_id: 'owner', membership_key: 'agency:owner',
+    user_email_normalized: user.email, status: 'active', tenant_role: 'agency_admin', version: 1 }];
+  const client = { auth: { me: async () => user }, asServiceRole: { entities: { AgencyMembership: { filter: async () => rows } } } };
+  try {
+    assert.equal((await loadInteractiveAuthority(client, 'agency')).membershipId, 'membership');
+    rows = [];
+    await assert.rejects(() => loadInteractiveAuthority(client, 'agency'), /membership/);
+    user.email = 'unconfigured-admin@agency.test';
+    await assert.rejects(() => loadInteractiveAuthority(client, 'agency'), /Forbidden/);
+  } finally { globalThis.Deno.env.get = priorGet; }
+});
+
 test('fax queue workers remain doubly gated before constructing a Base44 client', async () => {
   for (const [name, envName, flag, workflowFile, interval] of [
     [
@@ -453,6 +503,33 @@ test('reservation release survives unrelated writes and lost acknowledgements wi
     }), true);
     assert.equal(agency.fax_workflow_reservations[held.key], undefined);
     if (failure === 'conflict') assert.equal(agency.fax_workflow_reservations.other_key, 'other-token');
+  }
+});
+
+test('reservation release backs off transient throttles and retains ownership for longer limits', async () => {
+  const { releaseFaxQueueCreation } = await loadInline('../functions/sendBatchFax/entry.ts', ['releaseFaxQueueCreation']);
+  for (const operation of ['read', 'write']) {
+    const row = { id: 'agency', updated_date: new Date(NOW).toISOString(), fax_workflow_reservations: { key: 'token', other: 'other-token' } };
+    let injected = false;
+    const entities = { Agency: {
+      filter: async () => {
+        if (operation === 'read' && !injected) { injected = true; throw { status: 429 }; }
+        return [structuredClone(row)];
+      },
+      updateMany: async (_, update) => {
+        if (operation === 'write' && !injected) { injected = true; throw { response: { status: 429 } }; }
+        Object.assign(row, update.$set);
+        return { success: true, updated: 1, has_more: false };
+      },
+    } };
+    assert.equal(await releaseFaxQueueCreation(entities, { agencyId: 'agency', key: 'key', token: 'token' }), true);
+    assert.deepEqual(row.fax_workflow_reservations, { other: 'other-token' });
+  }
+  for (const retryAfter of ['120', new Date(Date.now() + 120_000).toUTCString()]) {
+    let reads = 0;
+    const entities = { Agency: { filter: async () => { reads++; throw { status: 429, headers: { 'retry-after': retryAfter } }; } } };
+    assert.equal(await releaseFaxQueueCreation(entities, { agencyId: 'agency', key: 'key', token: 'token' }), false);
+    assert.equal(reads, 1);
   }
 });
 
