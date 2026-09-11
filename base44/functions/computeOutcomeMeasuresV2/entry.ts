@@ -1141,7 +1141,7 @@ Deno.serve(async (req) => {
       while (rows.length < maxRows) {
         const limit = Math.min(pageSize, maxRows - rows.length);
         const page = await entity.filter(query, sort, limit, skip);
-        if (!Array.isArray(page)) throw new Error('Base44 entity filter returned a non-array page');
+        if (!Array.isArray(page) || page.length > limit) throw new Error('Base44 entity filter returned an invalid or oversized page');
         const rowsBeforePage = rows.length;
         for (const row of page) {
           const id = String(row?.id || '').trim();
@@ -1158,7 +1158,7 @@ Deno.serve(async (req) => {
         }
       }
       const overflow = await entity.filter(query, sort, 1, skip);
-      if (!Array.isArray(overflow)) throw new Error('Base44 entity overflow check returned a non-array page');
+      if (!Array.isArray(overflow) || overflow.length > 1) throw new Error('Base44 entity overflow check returned an invalid or oversized page');
       return { rows, truncated: overflow.length > 0 };
     };
     // Source cohorts use immutable assessment IDs, never offset pagination.
@@ -1168,12 +1168,23 @@ Deno.serve(async (req) => {
     // before any derived writes. See oasisWriterContract for the writer guard.
     const sourceCohorts = new Map();
     const patientSources = new Map();
+    const patientBatches = [];
+    const batchedPatientIds = new Set();
+    const batchedHistory = new Map();
     let sourceRowCount = 0;
+    let sourceCalls = 0;
+    const sourceDeadline = Date.now() + 120_000;
+    const beforeSourceCall = () => {
+      if (++sourceCalls > 512 || Date.now() > sourceDeadline) {
+        throw new Error('Outcome source-call budget exceeded; split the reporting window');
+      }
+    };
     const readAssessmentCohort = async (query, maxRows) => {
       const rows = [];
       let cursor = null;
       while (true) {
         const limit = Math.min(ENTITY_PAGE_SIZE, maxRows - rows.length + 1);
+        beforeSourceCall();
         const page = await base44.asServiceRole.entities.OASISAssessment.filter(
           { ...query, ...(cursor ? { id: { $gt: cursor } } : {}) }, 'id', limit,
         );
@@ -1181,7 +1192,9 @@ Deno.serve(async (req) => {
         for (const row of page) {
           if (!exactOutcomeId(row?.id) || (cursor !== null && row.id <= cursor)
             || row.agency_id !== agencyId
-            || (query.patient_id !== undefined && row.patient_id !== query.patient_id)
+            || (Array.isArray(query.patient_id?.$in)
+              ? !query.patient_id.$in.includes(row.patient_id)
+              : query.patient_id !== undefined && row.patient_id !== query.patient_id)
             || (query.visit_type !== undefined && row.visit_type !== query.visit_type)) {
             throw new Error('Assessment source scope or cursor mismatch');
           }
@@ -1207,6 +1220,7 @@ Deno.serve(async (req) => {
     };
     const readSourcePatient = async (patientId) => {
       if (!exactOutcomeId(patientId)) throw new Error('Invalid outcome patient identity');
+      beforeSourceCall();
       const rows = await base44.asServiceRole.entities.Patient.filter({ agency_id: agencyId, id: patientId }, undefined, 2);
       if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== patientId || rows[0]?.agency_id !== agencyId
         || typeof rows[0].updated_date !== 'string' || !Number.isFinite(Date.parse(rows[0].updated_date))) {
@@ -1218,6 +1232,46 @@ Deno.serve(async (req) => {
       if (!patientSources.has(patientId)) patientSources.set(patientId, await readSourcePatient(patientId));
       return patientSources.get(patientId);
     };
+    const readPatientBatch = async ids => {
+      beforeSourceCall();
+      const rows = await base44.asServiceRole.entities.Patient.filter(
+        { agency_id: agencyId, id: { $in: ids } }, 'id', ids.length + 1,
+      );
+      if (!Array.isArray(rows) || rows.length !== ids.length
+        || new Set(rows.map(row => row?.id)).size !== ids.length
+        || rows.some(row => !ids.includes(row?.id) || row.agency_id !== agencyId
+          || typeof row.updated_date !== 'string' || !Number.isFinite(Date.parse(row.updated_date)))) {
+        throw new Error('Outcome source patient batch is missing, ambiguous, or unrevisioned');
+      }
+      return structuredClone(rows).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+    };
+    const prefetchLargePatientCohort = async discharges => {
+      const ids = [...new Set(discharges.filter(row => inPeriod(row.assessment_date))
+        .map(row => row.patient_id).filter(exactOutcomeId))].sort();
+      // Small cohorts retain exact single-patient reads. Larger windows batch
+      // both assessment history and mutable Patient metadata, including replay
+      // of those same batches during snapshot verification.
+      if (ids.length <= 8) return;
+      for (let offset = 0; offset < ids.length; offset += 64) {
+        const batch = ids.slice(offset, offset + 64);
+        const history = await captureAssessments(
+          { agency_id: agencyId, patient_id: { $in: batch } }, 100_000 - sourceRowCount,
+        );
+        if (history.truncated) throw new Error('Combined outcome source capacity exceeded');
+        for (const id of batch) batchedHistory.set(id, []);
+        for (const row of history.rows) {
+          const prior = batchedHistory.get(row.patient_id);
+          prior.push(row);
+          if (prior.length > MAX_PRIOR_ROWS_PER_PATIENT) throw new Error('Patient assessment history capacity exceeded');
+        }
+        const patients = await readPatientBatch(batch);
+        patientBatches.push({ ids: batch, hash: await resultSummaryHash(patients) });
+        for (const patient of patients) {
+          patientSources.set(patient.id, patient);
+          batchedPatientIds.add(patient.id);
+        }
+      }
+    };
     const verifySourceSnapshot = async () => {
       const boundary = new Date().toISOString();
       const fingerprints = [];
@@ -1228,9 +1282,14 @@ Deno.serve(async (req) => {
         }
         fingerprints.push([key, cohort.hash]);
       }
+      for (const batch of patientBatches) {
+        if (await resultSummaryHash(await readPatientBatch(batch.ids)) !== batch.hash) {
+          throw new Error('Outcome patient batch changed during collection; retry');
+        }
+      }
       for (const [id, patient] of patientSources) {
         const hash = await resultSummaryHash(patient);
-        if (await resultSummaryHash(await readSourcePatient(id)) !== hash) {
+        if (!batchedPatientIds.has(id) && await resultSummaryHash(await readSourcePatient(id)) !== hash) {
           throw new Error('Outcome patient source changed during collection; retry');
         }
         fingerprints.push([id, hash]);
@@ -1624,6 +1683,7 @@ Deno.serve(async (req) => {
     }
     const discharges = dischargePage.rows.filter((row) =>
       belongsToAgency(row) && row.visit_type === 'Discharge');
+    await prefetchLargePatientCohort(discharges);
 
     const outcomes = [];
     let dischargesInPeriod = 0;
@@ -1675,9 +1735,11 @@ Deno.serve(async (req) => {
       }
 
       // Latest SOC/ROC on or before the discharge date.
-      const priorPage = await captureAssessments(
-        { agency_id: agencyId, patient_id: dc.patient_id }, MAX_PRIOR_ROWS_PER_PATIENT,
-      );
+      const priorPage = batchedHistory.has(dc.patient_id)
+        ? { rows: batchedHistory.get(dc.patient_id), truncated: false }
+        : await captureAssessments(
+          { agency_id: agencyId, patient_id: dc.patient_id }, MAX_PRIOR_ROWS_PER_PATIENT,
+        );
       if (priorPage.truncated) {
         await applyConditionalOutcomeRunTransition(
           base44.asServiceRole.entities.OutcomeComputationRun,

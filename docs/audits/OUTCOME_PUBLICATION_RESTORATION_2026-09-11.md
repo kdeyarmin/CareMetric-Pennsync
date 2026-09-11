@@ -13,7 +13,7 @@ The native nightly workflow calls `dispatchNightlyOutcomeMeasures`, which signs 
 - OASIS cohorts use strict id keyset scans with bounded pages and reject foreign scope, duplicate/nonmonotonic ids, and overflow. All source cohorts and Patient metadata are captured before a complete second pass. Append-only OASIS writers and matching full-row hashes/revisions establish a common boundary. Any source change fails before derived writes.
 - The published summary records the boundary, source digest, cohort/row counts and patient count. No source values are included in this snapshot metadata.
 - Optional null and absent object properties share the derived-row hash representation. Arrays, false, zero and actual recorded values remain significant. Summary hashing still preserves null rates. Run transitions retain the exact stored null/absent preimage in their CAS query. The read broker omits unset values and checks the same row hashes.
-- Existing tenant authority, signed worker capabilities, immutable derived generations, publication reconciliation, RLS and browser read restrictions remain enforced.
+- Agency creation, update and deletion are now service-only so an administrator's direct entity client cannot clear a claim map. Repository consumer inspection found only the outcome and fax service-owned claim writers, and no browser Agency mutations; the similarly named AgencySettings UI remains unaffected. Agency read rules are preserved. Existing tenant authority, signed worker capabilities, immutable derived generations, publication reconciliation and browser read restrictions remain enforced.
 
 ## Validation
 
@@ -25,6 +25,10 @@ The native nightly workflow calls `dispatchNightlyOutcomeMeasures`, which signs 
 
 ## Release procedure and bounds
 
-Merge after review and green CI. Add only `Agency.outcome_window_claims`, preserving all existing fields and RLS. Deploy the retired endpoint, V2 worker, dispatcher and reader to the explicit target app; set `OUTCOME_PIPELINE_RELEASE=enabled-v1` only after validation. Run the native workflow and inspect its result before activating the existing daily 06:00 UTC schedule. Source deployment leaves the flag closed by default.
+Merge after review and green CI. Add `Agency.outcome_window_claims`, preserve all existing fields/read rules, and set Agency create/update/delete RLS to false. Verify a direct administrator mutation is denied while service-role claims still work. Deploy the retired endpoint, V2 worker, dispatcher and reader to the explicit target app; set `OUTCOME_PIPELINE_RELEASE=enabled-v1` only after validation. Run the native workflow and inspect its result before activating the existing daily 06:00 UTC schedule. Source deployment leaves the flag closed by default.
 
 Concurrency can return HTTP 409 from the worker and 502 from a dispatcher whose bounded retry overlaps an active owner; replay the same logical day after the owner completes. Ambiguous committing claims are retained for reconciliation. The map is bounded at 500 unresolved windows; source scans and tenant fanout retain explicit caps. These are internal unadjusted proxies, not official CMS rates or eligibility determinations.
+
+## Review corrections
+
+Large cohorts batch assessment history and Patient metadata in groups of 64 and repeat the same batches during snapshot verification. An 80-patient contract case uses six OASIS calls and four Patient calls across both passes. A hard 512-call/two-minute collection budget prevents unbounded remote fanout. Oversized run/staged/overflow pages are rejected before appending. Replacing a recorded value with null still fails the derived-content hash; optional hosted null defaults remain readable.

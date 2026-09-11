@@ -122,6 +122,7 @@ async function loadHandler({
   user = { id: "u1", role: "admin", account_type: "agency_admin", agency_id: AGENCY_A, is_active: true },
   internalSecret = "scheduler-secret",
   ignoreFilters = false,
+  ignoreLimits = [],
   filterFailures = [],
   createFailures = [],
   unpersistedCreates = [],
@@ -169,6 +170,7 @@ async function loadHandler({
       if (value.$exists !== undefined && (rowValue !== undefined) !== value.$exists) return false;
       if (value.$eq !== undefined && !sameStoredValue(rowValue, value.$eq)) return false;
       if (value.$ne !== undefined && sameStoredValue(rowValue, value.$ne)) return false;
+      if (value.$in !== undefined && !value.$in.includes(rowValue)) return false;
       if (!Object.keys(value).some(key => key.startsWith("$"))) return sameStoredValue(rowValue, value);
       if (value.$gt !== undefined && String(rowValue) <= String(value.$gt)) return false;
       if (value.$gte !== undefined && String(rowValue) < String(value.$gte)) return false;
@@ -188,7 +190,7 @@ async function loadHandler({
     if (filterFailures.includes(entity)) throw new Error(`${entity} filter failed`);
     const scoped = (ignoreFilters === true || (Array.isArray(ignoreFilters) && ignoreFilters.includes(entity))) ? [...rows] : matching(rows, q);
     if (sort === "id") scoped.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
-    return Number.isFinite(limit) ? scoped.slice(skip, skip + limit) : scoped;
+    return Number.isFinite(limit) && !ignoreLimits.includes(entity) ? scoped.slice(skip, skip + limit) : scoped;
   };
   const pendingApplyThenThrowStatuses = new Set(applyThenThrowRunUpdateStatuses);
   let handler;
@@ -369,6 +371,50 @@ function pair({ startCodes, dcCodes, startSchema = V2, dcSchema = V2, startRowsR
     assessment({ id: `dc-${agencyId}-${patientId}`, patientId, agencyId, visitType: "Discharge", date: "2026-06-01", rows: dcRowsRaw || mk(dcCodes), schema: dcSchema }),
   ];
 }
+
+test("large outcome cohorts batch both passes of history and Patient metadata", async () => {
+  const ids = Array.from({ length: 80 }, (_, index) => `patient-${String(index).padStart(3, '0')}`);
+  const fixture = await loadHandler({
+    assessments: ids.flatMap(patientId => pair({ patientId, startCodes: { M1860: '3' }, dcCodes: { M1860: '1' } })),
+    patients: ids.map(id => ({ id, agency_id: AGENCY_A })),
+  });
+  const result = await run(fixture.handler);
+  assert.equal(result.status, 200, JSON.stringify(result.json));
+  assert.equal(fixture.written.metricCreates.length, 80);
+  assert.equal(fixture.queries.filter(query => query.entity === 'OASISAssessment').length, 6);
+  assert.equal(fixture.queries.filter(query => query.entity === 'Patient').length, 4);
+});
+
+test("mutation during the batched Patient verification prevents derived writes", async () => {
+  const ids = Array.from({ length: 10 }, (_, index) => `patient-${index}`);
+  let patientCalls = 0;
+  const fixture = await loadHandler({
+    assessments: ids.flatMap(patientId => pair({ patientId, startCodes: { M1860: '3' }, dcCodes: { M1860: '1' } })),
+    patients: ids.map(id => ({ id, agency_id: AGENCY_A })),
+    onQuery: ({ entity, rows }) => {
+      if (entity === 'Patient' && ++patientCalls === 2) rows[0].updated_date = new Date().toISOString();
+    },
+  });
+  assert.equal((await run(fixture.handler)).status, 500);
+  assert.equal(fixture.written.metricCreates.length, 0);
+});
+
+test("Agency mutation RLS protects outcome and fax claim maps from direct admin writes", async () => {
+  const schema = JSON.parse(await readFile(new URL('../entities/Agency.jsonc', import.meta.url), 'utf8'));
+  for (const action of ['create', 'update', 'delete']) assert.equal(schema.rls[action], false);
+  assert.ok(schema.rls.read);
+});
+
+test("an oversized run page is rejected before allocating a new generation", async () => {
+  const fixture = await loadHandler({
+    outcomeRuns: Array.from({ length: 101 }, (_, index) => ({ id: `oversized-${index}` })),
+    ignoreFilters: ['OutcomeComputationRun'],
+    ignoreLimits: ['OutcomeComputationRun'],
+  });
+  assert.equal((await run(fixture.handler)).status, 500);
+  assert.equal(fixture.written.runCreates.length, 0);
+  assert.equal(fixture.queries.filter(query => query.entity === 'OutcomeComputationRun').length, 1);
+});
 
 test("hosted null defaults publish and replay with exact terminal preimages", async () => {
   const terminalDefaults = Object.fromEntries([
