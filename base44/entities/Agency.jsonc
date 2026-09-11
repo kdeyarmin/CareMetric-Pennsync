@@ -150,13 +150,9 @@
       "type": "string",
       "description": "Internal notes about the agency"
     },
-    "fax_workflow_reservations": {
-      "type": "object",
-      "description": "Bounded service-owned queue creation reservations keyed by a digest, containing only opaque ownership tokens. Retained on uncertain creates; never cleared just because a child query is empty."
-    },
     "outcome_window_claims": {
       "type": "object",
-      "description": "Bounded service-owned reporting-window claims. Building ownership may expire; committing ownership remains until its exact run is proven terminal. Entries contain only hashes, opaque tokens, run ids and timestamps."
+      "description": "Bounded service-owned outcome publication claims keyed by tenant-window digest. Full-map conditional updates fence publication; committing claims retain their exact run until terminal reconciliation."
     }
   },
   "required": [
