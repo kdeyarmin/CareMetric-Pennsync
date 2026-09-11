@@ -7,7 +7,7 @@ const HELP_ENVIRONMENTS = new Set(['production', 'staging', 'development']);
 // Require a version-shaped value, not merely a string whose characters happen
 // to be URL-safe. This excludes UUIDs, names and other identifier/free-text
 // values if a deployment variable is configured incorrectly.
-const SAFE_RELEASE_TOKEN = /^v?\d+(?:\.\d+){1,3}(?:-[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)?(?:\+[A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)?$/;
+const SAFE_RELEASE_TOKEN = /^v?\d{1,4}(?:\.\d{1,4}){1,3}(?:[-+][A-Za-z0-9.-]{1,24})?$/;
 
 /** The rollout flag is deliberately strict: only the exact value `true` enables it. */
 export function isCentralHelpEnabled(value) {
@@ -88,6 +88,7 @@ export function buildPennSyncHelpUrl({ pathname, knownRoutes, appVersion, enviro
   const safeEnvironment = resolveHelpEnvironment(environment);
 
   return buildHelpUrl({
+    routeAllowlist: Array.isArray(knownRoutes) ? knownRoutes : [],
     context: {
       product: PENNSYNC_HELP_PRODUCT,
       ...(route ? { route } : {}),
