@@ -279,7 +279,10 @@ export function createCentralAdminHandler({
       catch { return fail(400, 'invalid_request'); }
       stage = 'hub_authorization';
       const response = await fetcher(sms ? SMS_AUTHORIZATION_URL : `${HUB_ORIGIN}/rest/v1/rpc/authorize_platform_admin`, {
-        method: 'POST', redirect: 'error', signal,
+        // Hosted fetch fails at redirect:'error' before exposing a response.
+        // Manual mode never follows Location; reject redirects below before any
+        // authorization body can be trusted. The capability stays at this URL.
+        method: 'POST', redirect: 'manual', signal,
         headers: {
           Authorization: authorization, 'Content-Type': 'application/json',
           ...(sms ? {} : { apikey: config.hubKey, 'Content-Profile': 'hub' }),
@@ -287,6 +290,7 @@ export function createCentralAdminHandler({
         body: '{}',
       });
       hubStatus = httpStatus(response.status);
+      if (response.redirected || (response.status >= 300 && response.status < 400)) return fail();
       if (!response.ok) return fail(
         response.status === 401 ? 401 : response.status === 403 ? 403 : 503,
         response.status === 401 ? 'unauthenticated' : response.status === 403 ? 'forbidden' : 'upstream',

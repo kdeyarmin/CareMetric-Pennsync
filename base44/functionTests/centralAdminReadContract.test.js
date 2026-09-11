@@ -152,7 +152,7 @@ test('pins Hub issuer and native service destination; never forwards Hub JWT int
   } });
   assert.equal(response.response.status, 200);
   assert.equal(fixture.hubs[0].url, 'https://xgauehtwksmnoqhgqegm.supabase.co/rest/v1/rpc/authorize_platform_admin');
-  assert.equal(fixture.hubs[0].init.redirect, 'error');
+  assert.equal(fixture.hubs[0].init.redirect, 'manual');
   assert.equal(fixture.hubs[0].init.headers.Authorization, TOKEN);
   assert.deepEqual(Object.fromEntries(fixture.requests[0].headers), {
     'base44-app-id': '694ec16e72e01b60d22f7cbf', 'base44-service-authorization': 'Bearer native-hosted-fixture',
@@ -250,7 +250,7 @@ test('single-use SMS authorization uses only the fixed PennSync introspection en
   let consumed = false;
   const fixture = makeFixture({ fetcher: async (url, init) => {
     assert.equal(url, 'https://support-hub-web-production.up.railway.app/api/internal/admin/pennsync/authorize');
-    assert.equal(init.redirect, 'error');
+    assert.equal(init.redirect, 'manual');
     assert.equal(init.body, '{}');
     assert.deepEqual(init.headers, { Authorization: SMS, 'Content-Type': 'application/json' });
     if (consumed) return Response.json({ error: 'denied' }, { status: 403 });
@@ -449,4 +449,34 @@ test('hosted fetch failure classification emits only known condition enums, neve
   const fixture = makeFixture({ fetcher: () => { throw hostile; } });
   assert.equal((await result(fixture)).response.status, 503);
   assert.equal(fixture.failures[0].failureKind, 'other');
+});
+
+test('manual Hub fetch never follows redirects or trusts their authorization-shaped bodies', async () => {
+  for (const token of [TOKEN, SMS]) {
+    for (const status of [301, 302, 303, 304, 307, 308]) {
+      const fixture = makeFixture({ fetcher: async (url, init) => {
+        assert.equal(init.redirect, 'manual');
+        assert.equal(url, token === SMS
+          ? 'https://support-hub-web-production.up.railway.app/api/internal/admin/pennsync/authorize'
+          : 'https://xgauehtwksmnoqhgqegm.supabase.co/rest/v1/rpc/authorize_platform_admin');
+        return new Response(status === 304 ? null : JSON.stringify({ user_id: ACTOR, role: 'platform_admin', aal: 'aal2', method: 'sms', operation: { operation: 'capabilities' } }),
+          { status, headers: { Location: 'https://outside.example/private-destination' } });
+      } });
+      const rejected = await result(fixture, { operation: 'capabilities' }, { headers: { 'X-CareMetric-Hub-Authorization': token } });
+      assert.equal(rejected.response.status, 503);
+      assert.equal(fixture.hubs.length, 1);
+      assert.equal(fixture.requests.length, 0);
+      assert.doesNotMatch(JSON.stringify(rejected.body), /outside|destination|11111111/);
+    }
+  }
+});
+
+test('an unexpectedly followed Hub response cannot authorize native access', async () => {
+  const fixture = makeFixture({ fetcher: async () => {
+    const response = Response.json({ user_id: ACTOR, role: 'platform_admin', aal: 'aal2' });
+    Object.defineProperty(response, 'redirected', { value: true });
+    return response;
+  } });
+  assert.equal((await result(fixture)).response.status, 503);
+  assert.equal(fixture.requests.length, 0);
 });

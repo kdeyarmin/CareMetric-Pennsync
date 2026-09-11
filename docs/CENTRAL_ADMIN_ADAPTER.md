@@ -155,6 +155,12 @@ generic type-error and unknown failures. A boolean reports whether the incoming
 request was aborted. Exception messages are only matched against fixed markers
 inside the classifier; neither matched text nor native error codes are emitted.
 
+The hosted runtime rejected callback fetches using `redirect: 'error'` before
+an HTTP response, including safe invalid-capability probes to both fixed Hub
+endpoints. Callback fetches use `redirect: 'manual'` and explicitly reject every
+3xx or unexpectedly followed response. No Location is followed and no second
+endpoint receives the administrator credential.
+
 `pnpm run test:central-admin` runs native producer/authentication/transport tests
 through the repository's esbuild-based TypeScript harness, including SMS
 single-use rejection, exact operation binding, current role/mapping revocation,
