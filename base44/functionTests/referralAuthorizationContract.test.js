@@ -133,6 +133,7 @@ async function loadHandler({
   const calls = { auth: 0, filters: [], creates: [], updateMany: [], deletes: [] };
   let authIndex = 0;
   const matches = (row, query) => Object.entries(query || {}).every(([key, value]) => {
+    if (key === '$or') return value.some((option) => matches(row, option));
     if (value && typeof value === 'object' && !Array.isArray(value)) {
       if (Object.hasOwn(value, '$exists')) {
         return (row?.[key] !== undefined) === value.$exists;
@@ -407,7 +408,8 @@ test('list is tenant-scoped, reauthorizes before disclosure, and rejects filter 
   assert.ok(runtime.calls.filters.some(({ entity, query }) => (
     entity === 'Referral'
     && query.agency_id === 'agency-a'
-    && query.archived_at?.$exists === false
+    && query.$or?.[0]?.archived_at?.$exists === false
+    && query.$or?.[1]?.archived_at === null
     && query.patient_id === 'patient-a'
     && query.status === 'new'
     && query.assigned_to === 'office@agency.test'
@@ -554,6 +556,47 @@ test('browser updates cannot forge or replace the server-owned inbound fax attac
     Object.hasOwn(stripped.json.referral.follow_up_requests, 'fax_back'),
     false,
   );
+});
+
+test('Referral broker accepts hosted creator IDs and null archives but rejects identity conflicts', async () => {
+  for (const [metadata, expected] of [
+    [{ created_by: undefined, created_by_id: 'office-1', archived_at: null }, 200],
+    [{ created_by_id: 'another-user' }, 409],
+    [{ created_by: undefined, created_by_id: undefined }, 409],
+    [{ created_by: 'other@agency.test', created_by_id: 'office-1' }, 409],
+  ]) {
+    const runtime = await loadHandler({ referrals: [referral(metadata)] });
+    const result = await invoke(runtime.handler, { action: 'list', agency_id: 'agency-a' });
+    assert.equal(result.response.status, expected);
+    if (expected === 200) assert.equal(result.json.referrals.length, 1);
+    assert.equal(runtime.calls.updateMany.length, 0);
+  }
+});
+
+test('browser edits preserve worker notification state only for the same follow-up generation', async () => {
+  const markers = {
+    stale_notified_at: T2,
+    stale_notification_key: 'server-key',
+    stale_notification_claimed_by: 'server-run',
+    stale_notification_claimed_at: T1,
+    stale_notification_publish_started_at: T2,
+  };
+  for (const generation of [T1, T2]) {
+    const runtime = await loadHandler({ referrals: [referral({
+      follow_up_requests: { status: 'sent', generated_at: T1, items: [], ...markers },
+    })] });
+    const result = await invoke(runtime.handler, {
+      action: 'update', agency_id: 'agency-a', referral_id: 'referral-a',
+      changes: { follow_up_requests: {
+        status: 'sent', generated_at: generation, items: [],
+        ...Object.fromEntries(Object.keys(markers).map((key) => [key, 'forged'])),
+      } },
+    });
+    assert.equal(result.response.status, 200);
+    for (const [key, value] of Object.entries(markers)) {
+      assert.equal(result.json.referral.follow_up_requests[key], generation === T1 ? value : undefined);
+    }
+  }
 });
 
 test('assignment roster and assignment changes use exact active same-agency identities', async () => {

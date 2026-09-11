@@ -50,6 +50,13 @@ const FOLLOW_UP_CAPABILITY_FIELDS = [
   // preserve the current server-issued value while resolving an item, but may
   // never forge or replace it through the general Referral update action.
   'fax_back',
+  // The stale worker owns these markers. Client edits must not reset a claim,
+  // manufacture a completed alert, or retry an uncertain publication.
+  'stale_notified_at',
+  'stale_notification_key',
+  'stale_notification_claimed_by',
+  'stale_notification_claimed_at',
+  'stale_notification_publish_started_at',
 ];
 
 const MAX_BODY_BYTES = 1_000_000;
@@ -471,7 +478,6 @@ function validateReferralIntegrity(
 ) {
   const creatorId = exactIdentifier(row.created_by_user_id);
   const creatorEmail = canonicalEmail(row.created_by_user_email_normalized);
-  const platformCreator = canonicalEmail(row.created_by);
   const requestId = exactIdentifier(row.client_request_id);
   const assignedEmail = row.assigned_to == null ? null : canonicalEmail(row.assigned_to);
   const hasAssignmentProvenance = ASSIGNMENT_PROVENANCE_FIELDS
@@ -504,8 +510,11 @@ function validateReferralIntegrity(
     || !creatorId
     || !creatorEmail
     || row.created_by_user_email_normalized !== creatorEmail
-    || platformCreator !== creatorEmail
-    || row.created_by !== creatorEmail
+    // Base44's current response includes created_by_id without necessarily
+    // returning created_by. Reject missing or conflicting platform provenance.
+    || (row.created_by_id == null && row.created_by == null)
+    || (row.created_by_id != null && row.created_by_id !== creatorId)
+    || (row.created_by != null && row.created_by !== creatorEmail)
     || !requestId
     || row.referral_creation_key !== referralCreationKey(agencyId, creatorId, requestId)
     || !Number.isSafeInteger(row.version)
@@ -736,7 +745,7 @@ async function listReferrals(
   }
   const query: Record<string, unknown> = {
     agency_id: authority.agencyId,
-    archived_at: { $exists: false },
+    $or: [{ archived_at: { $exists: false } }, { archived_at: null }],
   };
   if (body.patient_id !== undefined) {
     const patientId = exactIdentifier(body.patient_id);
