@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { buildHelpUrl } from '@caremetric/help-sdk';
+import { version as helpSdkVersion } from '@caremetric/help-sdk/package.json';
 import {
   buildPennSyncHelpUrl,
   isCentralHelpEnabled,
@@ -12,6 +14,14 @@ import {
 const KNOWN_ROUTES = ['/', '/Dashboard', '/Help', '/PatientDetails', '/LearningCenter'];
 
 describe('PennSync central help context', () => {
+  it('uses the pinned shared SDK and its fail-closed route contract', () => {
+    expect(helpSdkVersion).toBe('0.4.0');
+    const url = new URL(buildHelpUrl({
+      context: { product: 'pennsync', route: '/PatientDetails' },
+    }));
+    expect(url.searchParams.has('route')).toBe(false);
+  });
+
   it('builds a production Hub URL with only approved context', () => {
     const url = new URL(buildPennSyncHelpUrl({
       pathname: '/patientdetails?patient_id=patient-secret#chart',
@@ -51,7 +61,10 @@ describe('PennSync central help context', () => {
 
   it('accepts safe release tokens and omits placeholders or free text', () => {
     expect(sanitizeHelpAppVersion(' 3.8.2+sha.abc123 ')).toBe('3.8.2+sha.abc123');
-    expect(sanitizeHelpAppVersion('v3.8.2-rc.1+sha.abc123')).toBe('v3.8.2-rc.1+sha.abc123');
+    expect(sanitizeHelpAppVersion('v3.8.2-rc.1')).toBe('v3.8.2-rc.1');
+    // The shared Hub contract supports one bounded suffix; do not claim that
+    // a value will be forwarded when the producer would silently omit it.
+    expect(sanitizeHelpAppVersion('v3.8.2-rc.1+sha.abc123')).toBeUndefined();
     expect(sanitizeHelpAppVersion('0.0.0')).toBeUndefined();
     expect(sanitizeHelpAppVersion('release contains patient name')).toBeUndefined();
     expect(sanitizeHelpAppVersion('patient-name')).toBeUndefined();
