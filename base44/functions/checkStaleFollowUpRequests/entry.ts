@@ -502,8 +502,9 @@ async function processAgency(
           stale_notification_publish_started_at: new Date().toISOString(),
         };
         if (!await conditionalFollowUpUpdate(entities, claimed, publishingFollowUp)) continue;
-        const publishing = await loadExactReferral(entities, agencyId, referral.id);
-        if (!sameJson(publishing.follow_up_requests, publishingFollowUp)) continue;
+        // The successful version/revision CAS is the publication decision.
+        // Start create immediately: an additional read here could fail after
+        // persisting intent and strand an alert that was never attempted.
         try {
           await entities.Notification.create(notification);
         } catch {

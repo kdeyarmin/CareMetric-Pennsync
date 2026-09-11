@@ -24,6 +24,7 @@ Staging app: `6a9881683dc68a0bd54f1ef7`. Production app: `694ec16e72e01b60d22f7c
 - Staging initially had no Agency, AgencyMembership, Referral or Notification records. Created one clearly labeled synthetic agency, membership and referral; disabled billing on that synthetic agency. No patient data or outbound email/fax was used.
 - Enabled only `WORKFLOW_RELEASE_CHECK_STALE_FOLLOW_UP_REQUESTS=enabled-v1` in staging and deployed the affected functions. All other workflow release flags remain unset.
 - Native workflow **Run now** with `{}` completed in about one second on empty staging data: run `37d4d3ec-3ce3-4346-831f-afe874eaaa60`, 2026-09-11 15:48 UTC. This is a manual workflow test, not proof of an unattended timer firing.
+- An unattended scheduled run subsequently completed at 16:05 UTC: `118fad0f-c21b-46da-aff9-07acebb72907`, `triggerType: scheduled`, `isTestRun: false`, duration 3.433 seconds. A temporary five-minute staging cron exercised a fresh synthetic request generation and created exactly one additional notification. The workflow was then deactivated and its daily UTC schedule restored; the synthetic agency/membership were suspended/revoked, its notifications invalidated and its referral archived with history retained.
 - The synthetic referral reproduced the platform metadata incompatibility, then passed after the fix: scanned 1, escalated 1, failed 0. Hosted version/revision conditional writes persisted claim, publication intent and finalization.
 - Repeated concurrent invocations with `{}` returned escalated 0, failed 0; exactly one authority-v1 notification existed.
 - `manageMyNotifications` returned that one alert with `complete: true`. Mark-read advanced its version from 1 to 2; dismiss advanced it to 3; the next inbox list was empty.
@@ -35,7 +36,9 @@ Focused Referral, stale-worker, notification-broker and workflow contracts pass.
 
 Lint, informational typecheck, high-signal typecheck, shared-helper parity, all 278 backend transpiles and the production build pass locally. The build has no hosted app environment configured; it is a compilation check.
 
-The full registered suites were also attempted. Windows' shell length limit requires invoking their existing Node file lists directly. Remaining local failures concern Windows path separators/file URLs, symlink permissions, POSIX file modes and a Node test-runner deserialization error; the component failures are path-based source inventories. Linux CI remains required for merge. No unrelated test expectations were weakened.
+The full registered suites were also attempted. Windows' shell length limit requires invoking their existing Node file lists directly. Remaining local failures concern Windows path separators/file URLs, symlink permissions, POSIX file modes and a Node test-runner deserialization error; the component failures are path-based source inventories. Both Linux checks passed for the initial PR revision; the final revision must also be green before merge. No unrelated test expectations were weakened.
+
+Review identified a read between the successful publication CAS and create that could strand an alert without attempting it. The CAS now immediately starts create. A regression test simulates a Referral read outage after that decision and verifies publication occurs once, then finalization recovers without a second create.
 
 ## Release and recovery
 

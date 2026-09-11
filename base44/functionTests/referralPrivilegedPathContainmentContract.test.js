@@ -430,6 +430,35 @@ test('overlapping workers cannot publish twice, even while the first create is d
   assert.ok(runtime.state.referrals[0].follow_up_requests.stale_notified_at);
 });
 
+test('a Referral read outage after publication CAS cannot strand an unattempted alert', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  const entities = runtime.client.asServiceRole.entities;
+  const update = entities.Referral.updateMany;
+  const filter = entities.Referral.filter;
+  let publicationCommitted = false;
+  entities.Referral.updateMany = async (query, operations) => {
+    const result = await update(query, operations);
+    if (operations.$set?.follow_up_requests?.stale_notification_publish_started_at) {
+      publicationCommitted = true;
+    }
+    return result;
+  };
+  entities.Referral.filter = async (...args) => {
+    if (publicationCommitted) throw new Error('read outage after the publication decision');
+    return filter(...args);
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  assert.equal((await handler(staleFollowUpRequest())).status, 500);
+  assert.equal(runtime.state.creates.length, 1);
+  entities.Referral.filter = filter;
+  const recovered = await handler(staleFollowUpRequest());
+  assert.equal(recovered.status, 200);
+  assert.equal((await recovered.json()).escalated, 1);
+  assert.equal(runtime.state.creates.length, 1);
+  assert.ok(runtime.state.referrals[0].follow_up_requests.stale_notified_at);
+});
+
 test('membership revocation after claim prevents notification publication', async () => {
   const runtime = createStaleFollowUpRuntime();
   const update = runtime.client.asServiceRole.entities.Referral.updateMany;
