@@ -178,13 +178,13 @@ test('scheduled queue backoff is bounded and incomplete stale evidence never req
     nextDispatchAttemptAt: '2026-09-06T12:10:00.000Z',
   });
   assert.equal(scheduledDispatchBackoff({ dispatch_retry_count: 7 }, NOW).status, 'blocked');
-  assert.equal(scheduledQueueStateIsDispatchable({ status: 'pending' }, NOW), true);
+  assert.equal(scheduledQueueStateIsDispatchable({ status: 'pending', dispatch_submission_state: 'ready' }, NOW), true);
   assert.equal(scheduledQueueStateIsDispatchable({
-    status: 'deferred', dispatch_retry_count: 1,
+    status: 'deferred', dispatch_submission_state: 'ready', dispatch_retry_count: 1,
     next_dispatch_attempt_at: '2026-09-06T12:00:00.000Z',
   }, NOW), true);
   assert.equal(scheduledQueueStateIsDispatchable({
-    status: 'deferred', dispatch_retry_count: 1,
+    status: 'deferred', dispatch_submission_state: 'ready', dispatch_retry_count: 1,
     next_dispatch_attempt_at: '2026-09-06T12:01:00.000Z',
   }, NOW), false);
 
@@ -416,5 +416,50 @@ test('existing Agency reservations serialize new queue records and retain uncert
     assert.equal(await releaseFaxQueueCreation(entities, reservation), true);
     assert.equal(agency.fax_workflow_reservations[other.key], other.token);
     assert.ok(await reserveFaxQueueCreation(entities, 'agency-1', 'inbound', 'provider-1'));
+  }
+});
+
+
+test('reservation release survives unrelated writes and lost acknowledgements without dropping another key', async () => {
+  const { reserveFaxQueueCreation, releaseRecoveredFaxQueueCreation } = await loadInline(
+    '../functions/sendBatchFax/entry.ts', ['reserveFaxQueueCreation', 'releaseRecoveredFaxQueueCreation']);
+  for (const failure of ['conflict', 'lost_ack']) {
+    const agency = { id: 'agency-1', status: 'active', updated_date: new Date(NOW).toISOString() };
+    let injected = false;
+    let releaseMode = false;
+    const entities = { Agency: {
+      filter: async () => [structuredClone(agency)],
+      updateMany: async (query, update) => {
+        if (releaseMode && !injected) {
+          injected = true;
+          if (failure === 'conflict') {
+            agency.fax_workflow_reservations.other_key = 'other-token';
+            agency.updated_date = new Date(NOW + 10).toISOString();
+            return { success: true, updated: 0, has_more: false };
+          }
+          Object.assign(agency, update.$set);
+          throw new Error('Response lost after commit');
+        }
+        const matches = Object.entries(query).every(([key, value]) => value?.$exists === false
+          ? !Object.hasOwn(agency, key) : JSON.stringify(agency[key]) === JSON.stringify(value));
+        if (matches) Object.assign(agency, update.$set);
+        return { success: true, updated: matches ? 1 : 0, has_more: false };
+      },
+    } };
+    const held = await reserveFaxQueueCreation(entities, agency.id, 'inbound', 'provider-1');
+    releaseMode = true;
+    assert.equal(await releaseRecoveredFaxQueueCreation(entities, agency.id, 'inbound', 'provider-1', {
+      queue_creation_reservation_token: held.token,
+    }), true);
+    assert.equal(agency.fax_workflow_reservations[held.key], undefined);
+    if (failure === 'conflict') assert.equal(agency.fax_workflow_reservations.other_key, 'other-token');
+  }
+});
+
+test('scheduled workers reject absent or consumed producer submission permission', async () => {
+  const { scheduledQueueStateIsDispatchable } = await loadInline(
+    '../functions/processScheduledFaxes/entry.ts', ['scheduledQueueStateIsDispatchable']);
+  for (const state of [undefined, null, 'started', 'completed']) {
+    assert.equal(scheduledQueueStateIsDispatchable({ status: 'pending', dispatch_submission_state: state }, NOW), false);
   }
 });

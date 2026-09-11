@@ -1126,12 +1126,13 @@ Deno.serve(async (req) => {
           continue;
         }
         const children = await base44.asServiceRole.entities.FaxLog.filter(
-          { retry_of_fax_log_id: fax.id },
+          { retry_of_fax_log_id: fax.id, retry_generation: fax.retry_generation + 1 },
           '-created_date',
           FAX_POLL_EXACT_ROW_LIMIT,
         ).catch(() => null);
         if (!Array.isArray(children) || children.length > 1
-          || children.some((row) => row?.retry_of_fax_log_id !== fax.id)) {
+          || children.some((row) => row?.retry_of_fax_log_id !== fax.id
+            || row?.retry_generation !== fax.retry_generation + 1)) {
           await quarantineFaxRecoveryRow(
             base44.asServiceRole.entities,
             fax,
@@ -1142,6 +1143,30 @@ Deno.serve(async (req) => {
           continue;
         }
         const child = children[0] || null;
+        if (!child && fax.retry_submission_state === 'ready') {
+          // The sender must consume ready before creating a child. Reclaiming
+          // with this exact preimage excludes a delayed old sender; a missing
+          // child alone is never enough for legacy or started submissions.
+          const priorAttempts = Number.isSafeInteger(fax.automatic_retry_queue_attempts)
+            && fax.automatic_retry_queue_attempts >= 0 ? fax.automatic_retry_queue_attempts : 0;
+          const attempts = Math.min(priorAttempts + 1, 12);
+          const released = await base44.asServiceRole.entities.FaxLog.updateMany({
+            id: fax.id, agency_id: fax.agency_id, status: 'retrying', updated_date: fax.updated_date,
+            retry_claimed_by: fax.retry_claimed_by, retry_claimed_at: fax.retry_claimed_at,
+            retry_claimed_by_user_id: fax.retry_claimed_by_user_id, retry_submission_state: 'ready',
+            retry_generation: fax.retry_generation, retry_count: fax.retry_count,
+          }, { $set: {
+            status: 'failed', retry_claimed_by: null, retry_claimed_at: null, retry_claimed_by_user_id: null,
+            automatic_retry_queue_attempts: attempts,
+            automatic_retry_last_error_code: attempts >= 12 ? 'retry_dispatch_not_started_exhausted' : 'retry_dispatch_not_started',
+            automatic_retry_quarantined_at: attempts >= 12 ? new Date(recoveryNowMs).toISOString() : null,
+            next_retry_at: attempts >= 12 ? null : new Date(recoveryNowMs
+              + Math.min(360, 15 * (2 ** Math.min(attempts - 1, 5))) * 60_000).toISOString(),
+          } }).catch(() => null);
+          if (successfulFaxCas(released)) releasedStale++;
+          else recoveryFailures++;
+          continue;
+        }
         if (!child) {
           // A timed-out child creation can still commit. Absence is not proof
           // that the original retry never reached the provider.
@@ -1485,6 +1510,7 @@ Deno.serve(async (req) => {
             if (plan.willRetry) {
               update.next_retry_at = plan.nextRetryAt;
               update.retry_count = plan.nextRetryCount;
+              if (plan.nextRetryAt) update.retry_submission_state = 'ready';
             } else {
               const shouldNotify = retryAuthority && retryPolicy.ok && boundedPolicy.valid
                 ? retryCfg.notifyOnFinalFailure

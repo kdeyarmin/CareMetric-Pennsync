@@ -21,10 +21,13 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
 // <<<END SHARED HELPER: outboundDeliveryGate>>>
 
 // <<<BEGIN SHARED HELPER: faxQueueCreationReservation — generated, edit base44/_shared/backendHelpers.mjs>>>
-async function reserveFaxQueueCreation(entities, agencyId, kind, resourceKey) {
+async function faxQueueCreationKey(kind, resourceKey) {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256',
     new TextEncoder().encode(JSON.stringify([kind, resourceKey]))));
-  const key = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+async function reserveFaxQueueCreation(entities, agencyId, kind, resourceKey) {
+  const key = await faxQueueCreationKey(kind, resourceKey);
   const rows = await entities.Agency.filter({ id: agencyId }, undefined, 2);
   if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== agencyId
     || !['active', 'trial'].includes(rows[0].status)
@@ -39,25 +42,45 @@ async function reserveFaxQueueCreation(entities, agencyId, kind, resourceKey) {
     id: agencyId, status: agency.status, updated_date: agency.updated_date,
     fax_workflow_reservations: Object.hasOwn(agency, 'fax_workflow_reservations')
       ? previous : { $exists: false },
-  }, { $set: { fax_workflow_reservations: { ...reservations, [key]: token } } });
-  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) return null;
-  const verified = await entities.Agency.filter({ id: agencyId }, undefined, 2);
+  }, { $set: { fax_workflow_reservations: { ...reservations, [key]: token } } }).catch(() => null);
+  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) {
+    await releaseFaxQueueCreation(entities, { agencyId, key, token }).catch(() => false);
+    return null;
+  }
+  const verified = await entities.Agency.filter({ id: agencyId }, undefined, 2).catch(() => null);
   if (!Array.isArray(verified) || verified.length !== 1 || verified[0]?.id !== agencyId
-    || verified[0].fax_workflow_reservations?.[key] !== token) return null;
+    || verified[0].fax_workflow_reservations?.[key] !== token) {
+    await releaseFaxQueueCreation(entities, { agencyId, key, token }).catch(() => false);
+    return null;
+  }
   return { agencyId, key, token };
 }
 async function releaseFaxQueueCreation(entities, reservation) {
-  const rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
-  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== reservation.agencyId) return false;
-  const row = rows[0];
-  const previous = row.fax_workflow_reservations;
-  if (!previous || previous[reservation.key] !== reservation.token) return false;
-  const remaining = { ...previous };
-  delete remaining[reservation.key];
-  const result = await entities.Agency.updateMany({
-    id: row.id, updated_date: row.updated_date, fax_workflow_reservations: previous,
-  }, { $set: { fax_workflow_reservations: remaining } });
-  return result?.success === true && result.updated === 1 && result.has_more === false;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
+    if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== reservation.agencyId) return false;
+    const row = rows[0];
+    const previous = row.fax_workflow_reservations;
+    if (previous == null || !Object.hasOwn(previous, reservation.key)) return true;
+    if (previous[reservation.key] !== reservation.token) return false;
+    const remaining = { ...previous };
+    delete remaining[reservation.key];
+    const result = await entities.Agency.updateMany({
+      id: row.id, updated_date: row.updated_date, fax_workflow_reservations: previous,
+    }, { $set: { fax_workflow_reservations: remaining } }).catch(() => null);
+    if (result?.success === true && result.updated === 1 && result.has_more === false) return true;
+    // A different key can change this shared map. Reload without dropping that
+    // writer's entry; a lost successful response is also recovered by absence.
+  }
+  return false;
+}
+async function releaseRecoveredFaxQueueCreation(entities, agencyId, kind, resourceKey, child) {
+  const token = child?.queue_creation_reservation_token;
+  if (token == null) return true; // Pre-protocol children have no reservation.
+  if (typeof token !== 'string' || !/^[a-f0-9-]{36}$/.test(token)) return false;
+  return releaseFaxQueueCreation(entities, {
+    agencyId, key: await faxQueueCreationKey(kind, resourceKey), token,
+  });
 }
 // <<<END SHARED HELPER: faxQueueCreationReservation>>>
 
@@ -1381,6 +1404,12 @@ async function createSchedule(base44: Record<string, any>, input: Record<string,
       || row.document_url != null || row.from_number != null) {
       throw new PublicError(409, 'Scheduled fax request identity was reused with different data', 'fax_identity_conflict');
     }
+    if (['pending', 'deferred'].includes(row.status) && row.dispatch_submission_state !== 'ready') {
+      throw new PublicError(409, 'Scheduled fax submission permission is unavailable', 'fax_authority_unavailable');
+    }
+    if (!await releaseRecoveredFaxQueueCreation(base44.asServiceRole.entities, input.agencyId, 'scheduled', scheduleKey, row)) {
+      throw new PublicError(503, 'Recovered fax reservation could not be released', 'fax_creation_reserved');
+    }
     return { success: true, scheduled: true, deduped: true, scheduled_fax_id: row.id, status: row.status };
   }
   const reservation = await reserveFaxQueueCreation(
@@ -1401,6 +1430,8 @@ async function createSchedule(base44: Record<string, any>, input: Record<string,
     creationStarted = true;
     const row = await base44.asServiceRole.entities.ScheduledFax.create({
       schedule_key: scheduleKey,
+      queue_creation_reservation_token: reservation.token,
+      dispatch_submission_state: 'ready',
       client_request_id: input.clientRequestId,
       authorization_version: 1,
       agency_id: input.agencyId,
@@ -1438,6 +1469,8 @@ async function createSchedule(base44: Record<string, any>, input: Record<string,
     if (!id) throw new Error('ScheduledFax.create returned no exact id');
     const durable = await findExactSchedule(base44.asServiceRole.entities, id);
     if (!durable || durable.schedule_key !== scheduleKey || durable.status !== 'pending'
+      || durable.queue_creation_reservation_token !== reservation.token
+      || durable.dispatch_submission_state !== 'ready'
       || durable.document_url != null || durable.from_number != null
       || durable.document_binding_id !== binding.binding.id
       || durable.authorized_by_membership_id !== authority.membershipId
@@ -1468,7 +1501,9 @@ async function createSchedule(base44: Record<string, any>, input: Record<string,
     return { success: true, scheduled: true, deduped: false, scheduled_fax_id: id, status: 'pending' };
   } finally {
     if (!creationStarted || creationVerified) {
-      await releaseFaxQueueCreation(base44.asServiceRole.entities, reservation).catch(() => false);
+      if (!await releaseFaxQueueCreation(base44.asServiceRole.entities, reservation).catch(() => false)) {
+        throw new Error('Confirmed fax creation reservation could not be released');
+      }
     }
   }
 }
@@ -1543,6 +1578,23 @@ async function claimQueueSubmission(entities, entityName, row, stateField, claim
   return true;
 }
 
+async function preserveUnstartedScheduledRecipients(entities, id, claimId) {
+  const rows = await entities.ScheduledFax.filter({ id }, undefined, BATCH_EXACT_LIMIT);
+  const row = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+  if (!row || row.id !== id || row.status !== 'processing' || row.claimed_by !== claimId
+    || row.dispatch_attempt_id !== claimId || row.dispatch_submission_state !== 'started'
+    || !validInstant(row.updated_date)) return false;
+  const updated = await entities.ScheduledFax.updateMany({
+    id, status: 'processing', claimed_by: claimId, dispatch_attempt_id: claimId,
+    updated_date: row.updated_date, dispatch_submission_state: 'started',
+  }, { $set: { dispatch_submission_state: 'ready' } });
+  if (!successfulExactUpdate(updated)) return false;
+  const verified = await entities.ScheduledFax.filter({ id }, undefined, BATCH_EXACT_LIMIT);
+  return Array.isArray(verified) && verified.length === 1 && verified[0]?.id === id
+    && verified[0].status === 'processing' && verified[0].claimed_by === claimId
+    && verified[0].dispatch_attempt_id === claimId && verified[0].dispatch_submission_state === 'ready';
+}
+
 function unverifiedQueueSubmission(recipients, extra) {
   return summarizeResults(recipients.map((toNumber) => ({
     to_number: toNumber, success: true, requires_reconciliation: true, dispatch_started: true,
@@ -1565,8 +1617,10 @@ async function dispatchScheduled(base44: Record<string, any>, req: Request, inpu
   const results = [];
   for (let index = 0; index < scheduled.recipients.length; index += 1) {
     const toNumber = scheduled.recipients[index];
+    let submissionBegan = false;
     try {
       const delivery = index === 0 ? initialDelivery : await createInternalDelivery(base44, scheduled.expected);
+      submissionBegan = true;
       results.push(await submitOneFax(base44, req, {
         ...scheduled.expected,
         ...delivery,
@@ -1578,13 +1632,20 @@ async function dispatchScheduled(base44: Record<string, any>, req: Request, inpu
         priority: normalizePriority(row.priority),
       }));
     } catch (error) {
-      // The parent publication fence is already consumed. Do not advertise a
-      // safe re-dispatch after an unknown boundary; the queue reconciles logs.
+      // Only preparation failures before submitOneFax can prove these remaining
+      // recipients unsent. Earlier accepted/rejected results have durable dedupe
+      // rows (or were rejected before dispatch), so a resumed batch can revisit
+      // them without another transmission. Never reopen after an unknown result.
+      const safelyDeferred = !submissionBegan
+        && results.every((result) => result.accepted === true || result.rejected === true)
+        && await preserveUnstartedScheduledRecipients(base44.asServiceRole.entities,
+          row.id, input.dispatchAttemptId).catch(() => false);
       for (const remaining of scheduled.recipients.slice(index)) {
         results.push({
           to_number: remaining,
           success: true,
-          requires_reconciliation: true,
+          requires_reconciliation: !safelyDeferred,
+          not_started: safelyDeferred,
           dispatch_started: error instanceof PublicError && error.dispatchStarted,
           reason: 'Batch dispatch was interrupted; review durable recipient attempts before resending',
         });
@@ -1592,7 +1653,8 @@ async function dispatchScheduled(base44: Record<string, any>, req: Request, inpu
       break;
     }
   }
-  return summarizeResults(results, scheduled.recipients.length, { scheduled_fax_id: row.id, dispatch_attempt_id: input.dispatchAttemptId });
+  return summarizeResults(results, scheduled.recipients.length, { scheduled_fax_id: row.id, dispatch_attempt_id: input.dispatchAttemptId,
+    retryable_not_started: results.some((result) => result.not_started === true) });
 }
 
 function validateRetrySource(row: Record<string, any>, id: string, retryClaimId: string) {
@@ -1692,6 +1754,9 @@ function summarizeResults(results: Array<Record<string, any>>, total: number, ex
     accepted,
     failed,
     unknown,
+    ...(results.some((result) => result.not_started === true) ? {
+      not_started: results.filter((result) => result.not_started === true).length,
+    } : {}),
     requires_reconciliation: unknown > 0,
     results,
     ...extra,

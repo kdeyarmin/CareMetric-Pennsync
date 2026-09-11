@@ -2,6 +2,10 @@
   "name": "IncomingFax",
   "type": "object",
   "properties": {
+    "queue_creation_reservation_token": {
+      "type": "string",
+      "description": "Opaque owner of the Agency creation reservation, retained to release only that owner after an uncertain create is recovered."
+    },
     "agency_id": {
       "type": "string",
       "description": "Immutable Agency id proven from the signed provider event and exact service-owned TelecomDestinationBinding. Legacy rows may not carry it and are never auto-routed."

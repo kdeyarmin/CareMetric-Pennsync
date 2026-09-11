@@ -12,13 +12,13 @@ globalThis.Deno = {
   env: { get: (key) => key === 'INTERNAL_FN_SECRET' ? SECRET : undefined },
 };
 
-async function loadInline(entryPath, names) {
+async function loadInline(entryPath, names, setup = '') {
   let source = await readFile(new URL(entryPath, import.meta.url), 'utf8');
   source = source.replace(
     /import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     'const createClientFromRequest = () => ({});',
   );
-  const js = transpileTs(source).outputText;
+  const js = transpileTs(source + '\n' + setup).outputText;
   const tmp = join(tmpdir(), `scheduled_fax_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   await writeFile(tmp, `${js}\nexport { ${names.join(', ')} };\n`);
   try {
@@ -141,6 +141,7 @@ function retryRow() {
     next_retry_at: '2026-09-06T11:00:00.000Z',
     updated_date: '2026-09-06T10:05:00.000Z',
     retry_count: 1,
+    retry_submission_state: 'ready',
     retry_generation: 0,
     retry_claimed_by: null,
     retry_claimed_at: null,
@@ -328,4 +329,120 @@ test('scheduled fax care-team access requires one canonical assignment at the ex
     invokeWith([exact, { ...exact, id: 'assignment-duplicate' }]),
     (error) => error?.status === 409 && error?.code === 'fax_authority_unavailable',
   );
+});
+
+
+test('a consumed retry submission permission cannot be silently reinitialized', async () => {
+  const { strictAutomaticRetryCandidate } = await loadInline(
+    '../functions/autoRetryFailedFaxes/entry.ts', ['strictAutomaticRetryCandidate']);
+  for (const state of [undefined, null, 'started', 'completed']) {
+    assert.equal(strictAutomaticRetryCandidate({ ...retryRow(), retry_submission_state: state }, NOW), false);
+  }
+});
+
+test('a stale scheduled claim that never entered submission remains eligible with bounded backoff', async () => {
+  const { reconcileStaleScheduledClaims } = await loadInline(
+    '../functions/processScheduledFaxes/entry.ts', ['reconcileStaleScheduledClaims']);
+  for (const attempts of [0, 7]) {
+    const row = { ...scheduledRow(), status: 'processing', dispatch_submission_state: 'ready',
+      claimed_at: new Date(Date.now() - 30 * 60_000).toISOString(), claimed_by: 'attempt-1',
+      dispatch_attempt_id: 'attempt-1', dispatch_retry_count: attempts };
+    const entities = { ScheduledFax: {
+      filter: async () => [structuredClone(row)],
+      updateMany: async (query, update) => {
+        assert.equal(query.claimed_by, 'attempt-1');
+        assert.equal(query.updated_date, row.updated_date);
+        Object.assign(row, update.$set);
+        return { success: true, updated: 1, has_more: false };
+      },
+    }, FaxLog: { filter: async () => { throw new Error('Unstarted claim must not assume a provider boundary'); } } };
+    assert.equal((await reconcileStaleScheduledClaims(entities)).reconciled, 1);
+    assert.equal(row.status, attempts === 0 ? 'deferred' : 'blocked');
+    assert.equal(row.dispatch_submission_state, 'ready');
+    assert.equal(row.claimed_by, null);
+    assert.equal(row.dispatch_retry_count, attempts + 1);
+  }
+});
+
+test('partial preparation failure requeues only a verified ready fence and exact remaining counts', async () => {
+  const { scheduledResultOutcome } = await loadInline(
+    '../functions/processScheduledFaxes/entry.ts', ['scheduledResultOutcome']);
+  const data = { success: true, total: 2, scheduled_fax_id: 'scheduled-1', dispatch_attempt_id: 'attempt-1',
+    accepted: 1, failed: 0, unknown: 0, not_started: 1, retryable_not_started: true };
+  const result = scheduledResultOutcome(data, 2, 'scheduled-1', 'attempt-1', { dispatch_submission_state: 'ready' });
+  assert.equal(result.status, 'deferred');
+  assert.equal(result.accepted, 1);
+  assert.equal(result.unknown, 0);
+  for (const invalid of [{ dispatch_submission_state: 'started' }, {}]) {
+    assert.equal(scheduledResultOutcome(data, 2, 'scheduled-1', 'attempt-1', invalid).status, 'needs_review');
+  }
+  assert.equal(scheduledResultOutcome({ ...data, accepted: 0, unknown: 1 }, 2, 'scheduled-1', 'attempt-1',
+    { dispatch_submission_state: 'ready' }).status, 'needs_review');
+});
+
+
+test('scheduled batch resumes unprepared recipients without resending accepted ones and never reopens an unknown attempt', async () => {
+  const originalFetch = globalThis.fetch;
+  try {
+    for (const uncertain of [false, true]) {
+      const credentials = { secretId: 'secret-1', updatedAt: '2026-09-06T10:00:00.000Z', connectionId: 'connection-1', apiKey: 'synthetic' };
+      const senderBinding = { id: 'sender-binding-1', version: 2, provider_number_id: 'number-1' };
+      const delivery = { document: { file_name: 'synthetic.pdf' }, downloadUrl: 'https://example.test/synthetic.pdf',
+        binding: { id: 'binding-1', version: 2, content_sha256: HASH },
+        settings: { id: 'settings-1', updated_date: '2026-09-06T10:00:00.000Z' }, fromNumber: '+12155550199' };
+      let preparations = 0;
+      let failPreparation = true;
+      globalThis.__batchTestDependencies = {
+        credentials, senderBinding,
+        prepare: async () => {
+          preparations++;
+          if (failPreparation && preparations === 2) throw new Error('Private-file service unavailable');
+          return structuredClone(delivery);
+        },
+      };
+      const { dispatchScheduled, sha256Text } = await loadInline('../functions/sendBatchFax/entry.ts', ['dispatchScheduled', 'sha256Text'], `
+        const dependencies = globalThis.__batchTestDependencies;
+        createInternalDelivery = dependencies.prepare;
+        loadExactTelnyxCredentials = async () => dependencies.credentials;
+        loadExactOutboundFaxBinding = async () => dependencies.senderBinding;
+        refreshSubmissionAuthority = async (_base44, authority) => authority;
+      `);
+      const row = { ...scheduledRow(), status: 'processing', dispatch_submission_state: 'ready',
+        claimed_at: new Date().toISOString(), claimed_by: 'attempt-1', dispatch_attempt_id: 'attempt-1' };
+      row.schedule_key = await sha256Text(`${row.agency_id}\u0000${row.authorized_by_user_id}\u0000${row.client_request_id}`);
+      const logs = [];
+      const match = (item, query) => Object.entries(query).every(([key, value]) => item[key] === value);
+      const entity = rows => ({
+        filter: async query => structuredClone(rows.filter(item => match(item, query))),
+        create: async fields => { const created = { id: 'child-' + (rows.length + 1), updated_date: new Date().toISOString(), ...fields }; rows.push(created); return structuredClone(created); },
+        updateMany: async (query, patch) => {
+          const matched = rows.filter(item => match(item, query));
+          for (const item of matched) Object.assign(item, patch.$set, { updated_date: new Date(Date.parse(item.updated_date) + 1).toISOString() });
+          return { success: true, updated: matched.length, has_more: false };
+        },
+      });
+      const client = { asServiceRole: { entities: { ScheduledFax: entity([row]), FaxLog: entity(logs) } } };
+      const calls = [];
+      globalThis.fetch = async (_url, init) => { calls.push(JSON.parse(init.body));
+        return new Response(JSON.stringify({ data: { id: 'provider-' + calls.length } }), { status: uncertain ? 500 : 200 }); };
+      const input = { scheduledFaxId: row.id, dispatchAttemptId: 'attempt-1' };
+      const req = new Request('https://app.test/functions/sendBatchFax');
+      const first = await dispatchScheduled(client, req, input);
+      assert.equal(calls.length, 1);
+      assert.equal(first.retryable_not_started, !uncertain);
+      assert.equal(row.dispatch_submission_state, uncertain ? 'started' : 'ready');
+      failPreparation = false;
+      const resumed = await dispatchScheduled(client, req, input);
+      if (uncertain) {
+        assert.equal(calls.length, 1);
+        assert.equal(resumed.unknown, 2);
+      } else {
+        assert.equal(resumed.accepted, 2);
+        assert.equal(calls.length, 2);
+        assert.deepEqual(calls.map(call => call.to), row.to_numbers);
+        assert.equal(logs.length, 2);
+        assert.equal(resumed.results[0].deduped, true);
+      }
+    }
+  } finally { globalThis.fetch = originalFetch; delete globalThis.__batchTestDependencies; }
 });

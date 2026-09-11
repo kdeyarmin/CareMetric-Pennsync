@@ -636,6 +636,7 @@ function strictAutomaticRetryCandidate(row, now) {
     && Number.isSafeInteger(row.sent_by_membership_version)
     && row.sent_by_membership_version >= 1
     && row.status === 'failed'
+    && row.retry_submission_state === 'ready'
     && row.provider_submission_state === 'accepted'
     && row.provider_terminal_status === 'failed'
     && !!autoExactId(row.provider_submission_attempt_id)
@@ -740,16 +741,15 @@ async function claimAutomaticRetry(entities, fax) {
     sender_settings_updated_at: fax.sender_settings_updated_at,
     retry_count: fax.retry_count,
     retry_generation: fax.retry_generation,
+    retry_submission_state: 'ready',
     next_retry_at: fax.next_retry_at,
     updated_date: fax.updated_date,
   }, { $set: {
     status: 'retrying',
     retry_claimed_by: claimId,
-    retry_submission_state: 'ready',
     retry_claimed_at: claimedAt,
     retry_claimed_by_user_id: fax.sent_by_user_id,
     next_retry_at: null,
-    automatic_retry_queue_attempts: 0,
     automatic_retry_last_error_code: null,
     automatic_retry_quarantined_at: null,
   } });
@@ -905,20 +905,15 @@ Deno.serve(async (req) => {
           continue;
         }
         if (data.requires_reconciliation === true || Number(data.unknown) > 0) {
-          const settled = await settleAutomaticRetry(entities, claim, fax, {
-            status: 'retried',
-            retry_count: nextGeneration,
-            retry_generation: nextGeneration,
-            next_retry_at: null,
-            failure_reason: 'Automatic retry submission requires provider reconciliation',
-          });
+          // No child may exist yet. Keep the source retrying and its claim intact
+          // so the poller's stale-claim reconciler can find a delayed attempt.
           reconciliation++;
-          if (!settled) queueErrors++;
           continue;
         }
         if (Number(data.accepted) === 1) {
           const settled = await settleAutomaticRetry(entities, claim, fax, {
             status: 'retried',
+            automatic_retry_queue_attempts: 0,
             retry_count: nextGeneration,
             retry_generation: nextGeneration,
             next_retry_at: null,
@@ -937,6 +932,8 @@ Deno.serve(async (req) => {
           );
           const settled = await settleAutomaticRetry(entities, claim, fax, {
             status: 'failed',
+            automatic_retry_queue_attempts: 0,
+            ...(withinBudget ? { retry_submission_state: 'ready' } : {}),
             retry_count: withinBudget ? nextGeneration + 1 : nextGeneration,
             retry_generation: nextGeneration,
             next_retry_at: withinBudget ? new Date(Date.now() + delay * 60_000).toISOString() : null,

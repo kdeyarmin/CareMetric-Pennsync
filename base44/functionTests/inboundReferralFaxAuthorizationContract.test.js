@@ -596,3 +596,49 @@ test('empty OCR results defer without declaring the fax processed', async () => 
   assert.equal(runtime.data.IncomingFax[0].processing_status, 'pending');
   assert.equal(runtime.data.IncomingFax[0].ocr_attempts, 1);
 });
+
+
+test('started inbound publication reconciles its original recipient after membership revocation or revision', async () => {
+  for (const revoked of [false, true]) {
+    const runtime = makeRuntime();
+    let committed;
+    runtime.hooks.create = async (name, row) => {
+      if (name === 'Notification') { committed = { ...clone(row), id: 'late-notice' }; throw new Error('Lost response'); }
+    };
+    const handler = await loadHandler(() => runtime.client);
+    assert.equal((await handler(request())).status, 500);
+    Object.assign(runtime.data.AgencyMembership[0], { version: 2, ...(revoked ? {
+      status: 'revoked', revoked_at: new Date().toISOString(), revocation_reason: 'Test revocation',
+    } : {}) });
+    runtime.data.Notification.push(committed);
+    runtime.data.IncomingFax[0].processing_next_attempt_at = null;
+    assert.equal((await handler(request())).status, 200);
+    assert.equal(runtime.data.IncomingFax[0].processing_status, 'completed');
+    assert.equal(runtime.data.Notification.length, 1);
+    assert.equal(runtime.getLlmCalls(), 1);
+    assert.equal(runtime.calls.filter(call => call.entity === 'Notification' && call.operation === 'create').length, 1);
+  }
+});
+
+test('persisted completion cannot overwrite tenant, notification, or processing authority', async () => {
+  for (const corrupt of [{ agency_id: 'agency-b' }, { processing_status: 'pending' },
+    { claimed_by: 'other-claim' }, { processing_notification_state: 'ready' }, { telnyx_fax_id: 'other-provider' }]) {
+    const runtime = makeRuntime();
+    let committed;
+    runtime.hooks.create = async (name, row) => {
+      if (name === 'Notification') { committed = { ...clone(row), id: 'late-notice' }; throw new Error('Lost response'); }
+    };
+    const handler = await loadHandler(() => runtime.client);
+    assert.equal((await handler(request())).status, 500);
+    runtime.data.Notification.push(committed);
+    Object.assign(runtime.data.IncomingFax[0].processing_completion, corrupt);
+    runtime.data.IncomingFax[0].processing_next_attempt_at = null;
+    assert.equal((await handler(request())).status, 500);
+    assert.equal(runtime.data.IncomingFax[0].agency_id, 'agency-a');
+    assert.equal(runtime.data.IncomingFax[0].telnyx_fax_id, 'provider-fax-a');
+    assert.equal(runtime.data.IncomingFax[0].processing_notification_state, 'started');
+    assert.notEqual(runtime.data.IncomingFax[0].processing_status, 'completed');
+    assert.equal(runtime.getLlmCalls(), 1);
+    assert.equal(runtime.data.Notification.length, 1);
+  }
+});

@@ -204,3 +204,20 @@ test('suggestion requests cannot expose another referral fax or an unfinished re
     assert.doesNotMatch(JSON.stringify(await response.json()), /media\.telnyx/);
   }
 });
+
+
+test('suggested fax download rechecks patient assignment before returning its capability', async () => {
+  for (const changedAtRead of [1, 2]) {
+    const state = runtime({ fax: faxRow({ status: 'unread', routed_to: null, routed_at: null,
+      suggested_patient_id: 'patient-a', ai_category: 'referral', suggested_routing: 'admin',
+      processing_notification_state: 'completed' }) });
+    let reads = 0;
+    state.client.functions.invoke = async () => referralResult({ patient_id: ++reads >= changedAtRead ? 'patient-b' : 'patient-a',
+      follow_up_requests: { status: 'sent', items: [] } });
+    const handler = await loadHandler(() => state.client);
+    const response = await handler(request({ agency_id: 'agency-a', referral_id: 'referral-a',
+      incoming_fax_id: 'incoming-a', relationship: 'suggested' }));
+    assert.equal(response.status, 409);
+    assert.doesNotMatch(JSON.stringify(await response.json()), /media\.telnyx/);
+  }
+});

@@ -342,7 +342,7 @@
     "retry_submission_state": {
       "type": "string",
       "enum": ["ready", "started"],
-      "description": "One-shot queue provider submission fence. Set ready only with a new dispatch claim; a started or legacy absent fence is never permission to replay."
+      "description": "One-shot queue provider submission fence. Set ready only by a verified terminal failure or definite rejection that schedules a new retry generation. Claiming a queue row never creates submission permission."
     },
     "retry_claimed_by": {
       "type": "string",

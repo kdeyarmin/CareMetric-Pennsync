@@ -203,6 +203,7 @@ function validateFax(
 async function loadFax(
   entities: Record<string, any>,
   input: Record<string, string>,
+  referral: Record<string, any>,
 ) {
   const rows = await entities.IncomingFax.filter(
     { id: input.incomingFaxId, agency_id: input.agencyId },
@@ -213,6 +214,10 @@ async function loadFax(
     || rows.length !== 1
     || rows.some((row) => row?.id !== input.incomingFaxId || row?.agency_id !== input.agencyId)) {
     throw new PublicError(409, 'Referral fax document is unavailable');
+  }
+  if (input.relationship === 'suggested'
+    && (rows[0].suggested_patient_id ?? null) !== (referral.patient_id ?? null)) {
+    throw new PublicError(409, 'Suggested fax patient association changed');
   }
   return validateFax(rows[0], input);
 }
@@ -234,9 +239,9 @@ Deno.serve(async (req) => {
     ) throw new PublicError(user ? 403 : 401, user ? 'Forbidden' : 'Unauthorized');
     const input = await parseInput(req);
     const initialReferral = await loadReferral(base44, input);
-    const initialFax = await loadFax(base44.asServiceRole.entities, input);
+    const initialFax = await loadFax(base44.asServiceRole.entities, input, initialReferral.referral);
     const finalReferral = await loadReferral(base44, input);
-    const finalFax = await loadFax(base44.asServiceRole.entities, input);
+    const finalFax = await loadFax(base44.asServiceRole.entities, input, finalReferral.referral);
     if (!sameValue(initialReferral, finalReferral)
       || !sameValue(initialFax.row, finalFax.row)
       || initialFax.url !== finalFax.url) {

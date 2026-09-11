@@ -2253,7 +2253,7 @@ test('automatic retry rejection hands final failure to poller without reopening 
         document_content_sha256: 'a'.repeat(64),
         sender_telecom_binding_id: 'sender_a', sender_telecom_binding_version: 2,
         sender_provider_number_id: 'provider_number_a',
-        next_retry_at: '2020-01-01T00:00:00.000Z', retry_count: 1,
+        next_retry_at: '2020-01-01T00:00:00.000Z', retry_count: 1, retry_submission_state: 'ready',
         failure_notify_publication_state: publication,
       })],
     };
@@ -2431,4 +2431,166 @@ test('recovered retry rejection honors disabled final-failure notifications', as
   assert.equal(state.FaxLog[0].status, 'failed');
   assert.equal(state.FaxLog[0].final_failure_notified, true);
   assert.equal(state.Notification.length, 0);
+});
+
+
+test('unknown automatic retry keeps its claim until a delayed child can be reconciled', async () => {
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret()],
+    Agency: [{ id: 'agency_a', agency_code: 'AGENCY-A', status: 'active' }],
+    FaxRetryConfig: [{ agency_id: 'agency_a', max_retries: 3, retry_delay_minutes: 15 }],
+    FaxLog: [outboundFax({ status: 'failed', provider_terminal_status: 'failed',
+      provider_terminal_at: '2026-09-06T12:05:00.000Z', document_binding_id: 'binding_a',
+      document_binding_version: 2, document_content_sha256: 'a'.repeat(64),
+      sender_telecom_binding_id: 'sender_a', sender_telecom_binding_version: 2,
+      sender_provider_number_id: 'provider_number_a', next_retry_at: '2020-01-01T00:00:00.000Z',
+      retry_count: 2, retry_generation: 1, retry_submission_state: 'ready' })],
+  };
+  const client = makeSpyBase44({ data: state });
+  client.asServiceRole.functions = { invoke: async () => {
+    state.FaxLog[0].retry_submission_state = 'started';
+    return { data: { success: true, total: 1, retry_source_fax_log_id: 'FaxLog_1', retry_generation: 2,
+      accepted: 0, failed: 0, unknown: 1, requires_reconciliation: true } };
+  } };
+  const retry = await loadHandler('../functions/autoRetryFailedFaxes/entry.ts', {
+    env: { WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES: 'enabled-v1', INTERNAL_FN_SECRET: 'fax-unknown-regression-secret-32-bytes-minimum' },
+    makeClient: () => client, fetchImpl: makeFetch([]).impl,
+  });
+  const response = await retry(new Request('https://app/functions/autoRetryFailedFaxes'));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).requires_reconciliation, 1);
+  assert.equal(state.FaxLog[0].status, 'retrying');
+  assert.ok(state.FaxLog[0].retry_claimed_by);
+  state.FaxLog[0].retry_claimed_at = '2020-01-01T00:00:00.000Z';
+  // An older rejected generation must not make the current child ambiguous.
+  state.FaxLog.push(outboundFax({ id: 'prior-rejected', status: 'failed', retry_of_fax_log_id: 'FaxLog_1',
+    retry_generation: 1, retry_count: 1, provider_submission_state: 'rejected', telnyx_fax_id: null }));
+  state.FaxLog.push(outboundFax({ id: 'late-child', status: 'queued', retry_of_fax_log_id: 'FaxLog_1',
+    retry_generation: 2, retry_count: 2, telnyx_fax_id: 'late-provider', status_poll_quarantined_at: new Date().toISOString() }));
+  const poll = await loadHandler('../functions/pollFaxStatuses/entry.ts', {
+    env: pollFaxStatusesReleased, makeClient: () => client, fetchImpl: makeFetch([]).impl,
+  });
+  const recovered = await poll(new Request('https://app/functions/pollFaxStatuses'));
+  assert.equal(recovered.status, 200, JSON.stringify(await recovered.clone().json()));
+  assert.equal(state.FaxLog[0].status, 'retried');
+  assert.equal(state.FaxLog[0].retry_claimed_by, null);
+});
+
+test('stale retries proven unstarted return to the queue with bounded backoff', async () => {
+  for (const previousAttempts of [0, 11]) {
+    const row = outboundFax({ status: 'retrying', provider_terminal_status: 'failed',
+      provider_terminal_at: '2026-09-06T12:05:00.000Z', retry_count: 1, retry_generation: 0,
+      retry_claimed_by: 'old-claim', retry_claimed_by_user_id: 'user_a', retry_claimed_at: '2020-01-01T00:00:00.000Z',
+      retry_submission_state: 'ready', automatic_retry_queue_attempts: previousAttempts,
+      final_failure_notified: true });
+    const state = { IntegrationSecret: [activeTelnyxSecret()], FaxLog: [row] };
+    const provider = makeFetch([]);
+    const poll = await loadHandler('../functions/pollFaxStatuses/entry.ts', {
+      env: pollFaxStatusesReleased, makeClient: () => makeSpyBase44({ data: state }), fetchImpl: provider.impl,
+    });
+    const response = await poll(new Request('https://app/functions/pollFaxStatuses'));
+    assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+    assert.equal(state.FaxLog[0].status, 'failed');
+    assert.equal(state.FaxLog[0].retry_claimed_by, null);
+    assert.equal(state.FaxLog[0].retry_submission_state, 'ready');
+    assert.equal(state.FaxLog[0].automatic_retry_queue_attempts, previousAttempts + 1);
+    assert.equal(!!state.FaxLog[0].next_retry_at, previousAttempts === 0);
+    assert.equal(provider.calls.length, 0);
+  }
+});
+
+
+test('inbound producer replay releases the original reservation only after verifying publication permission', async () => {
+  for (const dropMarker of [false, true]) {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const { impl, calls } = makeFetch([]);
+  const writes = [];
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret({
+      public_key: pubB64,
+      fax_connection_id: "FC1",
+      messaging_profile_id: "MP1",
+    })],
+    TelecomDestinationBinding: [faxBinding()],
+    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active", updated_date: "2026-09-01T00:00:00.000Z" }],
+    AgencySettings: [{
+      agency_id: "agency_a",
+      agency_code: "AGENCY-A",
+      fax_receiving_enabled: true,
+      office_fax_number_e164: "+17244650444",
+    }],
+    IncomingFax: [],
+  };
+  const client = makeSpyBase44({ writes, data: state });
+  const create = client.asServiceRole.entities.IncomingFax.create;
+  client.asServiceRole.entities.IncomingFax.create = async fields => {
+    const row = await create(fields);
+    if (dropMarker) delete row.processing_notification_state;
+    throw new Error('Response lost after create');
+  };
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => client,
+    fetchImpl: impl,
+  });
+  const event = { data: { event_type: "fax.received", payload: {
+    id: "faxin_bound_1", direction: "inbound", media_url: "https://media.telnyx.com/bound.pdf",
+    from: "+13125550182", to: "+12155550190", page_count: 3,
+  } } };
+
+  const first = await handler(signedWebhook(privateKey, event));
+  assert.notEqual(first.status, 200);
+  assert.equal(state.IncomingFax.length, 1);
+  assert.equal(Object.keys(state.Agency[0].fax_workflow_reservations).length, 1);
+  const second = await handler(signedWebhook(privateKey, event));
+  assert.equal(second.status, dropMarker ? 409 : 200);
+  assert.equal(Object.keys(state.Agency[0].fax_workflow_reservations).length, dropMarker ? 1 : 0);
+  assert.equal(writes.filter(write => write.entity === 'IncomingFax' && write.op === 'create').length, 1);
+  assert.equal(calls.length, 0);
+  }
+});
+
+
+test('inbound forwarding retains uncertain provider failures and releases only definite rejection', async () => {
+  for (const providerStatus of [408, 409, 425, 500, 422]) {
+  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+  const pubB64 = rawEd25519PublicKeyB64(publicKey);
+  const { impl, calls } = makeFetch([
+    { match: (u) => u.endsWith("/v2/faxes"), respond: () => ({ status: providerStatus, json: { data: { id: "fwd_1" } } }) },
+  ]);
+  const writes = [];
+  const state = {
+    IntegrationSecret: [activeTelnyxSecret({
+      public_key: pubB64,
+      fax_connection_id: "FC1",
+      messaging_profile_id: "MP1",
+    })],
+    TelecomDestinationBinding: [faxBinding()],
+    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active", updated_date: "2026-09-01T00:00:00.000Z" }],
+    // fax_receiving_enabled is NOT set — the default posture forwards to the office.
+    AgencySettings: [{
+      agency_id: "agency_a",
+      agency_code: "AGENCY-A",
+      office_fax_number_e164: "+17244650444",
+    }],
+    IncomingFax: [],
+  };
+  const client = makeSpyBase44({ writes, data: state });
+  const handler = await loadHandler("../functions/handleTelnyxStatusWebhook/entry.ts", {
+    env: {},
+    makeClient: () => client,
+    fetchImpl: impl,
+  });
+  const event = { data: { event_type: "fax.received", payload: {
+    id: "faxin_1", direction: "inbound", media_url: "https://media.telnyx.com/f1.pdf",
+    from: "+13125550182", to: "+12155550190",
+  } } };
+
+  assert.equal((await handler(signedWebhook(privateKey, event))).status, 502);
+  const definite = providerStatus === 422;
+  assert.equal(state.IncomingFax[0].status, definite ? 'unread' : 'reviewing');
+  await handler(signedWebhook(privateKey, event));
+  assert.equal(calls.length, definite ? 2 : 1);
+  }
 });

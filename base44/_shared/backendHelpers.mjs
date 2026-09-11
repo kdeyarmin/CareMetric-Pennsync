@@ -79,10 +79,13 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
   // Serialize queue creation through an existing Agency row. A reservation is
   // retained after an uncertain create; absence of a queried child is never a
   // reason to create it again. Confirmed creates release their small map entry.
-  faxQueueCreationReservation: `async function reserveFaxQueueCreation(entities, agencyId, kind, resourceKey) {
+  faxQueueCreationReservation: `async function faxQueueCreationKey(kind, resourceKey) {
   const digest = new Uint8Array(await crypto.subtle.digest('SHA-256',
     new TextEncoder().encode(JSON.stringify([kind, resourceKey]))));
-  const key = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+async function reserveFaxQueueCreation(entities, agencyId, kind, resourceKey) {
+  const key = await faxQueueCreationKey(kind, resourceKey);
   const rows = await entities.Agency.filter({ id: agencyId }, undefined, 2);
   if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== agencyId
     || !['active', 'trial'].includes(rows[0].status)
@@ -97,25 +100,45 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
     id: agencyId, status: agency.status, updated_date: agency.updated_date,
     fax_workflow_reservations: Object.hasOwn(agency, 'fax_workflow_reservations')
       ? previous : { $exists: false },
-  }, { $set: { fax_workflow_reservations: { ...reservations, [key]: token } } });
-  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) return null;
-  const verified = await entities.Agency.filter({ id: agencyId }, undefined, 2);
+  }, { $set: { fax_workflow_reservations: { ...reservations, [key]: token } } }).catch(() => null);
+  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) {
+    await releaseFaxQueueCreation(entities, { agencyId, key, token }).catch(() => false);
+    return null;
+  }
+  const verified = await entities.Agency.filter({ id: agencyId }, undefined, 2).catch(() => null);
   if (!Array.isArray(verified) || verified.length !== 1 || verified[0]?.id !== agencyId
-    || verified[0].fax_workflow_reservations?.[key] !== token) return null;
+    || verified[0].fax_workflow_reservations?.[key] !== token) {
+    await releaseFaxQueueCreation(entities, { agencyId, key, token }).catch(() => false);
+    return null;
+  }
   return { agencyId, key, token };
 }
 async function releaseFaxQueueCreation(entities, reservation) {
-  const rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
-  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== reservation.agencyId) return false;
-  const row = rows[0];
-  const previous = row.fax_workflow_reservations;
-  if (!previous || previous[reservation.key] !== reservation.token) return false;
-  const remaining = { ...previous };
-  delete remaining[reservation.key];
-  const result = await entities.Agency.updateMany({
-    id: row.id, updated_date: row.updated_date, fax_workflow_reservations: previous,
-  }, { $set: { fax_workflow_reservations: remaining } });
-  return result?.success === true && result.updated === 1 && result.has_more === false;
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
+    if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== reservation.agencyId) return false;
+    const row = rows[0];
+    const previous = row.fax_workflow_reservations;
+    if (previous == null || !Object.hasOwn(previous, reservation.key)) return true;
+    if (previous[reservation.key] !== reservation.token) return false;
+    const remaining = { ...previous };
+    delete remaining[reservation.key];
+    const result = await entities.Agency.updateMany({
+      id: row.id, updated_date: row.updated_date, fax_workflow_reservations: previous,
+    }, { $set: { fax_workflow_reservations: remaining } }).catch(() => null);
+    if (result?.success === true && result.updated === 1 && result.has_more === false) return true;
+    // A different key can change this shared map. Reload without dropping that
+    // writer's entry; a lost successful response is also recovered by absence.
+  }
+  return false;
+}
+async function releaseRecoveredFaxQueueCreation(entities, agencyId, kind, resourceKey, child) {
+  const token = child?.queue_creation_reservation_token;
+  if (token == null) return true; // Pre-protocol children have no reservation.
+  if (typeof token !== 'string' || !/^[a-f0-9-]{36}$/.test(token)) return false;
+  return releaseFaxQueueCreation(entities, {
+    agencyId, key: await faxQueueCreationKey(kind, resourceKey), token,
+  });
 }`,
 
   // Global reimbursement kill switch. This deliberately remains false until
