@@ -43,7 +43,7 @@ const APPROVED_WRITERS = new Map([
   ],
 ]);
 
-const WRITE_RE = /\b(OASISAssessment|OASISUpload)\s*\.\s*(create|update|bulkCreate|bulkUpdate)\s*\(/g;
+const WRITE_RE = /\b(OASISAssessment|OASISUpload)\s*\.\s*(create|update|updateMany|bulkCreate|bulkUpdate|delete|bulkDelete)\s*\(/g;
 
 async function* walk(dir) {
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -113,5 +113,12 @@ test("no writer outside the adapter builds a v2 response row by hand", async () 
       !/response_schema_id\s*:\s*['"]pennsync-oasis-response-v2-cms-e2['"]/.test(src),
       `${path} writes a v2 response_schema_id directly. Use buildOfficialResponseRow().`,
     );
+  }
+});
+
+// Source-cohort verification depends on assessment rows never changing after creation.
+test("OASISAssessment source rows remain append-only", async () => {
+  for (const [path, operations] of await findWriters()) {
+    assert.deepEqual(operations.filter(op => op.startsWith("OASISAssessment.") && op !== "OASISAssessment.create"), [], path);
   }
 });

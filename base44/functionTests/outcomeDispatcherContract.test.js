@@ -187,8 +187,8 @@ test('one empty scheduler tick signs an exact prior-UTC-day request for each ver
   assert.deepEqual(
     fixture.calls.invocations.map(({ name, payload }) => [name, payload.agency_id]),
     [
-      ['computeOutcomeMeasures', 'agency-a'],
-      ['computeOutcomeMeasures', 'agency-z'],
+      ['computeOutcomeMeasuresV2', 'agency-a'],
+      ['computeOutcomeMeasuresV2', 'agency-z'],
     ],
   );
   for (const { payload } of fixture.calls.invocations) {

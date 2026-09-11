@@ -251,9 +251,17 @@ function canonicalOutcomeJsonValue(value) {
 }
 
 function canonicalOutcomeRowPayload(row, fields) {
+  // Hosted schemas materialize absent optional object fields as null. Preserve
+  // array positions, false and zero, but give absent/null properties one hash.
+  const withoutNullProperties = value => {
+    if (Array.isArray(value)) return value.map(withoutNullProperties);
+    if (value && typeof value === 'object') return Object.fromEntries(Object.entries(value)
+      .filter(([, item]) => item != null).map(([key, item]) => [key, withoutNullProperties(item)]));
+    return value;
+  };
   const payload = {};
   for (const field of fields) {
-    if (Object.hasOwn(row, field) && row[field] !== undefined) payload[field] = row[field];
+    if (Object.hasOwn(row, field) && row[field] != null) payload[field] = withoutNullProperties(row[field]);
   }
   return canonicalOutcomeJsonValue(payload);
 }
@@ -626,7 +634,7 @@ async function validateMetric(row: EntityRow, run: PublishedRun, request: Broker
     optionalFields.add(field);
   }
   for (const field of OPTIONAL_METRIC_FIELDS) {
-    if (Object.hasOwn(row, field) !== optionalFields.has(field)) {
+    if ((row[field] != null) !== optionalFields.has(field)) {
       conflict('Published patient outcome metric optional-field metadata is inconsistent');
     }
   }
@@ -651,14 +659,14 @@ async function validateMetric(row: EntityRow, run: PublishedRun, request: Broker
   }
   const publicImprovement: Record<string, boolean | number> = {};
   for (const field of IMPROVEMENT_FIELDS) {
-    if (Object.hasOwn(improvement, field)) {
+    if (improvement[field] != null) {
       if (typeof improvement[field] !== 'boolean') {
         conflict('Published patient outcome metric functional improvement is invalid');
       }
       publicImprovement[field] = improvement[field];
     }
   }
-  if (Object.hasOwn(improvement, 'overall_improvement_score')) {
+  if (improvement.overall_improvement_score != null) {
     const score = improvement.overall_improvement_score;
     if (!Number.isFinite(score) || score < 0 || score > 100) {
       conflict('Published patient outcome metric functional improvement is invalid');
@@ -684,7 +692,7 @@ async function validateMetric(row: EntityRow, run: PublishedRun, request: Broker
     measureNames.add(measure);
     const projected: EntityRow = { measure, status, reason };
     for (const field of ['start_value', 'discharge_value']) {
-      if (Object.hasOwn(item as EntityRow, field)) {
+      if ((item as EntityRow)[field] != null) {
         const code = exactText((item as EntityRow)[field], MAX_IDENTIFIER_LENGTH);
         if (!code) conflict('Published patient outcome metric measure result code is invalid');
         projected[field] = code;
@@ -752,7 +760,7 @@ async function validateKpi(row: EntityRow, run: PublishedRun, request: BrokerReq
     || !Number.isInteger(row?.excluded_episode_count)
     || row.excluded_episode_count < 0
   ) conflict('Published agency KPI metadata is inconsistent');
-  if (Object.hasOwn(row, 'benchmark_value')
+  if (row.benchmark_value != null
       && (!Number.isFinite(row.benchmark_value)
         || row.benchmark_value < 0
         || row.benchmark_value > 100)) {
@@ -778,7 +786,7 @@ async function validateKpi(row: EntityRow, run: PublishedRun, request: BrokerReq
     period_start: request.periodStart,
     period_end: request.periodEnd,
     metric_value: row.metric_value,
-    ...(Object.hasOwn(row, 'benchmark_value') ? { benchmark_value: row.benchmark_value } : {}),
+    ...(row.benchmark_value != null ? { benchmark_value: row.benchmark_value } : {}),
     unit: '%',
     status: row.status,
     excluded_episode_count: row.excluded_episode_count,
