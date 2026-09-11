@@ -918,6 +918,7 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
   // Its source owns rejection handling; filter before the bounded page limit.
   const terminalAttempt = { $or: [unsetFaxField('retry_of_fax_log_id'), { provider_submission_state: 'accepted' }] };
   for (const status of ['delivered', 'failed']) {
+    const finalAttempt = status === 'failed' ? unsetFaxField('next_retry_at') : {};
     const markerField = status === 'delivered'
       ? 'delivery_confirmation_sent'
       : 'final_failure_notified';
@@ -929,7 +930,7 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
         query: {
           status,
           [markerField]: false,
-          $and: [unsetFaxField('notification_recovery_quarantined_at'), unsetFaxField('notification_recovery_next_attempt_at'), terminalAttempt],
+          $and: [unsetFaxField('notification_recovery_quarantined_at'), unsetFaxField('notification_recovery_next_attempt_at'), terminalAttempt, finalAttempt],
         },
         sort: 'updated_date',
       },
@@ -937,7 +938,7 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
         query: {
           status,
           [markerField]: false,
-          $and: [unsetFaxField('notification_recovery_quarantined_at'), terminalAttempt],
+          $and: [unsetFaxField('notification_recovery_quarantined_at'), terminalAttempt, finalAttempt],
           notification_recovery_next_attempt_at: { $lte: now },
         },
         sort: 'notification_recovery_next_attempt_at',

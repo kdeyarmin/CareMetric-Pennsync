@@ -2342,3 +2342,31 @@ test('all unresolved stale retry recovery outcomes degrade the polling run', asy
     assert.equal(state.Notification.length, 0, failure);
   }
 });
+
+
+test('terminal notification recovery leaves scheduled retries to the retry queue', async () => {
+  const pending = Array.from({ length: 25 }, (_, index) => outboundFax({
+    id: `pending_retry_${index}`, telnyx_fax_id: `pending_provider_${index}`,
+    status: 'failed', provider_terminal_status: 'failed',
+    provider_terminal_at: '2026-09-06T12:05:00.000Z',
+    next_retry_at: index % 2 ? '2020-01-01T00:00:00.000Z' : '2099-01-01T00:00:00.000Z',
+  }));
+  const state = { IntegrationSecret: [activeTelnyxSecret()],
+    AgencyMembership: [activeFaxSenderMembership()], Notification: [],
+    FaxLog: [...pending, outboundFax({ status: 'failed', provider_terminal_status: 'failed',
+      provider_terminal_at: '2026-09-06T12:05:00.000Z', failure_notify_publication_state: 'ready',
+      updated_date: '2026-09-06T12:10:00.000Z', next_retry_at: null,
+    })],
+  };
+  const writes = [];
+  const handler = await loadHandler('../functions/pollFaxStatuses/entry.ts', {
+    env: pollFaxStatusesReleased, makeClient: () => makeSpyBase44({ data: state, writes }),
+    fetchImpl: makeFetch([]).impl,
+  });
+  const response = await handler(new Request('https://app/functions/pollFaxStatuses'));
+  assert.equal(response.status, 200, JSON.stringify(await response.clone().json()));
+  assert.equal((await response.json()).recovery_failures, 0);
+  assert.equal(state.Notification.length, 1);
+  assert.equal(state.FaxLog.at(-1).final_failure_notified, true);
+  assert.equal(writes.some((write) => write.query?.id?.startsWith('pending_retry_')), false);
+});
