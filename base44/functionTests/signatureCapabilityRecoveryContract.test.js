@@ -55,7 +55,8 @@ async function fixture(options = {}) {
       return clone(row);
     },
     updateMany: async (query, change) => {
-      await options.beforeUpdate?.(name, db, query, change);
+      const override = await options.beforeUpdate?.(name, db, query, change);
+      if (override !== undefined) return override;
       const targets = rows.filter((row) => matches(row, query));
       for (const row of targets) Object.assign(row, clone(change.$set));
       await options.afterUpdate?.(name, db, query, change);
@@ -280,6 +281,19 @@ test('deadline change after a confirmed marker clears that marker before any sto
   assert.equal((await f.sign(review.documents[0].review_nonce)).status, 401);
   assert.equal(f.calls.uploads, 0);
   assert.equal(f.db.DocumentPackageToken[0].submission_upload_operation_id, null);
+  assert.equal(f.db.DocumentPackageToken[0].status, 'active');
+  assert.equal(f.db.SignerReviewGrant[0].status, 'active');
+});
+
+test('a definitive zero-row upload marker result releases owned claims without storage', async () => {
+  const f = await fixture({ beforeUpdate: (name, _db, _query, change) => {
+    if (name === 'DocumentPackageToken' && change.$set.submission_upload_operation_id) {
+      return { success: true, updated: 0, has_more: false };
+    }
+  } });
+  const review = await (await f.review()).json();
+  assert.equal((await f.sign(review.documents[0].review_nonce)).status, 409);
+  assert.equal(f.calls.uploads, 0);
   assert.equal(f.db.DocumentPackageToken[0].status, 'active');
   assert.equal(f.db.SignerReviewGrant[0].status, 'active');
 });

@@ -824,7 +824,10 @@ Deno.serve(async (req) => {
       submission_upload_operation_id: null, submission_upload_started_at: null,
     }, { $set: { submission_upload_operation_id: operationId, submission_upload_started_at: uploadStartedAt,
       authority_version: tokenClaim.version + 1 } });
-    if (!successfulSingleUpdate(uploadStart)) throw new PublicError(409, 'Signature upload boundary requires reconciliation');
+    if (!successfulSingleUpdate(uploadStart)) {
+      if (uploadStart?.success === true && uploadStart.updated === 0 && uploadStart.has_more === false) irreversible = false;
+      throw new PublicError(409, 'Signature upload boundary requires reconciliation');
+    }
     tokenClaim.version += 1;
     uploadMarkerConfirmed = true;
     context = await loadContext(entities, input, tokenDigest, grantDigest, agreementTextDigest, operationId);
