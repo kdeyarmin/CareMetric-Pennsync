@@ -108,13 +108,15 @@ async function parseInput(req: Request) {
     throw new PublicError(400, 'Invalid request');
   }
   if (!plainObject(body) || Object.keys(body).some((key) => ![
-    'agency_id', 'referral_id', 'incoming_fax_id',
+    'agency_id', 'referral_id', 'incoming_fax_id', 'relationship',
   ].includes(key))) throw new PublicError(400, 'Invalid request');
   const agencyId = exactIdentifier(body.agency_id);
   const referralId = exactIdentifier(body.referral_id);
   const incomingFaxId = exactIdentifier(body.incoming_fax_id);
   if (!agencyId || !referralId || !incomingFaxId) throw new PublicError(400, 'Invalid request');
-  return { agencyId, referralId, incomingFaxId };
+  const relationship = body.relationship ?? 'attached';
+  if (!['attached', 'suggested'].includes(relationship)) throw new PublicError(400, 'Invalid request');
+  return { agencyId, referralId, incomingFaxId, relationship };
 }
 
 function validateReferralResult(value: unknown, input: Record<string, string>) {
@@ -132,10 +134,12 @@ function validateReferralResult(value: unknown, input: Record<string, string>) {
     || referral.version < 1
     || !validInstant(referral.updated_date)
     || !plainObject(followUp)
-    || !['received', 'resolved'].includes(followUp.status)
-    || !plainObject(followUp.fax_back)
-    || followUp.fax_back.incoming_fax_id !== input.incomingFaxId
-    || Object.hasOwn(followUp.fax_back, 'document_url')
+    || (input.relationship === 'attached' && (
+      !['received', 'resolved'].includes(followUp.status)
+      || !plainObject(followUp.fax_back)
+      || followUp.fax_back.incoming_fax_id !== input.incomingFaxId
+      || Object.hasOwn(followUp.fax_back, 'document_url')
+    ))
     || !plainObject(scope)
     || scope.agency_id !== input.agencyId
     || !exactIdentifier(scope.membership_id)
@@ -181,12 +185,16 @@ function validateFax(
     || !validInstant(row?.received_at)
     || !validInstant(row?.created_date)
     || !validInstant(row?.updated_date)
-    || !validInstant(row?.routed_at)
     || !url
     || row.document_url !== url
     || row.processing_status !== 'completed'
-    || row.status !== 'routed'
-    || row.routed_to !== `ReferralFollowUp:${input.referralId}`
+    || (input.relationship === 'attached' ? (
+      row.status !== 'routed' || !validInstant(row.routed_at)
+      || row.routed_to !== `ReferralFollowUp:${input.referralId}`
+    ) : (
+      row.status !== 'unread' || row.ai_category !== 'referral'
+      || row.suggested_routing !== 'admin' || row.processing_notification_state !== 'completed'
+    ))
     || row.suggested_referral_id !== input.referralId
   ) throw new PublicError(409, 'Referral fax document is unavailable');
   return { row, url };

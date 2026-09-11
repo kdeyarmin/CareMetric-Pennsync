@@ -173,3 +173,34 @@ test('fax document path stores no capability on Referral or in browser source', 
   assert.match(page, /getAuthorizedInboundReferralFax\(/);
   assert.match(wrapper, /functions\.invoke\('getAuthorizedInboundReferralFax'/);
 });
+
+
+test('a suggestion can be reviewed without pretending it is an accepted referral attachment', async () => {
+  const state = runtime({
+    referral: referralResult({ follow_up_requests: { status: 'sent', items: [] } }),
+    fax: faxRow({ status: 'unread', routed_to: null, routed_at: null,
+      ai_category: 'referral', suggested_routing: 'admin', processing_notification_state: 'completed' }),
+  });
+  const handler = await loadHandler(() => state.client);
+  const response = await handler(request({ agency_id: 'agency-a', referral_id: 'referral-a',
+    incoming_fax_id: 'incoming-a', relationship: 'suggested' }));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).delivery.download_url, 'https://media.telnyx.test/incoming-a.pdf');
+  assert.equal(state.calls.filter((call) => call.type === 'invoke').length, 2);
+});
+
+test('suggestion requests cannot expose another referral fax or an unfinished result', async () => {
+  for (const invalid of [{ suggested_referral_id: 'referral-b' }, { processing_status: 'processing' },
+    { processing_notification_state: 'started' }, { agency_id: 'agency-b' }]) {
+    const state = runtime({
+      referral: referralResult({ follow_up_requests: { status: 'sent', items: [] } }),
+      fax: faxRow({ status: 'unread', routed_to: null, routed_at: null,
+        ai_category: 'referral', suggested_routing: 'admin', processing_notification_state: 'completed', ...invalid }),
+    });
+    const handler = await loadHandler(() => state.client);
+    const response = await handler(request({ agency_id: 'agency-a', referral_id: 'referral-a',
+      incoming_fax_id: 'incoming-a', relationship: 'suggested' }));
+    assert.equal(response.status, 409);
+    assert.doesNotMatch(JSON.stringify(await response.json()), /media\.telnyx/);
+  }
+});

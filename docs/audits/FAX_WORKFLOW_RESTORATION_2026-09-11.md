@@ -1,0 +1,36 @@
+# Fax workflow restoration — 2026-09-11
+
+## Problem and behavior
+
+The paused inbound, scheduled and automatic-retry fax workers could hide queued work, duplicate notifications or provider starts after interrupted requests, and report successful runs despite storage or reconciliation failures.
+
+- Inbound scans now handle both missing and null optional queue fields, reject incorrect scope/eligibility, and surface unverified claims. Empty OCR results retry; OCR has a 90-second deadline.
+- New ingress rows carry a one-shot notification state. Before creating an alert, the worker saves its exact payload and completed OCR/routing result. Interrupted publications reconcile that intent without repeating OCR or creating another alert. A missing recipient defers the fax instead of marking it completed.
+- Suggested matches link to an authorized document review on ReferralFollowUp. The reader rechecks the referral and exact completed fax twice, including tenant and role scope. Suggestions do not accept clinical answers or attach documents automatically.
+- Scheduled and retry dispatches consume a conditional start marker on their existing parent row. Replayed capabilities cannot each create a recipient transmission. Uncertain starts remain available for reconciliation; missing legacy state is never proof of permission to send.
+- Inbound and scheduled queue creation reserve their purpose key through a conditional update of the existing Agency row, then repeat the child lookup inside the reservation. Confirmed creation releases the reservation; uncertain creates retain it. Reservations are bounded and contain only digests and opaque tokens.
+- Scheduled completion requires a successful broker response with exact schedule/attempt IDs and integer totals. Both workers expose storage, claim and reconciliation failures through non-success HTTP results.
+- `OUTBOUND_FAX_WORKFLOW_RELEASE=enabled-v1` releases only the opted-in queue workers, schedule creation and internal batch dispatch. Interactive batch sending and unrelated email/SMS/voice remain on the existing global delivery gate.
+
+## Schema and release requirements
+
+Additive fields, no RLS changes or defaults granting publication permission:
+
+- Agency: `fax_workflow_reservations`.
+- IncomingFax: `processing_notification_state`, `processing_notification_intent`, `processing_completion`.
+- ScheduledFax: `dispatch_submission_state`.
+- FaxLog: `retry_submission_state`.
+
+Deploy schemas before the reviewed revisions of `handleTelnyxStatusWebhook`, `processInboundFaxes`, `getAuthorizedInboundReferralFax`, `sendBatchFax`, `processScheduledFaxes` and `autoRetryFailedFaxes`. The frontend change must be published with the document reader. Keep each native workflow and its release flag closed until hosted validation succeeds. No blanket backfill changes a legacy absent state to ready.
+
+## Validation so far
+
+- 121 focused fax, authorization, provider, replay, queue and notification contracts pass.
+- Lint: zero errors/warnings. High-signal typecheck: zero findings. Shared helper parity: 219 consumers. All 279 backend functions transpile.
+- Full local test invocation was attempted. Windows shell command-length, path-separator/file-URL, symlink permission and mode-bit assumptions fail existing platform-dependent tests. Node suites were also invoked directly to bypass the shell limit. Linux CI remains required before merging.
+- Staging function deployment succeeded for all six affected functions. Schema updates are being verified by readback because the connector can return HTTP 504 after committing a change.
+- Production inspection found one active Agency, no queued inbound/scheduled/retry fax records, and no active destination or private-document bindings. No test fax has been sent. Production fax schedules remain paused pending hosted validation and verified sender/document/destination configuration.
+
+## Remaining restoration work
+
+Stale follow-up checks and fax status polling are already restored. Outcome computation and signature reminders remain separate, unfinished parts of the authorized restoration work. Outcome publication needs an existing-row ownership mechanism and stable source cohort. Signature reminders depend on the private document signing, verification, consent configuration and completed-document path. The user confirms their consent and verification policies exist.

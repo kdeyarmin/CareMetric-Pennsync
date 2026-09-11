@@ -91,6 +91,19 @@
       "default": 0,
       "description": "Number of transient automatic-processing deferrals, separate from OCR attempts."
     },
+    "processing_notification_state": {
+      "type": "string",
+      "enum": ["ready", "started", "completed"],
+      "description": "Producer-assigned one-shot notification fence. Legacy absence and started intents are reconciliation-only. Never default to ready."
+    },
+    "processing_notification_intent": {
+      "type": "object",
+      "description": "Immutable notification payload persisted before its single create attempt."
+    },
+    "processing_completion": {
+      "type": "object",
+      "description": "OCR and routing result retained while notification publication is reconciled; avoids repeating OCR or changing the chosen referral."
+    },
     "ocr_text": {
       "type": "string",
       "description": "Extracted text from OCR"

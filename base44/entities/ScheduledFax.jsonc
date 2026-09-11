@@ -163,6 +163,11 @@
       "type": "string",
       "format": "date-time"
     },
+    "dispatch_submission_state": {
+      "type": "string",
+      "enum": ["ready", "started"],
+      "description": "One-shot queue provider submission fence. Set ready only with a new dispatch claim; a started or legacy absent fence is never permission to replay."
+    },
     "dispatch_attempt_id": {
       "type": "string",
       "description": "Opaque identity for the current processor-to-broker dispatch attempt."

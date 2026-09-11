@@ -45,14 +45,17 @@ const clone = (value) => structuredClone(value);
 
 function matches(row, query = {}) {
   return Object.entries(query).every(([key, expected]) => {
+    if (key === '$and') return expected.every((part) => matches(row, part));
+    if (key === '$or') return expected.some((part) => matches(row, part));
     if (expected && typeof expected === 'object' && !Array.isArray(expected)) {
-      if (Object.hasOwn(expected, '$exists')) {
-        return expected.$exists ? row[key] != null : row[key] == null;
-      }
-      if (Object.hasOwn(expected, '$lte')) return row[key] != null && row[key] <= expected.$lte;
-      return true;
+      return Object.entries(expected).every(([operator, value]) => {
+        if (operator === '$exists') return value === Object.hasOwn(row, key);
+        if (operator === '$lte') return row[key] != null && row[key] <= value;
+        if (operator === '$ne') return row[key] !== value;
+        throw new Error(`Unsupported test query operator ${operator}`);
+      });
     }
-    return row[key] === expected;
+    return expected === null ? row[key] == null : row[key] === expected;
   });
 }
 
@@ -147,6 +150,7 @@ function makeRuntime({
     document_url: 'https://media.telnyx.test/incoming-a.pdf',
     telnyx_fax_id: 'provider-fax-a',
     processing_status: attached ? 'processing' : 'pending',
+    processing_notification_state: 'ready',
     status: 'unread',
     claimed_by: attached ? 'interrupted-run' : null,
     claimed_at: attached ? oldClaim : null,
@@ -196,6 +200,7 @@ function makeRuntime({
     Notification: [],
   };
   const calls = [];
+  const hooks = {};
   let tick = Date.parse('2026-09-06T12:00:00.000Z');
   const entities = new Proxy({}, {
     get: (_target, entityName) => {
@@ -203,6 +208,8 @@ function makeRuntime({
       return {
         filter: async (query = {}, sort, limit) => {
           calls.push({ entity: name, operation: 'filter', query: clone(query), sort, limit });
+          const injected = await hooks.filter?.(name, query, sort, limit);
+          if (injected !== undefined) return clone(injected);
           const rows = (data[name] || []).filter((row) => matches(row, query));
           if (foreignIncoming && name === 'IncomingFax'
             && query.agency_id === 'agency-a' && query.processing_status === 'pending') {
@@ -212,6 +219,8 @@ function makeRuntime({
         },
         updateMany: async (query = {}, patch = {}) => {
           calls.push({ entity: name, operation: 'updateMany', query: clone(query), patch: clone(patch) });
+          const injected = await hooks.updateMany?.(name, query, patch);
+          if (injected !== undefined) return clone(injected);
           const rows = data[name] || [];
           const indexes = rows
             .map((row, index) => (matches(row, query) ? index : -1))
@@ -229,6 +238,8 @@ function makeRuntime({
         },
         create: async (row) => {
           calls.push({ entity: name, operation: 'create', row: clone(row) });
+          const injected = await hooks.create?.(name, row);
+          if (injected !== undefined) return clone(injected);
           tick += 1;
           const created = {
             id: `${name.toLowerCase()}-${(data[name] || []).length + 1}`,
@@ -252,6 +263,8 @@ function makeRuntime({
         Core: {
           InvokeLLM: async () => {
             llmCalls += 1;
+            const injected = await hooks.ocr?.();
+            if (injected !== undefined) return clone(injected);
             if (llmCalls === 1) {
               return {
                 full_text: 'Home Health Referral Additional Information Request Jane Patient DOB 01/05/1950 signed encounter note attached',
@@ -271,6 +284,7 @@ function makeRuntime({
     client,
     data,
     calls,
+    hooks,
     getLlmCalls: () => llmCalls,
   };
 }
@@ -302,7 +316,7 @@ test('inbound queue is bounded oldest-first and poison rows are durably quaranti
   assert.match(source, /loadIncomingFaxQueue\(entities, agencyId, 'pending', scanAt\)/);
   assert.match(source, /loadIncomingFaxQueue\(entities, agencyId, 'processing', scanAt\)/);
   assert.match(source, /processing_next_attempt_at: \{ \$exists: false \}/);
-  assert.match(source, /processing_next_attempt_at: \{ \$lte: now \}/);
+  assert.match(source, /processing_next_attempt_at: \{ \$lte: now, \$ne: null \}/);
   assert.match(source, /deferIncomingFax/);
   assert.match(source, /quarantineIncomingFax/);
   assert.match(source, /inbound_fax_authority_changed/);
@@ -354,6 +368,7 @@ test('heuristic inbound fax matches remain suggestions and never mutate Referral
   for (const call of runtime.calls.filter((item) => (
     item.operation === 'filter' && ['Referral', 'IncomingFax', 'FaxLog'].includes(item.entity)
   ))) {
+    if (call.entity === 'IncomingFax' && call.query.telnyx_fax_id) continue; // global provider-id collision check
     assert.equal(call.query.agency_id, 'agency-a', `${call.entity} read remains tenant scoped`);
   }
 });
@@ -472,4 +487,112 @@ test('legacy same-tenant rows stay quarantined without poisoning newer fax work'
   assert.equal(runtime.data.IncomingFax[1].processing_status, 'completed');
   assert.equal(runtime.data.Referral[0].follow_up_requests.status, 'sent');
   assert.equal(runtime.data.Referral[1].follow_up_requests.status, 'sent');
+});
+
+
+test('hosted null and missing queue fields both receive processing', async () => {
+  for (const fields of [{}, { processing_quarantined_at: null, processing_next_attempt_at: null }]) {
+    const runtime = makeRuntime();
+    Object.assign(runtime.data.IncomingFax[0], fields);
+    const handler = await loadHandler(() => runtime.client);
+    const response = await handler(request());
+    assert.equal(response.status, 200);
+    assert.equal((await response.json()).processed, 1);
+  }
+});
+
+test('future retries and quarantined rows never enter OCR', async () => {
+  for (const fields of [
+    { processing_next_attempt_at: new Date(Date.now() + 60_000).toISOString() },
+    { processing_quarantined_at: new Date().toISOString() },
+  ]) {
+    const runtime = makeRuntime();
+    Object.assign(runtime.data.IncomingFax[0], fields);
+    const handler = await loadHandler(() => runtime.client);
+    assert.equal((await handler(request())).status, 200);
+    assert.equal(runtime.getLlmCalls(), 0);
+  }
+});
+
+test('missing recipients defer the fax and report failure without completing it', async () => {
+  const runtime = makeRuntime();
+  runtime.data.AgencyMembership = [];
+  const handler = await loadHandler(() => runtime.client);
+  assert.equal((await handler(request())).status, 500);
+  assert.equal(runtime.data.IncomingFax[0].processing_status, 'pending');
+  assert.ok(runtime.data.IncomingFax[0].processing_next_attempt_at);
+  assert.equal(runtime.data.Notification.length, 0);
+});
+
+test('uncertain notification creates reconcile once without repeating OCR or publishing again', async () => {
+  const runtime = makeRuntime();
+  let pending;
+  runtime.hooks.create = async (name, row) => {
+    if (name === 'Notification') {
+      pending = { ...clone(row), id: 'late-notification' };
+      throw new Error('Create timed out after acceptance');
+    }
+  };
+  const handler = await loadHandler(() => runtime.client);
+  assert.equal((await handler(request())).status, 500);
+  assert.equal(runtime.data.IncomingFax[0].processing_notification_state, 'started');
+  assert.equal(runtime.data.IncomingFax[0].processing_status, 'pending');
+  runtime.data.IncomingFax[0].processing_next_attempt_at = null;
+  assert.equal((await handler(request())).status, 500);
+  assert.equal(runtime.getLlmCalls(), 1);
+  assert.equal(runtime.calls.filter((call) => call.entity === 'Notification' && call.operation === 'create').length, 1);
+  runtime.data.Notification.push(pending);
+  runtime.data.IncomingFax[0].processing_next_attempt_at = null;
+  assert.equal((await handler(request())).status, 200);
+  assert.equal(runtime.data.IncomingFax[0].processing_status, 'completed');
+  assert.equal(runtime.data.Notification.length, 1);
+  assert.equal(runtime.getLlmCalls(), 1);
+});
+
+test('legacy absence cannot authorize another notification create', async () => {
+  const runtime = makeRuntime();
+  delete runtime.data.IncomingFax[0].processing_notification_state;
+  const handler = await loadHandler(() => runtime.client);
+  assert.equal((await handler(request())).status, 500);
+  assert.equal(runtime.data.Notification.length, 0);
+  assert.notEqual(runtime.data.IncomingFax[0].processing_status, 'completed');
+});
+
+test('overlapping workers publish only once', async () => {
+  const runtime = makeRuntime();
+  const handler = await loadHandler(() => runtime.client);
+  const responses = await Promise.all([handler(request()), handler(request())]);
+  assert.ok(responses.every((response) => response.status === 200));
+  assert.equal(runtime.getLlmCalls(), 1);
+  assert.equal(runtime.data.Notification.length, 1);
+});
+
+test('failed and incomplete claim acknowledgements are not successful skips', async () => {
+  for (const result of [null, { updated: 1 }, { success: false, updated: 0, has_more: false }, { success: true, updated: 1, has_more: true }]) {
+    const runtime = makeRuntime();
+    runtime.hooks.updateMany = async (_name, _query, patch) => (
+      patch.$set?.processing_status === 'processing' ? result : undefined
+    );
+    const handler = await loadHandler(() => runtime.client);
+    assert.equal((await handler(request())).status, 500);
+    assert.equal(runtime.getLlmCalls(), 0);
+  }
+});
+
+test('duplicate provider fax identities fail before OCR and notification', async () => {
+  const runtime = makeRuntime();
+  runtime.data.IncomingFax.push({ ...clone(runtime.data.IncomingFax[0]), id: 'incoming-duplicate' });
+  const handler = await loadHandler(() => runtime.client);
+  assert.equal((await handler(request())).status, 500);
+  assert.equal(runtime.getLlmCalls(), 0);
+  assert.equal(runtime.data.Notification.length, 0);
+});
+
+test('empty OCR results defer without declaring the fax processed', async () => {
+  const runtime = makeRuntime();
+  runtime.hooks.ocr = async () => ({ full_text: '' });
+  const handler = await loadHandler(() => runtime.client);
+  assert.equal((await handler(request())).status, 500);
+  assert.equal(runtime.data.IncomingFax[0].processing_status, 'pending');
+  assert.equal(runtime.data.IncomingFax[0].ocr_attempts, 1);
 });

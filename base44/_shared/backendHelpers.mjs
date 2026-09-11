@@ -69,6 +69,55 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
   });
 }`,
 
+  // Fax queue restoration must not release unrelated email, SMS or voice paths.
+  // Only the explicitly opted-in queue workers and batch sender use this gate.
+  faxWorkflowDeliveryGate: `function faxWorkflowDeliveryReleased() {
+  return outboundDeliveryReleased()
+    || Deno.env.get('OUTBOUND_FAX_WORKFLOW_RELEASE') === 'enabled-v1';
+}`,
+
+  // Serialize queue creation through an existing Agency row. A reservation is
+  // retained after an uncertain create; absence of a queried child is never a
+  // reason to create it again. Confirmed creates release their small map entry.
+  faxQueueCreationReservation: `async function reserveFaxQueueCreation(entities, agencyId, kind, resourceKey) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(JSON.stringify([kind, resourceKey]))));
+  const key = Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+  const rows = await entities.Agency.filter({ id: agencyId }, undefined, 2);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== agencyId
+    || !['active', 'trial'].includes(rows[0].status)
+    || !Number.isFinite(Date.parse(rows[0].updated_date || ''))) return null;
+  const agency = rows[0];
+  const previous = agency.fax_workflow_reservations;
+  if (previous != null && (typeof previous !== 'object' || Array.isArray(previous))) return null;
+  const reservations = previous || {};
+  if (Object.keys(reservations).length >= 500 || Object.hasOwn(reservations, key)) return null;
+  const token = crypto.randomUUID();
+  const result = await entities.Agency.updateMany({
+    id: agencyId, status: agency.status, updated_date: agency.updated_date,
+    fax_workflow_reservations: Object.hasOwn(agency, 'fax_workflow_reservations')
+      ? previous : { $exists: false },
+  }, { $set: { fax_workflow_reservations: { ...reservations, [key]: token } } });
+  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) return null;
+  const verified = await entities.Agency.filter({ id: agencyId }, undefined, 2);
+  if (!Array.isArray(verified) || verified.length !== 1 || verified[0]?.id !== agencyId
+    || verified[0].fax_workflow_reservations?.[key] !== token) return null;
+  return { agencyId, key, token };
+}
+async function releaseFaxQueueCreation(entities, reservation) {
+  const rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== reservation.agencyId) return false;
+  const row = rows[0];
+  const previous = row.fax_workflow_reservations;
+  if (!previous || previous[reservation.key] !== reservation.token) return false;
+  const remaining = { ...previous };
+  delete remaining[reservation.key];
+  const result = await entities.Agency.updateMany({
+    id: row.id, updated_date: row.updated_date, fax_workflow_reservations: previous,
+  }, { $set: { fax_workflow_reservations: remaining } });
+  return result?.success === true && result.updated === 1 && result.has_more === false;
+}`,
+
   // Global reimbursement kill switch. This deliberately remains false until
   // PennSync uses the official CMS HHGS 432-group grouper, server-resolves
   // protected assessment inputs, and passes CMS golden-case tests. Keep every

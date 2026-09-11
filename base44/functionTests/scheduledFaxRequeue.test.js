@@ -95,10 +95,17 @@ test('scheduled result accounting never requeues an accepted or ambiguous provid
     '../functions/processScheduledFaxes/entry.ts',
     ['scheduledResultOutcome'],
   );
-  assert.equal(scheduledResultOutcome({ accepted: 2, failed: 0, unknown: 0 }, 2).status, 'sent');
-  assert.equal(scheduledResultOutcome({ accepted: 1, failed: 1, unknown: 0 }, 2).status, 'partial_failure');
-  assert.equal(scheduledResultOutcome({ accepted: 0, failed: 0, unknown: 2 }, 2).status, 'needs_review');
-  assert.equal(scheduledResultOutcome({ accepted: 1, failed: 0, unknown: 0 }, 2).status, 'needs_review');
+  const evaluate = (counts) => scheduledResultOutcome({
+    success: true, total: 2, scheduled_fax_id: 'scheduled-1', dispatch_attempt_id: 'attempt-1', ...counts,
+  }, 2, 'scheduled-1', 'attempt-1');
+  assert.equal(evaluate({ accepted: 2, failed: 0, unknown: 0 }).status, 'sent');
+  assert.equal(evaluate({ accepted: 1, failed: 1, unknown: 0 }).status, 'partial_failure');
+  assert.equal(evaluate({ accepted: 0, failed: 0, unknown: 2 }).status, 'needs_review');
+  assert.equal(evaluate({ accepted: 1, failed: 0, unknown: 0 }).status, 'needs_review');
+  for (const corrupt of [{ scheduled_fax_id: 'foreign' }, { dispatch_attempt_id: 'old' },
+    { accepted: '2' }, { success: false }, { total: 9 }]) {
+    assert.equal(evaluate({ accepted: 2, failed: 0, unknown: 0, ...corrupt }).status, 'needs_review');
+  }
 });
 
 function retryRow() {

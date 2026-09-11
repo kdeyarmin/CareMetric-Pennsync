@@ -509,6 +509,8 @@ function makeSpyBase44({ user = { email: "a@x.com", role: "admin", full_name: "A
     if (key === '$and') return value.every((part) => matches(row, part));
     if (key === '$or') return value.some((part) => matches(row, part));
     if (value && typeof value === "object" && !Array.isArray(value)) {
+      if (!Object.keys(value).some((key) => key.startsWith("$"))) return JSON.stringify(row?.[key]) === JSON.stringify(value);
+      if (Object.hasOwn(value, "$ne") && row?.[key] === value.$ne) return false;
       if (Object.hasOwn(value, "$exists")) {
         return (row?.[key] !== undefined) === value.$exists;
       }
@@ -706,7 +708,7 @@ test("a stray inbound fax on the blind line is passed straight through to the of
       messaging_profile_id: "MP1",
     })],
     TelecomDestinationBinding: [faxBinding()],
-    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active", updated_date: "2026-09-01T00:00:00.000Z" }],
     // fax_receiving_enabled is NOT set — the default posture forwards to the office.
     AgencySettings: [{
       agency_id: "agency_a",
@@ -764,7 +766,7 @@ test("an exact-bound opt-in inbound fax is ingested once with immutable tenant p
       messaging_profile_id: "MP1",
     })],
     TelecomDestinationBinding: [faxBinding()],
-    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active", updated_date: "2026-09-01T00:00:00.000Z" }],
     AgencySettings: [{
       agency_id: "agency_a",
       agency_code: "AGENCY-A",
@@ -824,7 +826,7 @@ test("an existing foreign inbound fax identity blocks disclosure, creation, and 
       messaging_profile_id: "MP1",
     })],
     TelecomDestinationBinding: [faxBinding()],
-    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active", updated_date: "2026-09-01T00:00:00.000Z" }],
     AgencySettings: [{
       agency_id: "agency_a",
       agency_code: "AGENCY-A",
@@ -1342,7 +1344,7 @@ test("pollFaxStatuses uses exact provider identity, CAS, and immutable agency re
   const writes = [];
   const state = {
     IntegrationSecret: [activeTelnyxSecret()],
-    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active", updated_date: "2026-09-01T00:00:00.000Z" }],
     FaxRetryConfig: [{ agency_id: "agency_a", max_retries: 3, retry_delay_minutes: 15 }],
     FaxLog: [outboundFax()],
     Notification: [],
@@ -1431,7 +1433,7 @@ test("fax status poller fails closed for malformed or inactive retry policies", 
   ]) {
     const state = {
       IntegrationSecret: [activeTelnyxSecret()],
-      Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+      Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active", updated_date: "2026-09-01T00:00:00.000Z" }],
       AgencyMembership: [activeFaxSenderMembership()],
       FaxRetryConfig: [policy],
       FaxLog: [outboundFax()],
@@ -1606,7 +1608,7 @@ test("signed outbound fax statuses transition exactly once and preserve retry au
   const writes = [];
   const state = {
     IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
-    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+    Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active", updated_date: "2026-09-01T00:00:00.000Z" }],
     FaxRetryConfig: [{ agency_id: "agency_a", max_retries: 3, retry_delay_minutes: 15 }],
     FaxLog: [outboundFax()],
     Notification: [],
@@ -1651,7 +1653,7 @@ test("signed fax webhook fails closed for malformed or inactive retry policies",
   ]) {
     const state = {
       IntegrationSecret: [activeTelnyxSecret({ public_key: pubB64 })],
-      Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active" }],
+      Agency: [{ id: "agency_a", agency_code: "AGENCY-A", status: "active", updated_date: "2026-09-01T00:00:00.000Z" }],
       AgencyMembership: [activeFaxSenderMembership()],
       FaxRetryConfig: [policy],
       FaxLog: [outboundFax()],

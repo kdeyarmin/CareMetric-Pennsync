@@ -45,18 +45,20 @@ function validScope(scope, agencyId) {
 export async function getAuthorizedInboundReferralFax(options = {}) {
   if (!plainObject(options)
     || Object.keys(options).some((key) => ![
-      'agencyId', 'referralId', 'incomingFaxId',
+      'agencyId', 'referralId', 'incomingFaxId', 'relationship',
     ].includes(key))) throw new Error('Referral fax lookup options are invalid');
-  const { agencyId, referralId, incomingFaxId } = options;
+  const { agencyId, referralId, incomingFaxId, relationship } = options;
   if (!exactIdentifier(agencyId)
     || !exactIdentifier(referralId)
-    || !exactIdentifier(incomingFaxId)) {
+    || !exactIdentifier(incomingFaxId)
+    || (relationship !== undefined && !['attached', 'suggested'].includes(relationship))) {
     throw new Error('Referral fax lookup identifiers are invalid');
   }
   const response = await base44.functions.invoke('getAuthorizedInboundReferralFax', {
     agency_id: agencyId,
     referral_id: referralId,
     incoming_fax_id: incomingFaxId,
+    ...(relationship ? { relationship } : {}),
   });
   const result = response?.data ?? response;
   if (!exactKeys(result, [
