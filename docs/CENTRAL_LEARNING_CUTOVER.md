@@ -12,9 +12,13 @@ not migrate records, deploy functions, or revoke any key.
 Before enabling `VITE_CENTRAL_LEARNING_ENABLED=true` in the verified production
 build and `CENTRAL_LEARNING_RELEASE=hub-runtime-v1` in Base44:
 
-1. Deploy and exercise the Hub runtime from Support Hub PR #4. Confirm real
-   authoring, product access, playback/captions, server grading, progress, and
-   completion records with authorized accounts.
+1. Exercise the deployed Hub runtime from Support Hub PR #6, which incorporated
+   and superseded PR #4. The September 11 Hub release has backend contract 2 and
+   native creation/delivery for new shared courses. Real administrator testing
+   still requires the owner's TOTP enrollment. Confirm authoring, product access,
+   playback/captions, server grading, progress, and completion records with
+   authorized accounts. Imported CareBase drafts remain blocked from publication
+   until quiz, credit/renewal, and completion-reporting behavior is preserved.
 2. Inventory PennSync TrainingCourse/Module/Question data separately from the
    CareBase catalog. Preserve agency visibility and immutable source revisions.
    Its tenant-specific content must not be imported as public shared content.
