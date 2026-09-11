@@ -184,7 +184,7 @@ test("TelecomDestinationBinding is a private versioned authority model", async (
   assert.deepEqual(schema.rls, { create: false, read: false, update: false, delete: false });
   for (const field of [
     "binding_key", "provider", "integration_secret_id", "destination_e164",
-    "provider_number_id", "phone_number_id", "agency_id", "messaging_profile_id", "sms_inbound_enabled",
+    "provider_number_id", "phone_number_id", "agency_id", "sms_inbound_enabled",
     "sms_outbound_enabled", "voice_inbound_enabled", "fax_inbound_enabled", "status", "source",
     "created_by_user_id", "created_by_user_email_normalized", "created_at", "activated_at",
     "last_transition_by_user_id", "last_transition_by_email_normalized", "last_transition_at",
@@ -194,6 +194,7 @@ test("TelecomDestinationBinding is a private versioned authority model", async (
     assert.ok(schema.required.includes(field), `${field} is required`);
   }
   assert.deepEqual(schema.properties.provider.enum, ["telnyx"]);
+  assert.equal(schema.required.includes('messaging_profile_id'), false, 'fax-only numbers do not need an SMS profile');
   assert.equal(schema.properties.version.type, "integer");
   assert.equal(schema.properties.version.minimum, 1);
 

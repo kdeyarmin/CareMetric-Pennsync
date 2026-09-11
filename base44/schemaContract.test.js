@@ -54,11 +54,19 @@ const DORMANT_REFERENCE_ENTITY_NAMES = [
   'SubscriptionSettings',
 ];
 
-// These schemas intentionally remain in the policy-decision queue. This is not
-// an approval of open access: the list makes the unresolved scope reviewable and
-// prevents a ninth schema from silently joining it. Remove a name only after its
-// ownership and operation-specific RLS policy has been approved and implemented.
-const RLS_POLICY_DECISION_PENDING_ENTITY_NAMES = [
+// Schemas awaiting an RLS policy decision. Every entity must define RLS; a
+// schema may join this list only through an explicit, fingerprinted review.
+// The former eight-schema queue was resolved on 2026-09-10 by the owner's
+// interim lockdown decision (docs/audits/RLS_POLICY_DECISION_WORKSHEET_2026-09-07.md).
+const RLS_POLICY_DECISION_PENDING_ENTITY_NAMES = [];
+const RLS_POLICY_DECISION_PENDING_NAMES_SHA256 =
+  'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+
+// Content schemas locked by the 2026-09-10 interim decision: staff read where the
+// product needs it and only Base44's protected admin role writes. Their direct
+// consumers stay inventoried so a new browser writer or authority tier is
+// reviewed before the longer-term agency-scoped content model lands.
+const INTERIM_ADMIN_MANAGED_CONTENT_ENTITY_NAMES = [
   'CustomValidationRule',
   'EducationMaterial',
   'LearningPlan',
@@ -68,8 +76,6 @@ const RLS_POLICY_DECISION_PENDING_ENTITY_NAMES = [
   'Physician',
   'TrainingModule',
 ];
-const RLS_POLICY_DECISION_PENDING_NAMES_SHA256 =
-  '752d715c7ed58c0d0ed2250350e440adb8ff1a60f07ec88f9ddd9f4e112f8bd0';
 
 const entityFiles = readdirSync(ENTITIES_DIR).filter((f) => f.endsWith('.jsonc'));
 
@@ -582,7 +588,7 @@ test('RLS policy-decision queue remains explicit and fingerprinted', () => {
   );
 });
 
-test('RLS policy-decision entities keep a reviewed direct-consumer inventory', () => {
+test('interim-locked content entities keep a reviewed direct-consumer inventory', () => {
   // Each entry is: production source path :: SDK authority :: directly accessed
   // members. A duplicate call to an already-reviewed member is intentionally
   // collapsed, while a new file, authority tier, or member fails this contract.
@@ -679,7 +685,7 @@ test('RLS policy-decision entities keep a reviewed direct-consumer inventory', (
 
   const escapeRegExp = (value) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const actual = Object.fromEntries(
-    RLS_POLICY_DECISION_PENDING_ENTITY_NAMES.map((name) => [name, []]),
+    INTERIM_ADMIN_MANAGED_CONTENT_ENTITY_NAMES.map((name) => [name, []]),
   );
   for (const path of codeFiles) {
     const source = readFileSync(path, 'utf8');
@@ -701,7 +707,7 @@ test('RLS policy-decision entities keep a reviewed direct-consumer inventory', (
     const uniqueRoots = [...new Map(
       collectionRoots.map((root) => [`${root.expression}:${root.authority}`, root]),
     ).values()];
-    for (const name of RLS_POLICY_DECISION_PENDING_ENTITY_NAMES) {
+    for (const name of INTERIM_ADMIN_MANAGED_CONTENT_ENTITY_NAMES) {
       const consumers = new Map();
       for (const root of uniqueRoots) {
         const referencePattern = new RegExp(
@@ -727,7 +733,7 @@ test('RLS policy-decision entities keep a reviewed direct-consumer inventory', (
   assert.deepEqual(
     actual,
     expected,
-    'a direct consumer of an undecided-RLS entity changed; review the authority boundary and update the inventory plus policy worksheet deliberately',
+    'a direct consumer of an interim-locked content entity changed; review the authority boundary and update the inventory plus policy worksheet deliberately',
   );
 });
 
@@ -759,8 +765,11 @@ test('known RLS debt cannot grow or change without explicit review', () => {
       RLS_POLICY_DECISION_PENDING_ENTITY_NAMES.length,
       RLS_POLICY_DECISION_PENDING_NAMES_SHA256,
     ],
-    openMutation: [10, 'd35d9825b82ebe43000f3b89d65ed029e8e004b1daf8d904716951d022ce3dee'],
-    openRead: [21, 'e24cda0c4ee3915f16d5eaed48b83ff8afda0491c41a26613138ac3c0e7f08a3'],
+    // 2026-09-10 interim lockdown: open mutation debt eliminated (10 -> 0) and
+    // open read debt shrunk (21 -> 15; ClinicalEvent closed after the invite-only
+    // rollback) — see the RLS policy-decision worksheet.
+    openMutation: [0, 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855'],
+    openRead: [15, '598feb3418658ebb48d08f0c2863748009a3e3bc8c029134ab31e3a1ad8de96f'],
   };
   const bad = [];
   for (const [kind, names] of Object.entries(inventories)) {

@@ -94,6 +94,14 @@
       "type": "string",
       "format": "date-time",
       "description": "Server time of the initial successful Document and binding readback verification."
+    },
+    "document_created_by_id": {
+      "type": "string",
+      "description": "Exact platform creator id returned by the service-owned Document.create operation. The hosted service account differs from the authenticated human creator retained in created_by_user_id."
+    },
+    "queue_creation_reservation_token": {
+      "type": "string",
+      "description": "Opaque owner token for the protected Agency reservation that serialized this document upload. Used only to release this exact completed creation after a lost acknowledgement."
     }
   },
   "required": [

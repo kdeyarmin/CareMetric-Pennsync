@@ -107,6 +107,7 @@ function createStaleFollowUpRuntime({ referralOverrides = {}, agencyOverrides = 
   };
   const state = {
     agency,
+    agencies: [agency],
     membership,
     referrals: [referral],
     notifications: [],
@@ -117,6 +118,7 @@ function createStaleFollowUpRuntime({ referralOverrides = {}, agencyOverrides = 
   };
 
   const matches = (row, query) => Object.entries(query || {}).every(([key, expected]) => {
+    if (key === '$or') return expected.some((option) => matches(row, option));
     if (expected && typeof expected === 'object' && !Array.isArray(expected)) {
       if ('$exists' in expected) return (row[key] !== undefined) === expected.$exists;
     }
@@ -131,7 +133,7 @@ function createStaleFollowUpRuntime({ referralOverrides = {}, agencyOverrides = 
     asServiceRole: {
       entities: {
         Agency: {
-          filter: async (query) => filterRows('Agency', [state.agency], query),
+          filter: async (query) => filterRows('Agency', state.agencies, query),
         },
         AgencyMembership: {
           filter: async (query) => filterRows(
@@ -234,7 +236,7 @@ test('stale follow-up worker is tenant-bound, conditional, and duplicate-safe', 
   assert.equal(runtime.state.creates[0].dismissed, false);
   assert.match(runtime.state.creates[0].dedupe_key, /^referral-stale:agency-a:referral-a:/);
   assert.doesNotMatch(runtime.state.creates[0].message, /patient|intake@example\.test/i);
-  assert.equal(runtime.state.updates.length, 2);
+  assert.equal(runtime.state.updates.length, 3);
   assert.deepEqual(runtime.state.updates[0].query, {
     id: 'referral-a',
     agency_id: 'agency-a',
@@ -242,7 +244,7 @@ test('stale follow-up worker is tenant-bound, conditional, and duplicate-safe', 
     updated_date: '2026-08-01T00:00:00.000Z',
   });
   assert.deepEqual(runtime.state.updates[0].operations.$inc, { version: 1 });
-  assert.equal(runtime.state.referrals[0].version, 3);
+  assert.equal(runtime.state.referrals[0].version, 4);
   assert.equal(
     runtime.state.referrals[0].follow_up_requests.stale_notification_claimed_by,
     undefined,
@@ -254,14 +256,16 @@ test('stale follow-up worker is tenant-bound, conditional, and duplicate-safe', 
   assert.ok(runtime.state.filters.some(({ entity, query }) => (
     entity === 'Notification'
     && query.agency_id === 'agency-a'
-    && query.user_email === 'intake@example.test'
+    && query.dedupe_key === runtime.state.creates[0].dedupe_key
+    && !('recipient_user_id' in query)
+    && !('user_email' in query)
   )));
 
   const secondResponse = await handler(staleFollowUpRequest());
   assert.equal(secondResponse.status, 200);
   assert.equal((await secondResponse.json()).escalated, 0);
   assert.equal(runtime.state.creates.length, 1);
-  assert.equal(runtime.state.updates.length, 2);
+  assert.equal(runtime.state.updates.length, 3);
 });
 
 test('stale follow-up worker supports the migrated empty-args scheduler contract', async () => {
@@ -270,7 +274,7 @@ test('stale follow-up worker supports the migrated empty-args scheduler contract
     () => runtime.client,
     new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]),
   );
-  const response = await handler(staleFollowUpRequest({ stale_days: 4 }));
+  const response = await handler(staleFollowUpRequest({}));
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'no-store');
   const body = await response.json();
@@ -310,6 +314,279 @@ test('stale follow-up worker returns non-2xx when any row escalation fails', asy
     error: 'One or more stale follow-up escalations failed',
   });
   assert.equal(runtime.state.referrals[0].follow_up_requests.stale_notified_at, undefined);
+});
+
+test('stale worker ignores unrelated legacy rows and includes explicit null archives', async () => {
+  const runtime = createStaleFollowUpRuntime({ referralOverrides: { archived_at: null } });
+  runtime.state.referrals.unshift({ id: 'legacy', agency_id: 'agency-a' });
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  const response = await handler(staleFollowUpRequest());
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).escalated, 1);
+  assert.equal(runtime.state.notifications.length, 1);
+});
+
+test('stale worker verifies hosted creator IDs and rejects missing or conflicting identities', async () => {
+  for (const [metadata, expected] of [
+    [{ created_by: undefined, created_by_id: 'user-a' }, 200],
+    [{ created_by_id: 'other-user' }, 500],
+    [{ created_by: undefined, created_by_id: undefined }, 500],
+    [{ created_by: 'other@example.test', created_by_id: 'user-a' }, 500],
+  ]) {
+    const runtime = createStaleFollowUpRuntime({ referralOverrides: metadata });
+    const handler = await loadStaleFollowUpHandler(() => runtime.client,
+      new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+    assert.equal((await handler(staleFollowUpRequest())).status, expected);
+    assert.equal(runtime.state.notifications.length, expected === 200 ? 1 : 0);
+  }
+});
+
+test('malformed eligible rows and failed tenants do not starve other referrals', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  runtime.state.referrals.unshift({
+    id: 'legacy', agency_id: 'agency-a', follow_up_requests: {
+      status: 'sent', generated_at: '2026-08-01T00:00:00.000Z',
+    },
+  });
+  runtime.state.agencies.unshift({ id: 'agency-broken', status: 'active' });
+  const filter = runtime.client.asServiceRole.entities.Referral.filter;
+  runtime.client.asServiceRole.entities.Referral.filter = async (query) => {
+    if (query.agency_id === 'agency-broken') throw new Error('unavailable tenant');
+    return filter(query);
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  const response = await handler(staleFollowUpRequest({}));
+  assert.equal(response.status, 500);
+  const body = await response.json();
+  assert.equal(body.failed, 2);
+  assert.equal(body.escalated, 1);
+  assert.equal(runtime.state.notifications.length, 1);
+});
+
+test('a committed notification with a lost response is reconciled without resending', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  const create = runtime.client.asServiceRole.entities.Notification.create;
+  runtime.client.asServiceRole.entities.Notification.create = async (payload) => {
+    await create(payload);
+    throw new Error('response lost after commit');
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  assert.equal((await handler(staleFollowUpRequest())).status, 200);
+  assert.equal((await handler(staleFollowUpRequest())).status, 200);
+  assert.equal(runtime.state.creates.length, 1);
+  assert.ok(runtime.state.referrals[0].follow_up_requests.stale_notified_at);
+});
+
+test('an uncertain publication remains fenced until its delayed row becomes visible', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  const create = runtime.client.asServiceRole.entities.Notification.create;
+  let pendingPayload;
+  let attempts = 0;
+  runtime.client.asServiceRole.entities.Notification.create = async (payload) => {
+    attempts += 1;
+    pendingPayload = payload;
+    throw new Error('request timed out; commit still pending');
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  assert.equal((await handler(staleFollowUpRequest())).status, 500);
+  runtime.state.referrals[0].follow_up_requests.stale_notification_claimed_at = '2026-08-01T00:00:00.000Z';
+  assert.equal((await handler(staleFollowUpRequest())).status, 500);
+  assert.equal(attempts, 1);
+  assert.ok(runtime.state.referrals[0].follow_up_requests.stale_notification_publish_started_at);
+  await create(pendingPayload);
+  const recovered = await handler(staleFollowUpRequest());
+  assert.equal(recovered.status, 200);
+  assert.equal((await recovered.json()).escalated, 1);
+  assert.equal(attempts, 1);
+  assert.equal(runtime.state.notifications.length, 1);
+});
+
+test('unresolved publication remains a failure after recipient authority is lost', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  let attempts = 0;
+  runtime.client.asServiceRole.entities.Notification.create = async () => {
+    attempts += 1;
+    throw new Error('uncertain create outcome');
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  assert.equal((await handler(staleFollowUpRequest())).status, 500);
+  runtime.state.membership.status = 'suspended';
+  runtime.state.membership.version += 1;
+  const suspended = await handler(staleFollowUpRequest());
+  assert.equal(suspended.status, 500);
+  const body = await suspended.json();
+  assert.equal(body.failed, 1);
+  assert.equal(body.skipped_without_active_recipient, 0);
+  assert.equal(attempts, 1);
+  runtime.client.asServiceRole.entities.AgencyMembership.filter = async () => [];
+  const missing = await handler(staleFollowUpRequest());
+  assert.equal(missing.status, 500);
+  assert.equal((await missing.json()).failed, 1);
+  assert.equal(attempts, 1);
+});
+
+test('overlapping workers cannot publish twice, even while the first create is delayed', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  const create = runtime.client.asServiceRole.entities.Notification.create;
+  let started;
+  let finish;
+  const creating = new Promise((resolve) => { started = resolve; });
+  const release = new Promise((resolve) => { finish = resolve; });
+  let attempts = 0;
+  runtime.client.asServiceRole.entities.Notification.create = async (payload) => {
+    attempts += 1;
+    started();
+    await release;
+    return create(payload);
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  const first = handler(staleFollowUpRequest());
+  await creating;
+  assert.equal((await handler(staleFollowUpRequest())).status, 500);
+  assert.equal(attempts, 1);
+  finish();
+  await first;
+  assert.equal((await handler(staleFollowUpRequest())).status, 200);
+  assert.equal(runtime.state.notifications.length, 1);
+  assert.ok(runtime.state.referrals[0].follow_up_requests.stale_notified_at);
+});
+
+test('a Referral read outage after publication CAS cannot strand an unattempted alert', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  const entities = runtime.client.asServiceRole.entities;
+  const update = entities.Referral.updateMany;
+  const filter = entities.Referral.filter;
+  let publicationCommitted = false;
+  entities.Referral.updateMany = async (query, operations) => {
+    const result = await update(query, operations);
+    if (operations.$set?.follow_up_requests?.stale_notification_publish_started_at) {
+      publicationCommitted = true;
+    }
+    return result;
+  };
+  entities.Referral.filter = async (...args) => {
+    if (publicationCommitted) throw new Error('read outage after the publication decision');
+    return filter(...args);
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  assert.equal((await handler(staleFollowUpRequest())).status, 500);
+  assert.equal(runtime.state.creates.length, 1);
+  entities.Referral.filter = filter;
+  const recovered = await handler(staleFollowUpRequest());
+  assert.equal(recovered.status, 200);
+  assert.equal((await recovered.json()).escalated, 1);
+  assert.equal(runtime.state.creates.length, 1);
+  assert.ok(runtime.state.referrals[0].follow_up_requests.stale_notified_at);
+});
+
+test('a concurrent response retaining claim markers is preserved without an obsolete alert', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  const entities = runtime.client.asServiceRole.entities;
+  const update = entities.Referral.updateMany;
+  let responded = false;
+  entities.Referral.updateMany = async (...args) => {
+    const result = await update(...args);
+    if (!responded && result.updated === 1) {
+      responded = true;
+      const row = runtime.state.referrals[0];
+      await update({ id: row.id, version: row.version }, {
+        $set: { follow_up_requests: {
+          ...row.follow_up_requests,
+          status: 'received',
+          items: [{ item_id: 'item-a', item_status: 'received', answer: 'Synthetic response' }],
+        } },
+        $inc: { version: 1 },
+      });
+    }
+    return result;
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  const response = await handler(staleFollowUpRequest());
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).escalated, 0);
+  assert.equal(runtime.state.creates.length, 0);
+  assert.equal(runtime.state.referrals[0].follow_up_requests.status, 'received');
+  assert.equal(runtime.state.referrals[0].follow_up_requests.items[0].answer, 'Synthetic response');
+  assert.equal(runtime.state.referrals[0].follow_up_requests.stale_notification_publish_started_at, undefined);
+});
+
+test('a conflicting recipient on an existing generation never permits a second alert', async () => {
+  for (const recipient of [undefined, 'other-user']) {
+    const runtime = createStaleFollowUpRuntime();
+    const original = structuredClone(runtime.state.referrals[0].follow_up_requests);
+    const handler = await loadStaleFollowUpHandler(() => runtime.client,
+      new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+    assert.equal((await handler(staleFollowUpRequest())).status, 200);
+    runtime.state.referrals[0].follow_up_requests = original;
+    runtime.state.notifications[0].recipient_user_id = recipient;
+    runtime.state.notifications[0].user_email = 'conflicting@example.test';
+    const response = await handler(staleFollowUpRequest());
+    assert.equal(response.status, 500);
+    assert.equal((await response.json()).failed, 1);
+    assert.equal(runtime.state.creates.length, 1);
+    assert.equal(runtime.state.notifications.length, 1);
+  }
+});
+
+test('a changed stale-day threshold can reconcile an earlier publication without resending', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  const entities = runtime.client.asServiceRole.entities;
+  const filter = entities.Notification.filter;
+  let unavailable = true;
+  entities.Notification.filter = async (...args) => {
+    if (unavailable && runtime.state.notifications.length) throw new Error('read response lost');
+    return filter(...args);
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  assert.equal((await handler(staleFollowUpRequest())).status, 500);
+  assert.match(runtime.state.notifications[0].message, /4\+ days/);
+  unavailable = false;
+  const recovered = await handler(staleFollowUpRequest({ agency_id: 'agency-a', stale_days: 5 }));
+  assert.equal(recovered.status, 200);
+  assert.equal((await recovered.json()).escalated, 1);
+  assert.equal(runtime.state.creates.length, 1);
+  assert.match(runtime.state.notifications[0].message, /4\+ days/);
+  assert.ok(runtime.state.referrals[0].follow_up_requests.stale_notified_at);
+});
+
+test('membership revocation after claim prevents notification publication', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  const update = runtime.client.asServiceRole.entities.Referral.updateMany;
+  runtime.client.asServiceRole.entities.Referral.updateMany = async (...args) => {
+    const result = await update(...args);
+    runtime.state.membership.status = 'suspended';
+    runtime.state.membership.version += 1;
+    return result;
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  const response = await handler(staleFollowUpRequest());
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).skipped_without_active_recipient, 1);
+  assert.equal(runtime.state.creates.length, 0);
+});
+
+test('protected admin can invoke empty args without a secret; ordinary users cannot', async () => {
+  for (const role of ['admin', 'user']) {
+    const runtime = createStaleFollowUpRuntime();
+    runtime.client.auth.me = async () => ({ id: 'caller', role });
+    const handler = await loadStaleFollowUpHandler(() => runtime.client,
+      new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+    const response = await handler(new Request('http://local/checkStaleFollowUpRequests', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}',
+    }));
+    assert.equal(response.status, role === 'admin' ? 200 : 403);
+    assert.equal(runtime.state.creates.length, role === 'admin' ? 1 : 0);
+  }
 });
 
 test('unscoped stale scheduler work is rejected before entity access without scheduler authority', async () => {

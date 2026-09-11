@@ -90,6 +90,7 @@ export default function ReferralFollowUp() {
   // a mount-time useState snapshot froze the page on the first referral when
   // the URL later changed without a remount.
   const selectedId = searchParams.get("id") || null;
+  const suggestedFaxId = searchParams.get("incoming_fax_id") || null;
   const [excludedItemIds, setExcludedItemIds] = useState(new Set());
   const [aiItems, setAiItems] = useState([]);
   const [aiAssessment, setAiAssessment] = useState("");
@@ -111,7 +112,7 @@ export default function ReferralFollowUp() {
   useEffect(() => {
     faxDownloadRequestRef.current += 1;
     setOpeningFaxId(null);
-  }, [tenantContext?.agency_id, selectedId]);
+  }, [tenantContext?.agency_id, selectedId, suggestedFaxId]);
 
   const { data: currentUser } = useQuery({
     queryKey: ["currentUser"],
@@ -522,8 +523,9 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
     }
   };
 
-  const downloadFaxBack = async () => {
-    const incomingFaxId = tracking?.fax_back?.incoming_fax_id;
+  const downloadFaxBack = async (suggestionId) => {
+    const isSuggestion = typeof suggestionId === 'string';
+    const incomingFaxId = isSuggestion ? suggestionId : tracking?.fax_back?.incoming_fax_id;
     if (!selected?.agency_id || !selected?.id || !incomingFaxId) return;
     const requestNumber = faxDownloadRequestRef.current + 1;
     faxDownloadRequestRef.current = requestNumber;
@@ -533,6 +535,7 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
         agencyId: selected.agency_id,
         referralId: selected.id,
         incomingFaxId,
+        ...(isSuggestion ? { relationship: 'suggested' } : {}),
       });
       if (faxDownloadRequestRef.current !== requestNumber) return;
       const link = document.createElement('a');
@@ -738,6 +741,19 @@ Referral data: ${JSON.stringify(selected.extracted_data)}`,
             ) : (
               <>
                 {/* Request tracking: responses + per-item resolution */}
+                {suggestedFaxId && (
+                  <Alert className="mb-4">
+                    <Inbox className="h-4 w-4" />
+                    <AlertDescription>
+                      <p>A received fax may relate to this referral. Review the document before updating any answers.</p>
+                      <Button type="button" variant="outline" size="sm" className="mt-2"
+                        disabled={openingFaxId === suggestedFaxId}
+                        onClick={() => downloadFaxBack(suggestedFaxId)}>
+                        {openingFaxId === suggestedFaxId ? 'Authorizing document…' : 'Review suggested fax'}
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
                 {tracking && (
                   <Card className="border-2 border-blue-300">
                     <CardHeader className="pb-2">

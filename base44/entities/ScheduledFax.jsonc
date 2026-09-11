@@ -214,6 +214,18 @@
     "canceled_by": {
       "type": "string",
       "description": "Email of the user who canceled the scheduled fax"
+    },
+    "dispatch_submission_state": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "started"
+      ],
+      "description": "One-shot queue provider submission fence. Initialized ready by the scheduling producer. Only a verified preparation failure with no uncertain recipients may restore ready for the remaining recipients; queue claims never reset it."
+    },
+    "queue_creation_reservation_token": {
+      "type": "string",
+      "description": "Opaque owner of the Agency creation reservation, retained to release only that owner after an uncertain create is recovered."
     }
   },
   "required": [

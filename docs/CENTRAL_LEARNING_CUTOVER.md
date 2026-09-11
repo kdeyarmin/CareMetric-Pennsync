@@ -5,19 +5,22 @@ CareMetric apps. The new Hub runtime requires no HeyGen key. PennSync's currentl
 deployed local video jobs still use its legacy key until cutover is complete.
 Do not provision or rotate HeyGen simply to satisfy the old integration checklist.
 
-This branch prepares SDK 0.4.0 links, UI launchers, backend retirement
-guards, and health-check behavior. Both release controls remain unset. It does
-not migrate records, deploy functions, or revoke any key.
+This release prepares SDK 0.4.0 links, UI launchers, backend retirement
+guards, and health-check behavior. Both learning cutover controls remain unset.
+Record migration and final cutover must preserve the existing tenant and learner
+evidence described below; merging this preparation does not activate them.
 
 Before enabling `VITE_CENTRAL_LEARNING_ENABLED=true` in the verified production
 build and `CENTRAL_LEARNING_RELEASE=hub-runtime-v1` in Base44:
 
-1. Exercise the deployed Hub runtime from Support Hub PR #6, which incorporated
-   and superseded PR #4. The September 11 Hub release has backend contract 2 and
-   native creation/delivery for new shared courses. Real administrator testing
-   still requires the owner's TOTP enrollment. Confirm authoring, product access,
-   playback/captions, server grading, progress, and completion records with
-   authorized accounts. Imported CareBase drafts remain blocked from publication
+1. Verify the current deployed Hub runtime, which uses app-owned Telnyx SMS
+   and opaque server sessions. No authenticator enrollment or Supabase
+   verification is required. The real owner session, six-app scopes, course
+   creation forms and existing CareBase material have been checked. Hub32
+   (`9e6be060de61a56a328778adc2c2bd5b25620e15`) also deploys central DocStudio
+   with a healthy real renderer. Its private lifecycle and recovery checks pass
+   in disposable CI. Confirm the intended migrated learner cohort's playback,
+   captions, server grading, progress and completion records before cutover. Imported CareBase drafts remain blocked from publication
    until quiz, credit/renewal, and completion-reporting behavior is preserved.
 2. Inventory PennSync TrainingCourse/Module/Question data separately from the
    CareBase catalog. Preserve agency visibility and immutable source revisions.

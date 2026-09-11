@@ -354,7 +354,7 @@ packages:
     hasBin: true
 
   '@caremetric/help-sdk@file:vendor/caremetric-help-sdk-0.4.0.tgz':
-    resolution: {integrity: sha512-1D2RdeCncN9rZnq7ACyrGfQrej8gUstqACMjcSQSc9DdVWhfaGVYVBjCFy2g2nfJW09Qz40Ur7Su01Id332q4Q==, tarball: file:vendor/caremetric-help-sdk-0.4.0.tgz}
+    resolution: {integrity: sha512-clUqqlPfiKhWX4eyAcS0euhHCN3AeSihz48FadisGk/9Xp3bHBlCnD7Ikt8+j6taUXjJhSuKFWJFBjBAhWlekQ==, tarball: file:vendor/caremetric-help-sdk-0.4.0.tgz}
     version: 0.4.0
     engines: {node: '>=18'}
 

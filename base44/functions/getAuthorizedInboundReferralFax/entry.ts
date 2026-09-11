@@ -108,13 +108,15 @@ async function parseInput(req: Request) {
     throw new PublicError(400, 'Invalid request');
   }
   if (!plainObject(body) || Object.keys(body).some((key) => ![
-    'agency_id', 'referral_id', 'incoming_fax_id',
+    'agency_id', 'referral_id', 'incoming_fax_id', 'relationship',
   ].includes(key))) throw new PublicError(400, 'Invalid request');
   const agencyId = exactIdentifier(body.agency_id);
   const referralId = exactIdentifier(body.referral_id);
   const incomingFaxId = exactIdentifier(body.incoming_fax_id);
   if (!agencyId || !referralId || !incomingFaxId) throw new PublicError(400, 'Invalid request');
-  return { agencyId, referralId, incomingFaxId };
+  const relationship = body.relationship ?? 'attached';
+  if (!['attached', 'suggested'].includes(relationship)) throw new PublicError(400, 'Invalid request');
+  return { agencyId, referralId, incomingFaxId, relationship };
 }
 
 function validateReferralResult(value: unknown, input: Record<string, string>) {
@@ -132,10 +134,12 @@ function validateReferralResult(value: unknown, input: Record<string, string>) {
     || referral.version < 1
     || !validInstant(referral.updated_date)
     || !plainObject(followUp)
-    || !['received', 'resolved'].includes(followUp.status)
-    || !plainObject(followUp.fax_back)
-    || followUp.fax_back.incoming_fax_id !== input.incomingFaxId
-    || Object.hasOwn(followUp.fax_back, 'document_url')
+    || (input.relationship === 'attached' && (
+      !['received', 'resolved'].includes(followUp.status)
+      || !plainObject(followUp.fax_back)
+      || followUp.fax_back.incoming_fax_id !== input.incomingFaxId
+      || Object.hasOwn(followUp.fax_back, 'document_url')
+    ))
     || !plainObject(scope)
     || scope.agency_id !== input.agencyId
     || !exactIdentifier(scope.membership_id)
@@ -181,12 +185,16 @@ function validateFax(
     || !validInstant(row?.received_at)
     || !validInstant(row?.created_date)
     || !validInstant(row?.updated_date)
-    || !validInstant(row?.routed_at)
     || !url
     || row.document_url !== url
     || row.processing_status !== 'completed'
-    || row.status !== 'routed'
-    || row.routed_to !== `ReferralFollowUp:${input.referralId}`
+    || (input.relationship === 'attached' ? (
+      row.status !== 'routed' || !validInstant(row.routed_at)
+      || row.routed_to !== `ReferralFollowUp:${input.referralId}`
+    ) : (
+      row.status !== 'unread' || row.ai_category !== 'referral'
+      || row.suggested_routing !== 'admin' || !['completed', 'skipped_no_recipient'].includes(row.processing_notification_state)
+    ))
     || row.suggested_referral_id !== input.referralId
   ) throw new PublicError(409, 'Referral fax document is unavailable');
   return { row, url };
@@ -195,6 +203,7 @@ function validateFax(
 async function loadFax(
   entities: Record<string, any>,
   input: Record<string, string>,
+  referral: Record<string, any>,
 ) {
   const rows = await entities.IncomingFax.filter(
     { id: input.incomingFaxId, agency_id: input.agencyId },
@@ -205,6 +214,10 @@ async function loadFax(
     || rows.length !== 1
     || rows.some((row) => row?.id !== input.incomingFaxId || row?.agency_id !== input.agencyId)) {
     throw new PublicError(409, 'Referral fax document is unavailable');
+  }
+  if (input.relationship === 'suggested'
+    && (rows[0].suggested_patient_id ?? null) !== (referral.patient_id ?? null)) {
+    throw new PublicError(409, 'Suggested fax patient association changed');
   }
   return validateFax(rows[0], input);
 }
@@ -226,9 +239,9 @@ Deno.serve(async (req) => {
     ) throw new PublicError(user ? 403 : 401, user ? 'Forbidden' : 'Unauthorized');
     const input = await parseInput(req);
     const initialReferral = await loadReferral(base44, input);
-    const initialFax = await loadFax(base44.asServiceRole.entities, input);
+    const initialFax = await loadFax(base44.asServiceRole.entities, input, initialReferral.referral);
     const finalReferral = await loadReferral(base44, input);
-    const finalFax = await loadFax(base44.asServiceRole.entities, input);
+    const finalFax = await loadFax(base44.asServiceRole.entities, input, finalReferral.referral);
     if (!sameValue(initialReferral, finalReferral)
       || !sameValue(initialFax.row, finalFax.row)
       || initialFax.url !== finalFax.url) {

@@ -48,6 +48,7 @@ const WORKFLOW_RELEASE_GATES = [
     env: 'WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES',
     label: 'Automatic failed-fax retry',
     capability: 'fax_retry_automation',
+    requiresFaxRelease: true,
   },
   {
     id: 'release_check_stale_follow_up_requests',
@@ -72,6 +73,7 @@ const WORKFLOW_RELEASE_GATES = [
     env: 'WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES',
     label: 'Scheduled fax processing',
     capability: 'scheduled_fax_automation',
+    requiresFaxRelease: true,
   },
 ];
 
@@ -441,9 +443,21 @@ Deno.serve(async (req) => {
         : 'General outbound delivery is paused; authorized manual account invitations remain available. Password resets, OTP resends, activation notices, and other delivery still require enabled-v1. This check performed no delivery.',
     });
 
+    const faxWorkflowRelease = env('OUTBOUND_FAX_WORKFLOW_RELEASE');
+    const faxWorkflowReleased = faxWorkflowRelease === 'enabled-v1' || outboundDeliveryIsReleased;
+    integrations.push({
+      id: 'fax_workflow_delivery_release', label: 'Fax queue delivery gate',
+      category: 'Release gate', capability: 'fax_workflow_delivery_control',
+      configured: Boolean(faxWorkflowRelease), editable_in_app: false,
+      status: faxWorkflowReleased ? 'ok' : 'warn', probe: 'local-validation',
+      release_state: faxWorkflowReleased ? 'released' : 'paused', delivery_verified: false,
+      detail: faxWorkflowReleased
+        ? 'Fax queue delivery is released; individual worker flags and provider authority remain required. This check performed no delivery.'
+        : 'OUTBOUND_FAX_WORKFLOW_RELEASE is not enabled-v1 and general delivery is paused; scheduled and retry fax dispatch remain paused.',
+    });
     for (const gate of WORKFLOW_RELEASE_GATES) {
       const releaseValue = env(gate.env);
-      const released = releaseValue === 'enabled-v1';
+      const released = releaseValue === 'enabled-v1' && (!gate.requiresFaxRelease || faxWorkflowReleased);
       integrations.push({
         id: gate.id,
         label: gate.label,
@@ -457,7 +471,9 @@ Deno.serve(async (req) => {
         delivery_verified: false,
         detail: released
           ? `${gate.env} is enabled-v1. This report did not invoke the workflow or perform delivery.`
-          : `${gate.env} is not enabled-v1; the workflow remains fail-closed before SDK construction.`,
+          : gate.requiresFaxRelease && !faxWorkflowReleased
+            ? `${gate.env} cannot release fax dispatch while both outbound fax queue and general delivery gates are paused.`
+            : `${gate.env} is not enabled-v1; the workflow remains fail-closed before SDK construction.`,
       });
     }
 

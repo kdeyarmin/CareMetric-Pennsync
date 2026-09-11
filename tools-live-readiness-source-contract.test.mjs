@@ -169,6 +169,22 @@ test("source contract rejects weakened server-owned authority RLS", () => {
   )));
 });
 
+test("source contract rejects direct Agency mutations even for administrators", () => {
+  for (const operation of ['create', 'update', 'delete']) {
+    const weakened = createLiveReadinessSourceContract({
+      readArtifact: (path) => {
+        const source = readArtifact(path);
+        if (path !== 'base44/entities/Agency.jsonc') return source;
+        const schema = JSON5.parse(source);
+        schema.rls[operation] = { user_condition: { role: 'admin' } };
+        return JSON.stringify(schema);
+      },
+    });
+    assert.equal(weakened.status, 'invalid_source_authority_contract');
+    assert.ok(weakened.errors.some(error => error.path === `entities.Agency.rls.${operation}`));
+  }
+});
+
 test("source contract rejects reopened direct clinical reads", () => {
   for (const changedPath of [
     "base44/entities/Patient.jsonc",

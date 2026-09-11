@@ -204,7 +204,11 @@ function validateReferral(row: Record<string, any>, agencyId: string) {
     || !creatorId
     || !creatorEmail
     || row.created_by_user_email_normalized !== creatorEmail
-    || canonicalEmail(row.created_by) !== creatorEmail
+    // Current hosted records may omit the legacy creator email. When present,
+    // each platform identity must agree with the immutable broker provenance.
+    || (row.created_by_id == null && row.created_by == null)
+    || (row.created_by_id != null && row.created_by_id !== creatorId)
+    || (row.created_by != null && canonicalEmail(row.created_by) !== creatorEmail)
     || !requestId
     || row.referral_creation_key !== `${agencyId}:${creatorId}:${requestId}`
     || !Number.isSafeInteger(row.version)
@@ -334,7 +338,10 @@ function notificationMatches(row: Record<string, any>, expected: Record<string, 
     && row.version >= 1
     && canonicalEmail(row?.user_email) === expected.user_email
     && row?.title === expected.title
-    && row?.message === expected.message
+    // The threshold can change between attempts; it is presentation, not the
+    // immutable agency/referral/generation identity used for reconciliation.
+    && typeof row?.message === 'string'
+    && /^A provider information request has had no response for (?:[1-9]|[12][0-9]|30)\+ days\. Review it before the start-of-care deadline\.$/.test(row.message)
     && row?.type === expected.type
     && row?.priority === expected.priority
     && sameJson(row?.metadata, expected.metadata)
@@ -354,8 +361,6 @@ async function findNotification(
       {
         agency_id: expected.agency_id,
         dedupe_key: expected.dedupe_key,
-        recipient_user_id: expected.recipient_user_id,
-        user_email: expected.user_email,
       },
       '-created_date',
       NOTIFICATION_SCAN_LIMIT,
@@ -401,7 +406,7 @@ async function processAgency(
 
   const referrals = requireRows(
     await entities.Referral.filter(
-      { agency_id: agencyId, archived_at: { $exists: false } },
+      { agency_id: agencyId, $or: [{ archived_at: { $exists: false } }, { archived_at: null }] },
       '-created_date',
       MAX_REFERRAL_SCAN,
     ),
@@ -421,16 +426,18 @@ async function processAgency(
 
   for (const candidate of referrals) {
     try {
-      const referral = validateReferral(candidate, agencyId);
-      const followUp = referral.follow_up_requests;
-      if (!plainObject(followUp) || followUp.status !== 'sent' || !validInstant(followUp.generated_at)) {
+      const followUp = candidate.follow_up_requests;
+      if (!plainObject(followUp) || followUp.status !== 'sent') {
         continue;
       }
+      const referral = validateReferral(candidate, agencyId);
+      if (!validInstant(followUp.generated_at)) throw new PublicError(409, 'Invalid follow-up generation');
       const sentMs = Date.parse(followUp.generated_at);
       if (sentMs > cutoffMs) continue;
       if (validInstant(followUp.stale_notified_at)
         && Date.parse(followUp.stale_notified_at) >= sentMs) continue;
-      if (validInstant(followUp.stale_notification_claimed_at)
+      if (followUp.stale_notification_publish_started_at == null
+        && validInstant(followUp.stale_notification_claimed_at)
         && Date.parse(followUp.stale_notification_claimed_at) > Date.now() - CLAIM_LEASE_MS) continue;
 
       const recipient = await loadActiveRecipient(
@@ -440,10 +447,17 @@ async function processAgency(
         referral.created_by_user_email_normalized,
       );
       if (!recipient) {
-        skippedWithoutRecipient += 1;
+        // Losing recipient authority does not resolve an uncertain create.
+        // Keep it visible to operators without publishing to a stale recipient.
+        if (followUp.stale_notification_publish_started_at != null) failed += 1;
+        else skippedWithoutRecipient += 1;
         continue;
       }
       const key = followUpNotificationKey(agencyId, referral.id, followUp.generated_at);
+      if (followUp.stale_notification_publish_started_at != null && (
+        !validInstant(followUp.stale_notification_publish_started_at)
+        || followUp.stale_notification_key !== key
+      )) throw new PublicError(409, 'Invalid notification publication state');
       const claimAt = new Date().toISOString();
       const claimedFollowUp = {
         ...followUp,
@@ -460,6 +474,9 @@ async function processAgency(
       if (
         claimed.follow_up_requests?.stale_notification_claimed_by !== runId
         || claimed.follow_up_requests?.stale_notification_key !== key
+        // A response can retain our claim markers while changing the request.
+        // Do not overwrite that newer state or publish an obsolete alert.
+        || !sameJson(claimed.follow_up_requests, claimedFollowUp)
       ) continue;
 
       const notification = expectedNotification(
@@ -471,16 +488,38 @@ async function processAgency(
       );
       let existing = await findNotification(entities, notification);
       if (!existing) {
-        try {
-          await entities.Notification.create(notification);
-        } catch {
-          await conditionalFollowUpUpdate(entities, claimed, followUp).catch(() => false);
+        // A create can commit after its caller times out. Once publication has
+        // started, no later lease owner may create again. Reconcile a returned
+        // row, or report the unresolved attempt for operator investigation.
+        if (followUp.stale_notification_publish_started_at != null) {
           failed += 1;
           continue;
         }
+        await loadEnabledAgency(entities, agencyId);
+        const currentRecipient = await loadActiveRecipient(
+          entities, agencyId, referral.created_by_user_id, referral.created_by_user_email_normalized,
+        );
+        if (!currentRecipient || currentRecipient.id !== recipient.id
+          || currentRecipient.version !== recipient.version) {
+          skippedWithoutRecipient += 1;
+          continue;
+        }
+        const publishingFollowUp = {
+          ...claimed.follow_up_requests,
+          stale_notification_publish_started_at: new Date().toISOString(),
+        };
+        if (!await conditionalFollowUpUpdate(entities, claimed, publishingFollowUp)) continue;
+        // The successful version/revision CAS is the publication decision.
+        // Start create immediately: an additional read here could fail after
+        // persisting intent and strand an alert that was never attempted.
+        try {
+          await entities.Notification.create(notification);
+        } catch {
+          // Read back after an uncertain response; never roll back the durable
+          // intent, even if the read below has not observed the create yet.
+        }
         existing = await findNotification(entities, notification);
         if (!existing) {
-          await conditionalFollowUpUpdate(entities, claimed, followUp).catch(() => false);
           failed += 1;
           continue;
         }
@@ -510,10 +549,7 @@ async function processAgency(
         || verified.follow_up_requests?.stale_notification_claimed_by != null
       ) throw new Error('Referral stale notification finalization failed');
       escalated += 1;
-    } catch (error) {
-      if (error instanceof PublicError && error.status >= 400 && error.status < 500) {
-        throw error;
-      }
+    } catch {
       failed += 1;
     }
   }
@@ -562,16 +598,23 @@ Deno.serve(async (req) => {
       failed: 0,
     };
     for (const scheduledAgencyId of agencyIds) {
-      const result = await processAgency(
-        entities,
-        scheduledAgencyId,
-        staleDays,
-        `referral-stale:${scheduledAgencyId}:${runRoot}`,
-      );
-      totals.scanned += result.scanned;
-      totals.escalated += result.escalated;
-      totals.skipped_without_active_recipient += result.skipped_without_active_recipient;
-      totals.failed += result.failed;
+      try {
+        const result = await processAgency(
+          entities,
+          scheduledAgencyId,
+          staleDays,
+          `referral-stale:${scheduledAgencyId}:${runRoot}`,
+        );
+        totals.scanned += result.scanned;
+        totals.escalated += result.escalated;
+        totals.skipped_without_active_recipient += result.skipped_without_active_recipient;
+        totals.failed += result.failed;
+      } catch (error) {
+        // Explicit single-agency requests retain their actionable error. A
+        // scheduled scan must still attempt the remaining independent tenants.
+        if (agencyId) throw error;
+        totals.failed += 1;
+      }
     }
 
     const result = {

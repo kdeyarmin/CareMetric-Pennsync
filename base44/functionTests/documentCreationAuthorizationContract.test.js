@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFile, readdir, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { extname, join } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 import JSON5 from 'json5';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
@@ -26,6 +26,7 @@ const agency = (overrides = {}) => ({
   id: 'agency-a',
   agency_name: 'Agency A',
   status: 'active',
+  updated_date: NOW,
   ...overrides,
 });
 
@@ -101,7 +102,10 @@ const pdfFile = (name = 'clinical-note.pdf', contents = 'exact-pdf-content') =>
   new File([`%PDF-${contents}`], name, { type: 'application/pdf' });
 
 function matches(row, query) {
-  return Object.entries(query || {}).every(([field, value]) => row?.[field] === value);
+  return Object.entries(query || {}).every(([field, value]) => {
+    if (value && typeof value === 'object' && Object.hasOwn(value, '$exists')) return Object.hasOwn(row, field) === value.$exists;
+    return JSON.stringify(row?.[field]) === JSON.stringify(value);
+  });
 }
 
 async function importHandler(makeClient) {
@@ -151,6 +155,8 @@ async function loadBroker({
   duplicateBindingOnCreate = false,
   uploadResult = { file_uri: 'private/document-a.pdf' },
   uploadError = null,
+  uploadHook = null,
+  bindingCreateHook = null,
 } = {}) {
   const clone = (value) => structuredClone(value);
   const state = {
@@ -204,6 +210,11 @@ async function loadBroker({
         },
       },
       Agency: {
+        updateMany: async (query, update) => {
+          const rows = state.agencies.filter(row => matches(row, query));
+          for (const row of rows) Object.assign(row, clone(update.$set), { updated_date: new Date().toISOString() });
+          return { success: true, updated: rows.length, has_more: false };
+        },
         filter: async (query, sort, limit) => {
           calls.events.push('Agency.filter');
           calls.agencies.push({ query: clone(query), sort, limit });
@@ -267,6 +278,7 @@ async function loadBroker({
           const row = { id: `binding-${state.bindings.length + 1}`, ...clone(payload) };
           if (bindingCreateMutation) Object.assign(row, clone(bindingCreateMutation));
           state.bindings.push(row);
+          if (bindingCreateHook) await bindingCreateHook(row);
           if (duplicateBindingOnCreate) {
             state.bindings.push({ ...clone(row), id: 'binding-concurrent' });
           }
@@ -279,6 +291,7 @@ async function loadBroker({
         UploadPrivateFile: async ({ file }) => {
           calls.events.push('UploadPrivateFile');
           calls.uploads.push(file);
+          if (uploadHook) await uploadHook();
           if (uploadError) throw uploadError;
           return clone(uploadResult);
         },
@@ -348,7 +361,7 @@ async function sourceFiles(directoryUrl) {
       else if (['.js', '.jsx', '.ts', '.tsx'].includes(extname(entry.name))) output.push(path);
     }
   }
-  await walk(directoryUrl.pathname);
+  await walk(fileURLToPath(directoryUrl));
   return output;
 }
 
@@ -390,12 +403,12 @@ test('DocumentTenantBinding and Document are broker-only and the private uploade
   );
   const wired = [];
   for (const path of await sourceFiles(sourceRootUrl)) {
-    if (path === wrapperUrl.pathname || path.endsWith('createAuthorizedDocument.spec.js')) continue;
+    if (path === fileURLToPath(wrapperUrl) || path.endsWith('createAuthorizedDocument.spec.js')) continue;
     const source = await readFile(path, 'utf8');
     if (/createAuthorizedDocument/.test(source)) wired.push(path);
   }
   assert.deepEqual(
-    wired.map((path) => path.slice(sourceRootUrl.pathname.length)).sort(),
+    wired.map((path) => path.slice(fileURLToPath(sourceRootUrl).length).replaceAll('\\', '/')).sort(),
     [
       'components/documents/DocumentUploader.jsx',
       'pages/ReferralFollowUp.jsx',
@@ -416,6 +429,28 @@ test('DocumentTenantBinding and Document are broker-only and the private uploade
   assert.deepEqual(directMutations.update, [], 'browser Document.update must remain denied');
   assert.deepEqual(directMutations.delete, [], 'hard deletion is unavailable');
   assert.deepEqual(directMutations.create, [], 'browser Document.create must remain denied');
+});
+
+test('hosted creator IDs support private upload and replay, while conflicting creator fields fail', async () => {
+  const runtime = await loadBroker({
+    documentCreateMutation: { created_by: null, created_by_id: 'service_00000000-0000-4000-8000-000000000001' },
+    patients: [patient({ created_by: null, created_by_id: USER.id })],
+    uploadResult: { file_uri: 'mp/private/6a9881683dc68a0bd54f1ef7/synthetic-document.pdf' },
+  });
+  assert.equal((await invoke(runtime.handler)).response.status, 200);
+  const replay = await invoke(runtime.handler);
+  assert.equal(replay.response.status, 200);
+  assert.equal(replay.json.created, false);
+  assert.equal(runtime.calls.uploads.length, 1);
+  for (const metadata of [
+    { created_by: null, created_by_id: 'other-user' },
+    { created_by: null, created_by_id: null },
+    { created_by: 'other@agency.test', created_by_id: USER.id },
+    { created_by: USER.email.toLowerCase(), created_by_id: 'other-user' },
+  ]) {
+    const invalid = await loadBroker({ documentCreateMutation: metadata });
+    assert.equal((await invoke(invalid.handler)).response.status, 500);
+  }
 });
 
 test('authorized patient upload orders authority, private upload, metadata create, binding, and readbacks', async () => {
@@ -772,27 +807,72 @@ test('authority drift after UploadPrivateFile prevents Document and binding crea
   assert.equal(runtime.calls.bindingCreates.length, 0);
 });
 
-test('binding creation or verification failure compensates only the request-created Document', async () => {
+test('binding uncertainty retains the document and creation fence for reconciliation', async () => {
   const createFailure = await loadBroker({ bindingCreateError: new Error('binding unavailable') });
   const failed = await invoke(createFailure.handler);
   assert.equal(failed.response.status, 500);
-  assert.deepEqual(createFailure.calls.documentDeletes, ['document-1']);
-  assert.equal(createFailure.state.documents.length, 0);
+  assert.deepEqual(createFailure.calls.documentDeletes, []);
+  assert.equal(createFailure.state.documents.length, 1);
+  assert.equal((await invoke(createFailure.handler)).response.status, 409);
+  assert.equal(createFailure.calls.documentCreates.length, 1);
 
   const verificationFailure = await loadBroker({
     bindingCreateMutation: { file_uri: 'private/replaced.pdf' },
   });
   const mismatched = await invoke(verificationFailure.handler);
   assert.equal(mismatched.response.status, 409);
-  assert.deepEqual(verificationFailure.calls.documentDeletes, ['document-1']);
-  assert.equal(verificationFailure.state.documents.length, 0);
+  assert.deepEqual(verificationFailure.calls.documentDeletes, []);
+  assert.equal(verificationFailure.state.documents.length, 1);
   assert.equal(verificationFailure.state.bindings.length, 1, 'immutable evidence is not deleted');
 
   const duplicate = await loadBroker({ duplicateBindingOnCreate: true });
   const concurrent = await invoke(duplicate.handler);
   assert.equal(concurrent.response.status, 409);
-  assert.deepEqual(duplicate.calls.documentDeletes, ['document-1']);
-  assert.equal(duplicate.state.documents.length, 0);
+  assert.deepEqual(duplicate.calls.documentDeletes, []);
+  assert.equal(duplicate.state.documents.length, 1);
+});
+
+test('concurrent document upload retries cannot pass a pending private upload', async () => {
+  let releaseUpload;
+  let markEntered;
+  const entered = new Promise(resolve => { markEntered = resolve; });
+  const held = new Promise(resolve => { releaseUpload = resolve; });
+  const runtime = await loadBroker({ uploadHook: async () => { markEntered(); await held; } });
+  const first = invoke(runtime.handler);
+  await entered;
+  assert.equal((await invoke(runtime.handler)).response.status, 409);
+  releaseUpload();
+  assert.equal((await first).response.status, 200);
+  assert.equal((await invoke(runtime.handler)).json.created, false);
+  assert.equal(runtime.calls.uploads.length, 1);
+  assert.equal(runtime.calls.documentCreates.length, 1);
+  assert.equal(runtime.calls.bindingCreates.length, 1);
+  assert.deepEqual(runtime.state.agencies[0].fax_workflow_reservations, {});
+});
+
+test('a committed binding with a lost acknowledgement replays without deleting or uploading again', async () => {
+  const runtime = await loadBroker({ bindingCreateHook: () => { throw new Error('Lost acknowledgement'); } });
+  assert.equal((await invoke(runtime.handler)).response.status, 500);
+  assert.equal(runtime.state.documents.length, 1);
+  assert.equal(runtime.state.bindings.length, 1);
+  assert.equal(Object.keys(runtime.state.agencies[0].fax_workflow_reservations).length, 1);
+  const replay = await invoke(runtime.handler);
+  assert.equal(replay.response.status, 200);
+  assert.equal(replay.json.created, false);
+  assert.deepEqual(runtime.calls.documentDeletes, []);
+  assert.equal(runtime.calls.uploads.length, 1);
+  assert.deepEqual(runtime.state.agencies[0].fax_workflow_reservations, {});
+});
+
+test('upload throttling returns a safe retry response before document creation', async () => {
+  const runtime = await loadBroker({ uploadError: { status: 429, message: 'private provider detail' } });
+  const result = await invoke(runtime.handler);
+  assert.equal(result.response.status, 503);
+  assert.equal(result.response.headers.get('retry-after'), '60');
+  assert.equal(result.json.retry_with_same_key, true);
+  assert.equal(JSON.stringify(result.json).includes('private provider detail'), false);
+  assert.equal(runtime.calls.documentCreates.length, 0);
+  assert.deepEqual(runtime.state.agencies[0].fax_workflow_reservations, {});
 });
 
 test('scoped idempotent replay returns the exact binding without a second upload or create', async () => {
@@ -817,13 +897,13 @@ test('scoped idempotent replay returns the exact binding without a second upload
   assert.equal(runtime.calls.documentCreates.length, 1);
 });
 
-test('exact readback drift is compensated and runtime logs never receive PHI-bearing details', async () => {
+test('exact readback drift retains evidence and runtime logs never receive PHI-bearing details', async () => {
   const runtime = await loadBroker({
     documentFilterMutation: { uploaded_by: 'other@agency.test' },
   });
   const response = await invoke(runtime.handler);
   assert.equal(response.response.status, 500);
-  assert.deepEqual(runtime.calls.documentDeletes, ['document-1']);
+  assert.deepEqual(runtime.calls.documentDeletes, []);
 
   const logged = [];
   const original = console.error;
@@ -835,11 +915,12 @@ test('exact readback drift is compensated and runtime logs never receive PHI-bea
   } finally {
     console.error = original;
   }
-  assert.deepEqual(logged, [['createAuthorizedDocument failed']]);
+  assert.deepEqual(logged, [['createAuthorizedDocument failed at stage:', 'private_upload']]);
 
   const source = await readFile(brokerUrl, 'utf8');
   assert.doesNotMatch(source, /console\.(?:log|warn)\s*\(/);
-  assert.doesNotMatch(source, /console\.error\([^)]*,/);
+  assert.match(source, /console\.error\('createAuthorizedDocument failed at stage:', failureStage\)/);
+  assert.doesNotMatch(source, /console\.error\([^)]*(?:error\.|error\)|req\.|input\.)/);
   assert.match(source, /UploadPrivateFile\(\{\s*file: input\.file,?\s*\}\)/);
   assert.doesNotMatch(source, /\.UploadFile\s*\(/);
   assert.doesNotMatch(source, /req\.json\s*\(/);
@@ -867,6 +948,6 @@ test('invalid private upload pointers fail closed before metadata creation and a
     } finally {
       console.error = original;
     }
-    assert.deepEqual(logged, [['createAuthorizedDocument failed']]);
+    assert.deepEqual(logged, [['createAuthorizedDocument failed at stage:', 'private_upload']]);
   }
 });

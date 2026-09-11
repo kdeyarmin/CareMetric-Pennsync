@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { readdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import test from 'node:test';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
 
@@ -287,6 +287,38 @@ async function loadBroker(kind, {
   };
 }
 
+test('download throttling preserves a retryable status without disclosing a private capability', async () => {
+  const fixture = await loadBroker('get', { signedUrlError: { response: { status: 429 }, message: 'private provider detail' } });
+  const result = await invoke(fixture.handler, 'getAuthorizedDocument', getBody({ purpose: 'download' }));
+  assert.equal(result.response.status, 503);
+  assert.equal(result.json.retry_with_same_key, true);
+  assert.equal(Object.hasOwn(result.json, 'document'), false);
+  assert.equal(Object.hasOwn(result.json, 'delivery'), false);
+  assert.equal(JSON.stringify(result.json).includes('private provider detail'), false);
+});
+
+test('document get and list verify hosted creator IDs and reject conflicting provenance', async () => {
+  for (const kind of ['get', 'list']) {
+    const path = kind === 'get' ? 'getAuthorizedDocument' : 'listAuthorizedDocuments';
+    const body = kind === 'get' ? getBody() : listBody();
+    const fixture = await loadBroker(kind, {
+      documents: [document('a', { created_by: null, created_by_id: 'user-1' })],
+      patients: [patient({ created_by: null, created_by_id: 'user-1' })],
+      bindings: [binding('a', { file_uri: 'mp/private/6a9881683dc68a0bd54f1ef7/synthetic-document.pdf' })],
+    });
+    assert.equal((await invoke(fixture.handler, path, body)).response.status, 200);
+    for (const metadata of [
+      { created_by: null, created_by_id: 'other-user' },
+      { created_by: null, created_by_id: null },
+      { created_by: 'other@agency.test', created_by_id: 'user-1' },
+      { created_by: 'clinician@agency.test', created_by_id: 'other-user' },
+    ]) {
+      const invalid = await loadBroker(kind, { documents: [document('a', metadata)] });
+      assert.equal((await invoke(invalid.handler, path, body)).response.status, 409);
+    }
+  }
+});
+
 async function invoke(handler, path, body, method = 'POST') {
   const request = new Request(`http://local/${path}`, {
     method,
@@ -348,10 +380,10 @@ test('Document read brokers are wired, projection-bounded, and mutation-free', a
     const files = [];
     for (const entry of entries) {
       if (entry.name === 'functions') continue;
-      const child = join(directory.pathname, entry.name);
+      const child = join(fileURLToPath(directory), entry.name);
       if (entry.isDirectory()) files.push(...await walk(pathToFileURL(`${child}/`)));
       else if (/\.[cm]?[jt]sx?$/.test(entry.name) && !/\.(?:test|spec)\./.test(entry.name)) {
-        files.push(child);
+        files.push(child.replaceAll('\\', '/'));
       }
     }
     return files;
@@ -770,7 +802,7 @@ test('list preserves exact membership-free platform-owner isolation', async () =
   assert.equal(fixture.calls.memberships.length, 0);
 });
 
-test('platform owner Document reads reject preexisting or duplicate owner memberships', async () => {
+test('enrolled platform owner uses exact tenant scope and rejects duplicate or revoked enrollments', async () => {
   const owner = {
     id: 'owner-user', email: 'owner@platform.test', role: 'admin', is_active: true, is_verified: true,
   };
@@ -782,8 +814,19 @@ test('platform owner Document reads reject preexisting or duplicate owner member
     tenant_role: 'manager',
   });
   for (const kind of ['get', 'list']) {
+    const active = await loadBroker(kind, {
+      caller: owner, memberships: [membership(), ownerMembership], superAdminEmail: 'owner@platform.test',
+    });
+    const success = await invoke(active.handler, kind === 'get' ? 'getAuthorizedDocument' : 'listAuthorizedDocuments', kind === 'get' ? getBody() : listBody());
+    assert.equal(success.response.status, 200);
+    assert.equal(success.json.scope.membership_id, ownerMembership.id);
+    assert.equal(success.json.scope.tenant_role, 'manager');
+    const revoked = await loadBroker(kind, {
+      caller: owner, memberships: [membership(), { ...ownerMembership, status: 'revoked', revoked_at: NOW, revocation_reason: 'Removed' }], superAdminEmail: 'owner@platform.test',
+    });
+    assert.equal((await invoke(revoked.handler, kind === 'get' ? 'getAuthorizedDocument' : 'listAuthorizedDocuments', kind === 'get' ? getBody() : listBody())).response.status, 403);
     for (const memberships of [
-      [membership(), ownerMembership],
+      [membership(), { ...ownerMembership, user_email_normalized: 'wrong@platform.test' }],
       [
         membership(),
         ownerMembership,
@@ -802,7 +845,7 @@ test('platform owner Document reads reject preexisting or duplicate owner member
       );
 
       assert.equal(result.response.status, 409);
-      assert.equal(result.json.error, 'Platform owner tenant membership must not exist');
+      assert.match(result.json.error, /Tenant membership/);
       assert.equal(fixture.calls.memberships.length, 1);
       assert.deepEqual(fixture.calls.bindings, []);
       assert.deepEqual(fixture.calls.documents, []);

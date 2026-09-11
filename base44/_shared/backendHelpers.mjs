@@ -47,6 +47,23 @@ ${isAllowedDestination.toString()}`;
 }
 
 export const SHARED_HELPERS = {
+  backendThrottleResponse: `function backendThrottleResponse(error) {
+  const status = Number(error?.response?.status ?? error?.status);
+  if (status !== 429 && status !== 503) return null;
+  return Response.json({ error: 'Service temporarily busy; retry the same request.',
+    code: 'backend_temporarily_unavailable', retry_with_same_key: true },
+    { status: 503, headers: { 'Cache-Control': 'no-store', 'Retry-After': '60' } });
+}`,
+  // Built-in creator metadata differs between hosted entity generations. A
+  // present field must always match; neither null pair nor conflicting fields
+  // can establish provenance. Caller-owned display fields are insufficient.
+  builtInCreatorMatches: `function builtInCreatorMatches(row, userId, email) {
+  if (typeof userId !== 'string' || !userId || userId.trim() !== userId
+    || typeof email !== 'string' || !email.includes('@') || email !== email.trim().toLowerCase()) return false;
+  return (row?.created_by_id != null || row?.created_by != null)
+    && (row.created_by_id == null || row.created_by_id === userId)
+    && (row.created_by == null || row.created_by === email);
+}`,
   // Application-wide human-delivery release gate. This is intentionally
   // fail-closed: deploying code or copying an environment's existing secrets
   // cannot release email, SMS, fax, or voice traffic. A future release requires
@@ -66,6 +83,99 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
   }, {
     status: 503,
     headers: { 'Cache-Control': 'no-store' },
+  });
+}`,
+
+  // Fax queue restoration must not release unrelated email, SMS or voice paths.
+  // Only the explicitly opted-in queue workers and batch sender use this gate.
+  faxWorkflowDeliveryGate: `function faxWorkflowDeliveryReleased() {
+  return outboundDeliveryReleased()
+    || Deno.env.get('OUTBOUND_FAX_WORKFLOW_RELEASE') === 'enabled-v1';
+}`,
+
+  // Serialize queue creation through an existing Agency row. A reservation is
+  // retained after an uncertain create; absence of a queried child is never a
+  // reason to create it again. Confirmed creates release their small map entry.
+  faxQueueCreationReservation: `async function faxQueueCreationKey(kind, resourceKey) {
+  const digest = new Uint8Array(await crypto.subtle.digest('SHA-256',
+    new TextEncoder().encode(JSON.stringify([kind, resourceKey]))));
+  return Array.from(digest, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+async function reserveFaxQueueCreation(entities, agencyId, kind, resourceKey) {
+  const key = await faxQueueCreationKey(kind, resourceKey);
+  const rows = await entities.Agency.filter({ id: agencyId }, undefined, 2);
+  if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== agencyId
+    || !['active', 'trial'].includes(rows[0].status)
+    || !Number.isFinite(Date.parse(rows[0].updated_date || ''))) return null;
+  const agency = rows[0];
+  const previous = agency.fax_workflow_reservations;
+  if (previous != null && (typeof previous !== 'object' || Array.isArray(previous))) return null;
+  const reservations = previous || {};
+  if (Object.keys(reservations).length >= 500 || Object.hasOwn(reservations, key)) return null;
+  const token = crypto.randomUUID();
+  const result = await entities.Agency.updateMany({
+    id: agencyId, status: agency.status, updated_date: agency.updated_date,
+    fax_workflow_reservations: Object.hasOwn(agency, 'fax_workflow_reservations')
+      ? previous : { $exists: false },
+  }, { $set: { fax_workflow_reservations: { ...reservations, [key]: token } } }).catch(() => null);
+  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) {
+    await releaseFaxQueueCreation(entities, { agencyId, key, token }).catch(() => false);
+    return null;
+  }
+  const verified = await entities.Agency.filter({ id: agencyId }, undefined, 2).catch(() => null);
+  if (!Array.isArray(verified) || verified.length !== 1 || verified[0]?.id !== agencyId
+    || verified[0].fax_workflow_reservations?.[key] !== token) {
+    await releaseFaxQueueCreation(entities, { agencyId, key, token }).catch(() => false);
+    return null;
+  }
+  return { agencyId, key, token };
+}
+async function releaseFaxQueueCreation(entities, reservation) {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    let rows;
+    try {
+      rows = await entities.Agency.filter({ id: reservation.agencyId }, undefined, 2);
+    } catch (error) {
+      if (await waitFaxReservationThrottle(error, attempt)) continue;
+      return false;
+    }
+    if (!Array.isArray(rows) || rows.length !== 1 || rows[0]?.id !== reservation.agencyId) return false;
+    const row = rows[0];
+    const previous = row.fax_workflow_reservations;
+    if (previous == null || !Object.hasOwn(previous, reservation.key)) return true;
+    if (previous[reservation.key] !== reservation.token) return false;
+    const remaining = { ...previous };
+    delete remaining[reservation.key];
+    let writeError;
+    const result = await entities.Agency.updateMany({
+      id: row.id, updated_date: row.updated_date, fax_workflow_reservations: previous,
+    }, { $set: { fax_workflow_reservations: remaining } }).catch(error => { writeError = error; return null; });
+    if (result?.success === true && result.updated === 1 && result.has_more === false) return true;
+    if (writeError && Number(writeError.response?.status ?? writeError.status) === 429
+      && !await waitFaxReservationThrottle(writeError, attempt)) return false;
+    // A different key can change this shared map. Reload without dropping that
+    // writer's entry; a lost successful response is also recovered by absence.
+  }
+  return false;
+}
+async function waitFaxReservationThrottle(error, attempt) {
+  if (Number(error?.response?.status ?? error?.status) !== 429 || attempt >= 4) return false;
+  const retryAfterRaw = error?.response?.headers?.['retry-after'] ?? error?.headers?.['retry-after'] ?? 0;
+  const retryAfter = Number.isFinite(Number(retryAfterRaw)) ? Number(retryAfterRaw)
+    : (Date.parse(String(retryAfterRaw)) - Date.now()) / 1000;
+  // Longer throttles remain fenced for the next same-key request. Short ones
+  // get at most 11 seconds of total backoff; never retry a known longer limit early.
+  const delay = Math.min(1000 * 2 ** attempt, 4000);
+  if (Number.isFinite(retryAfter) && retryAfter * 1000 > delay) return false;
+  await new Promise(resolve => setTimeout(resolve, delay));
+  return true;
+}
+async function releaseRecoveredFaxQueueCreation(entities, agencyId, kind, resourceKey, child) {
+  const token = child?.queue_creation_reservation_token;
+  if (token == null) return true; // Pre-protocol children have no reservation.
+  if (typeof token !== 'string' || !/^[a-f0-9-]{36}$/.test(token)) return false;
+  return releaseFaxQueueCreation(entities, {
+    agencyId, key: await faxQueueCreationKey(kind, resourceKey), token,
   });
 }`,
 
@@ -377,6 +487,84 @@ async function hasExactActiveAgencyMembership(base44, user) {
     && normalizeMembershipEmail(row.user_email_normalized) === userEmail
     && typeof row.agency_id === 'string'
     && !!row.agency_id.trim();
+}`,
+
+  // Boundary hardening for legacy handlers that still branch on caller profile
+  // claims. Base44 auth.updateMe lets every signed-in account rewrite every custom
+  // User field on its own record, so account_type / agency_name / agency_id /
+  // is_approved read straight from auth.me() are caller-controlled: anyone who
+  // can sign up could claim super_admin or another agency. Wrap every auth.me()
+  // result in these handlers so those claims are rebuilt from protected sources
+  // before any handler logic reads them:
+  //   - protected built-in admins (role admin, owner included): unchanged, since
+  //     that platform-protected role already grants platform-level RLS and its
+  //     self-scoping claims cannot widen access;
+  //   - tenant authority: exactly one active, service-owned AgencyMembership
+  //     bound to the immutable user id and built-in email, whose Agency is
+  //     active (its tenant_role and agency name become the claims);
+  //   - everyone else: no agency, not approved, and never a privileged type.
+  // Built-in fields (id, email, role) pass through untouched; a missing caller
+  // (null/undefined) is returned as-is so existing 401 branches still run.
+  trustedCallerClaims: `const PRIVILEGED_PROFILE_ACCOUNT_TYPES = new Set(['super_admin', 'agency_admin']);
+const TRUSTED_CLAIM_AGENCY_STATUSES = new Set(['active', 'trial']);
+const normalizeClaimEmail = (value) => String(value || '').trim().toLowerCase();
+async function loadTrustedTenantClaim(base44, profileId, email) {
+  if (!profileId || !email) return null;
+  let membership = null;
+  try {
+    const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
+      { user_id: profileId, status: 'active' },
+      undefined,
+      2,
+    );
+    const row = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+    if (row
+      && String(row.user_id || '').trim() === profileId
+      && String(row.status || '') === 'active'
+      && normalizeClaimEmail(row.user_email_normalized) === email
+      && typeof row.agency_id === 'string'
+      && row.agency_id.trim()) {
+      membership = row;
+    }
+  } catch {
+    membership = null;
+  }
+  if (!membership) return null;
+  try {
+    const agencyId = membership.agency_id.trim();
+    const rows = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
+    const agency = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
+    const agencyName = String(agency?.agency_name || '').trim();
+    if (!agency || agency.id !== agencyId || !TRUSTED_CLAIM_AGENCY_STATUSES.has(String(agency.status || ''))
+      || !agencyName) {
+      return null;
+    }
+    return { tenantRole: String(membership.tenant_role || ''), agencyId, agencyName };
+  } catch {
+    return null;
+  }
+}
+async function withTrustedClaims(base44, profile) {
+  if (!profile || typeof profile !== 'object') return profile;
+  // Protected built-in admins (the platform owner included) already hold
+  // platform-level RLS authority, so their legacy self-scoping claims cannot
+  // widen access; leave them exactly as the handler saw them before.
+  if (profile.role === 'admin') return profile;
+  const email = normalizeClaimEmail(profile.email);
+  const profileId = typeof profile.id === 'string' ? profile.id.trim() : '';
+  const tenant = await loadTrustedTenantClaim(base44, profileId, email);
+  const claimedType = String(profile.account_type || '');
+  const baseType = PRIVILEGED_PROFILE_ACCOUNT_TYPES.has(claimedType) ? 'user' : claimedType;
+  if (tenant) {
+    return {
+      ...profile,
+      account_type: tenant.tenantRole === 'agency_admin' ? 'agency_admin' : baseType,
+      agency_name: tenant.agencyName,
+      agency_id: tenant.agencyId,
+      is_approved: true,
+    };
+  }
+  return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false };
 }`,
 
   // Offboarding sets is_active:false but deliberately leaves role/account_type

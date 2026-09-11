@@ -50,3 +50,12 @@ test('the per-agency outcome worker explicitly clears its obsolete scheduler', a
     'computeOutcomeMeasures must explicitly remove the old unscoped automation during deployment',
   );
 });
+
+test('the retired outcome endpoint cannot access the SDK or regain an unscoped schedule', async () => {
+  const legacy = await readFile(new URL('computeOutcomeMeasures/entry.ts', FUNCTIONS_URL), 'utf8');
+  assert.doesNotMatch(legacy, /createClientFromRequest|\.entities\.|\.functions\.invoke/);
+  assert.match(legacy, /status: 503/);
+  const config = JSON5.parse(await readFile(new URL('computeOutcomeMeasuresV2/function.jsonc', FUNCTIONS_URL), 'utf8'));
+  assert.equal(config.name, 'computeOutcomeMeasuresV2');
+  assert.deepEqual(config.automations, []);
+});

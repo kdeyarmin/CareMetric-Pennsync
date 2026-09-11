@@ -198,8 +198,12 @@ test('migrated Base44 workflows preserve exact schedules, targets, and release c
       assert.match(source, /loadScheduledAgencyIds/);
       assert.match(source, /createOutcomeDispatchProof/);
       assert.match(source, /idempotency_key:\s*`nightly-outcome-daily:/);
+      assert.match(source, /functions\.invoke\(\s*'computeOutcomeMeasuresV2'/);
+      const retiredSource = await readFile(new URL(`${expected.legacyTarget}/entry.ts`, FUNCTIONS_URL), 'utf8');
+      assert.match(retiredSource, /status: 503/);
+      assert.doesNotMatch(retiredSource, /createClientFromRequest/);
       const workerSource = await readFile(
-        new URL(`${expected.legacyTarget}/entry.ts`, FUNCTIONS_URL),
+        new URL('computeOutcomeMeasuresV2/entry.ts', FUNCTIONS_URL),
         'utf8',
       );
       assert.match(workerSource, /agency_id is required; platform-wide outcome computation is not supported/);

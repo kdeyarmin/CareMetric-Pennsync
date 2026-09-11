@@ -2,6 +2,10 @@
   "name": "Agency",
   "type": "object",
   "properties": {
+    "fax_workflow_reservations": {
+      "type": "object",
+      "description": "Bounded service-owned queue creation reservations keyed by a digest, containing only opaque ownership tokens. Retained on uncertain creates; never cleared just because a child query is empty."
+    },
     "agency_name": {
       "type": "string",
       "description": "Name of the agency/organization"
@@ -145,6 +149,10 @@
     "notes": {
       "type": "string",
       "description": "Internal notes about the agency"
+    },
+    "outcome_window_claims": {
+      "type": "object",
+      "description": "Bounded service-owned outcome publication claims keyed by tenant-window digest. Full-map conditional updates fence publication; committing claims retain their exact run until terminal reconciliation."
     }
   },
   "required": [
@@ -164,20 +172,8 @@
         }
       ]
     },
-    "create": {
-      "user_condition": {
-        "role": "admin"
-      }
-    },
-    "update": {
-      "user_condition": {
-        "role": "admin"
-      }
-    },
-    "delete": {
-      "user_condition": {
-        "role": "admin"
-      }
-    }
+    "create": false,
+    "update": false,
+    "delete": false
   }
 }

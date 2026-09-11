@@ -457,3 +457,20 @@ test('hosted workflow checks log only the sanitized capability report', () => {
   assert.doesNotMatch(source, /detail:.*error\?\.message/);
   assert.match(source, /credential_values_exposed: false/);
 });
+
+
+test('fax workflow readiness includes its delivery prerequisite without releasing other channels', async () => {
+  for (const release of [undefined, 'enabled', 'enabled-v1']) {
+    const handler = await loadHandler({ env: {
+      OUTBOUND_FAX_WORKFLOW_RELEASE: release,
+      WORKFLOW_RELEASE_AUTO_RETRY_FAILED_FAXES: 'enabled-v1',
+      WORKFLOW_RELEASE_PROCESS_SCHEDULED_FAXES: 'enabled-v1',
+    } });
+    const report = await (await handler({})).json();
+    const byId = Object.fromEntries(report.integrations.map(item => [item.id, item]));
+    for (const id of ['fax_workflow_delivery_release', 'release_auto_retry_failed_faxes', 'release_process_scheduled_faxes']) {
+      assert.equal(byId[id].release_state, release === 'enabled-v1' ? 'released' : 'paused');
+    }
+    assert.equal(byId.outbound_delivery_release.release_state, 'paused');
+  }
+});

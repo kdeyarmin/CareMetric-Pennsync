@@ -68,8 +68,34 @@ if (existsSync(base44EnvPath)) {
   }
 }
 
+// Base44's hosted Publish build does not run base44/config.jsonc's
+// site.buildCommand, so the owner email assigned there never reached published
+// bundles and the Super Admin page stayed locked for the platform owner. Supply
+// that same committed value for the owner's CareMetric apps when the build
+// environment leaves it unset. This is UI gating only: backend functions
+// independently require Base44's protected admin role plus SUPER_ADMIN_EMAIL.
+const OWNER_SUPER_ADMIN_EMAIL = 'kdeyarmin@comcast.net'
+const OWNER_SUPER_ADMIN_APP_IDS = new Set([
+  '694ec16e72e01b60d22f7cbf', // CareMetric AI (production)
+  '6a9881683dc68a0bd54f1ef7', // caremetric-pennsync-staging-2026-09-02
+])
+
+function withOwnerSuperAdminEmail(configFn) {
+  return (configEnv) => {
+    const appId = String(process.env.VITE_BASE44_APP_ID || '').trim()
+    if (
+      configEnv.command === 'build'
+      && process.env.VITE_SUPER_ADMIN_EMAIL === undefined
+      && OWNER_SUPER_ADMIN_APP_IDS.has(appId)
+    ) {
+      process.env.VITE_SUPER_ADMIN_EMAIL = OWNER_SUPER_ADMIN_EMAIL
+    }
+    return configFn(configEnv)
+  }
+}
+
 // https://vite.dev/config/
-export default defineConfig(({ command }) => ({
+export default defineConfig(withOwnerSuperAdminEmail(({ command }) => ({
   logLevel: 'error', // Suppress warnings, only show errors
   // Production bundles must be relocatable: Base44/App Store installs can mount
   // the same build under arbitrary subpaths, so emitted JS/CSS/icon/manifest
@@ -124,4 +150,4 @@ export default defineConfig(({ command }) => ({
     }),
     react(),
   ]
-}));
+})));

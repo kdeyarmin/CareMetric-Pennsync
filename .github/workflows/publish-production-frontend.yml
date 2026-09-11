@@ -4,6 +4,15 @@ name: Publish production frontend (site only)
 # not a publication request. No backend/schema/auth/data/DNS changes are made.
 on:
   workflow_dispatch:
+    inputs:
+      central_help_enabled:
+        description: Enable the central Help launcher (false rolls it back)
+        type: choice
+        required: true
+        default: 'true'
+        options:
+          - 'true'
+          - 'false'
 
 permissions:
   contents: read
@@ -58,6 +67,8 @@ jobs:
         env:
           VITE_BASE44_APP_ID: '694ec16e72e01b60d22f7cbf'
           VITE_BASE44_BACKEND_URL: https://base44.app
+          VITE_DEPLOY_ENV: production
+          VITE_CENTRAL_HELP_ENABLED: ${{ inputs.central_help_enabled }}
           VITE_BASE44_FUNCTIONS_VERSION: ''
           VITE_SUPER_ADMIN_EMAIL: kdeyarmin@comcast.net
           PENNSYNC_ASSET_REVISION: ${{ github.sha }}
