@@ -600,6 +600,22 @@ test('browser edits preserve worker notification state only for the same follow-
   }
 });
 
+test('marker-only follow-up edits cannot erase an existing request', async () => {
+  const original = { status: 'sent', generated_at: T1, items: [{ id: 'open-item' }] };
+  for (const followUp of [{}, { stale_notified_at: T2 }, {
+    stale_notification_key: 'forged', stale_notification_publish_started_at: T2,
+  }]) {
+    const runtime = await loadHandler({ referrals: [referral({ follow_up_requests: original })] });
+    const result = await invoke(runtime.handler, {
+      action: 'update', agency_id: 'agency-a', referral_id: 'referral-a',
+      changes: { follow_up_requests: followUp },
+    });
+    assert.equal(result.response.status, 400);
+    assert.equal(runtime.calls.updateMany.length, 0);
+    assert.deepEqual(runtime.state.referrals[0].follow_up_requests, original);
+  }
+});
+
 test('assignment roster and assignment changes use exact active same-agency identities', async () => {
   const runtime = await loadHandler({
     memberships: [membership(), assigneeMembership()],

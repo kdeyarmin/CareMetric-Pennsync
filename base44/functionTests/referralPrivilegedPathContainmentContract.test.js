@@ -403,6 +403,31 @@ test('an uncertain publication remains fenced until its delayed row becomes visi
   assert.equal(runtime.state.notifications.length, 1);
 });
 
+test('unresolved publication remains a failure after recipient authority is lost', async () => {
+  const runtime = createStaleFollowUpRuntime();
+  let attempts = 0;
+  runtime.client.asServiceRole.entities.Notification.create = async () => {
+    attempts += 1;
+    throw new Error('uncertain create outcome');
+  };
+  const handler = await loadStaleFollowUpHandler(() => runtime.client,
+    new Map([['INTERNAL_FN_SECRET', 'test-scheduler-secret']]));
+  assert.equal((await handler(staleFollowUpRequest())).status, 500);
+  runtime.state.membership.status = 'suspended';
+  runtime.state.membership.version += 1;
+  const suspended = await handler(staleFollowUpRequest());
+  assert.equal(suspended.status, 500);
+  const body = await suspended.json();
+  assert.equal(body.failed, 1);
+  assert.equal(body.skipped_without_active_recipient, 0);
+  assert.equal(attempts, 1);
+  runtime.client.asServiceRole.entities.AgencyMembership.filter = async () => [];
+  const missing = await handler(staleFollowUpRequest());
+  assert.equal(missing.status, 500);
+  assert.equal((await missing.json()).failed, 1);
+  assert.equal(attempts, 1);
+});
+
 test('overlapping workers cannot publish twice, even while the first create is delayed', async () => {
   const runtime = createStaleFollowUpRuntime();
   const create = runtime.client.asServiceRole.entities.Notification.create;

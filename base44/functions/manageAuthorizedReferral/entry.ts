@@ -611,6 +611,9 @@ function validateBusinessFields(
     }
     const clientFollowUp = { ...output.follow_up_requests };
     for (const field of FOLLOW_UP_CAPABILITY_FIELDS) delete clientFollowUp[field];
+    if (Object.keys(clientFollowUp).length === 0) {
+      throw new PublicError(400, 'follow_up_requests must contain editable request fields');
+    }
     output.follow_up_requests = clientFollowUp;
   }
   if (Object.hasOwn(output, 'patient_id') && output.patient_id !== null) {

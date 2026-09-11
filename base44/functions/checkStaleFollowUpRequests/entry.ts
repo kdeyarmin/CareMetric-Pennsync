@@ -446,7 +446,10 @@ async function processAgency(
         referral.created_by_user_email_normalized,
       );
       if (!recipient) {
-        skippedWithoutRecipient += 1;
+        // Losing recipient authority does not resolve an uncertain create.
+        // Keep it visible to operators without publishing to a stale recipient.
+        if (followUp.stale_notification_publish_started_at != null) failed += 1;
+        else skippedWithoutRecipient += 1;
         continue;
       }
       const key = followUpNotificationKey(agencyId, referral.id, followUp.generated_at);

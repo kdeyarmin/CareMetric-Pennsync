@@ -40,6 +40,8 @@ The full registered suites were also attempted. Windows' shell length limit requ
 
 Review identified a read between the successful publication CAS and create that could strand an alert without attempting it. The CAS now immediately starts create. A regression test simulates a Referral read outage after that decision and verifies publication occurs once, then finalization recovers without a second create.
 
+Additional review fixes reject empty/marker-only follow-up edits without touching the existing request, and continue reporting unresolved publication attempts as failures after recipient suspension or removal. Regression tests verify both behaviors and ensure authority loss never causes another create.
+
 ## Release and recovery
 
 The source still defaults to HTTP 503 before SDK construction unless the exact environment flag is enabled. The native workflow remains the only schedule owner; no legacy function automation is introduced. Production activation must follow review, green CI and hosted checks. Preserve the production schedule `0 12 * * *` in UTC.
