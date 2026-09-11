@@ -347,3 +347,77 @@ test('cookie-bearing requests still recheck Hub authority and current native pro
     assert.equal(fixture.hubs.length, 4);
   }
 });
+
+test('failure diagnostics distinguish Hub transport, identity and native stages without exposing errors', async () => {
+  const privateError = Object.assign(new Error('private-patient Bearer credential user@example.test'), { response: { status: 502, data: 'private-body' } });
+  const cases = [
+    [{ fetcher: async () => { throw privateError; } }, {}, 'hub_authorization', null, null],
+    [{ hubStatus: 503 }, {}, 'hub_authorization', 503, null],
+    [{ actor: { role: 'customer' } }, {}, 'hub_identity', 200, null],
+    [{}, { headers: { 'Base44-Service-Authorization': null } }, 'native_transport', 200, 503],
+    [{ createClient: () => { throw privateError; } }, {}, 'native_factory', 200, 502],
+    [{ read: () => { throw privateError; } }, {}, 'native_identity', 200, 502],
+    [{ read: call => { if (call.entity === 'Agency') throw privateError; } }, {}, 'native_read', 200, 502],
+  ];
+  for (const [options, request, stage, hubStatus, nativeStatus] of cases) {
+    const fixture = makeFixture(options);
+    const failed = await result(fixture, { operation: 'overview' }, request);
+    assert.ok(failed.response.status >= 400);
+    assert.equal(fixture.failures.length, 1);
+    const event = fixture.failures[0];
+    assert.deepEqual(Object.keys(event).sort(), ['event', 'stage', 'status', 'hubStatus', 'nativeStatus', 'nativeApp', 'dataEnvironment', 'serviceCredential'].sort());
+    assert.equal(event.event, 'central_admin_request_failed');
+    assert.equal(event.stage, stage);
+    assert.equal(event.hubStatus, hubStatus);
+    assert.equal(event.nativeStatus, nativeStatus);
+    assert.equal(event.nativeApp, 'expected');
+    assert.equal(event.dataEnvironment, 'absent');
+    assert.equal(event.serviceCredential, stage === 'native_transport' ? 'absent' : 'bearer');
+    assert.ok(Object.isFrozen(event));
+    assert.doesNotMatch(JSON.stringify(event), /private|Bearer credential|example\.test|native-hosted-fixture|11111111|694ec16e72/i);
+  }
+});
+
+test('native header diagnostics report closed categories only', async () => {
+  for (const [headers, expected] of [
+    [{ 'Base44-App-Id': null }, { nativeApp: 'absent', dataEnvironment: 'absent', serviceCredential: 'bearer' }],
+    [{ 'Base44-App-Id': 'private-app' }, { nativeApp: 'other', dataEnvironment: 'absent', serviceCredential: 'bearer' }],
+    [{ 'X-Data-Env': ' private-environment ' }, { nativeApp: 'expected', dataEnvironment: 'other', serviceCredential: 'bearer' }],
+    [{ 'X-Data-Env': '', 'Base44-Service-Authorization': '' }, { nativeApp: 'expected', dataEnvironment: 'empty', serviceCredential: 'empty' }],
+    [{ 'X-Data-Env': 'prod', 'Base44-Service-Authorization': 'private-invalid' }, { nativeApp: 'expected', dataEnvironment: 'prod', serviceCredential: 'other' }],
+  ]) {
+    const fixture = makeFixture();
+    await result(fixture, { operation: 'capabilities' }, { headers });
+    assert.equal(fixture.failures.length, 1);
+    for (const [key, value] of Object.entries(expected)) assert.equal(fixture.failures[0][key], value);
+    assert.doesNotMatch(JSON.stringify(fixture.failures), /private-/);
+  }
+});
+
+test('diagnostics cannot change denied responses when status getters or sinks throw', async () => {
+  const hostile = new Error('private-details');
+  Object.defineProperty(hostile, 'status', { get() { throw new Error('private-getter'); } });
+  const fixture = makeFixture({ read: () => { throw hostile; } });
+  assert.equal((await result(fixture)).response.status, 503);
+  assert.equal(fixture.failures[0].nativeStatus, null);
+  const brokenSink = makeFixture({ read: () => { throw hostile; }, reportFailure: () => { throw new Error('private-sink'); } });
+  assert.deepEqual((await result(brokenSink)).body, { error: { code: 'upstream' } });
+});
+
+test('failure diagnostics are deduplicated and capped per handler, while every request remains denied', async () => {
+  let status = 500;
+  const fixture = makeFixture({ read: () => { throw { status }; } });
+  for (let index = 0; index < 3; index++) assert.equal((await result(fixture)).response.status, 503);
+  assert.equal(fixture.failures.length, 1);
+  for (status = 500; status < 530; status++) assert.equal((await result(fixture)).response.status, 503);
+  assert.equal(fixture.failures.length, 20);
+});
+
+test('successful requests and routine anonymous input do not emit failure diagnostics', async () => {
+  const fixture = makeFixture();
+  assert.equal((await result(fixture, { operation: 'capabilities' })).response.status, 200);
+  assert.equal((await result(fixture, undefined, { headers: { 'X-CareMetric-Hub-Authorization': null } })).response.status, 401);
+  assert.equal((await result(fixture, undefined, { headers: { 'Content-Type': 'text/plain' } })).response.status, 415);
+  assert.equal((await result(fixture, { operation: 'unsupported' })).response.status, 400);
+  assert.deepEqual(fixture.failures, []);
+});

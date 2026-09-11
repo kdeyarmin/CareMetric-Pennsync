@@ -138,6 +138,18 @@ waiting because SDK entity methods do not accept AbortSignal.
 
 ## Validation and release boundary
 
+For hosted authorization failures, `central_admin_request_failed` records only
+the fixed request stage, public HTTP status, bounded numeric Hub/native HTTP
+statuses when available, and closed categories for the native app header, data
+environment and service credential shape. It never records header values,
+credentials, identities, operation bodies or SDK exception text. Each handler
+instance deduplicates these signatures and stops after 20 distinct signatures;
+the diagnostic sink cannot change the public response. Routine anonymous input
+and successful requests do not produce these failure events. Use the stage to
+distinguish Hub transport/identity rejection from native credential, SDK factory,
+current administrator and projected data failures. A diagnostic is evidence for
+the next investigation; it does not authorize relaxing that stage's checks.
+
 `pnpm run test:central-admin` runs native producer/authentication/transport tests
 through the repository's esbuild-based TypeScript harness, including SMS
 single-use rejection, exact operation binding, current role/mapping revocation,
