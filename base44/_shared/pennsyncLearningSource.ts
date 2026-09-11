@@ -66,7 +66,7 @@ export async function readPennsyncLearningSource(entities: Record<string, Learni
       const out:LearningRow={};
       for(const name of Object.keys(value).sort()) {
         if(['__proto__','prototype','constructor'].includes(name)||name.length>160)throw new Error('Invalid source key');
-        out[name]=await scrub((value as LearningRow)[name],entity,sourceId,path+'/'+name,depth+1);
+        out[name]=await scrub((value as LearningRow)[name],entity,sourceId,path+'/'+name.replace(/~/g,'~0').replace(/\//g,'~1'),depth+1);
       }
       return out;
     }
