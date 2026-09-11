@@ -36,6 +36,7 @@ export function makeFixture(options = {}) {
   const calls = [];
   const requests = [];
   const hubs = [];
+  const reports = [];
   let cleanups = 0;
   const fetcher = async (url, init) => {
     hubs.push({ url, init });
@@ -62,8 +63,8 @@ export function makeFixture(options = {}) {
     return { asServiceRole: { entities }, cleanup: () => { cleanups += 1; } };
   };
   return {
-    handler: nativeModule.createCentralAdminHandler({ getEnv: name => env[name], createClient, fetcher, now: () => new Date(date) }),
-    calls, requests, hubs, data, env, cleanups: () => cleanups,
+    handler: nativeModule.createCentralAdminHandler({ getEnv: name => env[name], createClient, fetcher, now: () => new Date(date), reportTransport: options.reportTransport ?? (event => reports.push(event)) }),
+    calls, requests, hubs, data, env, reports, cleanups: () => cleanups,
   };
 }
 export function nativeRequest(body = { operation: 'overview' }, options = {}) {

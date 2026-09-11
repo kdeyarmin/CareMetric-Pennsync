@@ -56,6 +56,41 @@ for (const headers of [{ Origin: '' }, { Cookie: '' }, { Origin: ' ', Cookie: ' 
     assert.equal(fixture.requests.length, 1);
   });
 }
+test('transport diagnostics report only closed categories and never change authorization rejection', async () => {
+  const fixture = makeFixture();
+  for (const [headers, expected] of [
+    [{ Cookie: 'sensitive-session=secret' }, { origin: 'absent', cookie: 'present', originMatchesRequest: false, literalNullOrigin: false }],
+    [{ Origin: 'https://caremetricai.base44.app' }, { origin: 'app_origin', cookie: 'absent', originMatchesRequest: true, literalNullOrigin: false }],
+    [{ Origin: 'https://app.base44.com', Cookie: ' ' }, { origin: 'platform_origin', cookie: 'empty', originMatchesRequest: false, literalNullOrigin: false }],
+    [{ Origin: 'null' }, { origin: 'other', cookie: 'absent', originMatchesRequest: false, literalNullOrigin: true }],
+    [{ Origin: 'https://sensitive.example/secret-path', Cookie: 'private=credential' }, { origin: 'other', cookie: 'present', originMatchesRequest: false, literalNullOrigin: false }],
+  ]) {
+    const denied = await result(fixture, undefined, { headers });
+    assert.equal(denied.response.status, 403);
+    assert.deepEqual(denied.body, { error: { code: 'forbidden' } });
+    assert.deepEqual(fixture.reports.at(-1), { event: 'central_admin_transport_rejected', ...expected });
+    assert.equal(Object.isFrozen(fixture.reports.at(-1)), true);
+  }
+  assert.doesNotMatch(JSON.stringify(fixture.reports), /sensitive|secret|credential|fixture\.header|native-hosted|private=/);
+  assert.equal(fixture.hubs.length + fixture.requests.length, 0);
+});
+test('transport diagnostic categories are deduplicated and capped per function instance', async () => {
+  const fixture = makeFixture();
+  for (const Origin of [null, '', 'https://caremetricai.base44.app', 'https://app.base44.com', 'https://other.example', 'null']) {
+    for (const Cookie of [null, '', 'private=value']) {
+      for (let repeat = 0; repeat < 5; repeat += 1) await result(fixture, undefined, { headers: { Origin, Cookie } });
+    }
+  }
+  assert.equal(fixture.reports.length, 10);
+  assert.equal(new Set(fixture.reports.map(value => JSON.stringify(value))).size, 10);
+});
+test('diagnostic sink failures never bypass the browser transport guard', async () => {
+  const fixture = makeFixture({ reportTransport: () => { throw new Error('private sink'); } });
+  const denied = await result(fixture, undefined, { headers: { Origin: 'null' } });
+  assert.equal(denied.response.status, 403);
+  assert.deepEqual(denied.body, { error: { code: 'forbidden' } });
+  assert.equal(fixture.hubs.length + fixture.requests.length, 0);
+});
 for (const body of [
   { operation: 'users.delete' }, { operation: 'overview', limit: 20 },
   { operation: 'users.list', limit: 51 }, { operation: 'users.list', limit: '1' },

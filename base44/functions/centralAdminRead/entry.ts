@@ -20,7 +20,29 @@ type Row = Record<string, unknown>;
 type Env = (name: string) => string | undefined;
 type Entity = { filter: (query: Row, sort: string, limit: number, offset: number, fields: string[]) => Promise<unknown> };
 type Client = { asServiceRole: { entities: Record<string, Entity> }; cleanup?: () => void };
-type Options = { getEnv: Env; createClient?: (request: Request) => Client; fetcher?: typeof fetch; now?: () => Date };
+type TransportDiagnostic = Readonly<{
+  event: 'central_admin_transport_rejected';
+  origin: 'absent' | 'empty' | 'app_origin' | 'platform_origin' | 'other';
+  cookie: 'absent' | 'empty' | 'present';
+  originMatchesRequest: boolean;
+  literalNullOrigin: boolean;
+}>;
+type Options = { getEnv: Env; createClient?: (request: Request) => Client; fetcher?: typeof fetch; now?: () => Date;
+  reportTransport?: (event: TransportDiagnostic) => void };
+
+/** Fixed categories only: never retain or log raw headers, URLs, credentials or request bodies. */
+function transportDiagnostic(request: Request): TransportDiagnostic {
+  const origin = request.headers.get('Origin'), cookie = request.headers.get('Cookie');
+  const normalized = origin?.trim();
+  return Object.freeze({
+    event: 'central_admin_transport_rejected',
+    origin: origin === null ? 'absent' : !normalized ? 'empty' : normalized === APP_ORIGIN ? 'app_origin'
+      : ['https://base44.app', 'https://app.base44.com', 'https://base44.com'].includes(normalized) ? 'platform_origin' : 'other',
+    cookie: cookie === null ? 'absent' : !cookie.trim() ? 'empty' : 'present',
+    originMatchesRequest: normalized === new URL(request.url).origin,
+    literalNullOrigin: normalized === 'null',
+  });
+}
 
 class AdminError extends Error {
   constructor(readonly status: number, readonly code: string) { super(code); }
@@ -151,7 +173,10 @@ function pinnedSdkRequest(request: Request) {
 
 export function createCentralAdminHandler({
   getEnv, createClient = createClientFromRequest, fetcher = fetch, now = () => new Date(),
+  reportTransport = event => console.info(JSON.stringify(event)),
 }: Options) {
+  // Deduplicate categories and bound logs for the lifetime of this function instance.
+  const reportedTransport = new Set<string>();
   const json = (payload: unknown, status = 200) => Response.json(payload, {
     status, headers: { 'Cache-Control': 'no-store, private', 'X-Content-Type-Options': 'nosniff' },
   });
@@ -163,7 +188,15 @@ export function createCentralAdminHandler({
       if (request.method !== 'POST') return fail(405, 'method_not_allowed');
       // Empty proxy fields carry neither a browser origin nor cookie credentials.
       // Reject every nonempty value, including the browser's literal null origin.
-      if (request.headers.get('Origin')?.trim() || request.headers.get('Cookie')?.trim()) return fail(403, 'forbidden');
+      if (request.headers.get('Origin')?.trim() || request.headers.get('Cookie')?.trim()) {
+        const diagnostic = transportDiagnostic(request);
+        const key = JSON.stringify(diagnostic);
+        if (reportedTransport.size < 10 && !reportedTransport.has(key)) {
+          reportedTransport.add(key);
+          try { reportTransport(diagnostic); } catch { /* Diagnostics must not change rejection behavior. */ }
+        }
+        return fail(403, 'forbidden');
+      }
       if (request.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase() !== 'application/json') {
         return fail(415, 'unsupported_content_type');
       }

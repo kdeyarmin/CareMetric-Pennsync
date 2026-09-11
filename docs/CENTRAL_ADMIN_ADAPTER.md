@@ -35,6 +35,17 @@ header is denied. There is no CORS grant. Accepted methods and body fields are
 closed; no caller-controlled table, destination, header name, or query operator
 is accepted.
 
+Hosted transport rejections emit bounded console diagnostics because the provider may normalize
+forwarded headers. Each function instance logs at most ten distinct category combinations, with
+only a fixed event name, Origin category (`absent`, `empty`, `app_origin`, `platform_origin`,
+`other`), Cookie category (`absent`, `empty`, `present`), and booleans indicating an exact request
+origin match or literal `null` origin. Raw header values, request URLs, bodies, tokens and
+identities are never logged. Diagnostic failures leave the same rejection response in place.
+These categories are observations, not trusted authorization evidence; all current Origin/Cookie,
+Hub capability, explicit identity and native-role checks remain in force. The diagnostic-only
+change does not establish the hosted forwarding behavior until the exact function is deployed
+and server probes are correlated with its logs.
+
 ## Current authorization on every request
 
 Two separate authorization paths are supported:
