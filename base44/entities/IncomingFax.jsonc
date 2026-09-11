@@ -2,10 +2,6 @@
   "name": "IncomingFax",
   "type": "object",
   "properties": {
-    "queue_creation_reservation_token": {
-      "type": "string",
-      "description": "Opaque owner of the Agency creation reservation, retained to release only that owner after an uncertain create is recovered."
-    },
     "agency_id": {
       "type": "string",
       "description": "Immutable Agency id proven from the signed provider event and exact service-owned TelecomDestinationBinding. Legacy rows may not carry it and are never auto-routed."
@@ -94,19 +90,6 @@
       "minimum": 0,
       "default": 0,
       "description": "Number of transient automatic-processing deferrals, separate from OCR attempts."
-    },
-    "processing_notification_state": {
-      "type": "string",
-      "enum": ["ready", "started", "completed", "skipped_no_recipient"],
-      "description": "Producer-assigned one-shot notification fence. Legacy absence and started intents are reconciliation-only. A ready publication with no active recipient may finish as skipped_no_recipient, leaving the completed document available. Never default to ready."
-    },
-    "processing_notification_intent": {
-      "type": "object",
-      "description": "Immutable notification payload persisted before its single create attempt."
-    },
-    "processing_completion": {
-      "type": "object",
-      "description": "OCR and routing result retained while notification publication is reconciled; avoids repeating OCR or changing the chosen referral."
     },
     "ocr_text": {
       "type": "string",
@@ -235,6 +218,28 @@
       "minimum": 1,
       "default": 1,
       "description": "Monotonic revision used by the scheduled processor's conditional claim/finalize transitions."
+    },
+    "processing_notification_state": {
+      "type": "string",
+      "enum": [
+        "ready",
+        "started",
+        "completed",
+        "skipped_no_recipient"
+      ],
+      "description": "Producer-assigned one-shot notification fence. Legacy absence and started intents are reconciliation-only. A ready publication with no active recipient may finish as skipped_no_recipient, leaving the completed document available. Never default to ready."
+    },
+    "processing_notification_intent": {
+      "type": "object",
+      "description": "Immutable notification payload persisted before its single create attempt."
+    },
+    "processing_completion": {
+      "type": "object",
+      "description": "OCR and routing result retained while notification publication is reconciled; avoids repeating OCR or changing the chosen referral."
+    },
+    "queue_creation_reservation_token": {
+      "type": "string",
+      "description": "Opaque owner of the Agency creation reservation, retained to release only that owner after an uncertain create is recovered."
     }
   },
   "required": [
@@ -252,10 +257,6 @@
     "status",
     "version"
   ],
-  // Provider webhooks and the scheduled processor use the service role. The
-  // PHI-bearing inbox must not be reachable through direct entity CRUD. New
-  // tenant-routable rows require the provenance fields above at runtime; old
-  // rows remain quarantined instead of being guessed into a tenant.
   "rls": {
     "read": false,
     "create": false,
