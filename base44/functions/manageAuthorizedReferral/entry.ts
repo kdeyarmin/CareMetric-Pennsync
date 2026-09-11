@@ -648,7 +648,10 @@ function preserveFollowUpCapabilityState(
   if (
     plainObject(current)
     && validInstant(current.generated_at)
-    && current.generated_at === requested.generated_at
+    && validInstant(requested.generated_at)
+    // The worker's dedupe key uses the instant, not its text representation.
+    // Formatting the same instant differently must not reset publication state.
+    && Date.parse(current.generated_at) === Date.parse(requested.generated_at)
   ) {
     for (const field of FOLLOW_UP_CAPABILITY_FIELDS) {
       if (current[field] !== undefined) output[field] = current[field];

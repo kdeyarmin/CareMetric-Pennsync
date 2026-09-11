@@ -581,7 +581,7 @@ test('browser edits preserve worker notification state only for the same follow-
     stale_notification_claimed_at: T1,
     stale_notification_publish_started_at: T2,
   };
-  for (const generation of [T1, T2]) {
+  for (const generation of [T1, T1.replace('Z', '+00:00'), T2]) {
     const runtime = await loadHandler({ referrals: [referral({
       follow_up_requests: { status: 'sent', generated_at: T1, items: [], ...markers },
     })] });
@@ -594,7 +594,8 @@ test('browser edits preserve worker notification state only for the same follow-
     });
     assert.equal(result.response.status, 200);
     for (const [key, value] of Object.entries(markers)) {
-      assert.equal(result.json.referral.follow_up_requests[key], generation === T1 ? value : undefined);
+      assert.equal(result.json.referral.follow_up_requests[key],
+        Date.parse(generation) === Date.parse(T1) ? value : undefined);
     }
   }
 });
