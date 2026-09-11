@@ -33,11 +33,25 @@ function canonicalEmail(value: unknown) {
   return email && email.length <= 320 && email.includes('@') && !/\s/.test(email) ? email : null;
 }
 
-function isPrivateFileUri(value: unknown) {
+// <<<BEGIN SHARED HELPER: signatureFileAndDeadline — generated, edit base44/_shared/backendHelpers.mjs>>>
+function isPrivateFileUri(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= 4096
-    && !/\s/.test(value) && (value.startsWith('private/') || value.startsWith('private://')
+    && !/\s/.test(value) && ![...value].some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127)
+    && (value.startsWith('private/') || value.startsWith('private://')
       || /^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value));
 }
+
+function dueDateEnd(value) {
+  if (typeof value !== 'string') return null;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  if (!dateOnly && !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
+  const calendar = value.slice(0, 10);
+  const calendarMillis = Date.parse(calendar + 'T00:00:00.000Z');
+  if (!Number.isFinite(calendarMillis) || new Date(calendarMillis).toISOString().slice(0, 10) !== calendar) return null;
+  const millis = Date.parse(dateOnly ? value + 'T23:59:59.999Z' : value);
+  return Number.isFinite(millis) ? millis : null;
+}
+// <<<END SHARED HELPER: signatureFileAndDeadline>>>
 
 function validInstant(value: unknown) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
@@ -47,10 +61,8 @@ function currentDeadline(token: Record<string, any>, pkg: Record<string, any>, s
   const deadlines = [Date.parse(token.expires_at)];
   for (const row of [pkg, ...signatures]) {
     if (row.due_date != null) {
-      const value = row.due_date;
-      const millis = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
-        ? Date.parse(`${value}T23:59:59.999Z`) : NaN;
-      if (!Number.isFinite(millis) || new Date(millis).toISOString().slice(0, 10) !== value) {
+      const millis = dueDateEnd(row.due_date);
+      if (millis === null) {
         throw new PublicError(401, 'Invalid or expired signing authority');
       }
       deadlines.push(millis);

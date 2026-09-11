@@ -35,11 +35,25 @@ function exactDigest(value: unknown) {
   return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : null;
 }
 
-function isPrivateFileUri(value: unknown) {
+// <<<BEGIN SHARED HELPER: signatureFileAndDeadline — generated, edit base44/_shared/backendHelpers.mjs>>>
+function isPrivateFileUri(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= 4096
-    && !/\s/.test(value) && (value.startsWith('private/') || value.startsWith('private://')
+    && !/\s/.test(value) && ![...value].some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127)
+    && (value.startsWith('private/') || value.startsWith('private://')
       || /^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value));
 }
+
+function dueDateEnd(value) {
+  if (typeof value !== 'string') return null;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  if (!dateOnly && !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
+  const calendar = value.slice(0, 10);
+  const calendarMillis = Date.parse(calendar + 'T00:00:00.000Z');
+  if (!Number.isFinite(calendarMillis) || new Date(calendarMillis).toISOString().slice(0, 10) !== calendar) return null;
+  const millis = Date.parse(dateOnly ? value + 'T23:59:59.999Z' : value);
+  return Number.isFinite(millis) ? millis : null;
+}
+// <<<END SHARED HELPER: signatureFileAndDeadline>>>
 
 function validInstant(value: unknown) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
@@ -49,10 +63,8 @@ function currentDeadline(token: Record<string, any>, pkg: Record<string, any>, s
   const deadlines = [Date.parse(token.expires_at)];
   for (const row of [pkg, ...signatures]) {
     if (row.due_date != null) {
-      const value = row.due_date;
-      const millis = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)
-        ? Date.parse(`${value}T23:59:59.999Z`) : NaN;
-      if (!Number.isFinite(millis) || new Date(millis).toISOString().slice(0, 10) !== value) {
+      const millis = dueDateEnd(row.due_date);
+      if (millis === null) {
         throw new PublicError(401, 'Invalid or expired signing authority');
       }
       deadlines.push(millis);
@@ -227,6 +239,7 @@ async function loadContext(
   grantDigest: string,
   agreementTextDigest: string,
   operationId: string | null = null,
+  forArtifactLookup = false,
 ) {
   const token = await exactOne(entities.DocumentPackageToken, { token: tokenDigest, token_hashed: true }, 'DocumentPackageToken');
   const tokenId = exactIdentifier(token.id);
@@ -247,7 +260,7 @@ async function loadContext(
       || (token.status === 'consumed' ? token.is_active !== false : token.is_active !== true)
       || !Number.isSafeInteger(token.authority_version) || token.authority_version < 1
       || !validInstant(token.expires_at)
-      || (!tokenCompletedForRequest && Date.now() >= Date.parse(token.expires_at))) {
+      || (!forArtifactLookup && !tokenCompletedForRequest && Date.now() >= Date.parse(token.expires_at))) {
     throw new PublicError(401, 'Invalid or expired signing authority');
   }
   const grant = await exactOne(entities.SignerReviewGrant, {
@@ -265,7 +278,7 @@ async function loadContext(
       || (grant.status !== 'active' && !grantClaimedForRequest && !grantCompletedForRequest)
       || !Number.isSafeInteger(grant.authority_version) || grant.authority_version < 1
       || !validInstant(grant.issued_at) || !validInstant(grant.expires_at)
-      || (!grantCompletedForRequest && Date.now() >= Date.parse(grant.expires_at))
+      || (!forArtifactLookup && !grantCompletedForRequest && Date.now() >= Date.parse(grant.expires_at))
       || !exactDigest(grant.document_content_sha256)
       || grant.agreement_text_sha256 !== agreementTextDigest
       || !exactDigest(grant.signer_roster_sha256)
@@ -309,7 +322,7 @@ async function loadContext(
   const signature = await exactOne(entities.DocumentSignature, { id: input.documentId, agency_id: agencyId }, 'DocumentSignature');
   // Exact completed retries may reconcile their existing artifact after expiry;
   // they cannot create a new signature. Every new act uses current deadlines.
-  if (!tokenCompletedForRequest || !grantCompletedForRequest) {
+  if (!forArtifactLookup && (!tokenCompletedForRequest || !grantCompletedForRequest)) {
     const authoritySignatures = [signature];
     for (const id of documentIds) {
       if (id !== input.documentId) authoritySignatures.push(await exactOne(
@@ -635,6 +648,8 @@ Deno.serve(async (req) => {
     );
   }
   let tokenClaim: Record<string, any> | null = null;
+  let uploadMarkerConfirmed = false;
+  let storageInvoked = false;
   let grantClaim: Record<string, any> | null = null;
   let cleanupEntities: Record<string, any> | null = null;
   let irreversible = false;
@@ -653,7 +668,9 @@ Deno.serve(async (req) => {
     const entities = base44.asServiceRole.entities;
     cleanupEntities = entities;
     const operationId = crypto.randomUUID();
-    let context = await loadContext(entities, input, tokenDigest, grantDigest, agreementTextDigest);
+    // Authority/status checks still apply here. Expiry is deferred only until
+    // the exact immutable artifact lookup; it never authorizes a new upload.
+    let context = await loadContext(entities, input, tokenDigest, grantDigest, agreementTextDigest, null, true);
     if (canonicalName(input.typedName) !== canonicalName(context.signer.signer_name)) {
       throw new PublicError(400, 'Typed signer name must match the authorized signer');
     }
@@ -685,6 +702,13 @@ Deno.serve(async (req) => {
       irreversible = true;
       throw new PublicError(409, 'Prior signature upload requires reconciliation');
     }
+    const freshContext = await loadContext(entities, input, tokenDigest, grantDigest, agreementTextDigest);
+    if (freshContext.tokenId !== context.tokenId || freshContext.signerId !== context.signerId
+      || freshContext.packageId !== context.packageId
+      || canonicalName(input.typedName) !== canonicalName(freshContext.signer.signer_name)) {
+      throw new PublicError(409, 'Signature authority changed');
+    }
+    context = freshContext;
     if (context.signer.status === 'completed') throw new PublicError(409, 'This signer has already completed the document');
     if (context.signer.status !== 'pending') throw new PublicError(409, 'This signature can no longer be submitted');
 
@@ -802,6 +826,7 @@ Deno.serve(async (req) => {
       authority_version: tokenClaim.version + 1 } });
     if (!successfulSingleUpdate(uploadStart)) throw new PublicError(409, 'Signature upload boundary requires reconciliation');
     tokenClaim.version += 1;
+    uploadMarkerConfirmed = true;
     context = await loadContext(entities, input, tokenDigest, grantDigest, agreementTextDigest, operationId);
     if (!context.tokenClaimedForOperation || !context.grantClaimedForOperation
         || context.token.authority_version !== tokenClaim.version
@@ -809,6 +834,7 @@ Deno.serve(async (req) => {
         || context.token.submission_upload_started_at !== uploadStartedAt) {
       throw new PublicError(409, 'Signature upload boundary requires reconciliation');
     }
+    storageInvoked = true;
     const upload = await base44.asServiceRole.integrations.Core.UploadPrivateFile({ file: input.file });
     const fileUri = typeof upload?.file_uri === 'string' ? upload.file_uri : '';
     if (!fileUri || !isPrivateFileUri(fileUri) || fileUri.length > 4096) {
@@ -854,6 +880,23 @@ Deno.serve(async (req) => {
       document_completed: result.documentCompleted, all_signed: result.allSigned,
     }, { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
   } catch (error) {
+    // This invocation knows storage was never called. Clear only its confirmed
+    // marker with the exact current revision; an uncertain marker write or any
+    // started storage call still retains the irreversible boundary.
+    if (uploadMarkerConfirmed && !storageInvoked && tokenClaim && cleanupEntities) {
+      try {
+        const cleared = await cleanupEntities.DocumentPackageToken.updateMany({
+          id: tokenClaim.id, token: tokenClaim.tokenDigest, status: 'claimed',
+          claimed_by_operation_id: tokenClaim.operationId, claimed_document_id: tokenClaim.documentId,
+          submission_upload_operation_id: tokenClaim.operationId, authority_version: tokenClaim.version,
+        }, { $set: { submission_upload_operation_id: null, submission_upload_started_at: null,
+          authority_version: tokenClaim.version + 1 } });
+        if (successfulSingleUpdate(cleared)) {
+          tokenClaim.version += 1;
+          irreversible = false;
+        }
+      } catch { /* unknown acknowledgement retains reconciliation semantics */ }
+    }
     // Before private upload, claims can safely be returned to active. After an
     // upload or write, retain them so a retry with the same client_request_id
     // reconciles instead of recording a second legal act.

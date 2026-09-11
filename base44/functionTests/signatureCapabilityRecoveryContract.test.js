@@ -40,7 +40,7 @@ async function fixture(options = {}) {
       status: 'pending', workflow_status: 'pending', signers: [signer], ...options.signature }],
     DocumentTenantBinding: [{ id: 'binding-1', agency_id: 'agency-1', patient_id: 'patient-1',
       document_id: 'document-1', storage_mode: 'private', version: 2,
-      content_sha256: hash('synthetic source'), file_uri: privateUri }],
+      content_sha256: hash('synthetic source'), file_uri: privateUri, ...options.binding }],
     SignerReviewGrant: [], SignatureArtifactBinding: [], SignatureAuditEvent: [],
   };
   const calls = { signedUrls: 0, uploads: 0 };
@@ -67,7 +67,7 @@ async function fixture(options = {}) {
     UploadPrivateFile: async () => {
       calls.uploads += 1;
       await options.onUpload?.(db);
-      return { file_uri: privateUri.replace('source.pdf', 'signature.png') };
+      return { file_uri: options.uploadUri ?? privateUri.replace('source.pdf', 'signature.png') };
     },
   } } } };
   async function load(name) {
@@ -114,8 +114,17 @@ test('review permits the twentieth access and refuses further grants or signed U
 });
 
 test('concurrent last accesses produce at most one grant and one review response', async () => {
-  const f = await fixture({ token: { access_count: 19 } });
+  const observedCounts = [];
+  let release;
+  const bothArrived = new Promise((resolve) => { release = resolve; });
+  const f = await fixture({ token: { access_count: 19 }, beforeUpdate: async (name, _db, query) => {
+    if (name !== 'DocumentPackageToken') return;
+    observedCounts.push(query.access_count);
+    if (observedCounts.length === 2) release();
+    await bothArrived;
+  } });
   const responses = await Promise.all([f.review(), f.review()]);
+  assert.deepEqual(observedCounts, [19, 19], 'both requests race on the same observed count');
   assert.equal(responses.filter((response) => response.status === 200).length, 1);
   assert.equal(f.db.DocumentPackageToken[0].access_count, 20);
   assert.equal(f.db.SignerReviewGrant.length, 1);
@@ -243,4 +252,56 @@ test('an exact completed retry after expiration returns its recorded result', as
   assert.equal(response.status, 200);
   assert.equal((await response.json()).idempotent, true);
   assert.equal(f.calls.uploads, 1);
+});
+
+test('a recorded artifact with a lost acknowledgement can reconcile after deadlines expire', async () => {
+  const f = await fixture({ afterCreate: (name) => {
+    if (name === 'SignatureArtifactBinding') throw new Error('lost acknowledgement');
+  } });
+  const review = await (await f.review()).json();
+  assert.equal((await f.sign(review.documents[0].review_nonce)).status, 202);
+  const past = new Date(Date.now() - 60_000).toISOString();
+  f.db.DocumentPackageToken[0].expires_at = past;
+  f.db.SignerReviewGrant[0].expires_at = past;
+  f.db.DocumentSignature[0].expires_at = past;
+  assert.equal((await f.sign(review.documents[0].review_nonce)).status, 200);
+  assert.equal(f.calls.uploads, 1);
+  assert.equal(f.db.SignatureArtifactBinding.length, 1);
+  assert.equal(f.db.DocumentPackageToken[0].submission_upload_operation_id, null);
+});
+
+test('deadline change after a confirmed marker clears that marker before any storage call', async () => {
+  const f = await fixture({ afterUpdate: (name, db, _query, change) => {
+    if (name === 'DocumentPackageToken' && change.$set.submission_upload_operation_id) {
+      db.DocumentSignature[0].expires_at = new Date(Date.now() - 60_000).toISOString();
+    }
+  } });
+  const review = await (await f.review()).json();
+  assert.equal((await f.sign(review.documents[0].review_nonce)).status, 401);
+  assert.equal(f.calls.uploads, 0);
+  assert.equal(f.db.DocumentPackageToken[0].submission_upload_operation_id, null);
+  assert.equal(f.db.DocumentPackageToken[0].status, 'active');
+  assert.equal(f.db.SignerReviewGrant[0].status, 'active');
+});
+
+test('timestamp-valued package and document due dates remain usable', async () => {
+  const due = new Date(Date.now() + 7200_000).toISOString();
+  const f = await fixture({ package: { due_date: due }, signature: { due_date: due } });
+  const response = await f.review();
+  assert.equal(response.status, 200);
+  const review = await response.json();
+  assert.equal((await f.sign(review.documents[0].review_nonce)).status, 200);
+});
+
+test('control characters in private URIs never reach delivery or artifact persistence', async () => {
+  for (const code of [0, 1, 31, 127]) {
+    const malformed = privateUri + String.fromCharCode(code);
+    const reader = await fixture({ binding: { file_uri: malformed } });
+    assert.equal((await reader.review()).status, 401);
+    assert.equal(reader.calls.signedUrls, 0);
+    const writer = await fixture({ uploadUri: malformed });
+    const review = await (await writer.review()).json();
+    assert.equal((await writer.sign(review.documents[0].review_nonce)).status, 202);
+    assert.equal(writer.db.SignatureArtifactBinding.length, 0);
+  }
 });
