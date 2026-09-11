@@ -914,7 +914,9 @@ Deno.serve(async (req) => {
               // The poller's recoverable notification outbox owns final notices.
               // Leave the marker false when notification is enabled; never mark
               // a notice sent before its dedupe-keyed Notification is durable.
-              final_failure_notified: !loadedPolicy.policy.notifyOnFinalFailure,
+              final_failure_notified: fax.final_failure_notified === true || !loadedPolicy.policy.notifyOnFinalFailure,
+              // Preserve an earlier uncertain publication; never reopen its fence.
+              failure_notify_publication_state: fax.failure_notify_publication_state === 'started' ? 'started' : 'ready',
               failure_notify_claimed_by: null,
               failure_notify_claimed_at: null,
             } : {}),
