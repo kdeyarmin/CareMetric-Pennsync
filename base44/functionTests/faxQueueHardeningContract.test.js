@@ -229,7 +229,14 @@ test('fax queue schemas declare quarantine and deferred retry state', async () =
     'notification_recovery_last_error_code',
     'notification_recovery_last_attempt_at',
     'notification_recovery_next_attempt_at',
+    'delivery_notify_publication_state',
+    'failure_notify_publication_state',
   ]) assert.ok(faxLog.properties[field], field);
+  for (const kind of ['delivery', 'failure']) {
+    const publication = faxLog.properties[`${kind}_notify_publication_state`];
+    assert.deepEqual(publication.enum, ['ready', 'started']);
+    assert.equal(Object.hasOwn(publication, 'default'), false, 'legacy rows must never default to ready');
+  }
 
   const scheduled = JSON5.parse(await readFile(
     new URL('../entities/ScheduledFax.jsonc', import.meta.url),

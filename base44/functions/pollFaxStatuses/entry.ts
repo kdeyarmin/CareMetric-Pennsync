@@ -185,6 +185,11 @@ const successfulFaxCas = (value) => !!value
   && value.updated === 1
   && value.has_more === false;
 
+// Hosted optional fields can be stored as null rather than omitted.
+const unsetFaxField = (field: string) => ({
+  $or: [{ [field]: { $exists: false } }, { [field]: null }],
+});
+
 function faxPollSummaryResponse(summary) {
   const providerFailures = Number(summary?.provider_failures) || 0;
   const rowFailures = Number(summary?.row_failures) || 0;
@@ -225,15 +230,14 @@ async function loadFairFaxPollCandidates(base44, now = new Date().toISOString())
       {
         query: {
           status,
-          status_poll_quarantined_at: { $exists: false },
-          status_poll_next_attempt_at: { $exists: false },
+          $and: [unsetFaxField('status_poll_quarantined_at'), unsetFaxField('status_poll_next_attempt_at')],
         },
         sort: 'created_date',
       },
       {
         query: {
           status,
-          status_poll_quarantined_at: { $exists: false },
+          ...unsetFaxField('status_poll_quarantined_at'),
           status_poll_next_attempt_at: { $lte: now },
         },
         sort: 'status_poll_next_attempt_at',
@@ -259,7 +263,10 @@ async function loadFairFaxPollCandidates(base44, now = new Date().toISOString())
       for (const fax of page) {
         scanned++;
         if (fax?.status !== status
-          || exactFaxAuthorityId(fax?.id) !== fax?.id
+          || !exactFaxAuthorityId(fax?.id)
+          || fax.status_poll_quarantined_at != null
+          || (fax.status_poll_next_attempt_at != null
+            && (!exactFaxInstant(fax.status_poll_next_attempt_at) || fax.status_poll_next_attempt_at > now))
           || !exactFaxInstant(fax?.updated_date)) {
           rowFailures++;
           continue;
@@ -379,30 +386,28 @@ async function reserveFaxRecoveryRow(entities, fax, kind, nowMs = Date.now()) {
 }
 
 function faxHasOutboundStatusAuthority(row) {
-  const referralAuthority = exactFaxAuthorityId(row?.referral_id) === row?.referral_id
-    && exactFaxAuthorityId(row?.sent_by_user_id) === row?.sent_by_user_id
-    && exactFaxAuthorityId(row?.sent_by_membership_id) === row?.sent_by_membership_id
+  const referralAuthority = !!exactFaxAuthorityId(row?.referral_id)
+    && !!exactFaxAuthorityId(row?.sent_by_user_id)
+    && !!exactFaxAuthorityId(row?.sent_by_membership_id)
     && Number.isSafeInteger(row?.sent_by_membership_version)
     && row.sent_by_membership_version >= 1;
-  const bindingAuthority = exactFaxAuthorityId(row?.sender_telecom_binding_id)
-      === row?.sender_telecom_binding_id
+  const bindingAuthority = !!exactFaxAuthorityId(row?.sender_telecom_binding_id)
     && Number.isSafeInteger(row?.sender_telecom_binding_version)
     && row.sender_telecom_binding_version >= 1
-    && exactFaxAuthorityId(row?.sender_provider_number_id) === row?.sender_provider_number_id;
+    && !!exactFaxAuthorityId(row?.sender_provider_number_id);
   return !!row
-    && exactFaxAuthorityId(row.id) === row.id
-    && exactFaxAuthorityId(row.agency_id) === row.agency_id
-    && exactFaxAuthorityId(row.document_id) === row.document_id
+    && !!exactFaxAuthorityId(row.id)
+    && !!exactFaxAuthorityId(row.agency_id)
+    && !!exactFaxAuthorityId(row.document_id)
     && (referralAuthority || bindingAuthority)
     && row.provider === 'telnyx'
-    && exactFaxAuthorityId(row.integration_secret_id) === row.integration_secret_id
+    && !!exactFaxAuthorityId(row.integration_secret_id)
     && exactFaxInstant(row.integration_secret_updated_at)
-    && exactFaxAuthorityId(row.fax_connection_id) === row.fax_connection_id
-    && exactFaxAuthorityId(row.sender_settings_id) === row.sender_settings_id
+    && !!exactFaxAuthorityId(row.fax_connection_id)
+    && !!exactFaxAuthorityId(row.sender_settings_id)
     && exactFaxInstant(row.sender_settings_updated_at)
-    && exactFaxAuthorityId(row.telnyx_fax_id) === row.telnyx_fax_id
-    && exactFaxAuthorityId(row.provider_submission_attempt_id)
-      === row.provider_submission_attempt_id
+    && !!exactFaxAuthorityId(row.telnyx_fax_id)
+    && !!exactFaxAuthorityId(row.provider_submission_attempt_id)
     && row.provider_submission_state === 'accepted'
     && exactFaxInstant(row.provider_accepted_at)
     && row.document_url == null;
@@ -410,9 +415,9 @@ function faxHasOutboundStatusAuthority(row) {
 
 function faxHasPrivateRetryAuthority(row) {
   return faxHasOutboundStatusAuthority(row)
-    && exactFaxAuthorityId(row.referral_id) === row.referral_id
-    && exactFaxAuthorityId(row.sent_by_user_id) === row.sent_by_user_id
-    && exactFaxAuthorityId(row.sent_by_membership_id) === row.sent_by_membership_id
+    && !!exactFaxAuthorityId(row.referral_id)
+    && !!exactFaxAuthorityId(row.sent_by_user_id)
+    && !!exactFaxAuthorityId(row.sent_by_membership_id)
     && Number.isSafeInteger(row.sent_by_membership_version)
     && row.sent_by_membership_version >= 1
     && Number.isSafeInteger(row.retry_count)
@@ -609,6 +614,7 @@ function faxNotificationClaimFields(kind) {
     markerField: delivered ? 'delivery_confirmation_sent' : 'final_failure_notified',
     claimField: delivered ? 'delivery_notify_claimed_by' : 'failure_notify_claimed_by',
     claimedAtField: delivered ? 'delivery_notify_claimed_at' : 'failure_notify_claimed_at',
+    publicationField: delivered ? 'delivery_notify_publication_state' : 'failure_notify_publication_state',
   };
 }
 
@@ -693,7 +699,7 @@ function faxNotificationSpec(fax, recipient, kind) {
 
 function faxNotificationMatches(row, spec) {
   return !!row
-    && exactFaxAuthorityId(row.id) === row.id
+    && !!exactFaxAuthorityId(row.id)
     && row.agency_id === spec.payload.agency_id
     && row.dedupe_key === spec.dedupeKey
     && row.recipient_user_id === spec.payload.recipient_user_id
@@ -730,7 +736,7 @@ async function loadFaxNotifications(base44, spec) {
     '-created_date',
     FAX_POLL_EXACT_ROW_LIMIT,
   );
-  if (!Array.isArray(rows) || rows.length >= FAX_POLL_EXACT_ROW_LIMIT
+  if (!Array.isArray(rows) || rows.length > 1
     || rows.some((row) => !faxNotificationMatches(row, spec))) return null;
   return rows;
 }
@@ -780,13 +786,23 @@ async function sendClaimedFaxNotification(base44, fax, kind, claimToken) {
   let existing = await loadFaxNotifications(base44, spec).catch(() => null);
   if (existing?.length) return finalizeFaxNotification(base44, fax, spec, claimToken);
   if (existing === null) return false;
+  // A durable ready -> started CAS is shared with the webhook. No later lease
+  // owner may create after an uncertain attempt, even if its row is not visible.
+  // Legacy claims without this protocol require reconciliation, never a resend.
+  if (fax[spec.publicationField] !== 'ready' || fax[spec.claimField] !== claimToken) return false;
+  const publication = await base44.asServiceRole.entities.FaxLog.updateMany({
+    id: fax.id, agency_id: fax.agency_id, telnyx_fax_id: fax.telnyx_fax_id,
+    status: fax.status, updated_date: fax.updated_date,
+    [spec.markerField]: false, [spec.claimField]: claimToken, [spec.publicationField]: 'ready',
+  }, { $set: { [spec.publicationField]: 'started' } }).catch(() => null);
+  if (!successfulFaxCas(publication)) return false;
   let created = null;
   try {
     created = await base44.asServiceRole.entities.Notification.create(spec.payload);
   } catch {
     // Creation may have committed even when its response was lost. Reconcile
     // the purpose-specific key and retain the claim if no exact row is visible;
-    // a later poll can retry without creating a duplicate committed notice.
+    // a later poll can reconcile without creating another notice.
     existing = await loadFaxNotifications(base44, spec).catch(() => null);
     if (existing?.length) return finalizeFaxNotification(base44, fax, spec, claimToken);
     return false;
@@ -895,6 +911,7 @@ async function recoverFaxNotification(base44, fax, kind, telnyxCreds) {
 
 async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
   let recovered = 0;
+  let failures = 0;
   const nowMs = Date.now();
   const now = new Date(nowMs).toISOString();
   for (const status of ['delivered', 'failed']) {
@@ -909,8 +926,7 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
         query: {
           status,
           [markerField]: false,
-          notification_recovery_quarantined_at: { $exists: false },
-          notification_recovery_next_attempt_at: { $exists: false },
+          $and: [unsetFaxField('notification_recovery_quarantined_at'), unsetFaxField('notification_recovery_next_attempt_at')],
         },
         sort: 'updated_date',
       },
@@ -918,7 +934,7 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
         query: {
           status,
           [markerField]: false,
-          notification_recovery_quarantined_at: { $exists: false },
+          ...unsetFaxField('notification_recovery_quarantined_at'),
           notification_recovery_next_attempt_at: { $lte: now },
         },
         sort: 'notification_recovery_next_attempt_at',
@@ -929,7 +945,7 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
         spec.sort,
         20,
       ).catch(() => null);
-      if (!Array.isArray(page)) continue;
+      if (!Array.isArray(page) || page.length > 20) { failures++; continue; }
       successfulScans++;
       for (const row of page) {
         const id = exactFaxAuthorityId(row?.id);
@@ -942,13 +958,20 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
     }
     if (successfulScans === 0) throw new Error('Terminal notification recovery scan failed');
     for (const candidate of rows) {
+      const claim = faxNotificationClaimFields(status === 'delivered' ? 'delivery' : 'failure');
+      if (candidate.status !== status || candidate.notification_recovery_quarantined_at != null
+        || (candidate.notification_recovery_next_attempt_at != null
+          && (!exactFaxInstant(candidate.notification_recovery_next_attempt_at)
+            || candidate.notification_recovery_next_attempt_at > now))) { failures++; continue; }
+      if (exactFaxAuthorityId(candidate[claim.claimField]) && exactFaxInstant(candidate[claim.claimedAtField])
+        && Date.parse(candidate[claim.claimedAtField]) > nowMs - FAX_NOTIFICATION_CLAIM_LEASE_MS) continue;
       const fax = await reserveFaxRecoveryRow(
         base44.asServiceRole.entities,
         candidate,
         'notification',
         nowMs,
       );
-      if (!fax) continue;
+      if (!fax) { failures++; continue; }
       if (fax?.status !== status || !fax?.sent_by || !exactFaxAuthorityId(fax?.id)
           || !exactFaxInstant(fax?.updated_date)) {
         await quarantineFaxRecoveryRow(
@@ -957,6 +980,7 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
           'notification',
           'invalid_terminal_notification_row',
         );
+        failures++;
         continue;
       }
       if (status === 'delivered') {
@@ -967,9 +991,11 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
             'notification',
             'invalid_terminal_notification_state',
           );
+          failures++;
           continue;
         }
         if (await recoverFaxNotification(base44, fax, 'delivery', telnyxCreds).catch(() => false)) recovered++;
+        else failures++;
       } else {
         if (fax.provider_terminal_status !== 'failed' || fax.next_retry_at != null) {
           await quarantineFaxRecoveryRow(
@@ -978,13 +1004,15 @@ async function recoverTerminalFaxNotifications(base44, telnyxCreds) {
             'notification',
             'invalid_terminal_notification_state',
           );
+          failures++;
           continue;
         }
         if (await recoverFaxNotification(base44, fax, 'failure', telnyxCreds).catch(() => false)) recovered++;
+        else failures++;
       }
     }
   }
-  return recovered;
+  return { recovered, failures };
 }
 
 Deno.serve(async (req) => {
@@ -1031,8 +1059,7 @@ Deno.serve(async (req) => {
           query: {
             status: 'retrying',
             retry_claimed_at: { $lte: staleCutoff },
-            retry_recovery_quarantined_at: { $exists: false },
-            retry_recovery_next_attempt_at: { $exists: false },
+            $and: [unsetFaxField('retry_recovery_quarantined_at'), unsetFaxField('retry_recovery_next_attempt_at')],
           },
           sort: 'retry_claimed_at',
         },
@@ -1040,7 +1067,7 @@ Deno.serve(async (req) => {
           query: {
             status: 'retrying',
             retry_claimed_at: { $lte: staleCutoff },
-            retry_recovery_quarantined_at: { $exists: false },
+            ...unsetFaxField('retry_recovery_quarantined_at'),
             retry_recovery_next_attempt_at: { $lte: recoveryNow },
           },
           sort: 'retry_recovery_next_attempt_at',
@@ -1051,7 +1078,7 @@ Deno.serve(async (req) => {
           spec.sort,
           20,
         ).catch(() => null);
-        if (!Array.isArray(page)) continue;
+        if (!Array.isArray(page) || page.length > 20) { recoveryFailures++; continue; }
         successfulRetryScans++;
         for (const row of page) {
           const id = exactFaxAuthorityId(row?.id);
@@ -1108,8 +1135,15 @@ Deno.serve(async (req) => {
           continue;
         }
         const child = children[0] || null;
+        if (!child) {
+          // A timed-out child creation can still commit. Absence is not proof
+          // that the original retry never reached the provider.
+          await quarantineFaxRecoveryRow(base44.asServiceRole.entities, fax, 'retry', 'stale_retry_child_unresolved');
+          recoveryFailures++;
+          continue;
+        }
         const exactChild = !child || (
-          exactFaxAuthorityId(child.id) === child.id
+          !!exactFaxAuthorityId(child.id)
           && child.agency_id === fax.agency_id
           && child.referral_id === fax.referral_id
           && child.document_id === fax.document_id
@@ -1121,8 +1155,7 @@ Deno.serve(async (req) => {
           && child.retry_generation === fax.retry_generation + 1
           && Number.isSafeInteger(child.retry_count)
           && child.retry_count >= child.retry_generation
-          && exactFaxAuthorityId(child.provider_submission_attempt_id)
-            === child.provider_submission_attempt_id
+          && !!exactFaxAuthorityId(child.provider_submission_attempt_id)
           && child.provider === 'telnyx'
           && child.integration_secret_id === telnyxCreds.integrationSecretId
           && child.integration_secret_updated_at === telnyxCreds.integrationSecretUpdatedAt
@@ -1195,7 +1228,9 @@ Deno.serve(async (req) => {
     // Terminal statuses do not advance again, so a webhook replay cannot repair
     // a notification create that committed ambiguously or failed after the
     // status transition. Reconcile stale outbox claims on every poll instead.
-    await recoverTerminalFaxNotifications(base44, telnyxCreds).catch(() => {
+    await recoverTerminalFaxNotifications(base44, telnyxCreds).then((result) => {
+      recoveryFailures += result.failures;
+    }).catch(() => {
       recoveryFailures++;
       console.error('Terminal fax-notification recovery failed');
     });
@@ -1393,6 +1428,7 @@ Deno.serve(async (req) => {
             update.delivery_confirmation_sent = false;
             update.delivery_notify_claimed_by = notificationClaimToken;
             update.delivery_notify_claimed_at = transitionedAt;
+            update.delivery_notify_publication_state = 'ready';
           } else if (newStatus === 'failed') {
             // Honor the admin FaxRetryConfig instead of declaring EVERY failure
             // permanent. If the poller observes a failure before the DLR webhook,
@@ -1435,6 +1471,7 @@ Deno.serve(async (req) => {
                 update.final_failure_notified = false;
                 update.failure_notify_claimed_by = notificationClaimToken;
                 update.failure_notify_claimed_at = transitionedAt;
+                update.failure_notify_publication_state = 'ready';
               } else {
                 update.final_failure_notified = true;
               }

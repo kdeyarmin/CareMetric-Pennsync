@@ -311,7 +311,12 @@
     "delivery_notify_claimed_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When delivery notification ownership was claimed. A stale claim is reconciled by the fax-status poller before another notification create."
+      "description": "When delivery notification ownership was claimed. Recovery reconciles publication intent before any new create."
+    },
+    "delivery_notify_publication_state": {
+      "type": "string",
+      "enum": ["ready", "started"],
+      "description": "Service-owned notification protocol. A conditional ready-to-started transition permits one create; started or absent legacy state permits reconciliation only. Never reset after an uncertain create."
     },
     "failure_notify_claimed_by": {
       "type": "string",
@@ -320,7 +325,12 @@
     "failure_notify_claimed_at": {
       "type": "string",
       "format": "date-time",
-      "description": "When final-failure notification ownership was claimed. A stale claim is reconciled by the fax-status poller before another notification create."
+      "description": "When final-failure notification ownership was claimed. Recovery reconciles publication intent before any new create."
+    },
+    "failure_notify_publication_state": {
+      "type": "string",
+      "enum": ["ready", "started"],
+      "description": "Service-owned notification protocol. A conditional ready-to-started transition permits one create; started or absent legacy state permits reconciliation only. Never reset after an uncertain create."
     },
     "ocr_text": {
       "type": "string",

@@ -1291,31 +1291,28 @@ function successfulInboundFaxUpdate(value) {
 }
 
 function outboundFaxHasStatusAuthority(row) {
-  const referralAuthority = boundedTelnyxAuthorityId(row?.referral_id) === row?.referral_id
-    && boundedTelnyxAuthorityId(row?.sent_by_user_id) === row?.sent_by_user_id
-    && boundedTelnyxAuthorityId(row?.sent_by_membership_id) === row?.sent_by_membership_id
+  const referralAuthority = !!boundedTelnyxAuthorityId(row?.referral_id)
+    && !!boundedTelnyxAuthorityId(row?.sent_by_user_id)
+    && !!boundedTelnyxAuthorityId(row?.sent_by_membership_id)
     && Number.isSafeInteger(row?.sent_by_membership_version)
     && row.sent_by_membership_version >= 1;
-  const bindingAuthority = boundedTelnyxAuthorityId(row?.sender_telecom_binding_id)
-      === row?.sender_telecom_binding_id
+  const bindingAuthority = !!boundedTelnyxAuthorityId(row?.sender_telecom_binding_id)
     && Number.isSafeInteger(row?.sender_telecom_binding_version)
     && row.sender_telecom_binding_version >= 1
-    && boundedTelnyxAuthorityId(row?.sender_provider_number_id)
-      === row?.sender_provider_number_id;
+    && !!boundedTelnyxAuthorityId(row?.sender_provider_number_id);
   return !!row
-    && boundedTelnyxAuthorityId(row.id) === row.id
-    && boundedTelnyxAuthorityId(row.agency_id) === row.agency_id
-    && boundedTelnyxAuthorityId(row.document_id) === row.document_id
+    && !!boundedTelnyxAuthorityId(row.id)
+    && !!boundedTelnyxAuthorityId(row.agency_id)
+    && !!boundedTelnyxAuthorityId(row.document_id)
     && (referralAuthority || bindingAuthority)
     && row.provider === 'telnyx'
-    && boundedTelnyxAuthorityId(row.integration_secret_id) === row.integration_secret_id
+    && !!boundedTelnyxAuthorityId(row.integration_secret_id)
     && Number.isFinite(Date.parse(row.integration_secret_updated_at || ''))
-    && boundedTelnyxAuthorityId(row.fax_connection_id) === row.fax_connection_id
-    && boundedTelnyxAuthorityId(row.sender_settings_id) === row.sender_settings_id
+    && !!boundedTelnyxAuthorityId(row.fax_connection_id)
+    && !!boundedTelnyxAuthorityId(row.sender_settings_id)
     && Number.isFinite(Date.parse(row.sender_settings_updated_at || ''))
-    && boundedTelnyxAuthorityId(row.telnyx_fax_id) === row.telnyx_fax_id
-    && boundedTelnyxAuthorityId(row.provider_submission_attempt_id)
-      === row.provider_submission_attempt_id
+    && !!boundedTelnyxAuthorityId(row.telnyx_fax_id)
+    && !!boundedTelnyxAuthorityId(row.provider_submission_attempt_id)
     && row.provider_submission_state === 'accepted'
     && Number.isFinite(Date.parse(row.provider_accepted_at || ''))
     && row.document_url == null;
@@ -1323,9 +1320,9 @@ function outboundFaxHasStatusAuthority(row) {
 
 function outboundFaxHasRetryAuthority(row) {
   return outboundFaxHasStatusAuthority(row)
-    && boundedTelnyxAuthorityId(row.referral_id) === row.referral_id
-    && boundedTelnyxAuthorityId(row.sent_by_user_id) === row.sent_by_user_id
-    && boundedTelnyxAuthorityId(row.sent_by_membership_id) === row.sent_by_membership_id
+    && !!boundedTelnyxAuthorityId(row.referral_id)
+    && !!boundedTelnyxAuthorityId(row.sent_by_user_id)
+    && !!boundedTelnyxAuthorityId(row.sent_by_membership_id)
     && Number.isSafeInteger(row.sent_by_membership_version)
     && row.sent_by_membership_version >= 1
     && Number.isSafeInteger(row.retry_count)
@@ -1517,6 +1514,7 @@ function outboundFaxNotificationSpec(fax, recipient, kind) {
     markerField: delivered ? 'delivery_confirmation_sent' : 'final_failure_notified',
     claimField: delivered ? 'delivery_notify_claimed_by' : 'failure_notify_claimed_by',
     claimedAtField: delivered ? 'delivery_notify_claimed_at' : 'failure_notify_claimed_at',
+    publicationField: delivered ? 'delivery_notify_publication_state' : 'failure_notify_publication_state',
     dedupeKey,
     payload: {
       agency_id: agencyId,
@@ -1546,7 +1544,7 @@ function outboundFaxNotificationSpec(fax, recipient, kind) {
 
 function outboundFaxNotificationMatches(row, spec) {
   return !!row
-    && boundedTelnyxAuthorityId(row.id) === row.id
+    && !!boundedTelnyxAuthorityId(row.id)
     && row.agency_id === spec.payload.agency_id
     && row.dedupe_key === spec.dedupeKey
     && row.recipient_user_id === spec.payload.recipient_user_id
@@ -1583,7 +1581,7 @@ async function loadOutboundFaxNotifications(base44, spec) {
     '-created_date',
     FAX_NOTIFICATION_EXACT_ROW_LIMIT,
   );
-  if (!Array.isArray(rows) || rows.length >= FAX_NOTIFICATION_EXACT_ROW_LIMIT
+  if (!Array.isArray(rows) || rows.length > 1
     || rows.some((row) => !outboundFaxNotificationMatches(row, spec))) return null;
   return rows;
 }
@@ -1635,6 +1633,15 @@ async function sendClaimedOutboundFaxNotification(base44, fax, kind, claimToken)
     return finalizeOutboundFaxNotification(base44, fax, spec, claimToken);
   }
   if (existing === null) return false;
+  // Shared with the poller: once publication starts, only reconciliation is
+  // allowed, including after a lost response or an expired ownership lease.
+  if (fax[spec.publicationField] !== 'ready' || fax[spec.claimField] !== claimToken) return false;
+  const publication = await base44.asServiceRole.entities.FaxLog.updateMany({
+    id: fax.id, agency_id: fax.agency_id, telnyx_fax_id: fax.telnyx_fax_id,
+    status: fax.status, updated_date: fax.updated_date,
+    [spec.markerField]: false, [spec.claimField]: claimToken, [spec.publicationField]: 'ready',
+  }, { $set: { [spec.publicationField]: 'started' } }).catch(() => null);
+  if (!successfulInboundFaxUpdate(publication)) return false;
   let created = null;
   try {
     created = await base44.asServiceRole.entities.Notification.create(spec.payload);
@@ -2198,6 +2205,7 @@ async function handleFaxEvent(base44, telnyxCreds, payload) {
     update.delivery_confirmation_sent = false;
     update.delivery_notify_claimed_by = notificationClaimToken;
     update.delivery_notify_claimed_at = transitionedAt;
+    update.delivery_notify_publication_state = 'ready';
   }
   if (mapped === 'failed') {
     const failureReason = payload?.failure_reason || payload?.failover?.failure_reason || 'Fax delivery failed';
@@ -2240,6 +2248,7 @@ async function handleFaxEvent(base44, telnyxCreds, payload) {
         update.final_failure_notified = false;
         update.failure_notify_claimed_by = notificationClaimToken;
         update.failure_notify_claimed_at = transitionedAt;
+        update.failure_notify_publication_state = 'ready';
       } else {
         update.final_failure_notified = true;
       }
