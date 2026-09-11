@@ -980,7 +980,7 @@ function validateNotificationCompletion(completion, referral, kind) {
   return completion;
 }
 
-function persistedNotificationExpected(fax, referral, kind) {
+function persistedNotificationRecipient(fax, referral, kind) {
   const intent = fax.processing_notification_intent;
   if (!plainObject(intent) || intent.recipient_user_id !== referral.created_by_user_id
     || !exactIdentifier(intent.recipient_membership_id)
@@ -988,12 +988,13 @@ function persistedNotificationExpected(fax, referral, kind) {
     || intent.user_email !== referral.created_by_user_email_normalized) {
     throw new PublicError(409, 'Inbound fax notification intent is invalid');
   }
-  const expected = faxNotification(referral, fax.id, {
+  const recipient = {
     user_id: intent.recipient_user_id, id: intent.recipient_membership_id,
     version: intent.recipient_membership_version, user_email_normalized: intent.user_email,
-  }, kind);
+  };
+  const expected = faxNotification(referral, fax.id, recipient, kind);
   if (!sameValue(intent, expected)) throw new PublicError(409, 'Inbound fax notification intent is invalid');
-  return expected;
+  return recipient;
 }
 
 // The producer marks only new ingress rows ready. Absence on a legacy row is
@@ -1008,19 +1009,19 @@ async function ensureNotification(
 ) {
   validateNotificationCompletion(completion, referral, kind);
   const started = fax.processing_notification_state === 'started';
-  let expected;
+  let recipient;
   if (started) {
     // Reconcile the already submitted payload even if its recipient is no
     // longer active. Notification read authority independently denies access.
-    expected = persistedNotificationExpected(fax, referral, kind);
+    recipient = persistedNotificationRecipient(fax, referral, kind);
     if (!sameValue(fax.processing_completion, completion)) {
       throw new PublicError(409, 'Inbound fax completion intent changed');
     }
   } else {
-    const recipient = await loadActiveRecipient(entities, referral);
+    recipient = await loadActiveRecipient(entities, referral);
     if (!recipient) throw new Error('Inbound fax notification recipient is unavailable');
-    expected = faxNotification(referral, fax.id, recipient, kind);
   }
+  const expected = faxNotification(referral, fax.id, recipient, kind);
   const query = { dedupe_key: expected.dedupe_key };
   let rows = requireRows(
     await entities.Notification.filter(query, '-created_date', NOTIFICATION_SCAN_LIMIT),
