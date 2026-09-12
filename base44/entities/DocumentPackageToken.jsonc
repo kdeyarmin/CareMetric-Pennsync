@@ -35,7 +35,16 @@
     },
     "status": {
       "type": "string",
-      "enum": ["delivery_pending", "delivery_indeterminate", "delivery_rejected", "active", "claimed", "consumed", "revoked", "expired"],
+      "enum": [
+        "delivery_pending",
+        "delivery_indeterminate",
+        "delivery_rejected",
+        "active",
+        "claimed",
+        "consumed",
+        "revoked",
+        "expired"
+      ],
       "default": "active"
     },
     "authority_version": {
@@ -57,12 +66,22 @@
       "type": "string",
       "description": "Opaque server-side issuance request id used for duplicate detection."
     },
-    "delivery_attempt_id": { "type": "string" },
+    "delivery_attempt_id": {
+      "type": "string"
+    },
     "delivery_state": {
       "type": "string",
-      "enum": ["pending", "accepted", "indeterminate", "rejected"]
+      "enum": [
+        "pending",
+        "accepted",
+        "indeterminate",
+        "rejected"
+      ]
     },
-    "delivery_settled_at": { "type": "string", "format": "date-time" },
+    "delivery_settled_at": {
+      "type": "string",
+      "format": "date-time"
+    },
     "signer_name": {
       "type": "string",
       "description": "Name of signer for personalization"
@@ -85,15 +104,7 @@
     "access_count": {
       "type": "number",
       "default": 0,
-      "description": "Conditionally incremented review attempts, including attempts whose later delivery fails. Maximum 20 per token; no grants are created without a confirmed increment."
-    },
-    "submission_upload_operation_id": {
-      "type": "string",
-      "description": "Durable server-generated owner of a started signature upload. Prevents stale takeover from uploading again until the exact artifact has been reconciled."
-    },
-    "submission_upload_started_at": {
-      "type": "string",
-      "format": "date-time"
+      "description": "Server-counted review attempts, conditionally incremented and capped at 20 before granting access."
     },
     "last_accessed_at": {
       "type": "string",
@@ -143,6 +154,15 @@
         "type": "string"
       },
       "description": "User agents used to access with this token"
+    },
+    "submission_upload_operation_id": {
+      "type": "string",
+      "description": "Server-generated submission owner fenced before private storage; retained across uncertain upload acknowledgements until exact artifact reconciliation."
+    },
+    "submission_upload_started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Time the durable upload-start fence was established. Expiration alone never permits another upload."
     }
   },
   "required": [
@@ -151,8 +171,6 @@
     "signer_email",
     "expires_at"
   ],
-  // Signing capabilities are bearer secrets and the entire signing workflow
-  // is quarantined. Direct reads and mutations are denied for every user role.
   "rls": {
     "read": false,
     "create": false,
