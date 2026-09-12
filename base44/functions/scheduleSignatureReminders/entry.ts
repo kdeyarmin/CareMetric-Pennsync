@@ -2,9 +2,8 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 
 /** Authority-bound reminder scheduler. Kept release-gated with public signing. */
 const SIGNATURE_REMINDER_RELEASE_ENABLED = false;
-// Base44 does not currently expose an atomic unique constraint/create-if-absent
-// primitive for schedule_key. Keep a separate literal proof gate so changing the
-// product release flag alone can never make a query-then-create race dispatchable.
+// Package-row conditional reservations serialize creation for each schedule key.
+// Keep this separate proof gate until hosted concurrent-create evidence is recorded.
 const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = false;
 const MAX_BODY_BYTES = 10_000;
 const MAX_IDENTIFIER_LENGTH = 200;
@@ -301,6 +300,26 @@ async function ensureScheduleAudit(
   );
   if (rows.length > 1) throw new PublicError(409, 'Signature reminder audit identity is ambiguous');
   if (rows.length === 0) {
+    const current = await exactOne(entities.ScheduledSignatureReminder,
+      { id: reminder.id, schedule_key: reminder.schedule_key }, 'ScheduledSignatureReminder');
+    if (current.status !== 'pending_audit' || current.creation_claim_token !== reminder.creation_claim_token
+        || !validInstant(current.updated_date)) throw new PublicError(409, 'Signature reminder audit authority changed');
+    if (current.audit_write_operation_id != null) {
+      throw new PublicError(202, 'Signature reminder audit requires reconciliation');
+    }
+    const operationId = crypto.randomUUID();
+    try {
+      await entities.ScheduledSignatureReminder.updateMany({ id: current.id, status: 'pending_audit',
+        updated_date: current.updated_date, creation_claim_token: current.creation_claim_token,
+        $or: [{ audit_write_operation_id: null }, { audit_write_operation_id: { $exists: false } }],
+      }, { $set: { audit_write_operation_id: operationId } });
+    } catch { /* Exact readback resolves a lost claim acknowledgement. */ }
+    const owner = await exactOne(entities.ScheduledSignatureReminder,
+      { id: reminder.id, schedule_key: reminder.schedule_key }, 'ScheduledSignatureReminder');
+    if (owner.status !== 'pending_audit' || owner.creation_claim_token !== reminder.creation_claim_token
+        || owner.audit_write_operation_id !== operationId) {
+      throw new PublicError(202, 'Signature reminder audit requires reconciliation');
+    }
     try {
       await entities.SignatureAuditEvent.create({ ...expected, occurred_at: new Date().toISOString() });
     } catch {
@@ -319,6 +338,59 @@ async function ensureScheduleAudit(
   return rows[0];
 }
 
+async function createReminderOnce(entities: Record<string, any>, pkg: Record<string, any>,
+  scheduleKey: string, values: Record<string, any>) {
+  const packageRow = await exactOne(entities.DocumentPackage,
+    { id: pkg.id, agency_id: pkg.agency_id }, 'DocumentPackage');
+  if (packageRow.authority_version !== pkg.authority_version || packageRow.status !== pkg.status
+      || !validInstant(packageRow.updated_date)) throw new PublicError(409, 'Signature package changed');
+  const prior = packageRow.reminder_creation_claims;
+  if (prior != null && (typeof prior !== 'object' || Array.isArray(prior))) {
+    throw new PublicError(409, 'Signature reminder coordinator is invalid');
+  }
+  const claims = prior || {};
+  const existing = requireRows(await entities.ScheduledSignatureReminder.filter(
+    { schedule_key: scheduleKey }, undefined, EXACT_ROW_LIMIT,
+  ), 'ScheduledSignatureReminder.filter');
+  if (existing.length > 1) throw new PublicError(409, 'Signature reminder request is ambiguous');
+  if (existing.length === 1) {
+    if (!exactIdentifier(existing[0]?.id) || !exactIdentifier(existing[0].creation_claim_token)
+        || claims[scheduleKey] !== existing[0].creation_claim_token) {
+      throw new PublicError(409, 'Signature reminder creation provenance is invalid');
+    }
+    return { row: existing[0], created: false };
+  }
+  if (Object.hasOwn(claims, scheduleKey)) throw new PublicError(202, 'Signature reminder creation requires reconciliation');
+  if (Object.keys(claims).length >= 500) throw new PublicError(409, 'Signature reminder reservation limit reached');
+  const token = crypto.randomUUID();
+  const result = await entities.DocumentPackage.updateMany({ id: pkg.id, agency_id: pkg.agency_id,
+    status: packageRow.status, authority_version: packageRow.authority_version, updated_date: packageRow.updated_date,
+    ...(prior == null ? { $or: [{ reminder_creation_claims: null }, { reminder_creation_claims: { $exists: false } }] }
+      : { reminder_creation_claims: prior }),
+  }, { $set: { reminder_creation_claims: { ...claims, [scheduleKey]: token } } });
+  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) {
+    throw new PublicError(202, 'Signature reminder creation changed concurrently');
+  }
+  const owner = await exactOne(entities.DocumentPackage,
+    { id: pkg.id, agency_id: pkg.agency_id }, 'DocumentPackage');
+  if (owner.reminder_creation_claims?.[scheduleKey] !== token || owner.status !== pkg.status
+      || owner.authority_version !== pkg.authority_version) throw new PublicError(409, 'Signature reminder reservation changed');
+  const raced = requireRows(await entities.ScheduledSignatureReminder.filter(
+    { schedule_key: scheduleKey }, undefined, EXACT_ROW_LIMIT,
+  ), 'ScheduledSignatureReminder.filter');
+  if (raced.length !== 0) throw new PublicError(409, 'Signature reminder identity already exists');
+  try { await entities.ScheduledSignatureReminder.create({ ...values, creation_claim_token: token }); }
+  catch { /* Never release or repeat an uncertain create; reconcile the exact row below. */ }
+  const rows = requireRows(await entities.ScheduledSignatureReminder.filter(
+    { schedule_key: scheduleKey }, undefined, EXACT_ROW_LIMIT,
+  ), 'ScheduledSignatureReminder.filter');
+  if (rows.length !== 1 || !exactIdentifier(rows[0]?.id) || rows[0].creation_claim_token !== token
+      || Object.entries(values).some(([key, value]) => rows[0][key] !== value)) {
+    throw new PublicError(202, 'Signature reminder creation requires reconciliation');
+  }
+  return { row: rows[0], created: true };
+}
+
 Deno.serve(async (req) => {
   if (!SIGNATURE_REMINDER_RELEASE_ENABLED || !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN) {
     return Response.json(
@@ -333,22 +405,7 @@ Deno.serve(async (req) => {
     const target = await loadReminderTarget(authority.entities, input);
     const authorizedInput = { ...input, deadline: target.deadline };
     const scheduleKey = await sha256(`${input.agencyId}\0${input.packageId}\0${input.signerId}\0${input.clientRequestId}`);
-    const existing = requireRows(await authority.entities.ScheduledSignatureReminder.filter(
-      { schedule_key: scheduleKey }, undefined, EXACT_ROW_LIMIT,
-    ), 'ScheduledSignatureReminder.filter');
-    if (existing.length > 1) throw new PublicError(409, 'Signature reminder request is ambiguous');
-    if (existing.length === 1) {
-      if (!reminderMatchesRequest(existing[0], authorizedInput, authority, scheduleKey)
-          || existing[0].status !== 'pending'
-          || !exactIdentifier(existing[0].audit_event_id)
-          || !validInstant(existing[0].audit_confirmed_at)) {
-        throw new PublicError(409, 'Signature reminder request is not safely replayable');
-      }
-      return Response.json({ success: true, created: false, reminder_id: existing[0].id,
-        status: existing[0].status, send_at: existing[0].send_at },
-      { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
-    }
-    const row = await authority.entities.ScheduledSignatureReminder.create({
+    const { row, created } = await createReminderOnce(authority.entities, target.pkg, scheduleKey, {
       agency_id: input.agencyId, package_id: input.packageId, signer_id: input.signerId,
       schedule_key: scheduleKey, client_request_id: input.clientRequestId,
       document_id: input.documentId,
@@ -361,6 +418,13 @@ Deno.serve(async (req) => {
       // until its immutable audit event is durably read back.
       status: 'pending_audit', attempts: 0, authority_version: 1, delivery_state: 'not_started',
     });
+    if (!reminderMatchesRequest(row, authorizedInput, authority, scheduleKey)) {
+      throw new PublicError(409, 'Signature reminder request is not safely replayable');
+    }
+    if (row.status === 'pending' && exactIdentifier(row.audit_event_id) && validInstant(row.audit_confirmed_at)) {
+      return Response.json({ success: true, created: false, reminder_id: row.id, status: row.status, send_at: row.send_at },
+        { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
+    }
     const reminderId = exactIdentifier(row?.id);
     if (!reminderId) throw new Error('Signature reminder create did not return an id');
     const readback = await exactOne(authority.entities.ScheduledSignatureReminder,
@@ -377,6 +441,19 @@ Deno.serve(async (req) => {
       authority,
       target,
     );
+    const activationRow = await exactOne(authority.entities.ScheduledSignatureReminder,
+      { id: reminderId, schedule_key: scheduleKey }, 'ScheduledSignatureReminder');
+    const currentAuthority = await loadAuthority(base44, input.agencyId);
+    if (currentAuthority.userId !== authority.userId || currentAuthority.email !== authority.email
+        || currentAuthority.membership.id !== authority.membership.id
+        || currentAuthority.membership.version !== authority.membership.version) {
+      throw new PublicError(409, 'Signature reminder requester authority changed');
+    }
+    const currentTarget = await loadReminderTarget(authority.entities, input);
+    if (currentTarget.deadline !== target.deadline || currentTarget.signature.authority_version !== target.signature.authority_version
+        || currentTarget.signature.document_content_sha256 !== target.signature.document_content_sha256) {
+      throw new PublicError(409, 'Signature reminder authority changed before activation');
+    }
     const auditConfirmedAt = new Date().toISOString();
     try {
       await authority.entities.ScheduledSignatureReminder.updateMany(
@@ -385,7 +462,9 @@ Deno.serve(async (req) => {
           schedule_key: scheduleKey,
           status: 'pending_audit',
           authority_version: 1,
-          updated_date: readback.updated_date,
+          updated_date: activationRow.updated_date,
+          creation_claim_token: row.creation_claim_token,
+          audit_write_operation_id: activationRow.audit_write_operation_id,
         },
         { $set: {
           status: 'pending',
@@ -400,17 +479,17 @@ Deno.serve(async (req) => {
     const ready = await exactOne(authority.entities.ScheduledSignatureReminder,
       { id: reminderId, schedule_key: scheduleKey }, 'ScheduledSignatureReminder');
     if (ready.status !== 'pending' || ready.authority_version !== 2
-        || ready.audit_event_id !== event.id || ready.audit_confirmed_at !== auditConfirmedAt
+        || ready.audit_event_id !== event.id || !validInstant(ready.audit_confirmed_at)
         || !reminderMatchesRequest(ready, authorizedInput, authority, scheduleKey)) {
       throw new Error('Signature reminder audit activation could not be verified');
     }
-    return Response.json({ success: true, created: true, reminder_id: reminderId,
+    return Response.json({ success: true, created, reminder_id: reminderId,
       status: 'pending', send_at: input.sendAt },
     { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
   } catch (error) {
     const status = error instanceof PublicError ? error.status : 500;
     const message = error instanceof PublicError ? error.message : 'Unable to schedule signature reminder';
-    return Response.json({ error: message }, { status,
+    return Response.json({ error: message, ...(status === 202 ? { requires_reconciliation: true } : {}) }, { status,
       headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
   }
 });

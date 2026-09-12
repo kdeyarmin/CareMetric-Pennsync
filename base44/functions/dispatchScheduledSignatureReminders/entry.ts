@@ -184,6 +184,7 @@ function validateReminder(row: Record<string, any>) {
   const auditEventId = exactIdentifier(row.audit_event_id);
   if (!id || !agencyId || !packageId || !signerId || !documentId || !requestId || !requesterId
       || !requesterEmail || row.requested_by !== requesterEmail || !membershipId || !auditEventId
+      || !exactIdentifier(row.creation_claim_token) || !exactIdentifier(row.audit_write_operation_id)
       || !exactDigest(row.schedule_key) || !validInstant(row.send_at) || !validInstant(row.deadline_date)
       || !validInstant(row.audit_confirmed_at)
       || row.status !== 'pending' || row.delivery_state !== 'not_started'
@@ -209,6 +210,9 @@ async function loadDispatchTarget(entities: Record<string, any>, reminder: Recor
   }
   const pkg = await exactOne(entities.DocumentPackage,
     { id: reminder.packageId, agency_id: reminder.agencyId }, 'DocumentPackage');
+  if (pkg.reminder_creation_claims?.[reminder.schedule_key] !== reminder.creation_claim_token) {
+    throw new PublicError(409, 'Signature reminder creation authority is invalid');
+  }
   const patientId = exactIdentifier(pkg.patient_id);
   const creatorId = exactIdentifier(pkg.created_by_user_id);
   const creatorEmail = canonicalEmail(pkg.created_by_user_email_normalized);

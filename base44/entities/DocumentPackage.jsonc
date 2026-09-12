@@ -2,6 +2,11 @@
   "name": "DocumentPackage",
   "type": "object",
   "properties": {
+    "reminder_creation_claims": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Server-owned permanent schedule-key reservations. Unknown creates cannot expire or be automatically retried."
+    },
     "agency_id": {
       "type": "string",
       "description": "Immutable tenant id stamped by the server-side signature-request broker."
