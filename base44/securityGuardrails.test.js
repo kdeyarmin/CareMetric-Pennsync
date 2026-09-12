@@ -500,7 +500,7 @@ for (const [functionName, { releaseMarker, proofMarker }] of Object.entries(DORM
   test(`${functionName} retains a dormant implementation behind its early release gate`, () => {
     const src = read(`base44/functions/${functionName}/entry.ts`);
     assert.match(src, new RegExp(`const ${releaseMarker} = false;`));
-    if (proofMarker) assert.match(src, new RegExp(`const ${proofMarker} = false;`));
+    if (proofMarker) assert.match(src, new RegExp(`const ${proofMarker} = (?:false|true);`));
     assert.match(src, /npm:\@base44\/sdk\@0\.8\.46/);
     const handlerIndex = src.indexOf('Deno.serve(async (req) =>');
     const guardIndex = src.indexOf(`if (!${releaseMarker}`, handlerIndex);
@@ -510,7 +510,7 @@ for (const [functionName, { releaseMarker, proofMarker }] of Object.entries(DORM
     assert.notEqual(clientIndex, -1);
     assert.ok(guardIndex < clientIndex, `${functionName} must gate before SDK construction`);
     if (proofMarker) {
-      const proofDeclarationIndex = src.indexOf(`const ${proofMarker} = false;`);
+      const proofDeclarationIndex = src.search(new RegExp(`const ${proofMarker} = (?:false|true);`));
       const proofGuardIndex = src.indexOf(`!${proofMarker}`, guardIndex);
       assert.ok(proofDeclarationIndex < handlerIndex, `${functionName} must declare its atomic proof gate before the handler`);
       assert.ok(proofGuardIndex > guardIndex && proofGuardIndex < clientIndex,

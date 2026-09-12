@@ -3,36 +3,125 @@
   "type": "object",
   "description": "Immutable server-only binding for one external signer's private signature image. Public URLs and raw signature bytes are never persisted in signing rows.",
   "properties": {
-    "artifact_key": { "type": "string", "description": "SHA-256 idempotency key scoped to token, document, signer, and request." },
-    "agency_id": { "type": "string" },
-    "package_id": { "type": "string" },
-    "document_signature_id": { "type": "string" },
-    "signer_id": { "type": "string" },
-    "token_id": { "type": "string" },
-    "client_request_id": { "type": "string" },
-    "storage_mode": { "type": "string", "enum": ["private"] },
-    "file_uri": { "type": "string", "description": "Opaque UploadPrivateFile URI; never returned to a browser or copied into another entity." },
-    "file_type": { "type": "string", "enum": ["image/png", "image/jpeg"] },
-    "file_size": { "type": "number" },
-    "content_sha256": { "type": "string" },
-    "typed_name_hmac_sha256": { "type": "string", "description": "Keyed digest of the canonical typed name; the raw name is not duplicated into this artifact row." },
-    "agreement_version": { "type": "string" },
-    "agreement_text_sha256": { "type": "string" },
-    "source_document_sha256": { "type": "string" },
-    "document_binding_id": { "type": "string" },
-    "document_binding_version": { "type": "number" },
-    "client_ip_sha256": { "type": "string", "description": "HMAC-SHA-256 pseudonym captured before upload; raw network identifiers are never stored." },
-    "user_agent_sha256": { "type": "string", "description": "HMAC-SHA-256 pseudonym captured before upload." },
-    "created_at": { "type": "string", "format": "date-time" },
-    "binding_verified_at": { "type": "string", "format": "date-time", "description": "When the returned private URI and immutable binding metadata were read back. This does not claim that provider bytes were downloaded." },
-    "version": { "type": "number", "default": 1 }
+    "artifact_key": {
+      "type": "string",
+      "description": "SHA-256 idempotency key scoped to token, document, signer, and request."
+    },
+    "agency_id": {
+      "type": "string"
+    },
+    "package_id": {
+      "type": "string"
+    },
+    "document_signature_id": {
+      "type": "string"
+    },
+    "signer_id": {
+      "type": "string"
+    },
+    "token_id": {
+      "type": "string"
+    },
+    "client_request_id": {
+      "type": "string"
+    },
+    "storage_mode": {
+      "type": "string",
+      "enum": [
+        "private"
+      ]
+    },
+    "file_uri": {
+      "type": "string",
+      "description": "Opaque UploadPrivateFile URI; never returned to a browser or copied into another entity."
+    },
+    "file_type": {
+      "type": "string",
+      "enum": [
+        "image/png",
+        "image/jpeg"
+      ]
+    },
+    "file_size": {
+      "type": "number"
+    },
+    "content_sha256": {
+      "type": "string"
+    },
+    "typed_name_hmac_sha256": {
+      "type": "string",
+      "description": "Keyed digest of the canonical typed name; the raw name is not duplicated into this artifact row."
+    },
+    "agreement_version": {
+      "type": "string"
+    },
+    "agreement_text_sha256": {
+      "type": "string"
+    },
+    "source_document_sha256": {
+      "type": "string"
+    },
+    "document_binding_id": {
+      "type": "string"
+    },
+    "document_binding_version": {
+      "type": "number"
+    },
+    "client_ip_sha256": {
+      "type": "string",
+      "description": "HMAC-SHA-256 pseudonym captured before upload; raw network identifiers are never stored."
+    },
+    "user_agent_sha256": {
+      "type": "string",
+      "description": "HMAC-SHA-256 pseudonym captured before upload."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "binding_verified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the returned private URI and immutable binding metadata were read back. This does not claim that provider bytes were downloaded."
+    },
+    "version": {
+      "type": "number",
+      "default": 1
+    },
+    "hmac_key_id": {
+      "type": "string",
+      "description": "Server-owned identity of the retained HMAC audit key. Missing historical values resolve to legacy."
+    }
   },
   "required": [
-    "artifact_key", "agency_id", "package_id", "document_signature_id", "signer_id",
-    "token_id", "client_request_id", "storage_mode", "file_uri", "file_type", "file_size",
-    "content_sha256", "typed_name_hmac_sha256", "agreement_version", "agreement_text_sha256",
-    "source_document_sha256", "document_binding_id", "document_binding_version",
-    "client_ip_sha256", "user_agent_sha256", "created_at", "binding_verified_at", "version"
+    "artifact_key",
+    "agency_id",
+    "package_id",
+    "document_signature_id",
+    "signer_id",
+    "token_id",
+    "client_request_id",
+    "storage_mode",
+    "file_uri",
+    "file_type",
+    "file_size",
+    "content_sha256",
+    "typed_name_hmac_sha256",
+    "agreement_version",
+    "agreement_text_sha256",
+    "source_document_sha256",
+    "document_binding_id",
+    "document_binding_version",
+    "client_ip_sha256",
+    "user_agent_sha256",
+    "created_at",
+    "binding_verified_at",
+    "version"
   ],
-  "rls": { "read": false, "create": false, "update": false, "delete": false }
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

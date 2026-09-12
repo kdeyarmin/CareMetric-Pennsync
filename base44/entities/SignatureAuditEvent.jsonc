@@ -3,34 +3,103 @@
   "type": "object",
   "description": "Append-only server-owned e-signature provenance. Mutation and deletion are denied to every browser principal.",
   "properties": {
-    "event_key": { "type": "string", "description": "Deterministic SHA-256 idempotency key for the exact action/request/revision." },
-    "agency_id": { "type": "string" },
-    "package_id": { "type": "string" },
-    "document_signature_id": { "type": "string" },
-    "signer_id": { "type": "string" },
-    "token_id": { "type": "string" },
+    "event_key": {
+      "type": "string",
+      "description": "Deterministic SHA-256 idempotency key for the exact action/request/revision."
+    },
+    "agency_id": {
+      "type": "string"
+    },
+    "package_id": {
+      "type": "string"
+    },
+    "document_signature_id": {
+      "type": "string"
+    },
+    "signer_id": {
+      "type": "string"
+    },
+    "token_id": {
+      "type": "string"
+    },
     "action": {
       "type": "string",
       "enum": [
-        "token_minted", "token_delivery_accepted", "token_delivery_indeterminate",
-        "token_validated", "token_expired", "review_grant_issued",
-        "review_grant_claimed", "review_grant_consumed", "signature_claimed",
-        "signature_recorded", "token_consumed", "reminder_scheduled", "reminder_claimed",
-        "reminder_accepted", "reminder_indeterminate", "reminder_canceled"
+        "token_minted",
+        "token_delivery_accepted",
+        "token_delivery_indeterminate",
+        "token_validated",
+        "token_expired",
+        "review_grant_issued",
+        "review_grant_claimed",
+        "review_grant_consumed",
+        "signature_claimed",
+        "signature_recorded",
+        "token_consumed",
+        "reminder_scheduled",
+        "reminder_claimed",
+        "reminder_accepted",
+        "reminder_indeterminate",
+        "reminder_canceled"
       ]
     },
-    "actor_type": { "type": "string", "enum": ["authenticated_user", "external_signer", "scheduler", "system"] },
-    "actor_user_id": { "type": "string" },
-    "membership_id": { "type": "string" },
-    "membership_version": { "type": "number" },
-    "request_id": { "type": "string" },
-    "authority_version": { "type": "number" },
-    "document_content_sha256": { "type": "string" },
-    "artifact_content_sha256": { "type": "string" },
-    "client_ip_sha256": { "type": "string" },
-    "user_agent_sha256": { "type": "string" },
-    "occurred_at": { "type": "string", "format": "date-time" }
+    "actor_type": {
+      "type": "string",
+      "enum": [
+        "authenticated_user",
+        "external_signer",
+        "scheduler",
+        "system"
+      ]
+    },
+    "actor_user_id": {
+      "type": "string"
+    },
+    "membership_id": {
+      "type": "string"
+    },
+    "membership_version": {
+      "type": "number"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "authority_version": {
+      "type": "number"
+    },
+    "document_content_sha256": {
+      "type": "string"
+    },
+    "artifact_content_sha256": {
+      "type": "string"
+    },
+    "client_ip_sha256": {
+      "type": "string"
+    },
+    "user_agent_sha256": {
+      "type": "string"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "hmac_key_id": {
+      "type": "string",
+      "description": "Server-owned identity of the retained HMAC audit key. Missing historical values resolve to legacy."
+    }
   },
-  "required": ["event_key", "agency_id", "action", "actor_type", "request_id", "occurred_at"],
-  "rls": { "read": false, "create": false, "update": false, "delete": false }
+  "required": [
+    "event_key",
+    "agency_id",
+    "action",
+    "actor_type",
+    "request_id",
+    "occurred_at"
+  ],
+  "rls": {
+    "read": false,
+    "create": false,
+    "update": false,
+    "delete": false
+  }
 }

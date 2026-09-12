@@ -54,6 +54,7 @@ const READINESS_PLACEHOLDER_PATTERNS = Object.freeze([
 // packet. The retained private artifacts remain the place for any sensitive
 // detail; the packet should contain only role-based summaries and opaque refs.
 const HIGH_CONFIDENCE_SENSITIVE_TEXT_PATTERNS = Object.freeze([
+  /\bsignature_hmac_keyring\b["']?\s*[:=]\s*["']?\s*\{/i,
   /-----BEGIN (?:RSA |EC |OPENSSH |ENCRYPTED )?PRIVATE KEY-----/i,
   /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}\b/i,
   /\bAuthorization\s*:\s*Basic\s+[A-Za-z0-9+/]{12,}={0,2}(?![A-Za-z0-9+/=])/i,

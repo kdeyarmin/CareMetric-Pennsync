@@ -28,6 +28,77 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
 }
 // <<<END SHARED HELPER: outboundDeliveryGate>>>
 
+// <<<BEGIN SHARED HELPER: signatureAuditKeys — generated, edit base44/_shared/backendHelpers.mjs>>>
+function signatureAuditKeyId(value) {
+  if (value == null) return 'legacy';
+  if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(value)) throw new Error('Signature audit key identity is invalid');
+  return value;
+}
+
+function signatureAuditKeyring() {
+  const configured = Deno.env.get('SIGNATURE_HMAC_KEYRING');
+  if (!configured) {
+    if (Deno.env.get('SIGNATURE_HMAC_ACTIVE_KEY_ID')) throw new Error('Signature audit keyring is not configured');
+    const secret = String(Deno.env.get('SIGNATURE_HMAC_SECRET') || '');
+    if (secret.length < 32) throw new Error('Signature audit is not configured');
+    return { activeId: 'legacy', keys: { legacy: secret } };
+  }
+  if (configured.length > 16384) throw new Error('Signature audit keyring is invalid');
+  let keys;
+  try {
+    // Parse the flat string map without silently overwriting duplicate JSON keys.
+    // JSON.parse on each string also normalizes escaped-equivalent key names.
+    let offset = 0;
+    const space = () => { while (/^[\t\r\n ]$/.test(configured[offset] || '')) offset += 1; };
+    const take = (character) => { space(); if (configured[offset++] !== character) throw new Error('Invalid keyring'); };
+    const string = () => {
+      space();
+      const start = offset;
+      if (configured[offset++] !== '"') throw new Error('Invalid keyring string');
+      while (offset < configured.length) {
+        const character = configured[offset++];
+        if (character === '"') return JSON.parse(configured.slice(start, offset));
+        if (character.charCodeAt(0) === 92) offset += 1;
+      }
+      throw new Error('Unterminated keyring string');
+    };
+    keys = Object.create(null);
+    take('{');
+    space();
+    if (configured[offset] !== '}') {
+      while (true) {
+        const id = string();
+        if (Object.hasOwn(keys, id)) throw new Error('Duplicate keyring identity');
+        take(':');
+        keys[id] = string();
+        space();
+        if (configured[offset] !== ',') break;
+        offset += 1;
+      }
+    }
+    take('}');
+    space();
+    if (offset !== configured.length) throw new Error('Invalid keyring suffix');
+  } catch { throw new Error('Signature audit keyring is invalid'); }
+  if (!keys || typeof keys !== 'object' || Array.isArray(keys) || Object.keys(keys).length < 1 || Object.keys(keys).length > 8) {
+    throw new Error('Signature audit keyring is invalid');
+  }
+  for (const [id, secret] of Object.entries(keys)) {
+    signatureAuditKeyId(id);
+    if (typeof secret !== 'string' || secret.length < 32 || secret.length > 1024) throw new Error('Signature audit keyring is invalid');
+  }
+  const activeId = Deno.env.get('SIGNATURE_HMAC_ACTIVE_KEY_ID');
+  if (!activeId || !Object.hasOwn(keys, signatureAuditKeyId(activeId))) throw new Error('Signature audit active key is unavailable');
+  return { activeId, keys };
+}
+
+function retainedSignatureAuditKey(keyring, id) {
+  const keyId = signatureAuditKeyId(id);
+  if (!Object.hasOwn(keyring.keys, keyId)) throw new Error('Signature audit verification key is unavailable');
+  return keyring.keys[keyId];
+}
+// <<<END SHARED HELPER: signatureAuditKeys>>>
+
 /**
  * Read-only capability report for integrations the current source tree uses.
  *
@@ -493,20 +564,21 @@ Deno.serve(async (req) => {
         : 'INTERNAL_FN_SECRET is missing or too short; protected scheduled functions cannot run.',
     });
 
-    const signatureSecret = env('SIGNATURE_HMAC_SECRET');
+    let signatureKeysConfigured = false;
+    try { signatureAuditKeyring(); signatureKeysConfigured = true; } catch { /* Report only configuration validity, never secret values. */ }
     integrations.push({
       id: 'signature_hmac',
-      label: 'E-signature token authentication',
+      label: 'E-signature audit authentication',
       category: 'Security',
-      capability: 'signature_token_integrity',
-      configured: Boolean(signatureSecret && signatureSecret.length >= 32),
+      capability: 'signature_audit_integrity',
+      configured: signatureKeysConfigured,
       editable_in_app: false,
-      status: signatureSecret && signatureSecret.length >= 32 ? 'ok' : 'fail',
+      status: signatureKeysConfigured ? 'ok' : 'fail',
       probe: 'local-validation',
       delivery_verified: false,
-      detail: signatureSecret && signatureSecret.length >= 32
-        ? 'SIGNATURE_HMAC_SECRET is configured for signed capability tokens.'
-        : 'SIGNATURE_HMAC_SECRET is missing or too short; secure signer tokens cannot be issued.',
+      detail: signatureKeysConfigured
+        ? 'Signature audit key configuration is valid. This does not verify retained historical keys or release public signing.'
+        : 'Signature audit key configuration is missing or invalid. Check the keyring and active key ID, or the legacy secret.',
     });
 
     const outcomeRelease = env('OUTCOME_PIPELINE_RELEASE');

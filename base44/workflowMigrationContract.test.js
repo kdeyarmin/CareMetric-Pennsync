@@ -111,7 +111,7 @@ function assertHandlerReleaseState(source, expected, file) {
 
   if (expected.releaseState === 'paused_signature') {
     const markerIndex = source.indexOf('const SIGNATURE_REMINDER_DISPATCH_ENABLED = false;');
-    const proofMarkerIndex = source.indexOf('const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = false;');
+    const proofMarkerIndex = source.indexOf('const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = true;');
     const handlerIndex = source.indexOf('Deno.serve(async (req) =>');
     const guardIndex = source.indexOf(
       'if (!SIGNATURE_REMINDER_DISPATCH_ENABLED || !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN)',

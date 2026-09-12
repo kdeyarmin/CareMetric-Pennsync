@@ -2,10 +2,6 @@
   "name": "PhoneNumber",
   "type": "object",
   "properties": {
-    "creation_claim_token": {
-      "type": "string",
-      "description": "Server-generated inventory creation owner for exact lost-acknowledgement recovery."
-    },
     "e164": {
       "type": "string",
       "description": "The Twilio virtual number in E.164 form, e.g. +12155550100. Unique across the pool."
@@ -35,6 +31,10 @@
     "notes": {
       "type": "string",
       "description": "Optional admin notes about the number."
+    },
+    "creation_claim_token": {
+      "type": "string",
+      "description": "Server-generated inventory creation owner for exact lost-acknowledgement recovery."
     }
   },
   "required": [
