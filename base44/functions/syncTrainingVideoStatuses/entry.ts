@@ -81,6 +81,10 @@ Deno.serve(async (req) => {
     if (authError) return authError;
     if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
+    if (Deno.env.get('CENTRAL_LEARNING_RELEASE') === 'hub-runtime-v1') {
+      return Response.json({ success: true, skipped: true, reason: 'central_learning', checked: 0, completed: 0, failed: 0 });
+    }
+
     const heygenApiKey = getHeyGenApiKey();
     if (!heygenApiKey) {
       return Response.json({ success: true, heygen_configured: false, checked: 0, completed: 0, failed: 0 });

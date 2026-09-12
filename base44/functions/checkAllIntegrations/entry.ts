@@ -260,7 +260,8 @@ Deno.serve(async (req) => {
 
     const openaiKey = env('OPENAI_API_KEY');
     const anthropicKey = env('ANTHROPIC_API_KEY');
-    const heygenKey = env('HEYGEN_API_KEY');
+    const centralLearningReleased = env('CENTRAL_LEARNING_RELEASE') === 'hub-runtime-v1';
+    const heygenKey = centralLearningReleased ? null : env('HEYGEN_API_KEY');
 
     // Independent provider checks run concurrently, each with its own timeout.
     // Missing optional feature keys cause no request.
@@ -353,7 +354,20 @@ Deno.serve(async (req) => {
           delivery_verified: false,
           detail: 'ANTHROPIC_API_KEY is not set; direct SOAP-note structuring is unavailable. Fax-cover formatting does not require this key.',
         },
-      heygenKey
+      centralLearningReleased
+        ? {
+          id: 'central_learning',
+          label: 'CareMetric Support Hub learning',
+          category: 'Learning',
+          capability: 'central_course_delivery',
+          configured: true,
+          editable_in_app: false,
+          status: 'ok',
+          probe: 'local-validation',
+          delivery_verified: false,
+          detail: 'The central learning cutover is configured. PennSync does not require a HeyGen key after cutover; Hub course delivery must be verified separately.',
+        }
+        : heygenKey
         ? {
           id: 'heygen',
           label: 'HeyGen training videos',

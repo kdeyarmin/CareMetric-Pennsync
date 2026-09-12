@@ -1,3 +1,5 @@
+import CentralLearningPortal from '@/components/learning/CentralLearningPortal';
+import { CENTRAL_LEARNING_ENABLED } from '@/lib/centralLearning';
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -28,7 +30,7 @@ const statusMeta = {
   none: { label: "No video", cls: "bg-slate-100 text-slate-600", icon: Video },
 };
 
-export default function TrainingVideoStudio({ course = null }) {
+function LegacyTrainingVideoStudio({ course = null }) {
   const queryClient = useQueryClient();
   const [selectedCourseIdState, setSelectedCourseId] = useState("");
   const selectedCourseId = course?.id || selectedCourseIdState;
@@ -309,4 +311,7 @@ export default function TrainingVideoStudio({ course = null }) {
       )}
     </div>
   );
+}
+export default function TrainingVideoStudio(props) {
+  return CENTRAL_LEARNING_ENABLED ? <CentralLearningPortal authoring={true} /> : <LegacyTrainingVideoStudio {...props} />;
 }

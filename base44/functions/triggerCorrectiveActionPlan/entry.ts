@@ -137,6 +137,10 @@ Deno.serve(async (req) => {
     if (authError) return authError;
     if (isDeactivatedUser(me)) return DEACTIVATED_USER_RESPONSE();
 
+    if (Deno.env.get('CENTRAL_LEARNING_RELEASE') === 'hub-runtime-v1') {
+      return Response.json({ success: true, skipped: true, reason: 'central_learning' });
+    }
+
     const payload = await req.json();
     const posted = payload?.data || payload;
     if (!posted?.id) {

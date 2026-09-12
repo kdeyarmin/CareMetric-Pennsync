@@ -1,3 +1,5 @@
+import CentralLearningPortal from '@/components/learning/CentralLearningPortal';
+import { CENTRAL_LEARNING_ENABLED } from '@/lib/centralLearning';
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -57,7 +59,7 @@ const stripSystem = (obj) => {
   return clone;
 };
 
-export default function CourseManager() {
+function LegacyCourseManager() {
   // builderCourse holds the course currently open in the builder. It starts null
   // for a brand-new course and is replaced with the saved record (carrying an id)
   // once the Details tab is saved — which is what unlocks the Lessons/Quiz tabs.
@@ -634,4 +636,8 @@ export default function CourseManager() {
       </div>
     </div>
   );
+}
+
+export default function CourseManager(props) {
+  return CENTRAL_LEARNING_ENABLED ? <CentralLearningPortal authoring={true} /> : <LegacyCourseManager {...props} />;
 }

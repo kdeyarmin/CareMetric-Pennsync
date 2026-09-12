@@ -1,3 +1,5 @@
+import CentralLearningPortal from '@/components/learning/CentralLearningPortal';
+import { CENTRAL_LEARNING_ENABLED } from '@/lib/centralLearning';
 import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -18,7 +20,7 @@ import { isAdminLike } from "@/lib/superAdmin";
 // SME (subject-matter-expert) review queue. AI-generated courses stay as drafts
 // while their author edits them, then enter this queue as pending_review so a
 // human signs off before staff can receive the content.
-export default function SMEReviewQueue() {
+function LegacySMEReviewQueue() {
   const queryClient = useQueryClient();
   const [busyId, setBusyId] = useState(null);
   const [notes, setNotes] = useState({});
@@ -203,4 +205,8 @@ export default function SMEReviewQueue() {
       )}
     </div>
   );
+}
+
+export default function SMEReviewQueue(props) {
+  return CENTRAL_LEARNING_ENABLED ? <CentralLearningPortal authoring={true} /> : <LegacySMEReviewQueue {...props} />;
 }
