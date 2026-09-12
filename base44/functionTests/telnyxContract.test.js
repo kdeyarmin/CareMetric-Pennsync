@@ -767,6 +767,35 @@ test('existing fax provisioning reserves inventory even when the provider id is 
   }
 });
 
+test('fax routing rejection restores only the exact new reservation and retains uncertain or newer claims', async () => {
+  for (const originalStatus of ['available', 'reserved', 'missing']) {
+    for (const status of [422, 429, 500]) {
+      for (const newerOwner of [false, true]) {
+        const data = { IntegrationSecret: [activeTelnyxSecret()], PhoneNumber: originalStatus === 'missing' ? [] : [
+          { id: 'phone_1', e164: '+12155550188', status: originalStatus, updated_date: '2026-09-11T12:00:00.000Z' },
+        ] };
+        const client = makeSpyBase44({ data });
+        const { impl } = makeFetch([
+          { match: url => url.includes('/phone_numbers?'), respond: () => ({ json: { data: [{ id: 'np_7', phone_number: '+12155550188' }] } }) },
+          { match: url => url.endsWith('/phone_numbers/np_7'), respond: () => {
+            if (newerOwner) data.PhoneNumber[0].updated_date = '2030-01-01T00:00:00.000Z';
+            return { status, json: { errors: [{ code: 'synthetic' }] } };
+          } },
+        ]);
+        const handler = await loadHandler('../functions/searchPurchaseTelnyxNumbers/entry.ts', {
+          env: { SUPER_ADMIN_EMAIL: 'a@x.com' }, makeClient: () => client, fetchImpl: impl,
+        });
+        const response = await handler(new Request('https://app/functions/test', { method: 'POST', body: JSON.stringify({
+          action: 'provision_fax', e164: '+12155550188', set_as_outbound_fax: false,
+        }) }));
+        assert.equal(response.status, 502);
+        const restored = status < 500 && !newerOwner && originalStatus !== 'reserved';
+        assert.equal(data.PhoneNumber[0].status, restored ? 'available' : 'reserved', `${originalStatus}/${status}/${newerOwner}`);
+      }
+    }
+  }
+});
+
 test('a concurrent fax reservation defeats all nurse assignment paths before User writes', async () => {
   for (const name of ['autoAssignWorkNumbers', 'managePhoneNumberPool', 'provisionNurseWorkNumber']) {
     const writes = [];

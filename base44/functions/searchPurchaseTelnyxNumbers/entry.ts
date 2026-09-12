@@ -337,6 +337,16 @@ Deno.serve(async (req) => {
         body: JSON.stringify({ connection_id: faxConnectionId }),
       }).catch((err) => ({ ok: false, status: 0, data: { message: String(err?.message || err) } }));
       if (!patch.ok) {
+        // A confirmed provider rejection cannot have changed routing. Restore
+        // only our exact revision; an uncertain result or newer owner stays reserved.
+        if ([400, 401, 403, 404, 405, 422, 429].includes(patch.status)
+          && (!poolRows[0] || poolRows[0].status === 'available')) {
+          await base44.asServiceRole.entities.PhoneNumber.updateMany({
+            id: confirmed[0].id, e164, status: 'reserved', updated_date: confirmed[0].updated_date,
+            ...(confirmed[0].assigned_to_email == null ? { $or: [{ assigned_to_email: null }, { assigned_to_email: { $exists: false } }] }
+              : { assigned_to_email: confirmed[0].assigned_to_email }),
+          }, { $set: { status: 'available', assigned_to_email: '' } });
+        }
         const firstErr = Array.isArray(patch.data?.errors) ? patch.data.errors[0] : null;
         return Response.json({ error: 'Telnyx rejected the fax-connection update.', status: patch.status, details: firstErr || patch.data }, { status: 502 });
       }
