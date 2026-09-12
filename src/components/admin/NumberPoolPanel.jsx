@@ -163,7 +163,7 @@ export default function NumberPoolPanel() {
             Number Pool
           </span>
           <Badge variant="outline">
-            {pool.filter((n) => n.status !== "assigned").length} available · {pool.length} total
+            {pool.filter((n) => n.status === "available").length} available · {pool.length} total
           </Badge>
         </CardTitle>
         <CardDescription>
@@ -287,13 +287,14 @@ export default function NumberPoolPanel() {
           <div className="space-y-2">
             {pool.map((n) => {
               const assigned = n.status === "assigned" && n.assigned_to_email;
+              const reserved = n.status === "reserved";
               return (
                 <div key={n.id} className="p-3 rounded-lg border border-slate-200 bg-slate-50 flex items-center justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
                     <p className="text-sm font-semibold text-slate-900">{formatPhoneDisplay(n.e164)}</p>
                     <p className="text-xs text-slate-500">
                       {n.label ? `${n.label} · ` : ""}
-                      {assigned ? (
+                      {reserved ? <span className="text-slate-600">Reserved for office/fax use</span> : assigned ? (
                         <span className="text-green-700 inline-flex items-center gap-1">
                           <CheckCircle2 className="w-3 h-3" /> Assigned to {userName(n.assigned_to_email)}
                         </span>
@@ -308,7 +309,7 @@ export default function NumberPoolPanel() {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    {assigned ? (
+                    {reserved ? <Badge variant="outline">Reserved</Badge> : assigned ? (
                       <Button variant="outline" size="sm" disabled={busy} onClick={() => release.mutate(n.id)}>
                         <UserMinus className="w-3.5 h-3.5 mr-1.5" /> Release
                       </Button>

@@ -47,6 +47,64 @@ ${isAllowedDestination.toString()}`;
 }
 
 export const SHARED_HELPERS = {
+  phoneInventoryCreation: `async function createPhoneInventoryOnce(entities, input, prepare = null) {
+  const key = String(input.e164 || '').replace(/^\\+/, '');
+  if (!/^\\d{8,15}$/.test(key)) throw new Error('Invalid phone inventory identity');
+  const credentials = await entities.IntegrationSecret.filter({ provider: 'telnyx' }, undefined, 2);
+  if (!Array.isArray(credentials) || credentials.length !== 1 || !credentials[0]?.id
+    || credentials[0].provider !== 'telnyx' || credentials[0].is_active !== true
+    || !credentials[0].updated_date) throw new Error('Phone inventory coordinator is unavailable');
+  const anchor = credentials[0];
+  const previous = anchor.phone_inventory_creation_claims;
+  if (previous != null && (typeof previous !== 'object' || Array.isArray(previous))) throw new Error('Invalid inventory coordinator');
+  const claims = previous || {};
+  if (Object.hasOwn(claims, key) || Object.keys(claims).length >= 500) throw new Error('Phone inventory creation requires reconciliation');
+  const token = crypto.randomUUID();
+  const result = await entities.IntegrationSecret.updateMany({ id: anchor.id, provider: 'telnyx',
+    is_active: true, updated_date: anchor.updated_date,
+    ...(previous == null ? { $or: [{ phone_inventory_creation_claims: null },
+      { phone_inventory_creation_claims: { $exists: false } }] } : { phone_inventory_creation_claims: previous }),
+  }, { $set: { phone_inventory_creation_claims: { ...claims, [key]: token } } });
+  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) throw new Error('Phone inventory creation changed concurrently');
+  const release = async () => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const rows = await entities.IntegrationSecret.filter({ id: anchor.id }, undefined, 2);
+      if (!Array.isArray(rows) || rows.length !== 1 || rows[0].phone_inventory_creation_claims?.[key] !== token) return;
+      const remaining = { ...rows[0].phone_inventory_creation_claims };
+      delete remaining[key];
+      const released = await entities.IntegrationSecret.updateMany({ id: anchor.id,
+        updated_date: rows[0].updated_date, phone_inventory_creation_claims: rows[0].phone_inventory_creation_claims,
+      }, { $set: { phone_inventory_creation_claims: remaining } });
+      if (released?.success === true && released.updated === 1 && released.has_more === false) return;
+    }
+  };
+  let createStarted = false;
+  try {
+    const owners = await entities.IntegrationSecret.filter({ id: anchor.id }, undefined, 2);
+    if (!Array.isArray(owners) || owners.length !== 1 || owners[0].phone_inventory_creation_claims?.[key] !== token) {
+      throw new Error('Phone inventory reservation was not confirmed');
+    }
+    const existing = await entities.PhoneNumber.filter({ e164: input.e164 }, undefined, 2);
+    if (!Array.isArray(existing) || existing.length !== 0) throw new Error('Phone number is already recorded');
+    createStarted = true;
+    if (prepare) {
+      try { input = { ...input, ...await prepare() }; }
+      catch (error) { if (error?.inventoryCreationRejected === true) createStarted = false; throw error; }
+    }
+    try { await entities.PhoneNumber.create({ ...input, creation_claim_token: token }); } catch { /* Exact readback reconciles a lost acknowledgement. */ }
+    const rows = await entities.PhoneNumber.filter({ e164: input.e164 }, undefined, 2);
+    if (!Array.isArray(rows) || rows.length !== 1 || !rows[0]?.id || rows[0].creation_claim_token !== token
+      || Object.entries(input).some(([field, value]) => rows[0][field] !== value)) {
+      throw new Error('Phone inventory creation requires reconciliation');
+    }
+    await release().catch(() => {});
+    return rows[0];
+  } catch (error) {
+    // A missing/unknown create acknowledgement must never open a second create.
+    if (!createStarted) await release().catch(() => {});
+    throw error;
+  }
+}`,
   signatureFileAndDeadline: `function isPrivateFileUri(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= 4096
     && !/\\s/.test(value) && ![...value].some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127)
@@ -80,6 +138,34 @@ function dueDateEnd(value) {
   return (row?.created_by_id != null || row?.created_by != null)
     && (row.created_by_id == null || row.created_by_id === userId)
     && (row.created_by == null || row.created_by === email);
+}`,
+  // A failed/ambiguous User write must not strand a confirmed pool claim or
+  // release another operation's newer reservation. Unknown reads retain it.
+  assignUserFromClaimedNumber: `async function assignUserFromClaimedNumber(base44, poolId, targetId, targetEmail, patch) {
+  const entities = base44.asServiceRole.entities;
+  const claims = await entities.PhoneNumber.filter({ id: poolId }, undefined, 2);
+  const claim = Array.isArray(claims) && claims.length === 1 ? claims[0] : null;
+  if (!claim || claim.id !== poolId || claim.status !== 'assigned' || claim.assigned_to_email !== targetEmail
+    || claim.e164 !== patch.work_phone_number || typeof claim.updated_date !== 'string') {
+    throw new Error('Work-number claim requires reconciliation');
+  }
+  try {
+    return await entities.User.update(targetId, patch);
+  } catch {
+    let users;
+    try { users = await entities.User.filter({ id: targetId }, undefined, 2); }
+    catch { throw new Error('Work-number assignment requires reconciliation'); }
+    if (!Array.isArray(users) || users.length !== 1 || users[0]?.id !== targetId) {
+      throw new Error('Work-number assignment requires reconciliation');
+    }
+    if (Object.entries(patch).every(([key, value]) => users[0][key] === value)) return users[0];
+    if (users[0].work_phone_number !== patch.work_phone_number) {
+      await entities.PhoneNumber.updateMany({ id: poolId, e164: claim.e164, status: 'assigned',
+        assigned_to_email: targetEmail, updated_date: claim.updated_date },
+      { $set: { status: 'available', assigned_to_email: '' } });
+    }
+    throw new Error('Work-number assignment was not confirmed');
+  }
 }`,
   // Application-wide human-delivery release gate. This is intentionally
   // fail-closed: deploying code or copying an environment's existing secrets

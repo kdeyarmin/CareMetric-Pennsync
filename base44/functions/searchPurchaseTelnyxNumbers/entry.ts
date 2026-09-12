@@ -180,6 +180,67 @@ async function setOutboundFaxNumber(base44, e164, agencyName) {
   }
 }
 
+// <<<BEGIN SHARED HELPER: phoneInventoryCreation — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function createPhoneInventoryOnce(entities, input, prepare = null) {
+  const key = String(input.e164 || '').replace(/^\+/, '');
+  if (!/^\d{8,15}$/.test(key)) throw new Error('Invalid phone inventory identity');
+  const credentials = await entities.IntegrationSecret.filter({ provider: 'telnyx' }, undefined, 2);
+  if (!Array.isArray(credentials) || credentials.length !== 1 || !credentials[0]?.id
+    || credentials[0].provider !== 'telnyx' || credentials[0].is_active !== true
+    || !credentials[0].updated_date) throw new Error('Phone inventory coordinator is unavailable');
+  const anchor = credentials[0];
+  const previous = anchor.phone_inventory_creation_claims;
+  if (previous != null && (typeof previous !== 'object' || Array.isArray(previous))) throw new Error('Invalid inventory coordinator');
+  const claims = previous || {};
+  if (Object.hasOwn(claims, key) || Object.keys(claims).length >= 500) throw new Error('Phone inventory creation requires reconciliation');
+  const token = crypto.randomUUID();
+  const result = await entities.IntegrationSecret.updateMany({ id: anchor.id, provider: 'telnyx',
+    is_active: true, updated_date: anchor.updated_date,
+    ...(previous == null ? { $or: [{ phone_inventory_creation_claims: null },
+      { phone_inventory_creation_claims: { $exists: false } }] } : { phone_inventory_creation_claims: previous }),
+  }, { $set: { phone_inventory_creation_claims: { ...claims, [key]: token } } });
+  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) throw new Error('Phone inventory creation changed concurrently');
+  const release = async () => {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const rows = await entities.IntegrationSecret.filter({ id: anchor.id }, undefined, 2);
+      if (!Array.isArray(rows) || rows.length !== 1 || rows[0].phone_inventory_creation_claims?.[key] !== token) return;
+      const remaining = { ...rows[0].phone_inventory_creation_claims };
+      delete remaining[key];
+      const released = await entities.IntegrationSecret.updateMany({ id: anchor.id,
+        updated_date: rows[0].updated_date, phone_inventory_creation_claims: rows[0].phone_inventory_creation_claims,
+      }, { $set: { phone_inventory_creation_claims: remaining } });
+      if (released?.success === true && released.updated === 1 && released.has_more === false) return;
+    }
+  };
+  let createStarted = false;
+  try {
+    const owners = await entities.IntegrationSecret.filter({ id: anchor.id }, undefined, 2);
+    if (!Array.isArray(owners) || owners.length !== 1 || owners[0].phone_inventory_creation_claims?.[key] !== token) {
+      throw new Error('Phone inventory reservation was not confirmed');
+    }
+    const existing = await entities.PhoneNumber.filter({ e164: input.e164 }, undefined, 2);
+    if (!Array.isArray(existing) || existing.length !== 0) throw new Error('Phone number is already recorded');
+    createStarted = true;
+    if (prepare) {
+      try { input = { ...input, ...await prepare() }; }
+      catch (error) { if (error?.inventoryCreationRejected === true) createStarted = false; throw error; }
+    }
+    try { await entities.PhoneNumber.create({ ...input, creation_claim_token: token }); } catch { /* Exact readback reconciles a lost acknowledgement. */ }
+    const rows = await entities.PhoneNumber.filter({ e164: input.e164 }, undefined, 2);
+    if (!Array.isArray(rows) || rows.length !== 1 || !rows[0]?.id || rows[0].creation_claim_token !== token
+      || Object.entries(input).some(([field, value]) => rows[0][field] !== value)) {
+      throw new Error('Phone inventory creation requires reconciliation');
+    }
+    await release().catch(() => {});
+    return rows[0];
+  } catch (error) {
+    // A missing/unknown create acknowledgement must never open a second create.
+    if (!createStarted) await release().catch(() => {});
+    throw error;
+  }
+}
+// <<<END SHARED HELPER: phoneInventoryCreation>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -222,7 +283,17 @@ Deno.serve(async (req) => {
       // Resolve the Telnyx phone-number id by looking the number up in the
       // account (authoritative — the locally stored id can be a number-ORDER id
       // from an old purchase, which the phone_numbers PATCH would reject).
-      const poolRows = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 5000).catch(() => []);
+      const poolRows = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 10);
+      if (!Array.isArray(poolRows) || poolRows.length > 1 || poolRows.some((row) => row.e164 !== e164)) {
+        return Response.json({ error: 'Fax inventory is ambiguous.' }, { status: 409 });
+      }
+      if (poolRows.some((row) => !['available', 'reserved'].includes(row.status) || row.assigned_to_email)) {
+        return Response.json({ error: 'Release the nurse assignment before reserving this number for fax.' }, { status: 409 });
+      }
+      const holders = await base44.asServiceRole.entities.User.filter({ work_phone_number: e164 }, undefined, 2);
+      if (!Array.isArray(holders) || holders.length !== 0) {
+        return Response.json({ error: 'This number is assigned to a work-number user.' }, { status: 409 });
+      }
       const lookup = await fetchJson(
         `${TELNYX_API_BASE}/phone_numbers?filter[phone_number]=${encodeURIComponent(e164)}`,
         { method: 'GET', headers: authHeaders },
@@ -231,28 +302,57 @@ Deno.serve(async (req) => {
         return Response.json({ error: 'Could not look the number up in Telnyx.', status: lookup.status, details: lookup.data }, { status: 502 });
       }
       const owned = Array.isArray(lookup.data?.data) ? lookup.data.data : [];
-      const numberId = owned[0]?.id || null;
+      const numberId = owned.length === 1 && owned[0]?.phone_number === e164 ? owned[0]?.id : null;
       if (!numberId) {
         return Response.json({ error: `${e164} isn't in your Telnyx account. Purchase it first, then provision fax on it.` }, { status: 404 });
       }
 
+      // Reserve inventory before changing provider routing. Assignment endpoints
+      // conditionally claim only available rows, so a concurrent nurse claim wins
+      // or this reservation wins; neither can overwrite the other.
+      let poolRow = poolRows[0];
+      if (poolRow) {
+        const reserved = await base44.asServiceRole.entities.PhoneNumber.updateMany({
+          id: poolRow.id, e164, status: poolRow.status,
+          ...(poolRow.assigned_to_email == null ? { $or: [{ assigned_to_email: null }, { assigned_to_email: { $exists: false } }] }
+            : { assigned_to_email: poolRow.assigned_to_email }),
+        }, { $set: { status: 'reserved', assigned_to_email: '', twilio_phone_number_sid: numberId } });
+        if (reserved?.success !== true || reserved.updated !== 1 || reserved.has_more !== false) {
+          return Response.json({ error: 'Fax inventory changed; retry provisioning.' }, { status: 409 });
+        }
+      } else {
+        poolRow = await createPhoneInventoryOnce(base44.asServiceRole.entities, {
+          e164, status: 'reserved', label: 'Outbound fax line', twilio_phone_number_sid: numberId,
+          notes: 'Existing Telnyx number reserved for dedicated fax use.',
+        });
+      }
+      const confirmed = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 10);
+      if (!Array.isArray(confirmed) || confirmed.length !== 1 || confirmed[0].id !== poolRow?.id
+        || confirmed[0].e164 !== e164 || confirmed[0].status !== 'reserved' || confirmed[0].assigned_to_email) {
+        return Response.json({ error: 'Fax reservation requires reconciliation.' }, { status: 409 });
+      }
       const patch = await fetchJson(`${TELNYX_API_BASE}/phone_numbers/${encodeURIComponent(numberId)}`, {
         method: 'PATCH',
         headers: { ...authHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({ connection_id: faxConnectionId }),
       }).catch((err) => ({ ok: false, status: 0, data: { message: String(err?.message || err) } }));
       if (!patch.ok) {
+        // A confirmed provider rejection cannot have changed routing. Restore
+        // only our exact revision; an uncertain result or newer owner stays reserved.
+        if ([400, 401, 403, 404, 405, 422, 429].includes(patch.status)
+          && (!poolRows[0] || poolRows[0].status === 'available')) {
+          await base44.asServiceRole.entities.PhoneNumber.updateMany({
+            id: confirmed[0].id, e164, status: 'reserved', updated_date: confirmed[0].updated_date,
+            ...(confirmed[0].assigned_to_email == null ? { $or: [{ assigned_to_email: null }, { assigned_to_email: { $exists: false } }] }
+              : { assigned_to_email: confirmed[0].assigned_to_email }),
+          }, { $set: { status: 'available', assigned_to_email: '' } });
+        }
         const firstErr = Array.isArray(patch.data?.errors) ? patch.data.errors[0] : null;
         return Response.json({ error: 'Telnyx rejected the fax-connection update.', status: patch.status, details: firstErr || patch.data }, { status: 502 });
       }
 
       if (setAsOutboundFax) await setOutboundFaxNumber(base44, e164, user?.agency_name);
-      // Refresh the stored id from the authoritative lookup (it may hold a
-      // number-order id from an old in-app purchase).
-      if (poolRows[0]?.id && poolRows[0].twilio_phone_number_sid !== numberId) {
-        await base44.asServiceRole.entities.PhoneNumber.update(poolRows[0].id, { twilio_phone_number_sid: numberId }).catch(() => {});
-      }
-      await audit('fax_capacity_provisioned', poolRows[0]?.id || null);
+      await audit('fax_capacity_provisioned', poolRow.id);
       return Response.json({ success: true, e164, telnyx_number_id: numberId, fax_connection_id: faxConnectionId, outbound_fax_set: setAsOutboundFax });
     }
 
@@ -296,7 +396,10 @@ Deno.serve(async (req) => {
       // Don't double-buy: if it's already in the pool, just report it — but a
       // fax-purpose "purchase" of an owned number still provisions fax on it,
       // so the admin's intent (make this my fax line) is honored either way.
-      const existing = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 5000).catch(() => []);
+      const existing = await base44.asServiceRole.entities.PhoneNumber.filter({ e164 }, undefined, 10);
+      if (!Array.isArray(existing) || existing.length > 1 || existing.some((row) => row.e164 !== e164)) {
+        return Response.json({ error: 'Number inventory is ambiguous.' }, { status: 409 });
+      }
       if (existing.length > 0) {
         if (purpose === 'fax') return await provisionExistingFax(e164, { setAsOutboundFax });
         return Response.json({ success: true, already_in_pool: true, e164 });
@@ -320,32 +423,38 @@ Deno.serve(async (req) => {
         if (voiceConnectionId) orderBody.connection_id = voiceConnectionId;
         else warnings.push('No Voice (Call Control) connection is set, so this number can\'t route calls yet — add the Voice connection ID in Telnyx Credentials.');
       }
-      const res = await fetchJson(`${TELNYX_API_BASE}/number_orders`, {
-        method: 'POST',
-        headers: { ...authHeaders, 'Content-Type': 'application/json' },
-        body: JSON.stringify(orderBody),
-      }).catch((err) => ({ ok: false, status: 0, data: { message: String(err?.message || err) } }));
+      let telnyxNumberId = null;
+      const row = await createPhoneInventoryOnce(base44.asServiceRole.entities, { e164 }, async () => {
+        const res = await fetchJson(`${TELNYX_API_BASE}/number_orders`, {
+          method: 'POST',
+          headers: { ...authHeaders, 'Content-Type': 'application/json' },
+          body: JSON.stringify(orderBody),
+        }).catch((err) => ({ ok: false, status: 0, data: { message: String(err?.message || err) } }));
 
-      if (!res.ok) {
-        const firstErr = Array.isArray(res.data?.errors) ? res.data.errors[0] : null;
-        return Response.json({ error: 'Telnyx number purchase failed.', status: res.status, details: firstErr || res.data }, { status: 502 });
-      }
+        if (!res.ok) {
+          const firstErr = Array.isArray(res.data?.errors) ? res.data.errors[0] : null;
+          const error = new Error('Telnyx number purchase failed.');
+          error.inventoryCreationRejected = [400, 401, 403, 404, 422, 429].includes(res.status);
+          error.publicResponse = Response.json({ error: error.message, status: res.status, details: firstErr || res.data }, { status: 502 });
+          throw error;
+        }
 
-      // The ordered number's Telnyx id (phone_numbers[0].id) is the durable
-      // identifier; fall back to the order id.
-      const orderedNumber = Array.isArray(res.data?.data?.phone_numbers) ? res.data.data.phone_numbers[0] : null;
-      const telnyxNumberId = orderedNumber?.id || res.data?.data?.id || null;
-      const row = await base44.asServiceRole.entities.PhoneNumber.create({
-        e164,
-        label: typeof body.label === 'string' && body.label.trim()
-          ? body.label.trim()
-          : (purpose === 'fax' ? 'Outbound fax line' : ''),
-        status: 'available',
-        twilio_phone_number_sid: telnyxNumberId || '',
-        notes: purpose === 'fax'
-          ? 'Purchased in-app via Telnyx numbers API (fax line — attached to the Programmable Fax connection)'
-          : 'Purchased in-app via Telnyx numbers API',
-      });
+        // The ordered number's Telnyx id (phone_numbers[0].id) is the durable
+        // identifier; fall back to the order id.
+        const orderedNumber = Array.isArray(res.data?.data?.phone_numbers) ? res.data.data.phone_numbers[0] : null;
+        telnyxNumberId = orderedNumber?.id || res.data?.data?.id || null;
+        return {
+          e164,
+          label: typeof body.label === 'string' && body.label.trim()
+            ? body.label.trim()
+            : (purpose === 'fax' ? 'Outbound fax line' : ''),
+          status: purpose === 'fax' ? 'reserved' : 'available',
+          twilio_phone_number_sid: telnyxNumberId || '',
+          notes: purpose === 'fax'
+            ? 'Purchased in-app via Telnyx numbers API (fax line — attached to the Programmable Fax connection)'
+            : 'Purchased in-app via Telnyx numbers API',
+        };
+        });
       if (setAsOutboundFax) await setOutboundFaxNumber(base44, e164, user?.agency_name);
 
       // Auto-enroll a new SMS-capable line in the agency's approved A2P 10DLC
@@ -400,6 +509,7 @@ Deno.serve(async (req) => {
 
     return Response.json({ error: `Unknown action: ${action}` }, { status: 400 });
   } catch (error) {
+    if (error?.publicResponse instanceof Response) return error.publicResponse;
     console.error('searchPurchaseTelnyxNumbers error:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
