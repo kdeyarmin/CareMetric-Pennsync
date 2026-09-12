@@ -350,7 +350,7 @@ export function createTenantSdkRealmGate() {
     operationAuthority,
     hadCallbackArgument,
   ) => {
-    let cleanup = null;
+    let cleanup;
     try {
       cleanup = subscriptionCleanup(value, hadCallbackArgument);
     } catch (error) {

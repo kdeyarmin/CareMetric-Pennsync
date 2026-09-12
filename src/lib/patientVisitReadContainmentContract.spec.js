@@ -188,7 +188,7 @@ function scanDirectPatientVisitReads(fileName, sourceText) {
 
   function pathAt(start) {
     const first = tokens[start];
-    let segments = null;
+    let segments;
     let cursor = start + 1;
     if (first?.value === '(') {
       const close = matching(start, '(', ')');
@@ -340,7 +340,7 @@ function scanDirectPatientVisitReads(fileName, sourceText) {
         index += 4;
         continue;
       }
-      let property = null;
+      let property;
       if (tokens[index]?.value === '[') {
         const propertyClose = matching(index, '[', ']');
         if (propertyClose === -1 || propertyClose >= close) break;

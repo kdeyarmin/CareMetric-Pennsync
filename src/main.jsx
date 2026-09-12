@@ -286,7 +286,7 @@ if (documentAuthorityReady) {
 if (import.meta.hot) {
   const postHotUpdateToParent = (type) => {
     if (window.parent === window) return
-    let parentOrigin = null
+    let parentOrigin
     try {
       parentOrigin = new URL(document.referrer).origin
     } catch {

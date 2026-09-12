@@ -39,7 +39,7 @@ export function installAuthorityBoundClipboard(clipboard = navigator.clipboard) 
     );
   };
 
-  let installed = false;
+  let installed;
   try {
     Object.defineProperty(clipboard, 'writeText', {
       configurable: true,
