@@ -47,6 +47,48 @@ ${isAllowedDestination.toString()}`;
 }
 
 export const SHARED_HELPERS = {
+  signatureAuditKeys: `function signatureAuditKeyId(value) {
+  if (value == null) return 'legacy';
+  if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(value)) throw new PublicError(500, 'Signature audit key identity is invalid');
+  return value;
+}
+
+function signatureAuditKeyring() {
+  const configured = Deno.env.get('SIGNATURE_HMAC_KEYRING');
+  if (!configured) {
+    if (Deno.env.get('SIGNATURE_HMAC_ACTIVE_KEY_ID')) throw new PublicError(500, 'Signature audit keyring is not configured');
+    const secret = String(Deno.env.get('SIGNATURE_HMAC_SECRET') || '');
+    if (secret.length < 32 || secret.length > 1024) throw new PublicError(500, 'Signature audit is not configured');
+    return { activeId: 'legacy', keys: { legacy: secret } };
+  }
+  let keys;
+  if (configured.length > 16384) throw new PublicError(500, 'Signature audit keyring is invalid');
+  try { keys = JSON.parse(configured); } catch { throw new PublicError(500, 'Signature audit keyring is invalid'); }
+  if (!keys || typeof keys !== 'object' || Array.isArray(keys) || Object.keys(keys).length < 1 || Object.keys(keys).length > 8) {
+    throw new PublicError(500, 'Signature audit keyring is invalid');
+  }
+  for (const [id, secret] of Object.entries(keys)) {
+    signatureAuditKeyId(id);
+    if (typeof secret !== 'string' || secret.length < 32 || secret.length > 1024) throw new PublicError(500, 'Signature audit keyring is invalid');
+  }
+  const activeId = Deno.env.get('SIGNATURE_HMAC_ACTIVE_KEY_ID');
+  if (!activeId || !Object.hasOwn(keys, signatureAuditKeyId(activeId))) throw new PublicError(500, 'Signature audit active key is unavailable');
+  return { activeId, keys };
+}
+
+function retainedSignatureAuditKey(keyring, id) {
+  const keyId = signatureAuditKeyId(id);
+  if (!Object.hasOwn(keyring.keys, keyId)) throw new PublicError(500, 'Signature audit verification key is unavailable');
+  return keyring.keys[keyId];
+}
+
+async function hmacAudit(value, secret) {
+  const key = await crypto.subtle.importKey(
+    'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
+  );
+  // Preserve the historical digest representation for existing artifacts.
+  return sha256Bytes(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value))));
+}`,
   signatureFileAndDeadline: `function isPrivateFileUri(value) {
   return typeof value === 'string' && value.length > 0 && value.length <= 4096
     && !/\\s/.test(value) && ![...value].some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127)

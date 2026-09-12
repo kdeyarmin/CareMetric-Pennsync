@@ -1,0 +1,13 @@
+# Signing audit key lifecycle
+
+Rotating the old single HMAC secret changes the typed-name digest used to reconcile saved artifacts. An otherwise valid retry can therefore fail after rotation. Review grants and artifacts previously carried no key identity, and network audit pseudonyms could not identify their verification key.
+
+The validator now snapshots the active key ID into its private review grant before returning access. Submission uses that grant's retained key for typed-name and network digests, persists the same ID on the artifact and corresponding audit events, and rejects a changed grant/artifact key identity. Each invocation reads one keyring snapshot. The historical digest representation is preserved for existing records.
+
+Backend configuration supports `SIGNATURE_HMAC_KEYRING`, a JSON object mapping up to eight unique key IDs to secret values, and `SIGNATURE_HMAC_ACTIVE_KEY_ID`, the key used for new review grants. IDs are bounded alphanumeric names beginning with a letter. Secret values remain in backend secrets and never enter entity rows or responses. Malformed configuration and missing retained keys fail before granting review access or claiming/uploading a signature.
+
+With neither new variable configured, the existing `SIGNATURE_HMAC_SECRET` remains available under the explicit ID `legacy`. Missing IDs on historical rows also resolve to `legacy`. To migrate, retain the exact old secret under `legacy`, add a new randomly generated key with a new ID, and select that new ID as active. Never replace key material under an existing ID. Retain verification keys for the required evidence-retention period and every outstanding grant/reconciliation; do not remove them merely because a new key is active. The patch makes no live secret changes and supplies no production key values.
+
+Add `hmac_key_id` to SignerReviewGrant, SignatureArtifactBinding and SignatureAuditEvent with their existing server-only rules preserved before deploying the validator and submit broker. Public signing remains gated while secure package creation, configured signer verification, completed-document generation and the public UI are finished.
+
+Validation covers rotation between review and signing, exact replay after rotation, legacy artifact migration, absent retained keys with later recovery, invalid configuration with zero access grants, and artifact key-ID tampering. The full focused signing/security suite passes 130 tests.

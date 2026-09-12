@@ -3,6 +3,7 @@
   "type": "object",
   "description": "Immutable server-only binding for one external signer's private signature image. Public URLs and raw signature bytes are never persisted in signing rows.",
   "properties": {
+    "hmac_key_id": { "type": "string", "description": "Immutable audit key id. Missing on legacy rows means the retained legacy key; key material is never stored here." },
     "artifact_key": { "type": "string", "description": "SHA-256 idempotency key scoped to token, document, signer, and request." },
     "agency_id": { "type": "string" },
     "package_id": { "type": "string" },
