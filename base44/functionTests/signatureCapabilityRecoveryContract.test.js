@@ -11,6 +11,8 @@ const privateUri = 'mp/private/694ec16e72e01b60d22f7cbf/synthetic/source.pdf';
 const clone = (value) => structuredClone(value);
 
 async function fixture(options = {}) {
+  const env = { SIGNATURE_AGREEMENT_TEXT: agreement, SIGNATURE_AGREEMENT_SHA256: hash(agreement),
+    SIGNATURE_HMAC_SECRET: 'synthetic-hmac-key-not-for-production-12345', ...options.env };
   const now = Date.now();
   const signer = { signer_id: 'signer-1', signer_name: 'Synthetic Signer', signer_role: 'patient',
     email: 'synthetic@example.test', required: true, status: 'pending' };
@@ -74,10 +76,7 @@ async function fixture(options = {}) {
   async function load(name) {
     let handler;
     globalThis.__signatureRecoveryClient = () => client;
-    globalThis.__signatureRecoveryDeno = { serve: (candidate) => { handler = candidate; }, env: { get: (key) => ({
-      SIGNATURE_AGREEMENT_TEXT: agreement, SIGNATURE_AGREEMENT_SHA256: hash(agreement),
-      SIGNATURE_HMAC_SECRET: 'synthetic-hmac-key-not-for-production-12345',
-    })[key] } };
+    globalThis.__signatureRecoveryDeno = { serve: (candidate) => { handler = candidate; }, env: { get: (key) => env[key] } };
     let source = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
     source = source.replace(/import \{ createClientFromRequest \} from 'npm:[^']+';/,
       'const createClientFromRequest = globalThis.__signatureRecoveryClient; const Deno = globalThis.__signatureRecoveryDeno;')
@@ -102,7 +101,7 @@ async function fixture(options = {}) {
     form.set('signature_file', new File([bytes], 'synthetic.png', { type: 'image/png' }));
     return submit(new Request('https://example.test/sign', { method: 'POST', body: form }));
   };
-  return { db, calls, review, sign };
+  return { db, calls, review, sign, env };
 }
 
 test('review permits the twentieth access and refuses further grants or signed URLs', async () => {
@@ -112,6 +111,79 @@ test('review permits the twentieth access and refuses further grants or signed U
   assert.equal((await f.review()).status, 429);
   assert.equal(f.db.SignerReviewGrant.length, 1);
   assert.equal(f.calls.signedUrls, 1);
+});
+
+test('review and artifact key identities survive active-key rotation and exact replay', async () => {
+  const keys = { first: 'first-synthetic-key-material-only-123456789', second: 'second-synthetic-key-material-only-123456789' };
+  const f = await fixture({ env: { SIGNATURE_HMAC_KEYRING: JSON.stringify(keys), SIGNATURE_HMAC_ACTIVE_KEY_ID: 'first' } });
+  const review = await (await f.review()).json();
+  assert.equal(f.db.SignerReviewGrant[0].hmac_key_id, 'first');
+  f.env.SIGNATURE_HMAC_ACTIVE_KEY_ID = 'second';
+  const nonce = review.documents[0].review_nonce;
+  assert.equal((await f.sign(nonce)).status, 200);
+  assert.equal(f.db.SignatureArtifactBinding[0].hmac_key_id, 'first');
+  assert.equal((await (await f.sign(nonce)).json()).idempotent, true);
+  assert.equal(f.calls.uploads, 1);
+  assert.ok(f.db.SignatureAuditEvent.filter(row => row.client_ip_sha256).every(row => row.hmac_key_id === 'first'));
+  assert.equal(f.db.SignatureAuditEvent.find(row => row.action === 'token_consumed')?.hmac_key_id, 'first');
+});
+
+test('long existing legacy secrets remain usable without changing their key material', async () => {
+  const f = await fixture({ env: { SIGNATURE_HMAC_SECRET: 'legacy-synthetic-secret-only-'.repeat(100) } });
+  const review = await (await f.review()).json();
+  assert.equal((await f.sign(review.documents[0].review_nonce)).status, 200);
+  assert.equal((await (await f.sign(review.documents[0].review_nonce)).json()).idempotent, true);
+  assert.equal(f.calls.uploads, 1);
+});
+
+test('missing retained keys fail before claims or storage and recover when restored', async () => {
+  const keys = { first: 'first-synthetic-key-material-only-123456789', second: 'second-synthetic-key-material-only-123456789' };
+  const f = await fixture({ env: { SIGNATURE_HMAC_KEYRING: JSON.stringify(keys), SIGNATURE_HMAC_ACTIVE_KEY_ID: 'first' } });
+  const review = await (await f.review()).json();
+  f.env.SIGNATURE_HMAC_ACTIVE_KEY_ID = 'second';
+  f.env.SIGNATURE_HMAC_KEYRING = JSON.stringify({ second: keys.second });
+  assert.equal((await f.sign(review.documents[0].review_nonce)).status, 500);
+  assert.equal(f.db.DocumentPackageToken[0].status, 'active');
+  assert.equal(f.db.SignerReviewGrant[0].status, 'active');
+  assert.equal(f.calls.uploads, 0);
+  f.env.SIGNATURE_HMAC_KEYRING = JSON.stringify(keys);
+  assert.equal((await f.sign(review.documents[0].review_nonce)).status, 200);
+});
+
+test('legacy artifacts reconcile after migration to a retained legacy key', async () => {
+  const f = await fixture();
+  const review = await (await f.review()).json();
+  assert.equal((await f.sign(review.documents[0].review_nonce)).status, 200);
+  delete f.db.SignerReviewGrant[0].hmac_key_id;
+  delete f.db.SignatureArtifactBinding[0].hmac_key_id;
+  for (const event of f.db.SignatureAuditEvent) delete event.hmac_key_id;
+  f.env.SIGNATURE_HMAC_KEYRING = JSON.stringify({ legacy: f.env.SIGNATURE_HMAC_SECRET, next: 'next-synthetic-key-material-only-123456789' });
+  f.env.SIGNATURE_HMAC_ACTIVE_KEY_ID = 'next';
+  assert.equal((await (await f.sign(review.documents[0].review_nonce)).json()).idempotent, true);
+  assert.equal(f.calls.uploads, 1);
+});
+
+test('invalid keyring configuration issues no grants, signed URLs or access increments', async () => {
+  const key = 'synthetic-duplicate-key-material-only-123456789';
+  for (const configured of ['{', '[]', '{}', '{"bad.id":"12345678901234567890123456789012345"}', '{"first":"short"}',
+    `{"first":"${key}","first":"${key}replacement"}`,
+    `{"first":"${key}","\\u0066irst":"${key}replacement"}`,
+    `{"first":"${key}",}`, `{"first":null}`, `{"first":"${key}"}garbage`]) {
+    const f = await fixture({ env: { SIGNATURE_HMAC_KEYRING: configured, SIGNATURE_HMAC_ACTIVE_KEY_ID: 'first' } });
+    assert.equal((await f.review()).status, 500);
+    assert.equal(f.db.DocumentPackageToken[0].access_count, 0);
+    assert.equal(f.db.SignerReviewGrant.length, 0);
+    assert.equal(f.calls.signedUrls, 0);
+  }
+});
+
+test('artifact key-id tampering cannot replay a captured signature', async () => {
+  const f = await fixture();
+  const review = await (await f.review()).json();
+  assert.equal((await f.sign(review.documents[0].review_nonce)).status, 200);
+  f.db.SignatureArtifactBinding[0].hmac_key_id = 'unrelated';
+  assert.equal((await f.sign(review.documents[0].review_nonce)).status, 409);
+  assert.equal(f.calls.uploads, 1);
 });
 
 test('concurrent last accesses produce at most one grant and one review response', async () => {

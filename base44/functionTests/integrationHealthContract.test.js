@@ -256,9 +256,32 @@ test('workflow-critical configuration remains in the capability response', () =>
   assert.match(source, /id: 'workflow_internal_auth'/);
   assert.match(source, /INTERNAL_FN_SECRET is missing or too short/);
   assert.match(source, /id: 'signature_hmac'/);
-  assert.match(source, /SIGNATURE_HMAC_SECRET is missing or too short/);
+  assert.match(source, /Signature audit key configuration is missing or invalid/);
   assert.match(source, /id: 'outcome_pipeline_release'/);
   assert.match(source, /OUTCOME_PIPELINE_RELEASE/);
+});
+
+test('signature health validates the canonical keyring and legacy configuration without disclosing secrets', async () => {
+  const secret = 'synthetic-health-key-material-only-123456789';
+  const ring = JSON.stringify({ current: secret });
+  for (const [env, expected] of [
+    [{ SIGNATURE_HMAC_KEYRING: ring, SIGNATURE_HMAC_ACTIVE_KEY_ID: 'current' }, true],
+    [{ SIGNATURE_HMAC_SECRET: secret.repeat(100) }, true],
+    [{ SIGNATURE_HMAC_SECRET: 'short' }, false],
+    [{ SIGNATURE_HMAC_ACTIVE_KEY_ID: 'current', SIGNATURE_HMAC_SECRET: secret }, false],
+    [{ SIGNATURE_HMAC_KEYRING: ring, SIGNATURE_HMAC_ACTIVE_KEY_ID: 'missing' }, false],
+    [{ SIGNATURE_HMAC_KEYRING: '{', SIGNATURE_HMAC_SECRET: secret }, false],
+    [{ SIGNATURE_HMAC_KEYRING: JSON.stringify({ current: 'short' }), SIGNATURE_HMAC_ACTIVE_KEY_ID: 'current' }, false],
+  ]) {
+    const handler = await loadHandler({ env });
+    const response = await handler({});
+    const report = await response.json();
+    const item = report.integrations.find(row => row.id === 'signature_hmac');
+    assert.equal(item.configured, expected);
+    assert.equal(item.status, expected ? 'ok' : 'fail');
+    assert.equal(item.delivery_verified, false);
+    assert.equal(JSON.stringify(report).includes(secret), false);
+  }
 });
 
 test('an empty or malformed Telnyx check cannot become Working', () => {

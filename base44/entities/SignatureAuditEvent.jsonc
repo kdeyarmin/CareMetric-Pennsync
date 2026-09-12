@@ -3,6 +3,7 @@
   "type": "object",
   "description": "Append-only server-owned e-signature provenance. Mutation and deletion are denied to every browser principal.",
   "properties": {
+    "hmac_key_id": { "type": "string", "description": "Immutable audit key id. Missing on legacy rows means the retained legacy key; key material is never stored here." },
     "event_key": { "type": "string", "description": "Deterministic SHA-256 idempotency key for the exact action/request/revision." },
     "agency_id": { "type": "string" },
     "package_id": { "type": "string" },

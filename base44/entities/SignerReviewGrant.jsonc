@@ -3,6 +3,7 @@
   "type": "object",
   "description": "Short-lived, single-use proof that a bearer-token holder was authorized to review the exact private document digest before signing.",
   "properties": {
+    "hmac_key_id": { "type": "string", "description": "Immutable audit key id. Missing on legacy rows means the retained legacy key; key material is never stored here." },
     "grant_key": { "type": "string", "description": "SHA-256 digest of the plaintext review nonce; plaintext is response-only." },
     "agency_id": { "type": "string" },
     "package_id": { "type": "string" },

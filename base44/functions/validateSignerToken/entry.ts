@@ -131,14 +131,86 @@ async function sha256(value: string) {
   return sha256Bytes(new TextEncoder().encode(value));
 }
 
-async function hmacAudit(value: string) {
-  const secret = String(Deno.env.get('SIGNATURE_HMAC_SECRET') || '');
-  if (secret.length < 32) throw new PublicError(500, 'Signature audit is not configured');
+// <<<BEGIN SHARED HELPER: signatureAuditKeys — generated, edit base44/_shared/backendHelpers.mjs>>>
+function signatureAuditKeyId(value) {
+  if (value == null) return 'legacy';
+  if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(value)) throw new Error('Signature audit key identity is invalid');
+  return value;
+}
+
+function signatureAuditKeyring() {
+  const configured = Deno.env.get('SIGNATURE_HMAC_KEYRING');
+  if (!configured) {
+    if (Deno.env.get('SIGNATURE_HMAC_ACTIVE_KEY_ID')) throw new Error('Signature audit keyring is not configured');
+    const secret = String(Deno.env.get('SIGNATURE_HMAC_SECRET') || '');
+    if (secret.length < 32) throw new Error('Signature audit is not configured');
+    return { activeId: 'legacy', keys: { legacy: secret } };
+  }
+  if (configured.length > 16384) throw new Error('Signature audit keyring is invalid');
+  let keys;
+  try {
+    // Parse the flat string map without silently overwriting duplicate JSON keys.
+    // JSON.parse on each string also normalizes escaped-equivalent key names.
+    let offset = 0;
+    const space = () => { while (/^[\t\r\n ]$/.test(configured[offset] || '')) offset += 1; };
+    const take = (character) => { space(); if (configured[offset++] !== character) throw new Error('Invalid keyring'); };
+    const string = () => {
+      space();
+      const start = offset;
+      if (configured[offset++] !== '"') throw new Error('Invalid keyring string');
+      while (offset < configured.length) {
+        const character = configured[offset++];
+        if (character === '"') return JSON.parse(configured.slice(start, offset));
+        if (character.charCodeAt(0) === 92) offset += 1;
+      }
+      throw new Error('Unterminated keyring string');
+    };
+    keys = Object.create(null);
+    take('{');
+    space();
+    if (configured[offset] !== '}') {
+      while (true) {
+        const id = string();
+        if (Object.hasOwn(keys, id)) throw new Error('Duplicate keyring identity');
+        take(':');
+        keys[id] = string();
+        space();
+        if (configured[offset] !== ',') break;
+        offset += 1;
+      }
+    }
+    take('}');
+    space();
+    if (offset !== configured.length) throw new Error('Invalid keyring suffix');
+  } catch { throw new Error('Signature audit keyring is invalid'); }
+  if (!keys || typeof keys !== 'object' || Array.isArray(keys) || Object.keys(keys).length < 1 || Object.keys(keys).length > 8) {
+    throw new Error('Signature audit keyring is invalid');
+  }
+  for (const [id, secret] of Object.entries(keys)) {
+    signatureAuditKeyId(id);
+    if (typeof secret !== 'string' || secret.length < 32 || secret.length > 1024) throw new Error('Signature audit keyring is invalid');
+  }
+  const activeId = Deno.env.get('SIGNATURE_HMAC_ACTIVE_KEY_ID');
+  if (!activeId || !Object.hasOwn(keys, signatureAuditKeyId(activeId))) throw new Error('Signature audit active key is unavailable');
+  return { activeId, keys };
+}
+
+function retainedSignatureAuditKey(keyring, id) {
+  const keyId = signatureAuditKeyId(id);
+  if (!Object.hasOwn(keyring.keys, keyId)) throw new Error('Signature audit verification key is unavailable');
+  return keyring.keys[keyId];
+}
+// <<<END SHARED HELPER: signatureAuditKeys>>>
+
+// <<<BEGIN SHARED HELPER: signatureAuditDigest — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function hmacAudit(value, secret) {
   const key = await crypto.subtle.importKey(
     'raw', new TextEncoder().encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'],
   );
+  // Preserve the historical digest representation for existing artifacts.
   return sha256Bytes(new Uint8Array(await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(value))));
 }
+// <<<END SHARED HELPER: signatureAuditDigest>>>
 
 function generateOpaqueSecret() {
   const bytes = new Uint8Array(32);
@@ -366,6 +438,9 @@ Deno.serve(async (req) => {
     const token = await parseToken(req);
     const tokenDigest = await sha256(token);
     const agreement = await configuredAgreement();
+    const auditKeys = signatureAuditKeyring();
+    const auditKeyId = auditKeys.activeId;
+    const auditKey = retainedSignatureAuditKey(auditKeys, auditKeyId);
     const base44 = createClientFromRequest(req);
     const entities = base44.asServiceRole.entities;
     const initial = await claimReviewAccess(entities, tokenDigest, await loadTokenContext(entities, tokenDigest));
@@ -380,8 +455,8 @@ Deno.serve(async (req) => {
       signer_id: initial.token.signer_id, token_id: initial.token.id,
       action: 'token_validated', actor_type: 'external_signer', request_id: requestId,
       authority_version: initial.token.authority_version,
-      client_ip_sha256: await hmacAudit(`ip\0${ip}`),
-      user_agent_sha256: await hmacAudit(`ua\0${userAgent}`), occurred_at: occurredAt,
+      hmac_key_id: auditKeyId, client_ip_sha256: await hmacAudit(`ip\0${ip}`, auditKey),
+      user_agent_sha256: await hmacAudit(`ua\0${userAgent}`, auditKey), occurred_at: occurredAt,
     });
     if (!exactIdentifier(audit?.id)) throw new Error('Signature validation audit could not be recorded');
 
@@ -407,6 +482,7 @@ Deno.serve(async (req) => {
         document_binding_version: document.binding_version,
         signer_roster_sha256: document.signer_roster_sha256,
         agreement_text_sha256: agreement.digest,
+        hmac_key_id: auditKeyId,
         status: 'active',
         authority_version: 1,
         issued_at: occurredAt,
@@ -424,7 +500,8 @@ Deno.serve(async (req) => {
           || grantReadback[0]?.package_authority_version !== initial.package.authority_version
           || grantReadback[0]?.document_authority_version !== document.signature_authority_version
           || grantReadback[0]?.signer_roster_sha256 !== document.signer_roster_sha256
-          || grantReadback[0]?.agreement_text_sha256 !== agreement.digest) {
+          || grantReadback[0]?.agreement_text_sha256 !== agreement.digest
+          || grantReadback[0]?.hmac_key_id !== auditKeyId) {
         throw new Error('Review grant persistence could not be verified');
       }
       const grantAudit = await entities.SignatureAuditEvent.create({
@@ -434,8 +511,8 @@ Deno.serve(async (req) => {
         token_id: initial.token.id, action: 'review_grant_issued',
         actor_type: 'external_signer', request_id: requestId, authority_version: 1,
         document_content_sha256: document.document_content_sha256,
-        client_ip_sha256: await hmacAudit(`ip\0${ip}`),
-        user_agent_sha256: await hmacAudit(`ua\0${userAgent}`), occurred_at: occurredAt,
+        hmac_key_id: auditKeyId, client_ip_sha256: await hmacAudit(`ip\0${ip}`, auditKey),
+        user_agent_sha256: await hmacAudit(`ua\0${userAgent}`, auditKey), occurred_at: occurredAt,
       });
       if (!exactIdentifier(grantAudit?.id)) throw new Error('Review grant audit could not be recorded');
       const result = await base44.asServiceRole.integrations.Core.CreateFileSignedUrl({
