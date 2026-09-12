@@ -232,7 +232,8 @@ async function loadRuntime({
     events: [],
   };
   const matches = (row, query) => Object.entries(query || {}).every(([key, value]) => (
-    Array.isArray(row?.[key]) && !Array.isArray(value)
+    Array.isArray(value?.$in) ? value.$in.includes(row?.[key])
+      : Array.isArray(row?.[key]) && !Array.isArray(value)
       ? row[key].includes(value)
       : row?.[key] === value
   ));
@@ -871,6 +872,19 @@ test('every cleanup update requires exact readback before complete can be true',
   } finally {
     console.error = originalError;
   }
+});
+
+test('offboarding cancels audit-pending reminders while preserving their reservation evidence', async () => {
+  const runtime = await loadRuntime({ sweepRows: { ScheduledSignatureReminder: [{
+    id: 'audit-pending-1', requested_by: TARGET.email, status: 'pending_audit',
+    creation_claim_token: 'retained-reservation', audit_write_operation_id: 'retained-audit-owner',
+  }] } });
+  const result = await invokeRuntime(runtime.handler, { action: 'offboard', user_id: 'target-1', reason: 'Employment ended' });
+  assert.equal(result.json.results.signature_reminders_canceled, 1);
+  const row = runtime.state.sweeps.ScheduledSignatureReminder[0];
+  assert.equal(row.status, 'canceled');
+  assert.equal(row.creation_claim_token, 'retained-reservation');
+  assert.equal(row.audit_write_operation_id, 'retained-audit-owner');
 });
 
 test('exact committed cleanup readbacks are the only rows counted as revoked', async () => {

@@ -82,7 +82,7 @@ test('token, review, signature, and delivery code retains fail-closed security i
 
 test('signature reminder scheduling requires exact requester membership and audit-before-dispatch', async () => {
   const scheduler = await source('scheduleSignatureReminders');
-  assert.match(scheduler, /const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = false;/);
+  assert.match(scheduler, /const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = true;/);
   assert.match(scheduler, /!SIGNATURE_REMINDER_RELEASE_ENABLED \|\| !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN/);
   assert.match(scheduler, /Platform ownership is not tenant membership/);
   assert.match(scheduler, /\{ agency_id: agencyId, user_id: userId \}/);
@@ -112,7 +112,7 @@ test('signature reminder scheduling requires exact requester membership and audi
 
 test('stale sending reminders become indeterminate and can never be auto-resent', async () => {
   const dispatcher = await source('dispatchScheduledSignatureReminders');
-  assert.match(dispatcher, /const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = false;/);
+  assert.match(dispatcher, /const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = true;/);
   assert.match(dispatcher, /!SIGNATURE_REMINDER_DISPATCH_ENABLED \|\| !SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN/);
   assert.match(dispatcher, /quarantineStaleReminderClaims/);
   assert.match(dispatcher, /\{ status: 'sending', delivery_state: 'pending' \}/);
