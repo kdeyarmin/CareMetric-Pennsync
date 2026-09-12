@@ -498,9 +498,9 @@ export function installAuthorityBoundLinkInterceptor(documentObject = document) 
       && (name === 'href' || name === 'download')
     );
     if (!controlsAuxiliaryTarget && !controlsNavigationPayload) return;
-    let unsafe = false;
+    let unsafe;
     if (controlsAuxiliaryTarget) {
-      let currentTarget = '';
+      let currentTarget;
       try { currentTarget = element.getAttribute(name) ?? ''; } catch { currentTarget = 'unknown'; }
       unsafe = isNonSelfTarget(currentTarget);
     } else {
@@ -561,7 +561,7 @@ export function installAuthorityBoundLinkInterceptor(documentObject = document) 
   };
 
   const guardExistingOpenShadowRoots = (root) => {
-    let elements = [];
+    let elements;
     try { elements = [...root.querySelectorAll('*')]; } catch { return; }
     for (const element of elements) {
       let shadowRoot = null;

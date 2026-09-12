@@ -79,7 +79,7 @@ export function rotateBrowserAuthorityEpoch() {
     return next;
   }
 
-  let previous = null;
+  let previous;
   try {
     previous = storage.getItem(TENANT_BROWSER_AUTHORITY_EPOCH_KEY);
     if (previous === next) {
