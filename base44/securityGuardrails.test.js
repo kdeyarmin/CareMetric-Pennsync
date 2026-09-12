@@ -489,18 +489,20 @@ const DORMANT_SIGNATURE_BROKERS = {
   scheduleSignatureReminders: {
     releaseMarker: 'SIGNATURE_REMINDER_RELEASE_ENABLED',
     proofMarker: 'SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN',
+    proofMarkerValue: true,
   },
   dispatchScheduledSignatureReminders: {
     releaseMarker: 'SIGNATURE_REMINDER_DISPATCH_ENABLED',
     proofMarker: 'SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN',
+    proofMarkerValue: true,
   },
 };
 
-for (const [functionName, { releaseMarker, proofMarker }] of Object.entries(DORMANT_SIGNATURE_BROKERS)) {
+for (const [functionName, { releaseMarker, proofMarker, proofMarkerValue = false }] of Object.entries(DORMANT_SIGNATURE_BROKERS)) {
   test(`${functionName} retains a dormant implementation behind its early release gate`, () => {
     const src = read(`base44/functions/${functionName}/entry.ts`);
     assert.match(src, new RegExp(`const ${releaseMarker} = false;`));
-    if (proofMarker) assert.match(src, new RegExp(`const ${proofMarker} = false;`));
+    if (proofMarker) assert.match(src, new RegExp(`const ${proofMarker} = ${proofMarkerValue};`));
     assert.match(src, /npm:\@base44\/sdk\@0\.8\.46/);
     const handlerIndex = src.indexOf('Deno.serve(async (req) =>');
     const guardIndex = src.indexOf(`if (!${releaseMarker}`, handlerIndex);
@@ -510,7 +512,7 @@ for (const [functionName, { releaseMarker, proofMarker }] of Object.entries(DORM
     assert.notEqual(clientIndex, -1);
     assert.ok(guardIndex < clientIndex, `${functionName} must gate before SDK construction`);
     if (proofMarker) {
-      const proofDeclarationIndex = src.indexOf(`const ${proofMarker} = false;`);
+      const proofDeclarationIndex = src.indexOf(`const ${proofMarker} = ${proofMarkerValue};`);
       const proofGuardIndex = src.indexOf(`!${proofMarker}`, guardIndex);
       assert.ok(proofDeclarationIndex < handlerIndex, `${functionName} must declare its atomic proof gate before the handler`);
       assert.ok(proofGuardIndex > guardIndex && proofGuardIndex < clientIndex,
