@@ -2,6 +2,10 @@
   "name": "PhoneNumber",
   "type": "object",
   "properties": {
+    "creation_claim_token": {
+      "type": "string",
+      "description": "Server-generated inventory creation owner for exact lost-acknowledgement recovery."
+    },
     "e164": {
       "type": "string",
       "description": "The Twilio virtual number in E.164 form, e.g. +12155550100. Unique across the pool."
@@ -14,10 +18,11 @@
       "type": "string",
       "enum": [
         "available",
-        "assigned"
+        "assigned",
+        "reserved"
       ],
       "default": "available",
-      "description": "Whether the number is unassigned (available) or currently assigned to a nurse."
+      "description": "Available for a nurse, assigned to a nurse, or reserved for a dedicated office/fax purpose. Reserved inventory cannot be assigned, released, or removed through ordinary work-number operations."
     },
     "assigned_to_email": {
       "type": "string",

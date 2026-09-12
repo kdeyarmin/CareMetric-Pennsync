@@ -311,7 +311,7 @@ test('retired patient-linked entities have no direct browser entity access', () 
     const source = readFileSync(path, 'utf8');
     for (const name of names) {
       if (new RegExp(`\\bentities\\.${name}\\s*\\.`).test(source)) {
-        bad.push(`${path.slice(REPO_DIR.length + 1)}: ${name}`);
+        bad.push(`${path.slice(REPO_DIR.length + 1).replaceAll('\\', '/')}: ${name}`);
       }
     }
   }
@@ -392,7 +392,7 @@ test('paused OASIS recommendation and automation entities stay behind containmen
     const source = readFileSync(path, 'utf8');
     for (const name of Object.keys(expectedEntityConsumers)) {
       if (new RegExp(`\\bentities\\.${name}\\s*\\.`).test(source)) {
-        actualEntityConsumers[name].push(path.slice(REPO_DIR.length + 1));
+        actualEntityConsumers[name].push(path.slice(REPO_DIR.length + 1).replaceAll('\\', '/'));
       }
     }
   }
@@ -421,7 +421,7 @@ test('paused OASIS recommendation and automation entities stay behind containmen
       const importPattern = new RegExp(
         `(?:from\\s+["'][^"']*/${component}["']|import\\(\\s*["'][^"']*/${component}["']\\s*\\))`,
       );
-      if (importPattern.test(source)) actualImportHosts[component].push(path.slice(REPO_DIR.length + 1));
+      if (importPattern.test(source)) actualImportHosts[component].push(path.slice(REPO_DIR.length + 1).replaceAll('\\', '/'));
     }
   }
   for (const component of Object.keys(actualImportHosts)) actualImportHosts[component].sort();
@@ -462,7 +462,7 @@ test('zero-caller destructive deletes remain fail-closed', () => {
     const source = readFileSync(path, 'utf8');
     for (const name of names) {
       if (new RegExp(`\\bentities\\.${name}\\s*\\.\\s*delete\\s*\\(`).test(source)) {
-        bad.push(`${path.slice(REPO_DIR.length + 1)}: ${name}.delete`);
+        bad.push(`${path.slice(REPO_DIR.length + 1).replaceAll('\\', '/')}: ${name}.delete`);
       }
     }
   }
@@ -496,7 +496,7 @@ test('locked dormant reference entities have no production-code consumer', () =>
     const source = readFileSync(path, 'utf8');
     for (const name of DORMANT_REFERENCE_ENTITY_NAMES) {
       if (new RegExp(`\\b${name}\\b`).test(source)) {
-        bad.push(`${path.slice(REPO_DIR.length + 1)}: ${name}`);
+        bad.push(`${path.slice(REPO_DIR.length + 1).replaceAll('\\', '/')}: ${name}`);
       }
     }
   }
@@ -721,7 +721,7 @@ test('interim-locked content entities keep a reviewed direct-consumer inventory'
         }
       }
       for (const [authority, members] of consumers) {
-        const relativePath = path.slice(REPO_DIR.length + 1);
+        const relativePath = path.slice(REPO_DIR.length + 1).replaceAll('\\', '/');
         actual[name].push(
           `${relativePath} :: ${authority} :: ${[...members].sort().join(',')}`,
         );

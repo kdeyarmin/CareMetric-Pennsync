@@ -85,6 +85,35 @@ function normalizeE164(raw) {
 
 const isBlank = (v) => v == null || String(v).trim() === '';
 
+// <<<BEGIN SHARED HELPER: assignUserFromClaimedNumber — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function assignUserFromClaimedNumber(base44, poolId, targetId, targetEmail, patch) {
+  const entities = base44.asServiceRole.entities;
+  const claims = await entities.PhoneNumber.filter({ id: poolId }, undefined, 2);
+  const claim = Array.isArray(claims) && claims.length === 1 ? claims[0] : null;
+  if (!claim || claim.id !== poolId || claim.status !== 'assigned' || claim.assigned_to_email !== targetEmail
+    || claim.e164 !== patch.work_phone_number || typeof claim.updated_date !== 'string') {
+    throw new Error('Work-number claim requires reconciliation');
+  }
+  try {
+    return await entities.User.update(targetId, patch);
+  } catch {
+    let users;
+    try { users = await entities.User.filter({ id: targetId }, undefined, 2); }
+    catch { throw new Error('Work-number assignment requires reconciliation'); }
+    if (!Array.isArray(users) || users.length !== 1 || users[0]?.id !== targetId) {
+      throw new Error('Work-number assignment requires reconciliation');
+    }
+    if (Object.entries(patch).every(([key, value]) => users[0][key] === value)) return users[0];
+    if (users[0].work_phone_number !== patch.work_phone_number) {
+      await entities.PhoneNumber.updateMany({ id: poolId, e164: claim.e164, status: 'assigned',
+        assigned_to_email: targetEmail, updated_date: claim.updated_date },
+      { $set: { status: 'available', assigned_to_email: '' } });
+    }
+    throw new Error('Work-number assignment was not confirmed');
+  }
+}
+// <<<END SHARED HELPER: assignUserFromClaimedNumber>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
@@ -144,6 +173,7 @@ Deno.serve(async (req) => {
       let chosen = null;
       while (poolIdx < pool.length) {
         const cand = pool[poolIdx++];
+        if (cand.status !== 'available') continue;
         const e164 = normalizeE164(cand.e164);
         if (e164 && !inUse.has(e164)) { chosen = { row: cand, e164 }; break; }
       }
@@ -153,9 +183,10 @@ Deno.serve(async (req) => {
       // assigns cannot hand the same E.164 to two nurses. Re-read to confirm
       // we still own the claim (loser sees the winner's assigned_to_email).
       try {
-        await base44.asServiceRole.entities.PhoneNumber.update(chosen.row.id, {
-          status: 'assigned', assigned_to_email: target.email,
-        });
+        const claim = await base44.asServiceRole.entities.PhoneNumber.updateMany({
+          id: chosen.row.id, e164: chosen.row.e164, status: 'available',
+        }, { $set: { status: 'assigned', assigned_to_email: target.email } });
+        if (claim?.success !== true || claim.updated !== 1 || claim.has_more !== false) continue;
       } catch (err) {
         console.error('pool claim failed:', err?.message);
         continue;
@@ -172,13 +203,11 @@ Deno.serve(async (req) => {
         twilio_phone_number_sid: chosen.row.twilio_phone_number_sid || '',
       };
       if (target.duty_status === undefined || target.duty_status === null) update.duty_status = 'off_duty';
-      const ok = await base44.asServiceRole.entities.User.update(target.id, update)
+      const ok = await assignUserFromClaimedNumber(base44, chosen.row.id, target.id, target.email, update)
         .then(() => true).catch((err) => { console.error('work number assignment failed:', err?.message); return false; });
       if (!ok) {
-        // Release the pool claim so another run can reuse the number.
-        await base44.asServiceRole.entities.PhoneNumber.update(chosen.row.id, {
-          status: 'available', assigned_to_email: '',
-        }).catch(() => {});
+        // The shared writer reconciles definite failures and retains unknown
+        // writes; never release a newer claim or an unconfirmed assignment here.
         continue;
       }
 
