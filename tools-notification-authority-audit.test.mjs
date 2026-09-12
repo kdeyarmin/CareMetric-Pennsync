@@ -623,6 +623,8 @@ test('CLI is read-only, aggregate-only, and rejects mutation-shaped options', as
       'audit:notification-authority',
     ], {
       cwd: fileURLToPath(new URL('.', import.meta.url)),
+      // Corepack's Windows pnpm launcher is a command shim, not a native executable.
+      shell: process.platform === 'win32',
       encoding: 'utf8',
       env: {
         ...process.env,

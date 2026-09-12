@@ -2,6 +2,14 @@
   "name": "ScheduledSignatureReminder",
   "type": "object",
   "properties": {
+    "creation_claim_token": {
+      "type": "string",
+      "description": "Server-created owner matching the package schedule-key reservation."
+    },
+    "audit_write_operation_id": {
+      "type": "string",
+      "description": "Non-expiring owner of the single schedule-audit create attempt; unknown outcomes require reconciliation."
+    },
     "agency_id": {
       "type": "string",
       "description": "Immutable tenant id copied from the exact signature package."
