@@ -56,6 +56,26 @@ function canonicalEmail(value: unknown) {
   return email && email.length <= 320 && email.includes('@') && !/\s/.test(email) ? email : null;
 }
 
+// <<<BEGIN SHARED HELPER: signatureFileAndDeadline — generated, edit base44/_shared/backendHelpers.mjs>>>
+function isPrivateFileUri(value) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 4096
+    && !/\s/.test(value) && ![...value].some((character) => character.charCodeAt(0) <= 31 || character.charCodeAt(0) === 127)
+    && (value.startsWith('private/') || value.startsWith('private://')
+      || /^mp\/private\/[a-f0-9]{24}\/[^?#]+$/.test(value));
+}
+
+function dueDateEnd(value) {
+  if (typeof value !== 'string') return null;
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  if (!dateOnly && !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,3})?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) return null;
+  const calendar = value.slice(0, 10);
+  const calendarMillis = Date.parse(calendar + 'T00:00:00.000Z');
+  if (!Number.isFinite(calendarMillis) || new Date(calendarMillis).toISOString().slice(0, 10) !== calendar) return null;
+  const millis = Date.parse(dateOnly ? value + 'T23:59:59.999Z' : value);
+  return Number.isFinite(millis) ? millis : null;
+}
+// <<<END SHARED HELPER: signatureFileAndDeadline>>>
+
 function validInstant(value: unknown) {
   return typeof value === 'string' && Number.isFinite(Date.parse(value));
 }
@@ -64,19 +84,17 @@ function exactDigest(value: unknown) {
   return typeof value === 'string' && /^[a-f0-9]{64}$/.test(value) ? value : null;
 }
 
-function dueDateEnd(value: unknown) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
-  const instant = Date.parse(`${value}T23:59:59.999Z`);
-  if (!Number.isFinite(instant)) return null;
-  return new Date(instant).toISOString().slice(0, 10) === value ? instant : null;
-}
-
 function deriveAuthorityDeadline(pkg: Record<string, any>, signatures: Array<Record<string, any>>) {
   const deadlines: number[] = [];
   if (pkg.due_date != null) {
     const packageDeadline = dueDateEnd(pkg.due_date);
     if (packageDeadline == null) throw new PublicError(409, 'Signature package deadline is invalid');
     deadlines.push(packageDeadline);
+  }
+  for (const field of ['expires_at', 'expiration_date']) {
+    if (pkg[field] == null) continue;
+    if (!validInstant(pkg[field])) throw new PublicError(409, 'Signature package deadline is invalid');
+    deadlines.push(Date.parse(pkg[field]));
   }
   for (const signature of signatures) {
     if (signature?.due_date != null) {
@@ -239,6 +257,7 @@ async function loadDispatchTarget(entities: Record<string, any>, reminder: Recor
       id: signature.document_binding_id, agency_id: reminder.agencyId, document_id: signature.document_id,
     }, 'DocumentTenantBinding');
     if (binding.patient_id !== patientId || binding.storage_mode !== 'private' || binding.version !== 2
+        || !isPrivateFileUri(binding.file_uri)
         || binding.content_sha256 !== signature.document_content_sha256) {
       throw new PublicError(409, 'Signature source binding is invalid');
     }

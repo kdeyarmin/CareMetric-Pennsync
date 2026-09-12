@@ -85,7 +85,15 @@
     "access_count": {
       "type": "number",
       "default": 0,
-      "description": "Number of times token was used to access"
+      "description": "Conditionally incremented review attempts, including attempts whose later delivery fails. Maximum 20 per token; no grants are created without a confirmed increment."
+    },
+    "submission_upload_operation_id": {
+      "type": "string",
+      "description": "Durable server-generated owner of a started signature upload. Prevents stale takeover from uploading again until the exact artifact has been reconciled."
+    },
+    "submission_upload_started_at": {
+      "type": "string",
+      "format": "date-time"
     },
     "last_accessed_at": {
       "type": "string",
