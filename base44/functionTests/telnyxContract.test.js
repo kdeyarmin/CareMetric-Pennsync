@@ -420,7 +420,7 @@ test("searchPurchaseTelnyxNumbers posts the Telnyx number-order contract", async
   ]);
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: { TELNYX_API_KEY: "KEYtest", SUPER_ADMIN_EMAIL: "a@x.com" },
-    makeClient: () => makeBase44({ user: { email: "a@x.com", role: "admin" }, data: { IntegrationSecret: [{ api_key: "KEYtest" }] } }),
+    makeClient: () => makeSpyBase44({ user: { email: "a@x.com", role: "admin" }, data: { IntegrationSecret: [{ api_key: "KEYtest" }] } }),
     fetchImpl: impl,
   });
   await handler(new Request("https://app/functions/searchPurchaseTelnyxNumbers", {
@@ -458,7 +458,7 @@ test("a nurse-line purchase auto-enrolls the number in the saved A2P campaign", 
   ]);
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: { SUPER_ADMIN_EMAIL: "a@x.com" },
-    makeClient: () => makeBase44({
+    makeClient: () => makeSpyBase44({
       user: { email: "a@x.com", role: "admin" },
       data: {
         IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1" }],
@@ -486,7 +486,7 @@ test("a nurse-line purchase with NO saved campaign warns instead of enrolling", 
   ]);
   const handler = await loadHandler("../functions/searchPurchaseTelnyxNumbers/entry.ts", {
     env: { SUPER_ADMIN_EMAIL: "a@x.com" },
-    makeClient: () => makeBase44({
+    makeClient: () => makeSpyBase44({
       user: { email: "a@x.com", role: "admin" },
       data: { IntegrationSecret: [{ api_key: "KEYtest", voice_connection_id: "VC1", messaging_profile_id: "MP1" }] },
     }),
@@ -504,6 +504,10 @@ test("a nurse-line purchase with NO saved campaign warns instead of enrolling", 
 // A minimal spy-able client: like makeBase44 but with stable per-entity objects
 // so update/create calls can be recorded, and per-entity overrides.
 function makeSpyBase44({ user = { email: "a@x.com", role: "admin", full_name: "Ada" }, data = {}, writes = [] } = {}) {
+  for (const [index, row] of (data.IntegrationSecret || []).entries()) {
+    Object.assign(row, { id: row.id ?? `integration_${index}`, provider: row.provider ?? 'telnyx',
+      is_active: row.is_active ?? true, updated_date: row.updated_date ?? '2026-09-11T12:00:00.000Z' });
+  }
   const cache = {};
   const matches = (row, query = {}) => Object.entries(query).every(([key, value]) => {
     if (value === null) return row?.[key] == null;
@@ -588,7 +592,7 @@ function makeSpyBase44({ user = { email: "a@x.com", role: "admin", full_name: "A
             const offset = Number.isSafeInteger(skip) && skip >= 0 ? skip : 0;
             rows = rows.slice(offset, offset + limit);
           }
-          return ['FaxLog', 'PhoneNumber', 'User'].includes(name) ? structuredClone(rows) : rows;
+          return ['FaxLog', 'PhoneNumber', 'User', 'IntegrationSecret'].includes(name) ? structuredClone(rows) : rows;
         },
         list: async () => data[name] || [],
       };
@@ -677,6 +681,67 @@ test("provision_fax re-points an owned number at the fax connection", async () =
   const outboundWrite = writes.find((w) => w.entity === "AgencySettings" && w.op === "update");
   assert.equal(outboundWrite?.patch.outbound_fax_number_e164, "+12155550188", "stored normalized as the blind outbound fax line");
   assert.equal(writes.find((w) => w.entity === 'PhoneNumber' && w.op === 'create')?.row.status, 'reserved');
+});
+
+test('concurrent fax provisioning, purchases and manual pool adds share one creation reservation', async () => {
+  for (const pair of [['provision_fax', 'provision_fax'], ['provision_fax', 'add'], ['purchase', 'add']]) {
+    const data = { IntegrationSecret: [activeTelnyxSecret()], PhoneNumber: [] };
+    const writes = [];
+    const client = makeSpyBase44({ data, writes });
+    let arrived = 0;
+    let release;
+    const barrier = new Promise(resolve => { release = resolve; });
+    const update = client.asServiceRole.entities.IntegrationSecret.updateMany;
+    client.asServiceRole.entities.IntegrationSecret.updateMany = async (query, patch) => {
+      if (Object.keys(patch.$set.phone_inventory_creation_claims).length) {
+        arrived += 1;
+        if (arrived === 2) release();
+        await barrier;
+      }
+      return update(query, patch);
+    };
+    const { impl, calls } = makeFetch([
+      { match: url => url.includes('/phone_numbers?'), respond: () => ({ json: { data: [{ id: 'np_7', phone_number: '+12155550188' }] } }) },
+      { match: url => url.endsWith('/number_orders'), respond: () => ({ json: { data: { id: 'order_1' } } }) },
+      { match: url => url.endsWith('/phone_numbers/np_7'), respond: () => ({ json: { data: { id: 'np_7' } } }) },
+    ]);
+    const handlers = [];
+    for (const action of pair) handlers.push(await loadHandler(`../functions/${action === 'add' ? 'managePhoneNumberPool' : 'searchPurchaseTelnyxNumbers'}/entry.ts`, {
+      env: { SUPER_ADMIN_EMAIL: 'a@x.com' }, makeClient: () => client, fetchImpl: impl,
+    }));
+    const responses = await Promise.all(handlers.map((handler, index) => handler(new Request('https://app/functions/test', {
+      method: 'POST', body: JSON.stringify({ action: pair[index], purpose: 'fax', e164: '+12155550188', set_as_outbound_fax: false }),
+    }))));
+    assert.equal(arrived, 2, 'both creators saw an empty inventory');
+    assert.equal(responses.filter(response => response.status === 200).length, 1, pair.join('/'));
+    assert.equal(data.PhoneNumber.length, 1);
+    assert.equal(writes.filter(write => write.entity === 'PhoneNumber' && write.op === 'create').length, 1);
+    assert.ok(calls.filter(call => call.method === 'POST' && call.url.endsWith('/number_orders')).length <= 1);
+    assert.deepEqual(data.IntegrationSecret[0].phone_inventory_creation_claims, {});
+  }
+});
+
+test('inventory creation recovers a lost create acknowledgement and fences an unknown create', async () => {
+  for (const persisted of [true, false]) {
+    const data = { IntegrationSecret: [activeTelnyxSecret()], PhoneNumber: [] };
+    const client = makeSpyBase44({ data });
+    let creates = 0;
+    const create = client.asServiceRole.entities.PhoneNumber.create;
+    client.asServiceRole.entities.PhoneNumber.create = async input => {
+      creates += 1;
+      if (persisted) await create(input);
+      throw new Error('lost acknowledgement');
+    };
+    const handler = await loadHandler('../functions/managePhoneNumberPool/entry.ts', {
+      env: { SUPER_ADMIN_EMAIL: 'a@x.com' }, makeClient: () => client, fetchImpl: async () => { throw new Error('No provider call allowed'); },
+    });
+    const invoke = () => handler(new Request('https://app/functions/test', { method: 'POST', body: JSON.stringify({ action: 'add', e164: '+12155550188' }) }));
+    assert.equal((await invoke()).status, persisted ? 200 : 500);
+    await invoke();
+    assert.equal(creates, 1);
+    assert.equal(data.PhoneNumber.length, persisted ? 1 : 0);
+    assert.equal(Object.keys(data.IntegrationSecret[0].phone_inventory_creation_claims).length, persisted ? 0 : 1);
+  }
 });
 
 test('existing fax provisioning reserves inventory even when the provider id is already correct', async () => {
