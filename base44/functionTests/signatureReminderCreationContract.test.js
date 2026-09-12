@@ -135,6 +135,24 @@ test('an audit operation claim with a lost acknowledgement resolves by owner rea
   assert.equal(f.creates.SignatureAuditEvent, 1);
 });
 
+test('a package reservation with a lost acknowledgement resolves without abandoning the request', async () => {
+  const f = fixture({ afterUpdate: name => { if (name === 'DocumentPackage') throw new Error('lost reservation acknowledgement'); } });
+  assert.equal((await f.schedule()).status, 200);
+  assert.equal((await f.schedule()).status, 200);
+  assert.equal(f.creates.ScheduledSignatureReminder, 1);
+});
+
+test('canceled and incomplete pending rows report a conflict before audit recovery', async () => {
+  for (const state of ['canceled', 'incomplete_pending']) {
+    const f = fixture();
+    assert.equal((await f.schedule()).status, 200);
+    if (state === 'canceled') f.db.ScheduledSignatureReminder[0].status = 'canceled';
+    else delete f.db.ScheduledSignatureReminder[0].audit_event_id;
+    assert.equal((await f.schedule()).status, 409);
+    assert.equal(f.creates.SignatureAuditEvent, 1);
+  }
+});
+
 test('changed request identity and creation provenance cannot replay', async () => {
   const f = fixture();
   assert.equal((await f.schedule()).status, 200);
@@ -148,4 +166,15 @@ test('membership revocation after audit prevents queue activation', async () => 
   const f = fixture({ afterCreate: (name, db) => { if (name === 'SignatureAuditEvent') db.AgencyMembership[0].status = 'revoked'; } });
   assert.equal((await f.schedule()).status, 403);
   assert.equal(f.db.ScheduledSignatureReminder[0].status, 'pending_audit');
+});
+
+test('legacy rows without reservation provenance require explicit migration', async () => {
+  const f = fixture();
+  assert.equal((await f.schedule()).status, 200);
+  delete f.db.DocumentPackage[0].reminder_creation_claims;
+  delete f.db.ScheduledSignatureReminder[0].creation_claim_token;
+  f.db.ScheduledSignatureReminder[0].status = 'pending_audit';
+  assert.equal((await f.schedule()).status, 409);
+  assert.equal(f.creates.ScheduledSignatureReminder, 1);
+  assert.equal(f.creates.SignatureAuditEvent, 1);
 });

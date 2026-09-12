@@ -27,7 +27,7 @@ function outboundDeliveryPausedResponse(channel = 'outbound') {
  * failure. This prevents a scheduler replay from emailing two bearer links.
  */
 const SIGNATURE_REMINDER_DISPATCH_ENABLED = false;
-const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = false;
+const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = true;
 const MAX_IDENTIFIER_LENGTH = 200;
 const EXACT_ROW_LIMIT = 10;
 const BATCH_LIMIT = 100;

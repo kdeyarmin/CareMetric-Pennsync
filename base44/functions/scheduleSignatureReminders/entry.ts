@@ -3,8 +3,9 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.46';
 /** Authority-bound reminder scheduler. Kept release-gated with public signing. */
 const SIGNATURE_REMINDER_RELEASE_ENABLED = false;
 // Package-row conditional reservations serialize creation for each schedule key.
-// Keep this separate proof gate until hosted concurrent-create evidence is recorded.
-const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = false;
+// Hosted concurrent-create/audit/replay proof is recorded in the creation audit.
+// Product release remains independently disabled until the signing flow is complete.
+const SIGNATURE_REMINDER_ATOMIC_UNIQUENESS_PROVEN = true;
 const MAX_BODY_BYTES = 10_000;
 const MAX_IDENTIFIER_LENGTH = 200;
 const EXACT_ROW_LIMIT = 10;
@@ -363,12 +364,14 @@ async function createReminderOnce(entities: Record<string, any>, pkg: Record<str
   if (Object.hasOwn(claims, scheduleKey)) throw new PublicError(202, 'Signature reminder creation requires reconciliation');
   if (Object.keys(claims).length >= 500) throw new PublicError(409, 'Signature reminder reservation limit reached');
   const token = crypto.randomUUID();
-  const result = await entities.DocumentPackage.updateMany({ id: pkg.id, agency_id: pkg.agency_id,
+  let result;
+  try { result = await entities.DocumentPackage.updateMany({ id: pkg.id, agency_id: pkg.agency_id,
     status: packageRow.status, authority_version: packageRow.authority_version, updated_date: packageRow.updated_date,
     ...(prior == null ? { $or: [{ reminder_creation_claims: null }, { reminder_creation_claims: { $exists: false } }] }
       : { reminder_creation_claims: prior }),
-  }, { $set: { reminder_creation_claims: { ...claims, [scheduleKey]: token } } });
-  if (result?.success !== true || result.updated !== 1 || result.has_more !== false) {
+  }, { $set: { reminder_creation_claims: { ...claims, [scheduleKey]: token } } }); }
+  catch { /* Read back this invocation's unique owner before deciding the result. */ }
+  if (result && (result.success !== true || result.updated !== 1 || result.has_more !== false)) {
     throw new PublicError(202, 'Signature reminder creation changed concurrently');
   }
   const owner = await exactOne(entities.DocumentPackage,
@@ -425,6 +428,7 @@ Deno.serve(async (req) => {
       return Response.json({ success: true, created: false, reminder_id: row.id, status: row.status, send_at: row.send_at },
         { headers: { 'Cache-Control': 'no-store', Pragma: 'no-cache' } });
     }
+    if (row.status !== 'pending_audit') throw new PublicError(409, 'Signature reminder state cannot be resumed');
     const reminderId = exactIdentifier(row?.id);
     if (!reminderId) throw new Error('Signature reminder create did not return an id');
     const readback = await exactOne(authority.entities.ScheduledSignatureReminder,

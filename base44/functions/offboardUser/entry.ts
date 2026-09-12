@@ -908,7 +908,7 @@ async function offboardUser(
 
   try {
     const pendingSigReminders = await base44.asServiceRole.entities.ScheduledSignatureReminder.filter(
-      { requested_by: targetEmail, status: 'pending' },
+      { requested_by: targetEmail, status: { $in: ['pending', 'pending_audit'] } },
       undefined,
       5000,
     ).catch((err) => {
