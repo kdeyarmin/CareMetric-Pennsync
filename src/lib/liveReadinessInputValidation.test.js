@@ -281,6 +281,8 @@ test("validator rejects high-confidence credential and direct-identifier free te
   const samples = [
     "Bearer abcdefghijklmnopqrstuvwxyz",
     "password=never-print-this-value",
+    'SIGNATURE_HMAC_KEYRING={"legacy":"synthetic-key-material-never-print"}',
+    '"SIGNATURE_HMAC_KEYRING": "{\\"legacy\\":\\"synthetic-key-material-never-print\\"}"',
     "\"password\": \"long-secret-value-123\"",
     "Authorization: Basic dXNlcjpwYXNz",
     "Authorization: Basic dXNlcjpwYXNzd29yZA==",

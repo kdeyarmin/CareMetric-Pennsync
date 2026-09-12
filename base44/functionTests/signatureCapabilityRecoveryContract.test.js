@@ -125,6 +125,15 @@ test('review and artifact key identities survive active-key rotation and exact r
   assert.equal((await (await f.sign(nonce)).json()).idempotent, true);
   assert.equal(f.calls.uploads, 1);
   assert.ok(f.db.SignatureAuditEvent.filter(row => row.client_ip_sha256).every(row => row.hmac_key_id === 'first'));
+  assert.equal(f.db.SignatureAuditEvent.find(row => row.action === 'token_consumed')?.hmac_key_id, 'first');
+});
+
+test('long existing legacy secrets remain usable without changing their key material', async () => {
+  const f = await fixture({ env: { SIGNATURE_HMAC_SECRET: 'legacy-synthetic-secret-only-'.repeat(100) } });
+  const review = await (await f.review()).json();
+  assert.equal((await f.sign(review.documents[0].review_nonce)).status, 200);
+  assert.equal((await (await f.sign(review.documents[0].review_nonce)).json()).idempotent, true);
+  assert.equal(f.calls.uploads, 1);
 });
 
 test('missing retained keys fail before claims or storage and recover when restored', async () => {
@@ -155,7 +164,11 @@ test('legacy artifacts reconcile after migration to a retained legacy key', asyn
 });
 
 test('invalid keyring configuration issues no grants, signed URLs or access increments', async () => {
-  for (const configured of ['{', '[]', '{}', '{"bad.id":"12345678901234567890123456789012345"}', '{"first":"short"}']) {
+  const key = 'synthetic-duplicate-key-material-only-123456789';
+  for (const configured of ['{', '[]', '{}', '{"bad.id":"12345678901234567890123456789012345"}', '{"first":"short"}',
+    `{"first":"${key}","first":"${key}replacement"}`,
+    `{"first":"${key}","\\u0066irst":"${key}replacement"}`,
+    `{"first":"${key}",}`, `{"first":null}`, `{"first":"${key}"}garbage`]) {
     const f = await fixture({ env: { SIGNATURE_HMAC_KEYRING: configured, SIGNATURE_HMAC_ACTIVE_KEY_ID: 'first' } });
     assert.equal((await f.review()).status, 500);
     assert.equal(f.db.DocumentPackageToken[0].access_count, 0);
