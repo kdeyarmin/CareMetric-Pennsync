@@ -4,9 +4,7 @@
   "properties": {
     "reminder_creation_claims": {
       "type": "object",
-      "additionalProperties": {
-        "type": "string"
-      },
+      "additionalProperties": { "type": "string" },
       "description": "Server-owned permanent schedule-key reservations. Unknown creates cannot expire or be automatically retried."
     },
     "agency_id": {
@@ -45,13 +43,8 @@
       "type": "string",
       "description": "Server-generated owner of the short signer-token issuance lease."
     },
-    "token_issue_claimed_at": {
-      "type": "string",
-      "format": "date-time"
-    },
-    "token_issue_request_id": {
-      "type": "string"
-    },
+    "token_issue_claimed_at": { "type": "string", "format": "date-time" },
+    "token_issue_request_id": { "type": "string" },
     "package_name": {
       "type": "string",
       "description": "Name of the document package (e.g., Admission Onboarding)"
@@ -155,6 +148,8 @@
     "patient_id",
     "document_signatures"
   ],
+  // Package creation and signing are quarantined. Service-role maintenance can
+  // still preserve or retire historical rows, but direct access is denied.
   "rls": {
     "read": false,
     "create": false,
