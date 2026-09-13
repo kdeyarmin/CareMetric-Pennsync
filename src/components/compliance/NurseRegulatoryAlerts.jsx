@@ -1,13 +1,14 @@
-import { useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Bell,
   CheckCircle2,
+  AlertCircle,
   GraduationCap,
   ChevronDown,
   ChevronUp,
@@ -19,21 +20,75 @@ import { createPageUrl } from "@/utils";
 import { formatEastern } from "@/components/utils/timezone";
 import { ALL_ROWS } from '@/lib/queryLimits';
 
-export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
-  const [expanded, setExpanded] = useState(!compact);
-  const [acknowledgedUpdates, setAcknowledgedUpdates] = useState(() => {
-    try {
-      const saved = localStorage.getItem(`acknowledged_updates_${nurseEmail}`);
-      return saved ? JSON.parse(saved) : [];
-    } catch { return []; }
-  });
+const MAX_ACKNOWLEDGED_UPDATES = 500;
 
-  const { data: updates = [] } = useQuery({
+const acknowledgedUpdatesKey = (nurseEmail) => (
+  typeof nurseEmail === 'string' && nurseEmail.trim()
+    ? `acknowledged_updates_${nurseEmail}`
+    : null
+);
+
+export function parseAcknowledgedUpdates(saved) {
+  if (!saved) return [];
+  try {
+    const parsed = JSON.parse(saved);
+    return Array.isArray(parsed)
+      ? [...new Set(parsed.filter(
+        (id) => typeof id === 'string'
+          && id.length > 0
+          && id.length <= 200
+          && id.trim() === id,
+      ))].slice(0, MAX_ACKNOWLEDGED_UPDATES)
+      : [];
+  } catch {
+    return [];
+  }
+}
+
+function readAcknowledgedUpdates(nurseEmail) {
+  try {
+    const key = acknowledgedUpdatesKey(nurseEmail);
+    return key ? parseAcknowledgedUpdates(localStorage.getItem(key)) : [];
+  } catch {
+    return [];
+  }
+}
+
+export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
+  const contentId = useId();
+  const [expanded, setExpanded] = useState(!compact);
+  const [acknowledgmentState, setAcknowledgmentState] = useState(() => ({
+    owner: nurseEmail,
+    ids: readAcknowledgedUpdates(nurseEmail),
+  }));
+  const acknowledgedUpdates = acknowledgmentState.owner === nurseEmail
+    ? acknowledgmentState.ids
+    : [];
+
+  // This component can remain mounted while the authenticated user changes.
+  // Re-scope local preferences instead of showing the previous nurse's state.
+  useEffect(() => {
+    setAcknowledgmentState({
+      owner: nurseEmail,
+      ids: readAcknowledgedUpdates(nurseEmail),
+    });
+  }, [nurseEmail]);
+
+  const {
+    data: updates,
+    isPending: updatesPending,
+    isError: updatesFailed,
+  } = useQuery({
     queryKey: ['implementedRegUpdates'],
     queryFn: () => base44.entities.RegulatoryUpdate.filter({ 
       status: { $in: ['approved', 'implemented'] }
     }, '-effective_date', ALL_ROWS),
   });
+
+  // A failed background refresh can still have usable cached query data.
+  // Only block review when no successful response has ever been cached.
+  const blockingUpdatesError = updatesFailed && !Array.isArray(updates);
+  const staleUpdates = updatesFailed && !blockingUpdatesError;
 
   // Filter to recent and unacknowledged updates
   const relevantUpdates = (updates || []).filter(u => {
@@ -42,9 +97,13 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
   });
 
   const handleAcknowledge = (updateId) => {
+    if (typeof updateId !== 'string' || !updateId || acknowledgedUpdates.includes(updateId)) return;
     const newAcknowledged = [...acknowledgedUpdates, updateId];
-    setAcknowledgedUpdates(newAcknowledged);
-    try { localStorage.setItem(`acknowledged_updates_${nurseEmail}`, JSON.stringify(newAcknowledged)); } catch { /* no-op */ }
+    setAcknowledgmentState({ owner: nurseEmail, ids: newAcknowledged });
+    try {
+      const key = acknowledgedUpdatesKey(nurseEmail);
+      if (key) localStorage.setItem(key, JSON.stringify(newAcknowledged));
+    } catch { /* no-op */ }
   };
 
   const getImpactColor = (level) => {
@@ -56,20 +115,38 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
     }
   };
 
-  if (relevantUpdates.length === 0 && compact) {
+  if (!updatesPending && !updatesFailed && relevantUpdates.length === 0 && compact) {
     return null;
   }
 
   if (compact) {
     return (
-      <Alert className="bg-indigo-50 border-indigo-200">
-        <Bell className="w-4 h-4 text-indigo-600" />
-        <AlertDescription className="text-indigo-900">
-          <span className="font-semibold">{relevantUpdates.length} New Regulation Update(s)</span>
-          <span className="ml-2">requiring your attention.</span>
-          <Link to={createPageUrl("ComplianceCenter")} className="ml-2 text-indigo-700 underline hover:text-indigo-800">
-            Review Now →
-          </Link>
+      <Alert
+        variant={updatesFailed ? 'destructive' : 'default'}
+        className={updatesFailed ? undefined : 'bg-indigo-50 border-indigo-200'}
+      >
+        {updatesFailed
+          ? <AlertCircle className="w-4 h-4 text-red-600" />
+          : <Bell className="w-4 h-4 text-indigo-600" />}
+        <AlertDescription className={updatesFailed ? undefined : 'text-indigo-900'}>
+          {staleUpdates && (
+            <p className="mb-2 font-semibold">
+              Unable to refresh regulatory updates. Showing the last saved updates.
+            </p>
+          )}
+          {updatesPending ? (
+            <span className="font-semibold">Checking for regulatory updates…</span>
+          ) : blockingUpdatesError ? (
+            <span className="font-semibold">Regulatory updates could not be loaded. Please try again.</span>
+          ) : (
+            <>
+              <span className="font-semibold">{relevantUpdates.length} New Regulation Update(s)</span>
+              <span className="ml-2">requiring your attention.</span>
+              <Link to={createPageUrl("ComplianceCenter")} className="ml-2 text-indigo-700 underline hover:text-indigo-800">
+                Review Now →
+              </Link>
+            </>
+          )}
         </AlertDescription>
       </Alert>
     );
@@ -77,12 +154,15 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
 
   return (
     <Card className="border-indigo-200">
-      <CardHeader 
-        className="py-3 bg-gradient-to-r from-indigo-50 to-navy-50 cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-      >
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm flex items-center gap-2">
+      <CardHeader className="bg-gradient-to-r from-indigo-50 to-navy-50 p-0">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-6 py-3 text-left"
+          aria-expanded={expanded}
+          aria-controls={contentId}
+          onClick={() => setExpanded((value) => !value)}
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold">
             <Bell className="w-4 h-4 text-indigo-600" />
             Regulatory Updates
             {relevantUpdates.length > 0 && (
@@ -90,17 +170,41 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
                 {relevantUpdates.length} New
               </Badge>
             )}
-          </CardTitle>
+          </span>
           {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-        </div>
+        </button>
       </CardHeader>
 
-      {expanded && (
-        <CardContent className="p-4 space-y-3">
-          {relevantUpdates.length === 0 ? (
+      <CardContent id={contentId} className="p-4 space-y-3" hidden={!expanded}>
+          {staleUpdates && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Unable to refresh regulatory updates. Showing the last saved updates.
+              </AlertDescription>
+            </Alert>
+          )}
+          {updatesPending ? (
+            <p className="py-4 text-center text-sm text-slate-600" role="status">
+              Checking for regulatory updates…
+            </p>
+          ) : blockingUpdatesError ? (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Regulatory updates could not be loaded. Refresh the page to try again.
+              </AlertDescription>
+            </Alert>
+          ) : relevantUpdates.length === 0 ? (
             <div className="text-center py-4">
-              <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-green-500" />
-              <p className="text-sm text-slate-600">You're up to date on all regulations!</p>
+              {staleUpdates ? (
+                <p className="text-sm text-slate-600">No unacknowledged updates in the last saved check.</p>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-green-500" />
+                  <p className="text-sm text-slate-600">You're up to date on all regulations!</p>
+                </>
+              )}
             </div>
           ) : (
             (relevantUpdates || []).map(update => (
@@ -116,6 +220,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
                   <Checkbox
                     onCheckedChange={() => handleAcknowledge(update.id)}
                     className="mt-1"
+                    aria-label={`Acknowledge ${update.title || 'regulatory update'}`}
                   />
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
@@ -166,11 +271,12 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
             ))
           )}
 
-          <p className="text-xs text-slate-500 text-center">
-            ✓ Check to acknowledge you've reviewed each update
-          </p>
-        </CardContent>
-      )}
+          {!updatesPending && !blockingUpdatesError && relevantUpdates.length > 0 && (
+            <p className="text-xs text-slate-500 text-center">
+              ✓ Check to acknowledge you've reviewed each update
+            </p>
+          )}
+      </CardContent>
     </Card>
   );
 }

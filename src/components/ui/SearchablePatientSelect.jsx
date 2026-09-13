@@ -33,6 +33,34 @@ import {
   getTenantSdkRealmAbortSignal,
 } from '@/lib/tenantSdkRealmGate';
 
+const MAX_STORED_PATIENT_IDS = 100;
+
+export function normalizePatientIds(values, maxItems = Number.MAX_SAFE_INTEGER) {
+  if (!Array.isArray(values) || !Number.isSafeInteger(maxItems) || maxItems < 1) return [];
+  return [...new Set(values.filter(
+    (id) => typeof id === 'string' && id.length > 0 && id.length <= 200 && id.trim() === id,
+  ))].slice(0, maxItems);
+}
+
+export function parseStoredPatientIds(raw, maxItems = MAX_STORED_PATIENT_IDS) {
+  if (!raw || !Number.isSafeInteger(maxItems) || maxItems < 1) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return normalizePatientIds(parsed, maxItems);
+  } catch {
+    return [];
+  }
+}
+
+function readStoredPatientIds(key, maxItems) {
+  if (!key) return [];
+  try {
+    return parseStoredPatientIds(localStorage.getItem(key), maxItems);
+  } catch {
+    return [];
+  }
+}
+
 export default function SearchablePatientSelect({
   patients = [],
   value,
@@ -86,21 +114,29 @@ export default function SearchablePatientSelect({
         const user = await base44.auth.me();
         assertTenantSdkRealmLeaseCurrent(lease);
         if (!active) return;
-        const userEmail = user?.email || 'default';
+        const userEmail = typeof user?.email === 'string' ? user.email.trim() : '';
         setCurrentUserEmail(userEmail);
 
-        const recent = JSON.parse(localStorage.getItem(`recentPatients_${userEmail}`) || '[]');
+        const recent = readStoredPatientIds(
+          userEmail ? `recentPatients_${userEmail}` : null,
+          5,
+        );
         setRecentPatients(recent);
 
-        const fromUser = (user?.favorited_patients || [])
-          .map((fav) => (typeof fav === 'string' ? fav : fav?.id))
-          .filter(Boolean);
-        const fromLocal = JSON.parse(localStorage.getItem(`favoritedPatients_${userEmail}`) || '[]');
-        // Prefer the persisted User field; merge any local-only stars so we don't
-        // silently drop favorites that never got written to the profile.
-        const merged = [...new Set([...fromUser, ...fromLocal])];
+        const fromUser = normalizePatientIds(
+          Array.isArray(user?.favorited_patients)
+            ? user.favorited_patients.map((fav) => (typeof fav === 'string' ? fav : fav?.id))
+            : [],
+        );
+        const fromLocal = readStoredPatientIds(
+          userEmail ? `favoritedPatients_${userEmail}` : null,
+          MAX_STORED_PATIENT_IDS,
+        );
+        // The profile is authoritative and has no 100-item schema limit.
+        // Bound only the untrusted local cache; never truncate profile writeback.
+        const merged = normalizePatientIds([...fromUser, ...fromLocal]);
         setFavoritedPatients(merged);
-        if (fromLocal.length > 0 && fromUser.length === 0) {
+        if (userEmail && fromLocal.length > 0 && fromUser.length === 0) {
           // One-time migration: promote localStorage favorites onto the user profile
           // so the sidebar / alerts dashboard can see them.
           assertTenantSdkRealmLeaseCurrent(lease);
@@ -166,7 +202,10 @@ export default function SearchablePatientSelect({
     setFavoritedPatients(updatedFavorites);
     try {
       assertTenantSdkRealmLeaseCurrent(lease);
-      localStorage.setItem(`favoritedPatients_${currentUserEmail}`, JSON.stringify(updatedFavorites));
+      localStorage.setItem(
+        `favoritedPatients_${currentUserEmail}`,
+        JSON.stringify(normalizePatientIds(updatedFavorites, MAX_STORED_PATIENT_IDS)),
+      );
     } catch { /* stale authority or unavailable storage */ }
     try {
       assertTenantSdkRealmLeaseCurrent(lease);
