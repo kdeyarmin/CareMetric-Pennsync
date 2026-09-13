@@ -105,7 +105,8 @@ export default function RegulatoryMonitor({ isAdmin = false }) {
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }) => base44.entities.RegulatoryUpdate.update(id, data),
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
+      clearImplementationReconciliation(variables?.id);
       queryClient.invalidateQueries({ queryKey: ['regulatoryUpdates'] });
       setReviewDialogOpen(false);
       setSelectedUpdate(null);
@@ -241,7 +242,13 @@ Return JSON:
     return `REG-${src}-${slug}`;
   };
 
-  const getImplementationReconciliation = (updateId) => {
+  function clearImplementationReconciliation(updateId) {
+    if (typeof updateId === 'string' && updateId) {
+      implementationReconciliationRef.current.delete(updateId);
+    }
+  }
+
+  function getImplementationReconciliation(updateId) {
     if (typeof updateId !== 'string' || !updateId) {
       return { appliedRuleCodes: new Map(), trainingTaskStatus: null };
     }
@@ -250,6 +257,13 @@ Return JSON:
     const created = { appliedRuleCodes: new Map(), trainingTaskStatus: null };
     implementationReconciliationRef.current.set(updateId, created);
     return created;
+  }
+
+  const closeReviewDialog = () => {
+    clearImplementationReconciliation(selectedUpdate?.id);
+    setReviewDialogOpen(false);
+    setSelectedUpdate(null);
+    setReviewActionError(null);
   };
 
   // Once a human has reviewed the update, the AI-draft caveat in the summary is
@@ -433,7 +447,7 @@ Return JSON:
         implementation_notes: summaryNote,
       }
     });
-    implementationReconciliationRef.current.delete(updateId);
+    clearImplementationReconciliation(updateId);
   };
 
   const handleImplement = async () => {
@@ -676,7 +690,11 @@ Return JSON:
         open={reviewDialogOpen}
         onOpenChange={(open) => {
           if (!open && reviewActionPending) return;
-          setReviewDialogOpen(open);
+          if (!open) {
+            closeReviewDialog();
+            return;
+          }
+          setReviewDialogOpen(true);
         }}
       >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -814,7 +832,7 @@ Return JSON:
           <DialogFooter className="flex gap-2">
             <Button
               variant="outline"
-              onClick={() => setReviewDialogOpen(false)}
+              onClick={closeReviewDialog}
               disabled={reviewActionPending}
             >
               Cancel
