@@ -13,7 +13,7 @@ import NurseRegulatoryAlerts from './NurseRegulatoryAlerts';
 
 describe('parseAcknowledgedUpdates', () => {
   it('returns only unique, non-empty string identifiers', () => {
-    expect(parseAcknowledgedUpdates('["update-1","update-1","",null,3,"update-2"]'))
+    expect(parseAcknowledgedUpdates('["update-1","update-1",""," spaced ",null,3,"update-2"]'))
       .toEqual(['update-1', 'update-2']);
   });
 

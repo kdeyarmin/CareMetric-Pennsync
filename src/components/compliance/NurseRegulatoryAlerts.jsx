@@ -20,6 +20,8 @@ import { createPageUrl } from "@/utils";
 import { formatEastern } from "@/components/utils/timezone";
 import { ALL_ROWS } from '@/lib/queryLimits';
 
+const MAX_ACKNOWLEDGED_UPDATES = 500;
+
 const acknowledgedUpdatesKey = (nurseEmail) => (
   typeof nurseEmail === 'string' && nurseEmail.trim()
     ? `acknowledged_updates_${nurseEmail}`
@@ -31,7 +33,12 @@ export function parseAcknowledgedUpdates(saved) {
   try {
     const parsed = JSON.parse(saved);
     return Array.isArray(parsed)
-      ? [...new Set(parsed.filter((id) => typeof id === 'string' && id.length > 0))]
+      ? [...new Set(parsed.filter(
+        (id) => typeof id === 'string'
+          && id.length > 0
+          && id.length <= 200
+          && id.trim() === id,
+      ))].slice(0, MAX_ACKNOWLEDGED_UPDATES)
       : [];
   } catch {
     return [];
