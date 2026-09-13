@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
@@ -48,6 +48,7 @@ function readAcknowledgedUpdates(nurseEmail) {
 }
 
 export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
+  const contentId = useId();
   const [expanded, setExpanded] = useState(!compact);
   const [acknowledgmentState, setAcknowledgmentState] = useState(() => ({
     owner: nurseEmail,
@@ -138,7 +139,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
           type="button"
           className="flex w-full items-center justify-between px-6 py-3 text-left"
           aria-expanded={expanded}
-          aria-controls="regulatory-updates-content"
+          aria-controls={contentId}
           onClick={() => setExpanded((value) => !value)}
         >
           <span className="flex items-center gap-2 text-sm font-semibold">
@@ -154,8 +155,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
         </button>
       </CardHeader>
 
-      {expanded && (
-        <CardContent id="regulatory-updates-content" className="p-4 space-y-3">
+      <CardContent id={contentId} className="p-4 space-y-3" hidden={!expanded}>
           {updatesPending ? (
             <p className="py-4 text-center text-sm text-slate-600" role="status">
               Checking for regulatory updates…
@@ -242,8 +242,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
               ✓ Check to acknowledge you've reviewed each update
             </p>
           )}
-        </CardContent>
-      )}
+      </CardContent>
     </Card>
   );
 }

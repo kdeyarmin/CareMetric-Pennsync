@@ -42,6 +42,18 @@ import { format } from "date-fns";
 import { formatEastern } from "@/components/utils/timezone";
 import { ALL_ROWS } from '@/lib/queryLimits';
 
+export function parseLastRegulatoryScan(value) {
+  if (typeof value !== 'string' || !value.trim()) return null;
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) ? parsed : null;
+}
+
+export function regulatoryStatusLabel(status) {
+  return typeof status === 'string' && status
+    ? status.replaceAll('_', ' ')
+    : 'unknown';
+}
+
 export default function RegulatoryMonitor({ isAdmin = false }) {
   const queryClient = useQueryClient();
   const ai = useAICall();
@@ -49,24 +61,39 @@ export default function RegulatoryMonitor({ isAdmin = false }) {
   const [reviewDialogOpen, setReviewDialogOpen] = useState(false);
   const [implementationNotes, setImplementationNotes] = useState("");
   const [lastScanDate, setLastScanDate] = useState(null);
+  const [reviewActionPending, setReviewActionPending] = useState(false);
+  const [reviewActionError, setReviewActionError] = useState(null);
   // Explicit human confirmation gate: ComplianceRule rows are NEVER mutated from
   // AI-suggested content unless an admin ticks this box for the open update.
   const [confirmRuleChanges, setConfirmRuleChanges] = useState(false);
 
-  const { data: updates = [] } = useQuery({
+  const {
+    data: updates = [],
+    isPending: updatesPending,
+    isError: updatesFailed,
+    refetch: refetchUpdates,
+  } = useQuery({
     queryKey: ['regulatoryUpdates'],
     queryFn: () => base44.entities.RegulatoryUpdate.filter({}, '-created_date', ALL_ROWS),
   });
 
-  const { data: currentUser } = useQuery({
+  const {
+    data: currentUser,
+    isPending: currentUserPending,
+    isError: currentUserFailed,
+  } = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
   });
+  const reviewerEmail = typeof currentUser?.email === 'string' && currentUser.email.trim()
+    ? currentUser.email.trim()
+    : null;
+  const reviewerUnavailable = currentUserPending || currentUserFailed || !reviewerEmail;
 
   useEffect(() => {
     try {
       const cached = localStorage.getItem('last_regulatory_scan');
-      if (cached) setLastScanDate(new Date(cached));
+      setLastScanDate(parseLastRegulatoryScan(cached));
     } catch { /* no-op */ }
   }, []);
 
@@ -197,6 +224,7 @@ Return JSON:
     setSelectedUpdate(update);
     setImplementationNotes("");
     setConfirmRuleChanges(false);
+    setReviewActionError(null);
     setReviewDialogOpen(true);
   };
 
@@ -219,18 +247,29 @@ Return JSON:
     String(summary || '').replace(/^\[AI-SUGGESTED DRAFT[^\]]*\]\s*/, '');
 
   const handleApprove = async () => {
-    if (!selectedUpdate) return;
-
-    await updateMutation.mutateAsync({
-      id: selectedUpdate.id,
-      data: {
-        status: 'approved',
-        summary: stripDraftPrefix(selectedUpdate.summary),
-        reviewed_by: currentUser?.email,
-        reviewed_at: new Date().toISOString(),
-        implementation_notes: implementationNotes
-      }
-    });
+    if (!selectedUpdate || reviewActionPending) return;
+    if (reviewerUnavailable) {
+      setReviewActionError('Your reviewer identity could not be verified. Refresh before approving updates.');
+      return;
+    }
+    setReviewActionPending(true);
+    setReviewActionError(null);
+    try {
+      await updateMutation.mutateAsync({
+        id: selectedUpdate.id,
+        data: {
+          status: 'approved',
+          summary: stripDraftPrefix(selectedUpdate.summary),
+          reviewed_by: reviewerEmail,
+          reviewed_at: new Date().toISOString(),
+          implementation_notes: implementationNotes
+        }
+      });
+    } catch {
+      setReviewActionError('The update could not be approved. No successful approval was recorded.');
+    } finally {
+      setReviewActionPending(false);
+    }
   };
 
   // Map a RegulatoryUpdate.category / source to a valid ComplianceRule.rule_category.
@@ -246,7 +285,7 @@ Return JSON:
     }
   };
 
-  const handleImplement = async () => {
+  const performImplementation = async () => {
     if (!selectedUpdate) return;
 
     // 1. ComplianceRule changes are NOT applied automatically from AI-suggested
@@ -293,6 +332,10 @@ Return JSON:
         }
       } catch (err) {
         console.error('Failed to apply compliance updates:', err);
+        throw new Error(
+          'Compliance rule changes were not fully applied. Review existing rules before retrying.',
+          { cause: err },
+        );
       }
     }
 
@@ -301,7 +344,7 @@ Return JSON:
     let trainingTaskCreated = false;
     try {
       const topics = selectedUpdate.suggested_training || [];
-      if (topics.length > 0 && currentUser?.email) {
+      if (topics.length > 0) {
         await base44.entities.Task.create({
           title: `Assign staff training: ${selectedUpdate.title}`,
           description:
@@ -312,13 +355,17 @@ Return JSON:
             ? 'high'
             : 'medium',
           status: 'pending',
-          assigned_to: currentUser.email,
+          assigned_to: reviewerEmail,
           source: 'manual',
         });
         trainingTaskCreated = true;
       }
     } catch (err) {
       console.error('Failed to create training task:', err);
+      throw new Error(
+        'The required training task could not be created. The update was not marked implemented.',
+        { cause: err },
+      );
     }
 
     // 3. Record what was actually applied in the implementation notes.
@@ -335,25 +382,57 @@ Return JSON:
       data: {
         status: 'implemented',
         summary: stripDraftPrefix(selectedUpdate.summary),
-        reviewed_by: currentUser?.email,
+        reviewed_by: reviewerEmail,
         reviewed_at: new Date().toISOString(),
         implementation_notes: summaryNote,
       }
     });
   };
 
-  const handleDismiss = async () => {
-    if (!selectedUpdate) return;
+  const handleImplement = async () => {
+    if (!selectedUpdate || reviewActionPending) return;
+    if (reviewerUnavailable) {
+      setReviewActionError('Your reviewer identity could not be verified. Refresh before implementing updates.');
+      return;
+    }
+    setReviewActionPending(true);
+    setReviewActionError(null);
+    try {
+      await performImplementation();
+    } catch (error) {
+      setReviewActionError(
+        error instanceof Error
+          ? error.message
+          : 'The update could not be implemented. Review the related records before retrying.',
+      );
+    } finally {
+      setReviewActionPending(false);
+    }
+  };
 
-    await updateMutation.mutateAsync({
-      id: selectedUpdate.id,
-      data: {
-        status: 'dismissed',
-        reviewed_by: currentUser?.email,
-        reviewed_at: new Date().toISOString(),
-        implementation_notes: implementationNotes
-      }
-    });
+  const handleDismiss = async () => {
+    if (!selectedUpdate || reviewActionPending) return;
+    if (reviewerUnavailable) {
+      setReviewActionError('Your reviewer identity could not be verified. Refresh before dismissing updates.');
+      return;
+    }
+    setReviewActionPending(true);
+    setReviewActionError(null);
+    try {
+      await updateMutation.mutateAsync({
+        id: selectedUpdate.id,
+        data: {
+          status: 'dismissed',
+          reviewed_by: reviewerEmail,
+          reviewed_at: new Date().toISOString(),
+          implementation_notes: implementationNotes
+        }
+      });
+    } catch {
+      setReviewActionError('The update could not be dismissed. Please try again.');
+    } finally {
+      setReviewActionPending(false);
+    }
   };
 
   const pendingUpdates = updates.filter(u => u.status === 'pending_review');
@@ -409,7 +488,7 @@ Return JSON:
               {isAdmin && (
                 <Button
                   onClick={scanForUpdates}
-                  disabled={ai.loading}
+                  disabled={ai.loading || reviewerUnavailable}
                   className="bg-indigo-600 hover:bg-indigo-700"
                 >
                   {ai.loading ? (
@@ -429,6 +508,22 @@ Return JSON:
           </div>
         </CardHeader>
         <CardContent className="p-4">
+          {updatesPending ? (
+            <p className="py-6 text-center text-sm text-slate-600" role="status">
+              Loading regulatory updates…
+            </p>
+          ) : updatesFailed ? (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="flex flex-wrap items-center justify-between gap-3">
+                <span>Regulatory updates could not be loaded. Counts and review queues are unavailable.</span>
+                <Button type="button" variant="outline" size="sm" onClick={() => refetchUpdates()}>
+                  Try again
+                </Button>
+              </AlertDescription>
+            </Alert>
+          ) : (
+            <>
           {/* Summary Stats */}
           <div className="grid grid-cols-4 gap-3 mb-4">
             <div className="text-center p-3 bg-yellow-50 rounded-lg">
@@ -460,11 +555,22 @@ Return JSON:
               </AlertDescription>
             </Alert>
           )}
+            </>
+          )}
         </CardContent>
       </Card>
 
+      {isAdmin && reviewerUnavailable && (
+        <Alert variant="destructive">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription>
+            Reviewer identity is unavailable. Regulatory review actions are disabled until it reloads.
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Updates Tabs */}
-      <Tabs defaultValue="pending" className="space-y-4">
+      {!updatesPending && !updatesFailed && <Tabs defaultValue="pending" className="space-y-4">
         <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 h-auto gap-1">
           <TabsTrigger value="pending" className="flex flex-col md:flex-row gap-1 py-2 px-2 text-xs md:text-sm">
             <Clock className="w-3 h-3 md:w-4 md:h-4" />
@@ -506,7 +612,7 @@ Return JSON:
                 <RegulatoryUpdateCard
                   key={update.id}
                   update={update}
-                  isAdmin={isAdmin}
+                  isAdmin={isAdmin && !reviewerUnavailable}
                   onReview={() => handleReview(update)}
                   getImpactColor={getImpactColor}
                   getStatusColor={getStatusColor}
@@ -516,10 +622,16 @@ Return JSON:
             )}
           </TabsContent>
         ))}
-      </Tabs>
+      </Tabs>}
 
       {/* Review Dialog */}
-      <Dialog open={reviewDialogOpen} onOpenChange={setReviewDialogOpen}>
+      <Dialog
+        open={reviewDialogOpen}
+        onOpenChange={(open) => {
+          if (!open && reviewActionPending) return;
+          setReviewDialogOpen(open);
+        }}
+      >
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -642,16 +754,28 @@ Return JSON:
                   rows={3}
                 />
               </div>
+
+              {reviewActionError && (
+                <Alert variant="destructive" role="alert">
+                  <AlertTriangle className="h-4 w-4" />
+                  <AlertDescription>{reviewActionError}</AlertDescription>
+                </Alert>
+              )}
             </div>
           )}
 
           <DialogFooter className="flex gap-2">
-            <Button variant="outline" onClick={() => setReviewDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setReviewDialogOpen(false)}
+              disabled={reviewActionPending}
+            >
               Cancel
             </Button>
             <Button 
               variant="outline" 
               onClick={handleDismiss}
+              disabled={reviewActionPending}
               className="text-red-600 hover:text-red-700"
             >
               <XCircle className="w-4 h-4 mr-1" />
@@ -659,12 +783,14 @@ Return JSON:
             </Button>
             <Button 
               onClick={handleApprove}
+              disabled={reviewActionPending}
             >
               <CheckCircle2 className="w-4 h-4 mr-1" />
               Approve
             </Button>
             <Button 
               onClick={handleImplement}
+              disabled={reviewActionPending}
               className="bg-navy-600 hover:bg-navy-700"
             >
               <Settings className="w-4 h-4 mr-1" />
@@ -679,6 +805,7 @@ Return JSON:
 
 function RegulatoryUpdateCard({ update, isAdmin, onReview, getImpactColor, getStatusColor, getCategoryIcon }) {
   const [expanded, setExpanded] = useState(false);
+  const detailsId = `regulatory-update-details-${String(update.id || 'unknown').replace(/[^a-zA-Z0-9_-]/g, '-')}`;
 
   return (
     <Card className={`border-l-4 ${
@@ -699,7 +826,7 @@ function RegulatoryUpdateCard({ update, isAdmin, onReview, getImpactColor, getSt
               </Badge>
               <Badge variant="outline">{update.source}</Badge>
               <Badge className={getStatusColor(update.status)}>
-                {update.status.replace('_', ' ')}
+                {regulatoryStatusLabel(update.status)}
               </Badge>
               {update.effective_date && (
                 <span className="text-xs text-slate-500 flex items-center gap-1">
@@ -710,8 +837,7 @@ function RegulatoryUpdateCard({ update, isAdmin, onReview, getImpactColor, getSt
             </div>
             <p className="text-sm text-slate-700">{update.summary}</p>
 
-            {expanded && (
-              <div className="mt-3 space-y-2 text-sm">
+            <div id={detailsId} className="mt-3 space-y-2 text-sm" hidden={!expanded}>
                 <p className="text-slate-600">{update.full_details}</p>
                 {update.suggested_training?.length > 0 && (
                   <div className="flex items-center gap-2 flex-wrap">
@@ -721,14 +847,16 @@ function RegulatoryUpdateCard({ update, isAdmin, onReview, getImpactColor, getSt
                     ))}
                   </div>
                 )}
-              </div>
-            )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setExpanded(!expanded)}
+              onClick={() => setExpanded((value) => !value)}
+              aria-expanded={expanded}
+              aria-controls={detailsId}
+              aria-label={`${expanded ? 'Hide' : 'Show'} details for ${update.title || 'regulatory update'}`}
             >
               {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
             </Button>
