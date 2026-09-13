@@ -75,7 +75,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
   }, [nurseEmail]);
 
   const {
-    data: updates = [],
+    data: updates,
     isPending: updatesPending,
     isError: updatesFailed,
   } = useQuery({
@@ -84,6 +84,11 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
       status: { $in: ['approved', 'implemented'] }
     }, '-effective_date', ALL_ROWS),
   });
+
+  // A failed background refresh can still have usable cached query data.
+  // Only block review when no successful response has ever been cached.
+  const blockingUpdatesError = updatesFailed && !Array.isArray(updates);
+  const staleUpdates = updatesFailed && !blockingUpdatesError;
 
   // Filter to recent and unacknowledged updates
   const relevantUpdates = (updates || []).filter(u => {
@@ -124,9 +129,14 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
           ? <AlertCircle className="w-4 h-4 text-red-600" />
           : <Bell className="w-4 h-4 text-indigo-600" />}
         <AlertDescription className={updatesFailed ? undefined : 'text-indigo-900'}>
+          {staleUpdates && (
+            <p className="mb-2 font-semibold">
+              Unable to refresh regulatory updates. Showing the last saved updates.
+            </p>
+          )}
           {updatesPending ? (
             <span className="font-semibold">Checking for regulatory updates…</span>
-          ) : updatesFailed ? (
+          ) : blockingUpdatesError ? (
             <span className="font-semibold">Regulatory updates could not be loaded. Please try again.</span>
           ) : (
             <>
@@ -166,11 +176,19 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
       </CardHeader>
 
       <CardContent id={contentId} className="p-4 space-y-3" hidden={!expanded}>
+          {staleUpdates && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                Unable to refresh regulatory updates. Showing the last saved updates.
+              </AlertDescription>
+            </Alert>
+          )}
           {updatesPending ? (
             <p className="py-4 text-center text-sm text-slate-600" role="status">
               Checking for regulatory updates…
             </p>
-          ) : updatesFailed ? (
+          ) : blockingUpdatesError ? (
             <Alert variant="destructive">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
@@ -179,8 +197,14 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
             </Alert>
           ) : relevantUpdates.length === 0 ? (
             <div className="text-center py-4">
-              <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-green-500" />
-              <p className="text-sm text-slate-600">You're up to date on all regulations!</p>
+              {staleUpdates ? (
+                <p className="text-sm text-slate-600">No unacknowledged updates in the last saved check.</p>
+              ) : (
+                <>
+                  <CheckCircle2 className="w-8 h-8 mx-auto mb-2 text-green-500" />
+                  <p className="text-sm text-slate-600">You're up to date on all regulations!</p>
+                </>
+              )}
             </div>
           ) : (
             (relevantUpdates || []).map(update => (
@@ -247,7 +271,7 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
             ))
           )}
 
-          {!updatesPending && !updatesFailed && relevantUpdates.length > 0 && (
+          {!updatesPending && !blockingUpdatesError && relevantUpdates.length > 0 && (
             <p className="text-xs text-slate-500 text-center">
               ✓ Check to acknowledge you've reviewed each update
             </p>
