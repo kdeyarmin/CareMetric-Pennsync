@@ -299,7 +299,9 @@ Return JSON:
 
   const performImplementation = async () => {
     if (!selectedUpdate) return;
-    const reconciliation = getImplementationReconciliation(selectedUpdate.id);
+    const updateInReview = selectedUpdate;
+    const updateId = updateInReview.id;
+    const reconciliation = getImplementationReconciliation(updateId);
 
     // 1. ComplianceRule changes are NOT applied automatically from AI-suggested
     //    content. They are only created/updated when an admin has explicitly
@@ -309,40 +311,40 @@ Return JSON:
     const appliedChecks = Array.from(reconciliation.appliedRuleCodes.values());
     if (confirmRuleChanges) {
       try {
-        for (const change of (selectedUpdate.compliance_check_updates || [])) {
+        for (const change of (updateInReview.compliance_check_updates || [])) {
           if (!change?.check_name) continue;
-          const proposedRuleCode = buildRuleCode(selectedUpdate, change.check_name);
+          const proposedRuleCode = buildRuleCode(updateInReview, change.check_name);
           if (reconciliation.appliedRuleCodes.has(proposedRuleCode)) continue;
           const existing = await base44.entities.ComplianceRule
             .filter({ rule_code: proposedRuleCode }, '-created_date', 2);
           if (!Array.isArray(existing) || existing.length > 1) {
             throw new Error(`Compliance rule identity is ambiguous for ${proposedRuleCode}`);
           }
-          const description = change.new_requirement || existing[0]?.description || selectedUpdate.summary;
-          const severity = ['critical', 'high', 'medium', 'low'].includes(selectedUpdate.impact_level)
-            ? selectedUpdate.impact_level
+          const description = change.new_requirement || existing[0]?.description || updateInReview.summary;
+          const severity = ['critical', 'high', 'medium', 'low'].includes(updateInReview.impact_level)
+            ? updateInReview.impact_level
             : 'medium';
           const ruleCode = existing[0]?.rule_code || proposedRuleCode;
           // rule_code carries the auditor-matchable trace (it encodes the source
           // and check name); the source update id is also noted in the description.
-          const tracedDescription = `${description}\n\n[Source: regulatory update ${selectedUpdate.id} — ${selectedUpdate.title}]`;
+          const tracedDescription = `${description}\n\n[Source: regulatory update ${updateId} — ${updateInReview.title}]`;
           if (existing[0]) {
             await base44.entities.ComplianceRule.update(existing[0].id, {
               description: tracedDescription,
               severity,
               is_active: true,
               rule_code: ruleCode,
-              ...(selectedUpdate.effective_date ? { effective_date: selectedUpdate.effective_date } : {}),
+              ...(updateInReview.effective_date ? { effective_date: updateInReview.effective_date } : {}),
             });
           } else {
             await base44.entities.ComplianceRule.create({
               rule_name: change.check_name,
               rule_code: ruleCode,
-              rule_category: mapRuleCategory(selectedUpdate),
+              rule_category: mapRuleCategory(updateInReview),
               description: tracedDescription,
               severity,
               is_active: true,
-              ...(selectedUpdate.effective_date ? { effective_date: selectedUpdate.effective_date } : {}),
+              ...(updateInReview.effective_date ? { effective_date: updateInReview.effective_date } : {}),
             });
           }
           reconciliation.appliedRuleCodes.set(proposedRuleCode, change.check_name);
@@ -362,7 +364,7 @@ Return JSON:
     let trainingTaskCreated = false;
     let trainingTaskReused = false;
     try {
-      const topics = selectedUpdate.suggested_training || [];
+      const topics = updateInReview.suggested_training || [];
       if (topics.length > 0) {
         if (reconciliation.trainingTaskStatus === 'created') {
           trainingTaskCreated = true;
@@ -371,7 +373,7 @@ Return JSON:
         } else {
           const existingTasks = await base44.entities.Task.filter({
             related_entity: 'RegulatoryUpdate',
-            related_entity_id: selectedUpdate.id,
+            related_entity_id: updateId,
           }, '-created_date', 2);
           if (!Array.isArray(existingTasks) || existingTasks.length > 1) {
             throw new Error('Regulatory training task identity is ambiguous');
@@ -381,19 +383,19 @@ Return JSON:
             reconciliation.trainingTaskStatus = 'reused';
           } else {
             await base44.entities.Task.create({
-              title: `Assign staff training: ${selectedUpdate.title}`,
+              title: `Assign staff training: ${updateInReview.title}`,
               description:
-                `Regulatory update "${selectedUpdate.title}" (${selectedUpdate.source}) requires staff training on:\n` +
+                `Regulatory update "${updateInReview.title}" (${updateInReview.source}) requires staff training on:\n` +
                 topics.map((t) => `- ${t}`).join('\n'),
               type: 'coordinate',
-              priority: (selectedUpdate.impact_level === 'critical' || selectedUpdate.impact_level === 'high')
+              priority: (updateInReview.impact_level === 'critical' || updateInReview.impact_level === 'high')
                 ? 'high'
                 : 'medium',
               status: 'pending',
               assigned_to: reviewerEmail,
               source: 'manual',
               related_entity: 'RegulatoryUpdate',
-              related_entity_id: selectedUpdate.id,
+              related_entity_id: updateId,
             });
             trainingTaskCreated = true;
             reconciliation.trainingTaskStatus = 'created';
@@ -415,23 +417,23 @@ Return JSON:
         ? `Compliance checks created/updated after explicit admin confirmation: ${appliedChecks.join(', ')}.`
         : 'No ComplianceRule changes were applied (admin did not confirm automated rule changes).',
       trainingTaskCreated
-        ? `Training task created for: ${(selectedUpdate.suggested_training || []).join(', ')}.`
+        ? `Training task created for: ${(updateInReview.suggested_training || []).join(', ')}.`
         : trainingTaskReused
           ? 'The existing training task for this regulatory update was reused.'
           : '',
     ].filter(Boolean).join('\n');
 
     await updateMutation.mutateAsync({
-      id: selectedUpdate.id,
+      id: updateId,
       data: {
         status: 'implemented',
-        summary: stripDraftPrefix(selectedUpdate.summary),
+        summary: stripDraftPrefix(updateInReview.summary),
         reviewed_by: reviewerEmail,
         reviewed_at: new Date().toISOString(),
         implementation_notes: summaryNote,
       }
     });
-    implementationReconciliationRef.current.delete(selectedUpdate.id);
+    implementationReconciliationRef.current.delete(updateId);
   };
 
   const handleImplement = async () => {
