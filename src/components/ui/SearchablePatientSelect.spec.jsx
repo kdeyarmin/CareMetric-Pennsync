@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseStoredPatientIds } from './SearchablePatientSelect';
+import { normalizePatientIds, parseStoredPatientIds } from './SearchablePatientSelect';
 
 describe('parseStoredPatientIds', () => {
   it('normalizes identifiers and applies the requested bound', () => {
@@ -18,5 +18,14 @@ describe('parseStoredPatientIds', () => {
 
   it('rejects invalid bounds rather than returning an unbounded list', () => {
     expect(parseStoredPatientIds('["patient-1"]', 0)).toEqual([]);
+  });
+});
+
+describe('normalizePatientIds', () => {
+  it('re-applies the requested bound after deduplicating a merged list', () => {
+    const fromUser = Array.from({ length: 100 }, (_, index) => `profile-${index}`);
+    const fromLocal = Array.from({ length: 100 }, (_, index) => `local-${index}`);
+
+    expect(normalizePatientIds([...fromUser, ...fromLocal], 100)).toHaveLength(100);
   });
 });

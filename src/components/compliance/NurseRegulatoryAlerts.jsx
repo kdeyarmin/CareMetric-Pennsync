@@ -116,11 +116,14 @@ export default function NurseRegulatoryAlerts({ nurseEmail, compact = false }) {
 
   if (compact) {
     return (
-      <Alert className="bg-indigo-50 border-indigo-200">
+      <Alert
+        variant={updatesFailed ? 'destructive' : 'default'}
+        className={updatesFailed ? undefined : 'bg-indigo-50 border-indigo-200'}
+      >
         {updatesFailed
           ? <AlertCircle className="w-4 h-4 text-red-600" />
           : <Bell className="w-4 h-4 text-indigo-600" />}
-        <AlertDescription className="text-indigo-900">
+        <AlertDescription className={updatesFailed ? undefined : 'text-indigo-900'}>
           {updatesPending ? (
             <span className="font-semibold">Checking for regulatory updates…</span>
           ) : updatesFailed ? (

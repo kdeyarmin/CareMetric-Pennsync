@@ -35,7 +35,7 @@ import {
 
 const MAX_STORED_PATIENT_IDS = 100;
 
-function normalizePatientIds(values, maxItems) {
+export function normalizePatientIds(values, maxItems) {
   if (!Array.isArray(values) || !Number.isSafeInteger(maxItems) || maxItems < 1) return [];
   return [...new Set(values.filter(
     (id) => typeof id === 'string' && id.length > 0 && id.length <= 200 && id.trim() === id,
@@ -135,7 +135,10 @@ export default function SearchablePatientSelect({
         );
         // Prefer the persisted User field; merge any local-only stars so we don't
         // silently drop favorites that never got written to the profile.
-        const merged = [...new Set([...fromUser, ...fromLocal])];
+        const merged = normalizePatientIds(
+          [...new Set([...fromUser, ...fromLocal])],
+          MAX_STORED_PATIENT_IDS,
+        );
         setFavoritedPatients(merged);
         if (userEmail && fromLocal.length > 0 && fromUser.length === 0) {
           // One-time migration: promote localStorage favorites onto the user profile

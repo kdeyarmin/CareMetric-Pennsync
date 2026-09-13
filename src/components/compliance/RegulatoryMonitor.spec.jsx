@@ -1,17 +1,42 @@
 import { describe, expect, it, vi } from 'vitest';
-import { screen } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { renderWithProviders } from '@/test/testUtils';
 
-const { filterUpdates } = vi.hoisted(() => ({ filterUpdates: vi.fn() }));
+const {
+  filterUpdates,
+  filterComplianceRules,
+  createComplianceRule,
+  updateComplianceRule,
+  filterTasks,
+  createTask,
+  updateRegulatoryUpdate,
+} = vi.hoisted(() => ({
+  filterUpdates: vi.fn(),
+  filterComplianceRules: vi.fn(),
+  createComplianceRule: vi.fn(),
+  updateComplianceRule: vi.fn(),
+  filterTasks: vi.fn(),
+  createTask: vi.fn(),
+  updateRegulatoryUpdate: vi.fn(),
+}));
 
 vi.mock('@/api/base44Client', () => ({
   base44: {
     auth: { me: vi.fn().mockResolvedValue({ email: 'admin@example.test' }) },
     entities: {
+      ComplianceRule: {
+        filter: filterComplianceRules,
+        create: createComplianceRule,
+        update: updateComplianceRule,
+      },
       RegulatoryUpdate: {
         filter: filterUpdates,
         create: vi.fn(),
-        update: vi.fn(),
+        update: updateRegulatoryUpdate,
+      },
+      Task: {
+        filter: filterTasks,
+        create: createTask,
       },
     },
   },
@@ -49,5 +74,40 @@ describe('RegulatoryMonitor query states', () => {
     expect(await screen.findByText(/counts and review queues are unavailable/i)).toBeInTheDocument();
     expect(screen.queryByText('Pending (0)')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: /try again/i })).toBeInTheDocument();
+  });
+
+  it('reuses the in-session reconciliation state when the final update write is retried', async () => {
+    filterUpdates.mockResolvedValue([{
+      id: 'reg-update-1',
+      title: 'Updated training requirement',
+      summary: 'Review the updated requirement.',
+      full_details: 'Detailed review instructions.',
+      status: 'pending_review',
+      source: 'CMS',
+      category: 'documentation',
+      impact_level: 'high',
+      suggested_training: ['Updated onboarding'],
+      required_actions: [],
+      compliance_check_updates: [],
+    }]);
+    filterTasks.mockResolvedValue([]);
+    updateRegulatoryUpdate
+      .mockRejectedValueOnce(new Error('save failed'))
+      .mockResolvedValueOnce({});
+
+    renderWithProviders(<RegulatoryMonitor isAdmin />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /review/i }));
+
+    const implementNow = await screen.findByRole('button', { name: /implement now/i });
+    fireEvent.click(implementNow);
+
+    expect(await screen.findByText('save failed')).toBeInTheDocument();
+    await waitFor(() => expect(createTask).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(implementNow);
+
+    await waitFor(() => expect(updateRegulatoryUpdate).toHaveBeenCalledTimes(2));
+    expect(createTask).toHaveBeenCalledTimes(1);
   });
 });

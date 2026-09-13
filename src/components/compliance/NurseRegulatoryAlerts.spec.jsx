@@ -37,6 +37,17 @@ describe('NurseRegulatoryAlerts query states', () => {
     expect(screen.queryByText(/up to date on all regulations/i)).not.toBeInTheDocument();
   });
 
+  it('uses the destructive compact alert styling when the update query fails', async () => {
+    filterUpdates.mockRejectedValueOnce(new Error('offline'));
+    renderWithProviders(<NurseRegulatoryAlerts nurseEmail="nurse@example.test" compact />);
+
+    const message = await screen.findByText(/Regulatory updates could not be loaded/i);
+    const alert = message.closest('[role="alert"]');
+    expect(alert).not.toBeNull();
+    expect(alert).toHaveClass('border-red-300');
+    expect(alert).not.toHaveClass('border-indigo-200');
+  });
+
   it('exposes the disclosure and acknowledgment controls to assistive technology', async () => {
     filterUpdates.mockResolvedValueOnce([{
       id: 'update-1',
