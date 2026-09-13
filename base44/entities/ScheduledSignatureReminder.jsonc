@@ -109,7 +109,13 @@
     },
     "delivery_state": {
       "type": "string",
-      "enum": ["not_started", "pending", "accepted", "indeterminate", "rejected"],
+      "enum": [
+        "not_started",
+        "pending",
+        "accepted",
+        "indeterminate",
+        "rejected"
+      ],
       "default": "not_started"
     },
     "sent_at": {
@@ -139,8 +145,6 @@
     "document_id",
     "send_at"
   ],
-  // Signature scheduling and dispatch are quarantined. Direct access is denied;
-  // reviewed service-role offboarding may still cancel historical rows.
   "rls": {
     "read": false,
     "create": false,
