@@ -15,12 +15,40 @@ function productionSourceFiles(directory = path.join(root, 'src')) {
 }
 
 describe('protected blank-target navigation contract', () => {
-  it('keeps declarative blank-target links out of production source', () => {
+  it('keeps declarative blank-target links out of clinical application source', () => {
+    // The inert pre-bootstrap launcher below is not a clinical popup: it is
+    // rendered only after the embedded document's authority is closed, opens
+    // the same origin root without any URL state, and severs the opener.
+    // Its narrow exception is checked separately and by real browser tests.
+    const boundaryFiles = new Set([
+      'src/lib/authorityBoundWindows.js',
+      'src/lib/secureBootstrapUi.js',
+    ]);
     const violations = productionSourceFiles()
-      .filter((file) => path.relative(root, file) !== 'src/lib/authorityBoundWindows.js')
+      .filter((file) => !boundaryFiles.has(path.relative(root, file)))
       .filter((file) => /\btarget\s*=\s*(?:["']_blank["']|\{\s*["']_blank["']\s*\})/i.test(readFileSync(file, 'utf8')))
       .map((file) => path.relative(root, file));
 
     expect(violations).toEqual([]);
+  });
+
+  it('confines the token-free preview launcher to the closed pre-bootstrap document', () => {
+    const uiPath = 'src/lib/secureBootstrapUi.js';
+    const ui = readFileSync(path.join(root, uiPath), 'utf8');
+    const main = readFileSync(path.join(root, 'src/main.jsx'), 'utf8');
+    const callers = productionSourceFiles()
+      .filter((file) => path.relative(root, file) !== uiPath)
+      .filter((file) => /secureBootstrapUi/.test(readFileSync(file, 'utf8')))
+      .map((file) => path.relative(root, file));
+    expect(callers).toEqual(['src/main.jsx']);
+    expect(ui).not.toMatch(/^import\s/m);
+    expect(ui).not.toMatch(/base44\.|fetch\(|postMessage|localStorage|sessionStorage|window\.open/);
+    expect(ui).toContain('return `${url.origin}/`');
+    expect(ui).toMatch(/if \(embedded\) \{\s*const href = detachedPreviewUrl\(locationObject.href\)/);
+    expect(ui.match(/link\.target = '_blank'/g)).toHaveLength(1);
+    expect(ui).toContain("link.rel = 'noopener noreferrer'");
+    expect(ui).toContain("link.referrerPolicy = 'no-referrer'");
+    expect(main).toMatch(/if \(!currentFrameMayBootstrap\(\)\) \{\s*terminallyCloseDocumentAuthority\(\)\s*renderSecureBootstrapBlocked\(\)/);
+    expect(main).toMatch(/if \(documentAuthorityReady\) \{\s*void bootstrapApp\(\)/);
   });
 });
