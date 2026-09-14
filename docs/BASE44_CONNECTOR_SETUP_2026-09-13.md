@@ -41,3 +41,27 @@ Static frontend publication has not been performed or verified. Installed mobile
 - The Base44 connector action catalog was rechecked and still exposes no frontend Publish or workspace-key creation operation. A TinyFish browser connector was offered as a possible supported route to the existing editor control; its directory status still reports not installed. Browser sign-in/consent would remain user-controlled. No connector approval, publishing credential, or authenticated session has been invented or substituted.
 
 The connected Base44 action catalog provides sandbox editing, schemas and checkpoints, but exposes no static-site Publish action or workspace API-key creation action. No additional CLI login or device code was requested. The absence of a CLI workspace key does not prevent a signed-in owner from using the editor's native Publish control; it does block the separate GitHub publishing workflow until a valid credential is securely configured.
+
+## npm preview installation repair — September 14, 2026
+
+The retained npm logs identify a concrete install failure, not a missing merge: npm 10.8.2 under Node 20.20.2 rejected eslint 10.10.0 because eslint-plugin-jsx-a11y 6.10.2 accepts ESLint only through major 9. eslint-plugin-react 7.37.5 also declares support only through major 9. After aligning ESLint, an isolated npm resolution encountered an additional Arborist edgesOut failure while resolving the Vitest 5 peer graph. The compatible Vitest 4 line resolved successfully on the actual Base44 runtime.
+
+Targeted package.json substitutions (no application-source rewrites):
+- eslint: ^10.10.0 -> 9.39.5.
+- @eslint/js: ^10.0.1 -> 9.39.5.
+- vitest: ^5.0.0 -> 4.1.11.
+
+The canonical pnpm lockfile was regenerated. Runtime dependency declarations, backend functions, schemas, app identity, domains, credentials and clinical/outbound gates were not changed. A new CI step independently resolves a clean package manifest plus the required bundled vendor SDK with the actual Base44 Node 20.20.2/npm 10.8.2 combination. It explicitly keeps force and legacy-peer-deps disabled; application tests and the build continue using the project's pinned Node 24.18.0/pnpm 11.9.0. npm 10.8.2 under Node 24 also exhibited an Arborist resolver error during diagnosis, so the compatibility check deliberately matches the hosted preview runtime rather than claiming every Node/npm combination passes.
+
+Verified results for functional commit 79b9e41bd1c24ea89ed865891de1342b34909a1e:
+- Clean npm dependency resolution: exit 0. Full clean npm ci in the isolated candidate: exit 0, 662 packages installed. Neither used force or legacy-peer-deps. The older platform Node runtime still emits engine warnings for several development/runtime packages; no engine constraints were relaxed.
+- Frozen pnpm installation, production build, ESLint, workflow lint and high-signal typecheck: passed. The broader informational type-diagnostic baseline is not claimed clean.
+- All 281 backend syntax/target checks and 225 shared-helper consumer checks: passed.
+- Focused component and existing store-identity regressions: 35 passed, retries disabled.
+- Prepared-build Chromium public-route/accessibility tests: 7 passed, retries disabled.
+- Local non-component suites passed: 130 central-admin, 2,289 utility, 331 contract, 797 security and 47 deduplication tests. The bounded local full-suite command timed out during the component stage; it is not counted as a full local pass.
+- GitHub CI run 34897434398, job 104154936877: completed SUCCESS on that exact functional commit. All steps passed, including the new npm compatibility check, the complete pnpm test command, the build, backend checks and type checks.
+
+The managed preview progressed past installation and served HTTP 200. A separate managed-preview browser test reached the existing 'Secure browser controls unavailable' page instead of the public-route headings; that test did not pass. The source bootstrap intentionally rejects untrusted embedding and failure to install required privacy guards. No security guard was removed or weakened. This is separate from the repaired npm ERESOLVE failure and requires its own preview-environment investigation.
+
+The reported 'Context window exceeded' message (request 417559a7-920b-4b26-b868-84b9be7f5123) came from the Base44 builder. Direct connector edits avoided sending the full project back through that failing builder conversation; they do not prove the provider's context-limit condition is fixed. Keep that request associated with existing support case #6aa84d1f. This repair is not a production publication or full mobile/clinical release sign-off.
