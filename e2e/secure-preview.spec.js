@@ -4,7 +4,8 @@ import { expect, test } from '@playwright/test';
 test('top-level public page starts with every privacy guard installed', async ({ page }) => {
   await page.goto('/privacy', { waitUntil: 'domcontentloaded' });
   await page.locator('h1').first().waitFor();
-  const reason = await page.locator('[data-bootstrap-reason]').getAttribute('data-bootstrap-reason').catch(() => null);
+  const failure = page.locator('[data-bootstrap-reason]');
+  const reason = await failure.count() ? await failure.first().getAttribute('data-bootstrap-reason') : null;
   await expect(page.getByRole('heading', { level: 1, name: 'Privacy Policy' }),
     `Unexpected secure bootstrap block: ${reason || 'none'}`).toBeVisible();
 });
