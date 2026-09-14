@@ -54,7 +54,7 @@ jobs:
           cp package.json "$check_dir/package.json"
           cp -R vendor "$check_dir/vendor"
           cd "$check_dir"
-          npm exec --yes --package=npm@10.8.2 -- npm install \
+          npm exec --yes --package=node@20.20.2 --package=npm@10.8.2 -- npm install \
             --package-lock-only --ignore-scripts --no-audit --no-fund \
             --legacy-peer-deps=false --force=false
 
