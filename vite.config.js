@@ -108,18 +108,17 @@ export default defineConfig(withOwnerSuperAdminEmail(({ command }) => ({
       { find: /^sonner$/, replacement: tenantSonnerModule },
     ],
   },
-  // HIPAA: strip all console.* and debugger statements from PRODUCTION builds.
-  // The app logs entities/responses/transcripts in many places, and anything left
-  // in the shipped bundle executes in the clinician/patient browser (devtools,
-  // extensions, error collectors) and leaks PHI. Dev (`command === 'serve'`)
-  // keeps logs so local debugging is unaffected.
-  esbuild: command === 'build' ? { drop: ['console', 'debugger'] } : {},
+  // Production diagnostics are stripped by the active Rolldown/Oxc minifier
+  // below. Vite 8 + plugin-react 6 no longer reliably applies esbuild.drop:
+  // application response/error logging must not survive into shipped assets.
+  // Development serves unminified source, retaining local diagnostics.
   build: {
     // Raise the warning threshold slightly — large lazy page chunks are
     // expected in this app — while we split the heaviest vendor libs below.
     chunkSizeWarningLimit: 1500,
-    rollupOptions: {
+    rolldownOptions: {
       output: {
+        minify: { compress: { dropConsole: true, dropDebugger: true } },
         entryFileNames: `assets/[name]-[hash]-${buildAssetRevision}.js`,
         chunkFileNames: `assets/[name]-[hash]-${buildAssetRevision}.js`,
         assetFileNames: `assets/[name]-[hash]-${buildAssetRevision}[extname]`,
