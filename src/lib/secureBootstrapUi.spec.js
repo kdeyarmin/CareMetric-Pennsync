@@ -53,6 +53,14 @@ describe('secure embedded-preview recovery', () => {
     },
   );
 
+  it.each(['APP_IMPORT', 'APP_MOUNT'])('does not mislabel %s as a browser privacy failure', (code) => {
+    renderSecureBootstrapNotice(document, { reload: vi.fn() }, code);
+    expect(screen.getByRole('heading', { name: 'App could not finish loading' })).toBeInTheDocument();
+    expect(screen.getByText(`Support code: ${code}`)).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(document.title).toBe('App loading error | PennSync by CareMetric');
+  });
+
   it('does not render arbitrary error strings or markup', () => {
     renderSecureBootstrapNotice(document, { reload: vi.fn() }, '<img src=x onerror=alert(1)>');
     expect(screen.getByText('Support code: REQUIRED_GUARD')).toBeInTheDocument();
