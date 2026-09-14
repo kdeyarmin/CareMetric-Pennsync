@@ -241,6 +241,7 @@ async function bootstrapApp() {
   // native guard above has been installed and verified. This prevents an app
   // chunk or dependency from caching an unguarded browser method during ESM's
   // dependency-instantiation phase.
+  bootstrapFailureCode = 'APP_IMPORT'
   const { installAlertToToastShim } = await import('@/lib/alert-shim')
   installAlertToToastShim()
 
@@ -256,6 +257,7 @@ async function bootstrapApp() {
     import('react-dom/client'),
     import('@/App.jsx'),
   ])
+  bootstrapFailureCode = 'APP_MOUNT'
   const root = document.getElementById('root')
   if (!root) throw new Error('PennSync root element is unavailable')
   ReactDomModule.createRoot(root).render(
