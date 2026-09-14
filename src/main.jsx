@@ -19,6 +19,9 @@ import { installAuthorityBoundClipboard } from '@/lib/authorityBoundClipboard'
 import { closePublicCapabilityRealm } from '@/lib/publicCapabilityRealmGate'
 
 const authorityGuardCleanups = []
+// Non-sensitive stage codes distinguish a blocked frame from a failed native
+// guard installation without logging tokens, page content, or user data.
+let bootstrapFailureCode = 'FRAME_NOT_ALLOWED'
 
 function scrubRetiredPublicTokenBeforeAppImport() {
   const segment = String(window.location.pathname || '').toLowerCase().split('/')[1] || ''
@@ -56,6 +59,7 @@ function renderSecureBootstrapBlocked() {
   if (!root) return
   const shell = document.createElement('main')
   shell.setAttribute('role', 'alert')
+  shell.setAttribute('data-bootstrap-reason', bootstrapFailureCode)
   shell.style.cssText = 'min-height:100vh;display:grid;place-items:center;background:#f8fafc;padding:24px;font-family:system-ui,sans-serif;color:#0f172a'
   const card = document.createElement('section')
   card.style.cssText = 'max-width:560px;border:1px solid #f59e0b;border-radius:16px;background:white;padding:24px;box-shadow:0 10px 30px rgba(15,23,42,.08)'
@@ -79,7 +83,9 @@ function installDocumentAuthorityGuards() {
       installAuthorityBoundFileDropGuard,
       installAuthorityBoundClipboard,
     ]
+    const guardCodes = ['LINK_GUARD', 'FILE_INPUT_GUARD', 'FILE_DROP_GUARD', 'CLIPBOARD_GUARD']
     for (const install of installs) {
+      bootstrapFailureCode = guardCodes[pendingCleanups.length]
       const cleanup = install()
       if (typeof cleanup !== 'function') {
         throw new Error('A required browser authority guard could not be installed')
@@ -113,6 +119,7 @@ function installDocumentAuthorityGuards() {
     }
   }
   try {
+    bootstrapFailureCode = 'STORAGE_LISTENER'
     window.addEventListener('storage', closeOnAuthorityStorageTransition)
   } catch (error) {
     for (const cleanup of pendingCleanups.reverse()) {
