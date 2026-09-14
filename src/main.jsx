@@ -17,6 +17,7 @@ import { poisonTenantSdkRealm } from '@/lib/tenantSdkRealmGate'
 import { isBrowserAuthorityEpochStorageKey } from '@/lib/browserAuthorityEpoch'
 import { installAuthorityBoundClipboard } from '@/lib/authorityBoundClipboard'
 import { closePublicCapabilityRealm } from '@/lib/publicCapabilityRealmGate'
+import { renderSecureBootstrapNotice } from '@/lib/secureBootstrapUi'
 
 const authorityGuardCleanups = []
 // Non-sensitive stage codes distinguish a blocked frame from a failed native
@@ -55,23 +56,7 @@ function currentFrameMayBootstrap() {
 }
 
 function renderSecureBootstrapBlocked() {
-  const root = document.getElementById('root')
-  if (!root) return
-  const shell = document.createElement('main')
-  shell.setAttribute('role', 'alert')
-  shell.setAttribute('data-bootstrap-reason', bootstrapFailureCode)
-  shell.style.cssText = 'min-height:100vh;display:grid;place-items:center;background:#f8fafc;padding:24px;font-family:system-ui,sans-serif;color:#0f172a'
-  const card = document.createElement('section')
-  card.style.cssText = 'max-width:560px;border:1px solid #f59e0b;border-radius:16px;background:white;padding:24px;box-shadow:0 10px 30px rgba(15,23,42,.08)'
-  const heading = document.createElement('h1')
-  heading.textContent = 'Secure browser controls unavailable'
-  heading.style.cssText = 'font-size:22px;font-weight:700;margin:0 0 12px'
-  const message = document.createElement('p')
-  message.textContent = 'PennSync did not open a clinical workspace because this browser could not install every required privacy boundary. Close this tab and try a supported, up-to-date browser.'
-  message.style.cssText = 'font-size:15px;line-height:1.5;margin:0;color:#475569'
-  card.append(heading, message)
-  shell.append(card)
-  root.replaceChildren(shell)
+  renderSecureBootstrapNotice(document, window.location, bootstrapFailureCode)
 }
 
 function installDocumentAuthorityGuards() {
