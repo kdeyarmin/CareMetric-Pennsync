@@ -41,6 +41,23 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Base44's managed preview resolves dependencies with npm, not pnpm.
+      # Validate that path independently: pnpm can accept peer combinations
+      # that npm rejects before the preview server ever starts.
+      - name: Check Base44 npm dependency compatibility
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          check_dir="$(mktemp -d "$RUNNER_TEMP/base44-npm-check.XXXXXX")"
+          trap 'rm -rf "$check_dir"' EXIT
+          cp package.json "$check_dir/package.json"
+          cp -R vendor "$check_dir/vendor"
+          cd "$check_dir"
+          npm exec --yes --package=npm@10.8.2 -- npm install \
+            --package-lock-only --ignore-scripts --no-audit --no-fund \
+            --legacy-peer-deps=false --force=false
+
       - name: Lint GitHub Actions workflows
         run: pnpm run lint:actions
 
