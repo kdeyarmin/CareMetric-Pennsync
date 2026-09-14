@@ -2,7 +2,7 @@
 // A blocked frame must stay an inert launch surface, never a clinical preview.
 const GUARD_FAILURE_CODES = new Set([
   'LINK_GUARD', 'FILE_INPUT_GUARD', 'FILE_DROP_GUARD',
-  'CLIPBOARD_GUARD', 'STORAGE_LISTENER',
+  'CLIPBOARD_GUARD', 'STORAGE_LISTENER', 'APP_IMPORT', 'APP_MOUNT',
 ]);
 
 export function detachedPreviewUrl(href) {
@@ -23,6 +23,7 @@ export function renderSecureBootstrapNotice(documentObject, locationObject, fail
   const root = documentObject.getElementById('root');
   if (!root) return;
   const embedded = failureCode === 'FRAME_NOT_ALLOWED';
+  const assetFailure = failureCode === 'APP_IMPORT' || failureCode === 'APP_MOUNT';
   const reason = embedded || GUARD_FAILURE_CODES.has(failureCode)
     ? failureCode : 'REQUIRED_GUARD';
   const shell = documentObject.createElement('main');
@@ -32,12 +33,15 @@ export function renderSecureBootstrapNotice(documentObject, locationObject, fail
   const card = documentObject.createElement('section');
   card.style.cssText = 'max-width:560px;border:1px solid #cbd5e1;border-radius:16px;background:white;padding:24px;box-shadow:0 10px 30px rgba(15,23,42,.08)';
   const heading = documentObject.createElement('h1');
-  heading.textContent = embedded ? 'Open a secure preview' : 'Secure browser controls unavailable';
+  heading.textContent = embedded ? 'Open a secure preview'
+    : assetFailure ? 'App could not finish loading' : 'Secure browser controls unavailable';
   heading.style.cssText = 'font-size:22px;font-weight:700;margin:0 0 12px';
   const message = documentObject.createElement('p');
   message.textContent = embedded
     ? 'PennSync opens outside the embedded editor to protect clinical information. Open the preview in its own tab, then sign in there. No patient data is loaded in this panel.'
-    : 'A required browser privacy control could not start. Reload this page in an up-to-date browser. No clinical workspace was opened.';
+    : assetFailure
+      ? 'The application files could not finish loading. Reload to fetch the current release. Privacy protections remain active; no clinical workspace was opened.'
+      : 'A required browser privacy control could not start. Reload this page in an up-to-date browser. No clinical workspace was opened.';
   message.style.cssText = 'font-size:15px;line-height:1.5;margin:0 0 20px;color:#475569';
   card.append(heading, message);
 
@@ -68,5 +72,6 @@ export function renderSecureBootstrapNotice(documentObject, locationObject, fail
   root.replaceChildren(shell);
   documentObject.title = embedded
     ? 'Secure preview | PennSync by CareMetric'
-    : 'Browser privacy check | PennSync by CareMetric';
+    : assetFailure ? 'App loading error | PennSync by CareMetric'
+      : 'Browser privacy check | PennSync by CareMetric';
 }
