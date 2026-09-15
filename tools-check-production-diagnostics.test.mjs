@@ -4,6 +4,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { inspectJavaScript, inspectBuild, main } from './tools-check-production-diagnostics.mjs';
+import { stripProductionDiagnostics, productionDiagnosticsPlugin } from './scripts/production-diagnostics-plugin.mjs';
 
 for (const source of [
   'console.log("synthetic diagnostic")',
@@ -75,6 +76,29 @@ test('malformed JavaScript fails without exposing source text', (t) => {
   assert.equal(result.passed, false);
   assert.equal(result.errors[0].code, 'JAVASCRIPT_INSPECTION_FAILED');
   assert.ok(!JSON.stringify(result).includes('SYNTHETIC_PRIVATE_CANARY'));
+});
+
+test('the build transform removes calls, argument evaluation, and conditional debuggers', async () => {
+  const source = `console.log(sensitiveDiagnostic()); console.error.apply(console, [sensitiveDiagnostic()]); if (flag) debugger; export const answer = 42;`;
+  const output = await stripProductionDiagnostics(source);
+  assert.deepEqual(inspectJavaScript(output.code), []);
+  assert.ok(!output.code.includes('sensitiveDiagnostic'));
+  assert.match(output.code, /42/);
+});
+
+test('unsupported global console calls fail closed without exposing arguments', async () => {
+  await assert.rejects(
+    stripProductionDiagnostics('window.console.log("SYNTHETIC_PRIVATE_ARGUMENT");'),
+    (error) => error.message === 'PRODUCTION_DIAGNOSTIC_REMOVAL_INCOMPLETE',
+  );
+});
+
+test('the plugin only changes builds, not development diagnostic behavior', () => {
+  const plugin = productionDiagnosticsPlugin();
+  assert.equal(plugin.apply, 'build');
+  assert.equal(plugin.enforce, 'post');
+  assert.equal(plugin.renderChunk.order, 'post');
+  assert.equal(plugin.renderChunk.handler, stripProductionDiagnostics);
 });
 
 test('CLI returns a failing exit code rather than accepting missing artifacts', (t) => {
