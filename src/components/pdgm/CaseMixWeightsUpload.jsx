@@ -7,7 +7,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Upload, Loader2, Trash2, CheckCircle2, AlertTriangle, FileText, Landmark } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
-import { validateFileUpload } from "@/components/utils/security";
+import { useCsvImportPreview } from "@/hooks/useCsvImportPreview";
 import { parseCaseMixWeightsCsv, EXPECTED_GROUP_COUNT } from "./caseMixWeightsLoader.js";
 import { buildStoredWeightTable } from "./caseMixReconciliation.js";
 import { HH_CASE_MIX_WEIGHTS_CY2026 } from "./hhCaseMixWeightsCy2026.js";
@@ -45,35 +45,18 @@ export default function CaseMixWeightsUpload({
 }) {
   const inputRef = useRef(null);
   const [year, setYear] = useState(() => storedTable?.payment_year || defaultYear || "");
-  const [parsed, setParsed] = useState(null); // { fileName, result } after a file is chosen
+  const { preview: parsed, isReading, readFile: readCsv, replacePreview } = useCsvImportPreview();
   const [isPersisting, setIsPersisting] = useState(false);
 
   const handleFile = async (event) => {
     const file = event.target.files?.[0];
     if (inputRef.current) inputRef.current.value = "";
-    if (!file) return;
-
-    const check = validateFileUpload(file, {
-      maxSize: 10 * 1024 * 1024,
-      allowedTypes: ["text/csv", "application/vnd.ms-excel", "text/plain", ""],
-      allowedExtensions: [".csv"],
-    });
-    if (!check.valid) {
-      toast.error(check.error);
-      return;
-    }
-
-    try {
-      const text = await file.text();
-      const result = parseCaseMixWeightsCsv(text, {
-        year: year.trim() || null,
-        source: file.name,
-      });
-      setParsed({ fileName: file.name, result });
-    } catch (err) {
-      console.error("Failed to read case-mix weights CSV:", err);
-      toast.error("Couldn't read that file. Please re-export the CSV and try again.");
-    }
+    if (!file || isPersisting) return;
+    const outcome = await readCsv(file, (text) => parseCaseMixWeightsCsv(text, {
+      year: year.trim() || null,
+      source: file.name,
+    }));
+    if (outcome.status === "error") toast.error(outcome.message);
   };
 
   // Bundled official dataset (all 432 groups verbatim from the CMS CY2026
@@ -82,7 +65,7 @@ export default function CaseMixWeightsUpload({
   // as a hand-imported CSV, never straight into storage.
   const loadBundledCy2026 = () => {
     setYear(HH_CASE_MIX_WEIGHTS_CY2026.payment_year);
-    setParsed({
+    replacePreview({
       fileName: HH_CASE_MIX_WEIGHTS_CY2026.source_file,
       result: parseCaseMixWeightsCsv(HH_CASE_MIX_WEIGHTS_CY2026.csv, {
         year: HH_CASE_MIX_WEIGHTS_CY2026.payment_year,
@@ -92,10 +75,11 @@ export default function CaseMixWeightsUpload({
   };
 
   const persist = async (tableOrNull) => {
+    if (disabled || isPersisting || isReading) return;
     setIsPersisting(true);
     try {
       await onPersist(tableOrNull);
-      setParsed(null);
+      replacePreview(null);
     } catch {
       // Parent mutation surfaces the error toast; keep the parse report so the
       // admin can retry without re-selecting the file.
@@ -147,7 +131,7 @@ export default function CaseMixWeightsUpload({
               variant="ghost"
               size="sm"
               onClick={() => persist(null)}
-              disabled={disabled || isPersisting}
+              disabled={disabled || isPersisting || isReading}
               className="text-slate-500"
             >
               <Trash2 className="w-4 h-4 mr-1" /> Remove
@@ -167,10 +151,11 @@ export default function CaseMixWeightsUpload({
               value={year}
               placeholder="e.g. 2026"
               onChange={(e) => setYear(e.target.value)}
+              disabled={isReading || isPersisting}
               className="mt-1 w-28"
             />
           </div>
-          <input ref={inputRef} type="file" accept=".csv" onChange={handleFile} className="hidden" />
+          <input ref={inputRef} type="file" accept=".csv" onChange={handleFile} disabled={isPersisting} aria-label="CMS case-mix weights CSV file" className="hidden" />
           <Button
             type="button"
             variant="outline"
@@ -189,6 +174,7 @@ export default function CaseMixWeightsUpload({
           </Button>
         </div>
 
+        {isReading && <p role="status" className="text-sm text-slate-600">Reading CSV…</p>}
         {/* Parse report — the loader's unmappable-row / completeness report. */}
         {result && (
           <div className="space-y-3">
@@ -229,7 +215,7 @@ export default function CaseMixWeightsUpload({
 
             {result.ok && (
               <div className="flex flex-wrap items-center gap-3">
-                <Button onClick={storeParsed} disabled={disabled || isPersisting}>
+                <Button onClick={storeParsed} disabled={disabled || isPersisting || isReading}>
                   {isPersisting ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <CheckCircle2 className="w-4 h-4 mr-2" />}
                   {isPersisting ? "Storing…" : `Store reference table${year.trim() ? ` (CY${year.trim()})` : ""}`}
                 </Button>
