@@ -8,11 +8,22 @@ updates:
       time: '10:00'
       timezone: America/New_York
     open-pull-requests-limit: 5
+    # These major migrations require a coordinated Base44 npm/peer-compatibility
+    # change. Keep patch/minor updates and security-update alerts active.
+    ignore:
+      - dependency-name: eslint
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@eslint/js'
+        update-types: ['version-update:semver-major']
+      - dependency-name: vitest
+        update-types: ['version-update:semver-major']
     groups:
       production-dependencies:
         dependency-type: production
+        update-types: [minor, patch]
       development-dependencies:
         dependency-type: development
+        update-types: [minor, patch]
     commit-message:
       prefix: chore
       include: scope
