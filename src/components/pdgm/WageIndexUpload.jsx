@@ -7,6 +7,7 @@ import { MapPin, UploadCloud, Download, Trash2, Save, AlertTriangle, CheckCircle
 import { toast } from "sonner";
 import { parseWageIndexCsv, wageIndexCsvTemplate } from "./wageIndex.js";
 import { PA_WAGE_INDEX_CY2026 } from "./paWageIndexCy2026.js";
+import { useCsvImportPreview } from "@/hooks/useCsvImportPreview";
 
 /**
  * CBSA wage-index table import — the agency's own rows from the year's CMS HH
@@ -19,26 +20,30 @@ import { PA_WAGE_INDEX_CY2026 } from "./paWageIndexCy2026.js";
  */
 export default function WageIndexUpload({ storedTable, onPersist, uploadedBy, disabled, disabledReason }) {
   const fileInputRef = useRef(null);
-  const [parseResult, setParseResult] = useState(null);
-  const [fileName, setFileName] = useState("");
+  const { preview, isReading, readFile: readCsv, replacePreview } = useCsvImportPreview();
+  const parseResult = preview?.result || null;
+  const fileName = preview?.fileName || "";
   const [busy, setBusy] = useState(false);
 
   const storedRows = Array.isArray(storedTable?.rows) ? storedTable.rows : [];
 
   const handleFile = async (file) => {
-    if (!file) return;
-    setFileName(file.name);
-    const result = parseWageIndexCsv(await file.text());
-    setParseResult(result);
-    if (!result.ok) toast.error("The wage-index CSV could not be imported — see the errors below.");
+    if (disabled || busy) return;
+    const outcome = await readCsv(file, parseWageIndexCsv);
+    if (outcome.status === "error") toast.error(outcome.message);
+    if (outcome.status === "ready" && !outcome.result.ok) {
+      toast.error("The wage-index CSV could not be imported — see the errors below.");
+    }
   };
 
   // Bundled official dataset (values verbatim from the CMS CY2026 final HH PPS
   // wage index file — see paWageIndexCy2026.js for provenance): loads into the
   // same preview → Store flow as a CSV import, never straight into storage.
   const loadBundledPa = () => {
-    setFileName(PA_WAGE_INDEX_CY2026.source_file);
-    setParseResult({ ok: true, rows: PA_WAGE_INDEX_CY2026.rows, errors: [], warnings: [] });
+    replacePreview({
+      fileName: PA_WAGE_INDEX_CY2026.source_file,
+      result: { ok: true, rows: PA_WAGE_INDEX_CY2026.rows, errors: [], warnings: [] },
+    });
   };
 
   const downloadTemplate = () => {
@@ -54,11 +59,11 @@ export default function WageIndexUpload({ storedTable, onPersist, uploadedBy, di
   };
 
   const persist = async (tableOrNull) => {
+    if (disabled || busy || isReading) return;
     setBusy(true);
     try {
       await onPersist(tableOrNull);
-      setParseResult(null);
-      setFileName("");
+      replacePreview(null);
     } catch (error) {
       console.error("Storing the wage-index table failed:", error);
       toast.error("Couldn't store the wage-index table. Please try again.");
@@ -67,13 +72,15 @@ export default function WageIndexUpload({ storedTable, onPersist, uploadedBy, di
     }
   };
 
-  const storeParsed = () =>
-    persist({
+  const storeParsed = () => {
+    if (!parseResult?.ok || isReading) return;
+    return persist({
       source: fileName || null,
       uploaded_at: new Date().toISOString(),
       uploaded_by_email: uploadedBy || null,
       rows: parseResult.rows,
     });
+  };
 
   return (
     <Card className="border-2 border-sky-300">
@@ -106,6 +113,8 @@ export default function WageIndexUpload({ storedTable, onPersist, uploadedBy, di
             type="file"
             accept=".csv,text/csv"
             className="sr-only"
+            aria-label="Wage-index CSV file"
+            disabled={disabled || busy}
             onChange={(e) => {
               handleFile(e.target.files?.[0]);
               e.target.value = "";
@@ -119,6 +128,7 @@ export default function WageIndexUpload({ storedTable, onPersist, uploadedBy, di
           </Button>
         </div>
 
+        {isReading && <p role="status" className="text-sm text-slate-600">Reading CSV…</p>}
         {parseResult && (
           <div className="space-y-2">
             {parseResult.errors.length > 0 && (
@@ -161,7 +171,7 @@ export default function WageIndexUpload({ storedTable, onPersist, uploadedBy, di
 
         {storedRows.length > 0 ? (
           <div className="flex items-center justify-between gap-2 flex-wrap bg-sky-50 border border-sky-200 rounded p-2">
-            <p className="text-xs text-sky-900 flex items-center gap-1">
+            <div className="text-xs text-sky-900 flex items-center gap-1">
               <CheckCircle2 className="w-4 h-4" />
               {storedRows.length} CBSA row{storedRows.length === 1 ? "" : "s"} stored
               {storedTable?.source ? ` (from ${storedTable.source})` : ""}:
@@ -172,7 +182,7 @@ export default function WageIndexUpload({ storedTable, onPersist, uploadedBy, di
                 </Badge>
               ))}
               {storedRows.length > 4 ? ` +${storedRows.length - 4} more` : ""}
-            </p>
+            </div>
             <Button
               type="button"
               variant="ghost"
