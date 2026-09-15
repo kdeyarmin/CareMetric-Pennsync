@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Landmark, UploadCloud, Download, Trash2, Save, AlertTriangle, CheckCircle2, Calculator } from "lucide-react";
 import { toast } from "sonner";
+import { useCsvImportPreview } from "@/hooks/useCsvImportPreview";
 
 const money = (n) => (Number.isFinite(n) ? `$${n.toFixed(2)}` : "—");
 
@@ -27,8 +28,9 @@ const money = (n) => (Number.isFinite(n) ? `$${n.toFixed(2)}` : "—");
 export default function PayerRatesManager({ currentUser }) {
   const queryClient = useQueryClient();
   const fileInputRef = useRef(null);
-  const [parseResult, setParseResult] = useState(null);
-  const [fileName, setFileName] = useState("");
+  const { preview, isReading, readFile: readCsv, replacePreview } = useCsvImportPreview();
+  const parseResult = preview?.result || null;
+  const fileName = preview?.fileName || "";
 
   const { data: config, isLoading } = useQuery({
     queryKey: ["payerRateConfig", currentUser?.agency_name || "platform"],
@@ -62,8 +64,7 @@ export default function PayerRatesManager({ currentUser }) {
     mutationFn: (payload) => base44.functions.invoke("savePayerRateConfig", payload),
     onSuccess: (res, payload) => {
       queryClient.invalidateQueries({ queryKey: ["payerRateConfig"] });
-      setParseResult(null);
-      setFileName("");
+      replacePreview(null);
       toast.success(`Payer table saved (${res?.data?.saved_count ?? payload.payers.length} payers).`);
     },
     onError: (err) => {
@@ -73,12 +74,12 @@ export default function PayerRatesManager({ currentUser }) {
   });
 
   const handleFile = async (file) => {
-    if (!file) return;
-    setFileName(file.name);
-    const text = await file.text();
-    const result = parsePayerRatesCsv(text);
-    setParseResult(result);
-    if (!result.ok) toast.error("The CSV could not be imported — see the errors below.");
+    if (saveMutation.isPending) return;
+    const outcome = await readCsv(file, parsePayerRatesCsv);
+    if (outcome.status === "error") toast.error(outcome.message);
+    if (outcome.status === "ready" && !outcome.result.ok) {
+      toast.error("The CSV could not be imported — see the errors below.");
+    }
   };
 
   const downloadTemplate = () => {
@@ -94,7 +95,7 @@ export default function PayerRatesManager({ currentUser }) {
   };
 
   const importParsed = () => {
-    if (!parseResult?.ok) return;
+    if (!parseResult?.ok || isReading || saveMutation.isPending) return;
     saveMutation.mutate({
       payers: parseResult.payers,
       source_file: fileName,
@@ -169,7 +170,7 @@ export default function PayerRatesManager({ currentUser }) {
                     variant="ghost"
                     size="sm"
                     onClick={() => removePayer(p.payer_name)}
-                    disabled={saveMutation.isPending}
+                    disabled={saveMutation.isPending || isReading}
                     aria-label={`Remove ${p.payer_name}`}
                   >
                     <Trash2 className="w-4 h-4 text-red-500" />
@@ -207,16 +208,19 @@ export default function PayerRatesManager({ currentUser }) {
             type="file"
             accept=".csv,text/csv"
             className="sr-only"
+            aria-label="Payer rates CSV file"
+            disabled={saveMutation.isPending}
             onChange={(e) => {
               handleFile(e.target.files?.[0]);
               e.target.value = "";
             }}
           />
-          <Button type="button" size="sm" onClick={() => fileInputRef.current?.click()}>
+          <Button type="button" size="sm" onClick={() => fileInputRef.current?.click()} disabled={saveMutation.isPending}>
             <UploadCloud className="w-4 h-4 mr-1" /> Choose CSV to import
           </Button>
         </div>
 
+        {isReading && <p role="status" className="text-sm text-slate-600">Reading CSV…</p>}
         {parseResult && (
           <div className="space-y-2">
             {parseResult.errors.length > 0 && (
@@ -250,7 +254,7 @@ export default function PayerRatesManager({ currentUser }) {
                   <span className="font-mono text-xs">{fileName}</span>. Importing REPLACES the saved table.
                 </p>
                 {renderPayerTable(parseResult.payers)}
-                <Button type="button" onClick={importParsed} disabled={saveMutation.isPending}>
+                <Button type="button" onClick={importParsed} disabled={saveMutation.isPending || isReading}>
                   {saveMutation.isPending ? (
                     <span className="flex items-center"><span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2" />Saving…</span>
                   ) : (
@@ -288,7 +292,7 @@ export default function PayerRatesManager({ currentUser }) {
               Fully-loaded cost per completed visit (wages, mileage, supplies, overhead). Blank = uncosted;
               the margin then shows a cost floor. Never shown to clinical staff.
             </p>
-            <Button type="button" size="sm" variant="outline" onClick={saveCosts} disabled={saveMutation.isPending}>
+            <Button type="button" size="sm" variant="outline" onClick={saveCosts} disabled={saveMutation.isPending || isReading}>
               <Save className="w-4 h-4 mr-1" /> Save costs
             </Button>
           </div>
