@@ -4,6 +4,7 @@ import { defineConfig } from 'vite'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { productionDiagnosticsPlugin } from './scripts/production-diagnostics-plugin.mjs'
 
 const tenantSonnerModule = fileURLToPath(new URL('./src/lib/tenantSonner.js', import.meta.url))
 const rawSonnerModule = fileURLToPath(new URL('./node_modules/sonner/dist/index.mjs', import.meta.url))
@@ -108,9 +109,10 @@ export default defineConfig(withOwnerSuperAdminEmail(({ command }) => ({
       { find: /^sonner$/, replacement: tenantSonnerModule },
     ],
   },
-  // Production diagnostics are stripped by the active Rolldown/Oxc minifier
-  // below. Vite 8 + plugin-react 6 no longer reliably applies esbuild.drop:
-  // application response/error logging must not survive into shipped assets.
+  // Use active minifier settings plus a verified build-only transform below.
+  // Vite 8 + plugin-react 6 no longer reliably applies esbuild.drop; Oxc alone
+  // leaves some vendor .apply calls and conditional debugger statements.
+  // The plugin and final artifact audit reject remaining diagnostics.
   // Development serves unminified source, retaining local diagnostics.
   build: {
     // Raise the warning threshold slightly — large lazy page chunks are
@@ -148,5 +150,6 @@ export default defineConfig(withOwnerSuperAdminEmail(({ command }) => ({
       legacySDKImports: process.env.BASE44_LEGACY_SDK_IMPORTS === 'true'
     }),
     react(),
+    productionDiagnosticsPlugin(),
   ]
 })));
