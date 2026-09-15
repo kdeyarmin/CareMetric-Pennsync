@@ -109,10 +109,9 @@ export default defineConfig(withOwnerSuperAdminEmail(({ command }) => ({
       { find: /^sonner$/, replacement: tenantSonnerModule },
     ],
   },
-  // Use active minifier settings plus a verified build-only transform below.
-  // Vite 8 + plugin-react 6 no longer reliably applies esbuild.drop; Oxc alone
-  // leaves some vendor .apply calls and conditional debugger statements.
-  // The plugin and final artifact audit reject remaining diagnostics.
+  // Production diagnostics are stripped by the active Rolldown/Oxc minifier
+  // below. Vite 8 + plugin-react 6 no longer reliably applies esbuild.drop:
+  // application response/error logging must not survive into shipped assets.
   // Development serves unminified source, retaining local diagnostics.
   build: {
     // Raise the warning threshold slightly — large lazy page chunks are
