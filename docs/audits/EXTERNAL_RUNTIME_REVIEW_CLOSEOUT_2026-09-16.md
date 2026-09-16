@@ -20,3 +20,11 @@ Applied the safe-retry reservation/budget migration to the dedicated integration
 ## Preservation and acceptance boundary
 
 Existing ios/public assets remain protected against production baseline 1ff6018c. No patient/employee record, store package, signing key or uploaded customer file was changed. No Base44 production publication or external traffic activation is implied by these source changes. Source tests, final-head CI, real deployment revision and actual authenticated/provider acceptance must be reported independently. The external authority callback, legacy file contracts, other providers/workflows and zero-credit ledger verification remain explicit migration work, not completed capabilities.
+
+## Full-CI corrections and acceptance tracking
+
+The broader suite correctly rejected two new root tests that were not registered in package.json. They are now in test:external-integrations, invoked by pnpm test; the full CI checkout includes the fixed preservation baseline. No test-registry exception was added.
+
+Subsequent CI exposed an actionlint 2.0.6 WebAssembly trap when reusing one linter across workflow files. The trap was reproduced locally. The wrapper now initializes a new WASM linter for each file and still fails on malformed/incomplete results or validation errors. Regression tests verify all files execute, a real later invalid workflow is reported, and crashes/empty discovery do not pass. This is not a suppressed CI failure.
+
+The new operator-only provider script is separately tested with a complete fake provider/storage lifecycle. Its first attempted Railway pre-deploy invocation did not execute; metadata-only server startup must not be represented as paid-provider acceptance. The next bounded explicit run must supply its own results before it is marked passed.
