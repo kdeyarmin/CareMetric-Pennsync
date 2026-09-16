@@ -10,7 +10,7 @@ const membership = { id: 'membership-1', user_id: employee.id, user_email_normal
   last_transition_at: '2026-01-01T00:00:00.000Z', last_transition_reason: 'Initial assignment', activated_at: '2026-01-01T00:00:00.000Z' };
 const baseBody = { pay_period_start: '2026-06-14', pay_period_end: '2026-06-27', status: 'draft', regular_hours: 80 };
 const deepCopy = value => JSON.parse(JSON.stringify(value));
-function harness(name, { failures = [], rows = {}, caller = employee } = {}) {
+function harness(name, { failures = [], rows = {}, caller = employee, authError = null } = {}) {
   const writes = [];
   const reads = [];
   const data = { AgencyMembership: [membership], Agency: [{ id: 'agency-a', agency_name: 'Agency A', status: 'active' }],
@@ -28,13 +28,13 @@ function harness(name, { failures = [], rows = {}, caller = employee } = {}) {
     async update(id, value) { const row = { id, ...deepCopy(value) }; writes.push({ entity, action: 'update', row }); return row; },
     async delete(id) { writes.push({ entity, action: 'delete', id }); },
   }; } });
-  const client = { auth: { me: async () => caller }, asServiceRole: { entities, integrations: { Core: { SendEmail: async () => { throw new Error('Unexpected delivery'); } } } } };
+  const client = { auth: { me: async () => { if (authError) throw authError; return caller; } }, asServiceRole: { entities, integrations: { Core: { SendEmail: async () => { throw new Error('Unexpected delivery'); } } } } };
   let handler;
   const source = readFileSync(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8').replace(/import \{ createClientFromRequest \} from 'npm:[^']+';/, '');
   new Function('createClientFromRequest', 'Deno', transpileTs(source).outputText)(() => client, { serve(callback) { handler = callback; }, env: { get() { return undefined; } } });
   return { writes, reads, data, async call(body) {
     const response = await handler(new Request('https://example.test/' + name, { method: 'POST', body: JSON.stringify(body) }));
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, cacheControl: response.headers.get('cache-control'), body: await response.json() };
   } };
 }
 
@@ -216,4 +216,30 @@ test('agency course lookups must be complete rather than silently removing requi
     TrainingAssignment: [{ id: 'mine', assigned_to_user_id: employee.email, course_id: 'missing-course', status: 'completed' }],
   } });
   assert.equal((await h.call({})).status, 409);
+});
+
+
+for (const name of ['submitTimesheet', 'submitTimeOffRequest', 'getTeamTrainingReadiness']) {
+  test(`${name} returns accurate unauthenticated SDK errors rather than an internal error`, async () => {
+    for (const [authError, status, code] of [
+      [{ status: 401 }, 401, 'AUTHENTICATION_REQUIRED'],
+      [{ response: { status: 401 } }, 401, 'AUTHENTICATION_REQUIRED'],
+      [{ status: 403 }, 403, 'AUTHENTICATION_FORBIDDEN'],
+      [new Error('SYNTHETIC_NETWORK_FAILURE'), 503, 'AUTHENTICATION_UNAVAILABLE'],
+      [{ status: 502 }, 503, 'AUTHENTICATION_UNAVAILABLE'],
+    ]) {
+      const h = harness(name, { authError });
+      const result = await h.call({});
+      assert.equal(result.status, status); assert.equal(result.body.code, code);
+      assert.equal(result.cacheControl, 'no-store');
+      assert.equal(h.writes.length, 0); assert.equal(h.reads.length, 0);
+      assert.ok(!JSON.stringify(result).includes('SYNTHETIC_NETWORK_FAILURE'));
+    }
+  });
+}
+test('a datastore denial after authentication is not labeled a caller-authentication failure', async () => {
+  const h = harness('submitTimesheet', { failures: ['EmployeePayrollProfile'] });
+  const result = await h.call(baseBody);
+  assert.equal(result.status, 503); assert.equal(result.body.code, undefined);
+  assert.match(result.body.error, /Payroll profile/);
 });

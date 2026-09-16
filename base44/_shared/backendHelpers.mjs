@@ -48,6 +48,29 @@ ${isAllowedDestination.toString()}`;
 
 export const SHARED_HELPERS = {
 
+  // Tag only failures raised by auth.me(). A later datastore/provider failure
+  // must never be misclassified as the user's authentication failure.
+  authReadFailure: `class AuthReadFailure extends Error {
+  constructor(cause) {
+    super('Authentication lookup failed');
+    this.name = 'AuthReadFailure';
+    const status = cause?.status ?? cause?.response?.status;
+    this.publicStatus = status === 401 || status === 403 ? status : 503;
+  }
+}
+function rethrowAuthReadFailure(error) { throw new AuthReadFailure(error); }
+function authReadFailureResponse(error) {
+  if (!(error instanceof AuthReadFailure)) return null;
+  const status = error.publicStatus;
+  return Response.json({
+    error: status === 401 ? 'Sign in to continue.'
+      : status === 403 ? 'This session is not permitted to access the app.'
+        : 'The authentication service is temporarily unavailable. Try again shortly.',
+    code: status === 401 ? 'AUTHENTICATION_REQUIRED'
+      : status === 403 ? 'AUTHENTICATION_FORBIDDEN' : 'AUTHENTICATION_UNAVAILABLE',
+  }, { status, headers: { 'Cache-Control': 'no-store' } });
+}`,
+
   signatureAuditKeys: `function signatureAuditKeyId(value) {
   if (value == null) return 'legacy';
   if (typeof value !== 'string' || !/^[A-Za-z][A-Za-z0-9_-]{0,63}$/.test(value)) throw new Error('Signature audit key identity is invalid');
