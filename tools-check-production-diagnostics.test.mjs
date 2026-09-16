@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { inspectJavaScript, inspectBuild, main } from './tools-check-production-diagnostics.mjs';
+import { inspectJavaScript, inspectBuild, parseDiagnosticArguments, main } from './tools-check-production-diagnostics.mjs';
 import { stripProductionDiagnostics, productionDiagnosticsPlugin } from './scripts/production-diagnostics-plugin.mjs';
 
 for (const source of [
@@ -106,3 +106,44 @@ test('CLI returns a failing exit code rather than accepting missing artifacts', 
   assert.equal(main([dir], { log() {} }), 1);
   assert.equal(main([dir, 'extra'], { log() {} }), 2);
 });
+
+for (const [args, directory] of [
+  [[], 'dist'],
+  [['dist'], 'dist'],
+  [['--mode', 'production'], 'dist'],
+  [['--mode=production'], 'dist'],
+  [['release', '--mode', 'production'], 'release'],
+  [['--mode', 'production', 'release'], 'release'],
+  [['release', '--mode=production'], 'release'],
+  [['--mode=production', 'release'], 'release'],
+]) {
+  test(`hosted argument compatibility preserves the inspection target: ${JSON.stringify(args)}`, () => {
+    assert.deepEqual(parseDiagnosticArguments(args), { directory });
+  });
+}
+
+for (const args of [
+  ['--mode'], ['--mode='], ['--mode', 'development'], ['--mode=staging'],
+  ['--skip'], ['--force'], ['--mode=production', '--mode', 'production'],
+  ['dist', 'other'], [''], [null],
+]) {
+  test(`rejects malformed, non-production, or bypass arguments: ${JSON.stringify(args)}`, () => {
+    let output;
+    assert.equal(main(args, { log(value) { output = JSON.parse(value); } }), 2);
+    assert.equal(output.passed, false);
+    assert.equal(output.errors[0].code, 'INVALID_ARGUMENTS');
+  });
+}
+
+for (const flags of [['--mode', 'production'], ['--mode=production']]) {
+  test(`hosted flags still reject dirty, empty, and missing artifacts: ${flags.join(' ')}`, (t) => {
+    const dir = fixture(t);
+    assert.equal(main([dir, ...flags], { log() {} }), 1);
+    writeFileSync(join(dir, 'assets', 'app.js'), 'export const answer = 42;');
+    assert.equal(main([dir, ...flags], { log() {} }), 0);
+    assert.equal(main([...flags, dir], { log() {} }), 0);
+    writeFileSync(join(dir, 'assets', 'app.js'), 'console.error("synthetic-only"); debugger;');
+    assert.equal(main([dir, ...flags], { log() {} }), 1);
+    assert.equal(main([join(dir, 'missing'), ...flags], { log() {} }), 1);
+  });
+}
