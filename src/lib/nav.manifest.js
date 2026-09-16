@@ -27,7 +27,7 @@
  */
 
 import {
-  Home, Users, FileText, ClipboardList, Shield, GraduationCap,
+  Home, Users, FileText, ClipboardList, Shield, GraduationCap, Car,
   BarChart3, Settings, Brain, Bell, BookOpen,
   Mail, BookUser, Video, HelpCircle, AlertTriangle,
   Phone, Send, Heart, Database, Lock, Award,
@@ -820,6 +820,17 @@ export const NAV_MANIFEST = [
     adminOnly: false,
     breadcrumbParent: null,
     keywords: ["time off", "pto", "leave", "vacation", "request", "schedule"],
+  },
+  {
+    page: "VehicleMaintenance",
+    label: "Vehicle Maintenance",
+    navLabel: "Vehicles",
+    icon: Car,
+    category: "Tools",
+    adminOnly: false,
+    access: "general",
+    breadcrumbParent: null,
+    keywords: ["vehicle", "car", "fleet", "maintenance", "repair", "oil", "tires", "inspection", "odometer", "service log"],
   },
   {
     page: "Timesheets",
