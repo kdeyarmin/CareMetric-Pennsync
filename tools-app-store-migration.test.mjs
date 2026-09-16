@@ -17,8 +17,11 @@ test('all existing iOS wrapper and packaged public assets are byte-preserved', (
   assert.deepEqual(current, baseline, 'Native/public files were added, removed or renamed.');
   for (const path of baseline) {
     assert.equal(lstatSync(path).isFile(), true, `${path} must remain a regular file`);
-    const original = execFileSync('git', ['show', `${BASELINE}:${path}`]);
-    assert.deepEqual(readFileSync(path), original, `${path} differs from the preserved production asset`);
+    // hash-object without -w only reads the bytes. No filters or large binary
+    // stdout buffers are involved, and no new Git object or artifact is written.
+    const original = git('rev-parse', `${BASELINE}:${path}`).trim();
+    const currentHash = git('hash-object', '--no-filters', '--', path).trim();
+    assert.equal(currentHash, original, `${path} differs from the preserved production asset`);
   }
 });
 
