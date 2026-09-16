@@ -12,7 +12,7 @@ import { BROWSER_CONTRACT } from '../../services/integration-runtime/caller-bind
 
 // Fixed synthetic fixtures. Every request is injected; these tests use no network.
 const revision = 'a'.repeat(40);
-const requestId = '11111111-1111-4111-8111-111111111111';
+const requestId = '11111111-1111-4111-1111-111111111111';
 const fileId = '22222222-2222-4222-8222-222222222222';
 const fileUri = `cmfile:${fileId}`;
 const context = () => ({ user_id: 'user-a', agency_id: 'agency-a', membership_id: 'member-a',
@@ -236,4 +236,45 @@ test('shared browser contracts import neither Node primitives nor provider crede
     const source = readFileSync(new URL(`../../services/integration-runtime/${file}`, import.meta.url), 'utf8');
     assert.doesNotMatch(source, /from\s*['"]node:|process\.env|ANTHROPIC_API_KEY|SUPABASE_SERVICE_ROLE_KEY|fetch\(/);
   }
+});
+
+test('UUID case variants identify one canonical private object in every browser input contract', () => {
+  const id = 'abcdefab-cdef-4abc-8def-abcdefabcdef';
+  const variant = `CMFILE:${id.toUpperCase()}`;
+  assert.equal(privateIntegrationFileId(variant), id);
+  assert.deepEqual(normalizeExternalIntegrationParams('InvokeLLM', { prompt: 'x', file_urls: [variant] }), { prompt: 'x', file_uris: [`cmfile:${id}`] });
+  assert.deepEqual(normalizeExternalIntegrationParams('CreateFileSignedUrl', { file_uri: variant }), { file_uri: `cmfile:${id}` });
+  assert.deepEqual(normalizeExternalIntegrationParams('ExtractDataFromUploadedFile', { file_url: variant, json_schema: { type: 'string' } }),
+    { file_uri: `cmfile:${id}`, json_schema: { type: 'string' } });
+});
+
+test('bounded byte encoder preserves padding and chunk boundaries without browser btoa', async () => {
+  const original = globalThis.btoa;
+  globalThis.btoa = undefined;
+  try {
+    for (const size of [1, 2, 3, 4, 5, 0x5fff, 0x6000, 0x6001, 0x6002, 0xc000, 8 * 1024 * 1024]) {
+      const bytes = Uint8Array.from({ length: size }, (_value, i) => (i * 17 + 29) % 256);
+      const h = harness({ operations: ['UploadPrivateFile'], fetcher: (_url, _options, body) => {
+        assert.equal(body.params.base64, Buffer.from(bytes).toString('base64'), `byte-exact encoding of ${size} bytes`);
+        return response(envelope(body, { file_uri: fileUri, private: true, size_bytes: size }));
+      } });
+      await h.transport.prepare('UploadPrivateFile', { file: new Blob([bytes], { type: 'text/plain' }) }).execute();
+      assert.equal(h.calls.length, 1);
+    }
+  } finally { globalThis.btoa = original; }
+});
+
+test('integrity-level mutations are rejected atomically and do not poison the virtual SDK facade', async () => {
+  const h = harness();
+  const sdk = { integrations: { Core: { InvokeLLM() { assert.fail('native fallback'); } } } };
+  const facade = routeExternalCoreOperations(sdk, config(), h.dependencies);
+  for (const target of [facade, facade.integrations, facade.integrations.Core]) {
+    for (const operation of [Object.freeze, Object.seal, Object.preventExtensions]) {
+      assert.throws(() => operation(target), TypeError);
+      assert.equal(Object.isExtensible(target), true);
+      assert.ok(Reflect.ownKeys(target).length > 0);
+    }
+  }
+  assert.equal(await facade.integrations.Core.InvokeLLM({ prompt: 'synthetic' }), 'synthetic result');
+  assert.equal(h.calls.length, 1);
 });

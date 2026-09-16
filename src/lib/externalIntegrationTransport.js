@@ -6,7 +6,7 @@ import { BROWSER_CONTRACT, bindingFromContext } from '../../services/integration
 export const EXTERNAL_INTEGRATION_ORIGIN = 'https://pennsync-integrations-production.up.railway.app';
 export const EXTERNAL_INTEGRATION_APP = '694ec16e72e01b60d22f7cbf';
 const STORAGE_ORIGIN = 'https://xsqobvvreaovwibxwyvv.supabase.co';
-const FILE_URI = /^cmfile:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/;
+const FILE_URI = /^cmfile:([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i;
 const MESSAGES = Object.freeze({
   CONFIGURATION: 'The external integration configuration needs administrator review.',
   NOT_RELEASED: 'This external integration has not been released.',
@@ -52,11 +52,12 @@ export function readExternalIntegrationConfig(env = {}, appId = null) {
 }
 
 export function privateIntegrationFileId(reference) {
-  return typeof reference === 'string' ? reference.match(FILE_URI)?.[1] || null : null;
+  return typeof reference === 'string' ? reference.match(FILE_URI)?.[1]?.toLowerCase() || null : null;
 }
 function privateFile(reference) {
-  if (!privateIntegrationFileId(reference)) deny('INVALID_INPUT');
-  return reference;
+  const id = privateIntegrationFileId(reference);
+  if (!id) deny('INVALID_INPUT');
+  return `cmfile:${id}`;
 }
 export function normalizeExternalIntegrationParams(operation, input) {
   // Clone before dispatch. In particular, defined-but-invalid AI options cannot
@@ -78,8 +79,7 @@ export function normalizeExternalIntegrationParams(operation, input) {
     const files = Object.hasOwn(value, 'file_urls') ? value.file_urls : value.file_uris;
     if (files !== undefined) {
       if (!Array.isArray(files) || files.length > 3) deny('INVALID_INPUT');
-      files.forEach(privateFile);
-      value.file_uris = [...files];
+      value.file_uris = files.map(privateFile);
     }
     delete value.file_urls;
   } else if (operation === 'ExtractDataFromUploadedFile') {
@@ -89,7 +89,7 @@ export function normalizeExternalIntegrationParams(operation, input) {
     delete value.file_url;
     validateSchema(value.json_schema);
   } else if (operation === 'CreateFileSignedUrl') {
-    exactObject(value, ['file_uri']); privateFile(value.file_uri);
+    exactObject(value, ['file_uri']); value.file_uri = privateFile(value.file_uri);
   } else if (operation === 'SendEmail') {
     exactObject(value, ['to', 'subject', 'body']);
     const recipients = Array.isArray(value.to) ? value.to : [value.to];
@@ -102,11 +102,24 @@ export function normalizeExternalIntegrationParams(operation, input) {
 async function encodeFile(file) {
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (bytes.length !== file.size || bytes.length < 1 || bytes.length > MAX_FILE) deny('INVALID_INPUT');
-  let binary = '';
-  for (let offset = 0; offset < bytes.length; offset += 0x4000) {
-    binary += String.fromCharCode(...bytes.subarray(offset, offset + 0x4000));
+  // Encode bounded chunks directly from bytes. Avoid a complete intermediate
+  // binary string and do not require Node's Buffer or a global btoa polyfill.
+  const alphabet = Uint8Array.from('ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/', c => c.charCodeAt(0));
+  const chunks = [], decoder = new TextDecoder();
+  for (let offset = 0; offset < bytes.length; offset += 0x6000) {
+    const end = Math.min(offset + 0x6000, bytes.length);
+    const encoded = new Uint8Array(Math.ceil((end - offset) / 3) * 4);
+    let position = 0;
+    for (let i = offset; i < end; i += 3) {
+      const a = bytes[i], b = bytes[i + 1] ?? 0, c = bytes[i + 2] ?? 0;
+      encoded[position++] = alphabet[a >>> 2];
+      encoded[position++] = alphabet[((a & 3) << 4) | (b >>> 4)];
+      encoded[position++] = i + 1 < end ? alphabet[((b & 15) << 2) | (c >>> 6)] : 61;
+      encoded[position++] = i + 2 < end ? alphabet[c & 63] : 61;
+    }
+    chunks.push(decoder.decode(encoded));
   }
-  return { base64: btoa(binary), content_type: file.type };
+  return { base64: chunks.join(''), content_type: file.type };
 }
 async function readEnvelope(response) {
   const max = 2 * 1024 * 1024;
@@ -265,7 +278,12 @@ export function routeExternalCoreOperations(client, config, dependencies) {
       return { configurable: true, enumerable: descriptor.enumerable, writable: false,
         value: Object.hasOwn(overrides, property) ? overrides[property]() : Reflect.get(source, property, source) };
     },
-    set: () => false, defineProperty: () => false, deleteProperty: () => false, setPrototypeOf: () => false, preventExtensions: () => false,
+    set: () => false, defineProperty: () => false, deleteProperty: () => false, setPrototypeOf: () => false,
+    // A virtual SDK facade has no own keys on its empty proxy target. Freezing
+    // that target would invalidate ownKeys/descriptor traps or expose stale raw
+    // methods. Reject integrity-level mutation before any change, exactly as
+    // the enclosing tenant SDK membrane already does; this is not a POJO.
+    preventExtensions: () => false,
   });
   const overrides = Object.fromEntries(config.operations.map(operation => [operation, () => {
     if (!methods.has(operation)) methods.set(operation, (params, options) => {

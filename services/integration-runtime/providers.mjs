@@ -11,7 +11,9 @@ function email(value) {
 function requireFileUri(value) {
   const match = typeof value === 'string' && value.match(FILE_URI);
   if (!match || !UUID.test(match[1])) fail(400, 'PRIVATE_FILE_MIGRATION_REQUIRED');
-  return match[1];
+  // PostgreSQL UUID values and our persisted storage paths are canonical lower
+  // case. Accept textual UUID case variants without changing the owned object.
+  return match[1].toLowerCase();
 }
 export function signedStorageUrl(raw, storageOrigin, objectPath) {
   if (typeof raw !== 'string' || !raw || raw.length > 16000) fail(502, 'INVALID_SIGNED_URL');
