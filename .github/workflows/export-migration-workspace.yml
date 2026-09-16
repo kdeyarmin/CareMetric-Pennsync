@@ -7,27 +7,35 @@ permissions:
   contents: read
 jobs:
   snapshot:
-    name: Source export only - not application validation
+    name: Development workspace only - not deployment
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 12
     steps:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
       - uses: actions/setup-node@v7
         with:
           node-version-file: .nvmrc
-      - name: Package tracked source and Git objects only
+      - name: Install pinned development dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Package tracked source, reachable Git objects and development dependencies only
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p /tmp/pennsync-review-runtime
-          git archive --format=tar.gz HEAD > /tmp/pennsync-review-runtime/workspace.tar.gz
-          git bundle create /tmp/pennsync-review-runtime/repository.bundle HEAD refs/remotes/origin/main
+          git archive --format=tar HEAD > /tmp/pennsync-review-runtime/workspace.tar
+          git bundle create /tmp/pennsync-review-runtime/repository.bundle HEAD
+          tar -rf /tmp/pennsync-review-runtime/workspace.tar node_modules
           cp "$(command -v node)" /tmp/pennsync-review-runtime/node
           printf '%s\n' "$GITHUB_SHA" > /tmp/pennsync-review-runtime/source-revision.txt
-          printf '%s\n' 'Source export only. Application dependency installation failed independently in run 35144520710; this job does not validate or deploy the application.' > /tmp/pennsync-review-runtime/SCOPE.txt
+          printf '%s\n' 'Development workspace export only; not deployment, authenticated acceptance, or full application validation.' > /tmp/pennsync-review-runtime/SCOPE.txt
+          gzip -1 /tmp/pennsync-review-runtime/workspace.tar
       - uses: actions/upload-artifact@v4
         with:
           name: pennsync-isolated-migration-workspace
