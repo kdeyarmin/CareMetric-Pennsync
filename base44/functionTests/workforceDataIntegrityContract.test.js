@@ -34,7 +34,7 @@ function harness(name, { failures = [], rows = {}, caller = employee, authError 
   new Function('createClientFromRequest', 'Deno', transpileTs(source).outputText)(() => client, { serve(callback) { handler = callback; }, env: { get() { return undefined; } } });
   return { writes, reads, data, async call(body) {
     const response = await handler(new Request('https://example.test/' + name, { method: 'POST', body: JSON.stringify(body) }));
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, cacheControl: response.headers.get('cache-control'), body: await response.json() };
   } };
 }
 
@@ -231,6 +231,7 @@ for (const name of ['submitTimesheet', 'submitTimeOffRequest', 'getTeamTrainingR
       const h = harness(name, { authError });
       const result = await h.call({});
       assert.equal(result.status, status); assert.equal(result.body.code, code);
+      assert.equal(result.cacheControl, 'no-store');
       assert.equal(h.writes.length, 0); assert.equal(h.reads.length, 0);
       assert.ok(!JSON.stringify(result).includes('SYNTHETIC_NETWORK_FAILURE'));
     }

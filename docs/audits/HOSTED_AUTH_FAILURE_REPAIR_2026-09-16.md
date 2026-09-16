@@ -9,3 +9,5 @@ The new canonical authReadFailure helper tags errors ONLY at the auth.me() promi
 Regression tests cover SDK status and Axios response.status, 401, 403, unknown/network failures, zero record access or writes on failed authentication, and a post-authentication payroll lookup failure that retains its own error meaning. 29 workforce tests pass; combined workforce/shared-claims/audit-harness tests total 53 (included in the 889-case security suite, not additional to it). Source lint, high-signal typecheck, 282 backend targets, 225 shared-helper consumers and the hosted-style build with 501 inspected JavaScript files pass locally.
 
 This record describes the source repair and pre-deployment observations. Exact-head CI, merge and fresh hosted response verification are separately required before marking the live issue resolved. The source is not proof of a valid signed-in employee workflow.
+
+Review follow-up: the regression harness retains the response cache-control header and asserts exact `no-store` for every 401/403/503 authentication case. This makes the advertised no-cache behavior a tested contract rather than documentation alone.
