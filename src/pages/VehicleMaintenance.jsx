@@ -30,7 +30,10 @@ export default function VehicleMaintenance() {
     queryKey: ['fleetContext', user?.id, tenantId],
     queryFn: () => manageVehicleMaintenance('context'), enabled: !!user?.id, retry: false,
   });
-  const agencies = context.data?.agencies || [];
+  // A non-owner changes agency through the app's tenant selector, never
+  // inside a data screen while the browser remains bound to another tenant.
+  const agencies = (context.data?.agencies || []).filter(agency =>
+    tenantContext?.is_platform_owner === true || agency.id === tenantId);
   const selected = agencies.find(agency => agency.id === chosen)
     || agencies.find(agency => agency.id === tenantId) || (agencies.length === 1 ? agencies[0] : null);
   return <PageContainer>
@@ -133,7 +136,7 @@ function FleetWorkspace({ agency, userId }) {
         </div>
         <div className="grid gap-3 sm:grid-cols-3" aria-label="Loaded service history summary">
           <SummaryCard label={history.hasNextPage ? 'Loaded service entries' : 'Service entries'} value={String(summary.entries)} />
-          <SummaryCard label={history.hasNextPage ? 'Known cost in loaded entries' : 'Known service cost'} value={money(summary.knownCostCents)} detail={summary.missingCosts ? `${summary.missingCosts} entries have no cost entered` : 'Based on recorded costs'} />
+          <SummaryCard label={history.hasNextPage ? 'Known cost in loaded entries' : 'Known service cost'} value={money(summary.knownCostCents)} detail={summary.missingCosts ? `${summary.missingCosts} ${summary.missingCosts === 1 ? 'entry has' : 'entries have'} no cost entered` : 'Based on recorded costs'} />
           <SummaryCard label={history.hasNextPage ? 'Loaded entries needing review' : 'Entries needing review'} value={String(summary.awaitingReview)} />
         </div>
         <section aria-label="Vehicle service history" className="space-y-3">
