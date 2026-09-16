@@ -1,3 +1,5 @@
+> **Historical audit:** Current source/function enumeration, new defects, and live-release limits are documented in [the September 16 application review](APP_FUNCTIONALITY_REVIEW_2026-09-16.md). Earlier counts and release claims below are not current verification.
+
 # PennSync Feature Inventory
 
 _Audit date: 2026-07-22. Scope: frontend SPA, Base44 entity contracts, function handlers, tests, CI/configuration. Backend behavior was inferred from repository code because hosted Base44 credentials were not available._
