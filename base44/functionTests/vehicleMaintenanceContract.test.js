@@ -323,7 +323,7 @@ test('staff roster uses one bounded User query rather than per-person reads', as
   const result = await h.call('staff');
   assert.equal(result.status, 200); assert.equal(result.body.staff.length, 50);
   assert.equal(h.filters.filter(call => call.name === 'User').length, 1);
-  assert.ok(h.filters.length <= 6, JSON.stringify(h.filters));
+  assert.ok(h.filters.length <= 7, JSON.stringify(h.filters));
 });
 
 test('fleet calendar agrees with the UI across UTC midnight and daylight-saving dates', async () => {
@@ -355,4 +355,27 @@ test('history rejects stale numeric offsets and cross-vehicle cursors', async ()
   const h = harness({ entries: [entry()] });
   assert.equal((await h.call('history', { vehicle_id: 'vehicle-1', offset: 50 })).status, 409);
   assert.equal((await h.call('history', { vehicle_id: 'vehicle-1', cursor: 'v1:agency-b:vehicle-1:2026-01-15:entry-1' })).status, 400);
+});
+
+
+for (const status of ['pending', 'suspended', 'revoked', 'active']) {
+  test(`assignment rejects an active membership plus a second ${status} membership in all write paths and roster`, async () => {
+    for (const action of ['create_vehicle', 'update_vehicle', 'staff']) {
+      const h = harness({ user: admin });
+      h.state.AgencyMembership.push({ ...member(employee), id: 'duplicate-employee', status });
+      const payload = action === 'create_vehicle' ? { request_id: 'duplicate-member', vehicle: vehicleFacts }
+        : action === 'update_vehicle' ? { vehicle_id: 'vehicle-1', expected_version: 1, vehicle: vehicleFacts } : {};
+      assert.equal((await h.call(action, payload)).status, 409, action);
+      assert.equal(h.writes.length, 0, 'No creation claim or vehicle mutation may precede identity validation');
+    }
+  });
+}
+test('single inactive or corrupt employee membership cannot be assigned', async () => {
+  for (const change of [{ status: 'revoked' }, { status: 'suspended' }, { status: 'pending' }, { version: 0 }, { id: '' }, { user_email_normalized: 'OTHER@example.test' }]) {
+    const h = harness({ user: admin });
+    Object.assign(h.state.AgencyMembership[0], change);
+    const result = await h.call('create_vehicle', { request_id: 'invalid-member', vehicle: vehicleFacts });
+    assert.ok([403, 409].includes(result.status), JSON.stringify(change));
+    assert.equal(h.writes.length, 0);
+  }
 });

@@ -108,11 +108,23 @@ async function vehicle(auth: any, vehicleId: string) {
   if (!auth.canManage && (record.assigned_user_id !== auth.userId || record.status === 'retired')) fail(403, 'This vehicle is not assigned to you.');
   return record;
 }
+function validAssigneeMembership(member: Record<string, any>, agencyId: string, userId: string) {
+  return typeof member.id === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(member.id)
+    && member.agency_id === agencyId && member.user_id === userId
+    && member.membership_key === `${agencyId}:${userId}` && member.status === 'active'
+    && Number.isSafeInteger(member.version) && member.version >= 1
+    && ROLES.has(member.tenant_role) && typeof member.user_email_normalized === 'string'
+    && member.user_email_normalized === email(member.user_email_normalized)
+    && member.user_email_normalized.includes('@') && !/\s/.test(member.user_email_normalized);
+}
 async function assignee(auth: any, userId: string) {
   if (!userId) return { assigned_user_id: '', assigned_user_name: '', assigned_user_email: '' };
-  const member = await exact(auth.entities.AgencyMembership, { agency_id: auth.agencyId, user_id: id(userId), status: 'active' }, 'Choose an active employee in this agency.');
+  // Count every lifecycle state before accepting the unique canonical row. An
+  // active duplicate beside a suspended/revoked row is not a valid assignment.
+  const member = await exact(auth.entities.AgencyMembership, { agency_id: auth.agencyId, user_id: id(userId) }, 'Choose an active employee in this agency.');
+  if (!validAssigneeMembership(member, auth.agencyId, userId)) fail(403, 'Employee assignment is unavailable.');
   const user = await exact(auth.entities.User, { id: userId }, 'Employee unavailable.');
-  if (!enabled(user) || user.role !== 'user' || member.membership_key !== `${auth.agencyId}:${userId}` || member.user_email_normalized !== email(user.email) || !ROLES.has(member.tenant_role)) fail(403, 'Employee assignment is unavailable.');
+  if (!enabled(user) || user.role !== 'user' || member.user_email_normalized !== email(user.email)) fail(403, 'Employee assignment is unavailable.');
   return { assigned_user_id: userId, assigned_user_name: text(user.full_name || user.email, 'Employee name', 320), assigned_user_email: email(user.email) };
 }
 function vehicleData(raw: unknown) {
@@ -339,6 +351,21 @@ export async function handleVehicleMaintenance(req: Request, client: any, ownerE
       if (new Set(userIds).size !== userIds.length || page.some(member =>
         member.membership_key !== `${auth.agencyId}:${member.user_id}` || !ROLES.has(member.tenant_role)
       )) fail(409, 'Employee roster membership is ambiguous.');
+      // Check all lifecycle states for the bounded candidate page, in one
+      // extra query, so the picker cannot silently suggest ambiguous assignees.
+      const allMembers = userIds.length ? rows(await auth.entities.AgencyMembership.filter(
+        { agency_id: auth.agencyId, user_id: { $in: userIds } }, undefined, PAGE_SIZE * 2 + 1,
+      ), { agency_id: auth.agencyId }) : [];
+      if (allMembers.length > PAGE_SIZE * 2 || allMembers.some(member => !userIds.includes(member.user_id))) {
+        fail(409, 'Employee roster membership is ambiguous.');
+      }
+      for (const member of page) {
+        const canonical = allMembers.filter(row => row.user_id === member.user_id);
+        if (canonical.length !== 1 || canonical[0].id !== member.id || canonical[0].version !== member.version
+          || !validAssigneeMembership(canonical[0], auth.agencyId, member.user_id)) {
+          fail(409, 'Employee roster membership is ambiguous.');
+        }
+      }
       // One bounded User query rather than 100 sequential per-employee reads.
       const users = userIds.length ? rows(await auth.entities.User.filter({ id: { $in: userIds } }, undefined, PAGE_SIZE + 1), {}) : [];
       if (users.length > PAGE_SIZE || users.some(user => !userIds.includes(user.id))

@@ -6,8 +6,8 @@ import { MemoryRouter } from 'react-router';
 import VehicleMaintenance from './VehicleMaintenance';
 import { expectNoAxeViolations } from '@/test/axeHelpers';
 
-const { request, current } = vi.hoisted(() => ({ request: vi.fn(), current: { canManage: false, vehicles: [], entries: [] } }));
-vi.mock('@/functions/manageVehicleMaintenance', () => ({ manageVehicleMaintenance: request, vehicleRequestId: () => 'fleet-test-request' }));
+const { request, current } = vi.hoisted(() => ({ request: vi.fn(), current: { canManage: false, vehicles: [], entries: [], requestIds: 0 } }));
+vi.mock('@/functions/manageVehicleMaintenance', () => ({ manageVehicleMaintenance: request, vehicleRequestId: () => current.requestIds++ ? `fleet-test-request-${current.requestIds}` : 'fleet-test-request' }));
 vi.mock('@/lib/AuthContext', () => ({ useAuth: () => ({ user: { id: 'staff-1' }, tenantContext: { agency_id: 'agency-a' } }) }));
 vi.mock('@/components/ui/PageHeader', () => ({ default: ({ title, description }) => <header><h1>{title}</h1><p>{description}</p></header> }));
 vi.mock('@/components/ui/PageContainer', () => ({ default: ({ children }) => <main>{children}</main> }));
@@ -18,7 +18,7 @@ function mount() {
   return { ...render(<MemoryRouter><QueryClientProvider client={client}><VehicleMaintenance /></QueryClientProvider></MemoryRouter>), client };
 }
 beforeEach(() => {
-  current.canManage = false; current.vehicles = [car]; current.entries = [service];
+  current.requestIds = 0; current.canManage = false; current.vehicles = [car]; current.entries = [service];
   request.mockReset();
   request.mockImplementation(async (action) => {
     if (action === 'context') return { success: true, agencies: [{ id: 'agency-a', name: 'Test Agency', can_manage: current.canManage }] };
@@ -254,5 +254,125 @@ describe('review regression cases', () => {
     expect(request.mock.calls.filter(([name]) => name === action)).toHaveLength(1);
     await act(async () => { finish({ success: true, vehicle: car, entry: service }); await pending; });
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+});
+
+
+function deferredFleetOperation() {
+  let resolve;
+  let reject;
+  const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+async function openReviewForm(kind) {
+  if (kind === 'service') {
+    await userEvent.click(screen.getByRole('button', { name: /Log maintenance or repair/ }));
+    await userEvent.type(screen.getByLabelText('Odometer at service (miles)'), '14000');
+    await userEvent.type(screen.getByLabelText('What was done?'), 'Pending work');
+  } else if (kind === 'vehicle') {
+    await userEvent.click(screen.getByRole('button', { name: 'Add vehicle' }));
+    await userEvent.type(screen.getByLabelText('Vehicle / unit name'), 'Car 02');
+    await userEvent.type(screen.getByLabelText('Make'), 'Ford');
+    await userEvent.type(screen.getByLabelText('Model'), 'Escape');
+    await userEvent.type(screen.getByLabelText('Starting odometer (miles)'), '14000');
+  } else {
+    await userEvent.click(screen.getByRole('button', { name: 'Review entry' }));
+    await userEvent.type(screen.getByLabelText('Review note (optional)'), 'Pending review');
+  }
+  const dialog = screen.getByRole('dialog');
+  const form = dialog.querySelector('form');
+  const submit = within(dialog).getByRole('button', { name: { service: 'Save service entry', vehicle: 'Add vehicle', review: 'Save review' }[kind] });
+  return { dialog, form, submit };
+}
+
+describe('follow-up review: mutation and refresh lifetime', () => {
+  it.each(['service', 'vehicle', 'review'].flatMap(kind => ['vehicles', 'history'].map(query => [kind, query])))(
+    'retains %s form and retry identity through a failed %s refresh and uncertain save', async (kind, query) => {
+      current.canManage = true;
+      const write = deferredFleetOperation();
+      let failRead = false;
+      let retried = false;
+      const action = { service: 'add_entry', vehicle: 'create_vehicle', review: 'review_entry' }[kind];
+      const original = request.getMockImplementation();
+      request.mockImplementation(async (name, payload) => {
+        if (name === query && failRead) throw new Error('Temporary read failure');
+        if (name === action && !retried) return write.promise;
+        return original(name, payload);
+      });
+      const { client } = mount();
+      await screen.findByText('Synthetic oil service');
+      const { form, submit } = await openReviewForm(kind);
+      await userEvent.click(submit);
+      await waitFor(() => expect(request.mock.calls.filter(([name]) => name === action)).toHaveLength(1));
+      failRead = true;
+      await act(async () => { await client.invalidateQueries({ queryKey: [query === 'vehicles' ? 'fleetVehicles' : 'fleetHistory'] }); });
+      // Keep operation memory but conceal stale details and do not allow another
+      // write while the current record/assignment cannot be revalidated.
+      expect(document.body.contains(form)).toBe(true);
+      await waitFor(() => expect(form).not.toBeVisible());
+      await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Close' }));
+      expect(document.body.contains(form)).toBe(true);
+      await act(async () => { write.reject(new Error('Save outcome uncertain')); await write.promise.catch(() => {}); });
+      expect(document.body.contains(form)).toBe(true);
+      expect(form).not.toBeVisible();
+      failRead = false;
+      await act(async () => {
+        await client.invalidateQueries({ queryKey: ['fleetVehicles'] });
+        await client.invalidateQueries({ queryKey: ['fleetHistory'] });
+      });
+      await waitFor(() => expect(form).toBeVisible());
+      expect(screen.getByRole('alert')).toHaveTextContent('Save outcome uncertain');
+      retried = true;
+      await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: { service: 'Save service entry', vehicle: 'Add vehicle', review: 'Save review' }[kind] }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      const writes = request.mock.calls.filter(([name]) => name === action);
+      expect(writes).toHaveLength(2);
+      expect(writes[0][1].request_id).toBe(writes[1][1].request_id);
+      expect(current.requestIds).toBe(1);
+    },
+  );
+
+  it.each(['service', 'vehicle', 'review'])('keeps the %s form alive and busy until the successful save refresh completes', async kind => {
+    current.canManage = true;
+    const read = deferredFleetOperation();
+    const second = deferredFleetOperation();
+    let holdRefresh = false;
+    let writes = 0;
+    const action = { service: 'add_entry', vehicle: 'create_vehicle', review: 'review_entry' }[kind];
+    const original = request.getMockImplementation();
+    request.mockImplementation(async (name, payload) => {
+      if (name === action) {
+        writes += 1;
+        if (writes === 1) { holdRefresh = true; return original(name, payload); }
+        return second.promise;
+      }
+      if (holdRefresh && ['vehicles', 'history'].includes(name)) await read.promise;
+      return original(name, payload);
+    });
+    mount(); await screen.findByText('Synthetic oil service');
+    const { form, submit } = await openReviewForm(kind);
+    await userEvent.click(submit);
+    await waitFor(() => expect(holdRefresh).toBe(true));
+    expect(document.body.contains(form)).toBe(true);
+    expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Saving…' })).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    expect(document.body.contains(form)).toBe(true);
+    // Background triggers cannot create a second form before the first releases
+    // its lifecycle. Include hidden controls because Radix correctly traps focus.
+    expect(screen.getByRole('button', { name: 'Add vehicle', hidden: true })).toBeDisabled();
+    holdRefresh = false;
+    await act(async () => { read.resolve(); await read.promise; });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const next = await openReviewForm(kind);
+    await userEvent.click(next.submit);
+    await waitFor(() => expect(writes).toBe(2));
+    await userEvent.click(within(next.dialog).getByRole('button', { name: 'Close' }));
+    await userEvent.keyboard('{Escape}');
+    expect(document.body.contains(next.form)).toBe(true);
+    expect(within(next.dialog).getByRole('button', { name: 'Saving…' })).toBeDisabled();
+    await act(async () => { second.resolve({ success: true, vehicle: car, entry: service }); await second.promise; });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const operations = request.mock.calls.filter(([name]) => name === action);
+    expect(operations[0][1].request_id).not.toBe(operations[1][1].request_id);
   });
 });
