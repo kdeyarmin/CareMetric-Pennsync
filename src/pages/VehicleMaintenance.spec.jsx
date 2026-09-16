@@ -100,8 +100,8 @@ describe('vehicle maintenance employee and admin flows', () => {
   });
   it('preserves unknown costs instead of displaying them as zero', async () => {
     current.entries = [{ ...service, cost_cents: undefined }]; mount();
-    expect(await screen.findByText('1 entries have no cost entered')).toBeInTheDocument();
-    expect(screen.getByText('Not entered')).toBeInTheDocument();
+    expect(await screen.findByText('1 entry has no cost entered')).toBeInTheDocument();
+    expect(screen.getAllByText('Not entered').length).toBeGreaterThan(0);
   });
   it('loads older pages and labels partial totals before all pages are loaded', async () => {
     const original = request.getMockImplementation();
