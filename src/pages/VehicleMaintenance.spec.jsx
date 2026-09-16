@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
@@ -15,7 +15,7 @@ const car = { id: 'car-1', unit_name: 'Car 01', year: 2024, make: 'Toyota', mode
 const service = { id: 'entry-1', service_date: '2026-01-15', odometer: 11000, service_type: 'oil_change', description: 'Synthetic oil service', cost_cents: 8995, review_status: 'pending', review_history: [], submitted_by_name: 'Test Driver', entry_source: 'employee', recorded_at: '2026-01-15T12:00:00Z' };
 function mount() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
-  return render(<MemoryRouter><QueryClientProvider client={client}><VehicleMaintenance /></QueryClientProvider></MemoryRouter>);
+  return { ...render(<MemoryRouter><QueryClientProvider client={client}><VehicleMaintenance /></QueryClientProvider></MemoryRouter>), client };
 }
 beforeEach(() => {
   current.canManage = false; current.vehicles = [car]; current.entries = [service];
@@ -67,7 +67,7 @@ describe('vehicle maintenance employee and admin flows', () => {
     await userEvent.click(await screen.findByRole('button', { name: 'Review entry' }));
     await userEvent.type(screen.getByLabelText('Review note (optional)'), 'Invoice checked');
     await userEvent.click(screen.getByRole('button', { name: 'Save review' }));
-    await waitFor(() => expect(request).toHaveBeenCalledWith('review_entry', { agency_id: 'agency-a', vehicle_id: 'car-1', entry_id: 'entry-1', expected_review_count: 0, status: 'reviewed', note: 'Invoice checked' }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith('review_entry', { agency_id: 'agency-a', vehicle_id: 'car-1', entry_id: 'entry-1', request_id: 'fleet-test-request', expected_review_count: 0, status: 'reviewed', note: 'Invoice checked' }));
   });
   it('failed save retains the form and the same retry request id', async () => {
     const original = request.getMockImplementation();
@@ -133,7 +133,7 @@ describe('vehicle maintenance employee and admin flows', () => {
   });
   it('loads older pages and labels partial totals before all pages are loaded', async () => {
     const original = request.getMockImplementation();
-    request.mockImplementation(async (action, payload) => action === 'history' ? { success: true, entries: payload.offset ? [{ ...service, id: 'older', description: 'Older repair' }] : [service], next_offset: payload.offset ? null : 50 } : original(action, payload));
+    request.mockImplementation(async (action, payload) => action === 'history' ? { success: true, entries: payload.cursor ? [{ ...service, id: 'older', description: 'Older repair' }] : [service], next_cursor: payload.cursor ? null : 'v1:agency-a:car-1:2026-01-15:entry-1' } : original(action, payload));
     mount(); expect(await screen.findByText('Known cost in loaded entries')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Load older entries' }));
     expect(await screen.findByText('Older repair')).toBeInTheDocument();
@@ -164,5 +164,95 @@ describe('vehicle maintenance employee and admin flows', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Save service entry' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Enter a cost');
     expect(request.mock.calls.some(([action]) => action === 'add_entry')).toBe(false);
+  });
+});
+
+
+describe('review regression cases', () => {
+  it('context failure unmounts records and dialogs and evicts child fleet caches', async () => {
+    const { client } = mount();
+    await screen.findByText('Synthetic oil service');
+    await userEvent.click(screen.getByRole('button', { name: /Log maintenance or repair/ }));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    const original = request.getMockImplementation();
+    request.mockImplementation(async (action, payload) => {
+      if (action === 'context') throw new Error('Agency access was revoked');
+      return original(action, payload);
+    });
+    await act(async () => { await client.invalidateQueries({ queryKey: ['fleetContext'] }); });
+    expect(await screen.findByRole('alert')).toHaveTextContent('revoked');
+    expect(screen.queryByText('Synthetic oil service')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(client.getQueryCache().getAll().filter(query => ['fleetVehicles', 'fleetHistory', 'fleetStaff'].includes(query.queryKey[0]))).toHaveLength(0));
+  });
+
+  it('search cannot leave the service action targeting a hidden vehicle', async () => {
+    current.vehicles = [car, { ...car, id: 'car-2', unit_name: 'Car 02', make: 'Ford', model: 'Escape' }];
+    mount();
+    await screen.findByText('Synthetic oil service');
+    await userEvent.click(screen.getByRole('button', { name: /Car 01.*Toyota/ }));
+    await userEvent.type(screen.getByLabelText('Search loaded vehicles'), 'Ford');
+    expect(screen.getByRole('heading', { name: 'Car 02' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Car 01' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Log maintenance or repair/ }));
+    expect(within(screen.getByRole('dialog')).getByText('Car 02')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Odometer at service (miles)'), '14000');
+    await userEvent.type(screen.getByLabelText('What was done?'), 'Brake inspection');
+    await userEvent.click(screen.getByRole('button', { name: 'Save service entry' }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith('add_entry', expect.objectContaining({ vehicle_id: 'car-2' })));
+  });
+
+  it('no matching search result leaves no unrelated detail or log button', async () => {
+    mount(); await screen.findByText('Synthetic oil service');
+    await userEvent.click(screen.getByRole('button', { name: /Car 01.*Toyota/ }));
+    await userEvent.type(screen.getByLabelText('Search loaded vehicles'), 'not-a-vehicle');
+    expect(screen.queryByRole('button', { name: /Log maintenance or repair/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Synthetic oil service')).not.toBeInTheDocument();
+  });
+
+  it('the open service form stays bound to its original car through a roster refresh', async () => {
+    const { client } = mount();
+    await userEvent.click(await screen.findByRole('button', { name: /Log maintenance or repair/ }));
+    current.vehicles = [{ ...car, id: 'car-2', unit_name: 'Car 02' }];
+    await act(async () => { await client.invalidateQueries({ queryKey: ['fleetVehicles'] }); });
+    expect(within(screen.getByRole('dialog')).getByText('Car 01')).toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText('Odometer at service (miles)'), '14000');
+    await userEvent.type(screen.getByLabelText('What was done?'), 'Work for original car');
+    await userEvent.click(screen.getByRole('button', { name: 'Save service entry' }));
+    await waitFor(() => expect(request).toHaveBeenCalledWith('add_entry', expect.objectContaining({ vehicle_id: 'car-1' })));
+  });
+
+  it.each(['service', 'vehicle', 'review'])('pending %s save cannot be dismissed by Close, Escape, or outside click', async kind => {
+    current.canManage = true;
+    let finish;
+    const pending = new Promise(resolve => { finish = resolve; });
+    const action = { service: 'add_entry', vehicle: 'create_vehicle', review: 'review_entry' }[kind];
+    const original = request.getMockImplementation();
+    request.mockImplementation(async (name, payload) => name === action ? pending : original(name, payload));
+    mount();
+    await screen.findByText('Synthetic oil service');
+    if (kind === 'service') {
+      await userEvent.click(screen.getByRole('button', { name: /Log maintenance or repair/ }));
+      await userEvent.type(screen.getByLabelText('Odometer at service (miles)'), '14000');
+      await userEvent.type(screen.getByLabelText('What was done?'), 'Pending work');
+    } else if (kind === 'vehicle') {
+      await userEvent.click(screen.getByRole('button', { name: 'Add vehicle' }));
+      await userEvent.type(screen.getByLabelText('Vehicle / unit name'), 'Car 02');
+      await userEvent.type(screen.getByLabelText('Make'), 'Ford');
+      await userEvent.type(screen.getByLabelText('Model'), 'Escape');
+      await userEvent.type(screen.getByLabelText('Starting odometer (miles)'), '14000');
+    } else {
+      await userEvent.click(screen.getByRole('button', { name: 'Review entry' }));
+    }
+    const dialog = screen.getByRole('dialog');
+    await userEvent.click(within(dialog).getByRole('button', { name: { service: 'Save service entry', vehicle: 'Add vehicle', review: 'Save review' }[kind] }));
+    await waitFor(() => expect(within(dialog).getByRole('button', { name: 'Saving…' })).toBeDisabled());
+    await userEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+    await userEvent.keyboard('{Escape}');
+    fireEvent.pointerDown(document.body);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(request.mock.calls.filter(([name]) => name === action)).toHaveLength(1);
+    await act(async () => { finish({ success: true, vehicle: car, entry: service }); await pending; });
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 });

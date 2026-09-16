@@ -22,7 +22,7 @@ function FormMessage({ error }) {
 function FormActions({ busy, label, onCancel }) {
   return <div className="flex flex-wrap justify-end gap-2 border-t pt-4"><Button type="button" variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button><Button type="submit" disabled={busy}>{busy ? 'Saving…' : label}</Button></div>;
 }
-function useFleetSave(onSave) {
+function useFleetSave(onSave, onBusyChange) {
   const inFlight = useRef(false);
   const requestId = useRef(null);
   const [busy, setBusy] = useState(false);
@@ -31,6 +31,7 @@ function useFleetSave(onSave) {
     event.preventDefault();
     if (inFlight.current) return;
     inFlight.current = true;
+    onBusyChange?.(true);
     setBusy(true);
     setError('');
     try {
@@ -39,19 +40,19 @@ function useFleetSave(onSave) {
       await onSave(payload, requestId.current);
     } catch (failure) {
       setError(failure?.message || 'Save was not confirmed. Refresh the log before retrying.');
-    } finally { inFlight.current = false; setBusy(false); }
+    } finally { inFlight.current = false; setBusy(false); onBusyChange?.(false); }
   }
   return { busy, error, submit };
 }
 
-export function VehicleForm({ vehicle, staff = [], staffLoading, staffError, hasMoreStaff, loadMoreStaff, onSave, onCancel }) {
+export function VehicleForm({ vehicle, staff = [], staffLoading, staffError, hasMoreStaff, loadMoreStaff, onSave, onCancel, onBusyChange }) {
   const [values, setValues] = useState(() => ({
     unit_name: vehicle?.unit_name || '', year: vehicle?.year || new Date().getFullYear(),
     make: vehicle?.make || '', model: vehicle?.model || '', vin: vehicle?.vin || '',
     license_plate: vehicle?.license_plate || '', baseline_odometer: vehicle?.baseline_odometer ?? '',
     status: vehicle?.status || 'active', assigned_user_id: vehicle?.assigned_user_id || '', notes: vehicle?.notes || '',
   }));
-  const { busy, error, submit } = useFleetSave(onSave);
+  const { busy, error, submit } = useFleetSave(onSave, onBusyChange);
   const update = key => event => setValues(previous => ({ ...previous, [key]: event.target.value }));
   return <form className="space-y-4" data-no-record-block onSubmit={event => submit(event, () => ({ ...values, year: Number(values.year), baseline_odometer: Number(values.baseline_odometer) }))}>
     <fieldset disabled={busy} className="space-y-4">
@@ -83,9 +84,9 @@ export function VehicleForm({ vehicle, staff = [], staffLoading, staffError, has
   </form>;
 }
 
-export function ServiceEntryForm({ vehicle, onSave, onCancel }) {
+export function ServiceEntryForm({ vehicle, onSave, onCancel, onBusyChange }) {
   const [values, setValues] = useState({ service_date: todayLocal(), odometer: '', service_type: 'oil_change', description: '', service_provider: '', cost: '', invoice_reference: '', next_due_date: '', next_due_odometer: '' });
-  const { busy, error, submit } = useFleetSave(onSave);
+  const { busy, error, submit } = useFleetSave(onSave, onBusyChange);
   const update = key => event => setValues(previous => ({ ...previous, [key]: event.target.value }));
   function payload() {
     const { cost, ...entry } = values;
@@ -95,7 +96,7 @@ export function ServiceEntryForm({ vehicle, onSave, onCancel }) {
     <p className="rounded-lg bg-slate-100 p-3 font-medium">{vehicle.unit_name}</p>
     <fieldset disabled={busy} className="space-y-4">
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FleetField label="Service date" type="date" max={todayLocal()} value={values.service_date} onChange={update('service_date')} required />
+        <FleetField label="Service date (Eastern Time)" type="date" max={todayLocal()} value={values.service_date} onChange={update('service_date')} required />
         <FleetField label="Odometer at service (miles)" type="number" min={0} max={2000000} step={1} value={values.odometer} onChange={update('odometer')} required />
       </div>
       <FleetField label="Maintenance / repair type" value={values.service_type} onChange={update('service_type')}>{Object.entries(SERVICE_TYPES).map(([key, label]) => <option value={key} key={key}>{label}</option>)}</FleetField>
@@ -117,10 +118,10 @@ export function ServiceEntryForm({ vehicle, onSave, onCancel }) {
   </form>;
 }
 
-export function ReviewEntryForm({ entry, onSave, onCancel }) {
+export function ReviewEntryForm({ entry, onSave, onCancel, onBusyChange }) {
   const [status, setStatus] = useState('reviewed');
   const [note, setNote] = useState('');
-  const { busy, error, submit } = useFleetSave(onSave);
+  const { busy, error, submit } = useFleetSave(onSave, onBusyChange);
   return <form className="space-y-4" data-no-record-block onSubmit={event => submit(event, () => ({ status, note, expected_review_count: entry.review_history?.length || 0 }))}>
     <p className="rounded-lg bg-slate-100 p-3 text-sm whitespace-pre-wrap">{entry.description}</p>
     <fieldset disabled={busy} className="space-y-4">

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useInfiniteQuery, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Car, Plus, Wrench, Search, CheckCircle2, AlertTriangle } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
@@ -24,15 +24,23 @@ function latestRows(pages, key) {
 
 export default function VehicleMaintenance() {
   const { user, tenantContext } = useAuth();
+  const client = useQueryClient();
   const tenantId = tenantContext?.agency_id || tenantContext?.agency?.id || '';
   const [chosen, setChosen] = useState('');
   const context = useQuery({
     queryKey: ['fleetContext', user?.id, tenantId],
     queryFn: () => manageVehicleMaintenance('context'), enabled: !!user?.id, retry: false,
   });
+  useEffect(() => {
+    if (!context.isError) return;
+    const predicate = query => query.queryKey[1] === user?.id
+      && ['fleetVehicles', 'fleetHistory', 'fleetStaff'].includes(query.queryKey[0]);
+    void client.cancelQueries({ predicate });
+    client.removeQueries({ predicate });
+  }, [client, context.isError, user?.id]);
   // A non-owner changes agency through the app's tenant selector, never
   // inside a data screen while the browser remains bound to another tenant.
-  const agencies = (context.data?.agencies || []).filter(agency =>
+  const agencies = (context.isSuccess ? context.data?.agencies || [] : []).filter(agency =>
     tenantContext?.is_platform_owner === true || agency.id === tenantId);
   const selected = agencies.find(agency => agency.id === chosen)
     || agencies.find(agency => agency.id === tenantId) || (agencies.length === 1 ? agencies[0] : null);
@@ -54,21 +62,22 @@ function FleetWorkspace({ agency, userId }) {
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState('');
   const [vehicleDialog, setVehicleDialog] = useState(null);
-  const [addService, setAddService] = useState(false);
+  const [serviceVehicle, setServiceVehicle] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [reviewEntry, setReviewEntry] = useState(null);
   const vehicles = useInfiniteQuery({
     queryKey: ['fleetVehicles', userId, agency.id, includeRetired], initialPageParam: 0,
     queryFn: ({ pageParam }) => manageVehicleMaintenance('vehicles', { agency_id: agency.id, offset: pageParam, include_retired: includeRetired }),
     getNextPageParam: nextPage, retry: false,
   });
-  const canManage = vehicles.data?.pages[0]?.can_manage === true;
+  const canManage = vehicles.isSuccess && vehicles.data?.pages[0]?.can_manage === true;
   const allVehicles = useMemo(() => latestRows(vehicles.data?.pages, 'vehicles'), [vehicles.data]);
   const matching = allVehicles.filter(item => [item.unit_name, item.make, item.model, item.license_plate, item.assigned_user_name].join(' ').toLowerCase().includes(search.trim().toLowerCase()));
-  const selected = allVehicles.find(item => item.id === selectedId) || matching[0];
+  const selected = matching.find(item => item.id === selectedId) || matching[0];
   const history = useInfiniteQuery({
     queryKey: ['fleetHistory', userId, agency.id, selected?.id], initialPageParam: 0,
-    queryFn: ({ pageParam }) => manageVehicleMaintenance('history', { agency_id: agency.id, vehicle_id: selected.id, offset: pageParam }),
-    enabled: !!selected, getNextPageParam: nextPage, retry: false,
+    queryFn: ({ pageParam }) => manageVehicleMaintenance('history', { agency_id: agency.id, vehicle_id: selected.id, cursor: pageParam }),
+    enabled: !!selected && !vehicles.isError, getNextPageParam: page => page.next_cursor ?? page.next_offset ?? undefined, retry: false,
   });
   const entries = useMemo(() => latestRows(history.data?.pages, 'entries'), [history.data]);
   const summary = summarizeEntries(entries, selected?.baseline_odometer);
@@ -77,6 +86,14 @@ function FleetWorkspace({ agency, userId }) {
     queryFn: ({ pageParam }) => manageVehicleMaintenance('staff', { agency_id: agency.id, offset: pageParam }),
     enabled: canManage && !!vehicleDialog, getNextPageParam: nextPage, retry: false,
   });
+  useEffect(() => {
+    if (vehicles.isError || history.isError) {
+      setVehicleDialog(null);
+      setServiceVehicle(null);
+      setReviewEntry(null);
+    }
+  }, [vehicles.isError, history.isError]);
+  const preventBusyDismiss = event => { if (saving) event.preventDefault(); };
   async function refresh() {
     await Promise.all([
       client.invalidateQueries({ queryKey: ['fleetVehicles', userId, agency.id] }),
@@ -94,12 +111,12 @@ function FleetWorkspace({ agency, userId }) {
     await refresh();
   }
   async function saveEntry(entry, requestId) {
-    await manageVehicleMaintenance('add_entry', { agency_id: agency.id, vehicle_id: selected.id, request_id: requestId, entry });
-    setAddService(false);
+    await manageVehicleMaintenance('add_entry', { agency_id: agency.id, vehicle_id: serviceVehicle.id, request_id: requestId, entry });
+    setServiceVehicle(null);
     await refresh();
   }
-  async function saveReview(values) {
-    await manageVehicleMaintenance('review_entry', { agency_id: agency.id, vehicle_id: selected.id, entry_id: reviewEntry.id, ...values });
+  async function saveReview(values, requestId) {
+    await manageVehicleMaintenance('review_entry', { agency_id: agency.id, vehicle_id: reviewEntry.vehicle_id, entry_id: reviewEntry.id, request_id: requestId, ...values });
     setReviewEntry(null);
     await refresh();
   }
@@ -132,7 +149,7 @@ function FleetWorkspace({ agency, userId }) {
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Assigned employee</dt><dd className="font-medium">{selected.assigned_user_name || 'Unassigned / shared vehicle'}</dd></div><div><dt className="text-slate-500">License plate</dt><dd>{selected.license_plate || 'Not entered'}</dd></div>{selected.vin && <div><dt className="text-slate-500">VIN</dt><dd className="break-all font-mono">{selected.vin}</dd></div>}<div><dt className="text-slate-500">Highest recorded mileage{history.hasNextPage ? ' (loaded records)' : ''}</dt><dd>{summary.odometer.toLocaleString()} miles</dd></div></dl>
           {selected.notes && <p className="mt-3 whitespace-pre-wrap text-sm text-slate-600">{selected.notes}</p>}
           {selected.status === 'out_of_service' && <p role="note" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">This vehicle is marked out of service. Follow your company’s instructions before driving it.</p>}
-          <div className="mt-5 flex flex-wrap gap-2"><Button onClick={() => setAddService(true)} disabled={selected.status === 'retired' || history.isError}><Wrench className="mr-2 h-4 w-4" />Log maintenance or repair</Button>{canManage && <Button variant="outline" onClick={() => setVehicleDialog({ vehicle: selected })}>Edit vehicle / assignment</Button>}</div>
+          <div className="mt-5 flex flex-wrap gap-2"><Button onClick={() => setServiceVehicle(selected)} disabled={selected.status === 'retired' || history.isError}><Wrench className="mr-2 h-4 w-4" />Log maintenance or repair</Button>{canManage && <Button variant="outline" onClick={() => setVehicleDialog({ vehicle: selected })}>Edit vehicle / assignment</Button>}</div>
         </div>
         {!history.isPending && !history.isError && <div className="grid gap-3 sm:grid-cols-3" aria-label="Loaded service history summary">
           <SummaryCard label={history.hasNextPage ? 'Loaded service entries' : 'Service entries'} value={String(summary.entries)} />
@@ -151,15 +168,15 @@ function FleetWorkspace({ agency, userId }) {
             {(entry.next_due_date || entry.next_due_odometer != null) && <p className="mt-2 text-sm text-navy-800">Next service: {[entry.next_due_date && serviceDate(entry.next_due_date), entry.next_due_odometer != null && `${entry.next_due_odometer.toLocaleString()} miles`].filter(Boolean).join(' or ')}</p>}
             <p className="mt-3 text-xs text-slate-500">Logged by {entry.submitted_by_name || entry.submitted_by_email} · {entry.entry_source === 'admin' ? 'Administrator entry' : 'Employee entry'} · {entry.recorded_at ? new Date(entry.recorded_at).toLocaleString() : ''}</p>
             {!!entry.review_history?.length && <details className="mt-3 rounded-lg bg-slate-50 p-3 text-sm"><summary className="cursor-pointer font-medium">Review history ({entry.review_history.length})</summary><ol className="mt-2 space-y-3">{entry.review_history.map((review, index) => <li key={`${review.reviewed_at}:${index}`}><span className="font-medium">{REVIEW_STATUSES[review.status]}</span> · {review.reviewer_name} · {new Date(review.reviewed_at).toLocaleString()}{review.note && <p className="whitespace-pre-wrap text-slate-600">{review.note}</p>}</li>)}</ol></details>}
-            {canManage && <Button variant="outline" className="mt-3" onClick={() => setReviewEntry(entry)}>{entry.review_status === 'needs_follow_up' ? <AlertTriangle className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Review entry</Button>}
+            {canManage && <Button variant="outline" className="mt-3" onClick={() => setReviewEntry({ ...entry, vehicle_id: selected.id })}>{entry.review_status === 'needs_follow_up' ? <AlertTriangle className="mr-2 h-4 w-4" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}Review entry</Button>}
           </article>)}
           {history.hasNextPage && <div className="rounded-xl border border-dashed p-4 text-center"><p className="mb-3 text-sm text-slate-600">Older entries are available. Totals above cover only the records loaded so far.</p><Button variant="outline" disabled={history.isFetchingNextPage} onClick={() => history.fetchNextPage()}>{history.isFetchingNextPage ? 'Loading…' : 'Load older entries'}</Button></div>}
         </section>
       </div>}
     </div>}
-    <Dialog open={!!vehicleDialog} onOpenChange={open => !open && setVehicleDialog(null)}><DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto" data-no-record-block><DialogHeader><DialogTitle>{vehicleDialog?.vehicle ? 'Edit company vehicle' : 'Add company vehicle'}</DialogTitle><DialogDescription>Vehicle details and the employee who may log service.</DialogDescription></DialogHeader>{vehicleDialog && <VehicleForm vehicle={vehicleDialog.vehicle} staff={latestRows(staff.data?.pages, 'staff')} staffLoading={staff.isFetching} staffError={staff.isError} hasMoreStaff={staff.hasNextPage} loadMoreStaff={() => staff.fetchNextPage()} onSave={saveVehicle} onCancel={() => setVehicleDialog(null)} />}</DialogContent></Dialog>
-    <Dialog open={addService} onOpenChange={setAddService}><DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto" data-no-record-block><DialogHeader><DialogTitle>Log maintenance or repair</DialogTitle><DialogDescription>Enter the completed service. Your administrator can review it.</DialogDescription></DialogHeader>{addService && selected && <ServiceEntryForm vehicle={selected} onSave={saveEntry} onCancel={() => setAddService(false)} />}</DialogContent></Dialog>
-    <Dialog open={!!reviewEntry} onOpenChange={open => !open && setReviewEntry(null)}><DialogContent className="max-h-[90dvh] overflow-y-auto" data-no-record-block><DialogHeader><DialogTitle>Review service entry</DialogTitle><DialogDescription>Add your review without replacing the original service record.</DialogDescription></DialogHeader>{reviewEntry && <ReviewEntryForm entry={reviewEntry} onSave={saveReview} onCancel={() => setReviewEntry(null)} />}</DialogContent></Dialog>
+    <Dialog open={!!vehicleDialog} onOpenChange={open => { if (!open && !saving) setVehicleDialog(null); }}><DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto" data-no-record-block onEscapeKeyDown={preventBusyDismiss} onPointerDownOutside={preventBusyDismiss} onInteractOutside={preventBusyDismiss}><DialogHeader><DialogTitle>{vehicleDialog?.vehicle ? 'Edit company vehicle' : 'Add company vehicle'}</DialogTitle><DialogDescription>Vehicle details and the employee who may log service.</DialogDescription></DialogHeader>{vehicleDialog && <VehicleForm vehicle={vehicleDialog.vehicle} staff={latestRows(staff.data?.pages, 'staff')} staffLoading={staff.isFetching} staffError={staff.isError} hasMoreStaff={staff.hasNextPage} loadMoreStaff={() => staff.fetchNextPage()} onBusyChange={setSaving} onSave={saveVehicle} onCancel={() => setVehicleDialog(null)} />}</DialogContent></Dialog>
+    <Dialog open={!!serviceVehicle} onOpenChange={open => { if (!open && !saving) setServiceVehicle(null); }}><DialogContent className="max-h-[90dvh] max-w-2xl overflow-y-auto" data-no-record-block onEscapeKeyDown={preventBusyDismiss} onPointerDownOutside={preventBusyDismiss} onInteractOutside={preventBusyDismiss}><DialogHeader><DialogTitle>Log maintenance or repair</DialogTitle><DialogDescription>Enter the completed service. Your administrator can review it.</DialogDescription></DialogHeader>{serviceVehicle && <ServiceEntryForm key={serviceVehicle.id} vehicle={serviceVehicle} onBusyChange={setSaving} onSave={saveEntry} onCancel={() => setServiceVehicle(null)} />}</DialogContent></Dialog>
+    <Dialog open={!!reviewEntry} onOpenChange={open => { if (!open && !saving) setReviewEntry(null); }}><DialogContent className="max-h-[90dvh] overflow-y-auto" data-no-record-block onEscapeKeyDown={preventBusyDismiss} onPointerDownOutside={preventBusyDismiss} onInteractOutside={preventBusyDismiss}><DialogHeader><DialogTitle>Review service entry</DialogTitle><DialogDescription>Add your review without replacing the original service record.</DialogDescription></DialogHeader>{reviewEntry && <ReviewEntryForm entry={reviewEntry} onBusyChange={setSaving} onSave={saveReview} onCancel={() => setReviewEntry(null)} />}</DialogContent></Dialog>
   </>;
 }
 function SummaryCard({ label, value, detail }) {
