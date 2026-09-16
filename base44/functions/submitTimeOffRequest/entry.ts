@@ -3,52 +3,77 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // <<<BEGIN SHARED HELPER: trustedCallerClaims — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PRIVILEGED_PROFILE_ACCOUNT_TYPES = new Set(['super_admin', 'agency_admin']);
 const TRUSTED_CLAIM_AGENCY_STATUSES = new Set(['active', 'trial']);
-const normalizeClaimEmail = (value) => String(value || '').trim().toLowerCase();
-async function loadTrustedTenantClaim(base44, profileId, email) {
-  if (!profileId || !email) return null;
-  let membership = null;
+const TRUSTED_CLAIM_TENANT_ROLES = new Set(['agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care']);
+const normalizeClaimEmail = (value) => typeof value === 'string' ? value.trim().toLowerCase() : '';
+const claimIdentifier = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 200 && value.trim() === value && !value.startsWith('$');
+const claimEmail = (value) => typeof value === 'string' && value.length <= 320
+  && value.includes('@') && !/\s/.test(value) && value === normalizeClaimEmail(value);
+const claimInstant = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+  && new Date(Date.parse(value)).toISOString() === value;
+const claimReason = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 500 && value.trim() === value;
+function canonicalClaimMembership(row, userId, normalizedEmail) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  const status = row.status;
+  return claimIdentifier(row.id) && claimIdentifier(row.agency_id)
+    && row.user_id === userId && claimIdentifier(row.membership_key)
+    && row.membership_key === row.agency_id + ':' + userId
+    && claimEmail(row.user_email_normalized) && row.user_email_normalized === normalizedEmail
+    && TRUSTED_CLAIM_TENANT_ROLES.has(row.tenant_role)
+    && ['pending', 'active', 'suspended', 'revoked'].includes(status)
+    && Number.isSafeInteger(row.version) && row.version >= 1
+    && (row.invitation_id == null || claimIdentifier(row.invitation_id))
+    && claimIdentifier(row.created_by_user_id) && claimIdentifier(row.last_transition_by_user_id)
+    && claimEmail(row.last_transition_by_email_normalized) && claimInstant(row.last_transition_at)
+    && claimReason(row.last_transition_reason)
+    && (row.activated_at == null || claimInstant(row.activated_at))
+    && (!['active', 'suspended'].includes(status) || claimInstant(row.activated_at))
+    && (status !== 'pending' || row.activated_at == null)
+    && (status === 'revoked'
+      ? claimInstant(row.revoked_at) && claimReason(row.revocation_reason)
+      : row.revoked_at == null && row.revocation_reason == null);
+}
+async function loadTrustedTenantClaim(base44, profileId, normalizedEmail) {
+  if (!claimIdentifier(profileId) || !claimEmail(normalizedEmail)) return null;
   try {
+    // Inspect all lifecycle states before choosing an active membership. An
+    // active row plus a revoked/suspended duplicate is never a trusted grant.
     const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
-      { user_id: profileId, status: 'active' },
-      undefined,
-      2,
+      { user_id: profileId }, undefined, 101,
     );
-    const row = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
-    if (row
-      && String(row.user_id || '').trim() === profileId
-      && String(row.status || '') === 'active'
-      && normalizeClaimEmail(row.user_email_normalized) === email
-      && typeof row.agency_id === 'string'
-      && row.agency_id.trim()) {
-      membership = row;
+    if (!Array.isArray(rows) || rows.length > 100
+      || rows.some(row => !canonicalClaimMembership(row, profileId, normalizedEmail))) return null;
+    for (const key of ['id', 'membership_key', 'agency_id']) {
+      if (new Set(rows.map(row => row[key])).size !== rows.length) return null;
     }
+    const active = rows.filter(row => row.status === 'active');
+    // Legacy callers do not carry an explicit tenant selector. Multiple active
+    // memberships cannot safely be resolved by choosing the first result.
+    if (active.length !== 1) return null;
+    const membership = active[0];
+    const agencyId = membership.agency_id;
+    const agencies = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
+    const agency = Array.isArray(agencies) && agencies.length === 1 ? agencies[0] : null;
+    const agencyName = typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
+    if (!agency || agency.id !== agencyId || !TRUSTED_CLAIM_AGENCY_STATUSES.has(agency.status)
+      || !agencyName || agencyName.length > 200) return null;
+    return { tenantRole: membership.tenant_role, agencyId, agencyName };
   } catch {
-    membership = null;
-  }
-  if (!membership) return null;
-  try {
-    const agencyId = membership.agency_id.trim();
-    const rows = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
-    const agency = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
-    const agencyName = String(agency?.agency_name || '').trim();
-    if (!agency || agency.id !== agencyId || !TRUSTED_CLAIM_AGENCY_STATUSES.has(String(agency.status || ''))
-      || !agencyName) {
-      return null;
-    }
-    return { tenantRole: String(membership.tenant_role || ''), agencyId, agencyName };
-  } catch {
+    // No lookup failure may be interpreted as membership approval.
     return null;
   }
 }
 async function withTrustedClaims(base44, profile) {
   if (!profile || typeof profile !== 'object') return profile;
-  // Protected built-in admins (the platform owner included) already hold
-  // platform-level RLS authority, so their legacy self-scoping claims cannot
-  // widen access; leave them exactly as the handler saw them before.
+  // Preserve the repository's existing protected built-in-admin boundary. This
+  // compatibility helper does not grant or change built-in roles.
   if (profile.role === 'admin') return profile;
-  const email = normalizeClaimEmail(profile.email);
-  const profileId = typeof profile.id === 'string' ? profile.id.trim() : '';
-  const tenant = await loadTrustedTenantClaim(base44, profileId, email);
+  const normalizedEmail = normalizeClaimEmail(profile.email);
+  const profileId = profile.id;
+  const eligible = profile.role === 'user' && profile.is_active !== false
+    && profile.disabled !== true && profile.is_service !== true;
+  const tenant = eligible ? await loadTrustedTenantClaim(base44, profileId, normalizedEmail) : null;
   const claimedType = String(profile.account_type || '');
   const baseType = PRIVILEGED_PROFILE_ACCOUNT_TYPES.has(claimedType) ? 'user' : claimedType;
   if (tenant) {
@@ -58,9 +83,10 @@ async function withTrustedClaims(base44, profile) {
       agency_name: tenant.agencyName,
       agency_id: tenant.agencyId,
       is_approved: true,
+      is_manager: tenant.tenantRole === 'manager' || tenant.tenantRole === 'agency_admin',
     };
   }
-  return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false };
+  return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false, is_manager: false };
 }
 // <<<END SHARED HELPER: trustedCallerClaims>>>
 
@@ -230,8 +256,8 @@ const DEACTIVATED_USER_RESPONSE = () => Response.json(
 const VALID_TYPES = ['vacation', 'sick', 'personal', 'bereavement', 'jury_duty', 'parental', 'unpaid', 'other'];
 
 function parseISODate(value) {
-  if (!value) return null;
-  const datePart = String(value).slice(0, 10);
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const datePart = value;
   const parts = datePart.split('-').map(Number);
   if (parts.length !== 3) return null;
   const [y, m, d] = parts;
@@ -262,12 +288,48 @@ function totalRequestedDays(start, end, halfDay) {
   return halfDay ? Math.max(0.5, business - 0.5) : business;
 }
 
+// <<<BEGIN SHARED HELPER: workforceApproverRecipients — generated, edit base44/_shared/backendHelpers.mjs>>>
+async function workforceApproverRecipients(base44, caller) {
+  const result = [];
+  if (claimIdentifier(caller.agency_id)) {
+    const members = await base44.asServiceRole.entities.AgencyMembership.filter({ agency_id: caller.agency_id }, undefined, 5001);
+    if (!Array.isArray(members) || members.length > 5000 || members.some(row => row?.agency_id !== caller.agency_id
+      || !canonicalClaimMembership(row, row?.user_id, row?.user_email_normalized))
+      || new Set(members.map(row => row.user_id)).size !== members.length) throw new Error('WORKFORCE_RECIPIENT_MEMBERSHIP_AMBIGUOUS');
+    const selected = members.filter(row => row.status === 'active' && row.tenant_role === 'agency_admin' && row.user_id !== caller.id);
+    if (selected.length > 500) throw new Error('WORKFORCE_RECIPIENT_LIMIT');
+    const ids = selected.map(row => row.user_id);
+    const users = ids.length ? await base44.asServiceRole.entities.User.filter({ id: { $in: ids } }, undefined, 501) : [];
+    if (!Array.isArray(users) || users.length !== ids.length || new Set(users.map(row => row?.id)).size !== users.length
+      || users.some(row => !ids.includes(row?.id))) throw new Error('WORKFORCE_RECIPIENT_IDENTITY_AMBIGUOUS');
+    for (const member of selected) {
+      const user = users.find(row => row.id === member.user_id);
+      if (normalizeClaimEmail(user.email) !== member.user_email_normalized) throw new Error('WORKFORCE_RECIPIENT_IDENTITY_MISMATCH');
+      if (user.role === 'user' && user.is_active !== false && user.disabled !== true && user.is_service !== true) result.push(user);
+    }
+  }
+  const ownerEmail = normalizeClaimEmail(Deno.env.get('SUPER_ADMIN_EMAIL'));
+  if (claimEmail(ownerEmail) && ownerEmail !== normalizeClaimEmail(caller.email)) {
+    const owners = await base44.asServiceRole.entities.User.filter({ email: ownerEmail }, undefined, 2);
+    if (!Array.isArray(owners) || owners.length > 1) throw new Error('WORKFORCE_OWNER_IDENTITY_AMBIGUOUS');
+    const owner = owners[0];
+    if (owner && normalizeClaimEmail(owner.email) === ownerEmail && owner.role === 'admin' && owner.is_active !== false && owner.disabled !== true
+      && !result.some(row => normalizeClaimEmail(row.email) === ownerEmail)) result.push(owner);
+  }
+  return result;
+}
+// <<<END SHARED HELPER: workforceApproverRecipients>>>
+
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
     const user = await withTrustedClaims(base44, await base44.auth.me());
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+
+    if (user.role !== 'admin' && user.is_approved !== true) {
+      return Response.json({ error: 'An active verified agency membership is required.' }, { status: 403 });
+    }
 
     const body = await req.json();
     const {
@@ -293,7 +355,10 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'The end date cannot be before the start date.' }, { status: 400 });
     }
 
-    const total = totalRequestedDays(start_date, end_date, !!half_day);
+    if (typeof half_day !== 'boolean' || end.getTime() - start.getTime() > 366 * 86400000) {
+      return Response.json({ error: 'Use a boolean half-day choice and request no more than one year at a time.' }, { status: 400 });
+    }
+    const total = totalRequestedDays(start_date, end_date, half_day);
     if (total <= 0) {
       return Response.json({ error: 'The selected range contains no working days.' }, { status: 400 });
     }
@@ -303,18 +368,24 @@ Deno.serve(async (req) => {
     let resolvedManagerEmail = '';
     let resolvedManagerName = '';
     if (manager_email) {
-      if (manager_email === user.email) {
+      if (String(manager_email).trim().toLowerCase() === String(user.email).trim().toLowerCase()) {
         return Response.json({ error: 'You cannot assign yourself as your own approver.' }, { status: 400 });
       }
-      const matches = await base44.asServiceRole.entities.User.filter({ email: manager_email }, undefined, 5000);
-      const mgr = matches && matches[0];
+      const approverEmail = typeof manager_email === 'string' ? manager_email.trim().toLowerCase() : '';
+      if (!approverEmail.includes('@') || /\s/.test(approverEmail)) return Response.json({ error: 'Select a valid approver.' }, { status: 400 });
+      const matches = await base44.asServiceRole.entities.User.filter({ email: approverEmail }, undefined, 2);
+      if (!Array.isArray(matches) || matches.length !== 1 || String(matches[0]?.email || '').trim().toLowerCase() !== approverEmail) {
+        return Response.json({ error: 'Approver identity could not be resolved uniquely.' }, { status: 409 });
+      }
+      const mgr = await withTrustedClaims(base44, matches[0]);
       const mgrIsAdmin = mgr && (mgr.role === 'admin' || mgr.account_type === 'super_admin' || mgr.account_type === 'agency_admin');
-      if (!mgr || !(mgrIsAdmin || mgr.is_manager === true)) {
+      if (!mgr || mgr.is_active === false || mgr.disabled === true || !(mgrIsAdmin || mgr.is_manager === true)) {
         return Response.json({ error: 'The selected approver is not authorized to approve time off.' }, { status: 400 });
       }
       const callerAgency = String(user.agency_name || '').trim();
       if (callerAgency && user.account_type !== 'super_admin') {
-        if (!mgr.agency_name || mgr.agency_name !== callerAgency) {
+        if (!mgr.agency_name || mgr.agency_name !== callerAgency
+          || (user.role !== 'admin' && (!user.agency_id || mgr.agency_id !== user.agency_id))) {
           return Response.json({ error: 'The selected approver is outside your agency.' }, { status: 403 });
         }
       }
@@ -346,16 +417,7 @@ Deno.serve(async (req) => {
       if (resolvedManagerEmail) {
         recipients = [{ email: resolvedManagerEmail }];
       } else {
-        const users = await base44.asServiceRole.entities.User.list('-created_date', 5000);
-        // Scope admin fallback to the requester's agency — unscoped list
-        // notified every tenant's agency_admins of time-off requests.
-        recipients = users.filter((u) => u.email && (u.role === 'admin' || u.account_type === 'super_admin' || u.account_type === 'agency_admin'));
-        if (user.agency_name) {
-          recipients = recipients.filter((u) =>
-            u.account_type === 'super_admin' || u.agency_name === user.agency_name);
-        } else {
-          recipients = recipients.filter((u) => u.account_type === 'super_admin');
-        }
+        recipients = await workforceApproverRecipients(base44, user);
       }
       deliveryPaused = recipients.length > 0 && !outboundDeliveryReleased();
       const requesterName = user.full_name || user.email;

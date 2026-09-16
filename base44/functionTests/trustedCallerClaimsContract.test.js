@@ -62,7 +62,7 @@ function fakeBase44({ memberships = [], agencies = [], membershipError = null } 
           async filter(query, sort, limit) {
             calls.push(['AgencyMembership.filter', query, limit]);
             if (membershipError) throw membershipError;
-            return memberships.filter((row) => row.user_id === query.user_id && row.status === query.status).slice(0, limit);
+            return memberships.filter((row) => row.user_id === query.user_id && (query.status === undefined || row.status === query.status)).slice(0, limit);
           },
         },
         Agency: {
@@ -77,6 +77,11 @@ function fakeBase44({ memberships = [], agencies = [], membershipError = null } 
 }
 
 const MEMBER = {
+  id: 'member-1', membership_key: 'agency-1:u-1', version: 1,
+  created_by_user_id: 'owner-1', last_transition_by_user_id: 'owner-1',
+  last_transition_by_email_normalized: 'owner@example.test',
+  last_transition_at: '2026-01-01T00:00:00.000Z', last_transition_reason: 'Assigned by administrator',
+  activated_at: '2026-01-01T00:00:00.000Z',
   user_id: 'u-1',
   user_email_normalized: 'nurse@example.com',
   status: 'active',
@@ -161,7 +166,7 @@ test('protected admins and missing callers pass through untouched', async () => 
 test('the canonical helper never trusts profile claims for grants', () => {
   const body = SHARED_HELPERS.trustedCallerClaims;
   assert.match(body, /if \(profile\.role === 'admin'\) return profile;/);
-  assert.match(body, /asServiceRole\.entities\.AgencyMembership\.filter\(\s*\{ user_id: profileId, status: 'active' \}/);
+  assert.match(body, /asServiceRole\.entities\.AgencyMembership\.filter\(\s*\{ user_id: profileId \}/);
   assert.match(body, /PRIVILEGED_PROFILE_ACCOUNT_TYPES = new Set\(\['super_admin', 'agency_admin'\]\)/);
   assert.doesNotMatch(body, /profile\.(?:agency_name|agency_id|is_approved|is_manager|staff_role)\b/);
 });
@@ -186,4 +191,46 @@ test('every legacy handler that reads caller claims wraps each auth.me() in with
     if (!hasHelper || wrapped !== total) unwrapped.push(`${name} (${wrapped}/${total} wrapped)`);
   }
   assert.deepEqual(unwrapped, [], `caller claims must be rebuilt before use:\n${unwrapped.join('\n')}`);
+});
+
+
+test('an active membership plus an inactive duplicate never yields a grant', async () => {
+  for (const status of ['pending', 'suspended', 'revoked']) {
+    const trusted = await loadHelper()(fakeBase44({
+      memberships: [MEMBER, { ...MEMBER, id: 'other-row', status }], agencies: [AGENCY],
+    }), SPOOF);
+    assert.equal(trusted.agency_id, '', status);
+    assert.equal(trusted.is_approved, false, status);
+  }
+});
+
+test('canonical lifecycle fields are required before deriving any legacy grant', async () => {
+  for (const invalid of [
+    { id: '' }, { membership_key: 'wrong' }, { version: 0 }, { tenant_role: 'owner' },
+    { created_by_user_id: '' }, { last_transition_by_user_id: '' },
+    { last_transition_by_email_normalized: 'OWNER@example.test' },
+    { last_transition_at: 'not-a-date' }, { last_transition_reason: '' },
+    { activated_at: null }, { revoked_at: '2026-01-01T00:00:00.000Z' },
+    { invitation_id: '$not-an-id' },
+  ]) {
+    const trusted = await loadHelper()(fakeBase44({ memberships: [{ ...MEMBER, ...invalid }], agencies: [AGENCY] }), SPOOF);
+    assert.equal(trusted.is_approved, false, JSON.stringify(invalid));
+    assert.equal(trusted.agency_id, '', JSON.stringify(invalid));
+  }
+});
+
+test('manager approval authority comes from membership, not the editable is_manager flag', async () => {
+  const withClaims = loadHelper();
+  const spoof = { ...SPOOF, is_manager: true };
+  assert.equal((await withClaims(fakeBase44(), spoof)).is_manager, false);
+  assert.equal((await withClaims(fakeBase44({ memberships: [{ ...MEMBER, tenant_role: 'clinician' }], agencies: [AGENCY] }), spoof)).is_manager, false);
+  assert.equal((await withClaims(fakeBase44({ memberships: [{ ...MEMBER, tenant_role: 'manager' }], agencies: [AGENCY] }), { ...SPOOF, is_manager: false })).is_manager, true);
+});
+
+test('wrongly scoped or malformed membership responses never grant access', async () => {
+  for (const returned of [null, {}, [null], [{ ...MEMBER, user_id: 'someone-else' }]]) {
+    const client = fakeBase44({ agencies: [AGENCY] });
+    client.asServiceRole.entities.AgencyMembership.filter = async () => returned;
+    assert.equal((await loadHelper()(client, SPOOF)).is_approved, false);
+  }
 });

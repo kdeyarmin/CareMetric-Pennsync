@@ -1,3 +1,5 @@
+> **Historical audit:** Current source/function enumeration, new defects, and live-release limits are documented in [the September 16 application review](APP_FUNCTIONALITY_REVIEW_2026-09-16.md). Earlier counts and release claims below are not current verification.
+
 # Comprehensive PennSync Application Audit
 
 _Audit date: 2026-07-22. Requested scope: entire repository and represented application. Important limitation: this repository is a frontend-only Vite/React SPA plus Base44 entity/function source. The hosted Base44 backend, auth tenant, database policies, secrets, and real third-party accounts were not available, so runtime/backend conclusions that require those systems are marked as assumptions requiring production verification._

@@ -1,3 +1,4 @@
+import { useAuth } from '@/lib/AuthContext';
 import { useQuery } from '@tanstack/react-query';
 import { BarChart3, ShieldCheck, AlertTriangle, Users, Loader2, Download } from 'lucide-react';
 import { getTeamTrainingReadiness } from '@/functions/getTeamTrainingReadiness';
@@ -22,15 +23,17 @@ const formatDate = (value) => formatLocalDate(value) || '';
  * so non-admin educators see true team rollups rather than RLS-filtered rows.
  */
 export default function EducatorReadinessPanel() {
+  const { user, tenantContext } = useAuth();
   const { data, isLoading, isError } = useQuery({
-    queryKey: ['team-training-readiness'],
+    queryKey: ['team-training-readiness', user?.id, tenantContext?.agency_id],
+    enabled: !!user?.id,
     queryFn: async () => {
       const res = await getTeamTrainingReadiness({});
       return res?.data || res;
     },
   });
 
-  const overall = data?.overall || { total: 0, done: 0, overdue: 0, pct: 100, staff: 0 };
+  const overall = data?.overall || { total: 0, done: 0, overdue: 0, pct: null, staff: 0 };
   const byBusinessLine = data?.byBusinessLine || [];
   const rolesNeedingAttention = data?.rolesNeedingAttention || [];
   const rows = data?.rows || [];
@@ -71,7 +74,7 @@ export default function EducatorReadinessPanel() {
   }
 
   return (
-    <Card className="border-indigo-200 bg-indigo-50/20">
+    <Card className="border-indigo-200 bg-indigo-50/20" data-no-record-block>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <CardTitle className="text-base flex items-center gap-2 text-indigo-900">
@@ -91,7 +94,7 @@ export default function EducatorReadinessPanel() {
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
               <ShieldCheck className="w-3.5 h-3.5" /> Overall readiness
             </div>
-            <p className={`text-2xl font-bold mt-1 ${readinessColor(overall.pct)}`}>{overall.pct}%</p>
+            <p className={`text-2xl font-bold mt-1 ${overall.total > 0 ? readinessColor(overall.pct) : 'text-slate-600'}`}>{overall.total > 0 && Number.isFinite(overall.pct) ? `${overall.pct}%` : 'Not assessed'}</p>
           </div>
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <p className="text-xs text-slate-500">Required completed</p>

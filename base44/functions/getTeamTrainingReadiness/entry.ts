@@ -3,52 +3,77 @@ import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 // <<<BEGIN SHARED HELPER: trustedCallerClaims — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PRIVILEGED_PROFILE_ACCOUNT_TYPES = new Set(['super_admin', 'agency_admin']);
 const TRUSTED_CLAIM_AGENCY_STATUSES = new Set(['active', 'trial']);
-const normalizeClaimEmail = (value) => String(value || '').trim().toLowerCase();
-async function loadTrustedTenantClaim(base44, profileId, email) {
-  if (!profileId || !email) return null;
-  let membership = null;
+const TRUSTED_CLAIM_TENANT_ROLES = new Set(['agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care']);
+const normalizeClaimEmail = (value) => typeof value === 'string' ? value.trim().toLowerCase() : '';
+const claimIdentifier = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 200 && value.trim() === value && !value.startsWith('$');
+const claimEmail = (value) => typeof value === 'string' && value.length <= 320
+  && value.includes('@') && !/\s/.test(value) && value === normalizeClaimEmail(value);
+const claimInstant = (value) => typeof value === 'string' && Number.isFinite(Date.parse(value))
+  && new Date(Date.parse(value)).toISOString() === value;
+const claimReason = (value) => typeof value === 'string' && value.length > 0
+  && value.length <= 500 && value.trim() === value;
+function canonicalClaimMembership(row, userId, normalizedEmail) {
+  if (!row || typeof row !== 'object' || Array.isArray(row)) return false;
+  const status = row.status;
+  return claimIdentifier(row.id) && claimIdentifier(row.agency_id)
+    && row.user_id === userId && claimIdentifier(row.membership_key)
+    && row.membership_key === row.agency_id + ':' + userId
+    && claimEmail(row.user_email_normalized) && row.user_email_normalized === normalizedEmail
+    && TRUSTED_CLAIM_TENANT_ROLES.has(row.tenant_role)
+    && ['pending', 'active', 'suspended', 'revoked'].includes(status)
+    && Number.isSafeInteger(row.version) && row.version >= 1
+    && (row.invitation_id == null || claimIdentifier(row.invitation_id))
+    && claimIdentifier(row.created_by_user_id) && claimIdentifier(row.last_transition_by_user_id)
+    && claimEmail(row.last_transition_by_email_normalized) && claimInstant(row.last_transition_at)
+    && claimReason(row.last_transition_reason)
+    && (row.activated_at == null || claimInstant(row.activated_at))
+    && (!['active', 'suspended'].includes(status) || claimInstant(row.activated_at))
+    && (status !== 'pending' || row.activated_at == null)
+    && (status === 'revoked'
+      ? claimInstant(row.revoked_at) && claimReason(row.revocation_reason)
+      : row.revoked_at == null && row.revocation_reason == null);
+}
+async function loadTrustedTenantClaim(base44, profileId, normalizedEmail) {
+  if (!claimIdentifier(profileId) || !claimEmail(normalizedEmail)) return null;
   try {
+    // Inspect all lifecycle states before choosing an active membership. An
+    // active row plus a revoked/suspended duplicate is never a trusted grant.
     const rows = await base44.asServiceRole.entities.AgencyMembership.filter(
-      { user_id: profileId, status: 'active' },
-      undefined,
-      2,
+      { user_id: profileId }, undefined, 101,
     );
-    const row = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
-    if (row
-      && String(row.user_id || '').trim() === profileId
-      && String(row.status || '') === 'active'
-      && normalizeClaimEmail(row.user_email_normalized) === email
-      && typeof row.agency_id === 'string'
-      && row.agency_id.trim()) {
-      membership = row;
+    if (!Array.isArray(rows) || rows.length > 100
+      || rows.some(row => !canonicalClaimMembership(row, profileId, normalizedEmail))) return null;
+    for (const key of ['id', 'membership_key', 'agency_id']) {
+      if (new Set(rows.map(row => row[key])).size !== rows.length) return null;
     }
+    const active = rows.filter(row => row.status === 'active');
+    // Legacy callers do not carry an explicit tenant selector. Multiple active
+    // memberships cannot safely be resolved by choosing the first result.
+    if (active.length !== 1) return null;
+    const membership = active[0];
+    const agencyId = membership.agency_id;
+    const agencies = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
+    const agency = Array.isArray(agencies) && agencies.length === 1 ? agencies[0] : null;
+    const agencyName = typeof agency?.agency_name === 'string' ? agency.agency_name.trim() : '';
+    if (!agency || agency.id !== agencyId || !TRUSTED_CLAIM_AGENCY_STATUSES.has(agency.status)
+      || !agencyName || agencyName.length > 200) return null;
+    return { tenantRole: membership.tenant_role, agencyId, agencyName };
   } catch {
-    membership = null;
-  }
-  if (!membership) return null;
-  try {
-    const agencyId = membership.agency_id.trim();
-    const rows = await base44.asServiceRole.entities.Agency.filter({ id: agencyId }, undefined, 2);
-    const agency = Array.isArray(rows) && rows.length === 1 ? rows[0] : null;
-    const agencyName = String(agency?.agency_name || '').trim();
-    if (!agency || agency.id !== agencyId || !TRUSTED_CLAIM_AGENCY_STATUSES.has(String(agency.status || ''))
-      || !agencyName) {
-      return null;
-    }
-    return { tenantRole: String(membership.tenant_role || ''), agencyId, agencyName };
-  } catch {
+    // No lookup failure may be interpreted as membership approval.
     return null;
   }
 }
 async function withTrustedClaims(base44, profile) {
   if (!profile || typeof profile !== 'object') return profile;
-  // Protected built-in admins (the platform owner included) already hold
-  // platform-level RLS authority, so their legacy self-scoping claims cannot
-  // widen access; leave them exactly as the handler saw them before.
+  // Preserve the repository's existing protected built-in-admin boundary. This
+  // compatibility helper does not grant or change built-in roles.
   if (profile.role === 'admin') return profile;
-  const email = normalizeClaimEmail(profile.email);
-  const profileId = typeof profile.id === 'string' ? profile.id.trim() : '';
-  const tenant = await loadTrustedTenantClaim(base44, profileId, email);
+  const normalizedEmail = normalizeClaimEmail(profile.email);
+  const profileId = profile.id;
+  const eligible = profile.role === 'user' && profile.is_active !== false
+    && profile.disabled !== true && profile.is_service !== true;
+  const tenant = eligible ? await loadTrustedTenantClaim(base44, profileId, normalizedEmail) : null;
   const claimedType = String(profile.account_type || '');
   const baseType = PRIVILEGED_PROFILE_ACCOUNT_TYPES.has(claimedType) ? 'user' : claimedType;
   if (tenant) {
@@ -58,9 +83,10 @@ async function withTrustedClaims(base44, profile) {
       agency_name: tenant.agencyName,
       agency_id: tenant.agencyId,
       is_approved: true,
+      is_manager: tenant.tenantRole === 'manager' || tenant.tenantRole === 'agency_admin',
     };
   }
-  return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false };
+  return { ...profile, account_type: baseType, agency_name: '', agency_id: '', is_approved: false, is_manager: false };
 }
 // <<<END SHARED HELPER: trustedCallerClaims>>>
 
@@ -91,8 +117,7 @@ const isAuthorized = (user) =>
   user?.role === 'admin' ||
   user?.account_type === 'agency_admin' ||
   user?.account_type === 'super_admin' ||
-  user?.training_role === 'educator' ||
-  user?.training_role === 'supervisor';
+  user?.is_manager === true; // Rebuilt from server-owned membership, never the editable training_role.
 
 const isCompleted = (a) => a.status === 'completed' || a.pass_fail_result === 'passed';
 const requiredStatusLabel = (a) =>
@@ -126,11 +151,15 @@ Deno.serve(async (req) => {
       svc.User.list('-created_date', 2000),
     ]);
 
+    if (!Array.isArray(assignments) || !Array.isArray(courses) || !Array.isArray(users)
+      || assignments.length >= 5000 || courses.length >= 1000 || users.length >= 2000) {
+      return Response.json({ error: 'Training readiness source is incomplete. Narrow or paginate the source before reporting totals.' }, { status: 409 });
+    }
     const courseById = Object.fromEntries(courses.map((c) => [c.id, c]));
 
-    // Only platform admins (super_admin, or bare role:admin with no agency_name
+    // Only protected platform admins (super_admin, or bare role:admin with no agency_name
     // — platform-wide by design) see every tenant's staff. Everyone else,
-    // INCLUDING educator/supervisor training_roles who aren't admins, is scoped
+    // including membership-backed managers, is scoped
     // to their own agency. The old condition only scoped admin account types, so
     // a plain educator/supervisor passed authorization and received the unscoped
     // list — a cross-tenant staff roster + training-compliance dump. Fail closed
@@ -147,10 +176,25 @@ Deno.serve(async (req) => {
       if (!agency) {
         return Response.json({ error: 'Forbidden: agency membership required' }, { status: 403 });
       }
-      const agencyEmails = new Set(
-        users.filter((u) => u.agency_name === agency).map((u) => u.email)
-      );
-      scopedAssignments = assignments.filter((a) => agencyEmails.has(a.assigned_to_user_id));
+      if (!claimIdentifier(user.agency_id)) {
+        return Response.json({ error: 'A verified agency identifier is required for team readiness.' }, { status: 403 });
+      }
+      const memberships = await svc.AgencyMembership.filter({ agency_id: user.agency_id }, undefined, 5001);
+      if (!Array.isArray(memberships) || memberships.length > 5000
+        || memberships.some(row => row?.agency_id !== user.agency_id
+          || !canonicalClaimMembership(row, row?.user_id, row?.user_email_normalized))
+        || new Set(memberships.map(row => row.user_id)).size !== memberships.length) {
+        return Response.json({ error: 'Agency roster is incomplete or ambiguous. Readiness was not calculated.' }, { status: 409 });
+      }
+      const agencyEmails = new Set();
+      for (const member of memberships.filter(row => row.status === 'active')) {
+        const matches = users.filter(row => row.id === member.user_id);
+        if (matches.length !== 1 || normalizeClaimEmail(matches[0].email) !== member.user_email_normalized) {
+          return Response.json({ error: 'Agency roster identity could not be verified. Readiness was not calculated.' }, { status: 409 });
+        }
+        if (matches[0].is_active !== false && matches[0].disabled !== true && matches[0].is_service !== true) agencyEmails.add(member.user_email_normalized);
+      }
+      scopedAssignments = assignments.filter((a) => agencyEmails.has(normalizeClaimEmail(a.assigned_to_user_id)));
     }
 
     const required = scopedAssignments.filter(
@@ -164,7 +208,7 @@ Deno.serve(async (req) => {
       total: required.length,
       done: doneCount,
       overdue: required.filter((a) => a.status === 'overdue').length,
-      pct: required.length ? Math.round((doneCount / required.length) * 100) : 100,
+      pct: required.length ? Math.round((doneCount / required.length) * 100) : null,
       staff: new Set(required.map((a) => a.assigned_to_user_id)).size,
     };
 
