@@ -76,12 +76,37 @@ export function inspectBuild(directory = 'dist') {
   return { passed: !findings.length && !errors.length, filesChecked: files.length, findings, errors };
 }
 
+export function parseDiagnosticArguments(args) {
+  if (!Array.isArray(args)) return null;
+  let directory;
+  let productionModeSeen = false;
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (typeof argument !== 'string' || !argument) return null;
+    if (argument === '--mode' || argument.startsWith('--mode=')) {
+      if (productionModeSeen) return null;
+      const mode = argument === '--mode' ? args[++index] : argument.slice('--mode='.length);
+      if (mode !== 'production') return null;
+      productionModeSeen = true;
+    } else {
+      if (argument.startsWith('-') || directory !== undefined) return null;
+      directory = argument;
+    }
+  }
+  return { directory: directory || 'dist' };
+}
+
 export function main(args = process.argv.slice(2), { log = console.log } = {}) {
-  if (args.length > 1) {
+  // Base44 runs npm run build -- --mode production. npm appends that flag to
+  // this final command in the build script. Accept only the production-mode
+  // compatibility flag; it NEVER changes, skips, or weakens artifact inspection.
+  // Vite has already built in its default production mode before this command.
+  const parsed = parseDiagnosticArguments(args);
+  if (!parsed) {
     log(JSON.stringify({ passed: false, errors: [{ code: 'INVALID_ARGUMENTS' }] }));
     return 2;
   }
-  const result = inspectBuild(args[0] || 'dist');
+  const result = inspectBuild(parsed.directory);
   log(JSON.stringify(result, null, 2));
   return result.passed ? 0 : 1;
 }
