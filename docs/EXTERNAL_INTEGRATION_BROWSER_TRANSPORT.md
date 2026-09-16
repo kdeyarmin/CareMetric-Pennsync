@@ -49,3 +49,31 @@ Base44 SDK composition in `externalIntegrationRealm.spec.js`, trusted-principal
 clearing tests, existing realm-contract guards, and the complete application
 suite. These are network-isolated synthetic checks; provider acceptance remains
 a distinct, bounded operator procedure.
+
+## Independent browser release
+
+The server requires INTEGRATIONS_RELEASE=enabled-v1 plus the separate
+INTEGRATIONS_BROWSER_RELEASE=enabled-v2 and a nonempty, duplicate-free
+INTEGRATIONS_BROWSER_OPERATIONS subset of INTEGRATIONS_ALLOWED_OPERATIONS.
+Enabling v1 alone does not release v2. Browser controls default off. The legacy
+v1 endpoint continues to require an explicit agency, including for an owner.
+
+The v2 durable payload hash binds contract, deployed revision, current caller
+expectation and parameters. A repeated UUID after a membership version, role,
+service revision or v1/v2 transition conflicts instead of rebranding old output.
+
+## Timeout reconciliation
+
+A private WeakMap carries an exact operation receipt through the existing tenant
+membrane. The ordinary AI timeout error retains its requestId and a guarded,
+non-enumerable reconcile() callback. Arbitrary similarly named SDK properties are
+not trusted. No token, prompt or callback is serialized into that error.
+
+Up to 32 uncertain operations are retained in memory per active realm. Repeating
+the same AI input resumes its prior request, including after a late completion.
+Explicit reference reuse rejects changed parameters. Capacity exhaustion blocks
+new work rather than evicting an uncertain operation into another paid request.
+Realm closure clears the registry, and retained callbacks independently deny
+access. This is not cross-document persistent recovery, a refund, or proof that
+a timed-out provider was cancelled. The scheduler still accounts for known
+in-flight work until its original promise settles.

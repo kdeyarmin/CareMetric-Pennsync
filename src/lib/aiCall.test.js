@@ -47,3 +47,13 @@ test("explicitly uncertain external operations never automatically retry", async
     assert.equal(calls,1);
   }
 });
+
+
+test('ordinary unregistered SDK promises cannot forge an external reconciliation callback', async () => {
+  const work = new Promise(() => {});
+  work.requestId = 'forged-reference'; work.reconcile = () => assert.fail('untrusted property called');
+  await assert.rejects(() => runWithRetry(() => work, { timeoutMs: 5, retries: 0 }), error => {
+    assert.equal(error.code, 'AI_TIMEOUT'); assert.equal(error.requestId, undefined); assert.equal(error.reconcile, undefined);
+    return true;
+  });
+});

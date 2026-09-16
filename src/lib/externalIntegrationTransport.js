@@ -1,3 +1,4 @@
+import { associateOperationReceipt, attachOperationReconciliation } from './operationReconciliation.js';
 import {
   MAX_FILE, MIME, OPERATIONS, UUID, conforms, exactObject, stable, text, validateSchema,
 } from '../../services/integration-runtime/contracts.mjs';
@@ -268,6 +269,75 @@ export function routeExternalCoreOperations(client, config, dependencies) {
   if (config.operations.includes('UploadFile')) deny('CONFIGURATION');
   const transport = createExternalIntegrationTransport(config, dependencies);
   const methods = new Map();
+  // Retain at most 32 uncertain operations in this document/tenant scope. They
+  // are not persisted, evicted into a new paid job, or reused across identities.
+  const uncertain = new Map();
+  let retainedLease = null, overflowed = false;
+  function currentLease() {
+    const lease = dependencies.captureLease();
+    dependencies.assertLeaseCurrent(lease);
+    if (lease !== retainedLease) {
+      uncertain.clear(); overflowed = false; retainedLease = lease;
+      dependencies.getLeaseSignal(lease).addEventListener('abort', () => {
+        if (retainedLease === lease) { uncertain.clear(); overflowed = false; retainedLease = null; }
+      }, { once: true });
+    }
+    return lease;
+  }
+  function checkEntry(entry) {
+    dependencies.assertLeaseCurrent(entry.lease);
+    if (retainedLease !== entry.lease) deny('AUTHORITY');
+  }
+  function retain(entry) {
+    checkEntry(entry);
+    if (uncertain.has(entry.prepared.requestId)) return;
+    if (uncertain.size >= 32) { overflowed = true; return; }
+    uncertain.set(entry.prepared.requestId, entry);
+  }
+  function executeEntry(entry) {
+    checkEntry(entry);
+    let timedOut = false;
+    const original = entry.prepared.execute();
+    const delivered = Promise.resolve(original).then(value => {
+      checkEntry(entry);
+      if (!timedOut) uncertain.delete(entry.prepared.requestId);
+      return value;
+    }, error => {
+      checkEntry(entry);
+      if (error?.operationMayHaveExecuted === true || error?.code === 'AI_TIMEOUT') {
+        attachOperationReconciliation(error, delivered);
+      }
+      throw error;
+    });
+    return associateOperationReceipt(delivered, {
+      requestId: entry.prepared.requestId,
+      assertCurrent: () => checkEntry(entry),
+      markUncertain: () => { timedOut = true; retain(entry); },
+      reconcile: () => executeEntry(entry),
+    });
+  }
+  function invokeSelected(operation, params, options) {
+    const lease = currentLease();
+    const normalized = normalizeExternalIntegrationParams(operation, params);
+    const key = normalized.file ? null : stable(normalized);
+    let prior;
+    if (options?.requestId) {
+      prior = uncertain.get(options.requestId);
+      if (prior && (prior.operation !== operation || prior.key !== key
+        || (normalized.file && prior.file !== normalized.file))) deny('RECONCILIATION');
+    } else if (operation === 'InvokeLLM' && key !== null) {
+      const matches = [...uncertain.values()].filter(entry => entry.operation === operation && entry.key === key);
+      if (matches.length > 1) deny('RECONCILIATION');
+      [prior] = matches;
+    }
+    if (prior) {
+      // Unsupported extra options may not disappear just because this is a retry.
+      exactObject(options || {}, ['requestId']);
+      return executeEntry(prior);
+    }
+    if (overflowed || uncertain.size >= 32) deny('RECONCILIATION');
+    return executeEntry({ lease, key, operation, file: normalized.file, prepared: transport.prepare(operation, params, options) });
+  }
   const facade = (source, overrides) => new Proxy({}, {
     get: (_target, property) => Object.hasOwn(overrides, property) ? overrides[property]() : Reflect.get(source, property, source),
     has: (_target, property) => Object.hasOwn(overrides, property) || Reflect.has(source, property),
@@ -287,7 +357,7 @@ export function routeExternalCoreOperations(client, config, dependencies) {
   });
   const overrides = Object.fromEntries(config.operations.map(operation => [operation, () => {
     if (!methods.has(operation)) methods.set(operation, (params, options) => {
-      try { return transport.prepare(operation, params, options).execute(); }
+      try { return invokeSelected(operation, params, options); }
       catch (error) { return Promise.reject(error); }
     });
     return methods.get(operation);

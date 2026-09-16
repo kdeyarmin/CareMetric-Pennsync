@@ -10,6 +10,9 @@ export function loadConfig(env = process.env) {
   if (!ALLOWED_APPS.has(appId)) throw new Error('INVALID_APP_BINDING');
   const operations = (env.INTEGRATIONS_ALLOWED_OPERATIONS || '').split(',').filter(Boolean);
   if (operations.some(operation => !OPERATIONS.includes(operation)) || new Set(operations).size !== operations.length) throw new Error('INVALID_OPERATION_CONFIGURATION');
+  const browserOperations = (env.INTEGRATIONS_BROWSER_OPERATIONS || '').split(',').filter(Boolean);
+  if (browserOperations.some(operation => !operations.includes(operation))
+    || new Set(browserOperations).size !== browserOperations.length) throw new Error('INVALID_BROWSER_OPERATION_CONFIGURATION');
   const origins = (env.INTEGRATIONS_ALLOWED_ORIGINS || 'https://caremetricai.base44.app,https://app.caremetricai.com').split(',');
   if (origins.some(origin => { try { const u = new URL(origin); return u.protocol !== 'https:' || u.origin !== origin; } catch { return true; } })) throw new Error('INVALID_CORS_ORIGIN');
   const supabaseUrl = env.SUPABASE_URL || '';
@@ -19,7 +22,8 @@ export function loadConfig(env = process.env) {
   const configured = !!supabaseUrl && !!env.SUPABASE_SERVICE_ROLE_KEY
     && /^[a-f0-9]{64}$/.test(encryptionKey) && /^[a-f0-9]{64}$/.test(hashKey) && encryptionKey !== hashKey;
   return {
-    appId, operations, origins, supabaseUrl, encryptionKey, hashKey, configured,
+    appId, operations, browserOperations, browserReleased: env.INTEGRATIONS_BROWSER_RELEASE === 'enabled-v2',
+    origins, supabaseUrl, encryptionKey, hashKey, configured,
     released: env.INTEGRATIONS_RELEASE === 'enabled-v1', dailyLimit: 100,
     supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY || '', anthropicKey: env.ANTHROPIC_API_KEY || '',
     model: env.INTEGRATIONS_AI_MODEL || 'claude-sonnet-4-6', sendgridKey: env.SENDGRID_API_KEY || '',
@@ -39,7 +43,11 @@ export function publicReadiness(config) {
   return { ready: config.configured && config.released && config.operations.length > 0 && !missingProviders.length,
     released: config.released, configured: config.configured, operations: config.operations, missingProviders,
     base44ExecutionDependency: true, trafficCutoverVerified: false, revision: config.revision,
-    browserContract: BROWSER_CONTRACT, browserRevisionBound: /^[a-f0-9]{40}$/.test(config.revision || '') };
+    browserContract: BROWSER_CONTRACT, browserRevisionBound: /^[a-f0-9]{40}$/.test(config.revision || ''),
+    browserReleased: config.browserReleased === true, browserOperations: config.browserOperations || [],
+    browserReady: config.configured && config.released && config.browserReleased === true
+      && (config.browserOperations?.length || 0) > 0 && !missingProviders.length
+      && /^[a-f0-9]{40}$/.test(config.revision || '') };
 }
 export async function authorize(config, req, agencyId, fetcher = fetch) {
   if (agencyId !== null && (typeof agencyId !== 'string' || !ID.test(agencyId))) fail(400, 'AGENCY_REQUIRED');
@@ -95,18 +103,21 @@ function usableResult(operation, result) {
   }
   return result;
 }
-export async function performDurable({ config, req, agencyId, operation, params, requestId, provider, store, authority, admit = () => () => {} }) {
+export async function performDurable({ config, req, agencyId, operation, params, requestId, provider, store, authority, requestBinding = null, admit = () => () => {} }) {
   if (typeof requestId !== 'string' || !ID.test(requestId)) fail(400, 'IDEMPOTENCY_KEY_REQUIRED');
   const before = await authority(config, req, agencyId);
   if (operation === 'SendEmail' && !before.canEmail) fail(403, 'EMAIL_ROLE_REQUIRED');
   const release = admit(before);
-  try { return await performOwned({ config, req, agencyId, operation, params, requestId, provider, store, authority, before }); }
+  try { return await performOwned({ config, req, agencyId, operation, params, requestId, provider, store, authority, requestBinding, before }); }
   finally { release(); }
 }
-async function performOwned({ config, req, agencyId, operation, params, requestId, provider, store, authority, before }) {
+async function performOwned({ config, req, agencyId, operation, params, requestId, provider, store, authority, requestBinding, before }) {
   const claim = randomUUID();
   const reservation = await store.reserve({ p_app_id: config.appId, p_subject: before.subject,
-    p_operation: operation, p_request_id: requestId, p_payload_hash: hash(config.hashKey, params), p_claim: claim, p_daily_limit: config.dailyLimit });
+    p_operation: operation, p_request_id: requestId,
+    // v2 and v1 receipts cannot collide; v2 binds the exact reviewed service
+    // revision and independently verified caller expectation to durable state.
+    p_payload_hash: hash(config.hashKey, requestBinding === null ? params : { requestBinding, params }), p_claim: claim, p_daily_limit: config.dailyLimit });
   if (!reservation || !['owned', 'completed', 'conflict', 'pending', 'quota', 'uncertain', 'failed'].includes(reservation.outcome)) fail(503, 'INVALID_RESERVATION');
   if (reservation.outcome === 'quota') fail(429, 'DAILY_OPERATION_LIMIT');
   if (!['owned', 'completed'].includes(reservation.outcome)) fail(409, 'OPERATION_RECONCILIATION_REQUIRED');

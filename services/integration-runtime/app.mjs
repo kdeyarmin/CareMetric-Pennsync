@@ -1,5 +1,5 @@
 import { BROWSER_CONTRACT, requireExpectedCaller, validateCallerBinding } from './caller-binding.mjs';
-import { IntegrationError, OPERATIONS, UUID, exactObject, fail } from './safety.mjs';
+import { IntegrationError, ID, OPERATIONS, UUID, exactObject, fail } from './safety.mjs';
 import { authorize, createStore, performDurable, publicReadiness } from './runtime.mjs';
 import { createProviders, validateParams } from './providers.mjs';
 import { bearerFingerprint, createAdmission, readRequestBody } from './admission.mjs';
@@ -41,6 +41,7 @@ export function createHandler(config, dependencies = {}) {
       const browserRequest = url.pathname === '/v2/integrations';
       if (req.method !== 'POST' || !['/v1/integrations', '/v2/integrations'].includes(url.pathname) || url.search) fail(404, 'NOT_FOUND');
       if (!config.released || !config.configured) fail(503, 'EXTERNAL_INTEGRATIONS_NOT_RELEASED');
+      if (browserRequest && (config.browserReleased !== true || !config.browserOperations?.length)) fail(503, 'BROWSER_INTEGRATIONS_NOT_RELEASED');
       if (browserRequest && !/^[a-f0-9]{40}$/.test(config.revision || '')) fail(503, 'BROWSER_REVISION_UNBOUND');
       const fingerprint = bearerFingerprint(req);
       admission.request(fingerprint);
@@ -53,14 +54,18 @@ export function createHandler(config, dependencies = {}) {
       exactObject(input, browserRequest
         ? ['agency_id', 'request_id', 'operation', 'params', 'contract', 'revision', 'binding']
         : ['agency_id', 'request_id', 'operation', 'params']);
+      // A global owner scope is new to v2; keep legacy v1 explicitly scoped.
+      if (!browserRequest && (typeof input.agency_id !== 'string' || !ID.test(input.agency_id))) fail(400, 'AGENCY_REQUIRED');
       const expected = browserRequest ? validateCallerBinding(input.binding) : null;
       if (browserRequest && (input.contract !== BROWSER_CONTRACT || input.agency_id !== expected.agency_id)) fail(400, 'INVALID_BROWSER_CONTRACT');
       if (browserRequest && input.revision !== config.revision) fail(409, 'BROWSER_REVISION_CHANGED');
       if (browserRequest && (typeof input.request_id !== 'string' || !UUID.test(input.request_id))) fail(400, 'INVALID_BROWSER_REQUEST_ID');
       if (!OPERATIONS.includes(input.operation) || !config.operations.includes(input.operation)) fail(409, 'OPERATION_NOT_RELEASED');
+      if (browserRequest && !config.browserOperations.includes(input.operation)) fail(409, 'BROWSER_OPERATION_NOT_RELEASED');
       validateParams(input.operation, input.params, config);
       const result = await performDurable({ config, req, agencyId: input.agency_id, operation: input.operation,
         params: input.params, requestId: input.request_id, provider, store,
+        requestBinding: browserRequest ? { contract: BROWSER_CONTRACT, revision: config.revision, caller: expected } : null,
         authority: (c, r, a) => admission.authority(fingerprint, async () => {
           const actor = await authority(c, r, a);
           if (browserRequest) requireExpectedCaller(actor.binding, expected);

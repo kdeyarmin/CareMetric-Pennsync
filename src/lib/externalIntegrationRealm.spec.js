@@ -1,5 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createClient } from '@base44/sdk';
+import { runWithRetry, drainTimedOutAI } from './aiCall';
+import { createAIScheduler } from './aiScheduler';
 import { lockBase44FunctionRevision } from './functionRevisionPolicy';
 import { BROWSER_CONTRACT } from '../../services/integration-runtime/caller-binding.mjs';
 import { createTenantSdkRealmGate } from './tenantSdkRealmGate';
@@ -121,5 +123,74 @@ describe('installed Base44 SDK transport composition', () => {
     } finally {
       xhr.mockRestore();
     }
+  });
+});
+
+
+describe('existing AI timeout preserves and reconciles the exact external operation', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('shared timeout and scheduler retain the request ID through the real realm promise wrapper', async () => {
+    let finish;
+    const h = harness(() => new Promise(resolve => { finish = resolve; }));
+    expect(h.gate.open(authority)).toBe(true);
+    const scheduler = createAIScheduler({ maxConcurrent: 1 });
+    const error = await scheduler.schedule(() => runWithRetry(
+      () => h.client.integrations.Core.InvokeLLM({ prompt: 'synthetic slow request' }),
+      { timeoutMs: 5, retries: 2, backoffMs: 0, shouldRetry: () => true },
+    )).catch(value => value);
+    expect(error.code).toBe('AI_TIMEOUT');
+    expect(error.retryable).toBe(false);
+    expect(error.operationMayHaveExecuted).toBe(true);
+    const original = JSON.parse(h.fetch.mock.calls[0][1].body);
+    expect(error.requestId).toBe(original.request_id);
+    expect(error.reconcile).toBeTypeOf('function');
+    expect(Object.keys(error)).not.toContain('reconcile');
+    expect(JSON.stringify(error)).not.toContain('synthetic-session-token-value');
+    expect(scheduler.stats().active).toBe(1);
+    const resumed = error.reconcile();
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+    finish();
+    await expect(resumed).resolves.toBe('synthetic response');
+    await drainTimedOutAI(error);
+    await vi.waitFor(() => expect(scheduler.stats().active).toBe(0));
+    expect(h.native.integrations.Core.InvokeLLM).not.toHaveBeenCalled();
+  });
+
+  it('a normal repeated AI action resumes a late completed timeout instead of starting a paid replacement', async () => {
+    let finish;
+    const h = harness(() => new Promise(resolve => { finish = resolve; }));
+    expect(h.gate.open(authority)).toBe(true);
+    const error = await runWithRetry(() => h.client.integrations.Core.InvokeLLM({ prompt: 'same input' }),
+      { timeoutMs: 5, retries: 0 }).catch(value => value);
+    expect(error.code).toBe('AI_TIMEOUT');
+    finish(); await drainTimedOutAI(error);
+    await expect(h.client.integrations.Core.InvokeLLM({ prompt: 'same input' })).resolves.toBe('synthetic response');
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+    expect(h.native.integrations.Core.InvokeLLM).not.toHaveBeenCalled();
+  });
+
+  it('an explicit request reference cannot silently ignore changed retry parameters', async () => {
+    let finish;
+    const h = harness(() => new Promise(resolve => { finish = resolve; }));
+    expect(h.gate.open(authority)).toBe(true);
+    const error = await runWithRetry(() => h.client.integrations.Core.InvokeLLM({ prompt: 'original input' }),
+      { timeoutMs: 5, retries: 0 }).catch(value => value);
+    await expect(h.client.integrations.Core.InvokeLLM({ prompt: 'different input' }, { requestId: error.requestId }))
+      .rejects.toMatchObject({ code: 'EXTERNAL_RECONCILIATION', retryable: false });
+    expect(h.fetch).toHaveBeenCalledTimes(1);
+    finish(); await drainTimedOutAI(error);
+  });
+
+  it('a retained timeout callback cannot cross a revoked realm or disclose late results', async () => {
+    let finish;
+    const h = harness(() => new Promise(resolve => { finish = resolve; }));
+    expect(h.gate.open(authority)).toBe(true);
+    const error = await runWithRetry(() => h.client.integrations.Core.InvokeLLM({ prompt: 'synthetic' }),
+      { timeoutMs: 5, retries: 0 }).catch(value => value);
+    expect(error.reconcile).toBeTypeOf('function');
+    h.gate.close(); finish(); await drainTimedOutAI(error);
+    expect(() => error.reconcile()).toThrow();
+    expect(h.fetch).toHaveBeenCalledTimes(1);
   });
 });

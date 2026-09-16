@@ -20,6 +20,7 @@ const cfg = (patch = {}) => ({ ...loadConfig({
   SUPABASE_URL: 'https://xsqobvvreaovwibxwyvv.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'synthetic-only',
   INTEGRATIONS_ENCRYPTION_KEY: '1'.repeat(64), INTEGRATIONS_HASH_KEY: '2'.repeat(64),
   INTEGRATIONS_RELEASE: 'enabled-v1', INTEGRATIONS_ALLOWED_OPERATIONS: 'InvokeLLM,SendEmail',
+  INTEGRATIONS_BROWSER_RELEASE: 'enabled-v2', INTEGRATIONS_BROWSER_OPERATIONS: 'InvokeLLM,SendEmail',
   ANTHROPIC_API_KEY: 'synthetic-only', SENDGRID_API_KEY: 'synthetic-only', NOTIFICATION_FROM_EMAIL: 'synthetic@example.test',
   RAILWAY_GIT_COMMIT_SHA: revision,
 }), ...patch });
@@ -28,8 +29,8 @@ const input = (binding = member()) => ({ contract: BROWSER_CONTRACT, revision, b
 const req = (value, path = '/v2/integrations') => new Request(`https://runtime.example.test${path}`, {
   method: 'POST', headers: { authorization: 'Bearer synthetic-session-token-value', 'content-type': 'application/json' }, body: JSON.stringify(value),
 });
-function harness({ live = member(), driftAt = Infinity, denyAt = Infinity, drift = { membership_version: 2 }, providerFailure = false, config = cfg() } = {}) {
-  let reads = 0, calls = 0, reservations = 0; const rows = new Map();
+function harness({ live = member(), driftAt = Infinity, denyAt = Infinity, drift = { membership_version: 2 }, providerFailure = false, config = cfg(), sharedRows = new Map() } = {}) {
+  let reads = 0, calls = 0, reservations = 0; const rows = sharedRows;
   const authority = async () => {
     reads++;
     if (reads >= denyAt) fail(403, 'AUTHENTICATION_REJECTED');
@@ -164,4 +165,65 @@ test('readiness explicitly discloses the remaining Base44 execution and absent c
   const readiness = publicReadiness(cfg()); assert.equal(readiness.base44ExecutionDependency, true);
   assert.equal(readiness.trafficCutoverVerified, false); assert.equal(readiness.browserContract, BROWSER_CONTRACT);
   assert.equal(readiness.browserRevisionBound, true);
+});
+
+
+for (const patch of [{ browserReleased: false }, { browserReleased: undefined }, { browserOperations: [] }, { browserOperations: undefined }]) {
+  test(`v1-only release does not expose v2 when ${Object.keys(patch)[0]} is absent`, async () => {
+    const h = harness({ config: cfg(patch) });
+    const response = await h.handler(req(input()));
+    assert.equal(response.status, 503);
+    assert.equal((await response.json()).error, 'BROWSER_INTEGRATIONS_NOT_RELEASED');
+    assert.deepEqual(h.counts(), { reads: 0, calls: 0, reservations: 0 });
+    const legacy = input(); delete legacy.contract; delete legacy.binding; delete legacy.revision;
+    assert.equal((await h.handler(req(legacy, '/v1/integrations'))).status, 200);
+  });
+}
+test('v2 cannot execute a legacy-approved operation absent from the browser allowlist', async () => {
+  const h = harness({ config: cfg({ browserOperations: ['SendEmail'] }) });
+  const response = await h.handler(req(input())); assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, 'BROWSER_OPERATION_NOT_RELEASED');
+  assert.deepEqual(h.counts(), { reads: 0, calls: 0, reservations: 0 });
+});
+test('browser operations are explicit, duplicate-free subsets of the general operation list', () => {
+  for (const selected of ['InvokeLLM,InvokeLLM', 'GenerateImage', 'SendEmail']) {
+    assert.throws(() => loadConfig({ INTEGRATIONS_ALLOWED_OPERATIONS: 'InvokeLLM', INTEGRATIONS_BROWSER_OPERATIONS: selected }));
+  }
+  const plain = loadConfig({ INTEGRATIONS_RELEASE: 'enabled-v1', INTEGRATIONS_ALLOWED_OPERATIONS: 'InvokeLLM' });
+  assert.equal(plain.browserReleased, false); assert.deepEqual(plain.browserOperations, []);
+  assert.equal(publicReadiness(plain).browserReady, false);
+});
+for (const agency_id of [null, undefined, [], {}]) {
+  test(`v1 rejects global/malformed agency ${JSON.stringify(agency_id)} even for a live owner`, async () => {
+    const h = harness({ live: owner() });
+    const value = input(owner()); delete value.contract; delete value.binding; delete value.revision; value.agency_id = agency_id;
+    const response = await h.handler(req(value, '/v1/integrations')); assert.equal(response.status, 400);
+    assert.equal((await response.json()).error, 'AGENCY_REQUIRED'); assert.deepEqual(h.counts(), { reads: 0, calls: 0, reservations: 0 });
+  });
+}
+for (const patch of [{ membership_version: 2 }, { tenant_role: 'manager' }, { membership_id: 'replacement-member' }]) {
+  test(`receipt cannot be rebranded after current ${Object.keys(patch)[0]} changes`, async () => {
+    const rows = new Map(); const first = harness({ sharedRows: rows });
+    assert.equal((await first.handler(req(input()))).status, 200);
+    const current = { ...member(), ...patch }; const next = harness({ sharedRows: rows, live: current });
+    const response = await next.handler(req(input(current))); assert.equal(response.status, 409);
+    assert.equal((await response.json()).error, 'OPERATION_RECONCILIATION_REQUIRED');
+    assert.equal(next.counts().calls, 0); assert.equal(rows.size, 1);
+  });
+}
+test('receipt from a previous deployed revision conflicts rather than being labeled current', async () => {
+  const rows = new Map(); const first = harness({ sharedRows: rows });
+  assert.equal((await first.handler(req(input()))).status, 200);
+  const next = harness({ sharedRows: rows, config: cfg({ revision: 'b'.repeat(40) }) });
+  const response = await next.handler(req({ ...input(), revision: 'b'.repeat(40) })); assert.equal(response.status, 409);
+  assert.equal(next.counts().calls, 0); assert.equal(rows.size, 1);
+});
+test('v1 and v2 receipts with the same request UUID cannot be confused', async () => {
+  for (const legacyFirst of [false, true]) {
+    const rows = new Map(); const h = harness({ sharedRows: rows });
+    const legacy = input(); delete legacy.contract; delete legacy.binding; delete legacy.revision;
+    const requests = legacyFirst ? [req(legacy, '/v1/integrations'), req(input())] : [req(input()), req(legacy, '/v1/integrations')];
+    assert.equal((await h.handler(requests[0])).status, 200);
+    assert.equal((await h.handler(requests[1])).status, 409); assert.equal(h.counts().calls, 1); assert.equal(rows.size, 1);
+  }
 });

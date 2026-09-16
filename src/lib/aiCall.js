@@ -1,3 +1,5 @@
+import { attachOperationReconciliation } from './operationReconciliation.js';
+
 /** Shared timeout/retry policy. An uncertain paid operation must not replay. */
 const pendingTimeoutWork = new WeakMap();
 
@@ -19,6 +21,11 @@ export function withTimeout(promise, ms, message = "AI request timed out") {
       err.code = "AI_TIMEOUT";
       err.retryable = false;
       err.operationMayHaveExecuted = true;
+      try {
+        attachOperationReconciliation(err, promise);
+      } catch (error) {
+        reject(error); return;
+      }
       pendingTimeoutWork.set(err, work.then(() => undefined, () => undefined));
       reject(err);
     }, ms);
