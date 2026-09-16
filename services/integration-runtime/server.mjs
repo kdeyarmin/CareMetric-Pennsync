@@ -26,8 +26,9 @@ const server = createServer(async (incoming, outgoing) => {
     outgoing.end('{"success":false,"error":"RUNTIME_UNAVAILABLE"}');
   }
 });
-server.requestTimeout = 120000;
-server.headersTimeout = 20000;
+// These bound incoming request/header consumption, not the provider response.
+server.requestTimeout = 15000;
+server.headersTimeout = 10000;
 server.maxConnections = 100;
 server.listen(port, '0.0.0.0', () => process.stdout.write(JSON.stringify({ event: 'external_runtime_started', revision: config.revision, released: config.released }) + '\n'));
 process.on('SIGTERM', () => server.close(() => process.exit(0)));

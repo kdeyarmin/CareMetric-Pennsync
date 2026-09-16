@@ -1,12 +1,17 @@
 /** Shared timeout/retry policy. An uncertain paid operation must not replay. */
+const pendingTimeoutWork = new WeakMap();
+
+// A known still-running SDK promise keeps its scheduler slot after the UI's
+// timeout. This completion-only handle retains no result in an error object.
+export function drainTimedOutAI(error) {
+  return error && typeof error === 'object' ? pendingTimeoutWork.get(error) || null : null;
+}
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * Stop waiting after ms, without pretending the SDK request was cancelled.
- * A timed-out request may still complete and be billed; never retry it blindly.
- */
+/** Stop waiting without pretending the SDK/provider request was cancelled. */
 export function withTimeout(promise, ms, message = "AI request timed out") {
   if (!ms || ms <= 0) return Promise.resolve(promise);
+  const work = Promise.resolve(promise);
   let timer;
   const timeout = new Promise((_resolve, reject) => {
     timer = setTimeout(() => {
@@ -14,10 +19,11 @@ export function withTimeout(promise, ms, message = "AI request timed out") {
       err.code = "AI_TIMEOUT";
       err.retryable = false;
       err.operationMayHaveExecuted = true;
+      pendingTimeoutWork.set(err, work.then(() => undefined, () => undefined));
       reject(err);
     }, ms);
   });
-  return Promise.race([Promise.resolve(promise), timeout]).finally(() => clearTimeout(timer));
+  return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
 }
 
 /** Authentication, credit exhaustion and explicit uncertain outcomes cannot retry. */
@@ -39,7 +45,7 @@ export async function runWithRetry(
       return await withTimeout(fn(attempt), timeoutMs);
     } catch (err) {
       lastErr = err;
-      if (attempt === retries || err?.retryable === false || err?.operationMayHaveExecuted === true || !shouldRetry(err)) break;
+      if (attempt === retries || err?.retryable === false || err?.operationMayHaveExecuted === true || err?.code === "AI_TIMEOUT" || !shouldRetry(err)) break;
       if (backoffMs > 0) await sleep(backoffMs * 2 ** attempt);
     }
   }

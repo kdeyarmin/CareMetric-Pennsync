@@ -26,10 +26,13 @@ export function loadConfig(env = process.env) {
     revision: /^[0-9a-f]{40}$/.test(env.RAILWAY_GIT_COMMIT_SHA || '') ? env.RAILWAY_GIT_COMMIT_SHA : 'unbound',
   };
 }
+export function validSender(value) {
+  return typeof value === 'string' && value.length <= 320 && /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value);
+}
 export function publicReadiness(config) {
   const missingProviders = config.operations.filter(operation => {
     if (['InvokeLLM', 'ExtractDataFromUploadedFile'].includes(operation)) return !config.anthropicKey || !config.model;
-    if (operation === 'SendEmail') return !config.sendgridKey || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(config.fromEmail);
+    if (operation === 'SendEmail') return !config.sendgridKey || !validSender(config.fromEmail);
     return false;
   });
   return { ready: config.configured && config.released && config.operations.length > 0 && !missingProviders.length,
@@ -86,10 +89,15 @@ function usableResult(operation, result) {
   }
   return result;
 }
-export async function performDurable({ config, req, agencyId, operation, params, requestId, provider, store, authority }) {
+export async function performDurable({ config, req, agencyId, operation, params, requestId, provider, store, authority, admit = () => () => {} }) {
   if (!ID.test(requestId || '')) fail(400, 'IDEMPOTENCY_KEY_REQUIRED');
   const before = await authority(config, req, agencyId);
   if (operation === 'SendEmail' && !before.canEmail) fail(403, 'EMAIL_ROLE_REQUIRED');
+  const release = admit(before);
+  try { return await performOwned({ config, req, agencyId, operation, params, requestId, provider, store, authority, before }); }
+  finally { release(); }
+}
+async function performOwned({ config, req, agencyId, operation, params, requestId, provider, store, authority, before }) {
   const claim = randomUUID();
   const reservation = await store.reserve({ p_app_id: config.appId, p_subject: before.subject,
     p_operation: operation, p_request_id: requestId, p_payload_hash: hash(config.hashKey, params), p_claim: claim, p_daily_limit: config.dailyLimit });
@@ -104,8 +112,6 @@ export async function performDurable({ config, req, agencyId, operation, params,
     if (reservation.outcome === 'completed') return usableResult(operation, unseal(config.encryptionKey, `${config.appId}:${before.subject}:${reservation.id}`, reservation.result));
     started = true;
     let result = await provider(operation, params, { subject: before.subject, jobId: reservation.id });
-    // Supabase links expire in 60s. Start the local lease before the operation,
-    // never treat the 24h encrypted receipt lifetime as the link lifetime.
     result = usableResult(operation, result);
     const encrypted = seal(config.encryptionKey, `${config.appId}:${before.subject}:${reservation.id}`, result);
     const saved = await store.finish({ p_id: reservation.id, p_claim: claim, p_state: 'completed', p_result: encrypted });

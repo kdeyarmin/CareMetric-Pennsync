@@ -5,6 +5,8 @@ on:
       - 'services/integration-runtime/**'
       - '.github/workflows/external-integrations.yml'
       - 'src/lib/aiCall*'
+      - 'src/lib/aiScheduler*'
+      - 'tools-ai-drain.test.mjs'
       - 'tools-app-store-migration.test.mjs'
       - 'ios/**'
       - 'public/**'
@@ -14,6 +16,8 @@ on:
       - 'services/integration-runtime/**'
       - '.github/workflows/external-integrations.yml'
       - 'src/lib/aiCall*'
+      - 'src/lib/aiScheduler*'
+      - 'tools-ai-drain.test.mjs'
       - 'tools-app-store-migration.test.mjs'
       - 'ios/**'
       - 'public/**'
@@ -32,5 +36,5 @@ jobs:
           node-version: 24.18.0
       - name: Preserve established mobile wrapper and packaged public assets
         run: node --test tools-app-store-migration.test.mjs
-      - name: Test standalone runtime and paid-retry safeguards
-        run: node --test services/integration-runtime/*.test.mjs src/lib/aiCall.test.js
+      - name: Test runtime, paid retries and unsettled scheduler accounting
+        run: node --test services/integration-runtime/*.test.mjs src/lib/aiCall.test.js src/lib/aiScheduler.test.js tools-ai-drain.test.mjs
