@@ -1,0 +1,130 @@
+{
+  "name": "FleetServiceEntry",
+  "type": "object",
+  "description": "Per-vehicle maintenance/repair journal. Original service facts cannot be edited or deleted through the app; admin review annotations are retained.",
+  "properties": {
+    "agency_id": {
+      "type": "string"
+    },
+    "vehicle_id": {
+      "type": "string"
+    },
+    "request_key": {
+      "type": "string"
+    },
+    "service_date": {
+      "type": "string",
+      "format": "date"
+    },
+    "odometer": {
+      "type": "number"
+    },
+    "service_type": {
+      "type": "string",
+      "enum": [
+        "oil_change",
+        "tires",
+        "brakes",
+        "inspection",
+        "scheduled_maintenance",
+        "repair",
+        "other"
+      ]
+    },
+    "description": {
+      "type": "string"
+    },
+    "service_provider": {
+      "type": "string"
+    },
+    "cost_cents": {
+      "type": "number",
+      "description": "Whole cents; omitted if unknown, zero means no charge."
+    },
+    "invoice_reference": {
+      "type": "string"
+    },
+    "next_due_date": {
+      "type": "string"
+    },
+    "next_due_odometer": {
+      "type": "number"
+    },
+    "recorded_at": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "submitted_by_user_id": {
+      "type": "string"
+    },
+    "submitted_by_name": {
+      "type": "string"
+    },
+    "submitted_by_email": {
+      "type": "string"
+    },
+    "entry_source": {
+      "type": "string",
+      "enum": [
+        "employee",
+        "admin"
+      ]
+    },
+    "review_status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "reviewed",
+        "needs_follow_up"
+      ],
+      "default": "pending"
+    },
+    "review_history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "reviewed",
+              "needs_follow_up"
+            ]
+          },
+          "note": {
+            "type": "string"
+          },
+          "reviewer_id": {
+            "type": "string"
+          },
+          "reviewer_name": {
+            "type": "string"
+          },
+          "reviewed_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  },
+  "required": [
+    "agency_id",
+    "vehicle_id",
+    "request_key",
+    "service_date",
+    "odometer",
+    "service_type",
+    "description",
+    "recorded_at",
+    "submitted_by_user_id",
+    "entry_source",
+    "review_status"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}
