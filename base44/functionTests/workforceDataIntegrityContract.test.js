@@ -12,15 +12,17 @@ const baseBody = { pay_period_start: '2026-06-14', pay_period_end: '2026-06-27',
 const deepCopy = value => JSON.parse(JSON.stringify(value));
 function harness(name, { failures = [], rows = {}, caller = employee } = {}) {
   const writes = [];
+  const reads = [];
   const data = { AgencyMembership: [membership], Agency: [{ id: 'agency-a', agency_name: 'Agency A', status: 'active' }],
     User: [employee], EmployeePayrollProfile: [{ id: 'profile-1', employee_email: employee.email, service_type: 'home_health', earns_points: false, active: true, phone_reimbursement: 25 }],
     TimeOffRequest: [], VisitPointConfig: [], Timesheet: [], PersonnelCredential: [], ...deepCopy(rows) };
   const entities = new Proxy({}, { get(_, entity) { return {
     async filter(query, _sort, limit = 5000) {
+      reads.push({ entity, action: 'filter', query, limit });
       if (failures.includes(entity)) throw new Error('SYNTHETIC_DATASTORE_ERROR');
       return deepCopy((data[entity] || []).filter(row => Object.entries(query || {}).every(([key,value]) => value && typeof value === 'object' && '$in' in value ? value.$in.includes(row[key]) : row[key] === value)).slice(0,limit));
     },
-    async list(_sort, limit = 5000) { if (failures.includes(entity)) throw new Error('SYNTHETIC_DATASTORE_ERROR'); return deepCopy((data[entity] || []).slice(0,limit)); },
+    async list(_sort, limit = 5000) { reads.push({ entity, action: 'list', limit }); if (failures.includes(entity)) throw new Error('SYNTHETIC_DATASTORE_ERROR'); return deepCopy((data[entity] || []).slice(0,limit)); },
     async get(id) { return deepCopy((data[entity] || []).find(row => row.id === id) || null); },
     async create(value) { const row = { id: 'new-' + entity, ...deepCopy(value) }; writes.push({ entity, action: 'create', row }); (data[entity] ||= []).push(row); return row; },
     async update(id, value) { const row = { id, ...deepCopy(value) }; writes.push({ entity, action: 'update', row }); return row; },
@@ -30,7 +32,7 @@ function harness(name, { failures = [], rows = {}, caller = employee } = {}) {
   let handler;
   const source = readFileSync(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8').replace(/import \{ createClientFromRequest \} from 'npm:[^']+';/, '');
   new Function('createClientFromRequest', 'Deno', transpileTs(source).outputText)(() => client, { serve(callback) { handler = callback; }, env: { get() { return undefined; } } });
-  return { writes, data, async call(body) {
+  return { writes, reads, data, async call(body) {
     const response = await handler(new Request('https://example.test/' + name, { method: 'POST', body: JSON.stringify(body) }));
     return { status: response.status, body: await response.json() };
   } };
@@ -161,4 +163,57 @@ test('fallback approval notices use membership-backed admins, never self-claimed
     const recipients=h.writes.filter(row=>row.entity==='Notification').map(write=>write.row.user_email);
     assert.deepEqual(recipients,[real.email]);
   }
+});
+
+
+test('whitespace-only payroll amounts are rejected while absent/empty fields stay compatible', async () => {
+  for (const value of [' ', '\t', '\n']) {
+    const h = harness('submitTimesheet');
+    assert.equal((await h.call({ ...baseBody, miles: value })).status, 400);
+    assert.equal(h.writes.length, 0);
+    const daily = harness('submitTimesheet');
+    assert.equal((await daily.call({ ...baseBody, entry_mode: 'daily', daily_entries: [{ date: '2026-06-15', regular_hours: value }] })).status, 400);
+  }
+  for (const value of ['', undefined, null, ' 2.5 ']) {
+    assert.equal((await harness('submitTimesheet').call({ ...baseBody, miles: value })).status, 200);
+  }
+});
+test('malformed stored and fallback payroll service types cannot become home health', async () => {
+  for (const value of ['invalid', '', false, {}, 1]) {
+    const h = harness('submitTimesheet', { rows: { EmployeePayrollProfile: [{ id: 'p', employee_email: employee.email, service_type: value }] } });
+    assert.equal((await h.call(baseBody)).status, 409); assert.equal(h.writes.length, 0);
+    const fallback = harness('submitTimesheet', { caller: { ...employee, service_type: value }, rows: { EmployeePayrollProfile: [] } });
+    assert.equal((await fallback.call(baseBody)).status, 409); assert.equal(fallback.writes.length, 0);
+  }
+  assert.equal((await harness('submitTimesheet', { rows: { EmployeePayrollProfile: [] } }).call(baseBody)).status, 200);
+});
+test('time-off includes both dates in its 366-calendar-day limit', async () => {
+  for (const [start_date, end_date, expected] of [
+    ['2026-01-01', '2027-01-01', 200], ['2026-01-01', '2027-01-02', 400],
+    ['2028-01-01', '2028-12-31', 200], ['2028-01-01', '2029-01-01', 400],
+  ]) {
+    const h = harness('submitTimeOffRequest');
+    assert.equal((await h.call({ start_date, end_date })).status, expected);
+    if (expected !== 200) assert.equal(h.writes.length, 0);
+  }
+});
+test('unrelated tenants cannot exhaust an agency readiness report limits', async () => {
+  const own = { ...employee, agency_name: 'Untrusted value' };
+  const h = harness('getTeamTrainingReadiness', { caller: own, rows: {
+    User: [own, ...Array.from({ length: 2200 }, (_, i) => ({ id: 'foreign-' + i, email: 'foreign-' + i + '@example.test' }))],
+    AgencyMembership: [{ ...membership, tenant_role: 'manager' }],
+    TrainingAssignment: [{ id: 'mine', assigned_to_user_id: own.email, course_id: 'own-course', status: 'completed', required: true },
+      ...Array.from({ length: 5500 }, (_, i) => ({ id: 'foreign-' + i, assigned_to_user_id: 'foreign@example.test', course_id: 'foreign-course', required: true }))],
+    TrainingCourse: [{ id: 'own-course', title: 'Agency course' }, ...Array.from({ length: 1100 }, (_, i) => ({ id: 'foreign-' + i }))],
+  } });
+  const r = await h.call({}); assert.equal(r.status, 200); assert.equal(r.body.overall.total, 1); assert.equal(r.body.overall.pct, 100);
+  assert.equal(h.reads.some(read => read.action === 'list'), false);
+  assert.equal(r.body.rows[0].employee, own.email);
+});
+test('agency course lookups must be complete rather than silently removing requirements', async () => {
+  const h = harness('getTeamTrainingReadiness', { rows: {
+    AgencyMembership: [{ ...membership, tenant_role: 'manager' }],
+    TrainingAssignment: [{ id: 'mine', assigned_to_user_id: employee.email, course_id: 'missing-course', status: 'completed' }],
+  } });
+  assert.equal((await h.call({})).status, 409);
 });

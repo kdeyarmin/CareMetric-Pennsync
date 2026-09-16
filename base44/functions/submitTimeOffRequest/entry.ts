@@ -355,8 +355,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'The end date cannot be before the start date.' }, { status: 400 });
     }
 
-    if (typeof half_day !== 'boolean' || end.getTime() - start.getTime() > 366 * 86400000) {
-      return Response.json({ error: 'Use a boolean half-day choice and request no more than one year at a time.' }, { status: 400 });
+    // Both endpoint dates are included. Use UTC calendar keys so a DST
+    // transition cannot change the number of days in this bounded request.
+    const inclusiveDays = (Date.UTC(end.getFullYear(), end.getMonth(), end.getDate())
+      - Date.UTC(start.getFullYear(), start.getMonth(), start.getDate())) / 86400000 + 1;
+    if (typeof half_day !== 'boolean' || inclusiveDays > 366) {
+      return Response.json({ error: 'Use a boolean half-day choice and request no more than 366 calendar days, including both dates.' }, { status: 400 });
     }
     const total = totalRequestedDays(start_date, end_date, half_day);
     if (total <= 0) {

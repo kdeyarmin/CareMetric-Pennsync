@@ -1,0 +1,455 @@
+{
+  "analyzeClinicalData": {
+    "status": 503,
+    "body": {
+      "error": "Clinical data analysis is unavailable pending a tenant-authorized broker",
+      "code": "CLINICAL_DATA_ANALYSIS_PAUSED",
+      "available": false
+    }
+  },
+  "analyzeDocument": {
+    "status": 503,
+    "body": {
+      "error": "Document analysis is temporarily unavailable",
+      "code": "document_analysis_private_write_broker_required"
+    }
+  },
+  "analyzeNursePerformance": {
+    "status": 503,
+    "body": {
+      "error": "Nurse performance analysis is unavailable pending immutable tenant provenance",
+      "code": "NURSE_PERFORMANCE_ANALYSIS_PAUSED",
+      "available": false
+    }
+  },
+  "archiveSignedDocument": {
+    "status": 503,
+    "body": {
+      "error": "Signed-document archival is temporarily unavailable.",
+      "code": "signed_document_archival_unavailable"
+    }
+  },
+  "autoRetryFailedFaxes": {
+    "status": 503,
+    "body": {
+      "error": "Outbound delivery is disabled in this environment.",
+      "code": "OUTBOUND_DELIVERY_RELEASE_PAUSED",
+      "channel": "fax",
+      "retryable": false
+    }
+  },
+  "bulkCreateDocumentPackages": {
+    "status": 503,
+    "body": {
+      "error": "Bulk document-signing packages are temporarily unavailable.",
+      "code": "bulk_document_packages_unavailable"
+    }
+  },
+  "calculateDataQualityScores": {
+    "status": 503,
+    "body": {
+      "error": "Legacy Patient service-role writer is temporarily unavailable",
+      "code": "legacy_patient_service_writer_paused",
+      "reason": "immutable_tenant_authorization_and_atomic_write_broker_required",
+      "endpoint": "calculateDataQualityScores"
+    }
+  },
+  "centralAdminRead": {
+    "status": 503,
+    "body": {
+      "error": {
+        "code": "unconfigured"
+      }
+    }
+  },
+  "centralLearningGrade": {
+    "status": 503,
+    "body": {
+      "status": "unconfigured"
+    }
+  },
+  "checkPendingSignatureRequests": {
+    "status": 503,
+    "body": {
+      "error": "Signature reminders are temporarily unavailable.",
+      "code": "pending_signature_notification_unavailable"
+    }
+  },
+  "checkStaleFollowUpRequests": {
+    "status": 503,
+    "body": {
+      "error": "Stale follow-up processing is disabled pending hosted validation",
+      "code": "stale_follow_up_workflow_disabled"
+    }
+  },
+  "computeOutcomeMeasures": {
+    "status": 503,
+    "body": {
+      "error": "This outcome worker is retired"
+    }
+  },
+  "computeOutcomeMeasuresV2": {
+    "status": 503,
+    "body": {
+      "error": "Outcome computation is paused until the pipeline release is enabled"
+    }
+  },
+  "createTelehealthToken": {
+    "status": 503,
+    "body": {
+      "error": "Telehealth provider access is temporarily unavailable while session authority is migrated.",
+      "code": "telehealth_provider_migration_pending"
+    }
+  },
+  "deduplicatePatients": {
+    "status": 503,
+    "body": {
+      "error": "Patient duplicate scanning and merging are temporarily unavailable pending an authorized, atomic server broker",
+      "code": "patient_merge_security_validation_pending"
+    }
+  },
+  "deletePatientsMissingFirstName": {
+    "status": 503,
+    "body": {
+      "error": "Legacy Patient service-role writer is temporarily unavailable",
+      "code": "legacy_patient_service_writer_paused",
+      "reason": "immutable_tenant_authorization_and_atomic_write_broker_required",
+      "endpoint": "deletePatientsMissingFirstName"
+    }
+  },
+  "dispatchNightlyOutcomeMeasures": {
+    "status": 503,
+    "body": {
+      "error": "Nightly outcome dispatch is disabled pending hosted validation"
+    }
+  },
+  "dispatchScheduledSignatureReminders": {
+    "status": 503,
+    "body": {
+      "error": "Signature reminders are temporarily unavailable.",
+      "code": "signature_reminder_dispatch_unavailable"
+    }
+  },
+  "dispatchScheduledSms": {
+    "status": 503,
+    "body": {
+      "error": "Outbound delivery is disabled in this environment.",
+      "code": "OUTBOUND_DELIVERY_RELEASE_PAUSED",
+      "channel": "sms",
+      "retryable": false
+    }
+  },
+  "embedAnnotationsToPDF": {
+    "status": 503,
+    "body": {
+      "error": "PDF annotation and signature embedding are temporarily unavailable.",
+      "code": "pdf_annotation_embedding_unavailable"
+    }
+  },
+  "enforceDataCompleteness": {
+    "status": 503,
+    "body": {
+      "error": "Legacy Patient service-role writer is temporarily unavailable",
+      "code": "legacy_patient_service_writer_paused",
+      "reason": "immutable_tenant_authorization_and_atomic_write_broker_required",
+      "endpoint": "enforceDataCompleteness"
+    }
+  },
+  "generateDischargeSummary": {
+    "status": 503,
+    "body": {
+      "success": false,
+      "paused": true,
+      "code": "DISCHARGE_SUMMARY_GENERATION_PAUSED",
+      "error": "Discharge summary generation is temporarily unavailable pending tenant-safe storage"
+    }
+  },
+  "generateDocumentPackageFromTemplate": {
+    "status": 503,
+    "body": {
+      "error": "Template-based signing documents are temporarily unavailable.",
+      "code": "document_package_generation_unavailable"
+    }
+  },
+  "generateMessageSuggestions": {
+    "status": 503,
+    "body": {
+      "error": "Secure messaging is temporarily unavailable",
+      "code": "secure_message_tenant_broker_required"
+    }
+  },
+  "generatePatientEducation": {
+    "status": 503,
+    "body": {
+      "success": false,
+      "paused": true,
+      "code": "PATIENT_EDUCATION_GENERATION_PAUSED",
+      "error": "Patient education generation is temporarily unavailable pending tenant-safe storage"
+    }
+  },
+  "generateSignatureCertificate": {
+    "status": 503,
+    "body": {
+      "error": "Signature certificates are temporarily unavailable.",
+      "code": "signature_certificate_unavailable"
+    }
+  },
+  "generateSignerToken": {
+    "status": 503,
+    "body": {
+      "error": "Secure document review and signing are temporarily unavailable.",
+      "code": "signer_token_issuance_unavailable"
+    }
+  },
+  "getUserActivityLog": {
+    "status": 503,
+    "body": {
+      "error": "User activity history is unavailable pending immutable tenant provenance",
+      "code": "USER_ACTIVITY_LOG_PAUSED",
+      "available": false
+    }
+  },
+  "handleTelnyxStatusWebhook": {
+    "status": 503,
+    "body": {
+      "error": "Webhook credential is not configured uniquely"
+    }
+  },
+  "markMessageRead": {
+    "status": 503,
+    "body": {
+      "error": "Secure messaging is temporarily unavailable",
+      "code": "secure_message_tenant_broker_required"
+    }
+  },
+  "messagingAssistant": {
+    "status": 503,
+    "body": {
+      "error": "Secure messaging is temporarily unavailable",
+      "code": "secure_message_tenant_broker_required"
+    }
+  },
+  "migrateExistingData": {
+    "status": 503,
+    "body": {
+      "error": "Legacy Patient service-role writer is temporarily unavailable",
+      "code": "legacy_patient_service_writer_paused",
+      "reason": "immutable_tenant_authorization_and_atomic_write_broker_required",
+      "endpoint": "migrateExistingData"
+    }
+  },
+  "monitorClinicalDataForCarePlanUpdates": {
+    "status": 503,
+    "body": {
+      "error": "Legacy Patient service-role writer is temporarily unavailable",
+      "code": "legacy_patient_service_writer_paused",
+      "reason": "immutable_tenant_authorization_and_atomic_write_broker_required",
+      "endpoint": "monitorClinicalDataForCarePlanUpdates"
+    }
+  },
+  "notifyAdminOfSignedDocument": {
+    "status": 503,
+    "body": {
+      "error": "Signed-document notifications are temporarily unavailable.",
+      "code": "signed_document_notification_unavailable"
+    }
+  },
+  "notifySignerOfPackage": {
+    "status": 503,
+    "body": {
+      "error": "Signer link delivery is temporarily unavailable.",
+      "code": "signer_link_delivery_unavailable"
+    }
+  },
+  "notifyUrgentMessage": {
+    "status": 503,
+    "body": {
+      "error": "Secure messaging is temporarily unavailable",
+      "code": "secure_message_tenant_broker_required"
+    }
+  },
+  "onDocumentSigned": {
+    "status": 503,
+    "body": {
+      "error": "Document-signing completion processing is temporarily unavailable.",
+      "code": "document_signing_completion_unavailable"
+    }
+  },
+  "pollFaxStatuses": {
+    "status": 503,
+    "body": {
+      "error": "Fax status polling is not released"
+    }
+  },
+  "predictPatientRisks": {
+    "status": 503,
+    "body": {
+      "error": "Legacy Patient service-role writer is temporarily unavailable",
+      "code": "legacy_patient_service_writer_paused",
+      "reason": "immutable_tenant_authorization_and_atomic_write_broker_required",
+      "endpoint": "predictPatientRisks"
+    }
+  },
+  "predictiveRiskAnalysis": {
+    "status": 503,
+    "body": {
+      "error": "Legacy Patient service-role writer is temporarily unavailable",
+      "code": "legacy_patient_service_writer_paused",
+      "reason": "immutable_tenant_authorization_and_atomic_write_broker_required",
+      "endpoint": "predictiveRiskAnalysis"
+    }
+  },
+  "preflightStagingReadinessFixture": {
+    "status": 503,
+    "body": {
+      "error": "Staging readiness preflight is disabled"
+    }
+  },
+  "processCompletedVisit": {
+    "status": 503,
+    "body": {
+      "error": "Completed-visit AI processing is temporarily unavailable pending tenant-safe Visit update migration",
+      "code": "visit_update_security_validation_pending"
+    }
+  },
+  "processDischargeReport": {
+    "status": 503,
+    "body": {
+      "error": "Legacy Patient service-role writer is temporarily unavailable",
+      "code": "legacy_patient_service_writer_paused",
+      "reason": "immutable_tenant_authorization_and_atomic_write_broker_required",
+      "endpoint": "processDischargeReport"
+    }
+  },
+  "processInboundFaxes": {
+    "status": 503,
+    "body": {
+      "success": false,
+      "error": "Inbound fax processing is disabled pending hosted validation",
+      "code": "inbound_fax_workflow_disabled"
+    }
+  },
+  "processScheduledFaxes": {
+    "status": 503,
+    "body": {
+      "error": "Outbound delivery is disabled in this environment.",
+      "code": "OUTBOUND_DELIVERY_RELEASE_PAUSED",
+      "channel": "fax",
+      "retryable": false
+    }
+  },
+  "redriveFailedSms": {
+    "status": 503,
+    "body": {
+      "error": "Outbound delivery is disabled in this environment.",
+      "code": "OUTBOUND_DELIVERY_RELEASE_PAUSED",
+      "channel": "sms",
+      "retryable": false
+    }
+  },
+  "runSecurityAudit": {
+    "status": 503,
+    "body": {
+      "error": "Security audit is unavailable pending immutable tenant provenance",
+      "code": "SECURITY_AUDIT_PAUSED",
+      "available": false
+    }
+  },
+  "saveOasisResponses": {
+    "status": 503,
+    "body": {
+      "error": "OASIS v2 response writes are temporarily unavailable pending tenant and patient-access security validation.",
+      "reason": "tenant_security_validation_pending"
+    }
+  },
+  "scheduleSignatureReminders": {
+    "status": 503,
+    "body": {
+      "error": "Signature reminders are temporarily unavailable.",
+      "code": "signature_reminder_schedule_unavailable"
+    }
+  },
+  "scheduleSms": {
+    "status": 503,
+    "body": {
+      "error": "Scheduled SMS is temporarily unavailable pending a service-owned telecom and tenant binding",
+      "code": "telecom_authority_migration_pending"
+    }
+  },
+  "sendAutomatedSignatureReminders": {
+    "status": 503,
+    "body": {
+      "error": "Signature reminders are temporarily unavailable.",
+      "code": "automated_signature_reminder_unavailable"
+    }
+  },
+  "sendDocumentReminderEmails": {
+    "status": 503,
+    "body": {
+      "error": "Signature reminders are temporarily unavailable.",
+      "code": "document_signature_reminder_unavailable"
+    }
+  },
+  "sendMessage": {
+    "status": 503,
+    "body": {
+      "error": "Secure messaging is temporarily unavailable",
+      "code": "secure_message_tenant_broker_required"
+    }
+  },
+  "sendSignatureReminder": {
+    "status": 503,
+    "body": {
+      "error": "Signature reminders are temporarily unavailable.",
+      "code": "signature_reminder_unavailable"
+    }
+  },
+  "signatureIntegrity": {
+    "status": 503,
+    "body": {
+      "error": "Signature integrity processing is temporarily unavailable.",
+      "code": "signature_integrity_unavailable"
+    }
+  },
+  "stampSignatureOnPDF": {
+    "status": 503,
+    "body": {
+      "error": "PDF signature stamping is temporarily unavailable.",
+      "code": "signature_pdf_stamping_unavailable"
+    }
+  },
+  "submitDocumentSignatures": {
+    "status": 503,
+    "body": {
+      "error": "Document review and signature submission are temporarily unavailable.",
+      "code": "document_signature_submission_unavailable"
+    }
+  },
+  "submitSignerSignature": {
+    "status": 503,
+    "body": {
+      "error": "Secure document review and signing are temporarily unavailable.",
+      "code": "signer_submission_unavailable"
+    }
+  },
+  "summarizeMessageThread": {
+    "status": 503,
+    "body": {
+      "error": "Secure messaging is temporarily unavailable",
+      "code": "secure_message_tenant_broker_required"
+    }
+  },
+  "trackUserLogin": {
+    "status": 503,
+    "body": {
+      "error": "Login telemetry is unavailable pending provider-auth event integration"
+    }
+  },
+  "validateSignerToken": {
+    "status": 503,
+    "body": {
+      "error": "Secure document review and signing are temporarily unavailable.",
+      "code": "signer_validation_unavailable"
+    }
+  }
+}

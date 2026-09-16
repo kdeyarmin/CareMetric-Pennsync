@@ -30,7 +30,7 @@ Two deployment problems were independently observed: the live sites still served
 
 The complete row-by-row backend, page and schema list is in [APP_FUNCTIONALITY_INDEX_2026-09-16.md](APP_FUNCTIONALITY_INDEX_2026-09-16.md). A machine-readable source/policy index was also generated in the isolated audit workspace. Source hashes, lexical test references and call-site associations make omissions visible. An additional AST scan cataloged 21,493 function definitions, including repeated generated helpers; this is a structural count, not individual manual acceptance. None of these static associations is a code-coverage percentage or evidence that every valid-user execution path was exercised.
 
-The negative sweep transpiles the actual handler into an isolated VM, supplies no user session and substitutes an inert SDK. Network, record reads/writes, provider operations and timers are trapped. The sole HTTP 200 is the existing inert retirement of automatic patient assignment. The signed Telnyx webhook's verification-configuration read is the sole explicitly documented read exception; the mock blocks that read and the handler rejects the request. No business-record operation is permitted by this exception. The tests verify that the harness detects deliberately unsafe example handlers instead of producing a no-op green result.
+The negative sweep transpiles the actual handler into an isolated VM, supplies no user session and substitutes an inert SDK. This cooperative source-testing harness is not an OS/network security boundary. Its output measures intercepted fetch attempts rather than asserting a hard-coded count of hosted requests. Every discovered function directory must have a readable entry, and missing/unreadable entries fail the audit. HTTP 500 errors are failures; existing deliberate 503 unavailable states match reviewed exact responses and are reported separately, not as authentication denials. Network, record reads/writes, provider operations and timers are trapped. The sole HTTP 200 is the existing inert retirement of automatic patient assignment. The signed Telnyx webhook's verification-configuration read is the sole explicitly documented read exception; the mock blocks that read and the handler rejects the request. No business-record operation is permitted by this exception. The tests verify that the harness detects deliberately unsafe example handlers instead of producing a no-op green result.
 
 ## 2. Reproducible defects fixed in this branch
 
@@ -64,7 +64,7 @@ Fallback recipients are resolved from canonical agency-admin memberships and the
 
 ### Time-off and personnel credentials
 
-Time-off requires exact calendar dates and a real boolean half-day choice. A request spanning more than one year is rejected before iterating its calendar; a timestamp suffix or the string `"false"` cannot be misinterpreted. These are input-integrity and bounded-execution guards, not changes to the organization's leave entitlement.
+Time-off requires exact calendar dates and a real boolean half-day choice. A request containing more than 366 calendar dates (including both endpoint dates) is rejected before iterating its calendar; a timestamp suffix or the string `"false"` cannot be misinterpreted. These are input-integrity and bounded-execution guards, not changes to the organization's leave entitlement.
 
 Credential inputs must be text of bounded size. Impossible dates, an issue date after expiration, and object values are rejected. A supplied upload URL must be HTTPS without URL-embedded credentials. This URL validation does not prove document ownership, malware safety, or the correctness of the separate upload/private-storage workflow.
 
@@ -145,3 +145,8 @@ The current `live-readiness-evidence.draft.json` still contains unresolved deplo
 **Before enabling integrations or native release:** use provider test modes and retain delivery/receipt evidence; validate signing, purchases/restoration, sessions and device media permissions. Paused e-sign, telehealth, telecom, AI and learning-cutover controls should only change as separate reviewed releases with their own success/rollback evidence.
 
 The source repairs and evidence are actionable work completed in this review. They are not a claim that the provider configuration, every live user journey, or the native store release has been completed.
+
+
+## Continuation and review closeout
+
+See [APP_REVIEW_184_CLOSEOUT_2026-09-16.md](APP_REVIEW_184_CLOSEOUT_2026-09-16.md) for the follow-up review fixes and fresh recorder/schema verification. Earlier live findings above are timestamped observations, not the latest state.

@@ -467,7 +467,13 @@ Deno.serve(async (req) => {
     } catch (_profileError) {
       return Response.json({ error: 'Payroll profile could not be verified. Nothing was saved; retry after the service recovers.' }, { status: 503 });
     }
-    const service_type = (profile?.service_type || user.service_type) === 'hospice' ? 'hospice' : 'home_health';
+    // Missing legacy configuration may use the existing default; malformed
+    // supplied configuration must not silently change the payroll service line.
+    const configuredServiceType = profile?.service_type ?? user.service_type ?? 'home_health';
+    if (!VALID_SERVICE_TYPES.includes(configuredServiceType)) {
+      return Response.json({ error: 'Payroll service type is invalid. Ask an administrator to reconcile the configuration before saving.' }, { status: 409 });
+    }
+    const service_type = configuredServiceType;
     const earns_points = service_type === 'home_health' && profile?.earns_points === true;
 
     if (!VALID_SERVICE_TYPES.includes(service_type)) {
@@ -493,7 +499,8 @@ Deno.serve(async (req) => {
     }
 
     const validNumber = value => value == null || value === ''
-      || ((typeof value === 'number' || typeof value === 'string') && Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= 1000000000);
+      || ((typeof value === 'number' || (typeof value === 'string' && value.trim() !== ''))
+        && Number.isFinite(Number(value)) && Number(value) >= 0 && Number(value) <= 1000000000);
     if (NUMERIC_FIELDS.some(field => !validNumber(body[field]))) {
       return Response.json({ error: 'Hours, points, mileage and reimbursements must be valid non-negative numbers.' }, { status: 400 });
     }
