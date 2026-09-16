@@ -1,0 +1,26 @@
+name: External Integration Runtime
+on:
+  pull_request:
+    paths:
+      - 'services/integration-runtime/**'
+      - '.github/workflows/external-integrations.yml'
+      - 'railway.toml'
+  push:
+    branches: [main, 'feat/external-integration-runtime-20260916']
+    paths:
+      - 'services/integration-runtime/**'
+      - '.github/workflows/external-integrations.yml'
+      - 'railway.toml'
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.0
+      - name: Test standalone runtime without network credentials
+        run: node --test services/integration-runtime/runtime.test.mjs
