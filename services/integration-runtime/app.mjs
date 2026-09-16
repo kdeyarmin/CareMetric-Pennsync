@@ -4,7 +4,14 @@ import { createProviders, validateParams } from './providers.mjs';
 
 export function createHandler(config, dependencies = {}) {
   const store = dependencies.store || createStore(config, dependencies.fetcher);
-  const provider = dependencies.provider || createProviders(config, store, dependencies.fetcher);
+  const rawProvider = dependencies.provider || createProviders(config, store, dependencies.fetcher);
+  const provider = async (operation, params, context) => {
+    const beganAt = Date.now();
+    const result = await rawProvider(operation, params, context);
+    // The provider issues a 60-second signed link. Its lease begins before the
+    // request, never after network time, and cannot inherit the job's 24h TTL.
+    return operation === 'CreateFileSignedUrl' ? { ...result, expires_at_ms: beganAt + 60000 } : result;
+  };
   const authority = dependencies.authority || ((c, r, a) => authorize(c, r, a, dependencies.fetcher));
   let running = 0;
   return async function handle(req) {
@@ -46,7 +53,6 @@ export function createHandler(config, dependencies = {}) {
       return json({ success: true, result, execution: 'external', base44ExecutionDependency: true });
     } catch (error) {
       const safe = error instanceof IntegrationError;
-      // Never return exception text, provider payloads, prompts or credentials.
       return json({ success: false, error: safe ? error.code : 'INTEGRATION_UNAVAILABLE', retryable: false }, safe ? error.status : 503);
     } finally { if (counted) running--; }
   };
