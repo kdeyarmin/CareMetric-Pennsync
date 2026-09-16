@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import VehicleMaintenance from './VehicleMaintenance';
+import { expectNoAxeViolations } from '@/test/axeHelpers';
 
 const { request, current } = vi.hoisted(() => ({ request: vi.fn(), current: { canManage: false, vehicles: [], entries: [] } }));
 vi.mock('@/functions/manageVehicleMaintenance', () => ({ manageVehicleMaintenance: request, vehicleRequestId: () => 'fleet-test-request' }));
@@ -116,6 +117,17 @@ describe('vehicle maintenance employee and admin flows', () => {
     expect(screen.getByRole('region', { name: 'Company vehicle records' })).toHaveAttribute('data-no-record-block');
     await userEvent.click(screen.getByRole('button', { name: /Log maintenance or repair/ }));
     expect(screen.getByRole('dialog')).toHaveAttribute('data-no-record-block');
+  });
+  it.each([false, true])('loaded fleet screen has no serious accessibility violations (admin=%s)', async canManage => {
+    current.canManage = canManage;
+    const { container } = mount();
+    await screen.findByText('Synthetic oil service');
+    await expectNoAxeViolations(container);
+  });
+  it('employee entry dialog has labeled fields and no serious accessibility violations', async () => {
+    mount();
+    await userEvent.click(await screen.findByRole('button', { name: /Log maintenance or repair/ }));
+    await expectNoAxeViolations(screen.getByRole('dialog'));
   });
   it('invalid cost is rejected before any backend write', async () => {
     mount(); await userEvent.click(await screen.findByRole('button', { name: /Log maintenance or repair/ }));
