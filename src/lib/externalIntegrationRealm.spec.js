@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createClient } from '@base44/sdk';
+import { lockBase44FunctionRevision } from './functionRevisionPolicy';
 import { BROWSER_CONTRACT } from '../../services/integration-runtime/caller-binding.mjs';
 import { createTenantSdkRealmGate } from './tenantSdkRealmGate';
 import { rotateBrowserAuthorityEpoch } from './browserAuthorityEpoch';
@@ -59,5 +61,65 @@ describe('external integrations remain inside the existing tenant SDK realm', ()
     rotateBrowserAuthorityEpoch(); expect(h.gate.isOpen()).toBe(false); expect(signal.aborted).toBe(true);
     resolveProvider(); await rejected;
     expect(h.fetch).toHaveBeenCalledTimes(1); expect(h.native.integrations.Core.InvokeLLM).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('installed Base44 SDK transport composition', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('routes the real dynamic SDK Core proxy through revision and realm guards', async () => {
+    const gate = createTenantSdkRealmGate();
+    const raw = lockBase44FunctionRevision(createClient({
+      appId: EXTERNAL_INTEGRATION_APP,
+      serverUrl: 'https://base44.app',
+      token: 'synthetic-session-token-value',
+      requiresAuth: false,
+      analytics: { enabled: false },
+    }), null);
+    const config = readExternalIntegrationConfig({
+      VITE_EXTERNAL_INTEGRATIONS: 'enabled-v2',
+      VITE_EXTERNAL_INTEGRATION_ORIGIN: EXTERNAL_INTEGRATION_ORIGIN,
+      VITE_EXTERNAL_INTEGRATION_OPERATIONS: 'InvokeLLM',
+      VITE_EXTERNAL_INTEGRATION_REVISION: revision,
+    }, EXTERNAL_INTEGRATION_APP);
+    const xhr = vi.spyOn(XMLHttpRequest.prototype, 'open').mockImplementation(() => {
+      throw new Error('An external operation must not fall back to the native SDK network');
+    });
+    const fetcher = vi.fn(async (url, options) => {
+      const body = JSON.parse(options.body);
+      const response = Response.json({ success: true, result: 'synthetic installed-SDK result',
+        execution: 'external', base44ExecutionDependency: true, contract: BROWSER_CONTRACT,
+        app_id: EXTERNAL_INTEGRATION_APP, revision, request_id: body.request_id, operation: body.operation });
+      Object.defineProperty(response, 'url', { value: url });
+      return response;
+    });
+    try {
+      const routed = routeExternalCoreOperations(raw, config, {
+        fetcher,
+        getSession: () => ({ token: 'synthetic-session-token-value', context: {
+          user_id: 'user-a', agency_id: 'agency-a', membership_id: 'member-a',
+          membership_version: 1, tenant_role: 'clinician', is_platform_owner: false,
+        } }),
+        captureLease: gate.captureLease,
+        assertLeaseCurrent: gate.assertLeaseCurrent,
+        getLeaseSignal: gate.getLeaseAbortSignal,
+      });
+      expect(routeExternalCoreOperations(raw, { enabled: false }, {})).toBe(raw);
+      const client = gate.wrapClient(routed);
+      await expect(client.integrations.Core.InvokeLLM({ prompt: 'invented' }))
+        .rejects.toMatchObject({ code: 'TENANT_SDK_REALM_CLOSED' });
+      expect(fetcher).not.toHaveBeenCalled();
+      expect(gate.open(authority)).toBe(true);
+      const selected = client.integrations.Core.InvokeLLM;
+      await expect(selected({ prompt: 'invented' })).resolves.toBe('synthetic installed-SDK result');
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(xhr).not.toHaveBeenCalled();
+      gate.close();
+      await expect(selected({ prompt: 'invented' })).rejects.toMatchObject({ code: 'TENANT_SDK_REALM_CLOSED' });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally {
+      xhr.mockRestore();
+    }
   });
 });

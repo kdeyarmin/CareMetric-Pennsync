@@ -134,6 +134,15 @@ export function clearTrustedTenantContext() {
   activeTrustedPrincipal = null;
 }
 
+/**
+ * Read-only expectation for the external transport inside the tenant membrane.
+ * This is not an authorization grant: the external server independently checks
+ * the current principal and membership before work and before result disclosure.
+ */
+export function getActiveTrustedTenantContext() {
+  return activeTrustedPrincipal?.context ?? null;
+}
+
 /** Read the validated context bound to this exact authenticated principal. */
 export function getTrustedTenantContext(user) {
   if (!user || typeof user !== "object" || Array.isArray(user)) return null;
