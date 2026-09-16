@@ -19,13 +19,13 @@ const clone = value => JSON.parse(JSON.stringify(value));
 const employee = { id: 'employee-1', email: 'staff@example.test', full_name: 'Test Driver', role: 'user', is_active: true };
 const admin = { id: 'admin-1', email: 'admin@example.test', full_name: 'Fleet Admin', role: 'user', is_active: true };
 const owner = { id: 'owner-1', email: 'owner@example.test', full_name: 'Owner', role: 'admin' };
-const member = (user, role = 'clinician') => ({ id: `member-${user.id}`, user_id: user.id, agency_id: 'agency-a', user_email_normalized: user.email, membership_key: `agency-a:${user.id}`, tenant_role: role, status: 'active', version: 1 });
+const member = (user, role = 'clinician') => ({ id: `member-${user.id}`, user_id: user.id, agency_id: 'agency-a', user_email_normalized: user.email, membership_key: `agency-a:${user.id}`, tenant_role: role, status: 'active', version: 1, created_by_user_id: owner.id, last_transition_by_user_id: owner.id, last_transition_by_email_normalized: owner.email, last_transition_at: '2026-01-01T12:00:00.000Z', last_transition_reason: 'Synthetic membership fixture', activated_at: '2026-01-01T12:00:00.000Z' });
 const vehicle = (overrides = {}) => ({ id: 'vehicle-1', agency_id: 'agency-a', unit_name: 'Car 01', year: 2024, make: 'Toyota', model: 'Corolla', status: 'active', baseline_odometer: 10000, assigned_user_id: employee.id, assigned_user_name: employee.full_name, assigned_user_email: employee.email, version: 1, request_key: 'initial', ...overrides });
 const entry = (overrides = {}) => ({ id: 'entry-1', agency_id: 'agency-a', vehicle_id: 'vehicle-1', request_key: 'initial-entry', service_date: '2026-01-15', odometer: 11000, service_type: 'oil_change', description: 'Oil and filter changed', recorded_at: '2026-01-15T12:00:00Z', submitted_by_user_id: employee.id, submitted_by_name: employee.full_name, entry_source: 'employee', review_status: 'pending', review_history: [], ...overrides });
 const facts = { service_date: '2026-01-15', odometer: 11000, service_type: 'oil_change', description: 'Oil and filter changed', cost_cents: 8995 };
 const vehicleFacts = { unit_name: 'Car 02', year: 2025, make: 'Ford', model: 'Escape', baseline_odometer: 12000, status: 'active', assigned_user_id: employee.id };
 
-function harness({ user = employee, vehicles = [vehicle()], entries = [], ignoreScope = false, revokeAt = 0, beforePush = null, createFailure = null } = {}) {
+function harness({ user = employee, vehicles = [vehicle()], entries = [], ignoreScope = false, revokeAt = 0, beforePush = null, createFailure = null, updateResultOverride = null } = {}) {
   const state = {
     Agency: [{ id: 'agency-a', agency_name: 'Test Agency', status: 'active' }, { id: 'agency-b', agency_name: 'Other Agency', status: 'active' }],
     AgencyMembership: [member(employee), member(admin, 'agency_admin')],
@@ -74,7 +74,7 @@ function harness({ user = employee, vehicles = [vehicle()], entries = [], ignore
         }
       }
       writes.push({ name, action: 'update', query: clone(query), data: clone(data) });
-      return { success: true, updated: targets.length, has_more: false };
+      return updateResultOverride || { success: true, updated: targets.length, has_more: false };
     },
   }]));
   const client = { asServiceRole: { entities }, auth: { async me() {
@@ -377,5 +377,49 @@ test('single inactive or corrupt employee membership cannot be assigned', async 
     const result = await h.call('create_vehicle', { request_id: 'invalid-member', vehicle: vehicleFacts });
     assert.ok([403, 409].includes(result.status), JSON.stringify(change));
     assert.equal(h.writes.length, 0);
+  }
+});
+
+
+test('caller and assignee membership require the complete canonical lifecycle', async () => {
+  const invalid = [
+    { created_by_user_id: undefined }, { last_transition_by_user_id: undefined },
+    { last_transition_by_email_normalized: 'OWNER@EXAMPLE.TEST' },
+    { last_transition_at: '2026-01-01' }, { last_transition_reason: '' },
+    { activated_at: undefined }, { activated_at: 'not-an-instant' },
+    { invitation_id: '$invalid' }, { revoked_at: '2026-01-01T12:00:00.000Z' },
+    { revocation_reason: 'inconsistent active member' },
+  ];
+  for (const change of invalid) {
+    const caller = harness(); Object.assign(caller.state.AgencyMembership[0], change);
+    assert.equal((await caller.call('context')).status, 409, JSON.stringify(change));
+    assert.equal((await caller.call('vehicles')).status, 409, JSON.stringify(change));
+    const assigning = harness({ user: admin }); Object.assign(assigning.state.AgencyMembership[0], change);
+    assert.equal((await assigning.call('create_vehicle', { request_id: 'invalid-lifecycle', vehicle: vehicleFacts })).status, 403, JSON.stringify(change));
+    assert.equal((await assigning.call('staff')).status, 409, JSON.stringify(change));
+    assert.equal(assigning.writes.length, 0);
+  }
+});
+test('inactive lifecycle metadata must also be coherent before fleet context is issued', async () => {
+  const h = harness();
+  h.state.AgencyMembership[0].status = 'pending';
+  assert.equal((await h.call('context')).status, 409, 'pending membership cannot retain activated_at');
+  h.state.AgencyMembership[0].status = 'revoked';
+  assert.equal((await h.call('context')).status, 409, 'revocation requires canonical timestamp and reason');
+});
+test('staff roster rejects missing User identities rather than claiming completeness', async () => {
+  const h = harness({ user: admin });
+  h.state.User = h.state.User.filter(user => user.id !== employee.id);
+  const result = await h.call('staff');
+  assert.equal(result.status, 409);
+  assert.equal(result.body.success, false);
+  assert.equal(h.writes.length, 0);
+});
+test('vehicle updates need explicitly complete acknowledgements, not an omitted has_more', async () => {
+  for (const has_more of [undefined, null, true, 'false']) {
+    const h = harness({ user: admin, updateResultOverride: { success: true, updated: 1, has_more } });
+    const result = await h.call('update_vehicle', { vehicle_id: 'vehicle-1', expected_version: 1, vehicle: vehicleFacts });
+    assert.equal(result.status, 409);
+    assert.equal(result.body.success, false);
   }
 });

@@ -79,13 +79,13 @@ async function identity(client: any, ownerEmail: string) {
   const memberships = rows(await entities.AgencyMembership.filter({ user_id: userId }, '-updated_date', 101), { user_id: userId });
   if (memberships.length > 100 || (owner && memberships.length)) fail(409, 'Tenant membership requires administrator review.');
   const agencyIds = new Set();
+  const memberIds = new Set();
   for (const member of memberships) {
-    if (agencyIds.has(member.agency_id) || member.membership_key !== `${member.agency_id}:${userId}`
-      || member.user_email_normalized !== userEmail || !ROLES.has(member.tenant_role)
-      || !['pending', 'active', 'suspended', 'revoked'].includes(member.status)
-      || !Number.isSafeInteger(member.version) || member.version < 1) fail(409, 'Tenant membership is ambiguous.');
+    if (agencyIds.has(member.agency_id) || memberIds.has(member.id)
+      || !validFleetMembership(member, member.agency_id, userId, userEmail)) fail(409, 'Tenant membership is ambiguous.');
     id(member.agency_id, 'agency');
     agencyIds.add(member.agency_id);
+    memberIds.add(member.id);
   }
   return { user, userId, userEmail, owner, memberships, entities };
 }
@@ -108,14 +108,37 @@ async function vehicle(auth: any, vehicleId: string) {
   if (!auth.canManage && (record.assigned_user_id !== auth.userId || record.status === 'retired')) fail(403, 'This vehicle is not assigned to you.');
   return record;
 }
-function validAssigneeMembership(member: Record<string, any>, agencyId: string, userId: string) {
-  return typeof member.id === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(member.id)
+// Match the canonical lifecycle integrity required by getMyTenantContext:
+// identity/key alone cannot authorize a partially written service-owned row.
+function validFleetMembership(member: Record<string, any>, agencyId: string, userId: string, userEmail: string) {
+  const identifier = value => typeof value === 'string' && value.length > 0
+    && value.length <= 200 && value.trim() === value && !value.startsWith('$');
+  const canonicalEmail = value => typeof value === 'string' && value.length <= 320
+    && value === email(value) && value.includes('@') && !/\s/.test(value);
+  const instant = value => {
+    if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return false;
+    return new Date(value).toISOString() === value;
+  };
+  const reason = value => typeof value === 'string' && value.length > 0 && value.length <= 500 && value.trim() === value;
+  return identifier(member.id) && identifier(agencyId) && identifier(userId)
     && member.agency_id === agencyId && member.user_id === userId
-    && member.membership_key === `${agencyId}:${userId}` && member.status === 'active'
+    && member.membership_key === `${agencyId}:${userId}`
+    && canonicalEmail(member.user_email_normalized) && member.user_email_normalized === userEmail
+    && ROLES.has(member.tenant_role) && ['pending', 'active', 'suspended', 'revoked'].includes(member.status)
     && Number.isSafeInteger(member.version) && member.version >= 1
-    && ROLES.has(member.tenant_role) && typeof member.user_email_normalized === 'string'
-    && member.user_email_normalized === email(member.user_email_normalized)
-    && member.user_email_normalized.includes('@') && !/\s/.test(member.user_email_normalized);
+    && (member.invitation_id == null || identifier(member.invitation_id))
+    && identifier(member.created_by_user_id) && identifier(member.last_transition_by_user_id)
+    && canonicalEmail(member.last_transition_by_email_normalized)
+    && instant(member.last_transition_at) && reason(member.last_transition_reason)
+    && (member.activated_at == null || instant(member.activated_at))
+    && (!['active', 'suspended'].includes(member.status) || instant(member.activated_at))
+    && (member.status !== 'pending' || member.activated_at == null)
+    && (member.status === 'revoked'
+      ? instant(member.revoked_at) && reason(member.revocation_reason)
+      : member.revoked_at == null && member.revocation_reason == null);
+}
+function validAssigneeMembership(member: Record<string, any>, agencyId: string, userId: string) {
+  return validFleetMembership(member, agencyId, userId, member.user_email_normalized) && member.status === 'active';
 }
 async function assignee(auth: any, userId: string) {
   if (!userId) return { assigned_user_id: '', assigned_user_name: '', assigned_user_email: '' };
@@ -368,7 +391,7 @@ export async function handleVehicleMaintenance(req: Request, client: any, ownerE
       }
       // One bounded User query rather than 100 sequential per-employee reads.
       const users = userIds.length ? rows(await auth.entities.User.filter({ id: { $in: userIds } }, undefined, PAGE_SIZE + 1), {}) : [];
-      if (users.length > PAGE_SIZE || users.some(user => !userIds.includes(user.id))
+      if (users.length !== userIds.length || users.some(user => !userIds.includes(user.id))
         || new Set(users.map(user => user.id)).size !== users.length) fail(409, 'Employee roster identity scope is invalid.');
       const staff = page.flatMap(member => {
         const user = users.find(user => user.id === member.user_id);
@@ -419,7 +442,7 @@ export async function handleVehicleMaintenance(req: Request, client: any, ownerE
         { id: current.id, agency_id: auth.agencyId, version: expected },
         { $set: { ...facts, version: expected + 1, updated_by_user_id: auth.userId, updated_at: new Date().toISOString() } },
       );
-      if (result?.success !== true || result.updated !== 1 || result.has_more) fail(409, 'Vehicle changed or save could not be confirmed. Reload.');
+      if (result?.success !== true || result.updated !== 1 || result.has_more !== false) fail(409, 'Vehicle changed or save could not be confirmed. Reload.');
       const saved = await vehicle(auth, current.id);
       if (saved.version !== expected + 1 || Object.keys(facts).some(key => !same(saved[key], facts[key]))) fail(409, 'Vehicle save requires reconciliation. Reload.');
       await recheck(client, ownerEmail, auth);

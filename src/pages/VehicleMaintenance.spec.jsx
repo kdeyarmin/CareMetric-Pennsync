@@ -103,7 +103,9 @@ describe('vehicle maintenance employee and admin flows', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('not assigned');
     expect(screen.queryByText('Synthetic oil service')).not.toBeInTheDocument();
     expect(screen.queryByText('Known service cost')).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Log maintenance or repair/ })).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /Log maintenance or repair/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Car 01' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Test Driver')).not.toBeInTheDocument();
   });
   it('hides cached vehicle details if fleet access is rejected on refresh', async () => {
     mount();

@@ -67,3 +67,15 @@ PR-triggered CI, component, accessibility and workflow-quality results must be c
 All three follow-up findings were reproduced by adding failing regressions before changing implementation. The resulting focused suite passed **41 backend tests** and **47 page/value/accessibility tests** with retries disabled. The existing original-ten-finding regressions remain included; counts are not additive across repeated runs.
 
 During this continuation Base44 independently committed a package-only update to main (`ea5798694d8ef6e86383611b8894407edc06f3cb`), raising `@base44/vite-plugin` to `^1.0.39` without its lockfile. The follow-up incorporates that main revision and repairs the matching lockfile plus only the exact platform-version release-age exception. It does not relax the general frozen-lockfile, minimum-age, or supply-chain checks. Final PR checks must run on the combined final head, not just the earlier green `3df7eab`.
+
+
+### Findings included only in the reviewers' expanded summaries
+
+The expanded review text was inspected as well as inline threads. The remaining unique summary findings are covered here: full canonical membership lifecycle validation is now shared by caller and assignee checks (including creator/transition/activation/revocation metadata); missing User rows fail the bounded staff batch rather than returning a silently incomplete roster; profile update acknowledgements require `has_more === false`; history failure hides the cached vehicle card/sidebar, not only service rows; and the operator guide now documents immutable review rows, permanent reservations, cursor history and the Eastern calendar. The old review-array acknowledgement issue is eliminated because new reviews no longer use a shared-array update. The other summary notes duplicate the previously fixed assignee, stale capability and pending-dialog issues.
+
+Additional regressions cover malformed caller/assignee lifecycle fields, inconsistent inactive states, missing roster identities and ambiguous update acknowledgements. These fixes do not turn best-effort hosted profile updates into a claimed atomic CAS or establish live concurrent-write acceptance.
+
+
+### Final combined local verification
+
+After the expanded-summary fixes and the current-main dependency reconciliation: **45 backend handler tests**, **47 page/value/accessibility tests** (33 page + 14 utility), and **331 existing schema/integration contracts** passed. Lint, the high-signal typecheck, all **282** backend syntax/target checks, and **225** shared-helper comparisons passed. The exact hosted-form build passed and inspected **501 emitted JavaScript files with zero findings/errors**. The broader informational type baseline remains separate (15,750 findings classified outside the high-signal gate). No production records or settings were changed for this verification. Final remote PR checks and merge state must be checked separately.

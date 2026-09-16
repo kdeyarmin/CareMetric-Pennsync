@@ -133,9 +133,10 @@ function FleetWorkspace({ agency, userId }) {
       </div>
     </div>
     {vehicles.isError && <QueryError error={vehicles.error} retry={() => vehicles.refetch()} />}
+    {history.isError && !vehicles.isError && <QueryError error={history.error} retry={refresh} />}
     {vehicles.isPending && <p role="status">Loading vehicles…</p>}
     {!vehicles.isPending && !vehicles.isError && !allVehicles.length && <div className="rounded-xl border bg-white p-8 text-center"><Car className="mx-auto mb-3 h-10 w-10 text-slate-400" /><h3 className="font-semibold">{canManage ? 'Add your first company vehicle' : 'No vehicle is assigned to you yet'}</h3><p className="mt-2 text-sm text-slate-600">{canManage ? 'Create a vehicle record and select its employee. Maintenance stays with the car when drivers change.' : 'Ask your administrator to assign your company vehicle. They can also enter service records for shared vehicles.'}</p></div>}
-    {!!allVehicles.length && !vehicles.isError && <div className="grid items-start gap-5 lg:grid-cols-[290px_minmax(0,1fr)]">
+    {!!allVehicles.length && !vehicles.isError && !history.isError && <div className="grid items-start gap-5 lg:grid-cols-[290px_minmax(0,1fr)]">
       <aside className="space-y-3" aria-label="Choose a vehicle">
         <div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><Input className="pl-9" aria-label="Search loaded vehicles" placeholder="Car, plate, or employee" value={search} onChange={event => setSearch(event.target.value)} /></div>
         <p className="text-xs text-slate-500">{allVehicles.length} vehicles loaded{vehicles.hasNextPage ? ' — more available' : ''}</p>
