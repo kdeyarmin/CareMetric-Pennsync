@@ -1,4 +1,4 @@
-name: Export isolated migration review dependencies
+name: Export isolated migration package manager
 on:
   push:
     branches: [feat/external-integration-cutover-20260916]
@@ -7,30 +7,18 @@ permissions:
   contents: read
 jobs:
   snapshot:
-    name: Development dependencies only - not deployment
+    name: Public package-manager archive only - not deployment
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@v6
-        with:
-          version: 11.9.0
-          run_install: false
       - uses: actions/setup-node@v7
         with:
-          node-version-file: .nvmrc
-      - name: Install pinned development dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Package development dependencies only
-        shell: bash
-        run: |
-          set -euo pipefail
-          tar -czf /tmp/pennsync-development-dependencies.tar.gz node_modules
+          node-version: 24.18.0
+      - name: Fetch the exact package-manager archive without lifecycle scripts
+        run: npm pack pnpm@11.9.0 --ignore-scripts --pack-destination /tmp
       - uses: actions/upload-artifact@v4
         with:
-          name: pennsync-development-dependencies
-          path: /tmp/pennsync-development-dependencies.tar.gz
+          name: pennsync-package-manager
+          path: /tmp/pnpm-11.9.0.tgz
           retention-days: 1
           if-no-files-found: error
