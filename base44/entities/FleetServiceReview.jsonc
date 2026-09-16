@@ -1,0 +1,60 @@
+{
+  "name": "FleetServiceReview",
+  "type": "object",
+  "description": "Append-only vehicle-service review annotations. No application update or deletion path. Legacy service review arrays are retained unchanged.",
+  "properties": {
+    "agency_id": {
+      "type": "string"
+    },
+    "vehicle_id": {
+      "type": "string"
+    },
+    "entry_id": {
+      "type": "string"
+    },
+    "request_key": {
+      "type": "string"
+    },
+    "creation_claim_token": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "reviewed",
+        "needs_follow_up"
+      ]
+    },
+    "note": {
+      "type": "string"
+    },
+    "reviewer_id": {
+      "type": "string"
+    },
+    "reviewer_name": {
+      "type": "string"
+    },
+    "reviewed_at": {
+      "type": "string",
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "agency_id",
+    "vehicle_id",
+    "entry_id",
+    "request_key",
+    "creation_claim_token",
+    "status",
+    "note",
+    "reviewer_id",
+    "reviewer_name",
+    "reviewed_at"
+  ],
+  "rls": {
+    "create": false,
+    "read": false,
+    "update": false,
+    "delete": false
+  }
+}

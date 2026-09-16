@@ -3,6 +3,29 @@
   "type": "object",
   "description": "Per-vehicle maintenance/repair journal. Original service facts cannot be edited or deleted through the app; admin review annotations are retained.",
   "properties": {
+    "creation_claim_token": {
+      "type": "string",
+      "description": "Matches the winning server-owned service creation reservation."
+    },
+    "review_creation_claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "token"
+        ]
+      },
+      "description": "Service-owned permanent ordered request reservations. Append with native $push only; never replace, reorder, clear, or expire after an uncertain create."
+    },
     "agency_id": {
       "type": "string"
     },

@@ -6,9 +6,12 @@ export const SERVICE_TYPES = Object.freeze({
 export const VEHICLE_STATUSES = Object.freeze({ active: 'Active', out_of_service: 'Out of service', retired: 'Retired' });
 export const REVIEW_STATUSES = Object.freeze({ pending: 'Not yet reviewed', reviewed: 'Reviewed', needs_follow_up: 'Needs follow-up' });
 
+const FLEET_TIME_ZONE = 'America/New_York';
 export function todayLocal(now = new Date()) {
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: FLEET_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now).map(part => [part.type, part.value]));
+  return [parts.year, parts.month, parts.day].join('-');
 }
+
 export function parseCostCents(value) {
   const input = String(value ?? '').trim();
   if (!input) return undefined;

@@ -3,6 +3,29 @@
   "type": "object",
   "description": "Company vehicle inventory, administered through the tenant-authorized vehicle-maintenance broker. No patient information.",
   "properties": {
+    "creation_claim_token": {
+      "type": "string",
+      "description": "Matches the winning server-owned vehicle creation reservation."
+    },
+    "service_creation_claims": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "key": {
+            "type": "string"
+          },
+          "token": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "token"
+        ]
+      },
+      "description": "Service-owned permanent ordered request reservations. Append with native $push only; never replace, reorder, clear, or expire after an uncertain create."
+    },
     "agency_id": {
       "type": "string"
     },

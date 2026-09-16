@@ -15,7 +15,7 @@ No vehicles, employee assignments, mileage, invoices, or costs were invented or 
 
 ## Employee: log completed work
 
-Open Vehicles, choose the assigned car, and select **Log maintenance or repair**. The required fields are service date, odometer at service, service type, and what was done. The default date is today and the form works on narrow mobile screens.
+Open Vehicles, choose the assigned car, and select **Log maintenance or repair**. The required fields are service date, odometer at service, service type, and what was done. The default date is today in the explicitly labeled Eastern Time business calendar, shared by the form and server. The form works on narrow mobile screens.
 
 Optional details: shop/provider, total cost, invoice or receipt reference, and next service due date/mileage. A blank cost means unknown; zero means no charge. The next-service section is collapsed until needed.
 
@@ -35,7 +35,7 @@ Vehicle reassignment changes the employee who can access it without moving or de
 
 Records are sorted by service date, newest first. Each shows mileage, work performed, cost when known, provider/reference when entered, author, recorded time, and review status/history.
 
-Lists are paginated in groups of 50. **Load older entries** retrieves earlier service records instead of silently cutting off the log. Until all pages are loaded, the cost, mileage and review summary explicitly describes loaded records rather than claiming a complete total. Unknown-cost entries are counted separately. Historical service entries can have mileage below the current starting reading; the highest recorded mileage is calculated without overwriting old readings.
+Lists are paginated in groups of 50. Service history uses a scoped date-and-record-ID cursor with stable tie ordering, not numeric offsets. Existing entries remain traversable during new insertions; new entries above the consumed cursor appear after Refresh (this is not a frozen snapshot). **Load older entries** retrieves earlier service records instead of silently cutting off the log. Until all pages are loaded, the cost, mileage and review summary explicitly describes loaded records rather than claiming a complete total. Unknown-cost entries are counted separately. Historical service entries can have mileage below the current starting reading; the highest recorded mileage is calculated without overwriting old readings.
 
 **Refresh records** reloads the current vehicle and service history. If access is rejected during a refresh, cached service facts are no longer displayed as accessible records.
 
@@ -45,17 +45,17 @@ This version includes structured vehicle records, employee/admin entry, administ
 
 ## Security and operational details
 
-- `FleetVehicle` and `FleetServiceEntry` deny all direct client create/read/update/delete operations.
+- `FleetVehicle`, `FleetServiceEntry`, and `FleetServiceReview` deny all direct client create/read/update/delete operations.
 - `manageVehicleMaintenance` is the sole app access path. It verifies built-in User identity and active AgencyMembership for every request; self-editable account/agency/manager profile fields are not authorization inputs.
 - Employees are limited to assigned vehicles. Fleet administration requires agency_admin membership or the configured protected platform owner.
 - The broker stamps author/reviewer identities, scopes records to agency and vehicle, validates inputs, rechecks authority, and does not offer deletion or replacement of original service facts.
-- Sequential identical retries reuse a request ID and return the existing row. Concurrent uniqueness is not asserted as a guaranteed datastore property; duplicate or uncertain results require refreshing and reconciliation rather than inventing success.
-- Vehicle edits and review updates use conditional update requests and readback. Hosted conditional-update concurrency still needs an authenticated acceptance check; mocked contract tests are not proof of hosted datastore atomicity.
-- Review history has an explicit 100-annotation safety limit; exceeding it returns an error and does not discard prior reviews. The owner agency picker has an explicit 200-agency bound. These limits do not cap a vehicle's service history.
+- Vehicle/service/review creation uses permanent ordered native-append reservations on the existing parent. Retrying the same request reconciles an existing record without issuing another child create. An uncertain reservation is not expired or taken over; contact an administrator for reconciliation. Hosted append/consistency acceptance remains separate from synthetic tests.
+- Vehicle-profile edits use a version-filter/readback check with an explicitly complete acknowledgement; this remains best-effort, not proven hosted CAS. New review annotations are immutable FleetServiceReview rows. Legacy arrays remain unchanged and combine with review rows only in the response; malformed history is rejected rather than discarded.
+- New review creation refuses an observed history of 100 or more annotations, without truncating any already-created concurrent annotations. Reservation arrays and bounded review reads have explicit 5,000-item reconciliation limits. The owner agency picker has an explicit 200-agency bound. None of these paths silently deletes vehicle service history.
 - The page's records and dialog forms carry `data-no-record-block` markers. The new module does not change Base44's app-wide recording toggle and does not resolve recording concerns elsewhere in the clinical app.
 - Enter vehicle and service information only, not patient names, visits, diagnoses, or clinical details.
 
-## Verification performed on September 16, 2026
+## Initial feature verification performed on September 16, 2026
 
 - 23 backend contract tests passed using the actual transpiled handler with a synthetic SDK, including scope, role/identity forgery, assigned-only access, review rules, idempotent sequential retry, version conflicts, and history pagination.
 - 31 vehicle utility/UI tests passed, including employee entry, administrator assignment and review, failed-save form retention, paging, stale-access handling, input validation, and accessibility checks.
@@ -68,3 +68,7 @@ This version includes structured vehicle records, employee/admin entry, administ
 - Live schema readback confirmed both entities; the production fleet tables were empty when checked. No synthetic production records were inserted.
 
 Source tests, schema registration, hosted anonymous rejection, frontend publication, and authenticated employee/admin acceptance are separate milestones. Publication and acceptance results must be recorded explicitly rather than inferred from a passing build.
+
+## Review follow-up
+
+PR #182 contains the follow-up to retrospective PR #181. See `docs/audits/VEHICLE_REVIEW_181_2026-09-16.md` for full review mapping, focused test results, and hosted acceptance limits. Vehicle/history failures conceal and block pending forms while retaining their in-memory draft and retry ID; restoring verified read access reveals the same form. Save callbacks keep the originating form mounted until post-save refresh completes. Context/tenant failure still unmounts and removes caches. Draft recovery is not persisted across logout or reload.
