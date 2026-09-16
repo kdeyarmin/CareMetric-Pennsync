@@ -1,5 +1,28 @@
 import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
 
+// <<<BEGIN SHARED HELPER: authReadFailure — generated, edit base44/_shared/backendHelpers.mjs>>>
+class AuthReadFailure extends Error {
+  constructor(cause) {
+    super('Authentication lookup failed');
+    this.name = 'AuthReadFailure';
+    const status = cause?.status ?? cause?.response?.status;
+    this.publicStatus = status === 401 || status === 403 ? status : 503;
+  }
+}
+function rethrowAuthReadFailure(error) { throw new AuthReadFailure(error); }
+function authReadFailureResponse(error) {
+  if (!(error instanceof AuthReadFailure)) return null;
+  const status = error.publicStatus;
+  return Response.json({
+    error: status === 401 ? 'Sign in to continue.'
+      : status === 403 ? 'This session is not permitted to access the app.'
+        : 'The authentication service is temporarily unavailable. Try again shortly.',
+    code: status === 401 ? 'AUTHENTICATION_REQUIRED'
+      : status === 403 ? 'AUTHENTICATION_FORBIDDEN' : 'AUTHENTICATION_UNAVAILABLE',
+  }, { status, headers: { 'Cache-Control': 'no-store' } });
+}
+// <<<END SHARED HELPER: authReadFailure>>>
+
 // <<<BEGIN SHARED HELPER: trustedCallerClaims — generated, edit base44/_shared/backendHelpers.mjs>>>
 const PRIVILEGED_PROFILE_ACCOUNT_TYPES = new Set(['super_admin', 'agency_admin']);
 const TRUSTED_CLAIM_AGENCY_STATUSES = new Set(['active', 'trial']);
@@ -436,7 +459,7 @@ async function workforceApproverRecipients(base44, caller) {
 Deno.serve(async (req) => {
   try {
     const base44 = createClientFromRequest(req);
-    const user = await withTrustedClaims(base44, await base44.auth.me());
+    const user = await withTrustedClaims(base44, await base44.auth.me().catch(rethrowAuthReadFailure));
     if (!user) return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (isDeactivatedUser(user)) return DEACTIVATED_USER_RESPONSE();
 
@@ -783,6 +806,8 @@ Deno.serve(async (req) => {
 
     return Response.json({ success: true, timesheet: saved, email, delivery_paused: deliveryPaused });
   } catch (error) {
+    const authFailure = authReadFailureResponse(error);
+    if (authFailure) return authFailure;
     console.error('submitTimesheet failed:', error);
     return Response.json({ error: 'Internal server error' }, { status: 500 });
   }
