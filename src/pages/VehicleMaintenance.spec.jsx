@@ -91,6 +91,33 @@ describe('vehicle maintenance employee and admin flows', () => {
     mount(); expect(await screen.findByRole('alert')).toHaveTextContent('Vehicle service unavailable');
     expect(screen.queryByText('No vehicle is assigned to you yet')).not.toBeInTheDocument();
   });
+  it('hides previously loaded history and disables entry after access fails on refresh', async () => {
+    mount();
+    await screen.findByText('Synthetic oil service');
+    const original = request.getMockImplementation();
+    request.mockImplementation(async (action, payload) => {
+      if (action === 'history') throw new Error('This vehicle is not assigned to you.');
+      return original(action, payload);
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh records' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('not assigned');
+    expect(screen.queryByText('Synthetic oil service')).not.toBeInTheDocument();
+    expect(screen.queryByText('Known service cost')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Log maintenance or repair/ })).toBeDisabled();
+  });
+  it('hides cached vehicle details if fleet access is rejected on refresh', async () => {
+    mount();
+    await screen.findByText('Synthetic oil service');
+    const original = request.getMockImplementation();
+    request.mockImplementation(async (action, payload) => {
+      if (action === 'vehicles') throw new Error('No active membership for this agency.');
+      return original(action, payload);
+    });
+    await userEvent.click(screen.getByRole('button', { name: 'Refresh records' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('No active membership');
+    expect(screen.queryByText('Synthetic oil service')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Log maintenance or repair/ })).not.toBeInTheDocument();
+  });
   it('shows a useful unassigned-employee state', async () => {
     current.vehicles = []; mount(); expect(await screen.findByText('No vehicle is assigned to you yet')).toBeInTheDocument();
   });
