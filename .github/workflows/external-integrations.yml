@@ -1,0 +1,40 @@
+name: External Integration Runtime
+on:
+  pull_request:
+    paths:
+      - 'services/integration-runtime/**'
+      - '.github/workflows/external-integrations.yml'
+      - 'src/lib/aiCall*'
+      - 'src/lib/aiScheduler*'
+      - 'tools-ai-drain.test.mjs'
+      - 'tools-app-store-migration.test.mjs'
+      - 'ios/**'
+      - 'public/**'
+  push:
+    branches: [main, 'feat/external-integration-runtime-20260916']
+    paths:
+      - 'services/integration-runtime/**'
+      - '.github/workflows/external-integrations.yml'
+      - 'src/lib/aiCall*'
+      - 'src/lib/aiScheduler*'
+      - 'tools-ai-drain.test.mjs'
+      - 'tools-app-store-migration.test.mjs'
+      - 'ios/**'
+      - 'public/**'
+permissions:
+  contents: read
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.0
+      - name: Preserve established mobile wrapper and packaged public assets
+        run: node --test tools-app-store-migration.test.mjs
+      - name: Test runtime, paid retries and unsettled scheduler accounting
+        run: node --test services/integration-runtime/*.test.mjs src/lib/aiCall.test.js src/lib/aiScheduler.test.js tools-ai-drain.test.mjs
