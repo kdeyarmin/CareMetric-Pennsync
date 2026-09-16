@@ -51,3 +51,11 @@ Migrations/README.md distinguishes installed history from fresh-environment boot
 5. Measure the Base44 usage ledger before claiming zero debits or savings.
 
 The seven previously paused Base44 schedules remain separate dashboard state. Their definitions/queues/history were retained and no external replacement job is activated by this package. Recheck inactivity after future Base44 publications.
+
+## Operator-only synthetic provider acceptance
+
+`node operator-acceptance.mjs --execute-synthetic-v1` also requires private environment confirmation `INTEGRATIONS_SYNTHETIC_ACCEPTANCE=explicit-synthetic-v1` and a configured, paused runtime. The normal HTTP server never imports it and exposes no operator endpoint. It sends only hard-coded invented data: up to three short AI checks, one tiny CSV upload, owner-denial metadata lookup, private signing/download hash comparison, and SendGrid sandbox validation with delivery disabled. No customer record, real recipient, membership or Base44 function is used. Provider output is checked, not just status codes; output logs contain booleans/counts and no keys, signed URLs or model content.
+
+Fixed idempotency references prevent another deployment/retry from repeating completed paid work. Pending/uncertain outcomes require reconciliation; the operator does not invent success or retry a potentially completed model request. A new short-lived file-signing request is allowed on rerun, without uploading the file again. Synthetic fixture receipts and one private CSV may remain in the dedicated integration namespace as test evidence; existing app files are untouched.
+
+This verifies direct providers with synthetic data, not an authenticated employee, tenant cutover, email delivery, or all integration compatibility. A passing sandbox email response validates the request shape but does not deliver a message or validate delivery behavior. Remove the private confirmation and temporary pre-deploy invocation after the single acceptance run.
