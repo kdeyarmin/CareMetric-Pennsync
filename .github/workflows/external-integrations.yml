@@ -4,13 +4,13 @@ on:
     paths:
       - 'services/integration-runtime/**'
       - '.github/workflows/external-integrations.yml'
-      - 'railway.toml'
+      - 'src/lib/aiCall*'
   push:
     branches: [main, 'feat/external-integration-runtime-20260916']
     paths:
       - 'services/integration-runtime/**'
       - '.github/workflows/external-integrations.yml'
-      - 'railway.toml'
+      - 'src/lib/aiCall*'
 permissions:
   contents: read
 jobs:
@@ -22,5 +22,5 @@ jobs:
       - uses: actions/setup-node@v7
         with:
           node-version: 24.18.0
-      - name: Test standalone runtime without network credentials
-        run: node --test services/integration-runtime/runtime.test.mjs
+      - name: Test standalone runtime and paid-retry safeguards
+        run: node --test services/integration-runtime/*.test.mjs src/lib/aiCall.test.js
