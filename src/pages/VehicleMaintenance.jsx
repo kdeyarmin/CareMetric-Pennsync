@@ -115,7 +115,7 @@ function FleetWorkspace({ agency, userId }) {
     {vehicles.isError && <QueryError error={vehicles.error} retry={() => vehicles.refetch()} />}
     {vehicles.isPending && <p role="status">Loading vehicles…</p>}
     {!vehicles.isPending && !vehicles.isError && !allVehicles.length && <div className="rounded-xl border bg-white p-8 text-center"><Car className="mx-auto mb-3 h-10 w-10 text-slate-400" /><h3 className="font-semibold">{canManage ? 'Add your first company vehicle' : 'No vehicle is assigned to you yet'}</h3><p className="mt-2 text-sm text-slate-600">{canManage ? 'Create a vehicle record and select its employee. Maintenance stays with the car when drivers change.' : 'Ask your administrator to assign your company vehicle. They can also enter service records for shared vehicles.'}</p></div>}
-    {!!allVehicles.length && <div className="grid items-start gap-5 lg:grid-cols-[290px_minmax(0,1fr)]">
+    {!!allVehicles.length && !vehicles.isError && <div className="grid items-start gap-5 lg:grid-cols-[290px_minmax(0,1fr)]">
       <aside className="space-y-3" aria-label="Choose a vehicle">
         <div className="relative"><Search className="absolute left-3 top-3 h-4 w-4 text-slate-400" /><Input className="pl-9" aria-label="Search loaded vehicles" placeholder="Car, plate, or employee" value={search} onChange={event => setSearch(event.target.value)} /></div>
         <p className="text-xs text-slate-500">{allVehicles.length} vehicles loaded{vehicles.hasNextPage ? ' — more available' : ''}</p>
@@ -132,19 +132,19 @@ function FleetWorkspace({ agency, userId }) {
           <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-2"><div><dt className="text-slate-500">Assigned employee</dt><dd className="font-medium">{selected.assigned_user_name || 'Unassigned / shared vehicle'}</dd></div><div><dt className="text-slate-500">License plate</dt><dd>{selected.license_plate || 'Not entered'}</dd></div>{selected.vin && <div><dt className="text-slate-500">VIN</dt><dd className="break-all font-mono">{selected.vin}</dd></div>}<div><dt className="text-slate-500">Highest recorded mileage{history.hasNextPage ? ' (loaded records)' : ''}</dt><dd>{summary.odometer.toLocaleString()} miles</dd></div></dl>
           {selected.notes && <p className="mt-3 whitespace-pre-wrap text-sm text-slate-600">{selected.notes}</p>}
           {selected.status === 'out_of_service' && <p role="note" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">This vehicle is marked out of service. Follow your company’s instructions before driving it.</p>}
-          <div className="mt-5 flex flex-wrap gap-2"><Button onClick={() => setAddService(true)} disabled={selected.status === 'retired'}><Wrench className="mr-2 h-4 w-4" />Log maintenance or repair</Button>{canManage && <Button variant="outline" onClick={() => setVehicleDialog({ vehicle: selected })}>Edit vehicle / assignment</Button>}</div>
+          <div className="mt-5 flex flex-wrap gap-2"><Button onClick={() => setAddService(true)} disabled={selected.status === 'retired' || history.isError}><Wrench className="mr-2 h-4 w-4" />Log maintenance or repair</Button>{canManage && <Button variant="outline" onClick={() => setVehicleDialog({ vehicle: selected })}>Edit vehicle / assignment</Button>}</div>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3" aria-label="Loaded service history summary">
+        {!history.isPending && !history.isError && <div className="grid gap-3 sm:grid-cols-3" aria-label="Loaded service history summary">
           <SummaryCard label={history.hasNextPage ? 'Loaded service entries' : 'Service entries'} value={String(summary.entries)} />
           <SummaryCard label={history.hasNextPage ? 'Known cost in loaded entries' : 'Known service cost'} value={money(summary.knownCostCents)} detail={summary.missingCosts ? `${summary.missingCosts} ${summary.missingCosts === 1 ? 'entry has' : 'entries have'} no cost entered` : 'Based on recorded costs'} />
           <SummaryCard label={history.hasNextPage ? 'Loaded entries needing review' : 'Entries needing review'} value={String(summary.awaitingReview)} />
-        </div>
+        </div>}
         <section aria-label="Vehicle service history" className="space-y-3">
           <div><h3 className="text-lg font-semibold">Maintenance & repair history</h3><p className="text-xs text-slate-600">Newest service dates first. Original entries are retained; administrator review notes are added to their history.</p></div>
           {history.isPending && <p role="status">Loading service history…</p>}
           {history.isError && <QueryError error={history.error} retry={() => history.refetch()} />}
           {!history.isPending && !history.isError && !entries.length && <p className="rounded-xl border bg-white p-6 text-slate-600">No service entries yet. Use “Log maintenance or repair” after work is completed.</p>}
-          {entries.map(entry => <article key={entry.id} className="rounded-xl border bg-white p-4 sm:p-5">
+          {!history.isError && entries.map(entry => <article key={entry.id} className="rounded-xl border bg-white p-4 sm:p-5">
             <div className="flex flex-wrap justify-between gap-2"><div><h4 className="font-semibold">{SERVICE_TYPES[entry.service_type] || 'Service'}</h4><p className="text-sm text-slate-600">{serviceDate(entry.service_date)} · {entry.odometer?.toLocaleString()} miles</p></div><Badge variant={entry.review_status === 'reviewed' ? 'success' : entry.review_status === 'needs_follow_up' ? 'warning' : 'secondary'}>{REVIEW_STATUSES[entry.review_status] || 'Not yet reviewed'}</Badge></div>
             <p className="mt-3 whitespace-pre-wrap text-sm">{entry.description}</p>
             <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1 text-sm"><span><strong>Cost:</strong> {money(entry.cost_cents)}</span>{entry.service_provider && <span><strong>Provider:</strong> {entry.service_provider}</span>}{entry.invoice_reference && <span><strong>Reference:</strong> {entry.invoice_reference}</span>}</div>
