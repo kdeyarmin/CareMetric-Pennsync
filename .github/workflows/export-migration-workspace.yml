@@ -1,4 +1,4 @@
-name: Export isolated migration package manager
+name: Retain migration review source
 on:
   push:
     branches: [feat/external-integration-cutover-20260916]
@@ -6,19 +6,19 @@ on:
 permissions:
   contents: read
 jobs:
-  snapshot:
-    name: Public package-manager archive only - not deployment
+  source:
+    name: Source recovery only - not deployment
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@v7
         with:
-          node-version: 24.18.0
-      - name: Fetch the exact package-manager archive without lifecycle scripts
-        run: npm pack pnpm@11.9.0 --ignore-scripts --pack-destination /tmp
+          persist-credentials: false
+      - name: Archive tracked source without credentials or runtime data
+        run: git archive --format=tar.gz HEAD > /tmp/pennsync-cutover-source.tar.gz
       - uses: actions/upload-artifact@v4
         with:
-          name: pennsync-package-manager
-          path: /tmp/pnpm-11.9.0.tgz
+          name: pennsync-cutover-source
+          path: /tmp/pennsync-cutover-source.tar.gz
           retention-days: 1
           if-no-files-found: error

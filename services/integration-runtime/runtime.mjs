@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { BROWSER_CONTRACT, bindingFromContext } from './caller-binding.mjs';
 import { IntegrationError, fail, ID, UUID, OPERATIONS, hash, readJson, seal, stable, unseal } from './safety.mjs';
 
 const DEFAULT_APP = '694ec16e72e01b60d22f7cbf';
@@ -37,35 +38,40 @@ export function publicReadiness(config) {
   });
   return { ready: config.configured && config.released && config.operations.length > 0 && !missingProviders.length,
     released: config.released, configured: config.configured, operations: config.operations, missingProviders,
-    base44ExecutionDependency: true, trafficCutoverVerified: false, revision: config.revision };
+    base44ExecutionDependency: true, trafficCutoverVerified: false, revision: config.revision,
+    browserContract: BROWSER_CONTRACT, browserRevisionBound: /^[a-f0-9]{40}$/.test(config.revision || '') };
 }
 export async function authorize(config, req, agencyId, fetcher = fetch) {
-  if (!ID.test(agencyId || '')) fail(400, 'AGENCY_REQUIRED');
+  if (agencyId !== null && (typeof agencyId !== 'string' || !ID.test(agencyId))) fail(400, 'AGENCY_REQUIRED');
   const bearer = req.headers.get('authorization');
   if (!bearer || !/^Bearer [A-Za-z0-9._~-]{20,16000}$/.test(bearer)) fail(401, 'AUTHENTICATION_REQUIRED');
   // Explicit remaining Base44 execution dependency, not a zero-credit claim.
   const response = await fetcher(`https://base44.app/api/apps/${config.appId}/functions/getMyTenantContext`, {
     method: 'POST', headers: { Authorization: bearer, 'Content-Type': 'application/json', 'X-App-Id': config.appId },
-    body: JSON.stringify({ agency_id: agencyId }), redirect: 'error', signal: AbortSignal.timeout(15000),
+    body: JSON.stringify(agencyId === null ? {} : { agency_id: agencyId }), redirect: 'error', signal: AbortSignal.timeout(15000),
   });
   if ([401, 403].includes(response.status)) fail(response.status, 'AUTHENTICATION_REJECTED');
-  if (!response.ok) fail(503, 'AUTHORITY_UNAVAILABLE');
+  if (!response.ok || response.redirected) fail(503, 'AUTHORITY_UNAVAILABLE');
   const result = await readJson(response, 65536);
   const c = result?.tenant_context;
-  if (!c || !ID.test(c.user_id || '') || typeof c.user_email !== 'string'
+  if (!c || typeof c.user_id !== 'string' || !ID.test(c.user_id) || typeof c.user_email !== 'string'
     || c.user_email.length > 320 || c.user_email !== c.user_email.trim().toLowerCase()
-    || !/^[^\s@]+@[^\s@]+$/.test(c.user_email) || c.agency_id !== agencyId || c.agency?.id !== agencyId
-    || !['active', 'trial'].includes(c.agency?.status)) fail(403, 'TENANT_AUTHORITY_INVALID');
+    || !/^[^\s@]+@[^\s@]+$/.test(c.user_email) || c.agency_id !== agencyId) fail(403, 'TENANT_AUTHORITY_INVALID');
+  const scopedAgency = agencyId !== null && c.agency?.id === agencyId && ['active', 'trial'].includes(c.agency?.status);
   const owner = c.is_platform_owner === true && c.tenant_role === 'platform_owner'
-    && c.membership_id === null && c.membership_version === null && c.membership_status === null && c.membership_key === null;
-  const member = c.is_platform_owner === false && c.membership_status === 'active'
-    && ID.test(c.membership_id || '') && c.membership_key === `${agencyId}:${c.user_id}`
+    && c.membership_id === null && c.membership_version === null && c.membership_status === null && c.membership_key === null
+    && (agencyId === null ? c.agency === null : scopedAgency);
+  const member = scopedAgency && c.is_platform_owner === false && c.membership_status === 'active'
+    && typeof c.membership_id === 'string' && ID.test(c.membership_id) && c.membership_key === `${agencyId}:${c.user_id}`
     && Number.isSafeInteger(c.membership_version) && c.membership_version > 0
     && ['agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care'].includes(c.tenant_role);
   if (!owner && !member) fail(403, 'TENANT_AUTHORITY_INVALID');
   return {
     subject: hash(config.hashKey, [config.appId, agencyId, c.user_id]),
-    snapshot: stable([c.user_id, c.user_email, agencyId, c.tenant_role, c.membership_id, c.membership_version, c.is_platform_owner, c.agency.status]),
+    snapshot: stable([c.user_id, c.user_email, agencyId, c.tenant_role, c.membership_id, c.membership_version, c.is_platform_owner, c.agency?.status ?? null]),
+    // v1 preserves its existing explicitly scoped owner operation. The v2
+    // browser has exactly the global owner context established by AuthContext.
+    binding: owner && agencyId !== null ? null : bindingFromContext(c),
     canEmail: owner || ['agency_admin', 'manager'].includes(c.tenant_role),
   };
 }
@@ -90,7 +96,7 @@ function usableResult(operation, result) {
   return result;
 }
 export async function performDurable({ config, req, agencyId, operation, params, requestId, provider, store, authority, admit = () => () => {} }) {
-  if (!ID.test(requestId || '')) fail(400, 'IDEMPOTENCY_KEY_REQUIRED');
+  if (typeof requestId !== 'string' || !ID.test(requestId)) fail(400, 'IDEMPOTENCY_KEY_REQUIRED');
   const before = await authority(config, req, agencyId);
   if (operation === 'SendEmail' && !before.canEmail) fail(403, 'EMAIL_ROLE_REQUIRED');
   const release = admit(before);

@@ -2,7 +2,11 @@ import { createClient } from '@base44/sdk';
 import { appParams } from '@/lib/app-params';
 import { lockBase44FunctionRevision } from '@/lib/functionRevisionPolicy';
 import { runPublicCapabilityOperation } from '@/lib/publicCapabilityRealmGate';
-import { wrapTenantSdkClient } from '@/lib/tenantSdkRealmGate';
+import {
+  assertTenantSdkRealmLeaseCurrent, captureTenantSdkRealmLease, getTenantSdkRealmAbortSignal, wrapTenantSdkClient,
+} from '@/lib/tenantSdkRealmGate';
+import { getActiveTrustedTenantContext } from '@/lib/roles';
+import { readExternalIntegrationConfig, routeExternalCoreOperations } from '@/lib/externalIntegrationTransport';
 
 const { appId, serverUrl, token, functionsVersion } = appParams;
 
@@ -28,7 +32,15 @@ const rawBase44 = lockBase44FunctionRevision(createClient({
   analytics: { enabled: false },
 }), functionsVersion);
 
-export const base44 = wrapTenantSdkClient(rawBase44);
+// The external route is inside the same authority membrane as the native SDK.
+// Default-off builds return the original raw client without touching auth or I/O.
+const routedBase44 = routeExternalCoreOperations(rawBase44, readExternalIntegrationConfig(import.meta.env, appId), {
+  getSession: () => ({ token: appParams.token, context: getActiveTrustedTenantContext() }),
+  captureLease: captureTenantSdkRealmLease,
+  assertLeaseCurrent: assertTenantSdkRealmLeaseCurrent,
+  getLeaseSignal: getTenantSdkRealmAbortSignal,
+});
+export const base44 = wrapTenantSdkClient(routedBase44);
 
 export const tenantAuthorityClient = Object.freeze({
   me: () => rawBase44.auth.me(),
