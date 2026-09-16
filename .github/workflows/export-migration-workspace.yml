@@ -1,0 +1,42 @@
+name: Export isolated migration review workspace
+on:
+  push:
+    branches: [feat/external-integration-cutover-20260916]
+    paths: [.github/workflows/export-migration-workspace.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Install the pinned development dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Package tracked source, Git objects and development runtime only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pennsync-review-runtime
+          git archive --format=tar HEAD > /tmp/pennsync-review-runtime/workspace.tar
+          git bundle create /tmp/pennsync-review-runtime/repository.bundle HEAD refs/remotes/origin/main
+          tar -rf /tmp/pennsync-review-runtime/workspace.tar node_modules
+          cp "$(command -v node)" /tmp/pennsync-review-runtime/node
+          printf '%s\n' "$GITHUB_SHA" > /tmp/pennsync-review-runtime/source-revision.txt
+          gzip -1 /tmp/pennsync-review-runtime/workspace.tar
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pennsync-isolated-migration-workspace
+          path: /tmp/pennsync-review-runtime/
+          retention-days: 1
+          if-no-files-found: error
