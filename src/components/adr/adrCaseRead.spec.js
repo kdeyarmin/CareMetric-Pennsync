@@ -17,6 +17,9 @@ describe('ADR read contract compatibility', () => {
     expect(readAdrCases(value)).toBe(value);
   });
   it.each([
+    { status: 'deleted' }, { audit_type: 'unknown' }, { checklist: [{}] },
+    { verification_summary: { items: [{ pages: [], issues: [] }] } },
+    { verification_summary: { items: [{ id: 'item-a', seq: 1, title: 'Synthetic item', status: 'invented', pages: [], issues: [] }] } },
     { case_name: {} }, { status: [] }, { checklist: {} }, { checklist: [null] },
     { checklist: [{ title: [] }] }, { checklist: [{ verification_points: 'bad' }] },
     { letter_analysis: [] }, { letter_analysis: { special_instructions: [{}] } },
