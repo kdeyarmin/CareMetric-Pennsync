@@ -17,6 +17,9 @@ const CONFIRMATION = 'explicit-mail-sandbox-v1';
 export async function runMailAcceptance(config, { authorization, fetcher = fetch, store: suppliedStore } = {}) {
   if (authorization !== CONFIRMATION || config.released || config.browserReleased || !config.configured || !config.sendgridKey
     || config.operations.length || config.browserOperations?.length) fail(403, 'MAIL_ACCEPTANCE_NOT_AUTHORIZED');
+  // Reject malformed sender configuration before creating an irrevocable
+  // acceptance reservation. The same pure builder validates the actual send.
+  buildMailPayload(MAIL_FIXTURE, config.fromEmail, { sandbox: true });
   const subject = hash(config.hashKey, [config.appId, 'operator-synthetic-mail-contract-v1']);
   const actor = { subject, snapshot: 'operator-synthetic-not-employee-authority', canEmail: true };
   const counts = { sandboxRequests: 0, stateRequests: 0, modelRequests: 0, base44Requests: 0, deliveries: 0 };
