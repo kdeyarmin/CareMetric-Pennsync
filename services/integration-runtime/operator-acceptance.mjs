@@ -3,6 +3,7 @@ import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { loadConfig, createStore, performDurable, BUCKET } from './runtime.mjs';
 import { createProviders } from './providers.mjs';
+import { buildMailPayload } from './mail-contract.mjs';
 import { hash, IntegrationError, fail, limitedBytes } from './safety.mjs';
 
 // Operator CLI only: never imported by server.mjs or exposed as an HTTP route.
@@ -57,9 +58,7 @@ export async function runOperatorAcceptance(config, { authorization, fetcher = f
     if(operation==='SendEmail') {
       const response=await fixedEgress('https://api.sendgrid.com/v3/mail/send',{
         method:'POST',headers:{Authorization:`Bearer ${config.sendgridKey}`,'Content-Type':'application/json'},
-        body:JSON.stringify({personalizations:[{to:[{email:'acceptance@example.invalid'}]}],from:{email:config.fromEmail},
-          subject:'Synthetic integration acceptance - sandbox only',content:[{type:'text/plain',value:'Synthetic validation. No delivery.'}],
-          mail_settings:{sandbox_mode:{enable:true}},tracking_settings:{click_tracking:{enable:false,enable_text:false},open_tracking:{enable:false}}}),
+        body:JSON.stringify(buildMailPayload({to:'acceptance@example.invalid',subject:'Synthetic integration acceptance - sandbox only',body:'Synthetic validation. No delivery.'},config.fromEmail,{sandbox:true})),
         signal:AbortSignal.timeout(20000),
       });
       if(response.status!==200)fail(502,'EMAIL_SANDBOX_VALIDATION_FAILED');

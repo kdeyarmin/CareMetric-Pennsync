@@ -278,3 +278,18 @@ test('integrity-level mutations are rejected atomically and do not poison the vi
   assert.equal(await facade.integrations.Core.InvokeLLM({ prompt: 'synthetic' }), 'synthetic result');
   assert.equal(h.calls.length, 1);
 });
+
+
+test('explicit email content type and display name survive the browser contract without changing sender address authority', async () => {
+  const html = '<p>Reviewed &amp; approved</p>';
+  const value = { to: 'synthetic@example.test', subject: 'Synthetic', body: html, content_type: 'text/html', from_name: 'PennSync by CareMetric' };
+  assert.deepEqual(normalizeExternalIntegrationParams('SendEmail', value), value);
+  const h = harness({ operations: ['SendEmail'], fetcher: (_url, _options, body) => {
+    assert.deepEqual(body.params, value);
+    return response(envelope(body, { accepted: true, delivered: false, provider: 'sendgrid' }));
+  } });
+  assert.equal((await h.transport.prepare('SendEmail', value).execute()).delivered, false);
+  for (const patch of [{ content_type: false }, { content_type: '' }, { from: 'forged@example.test' }, { subject: 'x\ny' }]) {
+    assert.throws(() => normalizeExternalIntegrationParams('SendEmail', { ...value, ...patch }));
+  }
+});
