@@ -50,7 +50,7 @@ export default function AdminTrainingAnalytics() {
   const authorityKey = agencyQueryKey(currentUser);
 
   const usersQuery = useQuery({
-    queryKey: ['trainingReportUsers', 5000, agencyQueryKey(currentUser)],
+    queryKey: ['allUsers', 'training-report', 5000, agencyQueryKey(currentUser)],
     queryFn: async () => {
       const _rows = readReportRows(await base44.entities.User.list('-created_date', 5000), 'users');
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');

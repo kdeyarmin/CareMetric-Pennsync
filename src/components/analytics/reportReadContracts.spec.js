@@ -22,6 +22,8 @@ describe('report measurement and read contracts', () => {
     ['notes', {}], ['notes', [null]], ['notes', [{ id: 'a' }]],
     ['notes', [{ id: 'a', created_date: '2026-01-01', quality_score: '80' }]],
     ['audits', [{ id: 'a', audit_date: '2026-02-31' }]],
+    ['audits', [{ id: 'a', audit_date: '2026-02-31T00:00:00Z' }]],
+    ['notes', [{ id: 'a', created_date: '9/17/2026' }]],
     ['assignments', [{ id: 'a', score_percentage: Infinity }]],
     ['modules', [{ id: 'a', title: {} }]], ['recommendations', [{ id: 'a', addressed: 'false' }]],
     ['users', [{ id: 'a' }, { id: 'a' }]],
@@ -32,5 +34,9 @@ describe('report measurement and read contracts', () => {
     const rows = [{ id: 'a', migration_note: 'kept', score_percentage: null }];
     expect(readReportRows(rows, 'assignments')).toBe(rows);
     expect(rows[0].score_percentage).toBeNull();
+  });
+  it.each(['2026-09-17', '2026-09-17T23:59:59Z', '2026-09-17T23:59:59.123456+05:30', '2026-09-17T00:00:00-04:00'])('accepts a real ISO date/timestamp with its timezone intact (%s)', created_date => {
+    const rows = [{ id: 'a', created_date }];
+    expect(readReportRows(rows, 'notes')).toBe(rows);
   });
 });

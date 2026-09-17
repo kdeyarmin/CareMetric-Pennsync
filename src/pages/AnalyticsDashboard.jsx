@@ -36,6 +36,7 @@ import PageHeader from "@/components/ui/PageHeader";
 import UserActivityUnavailable from "@/components/security/UserActivityUnavailable";
 import { format, subDays } from "date-fns";
 import { parseLocalDate } from '@/lib/dateLocal';
+import { ALL_ROWS } from '@/lib/queryLimits';
 
 import PerformanceMetricsCard from "../components/analytics/PerformanceMetricsCard";
 import UserPerformanceTable from "../components/analytics/UserPerformanceTable";
@@ -53,14 +54,14 @@ import { readReportRows, reportRangeAvailable, measuredAverage, displayMeasureme
  * still compared on the local calendar day rather than in UTC.
  */
 function rangeSelector(startDate, endDate, selectedUser, dateOf, emailOf) {
-  if (!reportRangeAvailable(startDate, endDate)) return data => ({ rows: [], capped: data.length >= 10000 });
+  if (!reportRangeAvailable(startDate, endDate)) return data => ({ rows: [], capped: data.length >= ALL_ROWS });
   const from = new Date(`${startDate}T00:00:00`);
   const to = new Date(`${endDate}T23:59:59.999`);
   return (data) => ({ rows: data.filter((row) => {
     const at = parseLocalDate(dateOf(row));
     if (!(at >= from && at <= to)) return false;
     return selectedUser === 'all' || emailOf(row) === selectedUser;
-  }), capped: data.length >= 10000 });
+  }), capped: data.length >= ALL_ROWS });
 }
 
 export default function AnalyticsDashboard() {
@@ -81,11 +82,11 @@ export default function AnalyticsDashboard() {
 
   // Fetch all users for admin
   const usersQuery = useQuery({
-    queryKey: ['performanceReportUsers', 10000, agencyQueryKey(currentUser)],
+    queryKey: ['allUsers', 'performance-report', ALL_ROWS, agencyQueryKey(currentUser)],
     queryFn: async () => {
-      const _rows = readReportRows(await base44.entities.User.list('-created_date', 10000), 'users');
+      const _rows = readReportRows(await base44.entities.User.list('-created_date', ALL_ROWS), 'users');
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
-      return { rows: filterUsersByCallerAgency(_rows, currentUser), capped: _rows.length >= 10000 };
+      return { rows: filterUsersByCallerAgency(_rows, currentUser), capped: _rows.length >= ALL_ROWS };
     },
     enabled: isAdmin,
     ...REPORT_READ_OPTIONS,
@@ -107,7 +108,7 @@ export default function AnalyticsDashboard() {
     queryKey: ['noteConversions', selectedUser, startDate, endDate, agencyQueryKey(currentUser)],
     // Without a limit Base44 returns only the 50 newest rows, so any selected date
     // range older than those 50 showed zero/partial data and skewed the averages.
-    queryFn: async () => readReportRows(await base44.entities.NoteConversion.list('-created_date', 10000), 'notes'),
+    queryFn: async () => readReportRows(await base44.entities.NoteConversion.list('-created_date', ALL_ROWS), 'notes'),
     select: selectNoteConversions,
     enabled: isAdmin && rangeAvailable,
     ...REPORT_READ_OPTIONS,
@@ -116,7 +117,7 @@ export default function AnalyticsDashboard() {
   // Fetch compliance audits
   const auditsQuery = useQuery({
     queryKey: ['complianceAudits', selectedUser, startDate, endDate, agencyQueryKey(currentUser)],
-    queryFn: async () => readReportRows(await base44.entities.ComplianceAudit.list('-audit_date', 10000), 'audits'),
+    queryFn: async () => readReportRows(await base44.entities.ComplianceAudit.list('-audit_date', ALL_ROWS), 'audits'),
     select: selectComplianceAudits,
     enabled: isAdmin && rangeAvailable,
     ...REPORT_READ_OPTIONS,

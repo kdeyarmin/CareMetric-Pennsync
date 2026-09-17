@@ -15,8 +15,16 @@ const fields = {
   recommendations: { boolean: ['addressed'] },
 };
 
+function validReportDate(value) {
+  if (typeof value !== 'string') return false;
+  const match = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2}))?$/.exec(value);
+  if (!match || !parseLocalDate(match[1])) return false;
+  if (match[2] && (Number(match[2]) > 23 || Number(match[3]) > 59 || Number(match[4]) > 59)) return false;
+  return parseLocalDate(value) !== null;
+}
+
 export function readReportRows(value, kind) {
-  const shape = fields[kind];
+  const shape = Object.hasOwn(fields, kind) ? fields[kind] : null;
   const ids = new Set();
   if (!shape || !Array.isArray(value) || value.some(row => {
     if (!row || typeof row !== 'object' || Array.isArray(row)
@@ -24,7 +32,7 @@ export function readReportRows(value, kind) {
       || !(shape.text || []).every(key => optionalText(row[key]))
       || !(shape.number || []).every(key => optionalNumber(row[key]))
       || !(shape.boolean || []).every(key => row[key] == null || typeof row[key] === 'boolean')
-      || !(shape.date || []).every(key => row[key] == null || row[key] === '' || (typeof row[key] === 'string' && parseLocalDate(row[key])))) return true;
+      || !(shape.date || []).every(key => row[key] == null || row[key] === '' || validReportDate(row[key]))) return true;
     if (kind === 'notes' && !row.created_date) return true;
     if (kind === 'audits' && !row.audit_date && !row.created_date) return true;
     ids.add(row.id);

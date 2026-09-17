@@ -114,7 +114,7 @@ describe('analytics read integrity', () => {
   });
 
   it('marks capped source reads and blocks exporting partial performance totals', async () => {
-    mocks.notes.mockResolvedValue(Array.from({ length: 10000 }, (_, i) => ({ id: `note-${i}`, created_date: date })));
+    mocks.notes.mockResolvedValue(Array.from({ length: 5000 }, (_, i) => ({ id: `note-${i}`, created_date: date })));
     mount(AnalyticsDashboard);
     expect(await screen.findByText(/A source reached its record limit/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Export PDF/ })).toBeDisabled();
@@ -129,6 +129,14 @@ describe('analytics read integrity', () => {
     mount(AdminTrainingAnalytics);
     await userEvent.click(await screen.findByRole('tab', { name: 'Nurse Performance' }));
     expect(await screen.findByRole('progressbar', { name: 'Synthetic Employee assigned training completion' })).toHaveAttribute('aria-valuenow', '50');
+  });
+
+  it.each([['performance', AnalyticsDashboard], ['training', AdminTrainingAnalytics]])('refreshes the %s roster after existing allUsers invalidation', async (_label, Page) => {
+    const { client } = mount(Page);
+    await waitFor(() => expect(mocks.users).toHaveBeenCalledOnce());
+    await waitFor(() => expect(client.isFetching()).toBe(0));
+    await act(() => client.invalidateQueries({ queryKey: ['allUsers'] }));
+    await waitFor(() => expect(mocks.users).toHaveBeenCalledTimes(2));
   });
 
   it('blocks totals and export for an invalid custom date range and recovers after correction', async () => {
