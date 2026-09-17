@@ -110,8 +110,8 @@ describe('SignInScreen', () => {
     expect(mocks.setToken).toHaveBeenCalledWith('tok-123');
   });
 
-  it('shows an inline error on wrong credentials instead of redirecting', async () => {
-    mocks.post.mockRejectedValueOnce(Object.assign(new Error('Invalid credentials'), { status: 401 }));
+  it.each([400, 401])('shows an inline error on rejected credentials (HTTP %s) instead of redirecting', async (status) => {
+    mocks.post.mockRejectedValueOnce(Object.assign(new Error('Invalid credentials'), { status }));
     const onAuthenticated = vi.fn();
     const user = userEvent.setup();
     render(<SignInScreen onAuthenticated={onAuthenticated} />);
@@ -123,6 +123,67 @@ describe('SignInScreen', () => {
     expect(onAuthenticated).not.toHaveBeenCalled();
     expect(mocks.setToken).not.toHaveBeenCalled();
     expect(mocks.navigateToLogin).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'Email not verified',
+    'Please verify your email before logging in',
+    'Email verification is required',
+    'Your email address is not verified.',
+  ])('directs an unverified account to hosted verification for "%s"', async (message) => {
+    mocks.post.mockRejectedValueOnce(Object.assign(new Error(message), { status: 400 }));
+    const onAuthenticated = vi.fn();
+    const user = userEvent.setup();
+    render(<SignInScreen onAuthenticated={onAuthenticated} />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/verify your email before signing in/i);
+    expect(screen.getByRole('alert')).not.toHaveTextContent(/incorrect email or password/i);
+    expect(mocks.setToken).not.toHaveBeenCalled();
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    expect(mocks.navigateToLogin).not.toHaveBeenCalled();
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+
+    await user.click(screen.getByRole('button', { name: /standard sign-in page/i }));
+    expect(mocks.navigateToLogin).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [400, 'Captcha verification failed', /additional verification is required/i],
+    [400, 'Email or password verification failed', /incorrect email or password/i],
+    [429, 'Too many attempts', /too many sign-in attempts/i],
+  ])('preserves the distinct sign-in response for HTTP %s: %s', async (status, message, expected) => {
+    mocks.post.mockRejectedValueOnce(Object.assign(new Error(message), { status }));
+    const onAuthenticated = vi.fn();
+    const user = userEvent.setup();
+    render(<SignInScreen onAuthenticated={onAuthenticated} />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(expected);
+    expect(mocks.setToken).not.toHaveBeenCalled();
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    expect(mocks.navigateToLogin).not.toHaveBeenCalled();
+    expect(mocks.post).toHaveBeenCalledTimes(1);
+  });
+
+  it('requires hosted verification when login returns no session token', async () => {
+    mocks.post.mockResolvedValueOnce({});
+    const onAuthenticated = vi.fn();
+    const user = userEvent.setup();
+    render(<SignInScreen onAuthenticated={onAuthenticated} />);
+
+    await fillCredentials(user);
+    await user.click(screen.getByRole('button', { name: /^sign in$/i }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/extra verification step/i);
+    expect(mocks.setToken).not.toHaveBeenCalled();
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    expect(mocks.navigateToLogin).not.toHaveBeenCalled();
+    expect(mocks.post).toHaveBeenCalledTimes(1);
   });
 
   it('aborts a pending password login and ignores its token after unmount', async () => {
