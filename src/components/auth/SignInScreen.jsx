@@ -139,8 +139,13 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
         || controller.signal.aborted
       ) return;
       const status = err?.status;
-      if (/turnstile|captcha/i.test(String(err?.message || ''))) {
+      const message = String(err?.message || '');
+      if (/turnstile|captcha/i.test(message)) {
         setError('Additional verification is required. Please continue on the standard sign-in page (link below).');
+      } else if (/\b(?:email(?: address)? (?:is )?(?:not verified|unverified)|verify your email|email verification (?:is )?required)\b/i.test(message)) {
+        // Base44 also returns HTTP 400 when an existing account still needs
+        // email verification. Keep that distinct from rejected credentials.
+        setError('Please verify your email before signing in. Continue on the standard sign-in page (link below).');
       } else if (status === 400 || status === 401) {
         setError('Incorrect email or password. Please try again.');
       } else if (status === 429) {
@@ -149,10 +154,9 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
         // Base44Error carries clean server messages worth showing; raw axios
         // transport boilerplate ("Request failed with status code 502") isn't
         // user-facing — swap it for a friendly generic.
-        const msg = String(err?.message || '');
-        setError(!msg || /^request failed/i.test(msg) || /network error/i.test(msg)
+        setError(!message || /^request failed/i.test(message) || /network error/i.test(message)
           ? 'Something went wrong signing you in. Please try again, or use the standard sign-in page (link below).'
-          : msg);
+          : message);
       }
     } finally {
       if (operation === authOperationRef.current) loginAbortRef.current = null;
