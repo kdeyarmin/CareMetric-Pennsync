@@ -52,12 +52,16 @@ export default function CourseCatalogDetail({
 
   // The lesson outline. Shares its query key with the course builder / video
   // studio so an admin editing lessons in another tab sees the same data.
-  const { data: modules = [], isLoading: modulesLoading } = useQuery({
+  const modulesQuery = useQuery({
     queryKey: ["training-modules", courseId],
     queryFn: () => base44.entities.TrainingModule.filter({ course_id: courseId }, "order_index", 100),
     enabled: !!courseId && open,
-    initialData: [],
+    retry: false,
   });
+
+  const modulesUnavailable = modulesQuery.isError;
+  const modulesLoading = modulesQuery.isPending || modulesQuery.isPaused;
+  const modules = !modulesUnavailable && !modulesLoading ? modulesQuery.data || [] : [];
 
   if (!course) return null;
 
@@ -123,7 +127,7 @@ export default function CourseCatalogDetail({
             <Stat
               icon={BookOpen}
               label="Lessons"
-              value={modulesLoading ? "Loading…" : `${modules.length}${videoCount > 0 ? ` (${videoCount} on video)` : ""}`}
+              value={modulesUnavailable ? "Unavailable" : modulesLoading ? "Loading…" : `${modules.length}${videoCount > 0 ? ` (${videoCount} on video)` : ""}`}
             />
             <Stat
               icon={Award}
@@ -172,6 +176,15 @@ export default function CourseCatalogDetail({
             </Section>
           )}
 
+          {modulesUnavailable && <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+            <p>Course outline could not be loaded. This does not mean the course has no lessons.</p>
+            <Button type="button" variant="outline" className="mt-2" disabled={modulesQuery.isFetching}
+              onClick={() => modulesQuery.refetch()}>Retry course outline</Button>
+          </div>}
+          {!modulesUnavailable && modulesLoading && <p role="status" className="text-sm text-slate-600">
+            {modulesQuery.isPaused ? 'Waiting for a connection to load the course outline…' : 'Loading course outline…'}
+          </p>}
+          {!modulesUnavailable && !modulesLoading && modules.length === 0 && <p className="text-sm text-slate-600">This course has no lesson modules yet.</p>}
           {modules.length > 0 && (
             <Section icon={BookOpen} title="Course outline">
               <ol className="space-y-1.5">

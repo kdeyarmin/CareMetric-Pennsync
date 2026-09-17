@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { FileText, ChevronDown, ChevronUp, Loader2, PencilLine, AlertTriangle } from "lucide-react";
@@ -17,11 +17,18 @@ import {
 // render time, so what the admin reads here is exactly what the HeyGen avatar
 // will say. Edits are stored as content_json.video_narration and picked up the
 // next time the video is generated or regenerated.
-export default function ModuleScriptPanel({ module: moduleRecord, courseId, disabled = false }) {
+export default function ModuleScriptPanel(props) {
+  return <ScopedModuleScriptPanel key={`${props.courseId || ''}:${props.module?.id || ''}`} {...props} />;
+}
+
+function ScopedModuleScriptPanel({ module: moduleRecord, courseId, disabled = false }) {
   const queryClient = useQueryClient();
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
+  const mounted = useRef(true);
+  const saving = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
 
   const content = moduleRecord?.content_json || {};
   const authoredRaw = typeof content.video_narration === "string" ? content.video_narration.trim() : "";
@@ -29,21 +36,27 @@ export default function ModuleScriptPanel({ module: moduleRecord, courseId, disa
   const script = buildNarrationScript(String(moduleRecord?.title || ""), content);
 
   const saveMutation = useMutation({
-    mutationFn: (nextScript) =>
-      base44.entities.TrainingModule.update(moduleRecord.id, {
-        content_json: { ...content, video_narration: nextScript },
-      }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["training-modules", courseId] });
+    retry: false,
+    mutationFn: ({ moduleId, contentJson, nextScript }) => {
+      if (disabled || !moduleId) throw new Error('Script editing is temporarily unavailable.');
+      return base44.entities.TrainingModule.update(moduleId, {
+        content_json: { ...contentJson, video_narration: nextScript },
+      });
+    },
+    onSuccess: (_result, variables) => {
+      queryClient.invalidateQueries({ queryKey: ["training-modules", variables.courseId] });
+      if (!mounted.current) return;
       setEditing(false);
       toast.success("Script saved. Generate or regenerate the video to hear the new script.");
     },
-    onError: (e) => toast.error(`Could not save the script: ${e?.message || "unknown error"}`),
+    onError: () => { if (mounted.current) toast.error("Could not confirm the script save. Refresh the lesson before trying again."); },
+    onSettled: () => { saving.current = false; },
   });
 
   if (!moduleRecord) return null;
 
   const startEditing = () => {
+    if (disabled || saving.current) return;
     setDraft(authoredRaw || script);
     setEditing(true);
   };
@@ -53,6 +66,11 @@ export default function ModuleScriptPanel({ module: moduleRecord, courseId, disa
   // render time (the auto-assembled narration runs instead) — block saving it.
   const draftTooShort = trimmedDraft.length > 0 && trimmedDraft.length < MIN_AUTHORED_NARRATION_CHARS;
   const draftOverLimit = trimmedDraft.length > NARRATION_CHAR_LIMIT;
+  const saveScript = () => {
+    if (disabled || saving.current || draftTooShort) return;
+    saving.current = true;
+    saveMutation.mutate({ moduleId: moduleRecord.id, courseId, contentJson: { ...content }, nextScript: trimmedDraft });
+  };
 
   return (
     <div className="mt-2">
@@ -92,7 +110,7 @@ export default function ModuleScriptPanel({ module: moduleRecord, courseId, disa
                 onChange={(e) => setDraft(e.target.value)}
                 rows={10}
                 className="bg-white text-sm"
-                disabled={saveMutation.isPending}
+                disabled={disabled || saveMutation.isPending}
               />
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <span className={`text-xs ${draftOverLimit ? "text-amber-600" : "text-slate-400"}`}>
@@ -105,8 +123,8 @@ export default function ModuleScriptPanel({ module: moduleRecord, courseId, disa
                   </Button>
                   <Button
                     size="sm"
-                    onClick={() => saveMutation.mutate(trimmedDraft)}
-                    disabled={saveMutation.isPending || draftTooShort}
+                    onClick={saveScript}
+                    disabled={disabled || saveMutation.isPending || draftTooShort}
                   >
                     {saveMutation.isPending ? (
                       <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> Saving…</>
