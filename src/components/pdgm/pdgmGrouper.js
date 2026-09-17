@@ -22,16 +22,11 @@
 // becomes deterministic and reproducible.
 //
 // ── WIRING STATUS / canonical path ────────────────────────────────────────────
-// This client-side grouper is currently UNWIRED. The app's live, canonical PDGM
-// calculation runs in the backend function `base44/functions/calculatePDGM`
-// (admin-configurable ICD10_CLINICAL_GROUPS + case-mix multipliers + base rate;
-// see also `pdgmRates.js`). That is the single source of truth shown to staff.
-// Do NOT surface this engine's output as a SECOND reimbursement figure — two
-// independent methodologies would produce inconsistent billing numbers. If it is
-// ever wired it must (a) be supplied with the agency's current CMS case-mix,
-// diagnosis, comorbidity, and functional-threshold tables, and
-// (b) reconcile against `calculatePDGM` rather than compete with it. Until then
-// it stays a tested, table-driven reference for that future, reconciled work.
+// This client-side grouper is UNWIRED and always incomplete. calculatePDGM is a
+// static unavailable backend endpoint; the old factorized payment approximation
+// is retired. No reimbursement calculation is currently shown to staff. The
+// separate server-only services/hhgs-adapter is an offline verification building
+// block, not a live payment path. See docs/pdgm-cy2026.md for the release gates.
 
 import { CMS_PDGM_FUNCTIONAL_ITEM_IDS_CY2026 } from "./cmsPdgmFunctionalDataCy2026.js";
 

@@ -15,6 +15,11 @@ export default [
     ],
   },
   {
+    files: ['services/hhgs-adapter/**/*.mjs', 'tools-verify-hhgs-adapter.mjs'],
+    languageOptions: { globals: globals.node },
+    rules: pluginJs.configs.recommended.rules,
+  },
+  {
     files: [
       "src/components/**/*.{js,mjs,cjs,jsx}",
       "src/pages/**/*.{js,mjs,cjs,jsx}",

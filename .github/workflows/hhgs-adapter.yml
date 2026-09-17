@@ -1,0 +1,74 @@
+name: CMS HHGS adapter parity
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'services/hhgs-adapter/**'
+      - 'tools-verify-hhgs-adapter.mjs'
+      - 'src/components/pdgm/cmsHhgsReleasesCy2026.js'
+      - '.github/workflows/hhgs-adapter.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'services/hhgs-adapter/**'
+      - 'tools-verify-hhgs-adapter.mjs'
+      - 'src/components/pdgm/cmsHhgsReleasesCy2026.js'
+      - '.github/workflows/hhgs-adapter.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hhgs-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      - uses: actions/setup-java@v6.0.1
+        with:
+          distribution: microsoft
+          java-version: '17'
+      - name: Adapter boundary tests
+        run: node --test services/hhgs-adapter/adapter.test.mjs
+      - name: Verify all 310 CMS synthetic fixtures through the adapter
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import { createHash } from 'node:crypto';
+          import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+          import { join } from 'node:path';
+          import { spawnSync } from 'node:child_process';
+          import { CMS_HHGS_RELEASES_CY2026 as releases } from './src/components/pdgm/cmsHhgsReleasesCy2026.js';
+          const workspace = mkdtempSync(join(process.env.RUNNER_TEMP, 'hhgs-'));
+          try {
+            const roots = [];
+            for (const release of releases) {
+              const response = await fetch(release.packageUrl, { signal: AbortSignal.timeout(60000) });
+              if (!response.ok) throw new Error(`CMS download HTTP ${response.status}`);
+              const bytes = Buffer.from(await response.arrayBuffer());
+              if (bytes.length !== release.packageBytes || createHash('sha256').update(bytes).digest('hex') !== release.packageSha256) {
+                throw new Error('CMS distribution hash mismatch');
+              }
+              const zip = join(workspace, `${release.version}.zip`);
+              const destination = join(workspace, release.version);
+              writeFileSync(zip, bytes);
+              const unpack = spawnSync('unzip', ['-q', zip, '-d', destination], { stdio: 'inherit', timeout: 60000 });
+              if (unpack.error || unpack.status !== 0) throw new Error('CMS extraction failed');
+              roots.push(join(destination, release.archiveRoot));
+            }
+            const result = spawnSync(process.execPath, ['tools-verify-hhgs-adapter.mjs', join(process.env.JAVA_HOME, 'bin/java'), ...roots], {
+              stdio: 'inherit', timeout: 240000,
+            });
+            if (result.error || result.status !== 0) throw new Error('Adapter parity failed');
+          } finally {
+            rmSync(workspace, { recursive: true, force: true });
+          }
+          NODE
