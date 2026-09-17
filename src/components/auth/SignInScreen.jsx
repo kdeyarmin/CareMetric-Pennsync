@@ -15,6 +15,8 @@ import { Label } from '@/components/ui/label';
 import { ArrowLeft, Eye, EyeOff, Loader2, ShieldAlert } from 'lucide-react';
 import { BRAND_LOGO_URL, APP_NAME, PLATFORM_NAME } from '@/lib/brand';
 import { OUTBOUND_DELIVERY_PAUSED_MESSAGE } from '@/lib/outboundDeliveryContainment';
+import { isStagingEmailVerificationAvailable } from '@/lib/stagingEmailVerification';
+import StagingEmailVerification from './StagingEmailVerification';
 import {
   CENTRAL_SUPPORT_EMAIL,
   CENTRAL_SUPPORT_EMAIL_HREF,
@@ -32,8 +34,8 @@ import {
  * were headed.
  *
  * Flows handled here: email/password sign-in and a fail-closed password-reset
- * notice while outbound delivery is paused. Everything else (sign-up for
- * invited users, OTP verification, captcha
+ * notice while outbound delivery is paused, plus staging-only email code
+ * redemption. Everything else (sign-up for invited users, production OTP, captcha
  * challenges) falls back to the platform-hosted page via navigateToLogin().
  *
  * Also handles a pending `?access_token=` handoff that arrived without a
@@ -48,7 +50,7 @@ const reloadApp = () => window.location.reload();
 
 const SignInScreen = ({ onAuthenticated = reloadApp }) => {
   const { navigateToLogin } = useAuth();
-  const [mode, setMode] = useState('signin'); // 'signin' | 'reset'
+  const [mode, setMode] = useState('signin'); // 'signin' | 'reset' | 'verify'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -145,7 +147,9 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
       } else if (/\b(?:email(?: address)? (?:is )?(?:not verified|unverified)|verify your email|email verification (?:is )?required)\b/i.test(message)) {
         // Base44 also returns HTTP 400 when an existing account still needs
         // email verification. Keep that distinct from rejected credentials.
-        setError('Please verify your email before signing in. Continue on the standard sign-in page (link below).');
+        setError(isStagingEmailVerificationAvailable()
+          ? 'Please verify your email before signing in. Use Enter email verification code below.'
+          : 'Please verify your email before signing in. Continue on the standard sign-in page (link below).');
       } else if (status === 400 || status === 401) {
         setError('Incorrect email or password. Please try again.');
       } else if (status === 429) {
@@ -196,7 +200,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
               ? 'Confirm sign-in link'
               : mode === 'signin'
                 ? 'Sign in to continue'
-                : 'Password reset'}
+                : mode === 'verify' ? 'Staging email verification' : 'Password reset'}
           </p>
         </div>
 
@@ -288,6 +292,12 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                 <Button type="submit" disabled={busy} className="h-11 w-full">
                   {busy ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in…</>) : 'Sign in'}
                 </Button>
+                {isStagingEmailVerificationAvailable() && (
+                  <Button type="button" variant="outline" disabled={busy} className="h-11 w-full"
+                    onClick={() => switchMode('verify')}>
+                    Enter email verification code
+                  </Button>
+                )}
                 <p className="text-center text-sm text-slate-500">
                   Need an account?{' '}
                   <button
@@ -299,6 +309,10 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                   </button>
                 </p>
               </form>
+            )}
+
+            {!pendingToken && mode === 'verify' && (
+              <StagingEmailVerification initialEmail={email} onBack={() => switchMode('signin')} />
             )}
 
             {!pendingToken && mode === 'reset' && (
