@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState, useEffect, useCallback } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
@@ -127,8 +128,8 @@ Focus on:
     }
   }, [autoMap, clinicalNotes, performMapping]);
 
-  const handleCopyValue = (value) => {
-    navigator.clipboard.writeText(value);
+  const handleCopyValue = async (value) => {
+    if (!await copyTextToClipboard(value)) return;
   };
 
   return (

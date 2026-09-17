@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -77,8 +78,8 @@ export default function DocumentDraftManager({
     setIsEditing(false);
   };
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(getCurrentContent());
+  const handleCopy = async () => {
+    if (!await copyTextToClipboard(getCurrentContent())) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

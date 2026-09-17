@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState } from "react";
 import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,8 +31,8 @@ export default function SmartNotesContextPanel({ patientId, onInsertSnippet }) {
     );
   });
 
-  const handleCopySnippet = (text, index) => {
-    navigator.clipboard.writeText(text);
+  const handleCopySnippet = async (text, index) => {
+    if (!await copyTextToClipboard(text)) return;
     setCopiedIndex(index);
     setTimeout(() => setCopiedIndex(null), 2000);
   };

@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -124,8 +125,8 @@ Nurse Signature: _______________________`;
     return doc;
   };
 
-  const handleCopyDocumentation = () => {
-    navigator.clipboard.writeText(generateDocumentation());
+  const handleCopyDocumentation = async () => {
+    if (!await copyTextToClipboard(generateDocumentation())) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState } from "react";
 import { toLocalISODate } from "@/lib/dateLocal";
 import { useAICall } from "@/hooks/useAICall";
@@ -125,8 +126,8 @@ Make documentation:
     }
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text) => {
+    if (!await copyTextToClipboard(text)) return;
   };
 
   const exportAllDocumentation = () => {

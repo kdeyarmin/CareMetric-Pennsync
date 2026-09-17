@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState, useEffect, useCallback } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
@@ -177,8 +178,8 @@ For EACH gap found, provide:
     }
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text) => {
+    if (!await copyTextToClipboard(text)) return;
   };
 
   const handleEditNarrative = (gapIndex, text) => {

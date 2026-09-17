@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState } from "react";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -171,8 +172,8 @@ For each section, provide:
     }));
   };
 
-  const handleCopySection = (content) => {
-    navigator.clipboard.writeText(content);
+  const handleCopySection = async (content) => {
+    if (!await copyTextToClipboard(content)) return;
   };
 
   const handleEditSection = (index, currentContent) => {
@@ -328,11 +329,11 @@ Return ONLY the enhanced documentation text.`
                 Regenerate
               </Button>
               <Button
-                onClick={() => {
+                onClick={async () => {
                   const allContent = documentationSections.sections
                     .map(s => `${s.title}\n${'='.repeat(s.title.length)}\n${s.content}\n\n`)
                     .join('\n');
-                  navigator.clipboard.writeText(allContent);
+                  if (!await copyTextToClipboard(allContent)) return;
                 }}
                 variant="outline"
                 className="flex-1"

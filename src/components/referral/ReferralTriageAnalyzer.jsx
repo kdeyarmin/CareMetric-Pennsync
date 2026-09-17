@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -80,13 +81,10 @@ export default function ReferralTriageAnalyzer({ onTriageComplete }) {
     }
   };
 
-  const handleCopyAnalysis = () => {
+  const handleCopyAnalysis = async () => {
     const text = JSON.stringify(analysis, null, 2);
-    // Await the clipboard write so a rejected copy (permissions / insecure
-    // context) shows an error instead of a false "copied" toast + unhandled rejection.
-    navigator.clipboard.writeText(text)
-      .then(() => toast.success('Analysis copied to clipboard'))
-      .catch(() => toast.error('Failed to copy to clipboard'));
+    if (!await copyTextToClipboard(text)) return;
+    toast.success('Analysis copied to clipboard');
   };
 
   const handleDownloadAnalysis = () => {
