@@ -20,6 +20,16 @@ describe('training video response contracts', () => {
     expect(readGenerationResult({ started: 0, modules: [] }).started).toBe(0);
     expect(readGenerationResult({ data: { started: 1, modules: [moduleRecord, { ...moduleRecord, module_id: 'b' }] } }).started).toBe(1);
   });
+  it.each([
+    [{ module_id: 'a' }],
+    [{ ...moduleRecord, video_status: 'unknown' }],
+    [{ ...moduleRecord, title: { private: 'PRIVATE_DETAIL' } }],
+    [{ ...moduleRecord, video_error: { private: 'PRIVATE_DETAIL' } }],
+    [moduleRecord, { ...moduleRecord }],
+  ].map(modules => ({ modules })))('rejects incomplete, malformed or duplicate video modules', ({ modules }) => {
+    expect(() => readVideoStatus({ heygen_configured: true, modules })).toThrow(/Training video/);
+    expect(() => readGenerationResult({ started: 0, modules })).toThrow(/Video generation/);
+  });
 });
 describe('video duration display', () => {
   it.each([[0, '0:00'], [0.3, '0:00'], [59.7, '1:00'], [119.7, '2:00'], [3600, '60:00'], ['90', '1:30']])('formats %s as %s without a :60 seconds rollover', (input, expected) => {

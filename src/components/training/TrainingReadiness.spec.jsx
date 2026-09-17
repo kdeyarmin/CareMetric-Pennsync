@@ -157,6 +157,48 @@ describe('training mutations stay attached to their original scope', () => {
 
 
 describe('remaining training recovery and paid-action boundaries', () => {
+  it('retries a malformed course outline without treating it as an empty course', async () => {
+    mocks.modules.mockResolvedValueOnce({ private: 'PRIVATE_DETAIL' }).mockResolvedValue([lesson]);
+    mount(<CourseCatalogDetail course={course} open onOpenChange={() => {}} />);
+    expect(await screen.findByRole('alert', {}, { timeout: 1000 })).toHaveTextContent('Course outline could not be loaded');
+    expect(screen.queryByText('This course has no lesson modules yet.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry course outline' }));
+    expect(await screen.findByText(lesson.title)).toBeVisible();
+  });
+
+  it('keeps an edited script through a malformed read and a verified recovery', async () => {
+    const view = mount(<TrainingVideoStudio course={course} />);
+    fireEvent.click(await screen.findByRole('button', { name: /View script/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Edit script/ }));
+    fireEvent.change(screen.getByRole('textbox'), { target: { value: script + ' Preserved draft.' } });
+    mocks.modules.mockResolvedValue({ private: 'PRIVATE_DETAIL' });
+    await act(async () => view.client.invalidateQueries({ queryKey: ['training-modules', course.id] }));
+    expect(await screen.findByRole('alert', {}, { timeout: 1000 })).toHaveTextContent('Lesson scripts could not be loaded');
+    expect(screen.queryByRole('button', { name: 'Save script' })).not.toBeInTheDocument();
+    mocks.modules.mockResolvedValue([lesson]);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry lesson scripts' }));
+    expect(await screen.findByDisplayValue(script + ' Preserved draft.')).toBeVisible();
+    expect(mocks.update).not.toHaveBeenCalled();
+  });
+
+  it('does not offer generation for video modules missing a status', async () => {
+    mocks.manage.mockResolvedValue(status([{ module_id: lesson.id, title: lesson.title }]));
+    mount(<TrainingVideoStudio course={course} />);
+    expect(await screen.findByRole('alert', {}, { timeout: 1000 })).toHaveTextContent('Video status could not be loaded');
+    expect(screen.queryByText('Up to date')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Regenerate all' })).toBeDisabled();
+    expect(mocks.manage.mock.calls.some(([payload]) => payload.action !== 'status')).toBe(false);
+  });
+
+  it('keeps a malformed course picker response unavailable and retryable', async () => {
+    mocks.courses.mockResolvedValueOnce([null]).mockResolvedValue([]);
+    mount(<TrainingVideoStudio />);
+    expect(await screen.findByRole('alert', {}, { timeout: 1000 })).toHaveTextContent('Course list could not be loaded');
+    expect(screen.getByRole('combobox', { name: 'Course' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry course list' }));
+    expect(await screen.findByText('No published or draft courses are available.')).toBeVisible();
+  });
+
   it('preserves the script draft but blocks its controls after a script-history read failure', async () => {
     const view = mount(<TrainingVideoStudio course={course} />);
     fireEvent.click(await screen.findByRole('button', { name: /View script/ }));

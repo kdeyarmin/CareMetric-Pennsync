@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/select";
 import { isSafeExternalUrl } from "@/components/utils/security";
 
-import { formatVideoDuration, readGenerationResult, readVideoStatus } from './videoStudioResults';
+import { formatVideoDuration, readGenerationResult, readTrainingRecords, readVideoStatus } from './videoStudioResults';
 
 function TrainingReadNotice({ failed, pending, paused, fetching, subject, retry }) {
   if (failed) return <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
@@ -63,7 +63,7 @@ function LegacyTrainingVideoStudio({ course = null }) {
         base44.entities.TrainingCourse.filter({ status: "draft" }, "-updated_date", 500),
       ]);
       // Re-sort the merged list so recency ordering holds across both statuses.
-      return [...published, ...drafts].sort(
+      return readTrainingRecords([...readTrainingRecords(published), ...readTrainingRecords(drafts)]).sort(
         (a, b) => new Date(b.updated_date || 0) - new Date(a.updated_date || 0)
       );
     },
@@ -95,7 +95,7 @@ function LegacyTrainingVideoStudio({ course = null }) {
   // either place refreshes both.
   const scriptsQuery = useQuery({
     queryKey: ["training-modules", selectedCourseId],
-    queryFn: () => base44.entities.TrainingModule.filter({ course_id: selectedCourseId }, "order_index", 100),
+    queryFn: async () => readTrainingRecords(await base44.entities.TrainingModule.filter({ course_id: selectedCourseId }, "order_index", 100)),
     enabled: !!selectedCourseId,
     retry: false,
   });

@@ -7,9 +7,28 @@ function resultBody(response) {
   }
   return value;
 }
+const isRecord = value => value && typeof value === 'object' && !Array.isArray(value);
+const optionalText = value => value == null || typeof value === 'string';
+function uniqueRecords(records, idKey) {
+  if (!Array.isArray(records)) return false;
+  const ids = new Set();
+  return Array.from(records).every(record => {
+    if (!isRecord(record) || typeof record[idKey] !== 'string' || !record[idKey].trim()
+      || ids.has(record[idKey]) || !optionalText(record.title)) return false;
+    ids.add(record[idKey]);
+    return true;
+  });
+}
+export function readTrainingRecords(records) {
+  if (!uniqueRecords(records, 'id') || !records.every(record => record.content_json == null || isRecord(record.content_json))) {
+    throw new Error('Training records could not be verified.');
+  }
+  return records;
+}
 function validModules(modules) {
-  return Array.isArray(modules) && modules.every(module => module && typeof module === 'object'
-    && typeof module.module_id === 'string' && module.module_id.trim().length > 0);
+  return uniqueRecords(modules, 'module_id') && modules.every(module =>
+    ['none', 'processing', 'completed', 'failed'].includes(module.video_status)
+    && ['video_url', 'video_thumbnail_url', 'video_error'].every(key => optionalText(module[key])));
 }
 export function readVideoStatus(response) {
   const value = resultBody(response);

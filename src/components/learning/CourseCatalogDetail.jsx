@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { readTrainingRecords } from '@/components/training/videoStudioResults';
 import { Link } from "react-router";
 import { base44 } from "@/api/base44Client";
 import { Button } from "@/components/ui/button";
@@ -54,7 +55,7 @@ export default function CourseCatalogDetail({
   // studio so an admin editing lessons in another tab sees the same data.
   const modulesQuery = useQuery({
     queryKey: ["training-modules", courseId],
-    queryFn: () => base44.entities.TrainingModule.filter({ course_id: courseId }, "order_index", 100),
+    queryFn: async () => readTrainingRecords(await base44.entities.TrainingModule.filter({ course_id: courseId }, "order_index", 100)),
     enabled: !!courseId && open,
     retry: false,
   });
