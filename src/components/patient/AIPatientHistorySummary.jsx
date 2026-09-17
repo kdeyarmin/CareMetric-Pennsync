@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { formatAge } from "@/lib/age";
@@ -206,9 +207,9 @@ Return JSON:
     }
   }, [patient, summary, autoGenerate, generateSummary]);
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (summary?.clinical_narrative) {
-      navigator.clipboard.writeText(summary.clinical_narrative);
+      if (!await copyTextToClipboard(summary.clinical_narrative)) return;
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }

@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { Button } from "@/components/ui/button";
@@ -76,8 +77,8 @@ Return JSON:
     
   };
 
-  const handleCopy = (text) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = async (text) => {
+    if (!await copyTextToClipboard(text)) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

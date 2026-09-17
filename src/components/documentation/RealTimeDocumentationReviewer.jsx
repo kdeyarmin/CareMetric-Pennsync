@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -272,8 +273,8 @@ Be thorough, specific, and actionable. Provide actual example text for suggestio
     return "text-red-600";
   };
 
-  const copySuggestion = (text) => {
-    navigator.clipboard.writeText(text);
+  const copySuggestion = async (text) => {
+    if (!await copyTextToClipboard(text)) return;
   };
 
   if (ai.loading) {

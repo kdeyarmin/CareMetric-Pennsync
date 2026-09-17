@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -168,14 +169,14 @@ Return JSON with the complete material:`,
     }
   };
 
-  const copyToClipboard = () => {
+  const copyToClipboard = async () => {
     if (!educationMaterial) return;
     
     const fullText = `${educationMaterial.title}\n\n${educationMaterial.introduction}\n\n` +
       (educationMaterial.sections || []).map(s => `${s.section_title}\n${s.content}\n`).join('\n') +
       `\n${educationMaterial.summary}`;
     
-    navigator.clipboard.writeText(fullText);
+    if (!await copyTextToClipboard(fullText)) return;
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

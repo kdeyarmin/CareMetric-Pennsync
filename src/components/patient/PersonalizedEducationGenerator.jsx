@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { isSafeExternalUrl } from "@/components/utils/security";
@@ -114,7 +115,7 @@ Format each section clearly with headers.`,
     }
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     const fullText = `
 PATIENT EDUCATION MATERIALS
 Generated for: ${patient.first_name} ${patient.last_name}
@@ -154,7 +155,7 @@ KEY TAKEAWAYS
 ${educationMaterials.key_takeaways?.map(k => `• ${k}`).join('\n')}
     `.trim();
 
-    navigator.clipboard.writeText(fullText);
+    if (!await copyTextToClipboard(fullText)) return;
   };
 
   const handleEmail = async () => {

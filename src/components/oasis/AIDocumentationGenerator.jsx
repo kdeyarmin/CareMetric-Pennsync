@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
@@ -125,9 +126,9 @@ Return JSON:
     }
   };
 
-  const handleCopy = (index, text) => {
-    navigator.clipboard.writeText(text);
-    setCopiedIndices(new Set([...copiedIndices, index]));
+  const handleCopy = async (index, text) => {
+    if (!await copyTextToClipboard(text)) return;
+    setCopiedIndices(previous => new Set([...previous, index]));
     setTimeout(() => {
       setCopiedIndices(prev => {
         const newSet = new Set(prev);

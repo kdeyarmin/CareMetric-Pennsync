@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import React, { useState, useRef } from "react";
 import { toast } from "sonner";
 import { base44 } from "@/api/base44Client";
@@ -291,10 +292,9 @@ export default function ReferralPDFSummarizer({
     }
   }, [externalFileUrl, extractedData, isProcessing, processReferral]);
 
-  const copySection = (text, label = "Section") => {
-    navigator.clipboard.writeText(text)
-      .then(() => toast.success(`${label} copied to clipboard`))
-      .catch(() => toast.error("Unable to copy to clipboard"));
+  const copySection = async (text, label = "Section") => {
+    if (!await copyTextToClipboard(text)) return;
+    toast.success(`${label} copied to clipboard`);
   };
 
   const copyAll = () => {

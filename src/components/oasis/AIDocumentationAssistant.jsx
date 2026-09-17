@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -177,8 +178,8 @@ Return JSON:
     }
   };
 
-  const handleCopy = (text, index) => {
-    navigator.clipboard.writeText(text);
+  const handleCopy = async (text, index) => {
+    if (!await copyTextToClipboard(text)) return;
     setCopiedIndex(index);
     setTimeout(() => setCopiedIndex(null), 2000);
   };

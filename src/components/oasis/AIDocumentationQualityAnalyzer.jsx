@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState, useEffect, useCallback } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { getScoreBg } from "@/components/oasis/oasisScoreColors";
@@ -215,8 +216,8 @@ Return JSON:
     }
   }, [analysisResults, qualityAnalysis, ai.loading, error, runQualityAnalysis]);
 
-  const copyToClipboard = (text, exampleKey) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text, exampleKey) => {
+    if (!await copyTextToClipboard(text)) return;
     setCopiedExample(exampleKey);
     setTimeout(() => setCopiedExample(null), 2000);
   };

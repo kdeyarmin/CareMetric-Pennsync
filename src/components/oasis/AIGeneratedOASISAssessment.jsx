@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useMemo, useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { generateDiagnosisCodes, codeLabel } from "@/components/referral/diagnosisCodeGenerator";
@@ -132,7 +133,7 @@ function EnabledAIGeneratedOASISAssessment({ patientId, visitType = "Start of Ca
     );
   };
 
-  const copyItemToClipboard = (item) => {
+  const copyItemToClipboard = async (item) => {
     const text = `${item.item_number}: ${item.item_name}
 PennSync does not select OASIS responses — answer this item from the wording in your EMR.
 ${item.evidence ? `Evidence from the record: "${item.evidence}"` : ""}
@@ -144,7 +145,7 @@ ${item.questions_to_ask?.map(q => `• ${q}`).join('\n')}
 Documentation Tips:
 ${item.documentation_tips?.map(t => `• ${t}`).join('\n')}`;
 
-    navigator.clipboard.writeText(text);
+    if (!await copyTextToClipboard(text)) return;
     setCopiedItems(prev => [...prev, item.item_number]);
     setTimeout(() => {
       setCopiedItems(prev => prev.filter(i => i !== item.item_number));

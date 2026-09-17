@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -104,8 +105,8 @@ export default function AIAdmissionNoteGenerator({ referralData, onNoteGenerated
     }
   }, [autoGenerate, referralData, generateAdmissionNote, generatedNote, ai.loading]);
 
-  const handleCopy = () => {
-    navigator.clipboard.writeText(isEditing ? editedNote : generatedNote);
+  const handleCopy = async () => {
+    if (!await copyTextToClipboard(isEditing ? editedNote : generatedNote)) return;
   };
 
   const handleSaveEdit = () => {

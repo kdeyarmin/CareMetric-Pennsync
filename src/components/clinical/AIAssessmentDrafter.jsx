@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
@@ -102,8 +103,8 @@ Format the response professionally for OASIS documentation. Be specific and use 
     }
   };
 
-  const copyToClipboard = (text) => {
-    navigator.clipboard.writeText(text);
+  const copyToClipboard = async (text) => {
+    if (!await copyTextToClipboard(text)) return;
   };
 
   return (

@@ -1,3 +1,4 @@
+import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
 import { useState, useEffect, useCallback } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -212,8 +213,8 @@ Return detailed compliance analysis in JSON format.`;
     }
   };
 
-  const handleCopyText = (text) => {
-    navigator.clipboard.writeText(text);
+  const handleCopyText = async (text) => {
+    if (!await copyTextToClipboard(text)) return;
   };
 
   if (!visitType) return null;
