@@ -93,7 +93,7 @@ export function normalizeExternalIntegrationParams(operation, input) {
   } else if (operation === 'CreateFileSignedUrl') {
     exactObject(value, ['file_uri']); value.file_uri = privateFile(value.file_uri);
   } else if (operation === 'SendEmail') {
-    validateMailParams(value);
+    try { validateMailParams(value); } catch { deny('INVALID_INPUT'); }
   } else deny('INVALID_INPUT');
   return value;
 }

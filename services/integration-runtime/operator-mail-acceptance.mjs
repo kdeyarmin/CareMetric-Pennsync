@@ -1,7 +1,7 @@
 import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { loadConfig, createStore, performDurable } from './runtime.mjs';
-import { buildMailPayload } from './mail-contract.mjs';
+import { buildMailPayload, emailAddress } from './mail-contract.mjs';
 import { hash, fail, IntegrationError } from './safety.mjs';
 
 // Fixed synthetic content only. Normal server imports neither this CLI nor its
@@ -16,10 +16,12 @@ export const MAIL_FIXTURE = Object.freeze({
 const CONFIRMATION = 'explicit-mail-sandbox-v1';
 export async function runMailAcceptance(config, { authorization, fetcher = fetch, store: suppliedStore } = {}) {
   if (authorization !== CONFIRMATION || config.released || config.browserReleased || !config.configured || !config.sendgridKey
-    || config.operations.length || config.browserOperations?.length) fail(403, 'MAIL_ACCEPTANCE_NOT_AUTHORIZED');
+    || config.operations.length || config.browserOperations?.length || !/^[a-f0-9]{40}$/.test(config.revision || '')) fail(403, 'MAIL_ACCEPTANCE_NOT_AUTHORIZED');
   // Reject malformed sender configuration before creating an irrevocable
   // acceptance reservation. The same pure builder validates the actual send.
   buildMailPayload(MAIL_FIXTURE, config.fromEmail, { sandbox: true });
+  const requestBinding = { contract: 'cm.mail.sandbox.acceptance.v1', revision: config.revision, sender: emailAddress(config.fromEmail) };
+  const bindingId = hash(config.hashKey, requestBinding);
   const subject = hash(config.hashKey, [config.appId, 'operator-synthetic-mail-contract-v1']);
   const actor = { subject, snapshot: 'operator-synthetic-not-employee-authority', canEmail: true };
   const counts = { sandboxRequests: 0, stateRequests: 0, modelRequests: 0, base44Requests: 0, deliveries: 0 };
@@ -54,7 +56,7 @@ export async function runMailAcceptance(config, { authorization, fetcher = fetch
   };
   const invoke = (params, label) => performDurable({ config, req: new Request('https://operator.invalid'),
     agencyId: 'synthetic-not-an-agency', operation: 'SendEmail', params,
-    requestId: `operator-mail-compat-20260917-v1-${label}`, authority: async () => actor, store, provider });
+    requestId: `operator-mail-${label}-${bindingId}`, requestBinding, authority: async () => actor, store, provider });
   const plain = await invoke({ ...MAIL_FIXTURE, content_type: 'text/plain', body: 'Synthetic plain-text compatibility. No delivery.' }, 'plain');
   const html = await invoke(MAIL_FIXTURE, 'html');
   const before = counts.sandboxRequests;
