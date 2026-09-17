@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { isSafeExternalUrl } from "@/components/utils/security";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,14 +20,13 @@ import { formatAge } from "@/lib/age";
 import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
 import { rejectOutboundDelivery } from '@/lib/outboundDeliveryContainment';
 
-export default function PersonalizedEducationGenerator({ patient, complianceData, visits }) {
+export default function PersonalizedEducationGenerator(props) {
+  return <PatientEducationGenerator key={props.patient?.id || 'no-patient'} {...props} />;
+}
+
+function PatientEducationGenerator({ patient, complianceData, visits }) {
   const ai = useAICall();
   const [educationMaterials, setEducationMaterials] = useState(null);
-
-  // Clear sticky AI output when the parent chart switches patients.
-  useEffect(() => {
-    setEducationMaterials(null);
-  }, [patient?.id]);
 
   const generateMaterials = async () => {
     try {

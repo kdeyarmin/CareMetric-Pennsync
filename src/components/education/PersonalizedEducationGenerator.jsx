@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useAICall } from "@/hooks/useAICall";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -25,7 +25,12 @@ import {
 import { toast } from 'sonner';
 import { rejectOutboundDelivery } from '@/lib/outboundDeliveryContainment';
 
-export default function PersonalizedEducationGenerator({ patient, carePlans = [], recentVisits = [] }) {
+export default function PersonalizedEducationGenerator(props) {
+  // Remount all patient-specific state, including pending AI callbacks.
+  return <PatientEducationGenerator key={props.patient?.id || 'no-patient'} {...props} />;
+}
+
+function PatientEducationGenerator({ patient, carePlans = [], recentVisits = [] }) {
   const ai = useAICall();
   const [educationMaterial, setEducationMaterial] = useState(null);
   const [readingLevel, setReadingLevel] = useState("6th-grade");
@@ -33,12 +38,6 @@ export default function PersonalizedEducationGenerator({ patient, carePlans = []
   const [format, setFormat] = useState("comprehensive");
   const [copied, setCopied] = useState(false);
   const [isSending, setIsSending] = useState(false);
-
-  // Clear sticky AI output when the parent chart switches patients.
-  useEffect(() => {
-    setEducationMaterial(null);
-    setCopied(false);
-  }, [patient?.id]);
 
   const generateMaterial = async () => {
     if (!patient) return;
