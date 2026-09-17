@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import PatientHistoryNotice from './PatientHistoryNotice';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,7 +7,7 @@ import { TrendingUp, TrendingDown, Activity } from "lucide-react";
 import { formatLocalDate } from "@/lib/dateLocal";
 
 export default function VitalSignsTrendDashboard({ patientId }) {
-  const { data: visits = [], isLoading } = useAuthorizedVisits({
+  const { data: visits = [], isLoading, isError } = useAuthorizedVisits({
     patientId,
     purpose: 'vitals_trend',
     sort: '-visit_date',
@@ -64,6 +65,10 @@ export default function VitalSignsTrendDashboard({ patientId }) {
       </div>
     );
   };
+
+  if (!patientId || isError) {
+    return <PatientHistoryNotice patientId={patientId} error={isError} />;
+  }
 
   if (isLoading) {
     return (

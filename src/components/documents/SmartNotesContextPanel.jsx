@@ -1,4 +1,5 @@
 import { copyTextToClipboard } from '@/lib/copyTextToClipboard';
+import PatientHistoryNotice from '@/components/patient/PatientHistoryNotice';
 import { useState } from "react";
 import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,7 +13,7 @@ export default function SmartNotesContextPanel({ patientId, onInsertSnippet }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [copiedIndex, setCopiedIndex] = useState(null);
 
-  const { data: visits = [] } = useAuthorizedVisits({
+  const { data: visits = [], isPending, isError } = useAuthorizedVisits({
     patientId,
     purpose: 'documentation',
     status: 'completed',
@@ -50,6 +51,10 @@ export default function SmartNotesContextPanel({ patientId, onInsertSnippet }) {
     // Return first 3 meaningful sentences
     return sentences.slice(0, 3).map(s => s.trim() + '.');
   };
+
+  if (!patientId || isPending || isError) {
+    return <PatientHistoryNotice patientId={patientId} error={isError} />;
+  }
 
   if (visits.length === 0) {
     return (
