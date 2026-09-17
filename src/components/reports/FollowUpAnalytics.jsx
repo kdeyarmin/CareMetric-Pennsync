@@ -1,15 +1,15 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { base44 } from "@/api/base44Client";
-import { listAuthorizedReferrals } from '@/functions/manageAuthorizedReferral';
-import { useAuth } from '@/lib/AuthContext';
 import { isAdminView } from "@/lib/roles";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { AlertTriangle, ClipboardCheck, Clock, TrendingUp, DollarSign } from "lucide-react";
+import { ClipboardCheck, Clock, TrendingUp, DollarSign } from "lucide-react";
 import { buildFollowUpPlan } from "@/components/referral/referralFollowUpEngine";
 import { estimateFollowUpRevenueImpact, fmtUsd } from "@/components/referral/followUpRevenueImpact";
+import ReportReadState from '@/components/analytics/ReportReadState';
+import { EMPTY_REPORT_ROWS, REPORT_READ_OPTIONS } from '@/components/analytics/reportReadContracts';
+import useReferralReportRows from './useReferralReportRows';
 
 const hoursBetween = (a, b) => {
   const ms = Date.parse(b) - Date.parse(a);
@@ -29,36 +29,34 @@ const hoursBetween = (a, b) => {
  * defense in depth for reuse.
  */
 export default function FollowUpAnalytics() {
-  const { tenantContext } = useAuth();
-  const { data: currentUser } = useQuery({
+  const userQuery = useQuery({
     queryKey: ["currentUser"],
     queryFn: () => base44.auth.me(),
+    ...REPORT_READ_OPTIONS,
   });
+  const currentUser = userQuery.isSuccess ? userQuery.data : null;
   const adminView = isAdminView(currentUser);
 
-  const { data: referrals, isError: referralsUnavailable } = useQuery({
-    queryKey: ["referrals", "authorized", tenantContext?.agency_id, 5000],
-    queryFn: () => listAuthorizedReferrals({
-      agencyId: tenantContext.agency_id,
-      limit: 5000,
-    }).then((result) => result.referrals),
-    enabled: !!tenantContext?.agency_id,
-  });
+  const referralQuery = useReferralReportRows();
+  const referrals = referralQuery.isSuccess ? referralQuery.data : EMPTY_REPORT_ROWS;
 
-  const { data: rateConfig } = useQuery({
+  const rateQuery = useQuery({
     queryKey: ["pdgm-rate-config", currentUser?.agency_name || null],
     queryFn: async () => {
       const { fetchCallerPdgmRateConfig } = await import("@/lib/agencySettings");
       return fetchCallerPdgmRateConfig(currentUser?.agency_name);
     },
-    enabled: !!currentUser,
+    enabled: adminView,
+    ...REPORT_READ_OPTIONS,
   });
+  const rateConfig = rateQuery.isSuccess ? rateQuery.data : null;
 
   const stats = useMemo(() => {
     const processed = (referrals || []).filter((r) => r.extracted_data && r.analysis_results);
     const withRequests = processed.filter((r) => r.follow_up_requests);
 
-    // Turnaround: request sent → provider response received.
+    // generated_at records drafting, not transmission or delivery. Keep that
+    // distinction visible until provider delivery receipts are available.
     const turnarounds = [];
     const byProvider = new Map();
     for (const r of withRequests) {
@@ -66,10 +64,10 @@ export default function FollowUpAnalytics() {
       const provider = r.extracted_data?.demographics?.referring_physician || r.referral_source || "Unknown provider";
       const entry = byProvider.get(provider) || { provider, sent: 0, received: 0, hours: [] };
       entry.sent += 1;
-      if (fu.received_at && fu.generated_at) {
-        const h = hoursBetween(fu.generated_at, fu.received_at);
+      if (typeof fu.received_at === 'string' && Number.isFinite(Date.parse(fu.received_at))) {
+        entry.received += 1;
+        const h = fu.generated_at ? hoursBetween(fu.generated_at, fu.received_at) : null;
         if (h !== null) {
-          entry.received += 1;
           entry.hours.push(h);
           turnarounds.push(h);
         }
@@ -123,7 +121,8 @@ export default function FollowUpAnalytics() {
     return {
       processedCount: processed.length,
       sentCount: withRequests.length,
-      receivedCount: withRequests.filter((r) => ["received", "resolved"].includes(r.follow_up_requests?.status)).length,
+      receivedCount: withRequests.filter((r) => typeof r.follow_up_requests?.received_at === 'string'
+        && Number.isFinite(Date.parse(r.follow_up_requests.received_at))).length,
       avgTurnaroundHours: turnarounds.length ? turnarounds.reduce((a, b) => a + b, 0) / turnarounds.length : null,
       completePct: processed.length ? Math.round((completeOnArrival / processed.length) * 100) : null,
       providerRows,
@@ -136,16 +135,9 @@ export default function FollowUpAnalytics() {
 
   const fmtHours = (h) => (h === null ? "—" : h < 48 ? `${Math.round(h)}h` : `${(h / 24).toFixed(1)}d`);
 
-  if (referralsUnavailable) {
-    return (
-      <Alert variant="destructive" className="mt-6">
-        <AlertTriangle className="h-4 w-4" />
-        <AlertDescription>
-          Referral analytics could not be authorized. No zero-value metrics are being inferred.
-        </AlertDescription>
-      </Alert>
-    );
-  }
+  if (!referralQuery.scopeAvailable) return <p role="status">Select an authorized agency before viewing referral reports.</p>;
+  if (!referralQuery.isSuccess || referralQuery.isError) return <ReportReadState queries={[referralQuery]} title="Referral report data" />;
+  if (referralQuery.capped) return <p role="status">A source reached its record limit. A complete referral follow-up report cannot be verified, so totals are unavailable.</p>;
 
   return (
     <div className="space-y-4 mt-6">
@@ -157,7 +149,7 @@ export default function FollowUpAnalytics() {
       <div className={`grid grid-cols-2 ${adminView ? "md:grid-cols-4" : "md:grid-cols-3"} gap-3`}>
         <Card>
           <CardContent className="p-4">
-            <p className="text-xs font-semibold text-slate-500 uppercase">Requests sent / answered</p>
+            <p className="text-xs font-semibold text-slate-500 uppercase">Requests generated / responses recorded</p>
             <p className="text-2xl font-bold text-slate-900">
               {stats.sentCount} / {stats.receivedCount}
             </p>
@@ -166,7 +158,7 @@ export default function FollowUpAnalytics() {
         <Card>
           <CardContent className="p-4">
             <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">
-              <Clock className="w-3 h-3" /> Avg turnaround
+              <Clock className="w-3 h-3" /> Avg draft-to-response time
             </p>
             <p className="text-2xl font-bold text-slate-900">{fmtHours(stats.avgTurnaroundHours)}</p>
           </CardContent>
@@ -174,7 +166,7 @@ export default function FollowUpAnalytics() {
         <Card>
           <CardContent className="p-4">
             <p className="text-xs font-semibold text-slate-500 uppercase flex items-center gap-1">
-              <TrendingUp className="w-3 h-3" /> Complete on arrival
+              <TrendingUp className="w-3 h-3" /> Complete at review
             </p>
             <p className="text-2xl font-bold text-slate-900">
               {stats.completePct === null ? "—" : `${stats.completePct}%`}
@@ -205,19 +197,19 @@ export default function FollowUpAnalytics() {
       <div className="grid md:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm">Turnaround by referring provider</CardTitle>
+            <CardTitle className="text-sm">Draft-to-response time by referring provider</CardTitle>
           </CardHeader>
           <CardContent className="space-y-1">
             {stats.providerRows.length === 0 && (
-              <p className="text-sm text-slate-500">No follow-up requests sent yet.</p>
+              <p className="text-sm text-slate-500">No follow-up requests generated yet.</p>
             )}
             {stats.providerRows.map((p) => (
               <div key={p.provider} className="flex items-center justify-between text-sm border-b last:border-0 py-1.5 gap-2">
                 <span className="truncate text-slate-800">{p.provider}</span>
                 <span className="flex items-center gap-2 flex-shrink-0 text-xs text-slate-600">
-                  <Badge variant="outline">{p.sent} sent</Badge>
+                  <Badge variant="outline">{p.sent} generated</Badge>
                   <Badge variant="outline" className={p.received < p.sent ? "text-amber-700" : "text-green-700"}>
-                    {p.received} answered
+                    {p.received} responses recorded
                   </Badge>
                   {fmtHours(p.avgHours)}
                 </span>
