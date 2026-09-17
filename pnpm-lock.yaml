@@ -21,8 +21,8 @@ importers:
         specifier: ^0.8.48
         version: 0.8.48
       '@base44/vite-plugin':
-        specifier: ^1.0.40
-        version: 1.0.40
+        specifier: ^1.0.41
+        version: 1.0.41
       '@caremetric/help-sdk':
         specifier: file:vendor/caremetric-help-sdk-0.4.0.tgz
         version: file:vendor/caremetric-help-sdk-0.4.0.tgz
@@ -349,8 +349,8 @@ packages:
   '@base44/sdk@0.8.48':
     resolution: {integrity: sha512-AXDLduglymT+RM6OZu+VFQtsLe++FhXZlvn/I/M2PFOVAC3MTpdmqnm5zL5D0BPK86JBeNpeK5vd9tkKFmAdZQ==}
 
-  '@base44/vite-plugin@1.0.40':
-    resolution: {integrity: sha512-bpX5fjjx6ZETex7SyIzIFp/1w2k08M65fI5vkUbLhTc+cP+/KY+uzZXCnmWglsJe7mOCirlpMFpRGzo/UmHk2A==}
+  '@base44/vite-plugin@1.0.41':
+    resolution: {integrity: sha512-VrJvZ3KI9ZdLI1/oknJ2a9Nal9U9cYSZ4XDVCmx+BrjFTNNhLf16kuqYSUsVXDrPDP1hsvT0Iu+/n5ZZWZFDVQ==}
 
   '@bramus/specificity@2.4.2':
     resolution: {integrity: sha512-ctxtJ/eA+t+6q2++vj5j7FYX3nRu311q1wfYH3xjlLOsczhlhxAg2FWNUXhpGvAw3BWo1xBcvOV6/YLc2r5FJw==}
@@ -4075,7 +4075,7 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@base44/vite-plugin@1.0.40':
+  '@base44/vite-plugin@1.0.41':
     dependencies:
       '@babel/generator': 7.29.7
       '@babel/parser': 7.29.7

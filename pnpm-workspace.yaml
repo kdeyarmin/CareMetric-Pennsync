@@ -33,5 +33,4 @@ minimumReleaseAgeExclude:
   - framer-motion@12.43.0
   - lucide-react@1.28.0
   - pdfjs-dist@6.2.108
-  # Exact platform-imposed update; other package age checks stay unchanged.
-  - '@base44/vite-plugin@1.0.34 || 1.0.36 || 1.0.37 || 1.0.39 || 1.0.40'
+  - '@base44/vite-plugin@1.0.34 || 1.0.36 || 1.0.37 || 1.0.39 || 1.0.40 || 1.0.41'
