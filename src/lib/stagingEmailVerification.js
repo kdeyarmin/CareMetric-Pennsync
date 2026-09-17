@@ -7,9 +7,14 @@ export class StagingVerificationError extends Error {}
 // This redemption-only screen is confined to the staging build on its exact,
 // top-level host. URL parameters, storage, and release flags cannot enable it.
 export function isStagingEmailVerificationAvailable() {
-  return import.meta.env.VITE_BASE44_APP_ID === STAGING_APP_ID
-    && globalThis.location?.origin === STAGING_ORIGIN
-    && globalThis.top === globalThis.self;
+  try {
+    return import.meta.env.VITE_BASE44_APP_ID === STAGING_APP_ID
+      && globalThis.location?.origin === STAGING_ORIGIN
+      && globalThis.top === globalThis.self;
+  } catch {
+    // A restricted frame must not make the surrounding sign-in screen fail.
+    return false;
+  }
 }
 
 export async function verifyStagingEmail({ email, code, signal }) {

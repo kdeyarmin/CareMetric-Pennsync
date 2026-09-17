@@ -39,6 +39,17 @@ describe('staging native email verification boundary', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it('fails closed when frame inspection is denied instead of breaking sign-in', async () => {
+    vi.stubGlobal('top', {});
+    Object.defineProperty(globalThis, 'top', {
+      configurable: true,
+      get() { throw new DOMException('Frame access denied', 'SecurityError'); },
+    });
+    expect(isStagingEmailVerificationAvailable()).toBe(false);
+    await expect(verifyStagingEmail(input)).rejects.toThrow('only available in staging');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it.each([
     { email: 'not-an-email', code: '123456' },
     { email: 'test@example.com', code: '12345' },
