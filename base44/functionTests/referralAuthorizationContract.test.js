@@ -290,14 +290,22 @@ test('Referral broker failures cannot masquerade as verified empty queues, docum
     ['../../src/pages/ReferralFollowUp.jsx', /isError: referralsUnavailable[\s\S]*No follow-up queue is being shown/],
     ['../../src/components/documents/ReferralDocumentViewer.jsx', /isError: referralsUnavailable[\s\S]*No referral documents are being shown/],
     ['../../src/components/hub-tabs/ReferralAdmissionNote.jsx', /isError: referralUnavailable[\s\S]*No referral data is being shown/],
-    ['../../src/components/reports/FollowUpAnalytics.jsx', /isError: referralsUnavailable[\s\S]*No zero-value metrics are being inferred/],
-    ['../../src/components/reports/ReferralVolumeReport.jsx', /isError: referralsUnavailable[\s\S]*No zero-value report is being shown or exported/],
+    ['../../src/components/reports/FollowUpAnalytics.jsx', /if \(!referralQuery\.isSuccess \|\| referralQuery\.isError\) return <ReportReadState queries=\{\[referralQuery\]\}/],
+    ['../../src/components/reports/ReferralVolumeReport.jsx', /if \(!referralQuery\.isSuccess \|\| referralQuery\.isError\) return <ReportReadState queries=\{\[referralQuery\]\}/],
     ['../../src/components/dashboard/OverdueFollowUpsWidget.jsx', /isError: referralsUnavailable[\s\S]*No empty queue is being inferred/],
     ['../../src/components/referral/PendingReferralsWidget.jsx', /isError: referralsUnavailable[\s\S]*No empty queue is being inferred/],
   ]);
   for (const [relativePath, marker] of expectedFailureStates) {
     assert.match(await readFile(new URL(relativePath, import.meta.url), 'utf8'), marker, relativePath);
   }
+  // Reports now share a recovery state. Keep the source contract connected to
+  // the actual error message; rendered tests also prove pending/failure/retry.
+  const reportState = await readFile(new URL('../../src/components/analytics/ReportReadState.jsx', import.meta.url), 'utf8');
+  assert.match(reportState, /queries\.some\(query => query\.isError\)/);
+  assert.match(reportState, /is unavailable\. Retry before viewing totals or exporting a report/);
+  const reportRead = await readFile(new URL('../../src/components/reports/useReferralReportRows.js', import.meta.url), 'utf8');
+  assert.match(reportRead, /listAuthorizedReferrals\(\{ agencyId: tenantContext\.agency_id/);
+  assert.doesNotMatch(reportRead, /initialData\s*:|\.catch\([^)]*=>\s*\[\]/);
 });
 
 test('create stamps immutable tenant provenance and supports an exact replay', async () => {
