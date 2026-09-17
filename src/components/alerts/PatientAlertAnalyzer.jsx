@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from "react";
+import PatientHistoryNotice from '@/components/patient/PatientHistoryNotice';
 import { base44 } from "@/api/base44Client";
 import { invokeLLM } from "@/lib/invokeLLM";
 import { useQuery } from "@tanstack/react-query";
@@ -48,7 +49,7 @@ export default function PatientAlertAnalyzer({
   }, [patientId]);
 
   // Fetch patient data
-  const { data: patient } = useAuthorizedPatient({
+  const { data: patient, isPending: patientPending, isError: patientError } = useAuthorizedPatient({
     patientId,
     agencyId: tenantContext?.agency_id,
     purpose: 'alert_analysis',
@@ -56,7 +57,7 @@ export default function PatientAlertAnalyzer({
   });
 
   // Fetch recent visits
-  const { data: recentVisits = [] } = useAuthorizedVisits({
+  const { data: recentVisits = [], isPending: visitsPending, isError: visitsError } = useAuthorizedVisits({
     patientId,
     purpose: 'documentation',
     sort: '-visit_date',
@@ -65,11 +66,23 @@ export default function PatientAlertAnalyzer({
   });
 
   // Fetch incidents
-  const { data: incidents = [] } = useQuery({
+  const { data: incidents = [], isPending: incidentsPending, isFetching: incidentsFetching, isPaused: incidentsPaused, isError: incidentsError } = useQuery({
     queryKey: ['patientIncidents', patientId, 5],
     queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, '-incident_date', 5),
     enabled: !!patientId
   });
+
+  const historyError = patientError || visitsError || incidentsError;
+  const historyReady = Boolean(patient && !historyError
+    && !patientPending && !visitsPending && !incidentsPending && !incidentsFetching && !incidentsPaused);
+
+  useLayoutEffect(() => {
+    if (historyReady) return;
+    analysisRequestRef.current += 1;
+    setGeneratedAlerts([]);
+    setAnalysisProgress(0);
+    setIsAnalyzing(false);
+  }, [historyReady]);
 
   const extractVitalTrends = useCallback((visits) => {
     const vitals = visits
@@ -107,7 +120,7 @@ export default function PatientAlertAnalyzer({
   }, []);
 
   const runAnalysis = useCallback(async () => {
-    if (!patient) return;
+    if (!historyReady) return;
 
     const requestId = ++analysisRequestRef.current;
     setIsAnalyzing(true);
@@ -237,14 +250,14 @@ Return JSON:
     if (analysisRequestRef.current === requestId) {
       setIsAnalyzing(false);
     }
-  }, [patient, recentVisits, incidents, extractVitalTrends]);
+  }, [patient, recentVisits, incidents, extractVitalTrends, historyReady]);
 
   // Auto-analyze on mount if enabled
   useEffect(() => {
-    if (autoAnalyze && patientId && patient) {
+    if (autoAnalyze && patientId && historyReady) {
       runAnalysis();
     }
-  }, [autoAnalyze, patientId, patient, runAnalysis]);
+  }, [autoAnalyze, patientId, historyReady, runAnalysis]);
 
   if (!patientId) {
     return (
@@ -255,6 +268,10 @@ Return JSON:
         </CardContent>
       </Card>
     );
+  }
+
+  if (!historyReady) {
+    return <PatientHistoryNotice patientId={patientId} error={historyError} />;
   }
 
   return (

@@ -15,7 +15,11 @@ import SmartNotesContextPanel from "./SmartNotesContextPanel";
 import DocumentDraftManager from "./DocumentDraftManager";
 import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 
-export default function ReferralLetterGenerator({ patientId, patient }) {
+export default function ReferralLetterGenerator(props) {
+  return <PatientReferralLetterGenerator key={props.patientId || 'no-patient'} {...props} />;
+}
+
+function PatientReferralLetterGenerator({ patientId, patient }) {
   const [referralDate, setReferralDate] = useState(todayEastern());
   const [referringTo, setReferringTo] = useState("");
   const [specialty, setSpecialty] = useState("");
@@ -226,16 +230,18 @@ Keep the tone professional and concise. Include all relevant clinical informatio
             </Button>
           </CardContent>
         </Card>
+        </>}
 
         {generatedLetter && (
-          <DocumentDraftManager
-            generatedContent={generatedLetter}
-            documentType="Referral_Letter"
-            patientName={`${patient.first_name}_${patient.last_name}`}
-            onContentChange={(content) => setGeneratedLetter(content)}
-          />
+          <div hidden={!patientId || visitsPending || visitsError}>
+            <DocumentDraftManager
+              generatedContent={generatedLetter}
+              documentType="Referral_Letter"
+              patientName={`${patient?.first_name || ''}_${patient?.last_name || ''}`}
+              onContentChange={(content) => setGeneratedLetter(content)}
+            />
+          </div>
         )}
-        </>}
       </div>
     </div>
   );

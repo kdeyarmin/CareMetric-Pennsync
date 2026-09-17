@@ -17,7 +17,11 @@ import { parseLocalDate } from "@/lib/dateLocal";
 import { PATIENT_HISTORY_ROWS } from '@/lib/queryLimits';
 import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 
-export default function ProgressReportGenerator({ patientId, patient }) {
+export default function ProgressReportGenerator(props) {
+  return <PatientProgressReportGenerator key={props.patientId || 'no-patient'} {...props} />;
+}
+
+function PatientProgressReportGenerator({ patientId, patient }) {
   const [reportDate, setReportDate] = useState(todayEastern());
   const [reportPeriod, setReportPeriod] = useState("30");
   const [recipient, setRecipient] = useState("");
@@ -284,16 +288,18 @@ Use professional medical terminology. Be objective and data-driven. Include spec
             </Button>
           </CardContent>
         </Card>
+        </>}
 
         {generatedReport && (
-          <DocumentDraftManager
-            generatedContent={generatedReport}
-            documentType="Progress_Report"
-            patientName={`${patient.first_name}_${patient.last_name}`}
-            onContentChange={(content) => setGeneratedReport(content)}
-          />
+          <div hidden={!patientId || historyPending || historyError}>
+            <DocumentDraftManager
+              generatedContent={generatedReport}
+              documentType="Progress_Report"
+              patientName={`${patient?.first_name || ''}_${patient?.last_name || ''}`}
+              onContentChange={(content) => setGeneratedReport(content)}
+            />
+          </div>
         )}
-        </>}
       </div>
     </div>
   );
