@@ -82,6 +82,7 @@ export default function PatientAlertAnalyzer({
     setGeneratedAlerts([]);
     setAnalysisProgress(0);
     setIsAnalyzing(false);
+    onAlertsGeneratedRef.current?.([], null);
   }, [historyReady]);
 
   const extractVitalTrends = useCallback((visits) => {

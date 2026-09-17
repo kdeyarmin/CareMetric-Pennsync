@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import { MemoryRouter } from 'react-router';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ visits: {}, patient: {}, incidents: {}, run: vi.fn(), reset: vi.fn(), analyze: vi.fn() }));
 vi.mock('@/hooks/useAuthorizedVisits', () => ({ useAuthorizedVisits: () => mocks.visits }));
@@ -7,6 +8,8 @@ vi.mock('@/hooks/useAICall', () => ({ useAICall: () => ({ run: mocks.run, reset:
 vi.mock('@/lib/invokeLLM', () => ({ invokeLLM: mocks.analyze }));
 vi.mock('@/lib/AuthContext', () => ({ useAuth: () => ({ tenantContext: { agency_id: 'synthetic-agency' } }) }));
 vi.mock('@/api/base44Client', () => ({ base44: {} }));
+vi.mock('@/hooks/useScopedPatients', () => ({ useScopedPatients: () => ({ data: [{ id: 'patient-a', first_name: 'Synthetic' }] }) }));
+vi.mock('@/components/alerts/PatientAlertsDashboard', () => ({ default: () => null }));
 vi.mock('@tanstack/react-query', () => ({ useQuery: () => mocks.incidents }));
 vi.mock('@/components/ui/select', () => ({
   Select: ({ value, onValueChange, children }) => <select aria-label="Visit" value={value} onChange={event => onValueChange(event.target.value)}><option value="">Select</option>{children}</select>,
@@ -16,6 +19,7 @@ vi.mock('@/components/ui/select', () => ({
 }));
 import PatientAlertAnalyzer from '../alerts/PatientAlertAnalyzer';
 import VisitSummaryGenerator from './VisitSummaryGenerator';
+import PatientAlerts from '@/pages/PatientAlerts';
 
 const ready = data => ({ data, isPending: false, isFetching: false, isPaused: false, isError: false });
 const visits = [
@@ -34,6 +38,18 @@ const generate = () => fireEvent.click(screen.getByRole('button', { name: /Gener
 afterEach(() => vi.unstubAllGlobals());
 
 describe('clinical history readiness', () => {
+  it.each(['pending', 'failed'])('clears the page-owned analysis summary when history becomes %s', async state => {
+    mocks.analyze.mockResolvedValue({ alerts: [], analysis_summary: 'Previous patient analysis', overall_risk_level: 'low' });
+    const page = <MemoryRouter initialEntries={['/PatientAlerts?patientId=patient-a']}><PatientAlerts /></MemoryRouter>;
+    const view = render(page);
+    fireEvent.click(screen.getByRole('button', { name: 'Analyze', exact: true }));
+    expect(await screen.findByText('Previous patient analysis')).toBeVisible();
+    mocks.visits = { ...ready([]), isPending: state === 'pending', isError: state === 'failed' };
+    view.rerender(<MemoryRouter initialEntries={['/PatientAlerts?patientId=patient-a']}><PatientAlerts /></MemoryRouter>);
+    expect(screen.queryByText('Previous patient analysis')).not.toBeInTheDocument();
+    expect(screen.queryByText('Analysis Summary')).not.toBeInTheDocument();
+  });
+
   it.each(['visits', 'patient', 'incidents'])('does not automatically analyze while %s are unavailable', field => {
     mocks[field] = { ...mocks[field], isError: true };
     render(<PatientAlertAnalyzer patientId="patient-a" autoAnalyze />);
@@ -58,7 +74,8 @@ describe('clinical history readiness', () => {
     mocks.visits = { ...ready([]), isError: true };
     view.rerender(<PatientAlertAnalyzer patientId="patient-a" autoAnalyze onAlertsGenerated={completed} />);
     await act(async () => finish({ alerts: [{ title: 'Stale alert' }] }));
-    expect(completed).not.toHaveBeenCalled();
+    expect(completed).toHaveBeenCalledTimes(1);
+    expect(completed).toHaveBeenLastCalledWith([], null);
     expect(screen.queryByText('Stale alert')).not.toBeInTheDocument();
   });
 });
