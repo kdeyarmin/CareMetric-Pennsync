@@ -15,7 +15,7 @@ const fields = {
   recommendations: { boolean: ['addressed'] },
 };
 
-function validReportDate(value) {
+export function validReportDate(value) {
   if (typeof value !== 'string') return false;
   const match = /^(\d{4}-\d{2}-\d{2})(?:T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,9})?(Z|[+-]\d{2}:\d{2}))?$/.exec(value);
   if (!match || !parseLocalDate(match[1])) return false;

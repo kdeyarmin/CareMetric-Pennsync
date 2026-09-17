@@ -15,11 +15,12 @@ import useReferralReportRows from './useReferralReportRows';
 
 // Most-severe-first so dominant-priority ties resolve to the more urgent level.
 const PRIORITY_ORDER = ['urgent', 'high', 'normal', 'low'];
-const PRIORITY_BADGE_VARIANT = { urgent: 'destructive', high: 'warning', normal: 'info', low: 'secondary' };
+const REPORT_PRIORITIES = [...PRIORITY_ORDER, 'unclassified'];
+const PRIORITY_BADGE_VARIANT = { urgent: 'destructive', high: 'warning', normal: 'info', low: 'secondary', unclassified: 'secondary' };
 
 const dominantPriority = (priorities = {}) => {
   let best = null;
-  for (const p of PRIORITY_ORDER) {
+  for (const p of REPORT_PRIORITIES) {
     const count = priorities[p] || 0;
     if (count > 0 && (best === null || count > (priorities[best] || 0))) best = p;
   }
@@ -57,7 +58,7 @@ export default function ReferralVolumeReport({ dateRange }) {
     const s = sourceData.get(source);
     s.count += 1;
     if (r.status === 'soc_completed') s.socCompleted += 1;
-    const priority = r.priority || 'normal';
+    const priority = !r.priority ? 'normal' : PRIORITY_ORDER.includes(r.priority) ? r.priority : 'unclassified';
     s.priorities[priority] = (s.priorities[priority] || 0) + 1;
   });
 
@@ -240,7 +241,7 @@ export default function ReferralVolumeReport({ dateRange }) {
             <TableBody>
               {[...sourceChartData].sort((a, b) => b.count - a.count).slice(0, 10).map((item) => {
                 const dominant = dominantPriority(item.priorities);
-                const mix = PRIORITY_ORDER.filter(p => item.priorities[p])
+                const mix = REPORT_PRIORITIES.filter(p => item.priorities[p])
                   .map(p => `${item.priorities[p]} ${p}`)
                   .join(' · ');
                 const isMixed = Object.keys(item.priorities).length > 1;
@@ -255,7 +256,7 @@ export default function ReferralVolumeReport({ dateRange }) {
                       <Badge variant={PRIORITY_BADGE_VARIANT[dominant] || 'info'} className="capitalize">
                         {dominant}
                       </Badge>
-                      {isMixed && <p className="text-xs text-slate-500 mt-1">{mix}</p>}
+                      {(isMixed || item.priorities.unclassified > 0) && <p className="text-xs text-slate-500 mt-1">{mix}</p>}
                     </TableCell>
                     <TableCell className="text-slate-900">
                       {item.conversion}

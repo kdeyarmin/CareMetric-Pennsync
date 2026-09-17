@@ -13,6 +13,7 @@ import { toast } from 'sonner';
 import { isAdminView } from '@/lib/roles';
 import { parseLocalDate } from '@/lib/dateLocal';
 import { ALL_ROWS } from '@/lib/queryLimits';
+import { isCallerAgencyScoped } from '@/lib/agencyScope';
 import AccessDeniedState from '@/components/ui/AccessDeniedState';
 import ReportReadState from '@/components/analytics/ReportReadState';
 import { readReportRows, reportRangeAvailable, measuredAverage, displayMeasurement, REPORT_READ_OPTIONS } from '@/components/analytics/reportReadContracts';
@@ -25,11 +26,12 @@ export default function NursePerformanceReport({ dateRange }) {
   });
   const currentUser = userQuery.isSuccess ? userQuery.data : null;
   const isAdmin = isAdminView(currentUser);
+  const authorityAvailable = Boolean(agencyQueryKey(currentUser)) && isCallerAgencyScoped(currentUser);
   const rangeAvailable = reportRangeAvailable(dateRange?.start, dateRange?.end);
   const notesQuery = useQuery({
     queryKey: ['allNoteConversions', 'nurse-report', agencyQueryKey(currentUser)],
     queryFn: async () => readReportRows(await base44.entities.NoteConversion.list('-created_date', ALL_ROWS), 'notes'),
-    enabled: isAdmin && rangeAvailable,
+    enabled: isAdmin && authorityAvailable && rangeAvailable,
     ...REPORT_READ_OPTIONS,
   });
 
@@ -40,7 +42,7 @@ export default function NursePerformanceReport({ dateRange }) {
       if (rows.some(row => row.status != null && !['passed', 'flagged', 'critical', 'pending_review'].includes(row.status))) throw new Error('REPORT_READ_INVALID');
       return rows;
     },
-    enabled: isAdmin && rangeAvailable,
+    enabled: isAdmin && authorityAvailable && rangeAvailable,
     ...REPORT_READ_OPTIONS,
   });
 
@@ -51,12 +53,13 @@ export default function NursePerformanceReport({ dateRange }) {
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
       return { rows: filterUsersByCallerAgency(_rows, currentUser), capped: _rows.length >= ALL_ROWS };
     },
-    enabled: isAdmin && rangeAvailable,
+    enabled: isAdmin && authorityAvailable && rangeAvailable,
     ...REPORT_READ_OPTIONS,
   });
 
   if (!userQuery.isSuccess || userQuery.isError) return <ReportReadState queries={[userQuery]} title="Report access" />;
   if (!isAdmin) return <AccessDeniedState description="Nurse reports are available to administrators only." />;
+  if (!authorityAvailable) return <p role="status">Select an authorized agency before viewing nurse reports.</p>;
   if (!rangeAvailable) return <p role="alert">Choose a valid date range covering at most 366 calendar days.</p>;
   const queries = [notesQuery, auditsQuery, usersQuery];
   if (!queries.every(query => query.isSuccess && !query.isError)) return <ReportReadState queries={queries} title="Nurse performance data" />;

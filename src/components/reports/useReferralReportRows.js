@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuth } from '@/lib/AuthContext';
 import { listAuthorizedReferrals } from '@/functions/manageAuthorizedReferral';
 import { ALL_ROWS } from '@/lib/queryLimits';
-import { REPORT_READ_OPTIONS } from '@/components/analytics/reportReadContracts';
+import { REPORT_READ_OPTIONS, validReportDate } from '@/components/analytics/reportReadContracts';
 
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -15,6 +15,11 @@ function readRows(value) {
     const provider = row.extracted_data?.demographics?.referring_physician;
     if (provider != null && typeof provider !== 'string') return true;
     if (['status', 'generated_at', 'received_at'].some(key => row.follow_up_requests?.[key] != null && typeof row.follow_up_requests[key] !== 'string')) return true;
+    const request = row.follow_up_requests;
+    if (['generated_at', 'received_at'].some(key => request?.[key] != null
+      && (!validReportDate(request[key]) || !request[key].includes('T')))) return true;
+    if (request?.generated_at && request?.received_at
+      && Date.parse(request.received_at) < Date.parse(request.generated_at)) return true;
     ids.add(row.id);
     return false;
   })) throw new Error('REFERRAL_REPORT_READ_INVALID');

@@ -7,15 +7,15 @@ import NursePerformanceReport from './NursePerformanceReport';
 import ReferralVolumeReport from './ReferralVolumeReport';
 import FollowUpAnalytics from './FollowUpAnalytics';
 
-const mocks = vi.hoisted(() => ({ me: vi.fn(), notes: vi.fn(), audits: vi.fn(), users: vi.fn(), referrals: vi.fn(), pdf: vi.fn(), toast: vi.fn(), auth: {} }));
+const mocks = vi.hoisted(() => ({ me: vi.fn(), notes: vi.fn(), audits: vi.fn(), users: vi.fn(), referrals: vi.fn(), pdf: vi.fn(), toast: vi.fn(), authority: vi.fn(), scoped: true, auth: {} }));
 vi.mock('@/api/base44Client', () => ({ base44: { auth: { me: mocks.me }, entities: {
   NoteConversion: { list: mocks.notes }, ComplianceAudit: { list: mocks.audits }, User: { list: mocks.users },
 } } }));
 vi.mock('@/functions/manageAuthorizedReferral', () => ({ listAuthorizedReferrals: mocks.referrals }));
 vi.mock('@/lib/AuthContext', () => ({ useAuth: () => mocks.auth }));
 vi.mock('@/lib/roles', () => ({ isAdminView: user => user?.role === 'admin' }));
-vi.mock('@/lib/agencyRoster', () => ({ agencyQueryKey: user => user?.id || 'none' }));
-vi.mock('@/lib/agencyScope', () => ({ filterUsersByCallerAgency: rows => rows }));
+vi.mock('@/lib/agencyRoster', () => ({ agencyQueryKey: mocks.authority }));
+vi.mock('@/lib/agencyScope', () => ({ filterUsersByCallerAgency: rows => rows, isCallerAgencyScoped: () => mocks.scoped }));
 vi.mock('@/lib/agencySettings', () => ({ fetchCallerPdgmRateConfig: async () => null }));
 vi.mock('@/components/utils/pdfExporter', () => ({ exportToPDF: mocks.pdf }));
 vi.mock('sonner', () => ({ toast: { error: mocks.toast } }));
@@ -38,6 +38,8 @@ beforeEach(() => {
   mocks.referrals.mockResolvedValue({ referrals: [referral] });
   mocks.pdf.mockResolvedValue(undefined);
   mocks.auth = { tenantContext: { agency_id: 'agency-a' } };
+  mocks.authority.mockImplementation(user => user?.id || null);
+  mocks.scoped = true;
 });
 
 describe('nurse report read integrity', () => {
@@ -68,6 +70,15 @@ describe('nurse report read integrity', () => {
     mount(NursePerformanceReport);
     expect(await screen.findByText(/available to administrators only/)).toBeInTheDocument();
     expect(mocks.notes).not.toHaveBeenCalled();
+  });
+  it.each(['missing authority', 'no selected tenant'])('does not load nurse sources with %s', async kind => {
+    if (kind === 'missing authority') mocks.authority.mockReturnValue(null);
+    else mocks.scoped = false;
+    mount(NursePerformanceReport);
+    expect(await screen.findByText(/Select an authorized agency before viewing nurse reports/)).toBeInTheDocument();
+    expect(mocks.notes).not.toHaveBeenCalled();
+    expect(mocks.audits).not.toHaveBeenCalled();
+    expect(mocks.users).not.toHaveBeenCalled();
   });
   it.each(['notes', 'audits', 'users'])('does not display a report after a failed %s read', async kind => {
     mocks[kind].mockRejectedValue(new Error('Private backend details'));
@@ -242,5 +253,26 @@ describe('referral report read integrity', () => {
     expect(distribution).toContainEqual({ priority: 'Normal', count: 1 });
     expect(distribution).toContainEqual({ priority: 'Unclassified', count: 1 });
     expect(within(screen.getByRole('row', { name: /Second clinic/ })).getByText('unclassified')).toBeInTheDocument();
+  });
+  it('retains unknown counts in a mixed source priority breakdown', async () => {
+    mocks.referrals.mockResolvedValue({ referrals: [referral,
+      { ...referral, id: 'referral-b', priority: 'unrecognized' },
+      { ...referral, id: 'referral-c', priority: 'unexpected' },
+    ] });
+    mount(ReferralVolumeReport);
+    const row = await screen.findByRole('row', { name: /Synthetic Clinic/ });
+    expect(within(row).getByText('1 normal · 2 unclassified')).toBeInTheDocument();
+    expect(within(row).getByText('unclassified')).toBeInTheDocument();
+  });
+  it.each([
+    { generated_at: 'invalid' }, { received_at: 'invalid' },
+    { generated_at: '2026-02-31T10:00:00Z' },
+    { received_at: '2026-09-01T29:00:00Z' },
+    { generated_at: '2026-09-10T10:00:00Z', received_at: '2026-09-09T10:00:00Z' },
+  ])('rejects corrupt follow-up timestamps instead of understating metrics (%j)', async timestamps => {
+    mocks.referrals.mockResolvedValue({ referrals: [{ ...referral, extracted_data: {}, analysis_results: {}, follow_up_requests: { status: 'received', ...timestamps } }] });
+    mount(FollowUpAnalytics);
+    expect(await screen.findByRole('alert')).toHaveTextContent('Referral report data is unavailable');
+    expect(screen.queryByText('Requests generated / responses recorded')).not.toBeInTheDocument();
   });
 });
