@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PatientHistoryNotice from '@/components/patient/PatientHistoryNotice';
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
@@ -25,7 +26,7 @@ export default function ProgressReportGenerator({ patientId, patient }) {
   const ai = useAICall();
   const [additionalContext, setAdditionalContext] = useState("");
 
-  const { data: visits = [] } = useAuthorizedVisits({
+  const { data: visits = [], isPending: visitsPending, isError: visitsError } = useAuthorizedVisits({
     patientId,
     purpose: 'documentation',
     sort: '-visit_date',
@@ -33,14 +34,17 @@ export default function ProgressReportGenerator({ patientId, patient }) {
     enabled: !!patientId,
   });
 
-  const { data: incidents = [] } = useQuery({
+  const { data: incidents = [], isPending: incidentsPending, isFetching: incidentsFetching, isPaused: incidentsPaused, isError: incidentsError } = useQuery({
     queryKey: ['patientIncidents', patientId, PATIENT_HISTORY_ROWS],
     queryFn: () => base44.entities.Incident.filter({ patient_id: patientId }, undefined, PATIENT_HISTORY_ROWS),
     enabled: !!patientId,
-    initialData: [],
   });
 
+  const historyPending = visitsPending || incidentsPending || incidentsFetching || incidentsPaused;
+  const historyError = visitsError || incidentsError;
+
   const generateReport = async () => {
+    if (!patientId || !patient || historyPending || historyError) return;
     try {
       // Local midnight `reportPeriod` days back. visit_date / incident_date are
       // date-only fields: `new Date(...)` reads them at UTC midnight (the prior
@@ -189,6 +193,9 @@ Use professional medical terminology. Be objective and data-driven. Include spec
       </div>
 
       <div className="lg:col-span-2 space-y-6">
+        {!patientId || historyPending || historyError ? (
+          <PatientHistoryNotice patientId={patientId} error={historyError} />
+        ) : <>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -286,6 +293,7 @@ Use professional medical terminology. Be objective and data-driven. Include spec
             onContentChange={(content) => setGeneratedReport(content)}
           />
         )}
+        </>}
       </div>
     </div>
   );

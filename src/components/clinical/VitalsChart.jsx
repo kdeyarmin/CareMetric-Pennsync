@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import PatientHistoryNotice from '@/components/patient/PatientHistoryNotice';
 import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
@@ -18,7 +19,7 @@ const VITAL_CONFIG = [
 ];
 
 export default function VitalsChart({ patientId }) {
-  const { data: visits = [], isLoading } = useAuthorizedVisits({
+  const { data: visits = [], isLoading, isError } = useAuthorizedVisits({
     patientId,
     purpose: 'vitals_trend',
     status: 'completed',
@@ -41,6 +42,10 @@ export default function VitalsChart({ patientId }) {
   );
 
   const latestVitals = visits.find((v) => v.vital_signs && Object.keys(v.vital_signs).length > 0)?.vital_signs || {};
+
+  if (!patientId || isError) {
+    return <PatientHistoryNotice patientId={patientId} error={isError} />;
+  }
 
   if (isLoading) {
     return <div className="h-64 animate-pulse bg-slate-100 rounded-xl" />;

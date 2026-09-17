@@ -1,4 +1,5 @@
 import { useMemo } from "react";
+import PatientHistoryNotice from '@/components/patient/PatientHistoryNotice';
 import { formatLocalDate } from "@/lib/dateLocal";
 import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
@@ -8,7 +9,7 @@ import { AlertCircle, TrendingUp, Activity } from "lucide-react";
 
 export default function VitalsTrendAnalysis({ patientId }) {
   // Fetch all visits for the patient
-  const { data: visits = [], isLoading } = useAuthorizedVisits({
+  const { data: visits = [], isLoading, isError } = useAuthorizedVisits({
     patientId,
     purpose: 'vitals_trend',
     sort: '-visit_date',
@@ -66,6 +67,8 @@ export default function VitalsTrendAnalysis({ patientId }) {
             Select a patient to view vital signs trends over time.
           </AlertDescription>
         </Alert>
+      ) : isError ? (
+        <PatientHistoryNotice patientId={patientId} error />
       ) : isLoading ? (
         <div className="bg-white border border-slate-200 rounded-xl p-8 text-center">
           <div className="animate-pulse text-slate-400">Loading vital signs history…</div>

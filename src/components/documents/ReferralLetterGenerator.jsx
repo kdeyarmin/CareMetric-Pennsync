@@ -1,4 +1,5 @@
 import { useState } from "react";
+import PatientHistoryNotice from '@/components/patient/PatientHistoryNotice';
 import { base44 } from "@/api/base44Client";
 import { useAICall } from "@/hooks/useAICall";
 import { toast } from "sonner";
@@ -24,7 +25,7 @@ export default function ReferralLetterGenerator({ patientId, patient }) {
   const ai = useAICall();
   const [additionalContext, setAdditionalContext] = useState("");
 
-  const { data: visits = [] } = useAuthorizedVisits({
+  const { data: visits = [], isPending: visitsPending, isError: visitsError } = useAuthorizedVisits({
     patientId,
     purpose: 'documentation',
     sort: '-visit_date',
@@ -38,6 +39,7 @@ export default function ReferralLetterGenerator({ patientId, patient }) {
   });
 
   const generateLetter = async () => {
+    if (!patientId || !patient || visitsPending || visitsError) return;
     try {
       const recentVisit = visits[0];
       
@@ -130,6 +132,9 @@ Keep the tone professional and concise. Include all relevant clinical informatio
       </div>
 
       <div className="lg:col-span-2 space-y-6">
+        {!patientId || visitsPending || visitsError ? (
+          <PatientHistoryNotice patientId={patientId} error={visitsError} />
+        ) : <>
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
@@ -230,6 +235,7 @@ Keep the tone professional and concise. Include all relevant clinical informatio
             onContentChange={(content) => setGeneratedLetter(content)}
           />
         )}
+        </>}
       </div>
     </div>
   );
