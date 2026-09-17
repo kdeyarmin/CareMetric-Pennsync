@@ -29,26 +29,15 @@ import TeachBackPromptsGenerator from "@/components/education/TeachBackPromptsGe
 
 export default function PatientEducation() {
   const [selectedPatientId, setSelectedPatientId] = useState("");
-  const [_selectedTopic, _setSelectedTopic] = useState("");
-  const [generatedMaterial, setGeneratedMaterial] = useState(null);
   const [teachBackRecords, setTeachBackRecords] = useState([]);
 
   const { data: patients = [] } = useScopedPatients({ purpose: 'education_delivery', sort: '-updated_date', limit: 2000 });
 
   const selectedPatient = patients.find(p => p.id === selectedPatientId);
 
-  const handleMaterialGenerated = (material) => {
-    setGeneratedMaterial(material);
-  };
-
   const handleTeachBackRecorded = (record) => {
     setTeachBackRecords(prev => [...prev, record]);
   };
-
-  // Get teach-back history for selected patient
-  const patientTeachBackHistory = selectedPatientId 
-    ? teachBackRecords.filter(r => r.patientId === selectedPatientId)
-    : teachBackRecords;
 
   return (
     <div className="space-y-4 sm:space-y-6">
@@ -88,12 +77,41 @@ export default function PatientEducation() {
         </CardContent>
       </Card>
 
-      {/* Keyed on the patient: every generator below seeds local state from the
-          patient/diagnosis props (condition, generated material, explanations,
-          in-progress teach-back responses). Without a remount, switching
-          patients kept the previous patient's condition and generated content
-          while the header and the AI prompt named the new one. */}
-      <Tabs key={selectedPatientId || 'no-patient'} defaultValue="generate" className="space-y-6">
+      <PatientEducationSession
+        key={selectedPatient?.id || 'no-patient'}
+        selectedPatient={selectedPatient}
+        teachBackRecords={teachBackRecords}
+        handleTeachBackRecorded={handleTeachBackRecorded}
+      />
+    </div>
+  );
+}
+
+function PatientEducationSession({ selectedPatient, teachBackRecords, handleTeachBackRecorded }) {
+  // Own material inside the keyed patient session. A late generation callback
+  // can only update its unmounted session, even after an A -> B -> A switch.
+  // Completed records stay above this boundary and retain their original patient.
+  const [materialState, setMaterialState] = useState({ value: null, revision: 0 });
+  const generatedMaterial = materialState.value;
+  const handleMaterialGenerated = material => {
+    setMaterialState(previous => ({ value: material, revision: previous.revision + 1 }));
+  };
+  const patientTeachBackHistory = selectedPatient
+    ? teachBackRecords.filter(record => record.patientId === selectedPatient.id)
+    : [];
+  const sessionRecords = teachBackRecords.filter(record => record.patientId === selectedPatient?.id);
+  const recordTeachBack = record => handleTeachBackRecorded({
+    ...record,
+    patientId: selectedPatient?.id,
+    patientName: selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name}` : 'No patient selected',
+    understandingLevel: record.understandingLevel ?? record.overallLevel,
+    response: record.response ?? record.responses.map(response =>
+      `Q: ${response.question}\nA: ${response.patientResponse} (${response.understandingLevel})`
+    ).join('\n\n'),
+  });
+
+  return (
+      <Tabs defaultValue="generate" className="space-y-6">
         <TabsList className="grid w-full grid-cols-6 lg:w-auto lg:inline-grid">
           <TabsTrigger value="generate" className="gap-2">
             <Brain className="w-4 h-4" />
@@ -133,9 +151,10 @@ export default function PatientEducation() {
             <div>
               {generatedMaterial && (
                 <TeachBackConfirmation
+                  key={materialState.revision}
                   material={generatedMaterial}
                   patient={selectedPatient}
-                  onRecorded={handleTeachBackRecorded}
+                  onRecorded={recordTeachBack}
                 />
               )}
             </div>
@@ -163,9 +182,10 @@ export default function PatientEducation() {
               </Card>
               {generatedMaterial && (
                 <TeachBackConfirmation
+                  key={materialState.revision}
                   material={generatedMaterial}
                   patient={selectedPatient}
-                  onRecorded={handleTeachBackRecorded}
+                  onRecorded={recordTeachBack}
                 />
               )}
             </div>
@@ -176,6 +196,7 @@ export default function PatientEducation() {
         <TabsContent value="nextsteps">
           <div className="grid lg:grid-cols-2 gap-6">
             <NextStepsSummaryGenerator
+              key={materialState.revision}
               patient={selectedPatient}
               educationMaterial={generatedMaterial}
               diagnosis={selectedPatient?.primary_diagnosis}
@@ -204,10 +225,11 @@ export default function PatientEducation() {
         <TabsContent value="prompts">
           <div className="grid lg:grid-cols-2 gap-6">
             <TeachBackPromptsGenerator
+              key={materialState.revision}
               patient={selectedPatient}
               educationMaterial={generatedMaterial}
               diagnosis={selectedPatient?.primary_diagnosis}
-              onTeachBackComplete={handleTeachBackRecorded}
+              onTeachBackComplete={recordTeachBack}
             />
             <div className="space-y-4">
               <Card className="bg-gradient-to-br from-indigo-50 to-navy-50 border-indigo-200">
@@ -227,9 +249,10 @@ export default function PatientEducation() {
               </Card>
               {generatedMaterial && (
                 <TeachBackConfirmation
+                  key={materialState.revision}
                   material={generatedMaterial}
                   patient={selectedPatient}
-                  onRecorded={handleTeachBackRecorded}
+                  onRecorded={recordTeachBack}
                 />
               )}
             </div>
@@ -239,7 +262,7 @@ export default function PatientEducation() {
         <TabsContent value="library">
           <EducationLibrary
             patient={selectedPatient}
-            onSelectMaterial={(material) => setGeneratedMaterial(material)}
+            onSelectMaterial={handleMaterialGenerated}
           />
         </TabsContent>
 
@@ -252,11 +275,11 @@ export default function PatientEducation() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {teachBackRecords.length === 0 ? (
+              {sessionRecords.length === 0 ? (
                 <EmptyState icon={CheckCircle2} title="No teach-back records yet" description="Generate educational materials and document patient understanding." />
               ) : (
                 <div className="space-y-4">
-                  {teachBackRecords.map((record, idx) => (
+                  {sessionRecords.map((record, idx) => (
                     <Card key={idx} className="border-l-4 border-l-green-500">
                       <CardContent className="p-4">
                         <div className="flex justify-between items-start mb-2">
@@ -285,6 +308,5 @@ export default function PatientEducation() {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
   );
 }
