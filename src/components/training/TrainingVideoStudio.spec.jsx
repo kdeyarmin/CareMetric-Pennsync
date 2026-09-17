@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { renderWithProviders } from "@/test/testUtils";
 
 const mocks = vi.hoisted(() => ({
@@ -95,7 +95,7 @@ describe("TrainingVideoStudio embedded course review", () => {
     );
 
     const toggle = await screen.findByRole("button", { name: /View script/ });
-    toggle.click();
+    fireEvent.click(toggle);
 
     expect(await screen.findByText("AI-written presenter script")).toBeInTheDocument();
     expect(screen.getByText(/Picture your first visit of the day/)).toBeInTheDocument();

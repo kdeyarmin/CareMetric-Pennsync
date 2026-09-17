@@ -1,6 +1,6 @@
 import CentralLearningPortal from '@/components/learning/CentralLearningPortal';
 import { CENTRAL_LEARNING_ENABLED } from '@/lib/centralLearning';
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -20,8 +20,16 @@ import {
 } from "@/components/ui/select";
 import { isSafeExternalUrl } from "@/components/utils/security";
 
-const fmtDuration = (s) =>
-  s ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}` : null;
+import { formatVideoDuration, readGenerationResult, readTrainingRecords, readVideoStatus } from './videoStudioResults';
+
+function TrainingReadNotice({ failed, pending, paused, fetching, subject, retry }) {
+  if (failed) return <div role="alert" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm">
+    <p>{subject} could not be loaded. Previously loaded results are not confirmed.</p>
+    <Button type="button" variant="outline" className="mt-2" disabled={fetching} onClick={retry}>Retry {subject.toLowerCase()}</Button>
+  </div>;
+  if (paused || pending) return <p role="status" className="text-sm text-slate-600">{paused ? `Waiting for a connection to load ${subject.toLowerCase()}…` : `Loading ${subject.toLowerCase()}…`}</p>;
+  return null;
+}
 
 const statusMeta = {
   completed: { label: "Ready", cls: "bg-emerald-100 text-emerald-800", icon: CheckCircle2 },
@@ -37,11 +45,17 @@ function LegacyTrainingVideoStudio({ course = null }) {
   const [avatarId, setAvatarId] = useState("");
   const [voiceId, setVoiceId] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const currentCourse = useRef(selectedCourseId);
+  const generationInFlight = useRef(false);
+  useLayoutEffect(() => {
+    currentCourse.current = selectedCourseId;
+    return () => { currentCourse.current = null; };
+  }, [selectedCourseId]);
 
   // Drafts are included (labeled) because the AI course generator kicks off
   // videos on courses that are still drafts — admins need to watch those render
   // and retry failures here BEFORE publishing, not after.
-  const { data: courses = [] } = useQuery({
+  const coursesQuery = useQuery({
     queryKey: ["video-studio-courses"],
     queryFn: async () => {
       const [published, drafts] = await Promise.all([
@@ -49,56 +63,76 @@ function LegacyTrainingVideoStudio({ course = null }) {
         base44.entities.TrainingCourse.filter({ status: "draft" }, "-updated_date", 500),
       ]);
       // Re-sort the merged list so recency ordering holds across both statuses.
-      return [...published, ...drafts].sort(
+      return readTrainingRecords([...readTrainingRecords(published), ...readTrainingRecords(drafts)]).sort(
         (a, b) => new Date(b.updated_date || 0) - new Date(a.updated_date || 0)
       );
     },
-    initialData: [],
+    retry: false,
     enabled: !course?.id,
   });
 
+  const courses = coursesQuery.isSuccess && !coursesQuery.isPaused ? coursesQuery.data || [] : [];
   const statusKey = ["training-video-status", selectedCourseId];
-  const { data: statusData, isFetching } = useQuery({
+  const statusQuery = useQuery({
     queryKey: statusKey,
     queryFn: async () => {
       const res = await manageTrainingVideos({ action: "status", course_id: selectedCourseId });
-      return res?.data || res;
+      return readVideoStatus(res);
     },
     enabled: !!selectedCourseId,
+    retry: false,
     // Keep polling while any module is still generating.
     refetchInterval: (query) =>
-      (query.state.data?.modules || []).some((m) => m.video_status === "processing") ? 12000 : false,
+      query.state.status === "success" && (query.state.data?.modules || []).some((m) => m.video_status === "processing") ? 12000 : false,
   });
 
+  const statusData = statusQuery.data;
+  const videoReady = statusQuery.isSuccess && !statusQuery.isPaused;
   const modules = useMemo(() => statusData?.modules || [], [statusData]);
 
   // Full module records (with content_json) back the per-lesson script panels.
   // Shares its query key with the course builder's Lessons tab so an edit in
   // either place refreshes both.
-  const { data: fullModules = [] } = useQuery({
+  const scriptsQuery = useQuery({
     queryKey: ["training-modules", selectedCourseId],
-    queryFn: () => base44.entities.TrainingModule.filter({ course_id: selectedCourseId }, "order_index", 100),
+    queryFn: async () => readTrainingRecords(await base44.entities.TrainingModule.filter({ course_id: selectedCourseId }, "order_index", 100)),
     enabled: !!selectedCourseId,
-    initialData: [],
+    retry: false,
   });
+  const scriptsReady = scriptsQuery.isSuccess && !scriptsQuery.isPaused;
   const fullModuleById = useMemo(
-    () => Object.fromEntries(fullModules.map((m) => [m.id, m])),
-    [fullModules]
+    () => Object.fromEntries((scriptsQuery.data || []).map((m) => [m.id, m])),
+    [scriptsQuery.data]
   );
   const heygenConfigured = statusData?.heygen_configured;
   const anyProcessing = modules.some((m) => m.video_status === "processing");
   const missingCount = modules.filter((m) => m.video_status !== "completed").length;
 
   const startMutation = useMutation({
-    mutationFn: (payload) =>
-      manageTrainingVideos({ action: "start", avatar_id: avatarId || undefined, voice_id: voiceId || undefined, ...payload }),
-    onSuccess: (res) => {
-      const data = res?.data || res;
-      toast.success(`Started generating ${data?.started ?? 0} video${data?.started === 1 ? "" : "s"}. They'll appear here when ready.`);
-      queryClient.invalidateQueries({ queryKey: statusKey });
+    retry: false,
+    mutationFn: async ({ payload, avatar, voice }) => readGenerationResult(await manageTrainingVideos({
+      action: 'start', avatar_id: avatar, voice_id: voice, ...payload,
+    })),
+    onSuccess: (data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['training-video-status', variables.courseId] });
+      if (currentCourse.current !== variables.courseId) return;
+      const failed = data.modules.filter(module => module.video_status === 'failed').length;
+      if (data.started === 0) toast.warning('No videos were started. Review the lesson statuses before trying again.');
+      else if (failed > 0) toast.warning(`Started ${data.started} video${data.started === 1 ? '' : 's'}; ${failed} lesson${failed === 1 ? ' reports' : 's report'} a failure. Review their statuses.`);
+      else toast.success(`Started generating ${data.started} video${data.started === 1 ? '' : 's'}. They'll appear here when ready.`);
     },
-    onError: (e) => toast.error(`Could not start video generation: ${e.message}`),
+    onError: (_error, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['training-video-status', variables.courseId] });
+      if (currentCourse.current === variables.courseId) toast.error('Could not confirm video generation. Refresh status before trying again.');
+    },
+    onSettled: () => { generationInFlight.current = false; },
   });
+  const canGenerate = videoReady && !statusQuery.isFetching && heygenConfigured === true && !startMutation.isPending;
+  function startGeneration(payload) {
+    if (!canGenerate || generationInFlight.current) return;
+    generationInFlight.current = true;
+    startMutation.mutate({ courseId: selectedCourseId, avatar: avatarId || undefined, voice: voiceId || undefined, payload });
+  }
 
   const selectedCourse = course?.id === selectedCourseId
     ? course
@@ -127,7 +161,7 @@ function LegacyTrainingVideoStudio({ course = null }) {
       )}
 
       {/* HeyGen not configured */}
-      {selectedCourseId && heygenConfigured === false && (
+      {selectedCourseId && videoReady && heygenConfigured === false && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 flex items-start gap-3">
           <Info className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
           <div className="text-sm text-amber-900">
@@ -150,6 +184,9 @@ function LegacyTrainingVideoStudio({ course = null }) {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
+          {!course?.id && <TrainingReadNotice subject="Course list" failed={coursesQuery.isError} pending={coursesQuery.isPending}
+            paused={coursesQuery.isPaused} fetching={coursesQuery.isFetching} retry={() => coursesQuery.refetch()} />}
+          {!course?.id && coursesQuery.isSuccess && !coursesQuery.isPaused && courses.length === 0 && <p className="text-sm text-slate-600">No published or draft courses are available.</p>}
           <div className="flex flex-col sm:flex-row gap-3 sm:items-end">
             {course ? (
               <p className="flex-1 text-sm text-slate-600">
@@ -158,8 +195,8 @@ function LegacyTrainingVideoStudio({ course = null }) {
             ) : (
               <div className="flex-1">
                 <Label className="text-xs text-slate-500">Course</Label>
-                <Select value={selectedCourseId} onValueChange={setSelectedCourseId}>
-                  <SelectTrigger><SelectValue placeholder="Select a course to add videos to" /></SelectTrigger>
+                <Select value={selectedCourseId} onValueChange={setSelectedCourseId} disabled={!coursesQuery.isSuccess || coursesQuery.isPaused || startMutation.isPending}>
+                  <SelectTrigger aria-label="Course"><SelectValue placeholder="Select a course to add videos to" /></SelectTrigger>
                   <SelectContent>
                     {courses.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
@@ -172,8 +209,8 @@ function LegacyTrainingVideoStudio({ course = null }) {
             )}
             {selectedCourseId && (
               <Button
-                onClick={() => startMutation.mutate({ course_id: selectedCourseId, action: missingCount > 0 ? "start" : "regenerate" })}
-                disabled={!heygenConfigured || startMutation.isPending || anyProcessing || modules.length === 0}
+                onClick={() => startGeneration({ course_id: selectedCourseId, action: missingCount > 0 ? "start" : "regenerate" })}
+                disabled={!canGenerate || anyProcessing || modules.length === 0}
               >
                 {startMutation.isPending ? (
                   <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Starting…</>
@@ -221,20 +258,25 @@ function LegacyTrainingVideoStudio({ course = null }) {
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-3 flex-wrap">
               <CardTitle className="text-base flex items-center gap-2">
-                Lessons in “{selectedCourse?.title}” ({modules.length})
+                Lessons in “{selectedCourse?.title}”{videoReady ? ` (${modules.length})` : ''}
                 {selectedCourse?.status === "draft" && (
                   <Badge className="bg-slate-100 text-slate-600 text-xs font-medium">Draft</Badge>
                 )}
               </CardTitle>
               <div className="flex items-center gap-2 text-xs text-slate-400">
-                {(isFetching || anyProcessing) && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                {anyProcessing ? "Generating — auto-refreshing…" : "Up to date"}
+                {statusQuery.isFetching && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                {videoReady ? (statusQuery.isFetching ? "Refreshing video status…" : anyProcessing ? "Generating — auto-refreshing…" : "Up to date") : null}
               </div>
             </div>
           </CardHeader>
           <CardContent className="space-y-2">
+            <TrainingReadNotice subject="Video status" failed={statusQuery.isError} pending={statusQuery.isPending}
+              paused={statusQuery.isPaused} fetching={statusQuery.isFetching} retry={() => statusQuery.refetch()} />
+            {videoReady && <TrainingReadNotice subject="Lesson scripts" failed={scriptsQuery.isError} pending={scriptsQuery.isPending}
+              paused={scriptsQuery.isPaused} fetching={scriptsQuery.isFetching} retry={() => scriptsQuery.refetch()} />}
+            <div hidden={!videoReady} inert={!videoReady}>
             {modules.length === 0 ? (
-              <p className="text-sm text-slate-500 text-center py-8">
+              videoReady && <p className="text-sm text-slate-500 text-center py-8">
                 This course has no lesson modules to turn into videos.
               </p>
             ) : (
@@ -264,8 +306,8 @@ function LegacyTrainingVideoStudio({ course = null }) {
                           <Icon className={`w-3 h-3 mr-1 ${busy ? "animate-spin" : ""}`} />
                           {meta.label}
                         </Badge>
-                        {m.video_duration_seconds && (
-                          <span className="text-xs text-slate-400">{fmtDuration(m.video_duration_seconds)}</span>
+                        {formatVideoDuration(m.video_duration_seconds) !== null && (
+                          <span className="text-xs text-slate-400">{formatVideoDuration(m.video_duration_seconds)}</span>
                         )}
                         {m.video_status === "failed" && m.video_error && (
                           <span className="text-xs text-red-500 truncate max-w-[260px]" title={m.video_error}>{m.video_error}</span>
@@ -284,8 +326,8 @@ function LegacyTrainingVideoStudio({ course = null }) {
                       <Button
                         size="sm"
                         variant={m.video_status === "completed" ? "outline" : "default"}
-                        disabled={!heygenConfigured || busy || startMutation.isPending}
-                        onClick={() => startMutation.mutate({ module_id: m.module_id, action: m.video_status === "completed" ? "regenerate" : "start" })}
+                        disabled={!canGenerate || busy}
+                        onClick={() => startGeneration({ module_id: m.module_id, action: m.video_status === "completed" ? "regenerate" : "start" })}
                       >
                         {m.video_status === "completed" ? (
                           <><RefreshCw className="w-3.5 h-3.5 mr-1.5" />Regenerate</>
@@ -297,15 +339,18 @@ function LegacyTrainingVideoStudio({ course = null }) {
                       </Button>
                     </div>
                     </div>
+                    <div hidden={!scriptsReady} inert={!scriptsReady}>
                     <ModuleScriptPanel
                       module={fullModuleById[m.module_id]}
                       courseId={selectedCourseId}
-                      disabled={busy}
+                      disabled={busy || !videoReady || !scriptsReady || statusQuery.isFetching || scriptsQuery.isFetching || startMutation.isPending}
                     />
+                    </div>
                   </div>
                 );
               })
             )}
+            </div>
           </CardContent>
         </Card>
       )}
