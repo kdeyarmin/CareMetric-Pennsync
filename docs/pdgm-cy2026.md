@@ -1,7 +1,7 @@
 # CY 2026 CMS HHGS evidence and implementation gate
 
-> **Payment remains unavailable.** This repository does not yet implement or
-> host the complete CMS Home Health PPS Grouper Software (HHGS). The legacy
+> **Payment remains unavailable.** The offline adapter can now invoke pinned CMS
+> HHGS JARs, but there is no authorized hosted PennSync payment path. The legacy
 > factorized payment approximation is retired, every reimbursement/UI gate is
 > default-off, and `calculatePDGM` returns a static unavailable response before
 > SDK client creation, request-body parsing, authentication, or data access.
@@ -66,8 +66,37 @@ The verifier:
 
 A 2026-09-03 audit run matched 310/310 using OpenJDK 17. That proves the pinned
 CMS packages and offline runner reproduce the expected CMS results. It does
-**not** prove parity for PennSync: the application has no complete HHGS port or
-wired official-JAR service to compare yet.
+**not** prove a PennSync integration by itself. The separate adapter verification
+below now exercises PennSync's actual input, version selection and output boundary.
+
+## Offline PennSync adapter verification
+
+`services/hhgs-adapter/adapter.mjs` invokes the complete official JAR string API
+through a private Java stdin bridge. It preserves the 600-byte CMS input
+contract, selects each release by claim-from date, verifies the executed JAR
+snapshot, preserves mixed-batch order, and validates the 16-byte output contract.
+It has no network listener, production import, authentication bypass, chart
+lookup or dollar calculation. Its payment availability is always false.
+
+`pnpm test:hhgs` checks malformed inputs, boundary dates, forbidden diagnostic
+flags, artifact tampering, environment isolation and rejected outputs. The
+full `pnpm test` suite includes these checks. With JDK 17 and the three extracted
+packages, `pnpm verify:hhgs-adapter -- <absolute-java-path> <January-root>
+<April-root> <October-root>` verifies every pinned artifact and runs all 310
+fixtures through the adapter, plus real process-failure and timeout rejection.
+The dedicated CMS HHGS adapter parity workflow repeats this on relevant PRs and
+main changes using hash-verified public CMS downloads.
+
+The 2026-09-17 Windows/JDK 17 run matched **310/310**. Three April fixture records
+have March 31 claim dates, so the adapter correctly executes the January JAR
+for them: 104 January, 65 April, 141 October results. CMS diagnostic flags are
+rejected; claim contents are neither written to temporary files nor passed as
+process arguments. See `services/hhgs-adapter/README.md` for the precise scope,
+limits, and remaining host security requirements.
+
+This advances the offline implementation only. Fixture parity does not prove
+chart-to-claim source mapping, tenant authorization, hosted operation, billability,
+or payment adjustments, and does not authorize any release gate to open.
 
 ## What is verified in source today
 
@@ -93,14 +122,14 @@ selection, admission source, timing, LUPA, outlier, or other HHGS rules.
 Before any PennSync payment amount, reimbursement comparison, or “official” flag
 can be enabled:
 
-1. choose and security-review one supported architecture: an authorized
-   server-side Java 17 HHGS service or an exact, maintainable port;
-2. wire claim-from-date version selection and preserve the complete official
-   input/output record contract;
-3. implement every required HHGS rule/table without client-side PHI or browser
-   trust;
-4. compare the PennSync result—not merely the official JAR against itself—to all
-   310 pinned CMS fixtures plus boundary and regression cases;
+1. security-review and host the candidate server-side JDK 17 adapter with
+   isolation, access controls, dependency updates and operational limits;
+2. implement authoritative chart-to-claim mapping with complete CMS fields and
+   immutable source provenance, without client-side PHI or browser trust;
+3. implement and validate applicable payment adjustments separately from HIPPS
+   grouping; a CMS grouping code is not a complete reimbursement calculation;
+4. extend the now-passing 310-case adapter parity and boundary tests to the
+   authorized hosted workflow and its patient/source mappings;
 5. add tenant authorization, immutable source provenance, audit, rollback, and
    hosted nonproduction evidence; and
 6. obtain clinical, coding, billing, security, and release-owner sign-off.
