@@ -96,7 +96,19 @@ function PatientEducationSession({ selectedPatient, teachBackRecords, handleTeac
   const handleMaterialGenerated = material => {
     setMaterialState(previous => ({ value: material, revision: previous.revision + 1 }));
   };
-  const patientTeachBackHistory = teachBackRecords.filter(record => record.patientId === selectedPatient?.id);
+  const patientTeachBackHistory = selectedPatient
+    ? teachBackRecords.filter(record => record.patientId === selectedPatient.id)
+    : [];
+  const sessionRecords = teachBackRecords.filter(record => record.patientId === selectedPatient?.id);
+  const recordTeachBack = record => handleTeachBackRecorded({
+    ...record,
+    patientId: selectedPatient?.id,
+    patientName: selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name}` : 'No patient selected',
+    understandingLevel: record.understandingLevel ?? record.overallLevel,
+    response: record.response ?? record.responses.map(response =>
+      `Q: ${response.question}\nA: ${response.patientResponse} (${response.understandingLevel})`
+    ).join('\n\n'),
+  });
 
   return (
       <Tabs defaultValue="generate" className="space-y-6">
@@ -142,7 +154,7 @@ function PatientEducationSession({ selectedPatient, teachBackRecords, handleTeac
                   key={materialState.revision}
                   material={generatedMaterial}
                   patient={selectedPatient}
-                  onRecorded={handleTeachBackRecorded}
+                  onRecorded={recordTeachBack}
                 />
               )}
             </div>
@@ -173,7 +185,7 @@ function PatientEducationSession({ selectedPatient, teachBackRecords, handleTeac
                   key={materialState.revision}
                   material={generatedMaterial}
                   patient={selectedPatient}
-                  onRecorded={handleTeachBackRecorded}
+                  onRecorded={recordTeachBack}
                 />
               )}
             </div>
@@ -217,7 +229,7 @@ function PatientEducationSession({ selectedPatient, teachBackRecords, handleTeac
               patient={selectedPatient}
               educationMaterial={generatedMaterial}
               diagnosis={selectedPatient?.primary_diagnosis}
-              onTeachBackComplete={handleTeachBackRecorded}
+              onTeachBackComplete={recordTeachBack}
             />
             <div className="space-y-4">
               <Card className="bg-gradient-to-br from-indigo-50 to-navy-50 border-indigo-200">
@@ -240,7 +252,7 @@ function PatientEducationSession({ selectedPatient, teachBackRecords, handleTeac
                   key={materialState.revision}
                   material={generatedMaterial}
                   patient={selectedPatient}
-                  onRecorded={handleTeachBackRecorded}
+                  onRecorded={recordTeachBack}
                 />
               )}
             </div>
@@ -263,11 +275,11 @@ function PatientEducationSession({ selectedPatient, teachBackRecords, handleTeac
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {teachBackRecords.length === 0 ? (
+              {sessionRecords.length === 0 ? (
                 <EmptyState icon={CheckCircle2} title="No teach-back records yet" description="Generate educational materials and document patient understanding." />
               ) : (
                 <div className="space-y-4">
-                  {teachBackRecords.map((record, idx) => (
+                  {sessionRecords.map((record, idx) => (
                     <Card key={idx} className="border-l-4 border-l-green-500">
                       <CardContent className="p-4">
                         <div className="flex justify-between items-start mb-2">

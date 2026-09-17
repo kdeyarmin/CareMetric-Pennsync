@@ -20,11 +20,19 @@ vi.mock('@/components/education/EducationMaterialGenerator', () => ({
 vi.mock('@/components/education/EducationLibrary', () => ({ default: () => null }));
 vi.mock('@/components/education/SimplifiedExplanationGenerator', () => ({ default: () => null }));
 vi.mock('@/components/education/NextStepsSummaryGenerator', () => ({ default: () => null }));
-vi.mock('@/components/education/TeachBackPromptsGenerator', () => ({ default: () => null }));
+vi.mock('@/components/education/TeachBackPromptsGenerator', () => ({
+  default: ({ onTeachBackComplete }) => <button onClick={() => onTeachBackComplete({
+    topic: 'Prompt topic',
+    responses: [{ question: 'Prompt question', patientResponse: 'Prompt answer', understandingLevel: 'fair' }],
+    overallLevel: 'fair',
+    timestamp: '2026-09-17T12:00:00Z',
+  })}>Complete prompt teach-back</button>,
+}));
 import PatientEducation from './PatientEducation';
 
 const material = (title, count = 1) => ({ title, teach_back_questions: Array.from({ length: count }, (_, index) => ({ question: `${title} question ${index + 1}`, expected_answer: 'Example answer' })) });
 const select = id => fireEvent.change(screen.getByLabelText('Patient'), { target: { value: id } });
+const tab = name => fireEvent.mouseDown(screen.getByRole('tab', { name }), { button: 0, ctrlKey: false });
 const start = () => fireEvent.click(screen.getByRole('button', { name: 'Start generation' }));
 const resolve = async (index, value) => act(async () => state.callbacks[index](value));
 const respond = () => {
@@ -68,5 +76,32 @@ describe('patient education context', () => {
     select('patient-b'); expect(state.history).toHaveLength(0);
     select('patient-a'); expect(state.history).toHaveLength(1);
     expect(state.history[0].patientId).toBe('patient-a');
+  });
+
+  it('binds prompt completions to the selected patient and renders their responses and understanding', () => {
+    render(<PatientEducation />);
+    select('patient-a'); tab('Teach-Back');
+    fireEvent.click(screen.getByRole('button', { name: 'Complete prompt teach-back' }));
+    tab('Materials');
+    expect(state.history).toHaveLength(1);
+    expect(state.history[0]).toMatchObject({ patientId: 'patient-a', patientName: 'Alice Example', understandingLevel: 'fair' });
+    tab('Records');
+    expect(screen.getByText('fair understanding')).toBeInTheDocument();
+    expect(screen.getByText(/Prompt answer/)).toBeInTheDocument();
+    select('patient-b'); tab('Records');
+    expect(screen.queryByText('Prompt topic')).not.toBeInTheDocument();
+    select('none'); tab('Materials');
+    expect(state.history).toHaveLength(0);
+    select('patient-a'); tab('Records');
+    expect(screen.getByText('Prompt topic')).toBeInTheDocument();
+  });
+
+  it('never uses unassigned completions as generic patient learning history', () => {
+    render(<PatientEducation />);
+    tab('Teach-Back');
+    fireEvent.click(screen.getByRole('button', { name: 'Complete prompt teach-back' }));
+    tab('Materials');
+    expect(state.history).toHaveLength(0);
+    select('patient-a'); expect(state.history).toHaveLength(0);
   });
 });
