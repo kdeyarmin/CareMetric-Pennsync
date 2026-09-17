@@ -108,6 +108,20 @@ function createWrapper(client = new QueryClient({
 }
 
 describe('useScopedPatients', () => {
+  it.each(['identity', 'context', 'patients'])('retries the failed %s step and recovers the authorized roster', async stage => {
+    const failing = stage === 'identity' ? authMe : stage === 'context' ? getTenantContext : listAuthorized;
+    failing.mockRejectedValue(new Error('Synthetic read failure'));
+    const { Wrapper } = createWrapper();
+    const { result } = renderHook(() => useScopedPatients({ purpose: 'roster' }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.data).toEqual([]);
+    authMe.mockResolvedValue(AUTH_USER);
+    getTenantContext.mockResolvedValue({ tenant_context: TENANT_CONTEXT });
+    listAuthorized.mockResolvedValue(authorizedPage([{ id: 'patient-a', first_name: 'Synthetic' }]));
+    await act(async () => { await result.current.retry(); });
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.data).toEqual([{ id: 'patient-a', first_name: 'Synthetic' }]);
+  });
   beforeEach(() => {
     clearTrustedTenantContext();
     bindTrustedTenantContext(AUTH_USER, TENANT_CONTEXT);

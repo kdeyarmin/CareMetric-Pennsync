@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, differenceInCalendarDays } from "date-fns";
 import { parseLocalDate } from "@/lib/dateLocal";
@@ -50,6 +50,9 @@ import { AUDIT_TYPES } from "../components/adr/adrRequirements";
 import { resolveResponseDueDate } from "../components/adr/adrDeadlines";
 import { isSafeExternalUrl } from "@/components/utils/security";
 import { openAuthorityBoundWindow } from "@/lib/authorityBoundWindows";
+import { ADR_CASE_READ_LIMIT, readAdrCases } from '../components/adr/adrCaseRead';
+
+const EMPTY_CASES = Object.freeze([]);
 
 const AUDIT_TYPE_LABELS = Object.fromEntries(AUDIT_TYPES.map((t) => [t.id, t.label]));
 
@@ -88,20 +91,26 @@ export default function ADRCenter() {
   const [selectedCaseId, setSelectedCaseId] = useState(null);
   const [caseToDelete, setCaseToDelete] = useState(null);
 
-  const { data: cases = [], isLoading } = useQuery({
+  const casesQuery = useQuery({
     queryKey: ["adrCases"],
-    queryFn: () => base44.entities.AdrAuditCase.list("-created_date", 200),
-    initialData: [],
+    queryFn: async () => readAdrCases(await base44.entities.AdrAuditCase.list("-created_date", ADR_CASE_READ_LIMIT)),
+    retry: false,
   });
+  const casesAvailable = casesQuery.isSuccess && !casesQuery.isError;
+  const casesAvailableRef = useRef(casesAvailable);
+  useLayoutEffect(() => { casesAvailableRef.current = casesAvailable; }, [casesAvailable]);
+  const cases = casesAvailable ? casesQuery.data : EMPTY_CASES;
 
   // Patient roster for chart linking — loaded only once a case is open.
-  const { data: patients = [] } = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 500, enabled: !!selectedCaseId });
+  const patientQuery = useScopedPatients({ purpose: 'roster', sort: '-updated_date', limit: 500, enabled: casesAvailable && !!selectedCaseId });
+  const patients = patientQuery.isSuccess ? patientQuery.data : EMPTY_CASES;
 
   const refresh = () => queryClient.invalidateQueries({ queryKey: ["adrCases"] });
   const selectedCase = useMemo(
     () => cases.find((c) => c.id === selectedCaseId) || null,
     [cases, selectedCaseId]
   );
+  const deleteCase = cases.find(c => c.id === caseToDelete?.id);
 
   const stats = useMemo(() => {
     const open = cases.filter((c) => OPEN_STATUSES.includes(c.status));
@@ -115,6 +124,11 @@ export default function ADRCenter() {
   }, [cases]);
 
   const saveAnalyzedCase = async (payload) => {
+    if (!casesAvailableRef.current) {
+      setPendingCase(payload);
+      toast.error('ADR cases are unavailable. Retry the case list before saving.');
+      return;
+    }
     const { letterFileUrl, analysis, checklist } = payload;
     setIsSavingCase(true);
     try {
@@ -168,6 +182,7 @@ export default function ADRCenter() {
   const handleLetterAnalyzed = (payload) => saveAnalyzedCase(payload);
 
   const updateStatus = async (adrCase, status, message) => {
+    if (!casesAvailable) return;
     try {
       await base44.entities.AdrAuditCase.update(adrCase.id, { status });
       refresh();
@@ -178,10 +193,10 @@ export default function ADRCenter() {
   };
 
   const handleDelete = async () => {
-    if (!caseToDelete) return;
+    if (!deleteCase || !casesAvailable) return;
     try {
-      await base44.entities.AdrAuditCase.delete(caseToDelete.id);
-      if (selectedCaseId === caseToDelete.id) setSelectedCaseId(null);
+      await base44.entities.AdrAuditCase.delete(deleteCase.id);
+      if (selectedCaseId === deleteCase.id) setSelectedCaseId(null);
       setCaseToDelete(null);
       refresh();
       toast.success("ADR case deleted.");
@@ -200,6 +215,7 @@ export default function ADRCenter() {
         actions={
           <Button
             onClick={() => setNewCaseOpen(true)}
+            disabled={!casesAvailable}
             className="bg-blue-600 hover:bg-blue-700 min-h-[44px] w-full sm:w-auto"
           >
             <Plus className="w-4 h-4 mr-2" />
@@ -208,8 +224,21 @@ export default function ADRCenter() {
         }
       />
 
-      {!selectedCase && (
+      {casesQuery.isPending && <LoadingState label="Loading ADR cases..." />}
+      {casesQuery.isError && (
+        <Alert>
+          <AlertDescription>
+            ADR cases are unavailable. Reload the case list before viewing or changing a case.
+            <Button variant="outline" className="ml-3" onClick={() => casesQuery.refetch()} disabled={casesQuery.isFetching}>Retry ADR cases</Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {casesAvailable && !selectedCase && (
         <>
+          {cases.length === ADR_CASE_READ_LIMIT && (
+            <Alert><AlertDescription>Showing the 200 most recent accessible cases. Totals below apply only to these loaded cases; older cases may exist.</AlertDescription></Alert>
+          )}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
             <StatCard label="Open cases" value={stats.open} icon={FolderOpen} tone="sky" />
             <StatCard label="Due ≤ 7 days / overdue" value={stats.dueSoon} icon={CalendarClock} tone="orange" />
@@ -217,9 +246,7 @@ export default function ADRCenter() {
             <StatCard label="Submitted / closed" value={stats.completed} icon={CheckCircle2} tone="emerald" />
           </div>
 
-          {isLoading ? (
-            <LoadingState label="Loading ADR cases..." />
-          ) : cases.length === 0 ? (
+          {cases.length === 0 ? (
             <EmptyState
               icon={FileSearch}
               title="No ADR cases yet"
@@ -415,11 +442,19 @@ export default function ADRCenter() {
                   Patient chart:
                 </Label>
                 <div className="w-full sm:w-72">
-                  <SearchablePatientSelect
+                  {patientQuery.isError ? (
+                    <div role="alert" className="text-sm text-slate-600">
+                      <p>Patient charts are unavailable. Retry before changing the link.</p>
+                      <Button variant="outline" onClick={() => patientQuery.retry()} disabled={patientQuery.isFetching}>Retry patient charts</Button>
+                    </div>
+                  ) : !patientQuery.isSuccess ? (
+                    <p role="status" className="text-sm text-slate-600">Loading patient charts...</p>
+                  ) : <SearchablePatientSelect
                     id="adr-patient-link"
                     patients={patients}
                     value={selectedCase.patient_id || ""}
                     onValueChange={async (patientId) => {
+                      if (!casesAvailable || !patientQuery.isSuccess || patientQuery.isError) return;
                       try {
                         await base44.entities.AdrAuditCase.update(selectedCase.id, { patient_id: patientId || "" });
                         refresh();
@@ -429,7 +464,7 @@ export default function ADRCenter() {
                       }
                     }}
                     placeholder="Link to a patient chart..."
-                  />
+                  />}
                 </div>
                 {selectedCase.patient_id && (
                   <Button asChild variant="outline" size="sm" className="min-h-[36px]">
@@ -478,7 +513,7 @@ export default function ADRCenter() {
           // every dismissal path (Escape, X, outside click) while it runs so a
           // "cancelled" dialog can't silently create a case later.
           if (!open && (letterAnalyzing || isSavingCase)) return;
-          if (!open) setPendingCase(null);
+          if (!open && casesAvailable) setPendingCase(null);
           setNewCaseOpen(open);
         }}
       >
@@ -490,35 +525,40 @@ export default function ADRCenter() {
           <DialogHeader>
             <DialogTitle>New ADR / audit case</DialogTitle>
           </DialogHeader>
+          {!casesAvailable && (
+            <Alert><AlertDescription>ADR cases are unavailable. Any running analysis can finish; its result will be kept until the case list recovers.
+              <Button variant="outline" className="mt-2" onClick={() => casesQuery.refetch()} disabled={casesQuery.isFetching}>Reload case list</Button>
+            </AlertDescription></Alert>
+          )}
           {pendingCase ? (
             <div className="space-y-3">
               <Alert className="bg-amber-50 border-amber-300">
                 <ShieldAlert className="w-4 h-4 text-amber-600" />
                 <AlertDescription className="text-amber-900">
-                  The letter was analyzed successfully but saving the case failed. The analysis was kept — retry the
+                  The letter was analyzed successfully but the case has not been saved. The analysis was kept — retry the
                   save without re-running the analysis.
                 </AlertDescription>
               </Alert>
               <Button
                 onClick={() => saveAnalyzedCase(pendingCase)}
-                disabled={isSavingCase}
+                disabled={isSavingCase || !casesAvailable}
                 className="bg-blue-600 hover:bg-blue-700 min-h-[44px] w-full sm:w-auto"
               >
                 {isSavingCase ? "Saving..." : "Retry save"}
               </Button>
             </div>
           ) : (
-            <AdrLetterAnalyzer onComplete={handleLetterAnalyzed} onProcessingChange={setLetterAnalyzing} />
+            <AdrLetterAnalyzer disabled={!casesAvailable} onComplete={handleLetterAnalyzed} onProcessingChange={setLetterAnalyzing} />
           )}
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!caseToDelete} onOpenChange={(open) => !open && setCaseToDelete(null)}>
+      <AlertDialog open={!!deleteCase} onOpenChange={(open) => !open && setCaseToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Delete this ADR case?</AlertDialogTitle>
             <AlertDialogDescription>
-              &ldquo;{caseToDelete?.case_name || "Untitled case"}&rdquo; and its checklist and verification results
+              &ldquo;{deleteCase?.case_name || "Untitled case"}&rdquo; and its checklist and verification results
               will be permanently removed. Uploaded files are not deleted from storage.
             </AlertDialogDescription>
           </AlertDialogHeader>
