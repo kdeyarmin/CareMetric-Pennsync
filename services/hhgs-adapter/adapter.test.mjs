@@ -2,9 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
+import fs from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
-import { groupCmsClaims, javaEnvironment, parseOutcome, readOutcomes, validateClaims } from './adapter.mjs';
+import { groupCmsClaims, javaEnvironment, parseOutcome, readArtifactSnapshot, readOutcomes, validateClaims } from './adapter.mjs';
 
 const record = (date = '20260101') => ' '.repeat(24) + date + ' '.repeat(568);
 const replace = (value, index, text) => value.slice(0, index) + text + value.slice(index + text.length);
@@ -87,6 +88,12 @@ test('validates the whole batch before consulting local configuration', () => {
   assert.throws(() => groupCmsClaims({ records: [record()], javaExecutable: 'java' }), /hhgs_invalid_configuration/);
 });
 
+test('malformed options never escape the fixed adapter error boundary', () => {
+  for (const options of [null, [], 'private options', 1, false]) {
+    assert.throws(() => groupCmsClaims(options), /^Error: hhgs_invalid_configuration$/);
+  }
+});
+
 test('refuses missing or tampered CMS code before executing a child', () => {
   const root = mkdtempSync(join(tmpdir(), 'hhgs-test-'));
   try {
@@ -96,8 +103,34 @@ test('refuses missing or tampered CMS code before executing a child', () => {
     assert.throws(() => groupCmsClaims({ ...options, jarPaths: { '07.0.26': jar } }), /^Error: hhgs_execution_failed$/);
     writeFileSync(jar, 'not CMS');
     assert.throws(() => groupCmsClaims({ ...options, jarPaths: { '07.0.26': jar } }), /^Error: hhgs_artifact_hash_mismatch$/);
-    assert.throws(() => groupCmsClaims({ ...options, jarPaths: { '07.0.26': root } }), /^Error: hhgs_invalid_artifact$/);
+    assert.throws(() => groupCmsClaims({ ...options, jarPaths: { '07.0.26': root } }), /^Error: hhgs_(invalid_artifact|execution_failed)$/);
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('artifact reads stay bounded to the open file even if it grows after inspection', t => {
+  const root = mkdtempSync(join(tmpdir(), 'hhgs-growth-test-'));
+  const jar = join(root, 'artifact.jar');
+  const actualStat = fs.fstatSync;
+  const actualRead = fs.readSync;
+  try {
+    writeFileSync(jar, 'CMS');
+    assert.equal(readArtifactSnapshot(jar).toString(), 'CMS');
+    t.mock.method(fs, 'fstatSync', descriptor => {
+      const metadata = actualStat(descriptor);
+      writeFileSync(jar, 'A'.repeat(1024));
+      return metadata;
+    });
+    let requested = 0;
+    t.mock.method(fs, 'readSync', (...args) => {
+      requested += args[3];
+      return actualRead(...args);
+    });
+    assert.throws(() => readArtifactSnapshot(jar), /^Error: hhgs_invalid_artifact$/);
+    assert.equal(requested, 4, 'only original size plus one byte may be requested');
+  } finally {
+    t.mock.restoreAll();
     rmSync(root, { recursive: true, force: true });
   }
 });

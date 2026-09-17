@@ -2,7 +2,7 @@
 // Base44/Railway endpoint. It grants no tenant authority or payment eligibility.
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import fs, { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -12,6 +12,28 @@ import { CMS_HHGS_RELEASES_CY2026, resolveCmsHhgsReleaseForClaimFromDate } from 
 const bridgePath = fileURLToPath(new URL('./PennSyncHhgs.java', import.meta.url));
 const supportedReturnCodes = new Set(['00', '01', '02', '03', '05', '07', '08', '09', '10', '11', '12', '13', '14']);
 const fail = (code) => { throw new Error(code); };
+
+export function readArtifactSnapshot(path) {
+  const descriptor = fs.openSync(path, 'r');
+  try {
+    const metadata = fs.fstatSync(descriptor);
+    if (!metadata.isFile() || metadata.size > 64 * 1024 * 1024) fail('hhgs_invalid_artifact');
+    // Bind the bound and all reads to one opened file, and read at most one
+    // extra byte. Path replacement or concurrent growth cannot make readFile
+    // allocate unbounded memory after an earlier, stale metadata check.
+    const buffer = Buffer.allocUnsafe(metadata.size + 1);
+    let total = 0;
+    while (total < buffer.length) {
+      const count = fs.readSync(descriptor, buffer, total, buffer.length - total, null);
+      if (count === 0) break;
+      total += count;
+    }
+    if (total !== metadata.size) fail('hhgs_invalid_artifact');
+    return buffer.subarray(0, total);
+  } finally {
+    fs.closeSync(descriptor);
+  }
+}
 
 export function validateClaims(records) {
   if (!Array.isArray(records) || records.length === 0 || records.length > 1000) fail('hhgs_invalid_batch');
@@ -67,7 +89,9 @@ export function readOutcomes(stdout, count, version) {
  * request fields. JDK 17 (including source launcher) is required. No PHI files.
  * All-or-nothing: no partial result escapes any validation or process failure.
  */
-export function groupCmsClaims({ records, javaExecutable, jarPaths, timeoutMs = 60000 } = {}) {
+export function groupCmsClaims(options = {}) {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) fail('hhgs_invalid_configuration');
+  const { records, javaExecutable, jarPaths, timeoutMs = 60000 } = options;
   const claims = validateClaims(records);
   if (typeof javaExecutable !== 'string' || !isAbsolute(javaExecutable)
       || !Number.isInteger(timeoutMs) || timeoutMs < 100 || timeoutMs > 60000) fail('hhgs_invalid_configuration');
@@ -83,9 +107,7 @@ export function groupCmsClaims({ records, javaExecutable, jarPaths, timeoutMs = 
       if (batch.length === 0) continue;
       const configuredJar = jarPaths?.[release.version];
       if (typeof configuredJar !== 'string' || !isAbsolute(configuredJar)) fail('hhgs_missing_artifact');
-      const metadata = statSync(configuredJar);
-      if (!metadata.isFile() || metadata.size > 64 * 1024 * 1024) fail('hhgs_invalid_artifact');
-      const bytes = readFileSync(configuredJar);
+      const bytes = readArtifactSnapshot(configuredJar);
       const jarSha256 = createHash('sha256').update(bytes).digest('hex');
       if (jarSha256 !== release.files['dist/HomeHealth.jar']) fail('hhgs_artifact_hash_mismatch');
       // The pinned JAR embeds its complete version tables; no loose tables or
