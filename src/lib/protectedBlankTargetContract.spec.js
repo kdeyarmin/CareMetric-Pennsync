@@ -4,6 +4,8 @@ import process from 'node:process';
 import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
+// Exact source allowlists use repository paths on every host platform.
+const relativeSourcePath = (file) => path.relative(root, file).split(path.sep).join('/');
 
 function productionSourceFiles(directory = path.join(root, 'src')) {
   return readdirSync(directory).flatMap((name) => {
@@ -25,9 +27,9 @@ describe('protected blank-target navigation contract', () => {
       'src/lib/secureBootstrapUi.js',
     ]);
     const violations = productionSourceFiles()
-      .filter((file) => !boundaryFiles.has(path.relative(root, file)))
+      .filter((file) => !boundaryFiles.has(relativeSourcePath(file)))
       .filter((file) => /\btarget\s*=\s*(?:["']_blank["']|\{\s*["']_blank["']\s*\})/i.test(readFileSync(file, 'utf8')))
-      .map((file) => path.relative(root, file));
+      .map(relativeSourcePath);
 
     expect(violations).toEqual([]);
   });
@@ -37,9 +39,9 @@ describe('protected blank-target navigation contract', () => {
     const ui = readFileSync(path.join(root, uiPath), 'utf8');
     const main = readFileSync(path.join(root, 'src/main.jsx'), 'utf8');
     const callers = productionSourceFiles()
-      .filter((file) => path.relative(root, file) !== uiPath)
+      .filter((file) => relativeSourcePath(file) !== uiPath)
       .filter((file) => /secureBootstrapUi/.test(readFileSync(file, 'utf8')))
-      .map((file) => path.relative(root, file));
+      .map(relativeSourcePath);
     expect(callers).toEqual(['src/main.jsx']);
     expect(ui).not.toMatch(/^import\s/m);
     expect(ui).not.toMatch(/base44\.|fetch\(|postMessage|localStorage|sessionStorage|window\.open/);
