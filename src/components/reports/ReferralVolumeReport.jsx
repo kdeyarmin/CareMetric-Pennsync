@@ -1,66 +1,68 @@
-import { useQuery } from "@tanstack/react-query";
-import { listAuthorizedReferrals } from '@/functions/manageAuthorizedReferral';
-import { useAuth } from '@/lib/AuthContext';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
-import { AlertTriangle, Download } from "lucide-react";
+import { Download } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts";
 import { exportToPDF } from "../utils/pdfExporter";
 import { computeTurnaround } from "../referral/intakeToSocTracker";
 import { format } from "date-fns";
+import { toast } from 'sonner';
+import { parseLocalDate } from '@/lib/dateLocal';
+import ReportReadState from '@/components/analytics/ReportReadState';
+import { reportRangeAvailable } from '@/components/analytics/reportReadContracts';
+import useReferralReportRows from './useReferralReportRows';
 
 // Most-severe-first so dominant-priority ties resolve to the more urgent level.
 const PRIORITY_ORDER = ['urgent', 'high', 'normal', 'low'];
-const PRIORITY_BADGE_VARIANT = { urgent: 'destructive', high: 'warning', normal: 'info', low: 'secondary' };
+const REPORT_PRIORITIES = [...PRIORITY_ORDER, 'unclassified'];
+const PRIORITY_BADGE_VARIANT = { urgent: 'destructive', high: 'warning', normal: 'info', low: 'secondary', unclassified: 'secondary' };
 
 const dominantPriority = (priorities = {}) => {
   let best = null;
-  for (const p of PRIORITY_ORDER) {
+  for (const p of REPORT_PRIORITIES) {
     const count = priorities[p] || 0;
     if (count > 0 && (best === null || count > (priorities[best] || 0))) best = p;
   }
-  return best || 'normal';
+  return best || 'unclassified';
 };
 
 export default function ReferralVolumeReport({ dateRange }) {
-  const { tenantContext } = useAuth();
-  const { data: referrals = [], isError: referralsUnavailable } = useQuery({
-    queryKey: ['referrals', 'authorized', tenantContext?.agency_id, 5000],
-    queryFn: () => listAuthorizedReferrals({
-      agencyId: tenantContext.agency_id,
-      limit: 5000,
-    }).then((result) => result.referrals),
-    enabled: !!tenantContext?.agency_id,
-    initialData: [],
-  });
+  const rangeAvailable = reportRangeAvailable(dateRange?.start, dateRange?.end);
+  const referralQuery = useReferralReportRows({ enabled: rangeAvailable });
+  if (!referralQuery.scopeAvailable) return <p role="status">Select an authorized agency before viewing referral reports.</p>;
+  if (!rangeAvailable) return <p role="alert">Choose a valid date range covering at most 366 calendar days.</p>;
+  if (!referralQuery.isSuccess || referralQuery.isError) return <ReportReadState queries={[referralQuery]} title="Referral report data" />;
+  if (referralQuery.capped) return <div role="status" className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
+    <p>A source reached its record limit. A complete referral report cannot be verified, so totals and exports are unavailable.</p>
+    <Button disabled>Export PDF</Button>
+  </div>;
+  const referrals = referralQuery.data;
+  const undated = referrals.filter(row => !parseLocalDate(row.referral_date)).length;
 
   const filteredReferrals = referrals.filter(r => {
     // referral_date is an unconstrained string (AI-extracted, may be
     // "07/03/2026" or a full ISO timestamp). Anchor date-ONLY values to local
     // midnight; parse anything else as-is — appending "T00:00:00" to a
     // non-date-only value makes an invalid date and drops the referral.
-    const raw = String(r.referral_date || '');
-    const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + 'T00:00:00' : raw);
-    if (Number.isNaN(date.getTime())) return false;
+    const date = parseLocalDate(r.referral_date);
+    if (!date) return false;
     return date >= new Date(dateRange.start + 'T00:00:00') && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 
   // Analyze by source: volume, priority mix, and conversion to start of care.
-  const sourceData = {};
+  const sourceData = new Map();
   filteredReferrals.forEach(r => {
     const source = r.referral_source || 'Unknown';
-    if (!sourceData[source]) sourceData[source] = { count: 0, socCompleted: 0, priorities: {} };
-    const s = sourceData[source];
+    if (!sourceData.has(source)) sourceData.set(source, { count: 0, socCompleted: 0, priorities: Object.create(null) });
+    const s = sourceData.get(source);
     s.count += 1;
     if (r.status === 'soc_completed') s.socCompleted += 1;
-    const priority = r.priority || 'normal';
+    const priority = !r.priority ? 'normal' : PRIORITY_ORDER.includes(r.priority) ? r.priority : 'unclassified';
     s.priorities[priority] = (s.priorities[priority] || 0) + 1;
   });
 
-  const sourceChartData = Object.entries(sourceData).map(([source, data]) => ({
+  const sourceChartData = [...sourceData.entries()].map(([source, data]) => ({
     source,
     count: data.count,
     socCompleted: data.socCompleted,
@@ -82,17 +84,20 @@ export default function ReferralVolumeReport({ dateRange }) {
   const priorityData = [
     { priority: 'Urgent', count: filteredReferrals.filter(r => r.priority === 'urgent').length },
     { priority: 'High', count: filteredReferrals.filter(r => r.priority === 'high').length },
-    { priority: 'Normal', count: filteredReferrals.filter(r => r.priority === 'normal').length },
-    { priority: 'Low', count: filteredReferrals.filter(r => r.priority === 'low').length }
+    { priority: 'Normal', count: filteredReferrals.filter(r => !r.priority || r.priority === 'normal').length },
+    { priority: 'Low', count: filteredReferrals.filter(r => r.priority === 'low').length },
+    { priority: 'Unclassified', count: filteredReferrals.filter(r => r.priority && !PRIORITY_ORDER.includes(r.priority)).length }
   ];
 
   const COLORS = ['#8b5cf6', '#3557b0', '#10b981', '#f59e0b', '#ef4444'];
 
-  const handleExport = () => {
-    exportToPDF({
+  const handleExport = async () => {
+    if (undated) return;
+    try {
+      await exportToPDF({
       filename: `referral-volume-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`,
       title: 'Referral Volume Report',
-      subtitle: `Period: ${format(new Date(dateRange.start), 'MMM d, yyyy')} - ${format(new Date(dateRange.end + 'T23:59:59.999'), 'MMM d, yyyy')}`,
+      subtitle: `Period: ${format(parseLocalDate(dateRange.start), 'MMM d, yyyy')} - ${format(parseLocalDate(dateRange.end), 'MMM d, yyyy')}`,
       content: [
         { type: 'heading', text: 'Summary Statistics' },
         { type: 'text', text: `Total Referrals: ${filteredReferrals.length}` },
@@ -113,30 +118,23 @@ export default function ReferralVolumeReport({ dateRange }) {
           { header: 'Count', key: 'count' }
         ]}
       ]
-    });
+      });
+    } catch {
+      toast.error('The report could not be downloaded. Please try again.');
+    }
   };
-
-  if (referralsUnavailable) {
-    return (
-      <Alert variant="destructive">
-        <AlertTriangle className="h-4 w-4" />
-        <AlertDescription>
-          Referral volume data could not be authorized. No zero-value report is being shown or exported.
-        </AlertDescription>
-      </Alert>
-    );
-  }
 
   return (
     <div className="space-y-6">
+      {undated > 0 && <p role="status" className="rounded-xl border border-amber-300 bg-amber-50 p-4">{undated} referral record(s) have no valid referral date. The displayed totals exclude them; export is unavailable until those dates are verified.</p>}
       <div className="flex justify-between items-center">
         <div>
           <h3 className="text-xl font-semibold text-slate-900">Referral Volume Analysis</h3>
           <p className="text-sm text-slate-600">
-            {format(new Date(dateRange.start), 'MMM d, yyyy')} - {format(new Date(dateRange.end + 'T23:59:59.999'), 'MMM d, yyyy')}
+            {format(parseLocalDate(dateRange.start), 'MMM d, yyyy')} - {format(parseLocalDate(dateRange.end), 'MMM d, yyyy')}
           </p>
         </div>
-        <Button onClick={handleExport} className="bg-navy-600 hover:bg-navy-700">
+        <Button onClick={handleExport} disabled={undated > 0} className="bg-navy-600 hover:bg-navy-700">
           <Download className="w-4 h-4 mr-2" />
           Export PDF
         </Button>
@@ -243,7 +241,7 @@ export default function ReferralVolumeReport({ dateRange }) {
             <TableBody>
               {[...sourceChartData].sort((a, b) => b.count - a.count).slice(0, 10).map((item) => {
                 const dominant = dominantPriority(item.priorities);
-                const mix = PRIORITY_ORDER.filter(p => item.priorities[p])
+                const mix = REPORT_PRIORITIES.filter(p => item.priorities[p])
                   .map(p => `${item.priorities[p]} ${p}`)
                   .join(' · ');
                 const isMixed = Object.keys(item.priorities).length > 1;
@@ -258,7 +256,7 @@ export default function ReferralVolumeReport({ dateRange }) {
                       <Badge variant={PRIORITY_BADGE_VARIANT[dominant] || 'info'} className="capitalize">
                         {dominant}
                       </Badge>
-                      {isMixed && <p className="text-xs text-slate-500 mt-1">{mix}</p>}
+                      {(isMixed || item.priorities.unclassified > 0) && <p className="text-xs text-slate-500 mt-1">{mix}</p>}
                     </TableCell>
                     <TableCell className="text-slate-900">
                       {item.conversion}

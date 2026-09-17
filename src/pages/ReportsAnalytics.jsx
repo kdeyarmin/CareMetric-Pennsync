@@ -19,6 +19,8 @@ import PDGMReimbursementReport from "@/components/reports/PDGMReimbursementRepor
 import KPIDashboard from "@/components/reports/KPIDashboard";
 import MetricDictionaryStrip from "@/components/reports/MetricDictionaryStrip";
 import LoadingState from "@/components/ui/LoadingState";
+import ReportReadState from '@/components/analytics/ReportReadState';
+import { REPORT_READ_OPTIONS } from '@/components/analytics/reportReadContracts';
 
 const AdminReportsCenter = lazy(() => import("@/components/hub-tabs/AdminReportsCenter"));
 // Performance Analytics (documentation time / AI utilization / quality, with
@@ -40,10 +42,12 @@ export default function ReportsAnalytics() {
     start: toLocalISODate(subMonths(new Date(), 3)),
     end: toLocalISODate()
   });
-  const { data: currentUser } = useQuery({
+  const userQuery = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
+    ...REPORT_READ_OPTIONS,
   });
+  const currentUser = userQuery.isSuccess ? userQuery.data : null;
 
   const isAdmin = isAdminView(currentUser);
 
@@ -66,6 +70,7 @@ export default function ReportsAnalytics() {
     }
   }, [requestedTab, activeTab, setSearchParams]);
 
+  if (!userQuery.isSuccess || userQuery.isError) return <ReportReadState queries={[userQuery]} title="Report access" />;
   if (!isAdmin) {
     return <AccessDeniedState description="Reports & Analytics are available to administrators only." />;
   }

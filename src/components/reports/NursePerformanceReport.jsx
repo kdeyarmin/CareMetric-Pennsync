@@ -9,74 +9,107 @@ import { Download, Award } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { exportToPDF } from "../utils/pdfExporter";
 import { format } from "date-fns";
+import { toast } from 'sonner';
+import { isAdminView } from '@/lib/roles';
+import { parseLocalDate } from '@/lib/dateLocal';
+import { ALL_ROWS } from '@/lib/queryLimits';
+import { isCallerAgencyScoped } from '@/lib/agencyScope';
+import AccessDeniedState from '@/components/ui/AccessDeniedState';
+import ReportReadState from '@/components/analytics/ReportReadState';
+import { readReportRows, reportRangeAvailable, measuredAverage, displayMeasurement, REPORT_READ_OPTIONS } from '@/components/analytics/reportReadContracts';
 
 export default function NursePerformanceReport({ dateRange }) {
-  const { data: currentUser } = useQuery({
+  const userQuery = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
+    ...REPORT_READ_OPTIONS,
   });
-  // Base44 caps un-limited list() at 50 rows; these per-nurse aggregates need the
-  // full set or counts/averages are wrong and nurses go missing from the report.
-  const { data: noteConversions = [] } = useQuery({
-    queryKey: ['allNoteConversions', dateRange.start, dateRange.end],
-    queryFn: () => base44.entities.NoteConversion.list('-created_date', 10000),
-    initialData: [],
-  });
-
-  const { data: complianceAudits = [] } = useQuery({
-    queryKey: ['allComplianceAudits', dateRange.start, dateRange.end],
-    queryFn: () => base44.entities.ComplianceAudit.list('-created_date', 10000),
-    initialData: [],
+  const currentUser = userQuery.isSuccess ? userQuery.data : null;
+  const isAdmin = isAdminView(currentUser);
+  const authorityAvailable = Boolean(agencyQueryKey(currentUser)) && isCallerAgencyScoped(currentUser);
+  const rangeAvailable = reportRangeAvailable(dateRange?.start, dateRange?.end);
+  const notesQuery = useQuery({
+    queryKey: ['allNoteConversions', 'nurse-report', agencyQueryKey(currentUser)],
+    queryFn: async () => readReportRows(await base44.entities.NoteConversion.list('-created_date', ALL_ROWS), 'notes'),
+    enabled: isAdmin && authorityAvailable && rangeAvailable,
+    ...REPORT_READ_OPTIONS,
   });
 
-  const { data: users = [] } = useQuery({
-    queryKey: ['allUsers', 5000, agencyQueryKey(currentUser)],
+  const auditsQuery = useQuery({
+    queryKey: ['allComplianceAudits', 'nurse-report', agencyQueryKey(currentUser)],
     queryFn: async () => {
-      const _rows = await base44.entities.User.list('-created_date', 5000);
-      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
-      return filterUsersByCallerAgency(_rows, currentUser);
+      const rows = readReportRows(await base44.entities.ComplianceAudit.list('-created_date', ALL_ROWS), 'audits');
+      if (rows.some(row => row.status != null && !['passed', 'flagged', 'critical', 'pending_review'].includes(row.status))) throw new Error('REPORT_READ_INVALID');
+      return rows;
     },
-    enabled: !!currentUser,
-    initialData: [],
+    enabled: isAdmin && authorityAvailable && rangeAvailable,
+    ...REPORT_READ_OPTIONS,
   });
 
+  const usersQuery = useQuery({
+    queryKey: ['allUsers', 'nurse-report', ALL_ROWS, agencyQueryKey(currentUser)],
+    queryFn: async () => {
+      const _rows = readReportRows(await base44.entities.User.list('-created_date', ALL_ROWS), 'users');
+      const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
+      return { rows: filterUsersByCallerAgency(_rows, currentUser), capped: _rows.length >= ALL_ROWS };
+    },
+    enabled: isAdmin && authorityAvailable && rangeAvailable,
+    ...REPORT_READ_OPTIONS,
+  });
+
+  if (!userQuery.isSuccess || userQuery.isError) return <ReportReadState queries={[userQuery]} title="Report access" />;
+  if (!isAdmin) return <AccessDeniedState description="Nurse reports are available to administrators only." />;
+  if (!authorityAvailable) return <p role="status">Select an authorized agency before viewing nurse reports.</p>;
+  if (!rangeAvailable) return <p role="alert">Choose a valid date range covering at most 366 calendar days.</p>;
+  const queries = [notesQuery, auditsQuery, usersQuery];
+  if (!queries.every(query => query.isSuccess && !query.isError)) return <ReportReadState queries={queries} title="Nurse performance data" />;
+  const noteConversions = notesQuery.data;
+  const complianceAudits = auditsQuery.data;
+  const users = usersQuery.data.rows;
+  if (noteConversions.length >= ALL_ROWS || complianceAudits.length >= ALL_ROWS || usersQuery.data.capped) {
+    return <div role="status" className="space-y-3 rounded-xl border border-amber-300 bg-amber-50 p-4">
+      <p>A source reached its record limit. A complete nurse report cannot be verified, so totals and exports are unavailable.</p>
+      <Button disabled>Export PDF</Button>
+    </div>;
+  }
   const nurses = users.filter(u => u.role !== 'admin');
 
   const filteredVisits = noteConversions.filter(nc => {
-    const date = new Date(nc.created_date);
+    const date = parseLocalDate(nc.created_date);
     return date >= new Date(dateRange.start + 'T00:00:00') && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 
   const filteredAudits = complianceAudits.filter(a => {
-    const date = new Date(a.audit_date);
+    const date = parseLocalDate(a.audit_date || a.created_date);
     return date >= new Date(dateRange.start + 'T00:00:00') && date <= new Date(dateRange.end + 'T23:59:59.999');
   });
 
-  // Calculate performance metrics per nurse (visits = enhancements)
+  // These records measure note enhancements, not distinct completed visits.
   const nurseMetrics = nurses.map(nurse => {
     const nurseVisits = filteredVisits.filter(nc => nc.nurse_email === nurse.email);
     const nurseAudits = filteredAudits.filter(a => a.nurse_email === nurse.email);
     
-    const completedVisits = nurseVisits.length; // All enhancements are completed visits
-    const avgComplianceScore = nurseAudits.length > 0
-      ? (nurseAudits.reduce((sum, a) => sum + (a.compliance_score || 0), 0) / nurseAudits.length)
-      : 0;
+    const completedVisits = nurseVisits.length;
+    const avgComplianceScore = measuredAverage(nurseAudits, audit => audit.compliance_score);
     
     const passedAudits = nurseAudits.filter(a => a.status === 'passed').length;
-    const auditPassRate = nurseAudits.length > 0 ? (passedAudits / nurseAudits.length) * 100 : 0;
+    const reviewedAudits = nurseAudits.filter(a => ['passed', 'flagged', 'critical'].includes(a.status));
+    const auditPassRate = reviewedAudits.length ? (passedAudits / reviewedAudits.length) * 100 : null;
 
     return {
       name: nurse.full_name || nurse.email,
       email: nurse.email,
       completedVisits,
-      avgComplianceScore: avgComplianceScore.toFixed(1),
-      auditPassRate: auditPassRate.toFixed(1),
+      complianceMeasurement: avgComplianceScore,
+      avgComplianceScore: displayMeasurement(avgComplianceScore, '%'),
+      auditPassRate: displayMeasurement(auditPassRate, '%'),
       totalAudits: nurseAudits.length
     };
   }).sort((a, b) => b.completedVisits - a.completedVisits);
 
-  const handleExport = () => {
-    exportToPDF({
+  const handleExport = async () => {
+    try {
+      await exportToPDF({
       filename: `nurse-performance-report-${format(new Date(), 'yyyy-MM-dd')}.pdf`,
       title: 'Nurse Performance Report',
       subtitle: `Period: ${format(new Date(dateRange.start + 'T00:00:00'), 'MMM d, yyyy')} - ${format(new Date(dateRange.end + 'T23:59:59.999'), 'MMM d, yyyy')}`,
@@ -84,15 +117,18 @@ export default function NursePerformanceReport({ dateRange }) {
         { type: 'heading', text: 'Performance Metrics' },
         { type: 'table', data: nurseMetrics, columns: [
           { header: 'Nurse', key: 'name' },
-          { header: 'Visits', key: 'completedVisits' },
+          { header: 'Notes Enhanced', key: 'completedVisits' },
           { header: 'Compliance', key: 'avgComplianceScore' },
           { header: 'Pass Rate', key: 'auditPassRate' }
         ]}
       ]
-    });
+      });
+    } catch {
+      toast.error('The report could not be downloaded. Please try again.');
+    }
   };
 
-  const topPerformer = nurseMetrics[0];
+  const topPerformer = nurseMetrics.find(nurse => nurse.completedVisits > 0);
   const totalVisits = nurseMetrics.reduce((sum, n) => sum + n.completedVisits, 0);
   const totalTimeSavedMinutes = totalVisits * 20;
   const totalTimeSavedHours = Math.floor(totalTimeSavedMinutes / 60);
@@ -124,23 +160,23 @@ export default function NursePerformanceReport({ dateRange }) {
               <Award className="w-8 h-8 text-orange-600" />
               <div>
                 <p className="text-sm text-slate-600">Top Performer</p>
-                <p className="text-lg font-bold text-slate-900">{topPerformer?.name || 'N/A'}</p>
-                <p className="text-xs text-slate-500">{topPerformer?.completedVisits} visits</p>
+                <p className="text-lg font-bold text-slate-900">{topPerformer?.name || 'No activity in this period'}</p>
+                {topPerformer && <p className="text-xs text-slate-500">{topPerformer.completedVisits} notes enhanced</p>}
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
-            <p className="text-sm text-slate-600 mb-1">Total Visits</p>
+            <p className="text-sm text-slate-600 mb-1">Total Notes Enhanced</p>
             <p className="text-3xl font-bold text-slate-900">{totalVisits}</p>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-6">
-            <p className="text-sm text-slate-600 mb-1">Total Time Saved</p>
+            <p className="text-sm text-slate-600 mb-1">Estimated Time Saved</p>
             <p className="text-3xl font-bold text-slate-900">{timeSavedDisplay}</p>
-            <p className="text-xs text-slate-500 mt-1">{totalVisits} visits × 20 min</p>
+            <p className="text-xs text-slate-500 mt-1">Assumes 20 minutes per note; not measured time.</p>
           </CardContent>
         </Card>
       </div>
@@ -148,7 +184,7 @@ export default function NursePerformanceReport({ dateRange }) {
       {/* Charts */}
       <Card>
         <CardHeader>
-          <CardTitle>Visits Completed by Nurse</CardTitle>
+          <CardTitle>Notes Enhanced by Nurse</CardTitle>
         </CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={400}>
@@ -157,7 +193,7 @@ export default function NursePerformanceReport({ dateRange }) {
               <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
               <YAxis />
               <Tooltip />
-              <Bar dataKey="completedVisits" fill="#f97316" name="Completed Visits" />
+              <Bar dataKey="completedVisits" fill="#f97316" name="Notes Enhanced" />
             </BarChart>
           </ResponsiveContainer>
         </CardContent>
@@ -174,7 +210,7 @@ export default function NursePerformanceReport({ dateRange }) {
               <TableRow>
                 <TableHead>Rank</TableHead>
                 <TableHead>Nurse</TableHead>
-                <TableHead>Visits</TableHead>
+                <TableHead>Notes Enhanced</TableHead>
                 <TableHead>Compliance</TableHead>
                 <TableHead>Pass Rate</TableHead>
                 <TableHead>Performance</TableHead>
@@ -184,21 +220,23 @@ export default function NursePerformanceReport({ dateRange }) {
               {nurseMetrics.map((nurse, index) => (
                 <TableRow key={nurse.email}>
                   <TableCell className="font-semibold text-slate-900">
-                    {index === 0 && <Award className="w-4 h-4 text-gold-500 inline mr-1" />}
+                    {index === 0 && nurse.completedVisits > 0 && <Award className="w-4 h-4 text-gold-500 inline mr-1" />}
                     #{index + 1}
                   </TableCell>
                   <TableCell className="text-slate-900">{nurse.name}</TableCell>
                   <TableCell className="text-slate-900">{nurse.completedVisits}</TableCell>
-                  <TableCell className="text-slate-900">{nurse.avgComplianceScore}%</TableCell>
-                  <TableCell className="text-slate-900">{nurse.auditPassRate}%</TableCell>
+                  <TableCell className="text-slate-900">{nurse.avgComplianceScore}</TableCell>
+                  <TableCell className="text-slate-900">{nurse.auditPassRate}</TableCell>
                   <TableCell>
                     <Badge variant={
+                      nurse.complianceMeasurement === null ? 'secondary' :
                       parseFloat(nurse.avgComplianceScore) >= 90 ? 'success' :
                       parseFloat(nurse.avgComplianceScore) >= 80 ? 'info' :
                       parseFloat(nurse.avgComplianceScore) >= 70 ? 'warning' :
                       'destructive'
                     }>
-                      {parseFloat(nurse.avgComplianceScore) >= 90 ? 'Excellent' :
+                      {nurse.complianceMeasurement === null ? 'Not measured' :
+                       parseFloat(nurse.avgComplianceScore) >= 90 ? 'Excellent' :
                        parseFloat(nurse.avgComplianceScore) >= 80 ? 'Good' :
                        parseFloat(nurse.avgComplianceScore) >= 70 ? 'Fair' : 'Needs Improvement'}
                     </Badge>
