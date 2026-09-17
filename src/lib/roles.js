@@ -134,6 +134,25 @@ export function clearTrustedTenantContext() {
   activeTrustedPrincipal = null;
 }
 
+/**
+ * Return only frozen scalar expectations used by the external transport.
+ * Do not expose nested agency/extension data or user email through this seam.
+ * This is not an authorization grant: the external server independently checks
+ * the current principal and membership before work and before result disclosure.
+ */
+export function getActiveTrustedTenantContext() {
+  const context = activeTrustedPrincipal?.context;
+  if (!context) return null;
+  return Object.freeze({
+    user_id: context.user_id,
+    agency_id: context.agency_id,
+    membership_id: context.membership_id,
+    membership_version: context.membership_version,
+    tenant_role: context.tenant_role,
+    is_platform_owner: context.is_platform_owner,
+  });
+}
+
 /** Read the validated context bound to this exact authenticated principal. */
 export function getTrustedTenantContext(user) {
   if (!user || typeof user !== "object" || Array.isArray(user)) return null;

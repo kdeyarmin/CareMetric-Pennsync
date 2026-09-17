@@ -1,3 +1,4 @@
+import { carryOperationReceipt } from './operationReconciliation.js';
 import { hasActivePublicCapabilityRealm } from '@/lib/publicCapabilityRealmGate';
 import {
   browserAuthorityEpochMatches,
@@ -418,7 +419,7 @@ export function createTenantSdkRealmGate() {
         reject(error);
       }
     });
-    return promise.then(
+    const guarded = promise.then(
       (value) => finishResult(
         value,
         operationEpoch,
@@ -432,6 +433,11 @@ export function createTenantSdkRealmGate() {
         throw error;
       },
     );
+    return carryOperationReceipt(result, guarded, () => {
+      if (!operationIsCurrent(operationEpoch, operationAuthority)) {
+        throw new StaleTenantSdkOperationError();
+      }
+    });
   };
 
   const invokeProtected = (callable, thisArgument, args) => {
