@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { ArrowUpDown } from "lucide-react";
+import { displayMeasurement } from './reportReadContracts';
 
 export default function UserPerformanceTable({ users }) {
   const [sortBy, setSortBy] = useState('notesCount');
@@ -18,12 +19,16 @@ export default function UserPerformanceTable({ users }) {
   };
 
   const sortedUsers = [...users].sort((a, b) => {
+    // Unmeasured values sort last in both directions; they are not zero scores.
+    if (a[sortBy] == null) return b[sortBy] == null ? 0 : 1;
+    if (b[sortBy] == null) return -1;
     const aVal = parseFloat(a[sortBy]) || 0;
     const bVal = parseFloat(b[sortBy]) || 0;
     return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
   });
 
   const getComplianceBadge = (score) => {
+    if (score == null || !Number.isFinite(Number(score))) return null;
     const val = parseFloat(score);
     if (val >= 85) return <Badge variant="success">Excellent</Badge>;
     if (val >= 70) return <Badge variant="warning">Good</Badge>;
@@ -67,14 +72,14 @@ export default function UserPerformanceTable({ users }) {
               <p className="text-xs text-slate-500">{user.email}</p>
             </TableCell>
             <TableCell>{user.notesCount}</TableCell>
-            <TableCell>{user.avgDocTime} min</TableCell>
+            <TableCell>{displayMeasurement(user.avgDocTime, ' min')}</TableCell>
             <TableCell>
               <div className="flex items-center gap-2">
-                <span>{user.avgCompliance}%</span>
+                <span>{displayMeasurement(user.avgCompliance, '%')}</span>
                 {getComplianceBadge(user.avgCompliance)}
               </div>
             </TableCell>
-            <TableCell>{user.avgQuality}%</TableCell>
+            <TableCell>{displayMeasurement(user.avgQuality, '%')}</TableCell>
           </TableRow>
         ))}
       </TableBody>

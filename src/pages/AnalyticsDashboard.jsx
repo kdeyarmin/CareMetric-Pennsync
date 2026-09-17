@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useLayoutEffect } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
@@ -35,9 +35,13 @@ import PageContainer from "@/components/ui/PageContainer";
 import PageHeader from "@/components/ui/PageHeader";
 import UserActivityUnavailable from "@/components/security/UserActivityUnavailable";
 import { format, subDays } from "date-fns";
+import { parseLocalDate } from '@/lib/dateLocal';
 
 import PerformanceMetricsCard from "../components/analytics/PerformanceMetricsCard";
 import UserPerformanceTable from "../components/analytics/UserPerformanceTable";
+import AccessDeniedState from '@/components/ui/AccessDeniedState';
+import ReportReadState from '@/components/analytics/ReportReadState';
+import { readReportRows, reportRangeAvailable, measuredAverage, displayMeasurement, EMPTY_REPORT_ROWS, REPORT_READ_OPTIONS } from '@/components/analytics/reportReadContracts';
 
 /**
  * Build a "rows within [startDate, endDate] for this user" filter.
@@ -49,13 +53,14 @@ import UserPerformanceTable from "../components/analytics/UserPerformanceTable";
  * still compared on the local calendar day rather than in UTC.
  */
 function rangeSelector(startDate, endDate, selectedUser, dateOf, emailOf) {
+  if (!reportRangeAvailable(startDate, endDate)) return data => ({ rows: [], capped: data.length >= 10000 });
   const from = new Date(`${startDate}T00:00:00`);
   const to = new Date(`${endDate}T23:59:59.999`);
-  return (data) => data.filter((row) => {
-    const at = new Date(dateOf(row));
+  return (data) => ({ rows: data.filter((row) => {
+    const at = parseLocalDate(dateOf(row));
     if (!(at >= from && at <= to)) return false;
     return selectedUser === 'all' || emailOf(row) === selectedUser;
-  });
+  }), capped: data.length >= 10000 });
 }
 
 export default function AnalyticsDashboard() {
@@ -64,22 +69,26 @@ export default function AnalyticsDashboard() {
   const [startDate, setStartDate] = useState(format(subDays(new Date(), 30), 'yyyy-MM-dd'));
   const [endDate, setEndDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
-  const { data: currentUser } = useQuery({
+  const userQuery = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
+    ...REPORT_READ_OPTIONS,
   });
+  const currentUser = userQuery.isSuccess ? userQuery.data : null;
 
   const isAdmin = isAdminView(currentUser);
+  const rangeAvailable = reportRangeAvailable(startDate, endDate);
 
   // Fetch all users for admin
-  const { data: allUsers = [] } = useQuery({
-    queryKey: ['allUsers', 10000, agencyQueryKey(currentUser)],
+  const usersQuery = useQuery({
+    queryKey: ['performanceReportUsers', 10000, agencyQueryKey(currentUser)],
     queryFn: async () => {
-      const _rows = await base44.entities.User.list('-created_date', 10000);
+      const _rows = readReportRows(await base44.entities.User.list('-created_date', 10000), 'users');
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
-      return filterUsersByCallerAgency(_rows, currentUser);
+      return { rows: filterUsersByCallerAgency(_rows, currentUser), capped: _rows.length >= 10000 };
     },
     enabled: isAdmin,
+    ...REPORT_READ_OPTIONS,
   });
 
   // Memoized so the reference is stable between renders: React Query compares
@@ -94,38 +103,49 @@ export default function AnalyticsDashboard() {
     [startDate, endDate, selectedUser],
   );
   // Fetch note conversions
-  const { data: noteConversions = [] } = useQuery({
-    queryKey: ['noteConversions', selectedUser, startDate, endDate],
+  const notesQuery = useQuery({
+    queryKey: ['noteConversions', selectedUser, startDate, endDate, agencyQueryKey(currentUser)],
     // Without a limit Base44 returns only the 50 newest rows, so any selected date
     // range older than those 50 showed zero/partial data and skewed the averages.
-    queryFn: () => base44.entities.NoteConversion.list('-created_date', 10000),
+    queryFn: async () => readReportRows(await base44.entities.NoteConversion.list('-created_date', 10000), 'notes'),
     select: selectNoteConversions,
+    enabled: isAdmin && rangeAvailable,
+    ...REPORT_READ_OPTIONS,
   });
 
   // Fetch compliance audits
-  const { data: complianceAudits = [] } = useQuery({
-    queryKey: ['complianceAudits', selectedUser, startDate, endDate],
-    queryFn: () => base44.entities.ComplianceAudit.list('-audit_date', 10000),
+  const auditsQuery = useQuery({
+    queryKey: ['complianceAudits', selectedUser, startDate, endDate, agencyQueryKey(currentUser)],
+    queryFn: async () => readReportRows(await base44.entities.ComplianceAudit.list('-audit_date', 10000), 'audits'),
     select: selectComplianceAudits,
+    enabled: isAdmin && rangeAvailable,
+    ...REPORT_READ_OPTIONS,
   });
+  const reportQueries = [usersQuery, notesQuery, auditsQuery];
+  const dataAvailable = isAdmin && reportQueries.every(query => query.isSuccess && !query.isError);
+  const reportAvailable = dataAvailable && rangeAvailable;
+  const allUsers = reportAvailable ? usersQuery.data.rows : EMPTY_REPORT_ROWS;
+  const noteConversions = reportAvailable ? notesQuery.data.rows : EMPTY_REPORT_ROWS;
+  const complianceAudits = reportAvailable ? auditsQuery.data.rows : EMPTY_REPORT_ROWS;
+  const capped = dataAvailable && reportQueries.some(query => query.data.capped);
+  const exportAvailable = reportAvailable && !capped;
+  const exportAvailableRef = useRef(exportAvailable);
+  useLayoutEffect(() => { exportAvailableRef.current = exportAvailable; }, [exportAvailable]);
 
   // Average only rows that actually carry the metric — treating a missing
   // value as 0 halved the averages whenever legacy rows lacked the field.
-  const avgOf = (rows, pick) => {
-    const vals = rows.map(pick).filter((v) => Number.isFinite(v));
-    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
-  };
 
   // Calculate key metrics
   const metrics = useMemo(() => {
     // Documentation time metrics
-    const avgDocTime = avgOf(noteConversions, (nc) => nc.conversion_time_ms) / 1000 / 60;
+    const avgDocMilliseconds = measuredAverage(noteConversions, (nc) => nc.conversion_time_ms);
+    const avgDocTime = avgDocMilliseconds == null ? null : avgDocMilliseconds / 60000;
 
     // Compliance score metrics
-    const avgComplianceScore = avgOf(complianceAudits, (ca) => ca.compliance_score);
+    const avgComplianceScore = measuredAverage(complianceAudits, (ca) => ca.compliance_score);
 
     // Quality metrics
-    const avgQualityScore = avgOf(noteConversions, (nc) => nc.quality_score);
+    const avgQualityScore = measuredAverage(noteConversions, (nc) => nc.quality_score);
 
     // Compliance improvement metrics - safely handle undefined fields
     const conversionsWithCompliance = noteConversions.filter(nc => 
@@ -136,46 +156,43 @@ export default function AnalyticsDashboard() {
     );
     const avgComplianceImprovement = conversionsWithCompliance.length > 0
       ? conversionsWithCompliance.reduce((sum, nc) => sum + ((nc.enhanced_note_compliance || 0) - (nc.rough_note_compliance || 0)), 0) / conversionsWithCompliance.length
-      : 0;
+      : null;
     const avgRoughCompliance = conversionsWithCompliance.length > 0
       ? conversionsWithCompliance.reduce((sum, nc) => sum + (nc.rough_note_compliance || 0), 0) / conversionsWithCompliance.length
-      : 0;
+      : null;
     const avgEnhancedCompliance = conversionsWithCompliance.length > 0
       ? conversionsWithCompliance.reduce((sum, nc) => sum + (nc.enhanced_note_compliance || 0), 0) / conversionsWithCompliance.length
-      : 0;
+      : null;
 
     // Previous period comparison — split at the exact midpoint instant. Adding a
     // fractional day count via setDate lands the boundary imprecisely at day edges.
-    const midDate = new Date((new Date(startDate).getTime() + new Date(endDate).getTime()) / 2);
+    const midDate = new Date((new Date(`${startDate}T00:00:00`).getTime() + new Date(`${endDate}T23:59:59.999`).getTime()) / 2);
     
-    const recentConversions = noteConversions.filter(nc => new Date(nc.created_date) >= midDate);
-    const olderConversions = noteConversions.filter(nc => new Date(nc.created_date) < midDate);
+    const recentConversions = noteConversions.filter(nc => parseLocalDate(nc.created_date) >= midDate);
+    const olderConversions = noteConversions.filter(nc => parseLocalDate(nc.created_date) < midDate);
     
-    const recentAvgTime = recentConversions.length > 0
-      ? recentConversions.reduce((sum, nc) => sum + (nc.conversion_time_ms || 0), 0) / recentConversions.length / 1000 / 60
-      : avgDocTime;
-    const olderAvgTime = olderConversions.length > 0
-      ? olderConversions.reduce((sum, nc) => sum + (nc.conversion_time_ms || 0), 0) / olderConversions.length / 1000 / 60
-      : avgDocTime;
+    const recentAvgTime = measuredAverage(recentConversions, nc => nc.conversion_time_ms);
+    const olderAvgTime = measuredAverage(olderConversions, nc => nc.conversion_time_ms);
     
-    const timeChange = olderAvgTime > 0 ? ((recentAvgTime - olderAvgTime) / olderAvgTime) * 100 : 0;
+    const timeChange = olderAvgTime > 0 && recentAvgTime != null ? ((recentAvgTime - olderAvgTime) / olderAvgTime) * 100 : null;
 
     return {
-      avgDocTime: avgDocTime.toFixed(1),
-      avgComplianceScore: avgComplianceScore.toFixed(1),
-      avgQualityScore: avgQualityScore.toFixed(1),
+      avgDocTime: avgDocTime?.toFixed(1) ?? null,
+      avgComplianceScore: avgComplianceScore?.toFixed(1) ?? null,
+      avgQualityScore: avgQualityScore?.toFixed(1) ?? null,
       totalNotes: noteConversions.length,
       totalAudits: complianceAudits.length,
-      timeChange: timeChange.toFixed(1),
-      avgComplianceImprovement: avgComplianceImprovement.toFixed(1),
-      avgRoughCompliance: avgRoughCompliance.toFixed(1),
-      avgEnhancedCompliance: avgEnhancedCompliance.toFixed(1),
+      timeChange: timeChange?.toFixed(1) ?? null,
+      avgComplianceImprovement: avgComplianceImprovement?.toFixed(1) ?? null,
+      avgRoughCompliance: avgRoughCompliance?.toFixed(1) ?? null,
+      avgEnhancedCompliance: avgEnhancedCompliance?.toFixed(1) ?? null,
       notesWithComplianceTracking: conversionsWithCompliance.length
     };
   }, [noteConversions, complianceAudits, startDate, endDate]);
 
   // Prepare trend data
   const trendData = useMemo(() => {
+    if (!rangeAvailable) return [];
     const days = {};
     const start = new Date(startDate + 'T00:00:00');
     const end = new Date(endDate + 'T00:00:00');
@@ -185,21 +202,23 @@ export default function AnalyticsDashboard() {
       days[dateKey] = {
         date: format(d, 'MMM dd'),
         compliance: [],
-        docTime: []
+        docTime: [],
+        notes: 0,
       };
     }
 
     complianceAudits.forEach(ca => {
-      const dateKey = format(new Date(ca.audit_date || ca.created_date), 'yyyy-MM-dd');
-      if (days[dateKey]) {
-        days[dateKey].compliance.push(ca.compliance_score || 0);
+      const dateKey = format(parseLocalDate(ca.audit_date || ca.created_date), 'yyyy-MM-dd');
+      if (days[dateKey] && Number.isFinite(ca.compliance_score)) {
+        days[dateKey].compliance.push(ca.compliance_score);
       }
     });
 
     noteConversions.forEach(nc => {
-      const dateKey = format(new Date(nc.created_date), 'yyyy-MM-dd');
+      const dateKey = format(parseLocalDate(nc.created_date), 'yyyy-MM-dd');
       if (days[dateKey]) {
-        days[dateKey].docTime.push((nc.conversion_time_ms || 0) / 1000 / 60);
+        days[dateKey].notes++;
+        if (Number.isFinite(nc.conversion_time_ms)) days[dateKey].docTime.push(nc.conversion_time_ms / 60000);
       }
     });
 
@@ -211,49 +230,26 @@ export default function AnalyticsDashboard() {
       avgDocTime: day.docTime.length > 0
         ? day.docTime.reduce((a, b) => a + b, 0) / day.docTime.length
         : null,
-      notes: day.docTime.length
+      notes: day.notes
     }));
-  }, [complianceAudits, noteConversions, startDate, endDate]);
+  }, [complianceAudits, noteConversions, startDate, endDate, rangeAvailable]);
 
   // User performance summary
   const userPerformance = useMemo(() => {
     if (!isAdmin) return [];
 
-    const userStats = {};
-    
-    allUsers.forEach(user => {
-      userStats[user.email] = {
-        name: user.full_name,
-        email: user.email,
-        notesCount: 0,
-        avgDocTime: 0,
-        avgCompliance: 0,
-        auditCount: 0,
-        avgQuality: 0
+    const userStats = new Map(allUsers.filter(user => user.email).map(user => [user.email, { name: user.full_name || user.email, email: user.email, notes: [], audits: [] }]));
+    noteConversions.forEach(note => userStats.get(note.nurse_email)?.notes.push(note));
+    complianceAudits.forEach(audit => userStats.get(audit.nurse_email)?.audits.push(audit));
+    return [...userStats.values()].map(user => {
+      const milliseconds = measuredAverage(user.notes, note => note.conversion_time_ms);
+      return {
+        name: user.name, email: user.email, notesCount: user.notes.length,
+        avgDocTime: milliseconds == null ? null : (milliseconds / 60000).toFixed(1),
+        avgCompliance: measuredAverage(user.audits, audit => audit.compliance_score)?.toFixed(1) ?? null,
+        avgQuality: measuredAverage(user.notes, note => note.quality_score)?.toFixed(1) ?? null,
       };
-    });
-
-    noteConversions.forEach(nc => {
-      if (userStats[nc.nurse_email]) {
-        userStats[nc.nurse_email].notesCount++;
-        userStats[nc.nurse_email].avgDocTime += (nc.conversion_time_ms || 0) / 1000 / 60;
-        userStats[nc.nurse_email].avgQuality += nc.quality_score || 0;
-      }
-    });
-
-    complianceAudits.forEach(ca => {
-      if (userStats[ca.nurse_email]) {
-        userStats[ca.nurse_email].avgCompliance += ca.compliance_score || 0;
-        userStats[ca.nurse_email].auditCount++;
-      }
-    });
-
-    return Object.values(userStats).map(user => ({
-      ...user,
-      avgDocTime: user.notesCount > 0 ? (user.avgDocTime / user.notesCount).toFixed(1) : 0,
-      avgCompliance: user.auditCount > 0 ? (user.avgCompliance / user.auditCount).toFixed(1) : 0,
-      avgQuality: user.notesCount > 0 ? (user.avgQuality / user.notesCount).toFixed(1) : 0
-    })).filter(user => user.notesCount > 0);
+    }).filter(user => user.notesCount > 0);
   }, [noteConversions, complianceAudits, allUsers, isAdmin]);
 
   // Handle date range change
@@ -268,8 +264,10 @@ export default function AnalyticsDashboard() {
 
   // Export report as PDF
   const handleExportPDF = async () => {
+    if (!exportAvailable) return;
     try {
       const { exportToPDF } = await import('@/components/utils/pdfExporter');
+      if (!exportAvailableRef.current) return;
       
       const content = [
         { type: 'heading', text: 'Performance Analytics Report', size: 18 },
@@ -286,9 +284,9 @@ export default function AnalyticsDashboard() {
           type: 'table',
           headers: ['Metric', 'Value'],
           rows: [
-            ['Average Documentation Time', `${metrics.avgDocTime} minutes`],
-            ['Average Compliance Score', `${metrics.avgComplianceScore}%`],
-            ['Average Quality Score', `${metrics.avgQualityScore}%`],
+            ['Average Documentation Time', displayMeasurement(metrics.avgDocTime, ' minutes')],
+            ['Average Compliance Score', displayMeasurement(metrics.avgComplianceScore, '%')],
+            ['Average Quality Score', displayMeasurement(metrics.avgQualityScore, '%')],
             ['Total Notes Generated', metrics.totalNotes],
             ['Total Audits Performed', metrics.totalAudits]
           ]
@@ -306,9 +304,9 @@ export default function AnalyticsDashboard() {
           rows: userPerformance.slice(0, 10).map(user => [
             user.name,
             user.notesCount,
-            `${user.avgDocTime} min`,
-            `${user.avgCompliance}%`,
-            `${user.avgQuality}%`
+            displayMeasurement(user.avgDocTime, ' min'),
+            displayMeasurement(user.avgCompliance, '%'),
+            displayMeasurement(user.avgQuality, '%')
           ])
         });
       }
@@ -327,6 +325,7 @@ export default function AnalyticsDashboard() {
 
   // Export report as JSON
   const handleExportReport = () => {
+    if (!exportAvailable) return;
     try {
       if (!metrics || !trendData || trendData.length === 0) {
         toast.error('No data available to export. Please adjust your filters and try again.');
@@ -381,6 +380,9 @@ export default function AnalyticsDashboard() {
     }
   };
 
+  if (!userQuery.isSuccess) return <PageContainer><ReportReadState queries={[userQuery]} title="Report access" /></PageContainer>;
+  if (!isAdmin) return <PageContainer><AccessDeniedState description="Performance reports are available to administrators only." /></PageContainer>;
+
   return (
     <PageContainer>
       <PageHeader
@@ -391,12 +393,12 @@ export default function AnalyticsDashboard() {
         favoritePage="AnalyticsDashboard"
         actions={
           <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
-            <Button onClick={handleExportPDF} className="min-h-[44px] w-full sm:w-auto">
+            <Button onClick={handleExportPDF} disabled={!exportAvailable} className="min-h-[44px] w-full sm:w-auto">
               <Download className="w-4 h-4 mr-2" />
               <span className="hidden sm:inline">Export PDF</span>
               <span className="sm:hidden">PDF</span>
             </Button>
-            <Button onClick={handleExportReport} variant="outline" className="min-h-[44px] w-full sm:w-auto">
+            <Button onClick={handleExportReport} disabled={!exportAvailable} variant="outline" className="min-h-[44px] w-full sm:w-auto">
               <Download className="w-4 h-4 mr-2" />
               <span className="hidden sm:inline">Export JSON</span>
               <span className="sm:hidden">JSON</span>
@@ -430,12 +432,12 @@ export default function AnalyticsDashboard() {
             {dateRange === 'custom' && (
               <>
                 <div>
-                  <Label className="text-xs mb-1">Start Date</Label>
-                  <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+                  <Label htmlFor="performance-start-date" className="text-xs mb-1">Start Date</Label>
+                  <Input id="performance-start-date" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
                 </div>
                 <div>
-                  <Label className="text-xs mb-1">End Date</Label>
-                  <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+                  <Label htmlFor="performance-end-date" className="text-xs mb-1">End Date</Label>
+                  <Input id="performance-end-date" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
                 </div>
               </>
             )}
@@ -459,11 +461,16 @@ export default function AnalyticsDashboard() {
         </CardContent>
       </Card>
 
+      {rangeAvailable && !dataAvailable && <ReportReadState queries={reportQueries} title="Performance report data" />}
+      {!rangeAvailable && <p role="alert" className="mb-4 text-sm text-amber-800">Choose valid start and end dates in order, covering at most 366 calendar days.</p>}
+      {capped && <p role="status" className="mb-4 text-sm text-amber-800">A source reached its record limit. Figures describe loaded records only; export is unavailable until complete source data can be obtained.</p>}
+
+      {reportAvailable && <>
       {/* Key Metrics */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 mb-4 sm:mb-6">
         <PerformanceMetricsCard
           title="Avg Doc Time"
-          value={`${metrics.avgDocTime} min`}
+          value={displayMeasurement(metrics.avgDocTime, ' min')}
           change={metrics.timeChange}
           icon={Clock}
           color="blue"
@@ -471,7 +478,7 @@ export default function AnalyticsDashboard() {
         />
         <PerformanceMetricsCard
           title="Quality Score"
-          value={`${metrics.avgQualityScore}%`}
+          value={displayMeasurement(metrics.avgQualityScore, '%')}
           icon={Target}
           color="indigo"
         />
@@ -516,8 +523,7 @@ export default function AnalyticsDashboard() {
           </CardContent>
         </Card>
       )}
-
-
+      </>}
     </PageContainer>
   );
 }
