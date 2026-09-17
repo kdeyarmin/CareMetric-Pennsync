@@ -1,4 +1,3 @@
-import { useState } from "react";
 import { base44 } from "@/api/base44Client";
 import { agencyQueryKey } from '@/lib/agencyRoster';
 import { isAdminView } from "@/lib/roles";
@@ -36,53 +35,62 @@ import StatCard from "@/components/ui/stat-card";
 import AccessDeniedState from "@/components/ui/AccessDeniedState";
 import { ALL_ROWS } from '@/lib/queryLimits';
 import { listTenantTrainingIntegrityRecords } from '@/functions/listTenantTrainingIntegrityRecords';
+import ReportReadState from '@/components/analytics/ReportReadState';
+import { readReportRows, measuredAverage, displayMeasurement, REPORT_READ_OPTIONS } from '@/components/analytics/reportReadContracts';
+import { parseLocalDate } from '@/lib/dateLocal';
 
 export default function AdminTrainingAnalytics() {
-  const [_selectedModule, _setSelectedModule] = useState('all');
-  const [_dateRange, _setDateRange] = useState('30');
-
-  const { data: currentUser } = useQuery({
+  const userQuery = useQuery({
     queryKey: ['currentUser'],
     queryFn: () => base44.auth.me(),
+    ...REPORT_READ_OPTIONS,
   });
+  const currentUser = userQuery.isSuccess ? userQuery.data : null;
+  const isAdmin = isAdminView(currentUser);
+  const authorityKey = agencyQueryKey(currentUser);
 
-  const { data: allUsers = [] } = useQuery({
-    queryKey: ['allUsers', 5000, agencyQueryKey(currentUser)],
+  const usersQuery = useQuery({
+    queryKey: ['allUsers', 'training-report', 5000, agencyQueryKey(currentUser)],
     queryFn: async () => {
-      const _rows = await base44.entities.User.list('-created_date', 5000);
+      const _rows = readReportRows(await base44.entities.User.list('-created_date', 5000), 'users');
       const { filterUsersByCallerAgency } = await import('@/lib/agencyScope');
-      return filterUsersByCallerAgency(_rows, currentUser);
+      return { rows: filterUsersByCallerAgency(_rows, currentUser), capped: _rows.length >= 5000 };
     },
-    enabled: isAdminView(currentUser)
+    enabled: isAdmin,
+    ...REPORT_READ_OPTIONS,
   });
 
   // Org-wide training activity now comes from the live TrainingAssignment system
   // (the retired TrainingCompletion entity is no longer written).
-  const { data: assignments = [] } = useQuery({
-    queryKey: ['allTrainingAssignments', '-created_date', 5000],
-    queryFn: () => base44.entities.TrainingAssignment.list('-created_date', 5000),
-    enabled: isAdminView(currentUser)
+  const assignmentsQuery = useQuery({
+    queryKey: ['allTrainingAssignments', '-created_date', 5000, authorityKey],
+    queryFn: async () => readReportRows(await base44.entities.TrainingAssignment.list('-created_date', 5000), 'assignments'),
+    enabled: isAdmin,
+    ...REPORT_READ_OPTIONS,
   });
 
-  const { data: modules = [] } = useQuery({
-    queryKey: ['trainingModules'],
-    queryFn: () => base44.entities.TrainingModule.list(undefined, ALL_ROWS),
-    enabled: isAdminView(currentUser)
+  const modulesQuery = useQuery({
+    queryKey: ['trainingModules', authorityKey],
+    queryFn: async () => readReportRows(await base44.entities.TrainingModule.list(undefined, ALL_ROWS), 'modules'),
+    enabled: isAdmin,
+    ...REPORT_READ_OPTIONS,
   });
 
-  const { data: recommendations = [] } = useQuery({
-    queryKey: ['allRecommendations'],
+  const recommendationsQuery = useQuery({
+    queryKey: ['allRecommendations', authorityKey],
     queryFn: async () => {
       const response = await listTenantTrainingIntegrityRecords({
         resource: 'training_recommendations',
         limit: 500,
       });
-      return (response?.data || response)?.records || [];
+      return readReportRows((response?.data || response)?.records, 'recommendations');
     },
-    enabled: isAdminView(currentUser)
+    enabled: isAdmin,
+    ...REPORT_READ_OPTIONS,
   });
 
-  if (!isAdminView(currentUser)) {
+  if (!userQuery.isSuccess) return <PageContainer><ReportReadState queries={[userQuery]} title="Report access" /></PageContainer>;
+  if (!isAdmin) {
     return (
       <PageContainer>
         <AccessDeniedState description="Training analytics are available to administrators only." />
@@ -90,11 +98,21 @@ export default function AdminTrainingAnalytics() {
     );
   }
 
+  const queries = [usersQuery, assignmentsQuery, modulesQuery, recommendationsQuery];
+  if (!queries.every(query => query.isSuccess && !query.isError)) {
+    return <PageContainer><ReportReadState queries={queries} title="Training report data" /></PageContainer>;
+  }
+  const allUsers = usersQuery.data.rows;
+  const assignments = assignmentsQuery.data;
+  const modules = modulesQuery.data;
+  const recommendations = recommendationsQuery.data;
+  const capped = usersQuery.data.capped || assignments.length >= 5000 || modules.length >= ALL_ROWS || recommendations.length >= 500;
+
   const nurses = allUsers.filter(u => u.role === 'user');
 
   // Analytics calculations (course-assignment based)
   const isCompleted = (a) => a.status === 'completed' || a.pass_fail_result === 'passed';
-  const avg = (rows) => rows.length > 0 ? Math.round(rows.reduce((s, a) => s + a.score_percentage, 0) / rows.length) : 0;
+  const avg = rows => measuredAverage(rows, a => a.score_percentage);
   const completedAssignments = assignments.filter(isCompleted);
   const scoredAssignments = assignments.filter(a => typeof a.score_percentage === 'number');
 
@@ -105,10 +123,12 @@ export default function AdminTrainingAnalytics() {
 
   // Completion rate by nurse
   const nurseCompletionData = nurses.map(nurse => {
+    const assigned = assignments.filter(a => a.assigned_to_user_id === nurse.email);
     const done = completedAssignments.filter(a => a.assigned_to_user_id === nurse.email);
     return {
       name: nurse.full_name || nurse.email,
       completions: done.length,
+      assignments: assigned.length,
       avgScore: avg(done.filter(a => typeof a.score_percentage === 'number'))
     };
   }).sort((a, b) => b.completions - a.completions);
@@ -127,9 +147,10 @@ export default function AdminTrainingAnalytics() {
   }).sort((a, b) => b.completions - a.completions).slice(0, 10);
 
   // Category distribution
-  const categoryData = {};
+  const categoryData = Object.create(null);
   modules.forEach(m => {
-    categoryData[m.category] = (categoryData[m.category] || 0) + 1;
+    const category = m.category || 'Uncategorized';
+    categoryData[category] = (categoryData[category] || 0) + 1;
   });
   const categoryChartData = Object.entries(categoryData).map(([cat, count]) => ({
     name: cat,
@@ -140,7 +161,7 @@ export default function AdminTrainingAnalytics() {
   const weeklyData = {};
   completedAssignments.forEach(a => {
     if (a.completion_date) {
-      const week = format(new Date(a.completion_date), "yyyy-MM-dd");
+      const week = format(parseLocalDate(a.completion_date), "yyyy-MM-dd");
       weeklyData[week] = (weeklyData[week] || 0) + 1;
     }
   });
@@ -164,10 +185,13 @@ export default function AdminTrainingAnalytics() {
         favoritePage="AdminTrainingAnalytics"
       />
 
+      {capped && <p role="status" className="mb-4 text-sm text-amber-800">A source reached its record limit. These figures describe loaded records and may omit older activity.</p>}
+      <p className="mb-4 text-sm text-slate-600">Completion trends include dated completions only. A missing score is not a zero score.</p>
+
       {/* Key Metrics */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
         <StatCard label="Total Completions" value={totalCompletions} icon={CheckCircle2} tone="navy" />
-        <StatCard label="Avg Score" value={`${avgScore.toFixed(0)}%`} icon={Award} tone="emerald" />
+        <StatCard label="Avg Score" value={displayMeasurement(avgScore, '%', 0)} icon={Award} tone="emerald" />
         <StatCard label="In Progress" value={inProgress} icon={Clock} tone="amber" />
         <StatCard label="Pending Recs" value={unaddressedRecs} icon={AlertCircle} tone="rose" />
       </div>
@@ -242,10 +266,12 @@ export default function AdminTrainingAnalytics() {
                         <span className="font-medium text-sm">{nurse.name}</span>
                         <div className="flex items-center gap-2">
                           <Badge variant="outline">{nurse.completions} completed</Badge>
-                          <Badge className="bg-emerald-500">{nurse.avgScore}% avg</Badge>
+                          <Badge className="bg-emerald-500">{displayMeasurement(nurse.avgScore, '% avg', 0)}</Badge>
                         </div>
                       </div>
-                      <Progress value={modules.length > 0 ? Math.min(100, (nurse.completions / modules.length) * 100) : 0} className="h-2" />
+                      {nurse.assignments > 0
+                        ? <Progress role="progressbar" aria-label={`${nurse.name} assigned training completion`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={(nurse.completions / nurse.assignments) * 100} value={(nurse.completions / nurse.assignments) * 100} className="h-2" />
+                        : <p className="text-xs text-slate-500">No assigned training</p>}
                     </div>
                   </div>
                 ))}
