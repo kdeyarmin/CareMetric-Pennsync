@@ -46,7 +46,7 @@
   },
   "dependencies": {
     "@base44/sdk": "^0.8.48",
-    "@base44/vite-plugin": "^1.0.40",
+    "@base44/vite-plugin": "^1.0.41",
     "@caremetric/help-sdk": "file:vendor/caremetric-help-sdk-0.4.0.tgz",
     "@fontsource-variable/inter": "^5.3.0",
     "@hello-pangea/dnd": "^18.0.1",
