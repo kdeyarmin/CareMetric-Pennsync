@@ -5,15 +5,19 @@ import { MemoryRouter } from 'react-router';
 import ADRCenter from './ADRCenter';
 import { expectNoAxeViolations } from '@/test/axeHelpers';
 
-const { list, create, update, remove, patientQuery } = vi.hoisted(() => ({
-  list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), patientQuery: { current: {} },
+const { list, create, update, remove, patientQuery, analysis } = vi.hoisted(() => ({
+  list: vi.fn(), create: vi.fn(), update: vi.fn(), remove: vi.fn(), patientQuery: { current: {} }, analysis: { finish: null },
 }));
 vi.mock('@/api/base44Client', () => ({ base44: { entities: { AdrAuditCase: { list, create, update, delete: remove } } } }));
 vi.mock('@/hooks/useScopedPatients', () => ({ useScopedPatients: () => patientQuery.current }));
 vi.mock('@/components/ui/PageHeader', () => ({ default: ({ title, actions }) => <header><h1>{title}</h1>{actions}</header> }));
 vi.mock('@/components/ui/PageContainer', () => ({ default: ({ children }) => <main>{children}</main> }));
 vi.mock('@/components/ui/SearchablePatientSelect', () => ({ default: ({ onValueChange }) => <button onClick={() => onValueChange('patient-a')}>Synthetic patient picker</button> }));
-vi.mock('@/components/adr/AdrLetterAnalyzer', () => ({ default: () => <p>Letter analyzer</p> }));
+vi.mock('@/components/adr/AdrLetterAnalyzer', () => ({ default: ({ onProcessingChange, onComplete, disabled }) => <button disabled={disabled} onClick={() => {
+  onProcessingChange(true);
+  // Capture the original props, like the real async upload callback does.
+  analysis.finish = () => { onProcessingChange(false); onComplete({ letterFileUrl: 'https://example.test/synthetic.pdf', analysis: { patient_name: 'Synthetic' }, checklist: [] }); };
+}}>Start synthetic analysis</button> }));
 vi.mock('@/components/adr/AdrChecklistPanel', () => ({ default: () => <p>Case checklist</p> }));
 vi.mock('@/components/adr/AdrPacketVerifier', () => ({ default: () => <p>Packet verifier</p> }));
 vi.mock('@/components/adr/AdrSubmissionPanel', () => ({ default: () => <p>Case submission</p> }));
@@ -27,7 +31,7 @@ function mount() {
 beforeEach(() => {
   vi.clearAllMocks();
   list.mockResolvedValue([syntheticCase]);
-  patientQuery.current = { data: [], isSuccess: true, isPending: false, isError: false, refetch: vi.fn() };
+  patientQuery.current = { data: [], isSuccess: true, isPending: false, isError: false, refetch: vi.fn(), retry: vi.fn() };
 });
 
 describe('ADR case read reliability', () => {
@@ -38,6 +42,26 @@ describe('ADR case read reliability', () => {
     expect(screen.queryByText('No ADR cases yet')).not.toBeInTheDocument();
     expect(screen.queryByText('Open cases')).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'New ADR Case' })).toBeDisabled();
+  });
+
+  it('keeps an active analyzer mounted and preserves its result through a case refresh failure', async () => {
+    const { client } = mount();
+    await screen.findByRole('button', { name: 'Open' });
+    fireEvent.click(screen.getByRole('button', { name: 'New ADR Case' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Start synthetic analysis' }));
+    list.mockRejectedValue(new Error('Unavailable'));
+    await act(() => client.invalidateQueries({ queryKey: ['adrCases'] }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Start synthetic analysis' })).toBeDisabled());
+    await act(async () => analysis.finish());
+    expect(create).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Retry save' })).toBeDisabled();
+    list.mockResolvedValue([syntheticCase]);
+    await act(() => client.invalidateQueries({ queryKey: ['adrCases'] }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Retry save' })).toBeEnabled());
+    create.mockResolvedValue(syntheticCase);
+    fireEvent.click(screen.getByRole('button', { name: 'Retry save' }));
+    await waitFor(() => expect(create).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('shows a retryable read failure rather than an empty caseload', async () => {
@@ -84,7 +108,7 @@ describe('ADR case read reliability', () => {
   });
 
   it.each(['pending', 'error'])('does not offer a patient link from a %s roster', async (state) => {
-    patientQuery.current = { data: [], isSuccess: false, isPending: state === 'pending', isError: state === 'error', refetch: vi.fn() };
+    patientQuery.current = { data: [], isSuccess: false, isPending: state === 'pending', isError: state === 'error', refetch: vi.fn(), retry: vi.fn() };
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Open' }));
     expect(screen.queryByText('Synthetic patient picker')).not.toBeInTheDocument();
@@ -93,11 +117,11 @@ describe('ADR case read reliability', () => {
   });
 
   it('keeps the case details usable when only patient lookup fails', async () => {
-    patientQuery.current = { data: [], isSuccess: false, isPending: false, isError: true, refetch: vi.fn() };
+    patientQuery.current = { data: [], isSuccess: false, isPending: false, isError: true, refetch: vi.fn(), retry: vi.fn() };
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Open' }));
     fireEvent.click(screen.getByRole('button', { name: 'Retry patient charts' }));
-    await waitFor(() => expect(patientQuery.current.refetch).toHaveBeenCalledOnce());
+    await waitFor(() => expect(patientQuery.current.retry).toHaveBeenCalledOnce());
     expect(screen.getByText('Case checklist')).toBeInTheDocument();
   });
 

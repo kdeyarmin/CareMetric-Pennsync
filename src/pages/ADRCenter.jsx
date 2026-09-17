@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, differenceInCalendarDays } from "date-fns";
 import { parseLocalDate } from "@/lib/dateLocal";
@@ -97,6 +97,8 @@ export default function ADRCenter() {
     retry: false,
   });
   const casesAvailable = casesQuery.isSuccess && !casesQuery.isError;
+  const casesAvailableRef = useRef(casesAvailable);
+  useLayoutEffect(() => { casesAvailableRef.current = casesAvailable; }, [casesAvailable]);
   const cases = casesAvailable ? casesQuery.data : EMPTY_CASES;
 
   // Patient roster for chart linking — loaded only once a case is open.
@@ -122,7 +124,7 @@ export default function ADRCenter() {
   }, [cases]);
 
   const saveAnalyzedCase = async (payload) => {
-    if (!casesAvailable) {
+    if (!casesAvailableRef.current) {
       setPendingCase(payload);
       toast.error('ADR cases are unavailable. Retry the case list before saving.');
       return;
@@ -443,7 +445,7 @@ export default function ADRCenter() {
                   {patientQuery.isError ? (
                     <div role="alert" className="text-sm text-slate-600">
                       <p>Patient charts are unavailable. Retry before changing the link.</p>
-                      <Button variant="outline" onClick={() => patientQuery.refetch()} disabled={patientQuery.isFetching}>Retry patient charts</Button>
+                      <Button variant="outline" onClick={() => patientQuery.retry()} disabled={patientQuery.isFetching}>Retry patient charts</Button>
                     </div>
                   ) : !patientQuery.isSuccess ? (
                     <p role="status" className="text-sm text-slate-600">Loading patient charts...</p>
@@ -523,27 +525,30 @@ export default function ADRCenter() {
           <DialogHeader>
             <DialogTitle>New ADR / audit case</DialogTitle>
           </DialogHeader>
-          {!casesAvailable ? (
-            <Alert><AlertDescription>ADR cases are unavailable. Close this dialog and retry the case list before continuing.</AlertDescription></Alert>
-          ) : pendingCase ? (
+          {!casesAvailable && (
+            <Alert><AlertDescription>ADR cases are unavailable. Any running analysis can finish; its result will be kept until the case list recovers.
+              <Button variant="outline" className="mt-2" onClick={() => casesQuery.refetch()} disabled={casesQuery.isFetching}>Reload case list</Button>
+            </AlertDescription></Alert>
+          )}
+          {pendingCase ? (
             <div className="space-y-3">
               <Alert className="bg-amber-50 border-amber-300">
                 <ShieldAlert className="w-4 h-4 text-amber-600" />
                 <AlertDescription className="text-amber-900">
-                  The letter was analyzed successfully but saving the case failed. The analysis was kept — retry the
+                  The letter was analyzed successfully but the case has not been saved. The analysis was kept — retry the
                   save without re-running the analysis.
                 </AlertDescription>
               </Alert>
               <Button
                 onClick={() => saveAnalyzedCase(pendingCase)}
-                disabled={isSavingCase}
+                disabled={isSavingCase || !casesAvailable}
                 className="bg-blue-600 hover:bg-blue-700 min-h-[44px] w-full sm:w-auto"
               >
                 {isSavingCase ? "Saving..." : "Retry save"}
               </Button>
             </div>
           ) : (
-            <AdrLetterAnalyzer onComplete={handleLetterAnalyzed} onProcessingChange={setLetterAnalyzing} />
+            <AdrLetterAnalyzer disabled={!casesAvailable} onComplete={handleLetterAnalyzed} onProcessingChange={setLetterAnalyzing} />
           )}
         </DialogContent>
       </Dialog>

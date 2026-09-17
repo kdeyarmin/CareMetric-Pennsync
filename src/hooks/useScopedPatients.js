@@ -293,6 +293,15 @@ export function useScopedPatients({
 
   return {
     ...authorizedQuery,
+    // Retry the first unverified step. Its success re-enables the dependent
+    // queries, preserving the existing fresh identity -> membership -> PHI gate.
+    // A downstream-only refetch cannot recover an upstream identity failure.
+    retry: () => {
+      if (!enabled) return Promise.resolve();
+      if (!currentUserSettled || currentUserQuery.error || identityError || authorityError) return currentUserQuery.refetch();
+      if (!tenantContextSettled || tenantContextQuery.error || tenantScopeError) return tenantContextQuery.refetch();
+      return authorizedQuery.refetch();
+    },
     data: authorizedSettled ? authorizedQuery.data : [],
     error: authorizationError,
     status: authorizationError ? 'error' : authorizedSettled ? 'success' : 'pending',
