@@ -45,6 +45,35 @@ describe.each([
 });
 
 describe.each([['referral letter', ReferralLetterGenerator], ['progress report', ProgressReportGenerator]])('%s readiness', (_name, Component) => {
+  it('preserves unsaved draft edits and versions through history refresh and recovery', async () => {
+    mocks.run.mockResolvedValue({ letter: 'Synthetic original draft', report: 'Synthetic original draft' });
+    const view = render(<Component patientId={patient.id} patient={patient} />);
+    if (Component === ReferralLetterGenerator) {
+      fireEvent.change(screen.getByPlaceholderText('Dr. Smith / ABC Medical Center'), { target: { value: 'Synthetic recipient' } });
+      fireEvent.change(screen.getByPlaceholderText('Describe why you are referring this patient...'), { target: { value: 'Synthetic reason' } });
+    }
+    fireEvent.click(screen.getByRole('button', { name: /^Generate (?:Referral Letter|Progress Report)$/ }));
+    await screen.findByText('Synthetic original draft');
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByDisplayValue('Synthetic original draft'), { target: { value: 'Saved draft revision' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit' }));
+    fireEvent.change(screen.getByDisplayValue('Saved draft revision'), { target: { value: 'Unsaved working revision' } });
+    for (const state of [{ ...ready(), isPending: true }, { ...ready(), isError: true }, ready()]) {
+      mocks.visits = state;
+      view.rerender(<Component patientId={patient.id} patient={patient} />);
+      if (state.isPending || state.isError) {
+        expect(screen.queryByRole('button', { name: 'Save Draft' })).not.toBeInTheDocument();
+      }
+    }
+    expect(screen.getByDisplayValue('Unsaved working revision')).toBeVisible();
+    expect(screen.getByText('Version History (2 versions)')).toBeVisible();
+    const otherPatient = { ...patient, id: 'other-synthetic-patient' };
+    view.rerender(<Component patientId={otherPatient.id} patient={otherPatient} />);
+    expect(screen.queryByDisplayValue('Unsaved working revision')).not.toBeInTheDocument();
+    expect(screen.queryByText('Version History (2 versions)')).not.toBeInTheDocument();
+  });
+
   it('keeps the history reader mounted across loading and error recovery', () => {
     mocks.visits = { ...ready(), isPending: true, isLoading: true };
     const view = render(<Component patientId={patient.id} patient={patient} />);

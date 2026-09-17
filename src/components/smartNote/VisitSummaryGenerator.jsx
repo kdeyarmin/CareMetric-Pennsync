@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useLayoutEffect, useRef } from "react";
+import PatientHistoryNotice from '@/components/patient/PatientHistoryNotice';
 import { useAICall } from "@/hooks/useAICall";
 import { useAuthorizedVisits } from '@/hooks/useAuthorizedVisits';
 import { Button } from "@/components/ui/button";
@@ -54,29 +55,29 @@ function SectionBlock({ section, content, copiedKey, onCopy }) {
   );
 }
 
-export default function VisitSummaryGenerator({ patientId }) {
+export default function VisitSummaryGenerator(props) {
+  return <PatientVisitSummaryGenerator key={props.patientId || 'no-patient'} {...props} />;
+}
+
+function PatientVisitSummaryGenerator({ patientId }) {
   const [selectedVisitId, setSelectedVisitId] = useState("");
   const [summary, setSummary] = useState(null);
   const ai = useAICall();
+  const resetAI = ai.reset;
+  const summaryRequestRef = useRef(0);
   const [copiedKey, setCopiedKey] = useState(null);
   const [copiedAll, setCopiedAll] = useState(false);
   const [selectedSections, setSelectedSections] = useState(new Set(SECTIONS.map(s => s.key)));
   const [showSectionPicker, setShowSectionPicker] = useState(false);
   const { tenantContext } = useAuth();
 
-  // Clear sticky summary / visit selection when the parent chart switches patients.
-  useEffect(() => {
-    setSelectedVisitId("");
-    setSummary(null);
-    setCopiedKey(null);
-    setCopiedAll(false);
-  }, [patientId]);
+  useLayoutEffect(() => () => { summaryRequestRef.current += 1; }, []);
 
   // Scope the visit picker to the selected patient. Without a patient, DON'T fall
   // back to every patient's recent visits — the picker labels show only date +
   // type, so a cross-patient list let a nurse summarize (and send to the LLM) the
   // wrong patient's note with no way to tell whose chart it was.
-  const { data: visits = [] } = useAuthorizedVisits({
+  const { data: visits = [], isPending: visitsPending, isError: visitsError } = useAuthorizedVisits({
     patientId,
     purpose: 'documentation',
     sort: '-visit_date',
@@ -84,7 +85,7 @@ export default function VisitSummaryGenerator({ patientId }) {
     enabled: !!patientId,
   });
 
-  const { data: patient } = useAuthorizedPatient({
+  const { data: patient, isPending: patientPending, isError: patientError } = useAuthorizedPatient({
     patientId,
     agencyId: tenantContext?.agency_id,
     purpose: 'visit_summary',
@@ -92,12 +93,35 @@ export default function VisitSummaryGenerator({ patientId }) {
   });
 
   const selectedVisit = visits.find(v => v.id === selectedVisitId);
+  const historyError = visitsError || patientError;
+  const historyReady = Boolean(patient && !historyError && !visitsPending && !patientPending);
+
+  useLayoutEffect(() => {
+    if (historyReady) return;
+    summaryRequestRef.current += 1;
+    setSummary(null);
+    setCopiedKey(null);
+    setCopiedAll(false);
+    resetAI();
+  }, [historyReady, resetAI]);
+
+  const selectVisit = (visitId) => {
+    summaryRequestRef.current += 1;
+    setSelectedVisitId(visitId);
+    setSummary(null);
+    setCopiedKey(null);
+    setCopiedAll(false);
+    resetAI();
+  };
 
   const generate = async () => {
-    if (!selectedVisit) return;
+    if (!historyReady || !selectedVisit) return;
     const transcript = selectedVisit.nurse_notes || selectedVisit.raw_transcription;
     if (!transcript) return;
+    const requestId = ++summaryRequestRef.current;
     setSummary(null);
+    setCopiedKey(null);
+    setCopiedAll(false);
     try {
       const ctx = patient
         ? `Patient: ${patient.first_name} ${patient.last_name}, DOB: ${patient.date_of_birth || "?"}, Dx: ${patient.primary_diagnosis || "?"}`
@@ -138,24 +162,30 @@ Return JSON with these keys:
           }
         }
       });
-      setSummary(result);
+      if (summaryRequestRef.current === requestId) setSummary(result);
     } catch {
-      toast.error("Failed to generate summary. Please try again.");
+      if (summaryRequestRef.current === requestId) toast.error("Failed to generate summary. Please try again.");
     }
   };
 
   const copySection = async (key, content) => {
+    const requestId = summaryRequestRef.current;
     try {
       await navigator.clipboard.writeText(content || "");
+      if (summaryRequestRef.current !== requestId) return;
       setCopiedKey(key);
-      setTimeout(() => setCopiedKey(null), 2000);
+      setTimeout(() => {
+        if (summaryRequestRef.current === requestId) setCopiedKey(null);
+      }, 2000);
     } catch {
+      if (summaryRequestRef.current !== requestId) return;
       setCopiedKey(null);
       toast.error("Couldn't copy to the clipboard. Select the text and copy manually.");
     }
   };
 
   const copySelected = async () => {
+    const requestId = summaryRequestRef.current;
     const text = SECTIONS
       .filter(s => selectedSections.has(s.key) && summary?.[s.key])
       .map(s => `${s.label}:\n${summary[s.key]}`)
@@ -163,12 +193,16 @@ Return JSON with these keys:
     try {
       await navigator.clipboard.writeText(text);
     } catch {
+      if (summaryRequestRef.current !== requestId) return;
       setCopiedAll(false);
       toast.error("Couldn't copy to the clipboard. Select the text and copy manually.");
       return;
     }
+    if (summaryRequestRef.current !== requestId) return;
     setCopiedAll(true);
-    setTimeout(() => setCopiedAll(false), 2000);
+    setTimeout(() => {
+      if (summaryRequestRef.current === requestId) setCopiedAll(false);
+    }, 2000);
   };
 
   const toggleSection = (key) => {
@@ -188,6 +222,10 @@ Return JSON with these keys:
 
   const hasTranscript = selectedVisit && (selectedVisit.nurse_notes || selectedVisit.raw_transcription);
 
+  if (patientId && !historyReady) {
+    return <PatientHistoryNotice patientId={patientId} error={historyError} />;
+  }
+
   return (
     <div className="space-y-4">
       {/* Title */}
@@ -205,7 +243,7 @@ Return JSON with these keys:
       )}
 
       {/* Visit selector */}
-      <Select value={selectedVisitId} onValueChange={setSelectedVisitId}>
+      <Select value={selectedVisitId} onValueChange={selectVisit}>
         <SelectTrigger className="bg-white h-10 text-sm">
           <SelectValue placeholder="Select a visit…" />
         </SelectTrigger>
