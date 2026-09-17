@@ -1,13 +1,9 @@
 import { createHash } from 'node:crypto';
 import { BUCKET } from './runtime.mjs';
+import { buildMailPayload, emailAddress, validateMailParams } from './mail-contract.mjs';
 import { MAX_FILE, UUID, conforms, exactObject, fail, fileBytes, limitedBytes, readJson, text, validateSchema } from './safety.mjs';
 
 const FILE_URI = /^cmfile:([0-9a-f-]{36})$/i;
-function email(value) {
-  const address = text(value, 320).trim();
-  if (!/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(address)) fail(400, 'INVALID_EMAIL');
-  return address;
-}
 function requireFileUri(value) {
   const match = typeof value === 'string' && value.match(FILE_URI);
   if (!match || !UUID.test(match[1])) fail(400, 'PRIVATE_FILE_MIGRATION_REQUIRED');
@@ -42,12 +38,9 @@ export function validateParams(operation, params, config) {
     exactObject(params, ['file_uri', 'json_schema']); requireFileUri(params.file_uri); validateSchema(params.json_schema);
     if (!config.anthropicKey) fail(503, 'AI_PROVIDER_NOT_CONFIGURED');
   } else if (operation === 'SendEmail') {
-    exactObject(params, ['to', 'subject', 'body']);
-    const recipients = Array.isArray(params.to) ? params.to : [params.to];
-    if (!recipients.length || recipients.length > 10) fail(400, 'INVALID_RECIPIENTS');
-    recipients.forEach(email); text(params.subject, 500); text(params.body, 100000);
+    validateMailParams(params);
     if (!config.sendgridKey || !config.fromEmail) fail(503, 'EMAIL_PROVIDER_NOT_CONFIGURED');
-    email(config.fromEmail);
+    emailAddress(config.fromEmail);
   } else if (['UploadFile', 'UploadPrivateFile'].includes(operation)) {
     exactObject(params, ['base64', 'content_type']); fileBytes(params.base64, params.content_type);
   } else if (operation === 'CreateFileSignedUrl') {
@@ -115,12 +108,9 @@ export function createProviders(config, store, fetcher = fetch) {
       return { status: 'success', output };
     }
     if (operation === 'SendEmail') {
-      const recipients = (Array.isArray(params.to) ? params.to : [params.to]).map(email);
       const response = await fetcher('https://api.sendgrid.com/v3/mail/send', {
         method: 'POST', headers: { Authorization: `Bearer ${config.sendgridKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ personalizations: [{ to: recipients.map(address => ({ email: address })) }],
-          from: { email: email(config.fromEmail) }, subject: params.subject, content: [{ type: 'text/plain', value: params.body }],
-          tracking_settings: { click_tracking: { enable: false, enable_text: false }, open_tracking: { enable: false } } }),
+        body: JSON.stringify(buildMailPayload(params, config.fromEmail)),
         redirect: 'error', signal: AbortSignal.timeout(20000),
       });
       if (response.status !== 202) fail(502, 'EMAIL_NOT_ACCEPTED');

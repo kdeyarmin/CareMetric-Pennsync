@@ -1,3 +1,4 @@
+import { validateMailParams } from '../../services/integration-runtime/mail-contract.mjs';
 import { associateOperationReceipt, attachOperationReconciliation } from './operationReconciliation.js';
 import {
   MAX_FILE, MIME, OPERATIONS, UUID, conforms, exactObject, stable, text, validateSchema,
@@ -92,11 +93,7 @@ export function normalizeExternalIntegrationParams(operation, input) {
   } else if (operation === 'CreateFileSignedUrl') {
     exactObject(value, ['file_uri']); value.file_uri = privateFile(value.file_uri);
   } else if (operation === 'SendEmail') {
-    exactObject(value, ['to', 'subject', 'body']);
-    const recipients = Array.isArray(value.to) ? value.to : [value.to];
-    if (!recipients.length || recipients.length > 10 || recipients.some(address => typeof address !== 'string'
-      || address.length > 320 || !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(address))) deny('INVALID_INPUT');
-    text(value.subject, 500); text(value.body, 100000);
+    validateMailParams(value);
   } else deny('INVALID_INPUT');
   return value;
 }
