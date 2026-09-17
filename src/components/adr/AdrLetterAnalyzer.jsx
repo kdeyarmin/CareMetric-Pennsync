@@ -24,7 +24,7 @@ const processingStages = [
  * onProcessingChange(bool) lets the parent lock its dialog while a billed
  * upload + LLM analysis is in flight.
  */
-export default function AdrLetterAnalyzer({ onComplete, onProcessingChange }) {
+export default function AdrLetterAnalyzer({ onComplete, onProcessingChange, disabled = false }) {
   const fileInputRef = useRef(null);
   const progressIntervalRef = useRef(null);
   const lastFileRef = useRef(null);
@@ -35,9 +35,12 @@ export default function AdrLetterAnalyzer({ onComplete, onProcessingChange }) {
   const [processingError, setProcessingError] = useState(null);
 
   React.useEffect(
-    () => () => {
-      mountedRef.current = false;
-      if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+    () => {
+      mountedRef.current = true;
+      return () => {
+        mountedRef.current = false;
+        if (progressIntervalRef.current) clearInterval(progressIntervalRef.current);
+      };
     },
     []
   );
@@ -48,6 +51,7 @@ export default function AdrLetterAnalyzer({ onComplete, onProcessingChange }) {
   };
 
   const processFile = async (file) => {
+    if (disabled || isProcessing) return;
     const { valid, error } = validateReferralFile(file);
     if (!valid) {
       toast.error(error);
@@ -121,7 +125,7 @@ export default function AdrLetterAnalyzer({ onComplete, onProcessingChange }) {
         type="file"
         accept={REFERRAL_ACCEPT_ATTR}
         onChange={handleFileUpload}
-        disabled={isProcessing}
+        disabled={disabled || isProcessing}
         className="sr-only"
         aria-label="Upload ADR or audit letter"
       />
@@ -135,7 +139,7 @@ export default function AdrLetterAnalyzer({ onComplete, onProcessingChange }) {
         }}
         onDragLeave={() => setIsDragging(false)}
         onDrop={handleDrop}
-        disabled={isProcessing}
+        disabled={disabled || isProcessing}
         aria-label="Upload the ADR or audit letter (PDF or scanned image)"
         className={`w-full rounded-lg border-2 border-dashed p-6 text-center transition-colors ${
           isDragging ? "border-blue-500 bg-blue-50" : "border-slate-300 hover:border-blue-400 hover:bg-slate-50"
@@ -162,7 +166,7 @@ export default function AdrLetterAnalyzer({ onComplete, onProcessingChange }) {
           <XCircle className="w-4 h-4 text-red-600" />
           <AlertDescription className="flex items-center justify-between gap-3 text-red-900">
             <span>{processingError}</span>
-            <Button size="sm" variant="outline" onClick={retryProcessing} className="min-h-[36px]">
+            <Button size="sm" variant="outline" onClick={retryProcessing} disabled={disabled} className="min-h-[36px]">
               <RefreshCw className="w-3 h-3 mr-1" />
               Try Again
             </Button>
