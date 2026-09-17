@@ -5,6 +5,8 @@ import { describe, expect, it } from 'vitest';
 
 const root = process.cwd();
 const read = (relativePath) => readFileSync(path.join(root, relativePath), 'utf8');
+// Exact source allowlists use repository paths on every host platform.
+const relativeSourcePath = (file) => path.relative(root, file).split(path.sep).join('/');
 
 function productionSourceFiles(directory = path.join(root, 'src')) {
   return readdirSync(directory).flatMap((name) => {
@@ -19,7 +21,7 @@ describe('protected SDK browser-realm contract', () => {
   it('keeps createClient private behind the protected operation membrane', () => {
     const sdkImporters = productionSourceFiles()
       .filter((file) => readFileSync(file, 'utf8').includes("from '@base44/sdk'"))
-      .map((file) => path.relative(root, file));
+      .map(relativeSourcePath);
     expect(sdkImporters).toEqual(['src/api/base44Client.js']);
 
     const client = read('src/api/base44Client.js');
@@ -58,7 +60,7 @@ describe('protected SDK browser-realm contract', () => {
     const sources = productionSourceFiles();
     const consumers = (symbol) => sources
       .filter((file) => readFileSync(file, 'utf8').includes(symbol))
-      .map((file) => path.relative(root, file))
+      .map(relativeSourcePath)
       .filter((file) => file !== 'src/api/base44Client.js')
       .sort();
 
@@ -104,7 +106,7 @@ describe('protected SDK browser-realm contract', () => {
   it('routes every script-opened child context through transition teardown', () => {
     const directOpeners = productionSourceFiles()
       .filter((file) => /window\.open\(/.test(readFileSync(file, 'utf8')))
-      .map((file) => path.relative(root, file));
+      .map(relativeSourcePath);
     expect(directOpeners).toEqual([]);
 
     const auth = read('src/lib/AuthContext.jsx');
@@ -129,7 +131,7 @@ describe('protected SDK browser-realm contract', () => {
 
     const publicWindowConsumers = productionSourceFiles()
       .filter((file) => readFileSync(file, 'utf8').includes('openPublicCapabilityWindow'))
-      .map((file) => path.relative(root, file))
+      .map(relativeSourcePath)
       .filter((file) => file !== 'src/lib/authorityBoundWindows.js');
     expect(publicWindowConsumers).toEqual([]);
     expect(read('src/components/signer/SignerDocumentSigner.jsx'))
@@ -166,7 +168,7 @@ describe('protected SDK browser-realm contract', () => {
 
     const directSignatureConsumers = productionSourceFiles()
       .filter((file) => /\b(?:base44\.)?entities\.DocumentSignature\b/.test(readFileSync(file, 'utf8')))
-      .map((file) => path.relative(root, file));
+      .map(relativeSourcePath);
     expect(directSignatureConsumers).toEqual([]);
   });
 
