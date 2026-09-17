@@ -11,6 +11,12 @@ import { CalendarClock } from "lucide-react";
 import { toast } from "sonner";
 import { validateScheduleTime } from "@/components/messaging/scheduledSms";
 
+// The backend is deliberately fail-closed until telecom routing and tenant
+// authority are service-owned. Keep the unavailable action out of the normal
+// compose UI rather than inviting a user into a dialog that can only return 503.
+// Flip this only in the same reviewed release that removes the server pause.
+export const SCHEDULED_SMS_UI_ENABLED = false;
+
 /** ISO -> value for <input type="datetime-local"> (local time). */
 function toLocalInput(d) {
   const pad = (n) => String(n).padStart(2, "0");
@@ -66,6 +72,8 @@ export default function ScheduleSendDialog({ toNumber, patientId, body, template
       template_label: templateLabel || undefined,
     });
   };
+
+  if (!SCHEDULED_SMS_UI_ENABLED) return null;
 
   return (
     <>
