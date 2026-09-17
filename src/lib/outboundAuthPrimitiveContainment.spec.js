@@ -18,17 +18,38 @@ function productionSourceFiles(directory = srcRoot) {
 const deliveryPrimitiveReference = /\b(?:resetPasswordRequest|resendOtp|inviteUser)\b/;
 const rawAuthDeliveryRoute = /\/auth\/[a-z0-9_/-]*(?:resend|reset|invite|otp)[a-z0-9_/-]*/i;
 
+function hasUncontainedAuthDelivery(source, relativeFile) {
+  // Only native code redemption at the immutable staging endpoint is allowed.
+  // It cannot send mail. Keep every other raw OTP/reset/invitation route banned,
+  // including additional routes in the same helper and verification elsewhere.
+  const inspected = relativeFile === 'lib/stagingEmailVerification.js'
+    ? source.replace("'https://base44.app/api/apps/6a9881683dc68a0bd54f1ef7/auth/verify-otp'", "'staging-redemption-only'")
+    : source;
+  return deliveryPrimitiveReference.test(inspected) || rawAuthDeliveryRoute.test(inspected);
+}
+
 describe('browser outbound-auth primitive containment', () => {
   it('keeps direct reset, OTP resend, and invitation delivery out of production source', () => {
     const offenders = productionSourceFiles()
       .filter((file) => {
         const source = readFileSync(file, 'utf8');
-        return deliveryPrimitiveReference.test(source) || rawAuthDeliveryRoute.test(source);
+        return hasUncontainedAuthDelivery(source, path.relative(srcRoot, file).split(path.sep).join('/'));
       })
       .map((file) => path.relative(root, file))
       .sort();
 
     expect(offenders).toEqual([]);
+  });
+
+  it('confines the redemption exception to one fixed staging URL in its guarded helper', () => {
+    const allowed = "'https://base44.app/api/apps/6a9881683dc68a0bd54f1ef7/auth/verify-otp'";
+    const file = 'lib/stagingEmailVerification.js';
+    expect(hasUncontainedAuthDelivery(allowed, file)).toBe(false);
+    expect(hasUncontainedAuthDelivery(allowed, 'components/auth/SignInScreen.jsx')).toBe(true);
+    for (const addition of [allowed, '/auth/resend-otp', '/auth/verify-otp', '/auth/reset-password', 'resendOtp(email)', 'inviteUser(email)']) {
+      expect(hasUncontainedAuthDelivery(`${allowed}; ${addition}`, file)).toBe(true);
+    }
+    expect(hasUncontainedAuthDelivery(allowed.replace('6a9881683dc68a0bd54f1ef7', '694ec16e72e01b60d22f7cbf'), file)).toBe(true);
   });
 
   it('keeps the in-app reset screen hard-paused with no browser release flag', () => {
