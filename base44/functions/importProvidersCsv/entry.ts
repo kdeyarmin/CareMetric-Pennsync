@@ -205,38 +205,57 @@ Deno.serve(async (req) => {
       return Response.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    const { file_url } = await req.json();
-    if (!file_url) {
-      return Response.json({ error: 'file_url is required' }, { status: 400 });
+    let input;
+    try { input = await req.json(); }
+    catch { return Response.json({ error: 'Invalid CSV import request' }, { status: 400 }); }
+    if (!input || typeof input !== 'object' || Array.isArray(input)) {
+      return Response.json({ error: 'Invalid CSV import request' }, { status: 400 });
     }
-    if (!isSafeFetchUrl(file_url)) {
-      return Response.json({ error: 'Invalid or disallowed file_url' }, { status: 400 });
+    const direct = Object.hasOwn(input, 'csv_text');
+    const legacy = Object.hasOwn(input, 'file_url');
+    if (direct === legacy) {
+      return Response.json({ error: 'Provide exactly one CSV source: csv_text or file_url' }, { status: 400 });
     }
-
-    // Follow redirects manually so each hop is re-validated. With the default
-    // redirect:'follow', isSafeFetchUrl only checks the first URL and a 3xx to
-    // http://169.254.169.254/... or an internal IP would be fetched anyway.
-    let response;
-    let nextUrl = file_url;
-    for (let hop = 0; hop < 4; hop++) {
-      response = await fetch(nextUrl, { redirect: 'manual' });
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get('location');
-        if (!location) break;
-        const resolved = new URL(location, nextUrl).toString();
-        if (!isSafeFetchUrl(resolved)) {
-          return Response.json({ error: 'Redirect to a disallowed host blocked' }, { status: 400 });
-        }
-        nextUrl = resolved;
-        continue;
+    const maxCsvBytes = 10 * 1024 * 1024;
+    let text;
+    if (direct) {
+      // A provider directory CSV needs no storage upload or AI integration.
+      // Keep the existing privileged import/record rules and a legacy URL path
+      // for already-published clients; do not reinterpret an uploaded URL.
+      if (typeof input.csv_text !== 'string' || !input.csv_text.trim()) {
+        return Response.json({ error: 'csv_text must contain a CSV document' }, { status: 400 });
       }
-      break;
+      if (input.csv_text.length > maxCsvBytes || new TextEncoder().encode(input.csv_text).byteLength > maxCsvBytes) {
+        return Response.json({ error: 'CSV must be no larger than 10 MB' }, { status: 413 });
+      }
+      text = input.csv_text;
+    } else {
+      const file_url = input.file_url;
+      if (typeof file_url !== 'string' || !isSafeFetchUrl(file_url)) {
+        return Response.json({ error: 'Invalid or disallowed file_url' }, { status: 400 });
+      }
+      // Existing hosted links remain supported and every redirect is validated.
+      let response;
+      let nextUrl = file_url;
+      for (let hop = 0; hop < 4; hop++) {
+        response = await fetch(nextUrl, { redirect: 'manual' });
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers.get('location');
+          if (!location) break;
+          const resolved = new URL(location, nextUrl).toString();
+          if (!isSafeFetchUrl(resolved)) {
+            return Response.json({ error: 'Redirect to a disallowed host blocked' }, { status: 400 });
+          }
+          nextUrl = resolved;
+          continue;
+        }
+        break;
+      }
+      if (!response || !response.ok) {
+        return Response.json({ error: 'Unable to download CSV file' }, { status: 400 });
+      }
+      text = await response.text();
     }
-    if (!response || !response.ok) {
-      return Response.json({ error: 'Unable to download CSV file' }, { status: 400 });
-    }
-
-    const text = await response.text();
     const parsedRows = parseCSV(text);
     if (parsedRows.length < 2) {
       return Response.json({ error: 'CSV file is empty' }, { status: 400 });
