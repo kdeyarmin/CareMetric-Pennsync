@@ -69,6 +69,16 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
     requireTrue(fresh.rows[0].users === 0 && fresh.rows[0].identities === 0 && fresh.rows[0].agencies === 0,
       'LOCAL_FRESH_DATABASE_REQUIRED');
 
+    step = 'verified migration function owners';
+    const owners = await db.query(`select count(*)::integer as functions,
+      bool_and(r.rolsuper or r.rolbypassrls) as trusted_owners
+      from pg_catalog.pg_proc p
+      join pg_catalog.pg_namespace n on n.oid=p.pronamespace
+      join pg_catalog.pg_roles r on r.oid=p.proowner
+      where n.nspname='pennsync_private' and p.prosecdef`);
+    requireTrue(owners.rows[0].functions > 0 && owners.rows[0].trusted_owners === true,
+      'LOCAL_AUTHORITY_DEFINER_OWNER_INVALID');
+
     step = 'supported local Auth Admin API creates four users';
     for (const actor of actors) {
       actor.password = `LocalOnly!${randomBytes(32).toString('base64url')}`;

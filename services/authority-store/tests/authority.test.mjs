@@ -45,6 +45,22 @@ const assign = (patient='patient-a2',member='membership-2',action='grant',versio
 const revoke = (member='membership-2',version=1,id=10) =>
   rpc('revoke_membership',[app,'agency-a',member,1,version,request(id)]);
 
+test('migration refuses a non-BYPASSRLS owner before creating any authority schema',async()=>{
+  const isolated=new PGlite();
+  try {
+    await isolated.exec(await readFile(new URL('./bootstrap.sql',import.meta.url),'utf8'));
+    await isolated.exec(`create role pennsync_test_migration nologin nosuperuser nobypassrls;
+      do $$ begin execute format('grant create on database %I to pennsync_test_migration',current_database()); end $$;
+      set role pennsync_test_migration`);
+    const sql=await readFile(new URL('../supabase/migrations/20260918015112_independent_staging_authority.sql',import.meta.url),'utf8');
+    await assert.rejects(isolated.exec(sql), error=>error.code==='42501'
+      && error.message==='PENNSYNC_BYPASSRLS_MIGRATION_OWNER_REQUIRED');
+    await isolated.exec('rollback; reset role');
+    const {rows}=await isolated.query("select count(*)::integer as count from pg_namespace where nspname='pennsync_private'");
+    assert.equal(rows[0].count,0);
+  } finally { await isolated.close(); }
+});
+
 scenario('four exact mapped identities obtain only their membership contexts', async()=>{
   for(let n=1;n<=4;n++) {
     await login(n); const result=await rpc('memberships',[app]);

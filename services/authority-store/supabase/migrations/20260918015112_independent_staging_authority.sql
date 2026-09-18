@@ -1,6 +1,16 @@
 -- Staging-only independent authority. No production or existing public tables are touched.
 -- The API schema must expose public only, never pennsync_private.
 begin;
+-- FORCE RLS with no allowing policy also binds ordinary table owners. This
+-- migration must be owned by the trusted database migration administrator;
+-- never compensate for an unsuitable deployment role by opening a policy.
+do $$
+begin
+  if not exists (select 1 from pg_catalog.pg_roles
+    where rolname = current_user and (rolsuper or rolbypassrls)) then
+    raise exception using errcode='42501',message='PENNSYNC_BYPASSRLS_MIGRATION_OWNER_REQUIRED';
+  end if;
+end $$;
 create schema pennsync_private;
 revoke all on schema pennsync_private from public, anon, authenticated;
 grant usage on schema pennsync_private to authenticated;

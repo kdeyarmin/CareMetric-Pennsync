@@ -2,6 +2,8 @@
 
 `tools-pennsync-archive.mjs` builds and validates an encrypted bundle from **already supplied, authorized local JSONL exports and file bytes**. It has no Base44 client, network access, record importer, customer enrollment, source deletion or production activation path. It is an executable foundation for the external migration, not a completed customer backup.
 
+URL-key filtering includes normalized AWS and Google Cloud signing credentials/signatures in queries and fragments. This includes Google Cloud's documented `X-Goog-Credential` and `X-Goog-Signature` parameters; signed links are bearer access, not durable file provenance. [Google Cloud signed URLs](https://docs.cloud.google.com/storage/docs/access-control/signed-urls).
+
 ## Inventory and design decision
 
 The existing September 3 runbook describes old PENNSync → CareMetric reconciliation. It is not the Base44 exit. Those apps have independent identity spaces, and their dated inventory had no overlapping User or Patient IDs. The supplied-export format therefore keys every record by `(source_app_id, entity, id)`.
@@ -87,6 +89,8 @@ A descendant pointer only classifies ancestor fields that were actually traverse
 ## Credential exclusion
 
 Never supply password hashes, service keys, OAuth/access/refresh tokens, session cookies, MFA seeds, recovery codes or a credentials export. Secret/token/session/credential/OAuth-like entity names are unsupported. The recursive field guard rejects credential-like property names, including escaped or differently punctuated spellings; signed credential URLs, credential parameters in URL fragments and URLs with embedded username/password are rejected too. URL strings requiring whitespace or control-character normalization are rejected instead of rewritten. Durable file locators must already be trimmed and contain no control characters. Duplicate JSON keys and invalid UTF-8 are rejected rather than interpreted ambiguously.
+
+URL query and fragment parameter names are decoded by URL parsing and checked after punctuation normalization, including `sig`, `signature`, `key` and AWS signing parameters. This URL-specific rule does not reject ordinary clinical signature fields, narrative text or unsigned filenames containing those words.
 
 These checks are defense in depth. They cannot classify secret material hidden in arbitrary prose, an encoded string or opaque binary bytes. The export producer must supply reviewed credential-free entity projections and intended customer files. Unsupported entities/fields must remain accounted for separately, never silently counted as transferred. This archive format deliberately cannot establish a complete authentication backup.
 

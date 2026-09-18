@@ -122,6 +122,21 @@ unions separately identified source and candidate resources. Removed source
 handlers therefore still need dispositions. Frontend resources come from each
 frontend commit; backend resources come from each backend commit.
 
+`src/` and `services/authority-client/` use the frontend revision. Base44
+resources, service SQL, the enumerated server runtime entry points and the HHGS
+adapter use the backend revision. The runtime's `contracts.mjs`,
+`caller-binding.mjs` and `mail-contract.mjs` are shared with the browser and are
+read from **both** component trees. Other service modules conservatively default
+to shared, including new modules inside existing service directories. Selected
+source resources remain in the census even when the target removed them.
+
+Identical shared blobs collapse to one capability. Conflicting shared blobs for
+one source/target path stop with `CENSUS_MIXED_COMPONENT_TREES`; version 1 does not
+support claiming that two different implementations of one shared capability
+are equivalent. Align them or explicitly extend/review the evidence contract.
+Any inventory change requires a newly reviewed census digest and evidence
+binding; old receipts must not be silently reused.
+
 Included file families:
 
 - Every `base44/functions/<name>/entry.[c/m]js` or TypeScript equivalent.

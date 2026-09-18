@@ -124,9 +124,10 @@ function scanRow(row) {
       let url;
       try { url = new URL(v); } catch { throw new ArchiveInputError('invalid_url'); }
       const fragment = new URLSearchParams(url.hash.slice(1).replaceAll(/[?#]/g, '&'));
-      requireThat(!url.username && !url.password && [...url.searchParams.keys(), ...fragment.keys()].every((k) =>
-        !SECRET_KEY.test(k.replaceAll(/[^a-z0-9]/gi, ''))
-        && !/^(?:sig|signature|key|x-amz-credential|x-amz-signature)$/i.test(k)), 'credential_url');
+      requireThat(!url.username && !url.password && [...url.searchParams.keys(), ...fragment.keys()].every((k) => {
+        const normalized = k.replaceAll(/[^a-z0-9]/gi, '');
+        return !SECRET_KEY.test(normalized) && !/^(?:sig|signature|key|x(?:amz|goog)(?:credential|signature))$/i.test(normalized);
+      }), 'credential_url');
     }
     if (!v || typeof v !== 'object') return;
     for (const [k, value] of Object.entries(v)) {
