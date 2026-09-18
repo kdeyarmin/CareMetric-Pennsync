@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { base44 } from '@/api/base44Client';
+import { independentStagingAuth } from '@/lib/independentStagingSession';
 import {
   appParams,
   peekPendingAccessToken,
@@ -49,14 +50,14 @@ import {
 const reloadApp = () => window.location.reload();
 
 const SignInScreen = ({ onAuthenticated = reloadApp }) => {
-  const { navigateToLogin } = useAuth();
+  const { navigateToLogin, checkAppState } = useAuth();
   const [mode, setMode] = useState('signin'); // 'signin' | 'reset' | 'verify'
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [pendingToken, setPendingToken] = useState(() => peekPendingAccessToken());
+  const [pendingToken, setPendingToken] = useState(() => independentStagingAuth ? null : peekPendingAccessToken());
   const mountedRef = useRef(true);
   const authOperationRef = useRef(0);
   const loginAbortRef = useRef(null);
@@ -104,6 +105,14 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
     const controller = new AbortController();
     loginAbortRef.current = controller;
     try {
+      if (independentStagingAuth) {
+        const submittedPassword = password;
+        setPassword('');
+        await independentStagingAuth.signIn(email, submittedPassword, controller.signal);
+        if (!mountedRef.current || operation !== authOperationRef.current || controller.signal.aborted) return;
+        await checkAppState();
+        return;
+      }
       // Call the login endpoint directly rather than through
       // base44.auth.loginViaEmailPassword: the SDK helper reacts to a 401
       // (i.e. a wrong password) by running the full logout redirect, which
@@ -140,6 +149,12 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
         || operation !== authOperationRef.current
         || controller.signal.aborted
       ) return;
+      if (independentStagingAuth) {
+        setError(err?.status === 401 || err?.code === 'AUTHENTICATION_FAILED'
+          ? 'The staging sign-in could not be verified. Check your test email and password.'
+          : 'Staging sign-in is unavailable. Please retry.');
+        return;
+      }
       const status = err?.status;
       const message = String(err?.message || '');
       if (/turnstile|captcha/i.test(message)) {
@@ -199,7 +214,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
             {pendingToken
               ? 'Confirm sign-in link'
               : mode === 'signin'
-                ? 'Sign in to continue'
+                ? independentStagingAuth ? 'Independent staging · synthetic patient roster only' : 'Sign in to continue'
                 : mode === 'verify' ? 'Staging email verification' : 'Password reset'}
           </p>
         </div>
@@ -292,13 +307,13 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                 <Button type="submit" disabled={busy} className="h-11 w-full">
                   {busy ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Signing in…</>) : 'Sign in'}
                 </Button>
-                {isStagingEmailVerificationAvailable() && (
+                {!independentStagingAuth && isStagingEmailVerificationAvailable() && (
                   <Button type="button" variant="outline" disabled={busy} className="h-11 w-full"
                     onClick={() => switchMode('verify')}>
                     Enter email verification code
                   </Button>
                 )}
-                <p className="text-center text-sm text-slate-500">
+                {!independentStagingAuth && <p className="text-center text-sm text-slate-500">
                   Need an account?{' '}
                   <button
                     type="button"
@@ -307,7 +322,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
                   >
                     Sign up
                   </button>
-                </p>
+                </p>}
               </form>
             )}
 
@@ -357,7 +372,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
           </div>
         </div>
 
-        <p className="mt-4 text-center text-xs text-slate-400">
+        {!independentStagingAuth && <p className="mt-4 text-center text-xs text-slate-400">
           Trouble signing in?{' '}
           <button
             type="button"
@@ -366,7 +381,7 @@ const SignInScreen = ({ onAuthenticated = reloadApp }) => {
           >
             Use the standard sign-in page
           </button>
-        </p>
+        </p>}
         <div aria-label="CareMetric support" className="mt-3 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-xs">
           <span className="text-slate-500">Need support?</span>
           <a href={CENTRAL_SUPPORT_PHONE_HREF} className="font-medium text-navy-700 underline-offset-2 hover:underline">

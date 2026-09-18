@@ -3,6 +3,7 @@ import { act, render, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  independentAuth: null,
   authMe: vi.fn(),
   authLogout: vi.fn(),
   getPublicSettings: vi.fn(),
@@ -27,6 +28,10 @@ const mocks = vi.hoisted(() => ({
   poisonTenantSdkRealm: vi.fn(),
   hasPinnedTenantSdkRealm: vi.fn(),
   sdkRealm: { pin: null, poisoned: false },
+}));
+
+vi.mock('@/lib/independentStagingSession', () => ({
+  get independentStagingAuth() { return mocks.independentAuth; },
 }));
 
 vi.mock('sonner', () => ({
@@ -190,6 +195,7 @@ describe('AuthProvider tenant authority state machine', () => {
   let consoleError;
 
   beforeEach(() => {
+    mocks.independentAuth = null;
     sessionStorage.clear();
     mocks.authMe.mockReset().mockResolvedValue({ ...USER });
     mocks.authLogout.mockReset();
@@ -245,6 +251,129 @@ describe('AuthProvider tenant authority state machine', () => {
   afterEach(() => {
     consoleError.mockRestore();
     sessionStorage.clear();
+    mocks.independentAuth = null;
+  });
+
+  async function readyIndependent() {
+    const session = { active: true, native: true };
+    const signOut = vi.fn(async () => { session.active = false; session.native = false; });
+    mocks.independentAuth = { hasSession: () => session.active, signOut };
+    const rendered = renderHook(() => useAuth(), { wrapper });
+    await waitFor(() => expect(rendered.result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.SELECTION_REQUIRED));
+    expect(signOut).not.toHaveBeenCalled();
+    await act(async () => { await rendered.result.current.selectTenant('agency-a'); });
+    expect(rendered.result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.READY);
+    expect(signOut).not.toHaveBeenCalled();
+    return { ...rendered, session, signOut };
+  }
+
+  it.each(['online', 'expiry', 'background'])('independent %s closure revokes the known session before offering restart', async reason => {
+    let expire;
+    const originalTimeout = window.setTimeout.bind(window);
+    const timeout = vi.spyOn(window, 'setTimeout').mockImplementation((callback, delay, ...args) => {
+      if (delay === 5 * 60 * 1000) expire = callback;
+      return originalTimeout(callback, delay, ...args);
+    });
+    const { result, session, signOut } = await readyIndependent();
+    const cleanup = deferred();
+    signOut.mockImplementation(() => {
+      session.active = false;
+      return cleanup.promise.then(() => { session.native = false; });
+    });
+    try {
+      await act(async () => {
+        if (reason === 'online') window.dispatchEvent(new Event('online'));
+        if (reason === 'expiry') { expect(expire).toBeTypeOf('function'); expire(); }
+        if (reason === 'background') {
+          let now = 1000;
+          vi.spyOn(Date, 'now').mockImplementation(() => now);
+          const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+          document.dispatchEvent(new Event('visibilitychange'));
+          now += 31000; visibility.mockReturnValue('visible');
+          document.dispatchEvent(new Event('visibilitychange'));
+          visibility.mockRestore(); vi.mocked(Date.now).mockRestore();
+        }
+      });
+      expect(signOut).toHaveBeenCalledOnce(); expect(session.active).toBe(false);
+      expect(result.current.tenantAuthorityKey).toBeNull();
+      expect(result.current.tenantContextError?.type).not.toBe('browser_authority_change_requires_restart');
+      expect(session.native).toBe(true);
+      await act(async () => { cleanup.resolve(); });
+      expect(session.native).toBe(false);
+      expect(result.current.tenantContextError.type).toBe('browser_authority_change_requires_restart');
+      expect(mocks.authMe).toHaveBeenCalledTimes(2);
+    } finally { timeout.mockRestore(); }
+  });
+
+  it('independent public entry awaits exact cleanup and cannot resume authority on return', async () => {
+    const { result, session, signOut } = await readyIndependent();
+    const cleanup = deferred(); let completed = false;
+    signOut.mockImplementation(() => {
+      session.active = false;
+      return cleanup.promise.then(() => { session.native = false; });
+    });
+    let entry;
+    await act(async () => { entry = result.current.setPublicRouteActive(true).then(value => { completed = true; return value; }); });
+    expect(result.current.tenantAuthorityKey).toBeNull(); expect(completed).toBe(false);
+    expect(signOut).toHaveBeenCalledOnce();
+    await act(async () => { cleanup.resolve(); expect(await entry).toBe(true); });
+    expect(session.native).toBe(false);
+    await act(async () => { await result.current.setPublicRouteActive(false); });
+    expect(result.current.tenantAuthorityState).toBe(TENANT_AUTHORITY_STATES.BLOCKED);
+    expect(result.current.tenantContextError.type).toBe('browser_authority_change_requires_restart');
+    expect(mocks.authMe).toHaveBeenCalledTimes(2);
+  });
+
+  it('independent terminal cleanup failure stays closed and retry retains the known native session', async () => {
+    const { result, session, signOut } = await readyIndependent();
+    signOut.mockImplementationOnce(async () => { session.active = false; throw new Error('provider detail must not escape'); });
+    await act(async () => { await result.current.refreshUser(); });
+    expect(session.native).toBe(true); expect(result.current.tenantAuthorityKey).toBeNull();
+    expect(result.current.authError).toEqual({ type: 'staging_cleanup_unavailable',
+      message: 'Access is closed. Session cleanup could not be confirmed. Keep this page open and retry signing out.' });
+    await act(async () => { await result.current.logout(false); });
+    expect(session.native).toBe(false); expect(result.current.isAuthenticated).toBe(false);
+    expect(signOut).toHaveBeenCalledTimes(2);
+  });
+
+  it('independent terminal agency change cleanup failure returns closed without an unhandled rejection', async () => {
+    const { result, session, signOut } = await readyIndependent();
+    signOut.mockImplementationOnce(async () => { session.active = false; throw new Error('provider detail'); });
+    await act(async () => { expect(await result.current.selectTenant('agency-b')).toBe(false); });
+    expect(session.native).toBe(true);
+    expect(result.current.tenantAuthorityKey).toBeNull();
+    expect(result.current.authError.type).toBe('staging_cleanup_unavailable');
+    await act(async () => { await result.current.logout(false); });
+    expect(session.native).toBe(false);
+  });
+
+  it('independent public entry refuses navigation when native cleanup fails and retains a retry', async () => {
+    const { result, session, signOut } = await readyIndependent();
+    signOut.mockImplementationOnce(async () => { session.active = false; throw new Error('provider detail'); });
+    await act(async () => {
+      await expect(result.current.setPublicRouteActive(true)).rejects.toThrow('STAGING_SESSION_CLEANUP_UNCONFIRMED');
+    });
+    expect(session.native).toBe(true); expect(result.current.tenantAuthorityKey).toBeNull();
+    expect(result.current.authError.type).toBe('staging_cleanup_unavailable');
+    await act(async () => { await result.current.logout(false); });
+    expect(session.native).toBe(false);
+  });
+
+  it('independent concurrent terminal closure and logout share one pending cleanup', async () => {
+    const { result, session, signOut } = await readyIndependent();
+    const cleanup = deferred();
+    signOut.mockImplementation(() => {
+      session.active = false;
+      return cleanup.promise.then(() => { session.native = false; });
+    });
+    let expiry, logout;
+    await act(async () => {
+      expiry = result.current.refreshUser(); logout = result.current.logout(false);
+    });
+    expect(signOut).toHaveBeenCalledOnce(); expect(result.current.tenantAuthorityKey).toBeNull();
+    await act(async () => { cleanup.resolve(); await Promise.all([expiry, logout]); });
+    expect(session.native).toBe(false); expect(signOut).toHaveBeenCalledOnce();
+    expect(result.current.tenantAuthorityState).not.toBe(TENANT_AUTHORITY_STATES.READY);
   });
 
   it('keeps an initial public route usable without starting staff authority brokers', async () => {

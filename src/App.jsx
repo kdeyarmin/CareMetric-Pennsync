@@ -30,6 +30,7 @@ import {
   useAuth,
 } from '@/lib/AuthContext';
 import SignInScreen from '@/components/auth/SignInScreen';
+import { independentStagingAuth } from '@/lib/independentStagingSession';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import AIContentResponsibilityAgreement from '@/components/compliance/AIContentResponsibilityAgreement';
 import Layout from '@/components/Layout';
@@ -49,9 +50,25 @@ import { PublicCapabilityBoundary } from '@/lib/PublicCapabilityContext';
 // (dev-server restart) is handled centrally by the ErrorBoundary, which wraps
 // the whole app — so plain lazy() is sufficient here.
 const JoinTelehealth = lazy(() => import('@/pages/JoinTelehealth'));
+const IndependentStagingWorkspace = lazy(() => import('@/components/auth/IndependentStagingWorkspace'));
 
 // MCP OAuth consent page — public, ctx-token-gated, no app login required.
 const OAuthConsent = lazy(() => import('@/pages/OAuthConsent'));
+
+// Legacy public capabilities include their own raw provider transport. They
+// must not mount in the independent staging build, even before staff sign-in.
+const IndependentStagingPublicUnavailable = () => {
+  useLayoutEffect(() => {
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }, []);
+  return (
+    <main className="mx-auto max-w-lg p-6">
+      <h1 className="text-xl font-semibold">This secure link is unavailable in independent staging</h1>
+      <p className="mt-3">Only test sign-in, agency selection and synthetic patient names are connected.</p>
+      <a className="mt-4 inline-block underline" href="/">Return to staging sign-in</a>
+    </main>
+  );
+};
 
 // Public privacy policy — App Store Guideline 5.1.1(i) requires it reachable
 // from within the app without signing in, and the same URL is entered in App
@@ -225,7 +242,9 @@ const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOu
         </h1>
         <p className="mt-3 text-sm text-slate-700">
           {error?.message || (selectionRequired
-            ? 'Your account has access to more than one agency. Choose one before protected data is loaded.'
+            ? independentStagingAuth
+              ? 'Choose an agency before protected data is loaded.'
+              : 'Your account has access to more than one agency. Choose one before protected data is loaded.'
             : 'PennSync could not verify a current active agency membership. Retry, or contact your administrator.')}
         </p>
 
@@ -251,7 +270,9 @@ const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOu
           {!selectionRequired && (
             <button
               type="button"
-              onClick={requiresReload ? () => window.location.reload() : onRetry}
+              onClick={requiresReload
+                ? independentStagingAuth ? onSignOut : () => window.location.reload()
+                : onRetry}
               className="rounded-lg bg-navy-700 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
             >
               {requiresReload ? 'Reload app' : 'Retry verification'}
@@ -449,6 +470,15 @@ const AuthenticatedApp = () => {
     return () => { current = false; };
   }, [publicCapabilitySnapshot, publicTokenPath, setPublicRouteActive]);
 
+  // A controlled public transition must retain the document and its cleanup
+  // credential on failure, even though public pages precede staff auth gates.
+  if (independentStagingAuth && authError?.type === 'staging_cleanup_unavailable') return (
+    <div className="p-6" role="alert">
+      <h1>Staging access is closed</h1><p>{authError.message}</p>
+      <button type="button" onClick={() => { void logout(); }}>Retry sign out</button>
+    </div>
+  );
+
   // Capability-token public routes stay outside both authentication and tenant
   // authority gates. No protected component or agreement query is created.
   if (publicTokenPath) {
@@ -467,6 +497,10 @@ const AuthenticatedApp = () => {
     );
     if (!publicCapabilitySnapshot || preparedPublicSnapshot !== publicCapabilitySnapshot) {
       return publicFallback;
+    }
+    if (independentStagingAuth && !['privacy', 'privacy-policy', 'privacypolicy']
+      .includes(location.pathname.toLowerCase().split('/')[1])) {
+      return <IndependentStagingPublicUnavailable />;
     }
     return (
       <PublicCapabilityBoundary
@@ -511,7 +545,7 @@ const AuthenticatedApp = () => {
   if (!isAuthenticated) return <SignInScreen />;
 
   const selectFromNeutralRoute = (agencyId) => {
-    navigate(`/${MAIN_PAGE}`, { replace: true });
+    navigate(independentStagingAuth ? '/Patients' : `/${MAIN_PAGE}`, { replace: true });
     void selectTenant(agencyId);
   };
 
@@ -556,9 +590,11 @@ const AuthenticatedApp = () => {
         {/* Both agents can observe protected navigation/DOM. Keep them in the
             exact keyed realm so a tenant switch, logout, or public-route entry
             unmounts their effects and releases every captured reference. */}
-        <NavigationTracker />
-        <VisualEditAgent />
-        <TenantReadyApp />
+        {independentStagingAuth ? <Suspense fallback={<RoutePageLoader />}><IndependentStagingWorkspace /></Suspense> : <>
+          <NavigationTracker />
+          <VisualEditAgent />
+          <TenantReadyApp />
+        </>}
         <Toaster />
         <SonnerToaster
           position="top-right"

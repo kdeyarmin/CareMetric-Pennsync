@@ -1,0 +1,61 @@
+name: PennSync actual app
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pennsync-app-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actual-app:
+    name: Verify compiled app against real Auth and API
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            services/authority-store/pnpm-lock.yaml
+      - name: Install existing browser and build dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install isolated authority test dependencies
+        run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Verify exact app network and credential boundaries
+        run: node --test --test-name-pattern='actual app network' services/authority-client/browser/actual-app-acceptance.test.mjs
+      - name: Install pinned Supabase CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli_dir="$(mktemp -d "$RUNNER_TEMP/pennsync-app-supabase.XXXXXX")"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/supabase/cli/releases/download/v2.109.1/supabase_2.109.1_linux_amd64.tar.gz \
+            --output "$cli_dir/cli.tar.gz"
+          printf '%s  %s\n' '36d87b7fe6b4bcfe89ac47a4354e526cff22480224de426d7b370f6934556976' "$cli_dir/cli.tar.gz" | sha256sum --check
+          tar --extract --gzip --file "$cli_dir/cli.tar.gz" --directory "$cli_dir" supabase supabase-go
+          printf '%s\n' "$cli_dir" >> "$GITHUB_PATH"
+      # The real-app fixture requires an empty Auth/agency inventory. This job owns
+      # a separate fresh stack; do not reuse the API or isolated-browser job's state.
+      - name: Start fresh owned local Auth and API
+        run: node services/authority-store/tests/http-local-stack.mjs start
+      - name: Verify actual compiled login agency patients and sign-out
+        run: node --test services/authority-client/browser/actual-app-acceptance.test.mjs
+      - name: Stop owned local stack
+        if: always()
+        run: node services/authority-store/tests/http-local-stack.mjs stop
