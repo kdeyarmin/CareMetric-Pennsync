@@ -3,9 +3,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
-import { setTimeout as delay } from 'node:timers/promises';
 import pg from 'pg';
 import { localStatus, API } from '../../authority-store/tests/http-local-stack.mjs';
+import { runtimeRpcSignatures, waitForRuntimeSchema } from './http-schema-ready.mjs';
 
 test('recovered runtime migrations bootstrap actual isolated Supabase catalogs and RPCs', { timeout: 60000 }, async () => {
   const status = await localStatus(); // Requires pinned local daemon and this harness's ownership marker.
@@ -98,6 +98,7 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
       assert.deepEqual(permissions, { anon: false, authenticated: false, server: false });
     }
     const rpcPermissions = (await db.query(`select p.proname as name,
+      coalesce(p.proargnames,array[]::text[]) as argument_names, oidvectortypes(p.proargtypes) as argument_types,
       has_function_privilege('anon',p.oid,'EXECUTE') as anon,
       has_function_privilege('authenticated',p.oid,'EXECUTE') as authenticated,
       has_function_privilege('service_role',p.oid,'EXECUTE') as server,
@@ -105,10 +106,17 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
       from pg_proc p join pg_namespace n on n.oid=p.pronamespace
       join pg_roles r on r.oid=p.proowner
       where n.nspname='public' and p.proname like 'cm_integration_%' order by p.proname`)).rows;
-    assert.deepEqual(rpcPermissions, ['expire_results', 'file_get', 'file_record', 'finish', 'reserve'].map(name => ({
-      name: `cm_integration_${name}`, anon: false, authenticated: false, server: true, trusted_definer: true,
+    assert.deepEqual(rpcPermissions, runtimeRpcSignatures.toSorted((a, b) => a.name.localeCompare(b.name)).map(signature => ({
+      name: signature.name, argument_names: signature.args.map(arg => arg.name), argument_types: signature.args.map(arg => arg.type).join(', '),
+      anon: false, authenticated: false, server: true, trusted_definer: true,
     })));
     await db.query("notify pgrst, 'reload schema'");
+    phase = 'complete runtime schema cache readiness';
+    await waitForRuntimeSchema({ api: API, publishableKey: status.PUBLISHABLE_KEY });
+    // No runtime business write has occurred, including through readiness probes.
+    for (const table of ['cm_integration_jobs', 'cm_integration_files', 'cm_integration_daily_budget']) {
+      assert.equal((await db.query(`select count(*)::integer as count from public.${table}`)).rows[0].count, 0);
+    }
     phase = 'real service and anonymous gateway RPC proof';
     const app = '6a9881683dc68a0bd54f1ef7'; const subject = 'a'.repeat(64); const claim = randomUUID();
     const rpc = async (name, body, privileged = true) => {
@@ -119,14 +127,8 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
       return { status: response.status, body: await response.json() };
     };
     const request = { p_app_id: app, p_subject: subject, p_operation: 'InvokeLLM', p_request_id: 'synthetic-bootstrap-http', p_payload_hash: 'b'.repeat(64), p_claim: claim, p_daily_limit: 10 };
-    // Cache reload is asynchronous. Poll only the unauthenticated denial; never
-    // retry a mutation whose outcome could be uncertain.
-    let anonymous;
-    for (let attempt = 0; attempt < 30; attempt++) {
-      anonymous = await rpc('reserve', request, false);
-      if (anonymous.status !== 404 || anonymous.body.code !== 'PGRST202') break;
-      await delay(100);
-    }
+    // All business POSTs, including this anonymous authorization check, run once.
+    const anonymous = await rpc('reserve', request, false);
     assert.equal(anonymous.status, 401);
     assert.equal(anonymous.body.code, '42501');
     const owned = await rpc('reserve', request); assert.equal(owned.status, 200); assert.equal(owned.body.outcome, 'owned');
