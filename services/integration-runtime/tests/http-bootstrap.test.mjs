@@ -139,7 +139,7 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
     assert.equal((await rpc('file_get', { p_id: id, p_app_id: app, p_subject: subject })).body.object_path, path);
     assert.equal((await rpc('expire_results', {})).body, 0);
     // SQL catalog proof only for storage: no object byte upload or customer read.
-    const policies = (await db.query("select permissive,roles,cmd,qual,with_check from pg_policies where schemaname='storage' and tablename='objects' and policyname='pennsync external files require server authorization'")).rows;
+    const policies = (await db.query("select permissive,roles::text[] as roles,cmd,qual,with_check from pg_policies where schemaname='storage' and tablename='objects' and policyname='pennsync external files require server authorization'")).rows;
     assert.equal(policies.length, 1); assert.equal(policies[0].permissive, 'RESTRICTIVE');
     assert.deepEqual(policies[0].roles, ['anon', 'authenticated']); assert.equal(policies[0].cmd, 'ALL');
     assert.equal(policies[0].qual, "(bucket_id <> 'pennsync-external-integrations'::text)"); assert.equal(policies[0].with_check, policies[0].qual);
