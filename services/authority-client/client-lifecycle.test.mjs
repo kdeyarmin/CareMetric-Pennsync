@@ -10,6 +10,12 @@ const user = { id: config.authUserId, email: config.email, role: 'authenticated'
   email_confirmed_at: '2026-09-18T00:00:00Z' };
 const json = value => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
+const bounded = async promise => {
+  let timer;
+  try { return await Promise.race([promise, new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Synthetic completion deadline')), 1000);
+  })]); } finally { clearTimeout(timer); }
+};
 const gate = () => {
   const entered = deferred(), release = deferred();
   return { entered: entered.promise, release: release.resolve,
@@ -28,6 +34,7 @@ const context = () => ({ contract: AUTHORITY_CONTRACT, app_id: STAGING_APP_ID, a
 
 function server({ grant, verify, cleanup, timeoutMs = 1000 } = {}) {
   const live = new Set(), logouts = [];
+  const cleaned = deferred();
   let grants = 0;
   const client = createStagingAuthorityClient(config, { timeoutMs, fetchImpl: async (url, options) => {
     assert.equal(options.headers.apikey, config.publishableKey);
@@ -45,12 +52,12 @@ function server({ grant, verify, cleanup, timeoutMs = 1000 } = {}) {
     if (url.endsWith('/logout?scope=local')) {
       logouts.push(bearer);
       if (cleanup) await cleanup(bearer, options.signal);
-      live.delete(bearer); return new Response(null, { status: 204 });
+      live.delete(bearer); cleaned.resolve(); return new Response(null, { status: 204 });
     }
     assert.equal(url, `${config.projectUrl}/rest/v1/rpc/pennsync_staging_context`);
     assert.equal(live.has(bearer), true); return json(context());
   } });
-  return { client, live, logouts };
+  return { client, live, logouts, firstCleanup: cleaned.promise };
 }
 const denied = client => assert.rejects(client.rpc('context', { p_agency_id: 'agency-a' }), error => error.code === 'AUTHENTICATION_REQUIRED');
 const rejected = promise => promise.then(() => 'UNEXPECTED_SUCCESS', error => error.code);
@@ -95,6 +102,7 @@ test('late received canceled grant cleans only its own session after a newer log
   const first = rejected(h.client.signIn(password)); await paused.entered;
   await h.client.signOut(); await h.client.signIn(password);
   paused.release(); assert.equal(await first, 'STALE_AUTHORITY_SESSION');
+  await bounded(h.firstCleanup);
   assert.deepEqual([...h.live], ['synthetic.session2.token']); assert.deepEqual(h.logouts, ['synthetic.session1.token']);
   await h.client.rpc('context', { p_agency_id: 'agency-a' }); await h.client.signOut(); assert.equal(h.live.size, 0);
 });
@@ -139,22 +147,25 @@ test('cleanup deadline bounds a provider that ignores abort and permits an exact
 
 test('an unreadable grant body has a bounded read deadline without inferring a session token', async () => {
   let canceled = false, requests = 0;
+  const cancellation = deferred();
   const client = createStagingAuthorityClient(config, { timeoutMs: 20, fetchImpl: async () => {
     requests++;
     return new Response(new ReadableStream({
       pull: () => new Promise(() => {}),
-      cancel: () => { canceled = true; return new Promise(() => {}); },
+      cancel: () => { canceled = true; cancellation.resolve(); return new Promise(() => {}); },
     }), { headers: { 'content-type': 'application/json' } });
   } });
   const started = performance.now();
   assert.equal(await rejected(client.signIn(password)), 'AUTHORITY_REQUEST_ABORTED');
-  assert.ok(performance.now() - started < 1000); assert.equal(canceled, true);
+  assert.ok(performance.now() - started < 1000);
+  await bounded(cancellation.promise); assert.equal(canceled, true);
   await client.signOut(); assert.equal(requests, 1); await denied(client);
 });
 
 test('a grant delivered after its timeout is cleaned and never becomes the active session', async () => {
   const h = server({ timeoutMs: 20, grant: () => new Promise(resolve => setTimeout(resolve, 40)) });
   assert.equal(await rejected(h.client.signIn(password)), 'AUTHORITY_REQUEST_ABORTED');
+  await bounded(h.firstCleanup);
   assert.equal(h.live.size, 0); assert.deepEqual(h.logouts, ['synthetic.session1.token']); await denied(h.client);
 });
 
@@ -168,4 +179,41 @@ test('wrong-identity grant data is rejected without treating its token as a clea
   assert.equal(await rejected(client.signIn(password)), 'AUTHENTICATION_IDENTITY_MISMATCH');
   await client.signOut(); assert.deepEqual(requests, [`${config.projectUrl}/auth/v1/token?grant_type=password`]);
   await denied(client);
+});
+
+for (const [name, verify, code] of [
+  ['fetch ignores abort', () => new Promise(() => {}), 'AUTHORITY_REQUEST_ABORTED'],
+  ['JSON pull and cancellation ignore abort', () => new Response(new ReadableStream({
+    pull: () => new Promise(() => {}), cancel: () => new Promise(() => {}),
+  }), { headers: { 'content-type': 'application/json' } }), 'AUTHORITY_REQUEST_ABORTED'],
+  ['error body cancellation never settles', () => new Response(new ReadableStream({
+    cancel: () => new Promise(() => {}),
+  }), { status: 403 }), 'AUTHORITY_DENIED'],
+]) test(`known candidate cleanup completes when current-user ${name}`, async () => {
+  const h = server({ verify, timeoutMs: 20 });
+  const started = performance.now();
+  assert.equal(await rejected(h.client.signIn(password)), code);
+  assert.ok(performance.now() - started < 1000);
+  assert.equal(h.live.size, 0); assert.deepEqual(h.logouts, ['synthetic.session1.token']);
+  await denied(h.client);
+});
+
+test('late background cleanup failure retains only known credentials for retry without revoking the new session', async () => {
+  const paused = gate(), failed = deferred();
+  let failOld = true;
+  const h = server({
+    grant: (number, signal) => number === 1 ? paused.wait(signal, false) : undefined,
+    cleanup: bearer => {
+      if (bearer === 'synthetic.session1.token' && failOld) {
+        failed.resolve(); throw new Error('Synthetic private cleanup failure');
+      }
+    },
+  });
+  const first = rejected(h.client.signIn(password)); await paused.entered;
+  await h.client.signOut(); assert.equal(await first, 'STALE_AUTHORITY_SESSION');
+  await h.client.signIn(password); paused.release(); await bounded(failed.promise);
+  await h.client.rpc('context', { p_agency_id: 'agency-a' });
+  assert.deepEqual(h.logouts, ['synthetic.session1.token']); assert.equal(h.live.size, 2);
+  failOld = false; await h.client.signOut();
+  assert.equal(h.live.size, 0); await denied(h.client);
 });

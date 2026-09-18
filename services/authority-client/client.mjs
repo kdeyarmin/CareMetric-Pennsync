@@ -162,45 +162,51 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
     if (!cleanup) current(lease);
     const controller = new AbortController();
     if (!cleanup) pending.add(controller);
-    let rejectCleanupDeadline;
-    const cleanupDeadline = cleanup ? new Promise((_, reject) => { rejectCleanupDeadline = reject; }) : null;
-    const timeout = setTimeout(() => {
-      controller.abort(); rejectCleanupDeadline?.(new AuthorityClientError('AUTHORITY_REQUEST_ABORTED'));
-    }, timeoutMs);
+    let rejectStopped;
+    const stopped = new Promise((_, reject) => { rejectStopped = reject; });
+    const onAbort = () => rejectStopped(new AuthorityClientError('AUTHORITY_REQUEST_ABORTED'));
+    controller.signal.addEventListener('abort', onAbort, { once: true });
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const live = () => { if (!cleanup) current(lease); if (controller.signal.aborted) fail('AUTHORITY_REQUEST_ABORTED'); };
-    try {
-      const fetching = fetchImpl(config.projectUrl + path, {
+    const execute = async () => {
+      const response = await fetchImpl(config.projectUrl + path, {
         method, redirect: 'error', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer',
         signal: controller.signal,
         headers: { apikey: config.publishableKey, 'Content-Type': 'application/json', Accept: 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
-      const response = await (cleanupDeadline ? Promise.race([fetching, cleanupDeadline]) : fetching);
       // A late grant may already have created a native session. Inspect a
       // successfully delivered bounded grant only for exact-session cleanup;
       // the epoch still fences every authentication result and RPC admission.
       if (!receivedGrant) live();
       if (!response.ok) {
-        if (cleanup) void response.body?.cancel().catch(() => {});
-        else await response.body?.cancel().catch(() => {});
+        void response.body?.cancel().catch(() => {});
         fail(response.status === 401 ? 'AUTHENTICATION_FAILED' : response.status === 403 ? 'AUTHORITY_DENIED' : 'AUTHORITY_REQUEST_FAILED', response.status);
       }
       if (noBody) {
-        if (cleanup) void response.body?.cancel().catch(() => {});
-        else await response.body?.cancel().catch(() => {});
+        void response.body?.cancel().catch(() => {});
         live(); return null;
       }
-      const result = await boundedJson(response, 1024 * 1024, receivedGrant ? timeoutMs : 0);
-      if (receivedGrant) receivedGrant(result);
+      const result = await boundedJson(response, 1024 * 1024, timeoutMs);
+      if (receivedGrant) await receivedGrant(result, controller.signal.aborted || lease !== epoch);
       live();
       return result;
+    };
+    try {
+      // The deadline covers fetch, body reads and cancellation even when an
+      // injected transport ignores AbortSignal. A late grant continuation may
+      // still receive a token and performs its own bounded exact-session cleanup.
+      return await Promise.race([execute(), stopped]);
     } catch (error) {
       const aborted = controller.signal.aborted;
       controller.abort();
       if (!cleanup) current(lease);
       if (error instanceof AuthorityClientError) throw error;
       fail(aborted ? 'AUTHORITY_REQUEST_ABORTED' : 'AUTHORITY_NETWORK_FAILED');
-    } finally { clearTimeout(timeout); pending.delete(controller); }
+    } finally {
+      clearTimeout(timeout); pending.delete(controller);
+      controller.signal.removeEventListener('abort', onAbort);
+    }
   }
   function revokeKnown(bearer) {
     const record = knownSessions.get(bearer);
@@ -223,10 +229,11 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
         await revokeAllKnown(); current(lease);
         if (typeof password !== 'string' || password.length < 12 || password.length > 512) fail('INVALID_STAGING_CREDENTIAL');
         const session = await request('/auth/v1/token?grant_type=password', { lease, body: { email: config.email, password },
-          receivedGrant: value => {
+          receivedGrant: async (value, canceled) => {
             if (validGrant(value)) {
               candidate = value.access_token;
               if (!knownSessions.has(candidate)) knownSessions.set(candidate, { revoking: null });
+              if (canceled) await revokeKnown(candidate);
             }
           } });
         if (!validGrant(session)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
