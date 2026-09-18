@@ -91,10 +91,23 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
     for (const table of ['cm_integration_jobs', 'cm_integration_files', 'cm_integration_daily_budget']) {
       const permissions = (await db.query(`select has_table_privilege('anon',$1,'SELECT,INSERT,UPDATE,DELETE') as anon,
         has_table_privilege('authenticated',$1,'SELECT,INSERT,UPDATE,DELETE') as authenticated,
-        has_table_privilege('service_role',$1,'SELECT') and has_table_privilege('service_role',$1,'INSERT')
-        and has_table_privilege('service_role',$1,'UPDATE') and has_table_privilege('service_role',$1,'DELETE') as server`, [`public.${table}`])).rows[0];
-      assert.deepEqual(permissions, { anon: false, authenticated: false, server: true });
+        has_table_privilege('service_role',$1,'SELECT,INSERT,UPDATE,DELETE') as server`, [`public.${table}`])).rows[0];
+      // This fresh platform has stricter defaults than the historical project.
+      // createStore uses only named definer RPCs; do not grant direct table CRUD
+      // merely to reproduce an unnecessary legacy default privilege.
+      assert.deepEqual(permissions, { anon: false, authenticated: false, server: false });
     }
+    const rpcPermissions = (await db.query(`select p.proname as name,
+      has_function_privilege('anon',p.oid,'EXECUTE') as anon,
+      has_function_privilege('authenticated',p.oid,'EXECUTE') as authenticated,
+      has_function_privilege('service_role',p.oid,'EXECUTE') as server,
+      p.prosecdef and (r.rolsuper or r.rolbypassrls) as trusted_definer
+      from pg_proc p join pg_namespace n on n.oid=p.pronamespace
+      join pg_roles r on r.oid=p.proowner
+      where n.nspname='public' and p.proname like 'cm_integration_%' order by p.proname`)).rows;
+    assert.deepEqual(rpcPermissions, ['expire_results', 'file_get', 'file_record', 'finish', 'reserve'].map(name => ({
+      name: `cm_integration_${name}`, anon: false, authenticated: false, server: true, trusted_definer: true,
+    })));
     await db.query("notify pgrst, 'reload schema'");
     phase = 'real service and anonymous gateway RPC proof';
     const app = '6a9881683dc68a0bd54f1ef7'; const subject = 'a'.repeat(64); const claim = randomUUID();
