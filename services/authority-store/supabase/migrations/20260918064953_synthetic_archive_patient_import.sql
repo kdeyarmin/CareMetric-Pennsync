@@ -13,6 +13,9 @@ create table pennsync_private.archive_patient_import_receipt (
   owner_sha256 text not null check(owner_sha256 ~ '^[a-f0-9]{64}$'),
   projection_sha256 text not null check(projection_sha256 ~ '^[a-f0-9]{64}$'),
   patient_count integer not null check(patient_count between 1 and 100),
+  patient_ids text[] not null check(array_ndims(patient_ids)=1 and array_lower(patient_ids,1)=1
+    and cardinality(patient_ids)=patient_count and array_position(patient_ids,null) is null
+    and array_to_string(patient_ids,',') ~ '^[a-f0-9]{24}(,[a-f0-9]{24})*$'),
   state text not null check(state in ('applied','rolled_back')),
   database_name name not null default current_database(),
   operator_role name not null default current_user,

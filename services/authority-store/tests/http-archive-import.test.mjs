@@ -12,6 +12,11 @@ import { IMPORT_APP as APP, importActors, importId, syntheticImportArchive } fro
 
 const check = (value, code) => { if (!value) throw new Error(code); };
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/;
+// Only these authored diagnostics may leave the harness; never provider text or SQL.
+const IMPORT_CODES = new Set(['IMPORT_CONNECTION_FAILED', 'IMPORT_LOGGING_UNSAFE', 'IMPORT_SCHEMA_UNSAFE',
+  'IMPORT_TARGET_MISMATCH', 'IMPORT_TARGET_UNOWNED', 'IMPORT_IDENTITY_MISMATCH', 'IMPORT_AGENCY_MISMATCH',
+  'IMPORT_AGENCY_AUTHORITY_MISMATCH', 'IMPORT_PATIENT_ALREADY_OWNED', 'IMPORT_RECEIPT_CONFLICT',
+  'IMPORT_FAILED_DETAILS_REDACTED']);
 const sameProjection = (actual, expected) => actual && JSON.stringify(Object.keys(actual).sort()) === JSON.stringify(Object.keys(expected).sort())
   && Object.entries(expected).every(([key, value]) => actual[key] === value);
 
@@ -65,9 +70,10 @@ test('verified archive patients are readable through real native sessions and ro
       const link = await request('/auth/v1/admin/generate_link', { type: 'magiclink', email: a.email }, true);
       check(link.status === 200 && link.value.id === a.uuid && typeof link.value.hashed_token === 'string', 'IMPORT_HTTP_EXISTING_LINK');
       const login = await request('/auth/v1/verify', { type: 'magiclink', token_hash: link.value.hashed_token });
+      // Retain a returned capability for scoped cleanup even if later identity checks fail.
+      if (typeof login.value?.access_token === 'string') sessions.set(a.id, login.value.access_token);
       check(login.status === 200 && login.value.user?.id === a.uuid && login.value.user?.email === a.email
         && login.value.user?.role === 'authenticated' && typeof login.value.access_token === 'string', 'IMPORT_HTTP_NATIVE_SESSION');
-      sessions.set(a.id, login.value.access_token);
       const claims = JSON.parse(Buffer.from(login.value.access_token.split('.')[1], 'base64url').toString('utf8'));
       check(claims.sub === a.uuid && UUID.test(claims.session_id) && claims.role === 'authenticated'
         && Number.isSafeInteger(claims.exp) && claims.exp > Date.now() / 1000
@@ -77,11 +83,13 @@ test('verified archive patients are readable through real native sessions and ro
         [claims.session_id, a.uuid])).rows[0].n === 1, 'IMPORT_HTTP_NATIVE_SESSION_ROW');
     }
     for (const a of [actors[0], actors[3]]) check(valid(await rpc(a), a).items.every(p => ![importId(20), importId(21)].includes(p.id)), 'IMPORT_HTTP_PATIENT_EXISTS');
-    phase = 'archive-import';
+    phase = 'archive-build';
     root = await mkdtemp(join(tmpdir(), 'pennsync-http-import-'));
     const archive = await syntheticImportArchive({ archiveDir: join(root, 'archive'), key, actors, statuses: ['active', 'active'] });
     const options = { ...archive, ownerKey, target: { kind: 'owned-stack' } };
+    phase = 'archive-apply';
     check((await applyVerifiedPatientArchive(options)).status === 'imported', 'IMPORT_HTTP_NOT_APPLIED');
+    phase = 'archive-replay';
     check((await applyVerifiedPatientArchive(options)).status === 'reconciled', 'IMPORT_HTTP_REPLAY');
     phase = 'real-rosters-and-denials';
     for (const [a, index] of [[actors[0], 0], [actors[3], 1]]) {
@@ -100,7 +108,7 @@ test('verified archive patients are readable through real native sessions and ro
     for (const a of [actors[0], actors[3]]) check(valid(await rpc(a), a).items.every(p => ![importId(20), importId(21)].includes(p.id)), 'IMPORT_HTTP_ROLLBACK_ROSTER');
     check((await db.query('select count(*)::int n from auth.users')).rows[0].n === 4, 'IMPORT_HTTP_USER_COUNT_CHANGED');
     await mail();
-  } catch { failure = new Error(`LOCAL_ARCHIVE_IMPORT_HTTP_FAILED:${phase}`); }
+  } catch (cause) { failure = new Error(`LOCAL_ARCHIVE_IMPORT_HTTP_FAILED:${phase}${IMPORT_CODES.has(cause?.code) ? `:${cause.code}` : ''}`); }
   finally {
     let cleanupFailed = false;
     for (const token of sessions.values()) {

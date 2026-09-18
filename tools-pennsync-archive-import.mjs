@@ -124,9 +124,34 @@ async function targetPreflight(db, configuration, ownerSha256) {
     where n.nspname='pennsync_private' and c.relname in ('patient','archive_patient_import_receipt') and c.relkind='r'
     order by c.relname`)).rows;
   check(tables.length === 2 && tables.every(t => t.rls && t.forced && t.owned && t.no_policies && t.no_triggers && t.no_rules && t.private), 'IMPORT_SCHEMA_UNSAFE');
-  check(same(tables[0].columns, ['app_id', 'plan_sha256', 'owner_sha256', 'projection_sha256', 'patient_count', 'state',
+  check(same(tables[0].columns, ['app_id', 'plan_sha256', 'owner_sha256', 'projection_sha256', 'patient_count', 'patient_ids', 'state',
     'database_name', 'operator_role', 'created_at', 'rolled_back_at'])
     && same(tables[1].columns, ['app_id', 'id', 'agency_id', 'display_name', 'synthetic', 'version', 'status']), 'IMPORT_SCHEMA_UNSAFE');
+  const dependencies = (await db.query(`select n.nspname as schema,c.relname as name,k.confdeltype as deletion,
+    k.convalidated as validated,k.condeferrable as deferrable,
+    array(select a.attname::text from unnest(k.conkey) with ordinality x(num,ord)
+      join pg_attribute a on a.attrelid=k.conrelid and a.attnum=x.num order by x.ord) as columns,
+    array(select a.attname::text from unnest(k.confkey) with ordinality x(num,ord)
+      join pg_attribute a on a.attrelid=k.confrelid and a.attnum=x.num order by x.ord) as target_columns
+    from pg_constraint k join pg_class c on c.oid=k.conrelid join pg_namespace n on n.oid=c.relnamespace
+    where k.contype='f' and k.confrelid='pennsync_private.patient'::regclass order by n.nspname,c.relname`)).rows;
+  check(same(dependencies.map(d => d.name), ['assignment', 's3_referral', 's4_visit'])
+    && dependencies.every(d => d.schema === 'pennsync_private' && ['a', 'r'].includes(d.deletion)
+      && d.validated && !d.deferrable && same(d.columns, ['app_id', 'agency_id', 'patient_id'])
+      && same(d.target_columns, ['app_id', 'agency_id', 'id'])), 'IMPORT_SCHEMA_UNSAFE');
+}
+
+async function privateLogging(db) {
+  // Supabase's postgres is BYPASSRLS, not superuser. Its pinned Supautils permits
+  // these fixed SQL SET statements through ProcessUtility, not startup options.
+  try {
+    await db.query("set local log_statement='none'; set local log_min_error_statement='panic'; set local log_parameter_max_length=0; set local log_parameter_max_length_on_error=0");
+    const value = (await db.query(`select current_setting('log_statement') as statements,
+      current_setting('log_min_error_statement') as errors,current_setting('log_parameter_max_length') as parameters,
+      current_setting('log_parameter_max_length_on_error') as error_parameters`)).rows[0];
+    check(value.statements === 'none' && value.errors === 'panic' && value.parameters === '0'
+      && value.error_parameters === '0', 'IMPORT_LOGGING_UNSAFE');
+  } catch { throw new ImportError('IMPORT_LOGGING_UNSAFE'); }
 }
 
 async function reconcileAuthority(db, batch) {
@@ -175,7 +200,7 @@ function outcome(state, count, replayed) {
 
 /** Owns its connection; any uncertain COMMIT requires a later explicit reconcile. */
 export async function applyVerifiedPatientArchive({ archiveDir, key, expectedPlanSha256, ownerKey, target, action = 'import' }) {
-  let db; let commitStarted = false;
+  let db; let connected = false; let commitStarted = false;
   try {
     check(Buffer.isBuffer(key) && key.length === 32 && Buffer.isBuffer(ownerKey) && ownerKey.length === 32
       && HASH.test(expectedPlanSha256) && ['import', 'reconcile', 'rollback'].includes(action), 'IMPORT_CONFIGURATION_INVALID');
@@ -189,14 +214,22 @@ export async function applyVerifiedPatientArchive({ archiveDir, key, expectedPla
     db = new Client({ host: url.hostname, port: Number(url.port), database: url.pathname.slice(1), user: 'postgres',
       password: decodeURIComponent(url.password), ssl: false, connectionTimeoutMillis: 5000,
       statement_timeout: 10000, query_timeout: 12000, application_name: 'pennsync-archive-patient-import',
-      options: '-c search_path=pg_catalog -c log_statement=none -c log_min_error_statement=panic -c log_parameter_max_length=0 -c log_parameter_max_length_on_error=0' });
+      options: '-c search_path=pg_catalog' });
     // Do not forward provider exception text, connection URLs, query bindings or events.
     db.on('error', () => {});
-    await db.connect();
+    try { await db.connect(); connected = true; } catch { throw new ImportError('IMPORT_CONNECTION_FAILED'); }
     await db.query('begin isolation level read committed');
+    await privateLogging(db);
     await db.query('select pg_advisory_xact_lock(168344,20260918)');
+    // Keep the verified inbound FK definitions stable through any possible DELETE.
+    await db.query(`lock table pennsync_private.patient,pennsync_private.archive_patient_import_receipt,
+      pennsync_private.assignment,pennsync_private.s3_referral,pennsync_private.s4_visit in share row exclusive mode`);
     await targetPreflight(db, configuration, ownerSha256);
     await reconcileAuthority(db, batch);
+    const patientIds = batch.projection.map(p => p.id);
+    const otherOwners = (await db.query(`select 1 from pennsync_private.archive_patient_import_receipt
+      where app_id=$1 and plan_sha256<>$2 and patient_ids && $3::text[] limit 1`, [APP, batch.planSha256, patientIds])).rows;
+    check(otherOwners.length === 0, 'IMPORT_PATIENT_ALREADY_OWNED');
     const receipt = (await db.query(`select * from pennsync_private.archive_patient_import_receipt
       where app_id=$1 and plan_sha256=$2 for update`, [APP, batch.planSha256])).rows;
     const existing = await currentPatients(db, batch);
@@ -204,7 +237,7 @@ export async function applyVerifiedPatientArchive({ archiveDir, key, expectedPla
     if (receipt.length) {
       const r = receipt[0];
       check(r.owner_sha256 === ownerSha256 && r.projection_sha256 === batch.projectionSha256
-        && r.patient_count === batch.projection.length && r.database_name === url.pathname.slice(1)
+        && r.patient_count === batch.projection.length && same(r.patient_ids, patientIds) && r.database_name === url.pathname.slice(1)
         && r.operator_role === 'postgres', 'IMPORT_RECEIPT_CONFLICT');
       if (r.state === 'rolled_back') {
         check(existing.length === 0 && action !== 'import', 'IMPORT_ROLLED_BACK');
@@ -229,8 +262,8 @@ export async function applyVerifiedPatientArchive({ archiveDir, key, expectedPla
         (app_id,id,agency_id,display_name,synthetic,version,status) values($1,$2,$3,$4,true,1,'active')`,
       [APP, p.id, p.agency_id, p.display_name]);
       await db.query(`insert into pennsync_private.archive_patient_import_receipt
-        (app_id,plan_sha256,owner_sha256,projection_sha256,patient_count,state) values($1,$2,$3,$4,$5,'applied')`,
-      [APP, batch.planSha256, ownerSha256, batch.projectionSha256, batch.projection.length]);
+        (app_id,plan_sha256,owner_sha256,projection_sha256,patient_count,patient_ids,state) values($1,$2,$3,$4,$5,$6,'applied')`,
+      [APP, batch.planSha256, ownerSha256, batch.projectionSha256, batch.projection.length, patientIds]);
       check(patientProjectionSha256(await currentPatients(db, batch)) === batch.projectionSha256, 'IMPORT_TARGET_DRIFT');
       result = outcome('imported', batch.projection.length, false);
     }
@@ -238,7 +271,7 @@ export async function applyVerifiedPatientArchive({ archiveDir, key, expectedPla
     try { await db.query('commit'); } catch { throw new ImportError('IMPORT_COMMIT_OUTCOME_UNKNOWN'); }
     return result;
   } catch (error) {
-    if (db && !commitStarted) { try { await db.query('rollback'); } catch { /* Connection loss rolls back uncommitted work. */ } }
+    if (connected && !commitStarted) { try { await db.query('rollback'); } catch { /* Connection loss rolls back uncommitted work. */ } }
     throw error instanceof ImportError ? error : new ImportError('IMPORT_FAILED_DETAILS_REDACTED');
   } finally { if (db) { try { await db.end(); } catch { /* No content or credentials in cleanup diagnostics. */ } } }
 }

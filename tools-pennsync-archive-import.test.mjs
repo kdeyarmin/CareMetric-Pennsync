@@ -5,7 +5,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { applyVerifiedPatientArchive, nativeImportTarget, runPatientImportCli } from './tools-pennsync-archive-import.mjs';
-import { withVerifiedArchive } from './tools-pennsync-archive.mjs';
+import { verifyArchive, withVerifiedArchive } from './tools-pennsync-archive.mjs';
 import { IMPORT_APP, importActors, importId, importSha, syntheticImportArchive } from './tools-pennsync-archive-import-fixture.mjs';
 
 async function fixture(t, alter) {
@@ -75,6 +75,16 @@ for (const [name, alter] of [
   }],
 ]) test(`${name} refuses before any target lookup`, async t => {
   const f = await fixture(t, alter);
+  if (name === 'declared file even when empty') {
+    // The fixture alteration runs before sealing: independently authenticate the
+    // resulting plan/file, so this cannot accidentally exercise target:null only.
+    await withVerifiedArchive(f, async ({ rawPlan, read }) => {
+      assert.equal(JSON.parse(rawPlan).files.length, 1);
+      let bytes = 0; for await (const chunk of read('empty.bin')) bytes += chunk.length;
+      assert.equal(bytes, 0);
+    });
+    assert.equal((await verifyArchive(f)).counts.files, 1);
+  }
   await assert.rejects(applyVerifiedPatientArchive({ ...f, ownerKey: randomBytes(32), target: null }), { code: 'IMPORT_SCOPE_UNSUPPORTED' });
 });
 

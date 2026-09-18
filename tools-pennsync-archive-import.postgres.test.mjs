@@ -103,6 +103,61 @@ test('concurrent exact imports commit one batch and reconcile the other', async 
   assert.deepEqual(await f.counts(), { patients: 2, receipts: 1 });
 });
 
+test('logging preflight uses SQL SET before bindings and refuses a denied setting without writes', async t => {
+  const f = await lab(t); const connect = Client.prototype.connect, query = Client.prototype.query;
+  let configured = false, bindings = 0;
+  Client.prototype.connect = function (...args) {
+    if (this.connectionParameters.application_name === 'pennsync-archive-patient-import') {
+      assert.doesNotMatch(this.connectionParameters.options, /log_statement|log_min_error_statement|log_parameter_max_length=/,
+        'Supautils permits these restricted settings via SQL SET, not startup options');
+    }
+    return connect.apply(this, args);
+  };
+  Client.prototype.query = async function (text, ...args) {
+    if (this.connectionParameters.application_name === 'pennsync-archive-patient-import') {
+      if (/^set local log_statement/.test(text)) { configured = true; throw new Error('synthetic denied setting'); }
+      if (args[0]?.length) bindings++;
+    }
+    return query.call(this, text, ...args);
+  };
+  try { await assert.rejects(f.run(), { code: 'IMPORT_LOGGING_UNSAFE' }); }
+  finally { Client.prototype.connect = connect; Client.prototype.query = query; }
+  assert.equal(configured, true); assert.equal(bindings, 0);
+  assert.deepEqual(await f.counts(), { patients: 0, receipts: 0 });
+});
+
+test('rolled-back patient IDs remain owned across changed plan bytes, projection and overlapping batches', async t => {
+  const f = await lab(t); await f.run(); await f.run({ action: 'rollback' });
+  for (const alter of [
+    x => { x.plan.snapshot_evidence_sha256 = importSha('another synthetic evidence marker'); },
+    x => { x.source.Patient[0].last_name = 'Changed A'; },
+    x => { x.source.Patient[1].id = importId(22); },
+  ]) {
+    const changed = await f.archive(alter);
+    assert.notEqual(changed.expectedPlanSha256, f.options.expectedPlanSha256);
+    await assert.rejects(f.run(changed), { code: 'IMPORT_PATIENT_ALREADY_OWNED' });
+  }
+  assert.deepEqual(await f.counts(), { patients: 0, receipts: 1 });
+});
+
+test('cascading or absent inbound patient foreign keys refuse rollback before deleting anything', async t => {
+  const f = await lab(t); await f.run();
+  await f.db.query(`insert into pennsync_private.assignment(app_id,agency_id,patient_id,membership_id,status,changed_by)
+    values($1,'agency-a',$2,'membership-clinician-a','active',$3)`, [APP, importId(20), importActors[0].uuid]);
+  const constraint = (await f.db.query(`select conname from pg_constraint where conrelid='pennsync_private.assignment'::regclass
+    and confrelid='pennsync_private.patient'::regclass`)).rows[0].conname;
+  assert.match(constraint, /^[a-z_]+$/);
+  await f.db.query(`alter table pennsync_private.assignment drop constraint "${constraint}",
+    add constraint "${constraint}" foreign key(app_id,agency_id,patient_id)
+    references pennsync_private.patient(app_id,agency_id,id) on delete cascade`);
+  await assert.rejects(f.run({ action: 'rollback' }), { code: 'IMPORT_SCHEMA_UNSAFE' });
+  assert.equal((await f.db.query('select count(*)::int n from pennsync_private.assignment')).rows[0].n, 1);
+  assert.deepEqual(await f.counts(), { patients: 2, receipts: 1 });
+  await f.db.query(`alter table pennsync_private.assignment drop constraint "${constraint}"`);
+  await assert.rejects(f.run({ action: 'rollback' }), { code: 'IMPORT_SCHEMA_UNSAFE' });
+  assert.deepEqual(await f.counts(), { patients: 2, receipts: 1 });
+});
+
 test('second-row interruption leaves no patient or receipt', async t => {
   const f = await lab(t); const query = Client.prototype.query; let inserts = 0;
   Client.prototype.query = async function (text, ...args) {
@@ -167,7 +222,7 @@ test('exact existing unreceipted patient is never adopted or removed', async t =
 test('changed source bytes or explicit mapping never overwrite prior import', async t => {
   const f = await lab(t); await f.run();
   const changed = await f.archive(x => { x.source.Patient[0].last_name = 'Changed A'; });
-  await assert.rejects(f.run(changed), { code: 'IMPORT_UNOWNED_PATIENT' });
+  await assert.rejects(f.run(changed), { code: 'IMPORT_PATIENT_ALREADY_OWNED' });
   const mapped = await f.archive(x => { x.identities[0].target_subject = '90000000-0000-4000-8000-000000000001'; });
   await assert.rejects(f.run(mapped), { code: 'IMPORT_IDENTITY_MISMATCH' });
   assert.equal((await f.rpc(0, 'agency-a')).items[0].display_name, 'Synthetic Imported A');
@@ -205,6 +260,11 @@ test('wrong database ownership, unsafe receipt grants and conflicting receipt al
   await f.db.query('grant select(plan_sha256) on pennsync_private.archive_patient_import_receipt to service_role');
   await assert.rejects(f.run(), { code: 'IMPORT_SCHEMA_UNSAFE' });
   await f.db.query('revoke select(plan_sha256) on pennsync_private.archive_patient_import_receipt from service_role');
+  for (const permission of ['delete', 'truncate', 'trigger']) {
+    await f.db.query(`grant ${permission} on pennsync_private.archive_patient_import_receipt to service_role`);
+    await assert.rejects(f.run(), { code: 'IMPORT_SCHEMA_UNSAFE' });
+    await f.db.query(`revoke ${permission} on pennsync_private.archive_patient_import_receipt from service_role`);
+  }
   await f.run();
   await f.db.query("update pennsync_private.archive_patient_import_receipt set owner_sha256=repeat('f',64)");
   await assert.rejects(f.run(), { code: 'IMPORT_RECEIPT_CONFLICT' });
