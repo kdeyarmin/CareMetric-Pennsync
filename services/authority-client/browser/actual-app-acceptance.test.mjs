@@ -40,6 +40,10 @@ function containsCredential(value, secrets) {
     || /eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/.test(serialized)
     || /sb_secret_[A-Za-z0-9_-]+/.test(serialized);
 }
+function publicCdnCookie(cookie) {
+  return cookie.name === '__cf_bm' && cookie.domain === 'supabase.co' && cookie.path === '/'
+    && cookie.httpOnly === true && cookie.secure === true && cookie.sameSite === 'None';
+}
 
 test('actual app network and credential checks exclude remote business calls and secret persistence', () => {
   assert.equal(BRAND_LOGO_URL, LOGO);
@@ -63,6 +67,12 @@ test('actual app network and credential checks exclude remote business calls and
     assert.equal(containsCredential({ arbitrary: { nested: secret } }, [secret]), true);
   }
   assert.equal(containsCredential({ arbitrary: 'eyJ123456.abcdefghi.abcdefgh' }, []), true);
+  const cdn = { name: '__cf_bm', domain: 'supabase.co', path: '/', httpOnly: true, secure: true, sameSite: 'None' };
+  assert.equal(publicCdnCookie(cdn), true);
+  for (const patch of [{ name: 'access_token' }, { domain: '127.0.0.1' }, { domain: 'other.supabase.co' },
+    { path: '/auth' }, { httpOnly: false }, { secure: false }, { sameSite: 'Lax' }]) {
+    assert.equal(publicCdnCookie({ ...cdn, ...patch }), false);
+  }
 });
 
 test('compiled app login, explicit agency, four rosters and logout use real owned local Auth/API', { timeout: 240000 }, async t => {
@@ -98,9 +108,11 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
           }
           if (url.href === LOGO) {
             // The existing public image alone may leave loopback, without credentials.
-            if (headers.authorization || headers.apikey || headers.cookie) throw new Error('ACTUAL_APP_IMAGE_CREDENTIALS');
-            // Browser redirects can outlive a routing decision. Fetch this exact
-            // genuine image with redirects disabled, then preserve its response.
+            if (headers.authorization || headers.apikey || (headers.cookie && !/^__cf_bm=[^;\r\n]+$/.test(headers.cookie))
+              || containsCredential({ cookie: headers.cookie }, credentials)) throw new Error('ACTUAL_APP_IMAGE_CREDENTIALS');
+            // Preserve the genuine CDN response, including its benign __cf_bm
+            // protection cookie. It is not a PennSync Auth credential. Redirects
+            // remain disabled; only this exact public PNG is permitted remotely.
             const response = await route.fetch({ maxRedirects: 0, timeout: 15000 });
             assert.equal(response.status(), 200);
             assert.match(response.headers()['content-type'] || '', /^image\/png\b/i);
@@ -108,6 +120,7 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
           }
           if (url.origin === API) {
             apiRequests += 1;
+            assert.equal(headers.cookie, undefined);
             if (request.method() !== 'OPTIONS' && headers.apikey !== status.PUBLISHABLE_KEY) {
               blocked += 1; await route.abort('blockedbyclient'); return;
             }
@@ -165,7 +178,7 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
       const stored = await context.storageState({ indexedDB: true });
       const session = await page.evaluate(() => Object.fromEntries(Object.entries(sessionStorage)));
       assert.equal(containsCredential([stored, session], credentials), false);
-      assert.deepEqual(stored.cookies, []);
+      assert.equal(stored.cookies.every(publicCdnCookie), true);
       assert.equal(await page.evaluate(async () => (await globalThis.caches.keys()).length), 0);
     };
     const signedOut = async () => {
@@ -209,7 +222,9 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     await page.goto(ACTUAL_APP_ORIGIN); await signedOut();
     phase = 'four-actual-app-role-rosters';
     for (const [name, expected] of ROSTERS) {
-      await login(name); await roster(expected); await logout();
+      phase = `${name}-login`; await login(name);
+      phase = `${name}-roster`; await roster(expected);
+      phase = `${name}-logout`; await logout();
     }
     t.diagnostic('Compiled App: four native logins, explicit agency selection, exact scoped name rosters, disabled clinical actions and logout passed.');
 
@@ -244,7 +259,7 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     assert.equal((await db.query('select count(*)::int as n from auth.sessions')).rows[0].n, 0);
     const mail = await fetch('http://127.0.0.1:54324/api/v1/info', { redirect: 'error', signal: AbortSignal.timeout(10000) });
     assert.equal(mail.ok, true); assert.equal((await mail.json()).Messages, 0);
-    t.diagnostic('Zero Base44 business or other undeclared network attempts, page errors, persisted credentials, native sessions or outgoing mail. The exact existing public logo GET remains allowed.');
+    t.diagnostic('Zero Base44 business or other undeclared network attempts, page errors, persisted credentials, native sessions or outgoing mail. The exact public logo GET and identified CDN protection cookie remain allowed.');
   } catch {
     // Playwright and Auth failures may contain fill arguments or tokens. Emit only
     // a fixed phase; do not attach the original message, call log, output or cause.
