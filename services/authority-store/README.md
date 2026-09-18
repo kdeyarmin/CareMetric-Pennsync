@@ -50,7 +50,7 @@ pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
 node --test services/authority-store/tests/authority.test.mjs services/authority-store/tests/s4.test.mjs services/authority-store/tests/s3.test.mjs
 ```
 
-This runs 22 authority, 14 S4 and 12 S3 executable PostgreSQL/PGlite scenarios, including refusal of an unsuitable migration owner before any authority schema is created. Each uses a fresh transaction and rolls back the synthetic fixture. Coverage includes role/tenant/assignment scope, native identity/session failures, cursor validation, immutable source mapping, uniqueness/foreign keys, current-state replay, failure rollback, service-role exclusion and defensive RLS after an accidental table grant. PGlite is single-connection; these tests alone do not prove concurrency.
+This runs 22 authority, 16 S4 and 12 S3 executable PostgreSQL/PGlite scenarios, including refusal of an unsuitable migration owner before any authority schema is created. Each uses a fresh transaction and rolls back the synthetic fixture. Coverage includes role/tenant/assignment scope, native identity/session failures, cursor validation, immutable source mapping, uniqueness/foreign keys, current-state replay, failure rollback, service-role exclusion and defensive RLS after an accidental table grant. PGlite is single-connection; these tests alone do not prove concurrency.
 
 For the real PostgreSQL suite, provide an explicit local test administrator URL with `/postgres`. Only loopback hosts are accepted; remote URLs and arbitrary database names are rejected. Example PowerShell invocation for the isolated local lab:
 
