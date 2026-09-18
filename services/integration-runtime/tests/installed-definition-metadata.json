@@ -1,0 +1,511 @@
+{
+  "bucket": [
+    {
+      "id": "pennsync-external-integrations",
+      "name": "pennsync-external-integrations",
+      "public": false,
+      "file_size_limit": 8388608,
+      "allowed_mime_types": [
+        "application/pdf",
+        "image/png",
+        "image/jpeg",
+        "image/webp",
+        "text/plain",
+        "text/csv"
+      ]
+    }
+  ],
+  "columns": [
+    {
+      "name": "app_id",
+      "type": "text",
+      "table": "cm_integration_daily_budget",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 1,
+      "generated": ""
+    },
+    {
+      "name": "subject",
+      "type": "text",
+      "table": "cm_integration_daily_budget",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 2,
+      "generated": ""
+    },
+    {
+      "name": "budget_day",
+      "type": "date",
+      "table": "cm_integration_daily_budget",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 3,
+      "generated": ""
+    },
+    {
+      "name": "attempts",
+      "type": "integer",
+      "table": "cm_integration_daily_budget",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 4,
+      "generated": ""
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "cm_integration_files",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 1,
+      "generated": ""
+    },
+    {
+      "name": "app_id",
+      "type": "text",
+      "table": "cm_integration_files",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 2,
+      "generated": ""
+    },
+    {
+      "name": "subject",
+      "type": "text",
+      "table": "cm_integration_files",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 3,
+      "generated": ""
+    },
+    {
+      "name": "object_path",
+      "type": "text",
+      "table": "cm_integration_files",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 4,
+      "generated": ""
+    },
+    {
+      "name": "content_type",
+      "type": "text",
+      "table": "cm_integration_files",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 5,
+      "generated": ""
+    },
+    {
+      "name": "size_bytes",
+      "type": "bigint",
+      "table": "cm_integration_files",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 6,
+      "generated": ""
+    },
+    {
+      "name": "sha256",
+      "type": "text",
+      "table": "cm_integration_files",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 7,
+      "generated": ""
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "cm_integration_files",
+      "default": "now()",
+      "identity": "",
+      "nullable": false,
+      "position": 8,
+      "generated": ""
+    },
+    {
+      "name": "id",
+      "type": "uuid",
+      "table": "cm_integration_jobs",
+      "default": "gen_random_uuid()",
+      "identity": "",
+      "nullable": false,
+      "position": 1,
+      "generated": ""
+    },
+    {
+      "name": "app_id",
+      "type": "text",
+      "table": "cm_integration_jobs",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 2,
+      "generated": ""
+    },
+    {
+      "name": "subject",
+      "type": "text",
+      "table": "cm_integration_jobs",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 3,
+      "generated": ""
+    },
+    {
+      "name": "operation",
+      "type": "text",
+      "table": "cm_integration_jobs",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 4,
+      "generated": ""
+    },
+    {
+      "name": "request_id",
+      "type": "text",
+      "table": "cm_integration_jobs",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 5,
+      "generated": ""
+    },
+    {
+      "name": "payload_hash",
+      "type": "text",
+      "table": "cm_integration_jobs",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 6,
+      "generated": ""
+    },
+    {
+      "name": "claim",
+      "type": "uuid",
+      "table": "cm_integration_jobs",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 7,
+      "generated": ""
+    },
+    {
+      "name": "state",
+      "type": "text",
+      "table": "cm_integration_jobs",
+      "default": null,
+      "identity": "",
+      "nullable": false,
+      "position": 8,
+      "generated": ""
+    },
+    {
+      "name": "result_encrypted",
+      "type": "text",
+      "table": "cm_integration_jobs",
+      "default": null,
+      "identity": "",
+      "nullable": true,
+      "position": 9,
+      "generated": ""
+    },
+    {
+      "name": "created_at",
+      "type": "timestamp with time zone",
+      "table": "cm_integration_jobs",
+      "default": "now()",
+      "identity": "",
+      "nullable": false,
+      "position": 10,
+      "generated": ""
+    },
+    {
+      "name": "finished_at",
+      "type": "timestamp with time zone",
+      "table": "cm_integration_jobs",
+      "default": null,
+      "identity": "",
+      "nullable": true,
+      "position": 11,
+      "generated": ""
+    },
+    {
+      "name": "result_expires_at",
+      "type": "timestamp with time zone",
+      "table": "cm_integration_jobs",
+      "default": null,
+      "identity": "",
+      "nullable": true,
+      "position": 12,
+      "generated": ""
+    },
+    {
+      "name": "attempt_count",
+      "type": "integer",
+      "table": "cm_integration_jobs",
+      "default": "1",
+      "identity": "",
+      "nullable": false,
+      "position": 13,
+      "generated": ""
+    }
+  ],
+  "indexes": [
+    {
+      "name": "cm_integration_daily_budget_pkey",
+      "table": "cm_integration_daily_budget",
+      "definition": "CREATE UNIQUE INDEX cm_integration_daily_budget_pkey ON public.cm_integration_daily_budget USING btree (app_id, subject, budget_day)"
+    },
+    {
+      "name": "cm_integration_files_object_path_key",
+      "table": "cm_integration_files",
+      "definition": "CREATE UNIQUE INDEX cm_integration_files_object_path_key ON public.cm_integration_files USING btree (object_path)"
+    },
+    {
+      "name": "cm_integration_files_pkey",
+      "table": "cm_integration_files",
+      "definition": "CREATE UNIQUE INDEX cm_integration_files_pkey ON public.cm_integration_files USING btree (id)"
+    },
+    {
+      "name": "cm_integration_jobs_app_id_subject_operation_request_id_key",
+      "table": "cm_integration_jobs",
+      "definition": "CREATE UNIQUE INDEX cm_integration_jobs_app_id_subject_operation_request_id_key ON public.cm_integration_jobs USING btree (app_id, subject, operation, request_id)"
+    },
+    {
+      "name": "cm_integration_jobs_pkey",
+      "table": "cm_integration_jobs",
+      "definition": "CREATE UNIQUE INDEX cm_integration_jobs_pkey ON public.cm_integration_jobs USING btree (id)"
+    },
+    {
+      "name": "cm_integration_jobs_quota",
+      "table": "cm_integration_jobs",
+      "definition": "CREATE INDEX cm_integration_jobs_quota ON public.cm_integration_jobs USING btree (app_id, subject, created_at)"
+    }
+  ],
+  "policies": [
+    {
+      "name": "pennsync external files require server authorization",
+      "check": "(bucket_id <> 'pennsync-external-integrations'::text)",
+      "roles": [
+        "anon",
+        "authenticated"
+      ],
+      "table": "objects",
+      "using": "(bucket_id <> 'pennsync-external-integrations'::text)",
+      "schema": "storage",
+      "command": "ALL",
+      "permissive": "RESTRICTIVE"
+    }
+  ],
+  "triggers": null,
+  "functions": [
+    {
+      "name": "cm_integration_expire_results",
+      "definition": "CREATE OR REPLACE FUNCTION public.cm_integration_expire_results()\n RETURNS integer\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\ndeclare affected integer;\nbegin\n with expired as (\n  select id from public.cm_integration_jobs\n  where result_encrypted is not null and result_expires_at is not null and result_expires_at<=now()\n  order by result_expires_at,id for update skip locked limit 1000\n )\n update public.cm_integration_jobs j set result_encrypted=null\n from expired where j.id=expired.id;\n get diagnostics affected=row_count;\n return affected;\nend $function$\n",
+      "security_definer": true,
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "name": "cm_integration_file_get",
+      "definition": "CREATE OR REPLACE FUNCTION public.cm_integration_file_get(p_id uuid, p_app_id text, p_subject text)\n RETURNS jsonb\n LANGUAGE sql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$ select to_jsonb(f) from public.cm_integration_files f where f.id=p_id and f.app_id=p_app_id and f.subject=p_subject; $function$\n",
+      "security_definer": true,
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "name": "cm_integration_file_record",
+      "definition": "CREATE OR REPLACE FUNCTION public.cm_integration_file_record(p_id uuid, p_app_id text, p_subject text, p_object_path text, p_content_type text, p_size bigint, p_sha256 text)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\nbegin\n if p_app_id !~ '^[A-Za-z0-9_-]{1,128}$' or p_object_path<>p_app_id||'/'||p_subject||'/'||p_id::text then raise exception 'Invalid file binding';end if;\n insert into public.cm_integration_files(id,app_id,subject,object_path,content_type,size_bytes,sha256) values(p_id,p_app_id,p_subject,p_object_path,p_content_type,p_size,p_sha256);\n return true;\nend $function$\n",
+      "security_definer": true,
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "name": "cm_integration_finish",
+      "definition": "CREATE OR REPLACE FUNCTION public.cm_integration_finish(p_id uuid, p_claim uuid, p_state text, p_result text)\n RETURNS boolean\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\ndeclare affected integer;\nbegin\n if p_state not in ('completed','uncertain','failed') or (p_state='completed' and (p_result is null or length(p_result)>24000000)) then raise exception 'Invalid completion'; end if;\n update public.cm_integration_jobs set state=p_state,result_encrypted=case when p_state='completed' then p_result else null end,finished_at=now(),result_expires_at=case when p_state='completed' then now()+interval '24 hours' else null end where id=p_id and claim=p_claim and state='started';\n get diagnostics affected=row_count; return affected=1;\nend $function$\n",
+      "security_definer": true,
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    },
+    {
+      "name": "cm_integration_reserve",
+      "definition": "CREATE OR REPLACE FUNCTION public.cm_integration_reserve(p_app_id text, p_subject text, p_operation text, p_request_id text, p_payload_hash text, p_claim uuid, p_daily_limit integer)\n RETURNS jsonb\n LANGUAGE plpgsql\n SECURITY DEFINER\n SET search_path TO 'pg_catalog', 'public'\nAS $function$\ndeclare old public.cm_integration_jobs%rowtype; created public.cm_integration_jobs%rowtype; used integer; today date := (now() at time zone 'UTC')::date; found_old boolean;\nbegin\n if p_app_id is null or p_app_id !~ '^[A-Za-z0-9_-]{1,128}$'\n or p_subject is null or p_subject !~ '^[0-9a-f]{64}$'\n or p_payload_hash is null or p_payload_hash !~ '^[0-9a-f]{64}$'\n or p_request_id is null or p_request_id !~ '^[A-Za-z0-9_-]{1,128}$'\n or p_claim is null or p_daily_limit is null or p_daily_limit not between 1 and 1000\n or p_operation is null or p_operation not in ('InvokeLLM','ExtractDataFromUploadedFile','GenerateImage','SendEmail','UploadFile','UploadPrivateFile','CreateFileSignedUrl')\n then raise exception 'Invalid integration reservation'; end if;\n perform pg_advisory_xact_lock(hashtextextended(p_app_id||':'||p_subject,0));\n select * into old from public.cm_integration_jobs where app_id=p_app_id and subject=p_subject and operation=p_operation and request_id=p_request_id for update;\n found_old := found;\n if found_old then\n  if old.payload_hash<>p_payload_hash then return jsonb_build_object('id',old.id,'outcome','conflict'); end if;\n  if old.state<>'failed' or old.attempt_count>=3 then\n   return jsonb_build_object('id',old.id,'outcome',case old.state when 'started' then 'pending' when 'completed' then case when old.result_expires_at>now() and old.result_encrypted is not null then 'completed' else 'uncertain' end else old.state end,\n   'result',case when old.state='completed' and old.result_expires_at>now() then old.result_encrypted else null end);\n  end if;\n  if old.claim=p_claim then return jsonb_build_object('id',old.id,'outcome','conflict'); end if;\n end if;\n select attempts into used from public.cm_integration_daily_budget where app_id=p_app_id and subject=p_subject and budget_day=today;\n if coalesce(used,0)>=p_daily_limit then return jsonb_build_object('id',coalesce(old.id,p_claim),'outcome','quota'); end if;\n insert into public.cm_integration_daily_budget(app_id,subject,budget_day,attempts) values(p_app_id,p_subject,today,1)\n on conflict (app_id,subject,budget_day) do update set attempts=cm_integration_daily_budget.attempts+1;\n if found_old then\n  update public.cm_integration_jobs set state='started',claim=p_claim,attempt_count=attempt_count+1,finished_at=null,result_encrypted=null,result_expires_at=null\n   where id=old.id and state='failed' and claim=old.claim returning * into created;\n else\n  insert into public.cm_integration_jobs(app_id,subject,operation,request_id,payload_hash,claim,state)\n   values(p_app_id,p_subject,p_operation,p_request_id,p_payload_hash,p_claim,'started') returning * into created;\n end if;\n if created.id is null then raise exception 'Reservation claim could not be acquired'; end if;\n return jsonb_build_object('id',created.id,'outcome','owned');\nend $function$\n",
+      "security_definer": true,
+      "config": [
+        "search_path=pg_catalog, public"
+      ],
+      "owner": "postgres",
+      "acl": "{postgres=X/postgres,service_role=X/postgres}"
+    }
+  ],
+  "extensions": [
+    {
+      "name": "pgcrypto",
+      "schema": "extensions",
+      "version": "1.3"
+    },
+    {
+      "name": "pg_cron",
+      "schema": "pg_catalog",
+      "version": "1.6.4"
+    }
+  ],
+  "constraints": [
+    {
+      "name": "cm_integration_daily_budget_attempts_check",
+      "table": "cm_integration_daily_budget",
+      "definition": "CHECK (attempts >= 0)"
+    },
+    {
+      "name": "cm_integration_daily_budget_pkey",
+      "table": "cm_integration_daily_budget",
+      "definition": "PRIMARY KEY (app_id, subject, budget_day)"
+    },
+    {
+      "name": "cm_integration_daily_budget_subject_check",
+      "table": "cm_integration_daily_budget",
+      "definition": "CHECK (subject ~ '^[0-9a-f]{64}$'::text)"
+    },
+    {
+      "name": "cm_integration_files_content_type_check",
+      "table": "cm_integration_files",
+      "definition": "CHECK (content_type = ANY (ARRAY['application/pdf'::text, 'image/png'::text, 'image/jpeg'::text, 'image/webp'::text, 'text/plain'::text, 'text/csv'::text]))"
+    },
+    {
+      "name": "cm_integration_files_object_path_key",
+      "table": "cm_integration_files",
+      "definition": "UNIQUE (object_path)"
+    },
+    {
+      "name": "cm_integration_files_pkey",
+      "table": "cm_integration_files",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "cm_integration_files_sha256_check",
+      "table": "cm_integration_files",
+      "definition": "CHECK (sha256 ~ '^[0-9a-f]{64}$'::text)"
+    },
+    {
+      "name": "cm_integration_files_size_bytes_check",
+      "table": "cm_integration_files",
+      "definition": "CHECK (size_bytes >= 1 AND size_bytes <= 8388608)"
+    },
+    {
+      "name": "cm_integration_files_subject_check",
+      "table": "cm_integration_files",
+      "definition": "CHECK (subject ~ '^[0-9a-f]{64}$'::text)"
+    },
+    {
+      "name": "cm_integration_jobs_app_id_check",
+      "table": "cm_integration_jobs",
+      "definition": "CHECK (app_id ~ '^[A-Za-z0-9_-]{1,128}$'::text)"
+    },
+    {
+      "name": "cm_integration_jobs_app_id_subject_operation_request_id_key",
+      "table": "cm_integration_jobs",
+      "definition": "UNIQUE (app_id, subject, operation, request_id)"
+    },
+    {
+      "name": "cm_integration_jobs_attempt_count_check",
+      "table": "cm_integration_jobs",
+      "definition": "CHECK (attempt_count >= 1 AND attempt_count <= 3)"
+    },
+    {
+      "name": "cm_integration_jobs_operation_check",
+      "table": "cm_integration_jobs",
+      "definition": "CHECK (operation = ANY (ARRAY['InvokeLLM'::text, 'ExtractDataFromUploadedFile'::text, 'GenerateImage'::text, 'SendEmail'::text, 'UploadFile'::text, 'UploadPrivateFile'::text, 'CreateFileSignedUrl'::text]))"
+    },
+    {
+      "name": "cm_integration_jobs_payload_hash_check",
+      "table": "cm_integration_jobs",
+      "definition": "CHECK (payload_hash ~ '^[0-9a-f]{64}$'::text)"
+    },
+    {
+      "name": "cm_integration_jobs_pkey",
+      "table": "cm_integration_jobs",
+      "definition": "PRIMARY KEY (id)"
+    },
+    {
+      "name": "cm_integration_jobs_request_id_check",
+      "table": "cm_integration_jobs",
+      "definition": "CHECK (request_id ~ '^[A-Za-z0-9_-]{1,128}$'::text)"
+    },
+    {
+      "name": "cm_integration_jobs_state_check",
+      "table": "cm_integration_jobs",
+      "definition": "CHECK (state = ANY (ARRAY['started'::text, 'completed'::text, 'uncertain'::text, 'failed'::text]))"
+    },
+    {
+      "name": "cm_integration_jobs_subject_check",
+      "table": "cm_integration_jobs",
+      "definition": "CHECK (subject ~ '^[0-9a-f]{64}$'::text)"
+    }
+  ],
+  "retention_schedule": [
+    {
+      "name": "pennsync-integration-result-retention",
+      "active": true,
+      "command": "select public.cm_integration_expire_results();",
+      "schedule": "17 * * * *"
+    }
+  ],
+  "source": {
+    "project": "xsqobvvreaovwibxwyvv",
+    "name": "CM Train",
+    "observed_at": "2026-09-18",
+    "scope": "read-only catalog definitions; no application rows, object bytes, secrets, or hosted mutations"
+  },
+  "table_security": [
+    {
+      "name": "cm_integration_daily_budget",
+      "owner": "postgres",
+      "rls": true,
+      "force_rls": false,
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}"
+    },
+    {
+      "name": "cm_integration_files",
+      "owner": "postgres",
+      "rls": true,
+      "force_rls": false,
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}"
+    },
+    {
+      "name": "cm_integration_jobs",
+      "owner": "postgres",
+      "rls": true,
+      "force_rls": false,
+      "acl": "{postgres=arwdDxtm/postgres,service_role=arwdDxtm/postgres}"
+    }
+  ]
+}
