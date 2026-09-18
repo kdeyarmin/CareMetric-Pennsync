@@ -56,7 +56,7 @@ const authorizationScopeKey = (scope) => (scope
     ])
   : null);
 
-export default function Patients() {
+export default function Patients({ independentReadOnly = false }) {
   const queryClient = useQueryClient();
   const [showForm, setShowForm] = useState(false);
   const [filters, setFilters] = useState({});
@@ -86,21 +86,21 @@ export default function Patients() {
   // Resolve chart navigation once for the whole roster. The hook accepts only
   // a freshly revalidated server-owned singleton membership; it never derives
   // route authority from mutable User or Patient fields.
-  const { agencyId: patientDetailsAgencyId } = usePatientDetailsRouteScope();
+  const { agencyId: patientDetailsAgencyId } = usePatientDetailsRouteScope({ enabled: !independentReadOnly });
 
   // Log page visit
   useEffect(() => {
-    if (currentUser?.email) {
+    if (currentUser?.email && !independentReadOnly) {
       logActivity(ActivityActions.PAGE_VISIT, {
         page: 'Patients',
         page_title: 'Patient Management'
       });
     }
-  }, [currentUser?.email]);
+  }, [currentUser?.email, independentReadOnly]);
 
   const patientQuery = useScopedPatients({
-    purpose: 'patient_management',
-    sort: '-created_date',
+    purpose: independentReadOnly ? 'roster' : 'patient_management',
+    sort: independentReadOnly ? 'last_name' : '-created_date',
     limit: 2000,
     select: excludeArchived,
   });
@@ -133,6 +133,7 @@ export default function Patients() {
   const effectiveDebouncedSearch = patientScopeChanged ? '' : debouncedSearch;
 
   const visitQuery = useAuthorizedVisits({
+    enabled: !independentReadOnly,
     purpose: 'activity',
     sort: '-visit_date',
     limit: 5000,
@@ -391,6 +392,20 @@ export default function Patients() {
   };
 
 
+
+  if (independentReadOnly) return (
+    <PageContainer>
+      <PageHeader icon={Users} eyebrow="Independent staging" title="Patient Management"
+        description="Synthetic patient names only. Charts, edits, visit metrics and clinical actions are not available in this staging milestone." />
+      {patientsDenied ? (
+        <EmptyState icon={User} title="Patient records unavailable"
+          description="Your patient access could not be reverified for the current agency." />
+      ) : isLoading || patientsPending ? <PatientCardSkeleton /> : patients.length === 0 ? (
+        <EmptyState icon={User} title="No assigned patients"
+          description="The verified agency membership has no accessible synthetic patients." />
+      ) : <PaginatedPatientList patients={patients} syntheticNamesOnly />}
+    </PageContainer>
+  );
 
   return (
     <PageContainer>

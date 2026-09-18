@@ -30,6 +30,7 @@ import {
   useAuth,
 } from '@/lib/AuthContext';
 import SignInScreen from '@/components/auth/SignInScreen';
+import { independentStagingAuth } from '@/lib/independentStagingSession';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import AIContentResponsibilityAgreement from '@/components/compliance/AIContentResponsibilityAgreement';
 import Layout from '@/components/Layout';
@@ -49,6 +50,7 @@ import { PublicCapabilityBoundary } from '@/lib/PublicCapabilityContext';
 // (dev-server restart) is handled centrally by the ErrorBoundary, which wraps
 // the whole app — so plain lazy() is sufficient here.
 const JoinTelehealth = lazy(() => import('@/pages/JoinTelehealth'));
+const IndependentStagingWorkspace = lazy(() => import('@/components/auth/IndependentStagingWorkspace'));
 
 // MCP OAuth consent page — public, ctx-token-gated, no app login required.
 const OAuthConsent = lazy(() => import('@/pages/OAuthConsent'));
@@ -225,7 +227,9 @@ const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOu
         </h1>
         <p className="mt-3 text-sm text-slate-700">
           {error?.message || (selectionRequired
-            ? 'Your account has access to more than one agency. Choose one before protected data is loaded.'
+            ? independentStagingAuth
+              ? 'Choose an agency before protected data is loaded.'
+              : 'Your account has access to more than one agency. Choose one before protected data is loaded.'
             : 'PennSync could not verify a current active agency membership. Retry, or contact your administrator.')}
         </p>
 
@@ -505,13 +509,19 @@ const AuthenticatedApp = () => {
     }
     if (authError.type === 'user_not_registered') return <UserNotRegisteredError />;
     if (authError.type === 'auth_required') return <SignInScreen />;
+    if (independentStagingAuth && authError.type === 'staging_cleanup_unavailable') return (
+      <div className="p-6" role="alert">
+        <h1>Staging access is closed</h1><p>{authError.message}</p>
+        <button type="button" onClick={() => { void logout(); }}>Retry sign out</button>
+      </div>
+    );
     return <AppUnavailableScreen type={authError.type} message={authError.message} />;
   }
 
   if (!isAuthenticated) return <SignInScreen />;
 
   const selectFromNeutralRoute = (agencyId) => {
-    navigate(`/${MAIN_PAGE}`, { replace: true });
+    navigate(independentStagingAuth ? '/Patients' : `/${MAIN_PAGE}`, { replace: true });
     void selectTenant(agencyId);
   };
 
@@ -556,9 +566,11 @@ const AuthenticatedApp = () => {
         {/* Both agents can observe protected navigation/DOM. Keep them in the
             exact keyed realm so a tenant switch, logout, or public-route entry
             unmounts their effects and releases every captured reference. */}
-        <NavigationTracker />
-        <VisualEditAgent />
-        <TenantReadyApp />
+        {independentStagingAuth ? <Suspense fallback={<RoutePageLoader />}><IndependentStagingWorkspace /></Suspense> : <>
+          <NavigationTracker />
+          <VisualEditAgent />
+          <TenantReadyApp />
+        </>}
         <Toaster />
         <SonnerToaster
           position="top-right"

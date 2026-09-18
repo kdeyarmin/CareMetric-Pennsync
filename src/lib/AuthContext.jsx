@@ -9,6 +9,7 @@ import {
   useRef,
 } from 'react';
 import { base44, tenantAuthorityClient } from '@/api/base44Client';
+import { independentStagingAuth } from '@/lib/independentStagingSession';
 import { appParams, plantLoginReturnState } from '@/lib/app-params';
 import { createAxiosClient } from '@/lib/base44AxiosClient';
 import { queryClientInstance } from '@/lib/query-client';
@@ -542,7 +543,7 @@ export const AuthProvider = ({ children }) => {
           queryClientInstance.setQueryData(['currentUser'], { ...authenticatedUser });
           return false;
         }
-      } else if (memberships.length === 1) {
+      } else if (memberships.length === 1 && !independentStagingAuth) {
         selectedMembership = memberships[0];
       } else {
         // No draft is exposed while the selector is open. The explicit choice
@@ -709,6 +710,22 @@ export const AuthProvider = ({ children }) => {
     try {
       setIsLoadingPublicSettings(true);
       setAuthError(null);
+
+      if (independentStagingAuth) {
+        setAppPublicSettings({ name: 'PennSync independent staging' });
+        if (independentStagingAuth.hasSession()) {
+          await establishTenantAuthority({ phase: 'boot' });
+        } else {
+          await purgeTenantAuthority({ nextState: TENANT_AUTHORITY_STATES.LOADING,
+            purgePersistent: true, purgeDrafts: true });
+          activeAuthorityRef.current = null;
+          selectedMembershipRef.current = null;
+          lastAuthenticatedUserRef.current = null;
+          setIsAuthenticated(false); setIsLoadingAuth(false);
+        }
+        setIsLoadingPublicSettings(false);
+        return;
+      }
 
       if (!appParams.appId || !appParams.serverUrl) {
         await purgeTenantAuthority({
@@ -1041,7 +1058,7 @@ export const AuthProvider = ({ children }) => {
 
     // Match the existing boot contract: without an app session token there is
     // no protected identity to resume. The public page itself remains usable.
-    if (!appParams.token) {
+    if (!(independentStagingAuth ? independentStagingAuth.hasSession() : appParams.token)) {
       setIsLoadingAuth(false);
       setIsAuthenticated(false);
       return false;
@@ -1057,7 +1074,17 @@ export const AuthProvider = ({ children }) => {
     // Terminal for this document realm. Never let a later callback reopen the
     // SDK gate after provider logout; only full navigation creates a new realm.
     poisonTenantSdkRealm();
-    if (logoutInProgressRef.current) return;
+    if (logoutInProgressRef.current) {
+      if (independentStagingAuth) {
+        try {
+          await independentStagingAuth.signOut();
+          if (shouldRedirect) window.location.assign(scrubProtectedBrowserLocation());
+        } catch {
+          setAuthError({ type: 'staging_cleanup_unavailable', message: 'Access remains closed. Session cleanup could not be confirmed. Retry signing out.' });
+        }
+      }
+      return;
+    }
     const safeReturnUrl = scrubProtectedBrowserLocation();
     logoutInProgressRef.current = true;
     authGeneration.current += 1;
@@ -1108,7 +1135,15 @@ export const AuthProvider = ({ children }) => {
     setIsAuthenticated(false);
     setIsLoadingAuth(false);
     setAuthError(null);
-    if (shouldRedirect) base44.auth.logout(safeReturnUrl);
+    if (independentStagingAuth) {
+      try {
+        await independentStagingAuth.signOut();
+        if (shouldRedirect) window.location.assign(safeReturnUrl);
+      } catch {
+        setAuthError({ type: 'staging_cleanup_unavailable',
+          message: 'Access is closed. Session cleanup could not be confirmed. Keep this page open and retry signing out.' });
+      }
+    } else if (shouldRedirect) base44.auth.logout(safeReturnUrl);
     else base44.auth.logout();
     void immediateDraftPurge;
     void immediatePersistentPhiPurge;
@@ -1116,6 +1151,7 @@ export const AuthProvider = ({ children }) => {
   }, [purgeTenantAuthority]);
 
   const navigateToLogin = () => {
+    if (independentStagingAuth) return;
     if (window.location.pathname === '/login') return;
     const returnUrl = plantLoginReturnState(scrubProtectedBrowserLocation());
     base44.auth.redirectToLogin(returnUrl);
