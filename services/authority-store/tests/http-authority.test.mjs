@@ -7,6 +7,7 @@ import { createStagingAuthorityClient, STAGING_APP_ID as APP } from '../../autho
 import { localStatus, API, PROJECT } from './http-local-stack.mjs';
 import { s4Fields, s4Tables } from './s4-fixture.mjs';
 import { s3Fields, s3Tables } from './s3-fixture.mjs';
+import { verifyLoginLifecycle } from './http-login-lifecycle.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const actors = [
@@ -434,6 +435,9 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
         assert.deepEqual(restored.rows,baseline.rows); await db.query('commit');
       }
       assert.equal((await other.rpc('context',{p_agency_id:'agency-b'})).membership_version,1);
+    });
+    await scenario('interrupted real password logins revoke only their known native session', async () => {
+      await verifyLoginLifecycle({ db, status, actor: actors[3], localFetch, raw, originalClient: other });
     });
     await scenario('all client HTTP traffic used only the local gateway and publishable key', async () => {
       assert.equal(attemptsOutsideLocal, 0);
