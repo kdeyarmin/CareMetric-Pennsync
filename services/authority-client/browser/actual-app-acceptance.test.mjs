@@ -35,7 +35,7 @@ function allowedRequest(url, method, resourceType, assetPaths) {
       || (resourceType === 'document' && url.pathname === '/consent' && url.search === '?ctx=synthetic-unavailable')
       || (resourceType === 'document' && url.pathname === '/ClinicalDocumentation' && /^\?(visitId=[a-f0-9-]{36}|patientId=[A-Za-z0-9_-]{1,128})$/.test(url.search)));
   if (url.origin === API && !url.search && ['POST','OPTIONS'].includes(method)
-    && /^\/rest\/v1\/rpc\/pennsync_staging_(visits_schedule|visit_documentation|patient_context|referral_patient|referral_patients|s3_create|s3_confirm|s3_read)$/.test(url.pathname)) return true;
+    && /^\/rest\/v1\/rpc\/pennsync_staging_(visits_schedule|visit_documentation|patient_context|referral_patient|referral_patients|s3_create|s3_confirm|s3_read|s3_list)$/.test(url.pathname)) return true;
   return url.origin === API && allowedDestination(url, method)
     && url.pathname !== '/rest/v1/rpc/pennsync_staging_patient';
 }
@@ -67,7 +67,7 @@ test('actual app network and credential checks exclude remote business calls and
   }
   assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_patients`, 'POST'), true);
   assert.equal(allowed(`${API}/auth/v1/token?grant_type=password`, 'POST'), true);
-  for (const method of ['visits_schedule','visit_documentation','patient_context','referral_patient','referral_patients','s3_create','s3_confirm','s3_read']) {
+  for (const method of ['visits_schedule','visit_documentation','patient_context','referral_patient','referral_patients','s3_create','s3_confirm','s3_read','s3_list']) {
     assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_${method}`, 'POST'), true);
     assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_${method}?extra=1`, 'POST'), false);
     assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_${method}`, 'GET'), false);
@@ -321,7 +321,9 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
         if (name==='admin-a') agencyAReferralId=new URL(page.url()).searchParams.get('referralId');
         await page.getByRole('link',{name:'Return to patients',exact:true}).click();await roster(expected);
         await settlePageRoutes(page,routeTrackers.get(context));
-        await page.evaluate(path=>{globalThis.history.pushState(null,'',path);globalThis.dispatchEvent(new globalThis.PopStateEvent('popstate'));},savedPath);
+        await page.getByRole('link',{name:'Referral Intake',exact:true}).click();
+        await page.getByLabel('Patient',{exact:true}).selectOption(name==='admin-b'?'patient-b1':'patient-a1');
+        await page.locator(`a[href="${savedPath}"]`).click();
         await expect(page.getByRole('status')).toHaveText('Ready for admission');
         await expect(page.getByRole('button',{name:'Confirm existing patient',exact:true})).toHaveCount(0);
         if (name==='admin-b') {
@@ -375,7 +377,9 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
           const savedPath=new URL(page.url()).pathname+new URL(page.url()).search;
           await page.getByRole('link',{name:'Return to referral patients',exact:true}).click();
           await settlePageRoutes(page,routeTrackers.get(context));
-          await page.evaluate(path=>{globalThis.history.pushState(null,'',path);globalThis.dispatchEvent(new globalThis.PopStateEvent('popstate'));},savedPath);
+          await page.getByRole('link',{name:'Referral Intake',exact:true}).click();
+        await page.getByLabel('Patient',{exact:true}).selectOption(name==='admin-b'?'patient-b1':'patient-a1');
+        await page.locator(`a[href="${savedPath}"]`).click();
           await expect(page.getByRole('status')).toHaveText('Ready for admission');
         }
         if(role==='office_staff') {
