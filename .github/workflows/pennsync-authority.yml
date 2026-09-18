@@ -47,3 +47,39 @@ jobs:
         run: node --test services/authority-store/tests/postgres.test.mjs
         env:
           PENNSYNC_TEST_PG_URL: postgresql://postgres@127.0.0.1:5432/postgres
+
+  http:
+    name: Verify independent Auth and API
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+          cache-dependency-path: services/authority-store/pnpm-lock.yaml
+      - name: Install isolated authority test dependencies
+        run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+      - name: Install pinned Supabase CLI
+        shell: bash
+        run: |
+          set -euo pipefail
+          cli_dir="$(mktemp -d "$RUNNER_TEMP/pennsync-supabase.XXXXXX")"
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/supabase/cli/releases/download/v2.109.1/supabase_2.109.1_linux_amd64.tar.gz \
+            --output "$cli_dir/cli.tar.gz"
+          printf '%s  %s\n' '36d87b7fe6b4bcfe89ac47a4354e526cff22480224de426d7b370f6934556976' "$cli_dir/cli.tar.gz" | sha256sum --check
+          tar --extract --gzip --file "$cli_dir/cli.tar.gz" --directory "$cli_dir" supabase
+          printf '%s\n' "$cli_dir" >> "$GITHUB_PATH"
+      - name: Start isolated local Auth and API
+        run: node services/authority-store/tests/http-local-stack.mjs start
+      - name: Verify real signed sessions and tenant authority over HTTP
+        run: node --test services/authority-store/tests/http-authority.test.mjs
+      - name: Stop isolated local stack
+        if: always()
+        run: node services/authority-store/tests/http-local-stack.mjs stop
