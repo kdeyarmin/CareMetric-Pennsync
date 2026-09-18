@@ -39,6 +39,7 @@ export default function PaginatedPatientList({
   // choice was reordered back to name and the control looked dead.
   sortable = true,
   patientDetailsAgencyId = null,
+  syntheticNamesOnly = false,
 }) {
   const [search, setSearch] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
@@ -114,7 +115,7 @@ export default function PaginatedPatientList({
           </div>
         ) : <div className="flex-1" />}
         <div className="flex flex-col sm:flex-row gap-3 sm:justify-end">
-          {sortable && (
+          {sortable && !syntheticNamesOnly && (
             <Select value={sortBy} onValueChange={setSortBy}>
               <SelectTrigger className="w-full sm:w-40">
                 <SelectValue />
@@ -192,7 +193,7 @@ export default function PaginatedPatientList({
                 <p className="mt-0.5 text-xs text-slate-500">MRN: {patient.medical_record_number}</p>
               )}
 
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
+              {!syntheticNamesOnly && <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5">
                 <Badge variant="outline" className={getStatusColor(patient.status)}>
                   {patient.status || 'active'}
                 </Badge>
@@ -201,7 +202,7 @@ export default function PaginatedPatientList({
                     {patient.primary_diagnosis}
                   </Badge>
                 )}
-              </div>
+              </div>}
 
               <div className="mt-4 flex items-center justify-center gap-2 w-full">
                 {patientDetailsHref ? (

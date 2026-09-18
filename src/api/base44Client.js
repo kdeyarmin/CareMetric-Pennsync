@@ -7,6 +7,7 @@ import {
 } from '@/lib/tenantSdkRealmGate';
 import { getActiveTrustedTenantContext } from '@/lib/roles';
 import { readExternalIntegrationConfig, routeExternalCoreOperations } from '@/lib/externalIntegrationTransport';
+import { independentStagingAdapter as independentAdapter } from '@/lib/independentStagingSession';
 
 const { appId, serverUrl, token, functionsVersion } = appParams;
 
@@ -14,7 +15,7 @@ const { appId, serverUrl, token, functionsVersion } = appParams;
 // only through exact authority membranes below. Public provider follow-up gets
 // two named function calls and no entity, auth, integration, upload, or generic
 // invoke escape hatch.
-const rawBase44 = lockBase44FunctionRevision(createClient({
+const rawBase44 = independentAdapter?.raw ?? lockBase44FunctionRevision(createClient({
   appId,
   serverUrl,
   // Platform auth pages (/login sign-up/OTP/captcha) and the logout endpoint are
@@ -34,7 +35,7 @@ const rawBase44 = lockBase44FunctionRevision(createClient({
 
 // The external route is inside the same authority membrane as the native SDK.
 // Default-off builds return the original raw client without touching auth or I/O.
-const routedBase44 = routeExternalCoreOperations(rawBase44, readExternalIntegrationConfig(import.meta.env, appId), {
+const routedBase44 = independentAdapter ? rawBase44 : routeExternalCoreOperations(rawBase44, readExternalIntegrationConfig(import.meta.env, appId), {
   getSession: () => ({ token: appParams.token, context: getActiveTrustedTenantContext() }),
   captureLease: captureTenantSdkRealmLease,
   assertLeaseCurrent: assertTenantSdkRealmLeaseCurrent,
@@ -42,7 +43,7 @@ const routedBase44 = routeExternalCoreOperations(rawBase44, readExternalIntegrat
 });
 export const base44 = wrapTenantSdkClient(routedBase44);
 
-export const tenantAuthorityClient = Object.freeze({
+export const tenantAuthorityClient = independentAdapter?.authority ?? Object.freeze({
   me: () => rawBase44.auth.me(),
   getMyTenantContext: (payload) => rawBase44.functions.invoke('getMyTenantContext', payload),
   listMyTenantMemberships: () => rawBase44.functions.invoke('listMyTenantMemberships', {}),

@@ -25,10 +25,10 @@ describe('protected SDK browser-realm contract', () => {
     expect(sdkImporters).toEqual(['src/api/base44Client.js']);
 
     const client = read('src/api/base44Client.js');
-    expect(client).toMatch(/const rawBase44 = lockBase44FunctionRevision\(createClient\(/);
+    expect(client).toMatch(/const rawBase44 = independentAdapter\?\.raw \?\? lockBase44FunctionRevision\(createClient\(/);
     // Selected external operations are part of the raw transport surface and
     // must be enclosed by the original realm membrane, never wrapped outside it.
-    expect(client).toMatch(/const routedBase44 = routeExternalCoreOperations\(rawBase44, readExternalIntegrationConfig\(import\.meta\.env, appId\)/);
+    expect(client).toMatch(/const routedBase44 = independentAdapter \? rawBase44 : routeExternalCoreOperations\(rawBase44, readExternalIntegrationConfig\(import\.meta\.env, appId\)/);
     expect(client).toMatch(/export const base44 = wrapTenantSdkClient\(routedBase44\)/);
     expect(client).toMatch(/captureLease: captureTenantSdkRealmLease/);
     expect(client).toMatch(/assertLeaseCurrent: assertTenantSdkRealmLeaseCurrent/);
