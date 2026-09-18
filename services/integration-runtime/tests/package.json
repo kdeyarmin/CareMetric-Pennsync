@@ -1,0 +1,10 @@
+{
+  "name": "pennsync-integration-migration-tests",
+  "private": true,
+  "type": "module",
+  "version": "0.1.0",
+  "engines": { "node": ">=24.18.0" },
+  "packageManager": "pnpm@11.9.0",
+  "scripts": { "test": "node --test postgres-bootstrap.test.mjs" },
+  "devDependencies": { "pg": "8.23.0" }
+}

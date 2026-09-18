@@ -1,0 +1,23 @@
+{
+  "source_project": "xsqobvvreaovwibxwyvv",
+  "source_catalog": "supabase_migrations.schema_migrations",
+  "observed_at": "2026-09-18",
+  "read_only": true,
+  "canonicalization": "LF line endings with exactly one final newline; SQL text otherwise unchanged",
+  "recovered": [
+    {
+      "file": "001_integration_state.sql",
+      "version": "20260916162728",
+      "name": "pennsync_external_integration_state",
+      "statement_count": 1,
+      "canonical_lf_sha256": "f1f7ffdd3efa4c9aa6d0648a7f09f49ca8631cc70b806f768491886882dfd4eb"
+    },
+    {
+      "file": "002_storage_isolation.sql",
+      "version": "20260916163258",
+      "name": "pennsync_external_storage_isolation",
+      "statement_count": 1,
+      "canonical_lf_sha256": "920cbaf0fcc4b57530ce39f70d612e5408c1d5bf042b77fd0c8815aa93dd1a5b"
+    }
+  ]
+}

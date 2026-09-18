@@ -11,7 +11,7 @@ export const API = 'http://127.0.0.1:54321';
 export const workdir = fileURLToPath(new URL('../', import.meta.url));
 const marker = new URL('../supabase/.temp/http-harness-owner.json', import.meta.url);
 const CLI = process.env.PENNSYNC_SUPABASE_CLI || 'supabase';
-const EXCLUDED = 'analytics,edge-runtime,functions,imgproxy,meta,realtime,storage,studio,vector';
+const EXCLUDED = 'analytics,edge-runtime,functions,imgproxy,meta,realtime,studio,vector';
 const fail = code => { throw new Error(code); };
 let pinnedDaemon;
 const localDaemon = value => typeof value === 'string' &&
