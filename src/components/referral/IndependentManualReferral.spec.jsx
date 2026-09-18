@@ -53,7 +53,7 @@ describe('independent manual referral transfer',()=>{
   expect(await screen.findByText('Ready for admission')).toBeVisible();
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
  });
- it.each(['clinician','social_worker','spiritual_care'])('denies %s before invoking intake reads or writes',role=>{
+ it.each(['clinician','social_worker','spiritual_care','manager','office_staff'])('denies %s before invoking intake reads or writes',role=>{
   state.context.tenant_role=role;mount();expect(screen.getByRole('alert')).toBeVisible();expect(state.invoke).not.toHaveBeenCalled();
  });
  it.each(['patientId=bad%20id','referralId=bad','patientId=patient-a1&referralId=','patientId=patient-a1&patientId=patient-a2'])('denies malformed route %s',query=>{

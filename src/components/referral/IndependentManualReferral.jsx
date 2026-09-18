@@ -102,7 +102,7 @@ export default function IndependentManualReferral() {
     <h1 className="text-2xl font-semibold">Referral Intake</h1>
     <p>Create a manual referral for an existing test patient, then confirm the patient match. Document processing and admission are not available in this staging transfer.</p>
     <Link className="underline" to="/Patients">Return to patients</Link>
-    {!valid || !context || !['agency_admin','manager','office_staff'].includes(context.tenant_role) ? denied
+    {!valid || !context || context.tenant_role!=='agency_admin' ? denied
       : <PatientIntake key={`${context.agency_id}:${context.membership_id}:${context.membership_version}`} context={context} patientId={patientId} referralId={referralId} setParams={setParams} />}
   </main>;
 }
