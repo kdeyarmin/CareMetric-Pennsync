@@ -61,13 +61,13 @@ test('actual app network and credential checks exclude remote business calls and
     [`${LOGO}?other=true`, 'GET', 'image'], ['https://api.base44.com/', 'GET', 'fetch'],
     ['https://caremetricai.base44.app/', 'GET', 'document'], [`${ACTUAL_APP_ORIGIN}/package.json`, 'GET', 'fetch'],
     [`${ACTUAL_APP_ORIGIN}/assets/not-emitted.js`, 'GET', 'script'], [`${ACTUAL_APP_ORIGIN}/`, 'POST', 'document'],
-    ['http://127.0.0.1:4179/', 'GET', 'document'], [`${API}/rest/v1/rpc/pennsync_staging_patient`, 'POST', 'fetch'],
+    ['http://127.0.0.1:4179/', 'GET', 'document'], [`${API}/rest/v1/rpc/pennsync_staging_s3_delete`, 'POST', 'fetch'],
     [`${API}/rest/v1/rpc/pennsync_staging_patients?unexpected=1`, 'POST', 'fetch']]) {
     assert.equal(allowed(url, method, type), false);
   }
   assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_patients`, 'POST'), true);
   assert.equal(allowed(`${API}/auth/v1/token?grant_type=password`, 'POST'), true);
-  for (const method of ['visits_schedule','visit_documentation','patient_context']) {
+  for (const method of ['visits_schedule','visit_documentation','patient_context','patient','s3_create','s3_confirm','s3_read']) {
     assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_${method}`, 'POST'), true);
     assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_${method}?extra=1`, 'POST'), false);
     assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_${method}`, 'GET'), false);
