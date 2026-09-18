@@ -15,6 +15,7 @@ const draftStorageMocks = vi.hoisted(() => ({
 const authorizationMocks = vi.hoisted(() => ({
   visitState: null,
   patientState: null,
+  tenantContext: null,
   patientCalls: [],
   visitId: null,
   forceRender: null,
@@ -41,15 +42,7 @@ vi.mock("@/api/base44Client", async () => {
 });
 
 vi.mock('@/lib/AuthContext', () => ({
-  useAuth: () => ({
-    tenantContext: {
-      user_id: 'user-a',
-      agency_id: 'agency-a',
-      membership_id: 'membership-a',
-      membership_version: 7,
-      tenant_role: 'clinician',
-    },
-  }),
+  useAuth: () => ({ tenantContext: authorizationMocks.tenantContext }),
 }));
 
 vi.mock('@/hooks/useScopedPatients', () => ({
@@ -133,6 +126,7 @@ vi.mock('@/components/smartNote/FinalNoteDisplay', () => ({
 
 import { PartialVisitSaveError } from '@/components/smartNote/persistVisitNote';
 import SmartNoteAssistant from "./SmartNoteAssistant";
+import ClinicalDocumentation from './ClinicalDocumentation';
 
 function SmartNoteHarness() {
   const [, setRevision] = useState(0);
@@ -151,6 +145,18 @@ const DRAFT_WITH_BLANKS =
   "Homebound: unable to leave home without considerable effort due to [diagnosis]. Pain _/10.";
 const DRAFT_FILLED =
   "Homebound: unable to leave home without considerable effort due to severe dyspnea. Pain 3/10.";
+const SAVED_NOTE = 'Recorded nursing visit.\nPatient reported pain 0/10.\nLiteral <script>text</script> remains text.';
+
+function completedVisit() {
+  return {
+    data: { id: 'visit-a', patient_id: 'patient-a', visit_date: '2026-09-17',
+      visit_type: 'routine_visit', status: 'completed', nurse_notes: SAVED_NOTE,
+      raw_transcription: 'Original rough material', vital_signs: { heart_rate: 73, pain_level: 0, weight: 147.5 },
+      documentation_source: 'smart_note', grounding_pending: false,
+      updated_date: '2026-09-17T15:30:00.000Z' },
+    isSuccess: true, isError: false, tenantScope: authorizationMocks.patientState.tenantScope,
+  };
+}
 
 const reviewButton = () => screen.getByRole("button", { name: /review & complete/i });
 
@@ -173,6 +179,10 @@ describe("SmartNoteAssistant — Step 1 gate on template blanks", () => {
     draftStorageMocks.save.mockClear();
     draftStorageMocks.get.mockClear();
     draftStorageMocks.remove.mockClear();
+    authorizationMocks.tenantContext = {
+      user_id: 'user-a', agency_id: 'agency-a', membership_id: 'membership-a',
+      membership_version: 7, tenant_role: 'clinician',
+    };
     authorizationMocks.patientCalls.length = 0;
     authorizationMocks.visitId = null;
     authorizationMocks.forceRender = null;
@@ -211,6 +221,121 @@ describe("SmartNoteAssistant — Step 1 gate on template blanks", () => {
     // The draft is long enough to review, so only the blanks can be holding it.
     expect(DRAFT_WITH_BLANKS.trim().length).toBeGreaterThan(20);
     await waitFor(() => expect(reviewButton()).toBeDisabled());
+  });
+
+  it('reopens completed Visit note and recorded vitals through ClinicalDocumentation with fresh draft stores', async () => {
+    authorizationMocks.visitState = completedVisit();
+    renderWithProviders(<ClinicalDocumentation />, { route: '/ClinicalDocumentation?visitId=visit-a' });
+    await screen.findByRole('heading', { name: 'Saved visit note' });
+    expect(screen.getByLabelText('Saved note text').textContent).toBe(SAVED_NOTE);
+    expect(screen.getByText('73 bpm')).toBeInTheDocument();
+    expect(screen.getByText('147.5')).toBeInTheDocument();
+    expect(screen.getByText('Weight (unit not recorded)')).toBeInTheDocument();
+    expect(screen.getByText('0')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/enter bullet points or rough draft/i)).toHaveValue('');
+    expect(reviewButton()).toBeDisabled();
+    expect(screen.queryByRole('button', { name: 'Save test note' })).not.toBeInTheDocument();
+    expect(document.querySelector('script')).toBeNull();
+    expect(authorizationMocks.persist).not.toHaveBeenCalled();
+    expect(draftStorageMocks.save).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('smart_note_draft_v2:patient-a')).toBeNull();
+  });
+
+  it('keeps a separate patient draft and preserves explicit review, same-Visit update and handoff', async () => {
+    const success = completedVisit();
+    authorizationMocks.visitId = 'visit-a';
+    const originalDraft = { note: DRAFT_FILLED, visitType: 'routine_visit', patientId: 'patient-a' };
+    sessionStorage.setItem('smart_note_draft_v2:patient-a', JSON.stringify(originalDraft));
+    authorizationMocks.persist.mockResolvedValue({
+      mode: 'update', visitId: 'visit-a', auditId: 'audit-a', finalText: DRAFT_FILLED, coverageScore: 88,
+    });
+    renderWithProviders(<SmartNoteHarness />, { route: '/ClinicalDocumentation?visitId=visit-a&patientId=patient-a' });
+    // Exact authority hooks withhold their projection until the live lookup settles.
+    await screen.findByText(/Verifying visit access/i);
+    authorizationMocks.visitState = success;
+    await refreshSmartNote();
+    await screen.findByRole('heading', { name: 'Saved visit note' });
+    expect(screen.getByLabelText('Saved note text').textContent).toBe(SAVED_NOTE);
+    const editor = screen.getByPlaceholderText(/enter bullet points or rough draft/i);
+    await waitFor(() => expect(editor).toHaveValue(DRAFT_FILLED));
+    await waitFor(() => expect(draftStorageMocks.save).toHaveBeenCalled());
+    expect(JSON.parse(sessionStorage.getItem('smart_note_draft_v2:patient-a'))).toEqual(originalDraft);
+    expect(authorizationMocks.persist).not.toHaveBeenCalled();
+    expect(authorizationMocks.reviewAck).not.toHaveBeenCalled();
+    expect(authorizationMocks.handoff).not.toHaveBeenCalled();
+    await waitFor(() => expect(reviewButton()).toBeEnabled());
+    fireEvent.click(reviewButton());
+    fireEvent.click(await screen.findByRole('button', { name: 'Save test note' }));
+    await screen.findByText('Test note fully saved');
+    expect(authorizationMocks.persist).toHaveBeenCalledTimes(1);
+    expect(authorizationMocks.persist.mock.calls[0][0]).toMatchObject({
+      existingVisitId: 'visit-a', savedVisitId: null, patientId: 'patient-a', roughNote: DRAFT_FILLED,
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Report test handoff' }));
+    await waitFor(() => expect(authorizationMocks.handoff).toHaveBeenCalledWith({
+      visitId: 'visit-a', nextStatus: 'copied_to_emr',
+    }));
+    fireEvent.click(screen.getByRole('button', { name: 'Acknowledge test review' }));
+    await waitFor(() => expect(authorizationMocks.reviewAck).toHaveBeenCalledWith({
+      visitId: 'visit-a', acknowledged: true, nurseEdited: false, noteText: DRAFT_FILLED,
+    }));
+  });
+
+  it('withholds saved note and vitals during a Visit recheck and after a settled denial', async () => {
+    const success = completedVisit();
+    authorizationMocks.visitState = success;
+    authorizationMocks.visitId = 'visit-a';
+    renderWithProviders(<SmartNoteHarness />);
+    await screen.findByRole('heading', { name: 'Saved visit note' });
+    await typeDraft(DRAFT_FILLED);
+    await waitFor(() => expect(draftStorageMocks.save).toHaveBeenCalled());
+    authorizationMocks.visitState = { data: undefined, isSuccess: false, isError: false, tenantScope: null };
+    await refreshSmartNote();
+    expect(screen.queryByLabelText('Saved note text')).not.toBeInTheDocument();
+    expect(screen.queryByText('73 bpm')).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/enter bullet points or rough draft/i)).not.toBeInTheDocument();
+    authorizationMocks.visitState = success;
+    await refreshSmartNote();
+    await screen.findByRole('heading', { name: 'Saved visit note' });
+    expect(screen.getByPlaceholderText(/enter bullet points or rough draft/i)).toHaveValue(DRAFT_FILLED);
+    authorizationMocks.visitState = { data: undefined, isSuccess: false, isError: true, tenantScope: null };
+    await refreshSmartNote();
+    expect(screen.queryByLabelText('Saved note text')).not.toBeInTheDocument();
+    expect(screen.queryByText('73 bpm')).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('smart_note_draft_v2:patient-a')).toBeNull();
+    expect(authorizationMocks.persist).not.toHaveBeenCalled();
+  });
+
+  it('withholds the saved Visit projection when the current Patient grant is pending or denied', async () => {
+    authorizationMocks.visitState = completedVisit();
+    authorizationMocks.visitId = 'visit-a';
+    renderWithProviders(<SmartNoteHarness />);
+    await screen.findByRole('heading', { name: 'Saved visit note' });
+    for (const isError of [false, true]) {
+      authorizationMocks.patientState = { data: undefined, isSuccess: false, isError, tenantScope: null };
+      await refreshSmartNote();
+      expect(screen.queryByLabelText('Saved note text')).not.toBeInTheDocument();
+      expect(screen.queryByText('73 bpm')).not.toBeInTheDocument();
+      expect(reviewButton()).toBeDisabled();
+    }
+    expect(authorizationMocks.persist).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['subject change', () => { authorizationMocks.tenantContext = { ...authorizationMocks.tenantContext, user_id: 'user-b' }; }],
+    ['membership version change', () => { authorizationMocks.tenantContext = { ...authorizationMocks.tenantContext, membership_version: 8 }; }],
+    ['expired session lease', () => { draftStorageMocks.isLeaseCurrent.mockReturnValue(false); }],
+    ['navigation to another Visit', () => { authorizationMocks.visitId = 'visit-b'; }],
+  ])('hides a previously displayed saved note immediately on %s despite cached successful projections', async (_label, invalidate) => {
+    authorizationMocks.visitState = completedVisit();
+    authorizationMocks.visitId = 'visit-a';
+    renderWithProviders(<SmartNoteHarness />);
+    await screen.findByRole('heading', { name: 'Saved visit note' });
+    invalidate();
+    await refreshSmartNote();
+    expect(screen.queryByLabelText('Saved note text')).not.toBeInTheDocument();
+    expect(screen.queryByText('73 bpm')).not.toBeInTheDocument();
+    expect(authorizationMocks.persist).not.toHaveBeenCalled();
   });
 
   it("says why, rather than leaving a dead button", async () => {

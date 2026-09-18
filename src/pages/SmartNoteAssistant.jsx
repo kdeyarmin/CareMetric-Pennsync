@@ -15,6 +15,7 @@ import VisitSummaryGenerator from "../components/smartNote/VisitSummaryGenerator
 import NoteTemplateSelector from "../components/smartNote/NoteTemplateSelector";
 import VitalSignValidator from "../components/smartNote/VitalSignValidator";
 import VitalSignsForm, { VITAL_FIELDS } from "../components/visit/VitalSignsForm";
+import SavedVisitDocumentation from '../components/visit/SavedVisitDocumentation';
 import StructuredNoteDrafter from "../components/smartNote/StructuredNoteDrafter";
 import VisitAudioRecorder from "../components/smartNote/VisitAudioRecorder";
 import VitalsTrendAnalysis from "../components/smartNote/VitalsTrendAnalysis";
@@ -298,7 +299,12 @@ export default function SmartNoteAssistant({ visitId = null }) {
     purpose: 'documentation',
     enabled: !!visitId && !!tenantContext?.agency_id,
   });
-  const visitAuthorizationWithheld = Boolean(visitId && !visitAuthorizationSucceeded);
+  const visitAuthorizationWithheld = Boolean(visitId && (!visitAuthorizationSucceeded || boundVisit?.id !== visitId));
+  const hasSavedVisit = Boolean(visitId && boundVisit?.status === 'completed');
+  const savedVisitScopeCurrent = Boolean(currentUser?.id && currentUser.id === tenantContext?.user_id
+    && [boundVisitTenantScope, patientTenantScope].every(scope => scope
+      && ['user_id', 'agency_id', 'membership_id', 'membership_version', 'tenant_role']
+        .every(field => scope[field] === tenantContext[field])));
   // The exact-Visit hook hides cached PHI during every authority/grant recheck.
   // The render gate below covers a same-authority recheck without destroying a
   // nurse's working draft. A settled denial, missing context, different tenant
@@ -916,8 +922,21 @@ export default function SmartNoteAssistant({ visitId = null }) {
     );
   }
 
+  // Keep the stored projection separate from the editable draft. Displaying it
+  // must not mark it newly verified, restore it as a draft, or trigger a save.
+  const savedVisitReady = patientChartReady && chartPatient?.id === boundVisit?.patient_id
+    && savedVisitScopeCurrent && isAuthorityDraftLeaseCurrent(authorityDraftLease);
+
   return (
     <PageContainer>
+      {hasSavedVisit && (
+        savedVisitReady ? <SavedVisitDocumentation visit={boundVisit} patient={chartPatient} /> : (
+          <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+            {patientAuthorizationFailed || noteHistoryQuery.isError || !savedVisitScopeCurrent
+              ? 'Saved visit access could not be verified.' : 'Verifying saved visit access…'}
+          </p>
+        )
+      )}
 
       <HideWhenEmbedded>
         <SmartNoteHeader careScope={careScope} onReset={reset} step={step} activeTab={activeTab} />
