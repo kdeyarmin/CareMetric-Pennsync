@@ -58,7 +58,7 @@ function validateParams(method, input) {
   return Object.freeze({ ...params, p_app_id: STAGING_APP_ID });
 }
 
-async function boundedJson(response, maxBytes) {
+async function boundedJson(response, maxBytes, readTimeoutMs = 0) {
   if (!response.headers.get('content-type')?.toLowerCase().startsWith('application/json')) fail('INVALID_AUTHORITY_RESPONSE');
   const declaredLength = response.headers.get('content-length');
   if (declaredLength && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes)) fail('INVALID_AUTHORITY_RESPONSE');
@@ -66,9 +66,13 @@ async function boundedJson(response, maxBytes) {
   const reader = response.body.getReader();
   let bytes = 0;
   const chunks = [];
+  let timer;
+  const deadline = readTimeoutMs ? new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new AuthorityClientError('AUTHORITY_REQUEST_ABORTED')), readTimeoutMs);
+  }) : null;
   try {
     for (;;) {
-      const { value, done } = await reader.read();
+      const { value, done } = await (deadline ? Promise.race([reader.read(), deadline]) : reader.read());
       if (done) break;
       bytes += value.byteLength;
       if (bytes > maxBytes) fail('INVALID_AUTHORITY_RESPONSE');
@@ -79,7 +83,11 @@ async function boundedJson(response, maxBytes) {
     for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength; }
     try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(buffer)); }
     catch { fail('INVALID_AUTHORITY_RESPONSE'); }
-  } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  } finally {
+    clearTimeout(timer);
+    if (deadline) { void reader.cancel().catch(() => {}); reader.releaseLock(); }
+    else { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  }
 }
 
 function validateResult(result, method, params, config) {
@@ -139,55 +147,105 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
   let epoch = 0;
   let token = null;
   const pending = new Set();
+  // Candidate sessions never authorize RPCs. Retain only known access tokens in
+  // memory until exact local-scope revocation succeeds; cleanup can be retried.
+  const knownSessions = new Map();
   const invalidate = () => { epoch += 1; token = null; for (const controller of pending) controller.abort(); pending.clear(); };
   const current = lease => { if (lease !== epoch) fail('STALE_AUTHORITY_SESSION'); };
   const sameUser = user => object(user) && user.id === config.authUserId && user.email === config.email
     && user.role === 'authenticated' && user.is_anonymous === false
     && typeof user.email_confirmed_at === 'string' && Number.isFinite(Date.parse(user.email_confirmed_at));
-  async function request(path, { lease, bearer, body, noBody = false, method = 'POST' }) {
-    current(lease);
+  const validGrant = session => sameUser(session?.user) && typeof session.access_token === 'string'
+    && session.access_token.length <= 16384 && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(session.access_token)
+    && session.token_type === 'bearer';
+  async function request(path, { lease, bearer, body, noBody = false, method = 'POST', cleanup = false, receivedGrant }) {
+    if (!cleanup) current(lease);
     const controller = new AbortController();
-    pending.add(controller);
+    if (!cleanup) pending.add(controller);
+    let rejectStopped;
+    const stopped = new Promise((_, reject) => { rejectStopped = reject; });
+    const onAbort = () => rejectStopped(new AuthorityClientError('AUTHORITY_REQUEST_ABORTED'));
+    controller.signal.addEventListener('abort', onAbort, { once: true });
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
-    const live = () => { current(lease); if (controller.signal.aborted) fail('AUTHORITY_REQUEST_ABORTED'); };
-    try {
+    const live = () => { if (!cleanup) current(lease); if (controller.signal.aborted) fail('AUTHORITY_REQUEST_ABORTED'); };
+    const execute = async () => {
       const response = await fetchImpl(config.projectUrl + path, {
         method, redirect: 'error', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer',
         signal: controller.signal,
         headers: { apikey: config.publishableKey, 'Content-Type': 'application/json', Accept: 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
-      live();
+      // A late grant may already have created a native session. Inspect a
+      // successfully delivered bounded grant only for exact-session cleanup;
+      // the epoch still fences every authentication result and RPC admission.
+      if (!receivedGrant) live();
       if (!response.ok) {
-        await response.body?.cancel().catch(() => {});
+        void response.body?.cancel().catch(() => {});
         fail(response.status === 401 ? 'AUTHENTICATION_FAILED' : response.status === 403 ? 'AUTHORITY_DENIED' : 'AUTHORITY_REQUEST_FAILED', response.status);
       }
-      if (noBody) { await response.body?.cancel().catch(() => {}); live(); return null; }
-      const result = await boundedJson(response, 1024 * 1024);
+      if (noBody) {
+        void response.body?.cancel().catch(() => {});
+        live(); return null;
+      }
+      const result = await boundedJson(response, 1024 * 1024, timeoutMs);
+      if (receivedGrant) await receivedGrant(result, controller.signal.aborted || lease !== epoch);
       live();
       return result;
+    };
+    try {
+      // The deadline covers fetch, body reads and cancellation even when an
+      // injected transport ignores AbortSignal. A late grant continuation may
+      // still receive a token and performs its own bounded exact-session cleanup.
+      return await Promise.race([execute(), stopped]);
     } catch (error) {
       const aborted = controller.signal.aborted;
       controller.abort();
-      current(lease);
+      if (!cleanup) current(lease);
       if (error instanceof AuthorityClientError) throw error;
       fail(aborted ? 'AUTHORITY_REQUEST_ABORTED' : 'AUTHORITY_NETWORK_FAILED');
-    } finally { clearTimeout(timeout); pending.delete(controller); }
+    } finally {
+      clearTimeout(timeout); pending.delete(controller);
+      controller.signal.removeEventListener('abort', onAbort);
+    }
   }
+  function revokeKnown(bearer) {
+    const record = knownSessions.get(bearer);
+    if (!record) return Promise.resolve();
+    if (!record.revoking) {
+      record.revoking = request('/auth/v1/logout?scope=local', { bearer, noBody: true, cleanup: true })
+        .then(() => { knownSessions.delete(bearer); })
+        .catch(() => { fail('AUTHORITY_SESSION_CLEANUP_FAILED'); })
+        .finally(() => { record.revoking = null; });
+    }
+    return record.revoking;
+  }
+  const revokeAllKnown = () => Promise.all([...knownSessions.keys()].map(revokeKnown));
   return Object.freeze({
     async signIn(password) {
       invalidate();
-      if (typeof password !== 'string' || password.length < 12 || password.length > 512) fail('INVALID_STAGING_CREDENTIAL');
       const lease = epoch;
-      const session = await request('/auth/v1/token?grant_type=password', { lease, body: { email: config.email, password } });
-      if (!sameUser(session?.user) || typeof session.access_token !== 'string' || session.access_token.length > 16384
-        || !/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(session.access_token)
-        || session.token_type !== 'bearer') fail('AUTHENTICATION_IDENTITY_MISMATCH');
-      const user = await request('/auth/v1/user', { lease, bearer: session.access_token, method: 'GET' });
-      if (!sameUser(user)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
-      current(lease);
-      token = session.access_token;
-      return Object.freeze({ id: config.authUserId, email: config.email, provider: 'supabase', app_id: STAGING_APP_ID });
+      let candidate = null;
+      try {
+        await revokeAllKnown(); current(lease);
+        if (typeof password !== 'string' || password.length < 12 || password.length > 512) fail('INVALID_STAGING_CREDENTIAL');
+        const session = await request('/auth/v1/token?grant_type=password', { lease, body: { email: config.email, password },
+          receivedGrant: async (value, canceled) => {
+            if (validGrant(value)) {
+              candidate = value.access_token;
+              if (!knownSessions.has(candidate)) knownSessions.set(candidate, { revoking: null });
+              if (canceled) await revokeKnown(candidate);
+            }
+          } });
+        if (!validGrant(session)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        const user = await request('/auth/v1/user', { lease, bearer: candidate, method: 'GET' });
+        if (!sameUser(user)) fail('AUTHENTICATION_IDENTITY_MISMATCH');
+        current(lease);
+        token = candidate;
+        return Object.freeze({ id: config.authUserId, email: config.email, provider: 'supabase', app_id: STAGING_APP_ID });
+      } catch (error) {
+        if (candidate) await revokeKnown(candidate);
+        throw error;
+      }
     },
     async rpc(method, input = {}) {
       const params = validateParams(method, input);
@@ -198,9 +256,8 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
       return validateResult(result, method, params, config);
     },
     async signOut() {
-      const oldToken = token;
       invalidate();
-      if (oldToken) await request('/auth/v1/logout?scope=local', { lease: epoch, bearer: oldToken, noBody: true });
+      await revokeAllKnown();
     },
     invalidate,
   });
