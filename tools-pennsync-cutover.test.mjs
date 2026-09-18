@@ -242,6 +242,60 @@ test('Git census refuses unexpected tree or symlink resource', () => {
     ? [f.e.source.frontend, f.e.source.backend, f.e.target.frontend, f.e.target.backend].find(v => args[1] === `${v.commit}^{tree}`).tree
     : `120000 blob ${git('link')}\tsrc/pages/Patients.jsx\0` }));
 });
+
+function splitTreeCensus(edit = () => {}) {
+  const f = fixture();
+  const trees = {
+    source: { frontend: { 'src/pages/Old.jsx': 'old-page' }, backend: { 'base44/functions/oldFunction/entry.ts': 'old-function' } },
+    target: { frontend: { 'src/pages/New.jsx': 'new-page' }, backend: {} },
+  };
+  edit(trees);
+  const execFile = (_cmd, args) => {
+    for (const side of ['source', 'target']) for (const part of ['frontend', 'backend']) {
+      const d = f.e[side][part];
+      if (args[0] === 'rev-parse' && args[1] === `${d.commit}^{tree}`) return d.tree;
+      if (args[0] === 'ls-tree' && args[3] === d.commit) {
+        return Object.entries(trees[side][part]).map(([path, body]) => `100644 blob ${git(body)}\t${path}\0`).join('');
+      }
+    }
+    throw new Error('UNEXPECTED_GIT_CALL');
+  };
+  return createCutoverCensus(f.e, { execFile });
+}
+
+test('split commits bind authority-client to the frontend tree, retaining removed browser modules', () => {
+  const path = 'services/authority-client/client.mjs';
+  const sourceOnly = splitTreeCensus(t => { t.source.frontend[path] = 'source-browser'; });
+  assert.ok(sourceOnly.ids.includes(`source:${path}`));
+  const targetOnly = splitTreeCensus(t => { t.target.frontend[path] = 'target-browser'; });
+  assert.ok(targetOnly.ids.includes(`target:${path}`));
+  const staleBackend = splitTreeCensus(t => { t.target.frontend[path] = 'target-browser'; t.target.backend[path] = 'stale-browser'; });
+  assert.equal(staleBackend.sha256, targetOnly.sha256);
+  const changedFrontend = splitTreeCensus(t => { t.target.frontend[path] = 'changed-browser'; });
+  assert.notEqual(changedFrontend.sha256, targetOnly.sha256);
+});
+
+test('shared service modules are checked in both split component trees', () => {
+  for (const path of ['services/integration-runtime/contracts.mjs', 'services/integration-runtime/caller-binding.mjs', 'services/integration-runtime/mail-contract.mjs', 'services/shared/future-session.mjs', 'services/integration-runtime/future-browser-helper.mjs']) {
+    const frontendOnly = splitTreeCensus(t => { t.target.frontend[path] = 'shared'; });
+    const backendOnly = splitTreeCensus(t => { t.target.backend[path] = 'shared'; });
+    const both = splitTreeCensus(t => { t.target.frontend[path] = 'shared'; t.target.backend[path] = 'shared'; });
+    assert.ok(frontendOnly.ids.includes(`target:${path}`));
+    assert.equal(frontendOnly.sha256, backendOnly.sha256);
+    assert.equal(frontendOnly.sha256, both.sha256);
+    assert.throws(() => splitTreeCensus(t => { t.target.frontend[path] = 'new-shared'; t.target.backend[path] = 'old-shared'; }), /CENSUS_MIXED_COMPONENT_TREES/);
+    const removed = splitTreeCensus(t => { t.source.frontend[path] = 'source-shared'; });
+    assert.ok(removed.ids.includes(`source:${path}`));
+  }
+});
+
+test('known server-only services use the backend revision with split commits', () => {
+  for (const path of ['services/authority-store/supabase/migrations/authority.sql', 'services/integration-runtime/server.mjs', 'services/hhgs-adapter/adapter.mjs']) {
+    const result = splitTreeCensus(t => { t.target.backend[path] = 'server'; });
+    assert.ok(result.ids.includes(`target:${path}`));
+    assert.equal(result.sha256, splitTreeCensus(t => { t.target.backend[path] = 'server'; t.target.frontend[path] = 'stale-server'; }).sha256);
+  }
+});
 test('CLI requires explicit check plus separately pinned files, never emits paths or parse contents', () => {
   const output = [], write = line => output.push(JSON.parse(line));
   assert.equal(runCli({ args: ['--apply'], env: {}, write }), 2);
