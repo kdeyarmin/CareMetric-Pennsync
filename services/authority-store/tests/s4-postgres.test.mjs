@@ -119,3 +119,11 @@ test('PostgreSQL S4 each artifact/receipt failure rolls back every earlier inser
     await setup.query(`drop trigger injected on pennsync_private.${table}`);
   }
 }));
+test('PostgreSQL S4 escaped note overflow is a sanitized input error before any artifact insert',()=>lab(async({connect,setup})=>{
+  const writer=await connect(); await begin(writer,2);
+  await assert.rejects(()=>save(writer,s4Fields({nurse_notes:'\u0001'.repeat(250000)})),error=>{
+    assert.equal(error.code,'22023'); assert.equal(error.message,'PENNSYNC_S4_ARTIFACT_LIMIT');
+    assert.equal(error.detail,undefined); return true;
+  });
+  await writer.query('rollback'); assert.deepEqual(await counts(setup),[0,0,0,0,0]);
+}));

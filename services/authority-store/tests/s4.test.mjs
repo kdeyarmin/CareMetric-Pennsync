@@ -117,6 +117,21 @@ scenario('S4 text/date/boolean/numeric/vital boundaries fail closed without coer
   assert.equal(accepted.artifacts.note_conversion.enhanced_len,250000);
   assert.deepEqual(accepted.artifacts.visit.vital_signs,{heart_rate:1000000});
 });
+scenario('S4 escaped valid-length notes fail serialized artifact preflight without record/detail disclosure',async()=>{
+  const fields=s4Fields({nurse_notes:'\u0001'.repeat(250000)});
+  assert.equal(fields.nurse_notes.length,250000);
+  assert.ok(Buffer.byteLength(JSON.stringify(fields))<2400000);
+  await db.exec('savepoint size_reject');
+  try {
+    await assert.rejects(()=>save(fields),error=>{
+      assert.equal(error.code,'22023');
+      assert.equal(error.message,'PENNSYNC_S4_ARTIFACT_LIMIT');
+      assert.equal(error.detail,undefined);
+      return true;
+    });
+  } finally { await db.exec('rollback to savepoint size_reject'); }
+  assert.deepEqual(Object.values(await counts()),[0,0,0,0,0]);
+});
 scenario('S4 native session deletion and stale signed session deny fresh save, receipt and retry',async()=>{
   await login(2); await save();
   await privileged('delete from auth.sessions where id=$1',[sid(2)]);

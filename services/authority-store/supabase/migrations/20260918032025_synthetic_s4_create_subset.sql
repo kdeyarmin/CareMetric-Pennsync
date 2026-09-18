@@ -278,6 +278,14 @@ begin
     'status',case when score>=90 then 'passed' when score>=80 then 'flagged' else 'critical' end,
     'issues','[]'::jsonb,'acknowledgment',null,'rule_versions','[]'::jsonb,'created_by',c->'user_email','created_date',stamp);
   bundle := jsonb_build_object('visit',v,'note_history',h,'note_conversion',n,'compliance_audit',a);
+  -- Escaping expands JSON bytes; immutable history preserves the note twice.
+  -- Check complete serialized artifacts before inserts, returning a fixed input
+  -- error instead of a row-bearing constraint DETAIL for oversized artifacts.
+  if octet_length(v::text)>2400000 or octet_length(h::text)>2400000
+    or octet_length(n::text)>16384 or octet_length(a::text)>16384
+    or octet_length(bundle::text)>4800000 then
+    raise exception using errcode='22023',message='PENNSYNC_S4_ARTIFACT_LIMIT';
+  end if;
   insert into pennsync_private.s4_visit values(p_app_id,vid,p_agency_id,p_patient_id,(c->>'auth_user_id')::uuid,v);
   insert into pennsync_private.s4_note_history values(p_app_id,hid,p_agency_id,p_patient_id,vid,h);
   insert into pennsync_private.s4_note_conversion values(p_app_id,nid,p_agency_id,p_patient_id,vid,n);
