@@ -75,19 +75,19 @@ function pointerParts(v) {
   return parts;
 }
 function pointerEscape(v) { return v.replaceAll('~', '~0').replaceAll('/', '~1'); }
-function policyCovers(path, policy) {
-  const actual = pointerParts(path); const pattern = pointerParts(policy);
-  return pattern.length >= actual.length && actual.every((p, i) => pattern[i] === p || pattern[i] === '*');
-}
-function atPointers(row, pointer) {
+function atPointers(row, pointer, containers) {
   let nodes = [{ value: row, path: '' }];
   for (const part of pointerParts(pointer)) {
     const next = [];
     for (const node of nodes) {
+      // Only containers actually traversed by a policy can cover ancestor fields.
+      // A missing child on a scalar/null must never hide an unchecked reference.
+      requireThat(object(node.value) || Array.isArray(node.value), 'invalid_reference');
+      containers.add(node.path);
       if (part === '*') {
-        requireThat(node.value == null || Array.isArray(node.value), 'invalid_reference');
-        if (node.value) node.value.forEach((value, index) => next.push({ value, path: `${node.path}/${index}` }));
-      } else if (object(node.value) || Array.isArray(node.value)) {
+        requireThat(Array.isArray(node.value), 'invalid_reference');
+        node.value.forEach((value, index) => next.push({ value, path: `${node.path}/${index}` }));
+      } else {
         if (Object.hasOwn(node.value, part)) next.push({ value: node.value[part], path: `${node.path}/${pointerEscape(part)}` });
       }
     }
@@ -95,16 +95,33 @@ function atPointers(row, pointer) {
   }
   return nodes;
 }
+function canonicalLocator(value) {
+  requireThat(typeof value === 'string' && value.length > 0 && value.length <= 4000
+    && value === value.trim() && [...value].every((c) => c.codePointAt(0) >= 32 && c.codePointAt(0) !== 127), 'invalid_file_locator');
+}
+function urlCandidate(value) {
+  const text = typeof value === 'string' ? value.replaceAll(/[\t\r\n]/g, '').trim() : '';
+  let start = 0; let end = text.length;
+  // URL parsers also discard leading/trailing C0 controls, not only JS whitespace.
+  while (start < end && text.charCodeAt(start) <= 32) start += 1;
+  while (end > start && text.charCodeAt(end - 1) <= 32) end -= 1;
+  return text.slice(start, end);
+}
 function scanRow(row) {
   const risky = [];
   let visited = 0;
   function walk(v, path, depth) {
     requireThat(++visited <= 50_000 && depth <= 40, 'row_too_complex');
     requireThat(typeof v !== 'number' || Number.isFinite(v), 'invalid_number');
-    if (typeof v === 'string' && /^[a-z][a-z0-9+.-]*:\/\//i.test(v)) {
+    // URL parsing discards tabs/newlines and surrounding whitespace. Detect that
+    // form first, then reject it without rewriting the supplied source bytes.
+    const candidate = urlCandidate(v);
+    if (/^[a-z][a-z0-9+.-]*:\/\//i.test(candidate)) {
+      requireThat(candidate === v, 'invalid_url');
       let url;
       try { url = new URL(v); } catch { throw new ArchiveInputError('invalid_url'); }
-      requireThat(!url.username && !url.password && [...url.searchParams.keys()].every((k) =>
+      const fragment = new URLSearchParams(url.hash.slice(1).replaceAll(/[?#]/g, '&'));
+      requireThat(!url.username && !url.password && [...url.searchParams.keys(), ...fragment.keys()].every((k) =>
         !SECRET_KEY.test(k.replaceAll(/[^a-z0-9]/gi, ''))
         && !/^(?:sig|signature|key|x-amz-credential|x-amz-signature)$/i.test(k)), 'credential_url');
     }
@@ -161,8 +178,8 @@ function validatePlan(plan) {
     requireThat(plan.source_apps.includes(f.source_app_id) && validId(f.file_id)
       && validId(f.agency_id) && validId(f.owner_user_id) && ['private', 'public'].includes(f.access), 'invalid_file');
     requireThat(typeof f.original_name === 'string' && f.original_name.length > 0 && f.original_name.length <= 500
-      && [...f.original_name].every((c) => c.codePointAt(0) >= 32 && c.codePointAt(0) !== 127)
-      && typeof f.source_locator === 'string' && f.source_locator.length > 0 && f.source_locator.length <= 4000, 'invalid_file');
+      && [...f.original_name].every((c) => c.codePointAt(0) >= 32 && c.codePointAt(0) !== 127), 'invalid_file');
+    canonicalLocator(f.source_locator);
     scanRow(f);
     boundedArray(f.bindings, 1000);
     for (const b of f.bindings) {
@@ -252,36 +269,37 @@ async function inspectInputs(plan, read) {
       requireThat(!Object.hasOwn(row, 'app_id') || row.app_id === c.source_app_id, 'record_source_mixing');
       const key = keyOf(c.source_app_id, c.entity, row.id);
       requireThat(!rows.has(key), 'duplicate_record'); rows.add(key);
-      const classified = new Set();
-      for (const p of c.opaque_fields) atPointers(row, p).forEach((n) => classified.add(n.path));
-      for (const r of c.references) for (const n of atPointers(row, r.pointer)) {
+      const classified = new Set(); const containers = new Set();
+      for (const p of c.opaque_fields) atPointers(row, p, containers).forEach((n) => classified.add(n.path));
+      for (const r of c.references) for (const n of atPointers(row, r.pointer, containers)) {
         classified.add(n.path); if (n.value == null || n.value === '') continue;
         requireThat(validId(n.value), 'invalid_reference');
         edges.push([key, keyOf(c.source_app_id, r.entity, n.value)]);
       }
       let agency = null;
       if (c.scope.kind === 'agency') {
-        const nodes = atPointers(row, c.scope.pointer);
+        const nodes = atPointers(row, c.scope.pointer, containers);
         requireThat(nodes.length === 1 && validId(nodes[0].value), 'ambiguous_agency');
         agency = nodes[0].value; classified.add(nodes[0].path);
         edges.push([key, keyOf(c.source_app_id, 'Agency', agency)]);
       } else if (c.scope.kind === 'agency_root') agency = row.id;
       rowScopes.set(key, agency);
-      for (const p of c.file_references) for (const n of atPointers(row, p)) {
+      for (const p of c.file_references) for (const n of atPointers(row, p, containers)) {
         classified.add(n.path); if (n.value == null || n.value === '') continue;
-        requireThat(typeof n.value === 'string' && n.value.length <= 4000, 'invalid_file_locator');
+        canonicalLocator(n.value);
         const binding = JSON.stringify([key, n.path]);
         requireThat(!expectedFiles.has(binding), 'ambiguous_file_binding');
         expectedFiles.set(binding, sha(n.value));
       }
-      const policies = [...c.references.map((r) => r.pointer), ...c.file_references, ...c.opaque_fields,
-        ...(c.scope.kind === 'agency' ? [c.scope.pointer] : [])];
-      requireThat(scanRow(row).every((p) => classified.has(p)
-        || policies.some((q) => policyCovers(p, q))), 'unclassified_reference');
+      requireThat(scanRow(row).every((p) => classified.has(p) || containers.has(p)), 'unclassified_reference');
       requireThat(edges.length + expectedFiles.size <= ARCHIVE_LIMITS.edges, 'too_many_references');
     });
   }
-  for (const [, target] of edges) requireThat(rows.has(target), 'orphan_reference');
+  for (const [source, target] of edges) {
+    requireThat(rows.has(target), 'orphan_reference');
+    const sourceAgency = rowScopes.get(source); const targetAgency = rowScopes.get(target);
+    requireThat(sourceAgency == null || targetAgency == null || sourceAgency === targetAgency, 'reference_agency_mismatch');
+  }
   async function mappings(d, entity, idField, targetField) {
     const mapped = new Set(); const targets = new Set();
     await visitRows(d, read, (r) => {

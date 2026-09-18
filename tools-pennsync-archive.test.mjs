@@ -213,6 +213,93 @@ test('declared empty reference arrays are valid and signed credential URLs remai
   await assert.rejects(buildArchive(f2), { code: 'credential_url' });
 });
 
+test('descendant policies cannot classify a present scalar or null as a validated reference', async (t) => {
+  for (const [label, value] of [['id', id(999)], ['number', 999], ['boolean', false], ['null', null]]) {
+    await t.test(label, async (t) => {
+      const f = await fixture(t);
+      const c = await f.changeRows('Patient', (row) => ({ ...row, assigned_user_id: value }));
+      c.references = [{ pointer: '/assigned_user_id/missing_child', entity: 'User' }];
+      await f.writePlan();
+      await assert.rejects(buildArchive(f), { code: 'invalid_reference' });
+    });
+  }
+  await t.test('scalar inside an array', async (t) => {
+    const f = await fixture(t);
+    const c = await f.changeRows('Patient', (row) => ({ ...row, related_user_ids: [id(999)] }));
+    c.fields.push('related_user_ids'); c.references.push({ pointer: '/related_user_ids/*/missing_child', entity: 'User' });
+    await f.writePlan();
+    await assert.rejects(buildArchive(f), { code: 'invalid_reference' });
+  });
+});
+
+test('validated optional containers and absent or null reference leaves remain supported', async (t) => {
+  const f = await fixture(t);
+  const c = await f.changeRows('Patient', (row) => ({ ...row, assigned_user_id: null, related_user_ids: [], metadata_ids: {} }));
+  c.fields.push('related_user_ids', 'metadata_ids');
+  c.references.push({ pointer: '/related_user_ids/*/user_id', entity: 'User' }, { pointer: '/metadata_ids/optional_user_id', entity: 'User' }, { pointer: '/absent_user_id', entity: 'User' });
+  await f.writePlan(); await buildArchive(f);
+});
+
+test('existing references across two tenant scopes fail reconciliation', async (t) => {
+  const f = await fixture(t);
+  const agencies = f.plan.collections.find((c) => c.entity === 'Agency');
+  const originalAgency = JSON.parse(await readFile(join(f.inputDir, agencies.path), 'utf8'));
+  Object.assign(agencies, await f.save(agencies.path, [originalAgency, { id: id(22), name: 'Synthetic agency B' }].map((r) => JSON.stringify(r)).join('\n'), 2));
+  const originalMapping = JSON.parse(await readFile(join(f.inputDir, f.plan.agencies.path), 'utf8'));
+  Object.assign(f.plan.agencies, await f.save(f.plan.agencies.path, [originalMapping, { source_app_id: APP, agency_id: id(22), target_agency_id: 'external-agency-b', decision_sha256: evidence }].map((r) => JSON.stringify(r)).join('\n'), 2));
+  await f.changeRows('Patient', (row) => ({ ...row, agency_id: id(22) }));
+  await f.writePlan();
+  await assert.rejects(buildArchive(f), { code: 'reference_agency_mismatch' });
+});
+
+test('principal and explicitly reviewed global references retain their unscoped semantics', async (t) => {
+  const f = await fixture(t);
+  const global = { id: id(6), patient_id: id(3) };
+  f.plan.collections.push({ source_app_id: APP, entity: 'SharedCatalog', ...await f.save('global.jsonl', `${JSON.stringify(global)}\n`, 1), fields: Object.keys(global), references: [{ pointer: '/patient_id', entity: 'Patient' }], file_references: [], opaque_fields: [], scope: { kind: 'global', decision_sha256: evidence } });
+  const c = await f.changeRows('Document', (row) => ({ ...row, catalog_id: id(6) }));
+  c.fields.push('catalog_id'); c.references.push({ pointer: '/catalog_id', entity: 'SharedCatalog' });
+  await f.writePlan();
+  assert.equal((await buildArchive(f)).counts.relationships, 7);
+});
+
+test('file locators reject whitespace and control-character URL normalization', async (t) => {
+  for (const [label, locator] of [
+    ['space prefix', ' https://example.invalid/private?token=synthetic_secret_only'],
+    ['tab prefix', '\thttps://example.invalid/private?token=synthetic_secret_only'],
+    ['newline prefix', '\nhttps://example.invalid/private?token=synthetic_secret_only'],
+    ['embedded newline', 'https:\n//example.invalid/private?token=synthetic_secret_only'],
+    ['space suffix', 'https://example.invalid/private '],
+    ['durable handle whitespace', ' private/synthetic/object.txt'],
+  ]) {
+    await t.test(label, async (t) => {
+      const f = await fixture(t);
+      await f.changeRows('Document', (row) => ({ ...row, file_uri: locator }));
+      f.plan.files[0].source_locator = locator;
+      f.plan.files[0].bindings[0].locator_sha256 = hash(locator);
+      await f.writePlan();
+      await assert.rejects(buildArchive(f), { code: 'invalid_file_locator' });
+    });
+  }
+});
+
+test('credentials in URL fragments and whitespace-prefixed row URLs cannot evade scanning', async (t) => {
+  for (const [label, url, code] of [
+    ['fragment', 'https://example.invalid/private#access_token=synthetic_secret_only', 'credential_url'],
+    ['fragment query', 'https://example.invalid/private#/route?token=synthetic_secret_only', 'credential_url'],
+    ['encoded fragment key', 'https://example.invalid/private#access%5Ftoken=synthetic_secret_only', 'credential_url'],
+    ['row whitespace', ' \thttps://example.invalid/private?token=synthetic_secret_only', 'invalid_url'],
+    ['row newline', 'https:\n//example.invalid/private?token=synthetic_secret_only', 'invalid_url'],
+    ['row C0 prefix', '\u0000https://example.invalid/private?token=synthetic_secret_only', 'invalid_url'],
+  ]) {
+    await t.test(label, async (t) => {
+      const f = await fixture(t);
+      const c = await f.changeRows('Patient', (row) => ({ ...row, source: url }));
+      c.fields.push('source'); await f.writePlan();
+      await assert.rejects(buildArchive(f), { code });
+    });
+  }
+});
+
 test('large supplied files use bounded encryption frames and verify exact bytes', async (t) => {
   const f = await fixture(t); const large = Buffer.alloc(ARCHIVE_LIMITS.chunk * 2 + 17, 91);
   Object.assign(f.plan.files[0], await f.save(f.plan.files[0].path, large)); await f.writePlan(); await buildArchive(f);
