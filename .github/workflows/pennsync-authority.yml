@@ -74,7 +74,7 @@ jobs:
             https://github.com/supabase/cli/releases/download/v2.109.1/supabase_2.109.1_linux_amd64.tar.gz \
             --output "$cli_dir/cli.tar.gz"
           printf '%s  %s\n' '36d87b7fe6b4bcfe89ac47a4354e526cff22480224de426d7b370f6934556976' "$cli_dir/cli.tar.gz" | sha256sum --check
-          tar --extract --gzip --file "$cli_dir/cli.tar.gz" --directory "$cli_dir" supabase
+          tar --extract --gzip --file "$cli_dir/cli.tar.gz" --directory "$cli_dir" supabase supabase-go
           printf '%s\n' "$cli_dir" >> "$GITHUB_PATH"
       - name: Verify local-only lifecycle boundaries
         run: node --test services/authority-store/tests/http-boundary.test.mjs
