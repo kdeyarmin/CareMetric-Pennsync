@@ -16,6 +16,7 @@ import NoteTemplateSelector from "../components/smartNote/NoteTemplateSelector";
 import VitalSignValidator from "../components/smartNote/VitalSignValidator";
 import VitalSignsForm, { VITAL_FIELDS } from "../components/visit/VitalSignsForm";
 import SavedVisitDocumentation from '../components/visit/SavedVisitDocumentation';
+import { useVisitRevisionVitals } from '../components/visit/useVisitRevisionVitals';
 import StructuredNoteDrafter from "../components/smartNote/StructuredNoteDrafter";
 import VisitAudioRecorder from "../components/smartNote/VisitAudioRecorder";
 import VitalsTrendAnalysis from "../components/smartNote/VitalsTrendAnalysis";
@@ -144,7 +145,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [visitType, setVisitType] = useState(queryVisitType || referralHandoff.visitType || "routine_visit");
   const visitDate = todayEastern();
   const [note, setNote] = useState(referralDraftNote);
-  const [vitals, setVitals] = useState({});
+  const [draftVitals, setDraftVitals] = useState({});
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState(null);
@@ -308,6 +309,22 @@ export default function SmartNoteAssistant({ visitId = null }) {
     && [boundVisitTenantScope, patientTenantScope].every(scope => scope
       && ['user_id', 'agency_id', 'membership_id', 'membership_version', 'tenant_role']
         .every(field => scope[field] === tenantContext[field])));
+  // This buffer is component memory only. A stable identity key preserves edits
+  // through a pending recheck, while a changed/denied authority drops the buffer.
+  const vitalRevisionKey = visitId && currentUser?.id && currentUser.id === tenantContext?.user_id && tenantContext?.agency_id
+    && !visitAuthorizationFailed && !patientAuthorizationFailed
+    && isAuthorityDraftLeaseCurrent(authorityDraftLease)
+    ? JSON.stringify([currentUser.id, tenantContext.agency_id, tenantContext.membership_id,
+      tenantContext.membership_version, tenantContext.tenant_role, visitId, patientId]) : null;
+  const boundVitalsReady = Boolean(vitalRevisionKey && visitAuthorizationSucceeded
+    && boundVisit?.id === visitId && exactPatientReady
+    && patientDetail?.id === boundVisit.patient_id && savedVisitScopeCurrent);
+  const usesBoundVisit = Boolean(visitId && (existingVisitId === visitId || savedVisitId === visitId));
+  const vitalRevision = useVisitRevisionVitals({ authorityKey: vitalRevisionKey, ready: boundVitalsReady, visit: boundVisit });
+  const vitals = usesBoundVisit ? vitalRevision.values : draftVitals;
+  const preserveExistingVitals = usesBoundVisit && boundVitalsReady && !vitalRevision.dirty;
+  const setVitals = usesBoundVisit ? vitalRevision.change : setDraftVitals;
+
   // The exact-Visit hook hides cached PHI during every authority/grant recheck.
   // The render gate below covers a same-authority recheck without destroying a
   // nurse's working draft. A settled denial, missing context, different tenant
@@ -337,7 +354,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
         current === previous.visit_type ? "routine_visit" : current
       ));
       setNote("");
-      setVitals({});
+      setDraftVitals({});
       setSaved(false);
       setSavedVisitId(null);
       setSavedAuditId(null);
@@ -449,7 +466,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
     const prev = prevPatientRef.current;
     if (prev === patientId) return;
     prevPatientRef.current = patientId;
-    setVitals({});
+    setDraftVitals({});
     // Clear saved visit/audit ids so a re-save cannot update the prior
     // patient's Visit while history appends to the new patient (parity with
     // AudioVisitCapture).
@@ -578,6 +595,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
   const startReview = () => {
     if (!note || note.trim().length < 20) return;
+    if (usesBoundVisit && vitalRevision.conflict) {
+      toast.error("This visit changed while you were editing vital signs. Keep your draft and reopen the visit before saving.");
+      return;
+    }
     if (patientId && !patientChartReady) {
       toast.error("Patient chart access must be verified before reviewing this note.");
       return;
@@ -619,7 +640,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
       toast.error("Select a patient to save this note to their chart.");
       return;
     }
-    if (!patientChartReady || !chartPatient) {
+    if (!patientChartReady || !chartPatient || (usesBoundVisit && (!boundVitalsReady || vitalRevision.conflict))) {
       toast.error("Patient chart access must be verified before saving.");
       return;
     }
@@ -652,6 +673,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
       if (visitId && out.visitId === visitId) {
         setRetiredSavedVisits((previous) => new Set(previous).add(out.visitId));
       }
+      if (usesBoundVisit) vitalRevision.markWritten(vitals, true);
       setSaved(true);
       clearDraft(patientId);
     } catch (err) {
@@ -659,6 +681,8 @@ export default function SmartNoteAssistant({ visitId = null }) {
       if (err instanceof PartialVisitSaveError) {
         if (visitId && err.visitId === visitId) {
           setRetiredSavedVisits((previous) => new Set(previous).add(err.visitId));
+          vitalRevision.markWritten(vitals, false, typeof saveProgress.documentationKey === 'string'
+            && !err.pendingRecords.includes('documentation'));
         }
         setSavedVisitId(err.visitId);
         setExistingVisitId(null);
@@ -678,11 +702,11 @@ export default function SmartNoteAssistant({ visitId = null }) {
   };
 
   const persistNote = async (result, saveProgress) => {
-    if (!patientChartReady || !chartPatient) {
+    if (!patientChartReady || !chartPatient || (usesBoundVisit && (!boundVitalsReady || vitalRevision.conflict))) {
       throw new Error('Patient chart authority is unavailable');
     }
     const out = await persistVisitNote({
-      result, patientId, visitDate, visitType, roughNote: note, vitals,
+      result, patientId, visitDate, visitType, roughNote: note, vitals, preserveExistingVitals,
       currentUser, patientDiagnosis: chartPatient.primary_diagnosis || "",
       savedVisitId, savedAuditId, existingVisitId, saveProgress,
       facilityAcknowledgment: facilityOverrideRef.current,
@@ -825,7 +849,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
     saveProgressRef.current = null;
     setSaving(false);
     setStep(1); setDraftRestored(false); setFollowUpTasks([]); setSaveError(null);
-    setVitals({}); setExistingVisitId(null); setFacilityAck(false);
+    setDraftVitals({}); setExistingVisitId(null); setFacilityAck(false);
+    // Reset is an explicit clear. Do not rehydrate the old same-binding values
+    // on a later recheck, especially after a successful or uncertain write.
+    vitalRevision.clear();
     setHandoff({ status: "not_started", history: [] });
     setHandoffError(null);
     setReviewAck(null);
@@ -933,11 +960,14 @@ export default function SmartNoteAssistant({ visitId = null }) {
 
   // Keep the stored projection separate from the editable draft. Displaying it
   // must not mark it newly verified, restore it as a draft, or trigger a save.
-  const savedVisitReady = patientChartReady && chartPatient?.id === boundVisit?.patient_id
+  const savedVisitReady = exactPatientReady && patientDetail?.id === boundVisit?.patient_id
     && savedVisitScopeCurrent && isAuthorityDraftLeaseCurrent(authorityDraftLease);
 
   return (
     <PageContainer>
+      {usesBoundVisit && boundVitalsReady && vitalRevision.conflict && (
+        <p role="status">This visit changed while you were editing vital signs. Keep your draft and reopen the visit before saving.</p>
+      )}
       {hasSavedVisit && (
         savedVisitReady ? (
           retiredSavedVisits.has(boundVisit.id) ? (
@@ -945,10 +975,10 @@ export default function SmartNoteAssistant({ visitId = null }) {
               The previously loaded saved record is hidden after this save attempt. Continue working below.
               Reopen this visit to load its current saved record.
             </p>
-          ) : <SavedVisitDocumentation visit={boundVisit} patient={chartPatient} />
+          ) : <SavedVisitDocumentation visit={boundVisit} patient={patientDetail} />
         ) : (
           <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
-            {patientAuthorizationFailed || noteHistoryQuery.isError || !savedVisitScopeCurrent
+            {patientAuthorizationFailed || !savedVisitScopeCurrent
               ? 'Saved visit access could not be verified.' : 'Verifying saved visit access…'}
           </p>
         )
@@ -1132,7 +1162,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
               <StickyActionBar status={reviewStatus}>
                 <Button
                   onClick={startReview}
-                  disabled={!ready || draftBlanks > 0 || (!!patientId && !patientChartReady)}
+                  disabled={!ready || draftBlanks > 0 || (!!patientId && !patientChartReady) || (usesBoundVisit && vitalRevision.conflict)}
                   className="h-11 px-5 gap-1.5 text-sm font-semibold w-full sm:w-auto"
                 >
                   <ClipboardList className="w-4 h-4" /> Review & Complete <ArrowRight className="w-3.5 h-3.5" />
@@ -1303,7 +1333,7 @@ export default function SmartNoteAssistant({ visitId = null }) {
                     }}
                     saving={saving}
                     saved={saved && !api.dirty}
-                    saveDisabled={saving || !!api.fixRequired || !patientId || !patientChartReady || api.chartRisk?.hasUnacknowledgedCritical || api.denialRisk?.hasUnacknowledgedCritical || facilityBlocked}
+                    saveDisabled={saving || (usesBoundVisit && vitalRevision.conflict) || !!api.fixRequired || !patientId || !patientChartReady || api.chartRisk?.hasUnacknowledgedCritical || api.denialRisk?.hasUnacknowledgedCritical || facilityBlocked}
                   />
                 </>
                 );

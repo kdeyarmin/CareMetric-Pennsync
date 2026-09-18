@@ -150,6 +150,7 @@ async function persistVisitNoteWithProgress({
   visitType,
   roughNote = "",
   vitals = {},
+  preserveExistingVitals = false,
   currentUser,
   patientDiagnosis = "",
   savedVisitId = null,
@@ -224,6 +225,7 @@ async function persistVisitNoteWithProgress({
   // and request id until the broker returns the canonical Visit. A nurse may
   // edit the draft during recovery; apply those edits only after reconciling
   // the original create, never by submitting a second creation identity.
+  progress.startedWithExistingVisit ??= Boolean(existingVisitId || savedVisitId);
   progress.mode ||= savedVisitId ? 'update' : 'create';
   // Preserve the initial completion intent until the mutation is confirmed,
   // including retries that already know the newly created Visit identity.
@@ -236,7 +238,10 @@ async function persistVisitNoteWithProgress({
     raw_transcription: roughNote,
     documentation_source: source,
     compliance_score: coverageScore,
-    vital_signs: vitals,
+    // Omission preserves the server value for an untouched, known Visit. New
+    // visits and explicit edits still send the complete intended vital object.
+    ...(preserveExistingVitals && progress.startedWithExistingVisit
+      ? {} : { vital_signs: vitals }),
     grounding_pending: false,
     ...structured,
     ...reportingFields,
