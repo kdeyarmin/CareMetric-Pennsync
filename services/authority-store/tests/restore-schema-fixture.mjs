@@ -6,6 +6,7 @@ const expected = {
   'auth.users': 'id,email,email_confirmed_at,banned_until,deleted_at,is_anonymous',
   'cron.job': 'jobid,jobname,schedule,command,active',
   'pennsync_private.agency': 'app_id,id,name,status,version',
+  'pennsync_private.archive_patient_import_receipt': 'app_id,plan_sha256,owner_sha256,projection_sha256,patient_count,state,database_name,operator_role,created_at,rolled_back_at',
   'pennsync_private.assignment': 'app_id,agency_id,patient_id,membership_id,status,version,changed_by,changed_at',
   'pennsync_private.identity_map': 'app_id,auth_user_id,base44_user_id,expected_email,source_evidence_sha256,verified_at,enabled,revoked_at,version',
   'pennsync_private.membership': 'app_id,id,agency_id,auth_user_id,base44_user_id,membership_key,tenant_role,status,version,revoked_at,revoked_by',

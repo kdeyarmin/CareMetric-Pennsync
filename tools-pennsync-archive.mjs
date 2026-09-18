@@ -430,6 +430,18 @@ export async function buildArchiveFromReader({ rawPlan, read, archiveDir, key, r
 }
 
 export async function verifyArchive({ archiveDir, key, expectedPlanSha256 }) {
+  return inspectArchive({ archiveDir, key, expectedPlanSha256 });
+}
+
+/** Scoped reader for importers. The callback starts only after full verification.
+ * Copy yielded buffers if retaining them: each is cleared when iteration resumes.
+ * The callback must await all reads; its reader is invalid after it returns. */
+export async function withVerifiedArchive(options, consume) {
+  requireThat(typeof consume === 'function', 'invalid_consumer');
+  return inspectArchive(options, consume);
+}
+
+async function inspectArchive({ archiveDir, key, expectedPlanSha256 }, consume) {
   const header = parse(await collect(diskChunks(archiveDir, 'header.json', 1024), 1024));
   exact(header, ['format', 'version', 'archive_id', 'salt']);
   requireThat(header.format === MAGIC && header.version === 1 && typeof header.archive_id === 'string'
@@ -474,6 +486,22 @@ export async function verifyArchive({ archiveDir, key, expectedPlanSha256 }) {
     requireThat(items.size === descriptors.length + 1, 'manifest_mismatch');
     const counts = await inspectInputs(plan, read);
     requireThat(JSON.stringify(counts) === JSON.stringify(seal.counts), 'manifest_mismatch');
+    if (consume) {
+      let active = true;
+      const copy = Buffer.from(rawPlan);
+      const canonical = new Map([p, ...descriptors].map(d => [d.path, { path: d.path, bytes: d.bytes, sha256: d.sha256 }]));
+      const scopedRead = async function* (path) {
+        requireThat(active, 'reader_closed');
+        const d = canonical.get(path); requireThat(d, 'manifest_mismatch');
+        for await (const chunk of checked(read(d), d)) {
+          try { requireThat(active, 'reader_closed'); yield chunk; }
+          finally { chunk.fill(0); }
+        }
+        requireThat(active, 'reader_closed');
+      };
+      try { return await consume({ rawPlan: copy, read: scopedRead, report: report(counts) }); }
+      finally { active = false; copy.fill(0); rawPlan.fill(0); }
+    }
     return report(counts);
   } finally { derived.fill(0); }
 }

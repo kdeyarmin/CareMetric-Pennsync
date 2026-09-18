@@ -10,6 +10,7 @@ import { s3Fields } from './s3-fixture.mjs';
 import { APP, uid, sid, request, actor, rpc, applyAuthority, applyRuntime, withRestoreLab, localLabUrl,
   digest, encryptBackup, decryptBackup, fingerprint, retainReceipt, revisionBinding, orderedRuntimeMigrationFiles } from './restore-rehearsal.mjs';
 import { seedRuntime, proveRuntime } from './restore-runtime-fixture.mjs';
+import { importPatients, seedImportReceipt, proveImportReceipt } from './restore-import-fixture.mjs';
 import { assertRestoreFixtureShape } from './restore-schema-fixture.mjs';
 
 const directory = fileURLToPath(new URL('../../../work/restore-rehearsal/', import.meta.url));
@@ -148,7 +149,7 @@ async function seedAuthority(db) {
 }
 
 async function proveAuthority(db, { artifacts, referrals }) {
-  const rosters = [['patient-a1', 'patient-a2'], ['patient-a1'], [], ['patient-b1']];
+  const rosters = [[importPatients[0].id, 'patient-a1', 'patient-a2'], ['patient-a1'], [], [importPatients[1].id, 'patient-b1']];
   for (const n of [1, 2, 3, 4]) {
     const agency = n === 4 ? 'agency-b' : 'agency-a';
     const context = await actor(db, n, () => rpc(db, 'context', [APP, agency]));
@@ -215,7 +216,7 @@ async function proveAuthority(db, { artifacts, referrals }) {
     native_session_and_membership_revocation: true };
 }
 
-test('real pg_dump and pg_restore preserve synthetic authority, S3, S4, runtime data and security catalogs', { timeout: 180000 }, async t => {
+test('real pg_dump and pg_restore preserve synthetic authority, import receipts, S3, S4, runtime data and security catalogs', { timeout: 180000 }, async t => {
   const binding = await revisionBinding();
   const key = randomBytes(32);
   let plaintext, restoredPlaintext, envelope, file, ownedDirectory, receipt;
@@ -227,12 +228,15 @@ test('real pg_dump and pg_restore preserve synthetic authority, S3, S4, runtime 
       migrations.push(...await applyRuntime(source));
       const authority = await seedAuthority(source);
       const runtime = await seedRuntime(source);
+      const imported = await seedImportReceipt(source);
       await assertRestoreFixtureShape(source);
       const before = await fingerprint(source);
       assert.equal(before.tables.find(row => row.schema === 'auth' && row.name === 'users').count, 4);
       assert.equal(before.tables.find(row => row.name === 's4_create_receipt').count, 3);
       assert.equal(before.tables.find(row => row.name === 's3_referral').count, 3);
       assert.equal(before.tables.find(row => row.name === 's3_receipt').count, 5);
+      assert.equal(before.tables.find(row => row.name === 'archive_patient_import_receipt').count, 1);
+      assert.equal(before.tables.find(row => row.schema === 'pennsync_private' && row.name === 'patient').count, 5);
       plaintext = await dumpOwned();
       assert.equal(plaintext.subarray(0, 5).toString(), 'PGDMP');
       const backupHash = digest(plaintext);
@@ -264,6 +268,7 @@ test('real pg_dump and pg_restore preserve synthetic authority, S3, S4, runtime 
       equal(after, before, 'Exact tables, records, identifiers, receipts, sequences, grants and security definitions');
       const functional = await proveAuthority(restored, authority);
       Object.assign(functional, await proveRuntime(restored, runtime));
+      Object.assign(functional, await proveImportReceipt(restored, imported));
       equal(await fingerprint(restored), before, 'Read/retry/security probes preserved restored snapshot');
       await restored.query('begin');
       try {
@@ -282,6 +287,7 @@ test('real pg_dump and pg_restore preserve synthetic authority, S3, S4, runtime 
         limitations: ['local Auth, Storage and cron catalog doubles; no provider login/session restore proof',
           'no customer or hosted database', 'no object-byte backup or storage-provider restore',
           'opaque synthetic runtime marker does not prove cached-result decryption or production key recovery',
+          'import receipt is a representative synthetic fixture; archive import execution and restored-target ownership rebind are not proved',
           'global role configuration, extensions and provider services are outside this database backup',
           'no external secret/key escrow or unattended disaster recovery',
           'no write freeze, in-flight or final-delta reconciliation',
