@@ -231,11 +231,20 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       assert.deepEqual((await empty.rpc('patients', { p_agency_id: 'agency-a' })).items.map(p => p.id), ['patient-a2']);
     });
     await scenario('idempotency binds payload and optimistic version conflicts fail', async () => {
+      const snapshot = () => db.query(`select
+        (select count(*)::integer from pennsync_private.mutation_receipt) as receipts,
+        (select count(*)::integer from pennsync_private.assignment where membership_id='membership-clinician-empty') as assignments,
+        (select version::integer from pennsync_private.assignment where membership_id='membership-clinician-empty' and patient_id='patient-a2') as version`);
+      assert.deepEqual((await snapshot()).rows, [{ receipts: 1, assignments: 1, version: 1 }]);
       assert.equal((await admin.rpc('assignment', grant)).replayed, true);
       const mismatch = await raw('assignment', { ...grant, p_patient_id: 'patient-a1' }, tokens.get('admin-a'));
-      assert.equal(mismatch.ok, false); assert.equal(mismatch.data.code, '23505');
+      assert.equal(mismatch.status, 409); assert.equal(mismatch.data.code, '23505');
+      const started = performance.now();
       const stale = await raw('assignment', { ...grant, p_request_id: randomUUID() }, tokens.get('admin-a'));
-      assert.equal(stale.ok, false); assert.equal(stale.data.code, '40001');
+      assert.equal(stale.status, 409); assert.equal(stale.data.code, 'PT409');
+      assert.equal(stale.data.message, 'PENNSYNC_ASSIGNMENT_VERSION_CHANGED');
+      requireTrue(performance.now() - started < 5000, 'BUSINESS_CONFLICT_MUST_RETURN_WITHOUT_RETRY');
+      assert.deepEqual((await snapshot()).rows, [{ receipts: 1, assignments: 1, version: 1 }]);
     });
     await scenario('administrator assignment revoke immediately removes patient access', async () => {
       const result = await admin.rpc('assignment', { ...grant, p_action: 'revoke', p_expected_assignment_version: 1, p_request_id: randomUUID() });
@@ -253,8 +262,11 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       await denied(empty.rpc('context', { p_agency_id: 'agency-a' }));
       await denied(empty.rpc('patients', { p_agency_id: 'agency-a' }));
       assert.deepEqual((await empty.rpc('memberships')).memberships, []);
+      const started = performance.now();
       const staleGrant = await raw('assignment', grant, tokens.get('admin-a'));
-      assert.equal(staleGrant.ok, false); assert.equal(staleGrant.data.code, '40001');
+      assert.equal(staleGrant.status, 409); assert.equal(staleGrant.data.code, 'PT409');
+      assert.equal(staleGrant.data.message, 'PENNSYNC_REPLAY_STATE_CHANGED');
+      requireTrue(performance.now() - started < 5000, 'STALE_REPLAY_MUST_RETURN_WITHOUT_RETRY');
       const rows = await db.query(`select status,version::integer from pennsync_private.assignment where membership_id=$1`, [actors[2].membership]);
       assert.deepEqual(rows.rows, [{ status: 'revoked', version: 4 }]);
     });

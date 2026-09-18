@@ -320,7 +320,7 @@ begin
     raise exception using errcode='22023',message='PENNSYNC_INVALID_MUTATION';
   end if;
   if (v_context->>'membership_version')::bigint<>p_expected_actor_version then
-    raise exception using errcode='40001',message='PENNSYNC_ACTOR_VERSION_CHANGED';
+    raise exception using errcode='PT409',message='PENNSYNC_ACTOR_VERSION_CHANGED';
   end if;
   select * into v_target from pennsync_private.membership m where m.app_id=p_app_id
     and m.agency_id=p_agency_id and m.id=p_target_membership_id for update;
@@ -360,18 +360,18 @@ begin
     end if;
     if p_action='revoke_membership' then
       if v_target.status<>'revoked' or v_target.version<>(v_receipt.result->>'membership_version')::bigint then
-        raise exception using errcode='40001',message='PENNSYNC_REPLAY_STATE_CHANGED';
+        raise exception using errcode='PT409',message='PENNSYNC_REPLAY_STATE_CHANGED';
       end if;
     elsif v_target.status<>'active' or v_target.version<>p_expected_target_version
       or not v_exists or v_assignment.version<>(v_receipt.result->>'assignment_version')::bigint
       or v_assignment.status<>v_receipt.result->>'assignment_status' then
-      raise exception using errcode='40001',message='PENNSYNC_REPLAY_STATE_CHANGED';
+      raise exception using errcode='PT409',message='PENNSYNC_REPLAY_STATE_CHANGED';
     end if;
     return v_receipt.result || jsonb_build_object('replayed',true);
   end if;
   if v_target.status<>'active' or v_target.version<>p_expected_target_version
     or v_target.version>=9007199254740991 then
-    raise exception using errcode='40001',message='PENNSYNC_TARGET_VERSION_CHANGED';
+    raise exception using errcode='PT409',message='PENNSYNC_TARGET_VERSION_CHANGED';
   end if;
   if p_action='revoke_membership' then
     update pennsync_private.membership set status='revoked',version=version+1,
@@ -386,7 +386,7 @@ begin
     if (v_exists and v_assignment.version<>p_expected_assignment_version)
       or (not v_exists and p_expected_assignment_version<>0)
       or (p_action='revoke_assignment' and not v_exists) then
-      raise exception using errcode='40001',message='PENNSYNC_ASSIGNMENT_VERSION_CHANGED';
+      raise exception using errcode='PT409',message='PENNSYNC_ASSIGNMENT_VERSION_CHANGED';
     end if;
     if v_exists then
       update pennsync_private.assignment set status=case when p_action='grant_assignment' then 'active' else 'revoked' end,
