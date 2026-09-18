@@ -44,6 +44,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Install isolated authority test dependencies
+        run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+
       # Base44's managed preview resolves dependencies with npm, not pnpm.
       # Validate that path independently: pnpm can accept peer combinations
       # that npm rejects before the preview server ever starts.
