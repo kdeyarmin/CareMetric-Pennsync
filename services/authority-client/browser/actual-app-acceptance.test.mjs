@@ -81,11 +81,12 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
   let phase = 'owned-stack';
   let db, browser, app, context, actors, page;
   let blocked = 0, pageErrors = 0, routeErrors = 0, databaseErrors = 0, apiRequests = 0, publicImages = 0;
-  let hold = null;
-  const credentials = [], releases = [], grants = new Map();
+  let hold = null, holdLogout = null;
+  const credentials = [], releases = [], grants = new Map(), knownGrants = new Set();
+  let status;
   try {
     assert.equal(BRAND_LOGO_URL, LOGO);
-    const status = await localStatus();
+    status = await localStatus();
     const { Client } = createRequire(new URL('../../authority-store/package.json', import.meta.url))('pg');
     db = new Client({ connectionString: status.DB_URL, connectionTimeoutMillis: 10000, statement_timeout: 15000 });
     db.on('error', () => { databaseErrors += 1; });
@@ -130,12 +131,29 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
               const response = await route.fetch({ maxRedirects: 0, timeout: 15000 });
               assert.equal(response.status(), 200);
               const grant = await response.json();
+              // A real successful grant belongs to this test's sign-in attempt.
+              // Retain cleanup before validating its claimed identity so a bad
+              // provider response cannot strand a newly created native session.
+              if (typeof grant.access_token === 'string' && grant.access_token) {
+                knownGrants.add(grant.access_token); credentials.push(grant.access_token);
+              }
+              if (typeof grant.refresh_token === 'string') credentials.push(grant.refresh_token);
               const actor = actors.find(item => item.email === request.postDataJSON().email);
               assert.ok(actor); assert.equal(grant.user.id, actor.uuid); assert.equal(grant.user.email, actor.email);
               assert.match(grant.access_token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
               assert.equal(typeof grant.refresh_token, 'string'); assert.ok(grant.refresh_token.length > 0);
-              credentials.push(grant.access_token, grant.refresh_token); grants.set(actor.name, grant.access_token);
+              grants.set(actor.name, grant.access_token);
               await route.fulfill({ response }); return;
+            }
+            if (url.pathname === '/auth/v1/logout' && request.method() === 'POST') {
+              const response = await route.fetch({ maxRedirects: 0, timeout: 15000 });
+              assert.equal(response.status(), 204);
+              knownGrants.delete((headers.authorization || '').replace(/^Bearer /, ''));
+              if (holdLogout) {
+                pending = holdLogout; holdLogout = null;
+                pending.arrived.resolve(); await pending.release.promise;
+              }
+              await route.fulfill({ response }); pending?.finished.resolve(); return;
             }
             if (hold && matchesPatientPost(url, request.method(), '/pennsync_staging_patients')) {
               pending = hold; hold = null;
@@ -228,6 +246,26 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     }
     t.diagnostic('Compiled App: four native logins, explicit agency selection, exact scoped name rosters, disabled clinical actions and logout passed.');
 
+    phase = 'online-terminal-reset-native-cleanup';
+    await login('admin-a'); await roster(['Synthetic Patient A1', 'Synthetic Patient A2']);
+    const resetBearer = grants.get('admin-a');
+    const reset = { arrived: deferred(), release: deferred(), finished: deferred() };
+    holdLogout = reset; releases.push(reset.release);
+    const resetResponse = page.waitForResponse(value => value.url() === `${API}/auth/v1/logout?scope=local`
+      && value.request().method() === 'POST');
+    await page.evaluate(() => globalThis.dispatchEvent(new globalThis.Event('online')));
+    await bounded(reset.arrived.promise); assert.equal(routeErrors, 0);
+    await expect(names()).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Reload app', exact: true })).toHaveCount(0);
+    assert.equal((await db.query('select count(*)::int as n from auth.sessions')).rows[0].n, 0);
+    const resetDenied = await localRequest('/rest/v1/rpc/pennsync_staging_patients', status.PUBLISHABLE_KEY,
+      { p_app_id: APP, p_agency_id: 'agency-a', p_limit: 50, p_after_id: null }, resetBearer);
+    assert.equal(resetDenied.status, 403); assert.equal((await resetDenied.json()).code, '28000');
+    reset.release.resolve(); await bounded(reset.finished.promise); assert.equal((await resetResponse).status(), 204);
+    await expect(page.getByRole('button', { name: 'Reload app', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Reload app', exact: true }).click(); await signedOut();
+    t.diagnostic('Online terminal reset removed the roster, revoked its native session and waited for genuine logout confirmation before offering controlled Reload.');
+
     phase = 'delayed-genuine-roster-logout';
     await login('admin-a', false);
     const pending = { arrived: deferred(), release: deferred(), finished: deferred() };
@@ -270,7 +308,17 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     if (browser) await browser.close().catch(() => {});
     if (app) await app.stop().catch(() => {});
     if (actors) for (const actor of actors) actor.password = null;
-    credentials.length = 0; grants.clear();
-    if (db) await db.end().catch(() => {});
+    await (async () => {
+      let cleanupFailed = false;
+      for (const token of knownGrants) {
+        try {
+          const response = await localRequest('/auth/v1/logout?scope=local', status.PUBLISHABLE_KEY, {}, token);
+          if (response.status !== 204) cleanupFailed = true;
+        } catch { cleanupFailed = true; }
+      }
+      knownGrants.clear(); credentials.length = 0; grants.clear();
+      if (db) await db.end().catch(() => { cleanupFailed = true; });
+      if (cleanupFailed) throw new Error('ACTUAL_APP_KNOWN_SESSION_CLEANUP_FAILED');
+    })();
   }
 });
