@@ -11,3 +11,9 @@ export function s4Fields(overrides = {}) {
   };
 }
 export const s4Tables = ['s4_visit', 's4_note_history', 's4_note_conversion', 's4_compliance_audit', 's4_create_receipt'];
+
+// Independent JavaScript oracle: all current ECMAScript trim characters are BMP.
+// SQL's explicit code-point set must agree with the actual frontend language.
+export const s4TrimWhitespace = Array.from({ length: 0x10000 }, (_, point) => String.fromCharCode(point))
+  .filter(character => character.trim() === '');
+export const s4NonTrimCharacters = ['\u0085', '\u180e', '\u200b'];
