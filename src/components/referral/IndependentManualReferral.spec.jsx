@@ -34,6 +34,11 @@ describe('independent manual referral transfer',()=>{
   const create=state.invoke.mock.calls.find(([,p])=>p.action==='staging_create')[1].params;
   expect(create).toMatchObject({p_agency_id:'agency-a',p_patient_id:'patient-a1',p_expected_actor_version:1,p_expected_patient_version:1,p_fields:{document_type:'manual',status:'new',manually_confirmed:false}});
   expect(state.invoke.mock.calls.every(([name])=>name==='manageAuthorizedReferral')).toBe(true);
+  if(role!=='agency_admin') {
+   fireEvent.click(screen.getByRole('link',{name:'Return to referral patients'}));
+   expect(await screen.findByLabelText('Patient')).toBeVisible();
+   expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  }
  });
  it('does not navigate back or update the view after leaving an in-flight creation',async()=>{
   const server=state.invoke.getMockImplementation();let release;

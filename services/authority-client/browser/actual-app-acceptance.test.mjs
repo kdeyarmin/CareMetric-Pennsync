@@ -240,13 +240,13 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
       await expect(page.getByRole('heading', { name: 'Patient Management', exact: true })).toHaveCount(0);
       await expect(names()).toHaveCount(0); await noPersistedCredentials();
     };
-    const chooseAgency = async name => {
+    const chooseAgency = async (name,intakeOnly=false) => {
       const label = name === 'admin-b' ? 'Synthetic Agency B' : 'Synthetic Agency A';
       await page.getByRole('button', { name: new RegExp(label) }).click();
-      await expect(page.getByRole('heading', { name: 'Patient Management', exact: true })).toBeVisible();
-      assert.equal(new URL(page.url()).pathname, '/Patients');
+      await expect(page.getByRole('heading', { name: intakeOnly?'Referral Intake':'Patient Management', exact: true })).toBeVisible();
+      assert.equal(new URL(page.url()).pathname, intakeOnly?'/ReferralIntake':'/Patients');
     };
-    const login = async (name, select = true) => {
+    const login = async (name, select = true,intakeOnly=false) => {
       // Drain before unmounting the login image. signedOut also runs while a
       // deliberately withheld roster is pending, so it cannot drain every route.
       await settlePageRoutes(page, routeTrackers.get(context));
@@ -256,7 +256,7 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
       await page.getByRole('button', { name: 'Sign in', exact: true }).click();
       await expect(page.getByRole('heading', { name: 'Choose the agency workspace to open', exact: true })).toBeVisible();
       await expect(names()).toHaveCount(0); await noPersistedCredentials();
-      if (select) await chooseAgency(name);
+      if (select) await chooseAgency(name,intakeOnly);
     };
     const roster = async expected => {
       if (!expected.length) await expect(page.getByRole('heading', { name: 'No assigned patients', exact: true })).toBeVisible();
@@ -362,7 +362,7 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
       };
       await setRole(role,original.version+1);
       try {
-        phase=`${name}-${role}-intake-selection`;await login(name);
+        phase=`${name}-${role}-intake-selection`;await login(name,true,true);
         await page.getByRole('link',{name:'Referral Intake',exact:true}).click();
         const selector=page.getByLabel('Patient',{exact:true});await expect(selector).toBeVisible();
         assert.deepEqual(await selector.locator('option').evaluateAll(options=>options.map(option=>option.value)),['',...expected]);
@@ -373,7 +373,7 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
           await page.getByRole('button',{name:'Confirm existing patient',exact:true}).click();
           await expect(page.getByRole('status')).toHaveText('Ready for admission');
           const savedPath=new URL(page.url()).pathname+new URL(page.url()).search;
-          await page.getByRole('link',{name:'Return to patients',exact:true}).click();
+          await page.getByRole('link',{name:'Return to referral patients',exact:true}).click();
           await settlePageRoutes(page,routeTrackers.get(context));
           await page.evaluate(path=>{globalThis.history.pushState(null,'',path);globalThis.dispatchEvent(new globalThis.PopStateEvent('popstate'));},savedPath);
           await expect(page.getByRole('status')).toHaveText('Ready for admission');
@@ -384,6 +384,9 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
           await expect(page.getByRole('alert')).toContainText('Referral access unavailable');
           await expect(page.getByRole('button',{name:'Create manual referral',exact:true})).toHaveCount(0);
         }
+        await page.getByRole('link',{name:'Return to referral patients',exact:true}).click();
+        await expect(page.getByLabel('Patient',{exact:true})).toBeVisible();
+        await expect(page.getByRole('alert')).toHaveCount(0);
         await logout();
       } finally {await setRole(original.tenant_role,original.version);}
     }
