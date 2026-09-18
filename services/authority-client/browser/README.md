@@ -12,10 +12,9 @@ Passwords remain in the test process and password form transiently. Keys/tokens,
 
 ## Run
 
-Use a fresh dedicated Docker job: the existing HTTP suite intentionally mutates/revokes its fixtures and must not run first in this same stack. The lifecycle wrapper validates and pins the local daemon and refuses pre-existing project containers/volumes or linked projects. Install the existing root dependencies plus the isolated authority package:
+Use a fresh dedicated Docker job: the existing HTTP suite intentionally mutates/revokes its fixtures and must not run first in this same stack. The lifecycle wrapper validates and pins the local daemon and refuses pre-existing project containers/volumes or linked projects. Install root dependencies using the [central local setup](../../../CONTRIBUTING.md#local-setup) linked from the [root README](../../../README.md#github-and-contributing), then install and run the isolated harness below. This harness supplies its own local configuration and server.
 
 ```sh
-pnpm install --frozen-lockfile
 pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
 pnpm exec playwright install --with-deps chromium
 node --test services/authority-client/browser/browser-boundary.test.mjs
