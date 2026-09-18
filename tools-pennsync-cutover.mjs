@@ -37,7 +37,7 @@ export const sha256 = value => createHash('sha256').update(value).digest('hex');
 export function parseStrictJson(raw) {
   if (typeof raw !== 'string' || Buffer.byteLength(raw) > MAX_BYTES) throw new Error('INPUT_INVALID');
   const parsed = JSON.parse(raw);
-  const tokens = raw.match(/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null|[{}\[\],:]/g) || [];
+  const tokens = raw.match(/"(?:\\.|[^"\\])*"|-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?|true|false|null|[{}[\],:]/g) || [];
   let position = 0;
   function value(depth = 0) {
     if (depth > 40) throw new Error('INPUT_INVALID');

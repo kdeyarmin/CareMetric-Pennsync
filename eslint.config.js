@@ -20,6 +20,11 @@ export default [
     rules: pluginJs.configs.recommended.rules,
   },
   {
+    files: ['services/authority-client/**/*.mjs', 'services/authority-store/**/*.mjs', 'tools-pennsync-archive*.mjs', 'tools-pennsync-cutover*.mjs'],
+    languageOptions: { globals: globals.node },
+    rules: pluginJs.configs.recommended.rules,
+  },
+  {
     files: [
       "src/components/**/*.{js,mjs,cjs,jsx}",
       "src/pages/**/*.{js,mjs,cjs,jsx}",

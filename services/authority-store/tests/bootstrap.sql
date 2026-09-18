@@ -1,4 +1,4 @@
--- LOCAL TEST DOUBLE ONLY. Loaded solely into a new in-memory PGlite database.
+-- LOCAL TEST DOUBLE ONLY. Loaded solely into a fresh local PostgreSQL/PGlite test database.
 -- Never deploy this file or write synthetic rows to a real Supabase auth schema.
 do $$ begin
   if not exists(select 1 from pg_roles where rolname='anon') then create role anon nologin; end if;

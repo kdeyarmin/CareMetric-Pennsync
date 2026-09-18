@@ -1,0 +1,49 @@
+name: PennSync independent authority
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pennsync-authority-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  postgres:
+    name: Verify authority transactions
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17.10-alpine
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+          cache-dependency-path: services/authority-store/pnpm-lock.yaml
+      - name: Install isolated authority test dependencies
+        run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+      - name: Verify PostgreSQL authorization and transaction races
+        run: node --test services/authority-store/tests/postgres.test.mjs
+        env:
+          PENNSYNC_TEST_PG_URL: postgresql://postgres@127.0.0.1:5432/postgres
