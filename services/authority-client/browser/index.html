@@ -1,0 +1,13 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Independent synthetic patient acceptance</title><link rel="icon" href="data:,"></head><body>
+<main><h1>Independent synthetic patient acceptance</h1>
+<p>Test-only roster and patient name. No clinical chart or production access.</p>
+<form id="login"><label for="actor">Test actor</label><select id="actor"></select>
+<label for="password">Test password</label><input id="password" type="password" autocomplete="off" required>
+<button type="submit">Sign in</button></form><button id="logout">Sign out</button>
+<p id="identity"></p><p id="status" role="status">Starting</p>
+<label for="agency">Agency</label><input id="agency" value="agency-a">
+<button id="load">Load roster</button><button id="next" disabled>Next page</button><ul id="roster" aria-label="Patients"></ul>
+<form id="lookup"><label for="patient-id">Patient ID</label><input id="patient-id" value="patient-a1">
+<button type="submit">Open patient</button></form><h2 id="detail" aria-label="Patient name"></h2>
+</main><script type="module" src="/entry.js"></script></body></html>

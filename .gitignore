@@ -50,3 +50,6 @@ blob-report/
 key.properties
 android/keystore.properties
 android/signing.properties
+
+# Disposable local database rehearsal receipts and encrypted temporary artifacts
+/work/restore-rehearsal/
