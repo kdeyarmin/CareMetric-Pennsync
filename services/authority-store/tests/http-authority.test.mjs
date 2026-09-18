@@ -5,6 +5,7 @@ import { randomBytes, randomUUID, createHash } from 'node:crypto';
 import pg from 'pg';
 import { createStagingAuthorityClient, STAGING_APP_ID as APP } from '../../authority-client/client.mjs';
 import { localStatus, API, PROJECT } from './http-local-stack.mjs';
+import { s4Fields, s4Tables } from './s4-fixture.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const actors = [
@@ -143,6 +144,42 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
         body: JSON.stringify({ p_app_id: APP, ...body }) });
       return { status: response.status, ok: response.ok, data: await response.json() };
     };
+    const s4Requests = new Map();
+    const s4Snapshot = () => db.query(`select ${s4Tables.map(name=>`(select count(*)::integer from pennsync_private.${name}) ${name}`).join(',')}`);
+    const s4Save = async (actor, patient) => {
+      const body = { p_agency_id: actor.agency, p_patient_id: patient, p_expected_actor_version: 1,
+        p_expected_patient_version: 1, p_request_id: randomUUID(), p_fields: s4Fields() };
+      const result = await raw('s4_create', body, tokens.get(actor.name));
+      assert.equal(result.status, 200);
+      assert.equal(result.data.contract, 'cm.pennsync.s4-create.staging.v1');
+      assert.equal(result.data.context.auth_user_id, actor.uuid);
+      assert.equal(result.data.context.user_id, actor.legacyId);
+      assert.equal(result.data.replayed, false);
+      const readBody = { ...body }; delete readBody.p_fields;
+      const expected = { ...result.data, replayed: true };
+      assert.deepEqual((await raw('s4_create', body, tokens.get(actor.name))).data, expected);
+      assert.deepEqual((await raw('s4_read', readBody, tokens.get(actor.name))).data, expected);
+      const artifacts = result.data.artifacts;
+      assert.equal(Object.keys(artifacts).length, 4);
+      for (const record of Object.values(artifacts)) {
+        assert.equal(record.agency_id, actor.agency); assert.equal(record.patient_id, patient);
+        requireTrue(UUID.test(record.id), 'LOCAL_S4_ARTIFACT_ID_INVALID');
+      }
+      assert.equal(artifacts.visit.nurse_notes, body.p_fields.nurse_notes);
+      assert.deepEqual(artifacts.visit.vital_signs, { heart_rate: 72 });
+      assert.equal(artifacts.note_history.note, body.p_fields.nurse_notes);
+      assert.equal(artifacts.note_conversion.enhanced_len, body.p_fields.nurse_notes.length);
+      assert.equal(artifacts.compliance_audit.status, 'passed');
+      assert.deepEqual(artifacts.compliance_audit.rule_versions, []);
+      s4Requests.set(actor.name, { body, readBody, expected });
+    };
+    const s4Denied = async (actor, code, bearer=tokens.get(actor.name)) => {
+      const { body, readBody } = s4Requests.get(actor.name);
+      for (const [method, input] of [['s4_create', body], ['s4_create', { ...body, p_request_id: randomUUID() }], ['s4_read', readBody]]) {
+        const result = await raw(method, input, bearer);
+        assert.equal(result.status, 403); assert.equal(result.data.code, code);
+      }
+    };
 
     await scenario('public signup stays disabled and creates no account or email', async () => {
       assert.equal(await localMailCount(), 0);
@@ -214,7 +251,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       assert.equal(unknown.data.code, '22023');
     });
     await scenario('private schema and direct table endpoints are not exposed', async () => {
-      for (const table of ['identity_map', 'agency', 'membership', 'patient', 'assignment', 'mutation_receipt']) {
+      for (const table of ['identity_map', 'agency', 'membership', 'patient', 'assignment', 'mutation_receipt', ...s4Tables]) {
         for (const profile of ['public', 'pennsync_private']) {
           const response = await localFetch(`${API}/rest/v1/${table}?select=*`, { headers: {
             apikey: status.PUBLISHABLE_KEY, Authorization: `Bearer ${tokens.get('admin-a')}`, 'Accept-Profile': profile } });
@@ -231,6 +268,27 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       assert.equal((await clinician.rpc('context', { p_agency_id: 'agency-a' })).tenant_role, 'clinician');
       await denied(clinician.rpc('context', { p_agency_id: 'agency-b' }));
     });
+    await scenario('synthetic S4-create subset atomically saves and reconciles exact artifacts through real Auth HTTP', async () => {
+      await s4Save(actors[0], 'patient-a1'); await s4Save(actors[1], 'patient-a1'); await s4Save(actors[3], 'patient-b1');
+      assert.deepEqual(Object.values((await s4Snapshot()).rows[0]), [3,3,3,3,3]);
+      const { body } = s4Requests.get('clinician-a');
+      const conflict = await raw('s4_create', { ...body, p_fields: s4Fields({ nurse_notes: 'Changed synthetic note' }) }, tokens.get('clinician-a'));
+      assert.equal(conflict.status, 409); assert.equal(conflict.data.code, 'PT409');
+      assert.equal(conflict.data.message, 'PENNSYNC_S4_IDEMPOTENCY_CONFLICT');
+      const unsupported = await raw('s4_create', { ...body, p_request_id: randomUUID(), p_fields: s4Fields({ chart_findings: [{ severity: 'critical' }] }) }, tokens.get('clinician-a'));
+      assert.equal(unsupported.status, 400); assert.equal(unsupported.data.code, '22023');
+      for (const [actor, patient] of [[actors[0],'patient-b1'],[actors[1],'patient-a2'],[actors[1],'patient-b1'],[actors[2],'patient-a1'],[actors[2],'patient-a2'],[actors[2],'patient-b1'],[actors[3],'patient-a1']]) {
+        for (const requestId of [body.p_request_id, randomUUID()]) {
+          const input = { ...body, p_agency_id: actor.agency, p_patient_id: patient, p_request_id: requestId };
+          const deniedSave = await raw('s4_create', input, tokens.get(actor.name));
+          assert.equal(deniedSave.status, 403); assert.equal(deniedSave.data.code, '42501');
+          delete input.p_fields;
+          const deniedRead = await raw('s4_read', input, tokens.get(actor.name));
+          assert.equal(deniedRead.status, 403); assert.equal(deniedRead.data.code, '42501');
+        }
+      }
+      assert.deepEqual(Object.values((await s4Snapshot()).rows[0]), [3,3,3,3,3]);
+    });
     const grant = { p_agency_id: 'agency-a', p_patient_id: 'patient-a2', p_target_membership_id: 'membership-clinician-empty',
       p_action: 'grant', p_expected_actor_version: 1, p_expected_target_version: 1,
       p_expected_assignment_version: 0, p_request_id: randomUUID() };
@@ -239,6 +297,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       const result = await admin.rpc('assignment', grant);
       assert.equal(result.assignment_status, 'active'); assert.equal(result.assignment_version, 1); assert.equal(result.replayed, false);
       assert.deepEqual((await empty.rpc('patients', { p_agency_id: 'agency-a' })).items.map(p => p.id), ['patient-a2']);
+      await s4Save(actors[2], 'patient-a2');
     });
     await scenario('idempotency binds payload and optimistic version conflicts fail', async () => {
       const snapshot = () => db.query(`select
@@ -261,6 +320,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       assert.equal(result.assignment_status, 'revoked'); assert.equal(result.assignment_version, 2);
       assert.deepEqual((await empty.rpc('patients', { p_agency_id: 'agency-a' })).items, []);
       await denied(empty.rpc('patient', { p_agency_id: 'agency-a', p_patient_id: 'patient-a2' }));
+      await s4Denied(actors[2], '42501');
     });
     await scenario('membership revoke closes existing signed sessions and assignment replay', async () => {
       await admin.rpc('assignment', { ...grant, p_expected_assignment_version: 2, p_request_id: randomUUID() });
@@ -272,6 +332,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       await denied(empty.rpc('context', { p_agency_id: 'agency-a' }));
       await denied(empty.rpc('patients', { p_agency_id: 'agency-a' }));
       assert.deepEqual((await empty.rpc('memberships')).memberships, []);
+      await s4Denied(actors[2], '42501');
       const started = performance.now();
       const staleGrant = await raw('assignment', grant, tokens.get('admin-a'));
       assert.equal(staleGrant.status, 409); assert.equal(staleGrant.data.code, 'PT409');
@@ -291,13 +352,17 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       const stale = await raw('context', { p_agency_id: 'agency-a' }, oldToken);
       assert.equal(stale.ok, false); assert.equal(stale.data.code, '28000');
       assert.equal(stale.data.message, 'PENNSYNC_SESSION_INACTIVE');
+      await s4Denied(actors[1], '28000', oldToken);
       await clinician.signIn(actors[1].password);
       assert.equal((await clinician.rpc('context', { p_agency_id: 'agency-a' })).tenant_role, 'clinician');
+      const { readBody, expected } = s4Requests.get('clinician-a');
+      assert.deepEqual((await raw('s4_read', readBody, tokens.get('clinician-a'))).data, expected);
     });
     await scenario('all client HTTP traffic used only the local gateway and publishable key', async () => {
       assert.equal(attemptsOutsideLocal, 0);
       requireTrue(clientRequests >= 40, 'EXPECTED_REAL_CLIENT_HTTP_REQUESTS');
       assert.equal(await localMailCount(), 0);
+      assert.deepEqual(Object.values((await s4Snapshot()).rows[0]), [4,4,4,4,4]);
     });
   } catch (error) {
     // Do not forward pg detail, Auth payloads, native fetch error causes or credentials.
