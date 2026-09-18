@@ -71,6 +71,10 @@ jobs:
         run: node --test services/authority-store/tests/referral-patients-postgres.test.mjs
         env:
           PENNSYNC_TEST_PG_URL: postgresql://postgres@127.0.0.1:5432/postgres
+      - name: Verify saved referral discovery and revocation races
+        run: node --test services/authority-store/tests/referral-list-postgres.test.mjs
+        env:
+          PENNSYNC_TEST_PG_URL: postgresql://postgres@127.0.0.1:5432/postgres
       - name: Verify owned synthetic archive patient import and rollback
         run: node --test tools-pennsync-archive-import.postgres.test.mjs
         env:

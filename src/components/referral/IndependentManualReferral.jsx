@@ -18,6 +18,20 @@ function Intake({ agencyId, patientId, membershipVersion, membershipId, referral
       return result;
     },
     retry:false,staleTime:0,gcTime:0,refetchOnWindowFocus:'always',refetchOnReconnect:'always'});
+  const listing=useQuery({queryKey:['independent-referral-list',agencyId,patientId,membershipId,membershipVersion,preparation.data?.patient.version],
+    enabled:rosterReady && !referralId && preparation.isSuccess && preparation.fetchStatus==='idle',
+    queryFn:async({signal})=>{
+      const items=[],seen=new Set();let after=null;
+      do {
+        signal.throwIfAborted();
+        const result=await invoke('staging_list',{p_agency_id:agencyId,p_patient_id:patientId,
+          p_expected_actor_version:membershipVersion,p_expected_patient_version:preparation.data.patient.version,p_limit:50,p_after_id:after});
+        signal.throwIfAborted();
+        for(const item of result.items){if(seen.has(item.referral.id)||items.length>=10000)throw new Error('REFERRAL_LIST_LIMIT');seen.add(item.referral.id);items.push(item.referral);}
+        after=result.next_cursor;
+      }while(after!==null);
+      return items;
+    },retry:false,staleTime:0,gcTime:0,refetchOnMount:'always',refetchOnWindowFocus:'always',refetchOnReconnect:'always'});
   const [priority,setPriority]=useState('normal');
   const [busy,setBusy]=useState(false);
   const readKey=['independent-manual-referral',agencyId,patientId,membershipId,membershipVersion,preparation.data?.patient.version,referralId];
@@ -54,11 +68,19 @@ function Intake({ agencyId, patientId, membershipVersion, membershipId, referral
     } catch { if (active.current) setError(true); }
     finally {inFlight.current=false;if (active.current) setBusy(false);}
   };
-  if (rosterDenied || preparation.isError || (referralId && reading.isError)) return denied;
-  if (!rosterReady || !preparation.isSuccess || preparation.fetchStatus!=='idle' || (referralId && (!reading.isSuccess || reading.fetchStatus!=='idle'))) return <p role="status">Verifying referral access…</p>;
+  if (rosterDenied || preparation.isError || (referralId ? reading.isError : listing.isError)) return denied;
+  if (!rosterReady || !preparation.isSuccess || preparation.fetchStatus!=='idle' || (referralId ? (!reading.isSuccess || reading.fetchStatus!=='idle') : (!listing.isSuccess || listing.fetchStatus!=='idle'))) return <p role="status">Verifying referral access…</p>;
   return <section className="space-y-4" aria-label="Manual referral">
     <h2 className="text-xl font-semibold">{preparation.data.patient.display_name}</h2>
     {!referral ? <>
+      <section aria-label="Saved referrals">
+        <h3 className="font-semibold">Saved referrals</h3>
+        {listing.data.length ? <ul>{listing.data.map((item,index)=><li key={item.id}>
+          <Link className="underline" to={`/ReferralIntake?patientId=${encodeURIComponent(patientId)}&referralId=${item.id}`}>
+            Open referral · {item.created_date.slice(0,10)} · Record {index+1}
+          </Link> — {item.status==='new'?'Needs patient confirmation':'Ready for admission'}
+        </li>)}</ul> : <p>No saved referrals for this patient.</p>}
+      </section>
       <label htmlFor="manual-referral-priority">Priority</label>
       <select id="manual-referral-priority" value={priority} disabled={busy || !!operation.current} onChange={event=>setPriority(event.target.value)}>
         {['low','normal','high','urgent'].map(value=><option key={value} value={value}>{value}</option>)}

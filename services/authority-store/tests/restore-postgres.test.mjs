@@ -178,6 +178,9 @@ async function proveAuthority(db, { artifacts, referrals }) {
     equal(await actor(db, n, () => rpc(db, 's4_read', args)), { ...result, replayed: true }, 'Restored S4 artifact and receipt recovery');
   }
   for (const { n, createArgs, readArgs, confirmArgs, created, confirmed } of referrals) {
+    const page=await actor(db,n,()=>rpc(db,'s3_list',[...readArgs.slice(0,5),50,null]));
+    assert.deepEqual(page.items.map(item=>item.referral),[(confirmed||created).referral]);
+    assert.equal(page.next_cursor,null);
     equal((await actor(db, n, () => rpc(db, 's3_read', readArgs))).referral,
       (confirmed || created).referral, 'Restored S3 current referral is exact');
     if (confirmed) {

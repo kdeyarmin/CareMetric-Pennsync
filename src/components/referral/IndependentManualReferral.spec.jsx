@@ -16,6 +16,7 @@ beforeEach(()=>{
  state.referral=null;
  state.invoke.mockImplementation(async(name,{action})=>{
   if(action==='staging_roster')return {data:{context:state.context,items:[{id:'patient-a1',display_name:'Synthetic Patient A1',version:1}],next_cursor:null}};
+  if(action==='staging_list')return {data:{items:[],next_cursor:null}};
   if(action==='staging_prepare')return {data:{context:state.context,patient:{id:'patient-a1',version:1,display_name:'Synthetic Patient A1'}}};
   if(action==='staging_create')state.referral={id,version:1,status:'new',priority:'normal'};
   if(action==='staging_confirm')state.referral={...state.referral,version:2,status:'ready_for_admission'};
@@ -84,6 +85,33 @@ describe('independent manual referral transfer',()=>{
   expect(await screen.findByText('Needs patient confirmation')).toBeVisible();
   const requests=state.invoke.mock.calls.filter(([,p])=>p.action==='staging_create').map(([,p])=>p.params);
   expect(requests).toHaveLength(2);expect(requests[1]).toEqual(requests[0]);
+ });
+ it('stops fetching further referral pages after leaving the screen',async()=>{
+  const server=state.invoke.getMockImplementation();let release;
+  const gate=new Promise(done=>{release=done;});
+  state.invoke.mockImplementation(async(...args)=>{if(args[1].action==='staging_list'){await gate;return {data:{items:[{referral:{id}}],next_cursor:id}};}return server(...args);});
+  const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/ReferralIntake?patientId=patient-a1']}><Routes>
+    <Route path="/ReferralIntake" element={<IndependentManualReferral />} /><Route path="/Patients" element={<h1>Patients destination</h1>} />
+  </Routes></MemoryRouter></QueryClientProvider>);
+  await waitFor(()=>expect(state.invoke.mock.calls.some(([,p])=>p.action==='staging_list')).toBe(true));
+  fireEvent.click(screen.getByRole('link',{name:'Return to patients'}));
+  expect(screen.getByRole('heading',{name:'Patients destination'})).toBeVisible();
+  release();await gate;await new Promise(done=>setTimeout(done,20));
+  expect(state.invoke.mock.calls.filter(([,p])=>p.action==='staging_list')).toHaveLength(1);
+ });
+ it('discovers and opens a saved referral without creating another',async()=>{
+  const server=state.invoke.getMockImplementation();state.referral={id,version:2,status:'ready_for_admission',priority:'normal'};
+  state.invoke.mockImplementation(async(...args)=>args[1].action==='staging_list'?{data:{items:[{referral:{...state.referral,created_date:'2026-09-18T00:00:00.000Z'}}],next_cursor:null}}:server(...args));
+  mount('/ReferralIntake?patientId=patient-a1');
+  fireEvent.click(await screen.findByRole('link',{name:'Open referral · 2026-09-18 · Record 1'}));
+  expect(await screen.findByText('Ready for admission')).toBeVisible();
+  expect(state.invoke.mock.calls.some(([,p])=>p.action==='staging_create')).toBe(false);
+ });
+ it('withholds the creation form when saved referral access is denied',async()=>{
+  const server=state.invoke.getMockImplementation();state.invoke.mockImplementation(async(...args)=>{if(args[1].action==='staging_list')throw new Error('denied');return server(...args);});
+  mount('/ReferralIntake?patientId=patient-a1');await screen.findByRole('alert');
+  expect(screen.queryByRole('button',{name:'Create manual referral'})).not.toBeInTheDocument();
  });
  it('reopens an already confirmed referral without showing a duplicate write',async()=>{
   state.referral={id,version:2,status:'ready_for_admission',priority:'normal'};

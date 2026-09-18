@@ -71,3 +71,27 @@ test('nested fields are snapshotted and late write responses remain fenced',asyn
  let complete;const delayed=new Promise(done=>{complete=done});const second=await signed(async()=>{await delayed;return json(result)});
  const late=second.client.rpc('s3_create',params);second.client.invalidate();complete();await assert.rejects(late);await second.client.signOut();
 });
+
+const listParams={p_agency_id:'agency-a',p_patient_id:'patient-a1',p_expected_actor_version:1,p_expected_patient_version:1,p_limit:1,p_after_id:null};
+function listing(){const r=record();return {contract:'cm.pennsync.s3-referral-list.staging.v1',staging:true,synthetic:true,app_id:STAGING_APP_ID,action:'list',context:r.context,items:[{referral:r.referral,referral_sha256:'b'.repeat(64)}],next_cursor:null};}
+test('saved referral discovery validates exact current records and bounded cursor',async()=>{
+ const result=listing(),{client}=await signed(()=>json(result));assert.deepEqual(await client.rpc('s3_list',listParams),result);
+ result.next_cursor=result.items[0].referral.id;assert.deepEqual(await client.rpc('s3_list',listParams),result);
+ result.items=[];result.next_cursor=null;assert.deepEqual(await client.rpc('s3_list',listParams),result);await client.signOut();
+});
+for(const patch of [{p_limit:0},{p_limit:51},{p_limit:1.1},{p_after_id:''},{p_after_id:'foreign'},{p_expected_actor_version:0},{extra:true}])test(`saved referral list rejects invalid request ${JSON.stringify(patch)}`,async()=>{
+ const {client,calls}=await signed();const count=calls.length;await assert.rejects(client.rpc('s3_list',{...listParams,...patch}),/INVALID_AUTHORITY_REQUEST/);assert.equal(calls.length,count);await client.signOut();
+});
+for(const [label,change] of [
+ ['foreign patient',r=>r.items[0].referral.patient_id='patient-b1'],['foreign agency',r=>r.context.agency_id='agency-b'],
+ ['stale membership',r=>r.context.membership_version++],['clinician',r=>r.context.tenant_role='clinician'],
+ ['unknown key',r=>r.items[0].extra=true],['bad checksum',r=>r.items[0].referral_sha256='bad'],
+ ['duplicate',r=>r.items.push(structuredClone(r.items[0]))],['extra row',r=>r.items.push({...r.items[0],referral:{...r.items[0].referral,id:'30000000-0000-4000-8000-000000000002'}})],
+ ['cursor mismatch',r=>r.next_cursor='30000000-0000-4000-8000-000000000002'],['missing cursor',r=>delete r.next_cursor],
+ ['extra payload field',r=>r.items[0].referral.document_url='private'],['status mismatch',r=>r.items[0].referral.status='ready_for_admission'],
+])test(`saved referral list withholds ${label}`,async()=>{
+ const result=listing();change(result);const {client}=await signed(()=>json(result));await assert.rejects(client.rpc('s3_list',listParams),/INVALID_AUTHORITY_RESPONSE/);await client.signOut();
+});
+test('saved referral pages cannot repeat or precede their anchor',async()=>{
+ const result=listing(),{client}=await signed(()=>json(result));await assert.rejects(client.rpc('s3_list',{...listParams,p_after_id:result.items[0].referral.id}),/INVALID_AUTHORITY_RESPONSE/);await client.signOut();
+});

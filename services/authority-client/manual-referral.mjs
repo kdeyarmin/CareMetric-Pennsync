@@ -11,8 +11,11 @@ const base = ['p_agency_id','p_patient_id','p_expected_actor_version','p_expecte
 const timestamp = value => typeof value === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z$/.test(value)
   && Number.isFinite(Date.parse(value)) && new Date(value).toISOString() === value;
 const name = value => typeof value === 'string' && value.startsWith('Synthetic ') && value.length <= 120 && value.slice(10).trim().length > 0;
-export const isReferralMethod = method => ['s3_create','s3_confirm','s3_read'].includes(method);
+export const isReferralMethod = method => ['s3_create','s3_confirm','s3_read','s3_list'].includes(method);
 export function validReferralParams(method,p) {
+  if(method==='s3_list') return exact(p,[...base,'p_limit','p_after_id']) && text(p.p_agency_id,ID) && text(p.p_patient_id,ID)
+    && revision(p.p_expected_actor_version) && revision(p.p_expected_patient_version)
+    && Number.isSafeInteger(p.p_limit) && p.p_limit>=1 && p.p_limit<=50 && (p.p_after_id===null || text(p.p_after_id,UUID));
   const extra = method==='s3_create' ? ['p_request_id','p_fields'] : method==='s3_confirm'
     ? ['p_referral_id','p_expected_referral_version','p_request_id'] : ['p_referral_id'];
   if (!isReferralMethod(method) || !exact(p,[...base,...extra]) || !text(p.p_agency_id,ID) || !text(p.p_patient_id,ID)
@@ -26,6 +29,21 @@ export function validReferralParams(method,p) {
     && f.document_type==='manual' && f.status==='new' && f.requires_manual_review===true && f.manually_confirmed===false;
 }
 export function validReferralResult(r,method,p,contextValid) {
+  if(method==='s3_list') {
+    if(!exact(r,['contract','staging','synthetic','app_id','action','context','items','next_cursor'])
+      || r.contract!=='cm.pennsync.s3-referral-list.staging.v1' || r.staging!==true || r.synthetic!==true
+      || r.app_id!==p.p_app_id || r.action!=='list' || !contextValid(r.context,p.p_agency_id)
+      || !['agency_admin','manager','office_staff'].includes(r.context.tenant_role) || r.context.membership_version!==p.p_expected_actor_version
+      || !Array.isArray(r.items) || r.items.length>p.p_limit) return false;
+    let last=p.p_after_id;
+    for(const item of r.items) {
+      if(!exact(item,['referral','referral_sha256']) || !object(item.referral) || (last!==null && item.referral.id<=last)
+        || !validReferralResult({contract:'cm.pennsync.s3-referral.staging.v1',staging:true,synthetic:true,app_id:r.app_id,action:'read',context:r.context,...item},
+          's3_read',{...p,p_referral_id:item.referral.id},contextValid)) return false;
+      last=item.referral.id;
+    }
+    return r.next_cursor===null || (r.items.length===p.p_limit && r.next_cursor===last);
+  }
   const action=method.slice(3), write=action!=='read';
   const keys=['contract','staging','synthetic','app_id','action','context','referral',
     ...(write ? ['request_id','replayed','receipt'] : ['referral_sha256'])];
