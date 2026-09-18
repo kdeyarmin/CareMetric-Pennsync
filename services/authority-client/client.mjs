@@ -1,5 +1,7 @@
 // Staging acceptance transport. This is not selected by the production frontend.
 export const STAGING_APP_ID = '6a9881683dc68a0bd54f1ef7';
+import { validVisitDocumentation, VISIT_DOCUMENTATION_MAX_BYTES } from './visit-documentation.mjs';
+
 export const AUTHORITY_CONTRACT = 'cm.pennsync.authority.staging.v1';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
@@ -14,6 +16,7 @@ const METHODS = Object.freeze({
   memberships: [],
   patients: ['p_agency_id', 'p_limit', 'p_after_id'],
   patient: ['p_agency_id', 'p_patient_id'],
+  visit_documentation: ['p_agency_id', 'p_visit_id'],
   assignment: ['p_agency_id', 'p_patient_id', 'p_target_membership_id', 'p_action', 'p_expected_actor_version', 'p_expected_target_version', 'p_expected_assignment_version', 'p_request_id'],
   revoke_membership: ['p_agency_id', 'p_target_membership_id', 'p_expected_actor_version', 'p_expected_target_version', 'p_request_id'],
 });
@@ -53,7 +56,7 @@ function validateParams(method, input) {
     else if (key === 'p_after_id' && value === null) continue;
     else if (key.includes('_version')) {
       if (!Number.isSafeInteger(value) || value < (key === 'p_expected_assignment_version' ? 0 : 1)) fail('INVALID_AUTHORITY_REQUEST');
-    } else if (key === 'p_request_id') { if (typeof value !== 'string' || !UUID.test(value)) fail('INVALID_AUTHORITY_REQUEST'); }
+    } else if (key === 'p_request_id' || key === 'p_visit_id') { if (typeof value !== 'string' || !UUID.test(value)) fail('INVALID_AUTHORITY_REQUEST'); }
     else if (typeof value !== 'string' || !ID.test(value)) fail('INVALID_AUTHORITY_REQUEST');
   }
   return Object.freeze({ ...params, p_app_id: STAGING_APP_ID });
@@ -99,6 +102,7 @@ function validateResult(result, method, params, config) {
     memberships: [...commonKeys, 'user_id', 'user_email', 'memberships'],
     patients: [...commonKeys, 'context', 'items', 'next_cursor'],
     patient: [...commonKeys, 'context', 'patient'],
+    visit_documentation: [...commonKeys, 'context', 'purpose', 'visit', 'scope'],
     assignment: [...commonKeys, 'agency_id', 'action', 'request_id', 'replayed', 'patient_id', 'membership_id', 'membership_version', 'assignment_version', 'assignment_status'],
     revoke_membership: [...commonKeys, 'agency_id', 'action', 'request_id', 'replayed', 'membership_id', 'membership_version', 'membership_status'],
   };
@@ -123,7 +127,8 @@ function validateResult(result, method, params, config) {
     || !Array.isArray(result.memberships) || result.memberships.length > 50
     || result.memberships.some(value => !context(value))
     || new Set(result.memberships.map(value => value.agency_id)).size !== result.memberships.length)) fail('INVALID_AUTHORITY_RESPONSE');
-  if (['patients', 'patient'].includes(method) && !context(result.context, params.p_agency_id)) fail('INVALID_AUTHORITY_RESPONSE');
+  if (['patients', 'patient', 'visit_documentation'].includes(method) && !context(result.context, params.p_agency_id)) fail('INVALID_AUTHORITY_RESPONSE');
+  if (method === 'visit_documentation' && !validVisitDocumentation(result, params)) fail('INVALID_AUTHORITY_RESPONSE');
   if (method === 'patients' && (!Array.isArray(result.items) || result.items.length > (params.p_limit ?? 50)
     || result.items.some(value => !patient(value)) || new Set(result.items.map(value => value.id)).size !== result.items.length
     || (result.next_cursor !== null && result.next_cursor !== result.items.at(-1)?.id))) fail('INVALID_AUTHORITY_RESPONSE');
@@ -159,7 +164,7 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
   const validGrant = session => sameUser(session?.user) && typeof session.access_token === 'string'
     && session.access_token.length <= 16384 && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(session.access_token)
     && session.token_type === 'bearer';
-  async function request(path, { lease, bearer, body, noBody = false, method = 'POST', cleanup = false, receivedGrant }) {
+  async function request(path, { lease, bearer, body, noBody = false, method = 'POST', cleanup = false, receivedGrant, maxResponseBytes = 1024 * 1024 }) {
     if (!cleanup) current(lease);
     const controller = new AbortController();
     if (!cleanup) pending.add(controller);
@@ -188,7 +193,7 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
         void response.body?.cancel().catch(() => {});
         live(); return null;
       }
-      const result = await boundedJson(response, 1024 * 1024, timeoutMs);
+      const result = await boundedJson(response, maxResponseBytes, timeoutMs);
       if (receivedGrant) await receivedGrant(result, controller.signal.aborted || lease !== epoch);
       live();
       return result;
@@ -252,7 +257,8 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
       const params = validateParams(method, input);
       if (!token) fail('AUTHENTICATION_REQUIRED');
       const lease = epoch;
-      const result = await request(`/rest/v1/rpc/pennsync_staging_${method}`, { lease, bearer: token, body: params });
+      const result = await request(`/rest/v1/rpc/pennsync_staging_${method}`, { lease, bearer: token, body: params,
+        ...(method === 'visit_documentation' ? { maxResponseBytes: VISIT_DOCUMENTATION_MAX_BYTES } : {}) });
       current(lease);
       return validateResult(result, method, params, config);
     },

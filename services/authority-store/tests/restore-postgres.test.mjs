@@ -12,6 +12,7 @@ import { APP, uid, sid, request, actor, rpc, applyAuthority, applyRuntime, withR
 import { seedRuntime, proveRuntime } from './restore-runtime-fixture.mjs';
 import { importPatients, seedImportReceipt, proveImportReceipt } from './restore-import-fixture.mjs';
 import { assertRestoreFixtureShape } from './restore-schema-fixture.mjs';
+import { seedVisitDisclosures, proveVisitDisclosures } from './restore-visit-fixture.mjs';
 
 const directory = fileURLToPath(new URL('../../../work/restore-rehearsal/', import.meta.url));
 const fixedError = message => error => error.message === message;
@@ -58,6 +59,7 @@ test('all native PostgreSQL harnesses reject localhost before DNS or socket conn
     ['./postgres.test.mjs', 'Only a loopback PostgreSQL /postgres test administrator is allowed'],
     ['./s3-postgres.test.mjs', 'Only loopback PostgreSQL /postgres is allowed'],
     ['./s4-postgres.test.mjs', 'Only loopback PostgreSQL /postgres is allowed'],
+    ['./visit-documentation-postgres.test.mjs', 'Only loopback PostgreSQL /postgres is allowed'],
     ['../../integration-runtime/tests/postgres-bootstrap.test.mjs', 'Only an explicit loopback PostgreSQL test lab is allowed'],
   ];
   for (const [file, expectedError] of harnesses) {
@@ -227,6 +229,7 @@ test('real pg_dump and pg_restore preserve synthetic authority, import receipts,
       const migrations = await applyAuthority(source);
       migrations.push(...await applyRuntime(source));
       const authority = await seedAuthority(source);
+      const disclosures = await seedVisitDisclosures(source, authority.artifacts);
       const runtime = await seedRuntime(source);
       const imported = await seedImportReceipt(source);
       await assertRestoreFixtureShape(source);
@@ -269,6 +272,7 @@ test('real pg_dump and pg_restore preserve synthetic authority, import receipts,
       const functional = await proveAuthority(restored, authority);
       Object.assign(functional, await proveRuntime(restored, runtime));
       Object.assign(functional, await proveImportReceipt(restored, imported));
+      Object.assign(functional, await proveVisitDisclosures(restored, disclosures));
       equal(await fingerprint(restored), before, 'Read/retry/security probes preserved restored snapshot');
       await restored.query('begin');
       try {

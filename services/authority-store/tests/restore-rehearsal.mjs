@@ -169,13 +169,13 @@ export async function applyRuntime(db, { migrationDirectory = new URL('../../int
   return migrations;
 }
 
-export async function actor(db, n, run) {
+export async function actor(db, n, run, { rollback = false } = {}) {
   await db.query('begin');
   try {
     await db.query("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({ sub: uid(n), session_id: sid(n),
       role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600 })]);
     await db.query('set local role authenticated');
-    const result = await run(); await db.query('commit'); return result;
+    const result = await run(); await db.query(rollback ? 'rollback' : 'commit'); return result;
   } catch (error) { await db.query('rollback'); throw error; }
 }
 export async function rpc(db, name, args) {
