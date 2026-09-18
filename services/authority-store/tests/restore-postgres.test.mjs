@@ -243,6 +243,7 @@ test('real pg_dump and pg_restore preserve synthetic authority, import receipts,
       assert.equal(before.tables.find(row => row.name === 's3_receipt').count, 5);
       assert.equal(before.tables.find(row => row.name === 'archive_patient_import_receipt').count, 1);
       assert.equal(before.tables.find(row => row.schema === 'pennsync_private' && row.name === 'patient').count, 5);
+      assert.equal(before.tables.find(row => row.name === 'visit_list_disclosure_audit').count, 3);
       assert.equal(before.tables.find(row => row.name === 'patient_context').count, 2);
       assert.equal(before.tables.find(row => row.name === 'patient_disclosure_audit').count, 6);
       plaintext = await dumpOwned();

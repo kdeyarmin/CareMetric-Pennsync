@@ -7,6 +7,7 @@ import { chromium, expect } from '@playwright/test';
 import { localStatus, API } from '../../authority-store/tests/http-local-stack.mjs';
 import { STAGING_APP_ID as APP, AUTHORITY_CONTRACT } from '../client.mjs';
 import { BRAND_LOGO_URL } from '../../../src/lib/brand.js';
+import { clinicalFixture } from './clinical-fixture.mjs';
 import { provision, localRequest } from './fixture.mjs';
 import { allowedDestination, matchesPatientPost } from './network.mjs';
 import { startActualApp, ACTUAL_APP_ORIGIN } from './actual-app-server.mjs';
@@ -30,8 +31,11 @@ function allowedRequest(url, method, resourceType, assetPaths) {
   if (url.username || url.password || url.hash) return false;
   if (url.href === LOGO) return method === 'GET' && resourceType === 'image';
   if (url.origin === ACTUAL_APP_ORIGIN) return method === 'GET'
-    && ((!url.search && (assetPaths.has(url.pathname) || (resourceType === 'document' && ['/', '/Patients', '/consent'].includes(url.pathname))))
-      || (resourceType === 'document' && url.pathname === '/consent' && url.search === '?ctx=synthetic-unavailable'));
+    && ((!url.search && (assetPaths.has(url.pathname) || (resourceType === 'document' && ['/', '/Patients', '/consent', '/ClinicalDocumentation'].includes(url.pathname))))
+      || (resourceType === 'document' && url.pathname === '/consent' && url.search === '?ctx=synthetic-unavailable')
+      || (resourceType === 'document' && url.pathname === '/ClinicalDocumentation' && /^\?(visitId=[a-f0-9-]{36}|patientId=[A-Za-z0-9_-]{1,128})$/.test(url.search)));
+  if (url.origin === API && !url.search && ['POST','OPTIONS'].includes(method)
+    && /^\/rest\/v1\/rpc\/pennsync_staging_(visits_schedule|visit_documentation|patient_context)$/.test(url.pathname)) return true;
   return url.origin === API && allowedDestination(url, method)
     && url.pathname !== '/rest/v1/rpc/pennsync_staging_patient';
 }
@@ -63,6 +67,12 @@ test('actual app network and credential checks exclude remote business calls and
   }
   assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_patients`, 'POST'), true);
   assert.equal(allowed(`${API}/auth/v1/token?grant_type=password`, 'POST'), true);
+  for (const method of ['visits_schedule','visit_documentation','patient_context']) {
+    assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_${method}`, 'POST'), true);
+    assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_${method}?extra=1`, 'POST'), false);
+    assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_${method}`, 'GET'), false);
+  }
+  assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_s4_create`, 'POST'), false);
   assert.equal(containsCredential({ base44_app_id: APP, authority_marker: 'closed' }, ['password-sentinel']), false);
   for (const secret of ['password-sentinel', 'access-sentinel', 'refresh-sentinel']) {
     assert.equal(containsCredential({ arbitrary: { nested: secret } }, [secret]), true);
@@ -100,6 +110,8 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     phase = 'native-users-and-fixtures';
     const prepared = await provision(db, status); actors = prepared.actors;
     credentials.push(...actors.map(actor => actor.password), status.SECRET_KEY);
+    const savedVisit = await clinicalFixture(db, status, actors);
+    assert.equal((await db.query('select count(*)::int n from auth.sessions')).rows[0].n,0);
     phase = 'compiled-app-build'; app = await startActualApp(prepared.configuration);
     browser = await chromium.launch({ headless: true });
     const newContext = async () => {
@@ -268,8 +280,31 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     for (const [name, expected] of ROSTERS) {
       phase = `${name}-login`; await login(name);
       phase = `${name}-roster`; await roster(expected);
+      phase = `${name}-saved-clinical-visit`;
+      await page.getByRole('link', { name:'Clinical Notes', exact:true }).click();
+      await expect(page.getByRole('heading', { name:'Clinical Notes', exact:true })).toBeVisible();
+      const selector=page.getByLabel('Patient', { exact:true }); await expect(selector).toBeVisible();
+      if (name==='admin-a' || name==='clinician-a') {
+        await selector.selectOption('patient-a1');
+        await page.getByRole('link', { name:'Open saved visit · 2026-09-18', exact:true }).click();
+        await expect(page.getByRole('heading', { name:'Saved visit note', exact:true })).toBeVisible();
+        await expect(page.getByLabel('Saved note text', { exact:true })).toHaveText(savedVisit.nurse_notes);
+        await expect(page.getByRole('region', { name:'Recorded vital signs' })).toContainText('0');
+        await expect(page.getByRole('region', { name:'Recorded vital signs' })).toContainText('70');
+        await expect(page.getByText('Fictional Zoë Context A · 2026-09-18', { exact:true })).toBeVisible();
+        await expect(page.getByRole('button', { name:/Save|Generate/ })).toHaveCount(0);
+      } else {
+        await settlePageRoutes(page, routeTrackers.get(context));
+        await page.evaluate(path => { globalThis.history.pushState(null, '', path); globalThis.dispatchEvent(new globalThis.PopStateEvent('popstate')); }, `/ClinicalDocumentation?visitId=${savedVisit.id}`);
+        await expect(page.getByRole('alert')).toContainText('Saved records unavailable');
+        await expect(page.getByLabel('Saved note text', { exact:true })).toHaveCount(0);
+      }
+      await page.getByRole('link', { name:'Return to patients', exact:true }).click();
+      await roster(expected);
       phase = `${name}-logout`; await logout();
     }
+    assert.ok((await db.query('select count(*)::int n from pennsync_private.visit_list_disclosure_audit')).rows[0].n>=2);
+    t.diagnostic('Saved clinical UI: current admin/assigned clinician discovered and reopened exact stored notes/vitals, foreign/unassigned direct links denied, no edit/provider actions.');
     t.diagnostic('Compiled App: four native logins, explicit agency selection, exact scoped name rosters, disabled clinical actions and logout passed.');
 
     phase = 'online-terminal-reset-native-cleanup';
