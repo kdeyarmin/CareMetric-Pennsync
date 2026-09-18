@@ -9,7 +9,7 @@ import { s3Fields, s3Tables } from './s3-fixture.mjs';
 const raw=process.env.PENNSYNC_TEST_PG_URL;
 if(!raw) throw new Error('PENNSYNC_TEST_PG_URL is required for real PostgreSQL tests');
 const base=new URL(raw);
-if(!['postgres:','postgresql:'].includes(base.protocol)||!['127.0.0.1','localhost','[::1]'].includes(base.hostname)
+if(!['postgres:','postgresql:'].includes(base.protocol)||!['127.0.0.1','[::1]'].includes(base.hostname)
   ||base.pathname!=='/postgres'||base.search||base.hash) throw new Error('Only loopback PostgreSQL /postgres is allowed');
 const app='6a9881683dc68a0bd54f1ef7';
 const uid=n=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;

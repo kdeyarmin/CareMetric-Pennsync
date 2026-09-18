@@ -63,6 +63,36 @@ jobs:
         run: node --test services/integration-runtime/tests/postgres-bootstrap.test.mjs
         env:
           PENNSYNC_TEST_PG_URL: postgresql://postgres@127.0.0.1:5432/postgres
+      - name: Install PostgreSQL 17 client tools only
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The runner ships PostgreSQL 16 and removes its PGDG source/key.
+          # Use the official signed repository; install no server package.
+          if ! grep -Rqs 'apt.postgresql.org/pub/repos/apt' /etc/apt/sources.list /etc/apt/sources.list.d; then
+            runner_codename="$(. /etc/os-release && test "$ID" = ubuntu && printf '%s' "$VERSION_CODENAME")"
+            [[ "$runner_codename" =~ ^[a-z]+$ ]]
+            sudo install -d /usr/share/postgresql-common/pgdg
+            sudo curl --fail --silent --show-error --location --retry 3 --max-time 60 \
+              https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+              --output /usr/share/postgresql-common/pgdg/pennsync-ci.asc
+            printf 'deb [signed-by=/usr/share/postgresql-common/pgdg/pennsync-ci.asc] https://apt.postgresql.org/pub/repos/apt %s-pgdg main\n' "$runner_codename" \
+              | sudo tee /etc/apt/sources.list.d/pennsync-ci-pgdg.list > /dev/null
+          fi
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
+      - name: Verify disposable synthetic database backup and restore
+        run: node --test services/authority-store/tests/restore-postgres.test.mjs
+        env:
+          PENNSYNC_TEST_PG_URL: postgresql://postgres@127.0.0.1:5432/postgres
+          PENNSYNC_TEST_PG_BIN: /usr/lib/postgresql/17/bin
+      - name: Retain sanitized local database restore receipt
+        uses: actions/upload-artifact@v7
+        with:
+          name: pennsync-local-database-restore
+          path: work/restore-rehearsal/receipt-*.json
+          if-no-files-found: error
+          retention-days: 7
 
   http:
     name: Verify independent Auth and API

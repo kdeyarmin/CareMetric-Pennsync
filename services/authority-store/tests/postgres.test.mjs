@@ -11,7 +11,7 @@ const raw=process.env.PENNSYNC_TEST_PG_URL;
 if(!raw) throw new Error('PENNSYNC_TEST_PG_URL is required for real PostgreSQL tests');
 const base=new URL(raw);
 if(!['postgres:','postgresql:'].includes(base.protocol)
-  || !['127.0.0.1','localhost','[::1]'].includes(base.hostname)
+  || !['127.0.0.1','[::1]'].includes(base.hostname)
   || base.pathname!=='/postgres' || base.search || base.hash) {
   throw new Error('Only a loopback PostgreSQL /postgres test administrator is allowed');
 }
