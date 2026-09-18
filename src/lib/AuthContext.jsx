@@ -226,6 +226,7 @@ export const AuthProvider = ({ children }) => {
   const activeAuthorityRef = useRef(null);
   const lastAuthenticatedUserRef = useRef(null);
   const logoutInProgressRef = useRef(false);
+  const independentCleanupRef = useRef(null);
   const teardownTailRef = useRef(Promise.resolve());
   const strictPersistentPurgeRequiredRef = useRef(true);
   const [user, setUser] = useState(null);
@@ -246,6 +247,22 @@ export const AuthProvider = ({ children }) => {
   const setTenantAuthorityState = useCallback((nextState) => {
     authorityStateRef.current = nextState;
     setTenantAuthorityStateValue(nextState);
+  }, []);
+
+  const cleanupIndependentSession = useCallback(() => {
+    if (!independentStagingAuth) return Promise.resolve(true);
+    if (independentCleanupRef.current) return independentCleanupRef.current;
+    // signOut fences local access synchronously and preserves failed known
+    // credentials for retry. Keep its promise independent of cache teardown.
+    const pending = independentStagingAuth.signOut().then(() => true, () => {
+      setAuthError({ type: 'staging_cleanup_unavailable',
+        message: 'Access is closed. Session cleanup could not be confirmed. Keep this page open and retry signing out.' });
+      return false;
+    }).finally(() => {
+      if (independentCleanupRef.current === pending) independentCleanupRef.current = null;
+    });
+    independentCleanupRef.current = pending;
+    return pending;
   }, []);
 
   /**
@@ -350,11 +367,15 @@ export const AuthProvider = ({ children }) => {
     nextUser = null,
     purgePersistent = false,
     purgeDrafts = false,
+    terminalIndependentSession = false,
   } = {}) => {
     // First statement: prevent every protected SDK read, write, function,
     // integration, log, and subscription from being initiated by a retained
     // async continuation while React/cache/storage teardown is in progress.
     closeTenantSdkRealm();
+    const nativeCleanup = independentStagingAuth
+      && (terminalIndependentSession || hasPinnedTenantSdkRealm())
+      ? cleanupIndependentSession() : null;
     closeAuthorityBoundWindows();
     // Fence non-TanStack draft work synchronously. This must happen before the
     // first await so stale component/import continuations cannot write while
@@ -380,7 +401,8 @@ export const AuthProvider = ({ children }) => {
       if (purgePersistent) await purgePersistentPhi();
       if (purgeDrafts) await purgeAuthorityBoundDrafts();
     });
-  }, [clearRuntimeTenantCaches, enqueueTenantTeardown, purgePersistentPhi, setTenantAuthorityState]);
+    if (nativeCleanup && !await nativeCleanup) throw new Error('STAGING_SESSION_CLEANUP_UNCONFIRMED');
+  }, [cleanupIndependentSession, clearRuntimeTenantCaches, enqueueTenantTeardown, purgePersistentPhi, setTenantAuthorityState]);
 
   const establishTenantAuthority = useCallback(async ({
     phase = 'boot',
@@ -637,6 +659,8 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       if (generation !== authGeneration.current) return false;
       closeTenantSdkRealm();
+      const nativeCleanup = independentStagingAuth && hasPinnedTenantSdkRealm()
+        ? cleanupIndependentSession() : null;
       const definitiveFailure = isDefinitiveTenantAuthorityFailure(error)
         || stage === 'drafts';
       if (definitiveFailure) {
@@ -695,11 +719,13 @@ export const AuthProvider = ({ children }) => {
         setTenantAuthorityState(TENANT_AUTHORITY_STATES.BLOCKED);
       }
       console.error('Tenant authority verification failed');
+      if (nativeCleanup) await nativeCleanup;
       return false;
     } finally {
       if (generation === authGeneration.current) setIsLoadingAuth(false);
     }
   }, [
+    cleanupIndependentSession,
     enqueueTenantTeardown,
     purgePersistentPhi,
     purgeTenantAuthority,
@@ -833,9 +859,17 @@ export const AuthProvider = ({ children }) => {
     const handleDocumentExit = () => {
       poisonTenantSdkRealm();
       closeAuthorityBoundWindows();
+      // Uncontrolled page exit may terminate requests. This is best effort;
+      // a retained BFCache document retries before its controlled reload.
+      if (independentStagingAuth) void cleanupIndependentSession();
     };
     const handleDocumentRestore = (event) => {
-      if (event.persisted) window.location.reload();
+      if (!event.persisted) return;
+      if (!independentStagingAuth) window.location.reload();
+      else {
+        poisonTenantSdkRealm();
+        void cleanupIndependentSession().then(cleaned => { if (cleaned) window.location.reload(); });
+      }
     };
     window.addEventListener('pagehide', handleDocumentExit);
     window.addEventListener('pageshow', handleDocumentRestore);
@@ -843,7 +877,7 @@ export const AuthProvider = ({ children }) => {
       window.removeEventListener('pagehide', handleDocumentExit);
       window.removeEventListener('pageshow', handleDocumentRestore);
     };
-  }, []);
+  }, [cleanupIndependentSession]);
 
   useEffect(() => () => {
     // React StrictMode intentionally runs an effect setup/cleanup probe without
@@ -861,11 +895,16 @@ export const AuthProvider = ({ children }) => {
     if (authorityStateRef.current !== TENANT_AUTHORITY_STATES.SELECTION_REQUIRED) {
       if (authorityStateRef.current === TENANT_AUTHORITY_STATES.READY) {
         poisonTenantSdkRealm();
-        await purgeTenantAuthority({
-          nextState: TENANT_AUTHORITY_STATES.BLOCKED,
-          purgePersistent: true,
-          purgeDrafts: true,
-        });
+        try {
+          await purgeTenantAuthority({
+            nextState: TENANT_AUTHORITY_STATES.BLOCKED,
+            purgePersistent: true,
+            purgeDrafts: true,
+          });
+        } catch (error) {
+          if (independentStagingAuth && error?.message === 'STAGING_SESSION_CLEANUP_UNCONFIRMED') return false;
+          throw error;
+        }
         setTenantContextError(tenantError(
           'browser_authority_change_requires_restart',
           'Sign out and reopen the app before choosing another agency.',
@@ -875,11 +914,17 @@ export const AuthProvider = ({ children }) => {
     }
     if (hasPinnedTenantSdkRealm()) {
       poisonTenantSdkRealm();
-      await purgeTenantAuthority({
-        nextState: TENANT_AUTHORITY_STATES.BLOCKED,
-        purgePersistent: true,
-        purgeDrafts: true,
-      });
+      try {
+        await purgeTenantAuthority({
+          nextState: TENANT_AUTHORITY_STATES.BLOCKED,
+          purgePersistent: true,
+          terminalIndependentSession: true,
+          purgeDrafts: true,
+        });
+      } catch (error) {
+        if (independentStagingAuth && error?.message === 'STAGING_SESSION_CLEANUP_UNCONFIRMED') return false;
+        throw error;
+      }
       setTenantContextError(tenantError(
         'browser_authority_change_requires_restart',
         'Workspace authority changed. Sign out and reopen the app to continue safely.',
@@ -904,6 +949,7 @@ export const AuthProvider = ({ children }) => {
       await purgeTenantAuthority({
         nextState: TENANT_AUTHORITY_STATES.BLOCKED,
         purgePersistent: true,
+        terminalIndependentSession: true,
       });
     } catch {
       // Remain terminal and blocked. Reload repeats strict cleanup.
@@ -1015,6 +1061,7 @@ export const AuthProvider = ({ children }) => {
         // this is the same exact authority. Revocation, principal drift, or a
         // membership/version/role change triggers the persistent purge there.
         purgePersistent: true,
+        terminalIndependentSession: true,
       }).then(() => {
         if (publicRouteActiveRef.current && publicRouteDesiredRef.current) {
           publicRoutePreparedRef.current = true;
@@ -1076,12 +1123,8 @@ export const AuthProvider = ({ children }) => {
     poisonTenantSdkRealm();
     if (logoutInProgressRef.current) {
       if (independentStagingAuth) {
-        try {
-          await independentStagingAuth.signOut();
-          if (shouldRedirect) window.location.assign(scrubProtectedBrowserLocation());
-        } catch {
-          setAuthError({ type: 'staging_cleanup_unavailable', message: 'Access remains closed. Session cleanup could not be confirmed. Retry signing out.' });
-        }
+        const cleaned = await cleanupIndependentSession();
+        if (cleaned && shouldRedirect) window.location.assign(scrubProtectedBrowserLocation());
       }
       return;
     }
@@ -1136,19 +1179,14 @@ export const AuthProvider = ({ children }) => {
     setIsLoadingAuth(false);
     setAuthError(null);
     if (independentStagingAuth) {
-      try {
-        await independentStagingAuth.signOut();
-        if (shouldRedirect) window.location.assign(safeReturnUrl);
-      } catch {
-        setAuthError({ type: 'staging_cleanup_unavailable',
-          message: 'Access is closed. Session cleanup could not be confirmed. Keep this page open and retry signing out.' });
-      }
+      const cleaned = await cleanupIndependentSession();
+      if (cleaned && shouldRedirect) window.location.assign(safeReturnUrl);
     } else if (shouldRedirect) base44.auth.logout(safeReturnUrl);
     else base44.auth.logout();
     void immediateDraftPurge;
     void immediatePersistentPhiPurge;
     void teardown;
-  }, [purgeTenantAuthority]);
+  }, [cleanupIndependentSession, purgeTenantAuthority]);
 
   const navigateToLogin = () => {
     if (independentStagingAuth) return;

@@ -270,7 +270,9 @@ const TenantAuthorityScreen = ({ memberships, error, onSelect, onRetry, onSignOu
           {!selectionRequired && (
             <button
               type="button"
-              onClick={requiresReload ? () => window.location.reload() : onRetry}
+              onClick={requiresReload
+                ? independentStagingAuth ? onSignOut : () => window.location.reload()
+                : onRetry}
               className="rounded-lg bg-navy-700 px-4 py-2 text-sm font-semibold text-white hover:bg-navy-800"
             >
               {requiresReload ? 'Reload app' : 'Retry verification'}
@@ -468,6 +470,15 @@ const AuthenticatedApp = () => {
     return () => { current = false; };
   }, [publicCapabilitySnapshot, publicTokenPath, setPublicRouteActive]);
 
+  // A controlled public transition must retain the document and its cleanup
+  // credential on failure, even though public pages precede staff auth gates.
+  if (independentStagingAuth && authError?.type === 'staging_cleanup_unavailable') return (
+    <div className="p-6" role="alert">
+      <h1>Staging access is closed</h1><p>{authError.message}</p>
+      <button type="button" onClick={() => { void logout(); }}>Retry sign out</button>
+    </div>
+  );
+
   // Capability-token public routes stay outside both authentication and tenant
   // authority gates. No protected component or agreement query is created.
   if (publicTokenPath) {
@@ -528,12 +539,6 @@ const AuthenticatedApp = () => {
     }
     if (authError.type === 'user_not_registered') return <UserNotRegisteredError />;
     if (authError.type === 'auth_required') return <SignInScreen />;
-    if (independentStagingAuth && authError.type === 'staging_cleanup_unavailable') return (
-      <div className="p-6" role="alert">
-        <h1>Staging access is closed</h1><p>{authError.message}</p>
-        <button type="button" onClick={() => { void logout(); }}>Retry sign out</button>
-      </div>
-    );
     return <AppUnavailableScreen type={authError.type} message={authError.message} />;
   }
 
