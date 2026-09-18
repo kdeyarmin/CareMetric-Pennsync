@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { chromium, expect } from '@playwright/test';
 import { localStatus, API } from '../../authority-store/tests/http-local-stack.mjs';
-import { STAGING_APP_ID as APP } from '../client.mjs';
+import { STAGING_APP_ID as APP, AUTHORITY_CONTRACT } from '../client.mjs';
 import { provision, localRequest } from './fixture.mjs';
 import { startBrowserServer, BROWSER_ORIGIN } from './server.mjs';
 import { allowedDestination } from './network.mjs';
@@ -49,14 +49,38 @@ test('Chromium independent login and existing patient read contracts against rea
               blocked += 1; await route.abort('blockedbyclient'); return;
             }
             if (headers.authorization?.startsWith('Bearer ')) latestBearer = headers.authorization.slice(7);
-            if (url.pathname.endsWith('/pennsync_staging_patient') && fault) {
+            if (request.method() === 'POST' && url.pathname.endsWith('/pennsync_staging_patient') && fault) {
               fault = false; await route.abort('failed'); return;
             }
-            if (hold && url.pathname.endsWith(hold.path)) {
+            if (request.method() === 'POST' && hold && url.pathname.endsWith(hold.path)) {
               const pending = hold; hold = null;
               // Delay only an actual signed request's real successful response.
               const response = await route.fetch({ maxRedirects: 0, timeout: 15000 });
               if (response.status() !== 200) throw new Error('BROWSER_REAL_RESPONSE_REQUIRED');
+              assert.match(headers.authorization || '', /^Bearer [A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
+              assert.match(response.headers()['content-type'] || '', /^application\/json\b/i);
+              const result = await response.json();
+              const expectedActor = actors.find(actor => actor.name === pending.actor);
+              const common = { contract: AUTHORITY_CONTRACT, app_id: APP, auth_user_id: expectedActor.uuid,
+                staging: true, synthetic: true };
+              for (const [key, value] of Object.entries(common)) {
+                assert.equal(result[key], value); assert.equal(result.context[key], value);
+              }
+              assert.equal(result.context.user_id, expectedActor.legacyId);
+              assert.equal(result.context.user_email, expectedActor.email);
+              assert.equal(result.context.agency_id, expectedActor.agency);
+              assert.equal(result.context.membership_id, `membership-${expectedActor.name}`);
+              assert.equal(result.context.membership_version, 1);
+              assert.equal(result.context.tenant_role, 'agency_admin');
+              const patient = { id: 'patient-a1', agency_id: 'agency-a', display_name: 'Synthetic Patient A1', version: 1, synthetic: true };
+              const single = pending.path === '/pennsync_staging_patient';
+              assert.deepEqual(Object.keys(result).sort(), [...Object.keys(common), 'context',
+                ...(single ? ['patient'] : ['items', 'next_cursor'])].sort());
+              assert.deepEqual(request.postDataJSON(), single
+                ? { p_app_id: APP, p_agency_id: 'agency-a', p_patient_id: 'patient-a1' }
+                : { p_app_id: APP, p_agency_id: 'agency-a', p_limit: 1, p_after_id: null });
+              if (single) assert.deepEqual(result.patient, patient);
+              else { assert.deepEqual(result.items, [patient]); assert.equal(result.next_cursor, 'patient-a1'); }
               pending.arrived.resolve(); await pending.release.promise;
               // Logout aborts the browser request. Either delivery is cancelled or
               // the client's epoch rejects it; neither may repopulate the UI.
@@ -84,7 +108,8 @@ test('Chromium independent login and existing patient read contracts against rea
       assert.deepEqual(await context.cookies(), []);
     };
     const logout = async () => {
-      const response = page.waitForResponse(value => value.url() === `${API}/auth/v1/logout?scope=local`);
+      const response = page.waitForResponse(value => value.url() === `${API}/auth/v1/logout?scope=local`
+        && value.request().method() === 'POST');
       await page.locator('#logout').click();
       await expect(page.locator('#identity')).toBeEmpty(); await expect(page.locator('#roster')).toBeEmpty();
       await expect(page.locator('#detail')).toBeEmpty();
@@ -97,8 +122,18 @@ test('Chromium independent login and existing patient read contracts against rea
     };
     const detail = async id => { await page.locator('#patient-id').fill(id); await page.getByRole('button', { name: 'Open patient' }).click(); };
     const holdNext = path => {
-      const pending = { path, arrived: deferred(), release: deferred(), finished: deferred() };
+      const pending = { path, actor: 'admin-a', arrived: deferred(), release: deferred(), finished: deferred() };
       hold = pending; releases.push(pending.release); return pending;
+    };
+    const optionsProbe = async path => {
+      // Explicit browser OPTIONS is observable even if Chromium's CORS cache is
+      // warm. It reaches the real local gateway without consuming a POST hook.
+      const result = await bounded(page.evaluate(async ({ url, key }) => {
+        const response = await fetch(url, { method: 'OPTIONS', credentials: 'omit', cache: 'no-store',
+          redirect: 'error', headers: { apikey: key }, signal: AbortSignal.timeout(10000) });
+        return { status: response.status, ok: response.ok };
+      }, { url: `${API}/rest/v1/rpc${path}`, key: status.PUBLISHABLE_KEY }));
+      assert.equal(result.ok, true); assert.equal(result.status, 200);
     };
     phase = 'four-role-browser-rosters';
     for (const [name, expected] of [['admin-a', ['patient-a1']], ['clinician-a', ['patient-a1']],
@@ -125,6 +160,7 @@ test('Chromium independent login and existing patient read contracts against rea
     phase = 'logout-delayed-genuine-patient';
     await login('admin-a'); await roster(['patient-a1']);
     const delayed = holdNext('/pennsync_staging_patient');
+    await optionsProbe(delayed.path); assert.equal(hold, delayed);
     await detail('patient-a1'); await bounded(delayed.arrived.promise);
     const oldBearer = latestBearer; await logout(); delayed.release.resolve(); await bounded(delayed.finished.promise);
     await expect(page.locator('#status')).toHaveText('Signed out'); await expect(page.locator('#detail')).toBeEmpty();
@@ -137,6 +173,7 @@ test('Chromium independent login and existing patient read contracts against rea
     phase = 'principal-switch-delayed-genuine-roster';
     await login('admin-a');
     const switched = holdNext('/pennsync_staging_patients');
+    await optionsProbe(switched.path); assert.equal(hold, switched);
     await page.locator('#load').click(); await bounded(switched.arrived.promise);
     await login('admin-b'); switched.release.resolve(); await bounded(switched.finished.promise);
     await expect(page.locator('#roster')).toBeEmpty(); await expect(page.locator('#detail')).toBeEmpty();
@@ -146,7 +183,8 @@ test('Chromium independent login and existing patient read contracts against rea
     await page.locator('#agency').fill('agency-b');
     phase = 'failed-network-clears-old-detail';
     await detail('patient-b1'); await expect(page.locator('#detail')).toHaveText('Synthetic Patient B1');
-    fault = true; await detail('patient-b1'); await expect(page.locator('#status')).toHaveText('AUTHORITY_NETWORK_FAILED');
+    fault = true; await optionsProbe('/pennsync_staging_patient'); assert.equal(fault, true);
+    await detail('patient-b1'); await expect(page.locator('#status')).toHaveText('AUTHORITY_NETWORK_FAILED');
     await expect(page.locator('#detail')).toBeEmpty(); await logout();
 
     phase = 'fresh-browser-context-no-persistence';
