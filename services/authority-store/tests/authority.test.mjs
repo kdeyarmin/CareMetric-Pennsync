@@ -163,9 +163,11 @@ scenario('browser table CRUD, internal helper execution and anonymous wrappers a
 });
 scenario('public wrappers are invoker-only; private grants and RLS are complete',async()=>{
   const rows=await privileged("select p.proname,p.prosecdef from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname like 'pennsync_staging_%'");
-  assert.equal(rows.rows.length,6); assert.equal(rows.rows.some(x=>x.prosecdef),false);
+  assert.deepEqual(rows.rows.map(x=>x.proname).sort(),['context','memberships','patients','patient','assignment','revoke_membership','s4_create','s4_read'].map(x=>`pennsync_staging_${x}`).sort());
+  assert.equal(rows.rows.some(x=>x.prosecdef),false);
   const tables=await privileged("select relname,relrowsecurity,relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='pennsync_private' and relkind='r'");
-  assert.equal(tables.rows.length,6); assert.equal(tables.rows.every(x=>x.relrowsecurity&&x.relforcerowsecurity),true);
+  assert.deepEqual(tables.rows.map(x=>x.relname).sort(),['identity_map','agency','membership','patient','assignment','mutation_receipt','s4_visit','s4_note_history','s4_note_conversion','s4_compliance_audit','s4_create_receipt'].sort());
+  assert.equal(tables.rows.every(x=>x.relrowsecurity&&x.relforcerowsecurity),true);
   const paths=await privileged("select proname,proconfig from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='pennsync_private'");
   assert.equal(paths.rows.every(x=>x.proconfig?.includes('search_path=""')),true);
 });

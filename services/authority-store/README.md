@@ -1,10 +1,10 @@
 # Independent staging authority store
 
-This is an additive **synthetic staging slice**, not the production authority migration. It is fixed to Base44 staging identity namespace `6a9881683dc68a0bd54f1ef7`. It does not call Base44, copy customer data, create real Auth accounts, change production release controls, or modify existing integration/PennTrain tables. It implements independent membership context/selection, a minimal synthetic patient roster, assignment changes and clinician membership revocation.
+This is an additive **synthetic staging slice**, not the production authority migration. It is fixed to Base44 staging identity namespace `6a9881683dc68a0bd54f1ef7`. It does not call Base44, copy customer data, create real Auth accounts, change production release controls, or modify existing integration/PennTrain tables. It implements independent membership context/selection, a minimal synthetic patient roster, assignment changes and clinician membership revocation. A second migration adds the strictly bounded [S4-create subset](S4_CREATE_SUBSET.md): an atomic synthetic note save and own-receipt lookup. This is not complete S4, UI acceptance or production feature selection.
 
 ## Storage and privilege boundary
 
-The CLI-created migration is under `supabase/migrations/`. It creates six tables in the new, unexposed `pennsync_private` schema and six explicit public RPC wrappers. All public wrappers are `SECURITY INVOKER`; entry implementations are private `SECURITY DEFINER` functions with empty fixed search paths. Only the six private entry functions receive authenticated execution; internal helpers do not. Every table has RLS enabled and forced, with no allowing policy and no browser CRUD grant. The migration intentionally refuses an already-existing private schema instead of modifying unknown resources.
+The CLI-created migration is under `supabase/migrations/`. The first creates six tables in the new, unexposed `pennsync_private` schema and six explicit public RPC wrappers. The S4 subset adds five private tables and two wrappers. All public wrappers are `SECURITY INVOKER`; entry implementations are private `SECURITY DEFINER` functions with empty fixed search paths. Only the eight private entry functions receive authenticated execution; internal helpers do not. Every table has RLS enabled and forced, with no allowing policy and no browser CRUD grant. The migration intentionally refuses an already-existing private schema instead of modifying unknown resources.
 
 Deploy only through a migration owner with the existing rights required to read/lock Auth user/session rows and access the new private tables. The Data API must expose `public`, **never `pennsync_private`**. This setting and real hosted role grants still require separate verification before deployment. This package has no deployment command or linked project configuration.
 
@@ -12,7 +12,7 @@ Every RPC validates the actual database role is `authenticated`, the JWT role, `
 
 Identity mapping stores the independently corroborated canonical email, source Base44 user ID, evidence SHA-256 and verification timestamp. Auth UUID, legacy identity, email and evidence are immutable; disabling a mapping is terminal in this slice. A source evidence digest records trusted operator provenance, not an automatic proof that an arbitrary supplied mapping is correct. No public mapping/provisioning API exists. Any later fixture loader must independently verify these mappings before inserting them.
 
-All six existing tenant-role names are finite schema values. Only `agency_admin` and `clinician` receive roster behavior in this first slice. Administrators see their agency's synthetic patients; clinicians see active assignments. Other valid roles can obtain context but cannot use the roster yet. No owner exception exists, and the existing protected staging owner's Base44 ID cannot enter this fixture identity map. Mutation endpoints cannot promote users, revoke administrators or self, or change agency identity. The only exposed write actions are assignment grant/revoke and clinician-membership revoke.
+All six existing tenant-role names are finite schema values. Only `agency_admin` and `clinician` receive roster behavior in this first slice. Administrators see their agency's synthetic patients; clinicians see active assignments. Other valid roles can obtain context but cannot use the roster yet. No owner exception exists, and the existing protected staging owner's Base44 ID cannot enter this fixture identity map. Mutation endpoints cannot promote users, revoke administrators or self, or change agency identity. Exposed write actions are assignment grant/revoke, clinician-membership revoke and the bounded S4-create subset.
 
 ## Transaction and replay behavior
 
@@ -35,7 +35,7 @@ All names have the `public.pennsync_staging_` prefix. IDs are canonical text mat
 
 Context uses the legacy `src/lib/roles.js` fields, including `user_id`, `user_email`, exact `agency_id:user_id` membership key, membership ID/version/status and `is_platform_owner: false`. It also includes independent `auth_user_id` and `identity_version`. Membership list returns `memberships: [context, ...]`, bounded to 50 and rejecting saturation. Patient list returns `context`, `items`, and `next_cursor`; an unknown, foreign or inaccessible cursor is rejected. Get returns `context` and `patient`.
 
-Patient projections intentionally contain only `id`, `agency_id`, `display_name`, `version`, and `synthetic: true`. They are not full chart payloads. Names must begin `Synthetic `; no clinical write endpoint or generic entity CRUD exists. Mutation results include the exact action, request ID, returned state/version and `replayed` flag. The assignment action names in results are `grant_assignment` and `revoke_assignment`; membership revocation uses `revoke_membership`.
+Patient projections intentionally contain only `id`, `agency_id`, `display_name`, `version`, and `synthetic: true`. They are not full chart payloads. Names must begin `Synthetic `; no generic entity CRUD exists. S4 additionally requires current patient status active; existing roster projections remain unchanged. S4 uses its own response contract, documented in its scope file. Mutation results include the exact action, request ID, returned state/version and `replayed` flag. The assignment action names in results are `grant_assignment` and `revoke_assignment`; membership revocation uses `revoke_membership`.
 
 SQLSTATEs preserve failure categories: `28000` session/native identity failures, `42501` permission/scope failures, `22023` invalid input, `PT409` stale authority/version/result, and `23505` mismatched idempotency binding. `PT409` maps to HTTP 409 in PostgREST. These deterministic business conflicts must not use `40001` (serialization failure): PostgREST 14.14's Hasql transaction runner retries that code, repeating a conflict that cannot succeed without new caller input. Native PostgreSQL serialization failures retain their normal code and transaction semantics. No lock, live-authority check, optimistic version check, receipt binding or rollback boundary is relaxed. No exception interpolates a user name, email, patient content or credential.
 
@@ -47,16 +47,16 @@ From the repository root, install only the isolated service dependencies; its lo
 
 ```sh
 pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
-node --test services/authority-store/tests/authority.test.mjs
+node --test services/authority-store/tests/authority.test.mjs services/authority-store/tests/s4.test.mjs
 ```
 
-This runs 21 executable PostgreSQL/PGlite scenarios. Each uses a fresh transaction and rolls back the synthetic fixture. Coverage includes role/tenant/assignment scope, native identity/session failures, cursor validation, immutable source mapping, uniqueness/foreign keys, current-state replay, failure rollback, service-role exclusion and defensive RLS after an accidental table grant. PGlite is single-connection; these tests alone do not prove concurrency.
+This runs 21 authority and 13 S4 executable PostgreSQL/PGlite scenarios. Each uses a fresh transaction and rolls back the synthetic fixture. Coverage includes role/tenant/assignment scope, native identity/session failures, cursor validation, immutable source mapping, uniqueness/foreign keys, current-state replay, failure rollback, service-role exclusion and defensive RLS after an accidental table grant. PGlite is single-connection; these tests alone do not prove concurrency.
 
 For the real PostgreSQL suite, provide an explicit local test administrator URL with `/postgres`. Only loopback hosts are accepted; remote URLs and arbitrary database names are rejected. Example PowerShell invocation for the isolated local lab:
 
 ```powershell
 $env:PENNSYNC_TEST_PG_URL='postgresql://postgres@127.0.0.1:54339/postgres'
-node --test services/authority-store/tests/postgres.test.mjs
+node --test services/authority-store/tests/postgres.test.mjs services/authority-store/tests/s4-postgres.test.mjs
 ```
 
 Eight multi-session tests observe real advisory/row lock waits and verify duplicate single-winner behavior, same-request replay, both orderings of assignment versus revocation, native session deletion, revoked-admin replay, target native banning and target identity revocation. Each creates and finally drops only its own generated `pennsync_authority_test_<pid>_<random>` database. The test server and other databases remain intact. Missing connection configuration fails rather than silently skipping this suite.
