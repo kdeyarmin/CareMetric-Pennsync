@@ -126,7 +126,7 @@ function scanRow(row) {
       const fragment = new URLSearchParams(url.hash.slice(1).replaceAll(/[?#]/g, '&'));
       requireThat(!url.username && !url.password && [...url.searchParams.keys(), ...fragment.keys()].every((k) => {
         const normalized = k.replaceAll(/[^a-z0-9]/gi, '');
-        return !SECRET_KEY.test(normalized) && !/^(?:sig|signature|key|xamzcredential|xamzsignature)$/i.test(normalized);
+        return !SECRET_KEY.test(normalized) && !/^(?:sig|signature|key|x(?:amz|goog)(?:credential|signature))$/i.test(normalized);
       }), 'credential_url');
     }
     if (!v || typeof v !== 'object') return;

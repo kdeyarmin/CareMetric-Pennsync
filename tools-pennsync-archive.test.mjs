@@ -339,7 +339,7 @@ test('credentials in URL fragments and whitespace-prefixed row URLs cannot evade
 });
 
 test('punctuated signature credential parameter names reject in query strings and fragments', async (t) => {
-  for (const key of ['sign-ature', 'x_amz_signature', 'X.AmZ.Credential', 's_i_g', 'k-e-y', 'sign%2Dature']) {
+  for (const key of ['sign-ature', 'x_amz_signature', 'X.AmZ.Credential', 'X-Goog-Signature', 'x_goog_credential', 's_i_g', 'k-e-y', 'sign%2Dature']) {
     for (const prefix of ['?', '#/review?']) {
       await t.test(`${prefix} ${key}`, async (t) => {
         const f = await fixture(t);

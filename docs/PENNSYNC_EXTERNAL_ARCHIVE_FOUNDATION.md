@@ -2,6 +2,8 @@
 
 `tools-pennsync-archive.mjs` builds and validates an encrypted bundle from **already supplied, authorized local JSONL exports and file bytes**. It has no Base44 client, network access, record importer, customer enrollment, source deletion or production activation path. It is an executable foundation for the external migration, not a completed customer backup.
 
+URL-key filtering includes normalized AWS and Google Cloud signing credentials/signatures in queries and fragments. This includes Google Cloud's documented `X-Goog-Credential` and `X-Goog-Signature` parameters; signed links are bearer access, not durable file provenance. [Google Cloud signed URLs](https://docs.cloud.google.com/storage/docs/access-control/signed-urls).
+
 ## Inventory and design decision
 
 The existing September 3 runbook describes old PENNSync → CareMetric reconciliation. It is not the Base44 exit. Those apps have independent identity spaces, and their dated inventory had no overlapping User or Patient IDs. The supplied-export format therefore keys every record by `(source_app_id, entity, id)`.
