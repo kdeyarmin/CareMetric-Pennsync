@@ -69,8 +69,8 @@ export const LIVE_READINESS_FIXTURE_ENTITY_FIELDS = Object.freeze({
   ]),
   StagingReadinessFixture: Object.freeze([
     "fixture_set_id",
-    "environment",
-    "app_id",
+    "target_environment",
+    "target_app_id",
     "origin",
     "status",
     "actor_user_ids",

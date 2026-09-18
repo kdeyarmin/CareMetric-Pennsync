@@ -480,7 +480,7 @@ async function loadFixtureRegistry(entities: Record<string, any>) {
       undefined,
       EXACT_ROW_LIMIT,
       undefined,
-      ['id', 'fixture_set_id', 'environment', 'app_id', 'origin', 'status', 'version'],
+      ['id', 'fixture_set_id', 'target_environment', 'target_app_id', 'origin', 'status', 'version'],
     ),
     'StagingReadinessFixture.filter',
   );
@@ -489,8 +489,8 @@ async function loadFixtureRegistry(entities: Record<string, any>) {
   }
   if (rows.some((row) => (
     row?.fixture_set_id !== FIXTURE_SET_ID
-    || row?.environment !== 'staging'
-    || row?.app_id !== STAGING_APP_ID
+    || row?.target_environment !== 'staging'
+    || row?.target_app_id !== STAGING_APP_ID
     || row?.origin !== STAGING_ORIGIN
     || !exactIdentifier(row?.id)
   ))) {
@@ -501,8 +501,8 @@ async function loadFixtureRegistry(entities: Record<string, any>) {
     snapshot: rows.map((row) => ({
       id: row.id,
       fixture_set_id: row.fixture_set_id,
-      environment: row.environment,
-      app_id: row.app_id,
+      target_environment: row.target_environment,
+      target_app_id: row.target_app_id,
       origin: row.origin,
       status: row.status ?? null,
       version: row.version ?? null,

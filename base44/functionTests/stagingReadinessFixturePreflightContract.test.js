@@ -253,8 +253,8 @@ test('fixture registry stays service-owned with exact canonical identity shapes'
   });
   for (const field of [
     'fixture_set_id',
-    'environment',
-    'app_id',
+    'target_environment',
+    'target_app_id',
     'origin',
     'status',
     'actor_user_ids',
@@ -265,6 +265,8 @@ test('fixture registry stays service-owned with exact canonical identity shapes'
   ]) {
     assert.ok(schema.properties[field], field);
   }
+  assert.equal(Object.hasOwn(schema.properties, 'environment'), false);
+  assert.equal(Object.hasOwn(schema.properties, 'app_id'), false);
   assert.deepEqual(Object.keys(schema.properties.actor_user_ids.properties), ACTOR_KEYS);
   assert.deepEqual(Object.keys(schema.properties.agency_ids.properties), ['agency_a', 'agency_b']);
   assert.deepEqual(Object.keys(schema.properties.patient_ids.properties), ['a1', 'a2', 'b1']);
@@ -533,8 +535,8 @@ test('missing, ineligible, and stale immutable-ID-linked rows block without disc
     fixtures: [{
       id: 'fixture-old',
       fixture_set_id: FIXTURE_SET_ID,
-      environment: 'staging',
-      app_id: STAGING_APP_ID,
+      target_environment: 'staging',
+      target_app_id: STAGING_APP_ID,
       origin: STAGING_ORIGIN,
       status: 'removed',
       version: 1,
@@ -577,6 +579,60 @@ test('missing, ineligible, and stale immutable-ID-linked rows block without disc
   const mismatchSerialized = JSON.stringify(mismatchedResult.json);
   assert.equal(mismatchSerialized.includes(mismatchedUsers[0].id), false);
   assert.equal(mismatchSerialized.includes(mismatchedUsers[0].email), false);
+});
+
+test('registry target identity uses explicit fields without internal platform metadata', async () => {
+  const fixture = {
+    id: 'fixture-existing', fixture_set_id: FIXTURE_SET_ID,
+    target_environment: 'staging', target_app_id: STAGING_APP_ID,
+    origin: STAGING_ORIGIN, status: 'preflight', version: 1,
+  };
+  const { handler, calls } = await loadHandler({ fixtures: [fixture] });
+  const { response, json } = await invoke(handler);
+  assert.equal(response.status, 200);
+  assert.equal(json.checks.fixture_registry, 'present');
+  assert.equal(json.point_in_time_clear, false);
+  const reads = calls.filters.filter(call => call.entity === 'StagingReadinessFixture');
+  assert.equal(reads.length, 2);
+  assert.ok(reads.every(call => call.fields.includes('target_app_id')
+    && call.fields.includes('target_environment')
+    && !call.fields.includes('app_id') && !call.fields.includes('environment')));
+});
+
+test('missing, legacy or wrong registry targets fail closed', async () => {
+  for (const target of [
+    {},
+    { environment: 'staging', app_id: STAGING_APP_ID },
+    { target_environment: 'prod', target_app_id: STAGING_APP_ID },
+    { target_environment: 'staging', target_app_id: '694ec16e72e01b60d22f7cbf' },
+    { target_environment: 'staging', target_app_id: [STAGING_APP_ID] },
+  ]) {
+    const { handler } = await loadHandler({ fixtures: [{
+      id: 'fixture-existing', fixture_set_id: FIXTURE_SET_ID,
+      origin: STAGING_ORIGIN, status: 'preflight', version: 1, ...target,
+    }] });
+    const { response, json } = await invoke(handler);
+    assert.equal(response.status, 409, JSON.stringify(target));
+    assert.equal(Object.hasOwn(json, 'checks'), false);
+  }
+});
+
+test('registry target drift during reinspection blocks disclosure', async () => {
+  const { handler } = await loadHandler({
+    fixtures: [{
+      id: 'fixture-existing', fixture_set_id: FIXTURE_SET_ID,
+      target_environment: 'staging', target_app_id: STAGING_APP_ID,
+      origin: STAGING_ORIGIN, status: 'preflight', version: 1,
+    }],
+    mutateRows: ({ entity, entityCall, state }) => {
+      if (entity === 'StagingReadinessFixture' && entityCall === 2) {
+        state.StagingReadinessFixture[0].target_app_id = 'other-app';
+      }
+    },
+  });
+  const { response, json } = await invoke(handler);
+  assert.equal(response.status, 409);
+  assert.equal(Object.hasOwn(json, 'checks'), false);
 });
 
 test('method and trusted runtime target gates reject before client construction', async () => {
