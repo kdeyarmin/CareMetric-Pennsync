@@ -35,7 +35,7 @@ function allowedRequest(url, method, resourceType, assetPaths) {
       || (resourceType === 'document' && url.pathname === '/consent' && url.search === '?ctx=synthetic-unavailable')
       || (resourceType === 'document' && url.pathname === '/ClinicalDocumentation' && /^\?(visitId=[a-f0-9-]{36}|patientId=[A-Za-z0-9_-]{1,128})$/.test(url.search)));
   if (url.origin === API && !url.search && ['POST','OPTIONS'].includes(method)
-    && /^\/rest\/v1\/rpc\/pennsync_staging_(visits_schedule|visit_documentation|patient_context|patient|s3_create|s3_confirm|s3_read)$/.test(url.pathname)) return true;
+    && /^\/rest\/v1\/rpc\/pennsync_staging_(visits_schedule|visit_documentation|patient_context|referral_patient|referral_patients|s3_create|s3_confirm|s3_read)$/.test(url.pathname)) return true;
   return url.origin === API && allowedDestination(url, method)
     && url.pathname !== '/rest/v1/rpc/pennsync_staging_patient';
 }
@@ -67,7 +67,7 @@ test('actual app network and credential checks exclude remote business calls and
   }
   assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_patients`, 'POST'), true);
   assert.equal(allowed(`${API}/auth/v1/token?grant_type=password`, 'POST'), true);
-  for (const method of ['visits_schedule','visit_documentation','patient_context','patient','s3_create','s3_confirm','s3_read']) {
+  for (const method of ['visits_schedule','visit_documentation','patient_context','referral_patient','referral_patients','s3_create','s3_confirm','s3_read']) {
     assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_${method}`, 'POST'), true);
     assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_${method}?extra=1`, 'POST'), false);
     assert.equal(allowed(`${API}/rest/v1/rpc/pennsync_staging_${method}`, 'GET'), false);
@@ -342,6 +342,53 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     t.diagnostic('Manual referral UI: both agency admins created, confirmed and reopened their existing-patient referral; both clinicians and a foreign referral link denied.');
     t.diagnostic('Saved clinical UI: current admin/assigned clinician discovered and reopened exact stored notes/vitals, foreign/unassigned direct links denied, no edit/provider actions.');
     t.diagnostic('Compiled App: four native logins, explicit agency selection, exact scoped name rosters, disabled clinical actions and logout passed.');
+
+    // These role changes are confined to the disposable local fixture. Restore
+    // its original membership snapshot before the existing lifecycle scenarios.
+    for(const [name,role,expected] of [
+      ['clinician-empty','manager',['patient-a1','patient-a2']],
+      ['clinician-a','office_staff',['patient-a1']],
+      ['clinician-empty','office_staff',[]],
+    ]) {
+      const member=`membership-${name}`;
+      const original=(await db.query('select tenant_role,version from pennsync_private.membership where app_id=$1 and id=$2',[APP,member])).rows[0];
+      const setRole=async(nextRole,version)=>{
+        await db.query('begin');
+        try {
+          await db.query('select pg_advisory_xact_lock(168344,20260918)');
+          await db.query('update pennsync_private.membership set tenant_role=$3,version=$4 where app_id=$1 and id=$2',[APP,member,nextRole,version]);
+          await db.query('commit');
+        } catch(error) {await db.query('rollback');throw error;}
+      };
+      await setRole(role,original.version+1);
+      try {
+        phase=`${name}-${role}-intake-selection`;await login(name);
+        await page.getByRole('link',{name:'Referral Intake',exact:true}).click();
+        const selector=page.getByLabel('Patient',{exact:true});await expect(selector).toBeVisible();
+        assert.deepEqual(await selector.locator('option').evaluateAll(options=>options.map(option=>option.value)),['',...expected]);
+        if(expected.length) {
+          await selector.selectOption('patient-a1');
+          await page.getByRole('button',{name:'Create manual referral',exact:true}).click();
+          await expect(page.getByRole('status')).toHaveText('Needs patient confirmation');
+          await page.getByRole('button',{name:'Confirm existing patient',exact:true}).click();
+          await expect(page.getByRole('status')).toHaveText('Ready for admission');
+          const savedPath=new URL(page.url()).pathname+new URL(page.url()).search;
+          await page.getByRole('link',{name:'Return to patients',exact:true}).click();
+          await settlePageRoutes(page,routeTrackers.get(context));
+          await page.evaluate(path=>{globalThis.history.pushState(null,'',path);globalThis.dispatchEvent(new globalThis.PopStateEvent('popstate'));},savedPath);
+          await expect(page.getByRole('status')).toHaveText('Ready for admission');
+        }
+        if(role==='office_staff') {
+          await settlePageRoutes(page,routeTrackers.get(context));
+          await page.evaluate(()=>{globalThis.history.pushState(null,'','/ReferralIntake?patientId=patient-a2');globalThis.dispatchEvent(new globalThis.PopStateEvent('popstate'));});
+          await expect(page.getByRole('alert')).toContainText('Referral access unavailable');
+          await expect(page.getByRole('button',{name:'Create manual referral',exact:true})).toHaveCount(0);
+        }
+        await logout();
+      } finally {await setRole(original.tenant_role,original.version);}
+    }
+    assert.deepEqual((await db.query('select (select count(*)::int from pennsync_private.s3_referral) referrals,(select count(*)::int from pennsync_private.s3_receipt) receipts')).rows[0],{referrals:4,receipts:8});
+    t.diagnostic('Manager and assigned office staff created, confirmed and reopened referrals; office staff without assignments and unassigned links withheld.');
 
     phase = 'online-terminal-reset-native-cleanup';
     await login('admin-a'); await roster(['Synthetic Patient A1', 'Synthetic Patient A2']);

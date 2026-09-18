@@ -247,3 +247,31 @@ test('late successful fetch and stream responses cannot ignore the timeout', asy
     await assert.rejects(client.rpc('context', { p_agency_id: 'agency-a' }), /AUTHORITY_REQUEST_ABORTED/);
   }
 });
+
+for (const role of ['agency_admin','manager','office_staff']) test(`referral selection admits checked ${role} scope`, async()=>{
+  const selected={...envelope(),context:{...context(),tenant_role:role},patient:patient()};
+  const listed={...envelope(),context:selected.context,items:[patient()],next_cursor:null};
+  const {client}=harness(url=>json(url.endsWith('_referral_patients')?listed:selected));
+  await client.signIn(password);
+  assert.deepEqual(await client.rpc('referral_patient',{p_agency_id:'agency-a',p_patient_id:'patient-a'}),selected);
+  assert.deepEqual(await client.rpc('referral_patients',{p_agency_id:'agency-a',p_limit:1,p_after_id:null}),listed);
+});
+for(const patch of [{p_limit:0},{p_limit:101},{p_limit:1.5},{p_after_id:'bad id'},{p_agency_id:'bad id'},{extra:true}]) test(`referral roster rejects malformed parameters ${JSON.stringify(patch)}`,async()=>{
+ const {client,calls}=harness();await client.signIn(password);const before=calls.length;
+ await assert.rejects(client.rpc('referral_patients',{p_agency_id:'agency-a',p_limit:1,p_after_id:null,...patch}),/INVALID_AUTHORITY_REQUEST/);
+ assert.equal(calls.length,before);
+});
+for(const mutation of [
+ r=>{r.context.tenant_role='clinician';},r=>{r.context.agency_id='agency-b';},
+ r=>{r.items[0].agency_id='agency-b';},r=>{r.items[0].secret='extra';},
+ r=>{r.items.push(patient());},r=>{r.next_cursor='foreign';},r=>{delete r.next_cursor;},
+]) test('referral roster withholds malformed or foreign response',async()=>{
+ const result={...envelope(),context:context(),items:[patient()],next_cursor:null};mutation(result);
+ const {client}=harness(()=>json(result));await client.signIn(password);
+ await assert.rejects(client.rpc('referral_patients',{p_agency_id:'agency-a',p_limit:2,p_after_id:null}),/INVALID_AUTHORITY_RESPONSE/);
+});
+test('referral roster requires explicit paging parameters',async()=>{
+ const {client,calls}=harness();await client.signIn(password);const before=calls.length;
+ for(const params of [{p_agency_id:'agency-a'},{p_agency_id:'agency-a',p_limit:1},{p_agency_id:'agency-a',p_after_id:null}]) await assert.rejects(client.rpc('referral_patients',params),/INVALID_AUTHORITY_REQUEST/);
+ assert.equal(calls.length,before);
+});

@@ -19,6 +19,8 @@ const METHODS = Object.freeze({
   memberships: [],
   patients: ['p_agency_id', 'p_limit', 'p_after_id'],
   patient: ['p_agency_id', 'p_patient_id'],
+  referral_patient: ['p_agency_id','p_patient_id'],
+  referral_patients: ['p_agency_id','p_limit','p_after_id'],
   patient_context: ['p_agency_id', 'p_patient_id', 'p_purpose'],
   visit_documentation: ['p_agency_id', 'p_visit_id'],
   visits_schedule: ['p_agency_id', 'p_patient_id', 'p_status', 'p_page_size', 'p_cursor'],
@@ -116,6 +118,8 @@ function validateResult(result, method, params, config) {
     memberships: [...commonKeys, 'user_id', 'user_email', 'memberships'],
     patients: [...commonKeys, 'context', 'items', 'next_cursor'],
     patient: [...commonKeys, 'context', 'patient'],
+    referral_patient: [...commonKeys,'context','patient'],
+    referral_patients: [...commonKeys,'context','items','next_cursor'],
     patient_context: [...commonKeys, 'context', 'purpose', 'patient', 'scope'],
     visit_documentation: [...commonKeys, 'context', 'purpose', 'visit', 'scope'],
     visits_schedule: [...commonKeys, 'context', 'purpose', 'visits', 'scope', 'page'],
@@ -147,14 +151,15 @@ function validateResult(result, method, params, config) {
     || !Array.isArray(result.memberships) || result.memberships.length > 50
     || result.memberships.some(value => !context(value))
     || new Set(result.memberships.map(value => value.agency_id)).size !== result.memberships.length)) fail('INVALID_AUTHORITY_RESPONSE');
-  if (['patients', 'patient', 'patient_context', 'visit_documentation', 'visits_schedule'].includes(method) && !context(result.context, params.p_agency_id)) fail('INVALID_AUTHORITY_RESPONSE');
+  if (['patients', 'patient', 'patient_context', 'visit_documentation', 'visits_schedule','referral_patient','referral_patients'].includes(method) && !context(result.context, params.p_agency_id)) fail('INVALID_AUTHORITY_RESPONSE');
+  if (['referral_patient','referral_patients'].includes(method) && !['agency_admin','manager','office_staff'].includes(result.context.tenant_role)) fail('INVALID_AUTHORITY_RESPONSE');
   if (method === 'visits_schedule' && !validVisitSchedule(result, params)) fail('INVALID_AUTHORITY_RESPONSE');
   if (method === 'patient_context' && !validPatientContext(result, params)) fail('INVALID_AUTHORITY_RESPONSE');
   if (method === 'visit_documentation' && !validVisitDocumentation(result, params)) fail('INVALID_AUTHORITY_RESPONSE');
-  if (method === 'patients' && (!Array.isArray(result.items) || result.items.length > (params.p_limit ?? 50)
+  if (['patients','referral_patients'].includes(method) && (!Array.isArray(result.items) || result.items.length > (params.p_limit ?? 50)
     || result.items.some(value => !patient(value)) || new Set(result.items.map(value => value.id)).size !== result.items.length
     || (result.next_cursor !== null && result.next_cursor !== result.items.at(-1)?.id))) fail('INVALID_AUTHORITY_RESPONSE');
-  if (method === 'patient' && (!patient(result.patient) || result.patient.id !== params.p_patient_id)) fail('INVALID_AUTHORITY_RESPONSE');
+  if (['patient','referral_patient'].includes(method) && (!patient(result.patient) || result.patient.id !== params.p_patient_id)) fail('INVALID_AUTHORITY_RESPONSE');
   if (['assignment', 'revoke_membership'].includes(method)) {
     if (result.agency_id !== params.p_agency_id || result.membership_id !== params.p_target_membership_id
       || result.request_id !== params.p_request_id.toLowerCase() || typeof result.replayed !== 'boolean') fail('INVALID_AUTHORITY_RESPONSE');

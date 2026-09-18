@@ -5,17 +5,17 @@ import { describe,it,expect,vi,beforeEach,afterEach } from 'vitest';
 import IndependentManualReferral from './IndependentManualReferral';
 const state=vi.hoisted(()=>({context:{},invoke:vi.fn(),referral:null}));
 vi.mock('@/lib/AuthContext',()=>({useAuth:()=>({tenantContext:state.context})}));
-vi.mock('@/hooks/useScopedPatients',()=>({useScopedPatients:()=>({isSuccess:true,data:[{id:'patient-a1',first_name:'Synthetic',last_name:'Patient A1'}]})}));
 vi.mock('@/api/base44Client',()=>({base44:{functions:{invoke:(...args)=>state.invoke(...args)}}}));
 const id='30000000-0000-4000-8000-000000000001';
 function mount(path='/ReferralIntake') {
  const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
- return render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><IndependentManualReferral /></MemoryRouter></QueryClientProvider>);
+ return {...render(<QueryClientProvider client={client}><MemoryRouter initialEntries={[path]}><IndependentManualReferral /></MemoryRouter></QueryClientProvider>),client};
 }
 beforeEach(()=>{
- vi.clearAllMocks();state.context={agency_id:'agency-a',membership_id:'membership-a',membership_version:1,tenant_role:'agency_admin'};
+ vi.clearAllMocks();state.context={user_id:'test-user',agency_id:'agency-a',membership_id:'membership-a',membership_version:1,tenant_role:'agency_admin'};
  state.referral=null;
  state.invoke.mockImplementation(async(name,{action})=>{
+  if(action==='staging_roster')return {data:{context:state.context,items:[{id:'patient-a1',display_name:'Synthetic Patient A1',version:1}],next_cursor:null}};
   if(action==='staging_prepare')return {data:{context:state.context,patient:{id:'patient-a1',version:1,display_name:'Synthetic Patient A1'}}};
   if(action==='staging_create')state.referral={id,version:1,status:'new',priority:'normal'};
   if(action==='staging_confirm')state.referral={...state.referral,version:2,status:'ready_for_admission'};
@@ -24,8 +24,8 @@ beforeEach(()=>{
 });
 afterEach(cleanup);
 describe('independent manual referral transfer',()=>{
- it('creates, reopens and confirms the existing patient without admission or document calls',async()=>{
-  mount();fireEvent.change(screen.getByLabelText('Patient'),{target:{value:'patient-a1'}});
+ it.each(['agency_admin','manager','office_staff'])('%s creates, reopens and confirms the existing patient without admission or document calls',async role=>{
+  state.context.tenant_role=role;mount();fireEvent.change(await screen.findByLabelText('Patient'),{target:{value:'patient-a1'}});
   fireEvent.click(await screen.findByRole('button',{name:'Create manual referral'}));
   expect(await screen.findByText('Needs patient confirmation')).toBeVisible();
   fireEvent.click(screen.getByRole('button',{name:'Confirm existing patient'}));
@@ -63,13 +63,30 @@ describe('independent manual referral transfer',()=>{
   const requests=state.invoke.mock.calls.filter(([,p])=>p.action==='staging_create').map(([,p])=>p.params);
   expect(requests).toHaveLength(2);expect(requests[1]).toEqual(requests[0]);
  });
+ it('retains uncertain creation through a background roster recheck',async()=>{
+  const server=state.invoke.getMockImplementation();let first=true,release;
+  state.invoke.mockImplementation(async(...args)=>{if(args[1].action==='staging_create'&&first){first=false;throw new Error('network');}return server(...args);});
+  const {client}=mount('/ReferralIntake?patientId=patient-a1');
+  fireEvent.click(await screen.findByRole('button',{name:'Create manual referral'}));
+  expect(await screen.findByRole('alert')).toHaveTextContent('retry the same request');
+  const gate=new Promise(done=>{release=done;});
+  state.invoke.mockImplementation(async(...args)=>{if(args[1].action==='staging_roster')await gate;return server(...args);});
+  const refresh=client.invalidateQueries({queryKey:['independent-referral-roster']});
+  expect(await screen.findByText('Verifying referral access…')).toBeVisible();
+  expect(screen.queryByRole('button',{name:'Retry same referral'})).not.toBeInTheDocument();
+  release();await refresh;
+  fireEvent.click(await screen.findByRole('button',{name:'Retry same referral'}));
+  expect(await screen.findByText('Needs patient confirmation')).toBeVisible();
+  const requests=state.invoke.mock.calls.filter(([,p])=>p.action==='staging_create').map(([,p])=>p.params);
+  expect(requests).toHaveLength(2);expect(requests[1]).toEqual(requests[0]);
+ });
  it('reopens an already confirmed referral without showing a duplicate write',async()=>{
   state.referral={id,version:2,status:'ready_for_admission',priority:'normal'};
   mount(`/ReferralIntake?patientId=patient-a1&referralId=${id}`);
   expect(await screen.findByText('Ready for admission')).toBeVisible();
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
  });
- it.each(['clinician','social_worker','spiritual_care','manager','office_staff'])('denies %s before invoking intake reads or writes',role=>{
+ it.each(['clinician','social_worker','spiritual_care'])('denies %s before invoking intake reads or writes',role=>{
   state.context.tenant_role=role;mount();expect(screen.getByRole('alert')).toBeVisible();expect(state.invoke).not.toHaveBeenCalled();
  });
  it.each(['patientId=bad%20id','referralId=bad','patientId=patient-a1&referralId=','patientId=patient-a1&patientId=patient-a2'])('denies malformed route %s',query=>{
