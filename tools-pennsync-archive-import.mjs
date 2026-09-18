@@ -135,7 +135,7 @@ async function targetPreflight(db, configuration, ownerSha256) {
       join pg_attribute a on a.attrelid=k.confrelid and a.attnum=x.num order by x.ord) as target_columns
     from pg_constraint k join pg_class c on c.oid=k.conrelid join pg_namespace n on n.oid=c.relnamespace
     where k.contype='f' and k.confrelid='pennsync_private.patient'::regclass order by n.nspname,c.relname`)).rows;
-  check(same(dependencies.map(d => d.name), ['assignment', 's3_referral', 's4_visit'])
+  check(same(dependencies.map(d => d.name), ['assignment', 'patient_context', 's3_referral', 's4_visit'])
     && dependencies.every(d => d.schema === 'pennsync_private' && ['a', 'r'].includes(d.deletion)
       && d.validated && !d.deferrable && same(d.columns, ['app_id', 'agency_id', 'patient_id'])
       && same(d.target_columns, ['app_id', 'agency_id', 'id'])), 'IMPORT_SCHEMA_UNSAFE');
@@ -223,7 +223,7 @@ export async function applyVerifiedPatientArchive({ archiveDir, key, expectedPla
     await db.query('select pg_advisory_xact_lock(168344,20260918)');
     // Keep the verified inbound FK definitions stable through any possible DELETE.
     await db.query(`lock table pennsync_private.patient,pennsync_private.archive_patient_import_receipt,
-      pennsync_private.assignment,pennsync_private.s3_referral,pennsync_private.s4_visit in share row exclusive mode`);
+      pennsync_private.assignment,pennsync_private.patient_context,pennsync_private.s3_referral,pennsync_private.s4_visit in share row exclusive mode`);
     await targetPreflight(db, configuration, ownerSha256);
     await reconcileAuthority(db, batch);
     const patientIds = batch.projection.map(p => p.id);
@@ -246,7 +246,7 @@ export async function applyVerifiedPatientArchive({ archiveDir, key, expectedPla
         check(r.state === 'applied' && existing.length === batch.projection.length
           && patientProjectionSha256(existing) === batch.projectionSha256, 'IMPORT_TARGET_DRIFT');
         if (action === 'rollback') {
-          // Existing foreign keys refuse assignments, referrals, visits or derived artifacts.
+          // Exact foreign keys refuse clinical contexts, assignments, referrals or visits.
           // Never cascade, adopt an unreceipted row, or reset a changed patient version.
           await db.query('delete from pennsync_private.patient where app_id=$1 and id=any($2::text[])',
             [APP, batch.projection.map(p => p.id)]);

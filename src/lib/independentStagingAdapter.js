@@ -70,6 +70,13 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
   };
   const invoke = async (name, input = {}) => {
     if (name === 'getMyTenantContext') return getContext(input);
+    if (name === 'getAuthorizedPatient') {
+      if (!exact(input, ['agency_id', 'patient_id', 'purpose']) || !['display', 'smart_note_context'].includes(input.purpose)) {
+        fail('STAGING_OPERATION_UNAVAILABLE');
+      }
+      const result = await rpc('patient_context', { p_agency_id: input.agency_id, p_patient_id: input.patient_id, p_purpose: input.purpose });
+      return { data: { success: true, purpose: result.purpose, patient: result.patient, scope: result.scope } };
+    }
     if (name === 'getAuthorizedVisit') {
       if (!exact(input, ['agency_id', 'visit_id', 'purpose']) || input.purpose !== 'documentation') {
         fail('STAGING_OPERATION_UNAVAILABLE');
