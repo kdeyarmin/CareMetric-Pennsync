@@ -39,9 +39,9 @@ function VisitList({ patientId, agencyId }) {
   if (!visits.isSuccess) return <p role="status">Loading saved visits…</p>;
   if (!visits.data.length) return <p>No saved visits for this patient.</p>;
   return <ul className="space-y-3" aria-label="Saved visits">
-    {visits.data.map(visit => <li key={visit.id}>
+    {visits.data.map((visit, index) => <li key={visit.id}>
       <Link className="underline" to={`/ClinicalDocumentation?visitId=${encodeURIComponent(visit.id)}`}>
-        Open saved visit · {visit.visit_date}
+        Open saved visit · {visit.visit_date} · Record {index + 1}
       </Link>
     </li>)}
   </ul>;
@@ -67,11 +67,15 @@ export default function IndependentSavedVisits() {
   const [params, setParams] = useSearchParams();
   const patientId = params.get('patientId');
   const visitId = params.get('visitId');
+  const validRoute = (!params.has('patientId') || /^[A-Za-z0-9_-]{1,128}$/.test(patientId))
+    && (!params.has('visitId') || /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/.test(visitId))
+    && params.getAll('patientId').length <= 1 && params.getAll('visitId').length <= 1
+    && !(params.has('patientId') && params.has('visitId'));
   return <main className="mx-auto max-w-4xl space-y-5 p-6">
     <h1 className="text-2xl font-semibold">Clinical Notes</h1>
     <p>Browse saved visits and read their recorded notes and vital signs. Editing and generation are not available in this staging transfer.</p>
     <Link className="underline" to="/Patients">Return to patients</Link>
-    {!agencyId ? <Unavailable /> : <>
+    {!agencyId || !validRoute ? <Unavailable /> : <>
       <PatientSelector patientId={visitId ? null : patientId} onSelect={value => setParams(value ? { patientId:value } : {})} />
       {visitId ? <OpenVisit key={`${agencyId}:${visitId}`} visitId={visitId} agencyId={agencyId} />
         : patientId ? <VisitList key={`${agencyId}:${patientId}`} patientId={patientId} agencyId={agencyId} /> : null}

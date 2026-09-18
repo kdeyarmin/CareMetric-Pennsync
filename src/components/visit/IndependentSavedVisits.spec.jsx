@@ -3,11 +3,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter } from 'react-router';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import IndependentSavedVisits from './IndependentSavedVisits';
-const state=vi.hoisted(()=>({roster:{},visits:{},visit:{},patient:vi.fn(),listHook:vi.fn(),agency:'agency-a'}));
+const state=vi.hoisted(()=>({roster:{},visits:{},visit:{},patient:vi.fn(),listHook:vi.fn(),visitHook:vi.fn(),agency:'agency-a'}));
 vi.mock('@/lib/AuthContext',()=>({useAuth:()=>({tenantContext:{agency_id:state.agency}})}));
 vi.mock('@/hooks/useScopedPatients',()=>({useScopedPatients:()=>state.roster}));
 vi.mock('@/hooks/useAuthorizedVisits',()=>({useAuthorizedVisits:options=>{state.listHook(options);return state.visits}}));
-vi.mock('@/hooks/useAuthorizedVisit',()=>({useAuthorizedVisit:()=>state.visit}));
+vi.mock('@/hooks/useAuthorizedVisit',()=>({useAuthorizedVisit:options=>{state.visitHook(options);return state.visit}}));
 vi.mock('@/functions/getAuthorizedPatient',()=>({getAuthorizedPatient:(...args)=>state.patient(...args)}));
 const scope={agency_id:'agency-a',membership_id:'membership-a',membership_version:1,tenant_role:'agency_admin',user_id:'owner'};
 const saved={id:'30000000-0000-4000-8000-000000000001',patient_id:'patient-a1',visit_date:'2026-09-18',updated_date:'2026-09-18T12:00:00.000Z',nurse_notes:'Retained fictional note',vital_signs:{pain_level:0,weight:70}};
@@ -24,10 +24,21 @@ beforeEach(()=>{
 });
 afterEach(cleanup);
 describe('transferred saved clinical visit view',()=>{
+ it.each(['patientId=bad%20id','patientId=','patientId=%24where','visitId=not-a-uuid','visitId=','patientId=patient-a1&patientId=patient-a2',`patientId=patient-a1&visitId=${saved.id}`])('denies malformed or ambiguous route %s before mounting data hooks',query=>{
+  mount(`/ClinicalDocumentation?${query}`);
+  expect(screen.getByRole('alert')).toHaveTextContent('unavailable');
+  expect(state.listHook).not.toHaveBeenCalled();expect(state.visitHook).not.toHaveBeenCalled();expect(state.patient).not.toHaveBeenCalled();
+ });
  it('selects a patient and exposes only a scoped saved-visit link',async()=>{
   mount();fireEvent.change(screen.getByLabelText('Patient'),{target:{value:'patient-a1'}});
-  expect(await screen.findByRole('link',{name:'Open saved visit · 2026-09-18'})).toHaveAttribute('href',`/ClinicalDocumentation?visitId=${saved.id}`);
+  expect(await screen.findByRole('link',{name:'Open saved visit · 2026-09-18 · Record 1'})).toHaveAttribute('href',`/ClinicalDocumentation?visitId=${saved.id}`);
   expect(state.listHook).toHaveBeenLastCalledWith(expect.objectContaining({agencyId:'agency-a',patientId:'patient-a1',purpose:'schedule',status:'completed'}));
+ });
+ it('distinguishes multiple records on the same date',()=>{
+  state.visits.data=[saved,{...saved,id:'30000000-0000-4000-8000-000000000002'}];
+  mount('/ClinicalDocumentation?patientId=patient-a1');
+  expect(screen.getByRole('link',{name:'Open saved visit · 2026-09-18 · Record 1'})).toHaveAttribute('href',`/ClinicalDocumentation?visitId=${saved.id}`);
+  expect(screen.getByRole('link',{name:'Open saved visit · 2026-09-18 · Record 2'})).toHaveAttribute('href','/ClinicalDocumentation?visitId=30000000-0000-4000-8000-000000000002');
  });
  it('renders the authorized stored note and zero/weight with no editor',async()=>{
   mount(`/ClinicalDocumentation?visitId=${saved.id}`);

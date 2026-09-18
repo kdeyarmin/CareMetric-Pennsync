@@ -280,13 +280,19 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     for (const [name, expected] of ROSTERS) {
       phase = `${name}-login`; await login(name);
       phase = `${name}-roster`; await roster(expected);
+      phase = `${name}-malformed-clinical-link`;
+      await settlePageRoutes(page, routeTrackers.get(context));
+      await page.evaluate(() => { globalThis.history.pushState(null, '', '/ClinicalDocumentation?patientId=bad%20id'); globalThis.dispatchEvent(new globalThis.PopStateEvent('popstate')); });
+      await expect(page.getByRole('alert')).toContainText('Saved records unavailable');
+      await page.getByRole('link', { name:'Return to patients', exact:true }).click();
+      await roster(expected);
       phase = `${name}-saved-clinical-visit`;
       await page.getByRole('link', { name:'Clinical Notes', exact:true }).click();
       await expect(page.getByRole('heading', { name:'Clinical Notes', exact:true })).toBeVisible();
       const selector=page.getByLabel('Patient', { exact:true }); await expect(selector).toBeVisible();
       if (name==='admin-a' || name==='clinician-a') {
         await selector.selectOption('patient-a1');
-        await page.getByRole('link', { name:'Open saved visit · 2026-09-18', exact:true }).click();
+        await page.getByRole('link', { name:'Open saved visit · 2026-09-18 · Record 1', exact:true }).click();
         await expect(page.getByRole('heading', { name:'Saved visit note', exact:true })).toBeVisible();
         await expect(page.getByLabel('Saved note text', { exact:true })).toHaveText(savedVisit.nurse_notes);
         await expect(page.getByRole('region', { name:'Recorded vital signs' })).toContainText('0');
