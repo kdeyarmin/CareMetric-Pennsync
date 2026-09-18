@@ -338,6 +338,41 @@ test('credentials in URL fragments and whitespace-prefixed row URLs cannot evade
   }
 });
 
+test('punctuated signature credential parameter names reject in query strings and fragments', async (t) => {
+  for (const key of ['sign-ature', 'x_amz_signature', 'X.AmZ.Credential', 's_i_g', 'k-e-y', 'sign%2Dature']) {
+    for (const prefix of ['?', '#/review?']) {
+      await t.test(`${prefix} ${key}`, async (t) => {
+        const f = await fixture(t);
+        const locator = `https://example.invalid/private${prefix}${key}=synthetic_secret_only`;
+        await f.changeRows('Document', (row) => ({ ...row, file_uri: locator }));
+        f.plan.files[0].source_locator = locator;
+        f.plan.files[0].bindings[0].locator_sha256 = hash(locator);
+        await f.writePlan();
+        await assert.rejects(buildArchive(f), { code: 'credential_url' });
+      });
+    }
+  }
+  await t.test('ordinary row URL is screened too', async (t) => {
+    const f = await fixture(t);
+    const c = await f.changeRows('Patient', (row) => ({ ...row, source: 'https://example.invalid/private#x_amz_signature=synthetic_secret_only' }));
+    c.fields.push('source'); await f.writePlan();
+    await assert.rejects(buildArchive(f), { code: 'credential_url' });
+  });
+});
+
+test('signature words in unsigned paths, filenames, narrative and ordinary fields remain valid', async (t) => {
+  const f = await fixture(t);
+  const locator = 'https://example.invalid/signature/key/report.pdf?signature_file=report.pdf&key_findings=reviewed#signature-status';
+  await f.changeRows('Document', (row) => ({ ...row, file_uri: locator }));
+  f.plan.files[0].source_locator = locator;
+  f.plan.files[0].original_name = 'Signed signature-key findings.pdf';
+  f.plan.files[0].bindings[0].locator_sha256 = hash(locator);
+  const c = await f.changeRows('Patient', (row) => ({ ...row, signature: 'Clinical signature reviewed', key: 'clinical category', key_findings: 'Signature obtained; key findings reviewed.' }));
+  c.fields.push('signature', 'key', 'key_findings');
+  await f.writePlan(); await buildArchive(f);
+  assert.deepEqual(await readArchiveIndependently(f.archiveDir, f.key), f.original);
+});
+
 test('large supplied files use bounded encryption frames and verify exact bytes', async (t) => {
   const f = await fixture(t); const large = Buffer.alloc(ARCHIVE_LIMITS.chunk * 2 + 17, 91);
   Object.assign(f.plan.files[0], await f.save(f.plan.files[0].path, large)); await f.writePlan(); await buildArchive(f);

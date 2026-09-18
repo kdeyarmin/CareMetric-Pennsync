@@ -88,6 +88,8 @@ A descendant pointer only classifies ancestor fields that were actually traverse
 
 Never supply password hashes, service keys, OAuth/access/refresh tokens, session cookies, MFA seeds, recovery codes or a credentials export. Secret/token/session/credential/OAuth-like entity names are unsupported. The recursive field guard rejects credential-like property names, including escaped or differently punctuated spellings; signed credential URLs, credential parameters in URL fragments and URLs with embedded username/password are rejected too. URL strings requiring whitespace or control-character normalization are rejected instead of rewritten. Durable file locators must already be trimmed and contain no control characters. Duplicate JSON keys and invalid UTF-8 are rejected rather than interpreted ambiguously.
 
+URL query and fragment parameter names are decoded by URL parsing and checked after punctuation normalization, including `sig`, `signature`, `key` and AWS signing parameters. This URL-specific rule does not reject ordinary clinical signature fields, narrative text or unsigned filenames containing those words.
+
 These checks are defense in depth. They cannot classify secret material hidden in arbitrary prose, an encoded string or opaque binary bytes. The export producer must supply reviewed credential-free entity projections and intended customer files. Unsupported entities/fields must remain accounted for separately, never silently counted as transferred. This archive format deliberately cannot establish a complete authentication backup.
 
 ## Encryption, bounded processing and restart behavior
