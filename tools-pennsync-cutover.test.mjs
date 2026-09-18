@@ -13,7 +13,7 @@ const hash = value => sha256(value);
 const git = value => hash(value).slice(0, 40);
 const clone = value => structuredClone(value);
 const NOW = '2026-09-18T04:00:00.000Z';
-function fixture(mode = 'business_backend_exit') {
+function fixture(mode = 'business_backend_exit', customFrontend = false) {
   const deployment = (label, origin, build = label) => ({ commit: git(`${build}-commit`), tree: git(`${build}-tree`), artifact_sha256: hash(`${build}-artifact`), origin, deployment_id: label });
   const actors = ROLES.map((role, i) => ({ role, subject_sha256: hash(role), agency_sha256: hash(i < 3 ? 'agency-a' : 'agency-b') }));
   const ids = ['source:base44/functions/getMyTenantContext/entry.ts', 'source:src/pages/Patients.jsx', 'target:src/pages/Patients.jsx', 'hosted:disabled-signing'];
@@ -21,8 +21,8 @@ function fixture(mode = 'business_backend_exit') {
   const e = {
     format: FORMAT, schema_version: 1, mode,
     source: { frontend: deployment('old-front', 'https://caremetricai.base44.app'), backend: deployment('old-back', 'https://base44.app') },
-    target: { frontend: deployment('new-front', mode === 'business_backend_exit' ? 'https://caremetricai.base44.app' : 'https://app.caremetricai.com'), backend: deployment('new-back', 'https://api.caremetricai.com') },
-    rehearsal: { frontend: deployment('stage-front', mode === 'business_backend_exit' ? 'https://staging.base44.app' : 'https://stage.caremetricai.com', 'new-front'), backend: deployment('stage-back', 'https://stage-api.caremetricai.com', 'new-back') },
+    target: { frontend: deployment('new-front', mode === 'business_backend_exit' && !customFrontend ? 'https://caremetricai.base44.app' : 'https://app.caremetricai.com'), backend: deployment('new-back', 'https://api.caremetricai.com') },
+    rehearsal: { frontend: deployment('stage-front', mode === 'business_backend_exit' && !customFrontend ? 'https://staging.base44.app' : 'https://stage.caremetricai.com', 'new-front'), backend: deployment('stage-back', 'https://stage-api.caremetricai.com', 'new-back') },
     census_sha256: census.sha256, hosted_capabilities: ['hosted:disabled-signing'],
     public_endpoints: ['https://caremetricai.base44.app/', 'https://app.caremetricai.com/'],
     owner_subject_sha256: hash('protected-owner'), actors, minimum_observation_seconds: 600,
@@ -168,6 +168,15 @@ test('retained Base44 shell must not be labeled complete hosting exit', () => {
   const f = fixture(); f.e.mode = 'complete_hosting_exit'; blocked(f, 'EXPECTATIONS_INVALID');
   const g = fixture('complete_hosting_exit'); g.replaceGate('independence', r => { r.claims.base44_hosting_dependency = true; }); blocked(g, 'GATE_INDEPENDENCE_INVALID');
   const h = fixture(); h.replaceGate('endpoints', r => { r.claims.base44_hosting_dependency = false; }); blocked(h, 'GATE_ENDPOINTS_INVALID');
+});
+test('business backend exit accepts the preserved custom frontend with explicit legacy shell dependency', () => {
+  const f = fixture('business_backend_exit', true);
+  assert.equal(f.e.target.frontend.origin, 'https://app.caremetricai.com');
+  assert.ok(f.e.public_endpoints.includes('https://caremetricai.base44.app/'));
+  assert.equal(f.run().status, 'evidence_coverage_complete');
+  assert.equal(f.run().base44_static_hosting_retained, true);
+  f.replaceGate('endpoints', r => { r.claims.static_compatibility_shell_retained = false; });
+  blocked(f, 'GATE_ENDPOINTS_INVALID');
 });
 test('Base44 API fallback and prematurely enabled integration operations remain blockers', () => {
   for (const [gate, mutate] of [

@@ -18,9 +18,11 @@ review or a live probe.
 
 - `business_backend_exit`: authentication, authorization, records, files,
   functions and other business execution are independent; the existing
-  Base44-hosted static compatibility shell remains. The target frontend must
-  identify a Base44 origin, and endpoint/independence receipts must explicitly
-  acknowledge the retained hosting dependency.
+  Base44-hosted static compatibility shell remains. The target frontend can use
+  its preserved custom domain or an independent primary host while retaining
+  the legacy shell. Hostname syntax alone cannot establish its hosting provider;
+  endpoint/independence receipts must explicitly acknowledge the retained shell
+  and hosting dependency, including the preserved permanent legacy endpoint.
 - `complete_hosting_exit`: no Base44 business or hosting dependency remains.
   Target/rehearsal frontend origins must be independent and the retained-shell
   flags must be false. A production receipt must attest that the permanent

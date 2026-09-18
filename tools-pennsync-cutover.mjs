@@ -98,7 +98,8 @@ export function validateExpectations(v) {
     || v.target.backend.origin === v.rehearsal.backend.origin || base44Url(v.target.backend.origin)
     || base44Url(v.rehearsal.backend.origin)) return false;
   if (v.mode === 'complete_hosting_exit' && (base44Url(v.target.frontend.origin) || base44Url(v.rehearsal.frontend.origin))) return false;
-  if (v.mode === 'business_backend_exit' && !base44Url(v.target.frontend.origin)) return false;
+  // A custom frontend hostname does not identify its hosting provider. Business
+  // exit still requires explicit retained-shell/dependency receipts below.
   if (!v.public_endpoints.includes('https://caremetricai.base44.app/')
     || !v.public_endpoints.includes('https://app.caremetricai.com/')) return false;
   for (let i = 0; i < ROLES.length; i++) {
