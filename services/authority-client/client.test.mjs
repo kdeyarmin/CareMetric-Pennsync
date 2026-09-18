@@ -97,7 +97,7 @@ test('session invalidation discards a late successful response even if fetch ign
 
 test('logout clears local access even when the provider is unreachable', async () => {
   const { client } = harness(() => { throw new Error('secret server detail'); }); await client.signIn(password);
-  await assert.rejects(client.signOut(), /^AuthorityClientError: AUTHORITY_NETWORK_FAILED$/);
+  await assert.rejects(client.signOut(), /^AuthorityClientError: AUTHORITY_SESSION_CLEANUP_FAILED$/);
   await assert.rejects(client.rpc('memberships'), /AUTHENTICATION_REQUIRED/);
 });
 
