@@ -1,6 +1,11 @@
 import { API } from '../../authority-store/tests/http-local-stack.mjs';
 import { BROWSER_ORIGIN } from './server.mjs';
 
+export function matchesPatientPost(url, method, path) {
+  return method === 'POST' && url.origin === API && !url.search
+    && url.pathname === `/rest/v1/rpc${path}`;
+}
+
 export function allowedDestination(url, method) {
   if (url.username || url.password) return false;
   if (url.origin === BROWSER_ORIGIN) return method === 'GET' && !url.search

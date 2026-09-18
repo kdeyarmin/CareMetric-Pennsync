@@ -3,7 +3,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { chromium, expect } from '@playwright/test';
 import { startBrowserServer, BROWSER_ORIGIN } from './server.mjs';
-import { allowedDestination } from './network.mjs';
+import { allowedDestination, matchesPatientPost } from './network.mjs';
+import { API } from '../../authority-store/tests/http-local-stack.mjs';
+
+test('patient delay and failure hooks exclude OPTIONS and unrelated requests', () => {
+  for (const path of ['/pennsync_staging_patient', '/pennsync_staging_patients']) {
+    const target = new URL(`${API}/rest/v1/rpc${path}`);
+    assert.equal(matchesPatientPost(target, 'POST', path), true);
+    for (const method of ['OPTIONS', 'GET', 'HEAD', 'DELETE']) {
+      assert.equal(matchesPatientPost(target, method, path), false);
+    }
+    assert.equal(matchesPatientPost(new URL(`${BROWSER_ORIGIN}/rest/v1/rpc${path}`), 'POST', path), false);
+    assert.equal(matchesPatientPost(new URL(`${API}/rest/v1/rpc/pennsync_staging_context`), 'POST', path), false);
+    assert.equal(matchesPatientPost(new URL(`${target}?unexpected=true`), 'POST', path), false);
+  }
+});
 
 test('browser boundary blocks Base44 and undeclared resources before delivery', { timeout: 30000 }, async () => {
   let stop, browser;
