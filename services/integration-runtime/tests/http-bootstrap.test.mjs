@@ -34,7 +34,17 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
       not exists(select 1 from pg_roles where rolname in ('anon','authenticated') and (rolsuper or rolbypassrls)) as safe_browser_roles,
       not exists(select 1 from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='public' and c.relname in ('cm_integration_jobs','cm_integration_files','cm_integration_daily_budget')) as no_tables,
       not exists(select 1 from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='public' and p.proname like 'cm_integration_%') as no_functions`)).rows[0];
-    requireTrue(Object.values(state).every(value => value === true), 'LOCAL_REAL_PLATFORM_OR_EMPTY_NAMESPACE_REQUIRED');
+    // Fixed classifications disclose only which precondition failed, never rows,
+    // credentials, child output or an arbitrary database error detail.
+    for (const [field, code] of [
+      ['buckets', 'LOCAL_STORAGE_BUCKETS_CATALOG_REQUIRED'],
+      ['objects', 'LOCAL_STORAGE_OBJECTS_CATALOG_REQUIRED'],
+      ['native_auth', 'LOCAL_NATIVE_AUTH_REQUIRED'],
+      ['not_double', 'LOCAL_PLATFORM_DOUBLE_FORBIDDEN'],
+      ['safe_browser_roles', 'LOCAL_SAFE_BROWSER_ROLES_REQUIRED'],
+      ['no_tables', 'LOCAL_INTEGRATION_TABLES_ALREADY_EXIST'],
+      ['no_functions', 'LOCAL_INTEGRATION_FUNCTIONS_ALREADY_EXIST'],
+    ]) requireTrue(state[field] === true, code);
     requireTrue((await db.query("select count(*)::integer as count from storage.buckets where id='pennsync-external-integrations'")).rows[0].count === 0, 'LOCAL_BUCKET_ALREADY_EXISTS');
     requireTrue((await db.query("select count(*)::integer as count from pg_policies where schemaname='storage' and tablename='objects' and policyname='pennsync external files require server authorization'")).rows[0].count === 0, 'LOCAL_BUCKET_POLICY_ALREADY_EXISTS');
     // Install the actual bundled pg_cron extension only in this owned disposable
