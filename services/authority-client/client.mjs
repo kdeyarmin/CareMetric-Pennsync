@@ -30,11 +30,12 @@ function validateTarget(config) {
     || !ACTORS.has(config.email) || typeof config.publishableKey !== 'string'
     || !/^sb_publishable_[A-Za-z0-9_-]{10,200}$/.test(config.publishableKey)) fail('INVALID_STAGING_TARGET');
   const local = config.projectRef === 'local-pennsync-authority' && config.projectUrl === 'http://127.0.0.1:54321';
-  // No hosted PennSync staging project has been approved and verified yet.
-  // A correctly shaped URL or a caller-supplied approval flag is not a pin.
-  // Add its exact immutable reference in a reviewed change after provisioning;
-  // until then, reject hosted targets before accepting any password or token.
-  if (!local) fail('INVALID_STAGING_TARGET');
+  // Dedicated project approved and independently verified on 2026-09-18.
+  // Both values must match exactly; URL shape and caller approval flags confer
+  // no authority. Local acceptance harnesses retain their own local-only fence.
+  const hosted = config.projectRef === 'xxtyweswohkvgkprimwa'
+    && config.projectUrl === 'https://xxtyweswohkvgkprimwa.supabase.co';
+  if (!local && !hosted) fail('INVALID_STAGING_TARGET');
   return Object.freeze({ ...config, base44UserId: ACTORS.get(config.email) });
 }
 

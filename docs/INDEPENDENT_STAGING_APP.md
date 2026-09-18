@@ -7,14 +7,14 @@ Use the repository [setup and standard commands](../README.md) and the [owned lo
 | Variable | Required value |
 | --- | --- |
 | `VITE_PENNSYNC_BACKEND` | `independent-staging` |
-| `VITE_PENNSYNC_STAGING_PROJECT_REF` | `local-pennsync-authority` |
-| `VITE_PENNSYNC_STAGING_PROJECT_URL` | `http://127.0.0.1:54321` |
-| `VITE_PENNSYNC_STAGING_PUBLISHABLE_KEY` | The owned local stack's modern publishable key; never a secret/service-role key |
+| `VITE_PENNSYNC_STAGING_PROJECT_REF` | `local-pennsync-authority`, or the exact dedicated staging reference `xxtyweswohkvgkprimwa` |
+| `VITE_PENNSYNC_STAGING_PROJECT_URL` | Matching `http://127.0.0.1:54321` or `https://xxtyweswohkvgkprimwa.supabase.co` |
+| `VITE_PENNSYNC_STAGING_PUBLISHABLE_KEY` | The selected target's modern publishable key; never a secret/service-role key |
 | `VITE_PENNSYNC_STAGING_ACTORS` | JSON object mapping each of the four approved test aliases below to its independently provisioned native Auth UUID |
 
 The four aliases are `info+pennsync-admin-a@caremetricai.com`, `info+pennsync-clinician-a@caremetricai.com`, `info+pennsync-clinician-empty@caremetricai.com`, and `info+pennsync-admin-b@caremetricai.com`. These are public actor identifiers, not passwords or authority grants. The server independently binds each native user to its verified legacy identity and current agency membership. The app ID remains the exact staging ID `6a9881683dc68a0bd54f1ef7`.
 
-There is no URL, local-storage or caller-supplied hosted-project override. The underlying client currently rejects every hosted target. A dedicated hosted project requires an independently reviewed exact project pin, separate provisioning and acceptance. Missing or invalid selected-mode configuration fails closed before a Base44 client can be constructed. An omitted backend mode, or `base44`, retains the existing production path.
+There is no URL, local-storage or caller-supplied hosted-project override. The dedicated hosted project above was created and independently verified on 2026-09-18 after explicit cost approval; its exact reference/URL pair is pinned in the shared client. All other hosted targets and mismatched pairs remain refused. Hosted actors must be independently enrolled and their current native UUID map supplied; the pin alone does not establish that enrollment or functional acceptance. The automated local acceptance runners still refuse hosted destinations. Missing or invalid selected-mode configuration fails closed before a Base44 client can be constructed. An omitted backend mode, or `base44`, retains the existing production path.
 
 ## Supported behavior and limits
 

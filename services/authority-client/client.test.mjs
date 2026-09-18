@@ -56,6 +56,40 @@ test('well-formed unapproved hosted targets are rejected before credentials can 
   assert.equal(networkCalls, 0);
 });
 
+test('only the independently verified hosted ref and URL pair admit modeled Auth and RPC requests', async () => {
+  const target = { projectRef: 'xxtyweswohkvgkprimwa', projectUrl: 'https://xxtyweswohkvgkprimwa.supabase.co' };
+  const calls = [];
+  const client = createStagingAuthorityClient({ ...config, ...target }, { fetchImpl: async (url, init) => {
+    calls.push({ url, init });
+    if (url.endsWith('/token?grant_type=password')) return json(session());
+    if (url.endsWith('/user')) return json(user);
+    if (url.endsWith('/logout?scope=local')) return new Response(null, { status: 204 });
+    return json(context());
+  } });
+  await client.signIn(password);
+  assert.deepEqual(await client.rpc('context', { p_agency_id: 'agency-a' }), context());
+  await client.signOut();
+  assert.deepEqual(calls.map(call => call.url), [
+    '/auth/v1/token?grant_type=password', '/auth/v1/user',
+    '/rest/v1/rpc/pennsync_staging_context', '/auth/v1/logout?scope=local',
+  ].map(path => target.projectUrl + path));
+  assert.ok(calls.every(call => call.init.redirect === 'error' && call.init.credentials === 'omit'));
+
+  for (const patch of [
+    { projectRef: config.projectRef }, { projectUrl: config.projectUrl },
+    { projectRef: `${target.projectRef}x` }, { projectRef: target.projectRef.toUpperCase() },
+    ...[`${target.projectUrl}/`, `${target.projectUrl}:443`, `${target.projectUrl}?approved=true`,
+      `${target.projectUrl}#local`, `${target.projectUrl}/rest/v1`, `${target.projectUrl}.evil.example`,
+      `https://user@${target.projectRef}.supabase.co`, `http://${target.projectRef}.supabase.co`,
+      `https://${target.projectRef.toUpperCase()}.supabase.co`].map(projectUrl => ({ projectUrl })),
+    { publishableKey: 'sb_secret_never_a_browser_key' }, { email: 'unapproved@example.test' },
+  ]) {
+    assert.throws(() => createStagingAuthorityClient({ ...config, ...target, ...patch,
+      allowHosted: true, approvedProjectRef: target.projectRef,
+    }, { fetchImpl: () => { throw new Error('invalid target reached transport'); } }), /INVALID_STAGING_TARGET/);
+  }
+});
+
 test('no RPC before a successful identity check; no generic function escape hatch', async () => {
   const { client, calls } = harness();
   await assert.rejects(client.rpc('context', { p_agency_id: 'agency-a' }), /AUTHENTICATION_REQUIRED/);
