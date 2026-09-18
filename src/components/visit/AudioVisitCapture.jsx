@@ -8,6 +8,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Upload, Loader2, Check, User, ClipboardList } from "lucide-react";
 import AudioRecorder from "./AudioRecorder";
 import VitalSignsForm from "./VitalSignsForm";
+import { useVisitRevisionVitals } from "./useVisitRevisionVitals";
+import { captureAuthorityDraftLease, isAuthorityDraftLeaseCurrent } from "@/lib/phiStorage";
 import ConstrainedNoteReviewer from "../smartNote/ConstrainedNoteReviewer";
 import FinalNoteDisplay from "../smartNote/FinalNoteDisplay";
 import { persistVisitNote, createVisitSaveProgress, PartialVisitSaveError } from "../smartNote/persistVisitNote";
@@ -54,6 +56,7 @@ function sameAudioAuthority(left, right) {
  */
 export default function AudioVisitCapture({ currentUser, visitId = null }) {
   const { tenantContext } = useAuth();
+  const [authorityLease] = useState(captureAuthorityDraftLease);
   const [recordedAudio, setRecordedAudio] = useState(null);
   const [uploadedAudio, setUploadedAudio] = useState(null);
   const [_transcription, setTranscription] = useState(null);
@@ -63,7 +66,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
 
   const [patientId, setPatientId] = useState("");
   const [visitType, setVisitType] = useState("routine_visit");
-  const [vitals, setVitals] = useState({});
+  const [draftVitals, setDraftVitals] = useState({});
   const [savedVisitId, setSavedVisitId] = useState(null);
   const [savedAuditId, setSavedAuditId] = useState(null);
   const saveProgressRef = useRef(null);
@@ -142,7 +145,23 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
     purpose: 'documentation',
     enabled: !!visitId && !!tenantContext?.agency_id,
   });
-  const visitAuthorizationWithheld = Boolean(visitId && !visitAuthorizationSucceeded);
+  const visitAuthorizationWithheld = Boolean(visitId && (!visitAuthorizationSucceeded || boundVisit?.id !== visitId));
+  const scopeCurrent = Boolean(currentUser?.id && currentUser.id === tenantContext?.user_id
+    && [boundVisitTenantScope, patientTenantScope].every(scope => scope
+      && ['user_id', 'agency_id', 'membership_id', 'membership_version', 'tenant_role']
+        .every(field => scope[field] === tenantContext[field])));
+  const vitalRevisionKey = visitId && currentUser?.id && currentUser.id === tenantContext?.user_id && tenantContext?.agency_id
+    && !visitAuthorizationFailed && !patientAuthorizationFailed && isAuthorityDraftLeaseCurrent(authorityLease)
+    ? JSON.stringify([currentUser.id, tenantContext.agency_id, tenantContext.membership_id,
+      tenantContext.membership_version, tenantContext.tenant_role, visitId, patientId]) : null;
+  const boundVitalsReady = Boolean(vitalRevisionKey && visitAuthorizationSucceeded
+    && boundVisit?.id === visitId && exactPatientReady
+    && patientDetail?.id === boundVisit.patient_id && scopeCurrent);
+  const usesBoundVisit = Boolean(visitId && (existingVisitId === visitId || savedVisitId === visitId));
+  const vitalRevision = useVisitRevisionVitals({ authorityKey: vitalRevisionKey, ready: boundVitalsReady, visit: boundVisit });
+  const vitals = usesBoundVisit ? vitalRevision.values : draftVitals;
+  const preserveExistingVitals = usesBoundVisit && boundVitalsReady && !vitalRevision.dirty;
+  const setVitals = usesBoundVisit ? vitalRevision.change : setDraftVitals;
   const nextAudioAuthority = patientChartReady
     && chartPatient
     && (!visitId || visitAuthorizationSucceeded)
@@ -196,7 +215,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
       setUploadedAudio(null);
       setTranscription(null);
       setRoughNote("");
-      setVitals({});
+      setDraftVitals({});
       setSavedVisitId(null);
       setSavedAuditId(null);
       saveProgressRef.current = null;
@@ -256,7 +275,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
     setSaveError(null);
     setSaved(false);
     setCopied(false);
-    setVitals({});
+    setDraftVitals({});
     setSignatureImage(null);
     const activeBoundVisit = boundVisitLocalRef.current;
     setExistingVisitId(
@@ -343,7 +362,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
       toast.error("Select a patient to save this note to their chart.");
       return;
     }
-    if (!patientChartReady || !chartPatient) {
+    if (!patientChartReady || !chartPatient || (usesBoundVisit && (!boundVitalsReady || vitalRevision.conflict))) {
       toast.error("Patient chart access must be verified before saving.");
       return;
     }
@@ -362,13 +381,14 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
         if (!result) { setSaving(false); return; }
       }
       const out = await persistVisitNote({
-        result, patientId, visitDate, visitType, roughNote, vitals,
+        result, patientId, visitDate, visitType, roughNote, vitals, preserveExistingVitals,
         currentUser, patientDiagnosis: chartPatient.primary_diagnosis || "",
         savedVisitId, savedAuditId, existingVisitId, saveProgress,
         source: "audio",
       });
-      if (saveProgressRef.current !== saveProgress) return;
+      if (saveProgressRef.current !== saveProgress || (usesBoundVisit && !isAuthorityDraftLeaseCurrent(authorityLease))) return;
       if (out) {
+        if (usesBoundVisit) vitalRevision.markWritten(vitals, true);
         if (out.mode === 'create') {
           setSavedVisitId(out.visitId);
           setExistingVisitId(null);
@@ -380,8 +400,10 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
         setSaved(true);
       }
     } catch (err) {
-      if (saveProgressRef.current !== saveProgress) return;
+      if (saveProgressRef.current !== saveProgress || (usesBoundVisit && !isAuthorityDraftLeaseCurrent(authorityLease))) return;
       if (err instanceof PartialVisitSaveError) {
+        if (visitId && err.visitId === visitId) vitalRevision.markWritten(vitals, false, typeof saveProgress.documentationKey === 'string'
+            && !err.pendingRecords.includes('documentation'));
         setSavedVisitId(err.visitId);
         setExistingVisitId(null);
         if (err.auditId) setSavedAuditId(err.auditId);
@@ -398,11 +420,12 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
   };
 
   const resetCapture = () => {
+    vitalRevision.clear();
     setRecordedAudio(null);
     setUploadedAudio(null);
     setTranscription(null);
     setRoughNote("");
-    setVitals({});
+    setDraftVitals({});
     setSavedVisitId(null);
     setSavedAuditId(null);
     saveProgressRef.current = null;
@@ -485,6 +508,9 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
 
   return (
     <div className="space-y-4">
+      {usesBoundVisit && boundVitalsReady && vitalRevision.conflict && (
+        <p role="status">This visit changed while you were editing vital signs. Keep your draft and reopen the visit before saving.</p>
+      )}
       {patientSelectionCard}
 
       <VitalSignsForm vitalSigns={vitals} onChange={setVitals} />
@@ -617,7 +643,7 @@ export default function AudioVisitCapture({ currentUser, visitId = null }) {
               onSave={() => handleSave(api)}
               saving={saving}
               saved={saved && !api.dirty}
-              saveDisabled={saving || !!api.fixRequired || !patientId || !patientChartReady || api.chartRisk?.hasUnacknowledgedCritical}
+              saveDisabled={saving || (usesBoundVisit && vitalRevision.conflict) || !!api.fixRequired || !patientId || !patientChartReady || api.chartRisk?.hasUnacknowledgedCritical}
             />
           )}
         />

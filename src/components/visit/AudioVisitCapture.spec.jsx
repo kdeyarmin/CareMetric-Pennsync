@@ -10,6 +10,8 @@ const audioMocks = vi.hoisted(() => ({
   uploadFile: vi.fn(),
   invoke: vi.fn(),
   persist: vi.fn(),
+  leaseCurrent: true,
+  patientAllowed: true,
 }));
 
 const scope = {
@@ -51,6 +53,11 @@ vi.mock('@/api/base44Client', async () => {
   };
 });
 
+vi.mock('@/lib/phiStorage', () => ({
+  captureAuthorityDraftLease: () => Object.freeze({ epoch: 42 }),
+  isAuthorityDraftLeaseCurrent: () => audioMocks.leaseCurrent,
+}));
+
 vi.mock('@/lib/AuthContext', () => ({ useAuth: () => ({ tenantContext: scope }) }));
 
 vi.mock('@/hooks/useScopedPatients', () => ({
@@ -59,7 +66,7 @@ vi.mock('@/hooks/useScopedPatients', () => ({
 
 vi.mock('@/hooks/useAuthorizedPatient', () => ({
   useAuthorizedPatient: ({ patientId, enabled }) => (
-    enabled && patients[patientId]
+    enabled && audioMocks.patientAllowed && patients[patientId]
       ? { data: patients[patientId], isSuccess: true, isError: false, tenantScope: scope }
       : { data: undefined, isSuccess: false, isError: false, tenantScope: null }
   ),
@@ -178,6 +185,8 @@ function deferred() {
 describe('AudioVisitCapture authority binding', () => {
   beforeEach(() => {
     audioMocks.visitId = null;
+    audioMocks.leaseCurrent = true;
+    audioMocks.patientAllowed = true;
     audioMocks.persist.mockReset();
     audioMocks.forceRender = null;
     audioMocks.visitState = {
@@ -244,6 +253,67 @@ describe('AudioVisitCapture authority binding', () => {
     await waitFor(() => expect(screen.getByLabelText('Patient')).toHaveValue(''));
     expect(screen.getByLabelText('BP Systolic')).toHaveValue(null);
     expect(screen.queryByTestId('reviewer-note')).not.toBeInTheDocument();
+  });
+
+  it.each([false, true])('preserves saved audio-Visit vitals, including weight, when edited=%s', async (edit) => {
+    audioMocks.visitId = 'visit-a';
+    audioMocks.visitState = { ...visitSuccess(), data: { ...visitSuccess().data,
+      vital_signs: { heart_rate: 73, pain_level: 0, weight: 147.5 }, updated_date: '2026-09-17T15:30:00.000Z' } };
+    audioMocks.persist.mockResolvedValue({ mode: 'update', visitId: 'visit-a' });
+    renderWithProviders(<AudioHarness />);
+    await waitFor(() => expect(screen.getByLabelText('Heart Rate')).toHaveValue(73));
+    expect(screen.getByLabelText('Pain Level (0-10)')).toHaveValue(0);
+    if (edit) {
+      fireEvent.change(screen.getByLabelText('Heart Rate'), { target: { value: '81' } });
+      fireEvent.change(screen.getByLabelText('Pain Level (0-10)'), { target: { value: '' } });
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Record test audio' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Save test note' }));
+    await screen.findByText('Test note fully saved');
+    expect(audioMocks.persist.mock.calls[0][0]).toMatchObject({
+      existingVisitId: 'visit-a', preserveExistingVitals: !edit,
+      vitals: { heart_rate: edit ? 81 : 73, pain_level: edit ? null : 0, weight: 147.5 },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard test note' }));
+    expect(screen.getByLabelText('Heart Rate')).toHaveValue(null);
+    audioMocks.visitState = { ...audioMocks.visitState, data: { ...audioMocks.visitState.data } };
+    await refreshAudio();
+    expect(screen.getByLabelText('Heart Rate')).toHaveValue(null);
+  });
+
+  it.each(['patient', 'lease'])('hides saved audio-Visit baseline when %s authority becomes unavailable', async (boundary) => {
+    audioMocks.visitId = 'visit-a';
+    audioMocks.visitState = { ...visitSuccess(), data: { ...visitSuccess().data,
+      vital_signs: { heart_rate: 73 }, updated_date: '2026-09-17T15:30:00.000Z' } };
+    renderWithProviders(<AudioHarness />);
+    await waitFor(() => expect(screen.getByLabelText('Heart Rate')).toHaveValue(73));
+    fireEvent.change(screen.getByLabelText('Heart Rate'), { target: { value: '81' } });
+    if (boundary === 'patient') audioMocks.patientAllowed = false;
+    else audioMocks.leaseCurrent = false;
+    await refreshAudio();
+    if (boundary === 'patient') expect(screen.queryByLabelText('Heart Rate')).not.toBeInTheDocument();
+    else expect(screen.getByLabelText('Heart Rate')).toHaveValue(null);
+    expect(audioMocks.persist).not.toHaveBeenCalled();
+  });
+
+  it('blocks an audio revision after a known source-version change without losing the working review', async () => {
+    audioMocks.visitId = 'visit-a';
+    audioMocks.visitState = { ...visitSuccess(), data: { ...visitSuccess().data,
+      vital_signs: { heart_rate: 73, weight: 147.5 }, updated_date: '2026-09-17T15:30:00.000Z' } };
+    renderWithProviders(<AudioHarness />);
+    await waitFor(() => expect(screen.getByLabelText('Heart Rate')).toHaveValue(73));
+    fireEvent.change(screen.getByLabelText('Heart Rate'), { target: { value: '81' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Record test audio' }));
+    const saveButton = await screen.findByRole('button', { name: 'Save test note' });
+    audioMocks.visitState = { ...audioMocks.visitState, data: { ...audioMocks.visitState.data,
+      vital_signs: { heart_rate: 73, weight: 160 }, updated_date: '2026-09-17T15:32:00.000Z' } };
+    await refreshAudio();
+    expect(screen.getByText(/This visit changed while you were editing vital signs/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save test note' })).toBe(saveButton);
+    expect(saveButton).toBeDisabled();
+    expect(screen.getByTestId('reviewer-note')).toHaveTextContent('Authorized transcription.');
+    fireEvent.click(saveButton);
+    expect(audioMocks.persist).not.toHaveBeenCalled();
   });
 
   it('clears Patient A output on a real switch to Patient B', async () => {

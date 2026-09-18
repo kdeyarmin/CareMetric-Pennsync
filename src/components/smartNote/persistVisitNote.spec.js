@@ -173,6 +173,48 @@ describe("persistVisitNote", () => {
     expect(updates[1][1]).not.toHaveProperty('status');
   });
 
+  it('omits untouched vitals for a known Visit but preserves explicit replacement and null clears', async () => {
+    await persistVisitNote({ ...baseArgs, existingVisitId: 'visit-existing',
+      vitals: { heart_rate: 73, pain_level: 0, weight: 147.5 }, preserveExistingVitals: true });
+    let update = functionsInvoke.mock.calls.find(([name]) => name === 'updateAuthorizedVisit')[1];
+    expect(update).not.toHaveProperty('vital_signs');
+    functionsInvoke.mockClear();
+    await persistVisitNote({ ...baseArgs, savedVisitId: 'visit-existing',
+      vitals: { heart_rate: 81, pain_level: null, weight: 147.5 } });
+    update = functionsInvoke.mock.calls.find(([name]) => name === 'updateAuthorizedVisit')[1];
+    expect(update.vital_signs).toEqual({ heart_rate: 81, pain_level: null, weight: 147.5 });
+  });
+
+  it('cannot omit new-Visit vitals through the existing-record preservation option', async () => {
+    await persistVisitNote({ ...baseArgs, vitals: { heart_rate: 73 }, preserveExistingVitals: true });
+    const update = functionsInvoke.mock.calls.find(([name]) => name === 'updateAuthorizedVisit')[1];
+    expect(update.vital_signs).toEqual({ heart_rate: 73 });
+  });
+
+  it.each([false, true])('retains the initial vital-write intent after uncertain documentation when existing=%s', async (existing) => {
+    const saveProgress = createVisitSaveProgress();
+    let rejectOnce = true;
+    functionsInvoke.mockImplementation(async (name, payload) => {
+      if (name === 'updateAuthorizedVisit' && rejectOnce) {
+        rejectOnce = false;
+        throw new Error('Documentation response lost');
+      }
+      return defaultInvoke(name, payload);
+    });
+    const vitals = { heart_rate: 73, pain_level: 0, weight: 147.5 };
+    await expect(persistVisitNote({ ...baseArgs, saveProgress, vitals, preserveExistingVitals: true,
+      ...(existing ? { existingVisitId: 'visit-existing' } : {}) }))
+      .rejects.toMatchObject({ pendingRecords: ['documentation'] });
+    await persistVisitNote({ ...baseArgs, saveProgress, vitals, preserveExistingVitals: true,
+      savedVisitId: saveProgress.visitId });
+    const updates = functionsInvoke.mock.calls.filter(([name]) => name === 'updateAuthorizedVisit');
+    expect(updates).toHaveLength(2);
+    for (const [, payload] of updates) {
+      if (existing) expect(payload).not.toHaveProperty('vital_signs');
+      else expect(payload.vital_signs).toEqual(vitals);
+    }
+  });
+
   it("completes an existing (deep-linked) visit instead of creating a duplicate", async () => {
     const out = await persistVisitNote({ ...baseArgs, existingVisitId: "visit-sched", vitals: { heart_rate: 70 } });
     expect(out).toMatchObject({ mode: "create", visitId: "visit-sched", auditId: "audit-1" });
