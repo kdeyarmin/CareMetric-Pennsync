@@ -72,9 +72,10 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
     if (name === 'getMyTenantContext') return getContext(input);
     if (name === 'manageAuthorizedReferral') {
       if (!exact(input, ['action','params'])) fail('STAGING_OPERATION_UNAVAILABLE');
+      if (input.action === 'staging_roster') return { data:await rpc('referral_patients',input.params) };
       if (input.action === 'staging_prepare') {
         if (!exact(input.params,['p_agency_id','p_patient_id'])) fail('STAGING_OPERATION_UNAVAILABLE');
-        const result = await rpc('patient', input.params);
+        const result = await rpc('referral_patient', input.params);
         if (!['agency_admin','manager','office_staff'].includes(result.context.tenant_role)) fail('STAGING_OPERATION_UNAVAILABLE');
         return { data:result };
       }

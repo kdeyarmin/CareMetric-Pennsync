@@ -161,6 +161,13 @@ async function proveAuthority(db, { artifacts, referrals }) {
     const result = await actor(db, n, () => rpc(db, 'patients', [APP, agency, 50, null]));
     assert.deepEqual(result.items.map(row => row.id), rosters[n - 1]);
   }
+  for(const n of [1,4]) {
+    const agency=n===4?'agency-b':'agency-a';
+    const result=await actor(db,n,()=>rpc(db,'referral_patients',[APP,agency,50,null]));
+    assert.deepEqual(result.items.map(row=>row.id),rosters[n-1]);
+    const selected=await actor(db,n,()=>rpc(db,'referral_patient',[APP,agency,result.items[0].id]));
+    assert.deepEqual(selected.patient,result.items[0]);
+  }
   for (const [n, agency, patient] of [[1, 'agency-a', 'patient-b1'], [2, 'agency-a', 'patient-a2'],
     [2, 'agency-a', 'patient-b1'], [3, 'agency-a', 'patient-a1'], [3, 'agency-a', 'patient-a2'],
     [3, 'agency-a', 'patient-b1'], [4, 'agency-b', 'patient-a1'], [4, 'agency-b', 'patient-a2']]) {

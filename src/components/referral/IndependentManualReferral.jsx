@@ -2,17 +2,16 @@ import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router';
 import { useAuth } from '@/lib/AuthContext';
-import { useScopedPatients } from '@/hooks/useScopedPatients';
 import { base44 } from '@/api/base44Client';
 
 const invoke = async (action,params) => (await base44.functions.invoke('manageAuthorizedReferral',{action,params})).data;
 const denied = <p role="alert">Referral access unavailable. Your access could not be verified.</p>;
 
-function Intake({ agencyId, patientId, membershipVersion, membershipId, referralId, onCreated }) {
+function Intake({ agencyId, patientId, membershipVersion, membershipId, referralId, onCreated, rosterReady, rosterDenied }) {
   const queryClient=useQueryClient();
   const active=useRef(true);
   useEffect(()=>{active.current=true;return ()=>{active.current=false;};},[]);
-  const preparation=useQuery({queryKey:['independent-referral-patient',agencyId,patientId,membershipId,membershipVersion],
+  const preparation=useQuery({enabled:rosterReady,queryKey:['independent-referral-patient',agencyId,patientId,membershipId,membershipVersion],
     queryFn:async()=>{
       const result=await invoke('staging_prepare',{p_agency_id:agencyId,p_patient_id:patientId});
       if (result.context.membership_id!==membershipId || result.context.membership_version!==membershipVersion) throw new Error('REFERRAL_SCOPE_CHANGED');
@@ -31,7 +30,7 @@ function Intake({ agencyId, patientId, membershipVersion, membershipId, referral
   const operation=useRef(null);
   const inFlight=useRef(false);
   const perform=async action=>{
-    if (inFlight.current || !preparation.isSuccess || preparation.fetchStatus!=='idle') return;
+    if (!rosterReady || inFlight.current || !preparation.isSuccess || preparation.fetchStatus!=='idle') return;
     inFlight.current=true;setBusy(true);setError(false);
     try {
       if (!operation.current) {
@@ -55,8 +54,8 @@ function Intake({ agencyId, patientId, membershipVersion, membershipId, referral
     } catch { if (active.current) setError(true); }
     finally {inFlight.current=false;if (active.current) setBusy(false);}
   };
-  if (preparation.isError || (referralId && reading.isError)) return denied;
-  if (!preparation.isSuccess || preparation.fetchStatus!=='idle' || (referralId && (!reading.isSuccess || reading.fetchStatus!=='idle'))) return <p role="status">Verifying referral access…</p>;
+  if (rosterDenied || preparation.isError || (referralId && reading.isError)) return denied;
+  if (!rosterReady || !preparation.isSuccess || preparation.fetchStatus!=='idle' || (referralId && (!reading.isSuccess || reading.fetchStatus!=='idle'))) return <p role="status">Verifying referral access…</p>;
   return <section className="space-y-4" aria-label="Manual referral">
     <h2 className="text-xl font-semibold">{preparation.data.patient.display_name}</h2>
     {!referral ? <>
@@ -80,18 +79,34 @@ function Intake({ agencyId, patientId, membershipVersion, membershipId, referral
 }
 
 function PatientIntake({ context, patientId, referralId, setParams }) {
-  const roster=useScopedPatients({purpose:'roster',sort:'last_name',limit:10000});
+  const roster=useQuery({queryKey:['independent-referral-roster',context.agency_id,context.user_id,context.membership_id,context.membership_version,context.tenant_role],
+    queryFn:async()=>{
+      const items=[],seen=new Set();let after=null;
+      do {
+        const result=await invoke('staging_roster',{p_agency_id:context.agency_id,p_limit:100,p_after_id:after});
+        if (!['agency_id','user_id','membership_id','membership_version','tenant_role'].every(key=>result.context[key]===context[key])) throw new Error('REFERRAL_SCOPE_CHANGED');
+        for (const patient of result.items) {
+          if (seen.has(patient.id) || items.length>=10000) throw new Error('REFERRAL_ROSTER_LIMIT');
+          seen.add(patient.id);items.push(patient);
+        }
+        after=result.next_cursor;
+      } while(after!==null);
+      return items;
+    },retry:false,staleTime:0,gcTime:0,refetchOnMount:'always',refetchOnWindowFocus:'always',refetchOnReconnect:'always'});
+  const ready=roster.isSuccess && roster.fetchStatus==='idle' && !roster.error;
+  // Keep a selected form mounted during a roster recheck so an uncertain write
+  // retains its original identity; readiness hides and disables the form.
+  if (patientId) return <Intake key={`${patientId}:${referralId}`} agencyId={context.agency_id} patientId={patientId}
+    membershipVersion={context.membership_version} membershipId={context.membership_id} referralId={referralId}
+    onCreated={id=>setParams({patientId,referralId:id})} rosterReady={ready} rosterDenied={roster.isError} />;
   if (roster.isError) return denied;
-  if (!roster.isSuccess) return <p role="status">Loading patients…</p>;
-  // Select once for this form: pending write receipts cannot be rebound to a
-  // different patient by editing the selector while a response is uncertain.
+  if (!ready) return <p role="status">Loading patients…</p>;
   return <>
     <label htmlFor="manual-referral-patient">Patient</label>
-    <select id="manual-referral-patient" value={patientId} disabled={!!patientId} onChange={event=>setParams({patientId:event.target.value})}>
+    <select id="manual-referral-patient" value="" onChange={event=>setParams({patientId:event.target.value})}>
       <option value="">Select an existing patient</option>
-      {roster.data.map(patient=><option key={patient.id} value={patient.id}>{patient.first_name} {patient.last_name}</option>)}
+      {roster.data.map(patient=><option key={patient.id} value={patient.id}>{patient.display_name}</option>)}
     </select>
-    {patientId && <Intake key={`${patientId}:${referralId}`} agencyId={context.agency_id} patientId={patientId} membershipVersion={context.membership_version} membershipId={context.membership_id} referralId={referralId} onCreated={id=>setParams({patientId,referralId:id})} />}
   </>;
 }
 export default function IndependentManualReferral() {
@@ -105,8 +120,10 @@ export default function IndependentManualReferral() {
   return <main className="mx-auto max-w-4xl space-y-5 p-6">
     <h1 className="text-2xl font-semibold">Referral Intake</h1>
     <p>Create a manual referral for an existing test patient, then confirm the patient match. Document processing and admission are not available in this staging transfer.</p>
-    <Link className="underline" to="/Patients">Return to patients</Link>
-    {!valid || !context || context.tenant_role!=='agency_admin' ? denied
+    {['manager','office_staff'].includes(context?.tenant_role)
+      ? <Link className="underline" to="/ReferralIntake">Return to referral patients</Link>
+      : <Link className="underline" to="/Patients">Return to patients</Link>}
+    {!valid || !context || !['agency_admin','manager','office_staff'].includes(context.tenant_role) ? denied
       : <PatientIntake key={`${context.agency_id}:${context.membership_id}:${context.membership_version}`} context={context} patientId={patientId} referralId={referralId} setParams={setParams} />}
   </main>;
 }
