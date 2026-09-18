@@ -10,6 +10,7 @@ import { localStatus, API } from '../../authority-store/tests/http-local-stack.m
 test('recovered runtime migrations bootstrap actual isolated Supabase catalogs and RPCs', { timeout: 60000 }, async () => {
   const status = await localStatus(); // Requires pinned local daemon and this harness's ownership marker.
   const db = new pg.Client({ connectionString: status.DB_URL, statement_timeout: 10000, connectionTimeoutMillis: 10000 });
+  let storageOwner;
   let phase = 'connect';
   let retentionWasAbsent = false;
   const requireTrue = (value, code) => { if (!value) throw new Error(code); };
@@ -61,7 +62,23 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
     const files = (await readdir(directory)).filter(file => /^00[1-5]_.+\.sql$/.test(file)).sort();
     assert.equal(files.length, 5);
     for (const file of files) {
-      await db.query(await readFile(new URL(file, directory), 'utf8'));
+      phase = `apply ${file} to actual platform`;
+      if (file === '002_storage_isolation.sql') {
+        // CLI 2.109.1 starts its real Storage service with this existing owner
+        // and the same local database password. Use that existing principal for
+        // its policy DDL; never change managed table ownership or role grants.
+        const storageUrl = new URL(status.DB_URL);
+        storageUrl.username = 'supabase_storage_admin';
+        storageOwner = new pg.Client({ connectionString: storageUrl.toString(), statement_timeout: 10000, connectionTimeoutMillis: 10000 });
+        await storageOwner.connect();
+        const ownership = (await storageOwner.query(`select current_user='supabase_storage_admin'
+          and pg_get_userbyid(relowner)=current_user as valid from pg_class
+          where oid='storage.objects'::regclass`)).rows[0];
+        requireTrue(ownership?.valid === true, 'LOCAL_STORAGE_POLICY_OWNER_REQUIRED');
+        await storageOwner.query(await readFile(new URL(file, directory), 'utf8'));
+      } else {
+        await db.query(await readFile(new URL(file, directory), 'utf8'));
+      }
       if (file.startsWith('003_')) {
         const jobs = (await db.query("select jobid,schedule,command,active from cron.job where jobname='pennsync-integration-result-retention'")).rows;
         assert.equal(jobs.length, 1); assert.equal(jobs[0].schedule, '17 * * * *');
@@ -121,6 +138,9 @@ test('recovered runtime migrations bootstrap actual isolated Supabase catalogs a
   } finally {
     // Handles a failure after 003 committed but before its pause was observed.
     // Only the exact job proven absent before this owned local test is eligible.
-    try { await pauseOwnedRetention(); } finally { await db.end().catch(() => {}); }
+    try { await pauseOwnedRetention(); } finally {
+      await storageOwner?.end().catch(() => {});
+      await db.end().catch(() => {});
+    }
   }
 });
