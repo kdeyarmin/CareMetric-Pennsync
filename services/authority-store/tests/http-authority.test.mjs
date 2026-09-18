@@ -6,6 +6,7 @@ import pg from 'pg';
 import { createStagingAuthorityClient, STAGING_APP_ID as APP } from '../../authority-client/client.mjs';
 import { localStatus, API, PROJECT } from './http-local-stack.mjs';
 import { s4Fields, s4Tables } from './s4-fixture.mjs';
+import { s3Fields, s3Tables } from './s3-fixture.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const actors = [
@@ -145,6 +146,8 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       return { status: response.status, ok: response.ok, data: await response.json() };
     };
     const s4Requests = new Map();
+    const s3Requests = new Map();
+    const s3Snapshot = () => db.query(`select ${s3Tables.map(name=>`(select count(*)::integer from pennsync_private.${name}) ${name}`).join(',')}`);
     const s4Snapshot = () => db.query(`select ${s4Tables.map(name=>`(select count(*)::integer from pennsync_private.${name}) ${name}`).join(',')}`);
     const s4Save = async (actor, patient) => {
       const body = { p_agency_id: actor.agency, p_patient_id: patient, p_expected_actor_version: 1,
@@ -251,7 +254,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       assert.equal(unknown.data.code, '22023');
     });
     await scenario('private schema and direct table endpoints are not exposed', async () => {
-      for (const table of ['identity_map', 'agency', 'membership', 'patient', 'assignment', 'mutation_receipt', ...s4Tables]) {
+      for (const table of ['identity_map', 'agency', 'membership', 'patient', 'assignment', 'mutation_receipt', ...s4Tables, ...s3Tables]) {
         for (const profile of ['public', 'pennsync_private']) {
           const response = await localFetch(`${API}/rest/v1/${table}?select=*`, { headers: {
             apikey: status.PUBLISHABLE_KEY, Authorization: `Bearer ${tokens.get('admin-a')}`, 'Accept-Profile': profile } });
@@ -288,6 +291,57 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
         }
       }
       assert.deepEqual(Object.values((await s4Snapshot()).rows[0]), [3,3,3,3,3]);
+    });
+    await scenario('synthetic S3 manual referrals create and confirm exact existing-patient state through real Auth HTTP', async () => {
+      for (const actor of [actors[0],actors[3]]) {
+        const scope = { p_agency_id: actor.agency, p_patient_id: actor.name==='admin-a'?'patient-a1':'patient-b1',
+          p_expected_actor_version: 1, p_expected_patient_version: 1 };
+        const createBody = { ...scope, p_request_id: randomUUID(), p_fields: s3Fields() };
+        const created = await raw('s3_create',createBody,tokens.get(actor.name));
+        assert.equal(created.status,200); assert.equal(created.data.contract,'cm.pennsync.s3-referral.staging.v1');
+        assert.equal(created.data.context.auth_user_id,actor.uuid); assert.equal(created.data.referral.version,1);
+        assert.equal(created.data.referral.created_by_user_id,actor.legacyId);
+        assert.equal(created.data.referral.patient_id,scope.p_patient_id);
+        assert.equal(created.data.referral.agency_id,scope.p_agency_id);
+        assert.deepEqual((await raw('s3_create',createBody,tokens.get(actor.name))).data,{...created.data,replayed:true});
+        const readBody = { ...scope, p_referral_id: created.data.referral.id };
+        assert.deepEqual((await raw('s3_read',readBody,tokens.get(actor.name))).data.referral,created.data.referral);
+        const confirmBody = { ...readBody,p_expected_referral_version:1,p_request_id:randomUUID() };
+        const confirmed = await raw('s3_confirm',confirmBody,tokens.get(actor.name));
+        assert.equal(confirmed.status,200); assert.equal(confirmed.data.referral.version,2);
+        const before = { ...created.data.referral }, after = { ...confirmed.data.referral };
+        delete before.updated_date; delete after.updated_date;
+        assert.deepEqual(after,{...before,version:2,status:'ready_for_admission',requires_manual_review:false,manually_confirmed:true});
+        const expected={...confirmed.data,replayed:true};
+        assert.deepEqual((await raw('s3_confirm',confirmBody,tokens.get(actor.name))).data,expected);
+        assert.deepEqual((await raw('s3_read',readBody,tokens.get(actor.name))).data.referral,confirmed.data.referral);
+        const staleCreate=await raw('s3_create',createBody,tokens.get(actor.name));
+        assert.equal(staleCreate.status,409); assert.equal(staleCreate.data.code,'PT409');
+        assert.equal(staleCreate.data.message,'PENNSYNC_S3_REPLAY_STATE_CHANGED');
+        const duplicateConfirm=await raw('s3_confirm',{...confirmBody,p_request_id:randomUUID()},tokens.get(actor.name));
+        assert.equal(duplicateConfirm.status,409); assert.equal(duplicateConfirm.data.code,'PT409');
+        s3Requests.set(actor.name,{createBody,confirmBody,readBody,expected});
+      }
+      const {createBody,confirmBody,readBody}=s3Requests.get('admin-a');
+      for (const [actor,patient] of [[actors[1],'patient-a1'],[actors[2],'patient-a1'],[actors[0],'patient-b1'],[actors[3],'patient-a1']]) {
+        for (const [method,input] of [['s3_create',createBody],['s3_confirm',confirmBody],['s3_read',readBody]]) {
+          const result=await raw(method,{...input,p_agency_id:actor.agency,p_patient_id:patient},tokens.get(actor.name));
+          assert.equal(result.status,403); assert.equal(result.data.code,'42501');
+        }
+      }
+      const unsupported=await raw('s3_create',{...createBody,p_request_id:randomUUID(),p_fields:s3Fields({extracted_data:{}})},tokens.get('admin-a'));
+      assert.equal(unsupported.status,400); assert.equal(unsupported.data.code,'22023');
+      assert.deepEqual(Object.values((await s3Snapshot()).rows[0]),[2,4]);
+      const oldToken=tokens.get('admin-a');
+      const claims=JSON.parse(Buffer.from(oldToken.split('.')[1],'base64url').toString());
+      requireTrue(claims.exp>Date.now()/1000+30,'TOKEN_MUST_BE_UNEXPIRED_BEFORE_LOGOUT');
+      await admin.signOut();
+      assert.equal((await db.query('select count(*)::integer as count from auth.sessions where id=$1',[claims.session_id])).rows[0].count,0);
+      for (const [method,input] of [['s3_create',createBody],['s3_create',{...createBody,p_request_id:randomUUID()}],['s3_confirm',confirmBody],['s3_read',readBody]]) {
+        const result=await raw(method,input,oldToken); assert.equal(result.status,403); assert.equal(result.data.code,'28000');
+      }
+      await admin.signIn(actors[0].password);
+      assert.deepEqual((await raw('s3_confirm',confirmBody,tokens.get('admin-a'))).data,s3Requests.get('admin-a').expected);
     });
     const grant = { p_agency_id: 'agency-a', p_patient_id: 'patient-a2', p_target_membership_id: 'membership-clinician-empty',
       p_action: 'grant', p_expected_actor_version: 1, p_expected_target_version: 1,
@@ -358,11 +412,35 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       const { readBody, expected } = s4Requests.get('clinician-a');
       assert.deepEqual((await raw('s4_read', readBody, tokens.get('clinician-a'))).data, expected);
     });
+    await scenario('trusted membership revocation closes S3 confirmation replay and read over HTTP', async () => {
+      // Existing public revocation only targets clinicians. This models trusted
+      // control-plane maintenance, using the required lock, not a new admin API.
+      const baseline=await db.query('select status,version::integer,revoked_at,revoked_by from pennsync_private.membership where app_id=$1 and id=$2 and auth_user_id=$3',[APP,actors[3].membership,actors[3].uuid]);
+      assert.deepEqual(baseline.rows,[{status:'active',version:1,revoked_at:null,revoked_by:null}]);
+      try {
+        await db.query('begin'); await db.query('select pg_advisory_xact_lock(168344,20260918)');
+        const changed=await db.query("update pennsync_private.membership set status='revoked',version=version+1,revoked_at=clock_timestamp(),revoked_by=$1 where app_id=$2 and id=$3 and auth_user_id=$4 and status='active' and version=1",[actors[0].uuid,APP,actors[3].membership,actors[3].uuid]);
+        assert.equal(changed.rowCount,1); await db.query('commit');
+        const {createBody,confirmBody,readBody}=s3Requests.get('admin-b');
+        for (const [method,input] of [['s3_create',createBody],['s3_create',{...createBody,p_request_id:randomUUID()}],['s3_confirm',confirmBody],['s3_read',readBody]]) {
+          const result=await raw(method,input,tokens.get('admin-b')); assert.equal(result.status,403); assert.equal(result.data.code,'42501');
+        }
+      } finally {
+        // Restore only this owned synthetic fixture, including on assertion
+        // failure, so later independent private-file tests retain their baseline.
+        await db.query('rollback'); await db.query('begin'); await db.query('select pg_advisory_xact_lock(168344,20260918)');
+        await db.query("update pennsync_private.membership set status='active',version=1,revoked_at=null,revoked_by=null where app_id=$1 and id=$2 and auth_user_id=$3 and status='revoked' and version=2 and revoked_by=$4",[APP,actors[3].membership,actors[3].uuid,actors[0].uuid]);
+        const restored=await db.query('select status,version::integer,revoked_at,revoked_by from pennsync_private.membership where app_id=$1 and id=$2 and auth_user_id=$3',[APP,actors[3].membership,actors[3].uuid]);
+        assert.deepEqual(restored.rows,baseline.rows); await db.query('commit');
+      }
+      assert.equal((await other.rpc('context',{p_agency_id:'agency-b'})).membership_version,1);
+    });
     await scenario('all client HTTP traffic used only the local gateway and publishable key', async () => {
       assert.equal(attemptsOutsideLocal, 0);
       requireTrue(clientRequests >= 40, 'EXPECTED_REAL_CLIENT_HTTP_REQUESTS');
       assert.equal(await localMailCount(), 0);
       assert.deepEqual(Object.values((await s4Snapshot()).rows[0]), [4,4,4,4,4]);
+      assert.deepEqual(Object.values((await s3Snapshot()).rows[0]), [2,4]);
     });
   } catch (error) {
     // Do not forward pg detail, Auth payloads, native fetch error causes or credentials.
