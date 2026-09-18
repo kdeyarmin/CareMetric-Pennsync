@@ -74,8 +74,12 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
       if (!exact(input, ['agency_id', 'visit_id', 'purpose']) || input.purpose !== 'documentation') {
         fail('STAGING_OPERATION_UNAVAILABLE');
       }
-      const result = await rpc('visit_documentation', { p_agency_id: input.agency_id, p_visit_id: input.visit_id });
-      return { data: { success: true, purpose: result.purpose, visit: result.visit, scope: result.scope } };
+      const requestedVisitId = input.visit_id;
+      const result = await rpc('visit_documentation', { p_agency_id: input.agency_id, p_visit_id: requestedVisitId });
+      // The strict client already bound the canonical server UUID to this request.
+      // Preserve its captured spelling for the legacy wrapper's opaque-ID equality.
+      return { data: { success: true, purpose: result.purpose,
+        visit: { ...result.visit, id: requestedVisitId }, scope: result.scope } };
     }
     if (name !== 'listAuthorizedPatients' || input.mode !== 'page' || input.purpose !== 'roster'
       || input.sort !== 'id_asc' || Object.keys(input).some(key => !['agency_id', 'mode', 'purpose', 'sort', 'page_size', 'cursor'].includes(key))) {

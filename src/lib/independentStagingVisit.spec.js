@@ -5,7 +5,7 @@ import { getAuthorizedVisit } from '@/functions/getAuthorizedVisit';
 
 const boundary = vi.hoisted(() => ({ invoke: vi.fn() }));
 vi.mock('@/api/base44Client', () => ({ base44: { functions: { invoke: boundary.invoke } } }));
-const visitId = '30000000-0000-4000-8000-000000000001';
+const visitId = '30000000-0000-4000-8000-000000000abc';
 const visit = { id: visitId, patient_id: 'patient-0', visit_date: '2026-09-18', visit_type: 'skilled_nursing',
   status: 'completed', nurse_notes: 'Synthetic saved note.\nPreserve é 心 😀', raw_transcription: 'Synthetic rough note',
   vital_signs: { weight: 70, pain_level: 0 }, documentation_source: 'smart_note', grounding_pending: false,
@@ -54,6 +54,33 @@ describe('independent saved Visit contract bridge', () => {
     ]) await expect(adapter.raw.functions.invoke(name, input)).rejects.toThrow('STAGING_OPERATION_UNAVAILABLE');
     expect(fixture.requests).toHaveLength(count); expect(reads).toHaveLength(0); expect(adapter.raw.entities).toEqual({});
     await adapter.auth.signOut();
+  });
+  it.each([visitId.toUpperCase(), visitId.replace('abc','aBc')])('bridges UUID spelling %s through the unchanged wrapper after canonical server binding', async requestedId => {
+    expect(requestedId).not.toBe(visitId);
+    const { adapter, reads } = fixtureForVisit(); await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    boundary.invoke.mockImplementation(adapter.raw.functions.invoke);
+    const result = await getAuthorizedVisit({ agencyId: 'agency-a', visitId: requestedId, purpose: 'documentation' });
+    expect(result.visit).toEqual({ ...visit, id: requestedId });
+    expect(reads).toHaveLength(1); expect(reads[0].body.p_visit_id).toBe(requestedId);
+    await adapter.auth.signOut();
+  });
+  it('does not relabel returned data when the caller mutates the request during the read', async () => {
+    const requestedId = visitId.toUpperCase();
+    const input = { agency_id: 'agency-a', visit_id: requestedId, purpose: 'documentation' };
+    const { adapter, reads } = fixtureForVisit({ beforeReturn: () => { input.visit_id = '30000000-0000-4000-8000-000000000def'; } });
+    await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    const result = await adapter.raw.functions.invoke('getAuthorizedVisit', input);
+    expect(result.data.visit).toEqual({ ...visit, id: requestedId });
+    expect(reads).toHaveLength(1); expect(reads[0].body.p_visit_id).toBe(requestedId);
+    expect(result.data.visit.id).not.toBe(input.visit_id); await adapter.auth.signOut();
+  });
+  it('never rewrites a different server Visit ID to satisfy the caller spelling', async () => {
+    const { adapter, reads } = fixtureForVisit({ mutate: result => ({ ...result,
+      visit: { ...result.visit, id: '30000000-0000-4000-8000-000000000def' } }) });
+    await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    boundary.invoke.mockImplementation(adapter.raw.functions.invoke);
+    await expect(getAuthorizedVisit({ agencyId: 'agency-a', visitId: visitId.toUpperCase(), purpose: 'documentation' })).rejects.toThrow();
+    expect(reads).toHaveLength(1); await adapter.auth.signOut();
   });
   it('withholds server denials and malformed saved records without falling back to Base44', async () => {
     for (const options of [{ status: 403 }, { status: 500 }, { mutate: result => ({ ...result, visit: { ...result.visit, patient_id: 'foreign' } }) }]) {
