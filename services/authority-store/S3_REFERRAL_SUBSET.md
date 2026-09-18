@@ -1,6 +1,6 @@
 # Synthetic S3 manual referral subset, version 1
 
-This staging contract ports a manual referral linked to an existing synthetic patient through creation and manual confirmation. It is not full S3, intake UI acceptance, new-patient admission, document processing, hosted deployment, or production selection. No existing frontend, Base44 function, provider, customer record, native package, public URL, or release control changes. It depends on the S4 migration's active/inactive patient field but does not change S4 behavior.
+This staging contract ports a manual referral linked to an existing synthetic patient through creation and manual confirmation. It is not full S3, new-patient admission, document processing or production selection. This document describes the database contract; the transferred staging UI is documented in `../authority-client/MANUAL_REFERRAL_UI.md`. Production Base44 functions, providers, customer records, native packages, public URLs and release controls remain unchanged. It depends on the S4 migration's active/inactive patient field but does not change S4 behavior.
 
 ## Source boundary
 
@@ -13,7 +13,7 @@ The current source also supports unlinked referrals, patient relinking, broad ex
 
 ## Scope and input
 
-Only `agency_admin`, `manager`, and `office_staff` in an active membership and active/trial agency may create, confirm, or read. This preserves the broker's intake roles. Assigned and empty clinicians are both denied. There is no owner bypass. The already linked patient must be active, synthetic, and in the exact agency; the staging roster cannot represent the source's hospitalized/discharged states yet.
+Only `agency_admin`, `manager`, and `office_staff` in an active membership and active/trial agency may create, confirm, read or list. Office staff additionally require an active assignment, locked and rechecked inside each transaction including replay. This is the transferred assignment branch; creator-provenance office access remains unavailable. Assigned and empty clinicians are both denied. There is no owner bypass. The already linked patient must be active, synthetic, and in the exact agency; the staging roster cannot represent the source's hospitalized/discharged states yet.
 
 Every call reuses current native user/session, identity-map, agency and membership checks. Actor and patient versions are mandatory. Read and both write retries use current authority, even if an earlier write succeeded. Trusted revocation and maintenance must use the existing application lock.
 
@@ -42,21 +42,27 @@ The new tables are private, FORCE RLS, with no browser CRUD grants or allowing p
 
 ## Exact public RPCs
 
-All three names start with `public.pennsync_staging_`. All require `p_app_id` (fixed `6a9881683dc68a0bd54f1ef7`), `p_agency_id`, `p_patient_id`, `p_expected_actor_version`, and `p_expected_patient_version`.
+All four names start with `public.pennsync_staging_`. All require `p_app_id` (fixed `6a9881683dc68a0bd54f1ef7`), `p_agency_id`, `p_patient_id`, `p_expected_actor_version`, and `p_expected_patient_version`.
 
 | Suffix | Additional parameters |
 | --- | --- |
 | `s3_create` | `p_request_id` UUID, `p_fields` exact object above |
 | `s3_confirm` | `p_referral_id` UUID, `p_expected_referral_version` integer `1`, `p_request_id` UUID |
 | `s3_read` | `p_referral_id` UUID |
+| `s3_list` | `p_limit` integer 1–50, `p_after_id` UUID or null |
+
+List results contain exactly `contract: cm.pennsync.s3-referral-list.staging.v1`, `staging: true`, `synthetic: true`, `app_id`, `action: list`, current `context`, `items` and `next_cursor`. Each item contains exactly the current `referral` and its `referral_sha256`. Records are ordered by stable ascending referral UUID; a non-null next cursor is the final returned UUID when another row exists. The supplied anchor must belong to the same authorized patient and pass current receipt integrity validation. Each page rechecks authority and locks/verifies every disclosed record. This is current pagination, not a multi-page snapshot.
 
 Write results contain exactly `contract: cm.pennsync.s3-referral.staging.v1`, `staging: true`, `synthetic: true`, `app_id`, `action`, `request_id`, current `context`, `replayed`, `referral` and `receipt`. Receipt contains `payload_sha256` and `referral_sha256`. Read returns the same contract/scope markers with `action: read`, current `context`, current `referral`, and `referral_sha256`; it does not claim to replay another actor's request.
 
 Create fields are bounded to 2,048 serialized JSONB bytes. Complete request and Referral representations each have a 4,096-byte preflight bound, retained in table checks. A request ID is scoped to agency plus actor; the same actor may use the same request ID in another independently authorized agency, matching the source creation key. Within an agency, create and confirm cannot reuse the same actor/request binding for different actions. A new create request ID represents another referral, even if the patient/name match.
 
-Read checks current expected authority revisions rather than requiring the revision originally recorded by the writer. Write replay requires the entire original payload, including original revisions. An authorized membership change can therefore allow a newly versioned read while invalidating an old write replay. The staging browser client has no new methods; the HTTP harness calls these named public RPCs directly.
+Read checks current expected authority revisions rather than requiring the revision originally recorded by the writer. Write replay requires the entire original payload, including original revisions. An authorized membership change can therefore allow a newly versioned read while invalidating an old write replay. The staging browser client validates all four finite methods; the app uses list followed by exact read to reopen saved referrals.
 
 ## Evidence and limits
+
+The additional `referral-list-postgres.test.mjs` suite covers exact pending/confirmed records and hashes, page bounds and cursor isolation, current role/version checks, corrupted receipts, both orderings of assignment/patient/session revocation, and both orderings of list disclosure versus confirmation. Restore verification invokes the list after recovery. The compiled real-Auth browser journey opens existing referrals through their displayed links. The original migration evidence below remains historical baseline evidence, not a replacement for current UI/hosted acceptance.
+
 
 `tests/s3.test.mjs` has 12 PostgreSQL/PGlite scenarios covering exact create/confirm/read/replay; source field transitions; all three intake roles; four-role/two-agency denials; agency/actor request-key dimensions; unsupported fields and bounds; create replay after confirmation; payload, revision and result conflicts; native-session/membership/patient changes; direct CRUD denial and tamper detection; and rollback at each record/receipt write. They run from the existing `test:authority-store` registry.
 
