@@ -40,15 +40,23 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: pnpm
-          cache-dependency-path: services/authority-store/pnpm-lock.yaml
+          cache-dependency-path: |
+            services/authority-store/pnpm-lock.yaml
+            services/integration-runtime/tests/pnpm-lock.yaml
       - name: Install isolated authority test dependencies
         run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+      - name: Install isolated integration migration test dependencies
+        run: pnpm --dir services/integration-runtime/tests install --ignore-workspace --frozen-lockfile
       - name: Verify PostgreSQL authorization and transaction races
         run: node --test services/authority-store/tests/postgres.test.mjs
         env:
           PENNSYNC_TEST_PG_URL: postgresql://postgres@127.0.0.1:5432/postgres
       - name: Verify PostgreSQL S4 atomicity and transaction races
         run: node --test services/authority-store/tests/s4-postgres.test.mjs
+        env:
+          PENNSYNC_TEST_PG_URL: postgresql://postgres@127.0.0.1:5432/postgres
+      - name: Verify fresh integration database restoration
+        run: node --test services/integration-runtime/tests/postgres-bootstrap.test.mjs
         env:
           PENNSYNC_TEST_PG_URL: postgresql://postgres@127.0.0.1:5432/postgres
 
@@ -66,9 +74,13 @@ jobs:
         with:
           node-version-file: '.nvmrc'
           cache: pnpm
-          cache-dependency-path: services/authority-store/pnpm-lock.yaml
+          cache-dependency-path: |
+            services/authority-store/pnpm-lock.yaml
+            services/integration-runtime/tests/pnpm-lock.yaml
       - name: Install isolated authority test dependencies
         run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+      - name: Install isolated integration migration test dependencies
+        run: pnpm --dir services/integration-runtime/tests install --ignore-workspace --frozen-lockfile
       - name: Install pinned Supabase CLI
         shell: bash
         run: |
@@ -86,6 +98,10 @@ jobs:
         run: node services/authority-store/tests/http-local-stack.mjs start
       - name: Verify real signed sessions and tenant authority over HTTP
         run: node --test services/authority-store/tests/http-authority.test.mjs
+      - name: Verify real integration platform restoration and RPCs
+        run: node --test services/integration-runtime/tests/http-bootstrap.test.mjs
+      - name: Verify synthetic private file bytes and restoration
+        run: node --test services/integration-runtime/tests/http-storage.test.mjs
       - name: Stop isolated local stack
         if: always()
         run: node services/authority-store/tests/http-local-stack.mjs stop

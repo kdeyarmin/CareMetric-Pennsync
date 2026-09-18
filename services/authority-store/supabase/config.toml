@@ -41,7 +41,9 @@ enabled = true
 port = 54324
 
 [storage]
-enabled = false
+# The runtime restoration smoke requires genuine Storage catalogs/migrations.
+# File backend stays inside this disposable local stack; no objects are uploaded.
+enabled = true
 
 [storage.s3_protocol]
 enabled = false
