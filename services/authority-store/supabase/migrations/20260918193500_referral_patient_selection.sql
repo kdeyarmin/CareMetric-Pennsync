@@ -74,4 +74,32 @@ revoke all on function pennsync_private.referral_patient_value(text,text,text,js
   from public,anon,authenticated,service_role;
 grant execute on function pennsync_private.referral_patient(text,text,text),pennsync_private.referral_patients(text,text,integer,text),
   public.pennsync_staging_referral_patient(text,text,text),public.pennsync_staging_referral_patients(text,text,integer,text) to authenticated;
+-- Selection is not a write capability. Recheck assignment inside every S3
+-- create, confirm, read and receipt-replay transaction, in the same lock order.
+create or replace function pennsync_private.s3_scope(p_app_id text,p_agency_id text,p_patient_id text,
+  p_expected_actor_version bigint,p_expected_patient_version bigint,p_write boolean) returns jsonb
+language plpgsql security invoker set search_path='' as $$
+declare i pennsync_private.identity_map; c jsonb; p pennsync_private.patient; a pennsync_private.assignment;
+begin
+  i := pennsync_private.actor(p_app_id,p_write);
+  c := pennsync_private.context_value(i,p_agency_id);
+  if not (c->>'tenant_role')=any(array['agency_admin','manager','office_staff']) then
+    raise exception using errcode='42501',message='PENNSYNC_S3_INTAKE_ROLE_REQUIRED';
+  end if;
+  if p_expected_actor_version is null or (c->>'membership_version')::bigint<>p_expected_actor_version then
+    raise exception using errcode='PT409',message='PENNSYNC_ACTOR_VERSION_CHANGED';
+  end if;
+  select * into p from pennsync_private.patient where app_id=p_app_id and agency_id=p_agency_id
+    and id=p_patient_id and synthetic and status='active' for share;
+  if not found then raise exception using errcode='42501',message='PENNSYNC_PATIENT_DENIED'; end if;
+  if p_expected_patient_version is null or p.version<>p_expected_patient_version then
+    raise exception using errcode='PT409',message='PENNSYNC_PATIENT_VERSION_CHANGED';
+  end if;
+  if c->>'tenant_role'='office_staff' then
+    select * into a from pennsync_private.assignment where app_id=p_app_id and agency_id=p_agency_id
+      and patient_id=p_patient_id and membership_id=c->>'membership_id' and status='active' for share;
+    if not found then raise exception using errcode='42501',message='PENNSYNC_REFERRAL_PATIENT_DENIED'; end if;
+  end if;
+  return c;
+end $$;
 commit;

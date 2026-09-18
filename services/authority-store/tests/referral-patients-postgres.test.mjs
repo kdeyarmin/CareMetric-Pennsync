@@ -5,6 +5,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import pg from 'pg';
+import { s3Fields } from './s3-fixture.mjs';
 
 const raw = process.env.PENNSYNC_TEST_PG_URL;
 if (!raw) throw new Error('PENNSYNC_TEST_PG_URL is required for real PostgreSQL tests');
@@ -121,4 +122,27 @@ for(const [name,sql,pattern] of [
  if(readFirst){await patient(reader);const pending=tracked(writer.query(sql));await waiting(setup,writer,null);await reader.query('commit');assert.equal((await pending).ok,true);await writer.query('commit');}
  else {await writer.query(sql);const pending=tracked(patient(reader));await waiting(setup,reader,null);await writer.query('commit');const outcome=await pending;assert.equal(outcome.ok,false);assert.match(outcome.error.message,pattern);await reader.query('rollback');}
  await begin(reader,2);await assert.rejects(()=>patient(reader),e=>pattern.test(e.message));await reader.query('rollback');
+}));
+
+const request=n=>`70000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
+const create=(c,patientId='patient-a1',n=1)=>rpc(c,'s3_create',[APP,'agency-a',patientId,1,1,request(n),JSON.stringify(s3Fields())]);
+const readReferral=(c,id)=>rpc(c,'s3_read',[APP,'agency-a','patient-a1',1,1,id]);
+const confirmReferral=(c,id)=>rpc(c,'s3_confirm',[APP,'agency-a','patient-a1',1,1,id,1,request(2)]);
+const revokeAssignment="update pennsync_private.assignment set status='revoked',version=version+1 where membership_id='membership-2'";
+test('direct office referral calls and exact receipt replay recheck assignment after preparation',()=>lab(async({setup,connect})=>{
+ await intakeRoles(setup);const c=await connect();await begin(c,2);
+ await refusal(c,()=>create(c,'patient-a2'));await patient(c);const created=await create(c);await c.query('commit');
+ await setup.query(revokeAssignment);await begin(c,2);
+ await refusal(c,()=>create(c));await refusal(c,()=>create(c,'patient-a1',3));
+ await refusal(c,()=>readReferral(c,created.referral.id));await refusal(c,()=>confirmReferral(c,created.referral.id));await c.query('rollback');
+ assert.deepEqual((await setup.query('select (select count(*)::int from pennsync_private.s3_referral) referrals,(select count(*)::int from pennsync_private.s3_receipt) receipts')).rows[0],{referrals:1,receipts:1});
+}));
+for(const method of ['create','read','confirm'])for(const operationFirst of [true,false])test(`office ${method}: assignment revocation ${operationFirst?'waits for operation':'blocks operation'}`,()=>lab(async({setup,connect})=>{
+ await intakeRoles(setup);const c=await connect(),revoker=await connect();let id;
+ if(method!=='create'){await begin(c,2);id=(await create(c)).referral.id;await c.query('commit');}
+ const operation=()=>method==='create'?create(c):method==='read'?readReferral(c,id):confirmReferral(c,id);
+ await begin(c,2);await revoker.query('begin');
+ if(operationFirst){await operation();const pending=tracked(revoker.query(revokeAssignment));await waiting(setup,revoker,null);await c.query('commit');assert.equal((await pending).ok,true);await revoker.query('commit');}
+ else{await revoker.query(revokeAssignment);const pending=tracked(operation());await waiting(setup,c,null);await revoker.query('commit');const result=await pending;assert.equal(result.ok,false);assert.match(result.error.message,/REFERRAL_PATIENT_DENIED/);await c.query('rollback');}
+ await begin(c,2);await assert.rejects(operation,/REFERRAL_PATIENT_DENIED/);await c.query('rollback');
 }));

@@ -96,12 +96,13 @@ scenario('S3 request deduplication preserves the source agency and actor dimensi
   await login(4); const other=await create(s3Fields(),{agency:'agency-b',patient:'patient-b1'});
   assert.notEqual(other.referral.id,b.referral.id); assert.deepEqual(await counts(),[3,3]);
 });
-scenario('S3 manager and office staff preserve source intake authority and may confirm another intake actor referral',async()=>{
+scenario('S3 manager and assigned office staff preserve intake authority and may confirm another intake actor referral',async()=>{
   const first=await create();
   await privileged("update pennsync_private.membership set tenant_role='manager' where id='membership-2'");
   await login(2); assert.equal((await read(first.referral.id)).context.tenant_role,'manager'); await confirm(first.referral.id);
   const manager=await create(s3Fields(),{},3);
   await privileged("update pennsync_private.membership set tenant_role='office_staff' where id='membership-3'");
+  await privileged("insert into pennsync_private.assignment(app_id,agency_id,patient_id,membership_id,status,changed_by) values($1,'agency-a','patient-a1','membership-3','active',$2)",[app,uid(1)]);
   await login(3); await confirm(manager.referral.id);
   const office=await create(s3Fields(),{},3); assert.equal(office.context.tenant_role,'office_staff');
   for(const role of ['social_worker','spiritual_care','clinician']) {
