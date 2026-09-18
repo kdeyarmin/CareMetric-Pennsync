@@ -2,11 +2,11 @@
 /** Explicit synthetic staging records only. No broad list, file fetch or remote write. */
 import { createCipheriv, createDecipheriv, createHash, createPublicKey, hkdfSync, randomBytes, verify } from 'node:crypto';
 import { constants, readSync } from 'node:fs';
-import { lstat, mkdir, open, readdir } from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { lstat, mkdir, open, readdir, realpath } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { spawn } from 'node:child_process';
-import { ARCHIVE_SOURCE_APPS, buildArchiveFromReader, validateArchiveRow } from './tools-pennsync-archive.mjs';
+import { ARCHIVE_SOURCE_APPS, buildArchiveFromReader, validateArchiveCollectionPolicy, validateArchiveRow } from './tools-pennsync-archive.mjs';
 
 const APP = ARCHIVE_SOURCE_APPS.staging;
 const ACTORS = new Map([
@@ -72,7 +72,7 @@ function permit(envelope, signerSpki, at) {
       && c.fields.every(f => typeof f === 'string' && /^[A-Za-z][A-Za-z0-9_]*$/.test(f)));
     if (c.entity === 'User') check(c.fields.includes('email') && c.ids.every(id => id !== PROTECTED_OWNER && ACTORS.has(id)), 'protected_identity');
     validateArchiveRow(Object.fromEntries(c.fields.map(f => [f, null])));
-    check(Array.isArray(c.references) && Array.isArray(c.file_references) && Array.isArray(c.opaque_fields) && isObject(c.scope));
+    validateArchiveCollectionPolicy(c);
   }
   check(entities.has('User') && entities.has('Agency'), 'identity_inventory_required');
   for (const [name, entity, source, target] of [['identities', 'User', 'user_id', 'target_subject'], ['agencies', 'Agency', 'agency_id', 'target_agency_id']]) {
@@ -88,19 +88,26 @@ function permit(envelope, signerSpki, at) {
   }
   return p;
 }
+async function boundedRead(handle, maximum) {
+  const chunks = []; let size = 0;
+  for (;;) {
+    const data = Buffer.alloc(Math.min(65536, maximum + 1 - size));
+    const result = await handle.read(data); if (!result.bytesRead) break;
+    size += result.bytesRead; check(size <= maximum, 'size_limit'); chunks.push(data.subarray(0, result.bytesRead));
+  }
+  return Buffer.concat(chunks);
+}
+async function boundedRegularFile(path, maximum) {
+  const stat = await lstat(path); check(stat.isFile() && !stat.isSymbolicLink());
+  const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0));
+  try {
+    const info = await handle.stat(); check(info.isFile() && info.size <= maximum, 'size_limit');
+    return await boundedRead(handle, maximum);
+  } finally { await handle.close(); }
+}
 async function boundedFile(dir, name, maximum) {
   check(/^(header\.json|seal\.bin|[0-9]{8}\.bin)$/.test(name));
-  const path = join(dir, name); const stat = await lstat(path); check(stat.isFile() && !stat.isSymbolicLink());
-  const handle = await open(path, constants.O_RDONLY | (constants.O_NOFOLLOW || 0));
-  const chunks = []; let size = 0;
-  try {
-    for (;;) {
-      const data = Buffer.alloc(Math.min(65536, maximum + 1 - size));
-      const result = await handle.read(data); if (!result.bytesRead) break;
-      size += result.bytesRead; check(size <= maximum, 'size_limit'); chunks.push(data.subarray(0, result.bytesRead));
-    }
-    return Buffer.concat(chunks);
-  } finally { await handle.close(); }
+  return boundedRegularFile(join(dir, name), maximum);
 }
 async function writeNew(dir, name, bytes) {
   const handle = await open(join(dir, name), 'wx', 0o600);
@@ -242,6 +249,15 @@ export async function verifyCapture(options) { return withCapture(options, ({ se
 
 /** Promotion still requires all archive identity, tenant, relationship and file checks. */
 export async function promoteCapture({ archiveDir, ...options }) {
+  const capture = await realpath(options.captureDir);
+  const destination = resolve(archiveDir);
+  const archive = join(await realpath(dirname(destination)), basename(destination));
+  const contains = (parent, child) => {
+    const path = relative(parent, child);
+    return path === '' || (!isAbsolute(path) && path !== '..' && !path.startsWith(`..${sep}`));
+  };
+  // Resolve parent aliases before the builder can add any entry to the capture.
+  check(!contains(capture, archive) && !contains(archive, capture), 'overlapping_output');
   return withCapture(options, async ({ seal, p, read }) => {
     const mappings = new Map(['identities', 'agencies'].map(name => [name + '.jsonl', Buffer.from(p[name].map(row => JSON.stringify(row) + '\n').join(''))]));
     const describe = name => ({ path: name + '.jsonl', bytes: mappings.get(name + '.jsonl').length, sha256: sha(mappings.get(name + '.jsonl')), rows: p[name].length });
@@ -250,8 +266,8 @@ export async function promoteCapture({ archiveDir, ...options }) {
         rows: c.ids.length, fields: c.fields, references: c.references, file_references: c.file_references, opaque_fields: c.opaque_fields, scope: c.scope })),
       identities: describe('identities'), agencies: describe('agencies'), files: [] };
     const readInput = d => mappings.has(d.path) ? [mappings.get(d.path)] : read(seal.items.find(item => item.path === d.path));
-    const archive = await buildArchiveFromReader({ rawPlan: json(plan), read: readInput, archiveDir, key: options.key });
-    return { ...archive, acquisition: receipt(seal, p) };
+    const result = await buildArchiveFromReader({ rawPlan: json(plan), read: readInput, archiveDir: archive, key: options.key });
+    return { ...result, acquisition: receipt(seal, p) };
   });
 }
 
@@ -276,8 +292,7 @@ export async function runCaptureWorker(sdk, env = process.env, write = value => 
   try {
     key = readKey(env);
     check(typeof env.PENNSYNC_CAPTURE_PERMIT_PATH === 'string' && typeof env.PENNSYNC_CAPTURE_DIR === 'string');
-    const handle = await open(env.PENNSYNC_CAPTURE_PERMIT_PATH, 'r'); let envelope;
-    try { check((await handle.stat()).size <= META); envelope = parse(await handle.readFile()); } finally { await handle.close(); }
+    const envelope = parse(await boundedRegularFile(env.PENNSYNC_CAPTURE_PERMIT_PATH, META));
     const result = await captureStaging({ sdk, key, captureDir: resolve(env.PENNSYNC_CAPTURE_DIR), envelope, signerSpki: env.PENNSYNC_CAPTURE_SIGNER_SPKI_BASE64,
       runtime: { app_id: env.BASE44_APP_ID, data_environment: env.BASE44_DATA_ENV, privileged: env.BASE44_PRIVILEGED === 'true' } });
     write(`PENNSYNC_CAPTURE_RECEIPT ${JSON.stringify(result)}\n`); return 0;

@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createDecipheriv, createHash, generateKeyPairSync, hkdfSync, randomBytes, sign } from 'node:crypto';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { promises as fs } from 'node:fs';
+import { appendFile, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { syncBuiltinESMExports } from 'node:module';
 import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { EventEmitter } from 'node:events';
@@ -128,6 +130,30 @@ test('runtime target and privilege mismatch cannot be overridden by a valid perm
   }
 });
 
+test('signed malformed archive policies reject before creating output or reading any entity', async t => {
+  const cases = [
+    ['missing agency pointer', p => { p.collections[2].scope = { kind: 'agency' }; }],
+    ['missing global review hash', p => { p.collections[2].scope = { kind: 'global' }; }],
+    ['wrong principal scope', p => { p.collections[0].scope = { kind: 'agency_root' }; }],
+    ['wrong agency root scope', p => { p.collections[1].scope = { kind: 'principal' }; }],
+    ['reference extra key', p => { p.collections[2].references[0].extra = true; }],
+    ['reference entity syntax', p => { p.collections[2].references[0].entity = 'invalid/name'; }],
+    ['reference pointer', p => { p.collections[2].references[0].pointer = 'assigned_user_id'; }],
+    ['pointer escape', p => { p.collections[2].references[0].pointer = '/invalid~2'; }],
+    ['unsafe pointer segment', p => { p.collections[2].references[0].pointer = '/constructor'; }],
+    ['file pointer', p => { p.collections[2].file_references = ['invalid']; }],
+    ['opaque pointer', p => { p.collections[2].opaque_fields = ['invalid']; }],
+    ['duplicate classification', p => { p.collections[2].opaque_fields = ['/assigned_user_id']; }],
+    ['reference count', p => { p.collections[2].references = Array.from({ length: 101 }, (_, i) => ({ pointer: `/field${i}`, entity: 'User' })); }],
+    ['file policy count', p => { p.collections[2].file_references = Array.from({ length: 101 }, (_, i) => `/field${i}`); }],
+    ['opaque policy count', p => { p.collections[2].opaque_fields = Array.from({ length: 301 }, (_, i) => `/field${i}`); }],
+  ];
+  for (const [name, change] of cases) await t.test(name, async t => {
+    const f = await fixture(t, 1); change(f.payload);
+    await assert.rejects(f.capture()); assert.equal(f.calls.length, 0); assert.deepEqual(await readdir(f.root), []);
+  });
+});
+
 test('a signed permit cannot include the protected owner or an unapproved account', async t => {
   for (const forbidden of ['6a98816d3dc68a0bd54f1ef8', id(999)]) await t.test(forbidden === id(999) ? 'unapproved account' : 'protected owner', async t => {
     const f = await fixture(t, 1); f.payload.collections[0].ids = [forbidden]; f.payload.identities[0].user_id = forbidden;
@@ -190,6 +216,47 @@ test('archive bridge still rejects orphan/foreign-tenant relations and missing f
     await f.capture(); await assert.rejects(promoteCapture({ ...f.options, archiveDir: join(f.root, 'archive') }));
     assert.equal((await readdir(f.root)).includes('archive'), false);
   });
+});
+
+test('promotion rejects overlapping destinations including directory aliases without changing capture evidence', async t => {
+  for (const type of ['child', 'same', 'parent', 'alias child']) await t.test(type, async t => {
+    const f = await fixture(t, 1); await f.capture();
+    const before = new Map(await Promise.all((await readdir(f.options.captureDir)).map(async name => [name, await readFile(join(f.options.captureDir, name))])));
+    let archiveDir = type === 'child' ? join(f.options.captureDir, 'archive') : type === 'same' ? f.options.captureDir : f.root;
+    if (type === 'alias child') {
+      const alias = join(f.root, 'capture-alias'); await symlink(f.options.captureDir, alias, process.platform === 'win32' ? 'junction' : 'dir');
+      archiveDir = join(alias, 'archive');
+    }
+    await assert.rejects(promoteCapture({ ...f.options, archiveDir }));
+    assert.deepEqual(await readdir(f.options.captureDir), [...before.keys()]);
+    for (const [name, bytes] of before) assert.deepEqual(await readFile(join(f.options.captureDir, name)), bytes);
+    assert.equal((await verifyCapture(f.options)).records, 3);
+  });
+});
+
+test('worker bounds a permit that grows after its initial stat without readFile allocation or source reads', async t => {
+  const f = await fixture(t, 1); const path = join(f.root, 'permit.json'); await writeFile(path, JSON.stringify(f.signed()));
+  const originalOpen = fs.open; let readFileCalls = 0; let maxRead = 0; let totalRead = 0;
+  const mock = t.mock.method(fs, 'open', async (input, ...args) => {
+    const handle = await originalOpen(input, ...args);
+    if (input === path) {
+      const stat = handle.stat.bind(handle), read = handle.read.bind(handle), wholeFile = handle.readFile.bind(handle);
+      handle.stat = async (...a) => { const info = await stat(...a); await appendFile(path, ' '.repeat(4 * 1024 * 1024)); return info; };
+      handle.read = async (buffer, ...a) => { maxRead = Math.max(maxRead, buffer.length); const result = await read(buffer, ...a); totalRead += result.bytesRead; return result; };
+      handle.readFile = async (...a) => { readFileCalls++; return wholeFile(...a); };
+    }
+    return handle;
+  });
+  syncBuiltinESMExports();
+  const env = { PENNSYNC_ARCHIVE_KEY_BASE64: f.options.key.toString('base64'), PENNSYNC_CAPTURE_PERMIT_PATH: path,
+    PENNSYNC_CAPTURE_DIR: f.options.captureDir, PENNSYNC_CAPTURE_SIGNER_SPKI_BASE64: f.options.signerSpki,
+    BASE44_APP_ID: APP, BASE44_DATA_ENV: 'prod', BASE44_PRIVILEGED: 'false' };
+  const output = [];
+  try { assert.equal(await runCaptureWorker(f.sdk, env, value => output.push(value)), 1); }
+  finally { mock.mock.restore(); syncBuiltinESMExports(); }
+  assert.equal(readFileCalls, 0); assert.ok(maxRead <= 65536); assert.ok(totalRead <= 4 * 1024 * 1024 + 1);
+  assert.equal(f.calls.length, 0); assert.deepEqual(output, []); assert.equal(env.PENNSYNC_ARCHIVE_KEY_BASE64, undefined);
+  assert.deepEqual(await readdir(f.root), ['permit.json']);
 });
 
 test('worker suppresses SDK exceptions and erases its supplied key without printing payloads', async t => {

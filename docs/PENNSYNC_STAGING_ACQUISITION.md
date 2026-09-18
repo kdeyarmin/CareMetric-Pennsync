@@ -36,7 +36,7 @@ This signature verifies the origin/integrity of the local acquisition specificat
 
 ## Capture, verification and archive bridge
 
-Capture checks the signed permit and CLI runtime app/data-environment/privilege metadata before the first entity read. Only the documented projected `filter` method is used. It never switches to `asServiceRole` or adds `--privileged` after an access failure. Missing, additional, reordered, duplicate or wrong-source records reject the capture. The SDK response must contain only declared fields and valid JSON values; the archive's recursive credential and signed-URL guard runs before persistence.
+Capture checks the signed permit and CLI runtime app/data-environment/privilege metadata before the first entity read. The archive builder and capture share the same policy validator: exact scope forms, reference descriptors, JSON-pointer syntax, duplicate classifications and policy-array bounds reject before creating output or reading source rows. This validates the supplied specification, not the existence/types of live schema fields or the referenced records. Actual row relationships, tenant scopes and required file bindings still must pass the archive builder's reconciliation before promotion can succeed. Only the documented projected `filter` method is used. It never switches to `asServiceRole` or adds `--privileged` after an access failure. Missing, additional, reordered, duplicate or wrong-source records reject the capture. The SDK response must contain only declared fields and valid JSON values; the archive's recursive credential and signed-URL guard runs before persistence.
 
 The first pass writes each bounded page directly to AES-256-GCM encrypted frames, using a fresh capture ID/salt and HKDF-derived key. A second full pass across the same collection sequence must return byte-identical SDK-serialized JSONL pages, including null, absent and nested values. The terminal request for every nonempty ID list must be empty. Only then is an encrypted final manifest written. The manifest contains the signed permit, projection/ID inventories, mapping decisions, schema-evidence hash, read times, ordered page boundaries, hashes and counts. The public header contains only format/version and random capture ID/salt; frame names are numeric. No plaintext export directory is created.
 
@@ -46,15 +46,17 @@ Two matching passes only establish that the enumerated fixture bytes matched at 
 
 Verification authenticates the manifest and every frame, checks ordered inventory/hashes, revalidates the signed permit against its original capture interval, and rejects extra files, missing seals, corruption and wrong keys. A historical sealed capture remains verifiable after permit expiry. There is no partial resume, overwrite or deletion path; a failed capture leaves encrypted partial output and needs a new destination. This deliberately avoids resuming offsets against changed source data.
 
-`promote` decrypts the sealed capture through a repeatable in-memory reader into the existing archive builder. The builder still applies all original identity/agency maps, references, tenant scopes, file bindings and final verification checks. The archive format is unchanged. Any nonempty declared file reference rejects promotion because this adapter supplies no file bytes/manifests; there is no empty-file workaround. The final archive links the encrypted capture evidence by SHA-256 through its existing evidence-hash field, and still reports `source_snapshot_verified: false`. Retain **both** the capture and promoted archive plus their recovery key; the capture retains the signed specification and detailed acquisition evidence.
+`promote` decrypts the sealed capture through a repeatable in-memory reader into the existing archive builder. The archive destination must be separate from the capture: identical, ancestor and descendant directories reject before writes, including a descendant reached through a directory alias. The builder still applies all original identity/agency maps, references, tenant scopes, file bindings and final verification checks. The archive format is unchanged. Any nonempty declared file reference rejects promotion because this adapter supplies no file bytes/manifests; there is no empty-file workaround. The final archive links the encrypted capture evidence by SHA-256 through its existing evidence-hash field, and still reports `source_snapshot_verified: false`. Retain **both** the capture and promoted archive plus their recovery key; the capture retains the signed specification and detailed acquisition evidence.
 
 ## Local execution
 
 Node 24.18+, the existing local Base44 CLI installation/authentication, and Deno are required for a live staging capture. The launcher runs the local npm `npx-cli.js` entry with `--no-install`, exact `--app-id` and `--data-env prod`; it does not install a tool or open login. It requires the npm entry beside Node or in the conventional sibling `lib/node_modules` directory. No hosted capture has been run as part of these tests.
 
+In the inspected CLI 0.1.15, the CLI supplies `BASE44_APP_ID` and `BASE44_DATA_ENV` to its Deno worker from those command arguments. An absent `BASE44_PRIVILEGED` means false in both the CLI's SDK wrapper and this worker. A conflicting privileged runtime fails before entity reads; the launcher does not replace runtime evidence with an assumed value.
+
 Use only the launcher for authenticated acquisition; do not invoke the worker directly through a CLI that prints raw errors. Provide these through trusted process configuration:
 
-- `PENNSYNC_CAPTURE_PERMIT_PATH`: the existing signed permit envelope file, needed for `capture`.
+- `PENNSYNC_CAPTURE_PERMIT_PATH`: the existing signed permit envelope regular file, needed for `capture`. Symlink and nonregular files reject. Reads use at most 64 KiB chunks and reject beyond 4 MiB even if the file grows after its initial metadata check.
 - `PENNSYNC_CAPTURE_SIGNER_SPKI_BASE64`: the independently trusted Ed25519 public verification key.
 - `PENNSYNC_CAPTURE_DIR`: a new destination for capture, or a sealed capture for verification/promotion.
 - Exactly one existing archive key input: `PENNSYNC_ARCHIVE_KEY_BASE64`, or `PENNSYNC_ARCHIVE_KEY_FD` (including stdin descriptor 0). The key must be a recoverably stored random 32-byte key. It is never accepted on the command line or generated as an unrecoverable default.
@@ -64,7 +66,7 @@ Use only the launcher for authenticated acquisition; do not invoke the worker di
 node tools-pennsync-acquire.mjs capture
 node tools-pennsync-acquire.mjs verify
 node tools-pennsync-acquire.mjs promote
-node --test tools-pennsync-acquire.test.mjs tools-pennsync-archive.test.mjs
+pnpm run test:pennsync-transfer
 ```
 
 The launcher sets production SDK logging mode and captures/discards both CLI output streams. It reports only a verified aggregate receipt or a fixed failure message, including when the child throws, emits non-JSON, prints a false success, or exceeds its output limit. Child output is never a success criterion: the parent independently verifies encrypted output. A five-minute child deadline terminates its owned process tree; individual SDK page reads have a 15-second acceptance deadline. The documented SDK does not supply an abort handle for that call, so a timed-out provider read may finish before the owned process exits; it is never accepted or retried. No uncertain mutation exists because the adapter has no mutation method.
