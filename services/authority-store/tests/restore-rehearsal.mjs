@@ -25,7 +25,7 @@ export function localLabUrl(raw) {
   let url;
   try { url = new URL(raw); } catch { throw new Error('LOCAL_RESTORE_URL_REQUIRED'); }
   check(['postgres:', 'postgresql:'].includes(url.protocol)
-    && ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname)
+    && ['127.0.0.1', '[::1]'].includes(url.hostname)
     && url.pathname === '/postgres' && !url.search && !url.hash
     && /^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(url.username), 'LOCAL_RESTORE_URL_FORBIDDEN');
   return url;
@@ -143,15 +143,27 @@ export async function applyAuthority(db) {
   return migrations;
 }
 
-export async function applyRuntime(db) {
+export function orderedRuntimeMigrationFiles(names) {
+  const files = names.filter(name => /\.sql$/i.test(name));
+  check(files.length > 0 && files.every(name => /^[0-9]{3,}_[a-z0-9_]+\.sql$/.test(name)),
+    'LOCAL_RUNTIME_MIGRATION_NAMES_INVALID');
+  const ordered = files.map(file => ({ file, version: BigInt(file.split('_')[0]) }))
+    .sort((a, b) => a.version < b.version ? -1 : a.version > b.version ? 1 : 0);
+  check(ordered.every((entry, i) => entry.version > 0n && (i === 0 || entry.version !== ordered[i - 1].version)),
+    'LOCAL_RUNTIME_MIGRATION_ORDER_INVALID');
+  return ordered.map(entry => entry.file);
+}
+
+export async function applyRuntime(db, { migrationDirectory = new URL('../../integration-runtime/migrations/', import.meta.url) } = {}) {
   const runtime = new URL('../../integration-runtime/', import.meta.url);
+  const entries = await readdir(migrationDirectory, { withFileTypes: true });
+  const files = orderedRuntimeMigrationFiles(entries.map(entry => entry.name));
+  check(entries.filter(entry => files.includes(entry.name)).every(entry => entry.isFile()),
+    'LOCAL_RUNTIME_MIGRATION_FILE_REQUIRED');
   await db.query(await readFile(new URL('tests/platform-double.sql', runtime), 'utf8'));
-  const directory = new URL('migrations/', runtime);
-  const files = (await readdir(directory)).filter(name => /^00[1-5]_.+\.sql$/.test(name)).sort();
-  check(files.length === 5, 'LOCAL_RUNTIME_MIGRATIONS_INCOMPLETE');
   const migrations = [];
   for (const file of files) {
-    const bytes = await readFile(new URL(file, directory));
+    const bytes = await readFile(new URL(file, migrationDirectory));
     await db.query(bytes.toString()); migrations.push({ file: `runtime/${file}`, sha256: digest(bytes) });
   }
   return migrations;
@@ -174,7 +186,7 @@ export async function rpc(db, name, args) {
 export async function fingerprint(db) {
   const tableRows = await db.query(`select n.nspname as schema,c.relname as name from pg_catalog.pg_class c
     join pg_catalog.pg_namespace n on n.oid=c.relnamespace
-    where c.relkind='r' and n.nspname not like 'pg_%' and n.nspname<>'information_schema' order by n.nspname,c.relname`);
+    where c.relkind='r' and n.nspname !~ '^pg_' and n.nspname<>'information_schema' order by n.nspname,c.relname`);
   const tables = [];
   for (const table of tableRows.rows) {
     const rows = await db.query(`select to_jsonb(t)::text as row from ${q(table.schema)}.${q(table.name)} t order by to_jsonb(t)::text collate "C"`);
@@ -184,37 +196,37 @@ export async function fingerprint(db) {
   }
   const catalogQueries = {
     schemas: `select nspname as name,pg_get_userbyid(nspowner) as owner,nspacl::text as acl from pg_namespace
-      where nspname not like 'pg_%' and nspname<>'information_schema' order by nspname`,
+      where nspname !~ '^pg_' and nspname<>'information_schema' order by nspname`,
     relations: `select n.nspname as schema,c.relname as name,c.relkind as kind,pg_get_userbyid(c.relowner) as owner,
       c.relrowsecurity as rls,c.relforcerowsecurity as force_rls,
       coalesce(c.relacl,acldefault(case when c.relkind='S' then 's'::"char" else 'r'::"char" end,c.relowner))::text as acl
       from pg_class c join pg_namespace n on n.oid=c.relnamespace
-      where n.nspname not like 'pg_%' and n.nspname<>'information_schema' order by n.nspname,c.relname`,
+      where n.nspname !~ '^pg_' and n.nspname<>'information_schema' order by n.nspname,c.relname`,
     columns: `select n.nspname as schema,c.relname as name,a.attname as column,a.attnum as position,format_type(a.atttypid,a.atttypmod) as type,
       a.attnotnull as not_null,a.attidentity as identity,a.attgenerated as generated,a.attacl::text as acl,pg_get_expr(d.adbin,d.adrelid) as default
       from pg_attribute a join pg_class c on c.oid=a.attrelid join pg_namespace n on n.oid=c.relnamespace left join pg_attrdef d on d.adrelid=c.oid and d.adnum=a.attnum
-      where a.attnum>0 and not a.attisdropped and c.relkind in ('r','v','m','p') and n.nspname not like 'pg_%' and n.nspname<>'information_schema'
+      where a.attnum>0 and not a.attisdropped and c.relkind in ('r','v','m','p') and n.nspname !~ '^pg_' and n.nspname<>'information_schema'
       order by n.nspname,c.relname,a.attnum`,
     functions: `select n.nspname as schema,p.proname as name,pg_get_function_identity_arguments(p.oid) as args,
       pg_get_functiondef(p.oid) as definition,pg_get_userbyid(p.proowner) as owner,p.proacl::text as acl,p.prosecdef as definer,p.proconfig as config
-      from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.prokind in ('f','p') and n.nspname not like 'pg_%'
+      from pg_proc p join pg_namespace n on n.oid=p.pronamespace where p.prokind in ('f','p') and n.nspname !~ '^pg_'
       and n.nspname<>'information_schema' order by n.nspname,p.proname,pg_get_function_identity_arguments(p.oid)`,
     constraints: `select n.nspname as schema,c.conname as name,coalesce(t.relname,'') as table,c.contype as type,
       pg_get_constraintdef(c.oid,true) as definition,c.convalidated as validated from pg_constraint c join pg_namespace n on n.oid=c.connamespace
-      left join pg_class t on t.oid=c.conrelid where n.nspname not like 'pg_%' and n.nspname<>'information_schema' order by n.nspname,coalesce(t.relname,''),c.conname`,
-    indexes: `select schemaname as schema,tablename,indexname,indexdef from pg_indexes where schemaname not like 'pg_%'
+      left join pg_class t on t.oid=c.conrelid where n.nspname !~ '^pg_' and n.nspname<>'information_schema' order by n.nspname,coalesce(t.relname,''),c.conname`,
+    indexes: `select schemaname as schema,tablename,indexname,indexdef from pg_indexes where schemaname !~ '^pg_'
       and schemaname<>'information_schema' order by schemaname,tablename,indexname`,
     triggers: `select n.nspname as schema,c.relname as table,t.tgname as name,t.tgenabled as enabled,pg_get_triggerdef(t.oid) as definition
       from pg_trigger t join pg_class c on c.oid=t.tgrelid join pg_namespace n on n.oid=c.relnamespace where not t.tgisinternal
-      and n.nspname not like 'pg_%' and n.nspname<>'information_schema' order by n.nspname,c.relname,t.tgname`,
+      and n.nspname !~ '^pg_' and n.nspname<>'information_schema' order by n.nspname,c.relname,t.tgname`,
     policies: `select schemaname as schema,tablename,policyname,permissive,roles,cmd,qual,with_check from pg_policies
-      where schemaname not like 'pg_%' order by schemaname,tablename,policyname`,
+      where schemaname !~ '^pg_' order by schemaname,tablename,policyname`,
     default_grants: `select pg_get_userbyid(d.defaclrole) as owner,n.nspname as schema,d.defaclobjtype as type,d.defaclacl::text as acl
       from pg_default_acl d left join pg_namespace n on n.oid=d.defaclnamespace order by owner,schema,type`,
     types: `select n.nspname as schema,t.typname as name,t.typtype as kind,t.typnotnull as not_null,t.typdefault as default,
       pg_get_userbyid(t.typowner) as owner,t.typacl::text as acl,format_type(t.typbasetype,t.typtypmod) as base
       from pg_type t join pg_namespace n on n.oid=t.typnamespace where t.typtype='d'
-      and n.nspname not like 'pg_%' order by n.nspname,t.typname`,
+      and n.nspname !~ '^pg_' order by n.nspname,t.typname`,
   };
   const catalogs = [];
   for (const [name, sql] of Object.entries(catalogQueries)) {
@@ -222,7 +234,7 @@ export async function fingerprint(db) {
     catalogs.push({ name, count: rows.length, sha256: digest(JSON.stringify(rows)) });
   }
   const sequences = [];
-  for (const row of (await db.query("select schemaname,sequencename,start_value,min_value,max_value,increment_by,cycle,cache_size from pg_sequences where schemaname not like 'pg_%' order by schemaname,sequencename")).rows) {
+  for (const row of (await db.query("select schemaname,sequencename,start_value,min_value,max_value,increment_by,cycle,cache_size from pg_sequences where schemaname !~ '^pg_' order by schemaname,sequencename")).rows) {
     const state = (await db.query(`select last_value,is_called from ${q(row.schemaname)}.${q(row.sequencename)}`)).rows[0];
     sequences.push({ ...row, ...state });
   }

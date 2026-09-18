@@ -1,25 +1,34 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, writeFile, unlink, rmdir } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { execFile } from 'node:child_process';
+import { mkdir, mkdtemp, readdir, readFile, writeFile, unlink, rmdir } from 'node:fs/promises';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
 import { s4Fields } from './s4-fixture.mjs';
 import { s3Fields } from './s3-fixture.mjs';
 import { APP, uid, sid, request, actor, rpc, applyAuthority, applyRuntime, withRestoreLab, localLabUrl,
-  digest, encryptBackup, decryptBackup, fingerprint, retainReceipt, revisionBinding } from './restore-rehearsal.mjs';
+  digest, encryptBackup, decryptBackup, fingerprint, retainReceipt, revisionBinding, orderedRuntimeMigrationFiles } from './restore-rehearsal.mjs';
 import { seedRuntime, proveRuntime } from './restore-runtime-fixture.mjs';
+import { assertRestoreFixtureShape } from './restore-schema-fixture.mjs';
 
 const directory = fileURLToPath(new URL('../../../work/restore-rehearsal/', import.meta.url));
 const fixedError = message => error => error.message === message;
 const equal = (actual, expected, message) => assert.equal(digest(JSON.stringify(actual)), digest(JSON.stringify(expected)), message);
 
-test('database restore rejects foreign sources, existing target names and unauthenticated backup bytes', () => {
+test('database restore rejects foreign sources, existing target names and unauthenticated backup bytes', async () => {
   for (const value of [undefined, '', 'postgresql://postgres@remote.example/postgres',
+    'postgresql://postgres@localhost/postgres', 'postgresql://postgres@localhost./postgres',
+    'postgresql://postgres@127.1/postgres', 'postgresql://postgres@[::ffff:127.0.0.1]/postgres',
     'postgresql://postgres@127.0.0.1/customer', 'postgresql://postgres@127.0.0.1/postgres?host=remote.example',
     'postgresql://postgres@127.0.0.1/postgres#override', 'postgresql://postgres%20other@127.0.0.1/postgres']) {
     assert.throws(() => localLabUrl(value), /^Error: LOCAL_RESTORE_URL_/);
   }
+  for (const host of ['127.0.0.1', '[::1]']) assert.equal(localLabUrl(`postgresql://postgres@${host}/postgres`).hostname, host);
+  // URL rejection must precede binary lookup, DNS resolution or database work.
+  await assert.rejects(() => withRestoreLab({ url: 'postgresql://postgres@localhost/postgres',
+    binDir: path.join(directory, 'nonexistent-binaries') }, () => assert.fail('Must not reach a database')),
+  fixedError('LOCAL_RESTORE_URL_FORBIDDEN'));
   const plaintext = Buffer.from('PGDMPsynthetic binary codec fixture'), key = randomBytes(32);
   const envelope = encryptBackup(plaintext, key), hash = digest(plaintext);
   equal(decryptBackup(envelope, key, hash), plaintext, 'Authenticated backup bytes round-trip');
@@ -30,6 +39,87 @@ test('database restore rejects foreign sources, existing target names and unauth
   assert.throws(() => decryptBackup(envelope, randomBytes(32), hash), fixedError('LOCAL_BACKUP_AUTHENTICATION_FAILED'));
   assert.throws(() => decryptBackup(envelope, key, '0'.repeat(64)), fixedError('LOCAL_BACKUP_AUTHENTICATION_FAILED'));
   key.fill(0); plaintext.fill(0);
+});
+
+test('runtime migration discovery includes future versions and rejects ambiguous SQL ordering', () => {
+  assert.deepEqual(orderedRuntimeMigrationFiles(['1000_later.sql', 'README.md', '010_next.sql', '006_future.sql', '001_first.sql']),
+    ['001_first.sql', '006_future.sql', '010_next.sql', '1000_later.sql']);
+  for (const names of [[], ['README.md'], ['001_first.sql', 'unversioned.sql'], ['001_first.sql', '006_UPPER.SQL']]) {
+    assert.throws(() => orderedRuntimeMigrationFiles(names), fixedError('LOCAL_RUNTIME_MIGRATION_NAMES_INVALID'));
+  }
+  for (const names of [['001_first.sql', '0001_duplicate.sql'], ['000_zero.sql']]) {
+    assert.throws(() => orderedRuntimeMigrationFiles(names), fixedError('LOCAL_RUNTIME_MIGRATION_ORDER_INVALID'));
+  }
+});
+
+test('all native PostgreSQL harnesses reject localhost before DNS or socket connections', async () => {
+  const harnesses = [
+    ['./postgres.test.mjs', 'Only a loopback PostgreSQL /postgres test administrator is allowed'],
+    ['./s3-postgres.test.mjs', 'Only loopback PostgreSQL /postgres is allowed'],
+    ['./s4-postgres.test.mjs', 'Only loopback PostgreSQL /postgres is allowed'],
+    ['../../integration-runtime/tests/postgres-bootstrap.test.mjs', 'Only an explicit loopback PostgreSQL test lab is allowed'],
+  ];
+  for (const [file, expectedError] of harnesses) {
+    const script = `import net from 'node:net'; import dns from 'node:dns';
+      net.Socket.prototype.connect = () => process.exit(41);
+      dns.lookup = () => process.exit(42);
+      try { await import(${JSON.stringify(new URL(file, import.meta.url).href)}); }
+      catch (error) { process.exit(error.message === ${JSON.stringify(expectedError)} ? 0 : 44); }
+      process.exit(43);`;
+    const status = await new Promise(resolve => {
+      // Child diagnostics are intentionally not surfaced. Fixed exit statuses
+      // distinguish URL rejection from attempted networking/accepted imports.
+      execFile(process.execPath, ['--input-type=module', '--eval', script], { windowsHide: true, timeout: 10000,
+        env: { ...process.env, PENNSYNC_TEST_PG_URL: 'postgresql://postgres@localhost:9/postgres' } },
+      error => resolve(error?.code ?? 0));
+    });
+    assert.equal(status, 0, `${file} must reject localhost before DNS or connection work`);
+  }
+});
+
+test('a future runtime SQL file is applied and unreviewed fixture schema changes fail closed', { timeout: 180000 }, async () => {
+  const tracked = new URL('../../integration-runtime/migrations/', import.meta.url);
+  const files = orderedRuntimeMigrationFiles(await readdir(tracked));
+  const future = `${(BigInt(files.at(-1).split('_')[0]) + 1n).toString().padStart(3, '0')}_future_restore_fixture.sql`;
+  const futureSql = Buffer.from(`create table public.restore_future_fixture(id integer primary key);
+    insert into public.restore_future_fixture values(42);
+    create schema pgx; create table pgx.restore_future_fixture(id integer primary key);
+    insert into pgx.restore_future_fixture values(43);`);
+  await mkdir(directory, { recursive: true });
+  const owned = await mkdtemp(path.join(directory, 'migration-fixture-'));
+  const written = [];
+  try {
+    for (const file of [...files, future]) {
+      await writeFile(path.join(owned, file), file === future ? futureSql : await readFile(new URL(file, tracked)), { flag: 'wx' });
+      written.push(file);
+    }
+    await withRestoreLab({ url: process.env.PENNSYNC_TEST_PG_URL, binDir: process.env.PENNSYNC_TEST_PG_BIN }, async ({ source }) => {
+      await applyAuthority(source);
+      const migrations = await applyRuntime(source, { migrationDirectory: pathToFileURL(`${owned}${path.sep}`) });
+      assert.deepEqual(migrations.map(entry => entry.file), [...files, future].map(file => `runtime/${file}`));
+      assert.equal(migrations.at(-1).sha256, digest(futureSql));
+      assert.equal((await source.query('select id from public.restore_future_fixture')).rows[0].id, 42);
+      await seedRuntime(source);
+      await assert.rejects(() => assertRestoreFixtureShape(source), fixedError('LOCAL_RESTORE_FIXTURE_SCHEMA_CHANGED'));
+      await source.query('drop table public.restore_future_fixture');
+      // pgx is user-owned: SQL LIKE 'pg_%' incorrectly treats '_' as any
+      // character and would silently exclude this schema from both inventories.
+      await assert.rejects(() => assertRestoreFixtureShape(source), fixedError('LOCAL_RESTORE_FIXTURE_SCHEMA_CHANGED'));
+      const extra = await fingerprint(source);
+      assert.equal(extra.tables.find(table => table.schema === 'pgx' && table.name === 'restore_future_fixture')?.count, 1);
+      await source.query('drop table pgx.restore_future_fixture; drop schema pgx');
+      const reviewed = await fingerprint(source);
+      for (const name of ['schemas', 'relations', 'columns', 'constraints', 'indexes']) {
+        assert.notEqual(extra.catalogs.find(row => row.name === name).sha256, reviewed.catalogs.find(row => row.name === name).sha256);
+      }
+      await assertRestoreFixtureShape(source);
+      await source.query('alter table public.cm_integration_files add column unreviewed_fixture_column text');
+      await assert.rejects(() => assertRestoreFixtureShape(source), fixedError('LOCAL_RESTORE_FIXTURE_SCHEMA_CHANGED'));
+    });
+  } finally {
+    for (const file of written) await unlink(path.join(owned, file));
+    await rmdir(owned);
+  }
 });
 
 async function seedAuthority(db) {
@@ -137,6 +227,7 @@ test('real pg_dump and pg_restore preserve synthetic authority, S3, S4, runtime 
       migrations.push(...await applyRuntime(source));
       const authority = await seedAuthority(source);
       const runtime = await seedRuntime(source);
+      await assertRestoreFixtureShape(source);
       const before = await fingerprint(source);
       assert.equal(before.tables.find(row => row.schema === 'auth' && row.name === 'users').count, 4);
       assert.equal(before.tables.find(row => row.name === 's4_create_receipt').count, 3);
@@ -167,6 +258,7 @@ test('real pg_dump and pg_restore preserve synthetic authority, S3, S4, runtime 
       await assert.rejects(() => restoreOwned(restoredPlaintext.subarray(0, Math.floor(restoredPlaintext.length * 0.9))), fixedError('LOCAL_RESTORE_FAILED'));
       equal(await fingerprint(restored), empty, 'Failed native restore rolled back all objects');
       await restoreOwned(restoredPlaintext);
+      await assertRestoreFixtureShape(restored);
       const after = await fingerprint(restored);
       if (after.sha256 !== before.sha256) t.diagnostic(JSON.stringify({ differing_tables: before.tables.filter((row, i) => row.sha256 !== after.tables[i]?.sha256).map(row => `${row.schema}.${row.name}`), differing_catalogs: before.catalogs.filter((row, i) => row.sha256 !== after.catalogs[i]?.sha256).map(row => row.name) }));
       equal(after, before, 'Exact tables, records, identifiers, receipts, sequences, grants and security definitions');
@@ -185,7 +277,7 @@ test('real pg_dump and pg_restore preserve synthetic authority, S3, S4, runtime 
         backup: { format: 'PostgreSQL custom', encryption: 'AES-256-GCM', plaintext_sha256: backupHash,
           encrypted_sha256: digest(envelope), plaintext_bytes: plaintext.length,
           key_retained: false, backup_retained: false, plaintext_written_to_disk: false },
-        source: before, restored: after, checks: { exact_snapshot: true, failed_restore_atomic: true,
+        source: before, restored: after, checks: { exact_snapshot: true, reviewed_fixture_schema: true, failed_restore_atomic: true,
           authenticated_backup_negative_cases: 5, same_count_corruption_detected: true, source_unchanged: true, ...functional },
         limitations: ['local Auth, Storage and cron catalog doubles; no provider login/session restore proof',
           'no customer or hosted database', 'no object-byte backup or storage-provider restore',
