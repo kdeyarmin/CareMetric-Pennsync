@@ -55,6 +55,10 @@ jobs:
         run: node --test services/authority-store/tests/s4-postgres.test.mjs
         env:
           PENNSYNC_TEST_PG_URL: postgresql://postgres@127.0.0.1:5432/postgres
+      - name: Verify owned synthetic archive patient import and rollback
+        run: node --test tools-pennsync-archive-import.postgres.test.mjs
+        env:
+          PENNSYNC_TEST_PG_URL: postgresql://postgres@127.0.0.1:5432/postgres
       - name: Verify PostgreSQL S3 referral transactions and races
         run: node --test services/authority-store/tests/s3-postgres.test.mjs
         env:
@@ -134,6 +138,8 @@ jobs:
         run: node services/authority-store/tests/http-local-stack.mjs start
       - name: Verify real signed sessions and tenant authority over HTTP
         run: node --test services/authority-store/tests/http-authority.test.mjs
+      - name: Verify archived synthetic patients with existing real Auth identities
+        run: node --test services/authority-store/tests/http-archive-import.test.mjs
       - name: Verify real integration platform restoration and RPCs
         run: node --test services/integration-runtime/tests/http-bootstrap.test.mjs
       - name: Verify synthetic private file bytes and restoration
