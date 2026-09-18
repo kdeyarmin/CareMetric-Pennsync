@@ -96,7 +96,8 @@ only when delivery is confirmed and the platform maintains four distinct users.
 The staging diagnostic accepts `is_active: true` or the native signup default
 (`null`/unset), consistently with the existing account and membership lifecycle.
 Explicit false, malformed values, and any recorded offboarding metadata remain
-ineligible. It compares raw lifecycle snapshots, including the offboarding fields,
+ineligible. Offboarding fields must be strictly null/unset; even empty strings
+are ineligible. It compares raw lifecycle snapshots, including the offboarding fields,
 across exact id/email reads and both inspections; it does not activate accounts.
 
 The diagnostic may retain fully revoked owner membership history. It reads all

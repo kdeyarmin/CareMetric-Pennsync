@@ -756,6 +756,9 @@ test('actor activity defaults never override deactivation, offboarding, or nativ
     { is_active: null, offboarded_by: 'admin@example.test' },
     { is_active: null, offboarding_reason: 'Prior departure' },
     { is_active: true, offboarded_at: '2026-09-11T12:00:00.000Z' },
+    ...['offboarded_at', 'offboarded_by', 'offboarding_reason'].flatMap(field => (
+      ['', ' ', false, 0, [], {}].map(value => ({ is_active: null, [field]: value }))
+    )),
   ]) {
     const users = userRows();
     Object.assign(users[0], patch);

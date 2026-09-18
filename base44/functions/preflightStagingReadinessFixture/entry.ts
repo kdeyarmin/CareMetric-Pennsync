@@ -427,7 +427,7 @@ async function loadExactActor(
   const eligible = user.role === 'user'
     && hasSupportedActiveState(user)
     && [user.offboarded_at, user.offboarded_by, user.offboarding_reason]
-      .every((value) => value === undefined || value === null || value === '')
+      .every((value) => value === undefined || value === null)
     && (user.disabled === false || user.disabled === null)
     && user.is_service === false
     && user.is_verified === true
