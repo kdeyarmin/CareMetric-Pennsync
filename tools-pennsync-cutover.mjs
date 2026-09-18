@@ -121,6 +121,20 @@ export function createCutoverCensus(expectations, { cwd = process.cwd(), execFil
     || /^base44\/entities\/[^/]+\.jsonc?$/.test(p)
     || (/^(?:src|services)\/.+\.(?:[cm]?[jt]sx?|sql)$/.test(p)
       && !/\.(test|spec)\./.test(p) && !/(?:^|\/)(?:test|tests|__tests__)\//.test(p));
+  const component = p => {
+    if (p.startsWith('src/') || p.startsWith('services/authority-client/')) return 'frontend';
+    // These contracts are imported by production browser transport and runtime.
+    // Check both pinned trees; differing shared blobs must not be silently
+    // attributed only to whichever component happens to be enumerated last.
+    if (/^services\/integration-runtime\/(?:contracts|caller-binding|mail-contract)\.mjs$/.test(p)) return 'shared';
+    if (p.startsWith('base44/') || p.endsWith('.sql')
+      || /^services\/integration-runtime\/(?:admission|app|operator-acceptance|operator-mail-acceptance|preflight|providers|runtime|safety|server)\.mjs$/.test(p)
+      || p === 'services/hhgs-adapter/adapter.mjs') return 'backend';
+    // A new service module is not automatically server-only. Conservative
+    // inclusion on both sides prevents a relocated browser/shared module from
+    // disappearing when the frontend and backend pin different commits.
+    return 'shared';
+  };
   const records = [];
   for (const side of ['source', 'target']) {
     for (const part of ['frontend', 'backend']) {
@@ -131,7 +145,9 @@ export function createCutoverCensus(expectations, { cwd = process.cwd(), execFil
       const raw = execFile('git', ['ls-tree', '-r', '-z', pinned.commit], options);
       for (const entry of raw.split('\0').filter(Boolean)) {
         const match = /^(\d+) blob ([a-f0-9]{40})\t(.+)$/.exec(entry);
-        if (!match || !selected(match[3]) || (part === 'frontend') !== match[3].startsWith('src/')) continue;
+        if (!match || !selected(match[3])) continue;
+        const owner = component(match[3]);
+        if (owner !== 'shared' && owner !== part) continue;
         if (match[1] !== '100644' && match[1] !== '100755') throw new Error('CENSUS_UNSUPPORTED_FILE');
         records.push({ id: `${side}:${match[3]}`, blob: match[2] });
       }
