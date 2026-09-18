@@ -235,6 +235,9 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
       assert.equal(new URL(page.url()).pathname, '/Patients');
     };
     const login = async (name, select = true) => {
+      // Drain before unmounting the login image. signedOut also runs while a
+      // deliberately withheld roster is pending, so it cannot drain every route.
+      await settlePageRoutes(page, routeTrackers.get(context));
       const actor = actors.find(item => item.name === name);
       await page.getByLabel('Email', { exact: true }).fill(actor.email);
       await page.getByLabel('Password', { exact: true }).fill(actor.password);
@@ -321,9 +324,10 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     await expect(page.getByRole('heading', { name: 'This secure link is unavailable in independent staging', exact: true })).toBeVisible();
     assert.equal(new URL(page.url()).search, '');
     phase = 'public-consent-no-api-or-roster';
-    assert.equal(apiRequests, beforePublic); await expect(names()).toHaveCount(0); await noPersistedCredentials();
+    await expect(names()).toHaveCount(0);
     phase = 'settle-before-network-evidence';
     await settlePageRoutes(page, routeTrackers.get(context));
+    assert.equal(apiRequests, beforePublic); await noPersistedCredentials();
     phase = 'network-evidence-counters';
     assert.equal(blocked, 0); assert.equal(pageErrors, 0); assert.equal(routeErrors, 0); assert.equal(databaseErrors, 0);
     phase = 'required-api-and-public-image-evidence';

@@ -21,7 +21,7 @@ async function scenario({ settle, transition }) {
       arrived.resolve(); await release.promise;
       response.writeHead(200, { 'Content-Type': 'image/png' }); response.end(PNG); return;
     }
-    response.writeHead(200, { 'Content-Type': 'text/html' }); response.end('<!doctype html><p>Ready</p>');
+    response.writeHead(200, { 'Content-Type': 'text/html' }); response.end('<!doctype html><link rel="icon" href="data:,"><p>Ready</p>');
   });
   try {
     await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
@@ -41,7 +41,10 @@ async function scenario({ settle, transition }) {
         const response = await route.fetch({ maxRedirects: 0, timeout: 5000 });
         assert.equal(response.status(), 200); assert.equal(response.headers()['content-type'], 'image/png');
         phase = 'image-fulfill'; await route.fulfill({ response }); delivered += 1;
-      } catch { routeErrors += 1; failedPhase = phase; }
+      } catch {
+        routeErrors += 1; failedPhase = phase;
+        await route.abort().catch(() => {});
+      }
       finally { if (route.request().url() === `${origin}/logo.png`) finished.resolve(); }
     }));
     const page = await context.newPage(); await page.goto(origin);
