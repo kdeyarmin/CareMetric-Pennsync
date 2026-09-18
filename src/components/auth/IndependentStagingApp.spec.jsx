@@ -54,3 +54,17 @@ it('real app sign-in, agency choice and Patients list remain fenced through logo
   expect(fixture.requests.every(request => request.url.startsWith('http://127.0.0.1:54321/'))).toBe(true);
   expect(localStorage.getItem('base44_access_token')).toBeNull();
 });
+
+it('a direct legacy consent link cannot mount its raw Base44 transport in independent staging', async () => {
+  const network = vi.fn(() => { throw new Error('LEGACY_CONSENT_NETWORK_FORBIDDEN'); });
+  vi.stubGlobal('fetch', network);
+  transport.fetch.mockClear(); transport.sdk.mockClear(); transport.axios.mockClear();
+  window.history.replaceState(null, '', '/consent?ctx=synthetic-unaccepted-handle#synthetic-fragment');
+  try {
+    render(<App />);
+    await screen.findByRole('heading', { name: 'This secure link is unavailable in independent staging' });
+    expect(window.location.search).toBe(''); expect(window.location.hash).toBe('');
+    expect(network).not.toHaveBeenCalled(); expect(transport.fetch).not.toHaveBeenCalled();
+    expect(transport.sdk).not.toHaveBeenCalled(); expect(transport.axios).not.toHaveBeenCalled();
+  } finally { vi.unstubAllGlobals(); }
+});

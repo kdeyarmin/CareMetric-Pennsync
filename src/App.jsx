@@ -55,6 +55,21 @@ const IndependentStagingWorkspace = lazy(() => import('@/components/auth/Indepen
 // MCP OAuth consent page — public, ctx-token-gated, no app login required.
 const OAuthConsent = lazy(() => import('@/pages/OAuthConsent'));
 
+// Legacy public capabilities include their own raw provider transport. They
+// must not mount in the independent staging build, even before staff sign-in.
+const IndependentStagingPublicUnavailable = () => {
+  useLayoutEffect(() => {
+    window.history.replaceState({}, document.title, window.location.pathname);
+  }, []);
+  return (
+    <main className="mx-auto max-w-lg p-6">
+      <h1 className="text-xl font-semibold">This secure link is unavailable in independent staging</h1>
+      <p className="mt-3">Only test sign-in, agency selection and synthetic patient names are connected.</p>
+      <a className="mt-4 inline-block underline" href="/">Return to staging sign-in</a>
+    </main>
+  );
+};
+
 // Public privacy policy — App Store Guideline 5.1.1(i) requires it reachable
 // from within the app without signing in, and the same URL is entered in App
 // Store Connect, so it must render before the auth gate.
@@ -471,6 +486,10 @@ const AuthenticatedApp = () => {
     );
     if (!publicCapabilitySnapshot || preparedPublicSnapshot !== publicCapabilitySnapshot) {
       return publicFallback;
+    }
+    if (independentStagingAuth && !['privacy', 'privacy-policy', 'privacypolicy']
+      .includes(location.pathname.toLowerCase().split('/')[1])) {
+      return <IndependentStagingPublicUnavailable />;
     }
     return (
       <PublicCapabilityBoundary
