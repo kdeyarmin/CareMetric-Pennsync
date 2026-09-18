@@ -1,6 +1,7 @@
 // Staging acceptance transport. This is not selected by the production frontend.
 export const STAGING_APP_ID = '6a9881683dc68a0bd54f1ef7';
 import { validVisitDocumentation, VISIT_DOCUMENTATION_MAX_BYTES } from './visit-documentation.mjs';
+import { validVisitSchedule, validVisitScheduleParams } from './visits-schedule.mjs';
 import { validPatientContext } from './patient-context.mjs';
 
 export const AUTHORITY_CONTRACT = 'cm.pennsync.authority.staging.v1';
@@ -19,6 +20,7 @@ const METHODS = Object.freeze({
   patient: ['p_agency_id', 'p_patient_id'],
   patient_context: ['p_agency_id', 'p_patient_id', 'p_purpose'],
   visit_documentation: ['p_agency_id', 'p_visit_id'],
+  visits_schedule: ['p_agency_id', 'p_patient_id', 'p_status', 'p_page_size', 'p_cursor'],
   assignment: ['p_agency_id', 'p_patient_id', 'p_target_membership_id', 'p_action', 'p_expected_actor_version', 'p_expected_target_version', 'p_expected_assignment_version', 'p_request_id'],
   revoke_membership: ['p_agency_id', 'p_target_membership_id', 'p_expected_actor_version', 'p_expected_target_version', 'p_request_id'],
 });
@@ -45,6 +47,10 @@ function validateTarget(config) {
 }
 
 function validateParams(method, input) {
+  if (method === 'visits_schedule') {
+    if (!validVisitScheduleParams(input)) fail('INVALID_AUTHORITY_REQUEST');
+    return Object.freeze({ ...input, p_cursor: input.p_cursor === null ? null : Object.freeze({ ...input.p_cursor }), p_app_id: STAGING_APP_ID });
+  }
   const keys = METHODS[method];
   if (!keys || !object(input) || Object.keys(input).some(key => !keys.includes(key))) fail('INVALID_AUTHORITY_REQUEST');
   const params = { ...input };
@@ -107,6 +113,7 @@ function validateResult(result, method, params, config) {
     patient: [...commonKeys, 'context', 'patient'],
     patient_context: [...commonKeys, 'context', 'purpose', 'patient', 'scope'],
     visit_documentation: [...commonKeys, 'context', 'purpose', 'visit', 'scope'],
+    visits_schedule: [...commonKeys, 'context', 'purpose', 'visits', 'scope', 'page'],
     assignment: [...commonKeys, 'agency_id', 'action', 'request_id', 'replayed', 'patient_id', 'membership_id', 'membership_version', 'assignment_version', 'assignment_status'],
     revoke_membership: [...commonKeys, 'agency_id', 'action', 'request_id', 'replayed', 'membership_id', 'membership_version', 'membership_status'],
   };
@@ -131,7 +138,8 @@ function validateResult(result, method, params, config) {
     || !Array.isArray(result.memberships) || result.memberships.length > 50
     || result.memberships.some(value => !context(value))
     || new Set(result.memberships.map(value => value.agency_id)).size !== result.memberships.length)) fail('INVALID_AUTHORITY_RESPONSE');
-  if (['patients', 'patient', 'patient_context', 'visit_documentation'].includes(method) && !context(result.context, params.p_agency_id)) fail('INVALID_AUTHORITY_RESPONSE');
+  if (['patients', 'patient', 'patient_context', 'visit_documentation', 'visits_schedule'].includes(method) && !context(result.context, params.p_agency_id)) fail('INVALID_AUTHORITY_RESPONSE');
+  if (method === 'visits_schedule' && !validVisitSchedule(result, params)) fail('INVALID_AUTHORITY_RESPONSE');
   if (method === 'patient_context' && !validPatientContext(result, params)) fail('INVALID_AUTHORITY_RESPONSE');
   if (method === 'visit_documentation' && !validVisitDocumentation(result, params)) fail('INVALID_AUTHORITY_RESPONSE');
   if (method === 'patients' && (!Array.isArray(result.items) || result.items.length > (params.p_limit ?? 50)

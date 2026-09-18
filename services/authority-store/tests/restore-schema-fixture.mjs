@@ -22,6 +22,7 @@ const expected = {
   'pennsync_private.s4_note_history': 'app_id,id,agency_id,patient_id,visit_id,data',
   'pennsync_private.s4_visit': 'app_id,id,agency_id,patient_id,actor_id,data',
   'pennsync_private.visit_disclosure_audit': 'id,app_id,actor_id,agency_id,membership_id,membership_version,tenant_role,patient_id,visit_id,purpose,access_basis,assignment_id,assignment_version,created_at',
+  'pennsync_private.visit_list_disclosure_audit': 'id,app_id,actor_id,agency_id,membership_id,membership_version,tenant_role,patient_id,access_basis,assignment_id,assignment_version,purpose,status_filter,after_id,page_size,visit_ids,has_more,created_at',
   'public.cm_integration_daily_budget': 'app_id,subject,budget_day,attempts',
   'public.cm_integration_files': 'id,app_id,subject,object_path,content_type,size_bytes,sha256,created_at',
   'public.cm_integration_jobs': 'id,app_id,subject,operation,request_id,payload_hash,claim,state,result_encrypted,created_at,finished_at,result_expires_at,attempt_count',

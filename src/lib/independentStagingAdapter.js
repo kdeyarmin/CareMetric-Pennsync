@@ -77,6 +77,13 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
       const result = await rpc('patient_context', { p_agency_id: input.agency_id, p_patient_id: input.patient_id, p_purpose: input.purpose });
       return { data: { success: true, purpose: result.purpose, patient: result.patient, scope: result.scope } };
     }
+    if (name === 'listAuthorizedVisits') {
+      const keys = ['agency_id','patient_id','purpose','sort','page_size','cursor', ...(Object.hasOwn(input, 'status') ? ['status'] : [])];
+      if (!exact(input, keys) || input.purpose !== 'schedule' || input.sort !== 'id_asc') fail('STAGING_OPERATION_UNAVAILABLE');
+      const result = await rpc('visits_schedule', { p_agency_id: input.agency_id, p_patient_id: input.patient_id,
+        p_status: input.status ?? null, p_page_size: input.page_size, p_cursor: input.cursor });
+      return { data: { success: true, purpose: result.purpose, visits: result.visits, scope: result.scope, page: result.page } };
+    }
     if (name === 'getAuthorizedVisit') {
       if (!exact(input, ['agency_id', 'visit_id', 'purpose']) || input.purpose !== 'documentation') {
         fail('STAGING_OPERATION_UNAVAILABLE');

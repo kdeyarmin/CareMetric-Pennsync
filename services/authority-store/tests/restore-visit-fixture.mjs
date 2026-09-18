@@ -15,7 +15,10 @@ export async function seedVisitDisclosures(db, artifacts) {
     assert.equal(projection.visit.nurse_notes, result.artifacts.visit.nurse_notes);
     assert.deepEqual(projection.visit.vital_signs, result.artifacts.visit.vital_signs);
     assert.equal(projection.scope.patient_id, result.artifacts.visit.patient_id);
-    records.push({ reader, readArgs, projection });
+    const listArgs = [APP,args[1],result.artifacts.visit.patient_id,null,50,null];
+    const listProjection = await actor(db,reader,()=>rpc(db,'visits_schedule',listArgs));
+    assert.ok(listProjection.visits.some(visit=>visit.id===result.artifacts.visit.id));
+    records.push({ reader, readArgs, projection, listArgs, listProjection });
   }
   assert.equal(await count(db), 3);
   return records;
@@ -23,7 +26,7 @@ export async function seedVisitDisclosures(db, artifacts) {
 
 export async function proveVisitDisclosures(db, records) {
   const before = await count(db); assert.equal(before, 3);
-  for (const { reader, readArgs, projection } of records) {
+  for (const { reader, readArgs, projection, listArgs, listProjection } of records) {
     // Rollback only this test probe after observing its inserted audit. The
     // three source disclosures were committed and are covered by the dump.
     await actor(db, reader, async () => {
@@ -32,8 +35,14 @@ export async function proveVisitDisclosures(db, records) {
       await db.query('reset role');
       assert.equal(await count(db), before + 1, 'Successful read appends its disclosure before returning');
     }, { rollback: true });
+    await actor(db,reader,async()=>{
+      const result=await rpc(db,'visits_schedule',listArgs);assert.deepEqual(result,listProjection);
+      await db.query('reset role');
+      assert.equal((await db.query('select count(*)::int n from pennsync_private.visit_list_disclosure_audit')).rows[0].n,4);
+    },{rollback:true});
   }
   assert.equal(await count(db), before);
-  return { restored_current_authority_visit_reads: 3, stable_assignment_identity_preserved: true,
+  assert.equal((await db.query('select count(*)::int n from pennsync_private.visit_list_disclosure_audit')).rows[0].n,3);
+  return { restored_visit_list_disclosures:3, restored_saved_visit_lists:3, restored_current_authority_visit_reads: 3, stable_assignment_identity_preserved: true,
     restored_disclosure_audits: 3, disclosure_append_before_return: true };
 }
