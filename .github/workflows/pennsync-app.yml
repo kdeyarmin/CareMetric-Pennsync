@@ -39,6 +39,8 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
       - name: Verify exact app network and credential boundaries
         run: node --test --test-name-pattern='actual app network' services/authority-client/browser/actual-app-acceptance.test.mjs
+      - name: Verify genuine image route lifecycle before browser disposal
+        run: node --test services/authority-client/browser/route-work.test.mjs
       - name: Install pinned Supabase CLI
         shell: bash
         run: |

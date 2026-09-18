@@ -10,6 +10,7 @@ import { BRAND_LOGO_URL } from '../../../src/lib/brand.js';
 import { provision, localRequest } from './fixture.mjs';
 import { allowedDestination, matchesPatientPost } from './network.mjs';
 import { startActualApp, ACTUAL_APP_ORIGIN } from './actual-app-server.mjs';
+import { createRouteWorkTracker, settlePageRoutes } from './route-work.mjs';
 // Existing public brand asset. This is the one retained remote static dependency,
 // not evidence of complete hosting exit. Do not allow its bucket or host broadly.
 const LOGO = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/base44-prod/public/68ee80d98929370f9e8f2932/02eed9872_pennsynclogoupdated.png';
@@ -81,6 +82,11 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
   let phase = 'owned-stack';
   let db, browser, app, context, actors, page;
   let blocked = 0, pageErrors = 0, routeErrors = 0, databaseErrors = 0, apiRequests = 0, publicImages = 0;
+  let evidenceCheck = 'none';
+  const routeFailures = { request: 0, imageCredentials: 0, imageFetch: 0, imageResponse: 0, imageFulfill: 0,
+    grantFetch: 0, grantContract: 0, grantFulfill: 0, logoutFetch: 0, logoutResponse: 0, logoutFulfill: 0,
+    rosterFetch: 0, rosterContract: 0, continue: 0 };
+  const routeTrackers = new WeakMap();
   let hold = null, holdLogout = null;
   const credentials = [], releases = [], grants = new Map(), knownGrants = new Set();
   let status;
@@ -98,26 +104,31 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     browser = await chromium.launch({ headless: true });
     const newContext = async () => {
       const value = await browser.newContext({ serviceWorkers: 'block', acceptDownloads: false });
+      const tracker = createRouteWorkTracker(); routeTrackers.set(value, tracker);
       value.on('page', currentPage => currentPage.on('pageerror', () => { pageErrors += 1; }));
       await value.routeWebSocket('**/*', socket => { blocked += 1; socket.close(); });
-      await value.route('**/*', async route => {
+      await value.route('**/*', route => tracker.track(async () => {
         let pending;
+        let routePhase = 'request';
         try {
           const request = route.request(), url = new URL(request.url()), headers = request.headers();
           if (!allowedRequest(url, request.method(), request.resourceType(), app.assetPaths)) {
             blocked += 1; await route.abort('blockedbyclient'); return;
           }
           if (url.href === LOGO) {
+            routePhase = 'imageCredentials';
             // The existing public image alone may leave loopback, without credentials.
             if (headers.authorization || headers.apikey || (headers.cookie && !/^__cf_bm=[^;\r\n]+$/.test(headers.cookie))
               || containsCredential({ cookie: headers.cookie }, credentials)) throw new Error('ACTUAL_APP_IMAGE_CREDENTIALS');
             // Preserve the genuine CDN response, including its benign __cf_bm
             // protection cookie. It is not a PennSync Auth credential. Redirects
             // remain disabled; only this exact public PNG is permitted remotely.
+            routePhase = 'imageFetch';
             const response = await route.fetch({ maxRedirects: 0, timeout: 15000 });
+            routePhase = 'imageResponse';
             assert.equal(response.status(), 200);
             assert.match(response.headers()['content-type'] || '', /^image\/png\b/i);
-            publicImages += 1; await route.fulfill({ response }); return;
+            publicImages += 1; routePhase = 'imageFulfill'; await route.fulfill({ response }); return;
           }
           if (url.origin === API) {
             apiRequests += 1;
@@ -128,7 +139,9 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
             if (url.pathname === '/auth/v1/token' && request.method() === 'POST') {
               // Observe the genuine grant only in Node memory so persistence checks
               // cover both access and refresh tokens, without saving any auth response.
+              routePhase = 'grantFetch';
               const response = await route.fetch({ maxRedirects: 0, timeout: 15000 });
+              routePhase = 'grantContract';
               assert.equal(response.status(), 200);
               const grant = await response.json();
               // A real successful grant belongs to this test's sign-in attempt.
@@ -143,21 +156,25 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
               assert.match(grant.access_token, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
               assert.equal(typeof grant.refresh_token, 'string'); assert.ok(grant.refresh_token.length > 0);
               grants.set(actor.name, grant.access_token);
-              await route.fulfill({ response }); return;
+              routePhase = 'grantFulfill'; await route.fulfill({ response }); return;
             }
             if (url.pathname === '/auth/v1/logout' && request.method() === 'POST') {
+              routePhase = 'logoutFetch';
               const response = await route.fetch({ maxRedirects: 0, timeout: 15000 });
+              routePhase = 'logoutResponse';
               assert.equal(response.status(), 204);
               knownGrants.delete((headers.authorization || '').replace(/^Bearer /, ''));
               if (holdLogout) {
                 pending = holdLogout; holdLogout = null;
                 pending.arrived.resolve(); await pending.release.promise;
               }
-              await route.fulfill({ response }); pending?.finished.resolve(); return;
+              routePhase = 'logoutFulfill'; await route.fulfill({ response }); pending?.finished.resolve(); return;
             }
             if (hold && matchesPatientPost(url, request.method(), '/pennsync_staging_patients')) {
               pending = hold; hold = null;
+              routePhase = 'rosterFetch';
               const response = await route.fetch({ maxRedirects: 0, timeout: 15000 });
+              routePhase = 'rosterContract';
               assert.equal(response.status(), 200);
               const result = await response.json(), actor = actors.find(item => item.name === 'admin-a');
               assert.equal(headers.authorization, `Bearer ${grants.get('admin-a')}`);
@@ -180,12 +197,13 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
               pending.finished.resolve(); return;
             }
           }
-          await route.continue();
+          routePhase = 'continue'; await route.continue();
         } catch {
+          routeFailures[routePhase] += 1;
           routeErrors += 1; pending?.arrived.resolve(); pending?.finished.resolve();
           await route.abort('failed').catch(() => {});
         }
-      });
+      }));
       return value;
     };
     context = await newContext(); page = await context.newPage(); page.setDefaultTimeout(10000);
@@ -193,11 +211,16 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     const noPersistedCredentials = async () => {
       // App parameters and authority tombstones are legitimate. Inspect credentials,
       // not the existence of storage. These snapshots never leave Node memory.
+      evidenceCheck = 'browser-storage-snapshot';
       const stored = await context.storageState({ indexedDB: true });
       const session = await page.evaluate(() => Object.fromEntries(Object.entries(sessionStorage)));
+      evidenceCheck = 'persisted-credential-denial';
       assert.equal(containsCredential([stored, session], credentials), false);
+      evidenceCheck = 'public-cdn-cookie-contract';
       assert.equal(stored.cookies.every(publicCdnCookie), true);
+      evidenceCheck = 'empty-cache-storage';
       assert.equal(await page.evaluate(async () => (await globalThis.caches.keys()).length), 0);
+      evidenceCheck = 'none';
     };
     const signedOut = async () => {
       await expect(page.getByRole('button', { name: 'Sign in', exact: true })).toBeVisible();
@@ -263,6 +286,7 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     assert.equal(resetDenied.status, 403); assert.equal((await resetDenied.json()).code, '28000');
     reset.release.resolve(); await bounded(reset.finished.promise); assert.equal((await resetResponse).status(), 204);
     await expect(page.getByRole('button', { name: 'Reload app', exact: true })).toBeVisible();
+    await settlePageRoutes(page, routeTrackers.get(context));
     await page.getByRole('button', { name: 'Reload app', exact: true }).click(); await signedOut();
     t.diagnostic('Online terminal reset removed the roster, revoked its native session and waited for genuine logout confirmation before offering controlled Reload.');
 
@@ -283,24 +307,41 @@ test('compiled app login, explicit agency, four rosters and logout use real owne
     await login('admin-b'); await roster(['Synthetic Patient B1']); await logout();
     t.diagnostic('A genuine delayed roster stayed closed after logout; its still-signed JWT was denied by native session revocation, and the next agency stayed isolated.');
 
-    phase = 'fresh-context-and-network-evidence';
+    phase = 'settle-before-fresh-context';
+    await settlePageRoutes(page, routeTrackers.get(context));
+    phase = 'fresh-context-open';
     await context.close(); context = await newContext(); page = await context.newPage(); page.setDefaultTimeout(10000);
+    phase = 'fresh-context-signed-out';
     await page.goto(`${ACTUAL_APP_ORIGIN}/Patients`); await signedOut();
+    phase = 'settle-before-public-consent';
+    await settlePageRoutes(page, routeTrackers.get(context));
     const beforePublic = apiRequests;
+    phase = 'public-consent-unavailable';
     await page.goto(`${ACTUAL_APP_ORIGIN}/consent?ctx=synthetic-unavailable`);
     await expect(page.getByRole('heading', { name: 'This secure link is unavailable in independent staging', exact: true })).toBeVisible();
     assert.equal(new URL(page.url()).search, '');
+    phase = 'public-consent-no-api-or-roster';
     assert.equal(apiRequests, beforePublic); await expect(names()).toHaveCount(0); await noPersistedCredentials();
+    phase = 'settle-before-network-evidence';
+    await settlePageRoutes(page, routeTrackers.get(context));
+    phase = 'network-evidence-counters';
     assert.equal(blocked, 0); assert.equal(pageErrors, 0); assert.equal(routeErrors, 0); assert.equal(databaseErrors, 0);
+    phase = 'required-api-and-public-image-evidence';
     assert.ok(apiRequests > 30); assert.ok(publicImages > 0);
+    phase = 'native-user-and-session-counts';
     assert.equal((await db.query('select count(*)::int as n from auth.users')).rows[0].n, 4);
     assert.equal((await db.query('select count(*)::int as n from auth.sessions')).rows[0].n, 0);
+    phase = 'local-mail-sink-count';
     const mail = await fetch('http://127.0.0.1:54324/api/v1/info', { redirect: 'error', signal: AbortSignal.timeout(10000) });
     assert.equal(mail.ok, true); assert.equal((await mail.json()).Messages, 0);
     t.diagnostic('Zero Base44 business or other undeclared network attempts, page errors, persisted credentials, native sessions or outgoing mail. The exact public logo GET and identified CDN protection cookie remain allowed.');
   } catch {
     // Playwright and Auth failures may contain fill arguments or tokens. Emit only
     // a fixed phase; do not attach the original message, call log, output or cause.
+    // Only hard-coded labels and aggregate integers leave this test. Never print
+    // a URL, request/response body, header, storage value or caught error.
+    t.diagnostic(`Safe evidence counters: ${JSON.stringify({ blocked, pageErrors, routeErrors, databaseErrors,
+      apiRequests, publicImages, evidenceCheck, routeFailures })}`);
     throw new Error(`ACTUAL_APP_ACCEPTANCE_FAILED_${phase.toUpperCase().replaceAll('-', '_')}`);
   } finally {
     for (const release of releases) release.resolve();
