@@ -6,11 +6,11 @@
     "fixture_set_id": {
       "type": "string"
     },
-    "environment": {
+    "target_environment": {
       "type": "string",
       "enum": ["staging"]
     },
-    "app_id": {
+    "target_app_id": {
       "type": "string"
     },
     "origin": {
@@ -82,8 +82,8 @@
   },
   "required": [
     "fixture_set_id",
-    "environment",
-    "app_id",
+    "target_environment",
+    "target_app_id",
     "origin",
     "status",
     "actor_user_ids",

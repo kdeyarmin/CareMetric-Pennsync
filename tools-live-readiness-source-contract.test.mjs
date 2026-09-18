@@ -428,6 +428,24 @@ test("source contract rejects weakened staging fixture registry identity shapes"
   )));
 });
 
+test("source contract rejects reserved platform fields in the fixture registry", () => {
+  for (const field of ["app_id", "environment"]) {
+    const changedPath = "base44/entities/StagingReadinessFixture.jsonc";
+    const invalid = createLiveReadinessSourceContract({
+      readArtifact: path => {
+        if (path !== changedPath) return readArtifact(path);
+        const schema = JSON.parse(readArtifact(path));
+        schema.properties[field] = { type: "string" };
+        return JSON.stringify(schema);
+      },
+    });
+    assert.equal(invalid.status, "invalid_source_authority_contract");
+    assert.ok(invalid.errors.some(error => (
+      error.path === `entities.StagingReadinessFixture.properties.${field}`
+    )));
+  }
+});
+
 test("source contract rejects reopened architecture authority entities", () => {
   for (const [changedPath, operation] of [
     ["base44/entities/ContentScopeBinding.jsonc", "read"],

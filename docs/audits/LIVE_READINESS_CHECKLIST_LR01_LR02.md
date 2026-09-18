@@ -214,6 +214,16 @@ or datastore atomicity. It does not prove the frontend was deployed or that S4
 passed. Retain authenticated S4 evidence for the exact deployed candidate,
 including its Visit and required supporting artifacts, before claiming a pass.
 
+The registry stores its deployment target in `target_app_id` and
+`target_environment`. Base44 reserves `app_id` and `environment` for internal
+fields and does not return them in entity API responses; see the
+[entity schema reference](https://docs.base44.com/developers/backend/resources/entities/entity-schemas#built-in-fields).
+The request/public `target.app_id` and `target.environment` contract is unchanged.
+Rows with only the legacy reserved names, or missing/wrong explicit targets,
+fail closed. Deploy the individually reviewed registry schema and preflight
+together only after an empty-registry check; existing rows require a separately
+reviewed migration that preserves their data. Do not invent target metadata.
+
 The fixture registry still lacks fields for the Referral and Visit ids produced
 by S3/S4, so deterministic teardown is not complete. Do not provision those
 rows until the approved writer/registry can record every teardown identifier.

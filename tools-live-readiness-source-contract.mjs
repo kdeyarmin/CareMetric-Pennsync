@@ -562,8 +562,8 @@ const REQUIRED_SCHEMA_FIELDS = Object.freeze({
   ]),
   StagingReadinessFixture: Object.freeze([
     "fixture_set_id",
-    "environment",
-    "app_id",
+    "target_environment",
+    "target_app_id",
     "origin",
     "status",
     "actor_user_ids",
@@ -1324,11 +1324,20 @@ function validateEntitySchemas(artifacts, errors) {
     }
   }
   if (schemas.StagingReadinessFixture) {
+    for (const field of ["app_id", "environment"]) {
+      if (Object.hasOwn(schemas.StagingReadinessFixture.properties ?? {}, field)) {
+        addError(
+          errors,
+          `entities.StagingReadinessFixture.properties.${field}`,
+          "Fixture target identity must not use reserved platform fields.",
+        );
+      }
+    }
     requireEnumValue(
       errors,
       schemas.StagingReadinessFixture,
       "StagingReadinessFixture",
-      "environment",
+      "target_environment",
       "staging",
     );
     requireEnumValue(
@@ -1340,8 +1349,8 @@ function validateEntitySchemas(artifacts, errors) {
     );
     for (const field of [
       "fixture_set_id",
-      "environment",
-      "app_id",
+      "target_environment",
+      "target_app_id",
       "origin",
       "status",
       "created_by_user_id",
