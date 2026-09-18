@@ -798,16 +798,40 @@ test('nonterminal or malformed owner history never becomes eligible by status fi
     { status: 'unknown' }, { revoked_at: null }, { revoked_at: 'invalid' },
     { user_email_normalized: 'different@example.test' },
     { membership_key: 'incorrect-key' }, { tenant_role: 'admin' },
+    { tenant_role: ['agency_admin'] }, { tenant_role: null }, { tenant_role: 1 },
     { version: 1 }, { version: 2.5 }, { id: '$invalid' },
     { last_transition_reason: '' }, { revocation_reason: '' },
     { last_transition_at: '2026-09-11T12:02:00.000Z' },
     { activated_at: '2026-09-11T12:02:00.000Z' },
     { created_by_user_id: null }, { last_transition_by_user_id: null },
+    { created_by_user_id: ['other-admin'] }, { last_transition_by_user_id: '$invalid' },
+    { last_transition_by_email_normalized: null },
+    { last_transition_by_email_normalized: ' Other-Admin@example.test ' },
   ]) {
     const { handler } = await loadHandler({ memberships: [{ ...revokedOwnerMembership(), ...patch }] });
     const { response, json } = await invoke(handler);
     assert.equal(response.status, 409, JSON.stringify(patch));
     assert.equal(Object.hasOwn(json, 'checks'), false);
+  }
+});
+
+test('revoked owner history preserves canonical audit actors distinct from the subject', async () => {
+  const memberships = [{
+    ...revokedOwnerMembership(),
+    created_by_user_id: 'historical-creator',
+    last_transition_by_user_id: 'historical-revoker',
+    last_transition_by_email_normalized: 'historical-revoker@example.test',
+  }];
+  const { handler, state } = await loadHandler({ memberships });
+  const before = structuredClone(state);
+  const { response, json } = await invoke(handler);
+  assert.equal(response.status, 200);
+  assert.equal(json.point_in_time_clear, true);
+  assert.equal(json.counts.revoked_owner_memberships, 1);
+  assert.equal(json.safeguards.later_writes_authorized, false);
+  assert.deepEqual(state, before);
+  for (const field of ['created_by_user_id', 'last_transition_by_user_id', 'last_transition_by_email_normalized']) {
+    assert.equal(JSON.stringify(json).includes(memberships[0][field]), false);
   }
 });
 

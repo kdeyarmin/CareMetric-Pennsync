@@ -566,15 +566,16 @@ async function loadOwnerHistory(
     const revokedAt = canonicalInstant(row.revoked_at);
     const transitionedAt = canonicalInstant(row.last_transition_at);
     const activatedAt = row.activated_at == null ? null : canonicalInstant(row.activated_at);
+    const transitionEmail = canonicalEmail(row.last_transition_by_email_normalized);
     if (
       !id || !agencyId || !key || key !== `${agencyId}:${owner.id}`
       || row.user_email_normalized !== owner.email
-      || !TENANT_ROLES.has(String(row.tenant_role))
+      || typeof row.tenant_role !== 'string' || !TENANT_ROLES.has(row.tenant_role)
       || row.status !== 'revoked'
       || (row.invitation_id != null && !exactIdentifier(row.invitation_id))
-      || row.created_by_user_id !== owner.id
-      || row.last_transition_by_user_id !== owner.id
-      || row.last_transition_by_email_normalized !== owner.email
+      || !exactIdentifier(row.created_by_user_id)
+      || !exactIdentifier(row.last_transition_by_user_id)
+      || !transitionEmail || transitionEmail !== row.last_transition_by_email_normalized
       || !revokedAt || !transitionedAt || Date.parse(transitionedAt) > Date.parse(revokedAt)
       || (row.activated_at != null && (!activatedAt || Date.parse(activatedAt) > Date.parse(revokedAt)))
       || !exactReason(row.last_transition_reason) || !exactReason(row.revocation_reason)
