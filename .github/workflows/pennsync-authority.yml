@@ -128,6 +128,8 @@ jobs:
           printf '%s\n' "$cli_dir" >> "$GITHUB_PATH"
       - name: Verify local-only lifecycle boundaries
         run: node --test services/authority-store/tests/http-boundary.test.mjs
+      - name: Verify complete runtime schema readiness boundaries
+        run: node --test services/integration-runtime/tests/http-schema-ready.test.mjs
       - name: Start isolated local Auth and API
         run: node services/authority-store/tests/http-local-stack.mjs start
       - name: Verify real signed sessions and tenant authority over HTTP
