@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Link, useSearchParams } from 'react-router';
 import { useAuth } from '@/lib/AuthContext';
@@ -10,6 +10,8 @@ const denied = <p role="alert">Referral access unavailable. Your access could no
 
 function Intake({ agencyId, patientId, membershipVersion, membershipId, referralId, onCreated }) {
   const queryClient=useQueryClient();
+  const active=useRef(true);
+  useEffect(()=>{active.current=true;return ()=>{active.current=false;};},[]);
   const preparation=useQuery({queryKey:['independent-referral-patient',agencyId,patientId,membershipId,membershipVersion],
     queryFn:async()=>{
       const result=await invoke('staging_prepare',{p_agency_id:agencyId,p_patient_id:patientId});
@@ -42,14 +44,16 @@ function Intake({ agencyId, patientId, membershipVersion, membershipId, referral
       }
       const pending=operation.current;
       if (referralId) await queryClient.cancelQueries({queryKey:readKey,exact:true});
+      if (!active.current) return;
       const result=await invoke(pending.action,pending.params);
+      if (!active.current) return;
       // Keep the original request through any uncertain response; only a checked
       // receipt advances the UI. The adapter/session membrane fences late results.
       operation.current=null;
       if (pending.action==='staging_create') onCreated(result.referral.id);
       else queryClient.setQueryData(readKey,result);
-    } catch { setError(true); }
-    finally {inFlight.current=false;setBusy(false);}
+    } catch { if (active.current) setError(true); }
+    finally {inFlight.current=false;if (active.current) setBusy(false);}
   };
   if (preparation.isError || (referralId && reading.isError)) return denied;
   if (!preparation.isSuccess || preparation.fetchStatus!=='idle' || (referralId && (!reading.isSuccess || reading.fetchStatus!=='idle'))) return <p role="status">Verifying referral access…</p>;

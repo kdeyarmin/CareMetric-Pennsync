@@ -1,6 +1,6 @@
 import { render,screen,fireEvent,cleanup,waitFor } from '@testing-library/react';
 import { QueryClient,QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, Routes, Route } from 'react-router';
 import { describe,it,expect,vi,beforeEach,afterEach } from 'vitest';
 import IndependentManualReferral from './IndependentManualReferral';
 const state=vi.hoisted(()=>({context:{},invoke:vi.fn(),referral:null}));
@@ -34,6 +34,22 @@ describe('independent manual referral transfer',()=>{
   const create=state.invoke.mock.calls.find(([,p])=>p.action==='staging_create')[1].params;
   expect(create).toMatchObject({p_agency_id:'agency-a',p_patient_id:'patient-a1',p_expected_actor_version:1,p_expected_patient_version:1,p_fields:{document_type:'manual',status:'new',manually_confirmed:false}});
   expect(state.invoke.mock.calls.every(([name])=>name==='manageAuthorizedReferral')).toBe(true);
+ });
+ it('does not navigate back or update the view after leaving an in-flight creation',async()=>{
+  const server=state.invoke.getMockImplementation();let release;
+  const gate=new Promise(done=>{release=done;});
+  state.invoke.mockImplementation(async(...args)=>{if(args[1].action==='staging_create')await gate;return server(...args);});
+  const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+  render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/ReferralIntake?patientId=patient-a1']}><Routes>
+    <Route path="/ReferralIntake" element={<IndependentManualReferral />} /><Route path="/Patients" element={<h1>Patients destination</h1>} />
+  </Routes></MemoryRouter></QueryClientProvider>);
+  fireEvent.click(await screen.findByRole('button',{name:'Create manual referral'}));
+  await waitFor(()=>expect(state.invoke.mock.calls.some(([,p])=>p.action==='staging_create')).toBe(true));
+  fireEvent.click(screen.getByRole('link',{name:'Return to patients'}));
+  expect(screen.getByRole('heading',{name:'Patients destination'})).toBeVisible();
+  release();await waitFor(()=>expect(state.referral?.id).toBe(id));
+  expect(screen.getByRole('heading',{name:'Patients destination'})).toBeVisible();
+  expect(state.invoke.mock.calls.some(([,p])=>p.action==='staging_read')).toBe(false);
  });
  it('retains the exact request after an uncertain create response and locks its fields',async()=>{
   const server=state.invoke.getMockImplementation();let first=true;
