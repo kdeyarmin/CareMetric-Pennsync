@@ -217,3 +217,31 @@ test('late background cleanup failure retains only known credentials for retry w
   failOld = false; await h.client.signOut();
   assert.equal(h.live.size, 0); await denied(h.client);
 });
+
+for (const [name, response] of [
+  ['401 grant error', () => new Response(JSON.stringify({ access_token: 'untrusted.error.token' }), {
+    status: 401, headers: { 'content-type': 'application/json' },
+  })],
+  ['malformed grant JSON', () => new Response('{"access_token":"untrusted.malformed.token",', {
+    headers: { 'content-type': 'application/json' },
+  })],
+]) test(`a late ${name} cannot replace the already-settled timeout error`, async () => {
+  const released = deferred(), delivered = deferred();
+  let responseDelivered = false;
+  const requests = [];
+  const client = createStagingAuthorityClient(config, { timeoutMs: 20, fetchImpl: async url => {
+    requests.push(url);
+    await released.promise; // Deliberately ignore cancellation until after the public deadline.
+    responseDelivered = true; delivered.resolve(); return response();
+  } });
+  const signIn = rejected(client.signIn(password));
+  assert.equal(await bounded(signIn), 'AUTHORITY_REQUEST_ABORTED');
+  assert.equal(responseDelivered, false); await denied(client);
+  released.resolve(); await bounded(delivered.promise);
+  // Drain the late response's actual validation/cancellation continuation; no
+  // timer sleep or fabricated successful grant is needed to establish ordering.
+  await new Promise(setImmediate);
+  assert.equal(await signIn, 'AUTHORITY_REQUEST_ABORTED');
+  await client.signOut(); await denied(client);
+  assert.deepEqual(requests, [`${config.projectUrl}/auth/v1/token?grant_type=password`]);
+});
