@@ -68,6 +68,26 @@ const userRows = () => Object.values(ACTORS).map((actor) => ({
   is_approved: true,
 }));
 
+const revokedOwnerMembership = (index = 1) => ({
+  id: `retired-owner-membership-${index}`,
+  membership_key: `retired-agency-${index}:${OWNER.id}`,
+  agency_id: `retired-agency-${index}`,
+  user_id: OWNER.id,
+  user_email_normalized: OWNER.email,
+  tenant_role: 'agency_admin',
+  status: 'revoked',
+  invitation_id: null,
+  created_by_user_id: OWNER.id,
+  last_transition_by_user_id: OWNER.id,
+  last_transition_by_email_normalized: OWNER.email,
+  last_transition_at: '2026-09-11T12:00:00.000Z',
+  last_transition_reason: 'Historical staging setup',
+  activated_at: '2026-09-11T12:00:00.000Z',
+  revoked_at: '2026-09-11T12:01:00.000Z',
+  revocation_reason: 'Retired synthetic setup',
+  version: 2,
+});
+
 function matches(row, query) {
   return Object.entries(query || {}).every(([key, expected]) => row?.[key] === expected);
 }
@@ -374,7 +394,8 @@ test('eligible pristine actors produce only role-keyed, non-identifying readines
     for (const call of matchingCalls) assert.deepEqual(call.fields, ['id', 'agency_code']);
   }
   for (const call of calls.filters) {
-    assert.equal(call.limit, 2);
+    const ownerHistoryRead = call.entity === 'AgencyMembership' && call.query.user_id === OWNER.id;
+    assert.equal(call.limit, ownerHistoryRead ? 51 : 2);
     assert.equal(call.skip, undefined);
     assert.ok(Array.isArray(call.fields) && call.fields.length > 0);
   }
@@ -707,6 +728,174 @@ test('legacy protected-owner active state is normalized without weakening deacti
   });
   const driftedResult = await invoke(drifted.handler);
   assert.equal(driftedResult.response.status, 409);
+});
+
+test('native actor default activity is eligible without account flag writes', async () => {
+  for (const activeState of [undefined, null]) {
+    const users = userRows().map(user => ({ ...user, is_active: activeState }));
+    const { handler, state } = await loadHandler({ users });
+    const before = structuredClone(state);
+    const { response, json } = await invoke(handler);
+    assert.equal(response.status, 200);
+    assert.equal(json.point_in_time_clear, true);
+    assert.equal(json.counts.eligible_actors, 4);
+    assert.deepEqual(state, before);
+    assert.equal(json.safeguards.later_writes_authorized, false);
+  }
+});
+
+test('actor activity defaults never override deactivation, offboarding, or native denial', async () => {
+  for (const patch of [
+    { is_active: false },
+    { is_active: 'true' },
+    { is_active: 1 },
+    { is_active: null, disabled: true },
+    { is_active: null, is_verified: false },
+    { is_active: null, is_approved: false },
+    { is_active: null, offboarded_at: '2026-09-11T12:00:00.000Z' },
+    { is_active: null, offboarded_by: 'admin@example.test' },
+    { is_active: null, offboarding_reason: 'Prior departure' },
+    { is_active: true, offboarded_at: '2026-09-11T12:00:00.000Z' },
+    ...['offboarded_at', 'offboarded_by', 'offboarding_reason'].flatMap(field => (
+      ['', ' ', false, 0, [], {}].map(value => ({ is_active: null, [field]: value }))
+    )),
+  ]) {
+    const users = userRows();
+    Object.assign(users[0], patch);
+    const { handler } = await loadHandler({ users });
+    const { response, json } = await invoke(handler);
+    assert.equal(response.status, 200);
+    assert.equal(json.point_in_time_clear, false, JSON.stringify(patch));
+    assert.equal(json.checks.actors.admin_a.user, 'ineligible');
+  }
+});
+
+test('complete revoked owner history is retained and disclosed only as a bounded count', async () => {
+  const memberships = Array.from({ length: 24 }, (_, index) => revokedOwnerMembership(index));
+  const { handler, state, calls } = await loadHandler({ memberships });
+  const before = structuredClone(state);
+  const { response, json } = await invoke(handler);
+  assert.equal(response.status, 200);
+  assert.equal(json.point_in_time_clear, true);
+  assert.equal(json.checks.platform_owner_membership, 'revoked_history_only');
+  assert.equal(json.counts.revoked_owner_memberships, 24);
+  assert.equal(json.safeguards.later_writes_authorized, false);
+  assert.ok(json.limitations.includes('does_not_change_platform_owner_tenant_authorization'));
+  assert.deepEqual(state, before);
+  const ownerReads = calls.filters.filter(call => call.entity === 'AgencyMembership' && call.query.user_id === OWNER.id);
+  assert.equal(ownerReads.length, 2);
+  assert.ok(ownerReads.every(call => call.limit === 51 && Object.keys(call.query).length === 1));
+  for (const row of memberships) {
+    for (const value of [row.id, row.agency_id, row.user_id, row.user_email_normalized, row.revocation_reason]) {
+      assert.equal(JSON.stringify(json).includes(value), false);
+    }
+  }
+});
+
+test('nonterminal or malformed owner history never becomes eligible by status filtering', async () => {
+  for (const patch of [
+    { status: 'active' }, { status: 'pending' }, { status: 'suspended' },
+    { status: 'unknown' }, { revoked_at: null }, { revoked_at: 'invalid' },
+    { user_email_normalized: 'different@example.test' },
+    { membership_key: 'incorrect-key' }, { tenant_role: 'admin' },
+    { tenant_role: ['agency_admin'] }, { tenant_role: null }, { tenant_role: 1 },
+    { version: 1 }, { version: 2.5 }, { id: '$invalid' },
+    { last_transition_reason: '' }, { revocation_reason: '' },
+    { last_transition_at: '2026-09-11T12:02:00.000Z' },
+    { activated_at: '2026-09-11T12:02:00.000Z' },
+    { created_by_user_id: null }, { last_transition_by_user_id: null },
+    { created_by_user_id: ['other-admin'] }, { last_transition_by_user_id: '$invalid' },
+    { last_transition_by_email_normalized: null },
+    { last_transition_by_email_normalized: ' Other-Admin@example.test ' },
+  ]) {
+    const { handler } = await loadHandler({ memberships: [{ ...revokedOwnerMembership(), ...patch }] });
+    const { response, json } = await invoke(handler);
+    assert.equal(response.status, 409, JSON.stringify(patch));
+    assert.equal(Object.hasOwn(json, 'checks'), false);
+  }
+});
+
+test('revoked owner history preserves canonical audit actors distinct from the subject', async () => {
+  const memberships = [{
+    ...revokedOwnerMembership(),
+    created_by_user_id: 'historical-creator',
+    last_transition_by_user_id: 'historical-revoker',
+    last_transition_by_email_normalized: 'historical-revoker@example.test',
+  }];
+  const { handler, state } = await loadHandler({ memberships });
+  const before = structuredClone(state);
+  const { response, json } = await invoke(handler);
+  assert.equal(response.status, 200);
+  assert.equal(json.point_in_time_clear, true);
+  assert.equal(json.counts.revoked_owner_memberships, 1);
+  assert.equal(json.safeguards.later_writes_authorized, false);
+  assert.deepEqual(state, before);
+  for (const field of ['created_by_user_id', 'last_transition_by_user_id', 'last_transition_by_email_normalized']) {
+    assert.equal(JSON.stringify(json).includes(memberships[0][field]), false);
+  }
+});
+
+test('duplicate and saturated owner history cannot hide live membership rows', async () => {
+  const bounded = await loadHandler({
+    memberships: Array.from({ length: 50 }, (_, index) => revokedOwnerMembership(index)),
+  });
+  const boundedResult = await invoke(bounded.handler);
+  assert.equal(boundedResult.response.status, 200);
+  assert.equal(boundedResult.json.counts.revoked_owner_memberships, 50);
+  for (const memberships of [
+    [revokedOwnerMembership(), revokedOwnerMembership()],
+    [revokedOwnerMembership(), { ...revokedOwnerMembership(), id: 'different-row' }],
+    Array.from({ length: 51 }, (_, index) => revokedOwnerMembership(index)),
+  ]) {
+    const { handler } = await loadHandler({ memberships });
+    const { response } = await invoke(handler);
+    assert.equal(response.status, 409);
+  }
+});
+
+test('actor identity reads cannot disagree on lifecycle fields within one inspection', async () => {
+  const { handler } = await loadHandler({
+    mutateRows: ({ entity, entityCall, state }) => {
+      if (entity === 'User' && entityCall === 2) state.User[0].is_active = false;
+    },
+  });
+  const { response, json } = await invoke(handler);
+  assert.equal(response.status, 409);
+  assert.equal(Object.hasOwn(json, 'checks'), false);
+});
+
+test('owner history and actor lifecycle drift are blocked before readiness disclosure', async () => {
+  for (const patch of [
+    { status: 'active' },
+    { version: 3 },
+    { revocation_reason: 'A different retained reason' },
+  ]) {
+    const { handler } = await loadHandler({
+      memberships: [revokedOwnerMembership()],
+      mutateRows: ({ entity, entityCall, state }) => {
+        if (entity === 'AgencyMembership' && entityCall === 6) Object.assign(state.AgencyMembership[0], patch);
+      },
+    });
+    const { response, json } = await invoke(handler);
+    assert.equal(response.status, 409);
+    assert.equal(Object.hasOwn(json, 'checks'), false);
+  }
+  for (const patch of [
+    { is_active: false },
+    { is_active: true },
+    { offboarded_at: '2026-09-11T12:00:00.000Z' },
+  ]) {
+    const users = userRows().map(user => ({ ...user, is_active: null }));
+    const { handler } = await loadHandler({
+      users,
+      mutateRows: ({ entity, entityCall, state }) => {
+        if (entity === 'User' && entityCall === 9) Object.assign(state.User[0], patch);
+      },
+    });
+    const { response, json } = await invoke(handler);
+    assert.equal(response.status, 409);
+    assert.equal(Object.hasOwn(json, 'checks'), false);
+  }
 });
 
 test('malformed or incomplete lifecycle fields never become eligible by coercion', async () => {

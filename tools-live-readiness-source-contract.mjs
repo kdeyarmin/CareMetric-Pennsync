@@ -1453,19 +1453,21 @@ const REVIEWED_PREFLIGHT_BASE44_FRAGMENTS = Object.freeze([
   Object.freeze({ source: "const entities = base44.asServiceRole.entities;", count: 1 }),
 ]);
 const REVIEWED_PREFLIGHT_ENTITY_FRAGMENTS = Object.freeze([
-  Object.freeze({ source: "entities: Record<string, any>", count: 4 }),
+  Object.freeze({ source: "entities: Record<string, any>", count: 5 }),
   Object.freeze({ source: "await entities.User.filter(", count: 2 }),
   Object.freeze({ source: "await entities.Agency.filter(", count: 1 }),
   Object.freeze({ source: "await entities.StagingReadinessFixture.filter(", count: 1 }),
-  Object.freeze({ source: "entities.AgencyMembership,", count: 2 }),
+  Object.freeze({ source: "await entities.AgencyMembership.filter(", count: 1 }),
+  Object.freeze({ source: "entities.AgencyMembership,", count: 1 }),
   Object.freeze({ source: "entities.Patient,", count: 1 }),
   Object.freeze({ source: "entities.PatientCareTeamAssignment,", count: 1 }),
   Object.freeze({ source: "loadExactActor(entities, binding)", count: 1 }),
   Object.freeze({ source: "loadFixtureRegistry(entities)", count: 1 }),
+  Object.freeze({ source: "loadOwnerHistory(entities, owner)", count: 1 }),
   Object.freeze({ source: "entities,\n      AGENCY_CODES[agencyKey]", count: 1 }),
   Object.freeze({ source: "const entities = base44.asServiceRole.entities;", count: 1 }),
   Object.freeze({
-    source: "inspectPreflight(entities, input, String(owner.id))",
+    source: "inspectPreflight(entities, input, owner)",
     count: 2,
   }),
 ]);
