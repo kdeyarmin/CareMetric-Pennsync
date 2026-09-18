@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { applyVerifiedPatientArchive } from './tools-pennsync-archive-import.mjs';
 import { IMPORT_APP as APP, importActors, importId, importSha, syntheticImportArchive } from './tools-pennsync-archive-import-fixture.mjs';
+import { seedPatientContexts } from './services/authority-store/tests/patient-context-fixture.mjs';
 
 const require = createRequire(new URL('./services/authority-store/package.json', import.meta.url));
 const { Client } = require('pg');
@@ -249,6 +250,25 @@ test('native identity and agency authority are current prerequisites, never manu
   await assert.rejects(f.run(), { code: 'IMPORT_AGENCY_MISMATCH' });
   assert.deepEqual(await f.counts(), { patients: 0, receipts: 0 });
   assert.equal((await f.db.query('select count(*)::integer n from auth.users')).rows[0].n, 4);
+});
+
+test('an explicitly stored clinical context blocks imported patient rollback without changing its bytes or receipt', async t => {
+  const f = await lab(t); await f.run();
+  const [context] = await seedPatientContexts(f.db, [{ patientId: importId(20), agencyId: 'agency-a',
+    data: { id: importId(20), first_name: 'Fictional', last_name: 'Retained Context' } }]);
+  await assert.rejects(f.run({ action: 'rollback' }), { code: 'IMPORT_FAILED_DETAILS_REDACTED' });
+  assert.deepEqual(await f.counts(), { patients: 2, receipts: 1 });
+  assert.equal((await f.db.query('select state from pennsync_private.archive_patient_import_receipt')).rows[0].state, 'applied');
+  assert.deepEqual((await f.db.query('select * from pennsync_private.patient_context')).rows, [context]);
+  // A changed or absent new FK is schema drift, never permission to cascade.
+  const key = (await f.db.query("select conname from pg_constraint where conrelid='pennsync_private.patient_context'::regclass and contype='f'")).rows[0].conname;
+  assert.match(key, /^[a-z_]+$/);
+  await f.db.query(`alter table pennsync_private.patient_context drop constraint "${key}"`);
+  await assert.rejects(f.run({ action: 'rollback' }), { code: 'IMPORT_SCHEMA_UNSAFE' });
+  await f.db.query(`alter table pennsync_private.patient_context add constraint "${key}" foreign key(app_id,agency_id,patient_id) references pennsync_private.patient(app_id,agency_id,id) on delete cascade`);
+  await assert.rejects(f.run({ action: 'rollback' }), { code: 'IMPORT_SCHEMA_UNSAFE' });
+  assert.deepEqual(await f.counts(), { patients: 2, receipts: 1 });
+  assert.deepEqual((await f.db.query('select * from pennsync_private.patient_context')).rows, [context]);
 });
 
 test('wrong database ownership, unsafe receipt grants and conflicting receipt all refuse', async t => {

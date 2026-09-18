@@ -8,6 +8,7 @@ import { localStatus, API, PROJECT } from './http-local-stack.mjs';
 import { s4Fields, s4Tables } from './s4-fixture.mjs';
 import { s3Fields, s3Tables } from './s3-fixture.mjs';
 import { verifyLoginLifecycle } from './http-login-lifecycle.mjs';
+import { patientContexts, seedPatientContexts } from './patient-context-fixture.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const actors = [
@@ -119,6 +120,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
     await db.query(`insert into pennsync_private.assignment
       (app_id,agency_id,patient_id,membership_id,status,changed_by)
       values($1,'agency-a','patient-a1','membership-clinician-a','active',$2)`, [APP, actors[0].uuid]);
+    const seededContexts = await seedPatientContexts(db);
     await db.query('commit');
     // Supported cache refresh, not a fake HTTP response or fabricated auth state.
     await db.query("notify pgrst, 'reload schema'");
@@ -180,7 +182,8 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
     const s4Denied = async (actor, code, bearer=tokens.get(actor.name)) => {
       const { body, readBody, expected } = s4Requests.get(actor.name);
       const documentationBody = { p_agency_id: actor.agency, p_visit_id: expected.artifacts.visit.id };
-      for (const [method, input] of [['s4_create', body], ['s4_create', { ...body, p_request_id: randomUUID() }], ['s4_read', readBody], ['visit_documentation', documentationBody]]) {
+      const contextBody = { p_agency_id: actor.agency, p_patient_id: body.p_patient_id, p_purpose: 'display' };
+      for (const [method, input] of [['s4_create', body], ['s4_create', { ...body, p_request_id: randomUUID() }], ['s4_read', readBody], ['visit_documentation', documentationBody], ['patient_context', contextBody]]) {
         const result = await raw(method, input, bearer);
         assert.equal(result.status, 403); assert.equal(result.data.code, code);
       }
@@ -256,7 +259,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       assert.equal(unknown.data.code, '22023');
     });
     await scenario('private schema and direct table endpoints are not exposed', async () => {
-      for (const table of ['identity_map', 'agency', 'membership', 'patient', 'assignment', 'mutation_receipt', 'visit_disclosure_audit', ...s4Tables, ...s3Tables]) {
+      for (const table of ['identity_map', 'agency', 'membership', 'patient', 'patient_context', 'patient_disclosure_audit', 'assignment', 'mutation_receipt', 'visit_disclosure_audit', ...s4Tables, ...s3Tables]) {
         for (const profile of ['public', 'pennsync_private']) {
           const response = await localFetch(`${API}/rest/v1/${table}?select=*`, { headers: {
             apikey: status.PUBLISHABLE_KEY, Authorization: `Bearer ${tokens.get('admin-a')}`, 'Accept-Profile': profile } });
@@ -335,6 +338,61 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
         assert.equal(Object.hasOwn(failed.data,'visit'), false); assert.equal(await auditCount(), 3);
       } finally {
         await db.query('drop trigger if exists local_injected on pennsync_private.visit_disclosure_audit; drop function if exists pennsync_private.local_test_disclosure_failure()');
+      }
+    });
+    await scenario('current native actors receive only explicit patient context and each successful purpose read appends its audit', async () => {
+      const count = async () => (await db.query('select count(*)::integer as n from pennsync_private.patient_disclosure_audit')).rows[0].n;
+      assert.equal(await count(), 0);
+      const assignment = (await db.query("select id,version::integer from pennsync_private.assignment where app_id=$1 and membership_id='membership-clinician-a' and patient_id='patient-a1'", [APP])).rows[0];
+      requireTrue(UUID.test(assignment.id), 'LOCAL_PATIENT_CONTEXT_ASSIGNMENT_UUID');
+      const expectedAudits = [];
+      for (const [actor, fixture] of [[actors[0], patientContexts[0]], [actors[1], patientContexts[0]], [actors[3], patientContexts[2]]]) {
+        for (const purpose of ['display', 'smart_note_context']) {
+          const result = await clients.get(actor.name).rpc('patient_context', {
+            p_agency_id: actor.agency, p_patient_id: fixture.patientId, p_purpose: purpose });
+          const expected = purpose === 'display'
+            ? Object.fromEntries(Object.entries(fixture.data).filter(([key]) => ['id', 'first_name', 'middle_name', 'last_name'].includes(key))) : fixture.data;
+          assert.deepEqual(result.patient, expected); assert.equal(result.purpose, purpose);
+          assert.equal(result.auth_user_id, actor.uuid); assert.equal(result.context.auth_user_id, actor.uuid);
+          assert.equal(result.context.user_id, actor.legacyId);
+          assert.deepEqual(result.scope, { agency_id: actor.agency, membership_id: actor.membership,
+            membership_version: 1, tenant_role: actor.role });
+          const stored = seededContexts.find(value => value.patient_id === fixture.patientId);
+          expectedAudits.push({ actor_id: actor.uuid, agency_id: actor.agency, patient_id: fixture.patientId,
+            membership_id: actor.membership, membership_version: 1, tenant_role: actor.role,
+            context_version: Number(stored.version), context_sha256: stored.data_sha256, purpose,
+            access_basis: actor.role === 'clinician' ? 'care_team_assignment' : 'agency_wide',
+            assignment_id: actor.role === 'clinician' ? assignment.id : null,
+            assignment_version: actor.role === 'clinician' ? assignment.version : null });
+          assert.equal(await count(), expectedAudits.length);
+        }
+      }
+      const records = (await db.query(`select actor_id,agency_id,patient_id,membership_id,membership_version::integer,tenant_role,
+        context_version::integer,context_sha256,purpose,access_basis,assignment_id,assignment_version::integer
+        from pennsync_private.patient_disclosure_audit order by created_at`)).rows;
+      assert.deepEqual(records, expectedAudits);
+      const displayOnly = await admin.rpc('patient_context', { p_agency_id: 'agency-a', p_patient_id: 'patient-a2', p_purpose: 'display' });
+      assert.deepEqual(displayOnly.patient, patientContexts[1].data);
+      await denied(admin.rpc('patient_context', { p_agency_id: 'agency-a', p_patient_id: 'patient-a2', p_purpose: 'smart_note_context' }));
+      for (const purpose of ['display', 'smart_note_context']) {
+        for (const [actor, agency, patient] of [[actors[0], 'agency-a', 'patient-b1'], [actors[3], 'agency-b', 'patient-a1'],
+          [actors[2], 'agency-a', 'patient-a1'], [actors[1], 'agency-a', 'patient-a2'], [actors[0], 'agency-a', 'patient-missing']]) {
+          await denied(clients.get(actor.name).rpc('patient_context', { p_agency_id: agency, p_patient_id: patient, p_purpose: purpose }));
+        }
+        const anonymous = await raw('patient_context', { p_agency_id: 'agency-a', p_patient_id: 'patient-a1', p_purpose: purpose });
+        assert.equal(anonymous.status, 401); assert.equal(anonymous.data.code, '42501');
+      }
+      assert.equal(await count(), 7, 'Denied and unavailable context reads add no audit');
+      try {
+        await db.query("create function pennsync_private.local_test_patient_disclosure_failure() returns trigger language plpgsql set search_path='' as $$ begin raise exception 'LOCAL_SYNTHETIC_PATIENT_AUDIT_FAILURE'; end $$; create trigger local_injected before insert on pennsync_private.patient_disclosure_audit for each row execute function pennsync_private.local_test_patient_disclosure_failure()");
+        for (const purpose of ['display', 'smart_note_context']) {
+          const failed = await raw('patient_context', { p_agency_id: 'agency-a', p_patient_id: 'patient-a1', p_purpose: purpose }, tokens.get('clinician-a'));
+          assert.equal(failed.status, 503); assert.equal(failed.data.code, 'PT503');
+          assert.equal(failed.data.message, 'PENNSYNC_PATIENT_AUDIT_UNAVAILABLE');
+          assert.equal(Object.hasOwn(failed.data, 'patient'), false); assert.equal(await count(), 7);
+        }
+      } finally {
+        await db.query('drop trigger if exists local_injected on pennsync_private.patient_disclosure_audit; drop function if exists pennsync_private.local_test_patient_disclosure_failure()');
       }
     });
     await scenario('synthetic S3 manual referrals create and confirm exact existing-patient state through real Auth HTTP', async () => {
@@ -489,6 +547,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       assert.equal(await localMailCount(), 0);
       assert.deepEqual(Object.values((await s4Snapshot()).rows[0]), [4,4,4,4,4]);
       assert.deepEqual(Object.values((await s3Snapshot()).rows[0]), [2,4]);
+      assert.equal((await db.query('select count(*)::integer as n from pennsync_private.patient_disclosure_audit')).rows[0].n, 7);
     });
   } catch (error) {
     // Do not forward pg detail, Auth payloads, native fetch error causes or credentials.
