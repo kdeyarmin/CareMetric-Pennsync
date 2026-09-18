@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { toNoteConversionFields } from '../../../src/components/smartNote/compliance/coverageScore.js';
 import { buildAuditFields, buildVisitReportingFields } from '../../../src/components/smartNote/compliance/reportingFields.js';
-import { s4Fields, s4Tables } from './s4-fixture.mjs';
+import { s4Fields, s4Tables, s4TrimWhitespace, s4NonTrimCharacters } from './s4-fixture.mjs';
 
 const app='6a9881683dc68a0bd54f1ef7';
 const uid=n=>`10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -131,6 +131,34 @@ scenario('S4 escaped valid-length notes fail serialized artifact preflight witho
     });
   } finally { await db.exec('rollback to savepoint size_reject'); }
   assert.deepEqual(Object.values(await counts()),[0,0,0,0,0]);
+});
+scenario('S4 rejects all ECMAScript trim whitespace notes without writing artifacts',async()=>{
+  assert.equal(s4TrimWhitespace.length,25);
+  for(const note of ['',...s4TrimWhitespace,s4TrimWhitespace.join('')]) {
+    assert.equal(note.trim(),'');
+    await db.exec('savepoint blank_note');
+    try {
+      await assert.rejects(()=>save(s4Fields({nurse_notes:note})),error=>{
+        assert.equal(error.code,'22023'); assert.equal(error.message,'PENNSYNC_S4_NOTE_REQUIRED');
+        assert.equal(error.detail,undefined); return true;
+      });
+    } finally { await db.exec('rollback to savepoint blank_note'); }
+    assert.deepEqual(Object.values(await counts()),[0,0,0,0,0]);
+  }
+});
+scenario('S4 preserves surrounding whitespace and non-trim characters in valid notes',async()=>{
+  const whitespace=s4TrimWhitespace.join('');
+  const notes=[`${whitespace}Synthetic valid note${whitespace}`,...s4NonTrimCharacters,
+    `${whitespace}\u200b${whitespace}`];
+  for(const [index,note] of notes.entries()) {
+    assert.notEqual(note.trim(),'');
+    const result=await save(s4Fields({nurse_notes:note}),{request:request(100+index)});
+    assert.equal(result.artifacts.visit.nurse_notes,note);
+    assert.equal(result.artifacts.note_history.note,note);
+    assert.equal(result.artifacts.note_history.clinical_notes,note);
+    assert.equal(result.artifacts.note_conversion.enhanced_len,note.length);
+  }
+  assert.deepEqual(Object.values(await counts()),Array(5).fill(notes.length));
 });
 scenario('S4 native session deletion and stale signed session deny fresh save, receipt and retry',async()=>{
   await login(2); await save();

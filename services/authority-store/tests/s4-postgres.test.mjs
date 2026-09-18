@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import { setTimeout as delay } from 'node:timers/promises';
 import pg from 'pg';
-import { s4Fields, s4Tables } from './s4-fixture.mjs';
+import { s4Fields, s4Tables, s4TrimWhitespace, s4NonTrimCharacters } from './s4-fixture.mjs';
 
 const raw=process.env.PENNSYNC_TEST_PG_URL;
 if(!raw) throw new Error('PENNSYNC_TEST_PG_URL is required for real PostgreSQL tests');
@@ -126,4 +126,28 @@ test('PostgreSQL S4 escaped note overflow is a sanitized input error before any 
     assert.equal(error.detail,undefined); return true;
   });
   await writer.query('rollback'); assert.deepEqual(await counts(setup),[0,0,0,0,0]);
+}));
+test('PostgreSQL S4 matches ECMAScript trim whitespace and preserves valid note bytes',()=>lab(async({connect,setup})=>{
+  assert.equal(s4TrimWhitespace.length,25);
+  const writer=await connect();
+  for(const note of ['',...s4TrimWhitespace,s4TrimWhitespace.join('')]) {
+    await begin(writer,2);
+    await assert.rejects(()=>save(writer,s4Fields({nurse_notes:note})),error=>{
+      assert.equal(error.code,'22023'); assert.equal(error.message,'PENNSYNC_S4_NOTE_REQUIRED');
+      assert.equal(error.detail,undefined); return true;
+    });
+    await writer.query('rollback'); assert.deepEqual(await counts(setup),[0,0,0,0,0]);
+  }
+  const whitespace=s4TrimWhitespace.join('');
+  const notes=[`${whitespace}Synthetic valid note${whitespace}`,...s4NonTrimCharacters,
+    `${whitespace}\u200b${whitespace}`];
+  for(const [index,note] of notes.entries()) {
+    assert.notEqual(note.trim(),''); await begin(writer,2);
+    const result=await save(writer,s4Fields({nurse_notes:note}),100+index);
+    assert.equal(result.artifacts.visit.nurse_notes,note);
+    assert.equal(result.artifacts.note_history.note,note);
+    assert.equal(result.artifacts.note_history.clinical_notes,note);
+    await writer.query('commit');
+  }
+  assert.deepEqual(await counts(setup),Array(5).fill(notes.length));
 }));
