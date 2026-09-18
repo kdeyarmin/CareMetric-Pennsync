@@ -44,6 +44,18 @@ for (const patch of [
   assert.throws(() => createStagingAuthorityClient({ ...config, ...patch }), /INVALID_STAGING_TARGET/);
 });
 
+test('well-formed unapproved hosted targets are rejected before credentials can leave the client', () => {
+  let networkCalls = 0;
+  for (const projectRef of ['abcdefghijklmnopqrst', 'xsqobvvreaovwibxwyvv', 'uppdjphagdildcgkvdsz', 'ubbtgcaosuebrlwcvihw', 'xgauehtwksmnoqhgqegm']) {
+    for (const claimedApproval of [{}, { approvedProjectRef: projectRef, allowHosted: true }]) {
+      assert.throws(() => createStagingAuthorityClient({ ...config, ...claimedApproval,
+        projectRef, projectUrl: `https://${projectRef}.supabase.co`,
+      }, { fetchImpl: async () => { networkCalls++; throw new Error('unexpected request'); } }), /INVALID_STAGING_TARGET/);
+    }
+  }
+  assert.equal(networkCalls, 0);
+});
+
 test('no RPC before a successful identity check; no generic function escape hatch', async () => {
   const { client, calls } = harness();
   await assert.rejects(client.rpc('context', { p_agency_id: 'agency-a' }), /AUTHENTICATION_REQUIRED/);

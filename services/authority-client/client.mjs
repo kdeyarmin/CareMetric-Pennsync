@@ -9,7 +9,6 @@ const ACTORS = new Map([
   ['info+pennsync-clinician-empty@caremetricai.com', '6aac58ffa5f6252bcf92f11f'],
   ['info+pennsync-admin-b@caremetricai.com', '6aac5900bf4098977893276d'],
 ]);
-const SHARED_PROJECTS = new Set(['xsqobvvreaovwibxwyvv', 'uppdjphagdildcgkvdsz', 'ubbtgcaosuebrlwcvihw', 'xgauehtwksmnoqhgqegm']);
 const METHODS = Object.freeze({
   context: ['p_agency_id'],
   memberships: [],
@@ -31,9 +30,11 @@ function validateTarget(config) {
     || !ACTORS.has(config.email) || typeof config.publishableKey !== 'string'
     || !/^sb_publishable_[A-Za-z0-9_-]{10,200}$/.test(config.publishableKey)) fail('INVALID_STAGING_TARGET');
   const local = config.projectRef === 'local-pennsync-authority' && config.projectUrl === 'http://127.0.0.1:54321';
-  const hosted = typeof config.projectRef === 'string' && /^[a-z]{20}$/.test(config.projectRef)
-    && !SHARED_PROJECTS.has(config.projectRef) && config.projectUrl === `https://${config.projectRef}.supabase.co`;
-  if (!local && !hosted) fail('INVALID_STAGING_TARGET');
+  // No hosted PennSync staging project has been approved and verified yet.
+  // A correctly shaped URL or a caller-supplied approval flag is not a pin.
+  // Add its exact immutable reference in a reviewed change after provisioning;
+  // until then, reject hosted targets before accepting any password or token.
+  if (!local) fail('INVALID_STAGING_TARGET');
   return Object.freeze({ ...config, base44UserId: ACTORS.get(config.email) });
 }
 
