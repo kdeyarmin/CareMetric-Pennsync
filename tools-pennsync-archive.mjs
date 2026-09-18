@@ -141,6 +141,8 @@ function scanRow(row) {
   walk(row, '', 0);
   return risky;
 }
+// Acquisition callers use the same credential/URL guard before persisting frames.
+export function validateArchiveRow(row) { scanRow(row); }
 function descriptor(d) {
   requireThat(integer(d.bytes, ARCHIVE_LIMITS.file) && validHash(d.sha256));
   safePath(d.path);
@@ -376,8 +378,16 @@ function report(counts, resumed = false) {
 export async function buildArchive({ inputDir, archiveDir, key, resume = false }) {
   requireThat(Buffer.isBuffer(key) && key.length === 32, 'invalid_key');
   const rawPlan = await collect(diskChunks(inputDir, 'plan.json', ARCHIVE_LIMITS.plan), ARCHIVE_LIMITS.plan);
-  const plan = validatePlan(parse(rawPlan));
   const read = (d) => diskChunks(inputDir, d.path, d.bytes);
+  return buildArchiveFromReader({ rawPlan, read, archiveDir, key, resume });
+}
+
+/** A bounded repeatable reader may decrypt local acquisition frames in memory.
+ * All original plan, input, relationship and final archive checks still apply. */
+export async function buildArchiveFromReader({ rawPlan, read, archiveDir, key, resume = false }) {
+  requireThat(Buffer.isBuffer(key) && key.length === 32, 'invalid_key');
+  requireThat(Buffer.isBuffer(rawPlan) && rawPlan.length <= ARCHIVE_LIMITS.plan && typeof read === 'function');
+  const plan = validatePlan(parse(rawPlan));
   const counts = await inspectInputs(plan, read);
   if (resume) {
     const verified = await verifyArchive({ archiveDir, key, expectedPlanSha256: sha(rawPlan) });
