@@ -2,6 +2,7 @@
 export const STAGING_APP_ID = '6a9881683dc68a0bd54f1ef7';
 import { validVisitDocumentation, VISIT_DOCUMENTATION_MAX_BYTES } from './visit-documentation.mjs';
 import { validVisitSchedule, validVisitScheduleParams } from './visits-schedule.mjs';
+import { isReferralMethod, validReferralParams, validReferralResult } from './manual-referral.mjs';
 import { validPatientContext } from './patient-context.mjs';
 
 export const AUTHORITY_CONTRACT = 'cm.pennsync.authority.staging.v1';
@@ -47,6 +48,10 @@ function validateTarget(config) {
 }
 
 function validateParams(method, input) {
+  if (isReferralMethod(method)) {
+    if (!validReferralParams(method,input)) fail('INVALID_AUTHORITY_REQUEST');
+    return Object.freeze({ ...input, ...(method === 's3_create' ? { p_fields:Object.freeze({ ...input.p_fields }) } : {}), p_app_id:STAGING_APP_ID });
+  }
   if (method === 'visits_schedule') {
     if (!validVisitScheduleParams(input)) fail('INVALID_AUTHORITY_REQUEST');
     return Object.freeze({ ...input, p_cursor: input.p_cursor === null ? null : Object.freeze({ ...input.p_cursor }), p_app_id: STAGING_APP_ID });
@@ -132,6 +137,10 @@ function validateResult(result, method, params, config) {
   const patient = value => exact(value, ['id', 'agency_id', 'display_name', 'version', 'synthetic']) && typeof value.id === 'string' && ID.test(value.id)
     && value.agency_id === params.p_agency_id && value.synthetic === true && version(value.version)
     && typeof value.display_name === 'string' && value.display_name.startsWith('Synthetic ') && value.display_name.length <= 120;
+  if (isReferralMethod(method)) {
+    if (!validReferralResult(result,method,params,context)) fail('INVALID_AUTHORITY_RESPONSE');
+    return result;
+  }
   if (!common(result) || !exact(result, resultKeys[method])) fail('INVALID_AUTHORITY_RESPONSE');
   if (method === 'context' && !context(result, params.p_agency_id)) fail('INVALID_AUTHORITY_RESPONSE');
   if (method === 'memberships' && (result.user_id !== config.base44UserId || result.user_email !== config.email

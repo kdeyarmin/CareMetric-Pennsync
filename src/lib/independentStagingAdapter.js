@@ -70,6 +70,18 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
   };
   const invoke = async (name, input = {}) => {
     if (name === 'getMyTenantContext') return getContext(input);
+    if (name === 'manageAuthorizedReferral') {
+      if (!exact(input, ['action','params'])) fail('STAGING_OPERATION_UNAVAILABLE');
+      if (input.action === 'staging_prepare') {
+        if (!exact(input.params,['p_agency_id','p_patient_id'])) fail('STAGING_OPERATION_UNAVAILABLE');
+        const result = await rpc('patient', input.params);
+        if (!['agency_admin','manager','office_staff'].includes(result.context.tenant_role)) fail('STAGING_OPERATION_UNAVAILABLE');
+        return { data:result };
+      }
+      const method = { staging_create:'s3_create', staging_confirm:'s3_confirm', staging_read:'s3_read' }[input.action];
+      if (!method) fail('STAGING_OPERATION_UNAVAILABLE');
+      return { data:await rpc(method,input.params) };
+    }
     if (name === 'getAuthorizedPatient') {
       if (!exact(input, ['agency_id', 'patient_id', 'purpose']) || !['display', 'smart_note_context'].includes(input.purpose)) {
         fail('STAGING_OPERATION_UNAVAILABLE');

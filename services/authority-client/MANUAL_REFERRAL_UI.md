@@ -1,0 +1,11 @@
+# Manual referral application transfer
+
+The independent staging Referral Intake route connects the existing-patient manual creation and confirmation states to the already reviewed S3 transaction implementation. It preserves explicit patient selection, priority, separate new and ready_for_admission states, immutable request retries and reopening by scoped URL. No document processing, new Patient creation, admission, assignment, external messaging or general referral edits are enabled.
+
+The strict signed-session client adds only s3_create, s3_confirm and s3_read. It validates exact fields, request/result identities, current intake-role context, revisions, provenance and workflow transitions, and snapshots nested request fields before dispatch. The existing SDK session/tenant membrane encloses the adapter calls. Preparation independently reads the selected synthetic patient and requires the selected membership revision to match. No role or customer identity is inferred from a patient name.
+
+An uncertain write retains its original request/body in component memory and locks the creation fields. Retrying reuses that exact request. Navigation or reload does not persist an uncertain draft; the interface explicitly asks staff to keep that page open. This is a synthetic staging acceptance limitation, not a complete production recovery implementation. Reopened confirmed referrals do not offer a second confirmation. Clinical/provider release controls remain disabled; production still selects the original application.
+
+The real-Auth compiled browser journey creates and confirms exactly one referral for each agency administrator, navigates away and reopens it, denies both clinicians before rendering intake actions and rejects a foreign referral under the second agency. It verifies two records and four receipts. Strict-client substitution and component uncertainty tests supplement the previously accepted native S3 transaction and HTTP concurrency tests. No new database migration is needed.
+
+This published UI is restricted to agency administrators, matching the currently transferred roster/selected-patient reads. The backend S3 intake contract also supports manager and office_staff, but their patient-read projections have not transferred; the screen denies those roles until that path is implemented and accepted.
