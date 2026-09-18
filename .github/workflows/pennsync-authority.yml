@@ -76,6 +76,8 @@ jobs:
           printf '%s  %s\n' '36d87b7fe6b4bcfe89ac47a4354e526cff22480224de426d7b370f6934556976' "$cli_dir/cli.tar.gz" | sha256sum --check
           tar --extract --gzip --file "$cli_dir/cli.tar.gz" --directory "$cli_dir" supabase
           printf '%s\n' "$cli_dir" >> "$GITHUB_PATH"
+      - name: Verify local-only lifecycle boundaries
+        run: node --test services/authority-store/tests/http-boundary.test.mjs
       - name: Start isolated local Auth and API
         run: node services/authority-store/tests/http-local-stack.mjs start
       - name: Verify real signed sessions and tenant authority over HTTP
