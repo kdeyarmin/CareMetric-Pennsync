@@ -20,7 +20,7 @@ export default [
     rules: pluginJs.configs.recommended.rules,
   },
   {
-    files: ['services/authority-client/**/*.mjs', 'services/authority-store/**/*.mjs', 'tools-pennsync-archive*.mjs', 'tools-pennsync-cutover*.mjs'],
+    files: ['services/authority-client/**/*.mjs', 'services/authority-store/**/*.mjs', 'tools-pennsync-acquire*.mjs', 'tools-pennsync-archive*.mjs', 'tools-pennsync-cutover*.mjs'],
     languageOptions: { globals: globals.node },
     rules: pluginJs.configs.recommended.rules,
   },
