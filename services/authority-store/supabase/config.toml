@@ -61,7 +61,9 @@ enable_anonymous_sign_ins = false
 minimum_password_length = 12
 
 [auth.email]
-enable_signup = false
+# CLI 2.109.1 maps this to GOTRUE_EXTERNAL_EMAIL_ENABLED: password login needs it.
+# Public account creation stays disabled by [auth].enable_signup = false above.
+enable_signup = true
 double_confirm_changes = true
 enable_confirmations = true
 

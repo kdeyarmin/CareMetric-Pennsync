@@ -32,6 +32,16 @@ async function localFetch(url, options = {}) {
     signal: options.signal || AbortSignal.timeout(15000) });
 }
 
+async function localMailCount() {
+  // Read only the fixed local sink's aggregate count, never email contents.
+  const response = await nativeFetch('http://127.0.0.1:54324/api/v1/info', {
+    redirect: 'error', signal: AbortSignal.timeout(15000) });
+  requireTrue(response.ok, 'LOCAL_MAIL_SINK_UNAVAILABLE');
+  const info = await response.json();
+  requireTrue(Number.isSafeInteger(info.Messages) && info.Messages >= 0, 'LOCAL_MAIL_COUNT_INVALID');
+  return info.Messages;
+}
+
 test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, async t => {
   // Never skip this suite when Docker/Auth is absent: the dedicated job must fail.
   const status = await localStatus();
@@ -40,6 +50,14 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
   const tokens = new Map(); // Signed test tokens exist only in process memory.
   const clients = new Map();
   let step = 'connect';
+  const scenario = async (name, run) => {
+    step = name;
+    let completed = false;
+    await t.test(name, async () => { await run(); completed = true; });
+    // node:test reports subtest failures without rejecting t.test(). Stop this
+    // dependent sequence explicitly; never manufacture downstream token errors.
+    if (!completed) throw new Error('LOCAL_HTTP_SCENARIO_PREREQUISITE_FAILED');
+  };
   try {
     await db.connect();
     step = 'fresh owned database';
@@ -116,7 +134,19 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       return { status: response.status, ok: response.ok, data: await response.json() };
     };
 
-    await t.test('four supported password sign-ins create actual native sessions', async () => {
+    await scenario('public signup stays disabled and creates no account or email', async () => {
+      assert.equal(await localMailCount(), 0);
+      const response = await localFetch(`${API}/auth/v1/signup`, { method: 'POST', headers: {
+        apikey: status.PUBLISHABLE_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: 'blocked-signup@example.invalid', password: `LocalOnly!${randomBytes(32).toString('base64url')}` }) });
+      assert.equal(response.status, 422);
+      const body = await response.json();
+      requireTrue(body.error_code === 'signup_disabled', 'PUBLIC_SIGNUP_NOT_DISABLED');
+      const users = await db.query('select count(*)::integer as count from auth.users');
+      assert.equal(users.rows[0].count, 4);
+      assert.equal(await localMailCount(), 0);
+    });
+    await scenario('four supported password sign-ins create actual native sessions', async () => {
       for (const actor of actors) await clients.get(actor.name).signIn(actor.password);
       const sessions = await db.query(`select count(*)::integer as count from auth.sessions where user_id=any($1::uuid[])`, [actors.map(actor => actor.uuid)]);
       assert.equal(sessions.rows[0].count, 4);
@@ -126,7 +156,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
           && claims.role === 'authenticated', 'LOCAL_SIGNED_CLAIMS_INVALID');
       }
     });
-    await t.test('anonymous and signature-tampered requests fail at the gateway', async () => {
+    await scenario('anonymous and signature-tampered requests fail at the gateway', async () => {
       const anon = await raw('context', { p_agency_id: 'agency-a' });
       assert.equal(anon.status, 401);
       const parts = tokens.get('clinician-a').split('.');
@@ -136,12 +166,12 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       assert.equal(tampered.status, 401);
       requireTrue(String(tampered.data.code).startsWith('PGRST'), 'TAMPER_NOT_REJECTED_BY_GATEWAY');
     });
-    await t.test('privileged server token has no authority RPC access', async () => {
+    await scenario('privileged server token has no authority RPC access', async () => {
       requireTrue(typeof status.SERVICE_ROLE_KEY === 'string', 'LOCAL_SERVER_TOKEN_MISSING');
       const result = await raw('context', { p_agency_id: 'agency-a' }, status.SERVICE_ROLE_KEY);
       assert.equal(result.status, 403);
     });
-    await t.test('native UUIDs map to exact legacy identities and agency memberships', async () => {
+    await scenario('native UUIDs map to exact legacy identities and agency memberships', async () => {
       for (const actor of actors) {
         const memberships = await clients.get(actor.name).rpc('memberships');
         assert.equal(memberships.auth_user_id, actor.uuid);
@@ -152,7 +182,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
         assert.equal(context.membership_id, actor.membership);
       }
     });
-    await t.test('two agencies, assigned clinician, and empty clinician remain scoped', async () => {
+    await scenario('two agencies, assigned clinician, and empty clinician remain scoped', async () => {
       assert.deepEqual((await admin.rpc('patients', { p_agency_id: 'agency-a' })).items.map(p => p.id), ['patient-a1', 'patient-a2']);
       assert.deepEqual((await clinician.rpc('patients', { p_agency_id: 'agency-a' })).items.map(p => p.id), ['patient-a1']);
       assert.deepEqual((await empty.rpc('patients', { p_agency_id: 'agency-a' })).items, []);
@@ -163,7 +193,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       await denied(admin.rpc('patient', { p_agency_id: 'agency-a', p_patient_id: 'patient-b1' }));
       assert.equal((await clinician.rpc('patient', { p_agency_id: 'agency-a', p_patient_id: 'patient-a1' })).patient.id, 'patient-a1');
     });
-    await t.test('bounded pagination keeps scope and rejects unknown cursors', async () => {
+    await scenario('bounded pagination keeps scope and rejects unknown cursors', async () => {
       const first = await admin.rpc('patients', { p_agency_id: 'agency-a', p_limit: 1 });
       assert.deepEqual(first.items.map(p => p.id), ['patient-a1']);
       assert.equal(first.next_cursor, 'patient-a1');
@@ -173,7 +203,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       assert.equal(unknown.ok, false);
       assert.equal(unknown.data.code, '22023');
     });
-    await t.test('private schema and direct table endpoints are not exposed', async () => {
+    await scenario('private schema and direct table endpoints are not exposed', async () => {
       for (const table of ['identity_map', 'agency', 'membership', 'patient', 'assignment', 'mutation_receipt']) {
         for (const profile of ['public', 'pennsync_private']) {
           const response = await localFetch(`${API}/rest/v1/${table}?select=*`, { headers: {
@@ -183,7 +213,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
         }
       }
     });
-    await t.test('user-editable metadata cannot create an administrator or second agency', async () => {
+    await scenario('user-editable metadata cannot create an administrator or second agency', async () => {
       const response = await localFetch(`${API}/auth/v1/user`, { method: 'PUT', headers: {
         apikey: status.PUBLISHABLE_KEY, Authorization: `Bearer ${tokens.get('clinician-a')}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({ data: { tenant_role: 'agency_admin', agency_id: 'agency-b', is_platform_owner: true } }) });
@@ -194,26 +224,26 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
     const grant = { p_agency_id: 'agency-a', p_patient_id: 'patient-a2', p_target_membership_id: 'membership-clinician-empty',
       p_action: 'grant', p_expected_actor_version: 1, p_expected_target_version: 1,
       p_expected_assignment_version: 0, p_request_id: randomUUID() };
-    await t.test('clinicians cannot grant assignments; administrator grant changes the empty roster', async () => {
+    await scenario('clinicians cannot grant assignments; administrator grant changes the empty roster', async () => {
       await denied(clinician.rpc('assignment', grant));
       const result = await admin.rpc('assignment', grant);
       assert.equal(result.assignment_status, 'active'); assert.equal(result.assignment_version, 1); assert.equal(result.replayed, false);
       assert.deepEqual((await empty.rpc('patients', { p_agency_id: 'agency-a' })).items.map(p => p.id), ['patient-a2']);
     });
-    await t.test('idempotency binds payload and optimistic version conflicts fail', async () => {
+    await scenario('idempotency binds payload and optimistic version conflicts fail', async () => {
       assert.equal((await admin.rpc('assignment', grant)).replayed, true);
       const mismatch = await raw('assignment', { ...grant, p_patient_id: 'patient-a1' }, tokens.get('admin-a'));
       assert.equal(mismatch.ok, false); assert.equal(mismatch.data.code, '23505');
       const stale = await raw('assignment', { ...grant, p_request_id: randomUUID() }, tokens.get('admin-a'));
       assert.equal(stale.ok, false); assert.equal(stale.data.code, '40001');
     });
-    await t.test('administrator assignment revoke immediately removes patient access', async () => {
+    await scenario('administrator assignment revoke immediately removes patient access', async () => {
       const result = await admin.rpc('assignment', { ...grant, p_action: 'revoke', p_expected_assignment_version: 1, p_request_id: randomUUID() });
       assert.equal(result.assignment_status, 'revoked'); assert.equal(result.assignment_version, 2);
       assert.deepEqual((await empty.rpc('patients', { p_agency_id: 'agency-a' })).items, []);
       await denied(empty.rpc('patient', { p_agency_id: 'agency-a', p_patient_id: 'patient-a2' }));
     });
-    await t.test('membership revoke closes existing signed sessions and assignment replay', async () => {
+    await scenario('membership revoke closes existing signed sessions and assignment replay', async () => {
       await admin.rpc('assignment', { ...grant, p_expected_assignment_version: 2, p_request_id: randomUUID() });
       const revoke = { p_agency_id: 'agency-a', p_target_membership_id: 'membership-clinician-empty',
         p_expected_actor_version: 1, p_expected_target_version: 1, p_request_id: randomUUID() };
@@ -228,7 +258,7 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       const rows = await db.query(`select status,version::integer from pennsync_private.assignment where membership_id=$1`, [actors[2].membership]);
       assert.deepEqual(rows.rows, [{ status: 'revoked', version: 4 }]);
     });
-    await t.test('actual Auth logout invalidates the still-unexpired signed access token', async () => {
+    await scenario('actual Auth logout invalidates the still-unexpired signed access token', async () => {
       const oldToken = tokens.get('clinician-a');
       const claims = JSON.parse(Buffer.from(oldToken.split('.')[1], 'base64url').toString());
       requireTrue(claims.exp > Date.now() / 1000 + 30, 'TOKEN_MUST_BE_UNEXPIRED_BEFORE_LOGOUT');
@@ -242,9 +272,10 @@ test('real local Auth and PostgREST authority acceptance', { timeout: 180000 }, 
       await clinician.signIn(actors[1].password);
       assert.equal((await clinician.rpc('context', { p_agency_id: 'agency-a' })).tenant_role, 'clinician');
     });
-    await t.test('all client HTTP traffic used only the local gateway and publishable key', () => {
+    await scenario('all client HTTP traffic used only the local gateway and publishable key', async () => {
       assert.equal(attemptsOutsideLocal, 0);
       requireTrue(clientRequests >= 40, 'EXPECTED_REAL_CLIENT_HTTP_REQUESTS');
+      assert.equal(await localMailCount(), 0);
     });
   } catch (error) {
     // Do not forward pg detail, Auth payloads, native fetch error causes or credentials.
