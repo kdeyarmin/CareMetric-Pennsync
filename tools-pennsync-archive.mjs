@@ -141,9 +141,26 @@ function scanRow(row) {
   walk(row, '', 0);
   return risky;
 }
+// Acquisition callers use the same credential/URL guard before persisting frames.
+export function validateArchiveRow(row) { scanRow(row); }
 function descriptor(d) {
   requireThat(integer(d.bytes, ARCHIVE_LIMITS.file) && validHash(d.sha256));
   safePath(d.path);
+}
+// Acquisition validates the same policy syntax/bounds before any source read.
+// This does not verify live schemas, row values, relationship targets or bytes.
+export function validateArchiveCollectionPolicy(c) {
+  requireThat(object(c));
+  boundedArray(c.fields, 300); boundedArray(c.references, 100); boundedArray(c.file_references, 100); boundedArray(c.opaque_fields, 300);
+  requireThat(c.fields.includes('id') && new Set(c.fields).size === c.fields.length && c.fields.every((f) => typeof f === 'string' && /^[A-Za-z][A-Za-z0-9_]*$/.test(f)));
+  for (const r of c.references) { exact(r, ['pointer', 'entity']); pointerParts(r.pointer); requireThat(typeof r.entity === 'string' && /^[A-Z][A-Za-z0-9]{0,99}$/.test(r.entity)); }
+  for (const p of [...c.file_references, ...c.opaque_fields]) pointerParts(p);
+  const classified = [...c.references.map((r) => r.pointer), ...c.file_references, ...c.opaque_fields];
+  requireThat(new Set(classified).size === classified.length, 'ambiguous_field_policy');
+  if (c.entity === 'User') { exact(c.scope, ['kind']); requireThat(c.scope.kind === 'principal'); }
+  else if (c.entity === 'Agency') { exact(c.scope, ['kind']); requireThat(c.scope.kind === 'agency_root'); }
+  else if (c.scope?.kind === 'agency') { exact(c.scope, ['kind', 'pointer']); pointerParts(c.scope.pointer); }
+  else { exact(c.scope, ['kind', 'decision_sha256']); requireThat(c.scope.kind === 'global' && validHash(c.scope.decision_sha256)); }
 }
 function validatePlan(plan) {
   exact(plan, ['format', 'version', 'source_apps', 'snapshot_evidence_sha256', 'collections', 'identities', 'agencies', 'files']);
@@ -164,16 +181,7 @@ function validatePlan(plan) {
       && !SECRET_ENTITY.test(c.entity), 'source_collection');
     requireThat(!names.has(keyOf(c.source_app_id, c.entity, '')), 'duplicate_collection');
     names.add(keyOf(c.source_app_id, c.entity, ''));
-    boundedArray(c.fields, 300); boundedArray(c.references, 100); boundedArray(c.file_references, 100); boundedArray(c.opaque_fields, 300);
-    requireThat(c.fields.includes('id') && new Set(c.fields).size === c.fields.length && c.fields.every((f) => typeof f === 'string' && /^[A-Za-z][A-Za-z0-9_]*$/.test(f)));
-    for (const r of c.references) { exact(r, ['pointer', 'entity']); pointerParts(r.pointer); requireThat(typeof r.entity === 'string' && /^[A-Z][A-Za-z0-9]{0,99}$/.test(r.entity)); }
-    for (const p of [...c.file_references, ...c.opaque_fields]) pointerParts(p);
-    const classified = [...c.references.map((r) => r.pointer), ...c.file_references, ...c.opaque_fields];
-    requireThat(new Set(classified).size === classified.length, 'ambiguous_field_policy');
-    if (c.entity === 'User') { exact(c.scope, ['kind']); requireThat(c.scope.kind === 'principal'); }
-    else if (c.entity === 'Agency') { exact(c.scope, ['kind']); requireThat(c.scope.kind === 'agency_root'); }
-    else if (c.scope?.kind === 'agency') { exact(c.scope, ['kind', 'pointer']); pointerParts(c.scope.pointer); }
-    else { exact(c.scope, ['kind', 'decision_sha256']); requireThat(c.scope.kind === 'global' && validHash(c.scope.decision_sha256)); }
+    validateArchiveCollectionPolicy(c);
   }
   for (const app of plan.source_apps) for (const entity of ['User', 'Agency']) requireThat(names.has(keyOf(app, entity, '')), 'missing_identity_collection');
   for (const d of [plan.identities, plan.agencies]) exact(d, ['path', 'bytes', 'sha256', 'rows']);
@@ -376,8 +384,16 @@ function report(counts, resumed = false) {
 export async function buildArchive({ inputDir, archiveDir, key, resume = false }) {
   requireThat(Buffer.isBuffer(key) && key.length === 32, 'invalid_key');
   const rawPlan = await collect(diskChunks(inputDir, 'plan.json', ARCHIVE_LIMITS.plan), ARCHIVE_LIMITS.plan);
-  const plan = validatePlan(parse(rawPlan));
   const read = (d) => diskChunks(inputDir, d.path, d.bytes);
+  return buildArchiveFromReader({ rawPlan, read, archiveDir, key, resume });
+}
+
+/** A bounded repeatable reader may decrypt local acquisition frames in memory.
+ * All original plan, input, relationship and final archive checks still apply. */
+export async function buildArchiveFromReader({ rawPlan, read, archiveDir, key, resume = false }) {
+  requireThat(Buffer.isBuffer(key) && key.length === 32, 'invalid_key');
+  requireThat(Buffer.isBuffer(rawPlan) && rawPlan.length <= ARCHIVE_LIMITS.plan && typeof read === 'function');
+  const plan = validatePlan(parse(rawPlan));
   const counts = await inspectInputs(plan, read);
   if (resume) {
     const verified = await verifyArchive({ archiveDir, key, expectedPlanSha256: sha(rawPlan) });
