@@ -82,7 +82,7 @@ Every file descriptor additionally declares `source_app_id`, `file_id`, original
 
 Every `_id`, `_ids`, `_url`, `_urls`, `_uri`, or `_uris` field found recursively needs an explicit relation, file, opaque or scope classification. This is a naming tripwire, not full semantic discovery. Embedded JSON strings, arbitrary HTML, novel names and application-specific references still require the complete consumer/schema inventory. The output reports this limitation explicitly.
 
-A descendant pointer only classifies ancestor fields that were actually traversed as objects or arrays. Traversing through a present scalar or null fails, so `/assigned_user_id/missing_child` cannot hide an unchecked scalar ID. Absent optional children, validated object containers and empty arrays remain supported; null reference leaves require a policy ending at that leaf.
+A descendant pointer only classifies ancestor fields that were actually traversed as objects or arrays, with one explicit nullable-collection case: a null value immediately followed by `*` contributes no elements and is preserved exactly. Thus `/previous/*/patient_id` supports null, absent and empty `previous` collections. Traversing a named child through a present scalar or null still fails, so `/assigned_user_id/missing_child` cannot hide an unchecked scalar ID. Non-null scalars cannot serve as wildcard collections. Absent optional children, validated object containers, empty arrays and null reference leaves remain supported.
 
 ## Credential exclusion
 

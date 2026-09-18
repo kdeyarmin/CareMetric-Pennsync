@@ -240,6 +240,44 @@ test('validated optional containers and absent or null reference leaves remain s
   await f.writePlan(); await buildArchive(f);
 });
 
+test('nullable wildcard collections preserve null, absent and empty source values exactly', async (t) => {
+  for (const [label, previous] of [['null', null], ['absent', undefined], ['empty', []]]) {
+    await t.test(label, async (t) => {
+      const f = await fixture(t);
+      await f.changeRows('Document', (row) => ({ ...row, previous }));
+      await f.writePlan();
+      assert.equal((await buildArchive(f)).counts.relationships, 4);
+      assert.deepEqual(await readArchiveIndependently(f.archiveDir, f.key), f.original);
+    });
+  }
+  await t.test('nested nullable arrays with a populated sibling', async (t) => {
+    const f = await fixture(t);
+    const c = await f.changeRows('Document', (row) => ({ ...row, previous_groups: [{ patient_ids: null }, {}, { patient_ids: [] }, { patient_ids: [id(3)] }] }));
+    c.fields.push('previous_groups'); c.references.push({ pointer: '/previous_groups/*/patient_ids/*', entity: 'Patient' });
+    await f.writePlan();
+    assert.equal((await buildArchive(f)).counts.relationships, 6);
+    assert.deepEqual(await readArchiveIndependently(f.archiveDir, f.key), f.original);
+  });
+});
+
+test('nullable wildcard support does not permit scalar collections or named children of null', async (t) => {
+  for (const [label, previous] of [['string', id(999)], ['empty string', ''], ['number', 0], ['boolean', false], ['object', {}], ['null member', [null]]]) {
+    await t.test(label, async (t) => {
+      const f = await fixture(t);
+      await f.changeRows('Document', (row) => ({ ...row, previous }));
+      await f.writePlan();
+      await assert.rejects(buildArchive(f), { code: 'invalid_reference' });
+    });
+  }
+  await t.test('nested scalar collection', async (t) => {
+    const f = await fixture(t);
+    const c = await f.changeRows('Document', (row) => ({ ...row, previous_groups: [{ patient_ids: id(999) }] }));
+    c.fields.push('previous_groups'); c.references.push({ pointer: '/previous_groups/*/patient_ids/*', entity: 'Patient' });
+    await f.writePlan();
+    await assert.rejects(buildArchive(f), { code: 'invalid_reference' });
+  });
+});
+
 test('existing references across two tenant scopes fail reconciliation', async (t) => {
   const f = await fixture(t);
   const agencies = f.plan.collections.find((c) => c.entity === 'Agency');

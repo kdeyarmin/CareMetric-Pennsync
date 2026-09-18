@@ -80,6 +80,9 @@ function atPointers(row, pointer, containers) {
   for (const part of pointerParts(pointer)) {
     const next = [];
     for (const node of nodes) {
+      // An explicit wildcard declares a nullable collection. Preserve its null
+      // bytes while visiting no elements; named-child traversal still rejects.
+      if (part === '*' && node.value === null) { containers.add(node.path); continue; }
       // Only containers actually traversed by a policy can cover ancestor fields.
       // A missing child on a scalar/null must never hide an unchecked reference.
       requireThat(object(node.value) || Array.isArray(node.value), 'invalid_reference');
