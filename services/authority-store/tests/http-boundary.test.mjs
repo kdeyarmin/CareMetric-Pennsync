@@ -10,6 +10,11 @@ import { resolve, sep } from 'node:path';
 const exec = promisify(execFile);
 const base = fileURLToPath(new URL('../supabase/.temp/', import.meta.url));
 const PROJECT = 'local-pennsync-authority';
+function removeOwnedFixture(root) {
+  // Resolve and check the owned temporary directory before recursive cleanup.
+  if (!resolve(root).startsWith(resolve(base) + sep + 'http-boundary-')) throw new Error('UNSAFE_TEST_CLEANUP');
+  return rm(root, { recursive: true });
+}
 async function fixture(run) {
   await mkdir(base, { recursive: true });
   const root = await mkdtemp(resolve(base, 'http-boundary-'));
@@ -32,11 +37,7 @@ async function fixture(run) {
     }
   };
   try { await run({ root, workdir, marker, env, invoke }); }
-  finally {
-    // Resolve and check the owned temporary directory before recursive cleanup.
-    if (!resolve(root).startsWith(resolve(base) + sep + 'http-boundary-')) throw new Error('UNSAFE_TEST_CLEANUP');
-    await rm(root, { recursive: true });
-  }
+  finally { await removeOwnedFixture(root); }
 }
 
 test('remote Docker hosts are refused before any CLI start or ownership claim', async () => {

@@ -2,7 +2,7 @@
 
 This suite tests the existing staging client and authority migration through actual Supabase Auth, signed access tokens, the API gateway and PostgREST. It does not use the local SQL Auth stubs in `bootstrap.sql` or `fixtures.sql`. It is not proof of hosted enrollment, verified production identity mapping, a full clinical data migration, native apps, or a production cutover. External release controls remain unchanged.
 
-Run on an isolated disposable Linux runner with Docker, Node 24.18.0, pnpm 11.9.0 and Supabase CLI 2.109.1. The local CLI exposes container ports on all interfaces: use an isolated runner or appropriately firewalled development host. Test requests themselves permit only `http://127.0.0.1:54321`. No hosted credentials or repository secrets are required. The parent CI job pins the official CLI download and SHA-256. `PENNSYNC_SUPABASE_CLI` may point to that local executable; otherwise it must be on PATH.
+Run on an isolated disposable Linux runner with Docker, Node 24.18.0, pnpm 11.9.0 and Supabase CLI 2.109.1. Extract both `supabase` and its adjacent `supabase-go` delegate from the official CLI archive; the version command alone does not prove delegated commands can run. The local CLI exposes container ports on all interfaces: use an isolated runner or appropriately firewalled development host. Test requests themselves permit only `http://127.0.0.1:54321`. No hosted credentials or repository secrets are required. The parent CI job pins the official CLI download and SHA-256. `PENNSYNC_SUPABASE_CLI` may point to that local executable; otherwise it must be on PATH.
 
 From the repository root:
 

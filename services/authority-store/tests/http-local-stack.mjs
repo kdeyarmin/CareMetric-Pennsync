@@ -16,6 +16,23 @@ const fail = code => { throw new Error(code); };
 let pinnedDaemon;
 const localDaemon = value => typeof value === 'string' &&
   (/^unix:\/\/\/[^?#\s]+$/.test(value) || /^npipe:\/\/\/\/\.\/pipe\/[A-Za-z0-9._-]+$/.test(value));
+export function classifyToolFailure(binary, args, error) {
+  const phases = binary === CLI ? { '--version': 'CLI_VERSION', start: 'CLI_START', stop: 'CLI_STOP', status: 'CLI_STATUS' }
+    : { context: 'DOCKER_CONTEXT', container: 'DOCKER_CONTAINERS', volume: 'DOCKER_VOLUMES' };
+  const phase = phases[args[0]] || 'TOOL';
+  // Match known diagnostic categories only. No child text, filename, URL, token,
+  // command, numeric exit payload or error cause is included in the returned code.
+  const output = `${error.stdout || ''}\n${error.stderr || ''}`;
+  let reason = 'FAILED_OUTPUT_REDACTED';
+  if (error.code === 'ENOENT') reason = 'EXECUTABLE_NOT_FOUND';
+  else if (/supabase-go/i.test(output) && /not found|no such file|ENOENT|missing/i.test(output)) reason = 'DELEGATE_MISSING';
+  else if (/failed to parse config|invalid config|decoding failed|toml:/i.test(output)) reason = 'CONFIG_INVALID';
+  else if (/unknown flag|unknown command|unrecognized option/i.test(output)) reason = 'OPTION_UNSUPPORTED';
+  else if (/cannot connect to the docker daemon|error during connect|is the docker daemon running/i.test(output)) reason = 'DAEMON_UNAVAILABLE';
+  else if (/permission denied while trying to connect to the docker/i.test(output)) reason = 'DAEMON_PERMISSION_DENIED';
+  else if (error.killed) reason = 'TIMED_OUT';
+  return `LOCAL_${phase}_${reason}`;
+}
 async function captured(binary, args, timeout = 120000) {
   try {
     const env = { ...process.env, SUPABASE_TELEMETRY_DISABLED: '1', DO_NOT_TRACK: '1' };
@@ -27,7 +44,7 @@ async function captured(binary, args, timeout = 120000) {
       windowsHide: true, env })).stdout;
   } catch (error) {
     // Do not include the child error, message, command output, env or cause.
-    fail(error.code === 'ENOENT' ? 'LOCAL_TOOL_NOT_FOUND' : 'LOCAL_TOOL_FAILED_OUTPUT_REDACTED');
+    fail(classifyToolFailure(binary, args, error));
   }
 }
 async function resolveLocalDaemon() {
