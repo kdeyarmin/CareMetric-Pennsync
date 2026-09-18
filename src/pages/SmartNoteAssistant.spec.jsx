@@ -265,8 +265,13 @@ describe("SmartNoteAssistant — Step 1 gate on template blanks", () => {
     expect(authorizationMocks.handoff).not.toHaveBeenCalled();
     await waitFor(() => expect(reviewButton()).toBeEnabled());
     fireEvent.click(reviewButton());
-    fireEvent.click(await screen.findByRole('button', { name: 'Save test note' }));
+    const saveButton = await screen.findByRole('button', { name: 'Save test note' });
+    fireEvent.click(saveButton);
     await screen.findByText('Test note fully saved');
+    expect(screen.getByRole('button', { name: 'Save test note' })).toBe(saveButton);
+    expect(screen.queryByLabelText('Saved note text')).not.toBeInTheDocument();
+    expect(screen.queryByText('73 bpm')).not.toBeInTheDocument();
+    expect(screen.getByText(/Reopen this visit to load its current saved record/)).toBeInTheDocument();
     expect(authorizationMocks.persist).toHaveBeenCalledTimes(1);
     expect(authorizationMocks.persist.mock.calls[0][0]).toMatchObject({
       existingVisitId: 'visit-a', savedVisitId: null, patientId: 'patient-a', roughNote: DRAFT_FILLED,
@@ -279,6 +284,74 @@ describe("SmartNoteAssistant — Step 1 gate on template blanks", () => {
     await waitFor(() => expect(authorizationMocks.reviewAck).toHaveBeenCalledWith({
       visitId: 'visit-a', acknowledged: true, nurseEdited: false, noteText: DRAFT_FILLED,
     }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit draft' }));
+    expect(await screen.findByPlaceholderText(/enter bullet points or rough draft/i)).toHaveValue(DRAFT_FILLED);
+    expect(screen.queryByLabelText('Saved note text')).not.toBeInTheDocument();
+    fireEvent.click(reviewButton());
+    fireEvent.click(await screen.findByRole('button', { name: 'Discard test note' }));
+    expect(await screen.findByPlaceholderText(/enter bullet points or rough draft/i)).toHaveValue('');
+    expect(screen.queryByLabelText('Saved note text')).not.toBeInTheDocument();
+    expect(screen.getByText(/Reopen this visit to load its current saved record/)).toBeInTheDocument();
+    expect(authorizationMocks.persist).toHaveBeenCalledTimes(1);
+  });
+
+  it('retires the old saved projection after an uncertain same-Visit write while keeping review and retry intact', async () => {
+    const expectedError = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const success = completedVisit();
+    authorizationMocks.visitId = 'visit-a';
+    authorizationMocks.persist.mockImplementationOnce(async ({ saveProgress }) => {
+      saveProgress.visitId = 'visit-a';
+      throw new PartialVisitSaveError(saveProgress, ['documentation']);
+    }).mockImplementationOnce(async ({ saveProgress }) => ({
+      mode: 'update', visitId: saveProgress.visitId, auditId: 'audit-a',
+      finalText: DRAFT_FILLED, coverageScore: 88,
+    }));
+    const mounted = renderWithProviders(<SmartNoteHarness />);
+    await screen.findByText(/Verifying visit access/i);
+    authorizationMocks.visitState = success;
+    await refreshSmartNote();
+    await screen.findByRole('heading', { name: 'Saved visit note' });
+    await typeDraft(DRAFT_FILLED);
+    await waitFor(() => expect(draftStorageMocks.save).toHaveBeenCalled());
+    fireEvent.click(reviewButton());
+    const saveButton = await screen.findByRole('button', { name: 'Save test note' });
+    fireEvent.click(saveButton);
+    await screen.findByText(/latest changes could not be confirmed/);
+    expect(screen.getByRole('button', { name: 'Save test note' })).toBe(saveButton);
+    expect(screen.queryByText('Test note fully saved')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Saved note text')).not.toBeInTheDocument();
+    expect(screen.queryByText('73 bpm')).not.toBeInTheDocument();
+    expect(screen.getByText(/Reopen this visit to load its current saved record/)).toBeInTheDocument();
+    expect(JSON.parse(sessionStorage.getItem('smart_note_draft_v2:patient-a')).note).toBe(DRAFT_FILLED);
+    expect(draftStorageMocks.remove).not.toHaveBeenCalled();
+    const firstSave = authorizationMocks.persist.mock.calls[0][0];
+    expect(firstSave.existingVisitId).toBe('visit-a');
+    fireEvent.click(saveButton);
+    await screen.findByText('Test note fully saved');
+    const retrySave = authorizationMocks.persist.mock.calls[1][0];
+    expect(retrySave.savedVisitId).toBe('visit-a');
+    expect(retrySave.saveProgress).toBe(firstSave.saveProgress);
+    expect(screen.getByRole('button', { name: 'Save test note' })).toBe(saveButton);
+    expect(screen.queryByLabelText('Saved note text')).not.toBeInTheDocument();
+    expect(expectedError).toHaveBeenCalledTimes(1);
+    expect(expectedError.mock.calls[0][1]).toBeInstanceOf(PartialVisitSaveError);
+    expectedError.mockRestore();
+
+    // A fresh component displays only its newly authorized projection.
+    mounted.unmount();
+    authorizationMocks.visitState = { data: undefined, isSuccess: false, isError: false, tenantScope: null };
+    renderWithProviders(<SmartNoteHarness />);
+    await screen.findByText(/Verifying visit access/i);
+    authorizationMocks.visitState = {
+      ...success, data: { ...success.data, nurse_notes: DRAFT_FILLED,
+        updated_date: '2026-09-17T15:35:00.000Z', vital_signs: { heart_rate: 75 } },
+    };
+    await refreshSmartNote();
+    await screen.findByRole('heading', { name: 'Saved visit note' });
+    expect(screen.getByLabelText('Saved note text').textContent).toBe(DRAFT_FILLED);
+    expect(screen.getByText('75 bpm')).toBeInTheDocument();
+    expect(screen.queryByText('73 bpm')).not.toBeInTheDocument();
+    expect(authorizationMocks.persist).toHaveBeenCalledTimes(2);
   });
 
   it('withholds saved note and vitals during a Visit recheck and after a settled denial', async () => {

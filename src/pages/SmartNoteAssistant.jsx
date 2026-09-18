@@ -148,6 +148,9 @@ export default function SmartNoteAssistant({ visitId = null }) {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [savedVisitId, setSavedVisitId] = useState(null);
+  // A known write can make the loaded Visit projection stale. Keep it retired
+  // through edit/reset/retry; reopening obtains a fresh authorized projection.
+  const [retiredSavedVisits, setRetiredSavedVisits] = useState(() => new Set());
   const [savedAuditId, setSavedAuditId] = useState(null);
   const saveProgressRef = useRef(null);
   const [existingVisitId, setExistingVisitId] = useState(null);
@@ -646,11 +649,17 @@ export default function SmartNoteAssistant({ visitId = null }) {
         toast.error("Could not save — check that a patient is selected and the note is complete.");
         return;
       }
+      if (visitId && out.visitId === visitId) {
+        setRetiredSavedVisits((previous) => new Set(previous).add(out.visitId));
+      }
       setSaved(true);
       clearDraft(patientId);
     } catch (err) {
       if (saveProgressRef.current !== saveProgress || !isAuthorityDraftLeaseCurrent(authorityDraftLease)) return;
       if (err instanceof PartialVisitSaveError) {
+        if (visitId && err.visitId === visitId) {
+          setRetiredSavedVisits((previous) => new Set(previous).add(err.visitId));
+        }
         setSavedVisitId(err.visitId);
         setExistingVisitId(null);
         if (err.auditId) setSavedAuditId(err.auditId);
@@ -930,7 +939,14 @@ export default function SmartNoteAssistant({ visitId = null }) {
   return (
     <PageContainer>
       {hasSavedVisit && (
-        savedVisitReady ? <SavedVisitDocumentation visit={boundVisit} patient={chartPatient} /> : (
+        savedVisitReady ? (
+          retiredSavedVisits.has(boundVisit.id) ? (
+            <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
+              The previously loaded saved record is hidden after this save attempt. Continue working below.
+              Reopen this visit to load its current saved record.
+            </p>
+          ) : <SavedVisitDocumentation visit={boundVisit} patient={chartPatient} />
+        ) : (
           <p role="status" className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700">
             {patientAuthorizationFailed || noteHistoryQuery.isError || !savedVisitScopeCurrent
               ? 'Saved visit access could not be verified.' : 'Verifying saved visit access…'}
