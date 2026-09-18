@@ -24,6 +24,17 @@ const MAX_BODY_BYTES = 8192;
 const MAX_BODY_CHUNKS = 64;
 const MAX_IDENTIFIER_LENGTH = 200;
 const EXACT_ROW_LIMIT = 2;
+const OWNER_HISTORY_LIMIT = 51;
+const OWNER_HISTORY_FIELDS = [
+  'id', 'membership_key', 'agency_id', 'user_id', 'user_email_normalized',
+  'tenant_role', 'status', 'invitation_id', 'created_by_user_id',
+  'last_transition_by_user_id', 'last_transition_by_email_normalized',
+  'last_transition_at', 'last_transition_reason', 'activated_at', 'revoked_at',
+  'revocation_reason', 'version',
+] as const;
+const TENANT_ROLES = new Set([
+  'agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care',
+]);
 const SDK_REQUEST_HEADER_NAMES = [
   'Authorization',
   'Base44-Service-Authorization',
@@ -38,6 +49,9 @@ const USER_FIELDS = [
   'is_service',
   'is_verified',
   'is_approved',
+  'offboarded_at',
+  'offboarded_by',
+  'offboarding_reason',
 ] as const;
 
 const NO_STORE_HEADERS = {
@@ -104,6 +118,20 @@ function canonicalEmail(value: unknown) {
   const email = value.trim().toLowerCase();
   if (!email || email.length > 320 || !email.includes('@') || /\s/.test(email)) return null;
   return email;
+}
+
+function canonicalInstant(value: unknown) {
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return null;
+  return new Date(value).toISOString() === value ? value : null;
+}
+
+function exactReason(value: unknown) {
+  return typeof value === 'string' && value.length > 0 && value.length <= 500
+    && value.trim() === value ? value : null;
+}
+
+function hasSupportedActiveState(user: Record<string, unknown>) {
+  return user.is_active === true || user.is_active === null || user.is_active === undefined;
 }
 
 function exactHttpsOrigin(value: unknown) {
@@ -185,13 +213,10 @@ function eligibleCallerSnapshot(user: Record<string, unknown>) {
   const email = canonicalEmail(user.email);
   // Legacy protected-owner rows can predate the self-editable is_active field.
   // Normalize only true/unset as active; explicit false and malformed values fail closed.
-  const hasSupportedActiveState = user.is_active === true
-    || user.is_active === null
-    || user.is_active === undefined;
   if (
     !id
     || !email
-    || !hasSupportedActiveState
+    || !hasSupportedActiveState(user)
     || (user.disabled !== false && user.disabled !== null)
     || user.is_service !== false
     || user.is_verified !== true
@@ -384,6 +409,12 @@ async function loadExactActor(
   if (rowsByEmail.length !== 1 || rowsByEmail[0]?.id !== binding.userId) {
     throw new PublicError(409, 'Fixture actor identity is ambiguous');
   }
+  const identityProjection = (row: Record<string, unknown>) => Object.fromEntries(
+    USER_FIELDS.map((field) => [field, row[field]]),
+  );
+  if (!sameValue(identityProjection(rowsById[0]), identityProjection(rowsByEmail[0]))) {
+    throw new PublicError(409, 'Fixture actor lifecycle changed during inspection');
+  }
   const user = rowsById[0];
   const email = canonicalEmail(user.email);
   const id = exactIdentifier(user.id);
@@ -394,7 +425,9 @@ async function loadExactActor(
     };
   }
   const eligible = user.role === 'user'
-    && user.is_active === true
+    && hasSupportedActiveState(user)
+    && [user.offboarded_at, user.offboarded_by, user.offboarding_reason]
+      .every((value) => value === undefined || value === null || value === '')
     && (user.disabled === false || user.disabled === null)
     && user.is_service === false
     && user.is_verified === true
@@ -410,6 +443,9 @@ async function loadExactActor(
       is_service: user.is_service,
       is_verified: user.is_verified,
       is_approved: user.is_approved,
+      offboarded_at: user.offboarded_at,
+      offboarded_by: user.offboarded_by,
+      offboarding_reason: user.offboarding_reason,
     },
   };
 }
@@ -505,22 +541,64 @@ async function loadExactAgencyCodeCollision(
   return { present: rows.length === 1, snapshot };
 }
 
+async function loadOwnerHistory(
+  entities: Record<string, any>,
+  owner: { id: string; email: string },
+) {
+  // Inspect all owner statuses, not a status-filtered subset that could hide a
+  // live membership. This diagnostic does not alter runtime owner authorization.
+  const rows = requireRows(await entities.AgencyMembership.filter(
+    { user_id: owner.id }, undefined, OWNER_HISTORY_LIMIT, undefined, OWNER_HISTORY_FIELDS,
+  ), 'AgencyMembership.filter');
+  if (rows.length >= OWNER_HISTORY_LIMIT) {
+    throw new PublicError(409, 'Platform owner membership history exceeds bounded capacity');
+  }
+  const ids = new Set<string>();
+  const keys = new Set<string>();
+  const agencies = new Set<string>();
+  const snapshot = rows.map((row) => {
+    if (!row || row.user_id !== owner.id) {
+      throw new PublicError(409, 'AgencyMembership query scope could not be verified');
+    }
+    const id = exactIdentifier(row.id);
+    const agencyId = exactIdentifier(row.agency_id);
+    const key = exactIdentifier(row.membership_key);
+    const revokedAt = canonicalInstant(row.revoked_at);
+    const transitionedAt = canonicalInstant(row.last_transition_at);
+    const activatedAt = row.activated_at == null ? null : canonicalInstant(row.activated_at);
+    if (
+      !id || !agencyId || !key || key !== `${agencyId}:${owner.id}`
+      || row.user_email_normalized !== owner.email
+      || !TENANT_ROLES.has(String(row.tenant_role))
+      || row.status !== 'revoked'
+      || (row.invitation_id != null && !exactIdentifier(row.invitation_id))
+      || row.created_by_user_id !== owner.id
+      || row.last_transition_by_user_id !== owner.id
+      || row.last_transition_by_email_normalized !== owner.email
+      || !revokedAt || !transitionedAt || Date.parse(transitionedAt) > Date.parse(revokedAt)
+      || (row.activated_at != null && (!activatedAt || Date.parse(activatedAt) > Date.parse(revokedAt)))
+      || !exactReason(row.last_transition_reason) || !exactReason(row.revocation_reason)
+      || !Number.isSafeInteger(row.version) || Number(row.version) < 2
+    ) {
+      throw new PublicError(409, 'Platform owner membership history is not fully revoked and valid');
+    }
+    if (ids.has(id) || keys.has(key) || agencies.has(agencyId)) {
+      throw new PublicError(409, 'Platform owner membership history is ambiguous');
+    }
+    ids.add(id);
+    keys.add(key);
+    agencies.add(agencyId);
+    return Object.fromEntries(OWNER_HISTORY_FIELDS.map((field) => [field, row[field]]));
+  }).sort((left, right) => String(left.id).localeCompare(String(right.id)));
+  return { count: snapshot.length, snapshot };
+}
+
 async function inspectPreflight(
   entities: Record<string, any>,
   input: { actors: Record<string, { userId: string; email: string }> },
-  ownerId: string,
+  owner: { id: string; email: string },
 ) {
-  const ownerMembership = await loadExistence(
-    entities.AgencyMembership,
-    { user_id: ownerId },
-    'user_id',
-    ownerId,
-    ['id', 'user_id'],
-    'AgencyMembership',
-  );
-  if (ownerMembership.present) {
-    throw new PublicError(409, 'Platform owner tenant membership must not exist');
-  }
+  const ownerMembership = await loadOwnerHistory(entities, owner);
 
   const agencies: Record<string, Record<string, unknown>> = {};
   for (const agencyKey of AGENCY_KEYS) {
@@ -601,7 +679,8 @@ function publicResult(snapshot: Record<string, any>) {
     },
     checks: {
       runtime_target: 'exact_staging_configuration',
-      platform_owner_membership: 'absent',
+      platform_owner_membership: snapshot.ownerMembership.count === 0
+        ? 'absent' : 'revoked_history_only',
       fixture_registry: snapshot.fixtureRegistry.present ? 'present' : 'absent',
       agency_code_collisions: agencyCodeCollisions,
       actors,
@@ -610,6 +689,7 @@ function publicResult(snapshot: Record<string, any>) {
       eligible_actors: eligibleActors,
       agency_code_collisions: agencyCodeCollisionCount,
       collision_categories: collisionCategories,
+      revoked_owner_memberships: snapshot.ownerMembership.count,
     },
     safeguards: {
       data_mutations_performed: false,
@@ -626,6 +706,7 @@ function publicResult(snapshot: Record<string, any>) {
       'not_a_uniqueness_or_transaction_guarantee',
       'does_not_authorize_later_writes',
       'does_not_clear_lr01_or_lr02',
+      'does_not_change_platform_owner_tenant_authorization',
     ],
   };
 }
@@ -642,12 +723,12 @@ Deno.serve(async (req) => {
     const owner = loadProtectedOwner(caller);
     const input = await parseRequest(req, owner);
     const entities = base44.asServiceRole.entities;
-    const initial = await inspectPreflight(entities, input, String(owner.id));
+    const initial = await inspectPreflight(entities, input, owner);
 
     requireRuntimeTarget(req);
     const recheckedCaller = await base44.auth.me().catch(() => null);
     loadProtectedOwner(recheckedCaller, owner);
-    const finalSnapshot = await inspectPreflight(entities, input, String(owner.id));
+    const finalSnapshot = await inspectPreflight(entities, input, owner);
     if (!sameValue(initial, finalSnapshot)) {
       throw new PublicError(409, 'Staging readiness preflight changed during inspection');
     }

@@ -87,11 +87,27 @@ recomputes it from the exact clean checkout and rejects drift.
 
 All four actors require distinct, real Base44 User ids and normalized email
 addresses, separate from the protected platform owner. Each must have built-in
-`role: "user"`, `is_active: true`, `is_verified: true`, `is_approved: true`,
+`role: "user"`, `is_verified: true`, `is_approved: true`,
 `is_service: false`, and `disabled: false` or `null`. Admin-A and Admin-B acquire
 tenant administration later through reviewed AgencyMembership provisioning;
 do not grant them the built-in Base44 `admin` role. Mail aliases are acceptable
 only when delivery is confirmed and the platform maintains four distinct users.
+
+The staging diagnostic accepts `is_active: true` or the native signup default
+(`null`/unset), consistently with the existing account and membership lifecycle.
+Explicit false, malformed values, and any recorded offboarding metadata remain
+ineligible. It compares raw lifecycle snapshots, including the offboarding fields,
+across exact id/email reads and both inspections; it does not activate accounts.
+
+The diagnostic may retain fully revoked owner membership history. It reads all
+statuses under the exact owner id, fails at a 51-row saturation boundary, validates
+up to 50 complete canonical terminal rows and compares both full snapshots. Any
+live, malformed, out-of-scope, duplicate or changed row blocks inspection. Legacy
+transition metadata may predate the separate revocation metadata; it is preserved.
+The public result reports `revoked_history_only` and a bounded count, never row
+identifiers or reasons. Runtime owner tenant-authorization guards remain unchanged;
+this read-only diagnostic neither grants owner tenant access nor authorizes later
+fixture writes. The protected owner remains excluded from the four tenant actors.
 
 A bare platform invitation or completed email verification does not establish
 PennSync approval. The supported invitation brokers (`createUserWithTempPassword`
