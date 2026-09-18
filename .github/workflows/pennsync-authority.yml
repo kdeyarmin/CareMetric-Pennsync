@@ -100,6 +100,8 @@ jobs:
         run: node --test services/authority-store/tests/http-authority.test.mjs
       - name: Verify real integration platform restoration and RPCs
         run: node --test services/integration-runtime/tests/http-bootstrap.test.mjs
+      - name: Verify synthetic private file bytes and restoration
+        run: node --test services/integration-runtime/tests/http-storage.test.mjs
       - name: Stop isolated local stack
         if: always()
         run: node services/authority-store/tests/http-local-stack.mjs stop
