@@ -248,7 +248,7 @@ for (const [name, raw] of Object.entries({
 test('what blocks a port is read from the module, not from a status note', () => {
   // Precedence runs from the most binding blocker to the least: a function that
   // both reads rows and renders a PDF cannot be written until the rows exist.
-  assert.deepEqual([...PORT_BLOCKERS], ['records_schema', 'ported_function', 'core_integration',
+  assert.deepEqual([...PORT_BLOCKERS], ['records_schema', 'files', 'ported_function', 'core_integration',
     'pdf_rendering', 'external_secret', 'none']);
   assert.equal(classifyPortBlocker("await base44.entities.Patient.filter({})"), 'records_schema');
   assert.equal(classifyPortBlocker("base44.asServiceRole.entities.Visit.list()"), 'records_schema');
@@ -259,6 +259,14 @@ test('what blocks a port is read from the module, not from a status note', () =>
   // so the queue was holding them behind a store they never use. Their blocker
   // is the integration runtime's brokered path, which is deployed and paused.
   assert.equal(classifyPortBlocker("await base44.integrations.Core.InvokeLLM({})"), 'core_integration');
+  // A handler bound to the old file layer. The shared SSRF guard only admits
+  // Base44's own storage hosts, so porting one verbatim would carry a Base44
+  // dependency into the service the exit exists to remove.
+  assert.equal(classifyPortBlocker("InvokeLLM({ file_urls: [fileUrl] })"), 'files');
+  assert.equal(classifyPortBlocker("if (!isSafeFetchUrl(url)) return;"), 'files');
+  assert.equal(classifyPortBlocker("await base44.integrations.Core.UploadFile({})"), 'files');
+  // Precedence: a handler that reads rows AND a file waits on the store first.
+  assert.equal(classifyPortBlocker("base44.entities.Patient.get(id)\nUploadFile({})"), 'records_schema');
   assert.equal(classifyPortBlocker("await base44.functions.manageAuthorizedReferral({})"), 'ported_function');
   // Precedence: reading a row outranks calling an integration.
   assert.equal(classifyPortBlocker("base44.entities.Patient.get(id)\nbase44.integrations.Core.InvokeLLM({})"),
@@ -282,20 +290,23 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { records_schema: 62, ported_function: 1, core_integration: 7,
-    pdf_rendering: 0, external_secret: 1, none: 7 });
+  assert.deepEqual(counts, { records_schema: 62, files: 4, ported_function: 1, core_integration: 2,
+    pdf_rendering: 0, external_secret: 1, none: 8 });
   // Twelve of these were counted against the record store until the functions
   // were read. Every one calls a Core integration and touches no entity row, so
   // what they wait on is the integration runtime's brokered path — already
   // deployed, and paused — not a store that does not exist. Naming them keeps
   // the correction from quietly reverting.
-  assert.deepEqual(report.port_blockers.core_integration, [
-    'analyzeReferral', 'extractClinicalDocument', 'extractPatientDataFromDocument',
-    'generateDynamicCoverSheet', 'generateUserGuidePDF', 'matchPatientWithAI', 'splitReferralPDF',
-  ], 'three left by being written; two by being reclassified as paused');
+  assert.deepEqual(report.port_blockers.core_integration, ['analyzeReferral', 'generateUserGuidePDF'],
+    'four left by being written, two by being reclassified paused, four by being file-bound');
+  // Named, because porting one of these verbatim would carry Base44's storage
+  // host into the service, and the `cmfile:` handles that replace those URLs do
+  // not exist yet. They wait on the file layer, not on the runtime.
+  assert.deepEqual(report.port_blockers.files, ['extractClinicalDocument', 'extractPatientDataFromDocument',
+    'generateDynamicCoverSheet', 'splitReferralPDF']);
   assert.deepEqual(report.port_blockers.none,
     ['analyzeReferralIntake', 'analyzeReferralPriority', 'generateBagTechniquePDF', 'generateReferralTasks',
-      'generateSmartNoteGuide', 'generateUserManual', 'validatePatientData'],
+      'generateSmartNoteGuide', 'generateUserManual', 'matchPatientWithAI', 'validatePatientData'],
     'the set of written ports changed');
   assert.deepEqual(report.port_blockers.ported_function, ['extractReferralDataForSmartNote']);
   // All three emptied this bucket once the service adopted a PDF library and a

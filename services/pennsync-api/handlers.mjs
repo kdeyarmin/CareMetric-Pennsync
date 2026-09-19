@@ -15,6 +15,7 @@ import {
 import { analyzeReferralPriority as runReferralPriority } from './referral-priority.mjs';
 import { analyzeReferralIntake as runReferralIntake } from './referral-intake.mjs';
 import { generateReferralTasks as runReferralTasks } from './referral-tasks.mjs';
+import { matchPatientWithAI as runPatientMatch } from './patient-match.mjs';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -166,6 +167,12 @@ export const HANDLERS = Object.freeze({
     handle({ params, integration }) {
       exactObject(params, ['referralData', 'priorityAnalysis'], 'INVALID_PARAMS');
       return runReferralTasks({ params, integration });
+    },
+  }),
+  matchPatientWithAI: Object.freeze({
+    handle({ params, integration }) {
+      exactObject(params, ['extractedData', 'existingPatients'], 'INVALID_PARAMS');
+      return runPatientMatch({ params, integration });
     },
   }),
   validatePatientData: Object.freeze({

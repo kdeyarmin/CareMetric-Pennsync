@@ -210,6 +210,12 @@ export function discoverInertFunctions(repository) {
  * - `records_schema` — reads or writes entity rows, so it needs the ported
  *   record store and a tenant predicate for the entities it touches.
  * - `ported_function` — calls another Base44 function, so it waits on that one.
+ * - `files` — reads or writes an uploaded file. The SSRF allowlist these
+ *   handlers use names Base44's own storage host, so porting one verbatim would
+ *   carry a Base44 dependency into the service the exit exists to remove, and
+ *   the `cmfile:` handles that replace those URLs do not exist yet. It waits on
+ *   the file layer, which is a phase of its own, rather than on the record
+ *   store or the runtime.
  * - `core_integration` — calls a Core integration (an LLM, an extraction, a
  *   send) and touches no entity row. It needs the integration runtime's
  *   brokered path released, not the record store. This was counted as
@@ -227,13 +233,19 @@ export function discoverInertFunctions(repository) {
  * Precedence runs from the most binding to the least: a function that both reads
  * rows and renders a PDF is blocked on the rows first.
  */
-export const PORT_BLOCKERS = Object.freeze(['records_schema', 'ported_function', 'core_integration',
+export const PORT_BLOCKERS = Object.freeze(['records_schema', 'files', 'ported_function', 'core_integration',
   'pdf_rendering', 'external_secret', 'none']);
 
 export function classifyPortBlocker(source) {
   if (typeof source !== 'string') return 'records_schema';
   // Dynamic access (`entities[name]`) reads rows exactly as the dotted form does.
   if (/\.\s*entities\s*[.[]|asServiceRole/.test(source)) return 'records_schema';
+  // A file locator, the shared SSRF guard that only admits Base44's storage
+  // hosts, or an upload/signing operation. Any of them means the handler is
+  // bound to the old file layer.
+  if (/\bfile_urls?\b|\bfileUrl\b|isSafeFetchUrl|UploadFile|UploadPrivateFile|CreateFileSignedUrl/.test(source)) {
+    return 'files';
+  }
   if (/\bbase44\s*\.\s*functions\b/.test(source)) return 'ported_function';
   if (/\.\s*integrations\s*\./.test(source)) return 'core_integration';
   if (/from\s+'npm:jspdf@/.test(source)) return 'pdf_rendering';

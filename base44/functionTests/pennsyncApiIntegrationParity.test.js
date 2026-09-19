@@ -8,6 +8,7 @@ import { transpileTs } from '../../tools-transpile-ts.mjs';
 import { analyzeReferralPriority } from '../../services/pennsync-api/referral-priority.mjs';
 import { analyzeReferralIntake } from '../../services/pennsync-api/referral-intake.mjs';
 import { generateReferralTasks } from '../../services/pennsync-api/referral-tasks.mjs';
+import { matchPatientWithAI } from '../../services/pennsync-api/patient-match.mjs';
 import { parseLLMJson } from '../../services/pennsync-api/llm-json.mjs';
 
 /**
@@ -108,6 +109,25 @@ const PORTS = [
       { referralData: undefined, priorityAnalysis: undefined },
     ],
   },
+  {
+    name: 'matchPatientWithAI',
+    port: matchPatientWithAI,
+    cases: [
+      {
+        extractedData: { demographics: { first_name: 'Synthetic', last_name: 'Patient', date_of_birth: '1950-04-02' } },
+        existingPatients: [
+          { id: 'p1', first_name: 'Synthetic', middle_name: 'Q', last_name: 'Patient',
+            medical_record_number: 'MRN-1', date_of_birth: '1950-04-02', phone: '555-0100' },
+          // No middle name: `full_name` loses a space, and the projection must
+          // lose it on both sides.
+          { id: 'p2', first_name: 'Other', last_name: 'Person' },
+        ],
+      },
+      // An empty candidate list is valid input, and the count is interpolated.
+      { extractedData: { demographics: {} }, existingPatients: [] },
+      { extractedData: { notDemographics: true }, existingPatients: [{ id: 'p3' }] },
+    ],
+  },
 ];
 
 for (const { name, port, cases } of PORTS) {
@@ -182,4 +202,27 @@ test('a task answer without a task list is still a list', async () => {
     assert.ok(Array.isArray(ported.body.tasks));
     assert.deepEqual(ported.body, original.body);
   }
+});
+
+test('the patient match refuses the same malformed input the original refused', async () => {
+  // The original answers 400 with its own message; this service has one error
+  // envelope every handler shares, so the same inputs are refused with the same
+  // status under this service's code. The rule itself is unchanged.
+  for (const params of [
+    { extractedData: null, existingPatients: [] },
+    { extractedData: undefined, existingPatients: [] },
+    { extractedData: {}, existingPatients: 'not-an-array' },
+    { extractedData: {}, existingPatients: null },
+  ]) {
+    await assert.rejects(
+      matchPatientWithAI({ params, integration: async () => assert.fail('the model must not be asked') }),
+      error => error?.status === 400 && error?.code === 'INVALID_PARAMS');
+    // And the original refuses them too, rather than calling the model.
+    const original = await driveOriginal('matchPatientWithAI', params, '{}');
+    assert.deepEqual(original.calls, []);
+  }
+  // An empty array is a valid list of candidates on both sides.
+  const ported = await drivePort(matchPatientWithAI,
+    { extractedData: { demographics: {} }, existingPatients: [] }, { best_match_id: null });
+  assert.equal(ported.calls.length, 1);
 });
