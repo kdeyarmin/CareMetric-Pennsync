@@ -14,12 +14,13 @@ Source work completed here, all validated by the repository's own checks:
 
 | Plan item | Delivered |
 | --- | --- |
-| Phase 0 — decisions | [Exit decisions](BASE44_EXIT_DECISIONS_2026-09-19.md) recording D1 to D10, accepted 2026-09-19 with all five owner roles named |
+| Phase 0 — decisions | [Exit decisions](BASE44_EXIT_DECISIONS_2026-09-19.md) recording D1 to D11, accepted 2026-09-19 with all five owner roles named |
 | Phase 0 — disposition manifest | `tools-transition-disposition.json` plus a coverage gate; all 549 capabilities classified, none undecided, `census_ready: true` |
 | Phase 0 — retention schedule | Every retired entity carries a retention basis (D10): six years in the encrypted export archive for the seven that hold an identifier, the named external system for the two mirrors, none for the three operational rows. The gate fails a retirement with nowhere for its rows |
 | Phase 0 — disposition evidence | The gate also refuses a `port`, `broker` or `hub` disposition on a function whose module can perform no work; eight such claims were corrected |
 | Phase 0 — documentation | `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `.env.example` describe both backends and every service setting |
 | Phase 1 — runtime authority | `INTEGRATIONS_AUTHORITY_MODE=independent` removes the Base44 `getMyTenantContext` call; readiness derives `base44ExecutionDependency` |
+| Phase 1 — authority store app namespace | `20260919090000_deployment_app_pin.sql` replaces both app-id literals with one immutable per-deployment pin. The domain across 18 columns and the gate inside `actor()` now read the same row, so they cannot drift; production is admitted only in a database pinned to it, and an unset pin still defaults to staging. `app-namespace-containment.test.mjs` proves it against two databases built from the same migrations |
 | Phase 2 — API service | `services/pennsync-api` with health, readiness, release-gated dispatch and the first ported handler |
 | Phase 2 — candidate schema | `tools-entity-schema-plan.mjs` generates PostgreSQL for the 156 carried entities (2,336 columns, 287 enum constraints); a test applies the whole plan to a real database |
 | Phase 2 — tenant paths | `tools-tenant-path.mjs` resolves how each carried entity reaches its agency: 69 have a usable key, 87 are a named decision list rather than an open question |
@@ -32,7 +33,7 @@ Not done here, and each blocked on something this branch cannot supply:
 | --- | --- |
 | Deploying either Railway service; provisioning the production Supabase project | Cost approval and operator credentials |
 | Enabling independent authority on the running runtime | A reviewed deployment plus preflight and two-agency acceptance with enrolled actors |
-| Generalizing the authority store past four synthetic actors | A schema migration widening both app-id pins — the domain across 18 tables and the gate inside `actor()` — plus the per-deployment guard that keeps staging from holding production rows once widened. Not configuration; see Phase 1 |
+| Generalizing the authority store past four synthetic actors | The app-id pins are done (above). What remains: the enrollment tool that writes evidence-hashed identity rows, the four actor IDs still pinned in `services/authority-client/client.mjs`, roster behaviour for the four tenant roles that can hold context but not use it, and the synthetic-name constraints, which still refuse a real agency or patient name in every deployment. Each needs enrolled humans or its own reviewed migration; see Phase 1 |
 | Reconciling the duplicated authority predicates (`validateMembershipRows`, `validateAssignmentIntegrity`) into one shared definition | Nothing external. The twelve `validateAssignmentIntegrity` copies are now diffed and all enforce the same authorization: seven bind the assignment inside the predicate, five in the caller on the next line. It is a consolidation, not a behavior decision — but porting the predicate without its caller would drop the binding, so it comes before the ports. `base44/functionTests/assignmentBindingConvention.test.js` holds the line meanwhile |
 | Deciding the 87 entities with no usable tenant path | Owners answering the three questions in Phase 2; two of them (global reference data vs. a missing key) are product calls, not derivable from the schema |
 | Porting the remaining handlers and entity schemas | The decisions above being accepted, then per-capability review |
@@ -219,6 +220,7 @@ Each item names a recommendation. None is decided by this document.
 | D8 | Learning | Complete the Support Hub cutover (`docs/CENTRAL_LEARNING_CUTOVER.md`) and retire the PennSync learning functions instead of porting them | Already the recorded direction; removes HeyGen |
 | D9 | The 31 open dispositions | Resolve them by group: retire the provenance-free logs in favour of the store's own tenant-bound disclosure audit, send learning content and telemetry to the Hub, port patient-linked content, broker agency configuration, and carry paused-domain custody | Leaving them open blocked the census on judgments the repository's own evidence already answers; see D9 in the decision record |
 | D10 | What happens to a retired table's rows | Six years in the encrypted export archive for anything holding an identifier, with the export receipt in the cutover packet; the named external system for mirrors; nothing for operational rows | D9 retires eight log tables, and "retire" must never be read as "delete"; the migration runbook already requires an approved retention policy for every old-only entity |
+| D11 | How one authority store serves more than one app | Each deployment pins one app id, once, in an immutable `pennsync_private.deployment` row that both the storage domain and `actor()` read; the pin must name a row in `known_app`, defaults to staging when unset, and the retired legacy app is not registrable at all | Phase 1 cannot enroll anyone for production while both pins are staging literals, and widening them into a set would let the hosted staging project hold production PHI; a pin keeps the migration text identical everywhere and moves the difference into one row that cannot be edited |
 
 ## 5. Phased completion plan
 
@@ -257,30 +259,48 @@ Deliverables:
   context RPC instead of Base44 `getMyTenantContext`. Readiness reports
   `base44ExecutionDependency: false`. Tests in `caller-binding.test.mjs` and
   `runtime.test.mjs` updated.
-- Authority store generalized. **Corrected on this branch:** "configurable app
-  namespace" understated this. The store pins one app id in two independent
-  places. Storage: `pennsync_private.staging_app` is a domain whose CHECK admits
-  exactly `6a9881683dc68a0bd54f1ef7`, and 18 columns across 18 tables are typed
-  with it, including `identity_map`, `agency`, `membership`, `patient`,
-  `assignment` and all three disclosure audits, so a row for another app cannot
-  be written even by a caller that bypassed every RPC. Entry:
-  `pennsync_private.actor()` compares the requested app id against the same
-  literal and refuses anything else, and every read path calls it. Nothing can
-  be enrolled for production until both move, so this is a schema migration
-  across the store's tenancy spine, not configuration.
+- Authority store app namespace. **Done on this branch.** The store used to pin
+  one app id in two independent places: the domain `pennsync_private.staging_app`,
+  whose CHECK admitted exactly `6a9881683dc68a0bd54f1ef7` and which types 18
+  columns across 18 tables, and a literal comparison inside
+  `pennsync_private.actor()`, which every read path calls. Calling that a
+  "configurable app namespace" understated it; nothing could be enrolled for
+  production without a schema migration across the tenancy spine.
 
-  Widening is security-relevant: together those two pins are what stop the
-  hosted staging project from holding production or legacy PHI. The migration
-  must therefore land with a per-deployment guard, so a widened domain still
-  lets each deployment admit only the app ids it serves. Three shapes are
-  plausible — a `deployment` table plus a trigger on each app-scoped table,
+  Widening the literal into a *set* was the wrong shape, because together those
+  two pins are what stop the hosted staging project from holding production or
+  legacy PHI, and a set would let one database hold both. Of the three shapes
+  considered — a `deployment` table plus a trigger on each app-scoped table,
   separate domains applied per environment, or an assertion inside the RPC
-  entries — and choosing among them is a containment decision, not a refactor.
-  `services/authority-store/tests/app-namespace-containment.test.mjs` pins the
-  current state so the widening cannot happen quietly: it fails the moment the
-  domain admits a second app id, a new table carries an app id outside the
-  domain, or the two layers drift apart, forcing the new permitted set and the
-  guard to be stated.
+  entries — the third was rejected outright (it moves containment from the store
+  to its callers, which is what the store exists not to rely on) and the second
+  was rejected because per-environment migration text makes drift invisible.
+
+  `20260919090000_deployment_app_pin.sql` takes the first, without the triggers:
+  the domain's CHECK and `actor()` both read one immutable row rather than a
+  literal, so there is nothing for a trigger to re-check and no second layer to
+  drift. `pennsync_private.known_app` lists the app ids this codebase admits at
+  all — staging and production; the retired `68ee80d98929370f9e8f2932` is absent,
+  so no deployment can be pointed at it. `pennsync_private.deployment` names the
+  one this database serves, written once from the database setting
+  `pennsync.deployment_app_id`, rejecting an unknown value rather than producing
+  an uncontained store, defaulting to staging when unset (the restrictive
+  outcome), recording which of the two happened, and immutable to update, delete
+  and truncate afterwards. The domain is renamed `deployment_app`, since
+  `staging_app` stops being true the moment a production deployment exists.
+
+  `services/authority-store/tests/app-namespace-containment.test.mjs` proves this
+  against two databases built from the same migrations, one defaulted to staging
+  and one pinned to production: each admits its own app and refuses the other's,
+  at both layers, and only the production-pinned one can write a production
+  identity row. It still fails the moment a new table carries an app id outside
+  the domain or the pin becomes editable.
+
+  This opened enrollment, not PHI. The synthetic-shape constraints — agency and
+  patient names must begin `Synthetic `, and `patient.synthetic` must hold — are
+  untouched, and the test asserts that a production-pinned database still refuses
+  a real agency or patient name. Relaxing those is the separate migration named
+  in the next bullet.
 - All six tenant roles, real names permitted through an explicit production
   migration, actor registry moved from code pins to verified identity-map rows,
   session policy reviewed (refresh, idle, MFA decision).

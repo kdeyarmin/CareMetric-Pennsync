@@ -17,7 +17,7 @@ hosted apps.
 This record resolves the open choices in
 [the transition plan](BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md) so work
 can proceed without re-deciding them per pull request: the original eight, plus
-the thirty-one dispositions D9 closes and the retention schedule D10 sets. Adopting a decision here
+the thirty-one dispositions D9 closes, the retention schedule D10 sets and the deployment pin D11 adopts. Adopting a decision here
 authorizes source changes only. It does not authorize a hosted deployment, a
 migration, a release-control change, a domain move, or any spend. Every existing
 gate in `REPOSITORY_CONSOLIDATION_2026-09-02.md`,
@@ -282,6 +282,62 @@ archive of zero years, or an external system of record that cannot name its
 system, and `checkCoverage` fails when an entity is retired with no basis or a
 basis names something that is not retired. `census_ready` now requires
 `retention_settled` as well.
+
+## D11 — One authority store per app, pinned once and unchangeable
+
+Decision: a deployment of the authority store serves exactly one Base44 identity
+namespace, named in a single `pennsync_private.deployment` row written at
+migration time and immutable afterwards. Both containment layers — the
+`pennsync_private.deployment_app` domain that types every app-scoped column, and
+the gate inside `pennsync_private.actor()` — read that row instead of a literal.
+
+What this replaced: both layers were the staging app id written out as a
+constant. Nothing could be enrolled for production without editing the schema, so
+Phase 1 could not begin. The obvious fix — admit a *set* of app ids — is the one
+thing that must not happen, because together those two pins are what stop the
+hosted staging project from holding production or legacy PHI, and a set lets one
+database hold both.
+
+| Considered | Rejected because |
+| --- | --- |
+| An assertion inside each RPC entry | Moves containment from the store to its callers. A service that forgot the check, or a compromised one, could then write another app's rows — which is the failure the store exists not to depend on |
+| A different domain definition per environment | The migration text stops being identical everywhere, so drift between deployments becomes invisible rather than impossible |
+| A `deployment` table plus a trigger on every app-scoped table | Correct, but the triggers are redundant once the domain itself reads the pin, and each is a separate thing to forget on a new table |
+
+Adopted: the table without the triggers. `pennsync_private.known_app` lists the
+app ids this codebase admits at all — staging and production. The retired app
+`68ee80d98929370f9e8f2932` is deliberately absent, so no deployment can be
+pointed at it even on purpose; adding a third is a reviewed migration.
+`pennsync_private.deployment` names the one this database serves and is written
+from the database setting `pennsync.deployment_app_id`.
+
+Three properties make that safe, and each is pinned by a test:
+
+- **Unknown fails the migration.** A value not in `known_app` aborts the
+  migration rather than producing a store with no containment. A typo cannot
+  quietly widen anything.
+- **Unset defaults to the restrictive side.** A production database whose
+  operator forgot the setting pins staging, so it refuses every production write
+  instead of silently accepting one. The `source` column records whether the pin
+  was chosen or defaulted, so an auditor can tell the two apart.
+- **Written once.** Update, delete and truncate are refused, and a second row is
+  refused. The domain's CHECK calls a `STABLE` function rather than an immutable
+  one, which is only sound because that answer can never change.
+
+Scope limit: this decides the **namespace**, not the data. The synthetic-shape
+constraints — agency and patient names must begin `Synthetic `, and
+`patient.synthetic` must hold — are untouched and still apply in every
+deployment. A production-pinned database can carry enrolled identities and still
+cannot hold a real agency or patient name. Relaxing those is a separate migration
+under the same review, and D4's separate staging and production projects still
+stand: the pin makes one codebase serve both, never one database.
+
+Enforcement: `services/authority-store/tests/app-namespace-containment.test.mjs`
+builds two databases from the same migrations, one defaulted to staging and one
+pinned to production, and requires each to admit its own app and refuse the
+other's at both layers. It also fails if a new table carries an app id outside
+the domain, if the pin becomes editable, or if a production-pinned database
+accepts a real name.
 
 ## How these decisions are enforced
 

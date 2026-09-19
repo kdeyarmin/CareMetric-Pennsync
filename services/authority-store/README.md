@@ -1,6 +1,6 @@
 # Independent staging authority store
 
-This is an additive **synthetic staging slice**, not the production authority migration. It is fixed to Base44 staging identity namespace `6a9881683dc68a0bd54f1ef7`. It does not call Base44, copy customer data, create real Auth accounts, change production release controls, or modify existing integration/PennTrain tables. It implements independent membership context/selection, a minimal synthetic patient roster, assignment changes and clinician membership revocation. A second migration adds the strictly bounded [S4-create subset](S4_CREATE_SUBSET.md): an atomic synthetic note save and own-receipt lookup. A third adds the [S3 manual referral subset](S3_REFERRAL_SUBSET.md): create and confirm an existing-patient referral, with current authorized read and transaction receipts. These are not complete S3/S4, UI acceptance or production feature selection.
+This is an additive **synthetic staging slice**, not the production authority migration. Each deployment of it serves exactly one Base44 identity namespace, pinned once at migration time and immutable afterwards; an unconfigured deployment pins staging `6a9881683dc68a0bd54f1ef7`. See [Deployment app pin](#deployment-app-pin). It does not call Base44, copy customer data, create real Auth accounts, change production release controls, or modify existing integration/PennTrain tables. It implements independent membership context/selection, a minimal synthetic patient roster, assignment changes and clinician membership revocation. A second migration adds the strictly bounded [S4-create subset](S4_CREATE_SUBSET.md): an atomic synthetic note save and own-receipt lookup. A third adds the [S3 manual referral subset](S3_REFERRAL_SUBSET.md): create and confirm an existing-patient referral, with current authorized read and transaction receipts. These are not complete S3/S4, UI acceptance or production feature selection.
 
 ## Storage and privilege boundary
 
@@ -13,6 +13,34 @@ Every RPC validates the actual database role is `authenticated`, the JWT role, `
 Identity mapping stores the independently corroborated canonical email, source Base44 user ID, evidence SHA-256 and verification timestamp. Auth UUID, legacy identity, email and evidence are immutable; disabling a mapping is terminal in this slice. A source evidence digest records trusted operator provenance, not an automatic proof that an arbitrary supplied mapping is correct. No public mapping/provisioning API exists. Any later fixture loader must independently verify these mappings before inserting them.
 
 All six existing tenant-role names are finite schema values. Only `agency_admin` and `clinician` receive roster behavior in this first slice. Administrators see their agency's synthetic patients; clinicians see active assignments. Other valid roles can obtain context but cannot use the roster yet. No owner exception exists, and the existing protected staging owner's Base44 ID cannot enter this fixture identity map. Mutation endpoints cannot promote users, revoke administrators or self, or change agency identity. Exposed write actions are assignment grant/revoke, clinician-membership revoke and the bounded S4-create subset.
+
+## Deployment app pin
+
+Every app-scoped column is typed `pennsync_private.deployment_app`, a domain that admits exactly the app id this
+database serves, and `pennsync_private.actor()` refuses any other app id before it reads anything. Both layers read
+the same source: `pennsync_private.deployment`, a single row naming the one app this database is for.
+
+That row is written by `20260919090000_deployment_app_pin.sql` from the database setting `pennsync.deployment_app_id`,
+which must be set before migrations run. It must name an app id present in `pennsync_private.known_app`; anything else
+fails the migration rather than producing a store with no containment. Leaving it unset pins staging, which is the
+restrictive outcome: a production database whose operator forgot the setting refuses every production write instead of
+silently accepting one. The `source` column records which of the two happened, so an auditor can tell a deliberate pin
+from a defaulted one. The row cannot be updated, deleted or truncated afterwards, and a second row is refused; the
+domain's CHECK is only sound because that answer can never change.
+
+It is a database setting, not an environment variable, so it is not in `.env.example`. On the target project, before the migrations run:
+
+```sql
+alter database postgres set pennsync.deployment_app_id = '<app id>';
+```
+
+The registry is deliberately short. The retired app `68ee80d98929370f9e8f2932` is absent from it, so no deployment can
+be pointed at that namespace even on purpose. Widening past staging and production means adding a row to
+`known_app` in a reviewed migration.
+
+This pin governs the namespace only. The synthetic-shape constraints -- agency and patient names must begin
+`Synthetic `, and `patient.synthetic` must hold -- are a separate control and still apply in every deployment, so a
+production-pinned database can carry enrolled identities and still cannot hold a real name.
 
 ## Transaction and replay behavior
 
