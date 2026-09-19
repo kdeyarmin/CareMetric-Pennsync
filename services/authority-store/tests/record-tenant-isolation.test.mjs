@@ -19,11 +19,17 @@ import { SCHEMA, renderDdl } from '../../../tools-entity-schema-plan.mjs';
  * outright, so testing as one would prove nothing — the last test here
  * demonstrates exactly that, which is why brokers must hold neither attribute.
  *
- * The grants below are the test's own. The generated DDL grants nothing, and
- * the RPC family the plan calls for — "one reviewed tenant-scoped RPC family
- * with agency binding from the membership row" — does not exist yet, so how a
- * broker reaches these tables in production is still an open design question.
- * What is settled here is the predicate each table carries.
+ * The grants below are the test's own, so that each predicate can be exercised
+ * directly. They are NOT how a deployment works: the record store's migration
+ * grants no caller role anything and puts the tables under an owner that RLS
+ * binds, which `record-store-migration.test.mjs` applies and proves the same
+ * predicates deny under. What is settled here is the predicate each table
+ * carries; what is settled there is that a real caller is held to it.
+ *
+ * Still open, and deliberately not answered by either file: the shape of the
+ * tenant-scoped RPC family the plan calls for. That a broker owned by the
+ * record owner is bound by these policies is now demonstrated; which brokers
+ * the ported handlers get is the next decision.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const APP = '6a9881683dc68a0bd54f1ef7';

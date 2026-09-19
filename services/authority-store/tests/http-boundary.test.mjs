@@ -74,3 +74,29 @@ test('no ownership marker makes stop a no-op even with a nonlocal Docker environ
     assert.match(result.stdout, /^No stack owned by this harness; cleanup made no changes\./);
   });
 });
+
+test('a start that fails applying a migration is named, and nothing else is forwarded', async () => {
+  const { MIGRATION_CODES, classifyToolFailure } = await import('./http-local-stack.mjs');
+  const start = (stdout, stderr = '') => classifyToolFailure('supabase', ['start'], { stdout, stderr });
+
+  // The failure this exists for: before it, a migration raising one of our own
+  // codes was reported the same way as a missing Docker daemon.
+  for (const code of MIGRATION_CODES) {
+    assert.equal(start(`psql:migration.sql:53: ERROR:  ${code}`), `LOCAL_CLI_START_MIGRATION_${code}`);
+  }
+  // A SQL fault we have no name for still separates from a daemon fault.
+  assert.equal(start('ERROR:  relation "x" already exists'), 'LOCAL_CLI_START_SQL_REJECTED');
+  assert.equal(start('failed: SQLSTATE 42501'), 'LOCAL_CLI_START_SQL_REJECTED');
+
+  // Nothing the CLI printed is forwarded: only literals this module declares.
+  const secret = 'service_role_key=eyJhbGciOiJIUzI1NiJ9.SECRET';
+  const classified = start(`ERROR:  permission denied\n${secret}\nanon key sb_secret_abc`);
+  assert.doesNotMatch(classified, /SECRET|eyJ|sb_secret|permission denied/);
+  assert.match(classified, /^LOCAL_CLI_START_[A-Z_]+$/);
+  // An unrecognized failure keeps the original redacted verdict.
+  assert.equal(start('something went wrong'), 'LOCAL_CLI_START_FAILED_OUTPUT_REDACTED');
+  // Categories that already existed still win over the new ones.
+  assert.equal(start('ERROR: Cannot connect to the Docker daemon'), 'LOCAL_CLI_START_DAEMON_UNAVAILABLE');
+  assert.equal(classifyToolFailure('supabase', ['start'], { stdout: 'ERROR: x', killed: true }),
+    'LOCAL_CLI_START_TIMED_OUT');
+});

@@ -8,6 +8,7 @@ import {
   KNOWN_APPS, PIN_SETTING, ProvisionError, RETIRED_APP,
   applyProvision, planProvision, readMigrations, runProvisionCli,
 } from '../../../tools-pennsync-provision.mjs';
+import { RECORD_MIGRATION_FILE } from '../../../tools-entity-schema-plan.mjs';
 
 /**
  * D11 makes the pin unchangeable once the first migration has run, so a
@@ -157,6 +158,13 @@ test('the migrations are read in the order the store expects', () => {
   assert.deepEqual(names, [...names].sort(), 'name order is the apply order');
   assert.ok(names[0].startsWith('20260918015112'), 'the authority schema comes first');
   assert.ok(names.includes('20260919090000_deployment_app_pin.sql'));
+  // The record store lives in its own directory, so nothing discovers it by
+  // walking the authority migrations. Provisioning is what gives a real
+  // deployment both, and it must come last: every record policy is written in
+  // terms of `pennsync_private`, and the migration refuses a database without it.
+  const record = RECORD_MIGRATION_FILE.split('/').pop();
+  assert.equal(names.at(-1), record, 'the record store is applied after the authority store');
+  assert.equal(names.filter(name => name === record).length, 1);
 });
 
 test('the command line refuses before it opens a connection, and reports codes only', async () => {
