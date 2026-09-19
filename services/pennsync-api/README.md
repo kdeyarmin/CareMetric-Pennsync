@@ -106,7 +106,7 @@ deployment that releases no document handler never loads it. Because of it the
 service now needs its dependencies installed before its tests run:
 
 ```sh
-pnpm --dir services/pennsync-api install --ignore-workspace --frozen-lockfile
+pnpm --dir services/pennsync-api install --frozen-lockfile
 ```
 
 CI does this in `ci.yml`. `publish-production-frontend.yml` is manual and
@@ -146,7 +146,7 @@ and unreleased.
 ## Tests
 
 ```sh
-pnpm --dir services/pennsync-api install --ignore-workspace --frozen-lockfile
+pnpm --dir services/pennsync-api install --frozen-lockfile
 node --test services/pennsync-api/*.test.mjs \
   base44/functionTests/pennsyncApiPortParity.test.js \
   base44/functionTests/pennsyncApiDocumentParity.test.js

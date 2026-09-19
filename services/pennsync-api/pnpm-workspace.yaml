@@ -1,0 +1,9 @@
+# This service resolves on its own, from its own lockfile. Declaring a workspace
+# root here stops pnpm walking up to the repository's, so a Railway build that
+# only ever copies this directory installs exactly what CI installs.
+#
+# `core-js` arrives under `jspdf`; its postinstall only prints a funding notice
+# and nothing here needs it to run. pnpm refuses an install that silently skips
+# a build script, so the answer is stated rather than left to a default.
+allowBuilds:
+  core-js: false

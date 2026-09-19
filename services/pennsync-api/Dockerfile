@@ -3,10 +3,10 @@ WORKDIR /service
 # Dependencies install before the source is copied, so a source-only change does
 # not re-resolve them, and from the lockfile only: a build never picks a version
 # the repository has not committed.
-COPY --chown=node:node package.json pnpm-lock.yaml ./
+COPY --chown=node:node package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 RUN corepack enable \
   && corepack prepare pnpm@11.9.0 --activate \
-  && pnpm install --frozen-lockfile --ignore-workspace --ignore-scripts \
+  && pnpm install --frozen-lockfile --ignore-scripts \
   && chown -R node:node /service
 COPY --chown=node:node . ./
 USER node
