@@ -11,6 +11,32 @@ import {
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 const entity = (properties, name = 'Probe') => JSON.stringify({ name, type: 'object', properties, required: [], rls: {} });
 
+test('the gate notices a change to any field the policies are derived from', async () => {
+  const { buildPlan, comparePlan } = await import('./tools-entity-schema-plan.mjs');
+  const plan = buildPlan(process.cwd());
+  const accepted = JSON.parse(JSON.stringify(plan));
+  assert.equal(comparePlan(plan, accepted).matches_expectations, true);
+
+  // Each of these rewrites an emitted policy while leaving the table's shape
+  // untouched, so a comparison over columns alone reports `unchanged`.
+  const drifts = [
+    ['tenant_decision', entity => entity.tenant_decision === 'agency'],
+    ['self_subject', entity => entity.self_subject !== null],
+    ['platform_flag', entity => entity.platform_flag !== null],
+  ];
+  for (const [field, pick] of drifts) {
+    const target = accepted.entities.find(pick);
+    assert.ok(target, `expected an entity with ${field} to drift`);
+    const before = target[field];
+    // Whatever it is now, this is not it.
+    target[field] = `${before}_drifted`;
+    const report = comparePlan(plan, accepted);
+    assert.deepEqual(report.changed, [target.entity], `${field} drift must be reported`);
+    assert.equal(report.matches_expectations, false);
+    target[field] = before;
+  }
+});
+
 test('the committed plan still matches the entity definitions', () => {
   const report = comparePlan(buildPlan(repository), parseExpectations(readFileSync(resolve(repository, EXPECTATIONS_FILE), 'utf8')));
   assert.deepEqual(report.added, [], 'A carried entity appeared. Regenerate the plan and review the new table.');

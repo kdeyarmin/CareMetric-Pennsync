@@ -467,12 +467,17 @@ export function comparePlan(plan, expectations) {
   const recorded = new Map(expectations.entities.map(entity => [entity.entity, entity]));
   const added = [...current.keys()].filter(name => !recorded.has(name)).sort();
   const removed = [...recorded.keys()].filter(name => !current.has(name)).sort();
+  // Every field the emitted policies are derived from. Comparing only the
+  // table's shape let an authorization change pass as `unchanged`: swapping a
+  // shared table's platform flag for another existing boolean, or changing a
+  // self subject, rewrites the predicate while leaving columns and the tenant
+  // key identical. The decision gate checks a new value is admissible; this is
+  // what checks it matches the one that was accepted.
+  const COMPARED = ['table', 'columns', 'constrained', 'tenant_key',
+    'tenant_decision', 'self_subject', 'platform_flag'];
   const changed = [...current.entries()]
-    .filter(([name, entity]) => recorded.has(name) && (
-      recorded.get(name).table !== entity.table
-      || recorded.get(name).columns !== entity.columns
-      || recorded.get(name).constrained !== entity.constrained
-      || recorded.get(name).tenant_key !== entity.tenant_key))
+    .filter(([name, entity]) => recorded.has(name)
+      && COMPARED.some(field => recorded.get(name)[field] !== entity[field]))
     .map(([name]) => name).sort();
   return { added, removed, changed, matches_expectations: !added.length && !removed.length && !changed.length };
 }
