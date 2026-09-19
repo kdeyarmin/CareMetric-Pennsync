@@ -13,6 +13,21 @@ const marker = new URL('../supabase/.temp/http-harness-owner.json', import.meta.
 const CLI = process.env.PENNSYNC_SUPABASE_CLI || 'supabase';
 const EXCLUDED = 'analytics,edge-runtime,functions,imgproxy,meta,realtime,studio,vector';
 const fail = code => { throw new Error(code); };
+/**
+ * Error codes this repository's own migrations raise. A CLI start that fails
+ * while applying one of them is otherwise indistinguishable from a broken
+ * Docker daemon, because the CLI's output carries credentials and is never
+ * forwarded. Only a literal from this list is ever emitted, so naming the
+ * failure cannot leak anything the CLI printed.
+ */
+export const MIGRATION_CODES = Object.freeze([
+  'PENNSYNC_BYPASSRLS_MIGRATION_OWNER_REQUIRED',
+  'PENNSYNC_AUTHORITY_STORE_REQUIRED',
+  'PENNSYNC_RECORD_OWNER_MUST_NOT_BYPASS_RLS',
+  'PENNSYNC_RECORD_OWNER_MUST_NOT_LOGIN',
+  'PENNSYNC_RECORD_OWNER_NOT_ASSUMABLE',
+  'PENNSYNC_RECORD_OWNER_NOT_CREATABLE',
+]);
 let pinnedDaemon;
 const localDaemon = value => typeof value === 'string' &&
   (/^unix:\/\/\/[^?#\s]+$/.test(value) || /^npipe:\/\/\/\/\.\/pipe\/[A-Za-z0-9._-]+$/.test(value));
@@ -31,6 +46,15 @@ export function classifyToolFailure(binary, args, error) {
   else if (/cannot connect to the docker daemon|error during connect|is the docker daemon running/i.test(output)) reason = 'DAEMON_UNAVAILABLE';
   else if (/permission denied while trying to connect to the docker/i.test(output)) reason = 'DAEMON_PERMISSION_DENIED';
   else if (error.killed) reason = 'TIMED_OUT';
+  // A migration that raised one of our own codes says so by name. Nothing but a
+  // literal above is emitted, so this stays inside the no-forwarding rule while
+  // turning an unreadable start failure into the one fact worth knowing.
+  else if (MIGRATION_CODES.some(code => output.includes(code))) {
+    reason = `MIGRATION_${MIGRATION_CODES.find(code => output.includes(code))}`;
+  }
+  // Otherwise say at least whether the database rejected something, which
+  // separates a SQL fault from a daemon or image fault without quoting either.
+  else if (/^\s*ERROR:\s/mi.test(output) || /\bSQLSTATE\b/i.test(output)) reason = 'SQL_REJECTED';
   return `LOCAL_${phase}_${reason}`;
 }
 async function captured(binary, args, timeout = 120000) {
