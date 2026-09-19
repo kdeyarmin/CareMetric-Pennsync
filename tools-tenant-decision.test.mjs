@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { auditDecision, checkDecisions, EXCLUDED, KINDS, readDecisions, STAMPED_KINDS } from './tools-tenant-decision.mjs';
+import {
+  auditBrokerCeiling, auditDecision, checkDecisions, EXCLUDED, KINDS, readDecisions, STAMPED_KINDS,
+} from './tools-tenant-decision.mjs';
+import { readFileSync } from 'node:fs';
 
 const REPO = process.cwd();
 const carried = new Map([['patient', 'Patient'], ['agency', 'Agency']]);
@@ -125,4 +128,71 @@ test('every reason is specific enough to be worth reading', () => {
     assert.ok(decision.because.length >= 40, `${entity}: reason is too thin`);
     assert.ok(/[.]$/.test(decision.because), `${entity}: reason should read as a sentence`);
   }
+});
+
+const ceiling = (schema, { path = null, locators = [], exempt = [] } = {}) =>
+  auditBrokerCeiling({ entity: 'Example', schema, path, locators, exempt });
+const props = properties => ({ properties });
+
+test('a broker table may not reach or name a clinical subject', () => {
+  // D2 caps `broker` at "no PHI and no authority decision", and a broker table
+  // is one a single generic RPC family serves. Reading names put free-text
+  // clinical notes and extracted document text inside that ceiling.
+  assert.deepEqual(ceiling(props({ note: { type: 'string' } }),
+    { path: { kind: 'reference', target: 'Patient' } }),
+  ['Example: reaches tenancy through Patient, so a generic broker would serve clinical rows']);
+  assert.deepEqual(ceiling(props({ patient_id: { type: 'string' } })),
+    ['Example: names a clinical subject in patient_id']);
+  assert.deepEqual(ceiling(props({ visit_id: { type: 'string' } })),
+    ['Example: names a clinical subject in visit_id']);
+  // Nested too: a reference inside an array is still a reference.
+  assert.deepEqual(ceiling(props({
+    rows: { type: 'array', items: { type: 'object', properties: { document_id: { type: 'string' } } } },
+  })), ['Example: names a clinical subject in rows[].document_id']);
+  // Reaching tenancy through something that is not clinical is fine.
+  assert.deepEqual(ceiling(props({ name: { type: 'string' } }),
+    { path: { kind: 'reference', target: 'Agency' } }), []);
+});
+
+test('a code is a credential when it has a lifecycle and a classification when it does not', () => {
+  // The distinction that matters: `VerificationCode.code` sits beside an expiry
+  // and a verified flag, so reading it redeems somebody's second factor.
+  assert.deepEqual(ceiling(props({
+    code: { type: 'string' }, expires_at: { type: 'string' }, verified: { type: 'boolean' },
+  })), ['Example: carries a credential in code']);
+  // `ServiceCode.code` and `FeaturePackage.agency_code` have no lifecycle, and
+  // matching on the name alone would have called both credentials.
+  assert.deepEqual(ceiling(props({ code: { type: 'string' }, description: { type: 'string' } })), []);
+  assert.deepEqual(ceiling(props({ agency_code: { type: 'string' } })), []);
+  // Names that are credentials however they sit.
+  assert.deepEqual(ceiling(props({ session_token: { type: 'string' } })),
+    ['Example: carries a credential in session_token']);
+  assert.deepEqual(ceiling(props({ config: { type: 'object', properties: { api_key: { type: 'string' } } } })),
+    ['Example: carries a credential in config.api_key']);
+});
+
+test('a file a broker could hand out is refused unless the exemption names it', () => {
+  assert.deepEqual(ceiling(props({ file_url: { type: 'string' } }), { locators: ['file_url'] }),
+    ['Example: can hold a file in file_url']);
+  assert.deepEqual(ceiling(props({ url: { type: 'string' } }), { locators: ['url'], exempt: ['url'] }), []);
+  // A stale exemption is how a later field slips through under an old reason.
+  assert.deepEqual(ceiling(props({ name: { type: 'string' } }), { exempt: ['gone'] }),
+    ['Example: exemption for gone matches no field']);
+});
+
+test('every entity the manifest brokers is inside D2 ceiling', () => {
+  const report = checkDecisions(REPO);
+  assert.deepEqual(report.problems, []);
+  const manifest = JSON.parse(readFileSync(`${REPO}/tools-transition-disposition.json`, 'utf8'));
+  const brokered = Object.keys(manifest.entities).filter(name => manifest.entities[name] === 'broker');
+  assert.equal(report.brokered, brokered.length);
+  assert.ok(brokered.length >= 25, `expected a substantial broker set, saw ${brokered.length}`);
+  // The ones reading names had wrongly admitted. Each now needs a reviewed
+  // per-contract handler rather than a generic family.
+  for (const entity of ['VerificationCode', 'PDFIndex', 'TeamNote', 'SessionTimeout', 'BIIntegration',
+    'EmbedConfig', 'ScheduleFeedback', 'TermsAcceptanceAudit', 'PolicyLibrary', 'LibraryDocument']) {
+    assert.equal(manifest.entities[entity], 'port', `${entity} exceeds the broker ceiling`);
+  }
+  // Moving them changes who may serve the table, never whether it is carried.
+  assert.ok(['port', 'broker'].includes(manifest.entities.VerificationCode));
 });

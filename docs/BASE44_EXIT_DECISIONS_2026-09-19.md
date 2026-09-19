@@ -708,3 +708,50 @@ the production Supabase project. And it settles the ownership boundary, not the
 RPC family — which brokers the 80 remaining handlers get, and whether a broker
 stamps a caller's agency onto a write or requires it, is the next decision.
 The broker in the test exists to prove the boundary, and is not that family.
+
+
+## D16 — What may actually be brokered
+
+**Decision.** The `broker` disposition is checked against each entity's schema
+rather than assigned from its name. Fourteen entities that held it move to
+`port`, and one carries an enumerated exemption with a reason.
+
+**Why it needed checking.** D2 caps the disposition: "a capability may only hold
+that disposition while it touches no PHI and no authority decision." A `broker`
+entity is one a single reviewed RPC family may serve generically, so that
+sentence is the whole safety argument for the family — and the assignment was
+made by reading names. Reading schemas found:
+
+- **`VerificationCode`** — a live six-digit `code` beside `expires_at`,
+  `verified` and `verified_at`. Serving it generically means handing out
+  somebody's unredeemed second factor.
+- **`PDFIndex`** — `extracted_text` ("full text extracted from PDF") and
+  `page_contents` beside a `patient_id`, reached through `Patient`.
+- **`TeamNote`** — free-text clinical notes about a patient, reached through
+  `Patient`.
+- **`SessionTimeout`** (`session_token`), **`BIIntegration`**
+  (`config.api_key`), **`EmbedConfig`** (`embed_token` and a `Document`).
+- Nine more carrying a file locator (`file_url`, `pdf_url`, `doc_url`,
+  `template_file_url`, `document_url`, `styling.logo_url`,
+  `config.endpoint_url`): handing a locator to every caller of a generic family
+  is how an uploaded file leaves.
+
+**The check can only reject, and an exemption is enumerated.** The same shape as
+D13's `global` guard, for the same reason: the crude reading is wrong in both
+directions. `ServiceCode.code` is a billing classification and
+`FeaturePackage.agency_code` names an agency — neither is a credential, and a
+name-matching rule calls both one. So a `code` is treated as a credential only
+when the entity also carries a redemption marker (`expires_at`, `verified`,
+`used_at` and their siblings). That is what separates a second factor from a
+billing code, and it is checkable.
+
+`CitationLibrary.url` is the one exemption: it addresses a published citation
+elsewhere rather than an object in our storage, and the same field is already an
+enumerated external locator under D13. An exemption that stops matching a field
+fails the gate, so it cannot outlive what it was written for.
+
+**What this does not change.** Both `port` and `broker` are carried, so the
+record store is byte-identical — 156 tables, 2,404 columns, 83 tenant-scoped.
+What changes is who may serve a table: fourteen now need a reviewed
+per-contract handler rather than a generic family. That is the trade D2 already
+described, applied to the evidence rather than to the names.

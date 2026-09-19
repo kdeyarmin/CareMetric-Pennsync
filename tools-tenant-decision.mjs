@@ -45,6 +45,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { BLOCKING_KINDS, SELF_EDITABLE, buildPaths, isActorColumn, normalize, readEntity } from './tools-tenant-path.mjs';
 import { ENTITY_DIRECTORY, censusEntity } from './tools-file-reference-census.mjs';
+import { DISPOSITION_FILE } from './tools-entity-schema-plan.mjs';
 
 export const FORMAT = 'pennsync-tenant-decision';
 export const FORMAT_VERSION = 1;
@@ -110,6 +111,66 @@ export function readDecisions(repository) {
  */
 export function carriedIndex(paths) {
   return new Map(paths.map(path => [normalize(path.entity), path.entity]));
+}
+
+/**
+ * D2's ceiling on the `broker` disposition, checked against the schema.
+ *
+ * D2 reads: "a capability may only hold that disposition while it touches no
+ * PHI and no authority decision." A `broker` entity is one a single reviewed
+ * RPC family may serve generically, so that ceiling is the whole safety
+ * argument — and it was assigned by reading names. Reading schemas instead
+ * found `VerificationCode` holding a live six-digit code with an expiry,
+ * `PDFIndex` holding `extracted_text` beside a `patient_id`, and `TeamNote`
+ * holding free-text clinical notes reached through `Patient`.
+ *
+ * Like the `global` guard this mirrors, it can only REJECT, and an exemption is
+ * enumerated per field with a reason rather than inferred. That matters because
+ * the crude reading is wrong in both directions: `ServiceCode.code` is a
+ * billing classification and `FeaturePackage.agency_code` an agency reference,
+ * neither of them a credential.
+ */
+export const CLINICAL_TARGETS = Object.freeze(['Patient', 'Visit', 'Document', 'OASISAssessment', 'Referral', 'CarePlan']);
+export const CLINICAL_SUBJECT = /^(patient|visit|document|oasis_assessment|referral|care_plan)_id$/;
+export const CREDENTIAL_FIELD = /(^|_)(token|secret|password|api_key|apikey|credential|otp)($|_)/i;
+/**
+ * A `code` is a credential when it has a lifecycle, and a classification when
+ * it does not. `VerificationCode.code` sits beside `expires_at`, `verified` and
+ * `verified_at`, so reading it is redeeming somebody's second factor;
+ * `ServiceCode.code` is a billing code and `FeaturePackage.agency_code` names
+ * an agency. Matching on the name alone gets all three wrong, in both
+ * directions, so the lifecycle is what decides.
+ */
+export const CODE_FIELD = /(^|_)code$/i;
+export const REDEMPTION_MARKER = /^(expires_at|expired_at|verified|verified_at|used_at|redeemed_at|consumed_at)$/i;
+
+export function auditBrokerCeiling({ entity, schema, path, locators, exempt = [] }) {
+  const problems = [];
+  const spared = new Set(exempt);
+  if (path?.kind === 'reference' && CLINICAL_TARGETS.includes(path.target)) {
+    problems.push(`${entity}: reaches tenancy through ${path.target}, so a generic broker would serve clinical rows`);
+  }
+  const all = everyField(schema);
+  const redeemable = all.some(field => REDEMPTION_MARKER.test(field.name));
+  for (const field of all) {
+    if (CLINICAL_SUBJECT.test(field.name)) {
+      problems.push(`${entity}: names a clinical subject in ${field.path}`);
+    }
+    const credential = CREDENTIAL_FIELD.test(field.name) || (redeemable && CODE_FIELD.test(field.name));
+    if (credential && !spared.has(field.path)) {
+      problems.push(`${entity}: carries a credential in ${field.path}`);
+    }
+  }
+  for (const locator of locators) {
+    if (!spared.has(locator)) problems.push(`${entity}: can hold a file in ${locator}`);
+  }
+  // An exemption that no longer matches anything is stale, and a stale
+  // exemption is how a later field slips through under an old justification.
+  const present = new Set([...all.map(field => field.path), ...locators]);
+  for (const field of spared) {
+    if (!present.has(field)) problems.push(`${entity}: exemption for ${field} matches no field`);
+  }
+  return problems;
 }
 
 /** Reasons a single decision is not admissible. Empty means it stands. */
@@ -192,10 +253,34 @@ export function checkDecisions(repository = process.cwd()) {
     problems.push(...auditDecision({ entity, decision, schema, carried, locators }));
   }
 
+  // D2's ceiling, over every entity the manifest dispositions `broker` —
+  // including those whose tenant path resolves, which carry no decision here.
+  const dispositions = JSON.parse(readFileSync(join(root, DISPOSITION_FILE), 'utf8'));
+  const exemptions = dispositions.broker_ceiling ?? {};
+  const byEntity = new Map(paths.map(path => [path.entity, path]));
+  const brokered = Object.keys(dispositions.entities)
+    .filter(entity => dispositions.entities[entity] === 'broker').sort();
+  for (const entity of brokered) {
+    problems.push(...auditBrokerCeiling({
+      entity,
+      schema: readEntity(root, entity),
+      path: byEntity.get(entity),
+      locators: locatorPaths(root, entity),
+      exempt: exemptions[entity]?.fields ?? [],
+    }));
+  }
+  for (const entity of Object.keys(exemptions)) {
+    if (!brokered.includes(entity)) problems.push(`${entity}: broker exemption but not dispositioned broker`);
+    const reason = exemptions[entity]?.because;
+    if (typeof reason !== 'string' || reason.trim().length < 20) {
+      problems.push(`${entity}: broker exemption needs a reason someone can read`);
+    }
+  }
+
   const stamped = blocking
     .filter(({ entity }) => STAMPED_KINDS.includes(decided[entity]?.kind))
     .map(({ entity }) => entity).sort();
-  return { blocking: blocking.length, counts, stamped, problems: problems.sort() };
+  return { blocking: blocking.length, counts, stamped, brokered: brokered.length, problems: problems.sort() };
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

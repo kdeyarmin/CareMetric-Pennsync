@@ -311,8 +311,23 @@ export function parseManifest(raw) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('MANIFEST_INVALID_SHAPE');
   if (manifest.format !== FORMAT || manifest.version !== FORMAT_VERSION) throw new Error('MANIFEST_UNSUPPORTED_FORMAT');
   if (!REVIEW_STATES.includes(manifest.review_state)) throw new Error('MANIFEST_INVALID_REVIEW_STATE');
-  const allowed = new Set([...FAMILIES, 'format', 'version', 'review_state', 'retention']);
+  const allowed = new Set([...FAMILIES, 'format', 'version', 'review_state', 'retention', 'broker_ceiling']);
   if (Object.keys(manifest).some(key => !allowed.has(key))) throw new Error('MANIFEST_UNKNOWN_FIELD');
+  // Per-field exemptions from D2's ceiling on `broker`, checked in full by
+  // `tools-tenant-decision.mjs`, which can read the schemas. Only the shape is
+  // settled here, so a malformed block fails at the manifest rather than later.
+  const ceiling = manifest.broker_ceiling ?? {};
+  if (typeof ceiling !== 'object' || Array.isArray(ceiling)) throw new Error('MANIFEST_INVALID_BROKER_CEILING');
+  for (const entry of Object.values(ceiling)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('MANIFEST_INVALID_BROKER_CEILING');
+    if (!Array.isArray(entry.fields) || !entry.fields.length
+      || entry.fields.some(field => typeof field !== 'string' || !field)) {
+      throw new Error('MANIFEST_INVALID_BROKER_CEILING');
+    }
+    if (typeof entry.because !== 'string' || entry.because.trim().length < 20) {
+      throw new Error('MANIFEST_INVALID_BROKER_CEILING');
+    }
+  }
   const retention = manifest.retention;
   if (!retention || typeof retention !== 'object' || Array.isArray(retention)) throw new Error('MANIFEST_INVALID_RETENTION');
   for (const entry of Object.values(retention)) {
