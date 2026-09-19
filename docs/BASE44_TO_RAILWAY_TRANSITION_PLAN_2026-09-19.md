@@ -33,7 +33,7 @@ Not done here, and each blocked on something this branch cannot supply:
 | Deploying either Railway service; provisioning the production Supabase project | Cost approval and operator credentials |
 | Enabling independent authority on the running runtime | A reviewed deployment plus preflight and two-agency acceptance with enrolled actors |
 | Generalizing the authority store past four synthetic actors | A schema migration widening both app-id pins — the domain across 18 tables and the gate inside `actor()` — plus the per-deployment guard that keeps staging from holding production rows once widened. Not configuration; see Phase 1 |
-| Reconciling the duplicated authority predicates (`validateMembershipRows`, `validateAssignmentIntegrity`) into one shared definition | Choosing a strictness tier. The twelve `validateAssignmentIntegrity` copies are now diffed: they agree on everything except two nested markers, giving three tiers (7 strict / 3 middle / 2 loosest). Picking one changes production authorization either way, so it stays a reviewed decision; `base44/functionTests/assignmentBindingConvention.test.js` pins the split meanwhile |
+| Reconciling the duplicated authority predicates (`validateMembershipRows`, `validateAssignmentIntegrity`) into one shared definition | Nothing external. The twelve `validateAssignmentIntegrity` copies are now diffed and all enforce the same authorization: seven bind the assignment inside the predicate, five in the caller on the next line. It is a consolidation, not a behavior decision — but porting the predicate without its caller would drop the binding, so it comes before the ports. `base44/functionTests/assignmentBindingConvention.test.js` holds the line meanwhile |
 | Deciding the 87 entities with no usable tenant path | Owners answering the three questions in Phase 2; two of them (global reference data vs. a missing key) are product calls, not derivable from the schema |
 | Porting the remaining handlers and entity schemas | The decisions above being accepted, then per-capability review |
 | Any customer data, file or identity migration | Base44 credentials, named owners, and a maintenance window |
@@ -377,41 +377,43 @@ Deliverables, in tiers that can merge independently:
   source, a valid `activated_at` and a sane `version`, and must refuse by
   throwing `PublicError(409)`.
 
-  They differ on exactly two conditions, and the two nest, giving three tiers:
+  Reading the predicate alone suggests a strictness split: seven copies compare
+  the row against `membership.id` and `membership.version` inside the guard and
+  compare the assignment's email to the caller's, and five do not. **That
+  reading is wrong, and an earlier revision of this document asserted it.** The
+  other five perform the same comparisons in the caller, on the line after the
+  predicate returns:
 
-  | Tier | Assignment bound to caller's membership | Assignment email compared to caller's | Copies |
-  | --- | --- | --- | ---: |
-  | Strict | yes | yes | 7 |
-  | Middle | well-formedness only | yes | 3 |
-  | Loosest | well-formedness only | **no** | 2 |
+  ```js
+  const assignment = await loadExactAssignment(...);
+  if (
+    !authority.membership
+    || assignment.user_email_normalized !== authority.normalizedEmail
+    || assignment.assignee_membership_id !== authority.membership.id
+    || assignment.assignee_membership_version_at_enablement !== authority.membership.version
+  ) throw new PublicError(409, 'Care-team assignment binding is invalid');
+  ```
 
-  Strict is all four Visit brokers plus `listAuthorizedPatients`,
-  `saveOasisResponses` and `generateFaxCoverPage`. Middle is all three Document
-  brokers. Loosest is `getAuthorizedPatient` and
-  `readAuthorizedOASISAssessments` — both PHI reads, and the two weakest of the
-  twelve. Neither is open: `row.user_id !== userId` still binds every copy to
-  the caller by the authoritative identifier. But the split does not follow
-  entity families — `listAuthorizedPatients` is strict while
-  `getAuthorizedPatient` is loosest, and `saveOasisResponses` is strict while
-  `readAuthorizedOASISAssessments` is loosest — so it reads as drift rather than
-  design.
+  All twelve therefore enforce the same authorization. There is no weaker tier,
+  and no security finding here: `getAuthorizedPatient` and
+  `readAuthorizedOASISAssessments` bind exactly as strictly as the Visit
+  brokers. What differs is only where the binding is written — inside the
+  predicate for seven, in the caller for five.
 
-  The binding condition decides how much authority a stale assignment carries:
-  a strict copy refuses one enabled against a different membership row or an
-  earlier version of the same one, so a role change or a revoke-and-regrant
-  invalidates it until it is issued again. Reconciling upward is the fail-closed
-  direction and is probably right, but it has an operational edge worth pricing:
-  it would deny a clinician whose membership version moved since the assignment
-  was granted, which in this product means losing chart access mid-visit.
-  Reconciling downward drops a real revocation check.
-
-  So the decision is which tier becomes the single predicate, not whether the
-  copies can be merged — they can. That is a behavior review of production
-  authorization code and needs its own security sign-off; it must happen
-  **before** the ports, not during them, or the tiers travel into the new
-  service. `base44/functionTests/assignmentBindingConvention.test.js` pins the
-  split meanwhile: it fails when any copy changes tier, when a copy drops a
-  condition all twelve share, or when the two markers stop nesting.
+  That placement is still a real hazard for the port, which is why it is worth
+  recording. A reviewer who reads only the predicate concludes five PHI paths
+  are weaker than they are; more importantly, anyone porting
+  `validateAssignmentIntegrity` without also porting its caller would carry the
+  half that omits the binding and silently drop the revocation check. The
+  reconciliation is therefore a consolidation, not a behavior decision: move the
+  binding inside the predicate everywhere, delete the five call-site copies, and
+  bring the result under the shared-helper generator. It should still happen
+  **before** the ports rather than during them, but it no longer needs a
+  strictness ruling. `base44/functionTests/assignmentBindingConvention.test.js`
+  holds the line meanwhile: it fails if any copy loses the binding from both
+  places, if a copy changes which half holds it, if a binding is dereferenced
+  without establishing the membership exists, or if a copy drops a condition all
+  twelve share.
 - Tier B (port through the runtime): the 43 AI-assist functions become thin
   server handlers that call the runtime's `InvokeLLM` and
   `ExtractDataFromUploadedFile` adapters; Base44 `Core.*` calls in `src/` go
