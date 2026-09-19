@@ -106,6 +106,15 @@ revoke all on function pennsync_private.app_admitted(text) from public,anon,auth
 -- is left without it, and without USAGE on the schema in any case.
 grant execute on function pennsync_private.app_admitted(text) to authenticated;
 
+-- Which kind of deployment this is. Read only from `actor()`, so it stays
+-- revoked from every application role.
+create function pennsync_private.deployment_label() returns text
+language sql stable security definer set search_path = '' as $$
+  select k.label from pennsync_private.deployment d
+    join pennsync_private.known_app k on k.app_id = d.app_id
+$$;
+revoke all on function pennsync_private.deployment_label() from public,anon,authenticated;
+
 -- `staging_app` would be a lie the moment a production deployment exists.
 -- Renaming it is free -- the 18 columns that carry it depend on the type by OID --
 -- and it stops a future reader from assuming the store is staging-only.
@@ -122,8 +131,18 @@ alter domain pennsync_private.deployment_app
 
 -- The entry gate moves off the literal too. Both layers must agree, and now they
 -- agree by construction: they read the same pin. The body below is the first
--- migration's `actor()` with only the app check changed; CREATE OR REPLACE keeps
--- its existing grants.
+-- migration's `actor()` with the app check changed and one guard added;
+-- CREATE OR REPLACE keeps its existing grants.
+--
+-- That guard is the honest limit of this change. Every response this RPC surface
+-- builds states `staging: true` and `synthetic: true` in its contract, and those
+-- claims are only true in the staging deployment. Admitting production for
+-- storage does not make them true, and relabelling eighteen response builders
+-- here would claim a port that has not happened: the payloads are still the
+-- staging slice's synthetic projections. So storage is admitted for production
+-- and this surface is not, until each contract is revised with its own review.
+-- An operator enrollment tool writes identity, agency and membership rows
+-- directly as the migration administrator and does not pass through here.
 create or replace function pennsync_private.actor(p_app_id text,p_write boolean)
 returns pennsync_private.identity_map
 language plpgsql security definer set search_path = '' as $$
@@ -133,6 +152,9 @@ declare
 begin
   if not pennsync_private.app_admitted(p_app_id) then
     raise exception using errcode='22023',message='PENNSYNC_APP_NOT_ADMITTED';
+  end if;
+  if pennsync_private.deployment_label() <> 'staging' then
+    raise exception using errcode='42501',message='PENNSYNC_STAGING_RPC_SURFACE_ONLY';
   end if;
   if current_setting('transaction_isolation') <> 'read committed' then
     raise exception using errcode='25001',message='PENNSYNC_READ_COMMITTED_REQUIRED';

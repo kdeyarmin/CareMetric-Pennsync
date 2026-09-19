@@ -183,16 +183,47 @@ test('the entry gate follows the same pin, so the two layers cannot drift', asyn
   // `actor()` is the first call on every read path. It now asks the pin rather
   // than comparing a literal, so a widening that touched only the domain, or
   // only this gate, is no longer expressible: there is one source of truth.
-  for (const [db, own, other] of [[staging, STAGING_APP, PRODUCTION_APP], [production, PRODUCTION_APP, STAGING_APP]]) {
+  for (const [db, other] of [[staging, PRODUCTION_APP], [production, STAGING_APP]]) {
     await db.exec('reset role');
     for (const app of [other, LEGACY_APP, '', 'not-an-app', null]) {
       await assert.rejects(db.query('select pennsync_private.actor($1, false)', [app]),
         /PENNSYNC_APP_NOT_ADMITTED/, `actor() must refuse ${JSON.stringify(app)}`);
     }
-    // The pinned app reaches past the app check and fails on the caller
-    // instead: no JWT is set here, so there is no identity to resolve.
-    await assert.rejects(db.query('select pennsync_private.actor($1, false)', [own]),
-      /PENNSYNC_SESSION_REQUIRED/);
+  }
+  // In staging the pinned app reaches past both gates and fails on the caller
+  // instead: no JWT is set here, so there is no identity to resolve.
+  await assert.rejects(staging.query('select pennsync_private.actor($1, false)', [STAGING_APP]),
+    /PENNSYNC_SESSION_REQUIRED/);
+});
+
+test('the RPC surface stays staging-only, because its responses still say so', async () => {
+  // Admitting production for storage did not port this surface. Every response
+  // it builds asserts `staging: true` and `synthetic: true`, so serving a
+  // production deployment would make each one a lie. `actor()` refuses instead,
+  // and it is the first call on every read and mutation path, so one guard
+  // covers all of them.
+  await assert.rejects(production.query('select pennsync_private.actor($1, false)', [PRODUCTION_APP]),
+    /PENNSYNC_STAGING_RPC_SURFACE_ONLY/, 'the production deployment must not serve the staging surface');
+  await assert.rejects(production.query('select public.pennsync_staging_context($1,$2)', [PRODUCTION_APP, 'agency-a']),
+    /PENNSYNC_STAGING_RPC_SURFACE_ONLY/, 'the public wrapper must not reach past it either');
+  // The order matters: a caller supplying another app id learns only that the
+  // app is not admitted, never which kind of deployment refused it.
+  await assert.rejects(production.query('select public.pennsync_staging_context($1,$2)', [STAGING_APP, 'agency-a']),
+    /PENNSYNC_APP_NOT_ADMITTED/);
+
+  // And the premise the guard rests on is pinned, not assumed: if a response
+  // contract stops saying `staging`, this fails and the guard has to be
+  // revisited rather than quietly outliving its reason.
+  const migrationDir = new URL('../supabase/migrations/', import.meta.url);
+  const contracts = new Set();
+  for (const name of (await readdir(migrationDir)).filter(n => n.endsWith('.sql'))) {
+    const text = await readFile(new URL(name, migrationDir), 'utf8');
+    for (const [, value] of text.matchAll(/'(cm\.pennsync\.[a-z0-9.-]+)'/g)) contracts.add(value);
+  }
+  assert.ok(contracts.size >= 4, 'the response contracts should have been found');
+  for (const contract of contracts) {
+    assert.match(contract, /\.staging\.v\d+$/,
+      `${contract} is no longer a staging contract, so the staging-only guard needs revisiting`);
   }
 });
 

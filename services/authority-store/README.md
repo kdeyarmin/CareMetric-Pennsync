@@ -42,6 +42,14 @@ This pin governs the namespace only. The synthetic-shape constraints -- agency a
 `Synthetic `, and `patient.synthetic` must hold -- are a separate control and still apply in every deployment, so a
 production-pinned database can carry enrolled identities and still cannot hold a real name.
 
+The RPC surface is staging-only for the same reason. Every response documented below states
+`contract: cm.pennsync.*.staging.v1`, `staging: true` and `synthetic: true`, and those claims are only true in the
+staging deployment. Rather than relabel eighteen response builders and claim a port that has not happened,
+`actor()` refuses outright when the pinned deployment is not staging (`PENNSYNC_STAGING_RPC_SURFACE_ONLY`, SQLSTATE
+`42501`). It is the first call on every read and mutation path, so one guard covers all of them. A production
+deployment is therefore writable by the migration administrator -- which is how an operator enrollment tool creates
+identity, agency and membership rows -- and serves no RPC until each contract is revised under its own review.
+
 ## Transaction and replay behavior
 
 All calls require READ COMMITTED. A fixed application advisory lock is shared for reads and exclusive for writes; it is deliberately broad for a small staging fixture and is not a throughput claim. The common acquisition order is app lock, caller native user/session and identity, agency and actor membership, then target membership, patient/assignment and target identity/native checks as needed, followed by the receipt. Current native rows are held `FOR SHARE` until transaction completion. Operations through this API serialize with revocation. Trusted manual maintenance must use the same app lock and avoid unscheduled direct mutations.

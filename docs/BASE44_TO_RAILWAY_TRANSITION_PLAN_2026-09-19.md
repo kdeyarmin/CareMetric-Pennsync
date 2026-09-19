@@ -296,11 +296,18 @@ Deliverables:
   identity row. It still fails the moment a new table carries an app id outside
   the domain or the pin becomes editable.
 
-  This opened enrollment, not PHI. The synthetic-shape constraints — agency and
-  patient names must begin `Synthetic `, and `patient.synthetic` must hold — are
-  untouched, and the test asserts that a production-pinned database still refuses
-  a real agency or patient name. Relaxing those is the separate migration named
-  in the next bullet.
+  This opened enrollment, not PHI, and storage, not the surface. The
+  synthetic-shape constraints — agency and patient names must begin `Synthetic `,
+  and `patient.synthetic` must hold — are untouched, and the test asserts that a
+  production-pinned database still refuses a real agency or patient name. Every
+  response this store builds also states `staging: true` and `synthetic: true`,
+  so `actor()` refuses any non-staging deployment outright
+  (`PENNSYNC_STAGING_RPC_SURFACE_ONLY`) rather than relabel eighteen response
+  builders and claim a port that has not happened. A production deployment is
+  writable by the migration administrator — which is how the enrollment tool in
+  the next bullet creates its rows — and serves no RPC. Both limits are pinned by
+  tests, including one that fails if a response contract stops saying `staging`,
+  so the guard cannot outlive its reason unnoticed.
 - All six tenant roles, real names permitted through an explicit production
   migration, actor registry moved from code pins to verified identity-map rows,
   session policy reviewed (refresh, idle, MFA decision).

@@ -324,13 +324,24 @@ Three properties make that safe, and each is pinned by a test:
   refused. The domain's CHECK calls a `STABLE` function rather than an immutable
   one, which is only sound because that answer can never change.
 
-Scope limit: this decides the **namespace**, not the data. The synthetic-shape
-constraints — agency and patient names must begin `Synthetic `, and
-`patient.synthetic` must hold — are untouched and still apply in every
-deployment. A production-pinned database can carry enrolled identities and still
-cannot hold a real agency or patient name. Relaxing those is a separate migration
-under the same review, and D4's separate staging and production projects still
-stand: the pin makes one codebase serve both, never one database.
+Scope limit: this decides the **namespace**, not the data, and storage, not the
+surface. The synthetic-shape constraints — agency and patient names must begin
+`Synthetic `, and `patient.synthetic` must hold — are untouched and still apply in
+every deployment. A production-pinned database can carry enrolled identities and
+still cannot hold a real agency or patient name. Relaxing those is a separate
+migration under the same review, and D4's separate staging and production
+projects still stand: the pin makes one codebase serve both, never one database.
+
+The RPC surface is held back by the same decision. Every response it builds
+states `contract: cm.pennsync.*.staging.v1`, `staging: true` and
+`synthetic: true`. Admitting production for storage does not make those true, and
+relabelling the eighteen response builders would claim a port that has not
+happened — the payloads are still the staging slice's synthetic projections. So
+`actor()` refuses a non-staging deployment outright. A production database is
+writable by the migration administrator, which is how the operator enrollment
+tool creates identity, agency and membership rows, and serves no RPC until each
+contract is revised. A test fails if a response contract stops saying `staging`,
+so the guard cannot outlive its reason.
 
 Enforcement: `services/authority-store/tests/app-namespace-containment.test.mjs`
 builds two databases from the same migrations, one defaulted to staging and one
