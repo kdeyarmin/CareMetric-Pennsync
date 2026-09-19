@@ -44,16 +44,28 @@ insert into pennsync_private.known_app (app_id, label) values
   ('6a9881683dc68a0bd54f1ef7','staging'),
   ('694ec16e72e01b60d22f7cbf','production');
 
--- Which one this database serves. One row, written once, never changed. The
--- primary key admits a single row; the triggers below refuse every later edit.
--- `source` records whether an operator chose the pin or it defaulted, so an
--- auditor reading a production database can tell deliberate from accidental.
+-- The pin itself is a generated function body, not a row.
+--
+-- A row was the obvious shape and it is the wrong one: a domain CHECK that
+-- reads a table cannot survive a restore. `pg_restore` copies table data after
+-- the schema but in its own order, and `agency` comes before `deployment`, so
+-- every app-scoped row would be checked against a pin that has not been loaded
+-- yet and refused. The whole store would be unrestorable, which the rehearsal
+-- suite exists to prevent. As a constant the pin is part of the schema,
+-- restored before any data, and the CHECK is genuinely IMMUTABLE rather than
+-- merely unchanging in practice.
+--
+-- Changing it afterwards means CREATE OR REPLACE by the function's owner, which
+-- is the same trusted migration administrator who could alter the domain
+-- directly. Nothing is given away by holding it here rather than in a row.
 create table pennsync_private.deployment (
   singleton boolean primary key default true check (singleton),
   app_id text not null references pennsync_private.known_app(app_id),
   source text not null check (source in ('setting','default')),
   pinned_at timestamptz not null default clock_timestamp()
 );
+comment on table pennsync_private.deployment is
+  'Dated record of the pin. `pennsync_private.deployment_app_id()` is what enforces it.';
 
 -- The pin comes from `pennsync.deployment_app_id`, set on the database before
 -- migrations run. Unset defaults to staging, which is the restrictive outcome:
@@ -64,13 +76,27 @@ do $$
 declare
   v_requested text := nullif(btrim(coalesce(current_setting('pennsync.deployment_app_id', true), '')), '');
   v_app text := coalesce(v_requested, '6a9881683dc68a0bd54f1ef7');
+  v_label text;
 begin
-  if not exists (select 1 from pennsync_private.known_app k where k.app_id = v_app) then
+  select k.label into v_label from pennsync_private.known_app k where k.app_id = v_app;
+  if v_label is null then
     raise exception using errcode='22023', message='PENNSYNC_UNKNOWN_DEPLOYMENT_APP';
   end if;
+  execute format($fn$
+    create function pennsync_private.deployment_app_id() returns text
+      language sql immutable parallel safe set search_path = '' as $body$ select %L::text $body$;
+  $fn$, v_app);
+  execute format($fn$
+    create function pennsync_private.deployment_label() returns text
+      language sql immutable parallel safe set search_path = '' as $body$ select %L::text $body$;
+  $fn$, v_label);
   insert into pennsync_private.deployment (app_id, source)
     values (v_app, case when v_requested is null then 'default' else 'setting' end);
 end $$;
+
+-- The record cannot drift from what it records.
+alter table pennsync_private.deployment
+  add constraint deployment_matches_pin check (app_id = pennsync_private.deployment_app_id());
 
 create function pennsync_private.protect_deployment() returns trigger
 language plpgsql security invoker set search_path = '' as $$
@@ -89,31 +115,24 @@ alter table pennsync_private.deployment force row level security;
 revoke all on pennsync_private.known_app,pennsync_private.deployment
   from public,anon,authenticated,service_role;
 
--- What the domain's CHECK delegates to. Deliberately not IMMUTABLE: it reads the
--- pin. That is sound only because the pin is written once and the triggers above
--- refuse every change, so for a given input this returns the same answer for the
--- life of the database. Being STABLE rather than IMMUTABLE also stops the planner
--- from folding the coercion of a constant away before the check runs.
+-- What the domain's CHECK delegates to. IMMUTABLE because the pin is a
+-- constant: the planner may fold it, and a restore evaluates it correctly
+-- before any row is loaded.
 create function pennsync_private.app_admitted(p_app_id text) returns boolean
-language sql stable security definer set search_path = '' as $$
-  select exists (select 1 from pennsync_private.deployment d where d.app_id = p_app_id)
+language sql immutable parallel safe set search_path = '' as $$
+  select p_app_id is not null and p_app_id = pennsync_private.deployment_app_id()
 $$;
-revoke all on function pennsync_private.app_admitted(text) from public,anon,authenticated;
--- `authenticated` needs this only because a domain coercion is evaluated as the
--- current user, and the RLS backstop is exercised by a direct insert in the
--- tests. It discloses nothing new: `actor()` already tells any authenticated
--- caller whether the app id it supplied is the one this database serves. `anon`
--- is left without it, and without USAGE on the schema in any case.
-grant execute on function pennsync_private.app_admitted(text) to authenticated;
-
--- Which kind of deployment this is. Read only from `actor()`, so it stays
--- revoked from every application role.
-create function pennsync_private.deployment_label() returns text
-language sql stable security definer set search_path = '' as $$
-  select k.label from pennsync_private.deployment d
-    join pennsync_private.known_app k on k.app_id = d.app_id
-$$;
-revoke all on function pennsync_private.deployment_label() from public,anon,authenticated;
+revoke all on function pennsync_private.app_admitted(text),
+  pennsync_private.deployment_app_id(), pennsync_private.deployment_label()
+  from public,anon,authenticated;
+-- `authenticated` needs the first two only because a domain coercion is
+-- evaluated as the current user, and the RLS backstop is exercised by a direct
+-- insert in the tests. They disclose nothing new: `actor()` already tells any
+-- authenticated caller whether the app id it supplied is the one this database
+-- serves. `deployment_label()` stays revoked; only `actor()` reads it, as the
+-- definer. `anon` gets none of them, and has no USAGE on the schema in any case.
+grant execute on function pennsync_private.app_admitted(text),
+  pennsync_private.deployment_app_id() to authenticated;
 
 -- `staging_app` would be a lie the moment a production deployment exists.
 -- Renaming it is free -- the 18 columns that carry it depend on the type by OID --

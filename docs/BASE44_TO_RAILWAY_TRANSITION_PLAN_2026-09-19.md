@@ -278,18 +278,26 @@ Deliverables:
   to its callers, which is what the store exists not to rely on) and the second
   was rejected because per-environment migration text makes drift invisible.
 
-  `20260919090000_deployment_app_pin.sql` takes the first, without the triggers:
-  the domain's CHECK and `actor()` both read one immutable row rather than a
-  literal, so there is nothing for a trigger to re-check and no second layer to
-  drift. `pennsync_private.known_app` lists the app ids this codebase admits at
-  all — staging and production; the retired `68ee80d98929370f9e8f2932` is absent,
-  so no deployment can be pointed at it. `pennsync_private.deployment` names the
-  one this database serves, written once from the database setting
-  `pennsync.deployment_app_id`, rejecting an unknown value rather than producing
-  an uncontained store, defaulting to staging when unset (the restrictive
-  outcome), recording which of the two happened, and immutable to update, delete
-  and truncate afterwards. The domain is renamed `deployment_app`, since
-  `staging_app` stops being true the moment a production deployment exists.
+  `20260919090000_deployment_app_pin.sql` takes the first, without the triggers
+  and — after the restore rehearsal failed on the first attempt — without the
+  row. The pin holding a table row is what broke it: a domain CHECK that reads a
+  table cannot survive `pg_restore`, which loads data after the schema but in its
+  own order, so `COPY pennsync_private.agency` was checked against a `deployment`
+  table that had not loaded yet and every row was refused. The migration now
+  reads `pennsync.deployment_app_id` once and generates
+  `pennsync_private.deployment_app_id()`, an IMMUTABLE function returning that
+  single constant, which the domain's CHECK and `actor()` both ask. The pin is
+  part of the schema, restored before any data, and there is one source of truth
+  for both layers. `pennsync_private.known_app` lists the app ids this codebase
+  admits at all — staging and production; the retired `68ee80d98929370f9e8f2932`
+  is absent, so no deployment can be pointed at it. An unknown setting fails the
+  migration rather than producing an uncontained store, and an unset one defaults
+  to staging, the restrictive outcome. `pennsync_private.deployment` survives as
+  the dated record — the app, whether it was chosen or defaulted, and when —
+  constrained to equal the function so it cannot drift from what it records, and
+  closed to update, delete and truncate. The domain is renamed `deployment_app`,
+  since `staging_app` stops being true the moment a production deployment
+  exists.
 
   `services/authority-store/tests/app-namespace-containment.test.mjs` proves this
   against two databases built from the same migrations, one defaulted to staging

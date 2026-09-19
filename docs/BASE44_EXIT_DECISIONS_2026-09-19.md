@@ -315,12 +315,27 @@ database hold both.
 | A different domain definition per environment | The migration text stops being identical everywhere, so drift between deployments becomes invisible rather than impossible |
 | A `deployment` table plus a trigger on every app-scoped table | Correct, but the triggers are redundant once the domain itself reads the pin, and each is a separate thing to forget on a new table |
 
-Adopted: the table without the triggers. `pennsync_private.known_app` lists the
-app ids this codebase admits at all — staging and production. The retired app
-`68ee80d98929370f9e8f2932` is deliberately absent, so no deployment can be
-pointed at it even on purpose; adding a third is a reviewed migration.
-`pennsync_private.deployment` names the one this database serves and is written
-from the database setting `pennsync.deployment_app_id`.
+Adopted: the third, without its triggers and — after the restore rehearsal
+failed on the first attempt — without its row. Holding the pin in a table is
+what broke it: a domain CHECK that reads a table cannot survive `pg_restore`,
+which loads data after the schema but in its own order, so `COPY
+pennsync_private.agency` was checked against a `deployment` table that had not
+loaded yet and every row was refused. A store that cannot be restored is not a
+store, and the rehearsal suite exists to catch exactly that.
+
+The pin is therefore a generated constant. The migration reads
+`pennsync.deployment_app_id` once and generates
+`pennsync_private.deployment_app_id()`, an IMMUTABLE function returning that one
+value, which both the domain's CHECK and `actor()` ask. It is part of the schema,
+restored before any data. Changing it afterwards means `CREATE OR REPLACE` by
+the function's owner — the same trusted migration administrator who could alter
+the domain directly — so nothing is given away by holding it there rather than
+in a row. `pennsync_private.known_app` lists the app ids this codebase admits at
+all — staging and production. The retired app `68ee80d98929370f9e8f2932` is
+deliberately absent, so no deployment can be pointed at it even on purpose;
+adding a third is a reviewed migration. `pennsync_private.deployment` survives
+as the dated record, constrained to equal the function so it cannot drift from
+what it records.
 
 Three properties make that safe, and each is pinned by a test:
 
@@ -331,9 +346,10 @@ Three properties make that safe, and each is pinned by a test:
   operator forgot the setting pins staging, so it refuses every production write
   instead of silently accepting one. The `source` column records whether the pin
   was chosen or defaulted, so an auditor can tell the two apart.
-- **Written once.** Update, delete and truncate are refused, and a second row is
-  refused. The domain's CHECK calls a `STABLE` function rather than an immutable
-  one, which is only sound because that answer can never change.
+- **Written once.** The pin is a constant in a function body; the dated record of
+  it refuses update, delete, truncate and a second row, and is constrained to
+  equal the function. The domain's CHECK is genuinely IMMUTABLE, which is both
+  what makes it correct and what makes a restore work.
 
 Scope limit: this decides the **namespace**, not the data, and storage, not the
 surface. The synthetic-shape constraints — agency and patient names must begin

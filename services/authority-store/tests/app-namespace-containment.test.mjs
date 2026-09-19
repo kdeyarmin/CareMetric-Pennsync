@@ -16,11 +16,20 @@ import { PGlite } from '@electric-sql/pglite';
  * Until `20260919090000_deployment_app_pin.sql` both layers were the staging app
  * id written as a literal, which meant nothing could be enrolled for production
  * without editing the schema, and widening the literal into a set would have let
- * one database hold both. So the literal became a pin: `pennsync_private.
- * deployment` names the single app this database serves, written once from
- * `pennsync.deployment_app_id` and immutable afterwards, and both layers read it.
- * The migration text is now identical in every deployment; what differs is one
- * row that cannot be edited.
+ * one database hold both. So the literal became a pin: the migration reads
+ * `pennsync.deployment_app_id` once and generates
+ * `pennsync_private.deployment_app_id()`, an IMMUTABLE function returning that
+ * one constant, which both layers ask. The migration text is identical in every
+ * deployment; what differs is a generated function body.
+ *
+ * It is a function and not a row on purpose, and the reason is restore. A domain
+ * CHECK that reads a table cannot survive `pg_restore`: table data is loaded
+ * after the schema but in its own order, `agency` comes before `deployment`, and
+ * every app-scoped row would be checked against a pin not yet loaded and
+ * refused. That is not hypothetical — it is how the first version of this
+ * migration failed, in the restore rehearsal. `pennsync_private.deployment`
+ * survives as the dated record of the pin, constrained so it cannot disagree
+ * with it.
  *
  * That makes the containment a property of the pin rather than of the file, so
  * it is proved here against two databases built from the same migrations: one
@@ -103,11 +112,36 @@ test('the app domain admits the pinned app and nothing else, in either deploymen
   }
 });
 
-test('the pin is written once and cannot be edited, which is what makes the domain sound', async () => {
-  // The domain CHECK calls a STABLE function that reads this row. That is only
-  // safe because the answer can never change: a mutable pin would leave rows
-  // already written under the old app id sitting in a database that now claims
-  // another. Every route to changing it must be closed.
+test('the pin is a constant, so the domain CHECK survives a restore', async () => {
+  // The two functions the CHECK reaches must be IMMUTABLE and must be constants.
+  // A non-constant one would be read after the schema and before the data it
+  // depends on, and every app-scoped COPY in a restore would be refused.
+  const functions = await staging.query(`select p.proname as name, p.provolatile as volatility, p.prosrc as body
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'pennsync_private'
+      and p.proname in ('app_admitted','deployment_app_id','deployment_label') order by p.proname`);
+  assert.equal(functions.rows.length, 3);
+  for (const row of functions.rows) {
+    assert.equal(row.volatility, 'i', `${row.name} must be IMMUTABLE`);
+  }
+  const constants = Object.fromEntries(functions.rows.map(row => [row.name, row.body.trim()]));
+  assert.equal(constants.deployment_app_id, `select '${STAGING_APP}'::text`);
+  assert.equal(constants.deployment_label, "select 'staging'::text");
+  assert.match(constants.app_admitted, /pennsync_private\.deployment_app_id\(\)/);
+  // And the domain reaches them: a CHECK that stopped calling this would be a
+  // domain admitting whatever it liked.
+  const constraint = await staging.query(`select pg_catalog.pg_get_constraintdef(c.oid) as definition
+    from pg_catalog.pg_constraint c where c.contypid = 'pennsync_private.deployment_app'::regtype`);
+  assert.equal(constraint.rows.length, 1);
+  assert.match(constraint.rows[0].definition, /app_admitted\(VALUE\)/);
+});
+
+test('the dated record of the pin cannot disagree with it, or be edited', async () => {
+  // The table is documentation; the function is enforcement. They are tied
+  // together so an auditor reading the row is reading the truth.
+  const pinned = await staging.query(
+    'select app_id = pennsync_private.deployment_app_id() as agrees from pennsync_private.deployment');
+  assert.deepEqual(pinned.rows, [{ agrees: true }]);
   for (const statement of [
     `update pennsync_private.deployment set app_id = '${PRODUCTION_APP}'`,
     'delete from pennsync_private.deployment',

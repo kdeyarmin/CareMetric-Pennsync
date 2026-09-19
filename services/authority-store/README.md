@@ -20,13 +20,23 @@ Every app-scoped column is typed `pennsync_private.deployment_app`, a domain tha
 database serves, and `pennsync_private.actor()` refuses any other app id before it reads anything. Both layers read
 the same source: `pennsync_private.deployment`, a single row naming the one app this database is for.
 
-That row is written by `20260919090000_deployment_app_pin.sql` from the database setting `pennsync.deployment_app_id`,
-which must be set before migrations run. It must name an app id present in `pennsync_private.known_app`; anything else
-fails the migration rather than producing a store with no containment. Leaving it unset pins staging, which is the
-restrictive outcome: a production database whose operator forgot the setting refuses every production write instead of
-silently accepting one. The `source` column records which of the two happened, so an auditor can tell a deliberate pin
-from a defaulted one. The row cannot be updated, deleted or truncated afterwards, and a second row is refused; the
-domain's CHECK is only sound because that answer can never change.
+That answer is a generated function, not a row. `20260919090000_deployment_app_pin.sql` reads the database setting
+`pennsync.deployment_app_id`, which must be set before migrations run, and generates
+`pennsync_private.deployment_app_id()` returning that one constant. It must name an app id present in
+`pennsync_private.known_app`; anything else fails the migration rather than producing a store with no containment.
+Leaving it unset pins staging, which is the restrictive outcome: a production database whose operator forgot the
+setting refuses every production write instead of silently accepting one.
+
+It is a function rather than a row because of restore. A domain CHECK that reads a table cannot survive `pg_restore`:
+data is loaded after the schema but in its own order, `agency` comes before `deployment`, and every app-scoped row
+would be checked against a pin that has not loaded yet and refused. As a constant the pin is part of the schema,
+restored before any data, and the CHECK is genuinely IMMUTABLE rather than merely unchanging in practice. Changing it
+afterwards means `CREATE OR REPLACE` by the function's owner -- the same trusted migration administrator who could
+alter the domain directly -- so nothing is given away by holding it there.
+
+`pennsync_private.deployment` remains as the dated record: the pinned app, whether it was chosen or defaulted
+(`source`), and when. It is constrained to equal `deployment_app_id()`, so it cannot drift from what it records, and
+it cannot be updated, deleted or truncated.
 
 It is a database setting, not an environment variable, so it is not in `.env.example`. On the target project, before the migrations run:
 
