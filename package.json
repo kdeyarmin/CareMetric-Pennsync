@@ -44,7 +44,7 @@
     "verify:workflow-quality": "pnpm run lint:workflow-targets && pnpm run typecheck:utils && pnpm run typecheck:signal && pnpm run test:utils && pnpm run test:contracts && pnpm run test:dedupe && pnpm run test:components && pnpm run check:shared-helpers && pnpm run build",
     "lint:actions": "node tools-actionlint.mjs",
     "check:oasis-worksheet": "node tools-oasis-review-worksheet.mjs --check",
-    "test:pennsync-api": "node --test services/pennsync-api/*.test.mjs base44/functionTests/pennsyncApiPortParity.test.js base44/functionTests/pennsyncApiDocumentParity.test.js",
+    "test:pennsync-api": "node --test services/pennsync-api/*.test.mjs base44/functionTests/pennsyncApiPortParity.test.js base44/functionTests/pennsyncApiDocumentParity.test.js base44/functionTests/pennsyncApiAuthorityParity.test.js",
     "check:transition-disposition": "node tools-transition-disposition.mjs --summary",
     "check:base44-surface": "node tools-base44-surface.mjs --summary",
     "check:file-references": "node tools-file-reference-census.mjs --summary",

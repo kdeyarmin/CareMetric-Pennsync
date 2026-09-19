@@ -41,8 +41,12 @@ owner scope in this service at all. Every request names exactly one agency.
 
 `authority.mjs` is a deliberate duplicate of the external runtime's copy,
 because each Railway service builds from its own directory and cannot import
-the other's files. `parity.test.mjs` fails if the two diverge on the contract
-name, the RPC, the permitted targets, the key shape or the accepted context.
+the other's files. `base44/functionTests/pennsyncApiAuthorityParity.test.js`
+fails if the two diverge on the contract name, the RPC, the permitted targets,
+the key shape or the accepted context. It lives outside both services for the
+same reason the duplication exists: this directory is a Docker build context,
+so a file in it that imports `../integration-runtime/` fails the image build.
+`api.test.mjs` enforces that — no file here may import out of this directory.
 
 ## Release controls
 
@@ -149,12 +153,15 @@ and unreleased.
 pnpm --dir services/pennsync-api install --frozen-lockfile
 node --test services/pennsync-api/*.test.mjs \
   base44/functionTests/pennsyncApiPortParity.test.js \
-  base44/functionTests/pennsyncApiDocumentParity.test.js
+  base44/functionTests/pennsyncApiDocumentParity.test.js \
+  base44/functionTests/pennsyncApiAuthorityParity.test.js
 ```
 
 Also run by `pnpm run test:pennsync-api`, which `pnpm test` includes. The
 Dockerfile runs the service's own suite during the image build, so an image
-that fails its tests never starts.
+that fails its tests never starts — which is why the three parity suites live
+in `base44/functionTests/` instead: each reaches outside this directory, and
+the build context has nothing outside it.
 
 These are synthetic, network-isolated checks. They do not establish hosted
 enrollment, a deployed revision, real provider behavior, or that any caller has

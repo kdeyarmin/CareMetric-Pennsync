@@ -39,6 +39,28 @@ const post = (body, { path = '/v1/functions/validatePatientData', auth = 'Bearer
 const serveContext = (patch = {}) => async () => Response.json(context(patch));
 const handlerFor = (patch = {}, fetcher = serveContext()) => createHandler(config(patch), { fetcher });
 
+test('nothing in this directory imports out of it, because the image is built from it', async () => {
+  // The Dockerfile copies this directory as its build context and runs
+  // `node --test *.test.mjs` during the build. Anything reaching `../` is
+  // unresolvable there, so a single such import fails the image build — which
+  // is exactly what `parity.test.mjs` did until it was moved to
+  // `base44/functionTests/`, where both services are visible and neither ships
+  // it. Test files count: they are copied and executed too.
+  const { readdir, readFile } = await import('node:fs/promises');
+  const here = new URL('./', import.meta.url);
+  const files = (await readdir(here)).filter(name => name.endsWith('.mjs'));
+  assert.ok(files.length >= 8, 'the directory scan found nothing to scan');
+  const SPECIFIER = /(?:^|\s)(?:import|export)[^'"\n]*?from\s*['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
+  for (const name of files) {
+    const source = await readFile(new URL(name, here), 'utf8');
+    for (const match of source.matchAll(SPECIFIER)) {
+      const specifier = match[1] ?? match[2];
+      assert.ok(!specifier.startsWith('../'),
+        `${name} imports ${specifier}, which does not exist in the Docker build context`);
+    }
+  }
+});
+
 test('configuration defaults closed and refuses unusable release combinations', () => {
   const bare = loadConfig({});
   assert.equal(bare.released, false);

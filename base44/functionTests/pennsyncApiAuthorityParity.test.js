@@ -1,13 +1,21 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import * as api from './authority.mjs';
-import * as runtime from '../integration-runtime/authority.mjs';
+import * as api from '../../services/pennsync-api/authority.mjs';
+import * as runtime from '../../services/integration-runtime/authority.mjs';
 
 /**
  * Drift guard for the deliberately duplicated authority module.
  *
  * Each Railway service builds from its own directory, so neither can import
- * the other's copy at runtime. Both must still agree on every value that
+ * the other's copy at runtime.
+ *
+ * Which is why this test lives outside both of them. It used to sit in
+ * `services/pennsync-api/`, where it reached across that boundary with a
+ * `../integration-runtime/` import — inside the one directory that becomes a
+ * Docker build context. The image build runs `node --test *.test.mjs`, so the
+ * file stating the constraint was the file that broke it: the build failed on
+ * an unresolvable import before the service ever started. Here both services
+ * are visible and neither ships this file. Both must still agree on every value that
  * decides who is authorized: the contract name, the fixed RPC, the permitted
  * targets, the key shape and the accepted context shape. This test is the only
  * thing preventing the two from diverging silently.
@@ -69,11 +77,16 @@ test('the ported API has no Base44 call path of its own', async () => {
   // The CORS allowlist deliberately names the Base44-hosted browser origin,
   // which is a permitted caller, not an outbound call.
   const CALL_PATH = /base44\.app\/api|@base44\/sdk|createClientFromRequest|functions\/getMyTenantContext/;
-  const files = (await readdir(new URL('./', import.meta.url)))
+  // Scanned by path rather than relative to this file: when this test moved out
+  // of the service directory, `./` stopped being the thing under test and the
+  // scan silently matched nothing. The count below is what caught that, so it
+  // stays.
+  const service = new URL('../../services/pennsync-api/', import.meta.url);
+  const files = (await readdir(service))
     .filter(name => name.endsWith('.mjs') && !name.endsWith('.test.mjs'));
-  assert.ok(files.length >= 6);
+  assert.ok(files.length >= 6, 'the service source scan found nothing to scan');
   for (const name of files) {
-    const source = await readFile(new URL(`./${name}`, import.meta.url), 'utf8');
+    const source = await readFile(new URL(name, service), 'utf8');
     assert.equal(CALL_PATH.test(source), false, `${name} must not reach the Base44 API`);
   }
 });
