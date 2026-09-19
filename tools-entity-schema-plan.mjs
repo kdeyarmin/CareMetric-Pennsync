@@ -136,14 +136,24 @@ export function planEntity(name, raw, disposition) {
   };
 }
 
+/** PostgreSQL truncates a long identifier, which can merge two constraints into one. */
+export function constraintName(table, column) {
+  return `${table}_${column}_allowed`.slice(0, MAX_IDENTIFIER);
+}
+
 export function renderEntity(plan) {
   const qualified = `${quote(SCHEMA)}.${quote(plan.table)}`;
+  const names = plan.definition.checks.map(check => constraintName(plan.table, check.column));
+  if (new Set(names).size !== names.length) {
+    // Two constraints sharing a name would silently become one. Fail instead.
+    throw new Error(`CONSTRAINT_NAME_COLLISION:${plan.entity}`);
+  }
   const lines = [
     ...SYSTEM_COLUMNS.map(column => `  ${quote(column.name)} ${column.type}${column.notNull ? ' not null' : ''}`),
     ...plan.definition.columns.map(column => `  ${quote(column.name)} ${column.type}`),
     `  constraint ${quote(`${plan.table}_pkey`)} primary key (${quote('source_app_id')}, ${quote('id')})`,
     ...plan.definition.checks.map(check =>
-      `  constraint ${quote(`${plan.table}_${check.column}_allowed`.slice(0, MAX_IDENTIFIER))} `
+      `  constraint ${quote(constraintName(plan.table, check.column))} `
       + `check (${quote(check.column)} is null or ${quote(check.column)} in (${check.values.map(literal).join(', ')}))`),
   ];
   return [

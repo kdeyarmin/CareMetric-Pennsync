@@ -5,7 +5,7 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   CARRIED, EXPECTATIONS_FILE, FORMAT, FORMAT_VERSION, SCHEMA,
-  buildPlan, columnType, comparePlan, enumValues, main, parseExpectations, planEntity, renderEntity, snakeCase,
+  buildPlan, columnType, comparePlan, constraintName, enumValues, main, parseExpectations, planEntity, renderEntity, snakeCase,
 } from './tools-entity-schema-plan.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -156,4 +156,27 @@ test('the command line emits SQL, reports, updates and refuses unknown arguments
   lines.length = 0;
   assert.equal(main(['--drop'], { repository, log: value => lines.push(value) }), 2);
   assert.equal(JSON.parse(lines[0]).error, 'INVALID_ARGUMENTS');
+});
+
+test('two constraints that would share a truncated name fail instead of merging', () => {
+  // Both column names are legal (63 characters) and differ only past the point
+  // where PostgreSQL truncates the constraint name, so the two constraints
+  // would silently become one.
+  const shared = 'w'.repeat(57);
+  const plan = planEntity('Probe', entity({
+    [`${shared}alpha1`]: { type: 'string', enum: ['a'] },
+    [`${shared}beta02`]: { type: 'string', enum: ['b'] },
+  }), 'port');
+  assert.equal(plan.constrained, 2, 'both columns must survive planning');
+  assert.equal(constraintName('probe', `${shared}alpha1`), constraintName('probe', `${shared}beta02`));
+  assert.throws(() => renderEntity(plan), /CONSTRAINT_NAME_COLLISION/);
+});
+
+test('every real constraint name fits without truncation', () => {
+  const plan = buildPlan(repository);
+  for (const carried of plan.entities) {
+    assert.ok(carried.table.length + 40 < 200, `${carried.entity} table name is implausible`);
+  }
+  // Rendering the whole repository must not hit the collision guard.
+  assert.doesNotThrow(() => main(['--sql'], { repository, log: () => {} }));
 });
