@@ -27,7 +27,13 @@ Instructions for Codex cloud and other AI coding agents working in this reposito
 
 ## Project shape
 
-PennSync (package `base44-app`) is a frontend-only Vite + React 19 SPA. There is no local backend to run: the Base44 platform (auth, data entities, and the Deno functions under `base44/functions/`) is a hosted remote service. Those Deno functions are not runnable from this repo because there is no `deno.json` or local runner; `src/functions/*` are thin client wrappers that call the remote backend.
+PennSync (package `base44-app`) is a Vite + React 19 SPA with two selectable backends.
+
+On the default path the Base44 platform (auth, data entities, and the Deno functions under `base44/functions/`) is a hosted remote service. Those Deno functions are not runnable from this repo because there is no `deno.json` or local runner; `src/functions/*` are thin client wrappers that call the remote backend.
+
+The product is migrating off Base44. `VITE_PENNSYNC_BACKEND=independent-staging` builds the same app against Supabase Auth and the owned authority store in `services/authority-store`, through `services/authority-client`. That path is synthetic staging only: four fixed test accounts, names-only patients, and unsupported operations fail closed with no Base44 fallback. Two Railway services support it — `services/integration-runtime` (deployed, paused) and `services/pennsync-api` (source only, not deployed).
+
+Before changing anything in the migration, read [the transition plan](docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md) and [the exit decisions](docs/BASE44_EXIT_DECISIONS_2026-09-19.md). Adding a backend function, entity schema, workflow or Core integration requires a disposition in `tools-transition-disposition.json`, and adding Base44 coupling to `src/` fails the surface ratchet. Both run in `pnpm test`.
 
 Use pnpm through Corepack. Do not use npm or yarn for installs.
 
@@ -55,10 +61,16 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 | Accessibility (component) | `pnpm run test:a11y` |
 | Accessibility (Playwright) | `pnpm run build && pnpm run test:a11y:e2e` |
 | Tests | `pnpm test` |
+| Capability dispositions (gate) | `pnpm run check:transition-disposition` |
+| Base44 coupling ratchet (gate) | `pnpm run check:base44-surface` |
+| File-reference census (gate) | `pnpm run check:file-references` |
+| Ported business API | `pnpm run test:pennsync-api` |
 
 ## Environment config
 
-The frontend reads `VITE_BASE44_APP_ID` and `VITE_BASE44_BACKEND_URL` (consumed in `src/lib/app-params.js`), the optional exact `VITE_BASE44_FUNCTIONS_VERSION`, and the optional `VITE_SUPER_ADMIN_EMAIL` override used by `src/lib/superAdmin.js`. Function-revision URL and storage overrides are scrubbed; floating version aliases are rejected. The Vite dev server boots regardless, but without a valid app id + backend URL the app shows a blocking config state or redirects to `/login` and renders blank because `/login` is served by the hosted backend, not client-side.
+`VITE_PENNSYNC_BACKEND` selects the backend. Omitted or `base44` keeps the production path; `independent-staging` requires the `VITE_PENNSYNC_STAGING_*` values documented in `.env.example` and `docs/INDEPENDENT_STAGING_APP.md`, and fails closed before a Base44 client can be constructed if any of them is missing or invalid.
+
+On the Base44 path the frontend reads `VITE_BASE44_APP_ID` and `VITE_BASE44_BACKEND_URL` (consumed in `src/lib/app-params.js`), the optional exact `VITE_BASE44_FUNCTIONS_VERSION`, and the optional `VITE_SUPER_ADMIN_EMAIL` override used by `src/lib/superAdmin.js`. Function-revision URL and storage overrides are scrubbed; floating version aliases are rejected. The Vite dev server boots regardless, but without a valid app id + backend URL the app shows a blocking config state or redirects to `/login` and renders blank because `/login` is served by the hosted backend, not client-side.
 
 App id and backend URL can also be passed via URL params `?app_id=...&server_url=...`, which are persisted to localStorage. Other vars such as `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `HEYGEN_API_KEY`, and `SIGNATURE_HMAC_SECRET` are backend Deno-function secrets and are not used by the local frontend bundle.
 

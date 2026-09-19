@@ -2,6 +2,28 @@
 
 PennSync by CareMetric is an AI-powered home health documentation and analytics platform for clinicians. It's a Vite + React application with a large healthcare operations surface area (clinical documentation, OASIS/PDGM, training, fax, compliance, reporting, and admin workflows).
 
+## Backends
+
+The product is migrating off Base44. Two backends exist in this repository and
+the frontend selects one at build time with `VITE_PENNSYNC_BACKEND`.
+
+| Value | Backend | State |
+| --- | --- | --- |
+| unset or `base44` | Hosted Base44 platform: auth, entities, and the Deno functions under `base44/functions/` | The production path |
+| `independent-staging` | Supabase Auth and the owned authority store in `services/authority-store`, reached through `services/authority-client` | Synthetic staging only, four fixed test accounts |
+
+Two Railway services support the independent path.
+`services/integration-runtime` runs the external AI, email and private-file
+adapters and is deployed but paused. `services/pennsync-api` is the home for
+backend handlers ported out of Base44 and is source only, not deployed.
+
+Start here to work on the migration:
+
+- [Transition plan](docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md) — what is done, what remains, and the phased plan.
+- [Exit decisions](docs/BASE44_EXIT_DECISIONS_2026-09-19.md) — the eight decisions the implementation assumes.
+- `tools-transition-disposition.json` — the per-capability disposition for all 549 functions, entities, workflows and integrations.
+- [Independent staging app](docs/INDEPENDENT_STAGING_APP.md) — how to run the independent build.
+
 ## GitHub and contributing
 
 - See [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, validation commands, and pull request expectations.
@@ -18,10 +40,23 @@ PennSync by CareMetric is an AI-powered home health documentation and analytics 
 - `pnpm run typecheck` — run TypeScript checker against `jsconfig.json`
 - `pnpm run check:updates` — dependency update audit script
 
+Migration checks:
+
+- `pnpm run check:transition-disposition` — every capability carries a disposition
+- `pnpm run check:base44-surface` — remaining Base44 coupling stays within its baseline
+- `pnpm run check:file-references` — the schema file-reference census is current
+- `pnpm run test:pennsync-api` — the ported business API and its port parity guards
+
 
 ## Environment variables
 
-Copy `.env.example` to `.env` and set the required values:
+Copy `.env.example` to `.env` and set the required values.
+
+Backend selection (see `.env.example` for the independent-mode settings):
+
+- `VITE_PENNSYNC_BACKEND` — omitted or `base44` keeps the production path; `independent-staging` selects Supabase and the owned authority store.
+
+Base44 path:
 
 - `VITE_BASE44_APP_ID` — Base44 application ID.
 - `VITE_BASE44_BACKEND_URL` — Base44 backend origin used by the SDK and auth bootstrap requests.
@@ -43,7 +78,12 @@ user/tenant/patient data, tokens, and free text are never added to the URL.
 - `src/components` — reusable and domain components
 - `src/lib` — application infrastructure (auth, query client, routing helpers)
 - `src/api` — API/domain access layer
-- `functions` — backend function handlers
+- `base44/functions` — hosted Base44 Deno function handlers
+- `services/authority-store` — owned PostgreSQL authority schema and its migrations
+- `services/authority-client` — strict client for that authority
+- `services/integration-runtime` — Railway service for AI, email and private files
+- `services/pennsync-api` — Railway service for handlers ported out of Base44
+- `services/hhgs-adapter` — offline CMS grouper adapter
 - `docs` — engineering review and planning docs
 
 ## Notes

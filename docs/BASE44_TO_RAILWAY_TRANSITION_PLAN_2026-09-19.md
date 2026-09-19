@@ -7,6 +7,33 @@ review, cost approval, evidence, and release-owner sign-off under the existing
 gates in `docs/REPOSITORY_CONSOLIDATION_2026-09-02.md` and
 `docs/PENNSYNC_EXTERNAL_CUTOVER_EVIDENCE.md`.
 
+## 0. Implementation status on this branch
+
+Source work completed here, all validated by the repository's own checks:
+
+| Plan item | Delivered |
+| --- | --- |
+| Phase 0 — decisions | [Exit decisions](BASE44_EXIT_DECISIONS_2026-09-19.md) recording D1 to D8 as proposed |
+| Phase 0 — disposition manifest | `tools-transition-disposition.json` plus a coverage gate; all 549 capabilities classified, 32 explicitly undecided |
+| Phase 0 — documentation | `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `.env.example` describe both backends and every service setting |
+| Phase 1 — runtime authority | `INTEGRATIONS_AUTHORITY_MODE=independent` removes the Base44 `getMyTenantContext` call; readiness derives `base44ExecutionDependency` |
+| Phase 2 — API service | `services/pennsync-api` with health, readiness, release-gated dispatch and the first ported handler |
+| Phase 3 — file prerequisite | `tools-file-reference-census.mjs` and its committed census of every schema field that can hold a file |
+| Guardrail | `tools-base44-surface.mjs` ratchets remaining frontend coupling |
+
+Not done here, and each blocked on something this branch cannot supply:
+
+| Remaining | Blocked on |
+| --- | --- |
+| Deploying either Railway service; provisioning the production Supabase project | Cost approval and operator credentials |
+| Enabling independent authority on the running runtime | A reviewed deployment plus preflight and two-agency acceptance with enrolled actors |
+| Generalizing the authority store past four synthetic actors | Hosted migration and an enrollment run |
+| Porting the remaining handlers and entity schemas | The decisions above being accepted, then per-capability review |
+| Any customer data, file or identity migration | Base44 credentials, named owners, and a maintenance window |
+| Frontend hosting, domain move, native rebuild | Approvals and physical devices |
+
+The rest of this document is the plan those items follow.
+
 ## 1. What "Railway" means for this app
 
 The work merged so far does not move the app to Railway alone. It replaces the
