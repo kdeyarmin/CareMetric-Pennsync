@@ -894,11 +894,31 @@ it wrongly costs queue length, while choosing `broker` wrongly costs isolation.
 It is genuinely not the last word on all of them. Several — `userManagement`,
 `resendInvitation`, `offboardUser`, `checkExpiredInvitations` — are membership
 lifecycle, and the authority store already owns memberships and exposes an RPC
-for revoking one. Those may belong to it as `hub` rather than being ported here.
-Two more, `fetchMedicareGuideline` and `listPolicyLibrary`, read what look like
-reference tables; if `MedicareGuideline` and `PolicyLibrary` pass D16's ceiling
-they could earn `broker` back, entity first. Both are reviewed changes the gate
-now permits and records, rather than assumptions it hides.
+for revoking one. Those may belong to it as `hub` rather than being ported here:
+a reviewed change the gate now permits and records, rather than an assumption it
+hides.
+
+**Two of them were checked rather than left open, and the answer is no.**
+`fetchMedicareGuideline` and `listPolicyLibrary` read what look like reference
+tables, so the question was whether their entities could earn `broker` back and
+let the family serve them. Running D16's ceiling over both says they cannot, for
+two different reasons:
+
+- **`PolicyLibrary` carries `doc_url`** — "URL to policy document", which is an
+  object in our own storage. That is exactly the case the file-locator rule
+  exists for: handing a locator to every caller of a generic family is how an
+  uploaded file leaves. It stays `port`, and no exemption is warranted.
+- **`MedicareGuideline` is blocked on `url`**, and that one *would* be
+  exemptable — it addresses published CMS guidance rather than our storage, the
+  same argument `CitationLibrary.url` already carries. But it buys nothing:
+  the entity is `global`, so the family serves it read-only, and
+  `fetchMedicareGuideline` creates and updates it. An exemption that unblocks
+  nothing is surface with no purpose, so it is not written.
+
+Worth noting for the next entity that looks exemptable: a D13 external-locator
+declaration does **not** carry into D16. They ask different questions — D13 asks
+whether a locator addresses our storage, D16 whether a generic family handing it
+out is safe — so the exemption is per block, deliberately.
 
 **What it costs.** The port queue grows from 78 to 111 functions:
 `records_schema` 62 → 94 and `core_integration` 0 → 1. That is not new work
