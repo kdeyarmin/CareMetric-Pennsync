@@ -32,7 +32,7 @@ Not done here, and each blocked on something this branch cannot supply:
 | --- | --- |
 | Deploying either Railway service; provisioning the production Supabase project | Cost approval and operator credentials |
 | Enabling independent authority on the running runtime | A reviewed deployment plus preflight and two-agency acceptance with enrolled actors |
-| Generalizing the authority store past four synthetic actors | Hosted migration and an enrollment run |
+| Generalizing the authority store past four synthetic actors | A schema migration widening both app-id pins — the domain across 18 tables and the gate inside `actor()` — plus the per-deployment guard that keeps staging from holding production rows once widened. Not configuration; see Phase 1 |
 | Reconciling the duplicated authority predicates (`validateMembershipRows`, `validateAssignmentIntegrity`) into one shared definition | A security review of how the 10 and 11 variants differ in behavior; it changes production authorization, so it is not a mechanical de-duplication |
 | Deciding the 87 entities with no usable tenant path | Owners answering the three questions in Phase 2; two of them (global reference data vs. a missing key) are product calls, not derivable from the schema |
 | Porting the remaining handlers and entity schemas | The decisions above being accepted, then per-capability review |
@@ -257,10 +257,33 @@ Deliverables:
   context RPC instead of Base44 `getMyTenantContext`. Readiness reports
   `base44ExecutionDependency: false`. Tests in `caller-binding.test.mjs` and
   `runtime.test.mjs` updated.
-- Authority store generalized: configurable app namespace, all six tenant
-  roles, real names permitted through an explicit production migration, actor
-  registry moved from code pins to verified identity-map rows, session policy
-  reviewed (refresh, idle, MFA decision).
+- Authority store generalized. **Corrected on this branch:** "configurable app
+  namespace" understated this. The store pins one app id in two independent
+  places. Storage: `pennsync_private.staging_app` is a domain whose CHECK admits
+  exactly `6a9881683dc68a0bd54f1ef7`, and 18 columns across 18 tables are typed
+  with it, including `identity_map`, `agency`, `membership`, `patient`,
+  `assignment` and all three disclosure audits, so a row for another app cannot
+  be written even by a caller that bypassed every RPC. Entry:
+  `pennsync_private.actor()` compares the requested app id against the same
+  literal and refuses anything else, and every read path calls it. Nothing can
+  be enrolled for production until both move, so this is a schema migration
+  across the store's tenancy spine, not configuration.
+
+  Widening is security-relevant: together those two pins are what stop the
+  hosted staging project from holding production or legacy PHI. The migration
+  must therefore land with a per-deployment guard, so a widened domain still
+  lets each deployment admit only the app ids it serves. Three shapes are
+  plausible — a `deployment` table plus a trigger on each app-scoped table,
+  separate domains applied per environment, or an assertion inside the RPC
+  entries — and choosing among them is a containment decision, not a refactor.
+  `services/authority-store/tests/app-namespace-containment.test.mjs` pins the
+  current state so the widening cannot happen quietly: it fails the moment the
+  domain admits a second app id, a new table carries an app id outside the
+  domain, or the two layers drift apart, forcing the new permitted set and the
+  guard to be stated.
+- All six tenant roles, real names permitted through an explicit production
+  migration, actor registry moved from code pins to verified identity-map rows,
+  session policy reviewed (refresh, idle, MFA decision).
 - Enrollment tool: operator-run, evidence-hashed creation of identity-map rows
   for invited Supabase Auth users; no public provisioning API.
 - Hosted-target CI job: the existing browser and compiled-app acceptance run
