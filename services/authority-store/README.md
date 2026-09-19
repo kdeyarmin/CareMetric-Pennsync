@@ -187,3 +187,47 @@ makes the pin read-back mean anything.
 What it does not do: it creates no hosted project, holds no credential, and
 writes no row. Enrolling anyone is `tools-pennsync-enroll.mjs`, and that needs
 the people to have accepted their Supabase Auth invitations first.
+
+## The record store and its owner
+
+`supabase/migrations/20260919170000_record_store.sql` creates
+`pennsync_records`: the 156 carried entities, with forced row level security
+and the 596 policies derived from their tenant paths and decisions (D13, D14).
+It is **generated** — regenerate with
+`node tools-entity-schema-plan.mjs --write-migration` and never edit the SQL by
+hand; a test fails if the committed file and the generator disagree.
+
+Two properties of the file are the decision it carries (D15), not incidental:
+
+**The tables are owned by `pennsync_records_owner`, which holds neither
+`SUPERUSER` nor `BYPASSRLS`.** `force row level security` binds a table's owner
+— but never a role with either attribute, and every migration here requires
+exactly such an administrator. Under the administrator the 596 policies would
+be decorative. The migration creates the role if it is absent, and refuses
+outright (`PENNSYNC_RECORD_OWNER_MUST_NOT_BYPASS_RLS`) if a role of that name
+already exists carrying either attribute, rather than adopting it and emitting
+policies nothing obeys. It also refuses a database with no authority store to
+ask (`PENNSYNC_AUTHORITY_STORE_REQUIRED`), because every policy is written in
+terms of `pennsync_private`.
+
+**No caller role is granted anything — not a table, not a helper.** RLS policy
+expressions are evaluated with the privileges of the role running the query, so
+a caller granted direct table access would also need `EXECUTE` on the caller
+helpers, which answer *who is asking* and are revoked from `authenticated` for
+that reason. The record owner may execute them; `anon`, `authenticated` and
+`service_role` may do nothing at all.
+
+So a caller reaches a row only through a `SECURITY DEFINER` broker owned by
+`pennsync_records_owner`. Inside such a broker `current_user` becomes the owner
+— so the policies bind and the helpers are callable — while the `role` setting
+still reads `authenticated`, which is what `pennsync_private.actor()` requires
+before it will name an identity. A broker that runs as anything else either
+bypasses the policies (if it bypasses RLS) or is refused by the caller gate.
+
+`tests/record-store-migration.test.mjs` applies the committed migration and
+holds each of those properties, including that the owner is filtered by its own
+policies and that a cross-tenant write through a broker is still refused.
+
+What it does not do: applying it needs the production Supabase project. And it
+settles the ownership boundary, not the RPC family the ported handlers will
+use — the broker in the test exists to prove the boundary.
