@@ -156,7 +156,8 @@ export function renderEntity(plan) {
   ].join('\n');
 }
 
-export function buildPlan(repository) {
+/** Plan every carried entity exactly once; both callers below reuse the result. */
+function planAll(repository) {
   const dispositions = JSON.parse(readFileSync(join(repository, DISPOSITION_FILE), 'utf8')).entities;
   const directory = join(repository, ENTITY_DIRECTORY);
   const files = readdirSync(directory).filter(file => /\.jsonc?$/.test(file)).sort();
@@ -168,6 +169,11 @@ export function buildPlan(repository) {
     if (!CARRIED.includes(disposition)) { excluded.push({ entity: name, disposition: disposition ?? 'missing' }); continue; }
     plans.push(planEntity(name, readFileSync(join(directory, file), 'utf8'), disposition));
   }
+  return { plans, excluded };
+}
+
+export function buildPlan(repository, prepared = null) {
+  const { plans, excluded } = prepared ?? planAll(repository);
   const tables = plans.map(plan => plan.table);
   const collisions = tables.filter((table, index) => tables.indexOf(table) !== index);
   if (collisions.length) throw new Error(`TABLE_NAME_COLLISION:${[...new Set(collisions)].sort().join(',')}`);
@@ -197,18 +203,9 @@ export function buildPlan(repository) {
 }
 
 export function renderDdl(repository) {
-  const plan = buildPlan(repository);
-  const dispositions = JSON.parse(readFileSync(join(repository, DISPOSITION_FILE), 'utf8')).entities;
-  const directory = join(repository, ENTITY_DIRECTORY);
-  const files = readdirSync(directory).filter(file => /\.jsonc?$/.test(file)).sort();
-  const statements = [
-    `create schema ${quote(SCHEMA)};`,
-  ];
-  for (const file of files) {
-    const name = file.replace(/\.jsonc?$/, '');
-    if (!CARRIED.includes(dispositions[name])) continue;
-    statements.push(renderEntity(planEntity(name, readFileSync(join(directory, file), 'utf8'), dispositions[name])));
-  }
+  const prepared = planAll(repository);
+  const plan = buildPlan(repository, prepared);
+  const statements = [`create schema ${quote(SCHEMA)};`, ...prepared.plans.map(renderEntity)];
   return { plan, sql: statements.join('\n\n') + '\n' };
 }
 

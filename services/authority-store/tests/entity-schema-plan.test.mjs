@@ -18,11 +18,11 @@ const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)))
 let db; let plan;
 
 before(async () => {
-  ({ plan } = renderDdl(repository));
+  const rendered = renderDdl(repository);
+  plan = rendered.plan;
   db = new PGlite();
-  const { sql } = renderDdl(repository);
   // One statement batch: a syntax error anywhere fails the whole plan.
-  await db.exec(sql);
+  await db.exec(rendered.sql);
 });
 after(async () => db?.close());
 
