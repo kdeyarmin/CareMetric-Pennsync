@@ -147,6 +147,8 @@ export function planEntity(name, raw, disposition, decision = null) {
     table,
     tenant_key: declaredTenant || stamped ? TENANT_COLUMN : null,
     tenant_decision: decision?.kind ?? null,
+    self_subject: decision?.kind === 'self' ? snakeCase(decision.subject) : null,
+    platform_flag: decision?.kind === 'shared' ? snakeCase(decision.platform_flag) : null,
     columns: columns.length,
     constrained: checks.length,
     merged_system_columns: merged.length,
@@ -232,10 +234,145 @@ export function buildPlan(repository, prepared = null) {
   };
 }
 
+/**
+ * The caller-binding functions every policy below asks.
+ *
+ * SECURITY DEFINER because `pennsync_private` is not readable by a tenant
+ * role: the answer has to be computed by something that can see the
+ * membership roster without handing the caller access to it. STABLE because a
+ * policy calls these once per row and the answer cannot change inside a
+ * statement.
+ *
+ * An active membership requires BOTH `status = 'active'` AND `revoked_at is
+ * null`. The thirteen hand-copied `validateMembershipRows` variants disagreed
+ * on exactly this, some accepting a row whose `revoked_at` is set while its
+ * status still says active. Reading the store settles it: `membership_check`
+ * already makes that row unrepresentable, so the argument was about a state
+ * the database will not hold. Both markers are asked anyway, because a
+ * predicate that leans on a constraint in another schema is one migration
+ * away from being wrong, and a test pins the constraint so the redundancy
+ * cannot quietly become the only thing holding.
+ */
+export const POLICY_HELPERS = [
+  `create function ${quote(SCHEMA)}.caller_agencies() returns setof text
+  language sql stable security definer set search_path = '' as $$
+  select m.agency_id::text from pennsync_private.membership m
+  where m.app_id = pennsync_private.deployment_app_id()
+    and m.auth_user_id = auth.uid()
+    and m.status = 'active' and m.revoked_at is null
+$$;`,
+  `create function ${quote(SCHEMA)}.caller_user_id() returns text
+  language sql stable security definer set search_path = '' as $$
+  select i.base44_user_id from pennsync_private.identity_map i
+  where i.app_id = pennsync_private.deployment_app_id()
+    and i.auth_user_id = auth.uid() and i.enabled and i.revoked_at is null
+$$;`,
+  `create function ${quote(SCHEMA)}.caller_email() returns text
+  language sql stable security definer set search_path = '' as $$
+  select i.expected_email from pennsync_private.identity_map i
+  where i.app_id = pennsync_private.deployment_app_id()
+    and i.auth_user_id = auth.uid() and i.enabled and i.revoked_at is null
+$$;`,
+  // Nothing may call these directly; they exist to be asked by a policy.
+  `revoke all on function ${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_user_id(),
+  ${quote(SCHEMA)}.caller_email() from public, anon, authenticated, service_role;`,
+];
+
+/** Where the resolved tenant paths are recorded; read as data to avoid an import cycle. */
+export const TENANT_PATH_FILE = 'tools-tenant-path-expectations.json';
+
+/**
+ * The predicate proving a row of `entity` belongs to an agency the caller is
+ * in, as SQL against `alias`.
+ *
+ * A `reference` entity does not carry a key: it reaches one through another
+ * entity, so its predicate is an EXISTS over that entity carrying the same
+ * question one hop further in. The resolver caps a path at three hops and
+ * resolves only through `root`, `direct` and `reference`, so this terminates;
+ * `depth` is threaded through anyway so a cycle introduced later fails loudly
+ * instead of recursing forever.
+ */
+export function tenantPredicate(entity, alias, index, { paths, tables }, depth = 0) {
+  if (depth > 4) throw new Error(`TENANT_PATH_TOO_DEEP:${entity}`);
+  const path = paths.get(entity);
+  const agencies = `${quote(SCHEMA)}.caller_agencies()`;
+  if (!path) throw new Error(`TENANT_PATH_MISSING:${entity}`);
+  // `Agency` is not in a tenant, it is one.
+  if (path.kind === 'root') return `${alias}.${quote('id')} in (select ${agencies})`;
+  if (path.kind === 'direct') return `${alias}.${quote(TENANT_COLUMN)} in (select ${agencies})`;
+  if (path.kind === 'reference') {
+    const next = `t${index + 1}`;
+    const target = tables.get(path.target);
+    if (!target) throw new Error(`TENANT_PATH_TARGET_UNKNOWN:${entity}:${path.target}`);
+    const inner = tenantPredicate(path.target, next, index + 1, { paths, tables }, depth + 1);
+    // Joined on the whole primary key: an id is only unique within its source
+    // app, so matching on id alone would reach across the two source apps.
+    return `exists (select 1 from ${quote(SCHEMA)}.${quote(target)} ${next}`
+      + ` where ${next}.${quote('source_app_id')} = ${alias}.${quote('source_app_id')}`
+      + ` and ${next}.${quote('id')} = ${alias}.${quote(snakeCase(path.via))}`
+      + ` and ${inner})`;
+  }
+  // Anything still blocking here was decided, and a decision stamps the key on.
+  return `${alias}.${quote(TENANT_COLUMN)} in (select ${agencies})`;
+}
+
+/** The subject column a `self` table matches against, by the column's name. */
+const SELF_BINDING = Object.freeze({ user_id: 'caller_user_id', user_email: 'caller_email' });
+
+/**
+ * Policies are `to public` rather than `to authenticated` on purpose. These
+ * tables carry no grant, so no role reaches them directly; access runs through
+ * SECURITY DEFINER brokers, and `force row level security` subjects the table
+ * owner — and therefore the broker — to these policies too. Naming a role here
+ * would exempt the broker from the predicate it exists to enforce.
+ */
+export function renderPolicies(plan, resolution) {
+  const qualified = `${quote(SCHEMA)}.${quote(plan.table)}`;
+  const name = suffix => quote(`${plan.table}_${suffix}`.slice(0, MAX_IDENTIFIER));
+  const self = quote(plan.table);
+  const tenant = tenantPredicate(plan.entity, self, 0, resolution);
+  const kind = plan.tenant_decision;
+
+  if (kind === 'global') {
+    // Platform reference: every caller reads it and no tenant surface writes
+    // it. Forced RLS with no write policy is what refuses the writes.
+    return [`create policy ${name('read')} on ${qualified} for select using (true);`];
+  }
+  let read = tenant;
+  if (kind === 'self') {
+    const binding = SELF_BINDING[plan.self_subject];
+    if (!binding) throw new Error(`SELF_SUBJECT_UNSUPPORTED:${plan.entity}:${plan.self_subject}`);
+    read = `${self}.${quote(plan.self_subject)} = ${quote(SCHEMA)}.${binding}()`;
+  } else if (kind === 'shared') {
+    // Platform rows are readable by everyone and writable by nobody: the write
+    // policies below never mention the flag, so only the agency rows move.
+    read = `${tenant} or ${self}.${quote(plan.platform_flag)} is true`;
+  }
+  const write = kind === 'self' ? read : tenant;
+  return [
+    `create policy ${name('read')} on ${qualified} for select using (${read});`,
+    `create policy ${name('insert')} on ${qualified} for insert with check (${write});`,
+    `create policy ${name('update')} on ${qualified} for update using (${write}) with check (${write});`,
+    `create policy ${name('delete')} on ${qualified} for delete using (${write});`,
+  ];
+}
+
 export function renderDdl(repository) {
   const prepared = planAll(repository);
   const plan = buildPlan(repository, prepared);
-  const statements = [`create schema ${quote(SCHEMA)};`, ...prepared.plans.map(renderEntity)];
+  const recorded = JSON.parse(readFileSync(join(repository, TENANT_PATH_FILE), 'utf8')).entities;
+  const resolution = {
+    paths: new Map(recorded.map(entry => [entry.entity, entry])),
+    tables: new Map(prepared.plans.map(entity => [entity.entity, entity.table])),
+  };
+  // Every table before any policy: a reference path names the table it reaches
+  // through, and that table is not always created first in name order.
+  const statements = [
+    `create schema ${quote(SCHEMA)};`,
+    ...POLICY_HELPERS,
+    ...prepared.plans.map(renderEntity),
+    ...prepared.plans.flatMap(plan => renderPolicies(plan, resolution)),
+  ];
   return { plan, sql: statements.join('\n\n') + '\n' };
 }
 
