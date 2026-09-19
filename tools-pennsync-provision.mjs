@@ -83,9 +83,24 @@ export async function applyProvision({ db, requestedApp, repository, log = () =>
 
   const { rows: existing } = await db.query(
     "select count(*)::int as count from pg_namespace where nspname = 'pennsync_private'");
-  if (existing[0].count !== 0) refuse('PROVISION_STORE_ALREADY_PRESENT');
+  if (existing[0].count !== 0) {
+    // Each migration commits on its own, so a run that died part-way leaves
+    // the schema behind and this refusal is all the operator sees. Say which
+    // it is, because a complete store must never be re-provisioned while a
+    // half-written one cannot be repaired in place — under D11 the pin is
+    // already generated, so that database is replaced, not continued.
+    const { rows: pinned } = await db.query(`select count(*)::int as count from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'pennsync_private' and p.proname = 'deployment_app_id'`);
+    refuse(pinned[0].count === 1 ? 'PROVISION_STORE_ALREADY_PRESENT' : 'PROVISION_STORE_PARTIALLY_PRESENT');
+  }
 
-  await db.query(`alter database ${await currentDatabase(db)} set ${PIN_SETTING} = $1`, [plan.app_id]);
+  // `alter database ... set` is a utility statement: PostgreSQL does not
+  // accept a bind parameter for the value, so this is a literal. It is safe
+  // to interpolate because planProvision has already required the app id to
+  // match /^[a-f0-9]{24}$/ AND to be one of the two known apps — a value that
+  // could carry a quote never reaches here.
+  await db.query(`alter database ${await currentDatabase(db)} set ${PIN_SETTING} = '${plan.app_id}'`);
 
   // A new session, because `alter database ... set` does not reach this one.
   const confirmed = await db.session(async session => {

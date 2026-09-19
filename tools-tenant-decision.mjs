@@ -64,6 +64,29 @@ export const EXCLUDED = Object.freeze([...SELF_EDITABLE]);
 const fieldsOf = schema => Object.keys(schema?.properties ?? {});
 const typeOf = (schema, field) => schema?.properties?.[field]?.type;
 
+/**
+ * Every field name in the schema, nested ones included, as `a.b[].c` paths.
+ *
+ * The guards below have to see a reference wherever it lives. A carried
+ * reference nested in an object or array is stored as JSONB by the schema
+ * generator, so a top-level-only scan passes it and the global policy then
+ * reads it out — which is the whole thing the guard exists to stop. This walks
+ * the same shape `tools-file-reference-census.mjs` walks for locators.
+ */
+export function everyField(schema, prefix = '', depth = 0) {
+  if (!schema || typeof schema !== 'object' || depth > 12) return [];
+  if (schema.type === 'array' && schema.items) return everyField(schema.items, `${prefix}[]`, depth + 1);
+  const properties = schema.properties;
+  if (!properties || typeof properties !== 'object' || Array.isArray(properties)) return [];
+  const found = [];
+  for (const name of Object.keys(properties).sort()) {
+    const path = prefix ? `${prefix}.${name}` : name;
+    found.push({ path, name, schema: properties[name] });
+    found.push(...everyField(properties[name], path, depth + 1));
+  }
+  return found;
+}
+
 /** Every field the file census says can hold an address, nested ones included. */
 function locatorPaths(repository, entity) {
   for (const extension of ['.jsonc', '.json']) {
@@ -117,12 +140,14 @@ export function auditDecision({ entity, decision, schema, carried, locators }) {
   }
 
   if (decision.kind === 'global') {
-    // Every way tenant data could reach a table that every agency reads.
-    for (const field of fields) {
-      if (isActorColumn(field)) problems.push(`${entity}: global table carries actor column ${field}`);
-      const referenced = field.endsWith('_id') && carried.get(normalize(field.slice(0, -3)));
+    // Every way tenant data could reach a table that every agency reads. The
+    // walk is over nested fields too: a reference buried in an object becomes
+    // JSONB rather than a column, and a top-level scan would wave it through.
+    for (const { path, name } of everyField(schema)) {
+      if (isActorColumn(name)) problems.push(`${entity}: global table carries actor column ${path}`);
+      const referenced = name.endsWith('_id') && carried.get(normalize(name.slice(0, -3)));
       if (referenced && referenced !== entity) {
-        problems.push(`${entity}: global table references carried entity ${referenced} via ${field}`);
+        problems.push(`${entity}: global table references carried entity ${referenced} via ${path}`);
       }
     }
     // A locator in a table every agency reads is how an uploaded file leaks.

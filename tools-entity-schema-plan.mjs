@@ -243,6 +243,16 @@ export function buildPlan(repository, prepared = null) {
  * policy calls these once per row and the answer cannot change inside a
  * statement.
  *
+ * A boundary these policies CANNOT enforce, stated because assuming otherwise
+ * is how they get trusted too far: a SUPERUSER or BYPASSRLS role bypasses row
+ * level security even where it is forced. The authority migration requires
+ * exactly such a role to own its objects
+ * (`PENNSYNC_BYPASSRLS_MIGRATION_OWNER_REQUIRED`), so a broker running as the
+ * migration owner is not bound by anything below. Brokers must therefore run
+ * as a role with neither attribute. `record-tenant-isolation.test.mjs`
+ * demonstrates the bypass rather than describing it, so the requirement is
+ * visible instead of implied.
+ *
  * An active membership requires BOTH `status = 'active'` AND `revoked_at is
  * null`. The thirteen hand-copied `validateMembershipRows` variants disagreed
  * on exactly this, some accepting a row whose `revoked_at` is set while its
@@ -274,8 +284,17 @@ $$;`,
     and i.auth_user_id = auth.uid() and i.enabled and i.revoked_at is null
 $$;`,
   // Nothing may call these directly; they exist to be asked by a policy.
+  // `source_app_id` is plain text on these tables, so nothing stops a row of
+  // another source app existing here — and ids collide across the two apps,
+  // which is why the primary key is composite. Without this, a caller whose
+  // agency key matches would read the other app's row. Every predicate below
+  // asks it.
+  `create function ${quote(SCHEMA)}.deployment_app() returns text
+  language sql stable security definer set search_path = '' as $$
+  select pennsync_private.deployment_app_id()
+$$;`,
   `revoke all on function ${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_user_id(),
-  ${quote(SCHEMA)}.caller_email() from public, anon, authenticated, service_role;`,
+  ${quote(SCHEMA)}.caller_email(), ${quote(SCHEMA)}.deployment_app() from public, anon, authenticated, service_role;`,
 ];
 
 /** Where the resolved tenant paths are recorded; read as data to avoid an import cycle. */
@@ -330,25 +349,35 @@ export function renderPolicies(plan, resolution) {
   const qualified = `${quote(SCHEMA)}.${quote(plan.table)}`;
   const name = suffix => quote(`${plan.table}_${suffix}`.slice(0, MAX_IDENTIFIER));
   const self = quote(plan.table);
-  const tenant = tenantPredicate(plan.entity, self, 0, resolution);
+  // The deployment serves one app; a row belonging to the other is not this
+  // deployment's to show or touch, however its agency key reads.
+  const thisApp = `${self}.${quote('source_app_id')} = ${quote(SCHEMA)}.deployment_app()`;
+  const tenant = `${thisApp} and ${tenantPredicate(plan.entity, self, 0, resolution)}`;
   const kind = plan.tenant_decision;
 
   if (kind === 'global') {
     // Platform reference: every caller reads it and no tenant surface writes
-    // it. Forced RLS with no write policy is what refuses the writes.
-    return [`create policy ${name('read')} on ${qualified} for select using (true);`];
+    // it. Forced RLS with no write policy is what refuses the writes. Still
+    // scoped to the deployment's own app, because global means every agency
+    // here, not every app.
+    return [`create policy ${name('read')} on ${qualified} for select using (${thisApp});`];
   }
   let read = tenant;
   if (kind === 'self') {
     const binding = SELF_BINDING[plan.self_subject];
     if (!binding) throw new Error(`SELF_SUBJECT_UNSUPPORTED:${plan.entity}:${plan.self_subject}`);
-    read = `${self}.${quote(plan.self_subject)} = ${quote(SCHEMA)}.${binding}()`;
+    read = `${thisApp} and ${self}.${quote(plan.self_subject)} = ${quote(SCHEMA)}.${binding}()`;
   } else if (kind === 'shared') {
-    // Platform rows are readable by everyone and writable by nobody: the write
-    // policies below never mention the flag, so only the agency rows move.
-    read = `${tenant} or ${self}.${quote(plan.platform_flag)} is true`;
+    read = `(${tenant}) or (${thisApp} and ${self}.${quote(plan.platform_flag)} is true)`;
   }
-  const write = kind === 'self' ? read : tenant;
+  // A shared table's write must also refuse to SET the platform flag. Without
+  // that an agency writes its own row — which the tenant predicate allows —
+  // marks it platform, and the read policy above then shows it to every other
+  // agency. Restricting the row's agency is not enough; the flag is the thing
+  // that publishes it.
+  const write = kind === 'self' ? read
+    : kind === 'shared' ? `${tenant} and ${self}.${quote(plan.platform_flag)} is not true`
+      : tenant;
   return [
     `create policy ${name('read')} on ${qualified} for select using (${read});`,
     `create policy ${name('insert')} on ${qualified} for insert with check (${write});`,

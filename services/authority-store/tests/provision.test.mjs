@@ -18,24 +18,36 @@ const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)))
 const PRODUCTION = '694ec16e72e01b60d22f7cbf';
 const STAGING = '6a9881683dc68a0bd54f1ef7';
 
-/** PGlite is one connection, so `session` models a new one by re-reading the
- *  database-level setting the way a fresh connection would see it. */
+/**
+ * The `alter database ... set` runs for real, because that statement is a
+ * utility statement that does not accept a bind parameter and an earlier
+ * version of this harness intercepted it — so the test passed while the
+ * production path would have failed at `$1`.
+ *
+ * PGlite is a single connection, and `alter database ... set` only reaches
+ * sessions opened after it, so `session` models a new one by reading what the
+ * statement actually persisted in `pg_db_role_setting` — which is exactly what
+ * a fresh connection would inherit — rather than by being told the answer.
+ */
+async function persistedPin(db) {
+  const { rows } = await db.query(`select s.setconfig from pg_db_role_setting s
+    join pg_database d on d.oid = s.setdatabase where d.datname = current_database()`);
+  const entry = (rows[0]?.setconfig ?? []).find(item => item.startsWith(`${PIN_SETTING}=`));
+  return entry ? entry.slice(PIN_SETTING.length + 1) : null;
+}
 function harness(db) {
-  let pinned = null;
   return {
-    query: async (sql, params = []) => {
-      if (/alter database .* set /i.test(sql)) { pinned = params[0]; return { rows: [] }; }
-      return db.query(sql, params);
+    query: (sql, params = []) => db.query(sql, params),
+    session: async run => {
+      const pinned = await persistedPin(db);
+      return run({
+        query: async (sql, params = []) => (/current_setting/.test(sql) && params[0] === PIN_SETTING
+          ? { rows: [{ value: pinned }] }
+          : db.query(sql, params)),
+        // A new session would already carry the database default.
+        exec: async sql => db.exec(pinned ? `set ${PIN_SETTING} = '${pinned}';\n${sql}` : sql),
+      });
     },
-    session: async run => run({
-      query: async (sql, params = []) => (/current_setting/.test(sql) && params[0] === PIN_SETTING
-        ? { rows: [{ value: pinned }] }
-        : db.query(sql, params)),
-      exec: async sql => db.exec(
-        // The migration reads the setting once; a new session would have it.
-        pinned ? `set ${PIN_SETTING} = '${pinned}';\n${sql}` : sql),
-    }),
-    get pinned() { return pinned; },
   };
 }
 
@@ -88,6 +100,28 @@ test('a production pin survives the migrations and is recorded as chosen, not de
       `select pennsync_private.app_admitted($1) as production, pennsync_private.app_admitted($2) as staging`,
       [PRODUCTION, STAGING]);
     assert.deepEqual(admitted[0], { production: true, staging: false });
+  } finally { await db.close(); }
+});
+
+test('the pin statement is one a real PostgreSQL accepts, not one the harness swallowed', async () => {
+  const db = await fresh();
+  try {
+    // `alter database ... set` takes no bind parameter. Running it for real is
+    // the only way this test can tell a working statement from a broken one.
+    await applyProvision({ db: harness(db), requestedApp: STAGING, repository });
+    assert.equal(await persistedPin(db), STAGING, 'the setting must actually be persisted on the database');
+  } finally { await db.close(); }
+});
+
+test('a half-provisioned store is named as such rather than looking finished', async () => {
+  const db = await fresh();
+  try {
+    // A run that died after the first migration: the schema exists, the pin
+    // function does not. Under D11 that database is replaced, not continued,
+    // so the refusal has to say which case it is.
+    await db.exec('create schema pennsync_private');
+    await rejects(applyProvision({ db: harness(db), requestedApp: STAGING, repository }),
+      'PROVISION_STORE_PARTIALLY_PRESENT');
   } finally { await db.close(); }
 });
 

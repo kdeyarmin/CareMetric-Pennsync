@@ -40,7 +40,7 @@ before(async () => {
     grant usage on schema ${SCHEMA} to record_broker;
     grant select, insert, update, delete on all tables in schema ${SCHEMA} to record_broker;
     grant execute on function ${SCHEMA}.caller_agencies(), ${SCHEMA}.caller_user_id(),
-      ${SCHEMA}.caller_email() to record_broker;`);
+      ${SCHEMA}.caller_email(), ${SCHEMA}.deployment_app() to record_broker;`);
 });
 after(async () => db?.close());
 
@@ -177,6 +177,74 @@ test('revoking a membership takes the rows away, and half a revocation cannot ex
     await db.exec('set local role record_broker');
     assert.deepEqual((await db.query(mine)).rows, [], 'a revoked membership reaches no row');
   } finally { await db.exec('rollback'); }
+});
+
+test('a row belonging to the other source app is not this deployment to show', async () => {
+  // `source_app_id` is plain text here and the primary key is composite
+  // precisely because ids COLLIDE across the two source apps. So a row of the
+  // other app can carry the very same agency id the caller is a member of.
+  // Without the deployment-app predicate that row reads as the caller's own.
+  const OTHER_APP = '694ec16e72e01b60d22f7cbf';
+  await seed(`insert into ${SCHEMA}.supply_item("source_app_id","id","agency_id","name") values
+    ('${APP}','cross-mine','agency-a','Mine'),
+    ('${OTHER_APP}','cross-theirs','agency-a','Other app, same agency id');`);
+
+  assert.deepEqual(ids(await as(AGENCY_A, `select "id" from ${SCHEMA}.supply_item where "id" like 'cross-%'`)),
+    ['cross-mine']);
+  assert.deepEqual(await as(AGENCY_A,
+    `update ${SCHEMA}.supply_item set "name" = 'taken' where "id" = 'cross-theirs' returning "id"`), []);
+  await refused(AGENCY_A, `insert into ${SCHEMA}.supply_item("source_app_id","id","agency_id","name")
+    values ('${OTHER_APP}','cross-planted','agency-a','Planted')`);
+});
+
+test('a shared table refuses to let an agency publish its own row to everyone', async () => {
+  await seed(`insert into ${SCHEMA}.document_template
+    ("source_app_id","id","agency_id","name","is_system_template") values
+    ('${APP}','own-tpl','agency-a','Agency A note',false);`);
+
+  // The tenant predicate alone would allow this: the row IS the caller's. What
+  // must refuse it is the flag, because setting it is what makes the row
+  // readable by every other agency.
+  await refused(AGENCY_A, `insert into ${SCHEMA}.document_template
+    ("source_app_id","id","agency_id","name","is_system_template")
+    values ('${APP}','self-published','agency-a','Promoted',true)`);
+  await refused(AGENCY_A,
+    `update ${SCHEMA}.document_template set "is_system_template" = true where "id" = 'own-tpl'`);
+  // Writing its own row without the flag stays perfectly allowed.
+  assert.deepEqual(ids(await as(AGENCY_A,
+    `update ${SCHEMA}.document_template set "name" = 'Renamed' where "id" = 'own-tpl' returning "id"`)),
+  ['own-tpl']);
+});
+
+test('a BYPASSRLS role is not bound by any of this, which is why brokers must not have it', async () => {
+  await seed(`insert into ${SCHEMA}.supply_item("source_app_id","id","agency_id","name") values
+    ('${APP}','bypass-a','agency-a','A'), ('${APP}','bypass-b','agency-b','B');`);
+  await db.exec(`create role record_owner nologin bypassrls;
+    grant usage on schema ${SCHEMA} to record_owner;
+    grant select on all tables in schema ${SCHEMA} to record_owner;`);
+
+  // The authority migration REQUIRES a SUPERUSER or BYPASSRLS owner
+  // (PENNSYNC_BYPASSRLS_MIGRATION_OWNER_REQUIRED), and such a role bypasses row
+  // level security even where it is forced. So `force row level security` does
+  // not bind a broker that runs as the migration owner, and the policies above
+  // are only worth anything to a role without the attribute. Demonstrated here
+  // rather than described, so the requirement cannot be quietly forgotten.
+  await db.exec('begin');
+  try {
+    await db.query("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({
+      sub: uid(AGENCY_A), session_id: sid(AGENCY_A), role: 'authenticated',
+      exp: Math.floor(Date.now() / 1000) + 3600,
+    })]);
+    await db.exec('set local role record_owner');
+    const { rows } = await db.query(`select "id" from ${SCHEMA}.supply_item where "id" like 'bypass-%'`);
+    assert.deepEqual(rows.map(row => row.id).sort(), ['bypass-a', 'bypass-b'],
+      'a BYPASSRLS role sees both agencies, which is the boundary brokers must stay outside of');
+  } finally { await db.exec('rollback'); }
+
+  // The same read as a role without the attribute is filtered, which is the
+  // contrast that makes the requirement concrete.
+  assert.deepEqual(ids(await as(AGENCY_A, `select "id" from ${SCHEMA}.supply_item where "id" like 'bypass-%'`)),
+    ['bypass-a']);
 });
 
 test('a caller with no session reaches nothing at all', async () => {

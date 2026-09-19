@@ -45,6 +45,15 @@ test('a global table is refused every way tenant data could reach it', () => {
     audit({ kind: 'global', because: reason }, {}, ['file_url']).join(' '),
     /can hold a file via file_url/,
   );
+  // A reference buried in an object or an array becomes JSONB rather than a
+  // column, so a top-level-only scan would wave it through and the global
+  // policy would then read it out. The walk goes all the way down.
+  const nested = { properties: { detail: { type: 'object', properties: { patient_id: { type: 'string' } } } } };
+  assert.match(audit({ kind: 'global', because: reason }, nested).join(' '),
+    /references carried entity Patient via detail\.patient_id/);
+  const inArray = { properties: { rows: { type: 'array', items: { type: 'object', properties: { created_by: { type: 'string' } } } } } };
+  assert.match(audit({ kind: 'global', because: reason }, inArray).join(' '),
+    /actor column rows\[\]\.created_by/);
   // Declaring it is allowed, because reference data does cite outside sources.
   assert.deepEqual(audit({ kind: 'global', because: reason, external_locators: ['file_url'] }, {}, ['file_url']), []);
   // A declaration that no longer matches a locator is stale and fails loudly,
