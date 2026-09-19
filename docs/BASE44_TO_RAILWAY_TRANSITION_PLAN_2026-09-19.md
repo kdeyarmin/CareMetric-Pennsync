@@ -1,0 +1,447 @@
+# Base44 exit plan: finishing the move to Railway and Supabase
+
+Date: 2026-09-19
+Status: review of completed work plus a proposed completion plan. This document
+authorizes nothing. Every hosted change it describes still requires its own
+review, cost approval, evidence, and release-owner sign-off under the existing
+gates in `docs/REPOSITORY_CONSOLIDATION_2026-09-02.md` and
+`docs/PENNSYNC_EXTERNAL_CUTOVER_EVIDENCE.md`.
+
+## 1. What "Railway" means for this app
+
+The work merged so far does not move the app to Railway alone. It replaces the
+Base44 platform with two providers, following the design already in the repo:
+
+| Base44 responsibility today | Target | Repository component | State |
+| --- | --- | --- | --- |
+| Deno backend functions (282) | Railway service(s) running Node 24 | `services/integration-runtime` (6 adapters only) | Partial |
+| Authentication and sessions | Supabase Auth in a dedicated project | `services/authority-client`, `services/authority-store` | Staging only, synthetic |
+| Entity storage and RLS (253 schemas) | PostgreSQL with forced RLS and RPC brokers | `services/authority-store/supabase/migrations` (10 files) | Five thin slices |
+| Uploaded files | Supabase Storage private bucket, `cmfile:` handles | Integration runtime `UploadPrivateFile` / `CreateFileSignedUrl` | Adapter only |
+| AI, email | Anthropic and SendGrid through the Railway runtime | Integration runtime `InvokeLLM`, `ExtractDataFromUploadedFile`, `SendEmail` | Deployed, paused |
+| Static site hosting | Not started (Base44 site hosting remains) | `.github/workflows/publish-production-frontend.yml` | Not started |
+| Scheduled workflows (7) | Not started | `base44/workflows` | All inactive in production |
+| Learning, help, central admin | Support Hub, already on Railway (`kdeyarmin/caremetric-support-hub`) | `centralAdminRead`, `centralLearningGrade`, `centralHelp` | Adapters exist, flags off |
+
+Fixed identities that must not change during the transition:
+
+- Production Base44 app `694ec16e72e01b60d22f7cbf`; origins
+  `https://caremetricai.base44.app/` and `https://app.caremetricai.com/`.
+- Legacy PennSync Base44 app `68ee80d98929370f9e8f2932`;
+  `https://pennsync.base44.app`, `pennsync.com`, `app.pennsync.com`.
+- Staging Base44 app `6a9881683dc68a0bd54f1ef7`.
+- Railway project "CareMetric Train", service `pennsync-integrations`
+  (`ce6259a3-b1b7-46e5-8cbf-253f66d39d5d`), origin
+  `https://pennsync-integrations-production.up.railway.app`.
+- Supabase projects: `caremetric-pennsync-staging` (`xxtyweswohkvgkprimwa`,
+  us-east-1, created 2026-09-18) for the independent authority; `CM Train`
+  (`xsqobvvreaovwibxwyvv`, us-west-2) for integration-runtime state and the
+  private bucket.
+- Apple bundle `com.caremetric.ai`, App Store ID `6757097720`; Google package
+  `com.caremetic.ai` (intentional spelling).
+
+## 2. What has been done, with evidence
+
+### 2.1 Railway integration runtime (PR #186, #206 to #216)
+
+- Deployed and healthy. Probe on 2026-09-19 of `/healthz` returned
+  `status: alive`, `release: paused`, revision
+  `570aee948ef1e5c498b7ca8f1c0eb2285c409bd2` (main at PR #216).
+- `/readyz` returned HTTP 503 with `released: false`, `operations: []`,
+  `missingProviders: []`, `base44ExecutionDependency: true`,
+  `trafficCutoverVerified: false`, `browserReleased: false`.
+- Real provider acceptance with synthetic data passed on 2026-09-16
+  (Anthropic text and structured output, private CSV upload, extraction, signed
+  download, SendGrid sandbox). See PR #186 and
+  `docs/audits/EXTERNAL_RUNTIME_REVIEW_CLOSEOUT_2026-09-16.md`.
+- Dedicated state tables, five service-only RPCs, private bucket, retention
+  cron, and safe pre-execution retry are installed in `CM Train`; the migration
+  chain is recovered and replayable (`services/integration-runtime/migrations`).
+- Browser transport `cm.integrations.v2` exists in
+  `src/lib/externalIntegrationTransport.js`, default off, revision-bound.
+- Mobile asset preservation guard: `tools-app-store-migration.test.mjs`.
+
+Still true: the runtime obtains caller authority by calling Base44
+`getMyTenantContext` (`services/integration-runtime/runtime.mjs`). That is the
+single remaining Base44 execution dependency inside the runtime.
+
+### 2.2 Independent authority store (PR #206 to #226)
+
+- Ten SQL migrations under `services/authority-store/supabase/migrations`.
+  Nine are applied to the hosted staging project (verified 2026-09-19 through
+  the Supabase migration list); `synthetic_archive_patient_import` is
+  deliberately not installed hosted.
+- Hosted staging tables hold the fixture: 4 identity mappings, 2 agencies,
+  4 memberships, 3 patients, 1 assignment, 1 S4 visit bundle, 4 S3 referrals,
+  and disclosure audit rows from real reads.
+- Contract: `pennsync_private` schema, forced RLS, no allowing policies,
+  `SECURITY INVOKER` public wrappers over private `SECURITY DEFINER` entries,
+  12-hour session bound, advisory-lock transactions, exact replay receipts,
+  deterministic `PT409` conflicts.
+- Supported operations: context, memberships, patient roster and detail,
+  explicit patient context (`display`, `smart_note_context`), S4 create and
+  own-receipt read, current-authority visit documentation read, saved visit
+  list, S3 manual referral create/confirm/read/list, referral patient
+  selection, assignment grant/revoke, clinician membership revoke.
+- Evidence: PGlite and PostgreSQL suites (`pennsync-authority.yml`), real
+  local Auth plus PostgREST HTTP acceptance, Chromium acceptance
+  (`pennsync-browser.yml`), and the compiled real app against a fresh local
+  stack (`pennsync-app.yml`). Local backup and restore rehearsal with
+  `pg_dump`/`pg_restore` (`services/authority-store/LOCAL_DATABASE_RESTORE.md`).
+
+### 2.3 Independent staging build of the real app (PR #217 to #226)
+
+- `VITE_PENNSYNC_BACKEND=independent-staging` builds the actual `App`,
+  `AuthProvider`, sign-in, agency selector, Patients, Clinical Notes
+  (read-only), and Referral Intake (manual existing-patient) against Supabase
+  through `src/lib/independentStagingAdapter.js`. Every other operation fails
+  closed with `STAGING_OPERATION_UNAVAILABLE`; there is no Base44 fallback.
+- The adapter pins the four `info+pennsync-*` test aliases and exactly two
+  targets (local loopback, dedicated hosted project).
+- Documented in `docs/INDEPENDENT_STAGING_APP.md` and
+  `services/authority-client/MANUAL_REFERRAL_UI.md`.
+
+### 2.4 Migration tooling (offline, synthetic-proven)
+
+| Tool | Purpose | Limit today |
+| --- | --- | --- |
+| `tools-pennsync-acquire.mjs` | Signed-permit capture of enumerated staging records through the Base44 CLI | Staging app only, four users pinned, no files |
+| `tools-pennsync-archive.mjs` | Encrypted, integrity-checked offline archive of supplied exports | No Base44 client; consumer must supply exports |
+| `tools-pennsync-archive-import.mjs` | Import verified archive into the synthetic patient schema | Names-only patients, local databases only |
+| `tools-pennsync-cutover.mjs` | Offline checker for the 15-gate cutover evidence packet | No packet exists yet |
+| `tools-base44-candidate-manifest.mjs` | Deterministic local inventory of the Base44 candidate | Not hosted parity |
+| `tools-live-frontend-sync.mjs` | SHA-256 verification of a published static site | Allowlists Base44 origins only |
+
+### 2.5 Production containment already in place
+
+- All seven production workflows are inactive (2026-09-10 investigation).
+- Messaging, e-signature, fax workflows, OASIS v2, PDGM payment, outcome
+  computation, patient merge, and telehealth are paused by literal gates.
+- Frontend publication is a manual, main-only, workspace-key workflow with
+  post-publish hash verification.
+
+## 3. What remains: the gap inventory
+
+Counts measured on this branch on 2026-09-19.
+
+| Surface | Count | Note |
+| --- | ---: | --- |
+| Frontend files importing the Base44 client | 455 | `src/api/base44Client.js` consumers |
+| Direct entity call sites in `src/` | 470 | across 77 entity types |
+| Backend function invocation sites in `src/` | 204 | through 83 wrappers in `src/functions` |
+| Core integration call sites in `src/` | 41 | UploadFile 31, InvokeLLM 5, ExtractDataFromUploadedFile 4, GenerateImage 1 |
+| Backend function directories | 282 | `base44/functions` |
+| Entity schemas | 253 | 119 service-only (all CRUD false), 132 with some browser access |
+| Native workflows | 7 | plus 1 quarantined |
+| Operations ported to the independent store | 8 wrapper contracts | see 2.2 |
+| Legacy PennSync app data | 8,672 rows, 387 patients, 8 users | 2026-09-03 read-only inventory |
+| CareMetric production data | 3,190 rows, 1 patient, 2 users | same inventory |
+
+Gaps by area:
+
+1. **Authority.** The runtime still calls Base44 for tenant context. The store
+   is synthetic-only: four pinned actors, names must start `Synthetic `, only
+   `agency_admin` and `clinician` have roster behavior, no enrollment path for
+   real users, no MFA or recovery, 12-hour hard session bound.
+2. **Data model.** Five narrow slices exist. The other 240-plus entity types,
+   including full patient charts, documents, OASIS, care plans, notifications,
+   training, and configuration, have no independent schema.
+3. **Business logic.** Railway hosts six integration adapters. The 282 Deno
+   functions have no Railway home; the platform's authorization, idempotency,
+   and CAS semantics are re-implemented per slice in SQL.
+4. **Files.** No inventory or copy of existing uploaded files. Base44 backups
+   exclude users and files. The `file_url` to `cmfile:` compatibility layer
+   does not exist; 31 `UploadFile` call sites still return permanent URLs.
+5. **Frontend hosting.** No Railway static service, no publish workflow for a
+   non-Base44 origin, `tools-live-frontend-sync.mjs` allowlists only Base44
+   origins. The iOS wrapper hard-binds `https://caremetricai.base44.app/` and
+   App-Bound Domains `base44.app`/`base44.com`.
+6. **Schedules and providers.** No replacement scheduler. Telnyx webhooks,
+   OpenAI Whisper, HeyGen retirement, HHGS grouper host (JDK 17), and any
+   subscription or purchase entitlement checks are not on Railway.
+7. **Customer data migration.** Only synthetic staging capture is supported.
+   Production and legacy exports, identity mapping, rehearsal, restore proof,
+   and reconciliation manifests do not exist.
+8. **Evidence and governance.** None of the 15 cutover gates has a receipt;
+   LR-01/LR-02 owners are still TBD; store privacy declarations, signing
+   project recovery, and physical-device tests remain open blockers 5 to 7.
+9. **Documentation drift.** `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, and
+   `.env.example` describe a Base44-only app; the `VITE_PENNSYNC_*` and
+   `VITE_EXTERNAL_INTEGRATION_*` settings are documented only in feature docs.
+
+## 4. Decisions needed before the next phase
+
+Each item names a recommendation. None is decided by this document.
+
+| # | Decision | Recommendation | Why |
+| --- | --- | --- | --- |
+| D1 | Where ported business logic runs | A new Railway service `services/pennsync-api` (Node 24, same Docker and hardening pattern as the integration runtime), with authorization-critical writes as PostgreSQL RPCs | Functions are TypeScript on the Base44 SDK; the esbuild transpile pipeline exists; the team already operates Railway; keeps Supabase as data and auth only |
+| D2 | Porting strategy | Hybrid: strict per-contract transfer for authority-bearing workflows (patients, visits, referrals, documents, memberships, notifications); one reviewed tenant-scoped entity broker for low-risk configuration and reference entities; retire or preserve-paused the rest | 282 functions at the current one-slice-per-PR pace will not finish; a generic proxy is forbidden by the existing membrane design, but a reviewed broker for non-PHI tables is not |
+| D3 | Cutover shape | Two steps: `business_backend_exit` first (Base44 keeps serving the static shell and custom domain), then `complete_hosting_exit` after the native wrapper ships | The iOS wrapper and App-Bound Domains depend on `caremetricai.base44.app`; a domain move before a new native build breaks installed apps |
+| D4 | Production Supabase project | New dedicated project in us-east-1; keep `caremetric-pennsync-staging` as staging; do not reuse `CM Train` | `CM Train` carries Hub Auth triggers and a different access boundary (see `services/authority-store/README.md`) |
+| D5 | Data scope | Migrate CareMetric production and legacy PennSync into one store with distinct source namespaces; quarantine ambiguous rows; decide disposition of log tables (UserActivity, SystemLog, SecurityLog) separately | Zero ID overlap between the apps; logs are large and have no tenant provenance |
+| D6 | Identity migration | Re-enrollment through Supabase Auth invitations with an operator-verified identity map; no password or session copy | Base44 does not export credentials; the user population is ten accounts |
+| D7 | Feature retirement | Carry paused domains (fax workflows, SMS, e-signature, messaging, OASIS v2, PDGM payment, outcome computation, telehealth) as `preserved_paused` in the cutover packet; port each only after its own gate passes | The cutover contract permits paused capabilities only with baseline and target pause receipts |
+| D8 | Learning | Complete the Support Hub cutover (`docs/CENTRAL_LEARNING_CUTOVER.md`) and retire the 38 PennSync learning functions instead of porting them | Already the recorded direction; removes HeyGen |
+
+## 5. Phased completion plan
+
+Each phase lists deliverables, the CI gate that must exist, the hosted evidence
+that closes it, and an indicative size. Sizes assume the current cadence of one
+maintainer with agent support; they are estimates, not commitments.
+
+### Phase 0: freeze scope and provision (size S, 1 to 2 weeks)
+
+Deliverables:
+
+- Record decisions D1 to D8 in `docs/ARCHITECTURE_DECISIONS_2026-09-07.md` or
+  a successor record.
+- Capability disposition manifest: every function, entity, workflow, and
+  Core integration classified as `port`, `broker`, `hub`, `retire`, or
+  `preserved_paused`. The cutover census requires a disposition for each id.
+  Appendix A is the starting classification.
+- Documentation: `README.md`, `AGENTS.md`, `CONTRIBUTING.md`, and
+  `.env.example` describe both build modes and every Railway and Supabase
+  setting (Appendix B).
+- Provision, after cost approval: production Supabase project (D4),
+  `services/pennsync-api` Railway service skeleton (paused, `/healthz` and
+  `/readyz` only), and a Railway static-site service placeholder.
+- Base44 credit ledger baseline captured for the zero-credit comparison.
+- Named owners for Product, Security, QA, Release, and Hosting in
+  `docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md`.
+
+Exit: disposition manifest merged; owners named; both new services deployed
+paused; no traffic change.
+
+### Phase 1: independent authority for real users (size M, 2 to 4 weeks)
+
+Deliverables:
+
+- Integration runtime obtains authority from a Supabase JWT plus the store's
+  context RPC instead of Base44 `getMyTenantContext`. Readiness reports
+  `base44ExecutionDependency: false`. Tests in `caller-binding.test.mjs` and
+  `runtime.test.mjs` updated.
+- Authority store generalized: configurable app namespace, all six tenant
+  roles, real names permitted through an explicit production migration, actor
+  registry moved from code pins to verified identity-map rows, session policy
+  reviewed (refresh, idle, MFA decision).
+- Enrollment tool: operator-run, evidence-hashed creation of identity-map rows
+  for invited Supabase Auth users; no public provisioning API.
+- Hosted-target CI job: the existing browser and compiled-app acceptance run
+  against the dedicated hosted staging project using the four enrolled actors
+  (secrets: publishable key and actor UUID map). Today both jobs run only
+  against a fresh local stack.
+
+Exit: two-agency positive and negative matrix from
+`docs/PENNSYNC_EXTERNAL_CUTOVER_EVIDENCE.md` passes hosted with real Auth;
+`identities`, `isolation`, and `revocation` rehearsal receipts can be produced.
+
+### Phase 2: data model and API service (size XL, 8 to 14 weeks)
+
+Deliverables, in tiers that can merge independently:
+
+- Schema: generate PostgreSQL DDL from the 253 JSONC schemas for every entity
+  marked `port` or `broker`, preserving field names to limit frontend churn.
+  Authority-bearing tables follow the existing `pennsync_private` pattern
+  (forced RLS, RPC entries, receipts). Broker tables get one reviewed
+  tenant-scoped RPC family with agency binding from the membership row.
+- `services/pennsync-api`: bearer Supabase JWT verification, request admission
+  and body bounds copied from the integration runtime, no-store errors, per
+  function release gates, `/v1/functions/<name>` mirroring the
+  `functions.invoke(name, payload)` shape so `src/functions/*` wrappers keep
+  their call signatures.
+- Tier A (port): the 24 authority brokers in Appendix A, plus Notification
+  authority-v1 and the care-team assignment mutation. These have designed
+  contracts and hosted-proof requirements already written.
+- Tier B (port through the runtime): the 43 AI-assist functions become thin
+  server handlers that call the runtime's `InvokeLLM` and
+  `ExtractDataFromUploadedFile` adapters; Base44 `Core.*` calls in `src/` go
+  through the v2 browser transport once released.
+- Tier C (broker): configuration and operations entities (payer, payroll,
+  visit points, incidents, timesheets, time off, vehicles, credentials) through
+  the generic tenant-scoped broker; user administration moves to Supabase Auth
+  admin operations behind the platform-owner gate.
+- Tier D (hub): learning functions retired per D8.
+- Tier E (preserved_paused): per D7, with pause receipts.
+- Frontend: replace `src/api/base44Client.js` with a backend-neutral client;
+  the independent adapter becomes the default when
+  `VITE_PENNSYNC_BACKEND=independent`; remove `@base44/sdk`,
+  `@base44/vite-plugin`, and `BASE44_LEGACY_SDK_IMPORTS` in the final PR of the
+  phase. Entity call sites (470) are replaced tier by tier; a lint rule blocks
+  new direct entity calls.
+- CI: each tier extends `pennsync-authority.yml`, `pennsync-browser.yml`, and
+  `pennsync-app.yml`; the existing `check:backend-transpile` gate is retargeted
+  from Deno entries to the new service.
+
+Exit: `clinical` and `concurrency` rehearsal gates producible; every
+`src/functions` wrapper resolves to the new service or is retired; no
+`base44.entities` reference remains in production-mode code.
+
+### Phase 3: files (size M, 3 to 5 weeks; can overlap Phase 2)
+
+- Read-only inventory tool for uploaded files in both production apps
+  (count, size, owner, agency, referencing records) using a supported listing.
+- Copy into the production project's private bucket with a SHA-256 manifest;
+  originals untouched.
+- Compatibility layer: `file_url` consumers resolve `cmfile:` handles to
+  60-second signed URLs at use time; fax and document flows bind to stable
+  artifact ids, never to signed URLs.
+- Migrate the 31 `UploadFile` call sites to `UploadPrivateFile`.
+
+Exit: `private_files` rehearsal receipt (source hash equals download hash,
+foreign and revoked denial, expiry and renewal).
+
+### Phase 4: customer data migration (size L, 4 to 8 weeks; after Phase 2 schema)
+
+- Extend `tools-pennsync-acquire.mjs` with owner-signed permits for the
+  production and legacy apps and a supported all-entity export; keep the
+  encrypted archive format.
+- Mapping tables: users, agencies, entity ids, file locators, and the six
+  differing schema definitions, per
+  `docs/PENNSYNC_DATA_MIGRATION_RUNBOOK_2026-09-03.md`.
+- Importer targets the production-shape schema with an immutable manifest
+  (source id, target id, checksum, transform version, result).
+- Rehearsal into a disposable project, restore rehearsal, reconciliation of
+  counts, edges, and file hashes; Notification producer cutover before any
+  Notification backfill; learning content classified before import.
+
+Exit: `archive_restore`, `sessions`, and `rollback` rehearsal receipts;
+zero unexplained conflicts.
+
+### Phase 5: frontend hosting and native wrapper (size M, 3 to 6 weeks; parallel to Phase 4)
+
+- Railway static-site service for the SPA: SPA fallback, immutable asset
+  caching, the existing CSP, health endpoint.
+- New publish workflow replacing `publish-production-frontend.yml`: builds
+  with `VITE_PENNSYNC_BACKEND=independent` and the external-integration
+  settings, deploys to Railway, verifies with `tools-live-frontend-sync.mjs`
+  after extending its origin allowlist.
+- Step one (`business_backend_exit`): the Base44 site continues to serve the
+  build; the build talks only to Railway and Supabase. Base44 becomes a static
+  shell with no business role.
+- Step two (`complete_hosting_exit`): move `app.caremetricai.com` to Railway;
+  keep `caremetricai.base44.app` reachable until a new iOS build with the new
+  `appURL` and App-Bound Domains is approved; recover the Android project
+  (blocker 6), correct store privacy declarations (blocker 5), run
+  physical-device tests (blocker 7).
+
+Exit: `endpoints` and `native` production receipts.
+
+### Phase 6: schedules and providers (size M, 2 to 4 weeks; after Phase 2)
+
+- Scheduler: Railway cron service or `pg_cron` invoking the API with the
+  internal secret; each of the seven workflows stays behind its
+  `WORKFLOW_RELEASE_*` gate until its hosted proof exists.
+- Telnyx status webhook re-pointed to the API; Whisper and Anthropic keys as
+  Railway references; HeyGen removed after the Hub cutover; HHGS adapter as a
+  JDK 17 service only when PDGM payment is released.
+
+Exit: `release_controls` receipt shows exactly the intended released set.
+
+### Phase 7: rehearsal, cutover, decommission (size M, 2 to 4 weeks)
+
+- Assemble the evidence packet and run `node tools-pennsync-cutover.mjs --check`
+  until it reports `evidence_coverage_complete`.
+- Full rehearsal in staging with the four actors and the minimum observation
+  window from the release plan.
+- Production: write freeze on Base44 (all direct RLS false, function gates
+  closed), final delta export and import, canary, observation window, rollback
+  plan that leaves Base44 intact, then the domain step from Phase 5.
+- After the retention window: Base44 apps read-only, credit ledger compared
+  with the Phase 0 baseline, hosting retired.
+
+Exit: `cutover` and `independence` production receipts; release-owner sign-off.
+
+### Dependency order
+
+Phase 0 gates everything. Phase 1 gates Phases 2 and 4. Phase 2 gates Phases 4
+and 6. Phase 3 can start once the production bucket exists. Phase 5 step one
+can start when Phase 2 tier A is on the hosted staging project; step two waits
+for the native wrapper. Phase 7 waits for all others.
+
+## 6. Risks and mitigations
+
+- **Forced re-enrollment.** No credential export exists. Mitigation: D6, a
+  communicated enrollment window, the identity map verified before cutover.
+- **File completeness.** Base44 backups exclude files and a supported complete
+  listing may not exist. Mitigation: build the inventory first (Phase 3) and
+  treat unreferenced objects as blockers, not omissions.
+- **Hidden hosted-only capabilities.** Dashboard automations, connectors, and
+  secrets are not in the repository. Mitigation: the `hosted_capabilities`
+  census entries and an authenticated read-only inventory before Phase 7.
+- **Native wrapper origin.** Installed apps break if `caremetricai.base44.app`
+  disappears before the new build is approved. Mitigation: D3 two-step cutover.
+- **Concurrency semantics change.** Ported handlers written for last-write-wins
+  claim-then-reread must become transactions. Mitigation: port through RPCs
+  with the existing receipt and `PT409` pattern; keep `docs/PLATFORM-CAS.md`
+  as the list of flows to rewrite.
+- **Scope.** Strict per-function transfer across 282 functions is the main
+  schedule risk. Mitigation: D2 and D7; Appendix A proposes retiring or
+  pausing more than half.
+- **PHI handling during migration.** Mitigation: encrypted archives only,
+  restricted operator environments, no plaintext extraction paths, as the
+  tooling already enforces.
+- **Cost.** Two Supabase projects and three Railway services. Mitigation:
+  explicit approval per resource in Phase 0, as was done for the staging
+  project.
+
+## 7. Immediate next pull requests
+
+1. Decision record for D1 to D8 and the capability disposition manifest.
+2. Documentation and `.env.example` update for both build modes.
+3. Integration runtime: authority through Supabase JWT and RPC;
+   `base44ExecutionDependency` becomes false with tests.
+4. Authority store: configurable namespace, six roles, production naming
+   migration, identity-map enrollment tool.
+5. Hosted-target CI job against `caremetric-pennsync-staging`.
+6. `services/pennsync-api` skeleton on Railway with `/healthz`, `/readyz`,
+   release gates, and the first Tier A handler.
+7. Read-only file inventory tool for both production apps.
+8. Provisioning record for the production Supabase project and Railway
+   services after cost approval.
+
+## Appendix A: backend function families and proposed disposition
+
+Classification by name pattern on 2026-09-19; the disposition manifest in
+Phase 0 must review each function individually.
+
+| Family | Count | Proposed disposition |
+| --- | ---: | --- |
+| Tenant and authority brokers (`getMyTenantContext`, `listAuthorized*`, `createAuthorized*`, `manageAuthorizedReferral`, `manageAgencyMembership`, ...) | 24 | port (Tier A) |
+| AI clinical assist (`analyze*`, `generate*`, `predict*`, `extract*`, `transcribe*`, `triage*`) | 43 | port through the runtime adapters (Tier B) |
+| User, admin, security, operations (`userManagement*`, `offboardUser`, timesheets, time off, vehicles, credentials, incidents, dashboards) | 42 | broker (Tier C) or Supabase Auth admin |
+| Notifications, email, reminders | 13 | port authority-v1 producer; retire legacy producers |
+| E-signature, documents, PDF | 50 | documents and PDF generation port; signing preserved_paused |
+| Fax, Telnyx, SMS, voice, telehealth | 39 | preserved_paused; port after each gate |
+| Training, learning, policy, central hub adapters | 38 | hub (retire in PennSync) |
+| OASIS, PDGM, outcomes, KPI | 20 | preserved_paused; reads port when tenant proof exists |
+| Follow-up, messaging, AI agreement, data quality, other | 13 | messaging preserved_paused; follow-up and agreement port |
+
+Entity schemas: 119 are already service-only (all four direct operations
+false) and can move behind RPCs without changing browser behavior; 132 still
+allow some direct browser access and need a broker or a port decision each.
+
+## Appendix B: settings that must be documented and provisioned
+
+| Setting | Where | Purpose |
+| --- | --- | --- |
+| `VITE_PENNSYNC_BACKEND` | build | `base44` (default) or `independent-staging`; a future `independent` value for production |
+| `VITE_PENNSYNC_STAGING_PROJECT_REF`, `VITE_PENNSYNC_STAGING_PROJECT_URL`, `VITE_PENNSYNC_STAGING_PUBLISHABLE_KEY`, `VITE_PENNSYNC_STAGING_ACTORS` | build | Pinned Supabase target and actor map (`docs/INDEPENDENT_STAGING_APP.md`) |
+| `VITE_EXTERNAL_INTEGRATIONS`, `VITE_EXTERNAL_INTEGRATION_ORIGIN`, `VITE_EXTERNAL_INTEGRATION_OPERATIONS`, `VITE_EXTERNAL_INTEGRATION_REVISION` | build | Browser transport to the Railway runtime (`docs/EXTERNAL_INTEGRATION_BROWSER_TRANSPORT.md`) |
+| `INTEGRATIONS_RELEASE`, `INTEGRATIONS_ALLOWED_OPERATIONS`, `INTEGRATIONS_BROWSER_RELEASE`, `INTEGRATIONS_BROWSER_OPERATIONS` | Railway runtime | Release controls, all off today |
+| Provider references (Anthropic, SendGrid, Supabase service credentials, encryption and hash keys) | Railway runtime | Private references, never in the repository |
+| `PENNSYNC_TEST_PG_URL`, `PENNSYNC_TEST_PG_BIN`, `PENNSYNC_SUPABASE_CLI` | CI | Existing local acceptance inputs |
+| Hosted-target CI secrets (publishable key, actor UUID map) | CI | Phase 1 deliverable |
+
+## Appendix C: CI and evidence matrix
+
+| Workflow | Proves today | Needed for the exit |
+| --- | --- | --- |
+| `ci.yml` | Lint, unit and contract suites, Base44 transpile, build | Retarget transpile to the API service; drop Base44 npm compatibility check at the end |
+| `pennsync-authority.yml` | PostgreSQL authority, S3, S4, disclosure, restore suites | Grows with every ported tier |
+| `pennsync-browser.yml` | Chromium against local Auth and PostgREST | Add the hosted-target variant |
+| `pennsync-app.yml` | Compiled real app against local stack | Add the hosted-target variant |
+| `external-integrations.yml` | Runtime, retry, scheduler tests | Add the API service |
+| `publish-production-frontend.yml` | Base44 site publication | Replace with the Railway publish workflow |
+| `hhgs-adapter.yml` | Offline CMS grouper parity | Unchanged until PDGM release |
+| `base44-publishing-access.yml` | Credential availability diagnostic | Retire after the hosting exit |
