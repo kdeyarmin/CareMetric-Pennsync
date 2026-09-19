@@ -48,6 +48,33 @@ ${isAllowedDestination.toString()}`;
 
 export const SHARED_HELPERS = {
 
+  // Bind a care-team assignment to the caller's CURRENT membership, so a role
+  // change or a revoke-and-regrant invalidates the assignment until it is
+  // issued again. Five brokers carried identical hand-written copies of this
+  // and seven more fold the same comparison into validateAssignmentIntegrity;
+  // reading either half alone makes the other look unprotected, which is
+  // exactly the drift this file exists to stop.
+  //
+  // It stays a separate call rather than moving inside the integrity predicate
+  // on purpose. Callers run it AFTER their own "assignment missing or not
+  // active" guard, which answers 404 'Patient unavailable'. Folding it in would
+  // run the binding first and answer 409 for a row the caller should not learn
+  // exists at all.
+  //
+  // `membership` is null for a protected platform owner, so the null check must
+  // come first: without it the comparison throws a TypeError instead of a 409.
+  assignmentBinding: `function requireAssignmentBinding(assignment, membership, normalizedEmail) {
+  if (
+    !membership
+    || assignment.user_email_normalized !== normalizedEmail
+    || assignment.assignee_membership_id !== membership.id
+    || assignment.assignee_membership_version_at_enablement !== membership.version
+  ) {
+    throw new PublicError(409, 'Care-team assignment binding is invalid');
+  }
+  return assignment;
+}`,
+
   // Tag only failures raised by auth.me(). A later datastore/provider failure
   // must never be misclassified as the user's authentication failure.
   authReadFailure: `class AuthReadFailure extends Error {

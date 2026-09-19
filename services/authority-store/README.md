@@ -1,6 +1,6 @@
 # Independent staging authority store
 
-This is an additive **synthetic staging slice**, not the production authority migration. It is fixed to Base44 staging identity namespace `6a9881683dc68a0bd54f1ef7`. It does not call Base44, copy customer data, create real Auth accounts, change production release controls, or modify existing integration/PennTrain tables. It implements independent membership context/selection, a minimal synthetic patient roster, assignment changes and clinician membership revocation. A second migration adds the strictly bounded [S4-create subset](S4_CREATE_SUBSET.md): an atomic synthetic note save and own-receipt lookup. A third adds the [S3 manual referral subset](S3_REFERRAL_SUBSET.md): create and confirm an existing-patient referral, with current authorized read and transaction receipts. These are not complete S3/S4, UI acceptance or production feature selection.
+This is an additive **synthetic staging slice**, not the production authority migration. Each deployment of it serves exactly one Base44 identity namespace, pinned once at migration time and immutable afterwards; an unconfigured deployment pins staging `6a9881683dc68a0bd54f1ef7`. See [Deployment app pin](#deployment-app-pin). It does not call Base44, copy customer data, create real Auth accounts, change production release controls, or modify existing integration/PennTrain tables. It implements independent membership context/selection, a minimal synthetic patient roster, assignment changes and clinician membership revocation. A second migration adds the strictly bounded [S4-create subset](S4_CREATE_SUBSET.md): an atomic synthetic note save and own-receipt lookup. A third adds the [S3 manual referral subset](S3_REFERRAL_SUBSET.md): create and confirm an existing-patient referral, with current authorized read and transaction receipts. These are not complete S3/S4, UI acceptance or production feature selection.
 
 ## Storage and privilege boundary
 
@@ -13,6 +13,75 @@ Every RPC validates the actual database role is `authenticated`, the JWT role, `
 Identity mapping stores the independently corroborated canonical email, source Base44 user ID, evidence SHA-256 and verification timestamp. Auth UUID, legacy identity, email and evidence are immutable; disabling a mapping is terminal in this slice. A source evidence digest records trusted operator provenance, not an automatic proof that an arbitrary supplied mapping is correct. No public mapping/provisioning API exists. Any later fixture loader must independently verify these mappings before inserting them.
 
 All six existing tenant-role names are finite schema values. Only `agency_admin` and `clinician` receive roster behavior in this first slice. Administrators see their agency's synthetic patients; clinicians see active assignments. Other valid roles can obtain context but cannot use the roster yet. No owner exception exists, and the existing protected staging owner's Base44 ID cannot enter this fixture identity map. Mutation endpoints cannot promote users, revoke administrators or self, or change agency identity. Exposed write actions are assignment grant/revoke, clinician-membership revoke and the bounded S4-create subset.
+
+## Deployment app pin
+
+Every app-scoped column is typed `pennsync_private.deployment_app`, a domain that admits exactly the app id this
+database serves, and `pennsync_private.actor()` refuses any other app id before it reads anything. Both layers read
+the same source: `pennsync_private.deployment`, a single row naming the one app this database is for.
+
+That answer is a generated function, not a row. `20260919090000_deployment_app_pin.sql` reads the database setting
+`pennsync.deployment_app_id`, which must be set before migrations run, and generates
+`pennsync_private.deployment_app_id()` returning that one constant. It must name an app id present in
+`pennsync_private.known_app`; anything else fails the migration rather than producing a store with no containment.
+Leaving it unset pins staging, which is the restrictive outcome: a production database whose operator forgot the
+setting refuses every production write instead of silently accepting one.
+
+It is a function rather than a row because of restore. A domain CHECK that reads a table cannot survive `pg_restore`:
+data is loaded after the schema but in its own order, `agency` comes before `deployment`, and every app-scoped row
+would be checked against a pin that has not loaded yet and refused. As a constant the pin is part of the schema,
+restored before any data, and the CHECK is genuinely IMMUTABLE rather than merely unchanging in practice. Changing it
+afterwards means `CREATE OR REPLACE` by the function's owner -- the same trusted migration administrator who could
+alter the domain directly -- so nothing is given away by holding it there.
+
+`pennsync_private.deployment` remains as the dated record: the pinned app, whether it was chosen or defaulted
+(`source`), and when. It is constrained to equal `deployment_app_id()`, so it cannot drift from what it records, and
+it cannot be updated, deleted or truncated.
+
+It is a database setting, not an environment variable, so it is not in `.env.example`. On the target project, before the migrations run:
+
+```sql
+alter database postgres set pennsync.deployment_app_id = '<app id>';
+```
+
+The registry is deliberately short. The retired app `68ee80d98929370f9e8f2932` is absent from it, so no deployment can
+be pointed at that namespace even on purpose. Widening past staging and production means adding a row to
+`known_app` in a reviewed migration.
+
+This pin governs the namespace only. The synthetic-shape constraints -- agency and patient names must begin
+`Synthetic `, and `patient.synthetic` must hold -- are a separate control and still apply in every deployment, so a
+production-pinned database can carry enrolled identities and still cannot hold a real name.
+
+The RPC surface is staging-only for the same reason. Every response documented below states
+`contract: cm.pennsync.*.staging.v1`, `staging: true` and `synthetic: true`, and those claims are only true in the
+staging deployment. Rather than relabel eighteen response builders and claim a port that has not happened,
+`actor()` refuses outright when the pinned deployment is not staging (`PENNSYNC_STAGING_RPC_SURFACE_ONLY`, SQLSTATE
+`42501`). It is the first call on every read and mutation path, so one guard covers all of them. A production
+deployment is therefore writable by the migration administrator -- which is how an operator enrollment tool creates
+identity, agency and membership rows -- and serves no RPC until each contract is revised under its own review.
+
+## Enrollment
+
+Identity rows are not created by any RPC. `tools-pennsync-enroll.mjs` at the repository root writes them, run by a
+trusted operator against a database they already administer, from a plan addressed by its own SHA-256.
+
+The plan names the app id it is for, the agencies it establishes, and for each person their Auth UUID, Base44 user id,
+canonical address, the path to the operator's corroborating document and that document's digest. The tool reads the
+document and hashes it; a declared digest that does not match the bytes is refused, so `source_evidence_sha256` records
+provenance the operator actually held. It then verifies against the database that the native account already exists,
+is confirmed, is neither anonymous nor deleted nor banned, and carries exactly the address the plan claims. It creates
+no native account: a person who has not accepted their own invitation cannot be enrolled on their behalf.
+
+Writes happen in one transaction under the same advisory lock the authority RPCs take, in the same order: agencies,
+identities, memberships, receipt. A row that already exists must match the plan exactly -- identity provenance is
+immutable by trigger, so a differing plan is a contradiction, not an update -- which makes a superset plan safe to run
+after a smaller one. The plan's app id must equal the deployment pin, so nobody can enroll production identities into
+the staging database. Every run is recorded in the append-only `pennsync_private.enrollment_receipt`: the plan digest,
+a digest of what was written, the three counts, the database name and the operator role. Applying the same plan twice
+fails on that receipt.
+
+The CLI reads `PENNSYNC_ENROLL_DATABASE_URL`, `PENNSYNC_ENROLL_PLAN`, `PENNSYNC_ENROLL_PLAN_SHA256` and
+`PENNSYNC_ENROLL_EVIDENCE_DIR`, and prints the receipt. No diagnostic carries an address, a name or any plan content.
 
 ## Transaction and replay behavior
 

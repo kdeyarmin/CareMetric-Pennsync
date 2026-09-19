@@ -14,7 +14,44 @@ Production PennSync stays separate. ios/ and public/ files are guarded against t
 
 INTEGRATIONS_RELEASE remains disabled and allowed operations empty. Health means a process is alive; readiness separately reports configuration/release state and `trafficCutoverVerified:false`.
 
-**The authority adapter still invokes Base44 getMyTenantContext.** It is an explicitly retained Base44 execution dependency, not a zero-credit claim. The supported SDK does not permit exporting platform-injected service-role credentials to an external backend. Complete independence needs a supported, verified authority/data migration, not relaxed entity permissions.
+## Selectable tenant authority
+
+`INTEGRATIONS_AUTHORITY_MODE` selects who authorizes a caller. It is `base44`
+unless an operator sets it, so no deployment changes authority by accident.
+
+| Mode | Behavior | Readiness |
+| --- | --- | --- |
+| `base44` (default) | The adapter invokes Base44 `getMyTenantContext`. An explicitly retained Base44 execution dependency, not a zero-credit claim. | `base44ExecutionDependency:true` |
+| `independent` | The caller's own Supabase Auth access token is replayed to the owned authority store's fixed `pennsync_staging_context` RPC. | `base44ExecutionDependency:false` |
+
+Independent mode additionally requires `INTEGRATIONS_APP_ID` to be set
+explicitly. In `base44` mode the app id is a label and its long-standing
+production default is correct; in independent mode it becomes the request's key
+into the owned store, whose `actor()` admits exactly the one app its deployment
+was pinned to. That pin defaults to **staging** while this default is
+**production**, so an independent deployment that states neither is the one
+combination that reports `base44ExecutionDependency:false` and is refused by
+every authorization call. It is refused at startup instead.
+
+Independent mode also requires `INTEGRATIONS_AUTHORITY_URL` (one of the
+two reviewed targets pinned in `authority.mjs`) and
+`INTEGRATIONS_AUTHORITY_PUBLISHABLE_KEY` (a modern publishable key; a secret or
+service-role key is refused at startup, because it would read past the caller's
+own authority). An incomplete or malformed independent configuration fails
+closed before the process can serve requests.
+
+There is no fallback between the two paths: an independent failure never
+retries through Base44. The durable subject preimage carries the selected mode,
+so a receipt created under one authority can never be replayed under the other.
+The owned store issues no platform-owner context, so the agency-less global
+scope that v2 allows under Base44 is refused outright in independent mode.
+
+A `base44ExecutionDependency:false` reading means no Base44 call remains in this
+service's authority path. It is **not** evidence of a traffic cutover, hosted
+enrollment of real employees, or measured credit savings; those remain the
+separately gated work below. Complete independence for the rest of the product
+still needs a supported, verified authority/data migration, not relaxed entity
+permissions.
 
 ## Provider compatibility
 
@@ -47,8 +84,13 @@ The dedicated jobs/files/budget tables deny browser CRUD. RPCs have fixed search
 1. `node --test services/integration-runtime/*.test.mjs src/lib/aiCall.test.js src/lib/aiScheduler.test.js tools-ai-drain.test.mjs tools-app-store-migration.test.mjs`
 2. Run the full app's lint, high-signal typecheck, tests and hosted-style build on the exact proposed commit.
 3. Verify deployment revision and provider configuration separately from source tests.
-4. Require signed-in two-agency and current installed-client acceptance, model/file/HTML compatibility, retention/rotation checks and provider output/delivery evidence before traffic cutover.
-5. Measure the Base44 usage ledger before claiming zero debits or savings.
+4. Before selecting `independent` authority on a deployment, run the read-only
+   preflight against the intended target and require its `authority` check to
+   report `anonymousDenied:true`, then prove a signed-in two-agency read and a
+   revoked-membership denial through this service with real enrolled actors.
+   A passing preflight is a configuration check, not that proof.
+5. Require signed-in two-agency and current installed-client acceptance, model/file/HTML compatibility, retention/rotation checks and provider output/delivery evidence before traffic cutover.
+6. Measure the Base44 usage ledger before claiming zero debits or savings.
 
 The seven previously paused Base44 schedules remain separate dashboard state. Their definitions/queues/history were retained and no external replacement job is activated by this package. Recheck inactivity after future Base44 publications.
 

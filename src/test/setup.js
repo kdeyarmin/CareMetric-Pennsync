@@ -2,6 +2,7 @@
 import '@testing-library/jest-dom/vitest';
 import { vi, afterEach } from 'vitest';
 import { cleanup, configure } from '@testing-library/react';
+import { flushUnmountTimers } from './flushUnmountTimers.js';
 
 // Raise the default async-utility budget (waitFor/findBy default is 1000ms). Heavy
 // page mounts + their consolidated data fetches can exceed it when the full suite
@@ -13,11 +14,16 @@ import { cleanup, configure } from '@testing-library/react';
 // two sequential waitFor calls still finishes within its overall budget.
 configure({ asyncUtilTimeout: 10000 });
 
-// Unmount React trees between tests so the jsdom document stays clean, and reset
-// the shared jsdom globals some specs mutate (offline flags, web storage) so no
-// test can leak state into the next within a file.
-afterEach(() => {
+// Unmount React trees between tests so the jsdom document stays clean, drain the
+// macrotasks that unmounting queues, and reset the shared jsdom globals some
+// specs mutate (offline flags, web storage) so no test can leak state into the
+// next within a file.
+afterEach(async () => {
   cleanup();
+  // Let timers that unmount effects queued (notably Radix's focus-scope focus
+  // restore) run while this file's jsdom window is still alive — see
+  // ./flushUnmountTimers.js for what happens when one outlives it.
+  await flushUnmountTimers();
   try { localStorage.clear(); } catch { /* jsdom storage may be unavailable */ }
   try { sessionStorage.clear(); } catch { /* ignore */ }
   // Some specs flip navigator.onLine via Object.defineProperty; restore the

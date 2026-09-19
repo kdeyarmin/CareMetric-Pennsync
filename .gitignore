@@ -53,3 +53,6 @@ android/signing.properties
 
 # Disposable local database rehearsal receipts and encrypted temporary artifacts
 /work/restore-rehearsal/
+
+# Transient rewritten Base44 function modules written by dashboardFunctionAuthorization.spec.js
+.vitest-function-modules/

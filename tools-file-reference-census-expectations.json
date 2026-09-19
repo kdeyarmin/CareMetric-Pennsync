@@ -1,0 +1,747 @@
+{
+  "format": "pennsync-file-reference-census",
+  "schema_version": 1,
+  "totals": {
+    "entities": 253,
+    "unreadable": 0,
+    "entities_with_file_fields": 58,
+    "locator_fields": 66,
+    "descriptor_fields": 57
+  },
+  "entities": {
+    "AdrAuditCase": [
+      {
+        "path": "final_packet_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "letter_file_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "packet_file_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "packet_page_count",
+        "kind": "descriptor",
+        "type": "number"
+      }
+    ],
+    "Agency": [
+      {
+        "path": "logo_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "AgencyMessage": [
+      {
+        "path": "attachments[].file_name",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "attachments[].file_size",
+        "kind": "descriptor",
+        "type": "number"
+      },
+      {
+        "path": "attachments[].file_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "participant_set_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "payload_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      }
+    ],
+    "BIIntegration": [
+      {
+        "path": "config.endpoint_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "CallLog": [
+      {
+        "path": "voicemail_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "CertificatePacketCache": [
+      {
+        "path": "file_uri",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "CitationLibrary": [
+      {
+        "path": "url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "DischargeSummary": [
+      {
+        "path": "pdf_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "Document": [
+      {
+        "path": "file_name",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_size",
+        "kind": "descriptor",
+        "type": "number"
+      },
+      {
+        "path": "file_type",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "DocumentRecord": [
+      {
+        "path": "file_name",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_size",
+        "kind": "descriptor",
+        "type": "number"
+      },
+      {
+        "path": "file_type",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "previous_versions[].file_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "DocumentSignature": [
+      {
+        "path": "document_content_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "document_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "signed_pdf_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "signers[].signature_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      }
+    ],
+    "DocumentTenantBinding": [
+      {
+        "path": "content_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_name",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_size",
+        "kind": "descriptor",
+        "type": "number"
+      },
+      {
+        "path": "file_type",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_uri",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "DocumentVersion": [
+      {
+        "path": "pdf_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "FaxDocument": [
+      {
+        "path": "file_name",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_size",
+        "kind": "descriptor",
+        "type": "number"
+      },
+      {
+        "path": "file_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "FaxDraft": [
+      {
+        "path": "document_urls",
+        "kind": "locator",
+        "type": "array"
+      }
+    ],
+    "FaxHistory": [
+      {
+        "path": "document_urls",
+        "kind": "locator",
+        "type": "array"
+      },
+      {
+        "path": "page_count",
+        "kind": "descriptor",
+        "type": "number"
+      }
+    ],
+    "FaxLog": [
+      {
+        "path": "document_content_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "document_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "FaxTemplate": [
+      {
+        "path": "document_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "HealthRecord": [
+      {
+        "path": "document_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "Incident": [
+      {
+        "path": "photo_urls",
+        "kind": "locator",
+        "type": "array"
+      },
+      {
+        "path": "state_reportable_pdf_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "IncomingFax": [
+      {
+        "path": "document_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "page_count",
+        "kind": "descriptor",
+        "type": "number"
+      }
+    ],
+    "LibraryDocument": [
+      {
+        "path": "file_type",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "MedicareGuideline": [
+      {
+        "path": "url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "MedicationReconciliation": [
+      {
+        "path": "discharge_document_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "Message": [
+      {
+        "path": "participant_set_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "payload_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      }
+    ],
+    "NurseSkill": [
+      {
+        "path": "certificate_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "OASISAudit": [
+      {
+        "path": "oasis_file_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "OASISUpload": [
+      {
+        "path": "file_name",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "OCRFeedback": [
+      {
+        "path": "document_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "PDFIndex": [
+      {
+        "path": "metadata.file_size",
+        "kind": "descriptor",
+        "type": "number"
+      },
+      {
+        "path": "metadata.page_count",
+        "kind": "descriptor",
+        "type": "number"
+      },
+      {
+        "path": "pdf_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "PDFTemplate": [
+      {
+        "path": "packet_documents[].original_file_name",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "packet_documents[].template_file_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "template_file_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "PatientDocument": [
+      {
+        "path": "file_name",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_size",
+        "kind": "descriptor",
+        "type": "number"
+      },
+      {
+        "path": "file_type",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "PatientEducationDelivery": [
+      {
+        "path": "content_type",
+        "kind": "descriptor",
+        "type": "string"
+      }
+    ],
+    "PatientEducationMaterial": [
+      {
+        "path": "content_type",
+        "kind": "descriptor",
+        "type": "string"
+      }
+    ],
+    "PatientMessage": [
+      {
+        "path": "attachments[].file_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "attachments[].filename",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "participant_set_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "payload_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      }
+    ],
+    "PendingPatientUpdate": [
+      {
+        "path": "source_file_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "PersonnelCredential": [
+      {
+        "path": "uploaded_file_name",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "uploaded_file_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "PolicyAcknowledgment": [
+      {
+        "path": "doc_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "PolicyLibrary": [
+      {
+        "path": "doc_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "ProviderBadge": [
+      {
+        "path": "badge_icon_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "ProviderCertification": [
+      {
+        "path": "certificate_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "ProviderSettings": [
+      {
+        "path": "regulatory_references[].url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "RecurringFax": [
+      {
+        "path": "document_urls",
+        "kind": "locator",
+        "type": "array"
+      }
+    ],
+    "Referral": [
+      {
+        "path": "document_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "processed_document_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "ReportTemplate": [
+      {
+        "path": "styling.logo_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "ScheduledFax": [
+      {
+        "path": "document_content_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "document_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "SharedDocument": [
+      {
+        "path": "versions[].file_size",
+        "kind": "descriptor",
+        "type": "number"
+      },
+      {
+        "path": "versions[].file_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "SignatureArtifactBinding": [
+      {
+        "path": "agreement_text_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "client_ip_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "content_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_size",
+        "kind": "descriptor",
+        "type": "number"
+      },
+      {
+        "path": "file_type",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "file_uri",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "source_document_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "typed_name_hmac_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "user_agent_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      }
+    ],
+    "SignatureAuditEvent": [
+      {
+        "path": "artifact_content_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "client_ip_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "document_content_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "user_agent_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      }
+    ],
+    "SignerReviewGrant": [
+      {
+        "path": "agreement_text_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "document_content_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "signer_roster_sha256",
+        "kind": "descriptor",
+        "type": "string"
+      }
+    ],
+    "StagingReadinessFixture": [
+      {
+        "path": "origin",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "TeamMessage": [
+      {
+        "path": "attachments[].file_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "attachments[].filename",
+        "kind": "descriptor",
+        "type": "string"
+      }
+    ],
+    "TelehealthSession": [
+      {
+        "path": "recording_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "TrainingCertificate": [
+      {
+        "path": "certificate_pdf_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "TrainingCompletion": [
+      {
+        "path": "certificate_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "TrainingCourse": [
+      {
+        "path": "attachment_urls",
+        "kind": "locator",
+        "type": "array"
+      }
+    ],
+    "TrainingModule": [
+      {
+        "path": "attachment_urls",
+        "kind": "locator",
+        "type": "array"
+      },
+      {
+        "path": "content.document_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "content.video_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "content_type",
+        "kind": "descriptor",
+        "type": "string"
+      },
+      {
+        "path": "content_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "video_thumbnail_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "video_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ],
+    "Visit": [
+      {
+        "path": "audio_url",
+        "kind": "locator",
+        "type": "string"
+      },
+      {
+        "path": "telehealth_recording_url",
+        "kind": "locator",
+        "type": "string"
+      }
+    ]
+  },
+  "hosted_inventory_performed": false,
+  "object_bytes_read": 0,
+  "files_copied": 0
+}

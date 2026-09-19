@@ -552,6 +552,20 @@ function assignmentKey(agencyId: string, patientId: string, userId: string) {
   return `${agencyId}:${patientId}:${userId}`;
 }
 
+// <<<BEGIN SHARED HELPER: assignmentBinding — generated, edit base44/_shared/backendHelpers.mjs>>>
+function requireAssignmentBinding(assignment, membership, normalizedEmail) {
+  if (
+    !membership
+    || assignment.user_email_normalized !== normalizedEmail
+    || assignment.assignee_membership_id !== membership.id
+    || assignment.assignee_membership_version_at_enablement !== membership.version
+  ) {
+    throw new PublicError(409, 'Care-team assignment binding is invalid');
+  }
+  return assignment;
+}
+// <<<END SHARED HELPER: assignmentBinding>>>
+
 function validateAssignmentIntegrity(
   row: Record<string, any>,
   patientId: string,
@@ -672,14 +686,7 @@ async function loadPatientAccess(
       }
       throw new PublicError(404, 'Patient unavailable');
     }
-    if (
-      !authority.membership
-      || assignment.user_email_normalized !== authority.normalizedEmail
-      || assignment.assignee_membership_id !== authority.membership.id
-      || assignment.assignee_membership_version_at_enablement !== authority.membership.version
-    ) {
-      throw new PublicError(409, 'Care-team assignment binding is invalid');
-    }
+    requireAssignmentBinding(assignment, authority.membership, authority.normalizedEmail);
     snapshot = {
       basis: 'care_team_assignment',
       assignment: pickFields(assignment, ASSIGNMENT_AUTHORITY_FIELDS),

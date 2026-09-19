@@ -1,12 +1,17 @@
 import { randomUUID } from 'node:crypto';
 import { BROWSER_CONTRACT, bindingFromContext } from './caller-binding.mjs';
+import { AUTHORITY_MODES, independentAuthorize, validAuthorityKey, validAuthorityTarget } from './authority.mjs';
 import { IntegrationError, fail, ID, UUID, OPERATIONS, hash, readJson, seal, stable, unseal } from './safety.mjs';
 
 const DEFAULT_APP = '694ec16e72e01b60d22f7cbf';
 const ALLOWED_APPS = new Set([DEFAULT_APP, '6a9881683dc68a0bd54f1ef7']);
 export const BUCKET = 'pennsync-external-integrations';
 export function loadConfig(env = process.env) {
-  const appId = env.INTEGRATIONS_APP_ID || DEFAULT_APP;
+  // Kept separate from the resolved id so independent mode can tell a binding an
+  // operator chose from one that merely defaulted. Deliberately untrimmed: a value
+  // with stray whitespace still fails ALLOWED_APPS as it does today.
+  const explicitApp = env.INTEGRATIONS_APP_ID || '';
+  const appId = explicitApp || DEFAULT_APP;
   if (!ALLOWED_APPS.has(appId)) throw new Error('INVALID_APP_BINDING');
   const operations = (env.INTEGRATIONS_ALLOWED_OPERATIONS || '').split(',').filter(Boolean);
   if (operations.some(operation => !OPERATIONS.includes(operation)) || new Set(operations).size !== operations.length) throw new Error('INVALID_OPERATION_CONFIGURATION');
@@ -19,11 +24,32 @@ export function loadConfig(env = process.env) {
   if (supabaseUrl && supabaseUrl !== 'https://xsqobvvreaovwibxwyvv.supabase.co') throw new Error('INVALID_STORAGE_BINDING');
   const encryptionKey = env.INTEGRATIONS_ENCRYPTION_KEY || '';
   const hashKey = env.INTEGRATIONS_HASH_KEY || '';
+  // The retained Base44 authority callback stays the default. Independence is
+  // an explicit operator selection with its own reviewed target and key, so a
+  // missing or malformed setting can never silently change who authorizes.
+  const authorityMode = env.INTEGRATIONS_AUTHORITY_MODE || 'base44';
+  if (!AUTHORITY_MODES.includes(authorityMode)) throw new Error('INVALID_AUTHORITY_MODE');
+  const authorityUrl = env.INTEGRATIONS_AUTHORITY_URL || '';
+  const authorityKey = env.INTEGRATIONS_AUTHORITY_PUBLISHABLE_KEY || '';
+  if (authorityUrl && !validAuthorityTarget(authorityUrl)) throw new Error('INVALID_AUTHORITY_TARGET');
+  // A secret or service-role key here would read past the caller's authority.
+  if (authorityKey && !validAuthorityKey(authorityKey)) throw new Error('INVALID_AUTHORITY_KEY');
+  const authorityConfigured = validAuthorityTarget(authorityUrl) && validAuthorityKey(authorityKey);
+  if (authorityMode === 'independent' && !authorityConfigured) throw new Error('INCOMPLETE_AUTHORITY_CONFIGURATION');
+  // In independent mode the app id stops being a label and becomes the request's
+  // key into the owned store: `actor()` admits exactly the one app its deployment
+  // was pinned to, and the store's pin defaults to STAGING while this default is
+  // PRODUCTION. A defaulted binding is therefore the one combination that reports
+  // ready and is refused by every authorization call. Make the operator say which
+  // app this runtime serves rather than inherit a default from the other path.
+  if (authorityMode === 'independent' && !explicitApp) throw new Error('IMPLICIT_APP_BINDING');
   const configured = !!supabaseUrl && !!env.SUPABASE_SERVICE_ROLE_KEY
-    && /^[a-f0-9]{64}$/.test(encryptionKey) && /^[a-f0-9]{64}$/.test(hashKey) && encryptionKey !== hashKey;
+    && /^[a-f0-9]{64}$/.test(encryptionKey) && /^[a-f0-9]{64}$/.test(hashKey) && encryptionKey !== hashKey
+    && (authorityMode !== 'independent' || authorityConfigured);
   return {
     appId, operations, browserOperations, browserReleased: env.INTEGRATIONS_BROWSER_RELEASE === 'enabled-v2',
     origins, supabaseUrl, encryptionKey, hashKey, configured,
+    authorityMode, authorityUrl, authorityKey, authorityConfigured,
     released: env.INTEGRATIONS_RELEASE === 'enabled-v1', dailyLimit: 100,
     supabaseKey: env.SUPABASE_SERVICE_ROLE_KEY || '', anthropicKey: env.ANTHROPIC_API_KEY || '',
     model: env.INTEGRATIONS_AI_MODEL || 'claude-sonnet-4-6', sendgridKey: env.SENDGRID_API_KEY || '',
@@ -34,15 +60,23 @@ export function loadConfig(env = process.env) {
 export function validSender(value) {
   return typeof value === 'string' && value.length <= 320 && /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(value);
 }
+/** Single source of truth for the disclosed dependency, used by readiness and every response. */
+export const hasBase44ExecutionDependency = config =>
+  !(config.authorityMode === 'independent' && config.authorityConfigured === true);
 export function publicReadiness(config) {
   const missingProviders = config.operations.filter(operation => {
     if (['InvokeLLM', 'ExtractDataFromUploadedFile'].includes(operation)) return !config.anthropicKey || !config.model;
     if (operation === 'SendEmail') return !config.sendgridKey || !validSender(config.fromEmail);
     return false;
   });
+  const independent = !hasBase44ExecutionDependency(config);
   return { ready: config.configured && config.released && config.operations.length > 0 && !missingProviders.length,
     released: config.released, configured: config.configured, operations: config.operations, missingProviders,
-    base44ExecutionDependency: true, trafficCutoverVerified: false, revision: config.revision,
+    // Derived from the selected authority, never asserted. An independent
+    // reading means no Base44 call remains in this path; it is not evidence
+    // that production traffic moved.
+    authorityMode: independent ? 'independent' : 'base44',
+    base44ExecutionDependency: !independent, trafficCutoverVerified: false, revision: config.revision,
     browserContract: BROWSER_CONTRACT, browserRevisionBound: /^[a-f0-9]{40}$/.test(config.revision || ''),
     browserReleased: config.browserReleased === true, browserOperations: config.browserOperations || [],
     browserReady: config.configured && config.released && config.browserReleased === true
@@ -50,6 +84,10 @@ export function publicReadiness(config) {
       && /^[a-f0-9]{40}$/.test(config.revision || '') };
 }
 export async function authorize(config, req, agencyId, fetcher = fetch) {
+  // Exactly one authority path runs. There is no fallback between them: an
+  // independent failure never retries through Base44, and the reverse cannot
+  // happen either.
+  if (config.authorityMode === 'independent') return independentAuthorize(config, req, agencyId, fetcher);
   if (agencyId !== null && (typeof agencyId !== 'string' || !ID.test(agencyId))) fail(400, 'AGENCY_REQUIRED');
   const bearer = req.headers.get('authorization');
   if (!bearer || !/^Bearer [A-Za-z0-9._~-]{20,16000}$/.test(bearer)) fail(401, 'AUTHENTICATION_REQUIRED');

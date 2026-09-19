@@ -29,11 +29,17 @@ with real references and reviewer approvals.**
 
 | Role | Name | Date assigned |
 |---|---|---|
-| Product | _TBD_ | |
-| Security | _TBD_ | |
-| QA | _TBD_ | |
-| Release | _TBD_ | |
-| Engineering (hosting) | _TBD_ | |
+| Product | Kevin Deyarmin | 2026-09-19 |
+| Security | Kevin Deyarmin | 2026-09-19 |
+| QA | Kevin Deyarmin | 2026-09-19 |
+| Release | Kevin Deyarmin | 2026-09-19 |
+| Engineering (hosting) | Kevin Deyarmin | 2026-09-19 |
+
+One person holds all five roles. That is recorded rather than worked around:
+this is a single-operator agency, and the alternative to naming one accountable
+person is leaving the table blank, which reads identically to nobody having
+signed. Where a packet below asks for a reviewer who is not the author, that
+requirement stands on its own and this table does not satisfy it.
 
 ---
 

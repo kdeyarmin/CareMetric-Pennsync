@@ -1,0 +1,240 @@
+import test, { before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
+import { readFile, readdir } from 'node:fs/promises';
+import { Readable } from 'node:stream';
+import { PGlite } from '@electric-sql/pglite';
+import { applyEnrollmentPlan, ENROLLMENT_CONTRACT } from '../../../tools-pennsync-enroll.mjs';
+
+/**
+ * Enrollment against a real database, which is where most of it is decided.
+ *
+ * D6 says identity moves by re-enrollment and never by credential copy, so this
+ * tool is the only path a person's identity takes into the owned store. The
+ * offline suite holds the plan boundary; this holds the parts only the database
+ * can answer: that the native account already exists and belongs to the person
+ * named, that the deployment being written to is the one the plan is for, that
+ * an identity already recorded cannot be quietly restated, and that a run either
+ * lands whole or leaves nothing.
+ *
+ * It also proves the point of the deployment pin: the same tool, the same plan
+ * shape, enrolls a production identity into a production-pinned database and is
+ * refused by the staging one. Before that migration neither was possible.
+ */
+const sha = value => createHash('sha256').update(value).digest('hex');
+const STAGING_APP = '6a9881683dc68a0bd54f1ef7';
+const PRODUCTION_APP = '694ec16e72e01b60d22f7cbf';
+const EVIDENCE = new Map();
+const uuid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+const base44 = n => `${'a'.repeat(24 - String(n).length)}${n}`;
+const email = n => `person${n}@example.test`;
+
+function evidence(n) {
+  const bytes = `operator verification record for person ${n}\n`;
+  EVIDENCE.set(`evidence/person-${n}.txt`, bytes);
+  return { path: `evidence/person-${n}.txt`, sha256: sha(bytes) };
+}
+const readEvidence = path => {
+  const bytes = EVIDENCE.get(path);
+  if (bytes === undefined) throw new Error('no such evidence');
+  return Readable.from([Buffer.from(bytes)]);
+};
+
+function person(n, { agency = 'agency-a', role = 'clinician' } = {}) {
+  const proof = evidence(n);
+  return {
+    auth_user_id: uuid(n), base44_user_id: base44(n), expected_email: email(n),
+    evidence_path: proof.path, evidence_sha256: proof.sha256,
+    memberships: [{ id: `membership-${n}`, agency_id: agency, tenant_role: role }],
+  };
+}
+
+function makePlan({ app = STAGING_APP, agencies, enrollments }) {
+  const raw = JSON.stringify({
+    contract: ENROLLMENT_CONTRACT,
+    app_id: app,
+    agencies,
+    enrollments,
+  });
+  return { rawPlan: raw, expectedPlanSha256: sha(raw), readEvidence };
+}
+const AGENCY_A = { id: 'agency-a', name: 'Synthetic Agency A', status: 'active' };
+
+async function deploy(requestedApp) {
+  const db = new PGlite();
+  await db.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
+  if (requestedApp) {
+    await db.query('select set_config($1,$2,false)', ['pennsync.deployment_app_id', requestedApp]);
+  }
+  const dir = new URL('../supabase/migrations/', import.meta.url);
+  for (const name of (await readdir(dir)).filter(n => n.endsWith('.sql')).sort()) {
+    await db.exec(await readFile(new URL(name, dir), 'utf8'));
+  }
+  return db;
+}
+
+const native = (db, n, patch = {}) => {
+  const row = { confirmed: 'clock_timestamp()', banned: null, deleted: null, anonymous: false,
+    address: email(n), ...patch };
+  return db.query(`insert into auth.users (id, email, email_confirmed_at, banned_until, deleted_at, is_anonymous)
+    values ($1, $2, ${row.confirmed}, $3, $4, $5)`, [uuid(n), row.address, row.banned, row.deleted, row.anonymous]);
+};
+
+async function refuses(db, plan, code) {
+  const error = await applyEnrollmentPlan({ db, ...plan }).then(() => null, cause => cause);
+  assert.ok(error, `expected ${code}, but the plan applied`);
+  assert.equal(error.code, code);
+}
+
+let staging, production;
+before(async () => { staging = await deploy(); production = await deploy(PRODUCTION_APP); });
+after(async () => { await staging?.close(); await production?.close(); });
+
+test('a verified plan writes the agency, the identity and the membership together', async () => {
+  await native(staging, 1);
+  const plan = makePlan({ agencies: [AGENCY_A], enrollments: [person(1)] });
+  const receipt = await applyEnrollmentPlan({ db: staging, ...plan });
+  assert.equal(receipt.contract, ENROLLMENT_CONTRACT);
+  assert.equal(receipt.app_id, STAGING_APP);
+  assert.equal(receipt.plan_sha256, plan.expectedPlanSha256);
+  assert.deepEqual({ ...receipt.created }, { agencies: 1, identities: 1, memberships: 1 });
+  assert.deepEqual({ ...receipt.planned }, { agencies: 1, identities: 1, memberships: 1 });
+
+  const identity = (await staging.query(`select base44_user_id, expected_email, source_evidence_sha256,
+    enabled, revoked_at, version::int from pennsync_private.identity_map where app_id=$1`, [STAGING_APP])).rows;
+  assert.equal(identity.length, 1);
+  assert.equal(identity[0].base44_user_id, base44(1));
+  assert.equal(identity[0].expected_email, email(1));
+  // The digest stored is the one this run computed from the bytes it read.
+  assert.equal(identity[0].source_evidence_sha256, sha(EVIDENCE.get('evidence/person-1.txt')));
+  assert.deepEqual([identity[0].enabled, identity[0].revoked_at, identity[0].version], [true, null, 1]);
+
+  const membership = (await staging.query(`select id, agency_id, tenant_role, status
+    from pennsync_private.membership where app_id=$1`, [STAGING_APP])).rows;
+  assert.deepEqual(membership, [{ id: 'membership-1', agency_id: 'agency-a', tenant_role: 'clinician', status: 'active' }]);
+
+  const stored = (await staging.query(`select plan_sha256, projection_sha256, identity_count, agency_count,
+    membership_count, operator_role from pennsync_private.enrollment_receipt where app_id=$1`, [STAGING_APP])).rows;
+  assert.equal(stored.length, 1);
+  assert.equal(stored[0].plan_sha256, plan.expectedPlanSha256);
+  assert.equal(stored[0].projection_sha256, receipt.projection_sha256);
+  assert.deepEqual([stored[0].identity_count, stored[0].agency_count, stored[0].membership_count], [1, 1, 1]);
+  assert.equal(stored[0].operator_role, receipt.operator_role);
+});
+
+test('the same plan cannot be applied twice, and the receipt cannot be erased', async () => {
+  const plan = makePlan({ agencies: [AGENCY_A], enrollments: [person(1)] });
+  await refuses(staging, plan, 'ENROLL_PLAN_ALREADY_APPLIED');
+  for (const statement of ['update pennsync_private.enrollment_receipt set identity_count = 99',
+    'delete from pennsync_private.enrollment_receipt', 'truncate pennsync_private.enrollment_receipt']) {
+    await assert.rejects(staging.exec(statement), /PENNSYNC_APPEND_ONLY_ENROLLMENT_RECEIPT/, statement);
+  }
+});
+
+test('a later plan adds people without disturbing the ones already enrolled', async () => {
+  await native(staging, 2);
+  const plan = makePlan({ agencies: [AGENCY_A],
+    enrollments: [person(1), person(2, { role: 'agency_admin' })] });
+  const receipt = await applyEnrollmentPlan({ db: staging, ...plan });
+  // Person 1 and the agency were already correct, so this run created neither.
+  assert.deepEqual({ ...receipt.created }, { agencies: 0, identities: 1, memberships: 1 });
+  assert.deepEqual({ ...receipt.planned }, { agencies: 1, identities: 2, memberships: 2 });
+  const versions = (await staging.query(
+    'select version::int from pennsync_private.identity_map where app_id=$1 order by base44_user_id', [STAGING_APP])).rows;
+  assert.deepEqual(versions, [{ version: 1 }, { version: 1 }], 'an existing identity must not be rewritten');
+});
+
+test('a plan that contradicts the record is refused rather than reconciled', async () => {
+  // Identity provenance is immutable by trigger, so there is no version of this
+  // the tool could apply: a differing plan is a plan about a different person.
+  const changed = person(1);
+  await refuses(staging, makePlan({ agencies: [AGENCY_A],
+    enrollments: [{ ...changed, evidence_sha256: sha('different corroboration') }] }), 'ENROLL_EVIDENCE_MISMATCH');
+  EVIDENCE.set('evidence/person-1.txt', 'a different operator record\n');
+  await refuses(staging, makePlan({ agencies: [AGENCY_A],
+    enrollments: [{ ...changed, evidence_sha256: sha('a different operator record\n') }] }), 'ENROLL_IDENTITY_CONFLICT');
+  EVIDENCE.set('evidence/person-1.txt', 'operator verification record for person 1\n');
+
+  await refuses(staging, makePlan({ agencies: [{ ...AGENCY_A, name: 'Synthetic Agency Renamed' }],
+    enrollments: [person(1)] }), 'ENROLL_AGENCY_CONFLICT');
+  await refuses(staging, makePlan({ agencies: [AGENCY_A],
+    enrollments: [person(1, { role: 'manager' })] }), 'ENROLL_MEMBERSHIP_CONFLICT');
+
+  // A second native account claiming an address or legacy id already mapped.
+  await native(staging, 3, { address: email(1) });
+  await refuses(staging, makePlan({ agencies: [AGENCY_A],
+    enrollments: [{ ...person(3), expected_email: email(1) }] }), 'ENROLL_IDENTITY_CLAIMED');
+});
+
+test('the native account must already exist and belong to the person named', async () => {
+  const plan = n => makePlan({ agencies: [AGENCY_A], enrollments: [person(n)] });
+  await refuses(staging, plan(10), 'ENROLL_NATIVE_IDENTITY_UNAVAILABLE');
+  await native(staging, 11, { confirmed: 'null' });
+  await refuses(staging, plan(11), 'ENROLL_NATIVE_IDENTITY_UNAVAILABLE');
+  await native(staging, 12, { banned: new Date(Date.now() + 3600_000).toISOString() });
+  await refuses(staging, plan(12), 'ENROLL_NATIVE_IDENTITY_UNAVAILABLE');
+  await native(staging, 13, { deleted: new Date().toISOString() });
+  await refuses(staging, plan(13), 'ENROLL_NATIVE_IDENTITY_UNAVAILABLE');
+  await native(staging, 14, { anonymous: true });
+  await refuses(staging, plan(14), 'ENROLL_NATIVE_IDENTITY_UNAVAILABLE');
+  // Present and healthy, but the invitation went to a different address.
+  await native(staging, 15, { address: 'someone.else@example.test' });
+  await refuses(staging, plan(15), 'ENROLL_NATIVE_EMAIL_MISMATCH');
+  assert.equal((await staging.query('select count(*)::int n from pennsync_private.identity_map')).rows[0].n, 2,
+    'no refused run may leave an identity behind');
+});
+
+test('a run that fails partway leaves nothing behind', async () => {
+  await native(staging, 20);
+  // Person 21 has no native account, so the run fails after person 20's rows
+  // have been written inside the transaction.
+  await refuses(staging, makePlan({ agencies: [{ id: 'agency-r', name: 'Synthetic Agency R', status: 'trial' }],
+    enrollments: [person(20, { agency: 'agency-r' }), person(21, { agency: 'agency-r' })] }),
+  'ENROLL_NATIVE_IDENTITY_UNAVAILABLE');
+  const left = await staging.query(`select
+    (select count(*)::int from pennsync_private.agency where id='agency-r') agencies,
+    (select count(*)::int from pennsync_private.identity_map where base44_user_id=$1) identities,
+    (select count(*)::int from pennsync_private.membership where agency_id='agency-r') memberships,
+    (select count(*)::int from pennsync_private.enrollment_receipt) receipts`, [base44(20)]);
+  assert.deepEqual(left.rows[0], { agencies: 0, identities: 0, memberships: 0, receipts: 2 });
+});
+
+test('enrollment is refused into a deployment the plan is not for', async () => {
+  await native(staging, 30);
+  await refuses(staging, makePlan({ app: PRODUCTION_APP, agencies: [AGENCY_A], enrollments: [person(30)] }),
+    'ENROLL_DEPLOYMENT_MISMATCH');
+  await native(production, 31);
+  await refuses(production, makePlan({ app: STAGING_APP, agencies: [AGENCY_A], enrollments: [person(31)] }),
+    'ENROLL_DEPLOYMENT_MISMATCH');
+});
+
+test('a production-pinned deployment enrolls a production identity', async () => {
+  // The payoff of the deployment pin. Nothing about this was possible while both
+  // app-id layers were staging literals: the domain refused the row and the
+  // entry gate refused the app. The agency name is still `Synthetic ` because
+  // that constraint is a separate control on a separate schedule.
+  const plan = makePlan({ app: PRODUCTION_APP,
+    agencies: [{ id: 'agency-p', name: 'Synthetic Agency P', status: 'active' }],
+    enrollments: [person(31, { agency: 'agency-p', role: 'agency_admin' })] });
+  const receipt = await applyEnrollmentPlan({ db: production, ...plan });
+  assert.equal(receipt.app_id, PRODUCTION_APP);
+  assert.deepEqual({ ...receipt.created }, { agencies: 1, identities: 1, memberships: 1 });
+  const rows = (await production.query(`select app_id, base44_user_id, expected_email
+    from pennsync_private.identity_map`)).rows;
+  assert.deepEqual(rows, [{ app_id: PRODUCTION_APP, base44_user_id: base44(31), expected_email: email(31) }]);
+  // And the staging database still holds none of it.
+  assert.equal((await staging.query('select count(*)::int n from pennsync_private.identity_map where app_id=$1',
+    [PRODUCTION_APP])).rows[0].n, 0);
+});
+
+test('an untrusted database role cannot enroll anyone', async () => {
+  await staging.exec('reset role');
+  await staging.exec(`do $$ begin
+    if not exists (select 1 from pg_roles where rolname='pennsync_enroll_untrusted') then
+      create role pennsync_enroll_untrusted nologin; end if; end $$`);
+  await staging.exec('grant usage on schema pennsync_private to pennsync_enroll_untrusted');
+  await staging.exec('set role pennsync_enroll_untrusted');
+  await native(staging, 40).catch(() => {});
+  await refuses(staging, makePlan({ agencies: [AGENCY_A], enrollments: [person(40)] }), 'ENROLL_ROLE_UNTRUSTED');
+  await staging.exec('reset role');
+});

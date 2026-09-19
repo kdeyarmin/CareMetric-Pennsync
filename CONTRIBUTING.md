@@ -1,6 +1,12 @@
 # Contributing to PennSync
 
-PennSync is a frontend-only Vite + React SPA. Base44 authentication, data entities, and the Deno functions under `base44/functions/` run on the hosted Base44 platform, not from this repository.
+PennSync is a Vite + React SPA with two selectable backends. On the production
+path, Base44 authentication, data entities, and the Deno functions under
+`base44/functions/` run on the hosted Base44 platform, not from this
+repository. On the independent path, Supabase Auth and the owned authority
+store under `services/authority-store` serve a synthetic staging fixture, and
+the Railway services under `services/` host external integrations and ported
+handlers. See the [README](README.md#backends) for which is which.
 
 ## Local setup
 
@@ -10,6 +16,11 @@ PennSync is a frontend-only Vite + React SPA. Base44 authentication, data entiti
 4. Start Vite with `pnpm run dev`.
 
 Without valid Base44 credentials, authenticated app routes may redirect to `/login` or show a blocking configuration state. Public capability-token routes such as `/signer` and `/join` can still be used for basic SPA rendering checks.
+
+To run the independent build instead, set `VITE_PENNSYNC_BACKEND=independent-staging`
+with the `VITE_PENNSYNC_STAGING_*` values in `.env.example`, against either the
+loopback stack or the dedicated staging project. See
+[docs/INDEPENDENT_STAGING_APP.md](docs/INDEPENDENT_STAGING_APP.md).
 
 ## Validation before opening a pull request
 
@@ -23,6 +34,31 @@ pnpm run check:shared-helpers
 pnpm run check:backend-transpile
 pnpm run build
 ```
+
+If your change touches the Base44 exit, also run:
+
+```bash
+pnpm run check:transition-disposition
+pnpm run check:base44-surface
+pnpm run check:file-references
+pnpm run check:entity-schema-plan
+pnpm run check:tenant-paths
+```
+
+These are also covered by `pnpm test`. A new backend function, entity schema,
+workflow or Core integration needs a disposition in
+`tools-transition-disposition.json`, and that disposition is checked against the
+source: `port`, `broker` and `hub` each claim there is live behavior to carry, so
+none of them may be given to a function whose module does no work. If you pause
+an endpoint by replacing its body with a constant response, move it to
+`preserved_paused` or `retire` in the same change. Retiring an entity also needs
+a retention basis in the manifest's `retention` block, because `retire` decides
+only where the capability goes and never what happens to the rows it holds: six
+years in the export archive if they carry any identifier, the named system if
+the table only mirrored one, and `none` only when the rows record nothing about
+a person. New Base44 coupling in `src/`
+fails the surface ratchet: migrate the consumer, or record and justify the
+increase.
 
 `pnpm run typecheck` and `pnpm run audit:prod` are useful informational baselines, but they are configured as non-blocking in CI.
 

@@ -46,6 +46,8 @@ jobs:
 
       - name: Install isolated authority test dependencies
         run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+      - name: Install ported API service dependencies
+        run: pnpm --dir services/pennsync-api install --frozen-lockfile
 
       # Base44's managed preview resolves dependencies with npm, not pnpm.
       # Validate that path independently: pnpm can accept peer combinations
@@ -84,6 +86,17 @@ jobs:
 
       - name: Check Base44 function syntax
         run: pnpm run check:backend-transpile
+
+      # BLOCKING gates for the Base44 exit. These also run inside `pnpm test`;
+      # naming them separately makes a migration regression legible instead of
+      # surfacing as one failed assertion among thousands.
+      - name: Check Base44 exit gates
+        run: |
+          pnpm run check:transition-disposition
+          pnpm run check:base44-surface
+          pnpm run check:file-references
+          pnpm run check:entity-schema-plan
+          pnpm run check:tenant-paths
 
       - name: Typecheck informational baseline
         run: pnpm run typecheck
