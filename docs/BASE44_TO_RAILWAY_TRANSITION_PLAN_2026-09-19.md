@@ -18,6 +18,7 @@ Source work completed here, all validated by the repository's own checks:
 | Phase 0 — documentation | `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `.env.example` describe both backends and every service setting |
 | Phase 1 — runtime authority | `INTEGRATIONS_AUTHORITY_MODE=independent` removes the Base44 `getMyTenantContext` call; readiness derives `base44ExecutionDependency` |
 | Phase 2 — API service | `services/pennsync-api` with health, readiness, release-gated dispatch and the first ported handler |
+| Phase 2 — candidate schema | `tools-entity-schema-plan.mjs` generates PostgreSQL for the 150 carried entities (2,272 columns, 275 enum constraints); a test applies the whole plan to a real database |
 | Phase 3 — file prerequisite | `tools-file-reference-census.mjs` and its committed census of every schema field that can hold a file |
 | Guardrail | `tools-base44-surface.mjs` ratchets remaining frontend coupling |
 
@@ -267,8 +268,15 @@ Exit: two-agency positive and negative matrix from
 
 Deliverables, in tiers that can merge independently:
 
-- Schema: generate PostgreSQL DDL from the 253 JSONC schemas for every entity
-  marked `port` or `broker`, preserving field names to limit frontend churn.
+- Schema: **generated and proven to apply** by `tools-entity-schema-plan.mjs`.
+  150 carried entities become tables in `pennsync_records` with 2,272 columns,
+  275 enum CHECK constraints and a `(source_app_id, id)` primary key that keeps
+  the two source apps' colliding ids apart. Every table forces RLS with no
+  policy and no grant. Emit it with `pnpm run emit:entity-schema`.
+  Still to decide per entity: indexes, foreign keys, retention, and which
+  columns become NOT NULL once legacy rows are reconciled. Only 15 of the 150
+  carry an explicit `agency_id`, which is the tenant-isolation gap the release
+  blockers already describe, now counted rather than estimated.
   Authority-bearing tables follow the existing `pennsync_private` pattern
   (forced RLS, RPC entries, receipts). Broker tables get one reviewed
   tenant-scoped RPC family with agency binding from the membership row.

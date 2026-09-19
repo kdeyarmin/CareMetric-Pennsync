@@ -1,0 +1,1521 @@
+{
+  "format": "pennsync-entity-schema-plan",
+  "schema_version": 1,
+  "target_schema": "pennsync_records",
+  "totals": {
+    "carried": 150,
+    "excluded": 103,
+    "columns": 2272,
+    "constrained_columns": 275,
+    "tenant_scoped": 15,
+    "skipped_properties": 0,
+    "merged_system_columns": 6
+  },
+  "entities": [
+    {
+      "entity": "AIConfiguration",
+      "disposition": "broker",
+      "table": "ai_configuration",
+      "tenant_key": null,
+      "columns": 24,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AIContentAgreementAttestation",
+      "disposition": "broker",
+      "table": "ai_content_agreement_attestation",
+      "tenant_key": null,
+      "columns": 6,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AIFeedback",
+      "disposition": "broker",
+      "table": "ai_feedback",
+      "tenant_key": null,
+      "columns": 10,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AIInsightFeedback",
+      "disposition": "broker",
+      "table": "ai_insight_feedback",
+      "tenant_key": null,
+      "columns": 13,
+      "constrained": 4,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AIKnowledgeBase",
+      "disposition": "broker",
+      "table": "ai_knowledge_base",
+      "tenant_key": null,
+      "columns": 15,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AILearningPattern",
+      "disposition": "broker",
+      "table": "ai_learning_pattern",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AIModelConfiguration",
+      "disposition": "broker",
+      "table": "ai_model_configuration",
+      "tenant_key": null,
+      "columns": 16,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AIModelTestResult",
+      "disposition": "broker",
+      "table": "ai_model_test_result",
+      "tenant_key": null,
+      "columns": 12,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AdrAuditCase",
+      "disposition": "port",
+      "table": "adr_audit_case",
+      "tenant_key": null,
+      "columns": 26,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Agency",
+      "disposition": "port",
+      "table": "agency",
+      "tenant_key": null,
+      "columns": 30,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AgencyComplianceRule",
+      "disposition": "port",
+      "table": "agency_compliance_rule",
+      "tenant_key": null,
+      "columns": 10,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AgencyFeatureAccess",
+      "disposition": "port",
+      "table": "agency_feature_access",
+      "tenant_key": null,
+      "columns": 4,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AgencyInvitation",
+      "disposition": "port",
+      "table": "agency_invitation",
+      "tenant_key": null,
+      "columns": 9,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AgencyInvoice",
+      "disposition": "port",
+      "table": "agency_invoice",
+      "tenant_key": null,
+      "columns": 17,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AgencyMembership",
+      "disposition": "port",
+      "table": "agency_membership",
+      "tenant_key": "agency_id",
+      "columns": 16,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AgencySettings",
+      "disposition": "port",
+      "table": "agency_settings",
+      "tenant_key": null,
+      "columns": 56,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AlertTriggerRule",
+      "disposition": "port",
+      "table": "alert_trigger_rule",
+      "tenant_key": null,
+      "columns": 16,
+      "constrained": 3,
+      "merged_system_columns": 1,
+      "skipped": []
+    },
+    {
+      "entity": "Announcement",
+      "disposition": "broker",
+      "table": "announcement",
+      "tenant_key": null,
+      "columns": 7,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AppointmentForm",
+      "disposition": "port",
+      "table": "appointment_form",
+      "tenant_key": null,
+      "columns": 13,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ApprovalRequest",
+      "disposition": "broker",
+      "table": "approval_request",
+      "tenant_key": null,
+      "columns": 18,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AutomaticCarePlanTrigger",
+      "disposition": "broker",
+      "table": "automatic_care_plan_trigger",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "BIIntegration",
+      "disposition": "broker",
+      "table": "bi_integration",
+      "tenant_key": null,
+      "columns": 10,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Billing",
+      "disposition": "port",
+      "table": "billing",
+      "tenant_key": null,
+      "columns": 31,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "CareCoordinationAlert",
+      "disposition": "port",
+      "table": "care_coordination_alert",
+      "tenant_key": null,
+      "columns": 17,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "CarePlan",
+      "disposition": "port",
+      "table": "care_plan",
+      "tenant_key": null,
+      "columns": 12,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "CarePlanProposal",
+      "disposition": "port",
+      "table": "care_plan_proposal",
+      "tenant_key": null,
+      "columns": 17,
+      "constrained": 4,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "CareSetting",
+      "disposition": "port",
+      "table": "care_setting",
+      "tenant_key": null,
+      "columns": 18,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "CitationLibrary",
+      "disposition": "broker",
+      "table": "citation_library",
+      "tenant_key": null,
+      "columns": 10,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ClinicalEvent",
+      "disposition": "port",
+      "table": "clinical_event",
+      "tenant_key": null,
+      "columns": 18,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ClinicalLibraryFolder",
+      "disposition": "port",
+      "table": "clinical_library_folder",
+      "tenant_key": null,
+      "columns": 5,
+      "constrained": 1,
+      "merged_system_columns": 1,
+      "skipped": []
+    },
+    {
+      "entity": "ClinicalLibraryTemplate",
+      "disposition": "port",
+      "table": "clinical_library_template",
+      "tenant_key": null,
+      "columns": 13,
+      "constrained": 2,
+      "merged_system_columns": 1,
+      "skipped": []
+    },
+    {
+      "entity": "ClinicalPathway",
+      "disposition": "port",
+      "table": "clinical_pathway",
+      "tenant_key": null,
+      "columns": 19,
+      "constrained": 1,
+      "merged_system_columns": 1,
+      "skipped": []
+    },
+    {
+      "entity": "ComplianceAudit",
+      "disposition": "port",
+      "table": "compliance_audit",
+      "tenant_key": null,
+      "columns": 15,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ComplianceRule",
+      "disposition": "port",
+      "table": "compliance_rule",
+      "tenant_key": null,
+      "columns": 13,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ComplianceViolation",
+      "disposition": "port",
+      "table": "compliance_violation",
+      "tenant_key": null,
+      "columns": 20,
+      "constrained": 5,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ContentScopeBinding",
+      "disposition": "broker",
+      "table": "content_scope_binding",
+      "tenant_key": "agency_id",
+      "columns": 12,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "DataArchivePolicy",
+      "disposition": "broker",
+      "table": "data_archive_policy",
+      "tenant_key": null,
+      "columns": 12,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "DischargeSummary",
+      "disposition": "port",
+      "table": "discharge_summary",
+      "tenant_key": null,
+      "columns": 27,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Document",
+      "disposition": "port",
+      "table": "document",
+      "tenant_key": null,
+      "columns": 23,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "DocumentAnalysisHistory",
+      "disposition": "port",
+      "table": "document_analysis_history",
+      "tenant_key": null,
+      "columns": 9,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "DocumentAutomationWorkflow",
+      "disposition": "port",
+      "table": "document_automation_workflow",
+      "tenant_key": null,
+      "columns": 16,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "DocumentPackage",
+      "disposition": "port",
+      "table": "document_package",
+      "tenant_key": "agency_id",
+      "columns": 31,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "DocumentRecord",
+      "disposition": "port",
+      "table": "document_record",
+      "tenant_key": null,
+      "columns": 16,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "DocumentTemplate",
+      "disposition": "port",
+      "table": "document_template",
+      "tenant_key": null,
+      "columns": 17,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "DocumentTenantBinding",
+      "disposition": "port",
+      "table": "document_tenant_binding",
+      "tenant_key": "agency_id",
+      "columns": 22,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "DocumentVersion",
+      "disposition": "port",
+      "table": "document_version",
+      "tenant_key": null,
+      "columns": 18,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "DocumentationTemplate",
+      "disposition": "port",
+      "table": "documentation_template",
+      "tenant_key": null,
+      "columns": 7,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "EmbedConfig",
+      "disposition": "broker",
+      "table": "embed_config",
+      "tenant_key": null,
+      "columns": 14,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "EmployeePayrollProfile",
+      "disposition": "port",
+      "table": "employee_payroll_profile",
+      "tenant_key": null,
+      "columns": 7,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "FaceToFaceEncounter",
+      "disposition": "port",
+      "table": "face_to_face_encounter",
+      "tenant_key": null,
+      "columns": 16,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "FacilityDocumentationRule",
+      "disposition": "broker",
+      "table": "facility_documentation_rule",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 3,
+      "merged_system_columns": 1,
+      "skipped": []
+    },
+    {
+      "entity": "FeaturePackage",
+      "disposition": "broker",
+      "table": "feature_package",
+      "tenant_key": null,
+      "columns": 10,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "FeatureToggle",
+      "disposition": "broker",
+      "table": "feature_toggle",
+      "tenant_key": null,
+      "columns": 5,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "FleetServiceEntry",
+      "disposition": "port",
+      "table": "fleet_service_entry",
+      "tenant_key": "agency_id",
+      "columns": 21,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "FleetServiceReview",
+      "disposition": "port",
+      "table": "fleet_service_review",
+      "tenant_key": "agency_id",
+      "columns": 10,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "FleetVehicle",
+      "disposition": "port",
+      "table": "fleet_vehicle",
+      "tenant_key": "agency_id",
+      "columns": 20,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "FollowUpRuleConfig",
+      "disposition": "broker",
+      "table": "follow_up_rule_config",
+      "tenant_key": null,
+      "columns": 5,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "FormTemplate",
+      "disposition": "port",
+      "table": "form_template",
+      "tenant_key": null,
+      "columns": 6,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "GeneratedDocument",
+      "disposition": "port",
+      "table": "generated_document",
+      "tenant_key": null,
+      "columns": 14,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "HealthRecord",
+      "disposition": "port",
+      "table": "health_record",
+      "tenant_key": null,
+      "columns": 20,
+      "constrained": 4,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Immunization",
+      "disposition": "port",
+      "table": "immunization",
+      "tenant_key": null,
+      "columns": 15,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Incident",
+      "disposition": "port",
+      "table": "incident",
+      "tenant_key": null,
+      "columns": 29,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "InsuranceProvider",
+      "disposition": "port",
+      "table": "insurance_provider",
+      "tenant_key": null,
+      "columns": 8,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "InterventionLog",
+      "disposition": "port",
+      "table": "intervention_log",
+      "tenant_key": null,
+      "columns": 24,
+      "constrained": 4,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "InvitationSettings",
+      "disposition": "broker",
+      "table": "invitation_settings",
+      "tenant_key": null,
+      "columns": 3,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Invoice",
+      "disposition": "port",
+      "table": "invoice",
+      "tenant_key": null,
+      "columns": 18,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "LearnedFormatPattern",
+      "disposition": "broker",
+      "table": "learned_format_pattern",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "MedicalCode",
+      "disposition": "port",
+      "table": "medical_code",
+      "tenant_key": null,
+      "columns": 15,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "MedicareComplianceRule",
+      "disposition": "port",
+      "table": "medicare_compliance_rule",
+      "tenant_key": null,
+      "columns": 17,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "MedicareGuideline",
+      "disposition": "port",
+      "table": "medicare_guideline",
+      "tenant_key": null,
+      "columns": 15,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Medication",
+      "disposition": "port",
+      "table": "medication",
+      "tenant_key": null,
+      "columns": 14,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "MedicationReconciliation",
+      "disposition": "port",
+      "table": "medication_reconciliation",
+      "tenant_key": null,
+      "columns": 21,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "NewFeature",
+      "disposition": "broker",
+      "table": "new_feature",
+      "tenant_key": null,
+      "columns": 6,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "NoteConversion",
+      "disposition": "port",
+      "table": "note_conversion",
+      "tenant_key": null,
+      "columns": 16,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "NoteFeedback",
+      "disposition": "port",
+      "table": "note_feedback",
+      "tenant_key": null,
+      "columns": 14,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "NoteTemplate",
+      "disposition": "port",
+      "table": "note_template",
+      "tenant_key": null,
+      "columns": 8,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Notification",
+      "disposition": "port",
+      "table": "notification",
+      "tenant_key": "agency_id",
+      "columns": 23,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "NotificationPreference",
+      "disposition": "port",
+      "table": "notification_preference",
+      "tenant_key": null,
+      "columns": 8,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "NotificationPreferences",
+      "disposition": "port",
+      "table": "notification_preferences",
+      "tenant_key": null,
+      "columns": 9,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "NotificationRule",
+      "disposition": "port",
+      "table": "notification_rule",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "NurseGoal",
+      "disposition": "port",
+      "table": "nurse_goal",
+      "tenant_key": null,
+      "columns": 13,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "NursePerformanceMetric",
+      "disposition": "port",
+      "table": "nurse_performance_metric",
+      "tenant_key": null,
+      "columns": 23,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "OCRFeedback",
+      "disposition": "broker",
+      "table": "ocr_feedback",
+      "tenant_key": null,
+      "columns": 12,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "OCRTrainingSession",
+      "disposition": "broker",
+      "table": "ocr_training_session",
+      "tenant_key": null,
+      "columns": 15,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "OnCallShift",
+      "disposition": "port",
+      "table": "on_call_shift",
+      "tenant_key": null,
+      "columns": 8,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PDFIndex",
+      "disposition": "broker",
+      "table": "pdf_index",
+      "tenant_key": null,
+      "columns": 8,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Patient",
+      "disposition": "port",
+      "table": "patient",
+      "tenant_key": "agency_id",
+      "columns": 66,
+      "constrained": 4,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PatientAlert",
+      "disposition": "port",
+      "table": "patient_alert",
+      "tenant_key": null,
+      "columns": 21,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PatientBillingInfo",
+      "disposition": "port",
+      "table": "patient_billing_info",
+      "tenant_key": null,
+      "columns": 16,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PatientCareTeamAssignment",
+      "disposition": "port",
+      "table": "patient_care_team_assignment",
+      "tenant_key": "agency_id",
+      "columns": 23,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PatientDocument",
+      "disposition": "port",
+      "table": "patient_document",
+      "tenant_key": null,
+      "columns": 16,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PatientEducationAssignment",
+      "disposition": "port",
+      "table": "patient_education_assignment",
+      "tenant_key": null,
+      "columns": 18,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PatientEducationDelivery",
+      "disposition": "port",
+      "table": "patient_education_delivery",
+      "tenant_key": null,
+      "columns": 17,
+      "constrained": 4,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PatientEducationDraft",
+      "disposition": "port",
+      "table": "patient_education_draft",
+      "tenant_key": null,
+      "columns": 15,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PatientEducationEngagement",
+      "disposition": "port",
+      "table": "patient_education_engagement",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PatientEducationMaterial",
+      "disposition": "port",
+      "table": "patient_education_material",
+      "tenant_key": null,
+      "columns": 15,
+      "constrained": 3,
+      "merged_system_columns": 1,
+      "skipped": []
+    },
+    {
+      "entity": "PatientNoteHistoryEntry",
+      "disposition": "port",
+      "table": "patient_note_history_entry",
+      "tenant_key": "agency_id",
+      "columns": 19,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PatientPathwayAssignment",
+      "disposition": "port",
+      "table": "patient_pathway_assignment",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PatientRecommendation",
+      "disposition": "port",
+      "table": "patient_recommendation",
+      "tenant_key": null,
+      "columns": 17,
+      "constrained": 4,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PatientRiskAssessment",
+      "disposition": "port",
+      "table": "patient_risk_assessment",
+      "tenant_key": null,
+      "columns": 15,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PayerRateConfig",
+      "disposition": "broker",
+      "table": "payer_rate_config",
+      "tenant_key": null,
+      "columns": 8,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Payment",
+      "disposition": "port",
+      "table": "payment",
+      "tenant_key": null,
+      "columns": 9,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PaymentRecord",
+      "disposition": "port",
+      "table": "payment_record",
+      "tenant_key": null,
+      "columns": 8,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PendingPatientUpdate",
+      "disposition": "port",
+      "table": "pending_patient_update",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PersonnelCredential",
+      "disposition": "port",
+      "table": "personnel_credential",
+      "tenant_key": null,
+      "columns": 25,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Physician",
+      "disposition": "port",
+      "table": "physician",
+      "tenant_key": null,
+      "columns": 28,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PhysicianAgencyProfile",
+      "disposition": "port",
+      "table": "physician_agency_profile",
+      "tenant_key": "agency_id",
+      "columns": 16,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PolicyAcknowledgment",
+      "disposition": "broker",
+      "table": "policy_acknowledgment",
+      "tenant_key": null,
+      "columns": 16,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PolicyLibrary",
+      "disposition": "broker",
+      "table": "policy_library",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ProviderDashboardCustomization",
+      "disposition": "port",
+      "table": "provider_dashboard_customization",
+      "tenant_key": null,
+      "columns": 12,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ProviderFacilityAssignment",
+      "disposition": "port",
+      "table": "provider_facility_assignment",
+      "tenant_key": null,
+      "columns": 13,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ProviderPatientAssignment",
+      "disposition": "port",
+      "table": "provider_patient_assignment",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ProviderPermission",
+      "disposition": "port",
+      "table": "provider_permission",
+      "tenant_key": null,
+      "columns": 10,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ProviderPracticeInfo",
+      "disposition": "port",
+      "table": "provider_practice_info",
+      "tenant_key": null,
+      "columns": 15,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ProviderPreferences",
+      "disposition": "port",
+      "table": "provider_preferences",
+      "tenant_key": null,
+      "columns": 9,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ProviderSettings",
+      "disposition": "port",
+      "table": "provider_settings",
+      "tenant_key": null,
+      "columns": 10,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ProviderSpecialization",
+      "disposition": "port",
+      "table": "provider_specialization",
+      "tenant_key": null,
+      "columns": 14,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ProviderUsagePattern",
+      "disposition": "port",
+      "table": "provider_usage_pattern",
+      "tenant_key": null,
+      "columns": 12,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Referral",
+      "disposition": "port",
+      "table": "referral",
+      "tenant_key": "agency_id",
+      "columns": 50,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "RegulatoryUpdate",
+      "disposition": "broker",
+      "table": "regulatory_update",
+      "tenant_key": null,
+      "columns": 16,
+      "constrained": 4,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ReminderLog",
+      "disposition": "broker",
+      "table": "reminder_log",
+      "tenant_key": null,
+      "columns": 12,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ReportTemplate",
+      "disposition": "broker",
+      "table": "report_template",
+      "tenant_key": null,
+      "columns": 8,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "RiskAlert",
+      "disposition": "port",
+      "table": "risk_alert",
+      "tenant_key": null,
+      "columns": 10,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "RiskAnalysis",
+      "disposition": "port",
+      "table": "risk_analysis",
+      "tenant_key": null,
+      "columns": 9,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ScheduleFeedback",
+      "disposition": "broker",
+      "table": "schedule_feedback",
+      "tenant_key": null,
+      "columns": 7,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ScheduledReport",
+      "disposition": "broker",
+      "table": "scheduled_report",
+      "tenant_key": null,
+      "columns": 13,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "SentEducationMaterial",
+      "disposition": "port",
+      "table": "sent_education_material",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "ServiceCode",
+      "disposition": "broker",
+      "table": "service_code",
+      "tenant_key": null,
+      "columns": 7,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "SessionTimeout",
+      "disposition": "broker",
+      "table": "session_timeout",
+      "tenant_key": null,
+      "columns": 6,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "SharedDocument",
+      "disposition": "port",
+      "table": "shared_document",
+      "tenant_key": null,
+      "columns": 14,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "SharedPhraseLibrary",
+      "disposition": "broker",
+      "table": "shared_phrase_library",
+      "tenant_key": null,
+      "columns": 7,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "SuggestedIntervention",
+      "disposition": "port",
+      "table": "suggested_intervention",
+      "tenant_key": null,
+      "columns": 16,
+      "constrained": 4,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "SupplyItem",
+      "disposition": "port",
+      "table": "supply_item",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "SupplyLowStockAlert",
+      "disposition": "port",
+      "table": "supply_low_stock_alert",
+      "tenant_key": null,
+      "columns": 12,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "SupplyPrediction",
+      "disposition": "port",
+      "table": "supply_prediction",
+      "tenant_key": null,
+      "columns": 13,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "SupplyUsageLog",
+      "disposition": "port",
+      "table": "supply_usage_log",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Task",
+      "disposition": "port",
+      "table": "task",
+      "tenant_key": null,
+      "columns": 26,
+      "constrained": 6,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "TeamNote",
+      "disposition": "broker",
+      "table": "team_note",
+      "tenant_key": null,
+      "columns": 4,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "TerminologyGlossary",
+      "disposition": "broker",
+      "table": "terminology_glossary",
+      "tenant_key": null,
+      "columns": 6,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "TermsAcceptanceAudit",
+      "disposition": "broker",
+      "table": "terms_acceptance_audit",
+      "tenant_key": null,
+      "columns": 12,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "TimeOffRequest",
+      "disposition": "port",
+      "table": "time_off_request",
+      "tenant_key": null,
+      "columns": 16,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Timesheet",
+      "disposition": "port",
+      "table": "timesheet",
+      "tenant_key": null,
+      "columns": 29,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "TranscriptionLearning",
+      "disposition": "broker",
+      "table": "transcription_learning",
+      "tenant_key": null,
+      "columns": 5,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "User",
+      "disposition": "port",
+      "table": "user",
+      "tenant_key": "agency_id",
+      "columns": 43,
+      "constrained": 6,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "UserFavorite",
+      "disposition": "port",
+      "table": "user_favorite",
+      "tenant_key": null,
+      "columns": 5,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "UserInvitation",
+      "disposition": "port",
+      "table": "user_invitation",
+      "tenant_key": null,
+      "columns": 15,
+      "constrained": 4,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "UserLearnedPattern",
+      "disposition": "port",
+      "table": "user_learned_pattern",
+      "tenant_key": null,
+      "columns": 13,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "VerificationCode",
+      "disposition": "broker",
+      "table": "verification_code",
+      "tenant_key": null,
+      "columns": 6,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "Visit",
+      "disposition": "port",
+      "table": "visit",
+      "tenant_key": "agency_id",
+      "columns": 42,
+      "constrained": 4,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "VisitPointConfig",
+      "disposition": "port",
+      "table": "visit_point_config",
+      "tenant_key": null,
+      "columns": 8,
+      "constrained": 0,
+      "merged_system_columns": 0,
+      "skipped": []
+    }
+  ],
+  "indexes_planned": false,
+  "foreign_keys_planned": false,
+  "retention_planned": false,
+  "reviewed": false,
+  "applied_anywhere": false
+}

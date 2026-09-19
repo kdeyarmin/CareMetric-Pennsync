@@ -93,6 +93,7 @@ jobs:
           pnpm run check:transition-disposition
           pnpm run check:base44-surface
           pnpm run check:file-references
+          pnpm run check:entity-schema-plan
 
       - name: Typecheck informational baseline
         run: pnpm run typecheck

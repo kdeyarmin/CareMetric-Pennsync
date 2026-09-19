@@ -45,6 +45,8 @@ Migration checks:
 - `pnpm run check:transition-disposition` — every capability carries a disposition
 - `pnpm run check:base44-surface` — remaining Base44 coupling stays within its baseline
 - `pnpm run check:file-references` — the schema file-reference census is current
+- `pnpm run check:entity-schema-plan` — the candidate PostgreSQL schema matches the entity definitions
+- `pnpm run emit:entity-schema` — print the generated schema SQL
 - `pnpm run test:pennsync-api` — the ported business API and its port parity guards
 
 
