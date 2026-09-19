@@ -1,0 +1,242 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { AUTHORITY_CONTRACT, AUTHORITY_RPC, resolveAuthority, validAuthorityKey, validAuthorityTarget } from './authority.mjs';
+import { createHandler } from './app.mjs';
+import { HANDLER_NAMES, validatePatientData } from './handlers.mjs';
+import { loadConfig, publicReadiness } from './runtime.mjs';
+
+// Invented identities and injected transports only. No network, no customer
+// record, no provider credential and no Base44 request exists here.
+const revision = 'd'.repeat(40);
+const KEY = 'sb_publishable_synthetic-acceptance-key';
+const TARGET = 'https://xxtyweswohkvgkprimwa.supabase.co';
+const AUTH_USER = '99999999-8888-4777-8666-555555555555';
+const env = (patch = {}) => ({
+  PENNSYNC_API_RELEASE: 'enabled-v1',
+  PENNSYNC_API_FUNCTIONS: 'validatePatientData',
+  PENNSYNC_API_AUTHORITY_URL: TARGET,
+  PENNSYNC_API_AUTHORITY_PUBLISHABLE_KEY: KEY,
+  RAILWAY_GIT_COMMIT_SHA: revision,
+  ...patch,
+});
+const config = (patch = {}) => loadConfig(env(patch));
+
+const context = (patch = {}) => ({
+  contract: AUTHORITY_CONTRACT, app_id: '694ec16e72e01b60d22f7cbf', auth_user_id: AUTH_USER,
+  staging: true, synthetic: true, user_id: 'user-a', user_email: 'synthetic@example.test',
+  identity_version: 1, is_platform_owner: false, agency_id: 'agency-a', membership_id: 'member-a',
+  membership_key: 'agency-a:user-a', membership_version: 1, membership_status: 'active',
+  tenant_role: 'clinician', agency: { id: 'agency-a', name: 'Synthetic Agency A', status: 'active' },
+  ...patch,
+});
+const patient = (patch = {}) => ({ first_name: 'Synthetic', last_name: 'Patient', date_of_birth: '1950-04-02', ...patch });
+const post = (body, { path = '/v1/functions/validatePatientData', auth = 'Bearer synthetic-native-session-token' } = {}) =>
+  new Request(`https://api.example.test${path}`, {
+    method: 'POST',
+    headers: { ...(auth ? { authorization: auth } : {}), 'content-type': 'application/json' },
+    body: typeof body === 'string' ? body : JSON.stringify(body),
+  });
+const serveContext = (patch = {}) => async () => Response.json(context(patch));
+const handlerFor = (patch = {}, fetcher = serveContext()) => createHandler(config(patch), { fetcher });
+
+test('configuration defaults closed and refuses unusable release combinations', () => {
+  const bare = loadConfig({});
+  assert.equal(bare.released, false);
+  assert.deepEqual(bare.functions, []);
+  assert.equal(bare.authorityConfigured, false);
+  assert.equal(publicReadiness(bare).ready, false);
+  // Release without a usable authority would serve unauthorized work.
+  assert.throws(() => loadConfig({ PENNSYNC_API_RELEASE: 'enabled-v1' }));
+  // A released name must exist in the registry.
+  assert.throws(() => loadConfig(env({ PENNSYNC_API_FUNCTIONS: 'notARealFunction' })));
+  assert.throws(() => loadConfig(env({ PENNSYNC_API_FUNCTIONS: 'validatePatientData,validatePatientData' })));
+  assert.throws(() => loadConfig(env({ PENNSYNC_API_AUTHORITY_URL: 'https://foreign.supabase.co' })));
+  assert.throws(() => loadConfig(env({ PENNSYNC_API_AUTHORITY_PUBLISHABLE_KEY: 'sb_secret_synthetic-acceptance-key' })));
+  assert.throws(() => loadConfig(env({ PENNSYNC_API_ALLOWED_ORIGINS: 'http://app.example.test' })));
+  assert.throws(() => loadConfig(env({ PENNSYNC_API_APP_ID: '000000000000000000000000' })));
+  assert.equal(validAuthorityTarget(TARGET) && validAuthorityKey(KEY), true);
+});
+
+test('readiness reports no Base44 dependency and never claims a cutover', async () => {
+  const readiness = publicReadiness(config());
+  assert.equal(readiness.base44ExecutionDependency, false);
+  assert.equal(readiness.authorityMode, 'independent');
+  assert.equal(readiness.trafficCutoverVerified, false);
+  assert.equal(readiness.portedFunctionCoverageComplete, false);
+  assert.deepEqual(readiness.implemented, HANDLER_NAMES);
+  assert.equal(readiness.ready, true);
+  const response = await handlerFor()(new Request('https://api.example.test/readyz'));
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).base44ExecutionDependency, false);
+  const paused = await createHandler(loadConfig({}), {})(new Request('https://api.example.test/readyz'));
+  assert.equal(paused.status, 503);
+});
+
+test('health is available while the service is paused', async () => {
+  const response = await createHandler(loadConfig({}), {})(new Request('https://api.example.test/healthz'));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), { status: 'alive', release: 'paused', revision: 'unbound' });
+});
+
+test('a released function runs under current authority and answers the ported contract', async () => {
+  const seen = [];
+  const handler = handlerFor({}, async (url, options) => { seen.push({ url: String(url), options }); return Response.json(context()); });
+  const response = await handler(post({ agency_id: 'agency-a', params: { patient: patient() } }));
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), {
+    success: true, result: { valid: true, message: 'Patient data is valid' },
+    execution: 'pennsync-api', base44ExecutionDependency: false,
+  });
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0].url, `${TARGET}/rest/v1/rpc/${AUTHORITY_RPC}`);
+  assert.equal(seen[0].url.includes('base44'), false);
+  assert.equal(seen[0].options.headers.Authorization, 'Bearer synthetic-native-session-token');
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.equal(response.headers.get('access-control-allow-credentials'), null);
+});
+
+test('invalid patient data returns the preserved field-level errors', async () => {
+  const response = await handlerFor()(post({
+    agency_id: 'agency-a',
+    params: { patient: { first_name: '', last_name: 'Patient', date_of_birth: '02-04-1950', email: 'not-an-email', caregiver_phone: '123' } },
+  }));
+  assert.equal(response.status, 200);
+  const { result } = await response.json();
+  assert.equal(result.valid, false);
+  assert.deepEqual(result.errors, [
+    { field: 'first_name', message: 'First name is required' },
+    { field: 'date_of_birth', message: 'date_of_birth must be in YYYY-MM-DD format (e.g., 2024-12-18)' },
+    { field: 'email', message: 'Invalid email format. Must be in format: user@domain.com' },
+    { field: 'caregiver_phone', message: 'Caregiver phone: Phone number must be 10 digits (or 11 with country code)' },
+  ]);
+});
+
+test('the ported validation preserves the original rules exactly', () => {
+  assert.deepEqual(validatePatientData(patient()), []);
+  assert.deepEqual(validatePatientData(patient({ date_of_birth: '2999-01-01' })),
+    [{ field: 'date_of_birth', message: 'Date of birth cannot be in the future' }]);
+  assert.deepEqual(validatePatientData(patient({ phone: '15551234567' })), []);
+  assert.deepEqual(validatePatientData(patient({ phone: '25551234567' })),
+    [{ field: 'phone', message: '11-digit phone numbers must start with 1' }]);
+  assert.deepEqual(validatePatientData(patient({ date_of_birth: '2024-13-45' })),
+    [{ field: 'date_of_birth', message: 'Invalid date_of_birth' }]);
+  assert.deepEqual(validatePatientData({ date_of_birth: '1950-04-02' }), [
+    { field: 'first_name', message: 'First name is required' },
+    { field: 'last_name', message: 'Last name is required' },
+  ]);
+  // Absent optional fields are not validated into errors.
+  assert.deepEqual(validatePatientData(patient({ email: '', physician_phone: null })), []);
+});
+
+test('a paused deployment or unreleased function never reaches a handler', async () => {
+  const paused = await createHandler(loadConfig({}), { authority: () => assert.fail('authority must not run') })(
+    post({ agency_id: 'agency-a', params: { patient: patient() } }));
+  assert.equal(paused.status, 503);
+  assert.equal((await paused.json()).error, 'PENNSYNC_API_NOT_RELEASED');
+
+  const unreleased = createHandler(config({ PENNSYNC_API_FUNCTIONS: '' }), { authority: () => assert.fail('authority must not run') });
+  const response = await unreleased(post({ agency_id: 'agency-a', params: { patient: patient() } }));
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, 'FUNCTION_NOT_RELEASED');
+});
+
+test('unknown routes, methods, query strings and function names are refused', async () => {
+  const handler = handlerFor();
+  for (const [request, status] of [
+    [new Request('https://api.example.test/v1/functions/validatePatientData', { method: 'GET' }), 404],
+    [post({}, { path: '/v1/functions/notARealFunction' }), 404],
+    [post({}, { path: '/v1/entities/Patient' }), 404],
+    [new Request('https://api.example.test/v1/functions/validatePatientData?debug=1', { method: 'POST' }), 404],
+  ]) {
+    assert.equal((await handler(request)).status, status);
+  }
+});
+
+test('malformed envelopes are refused before authority is consulted', async () => {
+  let authorityCalls = 0;
+  const handler = createHandler(config(), { authority: async () => { authorityCalls++; return {}; } });
+  for (const body of [
+    { agency_id: 'agency-a' , params: {}, extra: true },
+    { params: {} },
+    { agency_id: '', params: {} },
+    { agency_id: ['agency-a'], params: {} },
+  ]) {
+    assert.equal((await handler(post(body))).status, 400);
+  }
+  assert.equal((await handler(post('{not json'))).status, 400);
+  assert.equal(authorityCalls, 0);
+  // A body is only read once the content type is right.
+  const wrongType = new Request('https://api.example.test/v1/functions/validatePatientData', {
+    method: 'POST', headers: { authorization: 'Bearer synthetic-native-session-token' }, body: '{}',
+  });
+  assert.equal((await handler(wrongType)).status, 415);
+});
+
+test('unknown handler parameters are refused rather than ignored', async () => {
+  const handler = handlerFor();
+  const response = await handler(post({ agency_id: 'agency-a', params: { patient: patient(), skipValidation: true } }));
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, 'INVALID_PARAMS');
+  const missing = await handler(post({ agency_id: 'agency-a', params: { patient: 'text' } }));
+  assert.equal((await missing.json()).error, 'PATIENT_REQUIRED');
+});
+
+test('missing credentials, rejected callers and drifted authority all deny', async () => {
+  const handler = handlerFor();
+  const anonymous = await handler(post({ agency_id: 'agency-a', params: { patient: patient() } }, { auth: null }));
+  assert.equal(anonymous.status, 401);
+
+  const rejected = handlerFor({}, async () => Response.json({}, { status: 403 }));
+  assert.equal((await rejected(post({ agency_id: 'agency-a', params: { patient: patient() } }))).status, 403);
+
+  for (const patch of [{ agency_id: 'agency-b' }, { is_platform_owner: true }, { membership_status: 'revoked' },
+    { tenant_role: 'platform_owner' }, { agency: { id: 'agency-a', name: 'Synthetic Agency A', status: 'suspended' } }]) {
+    const drifted = handlerFor({}, serveContext(patch));
+    const response = await drifted(post({ agency_id: 'agency-a', params: { patient: patient() } }));
+    assert.equal(response.status, 403, `expected denial for ${Object.keys(patch)[0]}`);
+  }
+});
+
+test('handlers receive a frozen authority projection and no credential', async () => {
+  let received = null;
+  const handlers = { probe: { handle(input) { received = input; return { ok: true }; } } };
+  const handler = createHandler({ ...config(), functions: ['probe'] }, { fetcher: serveContext(), handlers });
+  const response = await handler(post({ agency_id: 'agency-a', params: {} }, { path: '/v1/functions/probe' }));
+  assert.equal(response.status, 200);
+  assert.equal(Object.isFrozen(received.actor), true);
+  assert.deepEqual(Object.keys(received.actor).sort(),
+    ['agencyId', 'authUserId', 'membershipId', 'membershipVersion', 'tenantRole', 'userEmail', 'userId']);
+  // No token, publishable key or raw response reaches a handler.
+  assert.equal(JSON.stringify(received.actor).includes('Bearer'), false);
+  assert.equal(JSON.stringify(received.actor).includes(KEY), false);
+});
+
+test('an unexpected handler failure is reported opaquely', async () => {
+  const handlers = { probe: { handle() { throw new Error('synthetic secret handler text'); } } };
+  const handler = createHandler({ ...config(), functions: ['probe'] }, { fetcher: serveContext(), handlers });
+  const response = await handler(post({ agency_id: 'agency-a', params: {} }, { path: '/v1/functions/probe' }));
+  assert.equal(response.status, 503);
+  const value = await response.json();
+  assert.deepEqual(value, { success: false, error: 'PENNSYNC_API_UNAVAILABLE', retryable: false });
+  assert.equal(JSON.stringify(value).includes('secret'), false);
+});
+
+test('cross-origin access is limited to the reviewed origins', async () => {
+  const handler = handlerFor();
+  const allowed = new Request('https://api.example.test/v1/functions/validatePatientData', {
+    method: 'OPTIONS',
+    headers: { origin: 'https://app.caremetricai.com', 'access-control-request-method': 'POST', 'access-control-request-headers': 'authorization, content-type' },
+  });
+  const preflight = await handler(allowed);
+  assert.equal(preflight.status, 204);
+  assert.equal(preflight.headers.get('access-control-allow-origin'), 'https://app.caremetricai.com');
+  const foreign = new Request('https://api.example.test/healthz', { headers: { origin: 'https://evil.example.test' } });
+  assert.equal((await handler(foreign)).status, 403);
+});
+
+test('authority is never resolved without a configured target', async () => {
+  await assert.rejects(
+    () => resolveAuthority({ ...config(), authorityUrl: '', authorityKey: '' }, post({}), 'agency-a', async () => Response.json(context())),
+    error => error.status === 503 && error.code === 'AUTHORITY_NOT_CONFIGURED',
+  );
+});
