@@ -247,11 +247,21 @@ for (const [name, raw] of Object.entries({
 test('what blocks a port is read from the module, not from a status note', () => {
   // Precedence runs from the most binding blocker to the least: a function that
   // both reads rows and renders a PDF cannot be written until the rows exist.
-  assert.deepEqual([...PORT_BLOCKERS], ['records_schema', 'ported_function', 'pdf_rendering', 'external_secret', 'none']);
+  assert.deepEqual([...PORT_BLOCKERS], ['records_schema', 'ported_function', 'core_integration',
+    'pdf_rendering', 'external_secret', 'none']);
   assert.equal(classifyPortBlocker("await base44.entities.Patient.filter({})"), 'records_schema');
   assert.equal(classifyPortBlocker("base44.asServiceRole.entities.Visit.list()"), 'records_schema');
-  assert.equal(classifyPortBlocker("await base44.integrations.Core.InvokeLLM({})"), 'records_schema');
+  // Dynamic access reads rows exactly as the dotted form does.
+  assert.equal(classifyPortBlocker("await base44.entities[name].filter({})"), 'records_schema');
+  // A Core integration is NOT a record blocker. This asserted 'records_schema'
+  // until the functions were read: all twelve of them touch no entity at all,
+  // so the queue was holding them behind a store they never use. Their blocker
+  // is the integration runtime's brokered path, which is deployed and paused.
+  assert.equal(classifyPortBlocker("await base44.integrations.Core.InvokeLLM({})"), 'core_integration');
   assert.equal(classifyPortBlocker("await base44.functions.manageAuthorizedReferral({})"), 'ported_function');
+  // Precedence: reading a row outranks calling an integration.
+  assert.equal(classifyPortBlocker("base44.entities.Patient.get(id)\nbase44.integrations.Core.InvokeLLM({})"),
+    'records_schema');
   assert.equal(classifyPortBlocker("import { jsPDF } from 'npm:jspdf@2.5.2';"), 'pdf_rendering');
   assert.equal(classifyPortBlocker('const key = Deno.env.get("OPENAI_API_KEY");'), 'external_secret');
   assert.equal(classifyPortBlocker("const user = await base44.auth.me();"), 'none');
@@ -271,7 +281,19 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { records_schema: 80, ported_function: 1, pdf_rendering: 0, external_secret: 1, none: 4 });
+  assert.deepEqual(counts, { records_schema: 68, ported_function: 1, core_integration: 12,
+    pdf_rendering: 0, external_secret: 1, none: 4 });
+  // Twelve of these were counted against the record store until the functions
+  // were read. Every one calls a Core integration and touches no entity row, so
+  // what they wait on is the integration runtime's brokered path — already
+  // deployed, and paused — not a store that does not exist. Naming them keeps
+  // the correction from quietly reverting.
+  assert.deepEqual(report.port_blockers.core_integration, [
+    'analyzeReferral', 'analyzeReferralIntake', 'analyzeReferralPriority', 'extractClinicalDocument',
+    'extractPatientDataFromDocument', 'generateAdmissionNoteFromReferral', 'generateCarePlanFromReferral',
+    'generateDynamicCoverSheet', 'generateReferralTasks', 'generateUserGuidePDF', 'matchPatientWithAI',
+    'splitReferralPDF',
+  ]);
   assert.deepEqual(report.port_blockers.none,
     ['generateBagTechniquePDF', 'generateSmartNoteGuide', 'generateUserManual', 'validatePatientData'],
     'the set of written ports changed');

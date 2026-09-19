@@ -154,6 +154,13 @@ export function discoverInertFunctions(repository) {
  * - `records_schema` — reads or writes entity rows, so it needs the ported
  *   record store and a tenant predicate for the entities it touches.
  * - `ported_function` — calls another Base44 function, so it waits on that one.
+ * - `core_integration` — calls a Core integration (an LLM, an extraction, a
+ *   send) and touches no entity row. It needs the integration runtime's
+ *   brokered path released, not the record store. This was counted as
+ *   `records_schema` until it was measured: every one of these functions turned
+ *   out to read nothing, so the queue was sending people to wait for a store
+ *   they do not use — the exact failure the blocker categories exist to
+ *   prevent.
  * - `pdf_rendering` — renders through `jspdf`; carrying it means adopting that
  *   dependency in the new service and deciding how to compare rendered output,
  *   which byte-for-byte parity cannot do.
@@ -164,12 +171,15 @@ export function discoverInertFunctions(repository) {
  * Precedence runs from the most binding to the least: a function that both reads
  * rows and renders a PDF is blocked on the rows first.
  */
-export const PORT_BLOCKERS = Object.freeze(['records_schema', 'ported_function', 'pdf_rendering', 'external_secret', 'none']);
+export const PORT_BLOCKERS = Object.freeze(['records_schema', 'ported_function', 'core_integration',
+  'pdf_rendering', 'external_secret', 'none']);
 
 export function classifyPortBlocker(source) {
   if (typeof source !== 'string') return 'records_schema';
-  if (/\.\s*entities\s*\.|asServiceRole|\.\s*integrations\s*\./.test(source)) return 'records_schema';
+  // Dynamic access (`entities[name]`) reads rows exactly as the dotted form does.
+  if (/\.\s*entities\s*[.[]|asServiceRole/.test(source)) return 'records_schema';
   if (/\bbase44\s*\.\s*functions\b/.test(source)) return 'ported_function';
+  if (/\.\s*integrations\s*\./.test(source)) return 'core_integration';
   if (/from\s+'npm:jspdf@/.test(source)) return 'pdf_rendering';
   if (/\bDeno\s*\.\s*env\s*\.\s*get\b/.test(source)) return 'external_secret';
   return 'none';
