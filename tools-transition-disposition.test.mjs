@@ -282,21 +282,20 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { records_schema: 62, ported_function: 1, core_integration: 9,
-    pdf_rendering: 0, external_secret: 1, none: 5 });
+  assert.deepEqual(counts, { records_schema: 62, ported_function: 1, core_integration: 7,
+    pdf_rendering: 0, external_secret: 1, none: 7 });
   // Twelve of these were counted against the record store until the functions
   // were read. Every one calls a Core integration and touches no entity row, so
   // what they wait on is the integration runtime's brokered path — already
   // deployed, and paused — not a store that does not exist. Naming them keeps
   // the correction from quietly reverting.
   assert.deepEqual(report.port_blockers.core_integration, [
-    'analyzeReferral', 'analyzeReferralIntake', 'extractClinicalDocument',
-    'extractPatientDataFromDocument', 'generateDynamicCoverSheet', 'generateReferralTasks',
-    'generateUserGuidePDF', 'matchPatientWithAI', 'splitReferralPDF',
-  ], 'analyzeReferralPriority left by being written; the two paused ones by being reclassified');
+    'analyzeReferral', 'extractClinicalDocument', 'extractPatientDataFromDocument',
+    'generateDynamicCoverSheet', 'generateUserGuidePDF', 'matchPatientWithAI', 'splitReferralPDF',
+  ], 'three left by being written; two by being reclassified as paused');
   assert.deepEqual(report.port_blockers.none,
-    ['analyzeReferralPriority', 'generateBagTechniquePDF', 'generateSmartNoteGuide', 'generateUserManual',
-      'validatePatientData'],
+    ['analyzeReferralIntake', 'analyzeReferralPriority', 'generateBagTechniquePDF', 'generateReferralTasks',
+      'generateSmartNoteGuide', 'generateUserManual', 'validatePatientData'],
     'the set of written ports changed');
   assert.deepEqual(report.port_blockers.ported_function, ['extractReferralDataForSmartNote']);
   // All three emptied this bucket once the service adopted a PDF library and a

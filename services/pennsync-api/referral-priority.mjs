@@ -17,21 +17,10 @@
 //   salvaged here — code fences stripped, then a braces-substring fallback. A
 //   stricter parser would turn answers the original accepted into failures.
 import { isObject } from './contracts.mjs';
-
-/** Tolerant JSON extractor, ported exactly: shape and every fallback preserved. */
-export function parseLLMJson(raw) {
-  if (!raw) return null;
-  if (typeof raw === 'object') return raw;
-  const text = String(raw).trim().replace(/^```(?:json)?/i, '').replace(/```$/, '').trim();
-  try {
-    return JSON.parse(text);
-  } catch {
-    const start = text.indexOf('{');
-    const end = text.lastIndexOf('}');
-    if (start === -1 || end <= start) return null;
-    try { return JSON.parse(text.slice(start, end + 1)); } catch { return null; }
-  }
-}
+// Shared with `referral-intake.mjs`: both originals carry the same extractor
+// and the same comment explaining why it is tolerant.
+export { parseLLMJson } from './llm-json.mjs';
+import { parseLLMJson } from './llm-json.mjs';
 
 /**
  * The prompt the original sends, with the same two interpolations.

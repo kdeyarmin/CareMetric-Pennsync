@@ -5,108 +5,161 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
-import { analyzeReferralPriority, parseLLMJson } from '../../services/pennsync-api/referral-priority.mjs';
+import { analyzeReferralPriority } from '../../services/pennsync-api/referral-priority.mjs';
+import { analyzeReferralIntake } from '../../services/pennsync-api/referral-intake.mjs';
+import { generateReferralTasks } from '../../services/pennsync-api/referral-tasks.mjs';
+import { parseLLMJson } from '../../services/pennsync-api/llm-json.mjs';
 
 /**
- * Parity for a port whose real output is a request to somebody else.
+ * Parity for ports whose real output is a request to somebody else.
  *
- * `analyzeReferralPriority` computes almost nothing: it builds a prompt, asks a
- * model, and salvages JSON from the answer. So comparing return values would
- * miss the part that matters. This drives the ORIGINAL Deno module with a
- * stubbed client that records the `InvokeLLM` argument, drives the port with a
- * stubbed capability that records the same, and compares both the recorded call
- * and the answer.
+ * These handlers compute almost nothing: they build a prompt, ask a model, and
+ * shape the answer. Comparing return values alone would miss the part that
+ * matters, because the prompt IS the contract with the model — a reworded
+ * prompt is a different function even when every surrounding line matches.
  *
- * The prompt is the contract with the model. A reworded prompt is a different
- * function even when every line of surrounding code matches, which is exactly
- * the kind of drift a return-value test cannot see.
+ * So each case drives the ORIGINAL Deno module with a stubbed client that
+ * records the `InvokeLLM` argument, drives the port with a stubbed capability
+ * that records the same, and compares both the recorded call and the answer.
+ * A transcription slip in a 2,000-character prompt fails here.
  */
 globalThis.Deno = globalThis.Deno || { serve() {}, env: { get: () => undefined } };
 
-/** Load the original's `Deno.serve` handler with its client and provider stubbed. */
-async function loadOriginalHandler(calls, answer) {
-  let source = await readFile(
-    new URL('../functions/analyzeReferralPriority/entry.ts', import.meta.url), 'utf8');
+/** Load an original's `Deno.serve` handler with its client and provider stubbed. */
+async function loadOriginal(name) {
+  let source = await readFile(new URL(`../functions/${name}/entry.ts`, import.meta.url), 'utf8');
   source = source.replace(/import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?/,
     `const createClientFromRequest = () => ({
        auth: { me: async () => ({ id: 'synthetic-user', is_active: true }) },
        integrations: { Core: { InvokeLLM: async (argument) => { globalThis.__calls.push(argument); return globalThis.__answer; } } },
      });`);
-  assert.match(source, /Deno\.serve\(/, 'the original should still be a Deno.serve module');
+  assert.match(source, /Deno\.serve\(/, `${name} should still be a Deno.serve module`);
   const js = transpileTs(source).outputText;
   const file = join(tmpdir(), `integparity_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   let handler = null;
-  const previousServe = globalThis.Deno.serve;
+  const previous = globalThis.Deno.serve;
   globalThis.Deno = { ...globalThis.Deno, serve: fn => { handler = fn; } };
-  globalThis.__calls = calls;
-  globalThis.__answer = answer;
   await writeFile(file, js);
   try { await import(pathToFileURL(file).href); }
-  finally { await unlink(file).catch(() => {}); globalThis.Deno.serve = previousServe; }
-  assert.ok(handler, 'the original did not register a handler');
+  finally { await unlink(file).catch(() => {}); globalThis.Deno.serve = previous; }
+  assert.ok(handler, `${name} did not register a handler`);
   return handler;
 }
 
-const body = (extractedData, analysisResults) => new Request('https://synthetic.invalid/', {
-  method: 'POST', headers: { 'content-type': 'application/json' },
-  body: JSON.stringify({ extractedData, analysisResults }),
-});
+/** Run the original with one body and one canned model answer. */
+async function driveOriginal(name, params, answer) {
+  const handler = await loadOriginal(name);
+  globalThis.__calls = [];
+  globalThis.__answer = answer;
+  const response = await handler(new Request('https://synthetic.invalid/', {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(params),
+  }));
+  return { calls: globalThis.__calls, body: await response.json() };
+}
 
-const CASES = [
-  [{ diagnosis: 'Synthetic wound care', notes: 'Synthetic discharge summary' }, { risk: 'synthetic' }],
-  // Absent fields: `JSON.stringify(undefined, null, 2)` is undefined, and both
-  // sides interpolate it, so the prompt carries the literal word.
-  [undefined, undefined],
-  [{}, {}],
-  [{ nested: { deep: [1, 2, { three: true }] } }, null],
-];
+/** Run the port with the same body and the same canned answer. */
+async function drivePort(port, params, answer) {
+  const calls = [];
+  const body = await port({
+    params,
+    integration: async (operation, argument) => { calls.push({ operation, argument }); return answer; },
+  });
+  return { calls, body };
+}
 
 const ANSWERS = [
   '{"priority":"urgent","priority_score":9}',
-  '```json\n{"priority":"high"}\n```',
-  'Here is the assessment: {"priority":"normal"} and nothing else.',
+  '```json\n{"a":1}\n```',
+  'Here is the assessment: {"b":2} and nothing else.',
   'no json at all',
   '',
-  { priority: 'low' },
+  { already: 'object' },
 ];
 
-test('the ported priority analysis asks the model exactly what the original asked', async () => {
-  for (const [extractedData, analysisResults] of CASES) {
-    const originalCalls = [];
-    const handler = await loadOriginalHandler(originalCalls, ANSWERS[0]);
-    const originalResponse = await handler(body(extractedData, analysisResults));
-    const originalBody = await originalResponse.json();
+const PORTS = [
+  {
+    name: 'analyzeReferralPriority',
+    port: analyzeReferralPriority,
+    cases: [
+      { extractedData: { diagnosis: 'Synthetic wound care' }, analysisResults: { risk: 'synthetic' } },
+      // Absent fields: `JSON.stringify(undefined, null, 2)` is undefined, and
+      // both sides interpolate it, so the prompt carries the literal word.
+      { extractedData: undefined, analysisResults: undefined },
+      { extractedData: { nested: { deep: [1, 2, { three: true }] } }, analysisResults: null },
+    ],
+  },
+  {
+    name: 'analyzeReferralIntake',
+    port: analyzeReferralIntake,
+    cases: [
+      { extractedData: { diagnosis: 'Synthetic CHF' }, analysisResults: { prior: 'synthetic' } },
+      // The guard that skips the model entirely. The original's comment says an
+      // empty payload otherwise fires a call that times out at 120s.
+      { extractedData: {}, analysisResults: { prior: 'synthetic' } },
+      { extractedData: undefined, analysisResults: undefined },
+      { extractedData: null, analysisResults: null },
+    ],
+  },
+  {
+    name: 'generateReferralTasks',
+    port: generateReferralTasks,
+    cases: [
+      { referralData: { diagnosis: 'Synthetic' }, priorityAnalysis: { priority: 'urgent' } },
+      { referralData: undefined, priorityAnalysis: undefined },
+    ],
+  },
+];
 
-    const portedCalls = [];
-    const ported = await analyzeReferralPriority({
-      params: { extractedData, analysisResults },
-      integration: async (operation, params) => { portedCalls.push({ operation, params }); return ANSWERS[0]; },
-    });
+for (const { name, port, cases } of PORTS) {
+  test(`${name} asks the model exactly what the original asked`, async () => {
+    for (const params of cases) {
+      const original = await driveOriginal(name, params, ANSWERS[0]);
+      const ported = await drivePort(port, params, ANSWERS[0]);
+      assert.equal(ported.calls.length, original.calls.length,
+        `${name} made ${ported.calls.length} calls where the original made ${original.calls.length}`);
+      for (const [index, call] of ported.calls.entries()) {
+        assert.equal(call.operation, 'InvokeLLM');
+        // The whole argument, so a changed model selector or a dropped
+        // response_json_schema fails as loudly as a reworded prompt.
+        assert.deepEqual(call.argument, original.calls[index]);
+      }
+      assert.deepEqual(ported.body, original.body);
+    }
+  });
 
-    assert.equal(portedCalls.length, 1, 'one brokered call, as the original made one');
-    assert.equal(portedCalls[0].operation, 'InvokeLLM');
-    assert.equal(originalCalls.length, 1);
-    // The whole argument, so a changed model selector fails too.
-    assert.deepEqual(portedCalls[0].params, originalCalls[0]);
-    assert.deepEqual(ported, originalBody);
+  test(`${name} shapes every answer the way the original shaped it`, async () => {
+    const params = cases[0];
+    for (const answer of ANSWERS) {
+      const original = await driveOriginal(name, params, answer);
+      const ported = await drivePort(port, params, answer);
+      assert.deepEqual(ported.body, original.body, `answer ${JSON.stringify(answer)} shaped differently`);
+    }
+  });
+}
+
+test('the empty-referral guard answers without calling the model at all', async () => {
+  for (const extractedData of [undefined, null, {}, '', 0]) {
+    const ported = await drivePort(analyzeReferralIntake, { extractedData, analysisResults: {} },
+      'unused — the model must not be asked');
+    assert.deepEqual(ported.calls, [], `${JSON.stringify(extractedData)} should skip the model`);
+    assert.deepEqual(ported.body.analysis.missing_critical_info.high_priority,
+      ['No referral data provided — cannot analyze.']);
   }
+  // A non-empty object is analysed, so the guard is not simply always on.
+  const analysed = await drivePort(analyzeReferralIntake, { extractedData: { a: 1 }, analysisResults: {} }, '{}');
+  assert.equal(analysed.calls.length, 1);
 });
 
-test('the salvage behaviour of the answer parser is preserved exactly', async () => {
-  const originalCalls = [];
-  for (const answer of ANSWERS) {
-    const handler = await loadOriginalHandler(originalCalls, answer);
-    const originalBody = await (await handler(body({ a: 1 }, { b: 2 }))).json();
-    const ported = await analyzeReferralPriority({
-      params: { extractedData: { a: 1 }, analysisResults: { b: 2 } },
-      integration: async () => answer,
-    });
-    assert.deepEqual(ported, originalBody, `answer ${JSON.stringify(answer)} parsed differently`);
-  }
+test('the canned empty analysis cannot be mutated by a caller', async () => {
+  const first = await drivePort(analyzeReferralIntake, { extractedData: {}, analysisResults: {} }, '');
+  first.body.analysis.missing_critical_info.high_priority.push('tampered');
+  const second = await drivePort(analyzeReferralIntake, { extractedData: {}, analysisResults: {} }, '');
+  assert.deepEqual(second.body.analysis.missing_critical_info.high_priority,
+    ['No referral data provided — cannot analyze.']);
 });
 
-test('the parser keeps the fallbacks that make a tolerant answer usable', () => {
-  // Pinned directly, because these are the cases the original's comment exists
+test('the shared parser keeps the fallbacks that make a tolerant answer usable', () => {
+  // Pinned directly, because these are the cases the originals' comment exists
   // for: the provider is asked for strict JSON in-prompt rather than through a
   // response schema, so the answer arrives fenced, prefixed or not at all.
   assert.deepEqual(parseLLMJson('{"a":1}'), { a: 1 });
@@ -121,10 +174,12 @@ test('the parser keeps the fallbacks that make a tolerant answer usable', () => 
   assert.equal(parseLLMJson(undefined), null);
 });
 
-test('an unparseable answer still hands the caller an object to read', async () => {
-  const ported = await analyzeReferralPriority({
-    params: { extractedData: {}, analysisResults: {} },
-    integration: async () => 'not json',
-  });
-  assert.deepEqual(ported, { success: true, priorityAnalysis: {} });
+test('a task answer without a task list is still a list', async () => {
+  for (const answer of [{ tasks: null }, {}, 'prose', null, { tasks: [{ title: 'Synthetic' }] }]) {
+    const original = await driveOriginal('generateReferralTasks',
+      { referralData: {}, priorityAnalysis: {} }, answer);
+    const ported = await drivePort(generateReferralTasks, { referralData: {}, priorityAnalysis: {} }, answer);
+    assert.ok(Array.isArray(ported.body.tasks));
+    assert.deepEqual(ported.body, original.body);
+  }
 });

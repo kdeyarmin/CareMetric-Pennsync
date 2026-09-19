@@ -84,6 +84,8 @@ call. The operator says which app this deployment serves, or it does not start.
 | `generateSmartNoteGuide` | `base44/functions/generateSmartNoteGuide/entry.ts` | Clinician guide. Answers with base64 in the envelope, as the original did |
 | `generateUserManual` | `base44/functions/generateUserManual/entry.ts` | Product manual. Answers with the PDF itself, as the original did |
 | `analyzeReferralPriority` | `base44/functions/analyzeReferralPriority/entry.ts` | The first port that reaches outside the service: one brokered `InvokeLLM`. Reads and writes no entity row |
+| `analyzeReferralIntake` | `base44/functions/analyzeReferralIntake/entry.ts` | One brokered `InvokeLLM`, and a guard that answers an empty payload without calling the model at all — the original's comment says the call otherwise times out at the 120s proxy limit |
+| `generateReferralTasks` | `base44/functions/generateReferralTasks/entry.ts` | One brokered `InvokeLLM`, with `response_json_schema` rather than the tolerant parser: its schema carries `required` at every level, so the provider takes it |
 
 ### Brokered Core integrations
 

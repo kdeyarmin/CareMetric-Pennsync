@@ -13,6 +13,8 @@ import {
   buildBagTechniqueChecklist, buildSmartNoteGuide, buildUserManual, documentDate,
 } from './documents.mjs';
 import { analyzeReferralPriority as runReferralPriority } from './referral-priority.mjs';
+import { analyzeReferralIntake as runReferralIntake } from './referral-intake.mjs';
+import { generateReferralTasks as runReferralTasks } from './referral-tasks.mjs';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -145,6 +147,12 @@ export const HANDLERS = Object.freeze({
       return pdfResponse(buildUserManual, USER_MANUAL_FILENAME, config);
     },
   }),
+  analyzeReferralIntake: Object.freeze({
+    handle({ params, integration }) {
+      exactObject(params, ['extractedData', 'analysisResults'], 'INVALID_PARAMS');
+      return runReferralIntake({ params, integration });
+    },
+  }),
   analyzeReferralPriority: Object.freeze({
     // The first port that reaches outside the service. `integration` is bound
     // to this caller by `app.mjs`; the handler never sees the credential that
@@ -152,6 +160,12 @@ export const HANDLERS = Object.freeze({
     handle({ params, integration }) {
       exactObject(params, ['extractedData', 'analysisResults'], 'INVALID_PARAMS');
       return runReferralPriority({ params, integration });
+    },
+  }),
+  generateReferralTasks: Object.freeze({
+    handle({ params, integration }) {
+      exactObject(params, ['referralData', 'priorityAnalysis'], 'INVALID_PARAMS');
+      return runReferralTasks({ params, integration });
     },
   }),
   validatePatientData: Object.freeze({
