@@ -65,6 +65,7 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 | Base44 coupling ratchet (gate) | `pnpm run check:base44-surface` |
 | File-reference census (gate) | `pnpm run check:file-references` |
 | Entity schema plan (gate) | `pnpm run check:entity-schema-plan` |
+| Tenant paths (gate) | `pnpm run check:tenant-paths` |
 | Emit candidate schema SQL | `pnpm run emit:entity-schema` |
 | Ported business API | `pnpm run test:pennsync-api` |
 

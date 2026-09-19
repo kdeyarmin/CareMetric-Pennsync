@@ -20,6 +20,7 @@ Source work completed here, all validated by the repository's own checks:
 | Phase 1 — runtime authority | `INTEGRATIONS_AUTHORITY_MODE=independent` removes the Base44 `getMyTenantContext` call; readiness derives `base44ExecutionDependency` |
 | Phase 2 — API service | `services/pennsync-api` with health, readiness, release-gated dispatch and the first ported handler |
 | Phase 2 — candidate schema | `tools-entity-schema-plan.mjs` generates PostgreSQL for the 150 carried entities (2,272 columns, 275 enum constraints); a test applies the whole plan to a real database |
+| Phase 2 — tenant paths | `tools-tenant-path.mjs` resolves how each carried entity reaches its agency: 67 have a usable key, 83 are a named decision list rather than an open question |
 | Phase 3 — file prerequisite | `tools-file-reference-census.mjs` and its committed census of every schema field that can hold a file |
 | Guardrail | `tools-base44-surface.mjs` ratchets remaining frontend coupling |
 
@@ -30,6 +31,8 @@ Not done here, and each blocked on something this branch cannot supply:
 | Deploying either Railway service; provisioning the production Supabase project | Cost approval and operator credentials |
 | Enabling independent authority on the running runtime | A reviewed deployment plus preflight and two-agency acceptance with enrolled actors |
 | Generalizing the authority store past four synthetic actors | Hosted migration and an enrollment run |
+| Reconciling the duplicated authority predicates (`validateMembershipRows`, `validateAssignmentIntegrity`) into one shared definition | A security review of how the 10 and 11 variants differ in behavior; it changes production authorization, so it is not a mechanical de-duplication |
+| Deciding the 83 entities with no usable tenant path | Owners answering the three questions in Phase 2; two of them (global reference data vs. a missing key) are product calls, not derivable from the schema |
 | Porting the remaining handlers and entity schemas | The decisions above being accepted, then per-capability review |
 | Any customer data, file or identity migration | Base44 credentials, named owners, and a maintenance window |
 | Frontend hosting, domain move, native rebuild | Approvals and physical devices |
@@ -275,9 +278,43 @@ Deliverables, in tiers that can merge independently:
   the two source apps' colliding ids apart. Every table forces RLS with no
   policy and no grant. Emit it with `pnpm run emit:entity-schema`.
   Still to decide per entity: indexes, foreign keys, retention, and which
-  columns become NOT NULL once legacy rows are reconciled. Only 15 of the 150
-  carry an explicit `agency_id`, which is the tenant-isolation gap the release
-  blockers already describe, now counted rather than estimated.
+  columns become NOT NULL once legacy rows are reconciled.
+- Tenant paths: **resolved or named** by `tools-tenant-path.mjs`. Forced RLS
+  with no policy is safe but not usable; each table needs one predicate that
+  proves a row belongs to the agency asking for it. Only 15 of the 150 entities
+  declare `agency_id`, so the rest are resolved by following references:
+
+  | How the agency is reached | Entities | Meaning |
+  | --- | ---: | --- |
+  | `root` | 1 | `Agency` is the tenant |
+  | `direct` | 14 | The row carries `agency_id` |
+  | `reference` | 52 | Reached through another resolved entity, at most three hops (49 at depth 2, mostly via `patient_id`) |
+  | `actor` | 33 | Only an acting-account column (`created_by`, `user_email`) |
+  | `profile_claim` | 1 | `User.agency_id`, which the account can rewrite about itself |
+  | `unresolved` | 49 | Nothing in the schema names a tenant |
+
+  So 67 tables can have a predicate written from the schema as it stands and 83
+  cannot. Those 83 are the tenant-isolation blocker, now a bounded list
+  (`node tools-tenant-path.mjs --blocking`) instead of an open question, and
+  they need three decisions rather than eighty-three:
+
+  1. May a row whose only tenancy signal is the acting account (`actor`, 33 of
+     them, keyed by `created_by`, `updated_by_email`, `user_email` and the like)
+     be scoped by that account's *current* membership? A person's agency changes
+     over time while the row does not, so this is a policy choice, not a lookup.
+     `AgencySettings`, `PayerRateConfig` and `TerminologyGlossary` are here.
+  2. Which of the 49 `unresolved` tables are platform reference data that is
+     legitimately global — `MedicareGuideline` and `ServiceCode` read that way —
+     and which are agency data missing a key? `AgencyComplianceRule`,
+     `AgencyFeatureAccess`, `AgencyInvoice` and `VisitPointConfig` are named for
+     an agency and carry no way to name one.
+  3. For every table in the second group, `agency_id` is added before load, not
+     backfilled after, because a row loaded without a tenant cannot be assigned
+     one later without guessing.
+
+  `User.agency_id` is excluded from authorization by construction: a signed-in
+  account can edit its own profile, and treating that claim as authority is the
+  defect that paused `analyzeClinicalData`.
   Authority-bearing tables follow the existing `pennsync_private` pattern
   (forced RLS, RPC entries, receipts). Broker tables get one reviewed
   tenant-scoped RPC family with agency binding from the membership row.
@@ -289,6 +326,26 @@ Deliverables, in tiers that can merge independently:
 - Tier A (port): the 24 authority brokers in Appendix A, plus Notification
   authority-v1 and the care-team assignment mutation. These have designed
   contracts and hosted-proof requirements already written.
+  **Prerequisite, measured on this branch:** the two predicates these brokers
+  authorize with are hand-duplicated rather than shared. `validateMembershipRows`
+  has 13 copies in 10 distinct variants and `validateAssignmentIntegrity` has 12
+  copies in 11, across `getAuthorizedPatient`, `getAuthorizedVisit`,
+  `listAuthorizedPatients`, `listAuthorizedVisits`, `createAuthorizedPatient`,
+  `createAuthorizedVisit`, `updateAuthorizedPatient`, `updateAuthorizedVisit`,
+  `getAuthorizedDocument`, `listAuthorizedDocuments`, `createAuthorizedDocument`,
+  `manageAuthorizedReferral`, `readAuthorizedOASISAssessments`,
+  `saveOasisResponses`, `generateFaxCoverPage` and `listMyTenantMemberships`.
+  Some of the divergence is a different call shape rather than different
+  behavior, but not all of it can be, and the repository's shared-helper
+  generator (`base44/_shared/backendHelpers.mjs`, enforced across 225 consumers
+  by `pnpm run check:shared-helpers`) does not cover this family — it is the one
+  security-critical family still copied by hand. Reconciling the variants into a
+  single reviewed predicate, and bringing it under the generator, must happen
+  **before** the ports, not during them: porting thirteen copies one at a time
+  carries ten definitions of "may this caller see this patient" into the new
+  service, where they become ten places to get it wrong. Reconciliation is a
+  behavior review of production authorization code and needs its own security
+  sign-off; it is not a mechanical de-duplication.
 - Tier B (port through the runtime): the 43 AI-assist functions become thin
   server handlers that call the runtime's `InvokeLLM` and
   `ExtractDataFromUploadedFile` adapters; Base44 `Core.*` calls in `src/` go

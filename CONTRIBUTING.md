@@ -41,6 +41,8 @@ If your change touches the Base44 exit, also run:
 pnpm run check:transition-disposition
 pnpm run check:base44-surface
 pnpm run check:file-references
+pnpm run check:entity-schema-plan
+pnpm run check:tenant-paths
 ```
 
 These are also covered by `pnpm test`. A new backend function, entity schema,

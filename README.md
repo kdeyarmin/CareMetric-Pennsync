@@ -46,6 +46,7 @@ Migration checks:
 - `pnpm run check:base44-surface` — remaining Base44 coupling stays within its baseline
 - `pnpm run check:file-references` — the schema file-reference census is current
 - `pnpm run check:entity-schema-plan` — the candidate PostgreSQL schema matches the entity definitions
+- `pnpm run check:tenant-paths` — how each carried entity reaches its agency; `node tools-tenant-path.mjs --blocking` lists the ones that cannot
 - `pnpm run emit:entity-schema` — print the generated schema SQL
 - `pnpm run test:pennsync-api` — the ported business API and its port parity guards
 

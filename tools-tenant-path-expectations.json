@@ -1,0 +1,1069 @@
+{
+  "format": "pennsync-tenant-path",
+  "schema_version": 1,
+  "reviewed": false,
+  "policies_written": false,
+  "entities": [
+    {
+      "entity": "AIConfiguration",
+      "kind": "actor",
+      "via": "user_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AIContentAgreementAttestation",
+      "kind": "actor",
+      "via": "user_id",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AIFeedback",
+      "kind": "actor",
+      "via": "user_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AIInsightFeedback",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AIKnowledgeBase",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AILearningPattern",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AIModelConfiguration",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AIModelTestResult",
+      "kind": "actor",
+      "via": "user_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AdrAuditCase",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "Agency",
+      "kind": "root",
+      "via": null,
+      "target": null,
+      "depth": 0
+    },
+    {
+      "entity": "AgencyComplianceRule",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AgencyFeatureAccess",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AgencyInvitation",
+      "kind": "actor",
+      "via": "invited_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AgencyInvoice",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AgencyMembership",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "AgencySettings",
+      "kind": "actor",
+      "via": "credential_digest_claimed_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AlertTriggerRule",
+      "kind": "actor",
+      "via": "created_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "Announcement",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AppointmentForm",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "ApprovalRequest",
+      "kind": "actor",
+      "via": "approved_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "AutomaticCarePlanTrigger",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "BIIntegration",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "Billing",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "CareCoordinationAlert",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "CarePlan",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "CarePlanProposal",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "CareSetting",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "CitationLibrary",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ClinicalEvent",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "ClinicalLibraryFolder",
+      "kind": "actor",
+      "via": "created_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ClinicalLibraryTemplate",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "ClinicalPathway",
+      "kind": "actor",
+      "via": "created_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ComplianceAudit",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "ComplianceRule",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ComplianceViolation",
+      "kind": "actor",
+      "via": "resolved_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ContentScopeBinding",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "DataArchivePolicy",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "DischargeSummary",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "Document",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "DocumentAnalysisHistory",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "DocumentAutomationWorkflow",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "DocumentPackage",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "DocumentRecord",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "DocumentTemplate",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "DocumentTenantBinding",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "DocumentVersion",
+      "kind": "actor",
+      "via": "uploaded_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "DocumentationTemplate",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "EmbedConfig",
+      "kind": "reference",
+      "via": "document_id",
+      "target": "Document",
+      "depth": 3
+    },
+    {
+      "entity": "EmployeePayrollProfile",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "FaceToFaceEncounter",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "FacilityDocumentationRule",
+      "kind": "actor",
+      "via": "created_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "FeaturePackage",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "FeatureToggle",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "FleetServiceEntry",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "FleetServiceReview",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "FleetVehicle",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "FollowUpRuleConfig",
+      "kind": "actor",
+      "via": "updated_by_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "FormTemplate",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "GeneratedDocument",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "HealthRecord",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "Immunization",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "Incident",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "InsuranceProvider",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "InterventionLog",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "InvitationSettings",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "Invoice",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "LearnedFormatPattern",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "MedicalCode",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "MedicareComplianceRule",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "MedicareGuideline",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "Medication",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "MedicationReconciliation",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "NewFeature",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "NoteConversion",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "NoteFeedback",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "NoteTemplate",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "Notification",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "NotificationPreference",
+      "kind": "actor",
+      "via": "user_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "NotificationPreferences",
+      "kind": "actor",
+      "via": "user_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "NotificationRule",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "NurseGoal",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "NursePerformanceMetric",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "OCRFeedback",
+      "kind": "actor",
+      "via": "corrected_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "OCRTrainingSession",
+      "kind": "actor",
+      "via": "initiated_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "OnCallShift",
+      "kind": "actor",
+      "via": "assigned_user_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "PDFIndex",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "Patient",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "PatientAlert",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PatientBillingInfo",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PatientCareTeamAssignment",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "PatientDocument",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PatientEducationAssignment",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PatientEducationDelivery",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PatientEducationDraft",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PatientEducationEngagement",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PatientEducationMaterial",
+      "kind": "actor",
+      "via": "created_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "PatientNoteHistoryEntry",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "PatientPathwayAssignment",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PatientRecommendation",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PatientRiskAssessment",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PayerRateConfig",
+      "kind": "actor",
+      "via": "updated_by_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "Payment",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PaymentRecord",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PendingPatientUpdate",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "PersonnelCredential",
+      "kind": "actor",
+      "via": "approved_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "Physician",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "PhysicianAgencyProfile",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "PolicyAcknowledgment",
+      "kind": "actor",
+      "via": "distributed_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "PolicyLibrary",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ProviderDashboardCustomization",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ProviderFacilityAssignment",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ProviderPatientAssignment",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "ProviderPermission",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ProviderPracticeInfo",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ProviderPreferences",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ProviderSettings",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ProviderSpecialization",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ProviderUsagePattern",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "Referral",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "RegulatoryUpdate",
+      "kind": "actor",
+      "via": "reviewed_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ReminderLog",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "ReportTemplate",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "RiskAlert",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "RiskAnalysis",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "ScheduleFeedback",
+      "kind": "reference",
+      "via": "visit_id",
+      "target": "Visit",
+      "depth": 2
+    },
+    {
+      "entity": "ScheduledReport",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "SentEducationMaterial",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "ServiceCode",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "SessionTimeout",
+      "kind": "actor",
+      "via": "user_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "SharedDocument",
+      "kind": "actor",
+      "via": "last_modified_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "SharedPhraseLibrary",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "SuggestedIntervention",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "SupplyItem",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "SupplyLowStockAlert",
+      "kind": "reference",
+      "via": "task_id",
+      "target": "Task",
+      "depth": 3
+    },
+    {
+      "entity": "SupplyPrediction",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "SupplyUsageLog",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "Task",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "TeamNote",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
+      "entity": "TerminologyGlossary",
+      "kind": "actor",
+      "via": "user_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "TermsAcceptanceAudit",
+      "kind": "reference",
+      "via": "document_id",
+      "target": "Document",
+      "depth": 3
+    },
+    {
+      "entity": "TimeOffRequest",
+      "kind": "actor",
+      "via": "reviewed_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "Timesheet",
+      "kind": "actor",
+      "via": "reviewed_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "TranscriptionLearning",
+      "kind": "actor",
+      "via": "user_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "User",
+      "kind": "profile_claim",
+      "via": "agency_id",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "UserFavorite",
+      "kind": "actor",
+      "via": "user_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "UserInvitation",
+      "kind": "actor",
+      "via": "invited_by",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "UserLearnedPattern",
+      "kind": "actor",
+      "via": "user_email",
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "VerificationCode",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "Visit",
+      "kind": "direct",
+      "via": "agency_id",
+      "target": null,
+      "depth": 1
+    },
+    {
+      "entity": "VisitPointConfig",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    }
+  ],
+  "totals": {
+    "carried": 150,
+    "root": 1,
+    "direct": 14,
+    "reference": 52,
+    "actor": 33,
+    "profile_claim": 1,
+    "unresolved": 49,
+    "max_depth": 3,
+    "blocking": 83
+  }
+}
