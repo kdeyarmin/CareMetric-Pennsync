@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
   ACTIVE_DISPOSITIONS, DISPOSITIONS, FORMAT, FORMAT_VERSION, PORT_BLOCKERS, RETENTION_BASES, checkCoverage,
   classifyPortBlocker, discoverCapabilities, discoverEvidence, discoverInertFunctions, discoverIntegrations,
-  discoverPortBlockers, isInertFunction, main, parseManifest,
+  discoverPortBlockers, discoverPortedFunctions, isInertFunction, main, parseManifest,
 } from './tools-transition-disposition.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -271,15 +271,29 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { records_schema: 80, ported_function: 1, pdf_rendering: 3, external_secret: 1, none: 1 });
-  assert.deepEqual(report.port_blockers.none, ['validatePatientData'], 'the one portable function changed');
+  assert.deepEqual(counts, { records_schema: 80, ported_function: 1, pdf_rendering: 2, external_secret: 1, none: 2 });
+  assert.deepEqual(report.port_blockers.none, ['generateBagTechniquePDF', 'validatePatientData'],
+    'the set of portable functions changed');
   assert.deepEqual(report.port_blockers.ported_function, ['extractReferralDataForSmartNote']);
-  assert.deepEqual(report.port_blockers.pdf_rendering,
-    ['generateBagTechniquePDF', 'generateSmartNoteGuide', 'generateUserManual']);
+  // `generateBagTechniquePDF` left this bucket when the service adopted a PDF
+  // library and a call-sequence parity test; the other two follow the same way.
+  assert.deepEqual(report.port_blockers.pdf_rendering, ['generateSmartNoteGuide', 'generateUserManual']);
   assert.deepEqual(report.port_blockers.external_secret, ['transcribeAndGenerateSOAPNote']);
   // The sum is every function dispositioned `port`, so nothing falls out of the
   // queue by being unclassifiable.
   assert.equal(Object.values(counts).reduce((total, value) => total + value, 0), report.families.functions.counts.port);
+});
+
+test('what counts as already ported is read from the service, not maintained here', async () => {
+  // The parse would be worth nothing if it could silently stop matching the
+  // registry it reads, so it is checked against the module's own export.
+  const { HANDLER_NAMES } = await import('./services/pennsync-api/handlers.mjs');
+  const parsed = discoverPortedFunctions(repository);
+  assert.deepEqual(parsed, [...HANDLER_NAMES].sort(), 'the registry parse drifted from the registry');
+  assert.ok(parsed.length >= 2, 'the ported registry should not be empty');
+  // A missing service is not an error: the classifier just reports everything
+  // as blocked, which is the safe direction.
+  assert.deepEqual(discoverPortedFunctions(resolve(repository, 'src')), []);
 });
 
 test('the port queue never decides the census', () => {
@@ -293,6 +307,12 @@ test('the port queue never decides the census', () => {
     { inertFunctions: [], portBlockers: { alpha: 'records_schema' } });
   assert.equal(blocked.census_ready, true);
   assert.deepEqual(blocked.port_blockers.records_schema, ['alpha']);
+  // Having been written outranks whatever its Base44 original still imports:
+  // nothing blocks a port that has happened.
+  const written = checkCoverage(capabilities(), manifest({ review_state: 'accepted' }),
+    { inertFunctions: [], portBlockers: { alpha: 'records_schema' }, portedFunctions: ['alpha'] });
+  assert.deepEqual(written.port_blockers.none, ['alpha']);
+  assert.deepEqual(written.port_blockers.records_schema, []);
   // A function the evidence says nothing about is queued as the most blocking
   // rather than silently counted as ready to write.
   const unknown = checkCoverage(capabilities(), manifest({ review_state: 'accepted' }), { inertFunctions: [] });

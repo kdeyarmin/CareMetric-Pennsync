@@ -17,7 +17,7 @@ hosted apps.
 This record resolves the open choices in
 [the transition plan](BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md) so work
 can proceed without re-deciding them per pull request: the original eight, plus
-the thirty-one dispositions D9 closes, the retention schedule D10 sets and the deployment pin D11 adopts. Adopting a decision here
+the thirty-one dispositions D9 closes, the retention schedule D10 sets, the deployment pin D11 adopts and the document port D12 settles. Adopting a decision here
 authorizes source changes only. It does not authorize a hosted deployment, a
 migration, a release-control change, a domain move, or any spend. Every existing
 gate in `REPOSITORY_CONSOLIDATION_2026-09-02.md`,
@@ -376,6 +376,61 @@ pinned to production, and requires each to admit its own app and refuse the
 other's at both layers. It also fails if a new table carries an app id outside
 the domain, if the pin becomes editable, or if a production-pinned database
 accepts a real name.
+
+## D12 — How a rendered document is ported
+
+Decision: a ported document is a pure builder over a jsPDF-shaped object, its
+parity is proved on drawing calls rather than on rendered bytes, the service
+adopts `jspdf` at the version the frontend already uses, and the logo it draws
+is supplied as configuration instead of fetched.
+
+Three things had to be settled before any of the four document functions could
+move, and each was a real reason they sat blocked rather than merely unwritten.
+
+**Parity could not be byte-for-byte.** jsPDF stamps a creation time and a
+document id into every file, so two runs of the *same* code produce different
+bytes. A comparison that normalises those away proves less each time it is
+relaxed. What is exactly comparable is the sequence of drawing calls — same
+calls, same order, same arguments means the same page — so the original is
+transpiled, its `Deno.serve` handler captured, and both implementations run
+against one recording surface. The original executes rather than being read, so
+the guard fails if either side changes.
+
+**The service had no dependencies.** Every other handler is pure, and the two
+Railway services deliberately carried no runtime dependency at all. Rendering
+needs one. The alternative — returning the document as data for the frontend to
+render — was rejected because it changes what a migrated caller receives, and
+this repository holds ports to the standard that the caller sees what it saw
+before. So `jspdf` is pinned to the version the frontend already resolves,
+imported on first use so a deployment releasing no document handler never loads
+it, and the service's tests now need `pnpm --dir services/pennsync-api install
+--ignore-workspace --frozen-lockfile` first.
+
+**The originals fetched their logo from Base44.** Each one pulled a PNG from
+Base44's own storage bucket on every request. Porting that verbatim would have
+carried a Base44 dependency into the service the exit exists to remove, and a
+third-party fetch into a request path that otherwise makes none. The logo is now
+an inline `data:` URL from configuration, validated to be a PNG so no remote
+address can be pointed at a render. With none configured the document takes the
+branch the original already took when that fetch failed — the original's own
+fallback, not a new one, and the parity test covers both branches.
+
+A fourth thing followed: the originals called `new Date()` inside the builder,
+so the same request produced a different document either side of midnight and
+its parity could not be tested at all. The builder now refuses to invent a date
+and takes it from its caller.
+
+Consequence for the response contract: a document handler answers with bytes
+rather than the JSON envelope every other handler uses, because that is what its
+original did. `app.mjs` takes that path only for a handler that declares itself
+binary, and validates the shape it is handed rather than trusting it — a wrong
+content type, a non-buffer body, or a filename carrying a path or a quote is
+refused as an unavailable response instead of reaching a header.
+
+Scope: `generateBagTechniquePDF` is written under this decision.
+`generateSmartNoteGuide` and `generateUserManual` follow the same pattern and
+are now transcription rather than decision. `generateBagTechniquePDF` is
+implemented and unreleased, like every other handler.
 
 ## How these decisions are enforced
 

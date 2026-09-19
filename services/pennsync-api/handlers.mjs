@@ -8,6 +8,7 @@
 // Every handler receives the caller's already-resolved current authority. A
 // handler never resolves its own authority and never widens it.
 import { exactObject, fail, isObject } from './contracts.mjs';
+import { BAG_TECHNIQUE_FILENAME, buildBagTechniqueChecklist, documentDate } from './documents.mjs';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -84,7 +85,32 @@ export function validatePatientData(patient) {
  * rather than ignored, so a caller cannot smuggle an unreviewed field past a
  * handler that happens not to read it.
  */
+/**
+ * Renders a ported document. The builder is pure and parity-tested against its
+ * Base44 original; this is the only place that needs a PDF library, and it is
+ * loaded on first use so a deployment that never releases a document handler
+ * never loads it.
+ */
+async function renderDocument(build, filename, config) {
+  const { jsPDF } = await import('jspdf');
+  const doc = build(new jsPDF(), {
+    logoDataUrl: config?.documentLogoDataUrl || null,
+    generatedOn: documentDate(),
+  });
+  return { binary: true, body: doc.output('arraybuffer'), contentType: 'application/pdf', filename };
+}
+
 export const HANDLERS = Object.freeze({
+  generateBagTechniquePDF: Object.freeze({
+    // The original took no parameters and rendered the same checklist for any
+    // authenticated caller; this keeps that and adds the membership this
+    // service requires, since it has no global scope.
+    binary: true,
+    handle({ params, config }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      return renderDocument(buildBagTechniqueChecklist, BAG_TECHNIQUE_FILENAME, config);
+    },
+  }),
   validatePatientData: Object.freeze({
     // Reproduces the original's authenticated-caller requirement, tightened to
     // a current agency membership because this service has no global scope.

@@ -46,6 +46,8 @@ jobs:
 
       - name: Install isolated authority test dependencies
         run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+      - name: Install ported API service dependencies
+        run: pnpm --dir services/pennsync-api install --ignore-workspace --frozen-lockfile
 
       # Base44's managed preview resolves dependencies with npm, not pnpm.
       # Validate that path independently: pnpm can accept peer combinations

@@ -4,11 +4,13 @@
 // function dispatch. There is no generic entity, query or proxy route, and no
 // path by which a caller can name a database function, table or origin.
 import { resolveAuthority } from './authority.mjs';
-import { ApiError, ID, MAX_BODY, exactObject, fail, readBody } from './contracts.mjs';
+import { ApiError, ID, MAX_BODY, exactObject, fail, isObject, readBody } from './contracts.mjs';
 import { HANDLERS } from './handlers.mjs';
 import { publicReadiness } from './runtime.mjs';
 
 const FUNCTION_PATH = /^\/v1\/functions\/([A-Za-z][A-Za-z0-9_]{0,63})$/;
+/** No path, quote or control character can reach a Content-Disposition header. */
+const FILENAME = /^[A-Za-z0-9][A-Za-z0-9_-]{0,63}\.pdf$/;
 
 export function createHandler(config, dependencies = {}) {
   const authority = dependencies.authority
@@ -65,6 +67,24 @@ export function createHandler(config, dependencies = {}) {
 
       const actor = await authority(config, req, input.agency_id);
       const result = await handlers[name].handle({ actor, params: input.params ?? {}, config });
+      // A ported document answers with the bytes its Base44 original answered
+      // with, so a migrated caller is not asked to decode something new. Only a
+      // handler that declares itself binary may take this path, and the shape it
+      // returns is checked rather than trusted.
+      if (handlers[name].binary) {
+        if (!isObject(result) || result.binary !== true || !(result.body instanceof ArrayBuffer)
+          || result.contentType !== 'application/pdf' || !FILENAME.test(result.filename || '')) {
+          fail(503, 'PENNSYNC_API_UNAVAILABLE');
+        }
+        return new Response(result.body, {
+          status: 200,
+          headers: {
+            ...headers,
+            'Content-Type': result.contentType,
+            'Content-Disposition': `attachment; filename="${result.filename}"`,
+          },
+        });
+      }
       return json({ success: true, result, execution: 'pennsync-api', base44ExecutionDependency: false });
     } catch (error) {
       // Only reviewed codes reach a caller; an unexpected failure is opaque.

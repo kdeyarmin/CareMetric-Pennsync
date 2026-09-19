@@ -175,6 +175,29 @@ export function classifyPortBlocker(source) {
   return 'none';
 }
 
+/**
+ * Functions already written in the ported service, read from its own registry.
+ *
+ * Nothing blocks a port that has happened. Without this the classifier would go
+ * on reporting `generateBagTechniquePDF` as blocked on PDF rendering because its
+ * Base44 original still imports jsPDF — true of the original, and irrelevant.
+ *
+ * The registry is parsed rather than imported so this tool stays synchronous and
+ * pulls in no service dependency. `tools-transition-disposition.test.mjs` checks
+ * the parsed names against the module's own `HANDLER_NAMES`, so the parse cannot
+ * drift from the registry it is reading.
+ */
+export function discoverPortedFunctions(repository) {
+  let source;
+  try { source = readFileSync(join(repository, 'services/pennsync-api/handlers.mjs'), 'utf8'); }
+  catch { return []; }
+  const start = source.indexOf('export const HANDLERS = Object.freeze({');
+  if (start < 0) return [];
+  const body = source.slice(start, source.indexOf('\n});', start));
+  return [...body.matchAll(/^ {2}([A-Za-z][A-Za-z0-9_]*): Object\.freeze\(\{$/gm)]
+    .map(match => match[1]).sort();
+}
+
 export function discoverPortBlockers(repository) {
   const root = join(repository, 'base44/functions');
   const blockers = {};
@@ -190,6 +213,7 @@ export function discoverEvidence(repository) {
   return {
     inertFunctions: discoverInertFunctions(repository),
     portBlockers: discoverPortBlockers(repository),
+    portedFunctions: discoverPortedFunctions(repository),
   };
 }
 
@@ -237,6 +261,7 @@ export function parseManifest(raw) {
 export function checkCoverage(capabilities, manifest, evidence = {}) {
   const inert = new Set(Array.isArray(evidence.inertFunctions) ? evidence.inertFunctions : []);
   const blockers = evidence.portBlockers && typeof evidence.portBlockers === 'object' ? evidence.portBlockers : {};
+  const ported = new Set(Array.isArray(evidence.portedFunctions) ? evidence.portedFunctions : []);
   const portQueue = Object.fromEntries(PORT_BLOCKERS.map(blocker => [blocker, []]));
   const families = {};
   const missing = [];
@@ -263,7 +288,7 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
       // Informational, never a gate: a port that becomes possible must not fail
       // the census, and a port that is written should move a count here.
       if (family === 'functions' && value === 'port') {
-        portQueue[blockers[name] ?? 'records_schema'].push(name);
+        portQueue[ported.has(name) ? 'none' : (blockers[name] ?? 'records_schema')].push(name);
       }
     }
     for (const name of Object.keys(declared)) if (!present.has(name)) unknown.push(`${family}:${name}`);
