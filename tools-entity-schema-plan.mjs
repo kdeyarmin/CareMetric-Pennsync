@@ -550,6 +550,7 @@ end $$;`,
 -- carrying BYPASSRLS would silently void every policy below, so that case is
 -- refused rather than adopted.
 do $$
+declare v_admin text := current_user;
 begin
   if not exists (select 1 from pg_catalog.pg_roles where rolname = '${OWNER_ROLE}') then
     begin
@@ -568,9 +569,29 @@ begin
   if exists (select 1 from pg_catalog.pg_roles where rolname = '${OWNER_ROLE}' and rolcanlogin) then
     raise exception using errcode='42501',message='PENNSYNC_RECORD_OWNER_MUST_NOT_LOGIN';
   end if;
-  if not pg_catalog.pg_has_role(current_user, '${OWNER_ROLE}', 'USAGE') then
+  -- Creating the role is not the same as being able to act as it. Since
+  -- PostgreSQL 16 a CREATEROLE administrator that creates a role receives
+  -- ADMIN OPTION but neither INHERIT nor SET, so \`create schema …
+  -- authorization\` refuses with "must be able to SET ROLE". Ask for SET
+  -- explicitly; on a server too old for that spelling the plain grant carries
+  -- it, and a superuser needs neither.
+  begin
+    execute format('grant %I to current_user with set true', '${OWNER_ROLE}');
+  exception
+    when syntax_error then execute format('grant %I to current_user', '${OWNER_ROLE}');
+    when others then null; -- already held, or not ours to grant; proven below
+  end;
+  -- Proven by doing it rather than by asking a catalog, because the privilege
+  -- names differ across versions while this does not.
+  begin
+    execute format('set role %I', '${OWNER_ROLE}');
+    -- Back to whoever was acting, which \`reset role\` would not do: that returns
+    -- to the session user, and the rest of this migration must keep running as
+    -- the administrator that started it.
+    execute format('set role %I', v_admin);
+  exception when others then
     raise exception using errcode='42501',message='PENNSYNC_RECORD_OWNER_NOT_ASSUMABLE';
-  end if;
+  end;
 end $$;`,
     `create schema ${quote(SCHEMA)} authorization ${quote(OWNER_ROLE)};`,
     `revoke all on schema ${quote(SCHEMA)} from public, anon, authenticated, service_role;`,

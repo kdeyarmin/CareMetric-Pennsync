@@ -203,6 +203,43 @@ test('the policies still deny through the broker rather than being bypassed by i
     [{ id: 'supply-d' }], 'and must still serve the caller own agency');
 });
 
+test('it applies as the administrator a real deployment uses, not only as a superuser', async () => {
+  // The shape that broke CI. A superuser may SET ROLE to anything, so every
+  // test above would pass against a migration that no real deployment can
+  // apply. Supabase's migration role is BYPASSRLS and CREATEROLE but NOT a
+  // superuser — and since PostgreSQL 16 such a role, on creating another role,
+  // receives ADMIN OPTION but neither INHERIT nor SET. Creating the owner is
+  // therefore not enough to create a schema owned by it: `create schema …
+  // authorization` refuses with "must be able to SET ROLE".
+  const other = new PGlite();
+  try {
+    await authority(other, { through: '20260919114500_enrollment_receipt.sql' });
+    await other.exec(`create role migration_admin nologin nosuperuser bypassrls createrole;
+      grant anon, authenticated, service_role to migration_admin with admin option;
+      -- A deployment's migration role owns its database; this one is standing in
+      -- for it, so it is given the one database privilege that implies.
+      do $$ begin execute format('grant create on database %I to migration_admin',
+        current_database()); end $$;`);
+    // Act as that role for the whole migration, so the grant it needs is one it
+    // has to obtain for itself rather than one the session already held.
+    await other.exec('set role migration_admin');
+    await other.exec(readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8'));
+    await other.exec('reset role');
+
+    const { rows: owner } = await other.query(
+      'select rolsuper, rolbypassrls from pg_catalog.pg_roles where rolname = $1', [OWNER_ROLE]);
+    assert.deepEqual(owner, [{ rolsuper: false, rolbypassrls: false }]);
+    const { rows: tables } = await other.query(`
+      select count(*) filter (where r.rolname = $2)::integer as owned, count(*)::integer as total
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      join pg_roles r on r.oid = c.relowner
+      where n.nspname = $1 and c.relkind = 'r'`, [SCHEMA, OWNER_ROLE]);
+    assert.equal(tables[0].owned, tables[0].total, 'the tables must still land under the non-bypass owner');
+    assert.ok(tables[0].total > 100);
+  } finally { await other.close(); }
+});
+
 test('the migration refuses an owner role that would void its policies', async () => {
   const other = new PGlite();
   try {

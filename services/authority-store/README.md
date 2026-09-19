@@ -206,7 +206,19 @@ exactly such an administrator. Under the administrator the 596 policies would
 be decorative. The migration creates the role if it is absent, and refuses
 outright (`PENNSYNC_RECORD_OWNER_MUST_NOT_BYPASS_RLS`) if a role of that name
 already exists carrying either attribute, rather than adopting it and emitting
-policies nothing obeys. It also refuses a database with no authority store to
+policies nothing obeys.
+
+Creating that role is not the same as being able to act as it. Since
+PostgreSQL 16 a `CREATEROLE` administrator that creates a role receives
+`ADMIN OPTION` but neither `INHERIT` nor `SET`, so `create schema …
+authorization` refuses with *must be able to SET ROLE* — which is exactly what
+a non-superuser deployment role such as Supabase's `postgres` hits, while a
+superuser never does. The migration asks for `SET` explicitly and then proves
+it by performing the `SET ROLE`, rather than trusting a catalog answer whose
+privilege names differ between versions. A role it cannot obtain that grant
+for raises `PENNSYNC_RECORD_OWNER_NOT_ASSUMABLE`, and one it cannot create at
+all (`BYPASSRLS` does not carry `CREATEROLE`) raises
+`PENNSYNC_RECORD_OWNER_NOT_CREATABLE`. It also refuses a database with no authority store to
 ask (`PENNSYNC_AUTHORITY_STORE_REQUIRED`), because every policy is written in
 terms of `pennsync_private`.
 
