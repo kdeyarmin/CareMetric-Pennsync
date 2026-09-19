@@ -1,14 +1,23 @@
 # Base44 exit: adopted implementation decisions
 
 Date: 2026-09-19
-Status: **proposed**. These are the assumptions the current implementation is
-built on, not owner sign-off. `tools-transition-disposition.json` carries
-`review_state: "proposed"` and the coverage tool reports
-`owner_review_complete: false` until named owners accept them.
+Status: **accepted** on 2026-09-19 by Kevin Deyarmin, who holds all five owner
+roles in `audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md`.
+`tools-transition-disposition.json` carries `review_state: "accepted"`, and with
+coverage complete, no disposition contradicting its source, every retirement's
+rows accounted for and nothing left undecided, the coverage tool now reports
+`census_ready: true`.
 
-This record resolves the eight open choices in
+Read that narrowly. It means the capability census is settled and usable as an
+input to the next phase. It is **not** a migration authorization: the same tool
+still reports `hosted_inventory_reconciled: false` and
+`migration_authorized: false`, and nothing here has been reconciled against the
+hosted apps.
+
+This record resolves the open choices in
 [the transition plan](BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md) so work
-can proceed without re-deciding them per pull request. Adopting a decision here
+can proceed without re-deciding them per pull request: the original eight, plus
+the thirty-one dispositions D9 closes and the retention schedule D10 sets. Adopting a decision here
 authorizes source changes only. It does not authorize a hosted deployment, a
 migration, a release-control change, a domain move, or any spend. Every existing
 gate in `REPOSITORY_CONSOLIDATION_2026-09-02.md`,
@@ -223,10 +232,9 @@ engine whose seven workflows are all `preserved_paused`.
 
 Consequence: `undecided` is zero and six entities enter the carried set, so the
 candidate schema grows from 150 tables to 156 and the tenant-path census from 150
-to 156 rows. `census_ready` is still false, and deliberately so: it also requires
-`review_state: accepted`, which is an owner's act and not a technical judgment.
-These dispositions are the best reading of the repository's own evidence, not a
-substitute for that sign-off.
+to 156 rows. These dispositions are the best reading of the repository's own
+evidence; the owner sign-off recorded at the top of this document is what turned
+them from a working position into the accepted census.
 
 ## D10 — Six years for every retired table's rows
 
@@ -331,7 +339,12 @@ No entry is `undecided`: D9 resolves the last thirty-one. The distribution is
 | Native workflows | 0 | 0 | 0 | 7 | 0 |
 | Core integrations | 6 | 0 | 0 | 0 | 1 |
 
-`census_ready` stays false because it also requires an owner to move
-`review_state` to `accepted`. Until that happens the dispositions above are the
-implementation's working position, reasoned from the repository's own evidence,
-and nothing more.
+`census_ready` is true: coverage is complete, no disposition contradicts its
+source, every retirement's rows have a retention basis, nothing is undecided, and
+an owner moved `review_state` to `accepted`. A test pins that state, so a new
+capability left undecided or a retirement with nowhere for its rows takes the
+census back down rather than passing unnoticed.
+
+What acceptance does not do is unchanged: `hosted_inventory_reconciled` and
+`migration_authorized` are hard-coded false in this tool, because it inventories
+the repository and has never contacted a hosted app.

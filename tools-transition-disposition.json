@@ -1,7 +1,7 @@
 {
   "format": "pennsync-transition-disposition",
   "version": 2,
-  "review_state": "proposed",
+  "review_state": "accepted",
   "retention": {
     "AnomalyAlert": {
       "basis": "archive",

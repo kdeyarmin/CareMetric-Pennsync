@@ -170,9 +170,22 @@ test('a contradiction blocks the census even when owners accepted', () => {
   assert.equal(report.census_ready, false);
 });
 
-test('the committed manifest never reports itself as reviewed or authorized', () => {
-  const report = main(['--summary'], { repository, log: () => {} });
-  assert.equal(report, 0);
+test('the committed census is settled, and says only that', () => {
+  assert.equal(main(['--summary'], { repository, log: () => {} }), 0);
+  const raw = readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8');
+  const report = checkCoverage(discoverCapabilities(repository), parseManifest(raw), discoverEvidence(repository));
+  // Pinned so a new capability left undecided, or a retirement with nowhere for
+  // its rows, takes the census down visibly instead of passing unnoticed.
+  assert.equal(report.coverage_complete, true);
+  assert.equal(report.evidence_consistent, true);
+  assert.equal(report.retention_settled, true);
+  assert.deepEqual(report.undecided, []);
+  assert.equal(report.owner_review_complete, true);
+  assert.equal(report.census_ready, true);
+  // A settled census is not a migration. This tool reads the repository and has
+  // never contacted a hosted app, so neither of these can become true here.
+  assert.equal(report.hosted_inventory_reconciled, false);
+  assert.equal(report.migration_authorized, false);
 });
 
 test('a capability without a disposition is reported as missing', () => {
