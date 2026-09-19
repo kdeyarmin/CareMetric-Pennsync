@@ -1,4 +1,4 @@
-import { createStagingAuthorityClient, STAGING_APP_ID } from '../../services/authority-client/client.mjs';
+import { createStagingAuthorityClient, PORTED_FUNCTIONS, STAGING_APP_ID } from '../../services/authority-client/client.mjs';
 
 const EMAILS = Object.freeze(['admin-a', 'clinician-a', 'clinician-empty', 'admin-b']
   .map(name => `info+pennsync-${name}@caremetricai.com`));
@@ -21,7 +21,12 @@ export function readIndependentStagingConfig(env = {}) {
   if (!exact(actors, EMAILS) || EMAILS.some(email => !UUID.test(actors[email]))
     || new Set(Object.values(actors)).size !== EMAILS.length) fail('INVALID_STAGING_CONFIGURATION');
   const target = { appId: STAGING_APP_ID, projectRef: env.VITE_PENNSYNC_STAGING_PROJECT_REF,
-    projectUrl: env.VITE_PENNSYNC_STAGING_PROJECT_URL, publishableKey: env.VITE_PENNSYNC_STAGING_PUBLISHABLE_KEY };
+    projectUrl: env.VITE_PENNSYNC_STAGING_PROJECT_URL, publishableKey: env.VITE_PENNSYNC_STAGING_PUBLISHABLE_KEY,
+    // Optional: with it unset no ported handler is reachable and `invoke`
+    // fails closed exactly as it did before. The client pins the value against
+    // a fixed pair, so a wrong one fails construction below rather than
+    // pointing a caller's bearer at a host we do not run.
+    apiUrl: env.VITE_PENNSYNC_API_URL || null };
   // Reuse the exact reviewed target/key pin. Construction performs no I/O.
   for (const email of EMAILS) createStagingAuthorityClient({ ...target, email, authUserId: actors[email] });
   return Object.freeze({ target: Object.freeze(target), actors: Object.freeze(actors) });
@@ -69,6 +74,21 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
       memberships: result.memberships.map(value => pick(value, membershipKeys)) } };
   };
   const invoke = async (name, input = {}) => {
+    // A ported handler, if the app has been pointed at the service. Everything
+    // about this path is explicit: the name has to be one the service serves,
+    // the call site has to supply `agency_id` — the ported service requires a
+    // current agency membership where its Base44 original accepted any
+    // authenticated caller — and with no service configured it falls through to
+    // the same refusal every other unsupported name gets.
+    if (Object.hasOwn(PORTED_FUNCTIONS, name) && config.target.apiUrl) {
+      const { agency_id: agencyId, ...params } = input;
+      if (!agencyId) fail('STAGING_TENANT_SELECTION_REQUIRED');
+      const active = client, lease = generation;
+      if (!active || !signedIn) fail('AUTHENTICATION_REQUIRED', 401);
+      const result = await active.callFunction(name, agencyId, params);
+      current(lease);
+      return { data: result };
+    }
     if (name === 'getMyTenantContext') return getContext(input);
     if (name === 'manageAuthorizedReferral') {
       if (!exact(input, ['action','params'])) fail('STAGING_OPERATION_UNAVAILABLE');

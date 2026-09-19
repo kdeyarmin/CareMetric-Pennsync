@@ -28,6 +28,46 @@ const METHODS = Object.freeze({
   revoke_membership: ['p_agency_id', 'p_target_membership_id', 'p_expected_actor_version', 'p_expected_target_version', 'p_request_id'],
 });
 
+/**
+ * Where the ported handlers live, and which of them answer bytes.
+ *
+ * Ten handlers were written into `services/pennsync-api` before anything could
+ * call one: `src/` held no reference to the service at all, so every port was
+ * unreachable from the app. This is the caller, and it lives here rather than
+ * in a client of its own for one reason — the access token never leaves this
+ * closure. Handing it to a second client to make the same call would undo the
+ * containment that is the point of keeping it private.
+ *
+ * The map is written out rather than imported from the service: pulling
+ * `handlers.mjs` into the browser bundle would drag roughly 480 lines of model
+ * prompts and three document builders in with it, for a list of ten names.
+ * `client.test.mjs` pins it against the service's own registry, so it cannot
+ * drift from what the service actually serves.
+ *
+ * `binary` names the handlers whose Base44 originals answered with the PDF
+ * itself. A migrated caller is not asked to decode something new, so those
+ * still answer bytes here.
+ */
+export const API_TARGETS = Object.freeze([
+  'https://pennsync-api-production.up.railway.app',
+  'http://127.0.0.1:54341',
+]);
+export const PORTED_FUNCTIONS = Object.freeze({
+  analyzeReferral: 'json',
+  analyzeReferralIntake: 'json',
+  analyzeReferralPriority: 'json',
+  generateBagTechniquePDF: 'binary',
+  generateReferralTasks: 'json',
+  generateSmartNoteGuide: 'json',
+  generateUserGuidePDF: 'binary',
+  generateUserManual: 'binary',
+  matchPatientWithAI: 'json',
+  validatePatientData: 'json',
+});
+/** The ported API's one route shape. No caller names a path. */
+const FUNCTION_PATH = name => `/v1/functions/${name}`;
+const AGENCY = /^[A-Za-z0-9_-]{1,128}$/;
+
 export class AuthorityClientError extends Error {
   constructor(code, status = null) { super(code); this.name = 'AuthorityClientError'; this.code = code; this.status = status; }
 }
@@ -46,7 +86,14 @@ function validateTarget(config) {
   const hosted = config.projectRef === 'xxtyweswohkvgkprimwa'
     && config.projectUrl === 'https://xxtyweswohkvgkprimwa.supabase.co';
   if (!local && !hosted) fail('INVALID_STAGING_TARGET');
-  return Object.freeze({ ...config, base44UserId: ACTORS.get(config.email) });
+  // The ported API is optional and pinned to the same fixed pair discipline.
+  // An operator-supplied origin would let a misconfiguration point this
+  // caller's bearer at a host we do not run, which is the whole reason the
+  // authority project is pinned two lines above rather than merely shaped.
+  if (config.apiUrl !== undefined && config.apiUrl !== null && !API_TARGETS.includes(config.apiUrl)) {
+    fail('INVALID_STAGING_TARGET');
+  }
+  return Object.freeze({ ...config, apiUrl: config.apiUrl ?? null, base44UserId: ACTORS.get(config.email) });
 }
 
 function validateParams(method, input) {
@@ -78,8 +125,8 @@ function validateParams(method, input) {
   return Object.freeze({ ...params, p_app_id: STAGING_APP_ID });
 }
 
-async function boundedJson(response, maxBytes, readTimeoutMs = 0) {
-  if (!response.headers.get('content-type')?.toLowerCase().startsWith('application/json')) fail('INVALID_AUTHORITY_RESPONSE');
+async function boundedJson(response, maxBytes, readTimeoutMs = 0, expect = 'application/json') {
+  if (!response.headers.get('content-type')?.toLowerCase().startsWith(expect)) fail('INVALID_AUTHORITY_RESPONSE');
   const declaredLength = response.headers.get('content-length');
   if (declaredLength && (!/^\d+$/.test(declaredLength) || Number(declaredLength) > maxBytes)) fail('INVALID_AUTHORITY_RESPONSE');
   if (!response.body) fail('INVALID_AUTHORITY_RESPONSE');
@@ -101,6 +148,10 @@ async function boundedJson(response, maxBytes, readTimeoutMs = 0) {
     const buffer = new Uint8Array(bytes);
     let offset = 0;
     for (const chunk of chunks) { buffer.set(chunk, offset); offset += chunk.byteLength; }
+    // A ported document answers with the bytes its Base44 original answered
+    // with, so the same capped read serves both and neither gets a second,
+    // less careful path.
+    if (expect !== 'application/json') return buffer;
     try { return JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(buffer)); }
     catch { fail('INVALID_AUTHORITY_RESPONSE'); }
   } finally {
@@ -191,7 +242,9 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
   const validGrant = session => sameUser(session?.user) && typeof session.access_token === 'string'
     && session.access_token.length <= 16384 && /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(session.access_token)
     && session.token_type === 'bearer';
-  async function request(path, { lease, bearer, body, noBody = false, method = 'POST', cleanup = false, receivedGrant, maxResponseBytes = 1024 * 1024 }) {
+  async function request(path, { lease, bearer, body, noBody = false, method = 'POST', cleanup = false,
+    receivedGrant, maxResponseBytes = 1024 * 1024, origin = config.projectUrl, apikey = true,
+    expect = 'application/json' }) {
     if (!cleanup) current(lease);
     const controller = new AbortController();
     if (!cleanup) pending.add(controller);
@@ -202,10 +255,14 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const live = () => { if (!cleanup) current(lease); if (controller.signal.aborted) fail('AUTHORITY_REQUEST_ABORTED'); };
     const execute = async () => {
-      const response = await fetchImpl(config.projectUrl + path, {
+      const response = await fetchImpl(origin + path, {
         method, redirect: 'error', credentials: 'omit', cache: 'no-store', referrerPolicy: 'no-referrer',
         signal: controller.signal,
-        headers: { apikey: config.publishableKey, 'Content-Type': 'application/json', Accept: 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
+        // The publishable key identifies the Supabase project, so it goes to
+        // the Supabase project and nowhere else. The ported API authorizes on
+        // the caller's bearer alone and is sent no key at all.
+        headers: { ...(apikey ? { apikey: config.publishableKey } : {}), 'Content-Type': 'application/json',
+          Accept: expect, ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}) },
         ...(body === undefined ? {} : { body: JSON.stringify(body) }),
       });
       // A late grant may already have created a native session. Inspect a
@@ -220,7 +277,7 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
         void response.body?.cancel().catch(() => {});
         live(); return null;
       }
-      const result = await boundedJson(response, maxResponseBytes, timeoutMs);
+      const result = await boundedJson(response, maxResponseBytes, timeoutMs, expect);
       if (receivedGrant) await receivedGrant(result, controller.signal.aborted || lease !== epoch);
       live();
       return result;
@@ -288,6 +345,39 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
         ...(method === 'visit_documentation' ? { maxResponseBytes: VISIT_DOCUMENTATION_MAX_BYTES } : {}) });
       current(lease);
       return validateResult(result, method, params, config);
+    },
+    /**
+     * Call a released ported handler as this caller.
+     *
+     * Deliberately shaped like `rpc` above: the same lease, the same token out
+     * of the same closure, the same refusal when there is no session. What
+     * differs is the origin and that no publishable key is sent, because the
+     * ported API authorizes on the bearer alone.
+     *
+     * `agencyId` is required and has no default. The Base44 originals accepted
+     * any authenticated caller; the ported service requires a current agency
+     * membership because it has no global scope. Defaulting it here would pick
+     * a tenant on the caller's behalf, so a call site that has not been
+     * reviewed for that is refused instead.
+     */
+    async callFunction(name, agencyId, params = {}) {
+      if (!Object.hasOwn(PORTED_FUNCTIONS, name)) fail('PENNSYNC_API_FUNCTION_UNKNOWN');
+      if (!config.apiUrl) fail('PENNSYNC_API_NOT_CONFIGURED');
+      if (typeof agencyId !== 'string' || !AGENCY.test(agencyId)) fail('PENNSYNC_API_AGENCY_REQUIRED');
+      if (!object(params)) fail('INVALID_AUTHORITY_REQUEST');
+      if (!token) fail('AUTHENTICATION_REQUIRED');
+      const lease = epoch;
+      const binary = PORTED_FUNCTIONS[name] === 'binary';
+      const result = await request(FUNCTION_PATH(name), {
+        lease, bearer: token, body: { agency_id: agencyId, params },
+        origin: config.apiUrl, apikey: false,
+        ...(binary ? { expect: 'application/pdf', maxResponseBytes: 8 * 1024 * 1024 } : {}),
+      });
+      current(lease);
+      // A JSON handler's envelope is the service's; a document is its bytes.
+      // Neither is re-shaped here, because a migrated caller should see what
+      // its Base44 original returned.
+      return result;
     },
     async signOut() {
       invalidate();

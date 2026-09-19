@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createIndependentStagingAdapter, readIndependentStagingConfig } from './independentStagingAdapter';
-import { stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
+import { stagingApiUrl, stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
 
 describe('finite independent app adapter', () => {
   it('preserves default backend and rejects foreign targets, secret keys and unbound actors before I/O', () => {
@@ -80,5 +80,69 @@ describe('finite independent app adapter', () => {
     expect(fixture.live.size).toBe(1);
     expect((await adapter.authority.me()).email).toBe(stagingEmails[3]);
     await adapter.auth.signOut(); expect(fixture.live.size).toBe(0);
+  });
+});
+
+describe('the ported API caller', () => {
+  const ported = { ...stagingEnv, VITE_PENNSYNC_API_URL: stagingApiUrl };
+  const signedIn = async (env = ported) => {
+    const fixture = stagingFixture();
+    const adapter = createIndependentStagingAdapter(readIndependentStagingConfig(env), { fetchImpl: fixture.fetch });
+    await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    return { fixture, adapter };
+  };
+
+  it('is absent unless the app has been pointed at the service, and pinned when it is', () => {
+    // Unset, every ported name falls through to the refusal any other
+    // unsupported name gets, so adding this path changes nothing until an
+    // operator opts in.
+    expect(readIndependentStagingConfig(stagingEnv).target.apiUrl).toBeNull();
+    expect(readIndependentStagingConfig(ported).target.apiUrl).toBe(stagingApiUrl);
+    for (const VITE_PENNSYNC_API_URL of ['https://pennsync-api-production.up.railway.app.evil.test',
+      'https://example.test', 'http://127.0.0.1:54342']) {
+      expect(() => readIndependentStagingConfig({ ...stagingEnv, VITE_PENNSYNC_API_URL }))
+        .toThrow(/INVALID_STAGING_TARGET/);
+    }
+  });
+
+  it('routes a ported name to the service with the caller own bearer and no project key', async () => {
+    const { fixture, adapter } = await signedIn();
+    expect(await adapter.raw.functions.invoke('validatePatientData',
+      { agency_id: 'agency-a', patient: { first_name: 'A' } })).toEqual({ data: { valid: true } });
+    expect(fixture.apiCalls).toHaveLength(1);
+    const [call] = fixture.apiCalls;
+    expect(call.url).toBe(`${stagingApiUrl}/v1/functions/validatePatientData`);
+    expect(call.headers.Authorization).toMatch(/^Bearer synthetic\.session\d+\.token$/);
+    // The publishable key names the Supabase project and must not follow the
+    // bearer to a second origin.
+    expect(call.headers.apikey).toBeUndefined();
+    expect(call.body).toEqual({ agency_id: 'agency-a', params: { patient: { first_name: 'A' } } });
+  });
+
+  it('requires the agency the ported service needs rather than guessing one', async () => {
+    // The Base44 original accepted any authenticated caller; the ported service
+    // requires a current agency membership. A call site not reviewed for that
+    // is refused instead of being given a tenant on its behalf.
+    const { fixture, adapter } = await signedIn();
+    await expect(adapter.raw.functions.invoke('validatePatientData', { patient: {} }))
+      .rejects.toThrow(/STAGING_TENANT_SELECTION_REQUIRED/);
+    expect(fixture.apiCalls).toHaveLength(0);
+  });
+
+  it('still fails closed for every name the service does not serve', async () => {
+    const { fixture, adapter } = await signedIn();
+    for (const name of ['getDashboardData', 'offboardUser', 'createAuthorizedPatient', 'nope']) {
+      await expect(adapter.raw.functions.invoke(name, { agency_id: 'agency-a' }))
+        .rejects.toThrow(/STAGING_OPERATION_UNAVAILABLE/);
+    }
+    expect(fixture.apiCalls).toHaveLength(0);
+  });
+
+  it('reaches nothing once the session ends', async () => {
+    const { fixture, adapter } = await signedIn();
+    await adapter.auth.signOut();
+    await expect(adapter.raw.functions.invoke('validatePatientData', { agency_id: 'agency-a', patient: {} }))
+      .rejects.toThrow(/AUTHENTICATION_REQUIRED/);
+    expect(fixture.apiCalls).toHaveLength(0);
   });
 });
