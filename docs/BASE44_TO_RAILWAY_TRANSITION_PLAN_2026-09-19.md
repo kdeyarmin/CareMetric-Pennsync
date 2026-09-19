@@ -20,6 +20,7 @@ Source work completed here, all validated by the repository's own checks:
 | Phase 0 — disposition evidence | The gate also refuses a `port`, `broker` or `hub` disposition on a function whose module can perform no work; eight such claims were corrected |
 | Phase 0 — documentation | `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `.env.example` describe both backends and every service setting |
 | Phase 1 — runtime authority | `INTEGRATIONS_AUTHORITY_MODE=independent` removes the Base44 `getMyTenantContext` call; readiness derives `base44ExecutionDependency` |
+| Phase 2 — port queue | The same gate reports what blocks each carried function rather than leaving the queue as "86 awaiting review": records_schema=80, ported_function=1, pdf_rendering=3, external_secret=1, none=1. A test pins the distribution, so writing a port moves a count here and the prose with it |
 | Phase 1 — enrollment tool | `tools-pennsync-enroll.mjs` writes identity, agency and membership rows from a digest-addressed plan whose evidence it hashes itself, under the RPC write lock, recorded in an append-only `enrollment_receipt`. It cannot create a native Auth account, cannot enroll into another deployment, and cannot restate an identity already recorded |
 | Phase 1 — authority store app namespace | `20260919090000_deployment_app_pin.sql` replaces both app-id literals with one immutable per-deployment pin. The domain across 18 columns and the gate inside `actor()` now read the same row, so they cannot drift; production is admitted only in a database pinned to it, and an unset pin still defaults to staging. `app-namespace-containment.test.mjs` proves it against two databases built from the same migrations |
 | Phase 2 — API service | `services/pennsync-api` with health, readiness, release-gated dispatch and the first ported handler |
@@ -37,7 +38,7 @@ Not done here, and each blocked on something this branch cannot supply:
 | Generalizing the authority store past four synthetic actors | The app-id pins are done (above). What remains: the enrollment tool that writes evidence-hashed identity rows, the four actor IDs still pinned in `services/authority-client/client.mjs`, roster behaviour for the four tenant roles that can hold context but not use it, and the synthetic-name constraints, which still refuse a real agency or patient name in every deployment. Each needs enrolled humans or its own reviewed migration; see Phase 1 |
 | Reconciling the duplicated authority predicates (`validateMembershipRows`, `validateAssignmentIntegrity`) into one shared definition | Nothing external. The twelve `validateAssignmentIntegrity` copies are now diffed and all enforce the same authorization: seven bind the assignment inside the predicate, five in the caller on the next line. It is a consolidation, not a behavior decision — but porting the predicate without its caller would drop the binding, so it comes before the ports. `base44/functionTests/assignmentBindingConvention.test.js` holds the line meanwhile |
 | Deciding the 87 entities with no usable tenant path | Owners answering the three questions in Phase 2; two of them (global reference data vs. a missing key) are product calls, not derivable from the schema |
-| Porting the remaining handlers and entity schemas | The decisions above being accepted, then per-capability review |
+| Porting the remaining 85 handlers | **Not review — the data layer.** `check:transition-disposition` now classifies each `port` function by what actually blocks it: 80 read or write entity rows and need the ported record store with a tenant predicate for the entities they touch, 1 calls another Base44 function and waits on that port, 3 render through `jspdf` and need that dependency adopted plus a way to compare rendered output, and 1 calls a third-party API with an environment key that belongs to the integration runtime's brokered path. `validatePatientData` was the only one writable without any of that, and it is written |
 | Any customer data, file or identity migration | Base44 credentials, named owners, and a maintenance window |
 | Frontend hosting, domain move, native rebuild | Approvals and physical devices |
 
@@ -349,6 +350,23 @@ Exit: two-agency positive and negative matrix from
 `identities`, `isolation`, and `revocation` rehearsal receipts can be produced.
 
 ### Phase 2: data model and API service (size XL, 8 to 14 weeks)
+
+**What actually gates this phase, measured rather than estimated.** The census
+says 86 functions are carried as `port`; it does not say any of them can be
+written. `pnpm run check:transition-disposition` now classifies each one by its
+blocker, read from the module:
+
+| Blocker | Functions | What has to exist first |
+| --- | ---: | --- |
+| `records_schema` | 80 | The ported record store, plus a tenant predicate for every entity each one touches — which is why the 87 unresolved tenant paths below are this phase's real critical path |
+| `ported_function` | 1 | `extractReferralDataForSmartNote` waits on the referral broker it calls |
+| `pdf_rendering` | 3 | `jspdf` adopted in the new service, and a way to compare rendered output that byte-for-byte parity cannot provide |
+| `external_secret` | 1 | `transcribeAndGenerateSOAPNote` calls OpenAI and Anthropic with environment keys; that belongs to the integration runtime's brokered path, not to a handler |
+| `none` | 1 | `validatePatientData`, already written |
+
+Read that as the schedule: nothing in the port queue starts before the record
+store does, so the tiers below are ordered by what unblocks the most handlers,
+not by what is easiest to write.
 
 Deliverables, in tiers that can merge independently:
 

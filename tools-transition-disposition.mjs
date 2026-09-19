@@ -140,8 +140,57 @@ export function discoverInertFunctions(repository) {
   return inert.sort();
 }
 
+/**
+ * Why a `port` cannot be written yet.
+ *
+ * The census says which capabilities are carried; it does not say which of them
+ * anyone can act on. That turned out to matter: of the 86 functions dispositioned
+ * `port`, exactly one could be written without something the transition has not
+ * built yet, and it already has been. Reading the queue as "86 ports awaiting
+ * review" would send someone to work that cannot start.
+ *
+ * The categories are deliberately about the blocker, not the feature:
+ *
+ * - `records_schema` — reads or writes entity rows, so it needs the ported
+ *   record store and a tenant predicate for the entities it touches.
+ * - `ported_function` — calls another Base44 function, so it waits on that one.
+ * - `pdf_rendering` — renders through `jspdf`; carrying it means adopting that
+ *   dependency in the new service and deciding how to compare rendered output,
+ *   which byte-for-byte parity cannot do.
+ * - `external_secret` — calls a third-party API with a key from the environment,
+ *   which belongs to the integration runtime's brokered path, not to a handler.
+ * - `none` — portable today.
+ *
+ * Precedence runs from the most binding to the least: a function that both reads
+ * rows and renders a PDF is blocked on the rows first.
+ */
+export const PORT_BLOCKERS = Object.freeze(['records_schema', 'ported_function', 'pdf_rendering', 'external_secret', 'none']);
+
+export function classifyPortBlocker(source) {
+  if (typeof source !== 'string') return 'records_schema';
+  if (/\.\s*entities\s*\.|asServiceRole|\.\s*integrations\s*\./.test(source)) return 'records_schema';
+  if (/\bbase44\s*\.\s*functions\b/.test(source)) return 'ported_function';
+  if (/from\s+'npm:jspdf@/.test(source)) return 'pdf_rendering';
+  if (/\bDeno\s*\.\s*env\s*\.\s*get\b/.test(source)) return 'external_secret';
+  return 'none';
+}
+
+export function discoverPortBlockers(repository) {
+  const root = join(repository, 'base44/functions');
+  const blockers = {};
+  for (const name of listDirectories(root)) {
+    let source;
+    try { source = readFileSync(join(root, name, 'entry.ts'), 'utf8'); } catch { continue; }
+    blockers[name] = classifyPortBlocker(source);
+  }
+  return blockers;
+}
+
 export function discoverEvidence(repository) {
-  return { inertFunctions: discoverInertFunctions(repository) };
+  return {
+    inertFunctions: discoverInertFunctions(repository),
+    portBlockers: discoverPortBlockers(repository),
+  };
 }
 
 export function discoverCapabilities(repository) {
@@ -187,6 +236,8 @@ export function parseManifest(raw) {
 
 export function checkCoverage(capabilities, manifest, evidence = {}) {
   const inert = new Set(Array.isArray(evidence.inertFunctions) ? evidence.inertFunctions : []);
+  const blockers = evidence.portBlockers && typeof evidence.portBlockers === 'object' ? evidence.portBlockers : {};
+  const portQueue = Object.fromEntries(PORT_BLOCKERS.map(blocker => [blocker, []]));
   const families = {};
   const missing = [];
   const unknown = [];
@@ -208,6 +259,11 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
       // hub; carrying it paused or retiring it are the only honest readings.
       if (family === 'functions' && inert.has(name) && ACTIVE_DISPOSITIONS.includes(value)) {
         contradicted.push(`${family}:${name} declared ${value} but its module performs no work`);
+      }
+      // Informational, never a gate: a port that becomes possible must not fail
+      // the census, and a port that is written should move a count here.
+      if (family === 'functions' && value === 'port') {
+        portQueue[blockers[name] ?? 'records_schema'].push(name);
       }
     }
     for (const name of Object.keys(declared)) if (!present.has(name)) unknown.push(`${family}:${name}`);
@@ -242,6 +298,9 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
     retention_unspecified: retentionUnspecified.sort(),
     retention_unused: retentionUnused.sort(),
     retention_settled: retentionSettled,
+    // What stands between each carried function and being written, so the queue
+    // reads as work that can start rather than work awaiting review.
+    port_blockers: Object.fromEntries(PORT_BLOCKERS.map(blocker => [blocker, portQueue[blocker].sort()])),
     // Every capability classified AND consistent with its source AND every
     // retirement's rows accounted for AND none left undecided AND owners accepted.
     census_ready: complete && consistent && retentionSettled
@@ -279,6 +338,8 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
     for (const entry of report.contradicted_disposition) log(`  contradicted: ${entry}`);
     for (const entry of report.retention_unspecified) log(`  retirement with no retention basis: ${entry}`);
     for (const entry of report.retention_unused) log(`  retention basis for something not retired: ${entry}`);
+    const queue = Object.entries(report.port_blockers).filter(([, names]) => names.length);
+    log(`  port queue: ${queue.map(([blocker, names]) => `${blocker}=${names.length}`).join(' ') || 'empty'}`);
   } else {
     log(JSON.stringify(report, null, 2));
   }

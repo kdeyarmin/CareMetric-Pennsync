@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  ACTIVE_DISPOSITIONS, DISPOSITIONS, FORMAT, FORMAT_VERSION, RETENTION_BASES, checkCoverage, discoverCapabilities,
-  discoverEvidence, discoverInertFunctions, discoverIntegrations, isInertFunction, main, parseManifest,
+  ACTIVE_DISPOSITIONS, DISPOSITIONS, FORMAT, FORMAT_VERSION, PORT_BLOCKERS, RETENTION_BASES, checkCoverage,
+  classifyPortBlocker, discoverCapabilities, discoverEvidence, discoverInertFunctions, discoverIntegrations,
+  discoverPortBlockers, isInertFunction, main, parseManifest,
 } from './tools-transition-disposition.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -242,6 +243,75 @@ for (const [name, raw] of Object.entries({
 })) {
   test(`manifest rejects ${name}`, () => assert.throws(() => parseManifest(raw)));
 }
+
+test('what blocks a port is read from the module, not from a status note', () => {
+  // Precedence runs from the most binding blocker to the least: a function that
+  // both reads rows and renders a PDF cannot be written until the rows exist.
+  assert.deepEqual([...PORT_BLOCKERS], ['records_schema', 'ported_function', 'pdf_rendering', 'external_secret', 'none']);
+  assert.equal(classifyPortBlocker("await base44.entities.Patient.filter({})"), 'records_schema');
+  assert.equal(classifyPortBlocker("base44.asServiceRole.entities.Visit.list()"), 'records_schema');
+  assert.equal(classifyPortBlocker("await base44.integrations.Core.InvokeLLM({})"), 'records_schema');
+  assert.equal(classifyPortBlocker("await base44.functions.manageAuthorizedReferral({})"), 'ported_function');
+  assert.equal(classifyPortBlocker("import { jsPDF } from 'npm:jspdf@2.5.2';"), 'pdf_rendering');
+  assert.equal(classifyPortBlocker('const key = Deno.env.get("OPENAI_API_KEY");'), 'external_secret');
+  assert.equal(classifyPortBlocker("const user = await base44.auth.me();"), 'none');
+  // Precedence, stated as a case rather than left to reading order.
+  assert.equal(classifyPortBlocker("import { jsPDF } from 'npm:jspdf@2.5.2';\nbase44.entities.Patient.get(id)"), 'records_schema');
+  // Anything unreadable is treated as the most blocking, never as portable.
+  assert.equal(classifyPortBlocker(null), 'records_schema');
+});
+
+test('the port queue is work that cannot start yet, and says why', () => {
+  // Reading the census as "86 ports awaiting review" would send someone to work
+  // nothing in the repository can support. Exactly one of them was writable
+  // without something the transition has not built, and it has been written.
+  const report = checkCoverage(
+    discoverCapabilities(repository),
+    parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
+    discoverEvidence(repository),
+  );
+  const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
+  assert.deepEqual(counts, { records_schema: 80, ported_function: 1, pdf_rendering: 3, external_secret: 1, none: 1 });
+  assert.deepEqual(report.port_blockers.none, ['validatePatientData'], 'the one portable function changed');
+  assert.deepEqual(report.port_blockers.ported_function, ['extractReferralDataForSmartNote']);
+  assert.deepEqual(report.port_blockers.pdf_rendering,
+    ['generateBagTechniquePDF', 'generateSmartNoteGuide', 'generateUserManual']);
+  assert.deepEqual(report.port_blockers.external_secret, ['transcribeAndGenerateSOAPNote']);
+  // The sum is every function dispositioned `port`, so nothing falls out of the
+  // queue by being unclassifiable.
+  assert.equal(Object.values(counts).reduce((total, value) => total + value, 0), report.families.functions.counts.port);
+});
+
+test('the port queue never decides the census', () => {
+  // A port becoming possible, or being written, must not fail the gate. It moves
+  // a count here and the plan's prose with it, nothing else.
+  const evidence = { inertFunctions: [], portBlockers: { alpha: 'none' } };
+  const ready = checkCoverage(capabilities(), manifest({ review_state: 'accepted' }), evidence);
+  assert.equal(ready.census_ready, true);
+  assert.deepEqual(ready.port_blockers.none, ['alpha']);
+  const blocked = checkCoverage(capabilities(), manifest({ review_state: 'accepted' }),
+    { inertFunctions: [], portBlockers: { alpha: 'records_schema' } });
+  assert.equal(blocked.census_ready, true);
+  assert.deepEqual(blocked.port_blockers.records_schema, ['alpha']);
+  // A function the evidence says nothing about is queued as the most blocking
+  // rather than silently counted as ready to write.
+  const unknown = checkCoverage(capabilities(), manifest({ review_state: 'accepted' }), { inertFunctions: [] });
+  assert.deepEqual(unknown.port_blockers.records_schema, ['alpha']);
+  // And only `port` is queued: a brokered or paused function is not waiting on this.
+  const brokered = checkCoverage(capabilities(), manifest({ functions: { alpha: 'broker' } }), evidence);
+  assert.deepEqual(Object.values(brokered.port_blockers).flat(), []);
+});
+
+test('every function the classifier calls portable really needs nothing but authority', () => {
+  const blockers = discoverPortBlockers(repository);
+  for (const [name, blocker] of Object.entries(blockers)) {
+    if (blocker !== 'none') continue;
+    const source = readFileSync(resolve(repository, 'base44/functions', name, 'entry.ts'), 'utf8');
+    assert.doesNotMatch(source, /\.\s*entities\s*\.|asServiceRole|\.\s*integrations\s*\.|\bbase44\s*\.\s*functions\b/,
+      `${name} reaches data but is queued as portable`);
+    assert.doesNotMatch(source, /\bDeno\s*\.\s*env\s*\.\s*get\b/, `${name} reads a secret but is queued as portable`);
+  }
+});
 
 test('accepted dispositions are the exact reviewed set', () => {
   assert.deepEqual([...DISPOSITIONS].sort(), ['broker', 'hub', 'port', 'preserved_paused', 'retire', 'undecided']);
