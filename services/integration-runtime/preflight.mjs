@@ -1,3 +1,4 @@
+import { AUTHORITY_RPC } from './authority.mjs';
 import { BUCKET, createStore, validSender } from './runtime.mjs';
 import { readJson } from './safety.mjs';
 
@@ -31,6 +32,24 @@ export async function runPreflight(config, fetcher = fetch) {
       checks.stateRpc = { valid: result === null };
     } catch { checks.stateRpc = { valid: false }; }
   } else { checks.storage = { valid: false, configured: false }; checks.stateRpc = { valid: false }; }
+  // Independent authority: prove the fixed RPC exists and that the publishable
+  // key alone is refused. A successful anonymous call would mean the caller's
+  // own token is not what authorizes; that must fail the preflight.
+  const needsAuthority = config.authorityMode === 'independent';
+  if (needsAuthority) {
+    try {
+      const response = await fetcher(`${config.authorityUrl}/rest/v1/rpc/${AUTHORITY_RPC}`, {
+        method: 'POST',
+        headers: { apikey: config.authorityKey, 'Content-Type': 'application/json', Accept: 'application/json' },
+        body: JSON.stringify({ p_app_id: config.appId, p_agency_id: 'preflight-anonymous-denial-probe' }),
+        redirect: 'error', signal: AbortSignal.timeout(15000),
+      });
+      checks.authority = { status: response.status, valid: [401, 403].includes(response.status), anonymousDenied: [401, 403].includes(response.status) };
+    } catch { checks.authority = { valid: false, error: 'AUTHORITY_CHECK_UNAVAILABLE' }; }
+  } else {
+    checks.authority = { valid: true, notApplicable: true, mode: config.authorityMode || 'base44' };
+  }
+  checks.authority.required = needsAuthority;
   checks.resultEncryption = { valid: /^[a-f0-9]{64}$/.test(config.encryptionKey) };
   checks.identityHashing = { valid: /^[a-f0-9]{64}$/.test(config.hashKey) && config.hashKey !== config.encryptionKey };
   return { event: 'external_integration_preflight', paidCalls: 0, writes: 0,

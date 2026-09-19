@@ -1,6 +1,6 @@
 import { BROWSER_CONTRACT, requireExpectedCaller, validateCallerBinding } from './caller-binding.mjs';
 import { IntegrationError, ID, OPERATIONS, UUID, exactObject, fail } from './safety.mjs';
-import { authorize, createStore, performDurable, publicReadiness } from './runtime.mjs';
+import { authorize, createStore, hasBase44ExecutionDependency, performDurable, publicReadiness } from './runtime.mjs';
 import { createProviders, validateParams } from './providers.mjs';
 import { bearerFingerprint, createAdmission, readRequestBody } from './admission.mjs';
 
@@ -72,7 +72,7 @@ export function createHandler(config, dependencies = {}) {
           return actor;
         }),
         admit: actor => admission.operation(actor.subject) });
-      return json({ success: true, result, execution: 'external', base44ExecutionDependency: true,
+      return json({ success: true, result, execution: 'external', base44ExecutionDependency: hasBase44ExecutionDependency(config),
         ...(browserRequest ? { contract: BROWSER_CONTRACT, app_id: config.appId, revision: config.revision,
           request_id: input.request_id, operation: input.operation } : {}) });
     } catch (error) {
