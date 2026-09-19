@@ -9,6 +9,7 @@ import {
   applyProvision, planProvision, readMigrations, runProvisionCli,
 } from '../../../tools-pennsync-provision.mjs';
 import { RECORD_MIGRATION_FILE } from '../../../tools-entity-schema-plan.mjs';
+import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
 
 /**
  * D11 makes the pin unchangeable once the first migration has run, so a
@@ -160,11 +161,19 @@ test('the migrations are read in the order the store expects', () => {
   assert.ok(names.includes('20260919090000_deployment_app_pin.sql'));
   // The record store lives in its own directory, so nothing discovers it by
   // walking the authority migrations. Provisioning is what gives a real
-  // deployment both, and it must come last: every record policy is written in
-  // terms of `pennsync_private`, and the migration refuses a database without it.
+  // deployment all three, and the order between them is not cosmetic: every
+  // record policy is written in terms of `pennsync_private` and the record
+  // migration refuses a database without it, while the broker migration
+  // refuses a database with no record schema and no owner to act as. Asserted
+  // as a relation rather than a fixed tail, so adding a fourth does not need
+  // this line rewritten — only kept true.
   const record = RECORD_MIGRATION_FILE.split('/').pop();
-  assert.equal(names.at(-1), record, 'the record store is applied after the authority store');
-  assert.equal(names.filter(name => name === record).length, 1);
+  const brokers = BROKER_MIGRATION_FILE.split('/').pop();
+  for (const name of [record, brokers]) assert.equal(names.filter(entry => entry === name).length, 1);
+  assert.ok(names.indexOf(record) > names.indexOf('20260919090000_deployment_app_pin.sql'),
+    'the record store is applied after the authority store');
+  assert.ok(names.indexOf(brokers) > names.indexOf(record),
+    'the brokers are applied after the tables they broker');
 });
 
 test('the command line refuses before it opens a connection, and reports codes only', async () => {

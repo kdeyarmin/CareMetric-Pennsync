@@ -123,6 +123,41 @@ stubbed capability that records the same, and compares both the call and the
 answer. The prompt is the contract with the model — a reworded prompt is a
 different function even when every surrounding line matches.
 
+### Records
+
+Sixty-two of the functions still to port read or write entity rows.
+`records.mjs` is the path, and it is shaped exactly like the integration
+capability above: `app.mjs` binds it to the caller's own request, the bearer
+stays in the closure, and a handler receives `records(operation, entity, args)`
+rather than a connection, a key or a table name.
+
+Five operations — `list`, `get`, `insert`, `update`, `delete` — over the 31
+entities the broker family serves (`brokered-entities.mjs`, generated from the
+same plan as the family's SQL). Everything else is refused here before a request
+leaves the service: an unknown operation, an entity outside the family, a write
+to reference data, or an argument nobody declared. The database is still the
+authority on every one of those answers — `record-brokers.test.mjs` applies the
+real migration and proves the policies and the broker deny — and none of these
+checks is a substitute for it.
+
+There is **no new credential and no new origin**. The record store is the same
+database as the authority store (its migration refuses to apply without
+`pennsync_private.deployment_app_id()`), so this reuses the authority target and
+publishable key `authority.mjs` already validates against a fixed pair. The
+caller's own bearer authorizes the call, so a read carries exactly the caller's
+authority; the key names the project and nobody.
+
+Refusals are a shared vocabulary and only that. The eight `PENNSYNC_BROKER_*`
+codes are defined once in the generator, interpolated into the SQL and emitted
+to `brokered-entities.mjs`; a test asserts the set the SQL raises and the set
+this service knows are the same in both directions. Anything else PostgREST
+returns — a database message, a hint, a constraint name — maps to one code.
+
+Two answers here are deliberately not failures: `get` and `update` return null
+and `delete` returns false both for a row that is not there and for one that is
+not the caller's. Telling those apart would report whether an id exists in
+another agency.
+
 ### Documents
 
 `documents.mjs` is the shared surface; each document is its own

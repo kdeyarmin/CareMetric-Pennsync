@@ -7,6 +7,7 @@ import { resolveAuthority } from './authority.mjs';
 import { ApiError, ID, MAX_BODY, exactObject, fail, isObject, readBody } from './contracts.mjs';
 import { HANDLERS } from './handlers.mjs';
 import { integrationCapability } from './integrations.mjs';
+import { recordCapability } from './records.mjs';
 import { publicReadiness } from './runtime.mjs';
 
 const FUNCTION_PATH = /^\/v1\/functions\/([A-Za-z][A-Za-z0-9_]{0,63})$/;
@@ -71,9 +72,14 @@ export function createHandler(config, dependencies = {}) {
       // request's Authorization header so a brokered call carries the caller's
       // own authority, while the handler is handed a function rather than a
       // token it could read, log or forward.
-      const integration = (dependencies.integration || integrationCapability)(
-        { config, req, agencyId: input.agency_id }, dependencies.fetcher);
-      const result = await handlers[name].handle({ actor, params: input.params ?? {}, config, integration });
+      const bound = { config, req, agencyId: input.agency_id };
+      const integration = (dependencies.integration || integrationCapability)(bound, dependencies.fetcher);
+      // The same discipline for records: a handler is handed a function, never
+      // a connection, a key or a table name it could widen.
+      const records = (dependencies.records || recordCapability)(bound, dependencies.fetcher);
+      const result = await handlers[name].handle({
+        actor, params: input.params ?? {}, config, integration, records,
+      });
       // A ported document answers with the bytes its Base44 original answered
       // with, so a migrated caller is not asked to decode something new. Only a
       // handler that declares itself binary may take this path, and the shape it

@@ -37,6 +37,8 @@ Before changing anything in the migration, read [the transition plan](docs/BASE4
 
 The record store migration (`services/authority-store/supabase/record-migrations/20260919170000_record_store.sql`) is generated, not written: change the entity definitions, the tenant decisions or the generator and re-run `node tools-entity-schema-plan.mjs --write-migration`. A test fails if the committed SQL and the generator disagree. Its tables are owned by `pennsync_records_owner`, which must never hold `SUPERUSER` or `BYPASSRLS` — either one silently voids all 596 policies — and it grants no caller role anything, because an RLS policy runs with the querying role's privileges, so a caller holding a table would also need the helpers that decide who it is.
 
+The broker family beside it (`20260919180000_record_brokers.sql`) is generated the same way, by `node tools-record-brokers.mjs --write`, which writes the SQL *and* `services/pennsync-api/brokered-entities.mjs` together — edit neither by hand. It is the only way a caller reaches a record, so three of its properties are load-bearing rather than stylistic: a broker stamps tenancy and refuses a payload naming it, the agency is checked against `caller_agencies()` rather than the request, and the family serves only entities dispositioned `broker` (the generator refuses to run while any of them fails D16's ceiling). Adding an entity means changing its disposition, not the SQL; a `shared` entity is refused outright because the family does not model the platform flag that publishes a row to every agency.
+
 Use pnpm through Corepack. Do not use npm or yarn for installs.
 
 ## Running, building, and testing
@@ -69,8 +71,10 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 | Entity schema plan (gate) | `pnpm run check:entity-schema-plan` |
 | Tenant paths (gate) | `pnpm run check:tenant-paths` |
 | Tenant decisions (gate) | `pnpm run check:tenant-decisions` |
+| Record brokers (gate) | `pnpm run check:record-brokers` |
 | Emit candidate schema SQL | `pnpm run emit:entity-schema` |
 | Regenerate the record store migration | `node tools-entity-schema-plan.mjs --write-migration` |
+| Regenerate the broker family | `node tools-record-brokers.mjs --write` |
 | Ported business API | `pnpm run test:pennsync-api` |
 
 ## Environment config

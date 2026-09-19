@@ -251,6 +251,49 @@ bypasses the policies (if it bypasses RLS) or is refused by the caller gate.
 holds each of those properties, including that the owner is filtered by its own
 policies and that a cross-tenant write through a broker is still refused.
 
-What it does not do: applying it needs the production Supabase project. And it
-settles the ownership boundary, not the RPC family the ported handlers will
-use — the broker in the test exists to prove the boundary.
+What it does not do: applying it needs the production Supabase project. The
+broker in that test exists to prove the boundary, not to be the family.
+
+## The broker family
+
+`record-migrations/20260919180000_record_brokers.sql` is the family, and the
+only bridge across that empty grant set. Five operations — `list`, `get`,
+`insert`, `update`, `delete` — over a generated allowlist of the 31 entities
+dispositioned `broker`, owned by `pennsync_records_owner` and SECURITY DEFINER,
+so `current_user` becomes the owner (the policies bind, the caller helpers are
+callable) while the `role` setting still reads `authenticated` (the caller gate
+still recognises the session).
+
+It grants `authenticated` USAGE on the schema and EXECUTE on those five
+functions. Nothing else — not the allowlist, not the scope gate, not the payload
+check, and never a table. SECURITY INVOKER wrappers in `public` keep it
+reachable over PostgREST without the project exposing `pennsync_records`, which
+is the shape the authority store's own RPC surface already has.
+
+Two properties it is worth stating plainly:
+
+- **A broker stamps tenancy; it never reads it from a payload.** `agency_id`,
+  `source_app_id`, `id`, the platform timestamps, `created_by` and a `self`
+  table's subject are set by the broker from the caller's verified identity. A
+  payload naming one of them is refused rather than stripped. The agency is
+  still a parameter — a caller may hold several — and it is checked against
+  `caller_agencies()`, the membership roster, not against the request.
+- **A broker never re-implements a policy.** It narrows a read to the one agency
+  the request named and refuses to write reference data. Every other question of
+  who may see what stays in the 596 policies.
+
+Generated, not written: change the dispositions, the tenant decisions or
+`tools-record-brokers.mjs` and re-run `node tools-record-brokers.mjs --write`.
+It writes the SQL and the service's copy of the allowlist together, refuses to
+run while any brokered entity fails D16's ceiling, and `check:record-brokers`
+fails if either committed file has drifted.
+
+`tests/record-brokers.test.mjs` applies the real migration on top of the real
+record store and holds eighteen cases. The one worth knowing about gives a
+single fixture caller two real memberships: with one membership each, RLS alone
+produces the right answer, so a broker that dropped its narrowing would pass
+every other case in the file.
+
+This too creates nothing anywhere: applying it needs the production Supabase
+project. And it serves the 31 entities D16 cleared and no others — every
+clinical table is deliberately outside it.
