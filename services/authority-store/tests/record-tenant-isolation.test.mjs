@@ -108,15 +108,15 @@ test('a self-keyed row is the account own, not the agency', async () => {
   const email = n => `select "expected_email" from pennsync_private.identity_map where "auth_user_id" = '${uid(n)}'`;
   const { rows: [{ expected_email: first }] } = await db.query(email(1));
   const { rows: [{ expected_email: third }] } = await db.query(email(3));
-  await seed(`insert into ${SCHEMA}.ai_configuration("source_app_id","id","user_email") values
-    ('${APP}','config-1','${first}'), ('${APP}','config-3','${third}');`);
+  await seed(`insert into ${SCHEMA}.notification_preference("source_app_id","id","user_email") values
+    ('${APP}','pref-1','${first}'), ('${APP}','pref-3','${third}');`);
 
   // 1 and 3 are both in agency-a, so an agency predicate would show each both
   // rows. A self predicate shows each only its own.
-  assert.deepEqual(ids(await as(1, `select "id" from ${SCHEMA}.ai_configuration`)), ['config-1']);
-  assert.deepEqual(ids(await as(3, `select "id" from ${SCHEMA}.ai_configuration`)), ['config-3']);
-  await refused(1, `insert into ${SCHEMA}.ai_configuration("source_app_id","id","user_email")
-    values ('${APP}','config-x','${third}')`);
+  assert.deepEqual(ids(await as(1, `select "id" from ${SCHEMA}.notification_preference`)), ['pref-1']);
+  assert.deepEqual(ids(await as(3, `select "id" from ${SCHEMA}.notification_preference`)), ['pref-3']);
+  await refused(1, `insert into ${SCHEMA}.notification_preference("source_app_id","id","user_email")
+    values ('${APP}','pref-x','${third}')`);
 });
 
 test('a shared table shows platform rows to everyone and agency rows to their owner', async () => {

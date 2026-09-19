@@ -5,9 +5,9 @@
   "totals": {
     "carried": 156,
     "excluded": 97,
-    "columns": 2403,
+    "columns": 2404,
     "constrained_columns": 287,
-    "tenant_scoped": 82,
+    "tenant_scoped": 83,
     "skipped_properties": 0,
     "merged_system_columns": 7
   },
@@ -16,11 +16,11 @@
       "entity": "AIConfiguration",
       "disposition": "broker",
       "table": "ai_configuration",
-      "tenant_key": null,
-      "tenant_decision": "self",
-      "self_subject": "user_email",
+      "tenant_key": "agency_id",
+      "tenant_decision": "agency",
+      "self_subject": null,
       "platform_flag": null,
-      "columns": 24,
+      "columns": 25,
       "constrained": 2,
       "merged_system_columns": 0,
       "skipped": []

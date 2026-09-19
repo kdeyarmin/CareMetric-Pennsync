@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import {
   KNOWN_APPS, PIN_SETTING, ProvisionError, RETIRED_APP,
-  applyProvision, planProvision, readMigrations,
+  applyProvision, planProvision, readMigrations, runProvisionCli,
 } from '../../../tools-pennsync-provision.mjs';
 
 /**
@@ -158,3 +158,72 @@ test('the migrations are read in the order the store expects', () => {
   assert.ok(names[0].startsWith('20260918015112'), 'the authority schema comes first');
   assert.ok(names.includes('20260919090000_deployment_app_pin.sql'));
 });
+
+test('the command line refuses before it opens a connection, and reports codes only', async () => {
+  const said = [];
+  const never = () => assert.fail('no database may be opened');
+
+  assert.equal(await runProvisionCli({ env: {}, error: m => said.push(m), write: () => {}, connect: never }), 1);
+  assert.equal(await runProvisionCli({
+    env: { PENNSYNC_PROVISION_DATABASE_URL: 'postgres://secret:hunter2@host/db' },
+    error: m => said.push(m), write: () => {}, connect: never,
+  }), 1);
+  // An unusable app id is caught before a connection is opened, so a typo
+  // never reaches a database.
+  assert.equal(await runProvisionCli({
+    env: { PENNSYNC_PROVISION_DATABASE_URL: 'postgres://host/db', PENNSYNC_PROVISION_APP_ID: RETIRED_APP },
+    error: m => said.push(m), write: () => {}, connect: never,
+  }), 1);
+
+  assert.deepEqual(said.map(line => JSON.parse(line).error),
+    ['PROVISION_TARGET_REQUIRED', 'PROVISION_APP_MALFORMED', 'PROVISION_APP_RETIRED']);
+  // A connection string must never reach a diagnostic.
+  assert.ok(!said.join(' ').includes('hunter2'), 'no credential may appear in output');
+});
+
+test('the command line provisions a real database end to end', async () => {
+  const db = await fresh();
+  const written = [];
+  try {
+    // `session` must open a NEW connection; PGlite has one, so the adapter is
+    // handed the same handle and the pin is read back the way the harness
+    // above models a fresh connection.
+    const code = await runProvisionCli({
+      env: { PENNSYNC_PROVISION_DATABASE_URL: 'pglite://test', PENNSYNC_PROVISION_APP_ID: PRODUCTION },
+      write: line => written.push(line),
+      error: line => assert.fail(`unexpected failure: ${line}`),
+      connect: async () => harnessClient(db),
+      repository,
+    });
+    assert.equal(code, 0);
+    const receipt = JSON.parse(written.at(-1));
+    assert.equal(receipt.label, 'production');
+    assert.equal(receipt.source, 'setting');
+    const { rows } = await db.query('select pennsync_private.deployment_label() as label');
+    assert.equal(rows[0].label, 'production');
+  } finally { await db.close(); }
+});
+
+/** A client-shaped façade over PGlite for the CLI adapter. */
+function harnessClient(db) {
+  return {
+    query: async (sql, params = []) => {
+      if (/current_setting/.test(sql) && params[0] === PIN_SETTING) {
+        return { rows: [{ value: await persistedPin(db) }] };
+      }
+      // A migration body is many statements, which the extended protocol
+      // cannot carry; only a single read goes through `query`.
+      const first = sql.replace(/^(\s|--[^\n]*\n)+/, '').slice(0, 6).toLowerCase();
+      if (params.length || first.startsWith('select')) return db.query(sql, params);
+      // PGlite is one session, so the database default set moments ago is not
+      // visible to it. A real new connection would inherit it. Without this the
+      // tool correctly refuses with PROVISION_PIN_MISMATCH and source 'default'
+      // — the exact failure it exists to catch, which is reassuring to have
+      // seen — so the compensation is the harness's, not the tool's.
+      const pinned = await persistedPin(db);
+      await db.exec(pinned ? `set ${PIN_SETTING} = '${pinned}';\n${sql}` : sql);
+      return { rows: [] };
+    },
+    end: async () => {},
+  };
+}

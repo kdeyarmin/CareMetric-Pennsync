@@ -31,7 +31,9 @@
  * and it requires the people to have accepted their invitations first.
  */
 import { readFileSync, readdirSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { createRequire } from 'node:module';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const PROVISION_CONTRACT = 'cm.pennsync.provision.v1';
 export const MIGRATION_DIRECTORY = join('services', 'authority-store', 'supabase', 'migrations');
@@ -136,4 +138,60 @@ async function currentDatabase(db) {
   // Interpolated into DDL, so it is checked rather than trusted.
   if (typeof name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(name)) refuse('PROVISION_DATABASE_NAME_UNUSABLE');
   return `"${name}"`;
+}
+
+/**
+ * The operator entry point.
+ *
+ * `session` opens a genuinely new connection each time, which is the only way
+ * the pin read-back means anything: `alter database ... set` reaches sessions
+ * opened after it, so asking the connection that wrote it would always agree
+ * with itself.
+ */
+export async function runProvisionCli({ env = process.env, write = console.log, error = console.error,
+  connect = null, repository = resolve(dirname(fileURLToPath(import.meta.url))) } = {}) {
+  const open = connect ?? (async url => {
+    const require = createRequire(new URL('./services/authority-store/package.json', import.meta.url));
+    const { Client } = require('pg');
+    const client = new Client({ connectionString: url });
+    await client.connect();
+    return client;
+  });
+  let primary = null;
+  try {
+    const url = env.PENNSYNC_PROVISION_DATABASE_URL;
+    const requestedApp = env.PENNSYNC_PROVISION_APP_ID;
+    if (typeof url !== 'string' || !url) refuse('PROVISION_TARGET_REQUIRED');
+    // Checked before a connection is opened, so an unusable app id costs
+    // nothing and cannot reach a database at all.
+    const plan = planProvision(requestedApp);
+    primary = await open(url);
+    const result = await applyProvision({
+      db: {
+        query: (sql, params = []) => primary.query(sql, params),
+        session: async run => {
+          const session = await open(url);
+          try {
+            return await run({
+              query: (sql, params = []) => session.query(sql, params),
+              exec: sql => session.query(sql),
+            });
+          } finally { await session.end?.(); }
+        },
+      },
+      requestedApp: plan.app_id,
+      repository,
+      log: message => write(message),
+    });
+    write(JSON.stringify(result, null, 2));
+    return 0;
+  } catch (failure) {
+    // Codes only: a diagnostic here must not carry a connection string.
+    error(JSON.stringify({ error: failure?.code ?? 'PROVISION_FAILED', detail: failure?.detail ?? null }));
+    return 1;
+  } finally { await primary?.end?.(); }
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  process.exitCode = await runProvisionCli();
 }

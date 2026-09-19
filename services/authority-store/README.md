@@ -171,6 +171,19 @@ A further test reads the app ids straight out of
 store's `known_app` ever disagree, so this cannot pin a database the migration
 would then refuse.
 
+Run it as the operator once the project exists:
+
+```bash
+PENNSYNC_PROVISION_DATABASE_URL=postgres://… \
+PENNSYNC_PROVISION_APP_ID=694ec16e72e01b60d22f7cbf \
+  node tools-pennsync-provision.mjs
+```
+
+The app id is checked before a connection is opened, so a typo never reaches a
+database, and diagnostics carry error codes only — never the connection
+string. `session` opens a genuinely new connection each time, which is what
+makes the pin read-back mean anything.
+
 What it does not do: it creates no hosted project, holds no credential, and
 writes no row. Enrolling anyone is `tools-pennsync-enroll.mjs`, and that needs
 the people to have accepted their Supabase Auth invitations first.

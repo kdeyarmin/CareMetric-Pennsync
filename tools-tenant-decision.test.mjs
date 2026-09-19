@@ -12,9 +12,9 @@ test('every entity without a derivable tenant path has a decision, and none has 
   const report = checkDecisions(REPO);
   assert.deepEqual(report.problems, []);
   assert.equal(report.blocking, 86);
-  assert.deepEqual(report.counts, { agency: 65, self: 11, shared: 2, global: 8 });
+  assert.deepEqual(report.counts, { agency: 66, self: 10, shared: 2, global: 8 });
   // agency and shared both carry a tenant key, so both are stamped before load.
-  assert.equal(report.stamped.length, 67);
+  assert.equal(report.stamped.length, 68);
 });
 
 test('User is excluded from authorization rather than decided', () => {
@@ -92,6 +92,32 @@ test('a decision must state a reason, and must not claim a kind that does not ex
     audit({ kind: 'agency', because: reason, external_locators: ['x'] }).join(' '),
     /only applies to a global table/,
   );
+});
+
+test('nothing decided self is read unfiltered by the app that owns it', async () => {
+  // A `self` predicate hides every other account's rows, so an entity the app
+  // lists unfiltered is not self-owned however its schema reads: the listing
+  // would come back empty and any write without the subject column would be
+  // refused. AIConfiguration was decided `self` on its schema alone and failed
+  // exactly this way — its admin screen lists it and writes rows carrying no
+  // user_email — so the property is pinned rather than re-argued.
+  const { readdirSync, readFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const sources = [];
+  const walk = directory => {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+      const path = join(directory, entry.name);
+      if (entry.isDirectory()) walk(path);
+      else if (/\.(js|jsx)$/.test(entry.name)) sources.push(readFileSync(path, 'utf8'));
+    }
+  };
+  walk(join(REPO, 'src'));
+  const corpus = sources.join('\n');
+  const offenders = Object.entries(readDecisions(REPO).entities)
+    .filter(([entity, decision]) => decision.kind === 'self'
+      && new RegExp(`entities\\.${entity}\\.list\\(`).test(corpus))
+    .map(([entity]) => entity);
+  assert.deepEqual(offenders, [], 'these are listed unfiltered, so they are not the account\'s own');
 });
 
 test('every reason is specific enough to be worth reading', () => {
