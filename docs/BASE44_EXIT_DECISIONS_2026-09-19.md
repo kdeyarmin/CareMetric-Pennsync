@@ -127,7 +127,7 @@ receipts attesting both the baseline pause and the preserved pause. Disabling a
 working feature is not preservation, and releasing one during a migration would
 mean proving two changes at once.
 
-Consequence: 102 handlers and 51 entity schemas are carried without being
+Consequence: 102 handlers and 54 entity schemas are carried without being
 activated. Their schemas and data still migrate; only their execution stays off.
 Eight of those handlers are counted here only because the evidence check below
 reclassified them: seven were wrongly `port` or `broker`, and one was
@@ -135,7 +135,7 @@ reclassified them: seven were wrongly `port` or `broker`, and one was
 
 ## D8 — Learning moves to the Support Hub rather than being ported
 
-The 44 learning, training and central-adapter handlers and their 28 entity
+The 45 learning, training and central-adapter handlers and their 31 entity
 schemas are `hub`, per `CENTRAL_LEARNING_CUTOVER.md`.
 
 Rationale: that direction is already recorded and already has a deployed Hub
@@ -145,6 +145,88 @@ content that is leaving.
 Consequence: the Hub cutover becomes a prerequisite of the exit rather than a
 parallel project, and `HEYGEN_API_KEY` retires with it. Learner history,
 certificates and credits must be preserved by that cutover, not by this one.
+
+## D9 — The thirty-one open dispositions, resolved
+
+Decision: every capability left `undecided` now carries one, so the manifest
+states a position on all 549. They fall into six groups, and the group decides
+the disposition rather than a case-by-case preference.
+
+**Provenance-free logs are retired rather than carried.** `UserActivity`,
+`SecurityLog`, `SystemLog`, `AuditTrail`, `AnomalyAlert`, `SystemHealthMetric`,
+`TimeSavings` and `ArchivedRecord` have no tenant key and cannot acquire one
+retroactively — which is exactly why `getUserActivityLog` and `runSecurityAudit`
+are already paused indefinitely. Carrying them would move PHI-adjacent rows into
+the new store that no row level security policy could ever authorize, to serve
+readers that stay closed. The new store already keeps a *tenant-bound* disclosure
+audit (`patient_disclosure_audit`, `visit_disclosure_audit` and
+`visit_list_disclosure_audit` in `pennsync_private`, written by real reads), so
+the compliance role has a successor with the provenance the old tables lack.
+
+`retire` here means "not a live table in the new system", never "deleted". The
+historical rows stay in the encrypted export archive for the retention period;
+that obligation belongs to the Phase 4 runbook, and the cutover packet must
+carry the export receipt.
+
+This has a consequence worth stating plainly: 11 handlers dispositioned `port`
+write `UserActivity`, 5 write `SecurityLog` and 3 write `SystemLog`. Each port
+drops the breadcrumb or, for the five authority brokers
+(`getAuthorizedPatient`, `getAuthorizedVisit`, `listAuthorizedPatients`,
+`listAuthorizedVisits`, `generatePatientChartPDF`), writes the store's own
+disclosure audit instead. That substitution is part of the port, not a follow-up.
+
+**The Notification producers are ported with Notification itself.**
+`createNotification` is the Tier A "Notification authority-v1" the plan already
+names, and `Notification` is `port` with a `direct` tenant key.
+`sendPersonnelExpirationNotifications` and `sendCredentialRenewalReminders` read
+`PersonnelCredential`, which is `port`, and write agency HR compliance nudges;
+`sendExpirationNotifications` spans both that and `TrainingAssignment`, so its
+credential half ports and its training half drops out to the Hub, where
+`sendTrainingNotifications` already lives. These four were the "unmigrated
+`Notification` producers" the manifest previously left open; they follow the
+entity rather than their scheduler, because the seven native workflows that fire
+them are `preserved_paused` and the new scheduler is a Phase 6 decision.
+
+**Learning content and its telemetry follow D8 to the Hub.** `ClinicalScenario`
+and `ScenarioAttempt` are course content and learner attempt history,
+`RealTimePerformanceMetric` is training telemetry keyed by `training_module_id`,
+and `sendRenewalReminders` drives `TrainingAssignment`, which is already `hub`.
+D8 requires learner history to be preserved by the Hub cutover, so the attempts
+travel with the courses rather than being retired here.
+
+**Patient-linked content is ported; agency configuration is brokered.**
+`EducationMaterial` is patient education (wound care, diabetes, fall prevention),
+not staff training, and `MaterialInteraction` records delivering it to a named
+patient; `AppliedDataLog` records AI-derived data applied to a chart. All three
+are clinical provenance and are `port`. `CustomValidationRule`, `LibraryDocument`
+and `PDFTemplate` are agency configuration with real consumers in `src/` and no
+tenant key, which is precisely the D2 broker tier — each needs an `agency_id`
+added before load.
+
+**What has no successor and no consumer is retired.** `Subscription` and
+`SubscriptionSettings` mirror Stripe and Apple, which are the systems of record,
+and nothing in `src/` reads either. `checkAllIntegrations` probes provider
+credentials out of `Deno.env`; the Railway runtime's `/readyz` already reports
+operations, missing providers and release state, so porting it would need those
+secrets in a second place. `manageUserVerification` is Base44 OTP administration,
+which Supabase Auth admin operations replace — the same reasoning that already
+made `adminResetPassword` a retirement. `testAutomations` exists only to invoke
+four other Base44 functions. The `GenerateImage` Core integration is re-exported
+in `src/api/integrations.js` and called from nowhere, and the runtime
+deliberately omits it from `OPERATIONS`.
+
+**Three carry a paused domain rather than a verdict.** `IntegrationSecret` holds
+the in-app Telnyx messaging, voice and fax custody that 24 functions read, and
+SMS, voice and fax are `preserved_paused` under D7, so the custody travels with
+them. `WorkflowDefinition` and `WorkflowExecution` back the generic automation
+engine whose seven workflows are all `preserved_paused`.
+
+Consequence: `undecided` is zero and six entities enter the carried set, so the
+candidate schema grows from 150 tables to 156 and the tenant-path census from 150
+to 156 rows. `census_ready` is still false, and deliberately so: it also requires
+`review_state: accepted`, which is an owner's act and not a technical judgment.
+These dispositions are the best reading of the repository's own evidence, not a
+substitute for that sign-off.
 
 ## How these decisions are enforced
 
@@ -193,13 +275,16 @@ Current coverage, measured on this branch:
 | Native workflows | 7 | 7 |
 | Core integrations | 7 | 7 |
 
-Thirty-one entries are `undecided` and are reported as blocking. They are not an
-oversight: each is a capability whose target home depends on a decision this
-record deliberately does not make. They are the unmigrated `Notification`
-producers, the reusable-content roots whose legacy tenant ownership is
-unestablished, the log tables, the generic workflow-engine rows, in-app
-integration secret custody, and store subscription entitlements.
+No entry is `undecided`: D9 resolves the last thirty-one. The distribution is
 
-`census_ready` stays false until every one of them is resolved and an owner
-moves `review_state` to `accepted`. Until then the dispositions above are the
-working assumption of the implementation, and nothing more.
+| Family | port | broker | hub | preserved_paused | retire |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Backend functions | 86 | 34 | 45 | 102 | 15 |
+| Entity schemas | 111 | 45 | 31 | 54 | 12 |
+| Native workflows | 0 | 0 | 0 | 7 | 0 |
+| Core integrations | 6 | 0 | 0 | 0 | 1 |
+
+`census_ready` stays false because it also requires an owner to move
+`review_state` to `accepted`. Until that happens the dispositions above are the
+implementation's working position, reasoned from the repository's own evidence,
+and nothing more.

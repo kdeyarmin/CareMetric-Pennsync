@@ -131,6 +131,13 @@
       "depth": null
     },
     {
+      "entity": "AppliedDataLog",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
       "entity": "AppointmentForm",
       "kind": "reference",
       "via": "patient_id",
@@ -257,6 +264,13 @@
       "depth": 1
     },
     {
+      "entity": "CustomValidationRule",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
       "entity": "DataArchivePolicy",
       "kind": "unresolved",
       "via": null,
@@ -330,6 +344,13 @@
       "entity": "DocumentationTemplate",
       "kind": "unresolved",
       "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "EducationMaterial",
+      "kind": "actor",
+      "via": "created_by",
       "target": null,
       "depth": null
     },
@@ -474,6 +495,20 @@
       "depth": null
     },
     {
+      "entity": "LibraryDocument",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
+    },
+    {
+      "entity": "MaterialInteraction",
+      "kind": "reference",
+      "via": "patient_id",
+      "target": "Patient",
+      "depth": 2
+    },
+    {
       "entity": "MedicalCode",
       "kind": "reference",
       "via": "patient_id",
@@ -605,6 +640,13 @@
       "via": "patient_id",
       "target": "Patient",
       "depth": 2
+    },
+    {
+      "entity": "PDFTemplate",
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
     },
     {
       "entity": "Patient",
@@ -1056,14 +1098,14 @@
     }
   ],
   "totals": {
-    "carried": 150,
+    "carried": 156,
     "root": 1,
     "direct": 14,
-    "reference": 52,
-    "actor": 33,
+    "reference": 54,
+    "actor": 34,
     "profile_claim": 1,
-    "unresolved": 49,
+    "unresolved": 52,
     "max_depth": 3,
-    "blocking": 83
+    "blocking": 87
   }
 }

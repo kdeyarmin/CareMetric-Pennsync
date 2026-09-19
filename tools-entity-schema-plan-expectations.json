@@ -3,13 +3,13 @@
   "schema_version": 1,
   "target_schema": "pennsync_records",
   "totals": {
-    "carried": 150,
-    "excluded": 103,
-    "columns": 2272,
-    "constrained_columns": 275,
+    "carried": 156,
+    "excluded": 97,
+    "columns": 2336,
+    "constrained_columns": 287,
     "tenant_scoped": 15,
     "skipped_properties": 0,
-    "merged_system_columns": 6
+    "merged_system_columns": 7
   },
   "entities": [
     {
@@ -189,6 +189,16 @@
       "tenant_key": null,
       "columns": 7,
       "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "AppliedDataLog",
+      "disposition": "port",
+      "table": "applied_data_log",
+      "tenant_key": null,
+      "columns": 11,
+      "constrained": 2,
       "merged_system_columns": 0,
       "skipped": []
     },
@@ -373,6 +383,16 @@
       "skipped": []
     },
     {
+      "entity": "CustomValidationRule",
+      "disposition": "broker",
+      "table": "custom_validation_rule",
+      "tenant_key": null,
+      "columns": 8,
+      "constrained": 3,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
       "entity": "DataArchivePolicy",
       "disposition": "broker",
       "table": "data_archive_policy",
@@ -480,6 +500,16 @@
       "columns": 7,
       "constrained": 2,
       "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "EducationMaterial",
+      "disposition": "port",
+      "table": "education_material",
+      "tenant_key": null,
+      "columns": 12,
+      "constrained": 3,
+      "merged_system_columns": 1,
       "skipped": []
     },
     {
@@ -683,6 +713,26 @@
       "skipped": []
     },
     {
+      "entity": "LibraryDocument",
+      "disposition": "broker",
+      "table": "library_document",
+      "tenant_key": null,
+      "columns": 7,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "MaterialInteraction",
+      "disposition": "port",
+      "table": "material_interaction",
+      "tenant_key": null,
+      "columns": 10,
+      "constrained": 2,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
       "entity": "MedicalCode",
       "disposition": "port",
       "table": "medical_code",
@@ -868,6 +918,16 @@
       "table": "pdf_index",
       "tenant_key": null,
       "columns": 8,
+      "constrained": 1,
+      "merged_system_columns": 0,
+      "skipped": []
+    },
+    {
+      "entity": "PDFTemplate",
+      "disposition": "broker",
+      "table": "pdf_template",
+      "tenant_key": null,
+      "columns": 16,
       "constrained": 1,
       "merged_system_columns": 0,
       "skipped": []

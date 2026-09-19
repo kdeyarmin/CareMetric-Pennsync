@@ -14,13 +14,13 @@ Source work completed here, all validated by the repository's own checks:
 | Plan item | Delivered |
 | --- | --- |
 | Phase 0 — decisions | [Exit decisions](BASE44_EXIT_DECISIONS_2026-09-19.md) recording D1 to D8 as proposed |
-| Phase 0 — disposition manifest | `tools-transition-disposition.json` plus a coverage gate; all 549 capabilities classified, 31 explicitly undecided |
+| Phase 0 — disposition manifest | `tools-transition-disposition.json` plus a coverage gate; all 549 capabilities classified, none left undecided (D9 resolves the last 31) |
 | Phase 0 — disposition evidence | The gate also refuses a `port`, `broker` or `hub` disposition on a function whose module can perform no work; eight such claims were corrected |
 | Phase 0 — documentation | `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `.env.example` describe both backends and every service setting |
 | Phase 1 — runtime authority | `INTEGRATIONS_AUTHORITY_MODE=independent` removes the Base44 `getMyTenantContext` call; readiness derives `base44ExecutionDependency` |
 | Phase 2 — API service | `services/pennsync-api` with health, readiness, release-gated dispatch and the first ported handler |
-| Phase 2 — candidate schema | `tools-entity-schema-plan.mjs` generates PostgreSQL for the 150 carried entities (2,272 columns, 275 enum constraints); a test applies the whole plan to a real database |
-| Phase 2 — tenant paths | `tools-tenant-path.mjs` resolves how each carried entity reaches its agency: 67 have a usable key, 83 are a named decision list rather than an open question |
+| Phase 2 — candidate schema | `tools-entity-schema-plan.mjs` generates PostgreSQL for the 156 carried entities (2,336 columns, 287 enum constraints); a test applies the whole plan to a real database |
+| Phase 2 — tenant paths | `tools-tenant-path.mjs` resolves how each carried entity reaches its agency: 69 have a usable key, 87 are a named decision list rather than an open question |
 | Phase 3 — file prerequisite | `tools-file-reference-census.mjs` and its committed census of every schema field that can hold a file |
 | Guardrail | `tools-base44-surface.mjs` ratchets remaining frontend coupling |
 
@@ -32,7 +32,7 @@ Not done here, and each blocked on something this branch cannot supply:
 | Enabling independent authority on the running runtime | A reviewed deployment plus preflight and two-agency acceptance with enrolled actors |
 | Generalizing the authority store past four synthetic actors | Hosted migration and an enrollment run |
 | Reconciling the duplicated authority predicates (`validateMembershipRows`, `validateAssignmentIntegrity`) into one shared definition | A security review of how the 10 and 11 variants differ in behavior; it changes production authorization, so it is not a mechanical de-duplication |
-| Deciding the 83 entities with no usable tenant path | Owners answering the three questions in Phase 2; two of them (global reference data vs. a missing key) are product calls, not derivable from the schema |
+| Deciding the 87 entities with no usable tenant path | Owners answering the three questions in Phase 2; two of them (global reference data vs. a missing key) are product calls, not derivable from the schema |
 | Porting the remaining handlers and entity schemas | The decisions above being accepted, then per-capability review |
 | Any customer data, file or identity migration | Base44 credentials, named owners, and a maintenance window |
 | Frontend hosting, domain move, native rebuild | Approvals and physical devices |
@@ -214,7 +214,8 @@ Each item names a recommendation. None is decided by this document.
 | D5 | Data scope | Migrate CareMetric production and legacy PennSync into one store with distinct source namespaces; quarantine ambiguous rows; decide disposition of log tables (UserActivity, SystemLog, SecurityLog) separately | Zero ID overlap between the apps; logs are large and have no tenant provenance |
 | D6 | Identity migration | Re-enrollment through Supabase Auth invitations with an operator-verified identity map; no password or session copy | Base44 does not export credentials; the user population is ten accounts |
 | D7 | Feature retirement | Carry paused domains (fax workflows, SMS, e-signature, messaging, OASIS v2, PDGM payment, outcome computation, telehealth) as `preserved_paused` in the cutover packet; port each only after its own gate passes | The cutover contract permits paused capabilities only with baseline and target pause receipts |
-| D8 | Learning | Complete the Support Hub cutover (`docs/CENTRAL_LEARNING_CUTOVER.md`) and retire the 38 PennSync learning functions instead of porting them | Already the recorded direction; removes HeyGen |
+| D8 | Learning | Complete the Support Hub cutover (`docs/CENTRAL_LEARNING_CUTOVER.md`) and retire the PennSync learning functions instead of porting them | Already the recorded direction; removes HeyGen |
+| D9 | The 31 open dispositions | Resolve them by group: retire the provenance-free logs in favour of the store's own tenant-bound disclosure audit, send learning content and telemetry to the Hub, port patient-linked content, broker agency configuration, and carry paused-domain custody | Leaving them open blocked the census on judgments the repository's own evidence already answers; see D9 in the decision record |
 
 ## 5. Phased completion plan
 
@@ -273,37 +274,37 @@ Exit: two-agency positive and negative matrix from
 Deliverables, in tiers that can merge independently:
 
 - Schema: **generated and proven to apply** by `tools-entity-schema-plan.mjs`.
-  150 carried entities become tables in `pennsync_records` with 2,272 columns,
-  275 enum CHECK constraints and a `(source_app_id, id)` primary key that keeps
+  156 carried entities become tables in `pennsync_records` with 2,336 columns,
+  287 enum CHECK constraints and a `(source_app_id, id)` primary key that keeps
   the two source apps' colliding ids apart. Every table forces RLS with no
   policy and no grant. Emit it with `pnpm run emit:entity-schema`.
   Still to decide per entity: indexes, foreign keys, retention, and which
   columns become NOT NULL once legacy rows are reconciled.
 - Tenant paths: **resolved or named** by `tools-tenant-path.mjs`. Forced RLS
   with no policy is safe but not usable; each table needs one predicate that
-  proves a row belongs to the agency asking for it. Only 15 of the 150 entities
+  proves a row belongs to the agency asking for it. Only 15 of the 156 entities
   declare `agency_id`, so the rest are resolved by following references:
 
   | How the agency is reached | Entities | Meaning |
   | --- | ---: | --- |
   | `root` | 1 | `Agency` is the tenant |
   | `direct` | 14 | The row carries `agency_id` |
-  | `reference` | 52 | Reached through another resolved entity, at most three hops (49 at depth 2, mostly via `patient_id`) |
-  | `actor` | 33 | Only an acting-account column (`created_by`, `user_email`) |
+  | `reference` | 54 | Reached through another resolved entity, at most three hops, mostly via `patient_id` |
+  | `actor` | 34 | Only an acting-account column (`created_by`, `user_email`) |
   | `profile_claim` | 1 | `User.agency_id`, which the account can rewrite about itself |
-  | `unresolved` | 49 | Nothing in the schema names a tenant |
+  | `unresolved` | 52 | Nothing in the schema names a tenant |
 
-  So 67 tables can have a predicate written from the schema as it stands and 83
-  cannot. Those 83 are the tenant-isolation blocker, now a bounded list
+  So 69 tables can have a predicate written from the schema as it stands and 87
+  cannot. Those 87 are the tenant-isolation blocker, now a bounded list
   (`node tools-tenant-path.mjs --blocking`) instead of an open question, and
   they need three decisions rather than eighty-three:
 
-  1. May a row whose only tenancy signal is the acting account (`actor`, 33 of
+  1. May a row whose only tenancy signal is the acting account (`actor`, 34 of
      them, keyed by `created_by`, `updated_by_email`, `user_email` and the like)
      be scoped by that account's *current* membership? A person's agency changes
      over time while the row does not, so this is a policy choice, not a lookup.
      `AgencySettings`, `PayerRateConfig` and `TerminologyGlossary` are here.
-  2. Which of the 49 `unresolved` tables are platform reference data that is
+  2. Which of the 52 `unresolved` tables are platform reference data that is
      legitimately global — `MedicareGuideline` and `ServiceCode` read that way —
      and which are agency data missing a key? `AgencyComplianceRule`,
      `AgencyFeatureAccess`, `AgencyInvoice` and `VisitPointConfig` are named for
