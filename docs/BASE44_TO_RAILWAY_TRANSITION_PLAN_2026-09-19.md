@@ -33,7 +33,7 @@ Not done here, and each blocked on something this branch cannot supply:
 | Deploying either Railway service; provisioning the production Supabase project | Cost approval and operator credentials |
 | Enabling independent authority on the running runtime | A reviewed deployment plus preflight and two-agency acceptance with enrolled actors |
 | Generalizing the authority store past four synthetic actors | A schema migration widening both app-id pins — the domain across 18 tables and the gate inside `actor()` — plus the per-deployment guard that keeps staging from holding production rows once widened. Not configuration; see Phase 1 |
-| Reconciling the duplicated authority predicates (`validateMembershipRows`, `validateAssignmentIntegrity`) into one shared definition | A security review of how the 10 and 11 variants differ in behavior; it changes production authorization, so it is not a mechanical de-duplication |
+| Reconciling the duplicated authority predicates (`validateMembershipRows`, `validateAssignmentIntegrity`) into one shared definition | Choosing a strictness tier. The twelve `validateAssignmentIntegrity` copies are now diffed: they agree on everything except two nested markers, giving three tiers (7 strict / 3 middle / 2 loosest). Picking one changes production authorization either way, so it stays a reviewed decision; `base44/functionTests/assignmentBindingConvention.test.js` pins the split meanwhile |
 | Deciding the 87 entities with no usable tenant path | Owners answering the three questions in Phase 2; two of them (global reference data vs. a missing key) are product calls, not derivable from the schema |
 | Porting the remaining handlers and entity schemas | The decisions above being accepted, then per-capability review |
 | Any customer data, file or identity migration | Base44 credentials, named owners, and a maintenance window |
@@ -362,17 +362,56 @@ Deliverables, in tiers that can merge independently:
   `getAuthorizedDocument`, `listAuthorizedDocuments`, `createAuthorizedDocument`,
   `manageAuthorizedReferral`, `readAuthorizedOASISAssessments`,
   `saveOasisResponses`, `generateFaxCoverPage` and `listMyTenantMemberships`.
-  Some of the divergence is a different call shape rather than different
-  behavior, but not all of it can be, and the repository's shared-helper
-  generator (`base44/_shared/backendHelpers.mjs`, enforced across 225 consumers
-  by `pnpm run check:shared-helpers`) does not cover this family — it is the one
-  security-critical family still copied by hand. Reconciling the variants into a
-  single reviewed predicate, and bringing it under the generator, must happen
-  **before** the ports, not during them: porting thirteen copies one at a time
-  carries ten definitions of "may this caller see this patient" into the new
-  service, where they become ten places to get it wrong. Reconciliation is a
-  behavior review of production authorization code and needs its own security
-  sign-off; it is not a mechanical de-duplication.
+  The repository's shared-helper generator (`base44/_shared/backendHelpers.mjs`,
+  enforced across 225 consumers by `pnpm run check:shared-helpers`) does not
+  cover this family — it is the one security-critical family still copied by
+  hand.
+
+  **The twelve `validateAssignmentIntegrity` copies have since been diffed, and
+  the divergence is smaller and sharper than "eleven variants" suggests.** Most
+  of it is cosmetic: some copies take one `authority` object and others take
+  `agencyId`, `userId`, `normalizedEmail` and `membership` as separate
+  parameters, and `generateFaxCoverPage` calls the same field `authority.email`
+  rather than `normalizedEmail`. Every copy agrees that the row must name this
+  caller, this agency and this patient, must carry a known status, action and
+  source, a valid `activated_at` and a sane `version`, and must refuse by
+  throwing `PublicError(409)`.
+
+  They differ on exactly two conditions, and the two nest, giving three tiers:
+
+  | Tier | Assignment bound to caller's membership | Assignment email compared to caller's | Copies |
+  | --- | --- | --- | ---: |
+  | Strict | yes | yes | 7 |
+  | Middle | well-formedness only | yes | 3 |
+  | Loosest | well-formedness only | **no** | 2 |
+
+  Strict is all four Visit brokers plus `listAuthorizedPatients`,
+  `saveOasisResponses` and `generateFaxCoverPage`. Middle is all three Document
+  brokers. Loosest is `getAuthorizedPatient` and
+  `readAuthorizedOASISAssessments` — both PHI reads, and the two weakest of the
+  twelve. Neither is open: `row.user_id !== userId` still binds every copy to
+  the caller by the authoritative identifier. But the split does not follow
+  entity families — `listAuthorizedPatients` is strict while
+  `getAuthorizedPatient` is loosest, and `saveOasisResponses` is strict while
+  `readAuthorizedOASISAssessments` is loosest — so it reads as drift rather than
+  design.
+
+  The binding condition decides how much authority a stale assignment carries:
+  a strict copy refuses one enabled against a different membership row or an
+  earlier version of the same one, so a role change or a revoke-and-regrant
+  invalidates it until it is issued again. Reconciling upward is the fail-closed
+  direction and is probably right, but it has an operational edge worth pricing:
+  it would deny a clinician whose membership version moved since the assignment
+  was granted, which in this product means losing chart access mid-visit.
+  Reconciling downward drops a real revocation check.
+
+  So the decision is which tier becomes the single predicate, not whether the
+  copies can be merged — they can. That is a behavior review of production
+  authorization code and needs its own security sign-off; it must happen
+  **before** the ports, not during them, or the tiers travel into the new
+  service. `base44/functionTests/assignmentBindingConvention.test.js` pins the
+  split meanwhile: it fails when any copy changes tier, when a copy drops a
+  condition all twelve share, or when the two markers stop nesting.
 - Tier B (port through the runtime): the 43 AI-assist functions become thin
   server handlers that call the runtime's `InvokeLLM` and
   `ExtractDataFromUploadedFile` adapters; Base44 `Core.*` calls in `src/` go
