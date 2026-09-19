@@ -4,6 +4,7 @@
 // and readiness only, and readiness reports itself as not ready.
 import { HANDLER_NAMES } from './handlers.mjs';
 import { validAuthorityKey, validAuthorityTarget } from './authority.mjs';
+import { validIntegrationTarget } from './integrations.mjs';
 
 const DEFAULT_APP = '694ec16e72e01b60d22f7cbf';
 const ALLOWED_APPS = new Set([DEFAULT_APP, '6a9881683dc68a0bd54f1ef7']);
@@ -45,6 +46,13 @@ export function loadConfig(env = process.env) {
   const documentLogoDataUrl = env.PENNSYNC_API_DOCUMENT_LOGO || '';
   if (documentLogoDataUrl && !DOCUMENT_LOGO.test(documentLogoDataUrl)) throw new Error('INVALID_DOCUMENT_LOGO');
 
+  // The brokered Core integrations. Unset means no handler that needs one can
+  // run: the capability refuses before it reaches the network, rather than the
+  // service reporting ready and failing per request.
+  const integrationsUrl = env.PENNSYNC_API_INTEGRATIONS_URL || '';
+  if (integrationsUrl && !validIntegrationTarget(integrationsUrl)) throw new Error('INVALID_INTEGRATION_TARGET');
+  const integrationsConfigured = validIntegrationTarget(integrationsUrl);
+
   const released = env.PENNSYNC_API_RELEASE === 'enabled-v1';
   // Releasing without a usable authority would mean serving unauthorized work.
   if (released && !authorityConfigured) throw new Error('INCOMPLETE_AUTHORITY_CONFIGURATION');
@@ -59,6 +67,7 @@ export function loadConfig(env = process.env) {
   return Object.freeze({
     appId, functions: Object.freeze(functions), origins: Object.freeze(origins),
     authorityUrl, authorityKey, authorityConfigured, released, documentLogoDataUrl,
+    integrationsUrl, integrationsConfigured,
     revision: /^[0-9a-f]{40}$/.test(env.RAILWAY_GIT_COMMIT_SHA || '') ? env.RAILWAY_GIT_COMMIT_SHA : 'unbound',
   });
 }

@@ -6,6 +6,7 @@
 import { resolveAuthority } from './authority.mjs';
 import { ApiError, ID, MAX_BODY, exactObject, fail, isObject, readBody } from './contracts.mjs';
 import { HANDLERS } from './handlers.mjs';
+import { integrationCapability } from './integrations.mjs';
 import { publicReadiness } from './runtime.mjs';
 
 const FUNCTION_PATH = /^\/v1\/functions\/([A-Za-z][A-Za-z0-9_]{0,63})$/;
@@ -66,7 +67,13 @@ export function createHandler(config, dependencies = {}) {
       if (typeof input.agency_id !== 'string' || !ID.test(input.agency_id)) fail(400, 'AGENCY_REQUIRED');
 
       const actor = await authority(config, req, input.agency_id);
-      const result = await handlers[name].handle({ actor, params: input.params ?? {}, config });
+      // Bound here, not in the handler: the capability closes over this
+      // request's Authorization header so a brokered call carries the caller's
+      // own authority, while the handler is handed a function rather than a
+      // token it could read, log or forward.
+      const integration = (dependencies.integration || integrationCapability)(
+        { config, req, agencyId: input.agency_id }, dependencies.fetcher);
+      const result = await handlers[name].handle({ actor, params: input.params ?? {}, config, integration });
       // A ported document answers with the bytes its Base44 original answered
       // with, so a migrated caller is not asked to decode something new. Only a
       // handler that declares itself binary may take this path, and the shape it

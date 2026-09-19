@@ -83,6 +83,38 @@ call. The operator says which app this deployment serves, or it does not start.
 | `generateBagTechniquePDF` | `base44/functions/generateBagTechniquePDF/entry.ts` | Renders the infection-control checklist. Answers with the PDF itself, as the original did |
 | `generateSmartNoteGuide` | `base44/functions/generateSmartNoteGuide/entry.ts` | Clinician guide. Answers with base64 in the envelope, as the original did |
 | `generateUserManual` | `base44/functions/generateUserManual/entry.ts` | Product manual. Answers with the PDF itself, as the original did |
+| `analyzeReferralPriority` | `base44/functions/analyzeReferralPriority/entry.ts` | The first port that reaches outside the service: one brokered `InvokeLLM`. Reads and writes no entity row |
+
+### Brokered Core integrations
+
+Twelve of the functions still to port call `base44.integrations.Core` and read
+no entity row. They were counted against the record store until the modules
+were read; what they actually need is the integration runtime, which already
+brokers those providers. `integrations.mjs` is that path, and
+`analyzeReferralPriority` is the first handler to use it.
+
+Two properties are worth stating because they are easy to lose:
+
+**A handler never receives a credential.** `app.mjs` builds a capability bound
+to the caller's own request and passes that function to the handler; the bearer
+stays in the module's closure. So a brokered call carries exactly the caller's
+authority — never the service's — and a handler cannot read, log or forward the
+token that authorizes it. Set `PENNSYNC_API_INTEGRATIONS_URL` to the runtime's
+origin; it must be one of a fixed pair, because that is where the bearer goes.
+Unset, such a handler refuses before it reaches the network.
+
+**The runtime's words do not come back.** Its failures map to one code here. A
+provider message or an upstream stack would otherwise cross a trust boundary on
+the way to the caller, and a test drives a leaking payload through to prove it
+does not.
+
+Parity for a handler like this cannot be a return value: it computes almost
+nothing, and its real output is the request it makes. So
+`pennsyncApiIntegrationParity.test.js` drives the original Deno module with a
+stubbed client that records the `InvokeLLM` argument, drives the port with a
+stubbed capability that records the same, and compares both the call and the
+answer. The prompt is the contract with the model — a reworded prompt is a
+different function even when every surrounding line matches.
 
 ### Documents
 

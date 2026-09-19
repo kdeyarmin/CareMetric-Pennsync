@@ -281,21 +281,22 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { records_schema: 68, ported_function: 1, core_integration: 12,
-    pdf_rendering: 0, external_secret: 1, none: 4 });
+  assert.deepEqual(counts, { records_schema: 68, ported_function: 1, core_integration: 11,
+    pdf_rendering: 0, external_secret: 1, none: 5 });
   // Twelve of these were counted against the record store until the functions
   // were read. Every one calls a Core integration and touches no entity row, so
   // what they wait on is the integration runtime's brokered path — already
   // deployed, and paused — not a store that does not exist. Naming them keeps
   // the correction from quietly reverting.
   assert.deepEqual(report.port_blockers.core_integration, [
-    'analyzeReferral', 'analyzeReferralIntake', 'analyzeReferralPriority', 'extractClinicalDocument',
+    'analyzeReferral', 'analyzeReferralIntake', 'extractClinicalDocument',
     'extractPatientDataFromDocument', 'generateAdmissionNoteFromReferral', 'generateCarePlanFromReferral',
     'generateDynamicCoverSheet', 'generateReferralTasks', 'generateUserGuidePDF', 'matchPatientWithAI',
     'splitReferralPDF',
-  ]);
+  ], 'analyzeReferralPriority left this list by being written, not by being reclassified');
   assert.deepEqual(report.port_blockers.none,
-    ['generateBagTechniquePDF', 'generateSmartNoteGuide', 'generateUserManual', 'validatePatientData'],
+    ['analyzeReferralPriority', 'generateBagTechniquePDF', 'generateSmartNoteGuide', 'generateUserManual',
+      'validatePatientData'],
     'the set of written ports changed');
   assert.deepEqual(report.port_blockers.ported_function, ['extractReferralDataForSmartNote']);
   // All three emptied this bucket once the service adopted a PDF library and a
