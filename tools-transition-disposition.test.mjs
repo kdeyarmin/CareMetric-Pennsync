@@ -4,17 +4,18 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  ACTIVE_DISPOSITIONS, DISPOSITIONS, FORMAT, FORMAT_VERSION, checkCoverage, discoverCapabilities,
+  ACTIVE_DISPOSITIONS, DISPOSITIONS, FORMAT, FORMAT_VERSION, RETENTION_BASES, checkCoverage, discoverCapabilities,
   discoverEvidence, discoverInertFunctions, discoverIntegrations, isInertFunction, main, parseManifest,
 } from './tools-transition-disposition.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 const manifest = (patch = {}) => ({
-  format: FORMAT, version: FORMAT_VERSION, review_state: 'proposed',
+  format: FORMAT, version: FORMAT_VERSION, review_state: 'proposed', retention: {},
   functions: { alpha: 'port' }, entities: { Beta: 'broker' },
   workflows: { 'Gamma.jsonc': 'preserved_paused' }, integrations: { InvokeLLM: 'port' },
   ...patch,
 });
+const retired = (patch = {}) => manifest({ entities: { Beta: 'retire' }, ...patch });
 const capabilities = (patch = {}) => ({
   functions: ['alpha'], entities: ['Beta'], workflows: ['Gamma.jsonc'], integrations: ['InvokeLLM'], ...patch,
 });
@@ -38,6 +39,59 @@ test('no committed disposition contradicts the source it describes', () => {
   assert.equal(report.evidence_consistent, true);
   // The check must be looking at a real population, not an empty one.
   assert.ok(report.inert_functions > 25, `only ${report.inert_functions} inert functions found`);
+});
+
+test('every retirement says where its existing rows go', () => {
+  const raw = readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8');
+  const committed = parseManifest(raw);
+  const report = checkCoverage(discoverCapabilities(repository), committed, discoverEvidence(repository));
+  assert.deepEqual(report.retention_unspecified, [], 'a retired entity has no retention basis');
+  assert.deepEqual(report.retention_unused, [], 'a retention basis names something that is not retired');
+  assert.equal(report.retention_settled, true);
+  // Retiring a table is a decision about the target store, never a deletion:
+  // the access and security records keep the full HIPAA documentation period.
+  for (const name of ['AuditTrail', 'SecurityLog', 'UserActivity', 'ArchivedRecord', 'SystemLog',
+    'AnomalyAlert', 'TimeSavings']) {
+    assert.equal(committed.entities[name], 'retire', `${name} should be retired`);
+    assert.deepEqual(committed.retention[name], { basis: 'archive', years: 6 },
+      `${name} must keep its rows for the full period`);
+  }
+  // A mirror of somebody else's record names the system that holds it.
+  for (const name of ['Subscription', 'SubscriptionSettings']) {
+    assert.equal(committed.retention[name].basis, 'external_system_of_record');
+    assert.ok(committed.retention[name].system.trim().length > 0);
+  }
+});
+
+test('a retirement with nowhere for its rows fails the gate', () => {
+  const report = checkCoverage(capabilities(), retired(), { inertFunctions: [] });
+  assert.deepEqual(report.retention_unspecified, ['entities:Beta']);
+  assert.equal(report.retention_settled, false);
+  assert.equal(report.census_ready, false);
+  // Naming where they go settles it.
+  const settled = checkCoverage(capabilities(), retired({ retention: { Beta: { basis: 'archive', years: 6 } } }));
+  assert.deepEqual(settled.retention_unspecified, []);
+  assert.equal(settled.retention_settled, true);
+});
+
+test('a retention basis for something that is not retired is reported', () => {
+  const report = checkCoverage(capabilities(), manifest({ retention: { Beta: { basis: 'archive', years: 6 } } }));
+  assert.deepEqual(report.retention_unused, ['entities:Beta']);
+  assert.equal(report.retention_settled, false);
+});
+
+test('an unsettled retirement blocks the census even when owners accepted', () => {
+  const report = checkCoverage(capabilities(), retired({ review_state: 'accepted' }), { inertFunctions: [] });
+  assert.equal(report.coverage_complete, true);
+  assert.equal(report.evidence_consistent, true);
+  assert.equal(report.census_ready, false, 'retention must be settled before the census is usable');
+  assert.equal(checkCoverage(capabilities(), retired({
+    review_state: 'accepted', retention: { Beta: { basis: 'none', years: 0 } },
+  })).census_ready, true);
+});
+
+test('the retention bases are the exact reviewed set', () => {
+  assert.deepEqual([...RETENTION_BASES].sort(), ['archive', 'external_system_of_record', 'none']);
 });
 
 test('a fail-closed endpoint is never declared port, broker or hub', () => {
@@ -156,11 +210,22 @@ for (const [name, raw] of Object.entries({
   malformed: '{',
   array: '[]',
   wrongFormat: JSON.stringify(manifest({ format: 'other' })),
-  wrongVersion: JSON.stringify(manifest({ version: 2 })),
+  wrongVersion: JSON.stringify(manifest({ version: FORMAT_VERSION + 1 })),
+  previousVersion: JSON.stringify(manifest({ version: FORMAT_VERSION - 1 })),
   unknownField: JSON.stringify({ ...manifest(), extra: true }),
   invalidReviewState: JSON.stringify(manifest({ review_state: 'signed' })),
   invalidDisposition: JSON.stringify(manifest({ functions: { alpha: 'maybe' } })),
   familyNotObject: JSON.stringify(manifest({ entities: [] })),
+  retentionMissing: JSON.stringify((({ retention, ...rest }) => rest)(manifest())),
+  retentionNotObject: JSON.stringify(manifest({ retention: [] })),
+  retentionEntryNotObject: JSON.stringify(manifest({ retention: { Beta: 6 } })),
+  retentionUnknownBasis: JSON.stringify(manifest({ retention: { Beta: { basis: 'forever', years: 6 } } })),
+  retentionNegativeYears: JSON.stringify(manifest({ retention: { Beta: { basis: 'archive', years: -1 } } })),
+  retentionFractionalYears: JSON.stringify(manifest({ retention: { Beta: { basis: 'archive', years: 6.5 } } })),
+  retentionArchiveWithoutTime: JSON.stringify(manifest({ retention: { Beta: { basis: 'archive', years: 0 } } })),
+  retentionYearsWithoutArchive: JSON.stringify(manifest({ retention: { Beta: { basis: 'none', years: 6 } } })),
+  retentionExternalWithoutSystem: JSON.stringify(manifest({ retention: { Beta: { basis: 'external_system_of_record', years: 0 } } })),
+  retentionExternalBlankSystem: JSON.stringify(manifest({ retention: { Beta: { basis: 'external_system_of_record', years: 0, system: '  ' } } })),
 })) {
   test(`manifest rejects ${name}`, () => assert.throws(() => parseManifest(raw)));
 }

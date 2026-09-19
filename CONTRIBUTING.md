@@ -51,7 +51,12 @@ workflow or Core integration needs a disposition in
 source: `port`, `broker` and `hub` each claim there is live behavior to carry, so
 none of them may be given to a function whose module does no work. If you pause
 an endpoint by replacing its body with a constant response, move it to
-`preserved_paused` or `retire` in the same change. New Base44 coupling in `src/`
+`preserved_paused` or `retire` in the same change. Retiring an entity also needs
+a retention basis in the manifest's `retention` block, because `retire` decides
+only where the capability goes and never what happens to the rows it holds: six
+years in the export archive if they carry any identifier, the named system if
+the table only mirrored one, and `none` only when the rows record nothing about
+a person. New Base44 coupling in `src/`
 fails the surface ratchet: migrate the consumer, or record and justify the
 increase.
 

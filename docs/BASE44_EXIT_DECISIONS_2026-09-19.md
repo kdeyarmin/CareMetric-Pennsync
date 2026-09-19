@@ -164,9 +164,9 @@ audit (`patient_disclosure_audit`, `visit_disclosure_audit` and
 the compliance role has a successor with the provenance the old tables lack.
 
 `retire` here means "not a live table in the new system", never "deleted". The
-historical rows stay in the encrypted export archive for the retention period;
-that obligation belongs to the Phase 4 runbook, and the cutover packet must
-carry the export receipt.
+historical rows stay in the encrypted export archive; D10 sets that period at
+six years and the manifest now carries a retention basis for every retired
+entity, which the coverage gate enforces.
 
 This has a consequence worth stating plainly: 11 handlers dispositioned `port`
 write `UserActivity`, 5 write `SecurityLog` and 3 write `SystemLog`. Each port
@@ -227,6 +227,53 @@ to 156 rows. `census_ready` is still false, and deliberately so: it also require
 `review_state: accepted`, which is an owner's act and not a technical judgment.
 These dispositions are the best reading of the repository's own evidence, not a
 substitute for that sign-off.
+
+## D10 — Six years for every retired table's rows
+
+Decision: retiring an entity is a decision about the target store, never an
+instruction to delete anything. Each of the twelve retired entities now carries
+a retention basis in `tools-transition-disposition.json`, and the seven that
+hold an identifier or record access to one are kept for **six years**.
+
+| Basis | Entities | What it means |
+| --- | --- | --- |
+| `archive`, 6 years | `AuditTrail`, `SecurityLog`, `UserActivity`, `ArchivedRecord`, `SystemLog`, `AnomalyAlert`, `TimeSavings` | Kept in the encrypted export archive for six years from the row's creation date |
+| `external_system_of_record` | `Subscription` (Stripe and Apple in-app purchase), `SubscriptionSettings` (Stripe Prices) | The entity was only ever a mirror; the system named holds the record and its retention |
+| `none` | `ProductionMigrationCleanupReceipt`, `StagingReadinessFixture`, `SystemHealthMetric` | Operational or synthetic rows that record nothing about a person and carry no identifier |
+
+Rationale for six: HIPAA §164.316(b)(2)(i) requires Security Rule documentation
+to be kept six years from creation or from the date it was last in effect, and
+the retired access and security records are exactly that documentation. The
+period is the floor this decision adopts, not a ceiling.
+
+`SystemLog` and `AnomalyAlert` are included deliberately even though neither is
+a patient record. `SystemLog` carries `message`, `details` and `error_stack`
+from jobs that process patient data, so a stack can incidentally hold an
+identifier; `AnomalyAlert` carries `user_email` and is security-adjacent.
+Treating an incidental identifier as no identifier is how a retention gap gets
+created. `SystemHealthMetric`, by contrast, records service thresholds and
+nothing else.
+
+What `archive` obliges, and what the cutover packet must carry:
+
+- the export exists with per-object checksums **before** the source app is
+  decommissioned, not after;
+- the export receipt goes in the cutover packet alongside the pause receipts;
+- the archive cannot be deleted before its period ends, and the deletion date is
+  recorded rather than left to a person's memory;
+- restoring from it is rehearsed the way the database restore already is.
+
+Scope limit, stated so it is not read too widely: this decides the **retired**
+tables only. Medical records migrate rather than archive, and their retention is
+governed by Pennsylvania law and payer contracts, which this record does not
+decide and which may require longer. Where any external requirement is longer
+than six years, it wins; this decision never shortens one.
+
+Enforcement: `parseManifest` rejects a retention entry without a valid basis, an
+archive of zero years, or an external system of record that cannot name its
+system, and `checkCoverage` fails when an entity is retired with no basis or a
+basis names something that is not retired. `census_ready` now requires
+`retention_settled` as well.
 
 ## How these decisions are enforced
 

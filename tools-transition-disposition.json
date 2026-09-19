@@ -1,7 +1,59 @@
 {
   "format": "pennsync-transition-disposition",
-  "version": 1,
+  "version": 2,
   "review_state": "proposed",
+  "retention": {
+    "AnomalyAlert": {
+      "basis": "archive",
+      "years": 6
+    },
+    "ArchivedRecord": {
+      "basis": "archive",
+      "years": 6
+    },
+    "AuditTrail": {
+      "basis": "archive",
+      "years": 6
+    },
+    "ProductionMigrationCleanupReceipt": {
+      "basis": "none",
+      "years": 0
+    },
+    "SecurityLog": {
+      "basis": "archive",
+      "years": 6
+    },
+    "StagingReadinessFixture": {
+      "basis": "none",
+      "years": 0
+    },
+    "Subscription": {
+      "basis": "external_system_of_record",
+      "years": 0,
+      "system": "Stripe and Apple in-app purchase"
+    },
+    "SubscriptionSettings": {
+      "basis": "external_system_of_record",
+      "years": 0,
+      "system": "Stripe Prices"
+    },
+    "SystemHealthMetric": {
+      "basis": "none",
+      "years": 0
+    },
+    "SystemLog": {
+      "basis": "archive",
+      "years": 6
+    },
+    "TimeSavings": {
+      "basis": "archive",
+      "years": 6
+    },
+    "UserActivity": {
+      "basis": "archive",
+      "years": 6
+    }
+  },
   "functions": {
     "acceptAiContentAgreement": "broker",
     "adminResetPassword": "retire",

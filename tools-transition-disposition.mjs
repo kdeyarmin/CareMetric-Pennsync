@@ -8,6 +8,11 @@
  * each one exactly once, with no entry left over for a capability that no
  * longer exists.
  *
+ * A `retire` disposition decides where a capability goes, not what happens to
+ * the rows it already holds, so every retired entity also carries a retention
+ * basis. Retiring a table is a decision about the target store; it is never an
+ * instruction to delete anything.
+ *
  * Coverage alone would let a disposition contradict the source it describes,
  * so each function's declared disposition is also checked against what its
  * module can actually do. A function that cannot perform any I/O has no live
@@ -26,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import { OPERATIONS } from './services/integration-runtime/contracts.mjs';
 
 export const FORMAT = 'pennsync-transition-disposition';
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 export const MANIFEST_FILE = 'tools-transition-disposition.json';
 export const FAMILIES = Object.freeze(['functions', 'entities', 'workflows', 'integrations']);
 export const DISPOSITIONS = Object.freeze(['port', 'broker', 'hub', 'retire', 'preserved_paused', 'undecided']);
@@ -35,6 +40,18 @@ export const REVIEW_STATES = Object.freeze(['proposed', 'accepted']);
 export const ACTIVE_DISPOSITIONS = Object.freeze(['port', 'broker', 'hub']);
 /** Only `accepted` plus zero undecided entries makes the census usable. */
 export const BLOCKING = Object.freeze(['undecided']);
+/** Dispositions whose rows need a retention basis before the capability goes. */
+export const RETIRING_DISPOSITIONS = Object.freeze(['retire']);
+/**
+ * Where a retired entity's existing rows live afterwards.
+ *
+ * - `archive`   kept in the encrypted export archive for `years` years.
+ * - `external_system_of_record`  another system already holds the record; the
+ *   entity was only ever a mirror, and `system` names it.
+ * - `none`      operational or synthetic rows that record nothing about a
+ *   person and carry no identifier.
+ */
+export const RETENTION_BASES = Object.freeze(['archive', 'external_system_of_record', 'none']);
 
 const SOURCE_EXTENSIONS = ['.js', '.jsx', '.mjs', '.cjs', '.ts', '.tsx'];
 const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', 'coverage', '.git', 'test', 'tests', '__tests__']);
@@ -142,8 +159,22 @@ export function parseManifest(raw) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('MANIFEST_INVALID_SHAPE');
   if (manifest.format !== FORMAT || manifest.version !== FORMAT_VERSION) throw new Error('MANIFEST_UNSUPPORTED_FORMAT');
   if (!REVIEW_STATES.includes(manifest.review_state)) throw new Error('MANIFEST_INVALID_REVIEW_STATE');
-  const allowed = new Set([...FAMILIES, 'format', 'version', 'review_state']);
+  const allowed = new Set([...FAMILIES, 'format', 'version', 'review_state', 'retention']);
   if (Object.keys(manifest).some(key => !allowed.has(key))) throw new Error('MANIFEST_UNKNOWN_FIELD');
+  const retention = manifest.retention;
+  if (!retention || typeof retention !== 'object' || Array.isArray(retention)) throw new Error('MANIFEST_INVALID_RETENTION');
+  for (const entry of Object.values(retention)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('MANIFEST_INVALID_RETENTION');
+    if (!RETENTION_BASES.includes(entry.basis)) throw new Error('MANIFEST_INVALID_RETENTION_BASIS');
+    if (!Number.isSafeInteger(entry.years) || entry.years < 0) throw new Error('MANIFEST_INVALID_RETENTION_YEARS');
+    // An archive that keeps nothing for no time is not an archive, and a
+    // mirror that cannot name its system of record has not identified one.
+    if (entry.basis === 'archive' && entry.years < 1) throw new Error('MANIFEST_INVALID_RETENTION_YEARS');
+    if (entry.basis !== 'archive' && entry.years !== 0) throw new Error('MANIFEST_INVALID_RETENTION_YEARS');
+    if (entry.basis === 'external_system_of_record' && !(typeof entry.system === 'string' && entry.system.trim())) {
+      throw new Error('MANIFEST_INVALID_RETENTION_SYSTEM');
+    }
+  }
   for (const family of FAMILIES) {
     const entries = manifest[family];
     if (!entries || typeof entries !== 'object' || Array.isArray(entries)) throw new Error('MANIFEST_INVALID_FAMILY');
@@ -161,6 +192,9 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
   const unknown = [];
   const undecided = [];
   const contradicted = [];
+  const retention = manifest.retention || {};
+  const retentionUnspecified = [];
+  const retentionUnused = [];
   for (const family of FAMILIES) {
     const declared = manifest[family];
     const present = new Set(capabilities[family]);
@@ -177,10 +211,22 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
       }
     }
     for (const name of Object.keys(declared)) if (!present.has(name)) unknown.push(`${family}:${name}`);
+    // Retiring an entity leaves its rows behind. Naming where they go is part
+    // of the decision, not a follow-up somebody remembers later.
+    if (family === 'entities') {
+      for (const name of capabilities[family]) {
+        if (!RETIRING_DISPOSITIONS.includes(declared[name])) continue;
+        if (!Object.hasOwn(retention, name)) retentionUnspecified.push(`${family}:${name}`);
+      }
+      for (const name of Object.keys(retention)) {
+        if (!RETIRING_DISPOSITIONS.includes(declared[name])) retentionUnused.push(`${family}:${name}`);
+      }
+    }
     families[family] = { capabilities: capabilities[family].length, declared: Object.keys(declared).length, counts };
   }
   const complete = missing.length === 0 && unknown.length === 0;
   const consistent = contradicted.length === 0;
+  const retentionSettled = retentionUnspecified.length === 0 && retentionUnused.length === 0;
   return {
     format: FORMAT,
     schema_version: FORMAT_VERSION,
@@ -193,9 +239,13 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
     inert_functions: inert.size,
     contradicted_disposition: contradicted.sort(),
     evidence_consistent: consistent,
-    // Every capability classified AND consistent with its source AND none left
-    // undecided AND owners accepted.
-    census_ready: complete && consistent && undecided.length === 0 && manifest.review_state === 'accepted',
+    retention_unspecified: retentionUnspecified.sort(),
+    retention_unused: retentionUnused.sort(),
+    retention_settled: retentionSettled,
+    // Every capability classified AND consistent with its source AND every
+    // retirement's rows accounted for AND none left undecided AND owners accepted.
+    census_ready: complete && consistent && retentionSettled
+      && undecided.length === 0 && manifest.review_state === 'accepted',
     owner_review_complete: manifest.review_state === 'accepted',
     // This tool inventories the repository only.
     hosted_inventory_reconciled: false,
@@ -224,12 +274,15 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
       .map(([family, value]) => `${family}=${value.capabilities}`).join(' ');
     log(`disposition coverage ${report.coverage_complete ? 'complete' : 'INCOMPLETE'} (${totals}); `
       + `contradicted=${report.contradicted_disposition.length}; undecided=${report.undecided.length}; `
+      + `retention_settled=${report.retention_settled}; `
       + `review_state=${report.review_state}; census_ready=${report.census_ready}`);
     for (const entry of report.contradicted_disposition) log(`  contradicted: ${entry}`);
+    for (const entry of report.retention_unspecified) log(`  retirement with no retention basis: ${entry}`);
+    for (const entry of report.retention_unused) log(`  retention basis for something not retired: ${entry}`);
   } else {
     log(JSON.stringify(report, null, 2));
   }
-  return report.coverage_complete && report.evidence_consistent ? 0 : 1;
+  return report.coverage_complete && report.evidence_consistent && report.retention_settled ? 0 : 1;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

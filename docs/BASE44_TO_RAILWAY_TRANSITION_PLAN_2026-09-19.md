@@ -15,6 +15,7 @@ Source work completed here, all validated by the repository's own checks:
 | --- | --- |
 | Phase 0 — decisions | [Exit decisions](BASE44_EXIT_DECISIONS_2026-09-19.md) recording D1 to D8 as proposed |
 | Phase 0 — disposition manifest | `tools-transition-disposition.json` plus a coverage gate; all 549 capabilities classified, none left undecided (D9 resolves the last 31) |
+| Phase 0 — retention schedule | Every retired entity carries a retention basis (D10): six years in the encrypted export archive for the seven that hold an identifier, the named external system for the two mirrors, none for the three operational rows. The gate fails a retirement with nowhere for its rows |
 | Phase 0 — disposition evidence | The gate also refuses a `port`, `broker` or `hub` disposition on a function whose module can perform no work; eight such claims were corrected |
 | Phase 0 — documentation | `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `.env.example` describe both backends and every service setting |
 | Phase 1 — runtime authority | `INTEGRATIONS_AUTHORITY_MODE=independent` removes the Base44 `getMyTenantContext` call; readiness derives `base44ExecutionDependency` |
@@ -32,6 +33,7 @@ Not done here, and each blocked on something this branch cannot supply:
 | Enabling independent authority on the running runtime | A reviewed deployment plus preflight and two-agency acceptance with enrolled actors |
 | Generalizing the authority store past four synthetic actors | Hosted migration and an enrollment run |
 | Reconciling the duplicated authority predicates (`validateMembershipRows`, `validateAssignmentIntegrity`) into one shared definition | A security review of how the 10 and 11 variants differ in behavior; it changes production authorization, so it is not a mechanical de-duplication |
+| Moving `review_state` to `accepted` | Named owners in `docs/audits/LIVE_READINESS_CHECKLIST_LR01_LR02.md`, where Product, Security, QA, Release and Hosting are still `_TBD_`. Every technical precondition is met: coverage complete, no contradiction, nothing undecided, retention settled |
 | Deciding the 87 entities with no usable tenant path | Owners answering the three questions in Phase 2; two of them (global reference data vs. a missing key) are product calls, not derivable from the schema |
 | Porting the remaining handlers and entity schemas | The decisions above being accepted, then per-capability review |
 | Any customer data, file or identity migration | Base44 credentials, named owners, and a maintenance window |
@@ -216,6 +218,7 @@ Each item names a recommendation. None is decided by this document.
 | D7 | Feature retirement | Carry paused domains (fax workflows, SMS, e-signature, messaging, OASIS v2, PDGM payment, outcome computation, telehealth) as `preserved_paused` in the cutover packet; port each only after its own gate passes | The cutover contract permits paused capabilities only with baseline and target pause receipts |
 | D8 | Learning | Complete the Support Hub cutover (`docs/CENTRAL_LEARNING_CUTOVER.md`) and retire the PennSync learning functions instead of porting them | Already the recorded direction; removes HeyGen |
 | D9 | The 31 open dispositions | Resolve them by group: retire the provenance-free logs in favour of the store's own tenant-bound disclosure audit, send learning content and telemetry to the Hub, port patient-linked content, broker agency configuration, and carry paused-domain custody | Leaving them open blocked the census on judgments the repository's own evidence already answers; see D9 in the decision record |
+| D10 | What happens to a retired table's rows | Six years in the encrypted export archive for anything holding an identifier, with the export receipt in the cutover packet; the named external system for mirrors; nothing for operational rows | D9 retires eight log tables, and "retire" must never be read as "delete"; the migration runbook already requires an approved retention policy for every old-only entity |
 
 ## 5. Phased completion plan
 

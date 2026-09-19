@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { readFile, unlink, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import process from 'node:process';
 
 const MALFORMED_BODY = Symbol('malformed body');
+/** Gitignored, and deliberately not under src/. See the note in invokeFunction. */
+const TEMPORARY_MODULE_DIRECTORY = '.vitest-function-modules';
 
 function todayEastern() {
   return new Intl.DateTimeFormat('en-CA', {
@@ -145,9 +147,18 @@ async function invokeFunction(functionName, {
   );
   if (source === originalSource) throw new Error('Base44 SDK import was not replaced');
 
+  // Inside the project root but outside src/, on purpose, and both halves
+  // matter. It must stay in the root so Vitest transforms it and runs it in the
+  // test's context: loaded from the system temp directory instead, native ESM
+  // executes it against a different global and `Deno.serve` never reaches the
+  // stub below. It must stay out of src/ because a transient .mjs there is
+  // visible to the ten-odd specs that walk src/ and read every file; those
+  // walks race this write and the unlink below, and the loser dies with ENOENT
+  // on a path that no longer exists. The pid, clock and random suffix keep
+  // parallel workers from colliding.
   const temporaryModule = join(
     process.cwd(),
-    'src/components/dashboard',
+    TEMPORARY_MODULE_DIRECTORY,
     [
       'dashboard_security',
       functionName,
@@ -159,6 +170,7 @@ async function invokeFunction(functionName, {
   // These handlers intentionally use JavaScript syntax in .ts files. After the
   // SDK import is replaced, Node can execute the source directly; the separate
   // backend transpile check remains the deploy-syntax gate.
+  await mkdir(join(process.cwd(), TEMPORARY_MODULE_DIRECTORY), { recursive: true });
   await writeFile(temporaryModule, source);
 
   const failureSet = new Set(failures);
