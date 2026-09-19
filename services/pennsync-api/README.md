@@ -87,6 +87,7 @@ call. The operator says which app this deployment serves, or it does not start.
 | `analyzeReferralIntake` | `base44/functions/analyzeReferralIntake/entry.ts` | One brokered `InvokeLLM`, and a guard that answers an empty payload without calling the model at all — the original's comment says the call otherwise times out at the 120s proxy limit |
 | `generateReferralTasks` | `base44/functions/generateReferralTasks/entry.ts` | One brokered `InvokeLLM`, with `response_json_schema` rather than the tolerant parser: its schema carries `required` at every level, so the provider takes it |
 | `matchPatientWithAI` | `base44/functions/matchPatientWithAI/entry.ts` | Candidate patients arrive in the request rather than from a query, so it reads no entity row. Sends demographics to the model, as the original did |
+| `analyzeReferral` | `base44/functions/analyzeReferral/entry.ts` | A four-action dispatcher. Its own docstring calls it a replacement for three of the handlers above, but every prompt is differently worded and its patient projection sends nine fields where the standalone sends twenty — so both live on, and both are ported. `full_analysis` starts priority and match together, then asks for tasks with the priority answer |
 
 ### Brokered Core integrations
 

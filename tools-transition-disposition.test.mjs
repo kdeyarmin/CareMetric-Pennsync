@@ -290,23 +290,24 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { records_schema: 62, files: 4, ported_function: 1, core_integration: 2,
-    pdf_rendering: 0, external_secret: 1, none: 8 });
+  assert.deepEqual(counts, { records_schema: 62, files: 4, ported_function: 1, core_integration: 1,
+    pdf_rendering: 0, external_secret: 1, none: 9 });
   // Twelve of these were counted against the record store until the functions
   // were read. Every one calls a Core integration and touches no entity row, so
   // what they wait on is the integration runtime's brokered path — already
   // deployed, and paused — not a store that does not exist. Naming them keeps
   // the correction from quietly reverting.
-  assert.deepEqual(report.port_blockers.core_integration, ['analyzeReferral', 'generateUserGuidePDF'],
-    'four left by being written, two by being reclassified paused, four by being file-bound');
+  assert.deepEqual(report.port_blockers.core_integration, ['generateUserGuidePDF'],
+    'five left by being written, two by being reclassified paused, four by being file-bound');
   // Named, because porting one of these verbatim would carry Base44's storage
   // host into the service, and the `cmfile:` handles that replace those URLs do
   // not exist yet. They wait on the file layer, not on the runtime.
   assert.deepEqual(report.port_blockers.files, ['extractClinicalDocument', 'extractPatientDataFromDocument',
     'generateDynamicCoverSheet', 'splitReferralPDF']);
   assert.deepEqual(report.port_blockers.none,
-    ['analyzeReferralIntake', 'analyzeReferralPriority', 'generateBagTechniquePDF', 'generateReferralTasks',
-      'generateSmartNoteGuide', 'generateUserManual', 'matchPatientWithAI', 'validatePatientData'],
+    ['analyzeReferral', 'analyzeReferralIntake', 'analyzeReferralPriority', 'generateBagTechniquePDF',
+      'generateReferralTasks', 'generateSmartNoteGuide', 'generateUserManual', 'matchPatientWithAI',
+      'validatePatientData'],
     'the set of written ports changed');
   assert.deepEqual(report.port_blockers.ported_function, ['extractReferralDataForSmartNote']);
   // All three emptied this bucket once the service adopted a PDF library and a

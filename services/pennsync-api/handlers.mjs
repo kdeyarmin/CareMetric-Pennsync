@@ -16,6 +16,7 @@ import { analyzeReferralPriority as runReferralPriority } from './referral-prior
 import { analyzeReferralIntake as runReferralIntake } from './referral-intake.mjs';
 import { generateReferralTasks as runReferralTasks } from './referral-tasks.mjs';
 import { matchPatientWithAI as runPatientMatch } from './patient-match.mjs';
+import { analyzeReferral as runReferralAnalysis } from './referral-analysis.mjs';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -146,6 +147,14 @@ export const HANDLERS = Object.freeze({
     handle({ params, config }) {
       exactObject(params, [], 'INVALID_PARAMS');
       return pdfResponse(buildUserManual, USER_MANUAL_FILENAME, config);
+    },
+  }),
+  analyzeReferral: Object.freeze({
+    // A dispatcher: the action decides which params are required, so the shape
+    // is checked inside rather than by one `exactObject` here.
+    handle({ params, integration }) {
+      if (!isObject(params)) fail(400, 'INVALID_PARAMS');
+      return runReferralAnalysis({ params, integration });
     },
   }),
   analyzeReferralIntake: Object.freeze({

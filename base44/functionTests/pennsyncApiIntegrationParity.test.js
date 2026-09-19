@@ -9,6 +9,8 @@ import { analyzeReferralPriority } from '../../services/pennsync-api/referral-pr
 import { analyzeReferralIntake } from '../../services/pennsync-api/referral-intake.mjs';
 import { generateReferralTasks } from '../../services/pennsync-api/referral-tasks.mjs';
 import { matchPatientWithAI } from '../../services/pennsync-api/patient-match.mjs';
+import { analyzeReferral } from '../../services/pennsync-api/referral-analysis.mjs';
+import { REFERRAL_ACTIONS } from '../../services/pennsync-api/referral-analysis.mjs';
 import { parseLLMJson } from '../../services/pennsync-api/llm-json.mjs';
 
 /**
@@ -128,6 +130,35 @@ const PORTS = [
       { extractedData: { notDemographics: true }, existingPatients: [{ id: 'p3' }] },
     ],
   },
+  {
+    name: 'analyzeReferral',
+    port: analyzeReferral,
+    cases: [
+      { action: 'analyze_priority', extractedData: { diagnosis: 'Synthetic' }, analysisResults: { risk: 'low' } },
+      { action: 'generate_tasks', referralData: { diagnosis: 'Synthetic' }, priorityAnalysis: { priority: 'high' } },
+      {
+        action: 'match_patient',
+        extractedData: { demographics: { first_name: 'Synthetic' } },
+        existingPatients: [
+          { id: 'p1', first_name: 'Synthetic', middle_name: 'Q', last_name: 'Patient',
+            medical_record_number: 'MRN-1', date_of_birth: '1950-04-02', phone: '555-0100' },
+          { id: 'p2', first_name: 'Other', last_name: 'Person' },
+        ],
+      },
+      // Three calls, and the order is behaviour: priority and match start
+      // together, tasks waits because its prompt takes the priority answer.
+      {
+        action: 'full_analysis',
+        extractedData: { demographics: { first_name: 'Synthetic' }, diagnosis: 'Synthetic' },
+        analysisResults: { risk: 'low' },
+        existingPatients: [
+          { id: 'p1', first_name: 'Synthetic', middle_name: 'Q', last_name: 'Patient',
+            medical_record_number: 'MRN-1', date_of_birth: '1950-04-02', phone: '555-0100' },
+          { id: 'p2', first_name: 'Other', last_name: 'Person' },
+        ],
+      },
+    ],
+  },
 ];
 
 for (const { name, port, cases } of PORTS) {
@@ -225,4 +256,56 @@ test('the patient match refuses the same malformed input the original refused', 
   const ported = await drivePort(matchPatientWithAI,
     { extractedData: { demographics: {} }, existingPatients: [] }, { best_match_id: null });
   assert.equal(ported.calls.length, 1);
+});
+
+test('the referral dispatcher refuses an action the original refused', async () => {
+  for (const action of [undefined, null, '', 'nope', 'ANALYZE_PRIORITY']) {
+    await assert.rejects(
+      analyzeReferral({ params: { action }, integration: async () => assert.fail('the model must not be asked') }),
+      error => error?.status === 400 && error?.code === 'INVALID_ACTION', `${action} should be refused`);
+    const original = await driveOriginal('analyzeReferral', { action }, '{}');
+    assert.equal(original.body.error, 'Invalid action');
+    assert.deepEqual(original.calls, []);
+  }
+  assert.deepEqual([...REFERRAL_ACTIONS], ['analyze_priority', 'generate_tasks', 'match_patient', 'full_analysis']);
+});
+
+test('a full analysis asks for priority and match before it asks for tasks', async () => {
+  const params = {
+    action: 'full_analysis',
+    extractedData: { demographics: { first_name: 'Synthetic' }, diagnosis: 'Synthetic' },
+    analysisResults: { risk: 'low' },
+    existingPatients: [{ id: 'p1', first_name: 'Synthetic', last_name: 'Patient' }],
+  };
+  const answers = ['{"priority":"urgent"}', '{"best_match_id":"p1"}', '{"tasks":[{"title":"Synthetic"}]}'];
+  let index = 0;
+  const seen = [];
+  const body = await analyzeReferral({
+    params,
+    integration: async (_operation, argument) => { seen.push(argument.prompt); return answers[index++]; },
+  });
+  assert.equal(seen.length, 3);
+  assert.match(seen[0], /clinical triage AI/);
+  assert.match(seen[1], /patient matching system/);
+  assert.match(seen[2], /intake coordinator/);
+  // The tasks prompt carries the priority answer, which is why it cannot start
+  // with the other two.
+  assert.match(seen[2], /"priority": "urgent"/);
+  assert.deepEqual(body, {
+    success: true,
+    priority: { priority: 'urgent' },
+    patientMatch: { best_match_id: 'p1' },
+    tasks: [{ title: 'Synthetic' }],
+  });
+});
+
+test('the dispatcher task path takes whatever sits under tasks, as its original does', async () => {
+  // Its standalone namesake guards with Array.isArray; this one does not, and a
+  // port that "fixed" that would answer differently from the function it replaces.
+  for (const answer of ['{"tasks":{"not":"an array"}}', '{"tasks":null}', '{}', 'prose']) {
+    const params = { action: 'generate_tasks', referralData: {}, priorityAnalysis: {} };
+    const original = await driveOriginal('analyzeReferral', params, answer);
+    const ported = await drivePort(analyzeReferral, params, answer);
+    assert.deepEqual(ported.body, original.body, `answer ${answer} shaped differently`);
+  }
 });
