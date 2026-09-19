@@ -12,11 +12,18 @@ import { SCHEMA, renderDdl } from '../../../tools-entity-schema-plan.mjs';
  * every case below reads the same table twice from two agencies and asserts
  * what each one cannot reach, then tries the write that must be refused.
  *
- * Access runs as `record_broker`, a non-superuser standing in for the
- * SECURITY DEFINER brokers the plan calls for: a superuser bypasses row level
- * security outright, so testing as one proves nothing. Production grants that
- * role nothing — the brokers are the tables' owner and reach them that way —
- * so the grants here are the test supplying what ownership would.
+ * Access runs as `authenticated`, because that is the role the caller gate
+ * requires: `pennsync_private.actor()` refuses a session whose connection role
+ * is anything else, and these policies now go through it rather than through a
+ * weaker copy. A superuser or BYPASSRLS role bypasses row level security
+ * outright, so testing as one would prove nothing — the last test here
+ * demonstrates exactly that, which is why brokers must hold neither attribute.
+ *
+ * The grants below are the test's own. The generated DDL grants nothing, and
+ * the RPC family the plan calls for — "one reviewed tenant-scoped RPC family
+ * with agency binding from the membership row" — does not exist yet, so how a
+ * broker reaches these tables in production is still an open design question.
+ * What is settled here is the predicate each table carries.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const APP = '6a9881683dc68a0bd54f1ef7';
@@ -36,11 +43,11 @@ before(async () => {
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.exec(renderDdl(repository).sql);
   await db.exec(`
-    create role record_broker nologin;
-    grant usage on schema ${SCHEMA} to record_broker;
-    grant select, insert, update, delete on all tables in schema ${SCHEMA} to record_broker;
-    grant execute on function ${SCHEMA}.caller_agencies(), ${SCHEMA}.caller_user_id(),
-      ${SCHEMA}.caller_email(), ${SCHEMA}.deployment_app() to record_broker;`);
+    grant usage on schema ${SCHEMA} to authenticated;
+    grant select, insert, update, delete on all tables in schema ${SCHEMA} to authenticated;
+    grant execute on function ${SCHEMA}.caller_identity(), ${SCHEMA}.caller_identified(),
+      ${SCHEMA}.caller_agencies(), ${SCHEMA}.caller_user_id(),
+      ${SCHEMA}.caller_email(), ${SCHEMA}.deployment_app() to authenticated;`);
 });
 after(async () => db?.close());
 
@@ -51,7 +58,7 @@ async function as(n, sql, params = []) {
     await db.query("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({
       sub: uid(n), session_id: sid(n), role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600,
     })]);
-    await db.exec('set local role record_broker');
+    await db.exec('set local role authenticated');
     const { rows } = await db.query(sql, params);
     return rows;
   } finally { await db.exec('rollback'); }
@@ -174,7 +181,7 @@ test('revoking a membership takes the rows away, and half a revocation cannot ex
       sub: uid(AGENCY_A), session_id: sid(AGENCY_A), role: 'authenticated',
       exp: Math.floor(Date.now() / 1000) + 3600,
     })]);
-    await db.exec('set local role record_broker');
+    await db.exec('set local role authenticated');
     assert.deepEqual((await db.query(mine)).rows, [], 'a revoked membership reaches no row');
   } finally { await db.exec('rollback'); }
 });
@@ -252,7 +259,7 @@ test('a caller with no session reaches nothing at all', async () => {
     ('${APP}','supply-anon','agency-a','Gauze');`);
   await db.exec('begin');
   try {
-    await db.exec('set local role record_broker');
+    await db.exec('set local role authenticated');
     const { rows } = await db.query(`select "id" from ${SCHEMA}.supply_item`);
     assert.deepEqual(rows, [], 'no JWT means no membership, so no row');
   } finally { await db.exec('rollback'); }

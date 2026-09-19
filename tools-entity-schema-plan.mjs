@@ -169,8 +169,20 @@ export function renderEntity(plan) {
     // Two constraints sharing a name would silently become one. Fail instead.
     throw new Error(`CONSTRAINT_NAME_COLLISION:${plan.entity}`);
   }
+  // A global table is read by every agency, so the platform's own `created_by`
+  // would hand each of them an account identifier from whichever agency
+  // authored the row. Reference data has no author worth carrying, so the
+  // column is not emitted there at all rather than being filtered later.
+  if (plan.tenant_decision === 'global' && plan.merged_system_columns > 0) {
+    // It declares a platform column of its own, which would be dropped rather
+    // than merged once the platform one is withheld. Silently losing a field
+    // is the defect this generator already had once.
+    throw new Error(`GLOBAL_ENTITY_DECLARES_SYSTEM_COLUMN:${plan.entity}`);
+  }
+  const systemColumns = plan.tenant_decision === 'global'
+    ? SYSTEM_COLUMNS.filter(column => column.name !== 'created_by') : SYSTEM_COLUMNS;
   const lines = [
-    ...SYSTEM_COLUMNS.map(column => `  ${quote(column.name)} ${column.type}${column.notNull ? ' not null' : ''}`),
+    ...systemColumns.map(column => `  ${quote(column.name)} ${column.type}${column.notNull ? ' not null' : ''}`),
     ...plan.definition.columns.map(column => `  ${quote(column.name)} ${column.type}${column.notNull ? ' not null' : ''}`),
     `  constraint ${quote(`${plan.table}_pkey`)} primary key (${quote('source_app_id')}, ${quote('id')})`,
     ...plan.definition.checks.map(check =>
@@ -264,24 +276,48 @@ export function buildPlan(repository, prepared = null) {
  * cannot quietly become the only thing holding.
  */
 export const POLICY_HELPERS = [
+  // The single gate, reused rather than reimplemented. `actor()` checks the
+  // authenticated role, the JWT's expiry, a live session row, an active
+  // non-banned native user, and an enabled identity whose email still matches.
+  // An earlier version of this helper asked only `auth.uid()` plus an active
+  // membership, which let a still-valid token from a signed-out or banned
+  // account keep reading. A policy has to filter rather than raise, so the
+  // gate's refusal becomes "no identity" here.
+  `create function ${quote(SCHEMA)}.caller_identity() returns pennsync_private.identity_map
+  language plpgsql stable security definer set search_path = '' as $$
+  declare v_identity pennsync_private.identity_map;
+  begin
+    begin
+      v_identity := pennsync_private.actor(pennsync_private.deployment_app_id(), false);
+    exception when others then return null;
+    end;
+    return v_identity;
+  end $$;`,
+  `create function ${quote(SCHEMA)}.caller_identified() returns boolean
+  language sql stable security definer set search_path = '' as $$
+  select (${quote(SCHEMA)}.caller_identity()).auth_user_id is not null
+$$;`,
+  // A suspended agency keeps its membership rows, so the agency's own status
+  // is checked here the way `context_value` checks it.
   `create function ${quote(SCHEMA)}.caller_agencies() returns setof text
   language sql stable security definer set search_path = '' as $$
-  select m.agency_id::text from pennsync_private.membership m
-  where m.app_id = pennsync_private.deployment_app_id()
-    and m.auth_user_id = auth.uid()
+  select m.agency_id::text
+  from ${quote(SCHEMA)}.caller_identity() i
+  join pennsync_private.membership m
+    on m.app_id = i.app_id and m.auth_user_id = i.auth_user_id
+   and m.base44_user_id = i.base44_user_id
+  join pennsync_private.agency a on a.app_id = m.app_id and a.id = m.agency_id
+  where i.auth_user_id is not null
     and m.status = 'active' and m.revoked_at is null
+    and a.status in ('active','trial')
 $$;`,
   `create function ${quote(SCHEMA)}.caller_user_id() returns text
   language sql stable security definer set search_path = '' as $$
-  select i.base44_user_id from pennsync_private.identity_map i
-  where i.app_id = pennsync_private.deployment_app_id()
-    and i.auth_user_id = auth.uid() and i.enabled and i.revoked_at is null
+  select (${quote(SCHEMA)}.caller_identity()).base44_user_id
 $$;`,
   `create function ${quote(SCHEMA)}.caller_email() returns text
   language sql stable security definer set search_path = '' as $$
-  select i.expected_email from pennsync_private.identity_map i
-  where i.app_id = pennsync_private.deployment_app_id()
-    and i.auth_user_id = auth.uid() and i.enabled and i.revoked_at is null
+  select (${quote(SCHEMA)}.caller_identity()).expected_email
 $$;`,
   // Nothing may call these directly; they exist to be asked by a policy.
   // `source_app_id` is plain text on these tables, so nothing stops a row of
@@ -293,7 +329,8 @@ $$;`,
   language sql stable security definer set search_path = '' as $$
   select pennsync_private.deployment_app_id()
 $$;`,
-  `revoke all on function ${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_user_id(),
+  `revoke all on function ${quote(SCHEMA)}.caller_identity(), ${quote(SCHEMA)}.caller_identified(),
+  ${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_user_id(),
   ${quote(SCHEMA)}.caller_email(), ${quote(SCHEMA)}.deployment_app() from public, anon, authenticated, service_role;`,
 ];
 
@@ -331,6 +368,13 @@ export function tenantPredicate(entity, alias, index, { paths, tables }, depth =
       + ` and ${next}.${quote('id')} = ${alias}.${quote(snakeCase(path.via))}`
       + ` and ${inner})`;
   }
+  // A self-editable profile claim is excluded from authorization by
+  // construction — it is the defect that paused `analyzeClinicalData`. Falling
+  // through to the agency predicate here would authorize `User` reads through
+  // the very column the account can rewrite about itself, so this refuses to
+  // generate anything rather than generating something wrong.
+  if (path.kind === 'profile_claim') throw new Error(`TENANT_PATH_IS_PROFILE_CLAIM:${entity}`);
+  if (path.kind !== 'actor' && path.kind !== 'unresolved') throw new Error(`TENANT_PATH_UNHANDLED:${entity}:${path.kind}`);
   // Anything still blocking here was decided, and a decision stamps the key on.
   return `${alias}.${quote(TENANT_COLUMN)} in (select ${agencies})`;
 }
@@ -352,15 +396,28 @@ export function renderPolicies(plan, resolution) {
   // The deployment serves one app; a row belonging to the other is not this
   // deployment's to show or touch, however its agency key reads.
   const thisApp = `${self}.${quote('source_app_id')} = ${quote(SCHEMA)}.deployment_app()`;
-  const tenant = `${thisApp} and ${tenantPredicate(plan.entity, self, 0, resolution)}`;
   const kind = plan.tenant_decision;
+
+  // `User` carries only a claim it can edit about itself, so no predicate here
+  // can be trusted. Forced RLS with NO policy is the honest answer: the table
+  // exists, holds its rows, and is unreachable through this surface until a
+  // decision says how it may be read.
+  if (resolution.paths.get(plan.entity)?.kind === 'profile_claim') {
+    return [`-- ${plan.table}: excluded from authorization (self-editable profile claim); forced RLS, no policy.`];
+  }
+  const tenant = `${thisApp} and ${tenantPredicate(plan.entity, self, 0, resolution)}`;
 
   if (kind === 'global') {
     // Platform reference: every caller reads it and no tenant surface writes
     // it. Forced RLS with no write policy is what refuses the writes. Still
     // scoped to the deployment's own app, because global means every agency
     // here, not every app.
-    return [`create policy ${name('read')} on ${qualified} for select using (${thisApp});`];
+    // `using (true)` let any role that reached the table read every row with no
+    // session at all. Global means every *identified* caller in this
+    // deployment, so the identity check is in the predicate rather than left
+    // for each future broker to remember.
+    return [`create policy ${name('read')} on ${qualified} for select `
+      + `using (${thisApp} and ${quote(SCHEMA)}.caller_identified());`];
   }
   let read = tenant;
   if (kind === 'self') {
