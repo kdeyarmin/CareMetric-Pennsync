@@ -20,6 +20,7 @@ Source work completed here, all validated by the repository's own checks:
 | Phase 0 — disposition evidence | The gate also refuses a `port`, `broker` or `hub` disposition on a function whose module can perform no work; eight such claims were corrected |
 | Phase 0 — documentation | `README.md`, `AGENTS.md`, `CONTRIBUTING.md` and `.env.example` describe both backends and every service setting |
 | Phase 1 — runtime authority | `INTEGRATIONS_AUTHORITY_MODE=independent` removes the Base44 `getMyTenantContext` call; readiness derives `base44ExecutionDependency` |
+| Phase 1 — enrollment tool | `tools-pennsync-enroll.mjs` writes identity, agency and membership rows from a digest-addressed plan whose evidence it hashes itself, under the RPC write lock, recorded in an append-only `enrollment_receipt`. It cannot create a native Auth account, cannot enroll into another deployment, and cannot restate an identity already recorded |
 | Phase 1 — authority store app namespace | `20260919090000_deployment_app_pin.sql` replaces both app-id literals with one immutable per-deployment pin. The domain across 18 columns and the gate inside `actor()` now read the same row, so they cannot drift; production is admitted only in a database pinned to it, and an unset pin still defaults to staging. `app-namespace-containment.test.mjs` proves it against two databases built from the same migrations |
 | Phase 2 — API service | `services/pennsync-api` with health, readiness, release-gated dispatch and the first ported handler |
 | Phase 2 — candidate schema | `tools-entity-schema-plan.mjs` generates PostgreSQL for the 156 carried entities (2,336 columns, 287 enum constraints); a test applies the whole plan to a real database |
@@ -143,6 +144,7 @@ single remaining Base44 execution dependency inside the runtime.
 | `tools-pennsync-acquire.mjs` | Signed-permit capture of enumerated staging records through the Base44 CLI | Staging app only, four users pinned, no files |
 | `tools-pennsync-archive.mjs` | Encrypted, integrity-checked offline archive of supplied exports | No Base44 client; consumer must supply exports |
 | `tools-pennsync-archive-import.mjs` | Import verified archive into the synthetic patient schema | Names-only patients, local databases only |
+| `tools-pennsync-enroll.mjs` | Operator-run, evidence-hashed creation of identity, agency and membership rows in the owned store | Cannot create a native Auth account; every enrollee must already have accepted their invitation |
 | `tools-pennsync-cutover.mjs` | Offline checker for the 15-gate cutover evidence packet | No packet exists yet |
 | `tools-base44-candidate-manifest.mjs` | Deterministic local inventory of the Base44 candidate | Not hosted parity |
 | `tools-live-frontend-sync.mjs` | SHA-256 verification of a published static site | Allowlists Base44 origins only |
@@ -311,8 +313,24 @@ Deliverables:
 - All six tenant roles, real names permitted through an explicit production
   migration, actor registry moved from code pins to verified identity-map rows,
   session policy reviewed (refresh, idle, MFA decision).
-- Enrollment tool: operator-run, evidence-hashed creation of identity-map rows
-  for invited Supabase Auth users; no public provisioning API.
+- Enrollment tool. **Done on this branch.** `tools-pennsync-enroll.mjs` takes a
+  plan addressed by its own SHA-256, reads and hashes each enrollee's
+  corroborating document rather than accepting a declared digest, and writes the
+  `identity_map`, `agency` and `membership` rows in one transaction under the
+  same advisory lock the authority RPCs take for writes. There is no public
+  provisioning API and no CLI path that creates a native account: every enrollee
+  must already exist in `auth.users`, confirmed, not banned, not deleted, with
+  the address on that row matching the plan exactly, so an operator cannot
+  accept an invitation on someone's behalf. The plan names an app id and the
+  database names the one it serves; a mismatch is refused before anything is
+  written. An identity already recorded must match the plan exactly — provenance
+  is immutable by trigger, so a differing plan is a contradiction rather than an
+  update — and a plan already applied is refused on its receipt. Every run is
+  recorded in the append-only `pennsync_private.enrollment_receipt` with the plan
+  digest, a digest of what was written, the counts, the database and the operator
+  role. 22 tests cover it: the plan boundary offline, and the rest against
+  PGlite, including a production-pinned database enrolling a production identity
+  that the staging one refuses.
 - Hosted-target CI job: the existing browser and compiled-app acceptance run
   against the dedicated hosted staging project using the four enrolled actors
   (secrets: publishable key and actor UUID map). Today both jobs run only

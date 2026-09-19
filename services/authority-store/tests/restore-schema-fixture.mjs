@@ -9,6 +9,7 @@ const expected = {
   'pennsync_private.archive_patient_import_receipt': 'app_id,plan_sha256,owner_sha256,projection_sha256,patient_count,patient_ids,state,database_name,operator_role,created_at,rolled_back_at',
   'pennsync_private.assignment': 'app_id,agency_id,patient_id,membership_id,status,version,changed_by,changed_at,id',
   'pennsync_private.deployment': 'singleton,app_id,source,pinned_at',
+  'pennsync_private.enrollment_receipt': 'app_id,plan_sha256,projection_sha256,identity_count,agency_count,membership_count,database_name,operator_role,created_at',
   'pennsync_private.identity_map': 'app_id,auth_user_id,base44_user_id,expected_email,source_evidence_sha256,verified_at,enabled,revoked_at,version',
   'pennsync_private.known_app': 'app_id,label',
   'pennsync_private.membership': 'app_id,id,agency_id,auth_user_id,base44_user_id,membership_key,tenant_role,status,version,revoked_at,revoked_by',

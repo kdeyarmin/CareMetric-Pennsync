@@ -124,6 +124,17 @@ platform identity handlers (`onUserSignup`, `adminResetPassword`,
 `resetUserPassword`, `createUserWithTempPassword`, and its V2) are `retire`,
 because Supabase Auth owns those operations in the target.
 
+Enforcement, added on this branch: `tools-pennsync-enroll.mjs` is the only path
+an identity takes into the owned store, and it is built so the decision cannot be
+circumvented by the operator running it. It creates no native account — every
+enrollee must already exist in `auth.users`, confirmed and unbanned, with the
+address on that row matching the plan — so nobody can be enrolled who has not
+accepted their own invitation. It reads and hashes the corroborating document
+instead of accepting a digest, so `source_evidence_sha256` records provenance the
+operator actually held. It writes nothing outside one transaction, refuses a plan
+that contradicts a recorded identity, and records every run in an append-only
+receipt naming the plan, the outcome, the database and the role.
+
 ## D7 — Paused domains are carried as `preserved_paused`
 
 Fax, SMS, voice, telehealth, e-signature, messaging, OASIS v2, PDGM payment,

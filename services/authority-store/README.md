@@ -50,6 +50,29 @@ staging deployment. Rather than relabel eighteen response builders and claim a p
 deployment is therefore writable by the migration administrator -- which is how an operator enrollment tool creates
 identity, agency and membership rows -- and serves no RPC until each contract is revised under its own review.
 
+## Enrollment
+
+Identity rows are not created by any RPC. `tools-pennsync-enroll.mjs` at the repository root writes them, run by a
+trusted operator against a database they already administer, from a plan addressed by its own SHA-256.
+
+The plan names the app id it is for, the agencies it establishes, and for each person their Auth UUID, Base44 user id,
+canonical address, the path to the operator's corroborating document and that document's digest. The tool reads the
+document and hashes it; a declared digest that does not match the bytes is refused, so `source_evidence_sha256` records
+provenance the operator actually held. It then verifies against the database that the native account already exists,
+is confirmed, is neither anonymous nor deleted nor banned, and carries exactly the address the plan claims. It creates
+no native account: a person who has not accepted their own invitation cannot be enrolled on their behalf.
+
+Writes happen in one transaction under the same advisory lock the authority RPCs take, in the same order: agencies,
+identities, memberships, receipt. A row that already exists must match the plan exactly -- identity provenance is
+immutable by trigger, so a differing plan is a contradiction, not an update -- which makes a superset plan safe to run
+after a smaller one. The plan's app id must equal the deployment pin, so nobody can enroll production identities into
+the staging database. Every run is recorded in the append-only `pennsync_private.enrollment_receipt`: the plan digest,
+a digest of what was written, the three counts, the database name and the operator role. Applying the same plan twice
+fails on that receipt.
+
+The CLI reads `PENNSYNC_ENROLL_DATABASE_URL`, `PENNSYNC_ENROLL_PLAN`, `PENNSYNC_ENROLL_PLAN_SHA256` and
+`PENNSYNC_ENROLL_EVIDENCE_DIR`, and prints the receipt. No diagnostic carries an address, a name or any plan content.
+
 ## Transaction and replay behavior
 
 All calls require READ COMMITTED. A fixed application advisory lock is shared for reads and exclusive for writes; it is deliberately broad for a small staging fixture and is not a throughput claim. The common acquisition order is app lock, caller native user/session and identity, agency and actor membership, then target membership, patient/assignment and target identity/native checks as needed, followed by the receipt. Current native rows are held `FOR SHARE` until transaction completion. Operations through this API serialize with revocation. Trusted manual maintenance must use the same app lock and avoid unscheduled direct mutations.
