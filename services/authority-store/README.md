@@ -141,3 +141,36 @@ Eight authority multi-session tests observe real advisory/row lock waits and ver
 The migration and local SQL tests passed against PostgreSQL 17.10 and PGlite. Supabase CLI 2.109.1 security advisors also returned no warning/error findings against an empty disposable local database with this schema (`--db-url` with local `sslmode=disable`, `--type security --level warn --fail-on error`). The initial CLI connection without explicit local SSL mode failed and was not counted as an advisor pass. The base authority and S4 Docker-backed CI suites passed actual local Auth password login, signed sessions and HTTP/PostgREST acceptance. The additional S3 HTTP checks need their own successful Docker-backed run; see `tests/http-acceptance.md`. No hosted enrollment/migration, customer patient-data migration, production cutover or full clinical workflow completion is claimed here.
 
 References checked during implementation: [Supabase session lifecycle](https://supabase.com/docs/guides/auth/sessions), [database functions](https://supabase.com/docs/guides/database/functions), [PostgreSQL locking](https://www.postgresql.org/docs/17/explicit-locking.html), [PGlite connection limitation](https://pglite.dev/docs/), [node-postgres transactions](https://node-postgres.com/features/transactions). The current Supabase changelog was inspected; no extension, Realtime-schema, Auth-provider or Management-log breaking change was needed by this SQL-only slice.
+
+## Provisioning a new deployment
+
+The pin is decided once, before the first migration runs, and cannot be edited
+afterwards: a mis-pinned database is replaced, not corrected (D11). Done by
+hand that is a single irreversible step with no second chance, so
+`tools-pennsync-provision.mjs` does it as a checked sequence:
+
+1. refuse an app no deployment may serve — including the retired PennSync app,
+   which is absent from `known_app` on purpose — before anything is created;
+2. refuse a database that already holds `pennsync_private`, so a second run
+   cannot half-migrate a live store or repoint one at another app;
+3. set `pennsync.deployment_app_id`;
+4. read it back **from a new session** and stop if it did not stick;
+5. only then apply the migrations, in name order;
+6. prove the store came out pinned where it was asked, and that
+   `pennsync_private.deployment.source` says `setting` rather than `default`.
+
+Step 4 is the one that earns the tool. `alter database ... set` only reaches
+sessions opened after it, so a run that trusts its own write can migrate
+against the default — producing a store quietly pinned to **staging** while its
+operator believes it is production, discovered only when production writes
+start failing. `provision.test.mjs` pins that case: with the read-back
+unconfirmed, not one migration is allowed to run.
+
+A further test reads the app ids straight out of
+`20260919090000_deployment_app_pin.sql` and fails if the tool's list and the
+store's `known_app` ever disagree, so this cannot pin a database the migration
+would then refuse.
+
+What it does not do: it creates no hosted project, holds no credential, and
+writes no row. Enrolling anyone is `tools-pennsync-enroll.mjs`, and that needs
+the people to have accepted their Supabase Auth invitations first.

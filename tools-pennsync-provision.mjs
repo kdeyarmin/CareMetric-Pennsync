@@ -1,0 +1,124 @@
+#!/usr/bin/env node
+/**
+ * Pin a fresh authority store to the app it will serve, then migrate it.
+ *
+ * D11 makes the deployment pin a generated IMMUTABLE constant read by both
+ * containment layers, which is what stops one deployment holding another's
+ * PHI. The cost of that design is that the pin is decided once, before the
+ * first migration runs, and cannot be edited afterwards: a mis-pinned database
+ * is replaced, not corrected. Done by hand that is a single irreversible step
+ * with no second chance, so this does it as a checked sequence instead.
+ *
+ * The order is the whole point:
+ *
+ *   1. refuse an app that is not one a deployment may serve, before anything
+ *      is created;
+ *   2. refuse a database that already holds `pennsync_private`, so a second
+ *      run cannot half-migrate a live store;
+ *   3. set `pennsync.deployment_app_id`;
+ *   4. read it back FROM A NEW SESSION and refuse if it did not stick — an
+ *      `alter database ... set` only reaches sessions opened after it, so a
+ *      tool that trusts its own write would migrate against the default;
+ *   5. only then apply the migrations, in name order;
+ *   6. prove the store came out pinned where it was asked to be.
+ *
+ * Step 4 is the one that earns the tool. Skipping it is how a database gets
+ * silently pinned to staging — the restrictive default — and is discovered
+ * only when production writes start failing.
+ *
+ * It provisions; it does not create a hosted project, hold a credential, or
+ * write a row. No identity is enrolled here: that is `tools-pennsync-enroll.mjs`,
+ * and it requires the people to have accepted their invitations first.
+ */
+import { readFileSync, readdirSync } from 'node:fs';
+import { join, resolve } from 'node:path';
+
+export const PROVISION_CONTRACT = 'cm.pennsync.provision.v1';
+export const MIGRATION_DIRECTORY = join('services', 'authority-store', 'supabase', 'migrations');
+/** The setting the migration reads once, to generate the pin from. */
+export const PIN_SETTING = 'pennsync.deployment_app_id';
+/**
+ * The apps a deployment may be pinned to, and the label each one carries.
+ * The legacy PennSync app is deliberately absent: it is retired, and no
+ * deployment may be pointed at it even on purpose. This mirrors
+ * `pennsync_private.known_app`, and a test fails if the two disagree.
+ */
+export const KNOWN_APPS = Object.freeze({
+  '6a9881683dc68a0bd54f1ef7': 'staging',
+  '694ec16e72e01b60d22f7cbf': 'production',
+});
+export const RETIRED_APP = '68ee80d98929370f9e8f2932';
+const APP_ID = /^[a-f0-9]{24}$/;
+
+export class ProvisionError extends Error {
+  constructor(code, detail) { super(code); this.code = code; this.detail = detail; }
+}
+const refuse = (code, detail) => { throw new ProvisionError(code, detail); };
+
+/** The label a requested app will carry, or a refusal naming why it cannot. */
+export function planProvision(requestedApp) {
+  if (typeof requestedApp !== 'string' || !APP_ID.test(requestedApp)) refuse('PROVISION_APP_MALFORMED');
+  if (requestedApp === RETIRED_APP) refuse('PROVISION_APP_RETIRED');
+  const label = KNOWN_APPS[requestedApp];
+  if (!label) refuse('PROVISION_APP_UNKNOWN');
+  return Object.freeze({ contract: PROVISION_CONTRACT, app_id: requestedApp, label });
+}
+
+/** The migrations, in the order the store expects them applied. */
+export function readMigrations(repository) {
+  const directory = join(resolve(repository), MIGRATION_DIRECTORY);
+  const names = readdirSync(directory).filter(name => name.endsWith('.sql')).sort();
+  if (!names.length) refuse('PROVISION_MIGRATIONS_MISSING');
+  return names.map(name => ({ name, sql: readFileSync(join(directory, name), 'utf8') }));
+}
+
+/**
+ * `db` is anything with `query(sql, params)` and `session()`, where `session`
+ * yields a connection opened after the statements so far. The pin is read back
+ * through one of those, never through the connection that wrote it.
+ */
+export async function applyProvision({ db, requestedApp, repository, log = () => {} }) {
+  const plan = planProvision(requestedApp);
+  const migrations = readMigrations(repository);
+
+  const { rows: existing } = await db.query(
+    "select count(*)::int as count from pg_namespace where nspname = 'pennsync_private'");
+  if (existing[0].count !== 0) refuse('PROVISION_STORE_ALREADY_PRESENT');
+
+  await db.query(`alter database ${await currentDatabase(db)} set ${PIN_SETTING} = $1`, [plan.app_id]);
+
+  // A new session, because `alter database ... set` does not reach this one.
+  const confirmed = await db.session(async session => {
+    const { rows } = await session.query(`select current_setting($1, true) as value`, [PIN_SETTING]);
+    return rows[0]?.value ?? null;
+  });
+  if (confirmed !== plan.app_id) refuse('PROVISION_PIN_DID_NOT_STICK', { wanted: plan.app_id, read: confirmed });
+  log(`pin set and confirmed: ${plan.app_id} (${plan.label})`);
+
+  for (const migration of migrations) {
+    await db.session(session => session.exec(migration.sql));
+    log(`applied ${migration.name}`);
+  }
+
+  const { rows: settled } = await db.query(`select
+      pennsync_private.deployment_app_id() as app_id,
+      pennsync_private.deployment_label() as label,
+      (select source from pennsync_private.deployment) as source`);
+  const got = settled[0];
+  if (got.app_id !== plan.app_id || got.label !== plan.label) {
+    refuse('PROVISION_PIN_MISMATCH', { wanted: plan, got });
+  }
+  // `default` here would mean the setting was not visible when the migration
+  // read it, so the store is pinned to staging whatever was asked for.
+  if (got.source !== 'setting') refuse('PROVISION_PIN_DEFAULTED', { got });
+
+  return Object.freeze({ ...plan, migrations: migrations.map(migration => migration.name), source: got.source });
+}
+
+async function currentDatabase(db) {
+  const { rows } = await db.query('select current_database() as name');
+  const name = rows[0]?.name;
+  // Interpolated into DDL, so it is checked rather than trusted.
+  if (typeof name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_]{0,62}$/.test(name)) refuse('PROVISION_DATABASE_NAME_UNUSABLE');
+  return `"${name}"`;
+}
