@@ -129,6 +129,62 @@ export function isInertFunction(source) {
   return [...source.matchAll(/\b_?req(?:uest)?\s*\.\s*(\w+)/g)].every(match => match[1] === 'method');
 }
 
+/**
+ * A function module is paused when a module-level flag pinned `false` gates its
+ * handler with a refusal.
+ *
+ * This needs no heuristics. The flag is a `const` initialised to `false`, so
+ * `if (!FLAG)` is always taken; establishing that the branch returns is enough
+ * to know every caller is refused. Eighteen modules in this repository use the
+ * shape, and eleven were already carried `preserved_paused` — the pattern is
+ * the house style for switching a capability off at source.
+ *
+ * It is separate from `isInertFunction` because a paused module is usually NOT
+ * inert: it still imports the SDK and awaits, it simply never reaches any of
+ * it. That difference is why seven paused capabilities sat in the port queue as
+ * writable work — the inert check could not see them, and a reader going by the
+ * feature name would not either.
+ *
+ * Like the inert check, every condition errs toward calling a module live: a
+ * flag that is merely read, or a guard that does not return, is not a pause.
+ */
+export function isPausedFunction(source) {
+  if (typeof source !== 'string') return false;
+  for (const match of source.matchAll(/^const\s+([A-Z][A-Z0-9_]*)\s*=\s*false\s*;/gm)) {
+    const flag = match[1];
+    const guard = source.search(new RegExp(`if\\s*\\(\\s*!\\s*${flag}\\s*\\)`));
+    if (guard === -1) continue;
+    // Only the guard's own branch counts. A fixed window would see the
+    // handler's ordinary return further down and call a live module paused, so
+    // the block is delimited rather than guessed.
+    const rest = source.slice(source.indexOf(')', guard) + 1);
+    const open = rest.indexOf('{');
+    const statement = open === -1 || rest.slice(0, open).trim() !== ''
+      ? rest.slice(0, rest.indexOf(';') + 1) // `if (!FLAG) return ...;`
+      : (() => {
+        let depth = 0;
+        for (let index = open; index < rest.length; index += 1) {
+          if (rest[index] === '{') depth += 1;
+          else if (rest[index] === '}' && (depth -= 1) === 0) return rest.slice(open, index + 1);
+        }
+        return '';
+      })();
+    if (/\breturn\b/.test(statement)) return true;
+  }
+  return false;
+}
+
+export function discoverPausedFunctions(repository) {
+  const root = join(repository, 'base44/functions');
+  const paused = [];
+  for (const name of listDirectories(root)) {
+    let source;
+    try { source = readFileSync(join(root, name, 'entry.ts'), 'utf8'); } catch { continue; }
+    if (isPausedFunction(source)) paused.push(name);
+  }
+  return paused.sort();
+}
+
 export function discoverInertFunctions(repository) {
   const root = join(repository, 'base44/functions');
   const inert = [];
@@ -222,6 +278,7 @@ export function discoverPortBlockers(repository) {
 export function discoverEvidence(repository) {
   return {
     inertFunctions: discoverInertFunctions(repository),
+    pausedFunctions: discoverPausedFunctions(repository),
     portBlockers: discoverPortBlockers(repository),
     portedFunctions: discoverPortedFunctions(repository),
   };
@@ -270,6 +327,7 @@ export function parseManifest(raw) {
 
 export function checkCoverage(capabilities, manifest, evidence = {}) {
   const inert = new Set(Array.isArray(evidence.inertFunctions) ? evidence.inertFunctions : []);
+  const paused = new Set(Array.isArray(evidence.pausedFunctions) ? evidence.pausedFunctions : []);
   const blockers = evidence.portBlockers && typeof evidence.portBlockers === 'object' ? evidence.portBlockers : {};
   const ported = new Set(Array.isArray(evidence.portedFunctions) ? evidence.portedFunctions : []);
   const portQueue = Object.fromEntries(PORT_BLOCKERS.map(blocker => [blocker, []]));
@@ -294,6 +352,14 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
       // hub; carrying it paused or retiring it are the only honest readings.
       if (family === 'functions' && inert.has(name) && ACTIVE_DISPOSITIONS.includes(value)) {
         contradicted.push(`${family}:${name} declared ${value} but its module performs no work`);
+      }
+      // Same reading for a capability switched off at source. Carrying it as
+      // `port` claims work that cannot be written against behaviour that does
+      // not run: the handler refuses before it reaches anything worth porting.
+      // D7 already says paused domains are carried paused and ported only after
+      // their own gate passes.
+      if (family === 'functions' && paused.has(name) && ACTIVE_DISPOSITIONS.includes(value)) {
+        contradicted.push(`${family}:${name} declared ${value} but its handler is paused at source`);
       }
       // Informational, never a gate: a port that becomes possible must not fail
       // the census, and a port that is written should move a count here.
@@ -328,6 +394,7 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
     undecided: undecided.sort(),
     coverage_complete: complete,
     inert_functions: inert.size,
+    paused_functions: paused.size,
     contradicted_disposition: contradicted.sort(),
     evidence_consistent: consistent,
     retention_unspecified: retentionUnspecified.sort(),

@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 import {
   ACTIVE_DISPOSITIONS, DISPOSITIONS, FORMAT, FORMAT_VERSION, PORT_BLOCKERS, RETENTION_BASES, checkCoverage,
   classifyPortBlocker, discoverCapabilities, discoverEvidence, discoverInertFunctions, discoverIntegrations,
-  discoverPortBlockers, discoverPortedFunctions, isInertFunction, main, parseManifest,
+  discoverPausedFunctions, discoverPortBlockers, discoverPortedFunctions, isInertFunction, isPausedFunction,
+  main, parseManifest,
 } from './tools-transition-disposition.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -281,7 +282,7 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { records_schema: 68, ported_function: 1, core_integration: 11,
+  assert.deepEqual(counts, { records_schema: 62, ported_function: 1, core_integration: 9,
     pdf_rendering: 0, external_secret: 1, none: 5 });
   // Twelve of these were counted against the record store until the functions
   // were read. Every one calls a Core integration and touches no entity row, so
@@ -290,10 +291,9 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // the correction from quietly reverting.
   assert.deepEqual(report.port_blockers.core_integration, [
     'analyzeReferral', 'analyzeReferralIntake', 'extractClinicalDocument',
-    'extractPatientDataFromDocument', 'generateAdmissionNoteFromReferral', 'generateCarePlanFromReferral',
-    'generateDynamicCoverSheet', 'generateReferralTasks', 'generateUserGuidePDF', 'matchPatientWithAI',
-    'splitReferralPDF',
-  ], 'analyzeReferralPriority left this list by being written, not by being reclassified');
+    'extractPatientDataFromDocument', 'generateDynamicCoverSheet', 'generateReferralTasks',
+    'generateUserGuidePDF', 'matchPatientWithAI', 'splitReferralPDF',
+  ], 'analyzeReferralPriority left by being written; the two paused ones by being reclassified');
   assert.deepEqual(report.port_blockers.none,
     ['analyzeReferralPriority', 'generateBagTechniquePDF', 'generateSmartNoteGuide', 'generateUserManual',
       'validatePatientData'],
@@ -379,4 +379,49 @@ test('the command line refuses unknown arguments and an unavailable manifest', (
   lines.length = 0;
   assert.equal(main([], { repository: resolve(repository, 'src'), log: value => lines.push(value) }), 2);
   assert.ok(JSON.parse(lines[0]).error);
+});
+
+test('a capability switched off at source cannot be carried as portable work', () => {
+  const paused = `import { createClientFromRequest } from 'npm:@base44/sdk@0.8.31';
+const FEATURE_ENABLED = false;
+Deno.serve(async (req) => {
+  if (!FEATURE_ENABLED) {
+    return Response.json({ success: false, available: false, reason: 'feature_paused' }, { status: 409 });
+  }
+  const base44 = createClientFromRequest(req);
+  return Response.json(await base44.entities.Patient.list());
+});`;
+  assert.equal(isPausedFunction(paused), true);
+  // The flag is a const pinned false, so `if (!FLAG)` is always taken. That is
+  // why this needs no heuristic: proving the branch returns proves every caller
+  // is refused.
+  assert.equal(isPausedFunction(paused.replace('= false', '= true')), false);
+  // A guard that does not answer leaves the handler live.
+  assert.equal(isPausedFunction(paused.replace(/return Response\.json\([^;]*;/, 'console.warn("paused");')), false);
+  // A flag nothing branches on is not a pause.
+  assert.equal(isPausedFunction("const FEATURE_ENABLED = false;\nDeno.serve(() => Response.json({}));"), false);
+  assert.equal(isPausedFunction(null), false);
+
+  // Separate from the inert check on purpose: a paused module still imports and
+  // awaits, it simply never reaches any of it. Seven paused capabilities sat in
+  // the port queue as writable work because the inert check could not see them.
+  assert.equal(isInertFunction(paused), false);
+});
+
+test('every capability paused at source is carried paused rather than queued', () => {
+  const pausedNames = discoverPausedFunctions(repository);
+  const declared = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')).functions;
+  assert.ok(pausedNames.length >= 18, `expected the paused set to be substantial, saw ${pausedNames.length}`);
+  const carried = pausedNames.filter(name => ACTIVE_DISPOSITIONS.includes(declared[name]));
+  assert.deepEqual(carried, [],
+    'a paused handler declared port, broker or hub claims work that cannot be written');
+});
+
+test('the contradiction is reported rather than tolerated', () => {
+  const manifest = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8'));
+  const [victim] = discoverPausedFunctions(repository);
+  const drifted = { ...manifest, functions: { ...manifest.functions, [victim]: 'port' } };
+  const report = checkCoverage(discoverCapabilities(repository), drifted, discoverEvidence(repository));
+  assert.ok(report.contradicted_disposition.some(entry => entry.includes(victim) && entry.includes('paused at source')),
+    `${victim} declared port should be contradicted`);
 });
