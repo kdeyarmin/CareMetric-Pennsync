@@ -840,3 +840,68 @@ others. The 125 `port` entities — every clinical table — are deliberately no
 reachable through it, and a handler that needs one still needs a reviewed
 contract of its own. It also creates nothing anywhere: like D15's migration,
 applying it needs the production Supabase project.
+
+
+## D18 — The same ceiling, on the function side
+
+**Decision.** A function dispositioned `broker` is checked against the entities
+its module actually touches. All 33 fail, and all 33 move to `port`. The check
+is a gate in `tools-transition-disposition.mjs`.
+
+**Why it needed checking.** D16 applied D2's ceiling to `broker` *entities* and
+found fourteen assigned by reading names. The same disposition on a *function*
+was never checked at all — and it claims more than the entity one does. A
+`broker` entity is one a generic family may serve; a `broker` function is a
+capability that can be **retired and replaced by calls to that family**. So a
+`broker` function whose module does anything the family cannot do is not
+optimistic, it is wrong.
+
+D17 made the family concrete, which made the question answerable: it serves 31
+entities, none of them clinical, through five operations. Measuring the 33
+functions against that:
+
+- **32 reach an entity the family does not serve.** Twenty reach one D2 names
+  outright as requiring `port` — patient data, visits, memberships,
+  notifications.
+- **The worst case is `getDashboardData`**, which reads every active patient
+  and today's visits and incidents. It was dispositioned `broker`.
+- **The remaining one, `sendWelcomeEmail`, touches no entity at all.** It sends
+  mail through `Core.SendEmail`. An entity family cannot be the replacement for
+  a capability that uses no entity, so that is a contradiction too rather than
+  the one clean case.
+
+**Reading the module is the whole check, and two access forms nearly defeated
+it.** A first pass matching `entities.Name` reported six functions as staying
+inside the family. Reading those six showed the real number is zero. The misses:
+
+- **Namespace aliasing** — `const sr = base44.asServiceRole.entities`, then
+  `sr.Patient.filter(...)`. `getDashboardData` contains no occurrence of
+  `entities.Patient` while reading every active patient.
+- **Destructuring** — `const { Agency } = base44.entities`.
+
+Both are now read, and `entitiesTouched` has its own tests for each form rather
+than being exercised only through the gate. Dynamic access
+(`entities[name]`) is tracked separately and is never a pass: a computed key
+names a set nothing here can enumerate, so it cannot be shown to stay inside the
+family, and the names that *were* found do not excuse it.
+
+**Why they all land on `port`, and what that does not settle.** `port` is D2's
+requirement for anything reading patient data, referrals, visits, documents,
+memberships or notifications, which covers twenty of them outright. For the rest
+it is the conservative landing: `port` is the strictest disposition, so choosing
+it wrongly costs queue length, while choosing `broker` wrongly costs isolation.
+
+It is genuinely not the last word on all of them. Several — `userManagement`,
+`resendInvitation`, `offboardUser`, `checkExpiredInvitations` — are membership
+lifecycle, and the authority store already owns memberships and exposes an RPC
+for revoking one. Those may belong to it as `hub` rather than being ported here.
+Two more, `fetchMedicareGuideline` and `listPolicyLibrary`, read what look like
+reference tables; if `MedicareGuideline` and `PolicyLibrary` pass D16's ceiling
+they could earn `broker` back, entity first. Both are reviewed changes the gate
+now permits and records, rather than assumptions it hides.
+
+**What it costs.** The port queue grows from 78 to 111 functions:
+`records_schema` 62 → 94 and `core_integration` 0 → 1. That is not new work
+appearing — it is work that was already there, counted under a disposition that
+said someone else would handle it generically. A queue that is longer and true
+is worth more than one that is shorter because it was measured by name.

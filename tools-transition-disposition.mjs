@@ -185,6 +185,60 @@ export function discoverPausedFunctions(repository) {
   return paused.sort();
 }
 
+/**
+ * The entities a function's module actually touches.
+ *
+ * D16 checked the `broker` disposition on ENTITIES against their schemas and
+ * found fourteen assigned by reading names. The same disposition on a FUNCTION
+ * was never checked at all, and it claims more: that the capability can be
+ * retired and served by the generic family instead. A function doing anything
+ * the family cannot do is therefore mis-dispositioned, and only its module can
+ * say which entities it reaches.
+ *
+ * Three access forms, because two of them defeated the obvious regex. A first
+ * pass matching `entities.Name` reported six functions as touching only
+ * brokered entities; reading them showed the number is zero. `getDashboardData`
+ * aliases the NAMESPACE — `const sr = base44.asServiceRole.entities` — and then
+ * reads `sr.Patient` and `sr.Visit`, so a scan for `entities.Patient` sees
+ * nothing while the function reads every active patient. Destructuring
+ * (`const { Agency } = base44.entities`) hides the same way.
+ *
+ * `dynamic` is separate from the name list and is never a pass: a module that
+ * indexes the namespace with a computed key touches a set nothing here can
+ * enumerate, so it cannot be shown to stay inside the family.
+ */
+export function entitiesTouched(source, known = null) {
+  if (typeof source !== 'string') return { names: [], dynamic: false };
+  const names = new Set();
+  let dynamic = /entities\s*\[/.test(source);
+  for (const match of source.matchAll(/entities\.([A-Z][A-Za-z0-9_]*)/g)) names.add(match[1]);
+  for (const match of source.matchAll(/\{([^{}]*)\}\s*=\s*base44(?:\.asServiceRole)?\.entities/g)) {
+    for (const part of match[1].split(',')) {
+      const name = part.split(':')[0].trim();
+      if (/^[A-Z][A-Za-z0-9_]*$/.test(name)) names.add(name);
+    }
+  }
+  for (const match of source.matchAll(
+    /(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*base44(?:\.asServiceRole)?\.entities\s*[;\n]/g)) {
+    const alias = match[1].replace(/[$]/g, '\\$&');
+    for (const use of source.matchAll(new RegExp(`\\b${alias}\\.([A-Z][A-Za-z0-9_]*)`, 'g'))) names.add(use[1]);
+    if (new RegExp(`\\b${alias}\\s*\\[`).test(source)) dynamic = true;
+  }
+  const list = [...names].filter(name => !known || known.has(name)).sort();
+  return { names: list, dynamic };
+}
+
+export function discoverEntityReach(repository, known = null) {
+  const root = join(repository, 'base44/functions');
+  const reach = {};
+  for (const name of listDirectories(root)) {
+    let source;
+    try { source = readFileSync(join(root, name, 'entry.ts'), 'utf8'); } catch { continue; }
+    reach[name] = entitiesTouched(source, known);
+  }
+  return reach;
+}
+
 export function discoverInertFunctions(repository) {
   const root = join(repository, 'base44/functions');
   const inert = [];
@@ -293,6 +347,7 @@ export function discoverEvidence(repository) {
     pausedFunctions: discoverPausedFunctions(repository),
     portBlockers: discoverPortBlockers(repository),
     portedFunctions: discoverPortedFunctions(repository),
+    entityReach: discoverEntityReach(repository),
   };
 }
 
@@ -357,6 +412,9 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
   const paused = new Set(Array.isArray(evidence.pausedFunctions) ? evidence.pausedFunctions : []);
   const blockers = evidence.portBlockers && typeof evidence.portBlockers === 'object' ? evidence.portBlockers : {};
   const ported = new Set(Array.isArray(evidence.portedFunctions) ? evidence.portedFunctions : []);
+  const reach = evidence.entityReach && typeof evidence.entityReach === 'object' ? evidence.entityReach : {};
+  const brokeredEntities = new Set(Object.keys(manifest.entities || {})
+    .filter(entity => manifest.entities[entity] === 'broker'));
   const portQueue = Object.fromEntries(PORT_BLOCKERS.map(blocker => [blocker, []]));
   const families = {};
   const missing = [];
@@ -387,6 +445,33 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
       // their own gate passes.
       if (family === 'functions' && paused.has(name) && ACTIVE_DISPOSITIONS.includes(value)) {
         contradicted.push(`${family}:${name} declared ${value} but its handler is paused at source`);
+      }
+      // D2's ceiling, on the function side. `broker` claims the capability can
+      // be retired and served by the one generic family, so a module reaching
+      // an entity that family does not serve is claiming something untrue —
+      // and the family deliberately serves no clinical table. Measured over
+      // all 33: `getDashboardData` reads every active patient and today's
+      // visits through an aliased namespace while declared `broker`.
+      // Only where the module was actually read. A module that could not be
+      // opened is skipped by the inert and paused checks too, and asserting
+      // "touches no entity" about a file nobody read would be a finding about
+      // the reader.
+      if (family === 'functions' && value === 'broker' && reach[name]) {
+        const touched = reach[name];
+        if (touched.dynamic) {
+          contradicted.push(`${family}:${name} declared broker but indexes the entity namespace dynamically`);
+        } else if (!touched.names.length) {
+          // The family serves entities. A capability that touches none does
+          // something else entirely — `sendWelcomeEmail` reaches
+          // `Core.SendEmail` — and no entity family can be the thing that
+          // replaces it.
+          contradicted.push(`${family}:${name} declared broker but touches no entity the family could serve`);
+        }
+        for (const entity of touched.names) {
+          if (!brokeredEntities.has(entity)) {
+            contradicted.push(`${family}:${name} declared broker but reaches ${entity}, which the family does not serve`);
+          }
+        }
       }
       // Informational, never a gate: a port that becomes possible must not fail
       // the census, and a port that is written should move a count here.

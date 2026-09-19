@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import {
   ACTIVE_DISPOSITIONS, DISPOSITIONS, FORMAT, FORMAT_VERSION, PORT_BLOCKERS, RETENTION_BASES, checkCoverage,
   classifyPortBlocker, discoverCapabilities, discoverEvidence, discoverInertFunctions, discoverIntegrations,
-  discoverPausedFunctions, discoverPortBlockers, discoverPortedFunctions, isInertFunction, isPausedFunction,
-  main, parseManifest,
+  discoverPausedFunctions, discoverPortBlockers, discoverPortedFunctions, entitiesTouched, isInertFunction,
+  isPausedFunction, main, parseManifest,
 } from './tools-transition-disposition.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -166,6 +166,75 @@ test('an inert function declared active is reported and fails the gate', () => {
     manifest({ functions: {}, entities: { alpha: 'port' } }), evidence).contradicted_disposition, []);
 });
 
+test('a broker function is held to what the family can actually serve', () => {
+  const reach = name => ({ entityReach: { alpha: name } });
+  const entities = { entities: { Config: 'broker', Patient: 'port' } };
+  const declare = extra => manifest({ functions: { alpha: 'broker' }, ...entities, ...extra });
+
+  // Inside the family: every entity it touches is one the family serves.
+  assert.deepEqual(checkCoverage(capabilities(), declare(),
+    reach({ names: ['Config'], dynamic: false })).contradicted_disposition, []);
+
+  // Outside it. This is the real shape of the finding: `getDashboardData` was
+  // declared `broker` while reading every active patient.
+  const outside = checkCoverage(capabilities(), declare(), reach({ names: ['Config', 'Patient'], dynamic: false }));
+  assert.deepEqual(outside.contradicted_disposition,
+    ['functions:alpha declared broker but reaches Patient, which the family does not serve']);
+  assert.equal(outside.census_ready, false);
+
+  // A computed key names a set nothing here can enumerate, so it can never be
+  // shown to stay inside the family — and it is not excused by the names that
+  // WERE found.
+  assert.match(checkCoverage(capabilities(), declare(),
+    reach({ names: ['Config'], dynamic: true })).contradicted_disposition[0], /indexes the entity namespace dynamically/);
+
+  // The family serves entities. Touching none means something else is the
+  // replacement, whatever it is.
+  assert.deepEqual(checkCoverage(capabilities(), declare(), reach({ names: [], dynamic: false })).contradicted_disposition,
+    ['functions:alpha declared broker but touches no entity the family could serve']);
+
+  // Every other disposition is free of this: `port` is a reviewed contract per
+  // capability, which is exactly what a function reaching a clinical table needs.
+  for (const value of ['port', 'hub', 'preserved_paused', 'retire']) {
+    assert.deepEqual(checkCoverage(capabilities(), manifest({ functions: { alpha: value }, ...entities }),
+      reach({ names: ['Patient'], dynamic: false })).contradicted_disposition, []);
+  }
+  // A module nobody could read is skipped, as it is by the inert and paused checks.
+  assert.deepEqual(checkCoverage(capabilities(), declare(), { entityReach: {} }).contradicted_disposition, []);
+});
+
+test('the entity reach of a module is read through every access form it uses', () => {
+  const known = new Set(['Patient', 'Visit', 'Agency', 'Config']);
+  // The plain form, which a first version of this found on its own.
+  assert.deepEqual(entitiesTouched('await base44.entities.Patient.filter({})', known),
+    { names: ['Patient'], dynamic: false });
+  assert.deepEqual(entitiesTouched('base44.asServiceRole.entities.Visit.list()', known),
+    { names: ['Visit'], dynamic: false });
+  // Destructuring, which it did not. Aliasing a destructured name too.
+  assert.deepEqual(entitiesTouched('const { Patient, Agency: A } = base44.entities;', known),
+    { names: ['Agency', 'Patient'], dynamic: false });
+  // Aliasing the NAMESPACE, which is how `getDashboardData` reads every active
+  // patient while containing no occurrence of `entities.Patient`. A scan that
+  // misses this reported six functions as staying inside the family when the
+  // real number was zero.
+  assert.deepEqual(entitiesTouched('const sr = base44.asServiceRole.entities;\nawait sr.Patient.filter({});\nsr.Visit.list();', known),
+    { names: ['Patient', 'Visit'], dynamic: false });
+  assert.deepEqual(entitiesTouched('const e = base44.entities\ne.Config.list()', known),
+    { names: ['Config'], dynamic: false });
+  // Dynamic access, through either the namespace or an alias of it.
+  assert.equal(entitiesTouched('base44.entities[name].filter({})', known).dynamic, true);
+  assert.equal(entitiesTouched('const sr = base44.entities;\nsr[name].list()', known).dynamic, true);
+  // Names that are not entities do not become findings, and a module that
+  // touches nothing says so rather than throwing.
+  assert.deepEqual(entitiesTouched('const sr = base44.entities;\nsr.Promise.resolve()', known),
+    { names: [], dynamic: false });
+  assert.deepEqual(entitiesTouched('await base44.integrations.Core.SendEmail({})', known),
+    { names: [], dynamic: false });
+  for (const value of [null, undefined, 42, {}]) {
+    assert.deepEqual(entitiesTouched(value, known), { names: [], dynamic: false });
+  }
+});
+
 test('a contradiction blocks the census even when owners accepted', () => {
   const report = checkCoverage(capabilities(), manifest({ review_state: 'accepted' }), { inertFunctions: ['alpha'] });
   assert.equal(report.coverage_complete, true);
@@ -290,17 +359,21 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { records_schema: 62, files: 4, ported_function: 1, core_integration: 0,
+  assert.deepEqual(counts, { records_schema: 94, files: 4, ported_function: 1, core_integration: 1,
     pdf_rendering: 0, external_secret: 1, none: 10 });
   // Twelve functions were counted against the record store until they were
   // read. Every one calls a Core integration and touches no entity row, so what
   // they waited on was the integration runtime's brokered path — already
-  // deployed, and paused — not a store that does not exist. The bucket is empty
-  // now, and the assertion stays so it cannot silently refill: five left by
-  // being written, two by being reclassified paused, four by being file-bound,
-  // and the last — `generateUserGuidePDF` — by being ported once the service
-  // had both a brokered integration client and a PDF library.
-  assert.deepEqual(report.port_blockers.core_integration, []);
+  // deployed, and paused — not a store that does not exist. All twelve left:
+  // five by being written, two by being reclassified paused, four by being
+  // file-bound, and `generateUserGuidePDF` by being ported.
+  //
+  // The one here now arrived from the other direction. `sendWelcomeEmail` was
+  // dispositioned `broker` and touches no entity at all — it sends mail through
+  // `Core.SendEmail`, which no entity family can be the replacement for. The
+  // function-side ceiling caught that, and `SendEmail` is not in the runtime's
+  // brokered set, so it is a real blocker rather than a bookkeeping artefact.
+  assert.deepEqual(report.port_blockers.core_integration, ['sendWelcomeEmail']);
   // Named, because porting one of these verbatim would carry Base44's storage
   // host into the service, and the `cmfile:` handles that replace those URLs do
   // not exist yet. They wait on the file layer, not on the runtime.
