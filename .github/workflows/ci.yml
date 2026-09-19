@@ -85,6 +85,15 @@ jobs:
       - name: Check Base44 function syntax
         run: pnpm run check:backend-transpile
 
+      # BLOCKING gates for the Base44 exit. These also run inside `pnpm test`;
+      # naming them separately makes a migration regression legible instead of
+      # surfacing as one failed assertion among thousands.
+      - name: Check Base44 exit gates
+        run: |
+          pnpm run check:transition-disposition
+          pnpm run check:base44-surface
+          pnpm run check:file-references
+
       - name: Typecheck informational baseline
         run: pnpm run typecheck
         continue-on-error: true

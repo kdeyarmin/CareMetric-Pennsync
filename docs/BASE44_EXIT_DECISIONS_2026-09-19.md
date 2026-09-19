@@ -21,8 +21,10 @@ below is encoded in a way that makes reversal expensive.
 ## D1 — Ported business logic runs in a new Railway service
 
 `services/pennsync-api`, Node 24, deployed from this repository with the same
-Docker, admission-control and no-store error posture as
-`services/integration-runtime`.
+Docker and no-store error posture as `services/integration-runtime`, and with
+bounded request bodies and deadlines. It does not yet carry that runtime's
+per-token admission pools; those exist there to protect paid provider quota,
+and this service reaches no provider.
 
 Rationale: the 282 handlers are TypeScript against the Base44 SDK, the esbuild
 transpile pipeline already exists, and the team already operates Railway. Keeping
