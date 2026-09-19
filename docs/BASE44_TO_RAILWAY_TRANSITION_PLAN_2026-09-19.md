@@ -363,7 +363,7 @@ blocker, read from the module:
 | `records_schema` | 80 | The ported record store, plus a tenant predicate for every entity each one touches — which is why the 87 unresolved tenant paths below are this phase's real critical path |
 | `ported_function` | 1 | `extractReferralDataForSmartNote` waits on the referral broker it calls |
 | `pdf_rendering` | 0 | Emptied by D12. All four document functions are written |
-| `external_secret` | 1 | `transcribeAndGenerateSOAPNote` calls OpenAI and Anthropic with environment keys; that belongs to the integration runtime's brokered path, not to a handler |
+| `external_secret` | 1 | `transcribeAndGenerateSOAPNote` takes recorded patient audio, transcribes it with OpenAI and reasons over it with Anthropic, using keys from the environment. It belongs to the integration runtime's brokered path rather than to a handler — and that path does not yet reach it: the runtime brokers a closed set of seven operations (`InvokeLLM`, `ExtractDataFromUploadedFile`, `GenerateImage`, `SendEmail`, `UploadFile`, `UploadPrivateFile`, `CreateFileSignedUrl`), enforced by a CHECK on `cm_integration_jobs.operation`, and audio transcription is not among them. Carrying it means a new brokered operation with the same reservation, daily quota, encrypted result and audit the others have, for a payload that is PHI. That is a capability to design, not a key to move |
 | `none` | 4 | `validatePatientData` and the three documents, all written |
 
 Read that as the schedule: nothing in the port queue starts before the record
