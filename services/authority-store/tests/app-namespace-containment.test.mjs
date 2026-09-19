@@ -231,6 +231,38 @@ test('the entry gate follows the same pin, so the two layers cannot drift', asyn
     /PENNSYNC_SESSION_REQUIRED/);
 });
 
+test('replacing the entry gate did not widen who may call it', async () => {
+  // `20260919090000` re-creates `actor()` with CREATE OR REPLACE. That preserves
+  // the function's ACL and its SECURITY DEFINER bit -- but nothing checked it,
+  // and a replacement that dropped either would be invisible: the tests would
+  // still pass because they drive it as the owner. A lost definer bit breaks
+  // every read; a widened grant lets `authenticated` call the gate directly,
+  // outside the public wrappers that are the reviewed surface.
+  const gate = (await staging.query(`select p.prosecdef,
+      pg_catalog.array_to_string(p.proconfig, ',') as config
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'pennsync_private' and p.proname = 'actor'`)).rows;
+  assert.equal(gate.length, 1);
+  assert.equal(gate[0].prosecdef, true, 'actor() must stay SECURITY DEFINER');
+  assert.equal(gate[0].config, 'search_path=""', 'actor() must keep an empty search_path');
+  for (const role of ['authenticated', 'anon', 'service_role']) {
+    assert.equal((await staging.query(
+      `select has_function_privilege($1,'pennsync_private.actor(text,boolean)','EXECUTE') as granted`,
+      [role])).rows[0].granted, false, `${role} must not be able to call actor() directly`);
+  }
+
+  // The pin's own functions carry the grants they were given and no more.
+  // `app_admitted` and `deployment_app_id` are reachable by `authenticated`
+  // only because a domain coercion is evaluated as the current user;
+  // `deployment_label` is read solely by the definer and stays revoked.
+  for (const [name, granted] of [['app_admitted(text)', true], ['deployment_app_id()', true],
+    ['deployment_label()', false]]) {
+    assert.equal((await staging.query(
+      `select has_function_privilege('authenticated',$1,'EXECUTE') as granted`,
+      [`pennsync_private.${name}`])).rows[0].granted, granted, `${name} grant changed`);
+  }
+});
+
 test('the RPC surface stays staging-only, because its responses still say so', async () => {
   // Admitting production for storage did not port this surface. Every response
   // it builds asserts `staging: true` and `synthetic: true`, so serving a
