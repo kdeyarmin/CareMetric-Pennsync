@@ -1,155 +1,30 @@
-// Documents ported out of Base44, as pure builders over a jsPDF-shaped object.
+// Documents ported out of Base44.
 //
-// Each builder issues exactly the call sequence its Base44 original issued, in
-// the same order, so a migrated caller receives the same document. They take the
-// drawing surface rather than constructing one: the parity test drives them with
-// a recording stub, and `handlers.mjs` drives them with a real jsPDF.
+// Each builder is pure and takes a jsPDF-shaped object rather than constructing
+// one, so the parity test can drive it with a recording surface and
+// `handlers.mjs` can drive it with a real jsPDF. A rendered PDF cannot be
+// compared byte for byte -- jsPDF stamps a creation time and a document id, so
+// two runs of the same code differ -- so parity is proved on the drawing calls:
+// same calls, same order, same arguments means the same page.
 //
-// Two things the originals did are deliberately not carried:
+// Two things the originals did are deliberately not carried, where they did
+// them:
 //
-// - **The logo is supplied, never fetched.** The originals fetched a PNG from
-//   Base44's own storage bucket on every request, which would have carried a
-//   Base44 dependency into the service the exit exists to remove — and a
-//   third-party fetch into a request path that otherwise makes none. The logo is
-//   now a configured data URL. When there is none, the builder takes the branch
-//   the original already took when that fetch failed, so the fallback is the
-//   original's own fallback rather than a new one.
-// - **The date is supplied.** The originals called `new Date()` inside the
-//   builder, which makes the document unreproducible and its parity untestable.
-//   The caller passes the day.
+// - **A logo is supplied, never fetched.** `generateBagTechniquePDF` fetched a
+//   PNG from Base44's own storage bucket on every request, which would have
+//   kept a Base44 dependency -- and a third-party fetch -- in a service that has
+//   neither. It is now a configured data URL, and with none set the document
+//   takes the branch the original already took when that fetch failed.
+// - **A date is supplied.** `generateBagTechniquePDF` and
+//   `generateSmartNoteGuide` called `new Date()` inside the builder, so the same
+//   request produced a different document either side of midnight and its
+//   parity could not be tested. Those builders refuse to invent one.
+//
+// `generateUserManual` did neither, so it ports verbatim.
 
-/** Matches the original's `new Date().toLocaleDateString()` for the footer. */
+export { BAG_TECHNIQUE_FILENAME, buildBagTechniqueChecklist } from './document-bag-technique.mjs';
+export { SMART_NOTE_GUIDE_FILENAME, buildSmartNoteGuide } from './document-smart-note-guide.mjs';
+export { USER_MANUAL_FILENAME, buildUserManual } from './document-user-manual.mjs';
+
+/** Matches the originals' `new Date().toLocaleDateString()` for a footer. */
 export const documentDate = (date = new Date()) => date.toLocaleDateString();
-
-/**
- * Bag Technique Checklist, ported from base44/functions/generateBagTechniquePDF.
- *
- * The checklist text is clinical content used for state survey preparation and
- * is reproduced verbatim; changing any line here changes what a surveyor reads.
- */
-export function buildBagTechniqueChecklist(doc, { logoDataUrl = null, generatedOn } = {}) {
-  if (typeof generatedOn !== 'string' || !generatedOn) throw new TypeError('generatedOn is required');
-  let y = 20;
-
-  doc.setFillColor(79, 70, 229); // Indigo
-  doc.rect(0, 0, 210, 35, 'F');
-  // The original added the image here when its fetch succeeded, and skipped
-  // straight to the title when it did not.
-  if (logoDataUrl) doc.addImage(logoDataUrl, 'PNG', 15, 8, 20, 20);
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(24);
-  doc.setFont(undefined, 'bold');
-  doc.text('Bag Technique Checklist', 105, 18, { align: 'center' });
-  doc.setFontSize(11);
-  doc.setFont(undefined, 'normal');
-  doc.text('State Survey Preparation - Infection Control Procedure', 105, 27, { align: 'center' });
-
-  doc.setTextColor(0, 0, 0);
-  y = 45;
-
-  const drawSection = (title, items, color) => {
-    doc.setFillColor(...color);
-    doc.rect(15, y - 5, 180, 10, 'F');
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(12);
-    doc.setFont(undefined, 'bold');
-    doc.text(title, 20, y + 1);
-    y += 10;
-
-    const startY = y;
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(10);
-    doc.setFont(undefined, 'normal');
-
-    items.forEach((item) => {
-      doc.setLineWidth(0.5);
-      doc.rect(20, y - 3, 4, 4);
-      const lines = doc.splitTextToSize(item, 160);
-      doc.text(lines, 27, y);
-      y += lines.length * 5;
-    });
-
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.5);
-    doc.rect(15, startY - 5, 180, y - startY + 5);
-    y += 8;
-  };
-
-  drawSection('Before You Begin', [
-    'Review the plan of care and provider\'s orders',
-    'Introduce yourself and ask patient how they\'d like to be addressed',
-    'Confirm patient understanding of procedure and gain informed consent',
-    'Locate a hard surface near patient (table) and trash receptacle',
-    'Follow organization\'s infection control policies',
-  ], [139, 92, 246]); // Purple
-
-  drawSection('Step 1: Prepare the Bag', [
-    'Perform hand hygiene',
-    'Remove cleansing wipes from outside pocket',
-    'Clean the selected hard surface and let it dry',
-    'Remove clean barrier from outside pocket and lay on dry surface',
-    'Place bag on top of barrier',
-    'Perform hand hygiene and open the bag',
-    'Place down two barriers (clean area and dirty area)',
-    'Obtain all necessary supplies and place on clean barrier',
-    'Close the bag',
-  ], [59, 130, 246]); // Blue
-
-  if (y > 220) { doc.addPage(); y = 20; }
-
-  drawSection('Step 2: Perform Patient Care', [
-    'Perform hand hygiene and don gloves if indicated',
-    'Perform patient care, placing used equipment on dirty barrier',
-    'Dispose of waste in trash according to organizational policies',
-    'If item forgotten: perform hand hygiene before retrieving from bag',
-    'After care completion: discard all remaining disposable supplies',
-    'Perform hand hygiene',
-  ], [16, 185, 129]); // Green
-
-  if (y > 200) { doc.addPage(); y = 20; }
-
-  drawSection('Step 3: Clean Reusable Equipment', [
-    'Don clean gloves',
-    'Use sanitizing wipes/disinfectant per organizational policies',
-    'Clean all equipment used or removed from clean barrier',
-    'Follow manufacturer\'s contact time for disinfection',
-    'Place cleaned equipment back on clean barrier to dry',
-  ], [249, 115, 22]); // Orange
-
-  if (y > 220) { doc.addPage(); y = 20; }
-
-  drawSection('Step 4: Return Equipment to Bag', [
-    'Doff used gloves using Aseptic Non Touch Technique',
-    'Dispose of gloves in trash',
-    'Perform hand hygiene',
-    'Return cleaned items to the bag',
-    'Close the bag',
-    'Discard the barriers into the trash',
-    'Perform hand hygiene',
-  ], [99, 102, 241]); // Indigo
-
-  if (y > 220) { doc.addPage(); y = 20; }
-
-  drawSection('Step 5: Complete Procedure and Clean Up', [
-    'Assess patient for tolerance of performed treatments',
-    'Confirm understanding with teach-back as appropriate',
-    'Document the procedure',
-    'Follow up with provider on noted abnormalities as indicated',
-  ], [20, 184, 166]); // Teal
-
-  const pageCount = doc.getNumberOfPages();
-  for (let i = 1; i <= pageCount; i += 1) {
-    doc.setPage(i);
-    doc.setFillColor(245, 245, 245);
-    doc.rect(0, 285, 210, 12, 'F');
-    doc.setTextColor(100, 100, 100);
-    doc.setFontSize(8);
-    doc.setFont(undefined, 'normal');
-    doc.text('PennSync - Bag Technique Checklist', 20, 291);
-    doc.text(`Generated: ${generatedOn}`, 105, 291, { align: 'center' });
-    doc.text(`Page ${i} of ${pageCount}`, 190, 291, { align: 'right' });
-  }
-  return doc;
-}
-
-export const BAG_TECHNIQUE_FILENAME = 'Bag_Technique_Checklist.pdf';

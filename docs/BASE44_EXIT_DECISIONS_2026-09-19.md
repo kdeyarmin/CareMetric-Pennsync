@@ -427,9 +427,12 @@ binary, and validates the shape it is handed rather than trusting it — a wrong
 content type, a non-buffer body, or a filename carrying a path or a quote is
 refused as an unavailable response instead of reaching a header.
 
-Scope: `generateBagTechniquePDF` is written under this decision.
-`generateSmartNoteGuide` and `generateUserManual` follow the same pattern and
-are now transcription rather than decision. `generateBagTechniquePDF` is
+Scope: all three rendered documents — `generateBagTechniquePDF`,
+`generateSmartNoteGuide` and `generateUserManual` — are written under this
+decision, and the `pdf_rendering` bucket of the port queue is empty. Only the
+checklist fetched a logo, and only the checklist and the guide read a clock; the
+manual ported verbatim. Each answers the way its original answered, which for
+the guide means base64 inside the envelope rather than bytes. All three are
 implemented and unreleased, like every other handler.
 
 ## How these decisions are enforced

@@ -271,13 +271,14 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { records_schema: 80, ported_function: 1, pdf_rendering: 2, external_secret: 1, none: 2 });
-  assert.deepEqual(report.port_blockers.none, ['generateBagTechniquePDF', 'validatePatientData'],
-    'the set of portable functions changed');
+  assert.deepEqual(counts, { records_schema: 80, ported_function: 1, pdf_rendering: 0, external_secret: 1, none: 4 });
+  assert.deepEqual(report.port_blockers.none,
+    ['generateBagTechniquePDF', 'generateSmartNoteGuide', 'generateUserManual', 'validatePatientData'],
+    'the set of written ports changed');
   assert.deepEqual(report.port_blockers.ported_function, ['extractReferralDataForSmartNote']);
-  // `generateBagTechniquePDF` left this bucket when the service adopted a PDF
-  // library and a call-sequence parity test; the other two follow the same way.
-  assert.deepEqual(report.port_blockers.pdf_rendering, ['generateSmartNoteGuide', 'generateUserManual']);
+  // All three emptied this bucket once the service adopted a PDF library and a
+  // call-sequence parity test; nothing is waiting on a rendering decision now.
+  assert.deepEqual(report.port_blockers.pdf_rendering, []);
   assert.deepEqual(report.port_blockers.external_secret, ['transcribeAndGenerateSOAPNote']);
   // The sum is every function dispositioned `port`, so nothing falls out of the
   // queue by being unclassifiable.

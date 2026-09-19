@@ -1,0 +1,445 @@
+// Smart Note Assistant guide, ported from
+// base44/functions/generateSmartNoteGuide/entry.ts.
+//
+// The layout is the original's, call for call; `pennsyncApiDocumentParity`
+// runs both against one recording surface and compares. The only change is the
+// date: the original called `new Date()` here, which made the same request
+// produce a different document either side of midnight and its parity
+// untestable, so the caller supplies the day.
+//
+// The guide text is user-facing documentation for clinicians. Editing a line
+// here changes what they read.
+
+export const SMART_NOTE_GUIDE_FILENAME = 'Smart_Note_Assistant_User_Guide.pdf';
+
+export function buildSmartNoteGuide(doc, { generatedOn } = {}) {
+  if (typeof generatedOn !== 'string' || !generatedOn) throw new TypeError('generatedOn is required');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const margin = 20;
+  const contentWidth = pageWidth - 2 * margin;
+  let yPos = margin;
+
+  // Helper to add new page when needed
+  const checkNewPage = (requiredSpace = 20) => {
+    if (yPos + requiredSpace > pageHeight - margin) {
+      doc.addPage();
+      return margin;
+    }
+    return yPos;
+  };
+
+  // Header
+  doc.setFillColor(66, 133, 244);
+  doc.rect(0, 0, pageWidth, 45, 'F');
+
+  doc.setFontSize(24);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(255, 255, 255);
+  doc.text('Smart Note Assistant', pageWidth / 2, 20, { align: 'center' });
+
+  doc.setFontSize(12);
+  doc.setFont('helvetica', 'normal');
+  doc.text('Complete User Guide', pageWidth / 2, 32, { align: 'center' });
+
+  yPos = 55;
+
+  // Introduction
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(66, 133, 244);
+  doc.text('Welcome to Smart Note Assistant', margin, yPos);
+  yPos += 10;
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(60, 60, 60);
+  const introLines = doc.splitTextToSize(
+    'The Smart Note Assistant helps you create Medicare-compliant clinical documentation quickly and efficiently. This guide will walk you through each step of the process.',
+    contentWidth
+  );
+  introLines.forEach(line => {
+    yPos = checkNewPage();
+    doc.text(line, margin, yPos);
+    yPos += 6;
+  });
+  yPos += 5;
+
+  // Step 1
+  yPos = checkNewPage(40);
+  doc.setFillColor(240, 248, 255);
+  doc.rect(margin, yPos - 3, contentWidth, 12, 'F');
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(30, 58, 138);
+  doc.text('Step 1 (Write): Patient & Visit Type', margin + 5, yPos + 5);
+  yPos += 15;
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(60, 60, 60);
+
+  const step1Items = [
+    { label: 'Patient Selection', desc: 'Search and select the patient. Their diagnosis, medication count and fall risk appear beneath the picker. You can start writing before choosing one, but a patient is required before the note can be saved to a chart.' },
+    { label: 'Visit Type', desc: 'Choose from Admission, Routine Visit, Recertification, Discharge, or PRN Visit. This decides which elements Medicare requires for the visit.' },
+    { label: 'Visit Date', desc: 'Set automatically to today — there is nothing to enter.' }
+  ];
+
+  step1Items.forEach(item => {
+    yPos = checkNewPage(15);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`• ${item.label}:`, margin + 3, yPos);
+    yPos += 6;
+    doc.setFont('helvetica', 'normal');
+    const descLines = doc.splitTextToSize(item.desc, contentWidth - 10);
+    descLines.forEach(line => {
+      doc.text(line, margin + 8, yPos);
+      yPos += 5;
+    });
+    yPos += 2;
+  });
+  yPos += 5;
+
+  // Step 2
+  yPos = checkNewPage(40);
+  doc.setFillColor(240, 253, 244);
+  doc.rect(margin, yPos - 3, contentWidth, 12, 'F');
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(22, 101, 52);
+  doc.text('Step 1 (Write): Vital Signs', margin + 5, yPos + 5);
+  yPos += 15;
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(60, 60, 60);
+
+  const step2Items = [
+    { label: 'Blood Pressure', desc: 'Enter as systolic/diastolic (e.g., 120/80)' },
+    { label: 'Heart Rate', desc: 'Enter beats per minute' },
+    { label: 'Temperature', desc: 'Enter in Fahrenheit' },
+    { label: 'Oxygen Saturation', desc: 'Enter percentage. Specify if on room air or supplemental oxygen.' },
+    { label: 'Pain Level', desc: 'Rate from 0-10' },
+    { label: 'Weight', desc: 'Enter in pounds (optional)' }
+  ];
+
+  step2Items.forEach(item => {
+    yPos = checkNewPage(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`• ${item.label}:`, margin + 3, yPos);
+    yPos += 6;
+    doc.setFont('helvetica', 'normal');
+    const descLines = doc.splitTextToSize(item.desc, contentWidth - 10);
+    descLines.forEach(line => {
+      doc.text(line, margin + 8, yPos);
+      yPos += 5;
+    });
+    yPos += 1;
+  });
+  yPos += 5;
+
+  // Step 3
+  yPos = checkNewPage(40);
+  doc.setFillColor(250, 245, 255);
+  doc.rect(margin, yPos - 3, contentWidth, 12, 'F');
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(126, 34, 206);
+  doc.text('Step 1 (Write): Your Rough Notes', margin + 5, yPos + 5);
+  yPos += 15;
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(60, 60, 60);
+
+  const step3Lines = doc.splitTextToSize(
+    'The note editor sits directly under the patient card. Type or dictate your observations; vital signs, templates and the compliance checklists are in collapsible sections below it. Type / or a .shortcut to insert a saved quick phrase. If you start from a template, fill in or delete every blank it leaves behind - the readiness bar counts them and "Fill next blank" walks you through them. Review is blocked until they are gone, because an unfilled blank would otherwise be written into the note you paste into the EMR.',
+    contentWidth
+  );
+  step3Lines.forEach(line => {
+    yPos = checkNewPage();
+    doc.text(line, margin + 3, yPos);
+    yPos += 6;
+  });
+  yPos += 5;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Voice Dictation:', margin + 3, yPos);
+  yPos += 6;
+  doc.setFont('helvetica', 'normal');
+  const voiceLines = doc.splitTextToSize(
+    'Click "Start Dictating" to use speech-to-text. The system will transcribe your speech in real-time. Speak naturally and the AI will format your notes appropriately.',
+    contentWidth - 6
+  );
+  voiceLines.forEach(line => {
+    doc.text(line, margin + 6, yPos);
+    yPos += 5;
+  });
+  yPos += 5;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('Smart Auto-Complete:', margin + 3, yPos);
+  yPos += 6;
+  doc.setFont('helvetica', 'normal');
+  const autoLines = doc.splitTextToSize(
+    'As you type, the system suggests common clinical phrases based on your diagnosis and context. Press Tab or Enter to accept suggestions.',
+    contentWidth - 6
+  );
+  autoLines.forEach(line => {
+    doc.text(line, margin + 6, yPos);
+    yPos += 5;
+  });
+  yPos += 5;
+
+  // AI Compliance Checks
+  yPos = checkNewPage(40);
+  doc.setFillColor(254, 243, 199);
+  doc.rect(margin, yPos - 3, contentWidth, 12, 'F');
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(180, 83, 9);
+  doc.text('AI Compliance & Quality Suggestions', margin + 5, yPos + 5);
+  yPos += 15;
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(60, 60, 60);
+  const aiLines = doc.splitTextToSize(
+    'Once your note reaches 100 characters, the AI will automatically analyze it and provide real-time suggestions in two categories:',
+    contentWidth
+  );
+  aiLines.forEach(line => {
+    yPos = checkNewPage();
+    doc.text(line, margin + 3, yPos);
+    yPos += 6;
+  });
+  yPos += 5;
+
+  const aiChecks = [
+    {
+      title: 'Compliance Checks',
+      items: [
+        'Homebound Status: Verifies documentation of why leaving home is taxing',
+        'Skilled Need: Ensures RN-level skills are clearly justified',
+        'Patient Response: Checks for documented patient understanding/teach-back',
+        'Functional Assessment: Validates ADL/mobility documentation',
+        'Safety/Risk Factors: Identifies documented fall risks and safety measures'
+      ]
+    },
+    {
+      title: 'Quality Improvements',
+      items: [
+        'Vague Language: Flags phrases like "doing well" or "stable" that need specificity',
+        'Missing Measurements: Identifies where objective data should be added',
+        'Grammar & Clarity: Suggests improvements for professional documentation',
+        'Clinical Detail: Recommends adding condition-specific details'
+      ]
+    }
+  ];
+
+  aiChecks.forEach(category => {
+    yPos = checkNewPage(30);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(30, 58, 138);
+    doc.text(category.title, margin + 3, yPos);
+    yPos += 7;
+
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(60, 60, 60);
+    category.items.forEach(item => {
+      yPos = checkNewPage(10);
+      const itemLines = doc.splitTextToSize(`• ${item}`, contentWidth - 10);
+      itemLines.forEach(line => {
+        doc.text(line, margin + 6, yPos);
+        yPos += 5;
+      });
+      yPos += 1;
+    });
+    yPos += 5;
+  });
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('How to Use Suggestions:', margin + 3, yPos);
+  yPos += 6;
+  doc.setFont('helvetica', 'normal');
+  const suggestLines = [
+    '1. Review each suggestion in the sidebar',
+    '2. Click "Apply" to add compliance text or fix quality issues',
+    '3. Click "Apply All" to implement all suggestions at once',
+    '4. Suggestions adapt as you make changes to your note'
+  ];
+  suggestLines.forEach(line => {
+    yPos = checkNewPage();
+    doc.text(line, margin + 6, yPos);
+    yPos += 5;
+  });
+  yPos += 5;
+
+  // Step 4
+  yPos = checkNewPage(40);
+  doc.setFillColor(243, 232, 255);
+  doc.rect(margin, yPos - 3, contentWidth, 12, 'F');
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(109, 40, 217);
+  doc.text('Step 2: Review & Generate', margin + 5, yPos + 5);
+  yPos += 15;
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(60, 60, 60);
+  const enhanceLines = doc.splitTextToSize(
+    'Once your rough notes are at least 20 characters, click "Review & Complete" in the bar at the bottom of the screen. Answer the questions about anything Medicare requires that your draft did not cover, then click "Generate Final Note". The coverage meter states exactly what is still blocking; advisories such as denial risk and chart cross-check sit in collapsible sections with their counts on the header.',
+    contentWidth
+  );
+  enhanceLines.forEach(line => {
+    yPos = checkNewPage();
+    doc.text(line, margin + 3, yPos);
+    yPos += 6;
+  });
+  yPos += 5;
+
+  doc.setFont('helvetica', 'bold');
+  doc.text('What the AI Does:', margin + 3, yPos);
+  yPos += 7;
+  doc.setFont('helvetica', 'normal');
+
+  const enhanceItems = [
+    'Converts informal language to professional clinical terminology',
+    'Adds Medicare-required elements (homebound status, skilled need, patient response)',
+    'Integrates vital signs and patient history contextually',
+    'Structures content in proper narrative format',
+    'Ensures diagnosis-specific documentation standards',
+    'References active care plans and OASIS data when available',
+    'Removes any meta-commentary about documentation itself'
+  ];
+
+  enhanceItems.forEach(item => {
+    yPos = checkNewPage(10);
+    const itemLines = doc.splitTextToSize(`• ${item}`, contentWidth - 10);
+    itemLines.forEach(line => {
+      doc.text(line, margin + 6, yPos);
+      yPos += 5;
+    });
+    yPos += 1;
+  });
+  yPos += 5;
+
+  // Step 5
+  yPos = checkNewPage(40);
+  doc.setFillColor(236, 253, 245);
+  doc.rect(margin, yPos - 3, contentWidth, 12, 'F');
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(6, 95, 70);
+  doc.text('Step 2 (continued): Finalize & Save', margin + 5, yPos + 5);
+  yPos += 15;
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(60, 60, 60);
+
+  const finalizeItems = [
+    { label: 'Review the Generated Note', desc: 'Read the note through. A banner above it reports whether every value traced back to what you documented; "Show verification detail" breaks that down sentence by sentence.' },
+    { label: 'Edit if Needed', desc: 'The note is fully editable. Editing it marks the note as changed, so re-check before saving.' },
+    { label: 'Copy', desc: 'Click "Copy" (or "Copy All") to copy the note for pasting into your EHR system.' },
+    { label: 'Save to Chart', desc: 'Click "Save to chart" to store the visit documentation in PennSync. If the button is unavailable, the checklist directly above it lists every reason.' },
+    { label: 'Follow-up Tasks', desc: 'Follow-up tasks are generated from the note automatically when it is first saved.' }
+  ];
+
+  finalizeItems.forEach(item => {
+    yPos = checkNewPage(15);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`• ${item.label}:`, margin + 3, yPos);
+    yPos += 6;
+    doc.setFont('helvetica', 'normal');
+    const descLines = doc.splitTextToSize(item.desc, contentWidth - 10);
+    descLines.forEach(line => {
+      doc.text(line, margin + 8, yPos);
+      yPos += 5;
+    });
+    yPos += 2;
+  });
+  yPos += 5;
+
+  // Best Practices
+  yPos = checkNewPage(40);
+  doc.setFillColor(239, 246, 255);
+  doc.rect(margin, yPos - 3, contentWidth, 12, 'F');
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(29, 78, 216);
+  doc.text('Best Practices & Tips', margin + 5, yPos + 5);
+  yPos += 15;
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(60, 60, 60);
+
+  const tips = [
+    'Be Specific: Include measurable, objective data rather than vague descriptions',
+    'Use Voice Dictation: Speak naturally while examining the patient to capture real-time observations',
+    'Apply AI Suggestions: Address compliance suggestions before enhancing for best results',
+    'Review Yellow Highlights: These indicate areas where additional detail may improve documentation',
+    'Include Patient Quotes: Document patient\'s own words when discussing symptoms or understanding',
+    'Reference Previous Visits: The system shows recent visit data to help you document changes',
+    'Use Quick Phrases: Type trigger words for instant access to common clinical descriptions',
+    'Save Regularly: Use "Save Note" to preserve your work in the system database'
+  ];
+
+  tips.forEach(tip => {
+    yPos = checkNewPage(12);
+    const tipLines = doc.splitTextToSize(`• ${tip}`, contentWidth - 6);
+    tipLines.forEach(line => {
+      doc.text(line, margin + 3, yPos);
+      yPos += 5;
+    });
+    yPos += 2;
+  });
+  yPos += 5;
+
+  // Troubleshooting
+  yPos = checkNewPage(40);
+  doc.setFillColor(254, 242, 242);
+  doc.rect(margin, yPos - 3, contentWidth, 12, 'F');
+  doc.setFontSize(14);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(185, 28, 28);
+  doc.text('Troubleshooting', margin + 5, yPos + 5);
+  yPos += 15;
+
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(60, 60, 60);
+
+  const troubleshoot = [
+    { issue: 'Voice dictation not working', solution: 'Ensure your browser has microphone permissions enabled. Chrome and Edge work best.' },
+    { issue: 'AI suggestions not appearing', solution: 'Make sure your note has at least 100 characters and you\'ve selected a patient and diagnosis.' },
+    { issue: 'Enhanced note too generic', solution: 'Add more specific details in your rough notes. Include measurements, patient responses, and observations.' },
+    { issue: 'Missing compliance elements', solution: 'Apply the AI compliance suggestions before enhancing. The AI needs context to add required elements.' }
+  ];
+
+  troubleshoot.forEach(item => {
+    yPos = checkNewPage(20);
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Issue: ${item.issue}`, margin + 3, yPos);
+    yPos += 6;
+    doc.setFont('helvetica', 'normal');
+    const solLines = doc.splitTextToSize(`Solution: ${item.solution}`, contentWidth - 6);
+    solLines.forEach(line => {
+      doc.text(line, margin + 3, yPos);
+      yPos += 5;
+    });
+    yPos += 4;
+  });
+
+  // Footer on last page
+  doc.setFillColor(66, 133, 244);
+  doc.rect(0, pageHeight - 25, pageWidth, 25, 'F');
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(255, 255, 255);
+  doc.text('PennSync - Smart Note Assistant Guide', pageWidth / 2, pageHeight - 15, { align: 'center' });
+  doc.text(`Generated: ${generatedOn}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+  return doc;
+}

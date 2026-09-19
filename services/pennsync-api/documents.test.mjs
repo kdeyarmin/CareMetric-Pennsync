@@ -3,7 +3,10 @@ import assert from 'node:assert/strict';
 import { AUTHORITY_CONTRACT } from './authority.mjs';
 import { createHandler } from './app.mjs';
 import { HANDLER_NAMES } from './handlers.mjs';
-import { BAG_TECHNIQUE_FILENAME, buildBagTechniqueChecklist, documentDate } from './documents.mjs';
+import {
+  BAG_TECHNIQUE_FILENAME, SMART_NOTE_GUIDE_FILENAME, USER_MANUAL_FILENAME,
+  buildBagTechniqueChecklist, documentDate,
+} from './documents.mjs';
 import { loadConfig } from './runtime.mjs';
 
 /**
@@ -35,11 +38,12 @@ const context = () => ({
   membership_key: 'agency-a:user-a', membership_version: 1, membership_status: 'active',
   tenant_role: 'clinician', agency: { id: 'agency-a', name: 'Synthetic Agency A', status: 'active' },
 });
-const post = (params = {}) => new Request('https://api.example.test/v1/functions/generateBagTechniquePDF', {
-  method: 'POST',
-  headers: { authorization: 'Bearer synthetic-native-session-token', 'content-type': 'application/json' },
-  body: JSON.stringify({ agency_id: 'agency-a', params }),
-});
+const post = (params = {}, name = 'generateBagTechniquePDF') =>
+  new Request(`https://api.example.test/v1/functions/${name}`, {
+    method: 'POST',
+    headers: { authorization: 'Bearer synthetic-native-session-token', 'content-type': 'application/json' },
+    body: JSON.stringify({ agency_id: 'agency-a', params }),
+  });
 const serve = (patch = {}) => createHandler(loadConfig(env(patch)), { fetcher: async () => Response.json(context()) });
 
 test('the ported checklist is registered and released like any other handler', () => {
@@ -64,6 +68,34 @@ test('a released call answers with the PDF itself, not a JSON envelope', async (
   const bytes = Buffer.from(await response.arrayBuffer());
   assert.equal(bytes.subarray(0, 5).toString('latin1'), '%PDF-');
   assert.ok(bytes.length > 4096, 'a real document, not an empty page');
+});
+
+test('every ported document is registered, and each answers the way its original did', async () => {
+  for (const name of ['generateBagTechniquePDF', 'generateSmartNoteGuide', 'generateUserManual']) {
+    assert.ok(HANDLER_NAMES.includes(name), `${name} should be registered`);
+  }
+  const serveAll = serve({ PENNSYNC_API_FUNCTIONS: 'generateSmartNoteGuide,generateUserManual' });
+
+  // The guide's original answered with JSON carrying base64, not with bytes.
+  const guide = await serveAll(post({}, 'generateSmartNoteGuide'));
+  assert.equal(guide.status, 200);
+  assert.equal(guide.headers.get('content-type'), 'application/json');
+  const body = await guide.json();
+  assert.equal(body.success, true);
+  assert.equal(body.result.filename, SMART_NOTE_GUIDE_FILENAME);
+  const decoded = Buffer.from(body.result.pdf, 'base64');
+  assert.equal(decoded.subarray(0, 5).toString('latin1'), '%PDF-');
+  assert.ok(decoded.length > 4096);
+
+  // The manual's original answered with the bytes.
+  const manual = await serveAll(post({}, 'generateUserManual'));
+  assert.equal(manual.status, 200);
+  assert.equal(manual.headers.get('content-type'), 'application/pdf');
+  assert.equal(manual.headers.get('content-disposition'),
+    `attachment; filename="${USER_MANUAL_FILENAME}"`);
+  const bytes = Buffer.from(await manual.arrayBuffer());
+  assert.equal(bytes.subarray(0, 5).toString('latin1'), '%PDF-');
+  assert.ok(bytes.length > 20000, 'the manual is a long document');
 });
 
 test('an unknown parameter is refused rather than ignored', async () => {

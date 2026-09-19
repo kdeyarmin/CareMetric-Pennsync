@@ -8,7 +8,10 @@
 // Every handler receives the caller's already-resolved current authority. A
 // handler never resolves its own authority and never widens it.
 import { exactObject, fail, isObject } from './contracts.mjs';
-import { BAG_TECHNIQUE_FILENAME, buildBagTechniqueChecklist, documentDate } from './documents.mjs';
+import {
+  BAG_TECHNIQUE_FILENAME, SMART_NOTE_GUIDE_FILENAME, USER_MANUAL_FILENAME,
+  buildBagTechniqueChecklist, buildSmartNoteGuide, buildUserManual, documentDate,
+} from './documents.mjs';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -91,24 +94,54 @@ export function validatePatientData(patient) {
  * loaded on first use so a deployment that never releases a document handler
  * never loads it.
  */
-async function renderDocument(build, filename, config) {
+async function renderDocument(build, config) {
   const { jsPDF } = await import('jspdf');
-  const doc = build(new jsPDF(), {
+  return build(new jsPDF(), {
     logoDataUrl: config?.documentLogoDataUrl || null,
     generatedOn: documentDate(),
-  });
-  return { binary: true, body: doc.output('arraybuffer'), contentType: 'application/pdf', filename };
+  }).output('arraybuffer');
+}
+
+/** Answers with the bytes, as `generateBagTechniquePDF` and `generateUserManual` did. */
+async function pdfResponse(build, filename, config) {
+  return { binary: true, body: await renderDocument(build, config), contentType: 'application/pdf', filename };
+}
+
+/**
+ * Answers with base64 inside the envelope, as `generateSmartNoteGuide` did.
+ *
+ * The original chunked the bytes through `String.fromCharCode` and `btoa` to
+ * avoid blowing the argument limit on a large document; `Buffer` produces the
+ * same string without the dance.
+ */
+async function pdfBase64Response(build, filename, config) {
+  return { pdf: Buffer.from(await renderDocument(build, config)).toString('base64'), filename };
 }
 
 export const HANDLERS = Object.freeze({
+  // Each original took no parameters and rendered the same document for any
+  // authenticated caller. That is kept, with the membership this service
+  // requires added, since it has no global scope.
   generateBagTechniquePDF: Object.freeze({
-    // The original took no parameters and rendered the same checklist for any
-    // authenticated caller; this keeps that and adds the membership this
-    // service requires, since it has no global scope.
     binary: true,
     handle({ params, config }) {
       exactObject(params, [], 'INVALID_PARAMS');
-      return renderDocument(buildBagTechniqueChecklist, BAG_TECHNIQUE_FILENAME, config);
+      return pdfResponse(buildBagTechniqueChecklist, BAG_TECHNIQUE_FILENAME, config);
+    },
+  }),
+  generateSmartNoteGuide: Object.freeze({
+    // Not a binary handler: this original answered with JSON carrying base64,
+    // and a port answers the way its original did.
+    handle({ params, config }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      return pdfBase64Response(buildSmartNoteGuide, SMART_NOTE_GUIDE_FILENAME, config);
+    },
+  }),
+  generateUserManual: Object.freeze({
+    binary: true,
+    handle({ params, config }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      return pdfResponse(buildUserManual, USER_MANUAL_FILENAME, config);
     },
   }),
   validatePatientData: Object.freeze({

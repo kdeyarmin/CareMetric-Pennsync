@@ -69,11 +69,13 @@ a typo fails immediately instead of releasing nothing or something else.
 | --- | --- | --- |
 | `validatePatientData` | `base44/functions/validatePatientData/entry.ts` | Pure field validation; reads and writes nothing |
 | `generateBagTechniquePDF` | `base44/functions/generateBagTechniquePDF/entry.ts` | Renders the infection-control checklist. Answers with the PDF itself, as the original did |
+| `generateSmartNoteGuide` | `base44/functions/generateSmartNoteGuide/entry.ts` | Clinician guide. Answers with base64 in the envelope, as the original did |
+| `generateUserManual` | `base44/functions/generateUserManual/entry.ts` | Product manual. Answers with the PDF itself, as the original did |
 
 ### Documents
 
-`documents.mjs` holds ported documents as pure builders over a jsPDF-shaped
-object. A rendered PDF cannot be compared byte for byte -- jsPDF stamps a
+`documents.mjs` is the shared surface; each document is its own
+`document-*.mjs` file holding a pure builder over a jsPDF-shaped object. A rendered PDF cannot be compared byte for byte -- jsPDF stamps a
 creation time and a document id, so two runs of the same code differ -- so
 parity is proved on the drawing calls instead: same calls, same order, same
 arguments means the same page. `base44/functionTests/pennsyncApiDocumentParity.test.js`
@@ -82,15 +84,21 @@ real against a recording surface, and compares.
 
 Two things the originals did are deliberately not carried:
 
-- **The logo is supplied, never fetched.** Each original fetched a PNG from
-  Base44's own storage bucket on every request. Carrying that would have kept a
-  Base44 dependency -- and a third-party fetch -- in a request path that
+- **A logo is supplied, never fetched.** `generateBagTechniquePDF` fetched a PNG
+  from Base44's own storage bucket on every request. Carrying that would have
+  kept a Base44 dependency -- and a third-party fetch -- in a request path that
   otherwise makes neither. `PENNSYNC_API_DOCUMENT_LOGO` supplies it inline, and
   with none configured the document takes the branch the original already took
   when that fetch failed. The parity test covers both branches.
-- **The date is supplied.** The originals called `new Date()` inside the
-  builder, so the same request produced a different document either side of
-  midnight and its parity could not be tested. The builder refuses to invent one.
+- **A date is supplied.** `generateBagTechniquePDF` and `generateSmartNoteGuide`
+  called `new Date()` inside the builder, so the same request produced a
+  different document either side of midnight and its parity could not be tested.
+  Those builders refuse to invent one. `generateUserManual` read no clock and
+  fetched nothing, so it ports verbatim.
+
+Each answers the way its original answered: two with the bytes, and
+`generateSmartNoteGuide` with base64 inside the envelope, because that is what
+its original returned.
 
 This is the one place the service has a runtime dependency (`jspdf`, pinned to
 the version the frontend already uses). It is imported on first use, so a
@@ -104,8 +112,8 @@ pnpm --dir services/pennsync-api install --ignore-workspace --frozen-lockfile
 CI does this in `ci.yml`. `publish-production-frontend.yml` is manual and
 already required the same for `services/authority-store`.
 
-A document handler answers with bytes rather than the JSON envelope every other
-handler uses, which is what its Base44 original did. `app.mjs` takes that path
+A binary document handler answers with bytes rather than the JSON envelope every
+other handler uses, which is what its Base44 original did. `app.mjs` takes that path
 only for a handler that declares itself binary, and checks the shape it is
 handed rather than trusting it: a wrong content type, a non-buffer body or a
 filename with a path or quote in it is refused as an unavailable response
