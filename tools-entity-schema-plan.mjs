@@ -59,6 +59,18 @@ export const SYSTEM_COLUMNS = Object.freeze([
 ]);
 const SYSTEM_BY_NAME = new Map(SYSTEM_COLUMNS.map(column => [column.name, column]));
 
+/** Where the tenant decisions are recorded; read as data to avoid an import cycle. */
+export const TENANT_DECISION_FILE = 'tools-tenant-decision.json';
+/** The column that names an owning agency. */
+export const TENANT_COLUMN = 'agency_id';
+/**
+ * Decision kinds whose tables carry a tenant key. `agency_id` is added here,
+ * before any row is loaded, rather than backfilled afterwards: a row that
+ * arrives without an owner cannot be given one later without guessing, and a
+ * guess in this column is a cross-tenant disclosure.
+ */
+export const STAMPED_KINDS = Object.freeze(['agency', 'shared']);
+
 export function snakeCase(value) {
   return String(value)
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
@@ -98,7 +110,7 @@ export function enumValues(property) {
   return values;
 }
 
-export function planEntity(name, raw, disposition) {
+export function planEntity(name, raw, disposition, decision = null) {
   const schema = JSON5.parse(raw);
   const table = snakeCase(name);
   const columns = [];
@@ -123,11 +135,18 @@ export function planEntity(name, raw, disposition) {
     const values = type === 'text' ? enumValues(definition) : null;
     if (values) checks.push({ column, values });
   }
+  // A decided tenant key is added as a real column so the table cannot be
+  // loaded without an owner. Appended after the declared columns, so the
+  // output stays byte-deterministic.
+  const declaredTenant = columns.some(column => column.name === TENANT_COLUMN);
+  const stamped = !declaredTenant && STAMPED_KINDS.includes(decision?.kind);
+  if (stamped) columns.push({ name: TENANT_COLUMN, property: null, type: 'text', notNull: true, stamped: true });
   return {
     entity: name,
     disposition,
     table,
-    tenant_key: columns.some(column => column.name === 'agency_id') ? 'agency_id' : null,
+    tenant_key: declaredTenant || stamped ? TENANT_COLUMN : null,
+    tenant_decision: decision?.kind ?? null,
     columns: columns.length,
     constrained: checks.length,
     merged_system_columns: merged.length,
@@ -150,7 +169,7 @@ export function renderEntity(plan) {
   }
   const lines = [
     ...SYSTEM_COLUMNS.map(column => `  ${quote(column.name)} ${column.type}${column.notNull ? ' not null' : ''}`),
-    ...plan.definition.columns.map(column => `  ${quote(column.name)} ${column.type}`),
+    ...plan.definition.columns.map(column => `  ${quote(column.name)} ${column.type}${column.notNull ? ' not null' : ''}`),
     `  constraint ${quote(`${plan.table}_pkey`)} primary key (${quote('source_app_id')}, ${quote('id')})`,
     ...plan.definition.checks.map(check =>
       `  constraint ${quote(constraintName(plan.table, check.column))} `
@@ -169,6 +188,7 @@ export function renderEntity(plan) {
 /** Plan every carried entity exactly once; both callers below reuse the result. */
 function planAll(repository) {
   const dispositions = JSON.parse(readFileSync(join(repository, DISPOSITION_FILE), 'utf8')).entities;
+  const decisions = JSON.parse(readFileSync(join(repository, TENANT_DECISION_FILE), 'utf8')).entities ?? {};
   const directory = join(repository, ENTITY_DIRECTORY);
   const files = readdirSync(directory).filter(file => /\.jsonc?$/.test(file)).sort();
   const plans = [];
@@ -177,7 +197,7 @@ function planAll(repository) {
     const name = file.replace(/\.jsonc?$/, '');
     const disposition = dispositions[name];
     if (!CARRIED.includes(disposition)) { excluded.push({ entity: name, disposition: disposition ?? 'missing' }); continue; }
-    plans.push(planEntity(name, readFileSync(join(directory, file), 'utf8'), disposition));
+    plans.push(planEntity(name, readFileSync(join(directory, file), 'utf8'), disposition, decisions[name] ?? null));
   }
   return { plans, excluded };
 }

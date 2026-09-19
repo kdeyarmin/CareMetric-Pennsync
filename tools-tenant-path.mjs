@@ -34,13 +34,13 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import JSON5 from 'json5';
-import { CARRIED, DISPOSITION_FILE, ENTITY_DIRECTORY } from './tools-entity-schema-plan.mjs';
+import { CARRIED, DISPOSITION_FILE, ENTITY_DIRECTORY, TENANT_COLUMN } from './tools-entity-schema-plan.mjs';
 
 export const FORMAT = 'pennsync-tenant-path';
 export const FORMAT_VERSION = 1;
 export const EXPECTATIONS_FILE = 'tools-tenant-path-expectations.json';
-/** The column that names an agency directly. */
-export const TENANT_COLUMN = 'agency_id';
+/** The column that names an agency directly; defined with the schema plan that emits it. */
+export { TENANT_COLUMN };
 /** The tenant root: it does not reference an agency, it is one. */
 export const ROOT_ENTITY = 'Agency';
 /**

@@ -26,7 +26,8 @@ Source work completed here, all validated by the repository's own checks:
 | Phase 1 — authority store app namespace | `20260919090000_deployment_app_pin.sql` replaces both app-id literals with one immutable per-deployment pin. The domain across 18 columns and the gate inside `actor()` now read the same row, so they cannot drift; production is admitted only in a database pinned to it, and an unset pin still defaults to staging. `app-namespace-containment.test.mjs` proves it against two databases built from the same migrations |
 | Phase 2 — API service | `services/pennsync-api` with health, readiness, release-gated dispatch and the first ported handler |
 | Phase 2 — candidate schema | `tools-entity-schema-plan.mjs` generates PostgreSQL for the 156 carried entities (2,336 columns, 287 enum constraints); a test applies the whole plan to a real database |
-| Phase 2 — tenant paths | `tools-tenant-path.mjs` resolves how each carried entity reaches its agency: 69 have a usable key, 87 are a named decision list rather than an open question |
+| Phase 2 — tenant paths | `tools-tenant-path.mjs` resolves how each carried entity reaches its agency: 69 have a usable key from the schema alone |
+| Phase 2 — tenant decisions | D13 decides the other 87. `tools-tenant-decision.json` records one kind per entity with a stated reason — `agency` 65, `self` 11, `shared` 2, `global` 8 — and `check:tenant-decisions` re-checks each against its schema, rejecting a `global` that carries an actor column, references a carried entity or can hold a file. `agency_id text not null` is now emitted on all 67 `agency` and `shared` tables, so the generated schema is 2,403 columns and 82 tenant-scoped rather than 2,336 and 15 |
 | Phase 3 — file prerequisite | `tools-file-reference-census.mjs` and its committed census of every schema field that can hold a file |
 | Guardrail | `tools-base44-surface.mjs` ratchets remaining frontend coupling |
 
@@ -38,7 +39,7 @@ Not done here, and each blocked on something this branch cannot supply:
 | Enabling independent authority on the running runtime | A reviewed deployment plus preflight and two-agency acceptance with enrolled actors |
 | Generalizing the authority store past four synthetic actors | The app-id pins and the enrollment tool are both done (above), so the mechanism exists and has nobody to run it on: enrolling anyone needs the ten people to accept their Supabase Auth invitations first, and an operator to verify each one out of band. What remains in source: the four actor IDs still pinned in `services/authority-client/client.mjs`, roster behaviour for the four tenant roles that can hold context but not use it, and the synthetic-name constraints, which still refuse a real agency or patient name in every deployment. The last of those is a compliance decision about whether this store ever holds real names, not a refactor |
 | Reconciling the duplicated `validateMembershipRows` | Nothing external, and less than it looked. `validateAssignmentIntegrity` is settled: all twelve copies enforce the same authorization, and the five that bound in the caller now share one generated helper. `validateMembershipRows` genuinely diverged — 13 copies across 10 variants differing in signature, return type and checks — but the destination makes it largely moot, because `services/pennsync-api` holds no row-validation predicate at all: the owned store answers the same question transactionally inside `pennsync_private.context`. What is left is deciding, per ported broker, that the store's answer replaces the copy rather than joining it |
-| Deciding the 87 entities with no usable tenant path | Owners answering the three questions in Phase 2; two of them (global reference data vs. a missing key) are product calls, not derivable from the schema |
+| Writing the row level security policies | Nothing external. D13 supplies the predicate every table was missing, and the tables still force RLS with no policy and no grant; writing them needs the record store to exist |
 | Porting the remaining 82 handlers | **Not review — the data layer.** `check:transition-disposition` now classifies each `port` function by what actually blocks it: 80 read or write entity rows and need the ported record store with a tenant predicate for the entities they touch, 1 calls another Base44 function and waits on that port, 3 render through `jspdf` and need that dependency adopted plus a way to compare rendered output, and 1 calls a third-party API with an environment key that belongs to the integration runtime's brokered path. The four written so far — `validatePatientData` and the three documents — were the ones needing nothing but authority and a decision this branch could make |
 | Any customer data, file or identity migration | Base44 credentials, named owners, and a maintenance window |
 | Frontend hosting, domain move, native rebuild | Approvals and physical devices |
@@ -394,9 +395,10 @@ Deliverables, in tiers that can merge independently:
   | `unresolved` | 52 | Nothing in the schema names a tenant |
 
   So 69 tables can have a predicate written from the schema as it stands and 87
-  cannot. Those 87 are the tenant-isolation blocker, now a bounded list
-  (`node tools-tenant-path.mjs --blocking`) instead of an open question, and
-  they need three decisions rather than eighty-three:
+  cannot. **Those 87 are decided by D13** and recorded in
+  `tools-tenant-decision.json`; `node tools-tenant-path.mjs --blocking` still
+  lists them and `pnpm run check:tenant-decisions` checks the answers. The three
+  questions they needed, and what was answered:
 
   1. May a row whose only tenancy signal is the acting account (`actor`, 34 of
      them, keyed by `created_by`, `updated_by_email`, `user_email` and the like)
@@ -411,6 +413,17 @@ Deliverables, in tiers that can merge independently:
   3. For every table in the second group, `agency_id` is added before load, not
      backfilled after, because a row loaded without a tenant cannot be assigned
      one later without guessing.
+
+  Answered: (1) **no** — an acting account is never a tenant, because scoping by
+  current membership moves a row to a new agency the moment a person transfers,
+  in both directions and silently; an actor column either names the row's own
+  subject (`self`, 11) or is provenance and the row takes a real key. (2) eight
+  are genuinely global, and the gate re-checks each against its schema rather
+  than trusting the list; reading the schemas moved `Physician`, `SupplyItem`
+  and `CareSetting` out of that group, the first of which carries
+  `referral_count` and would have shown one agency's referral volume to its
+  competitors. (3) done — `agency_id text not null` is emitted on all 67
+  `agency` and `shared` tables by the schema generator.
 
   `User.agency_id` is excluded from authorization by construction: a signed-in
   account can edit its own profile, and treating that claim as authority is the
