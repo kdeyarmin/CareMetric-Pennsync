@@ -17,6 +17,8 @@ import { analyzeReferralIntake as runReferralIntake } from './referral-intake.mj
 import { generateReferralTasks as runReferralTasks } from './referral-tasks.mjs';
 import { matchPatientWithAI as runPatientMatch } from './patient-match.mjs';
 import { analyzeReferral as runReferralAnalysis } from './referral-analysis.mjs';
+import { GUIDE_FORMAT, buildUserGuide } from './document-user-guide.mjs';
+import { USER_GUIDE_PROMPTS, USER_GUIDE_SCHEMA, resolveGuideType } from './user-guide-prompts.mjs';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -140,6 +142,30 @@ export const HANDLERS = Object.freeze({
     handle({ params, config }) {
       exactObject(params, [], 'INVALID_PARAMS');
       return pdfBase64Response(buildSmartNoteGuide, SMART_NOTE_GUIDE_FILENAME, config);
+    },
+  }),
+  generateUserGuidePDF: Object.freeze({
+    binary: true,
+    // The only port that both asks a model and renders. The guide type is
+    // resolved before anything else because it reaches the download filename:
+    // an unresolved one could mislabel the file or carry into the header, which
+    // is what the original's own comment guards against.
+    async handle({ params, integration }) {
+      exactObject(params, ['guide_type'], 'INVALID_PARAMS');
+      const guideType = resolveGuideType(params.guide_type);
+      const guideContent = await integration('InvokeLLM', {
+        prompt: USER_GUIDE_PROMPTS[guideType],
+        response_json_schema: structuredClone(USER_GUIDE_SCHEMA),
+      });
+      const { jsPDF } = await import('jspdf');
+      // One clock read for both stamps, so a render that straddles midnight
+      // cannot date its footer and its copyright to different years.
+      const now = new Date();
+      // Letter, as the original constructs it — not the A4 default.
+      const body = buildUserGuide(new jsPDF(GUIDE_FORMAT), guideContent, {
+        generatedOn: documentDate(now), year: now.getFullYear(),
+      }).output('arraybuffer');
+      return { binary: true, body, contentType: 'application/pdf', filename: `${guideType}_guide.pdf` };
     },
   }),
   generateUserManual: Object.freeze({

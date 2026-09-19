@@ -88,14 +88,17 @@ call. The operator says which app this deployment serves, or it does not start.
 | `generateReferralTasks` | `base44/functions/generateReferralTasks/entry.ts` | One brokered `InvokeLLM`, with `response_json_schema` rather than the tolerant parser: its schema carries `required` at every level, so the provider takes it |
 | `matchPatientWithAI` | `base44/functions/matchPatientWithAI/entry.ts` | Candidate patients arrive in the request rather than from a query, so it reads no entity row. Sends demographics to the model, as the original did |
 | `analyzeReferral` | `base44/functions/analyzeReferral/entry.ts` | A four-action dispatcher. Its own docstring calls it a replacement for three of the handlers above, but every prompt is differently worded and its patient projection sends nine fields where the standalone sends twenty — so both live on, and both are ported. `full_analysis` starts priority and match together, then asks for tasks with the priority answer |
+| `generateUserGuidePDF` | `base44/functions/generateUserGuidePDF/entry.ts` | The only port that both asks a model and renders. Eleven guide prompts, extracted from the original rather than retyped, and a render proved call-for-call against it. Reads and writes no entity row |
 
 ### Brokered Core integrations
 
-Twelve of the functions still to port call `base44.integrations.Core` and read
-no entity row. They were counted against the record store until the modules
-were read; what they actually need is the integration runtime, which already
-brokers those providers. `integrations.mjs` is that path, and
-`analyzeReferralPriority` is the first handler to use it.
+Twelve functions called `base44.integrations.Core` and read no entity row. They
+were counted against the record store until the modules were read; what they
+actually needed is the integration runtime, which already brokers those
+providers. `integrations.mjs` is that path, `analyzeReferralPriority` was the
+first handler to use it, and the bucket is empty now: five were written, two
+turned out to be paused at source, four are held by the file layer rather than
+by the runtime, and `generateUserGuidePDF` was the last to be ported.
 
 Two properties are worth stating because they are easy to lose:
 
@@ -147,6 +150,38 @@ Two things the originals did are deliberately not carried:
 Each answers the way its original answered: two with the bytes, and
 `generateSmartNoteGuide` with base64 inside the envelope, because that is what
 its original returned.
+
+#### The user guide, which is both
+
+`generateUserGuidePDF` asks a model for the guide and then renders what comes
+back, so it is proved on both halves — the call against the original's call, the
+drawing against the original's drawing.
+
+Its eleven prompts were **extracted, not retyped**. The original carries roughly
+480 lines of prompt text; that text is the contract with the model, and a parity
+test had already caught a single dropped trailing space in a much shorter
+prompt. `tools-user-guide-prompts.mjs` drives the original with its client and
+PDF library stubbed, captures the exact argument each guide type produces, and
+writes `user-guide-prompts.mjs`. The parity test then compares the committed
+data against what the original produces now, for every guide type, so it cannot
+drift from its source without failing.
+
+Two details in the render that look incidental and are not:
+
+- **The page is Letter, not A4.** The original constructs jsPDF with
+  `format: 'letter'` — 215.9mm by 279.4mm. The port hardcoded A4 until the
+  parity recorder disagreed with the original about the width of the header bar,
+  which would have rendered every guide at the wrong size. Geometry is read from
+  the document now, and read as `pageSize.width`, a property, because that is
+  what the original reads; jsPDF also offers `getWidth()`, and the two are not
+  interchangeable for a stub.
+- **The page break is per line.** An up-front check cannot catch a block taller
+  than a page, so the original checks before drawing each line. Model output is
+  long, which makes that the common case rather than the rare one.
+
+An unknown or crafted `guide_type` resolves to `all_features` exactly as the
+original resolves it — it matters beyond tidiness, because the resolved value
+reaches the download filename and the `Content-Disposition` header.
 
 This is the one place the service has a runtime dependency (`jspdf`, pinned to
 the version the frontend already uses). It is imported on first use, so a
