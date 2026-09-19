@@ -381,8 +381,9 @@ Deliverables, in tiers that can merge independently:
   the row against `membership.id` and `membership.version` inside the guard and
   compare the assignment's email to the caller's, and five do not. **That
   reading is wrong, and an earlier revision of this document asserted it.** The
-  other five perform the same comparisons in the caller, on the line after the
-  predicate returns:
+  other five performed the same comparisons in the caller, on the line after the
+  predicate returns — each carrying its own hand-written copy of this, since
+  replaced by the generated helper described below:
 
   ```js
   const assignment = await loadExactAssignment(...);
@@ -400,20 +401,42 @@ Deliverables, in tiers that can merge independently:
   brokers. What differs is only where the binding is written — inside the
   predicate for seven, in the caller for five.
 
-  That placement is still a real hazard for the port, which is why it is worth
-  recording. A reviewer who reads only the predicate concludes five PHI paths
-  are weaker than they are; more importantly, anyone porting
-  `validateAssignmentIntegrity` without also porting its caller would carry the
-  half that omits the binding and silently drop the revocation check. The
-  reconciliation is therefore a consolidation, not a behavior decision: move the
-  binding inside the predicate everywhere, delete the five call-site copies, and
-  bring the result under the shared-helper generator. It should still happen
-  **before** the ports rather than during them, but it no longer needs a
-  strictness ruling. `base44/functionTests/assignmentBindingConvention.test.js`
-  holds the line meanwhile: it fails if any copy loses the binding from both
-  places, if a copy changes which half holds it, if a binding is dereferenced
-  without establishing the membership exists, or if a copy drops a condition all
-  twelve share.
+  That placement is still a real hazard for the port. A reviewer who reads only
+  the predicate concludes five PHI paths are weaker than they are; more
+  importantly, anyone porting `validateAssignmentIntegrity` without also porting
+  its caller would carry the half that omits the binding and silently drop the
+  revocation check.
+
+  **Half of the consolidation has landed.** The five hand-written call-site
+  copies are now one generated `requireAssignmentBinding` in
+  `base44/_shared/backendHelpers.mjs`, inlined into each consumer and held
+  identical by `pnpm run check:shared-helpers` (227 consumers). That is a pure
+  deduplication: same four conditions, same `409 'Care-team assignment binding
+  is invalid'`, same position relative to each caller's other guards.
+  `createAuthorizedDocument` gains two conditions it did not previously state —
+  the null-membership check and the caller-email comparison — and both are
+  provable no-ops there, because it dereferences `membership.tenant_role`
+  earlier on the same path and its predicate already forces
+  `row.user_email_normalized === actor.normalizedEmail`.
+
+  **The binding was deliberately not folded into the predicate**, which is what
+  an earlier revision of this document proposed. Every caller runs it *after* its
+  own "assignment missing or not active" guard, which answers
+  `404 'Patient unavailable'`. Moving the binding inside `validateAssignmentIntegrity`
+  would run it first and answer 409 for a row the caller should not learn exists
+  — a small disclosure regression traded for tidiness. The 404-then-409 order
+  reads as deliberate, so it was kept.
+
+  What remains is the other seven, whose binding sits inside the larger
+  integrity guard and so throws `'Care-team assignment integrity check failed'`
+  rather than the binding message. Extracting those would change that message on
+  seven production paths, and contract tests assert it, so it is a separate
+  reviewed change rather than part of this deduplication.
+  `base44/functionTests/assignmentBindingConvention.test.js` holds the line: it
+  fails if any copy loses the binding from both places, if a copy changes which
+  half holds it, if one of the five re-inlines a hand-written copy instead of
+  the helper, if a binding is dereferenced without establishing the membership
+  exists, or if a copy drops a condition all twelve share.
 - Tier B (port through the runtime): the 43 AI-assist functions become thin
   server handlers that call the runtime's `InvokeLLM` and
   `ExtractDataFromUploadedFile` adapters; Base44 `Core.*` calls in `src/` go

@@ -10,15 +10,11 @@ import { readFileSync, existsSync } from 'node:fs';
  * predicate alone suggests a strictness split: seven copies compare the row
  * against `membership.id` and `membership.version` inside the guard, and five
  * do not. That reading is wrong. The other five perform exactly the same
- * comparison in the caller, on the line after the predicate returns:
+ * comparison in the caller, on the line after the predicate returns. Each once
+ * carried its own hand-written copy of this, now the generated helper:
  *
  *     const assignment = await loadExactAssignment(...);
- *     if (
- *       !authority.membership
- *       || assignment.user_email_normalized !== authority.normalizedEmail
- *       || assignment.assignee_membership_id !== authority.membership.id
- *       || assignment.assignee_membership_version_at_enablement !== authority.membership.version
- *     ) throw new PublicError(409, 'Care-team assignment binding is invalid');
+ *     requireAssignmentBinding(assignment, authority.membership, authority.normalizedEmail);
  *
  * So all twelve enforce the same authorization. What differs is placement, and
  * placement is a real hazard for the port even though it is not a hole: a
@@ -26,10 +22,18 @@ import { readFileSync, existsSync } from 'node:fs';
  * weaker than they are, and anyone porting the predicate without its caller
  * would carry the weaker half into the new service and drop the binding.
  *
+ * Those five call-site copies are now one generated `requireAssignmentBinding`
+ * helper, inlined from `base44/_shared/backendHelpers.mjs` and held in sync by
+ * `pnpm run check:shared-helpers`. They were not folded into the predicate on
+ * purpose: callers run the binding AFTER their own "assignment missing or not
+ * active" guard, which answers 404, and folding it in would run the binding
+ * first and answer 409 for a row the caller should not learn exists.
+ *
  * That is what this pins. The safety property is that every copy binds
- * *somewhere*; the bookkeeping is which half of the pair holds it. A copy that
- * loses the binding from both places fails here, and so does one that quietly
- * changes sides, which is the signal that the reconciliation happened.
+ * *somewhere*; the bookkeeping is which half of the pair holds it, and that the
+ * five that bind outside the predicate do it through the shared helper rather
+ * than by hand. A copy that loses the binding from both places fails here, and
+ * so does one that quietly changes sides or re-inlines its own copy.
  */
 
 /** Binds inside `validateAssignmentIntegrity` itself. */
@@ -42,7 +46,10 @@ const BINDS_IN_PREDICATE = [
   'saveOasisResponses',
   'updateAuthorizedVisit',
 ];
-/** Binds in the caller, immediately after the predicate returns. */
+/**
+ * Binds in the caller, immediately after the predicate returns, through the
+ * generated `requireAssignmentBinding` helper.
+ */
 const BINDS_AT_CALL_SITE = [
   'createAuthorizedDocument',
   'getAuthorizedDocument',
@@ -124,6 +131,28 @@ test('placement is pinned, because porting the predicate alone would drop half o
     const body = predicate(name);
     assert.doesNotMatch(body, BINDS_ID,
       `${name} moved its binding into the predicate — if that is the reconciliation, move it to the other list`);
+  }
+});
+
+test('the five that bind outside the predicate do it through the shared helper', () => {
+  // Five hand-written copies of the same four conditions is exactly the drift
+  // `base44/_shared/backendHelpers.mjs` exists to prevent, so the binding is
+  // generated rather than typed. `check:shared-helpers` keeps the copies
+  // identical; this keeps them from being replaced by a fresh hand-rolled one.
+  for (const name of BINDS_AT_CALL_SITE) {
+    const text = source(name);
+    assert.match(text, /<<<BEGIN SHARED HELPER: assignmentBinding —/,
+      `${name} should carry the generated assignmentBinding helper`);
+    assert.match(text, /function requireAssignmentBinding\(assignment, membership, normalizedEmail\)/,
+      `${name}'s generated helper does not match the canonical signature`);
+    assert.match(text, /requireAssignmentBinding\([^)]*\)\s*;/,
+      `${name} defines the helper but never calls it`);
+  }
+  // Nothing outside those five should carry it: the other seven bind inside
+  // their own predicate, and a stray copy would be a third place to look.
+  for (const name of BINDS_IN_PREDICATE) {
+    assert.doesNotMatch(source(name), /requireAssignmentBinding/,
+      `${name} binds in its predicate and should not also carry the helper`);
   }
 });
 

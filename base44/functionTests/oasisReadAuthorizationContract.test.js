@@ -795,9 +795,17 @@ test('static contract keeps the broker service-role-only, read-only, finite, and
   assert.match(broker, /MAX_OASIS_ITEMS = 500/);
   assert.match(broker, /response_origin !== 'clinician_selected'/);
   assert.match(broker, /item\.ai_suggested !== false/);
+  // The assignment is still bound to the caller's current membership version.
+  // That comparison now lives in the generated `assignmentBinding` helper
+  // rather than inline here, so pin both the helper's text and the call that
+  // reaches it — the old inline assertion could not tell whether the check ran.
   assert.match(
     broker,
-    /assignment\.assignee_membership_version_at_enablement !== authority\.membership\.version/,
+    /assignment\.assignee_membership_version_at_enablement !== membership\.version/,
+  );
+  assert.match(
+    broker,
+    /requireAssignmentBinding\(assignment, authority\.membership, authority\.normalizedEmail\)/,
   );
   assert.match(broker, /if \(user\.role !== 'user'\) throw new PublicError\(403, 'Forbidden'\)/);
   assert.doesNotMatch(broker, /\.create\s*\(|\.update\s*\(|\.delete\s*\(/);
