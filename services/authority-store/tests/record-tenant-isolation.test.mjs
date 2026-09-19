@@ -4,7 +4,7 @@ import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA, renderDdl } from '../../../tools-entity-schema-plan.mjs';
+import { SCHEMA, renderDdl } from '../../../tools-entity-schema-plan.mjs';
 
 /**
  * The record store's policies have to DENY, and a policy that admits
@@ -43,14 +43,7 @@ before(async () => {
   db = new PGlite();
   await db.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
   const migrationDir = new URL('../supabase/migrations/', import.meta.url);
-  // The record store's own migration is skipped: it creates this schema too,
-  // from this same generator, and what is under test here is the generated DDL
-  // rather than the deployment's ownership boundary. That boundary has its own
-  // suite, `record-store-migration.test.mjs`, which applies the migration and
-  // proves the predicates below still deny under it.
-  const recordStore = RECORD_MIGRATION_FILE.split('/').pop();
-  for (const name of (await readdir(migrationDir))
-    .filter(file => file.endsWith('.sql') && file !== recordStore).sort()) {
+  for (const name of (await readdir(migrationDir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, migrationDir), 'utf8'));
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));

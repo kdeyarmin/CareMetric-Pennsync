@@ -190,12 +190,23 @@ the people to have accepted their Supabase Auth invitations first.
 
 ## The record store and its owner
 
-`supabase/migrations/20260919170000_record_store.sql` creates
+`supabase/record-migrations/20260919170000_record_store.sql` creates
 `pennsync_records`: the 156 carried entities, with forced row level security
 and the 596 policies derived from their tenant paths and decisions (D13, D14).
 It is **generated** — regenerate with
 `node tools-entity-schema-plan.mjs --write-migration` and never edit the SQL by
 hand; a test fails if the committed file and the generator disagree.
+
+It sits in its own directory rather than beside the authority migrations, and
+that is deliberate. `supabase/migrations/` is applied wholesale by every
+authority harness — the disposable local stack the acceptance jobs bring up,
+and the restore rehearsal, whose hand-reviewed fixture enumerates every table
+it expects to find. None of them exercises a record table, so putting 156
+generated tables there makes each one build and inventory a store it does not
+use, and turns a reviewable fixture into 2,404 columns nobody can read. They
+are two stores in any case: different schemas, different owners, created at
+different times. `tools-pennsync-provision.mjs` applies the authority
+directory and then this one, so a real deployment still gets both.
 
 Two properties of the file are the decision it carries (D15), not incidental:
 

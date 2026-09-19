@@ -43,19 +43,24 @@ const HELPERS = ['caller_identity', 'caller_identified', 'caller_agencies',
   'caller_user_id', 'caller_email', 'deployment_app'];
 let db;
 
-/** Every authority migration in order, then the fixture identities. */
-async function authority(target, { through = null } = {}) {
+/**
+ * Every authority migration in order. The record store is deliberately not in
+ * that directory, so this builds exactly the database it is applied on top of.
+ */
+async function authority(target) {
   await target.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
   const dir = new URL('../supabase/migrations/', import.meta.url);
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
-    if (through && name > through) continue;
     await target.exec(await readFile(new URL(name, dir), 'utf8'));
   }
 }
+/** The record store migration, named rather than discovered. */
+const recordStore = () => readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8');
 
 before(async () => {
   db = new PGlite();
   await authority(db);
+  await db.exec(recordStore());
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   // A broker, owned by the record owner. This is the shape the plan calls for
   // rather than a production API: what is under test is that a function owned
@@ -95,7 +100,7 @@ async function as(n, sql, params = []) {
 }
 
 test('the committed migration is exactly what the generator produces', async () => {
-  const committed = readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8');
+  const committed = recordStore();
   assert.equal(committed, renderMigration(repository).sql,
     'The record store migration has drifted from the generator. '
     + 'Re-run `node tools-entity-schema-plan.mjs --write-migration` rather than editing the SQL.');
@@ -213,7 +218,7 @@ test('it applies as the administrator a real deployment uses, not only as a supe
   // authorization` refuses with "must be able to SET ROLE".
   const other = new PGlite();
   try {
-    await authority(other, { through: '20260919114500_enrollment_receipt.sql' });
+    await authority(other);
     await other.exec(`create role migration_admin nologin nosuperuser bypassrls createrole;
       grant anon, authenticated, service_role to migration_admin with admin option;
       -- A deployment's migration role owns its database; this one is standing in
@@ -223,7 +228,7 @@ test('it applies as the administrator a real deployment uses, not only as a supe
     // Act as that role for the whole migration, so the grant it needs is one it
     // has to obtain for itself rather than one the session already held.
     await other.exec('set role migration_admin');
-    await other.exec(readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8'));
+    await other.exec(recordStore());
     await other.exec('reset role');
 
     const { rows: owner } = await other.query(
@@ -243,12 +248,12 @@ test('it applies as the administrator a real deployment uses, not only as a supe
 test('the migration refuses an owner role that would void its policies', async () => {
   const other = new PGlite();
   try {
-    await authority(other, { through: '20260919114500_enrollment_receipt.sql' });
+    await authority(other);
     // The role already exists, carrying the attribute that bypasses RLS. The
     // migration must refuse rather than adopt it and emit policies nothing obeys.
     await other.exec(`create role ${OWNER_ROLE} nologin bypassrls;`);
     await assert.rejects(
-      () => other.exec(readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8')),
+      () => other.exec(recordStore()),
       /PENNSYNC_RECORD_OWNER_MUST_NOT_BYPASS_RLS/);
     // The raise aborted the migration's transaction; leave it before asking
     // what survived, or the answer is only that the transaction is aborted.
@@ -265,7 +270,7 @@ test('the migration refuses a database with no authority store to ask', async ()
     // The policies are written entirely in terms of `pennsync_private`. Applied
     // without it, every one of them would fail at query time rather than here.
     await assert.rejects(
-      () => bare.exec(readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8')),
+      () => bare.exec(recordStore()),
       /PENNSYNC_AUTHORITY_STORE_REQUIRED/);
   } finally { await bare.close(); }
 });

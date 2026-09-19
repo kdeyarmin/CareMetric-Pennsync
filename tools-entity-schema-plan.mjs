@@ -482,9 +482,24 @@ export function renderDdl(repository) {
  * administrator-owned and are granted to the record owner alone.
  */
 export const OWNER_ROLE = 'pennsync_records_owner';
-/** Where the generated migration is committed, so a deployment applies it like any other. */
+/**
+ * Where the generated migration is committed.
+ *
+ * Deliberately NOT beside the authority store's own migrations. That directory
+ * is applied wholesale by every authority harness — the disposable Supabase
+ * stack three acceptance jobs bring up, and the restore rehearsal, whose
+ * hand-reviewed fixture enumerates every table it expects to find. Putting 156
+ * generated tables there makes each of those build and inventory a store none
+ * of them exercises, and turns a reviewable fixture into 2,404 columns nobody
+ * can read. They are also two stores rather than one: different schemas,
+ * different owners, created at different times.
+ *
+ * So the record store gets its own directory, applied by the provisioner after
+ * the authority store and by `record-store-migration.test.mjs`, both of which
+ * name it rather than discovering it.
+ */
 export const RECORD_MIGRATION_FILE =
-  'services/authority-store/supabase/migrations/20260919170000_record_store.sql';
+  'services/authority-store/supabase/record-migrations/20260919170000_record_store.sql';
 
 /**
  * The record store as a migration a real deployment can apply.
