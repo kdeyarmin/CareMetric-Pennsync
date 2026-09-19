@@ -7,6 +7,7 @@ import { pathToFileURL } from 'node:url';
 import { transpileTs } from '../../tools-transpile-ts.mjs';
 
 import { validatePatientData as ported } from '../../services/pennsync-api/handlers.mjs';
+import { buildAdmissionNoteTemplate } from '../../services/pennsync-api/transforms.mjs';
 
 /**
  * Drift guard for handlers ported out of Base44 into services/pennsync-api.
@@ -63,5 +64,38 @@ test('the ported patient validator matches its Base44 original exactly', async (
   for (const patient of CASES) {
     assert.deepEqual(ported(patient), original(patient),
       `ported validatePatientData drifted for ${JSON.stringify(patient)}`);
+  }
+});
+
+const REFERRAL_CASES = [
+  {},
+  { admission_details: { referral_reason: 'Wound care after discharge' } },
+  { admission_details: { referral_reason: 'Wound care', clinical_history: 'Admitted 3/2 for cellulitis.' } },
+  { diagnoses: { past_medical_history: [{ condition: 'CHF' }, { condition: 'COPD' }] } },
+  // A mixed list: strings and objects, plus entries that must be dropped.
+  { diagnoses: { past_medical_history: ['Diabetes', { condition: 'CKD' }, { onset_date: '2020-01-01' }, null] } },
+  { diagnoses: { past_medical_history: [] } },
+  { diagnoses: { allergies: 'Penicillin' } },
+  { medications: [{ name: 'Lasix', dosage: '40mg', frequency: 'daily' }] },
+  { medications: [{ name: 'Lasix' }, { name: 'Eliquis', frequency: 'BID' }] },
+  { medications: [] },
+  { skilled_needs: { services_ordered: ['SN', 'PT'] } },
+  { skilled_needs: { services_ordered: [] } },
+  { skilled_needs: { goals_of_care: 'Independent with dressing changes' } },
+  { clinical_info: { vital_signs: 'BP 130/82, HR 78, T 98.4' } },
+  {
+    admission_details: { referral_reason: 'SOC', clinical_history: 'History' },
+    diagnoses: { past_medical_history: [{ condition: 'CHF' }], allergies: 'Sulfa' },
+    medications: [{ name: 'Lasix', dosage: '40mg', frequency: 'daily' }],
+    skilled_needs: { services_ordered: ['SN'], goals_of_care: 'Wound closure' },
+    clinical_info: { vital_signs: 'BP 130/82' },
+  },
+];
+
+test('the ported admission note template matches its Base44 original exactly', async () => {
+  const original = await loadOriginal('../functions/extractReferralDataForSmartNote/entry.ts', 'generateAdmissionNoteTemplate');
+  for (const refData of REFERRAL_CASES) {
+    assert.equal(buildAdmissionNoteTemplate(refData), original(refData),
+      `ported admission note drifted for ${JSON.stringify(refData)}`);
   }
 });

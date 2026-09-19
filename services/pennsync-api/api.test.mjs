@@ -240,3 +240,52 @@ test('authority is never resolved without a configured target', async () => {
     error => error.status === 503 && error.code === 'AUTHORITY_NOT_CONFIGURED',
   );
 });
+
+test('the smart-note seed maps only fields the extractor actually produces', async () => {
+  const { buildSmartNoteData } = await import('./transforms.mjs');
+  const referral = {
+    patient_id: 'patient-a1',
+    extracted_data: {
+      admission_details: { admission_date: '2026-03-02', referral_reason: 'Wound care' },
+      diagnoses: {
+        primary_diagnosis: 'Cellulitis', primary_icd10: 'L03.115',
+        secondary_diagnoses: ['Diabetes'], comorbidity_adjustments: ['low'], allergies: 'Sulfa',
+      },
+      clinical_info: { vital_signs: 'BP 130/82' },
+      skilled_needs: { services_ordered: ['SN'], specific_interventions: ['dressing'], goals_of_care: 'Closure' },
+      medications: [{ name: 'Lasix' }],
+      demographics: { full_name: 'Synthetic Patient', date_of_birth: '1950-04-02' },
+    },
+  };
+  const seed = buildSmartNoteData(referral);
+  assert.equal(seed.patient_id, 'patient-a1');
+  assert.equal(seed.visit_type, 'admission');
+  assert.equal(seed.visit_date, '2026-03-02');
+  assert.equal(seed.diagnosis, 'Cellulitis');
+  assert.equal(seed.vital_signs_text, 'BP 130/82');
+  assert.equal(seed.clinical_summary.primary_icd10, 'L03.115');
+  assert.equal(seed.clinical_summary.instructions_from_referral, 'Closure');
+  assert.equal(seed.patient_demographics.name, 'Synthetic Patient');
+  assert.match(seed.admission_note_template, /REASON FOR ADMISSION:\nWound care/);
+});
+
+test('the smart-note seed invents nothing when the extraction is empty', async () => {
+  const { buildSmartNoteData } = await import('./transforms.mjs');
+  const seed = buildSmartNoteData({ patient_id: 'p1' }, { today: new Date('2026-03-02T11:00:00Z') });
+  // A missing admission date falls back to the injected clock, never to a
+  // guessed value, and absent clinical fields stay empty rather than invented.
+  assert.equal(seed.visit_date, '2026-03-02');
+  assert.equal(seed.diagnosis, '');
+  assert.deepEqual(seed.secondary_diagnoses, []);
+  assert.equal(seed.vital_signs_text, '');
+  assert.equal(seed.clinical_summary.allergies, 'NKDA');
+  assert.equal(seed.clinical_summary.primary_diagnosis, undefined);
+  assert.equal(seed.patient_demographics.name, undefined);
+  assert.equal(seed.clinical_summary.instructions_from_referral, '');
+});
+
+test('the smart-note transform is not reachable as a released handler', () => {
+  // It needs an authorized referral read that this service does not yet have;
+  // exposing it would let a caller supply its own referral payload.
+  assert.equal(HANDLER_NAMES.includes('extractReferralDataForSmartNote'), false);
+});

@@ -68,6 +68,17 @@ a typo fails immediately instead of releasing nothing or something else.
 | --- | --- | --- |
 | `validatePatientData` | `base44/functions/validatePatientData/entry.ts` | Pure field validation; reads and writes nothing |
 
+Ported transforms without a handler yet, in `transforms.mjs`:
+
+| Transform | Source | Why no handler |
+| --- | --- | --- |
+| `buildAdmissionNoteTemplate`, `buildSmartNoteData` | `base44/functions/extractReferralDataForSmartNote/entry.ts` | Needs an authorized referral read this service does not have. Accepting a caller-supplied referral instead would let anyone choose the payload |
+
+The smart-note mapping is ported ahead of its handler on purpose: its key
+paths have been corrected in the original more than once, and each time a
+section rendered blank until someone noticed. The parity test pins it now so a
+future edit on either side fails instead of quietly emptying a note.
+
 `base44/functionTests/pennsyncApiPortParity.test.js` transpiles the original
 Deno entry and asserts the ported implementation returns identical errors
 across a case matrix. A port lands only with that guard.
