@@ -24,6 +24,7 @@ const TARGET = 'https://xxtyweswohkvgkprimwa.supabase.co';
 const LOGO = `data:image/png;base64,${'iVBORw0KGgoAAAANSUhEUg'.repeat(2)}==`;
 const env = (patch = {}) => ({
   PENNSYNC_API_RELEASE: 'enabled-v1',
+  PENNSYNC_API_APP_ID: '694ec16e72e01b60d22f7cbf',
   PENNSYNC_API_FUNCTIONS: 'generateBagTechniquePDF',
   PENNSYNC_API_AUTHORITY_URL: TARGET,
   PENNSYNC_API_AUTHORITY_PUBLISHABLE_KEY: KEY,

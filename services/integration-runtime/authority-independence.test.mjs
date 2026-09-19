@@ -13,6 +13,9 @@ const revision = 'c'.repeat(40);
 const KEY = 'sb_publishable_synthetic-acceptance-key';
 const TARGET = 'https://xxtyweswohkvgkprimwa.supabase.co';
 const AUTH_USER = '11111111-2222-4333-8444-555555555555';
+// Independent mode replays this to the owned store, which admits exactly the app
+// its deployment was pinned to, so every independent fixture states it outright.
+const APP = '694ec16e72e01b60d22f7cbf';
 const base = {
   SUPABASE_URL: 'https://xsqobvvreaovwibxwyvv.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'synthetic-only',
   INTEGRATIONS_ENCRYPTION_KEY: '1'.repeat(64), INTEGRATIONS_HASH_KEY: '2'.repeat(64),
@@ -22,12 +25,13 @@ const base = {
   NOTIFICATION_FROM_EMAIL: 'synthetic@example.test', RAILWAY_GIT_COMMIT_SHA: revision,
 };
 const independentEnv = (patch = {}) => ({ ...base, INTEGRATIONS_AUTHORITY_MODE: 'independent',
+  INTEGRATIONS_APP_ID: APP,
   INTEGRATIONS_AUTHORITY_URL: TARGET, INTEGRATIONS_AUTHORITY_PUBLISHABLE_KEY: KEY, ...patch });
 const independentConfig = (patch = {}) => loadConfig(independentEnv(patch));
 const legacyConfig = () => loadConfig(base);
 
 const context = (patch = {}) => ({
-  contract: AUTHORITY_CONTRACT, app_id: '694ec16e72e01b60d22f7cbf', auth_user_id: AUTH_USER,
+  contract: AUTHORITY_CONTRACT, app_id: APP, auth_user_id: AUTH_USER,
   staging: true, synthetic: true,
   user_id: 'user-a', user_email: 'synthetic@example.test', identity_version: 1,
   is_platform_owner: false, agency_id: 'agency-a', membership_id: 'member-a',
@@ -68,6 +72,26 @@ test('configuration refuses an unknown mode, foreign target, secret key or incom
   assert.equal(legacy.configured, true);
 });
 
+test('independent mode refuses an app binding the operator did not choose', () => {
+  // The store's pin defaults to STAGING; this service's app id defaults to
+  // PRODUCTION. Defaulting both is the one combination that reports ready and is
+  // refused by every authorization call, so independence must not inherit it.
+  const { INTEGRATIONS_APP_ID: _omitted, ...withoutApp } = independentEnv();
+  assert.throws(() => loadConfig(withoutApp), /IMPLICIT_APP_BINDING/);
+  assert.throws(() => loadConfig(independentEnv({ INTEGRATIONS_APP_ID: '' })), /IMPLICIT_APP_BINDING/);
+
+  // Stating it is all that is asked, and either reviewed app may be stated.
+  for (const app of ['694ec16e72e01b60d22f7cbf', '6a9881683dc68a0bd54f1ef7']) {
+    assert.equal(loadConfig(independentEnv({ INTEGRATIONS_APP_ID: app })).appId, app);
+  }
+  // Stating an unknown one still fails on the older, narrower check.
+  assert.throws(() => loadConfig(independentEnv({ INTEGRATIONS_APP_ID: '68ee80d98929370f9e8f2932' })), /INVALID_APP_BINDING/);
+
+  // The retained Base44 path is untouched: it never reaches the owned store, so
+  // its long-standing default is still correct and must keep working unset.
+  assert.equal(legacyConfig().appId, '694ec16e72e01b60d22f7cbf');
+});
+
 test('readiness derives the disclosed dependency from the selected authority', () => {
   const legacy = publicReadiness(legacyConfig());
   assert.equal(legacy.base44ExecutionDependency, true);
@@ -88,7 +112,7 @@ test('authority is read from the owned store with the caller token and publishab
   });
   assert.equal(seen.url, `${TARGET}/rest/v1/rpc/${AUTHORITY_RPC}`);
   assert.equal(seen.url.includes('base44'), false);
-  assert.deepEqual(JSON.parse(seen.options.body), { p_app_id: '694ec16e72e01b60d22f7cbf', p_agency_id: 'agency-a' });
+  assert.deepEqual(JSON.parse(seen.options.body), { p_app_id: APP, p_agency_id: 'agency-a' });
   assert.equal(seen.options.redirect, 'error');
   assert.equal(seen.options.headers.apikey, KEY);
   assert.equal(seen.options.headers.Authorization, 'Bearer synthetic-native-session-token');

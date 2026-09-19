@@ -12,7 +12,11 @@ const DEFAULT_ORIGINS = 'https://caremetricai.base44.app,https://app.caremetrica
 const DOCUMENT_LOGO = /^data:image\/png;base64,[A-Za-z0-9+/]{16,699999}={0,2}$/;
 
 export function loadConfig(env = process.env) {
-  const appId = env.PENNSYNC_API_APP_ID || DEFAULT_APP;
+  // Kept separate from the resolved id so a release can tell a binding an operator
+  // chose from one that merely defaulted. Deliberately untrimmed: a value with
+  // stray whitespace still fails ALLOWED_APPS as it does today.
+  const explicitApp = env.PENNSYNC_API_APP_ID || '';
+  const appId = explicitApp || DEFAULT_APP;
   if (!ALLOWED_APPS.has(appId)) throw new Error('INVALID_APP_BINDING');
 
   const functions = (env.PENNSYNC_API_FUNCTIONS || '').split(',').map(name => name.trim()).filter(Boolean);
@@ -44,6 +48,13 @@ export function loadConfig(env = process.env) {
   const released = env.PENNSYNC_API_RELEASE === 'enabled-v1';
   // Releasing without a usable authority would mean serving unauthorized work.
   if (released && !authorityConfigured) throw new Error('INCOMPLETE_AUTHORITY_CONFIGURATION');
+  // This service is always independent-authority, so its app id is not a label:
+  // it is the request's key into the owned store, which admits exactly the one app
+  // its deployment was pinned to. The store's pin defaults to STAGING while this
+  // default is PRODUCTION, so a defaulted binding is the one combination that
+  // reports ready and is refused by every authorization call. A released service
+  // must say which app it serves.
+  if (released && !explicitApp) throw new Error('IMPLICIT_APP_BINDING');
 
   return Object.freeze({
     appId, functions: Object.freeze(functions), origins: Object.freeze(origins),

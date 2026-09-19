@@ -11,8 +11,12 @@ const revision = 'd'.repeat(40);
 const KEY = 'sb_publishable_synthetic-acceptance-key';
 const TARGET = 'https://xxtyweswohkvgkprimwa.supabase.co';
 const AUTH_USER = '99999999-8888-4777-8666-555555555555';
+// Replayed to the owned store, which admits exactly the app its deployment was
+// pinned to, so a released fixture states it outright rather than defaulting.
+const APP = '694ec16e72e01b60d22f7cbf';
 const env = (patch = {}) => ({
   PENNSYNC_API_RELEASE: 'enabled-v1',
+  PENNSYNC_API_APP_ID: APP,
   PENNSYNC_API_FUNCTIONS: 'validatePatientData',
   PENNSYNC_API_AUTHORITY_URL: TARGET,
   PENNSYNC_API_AUTHORITY_PUBLISHABLE_KEY: KEY,
@@ -22,7 +26,7 @@ const env = (patch = {}) => ({
 const config = (patch = {}) => loadConfig(env(patch));
 
 const context = (patch = {}) => ({
-  contract: AUTHORITY_CONTRACT, app_id: '694ec16e72e01b60d22f7cbf', auth_user_id: AUTH_USER,
+  contract: AUTHORITY_CONTRACT, app_id: APP, auth_user_id: AUTH_USER,
   staging: true, synthetic: true, user_id: 'user-a', user_email: 'synthetic@example.test',
   identity_version: 1, is_platform_owner: false, agency_id: 'agency-a', membership_id: 'member-a',
   membership_key: 'agency-a:user-a', membership_version: 1, membership_status: 'active',
@@ -77,6 +81,27 @@ test('configuration defaults closed and refuses unusable release combinations', 
   assert.throws(() => loadConfig(env({ PENNSYNC_API_ALLOWED_ORIGINS: 'http://app.example.test' })));
   assert.throws(() => loadConfig(env({ PENNSYNC_API_APP_ID: '000000000000000000000000' })));
   assert.equal(validAuthorityTarget(TARGET) && validAuthorityKey(KEY), true);
+});
+
+test('a released service refuses an app binding the operator did not choose', () => {
+  // The store's pin defaults to STAGING; this service's app id defaults to
+  // PRODUCTION. Defaulting both is the one combination that reports ready and is
+  // refused by every authorization call, so a release must not inherit it.
+  const { PENNSYNC_API_APP_ID: _omitted, ...withoutApp } = env();
+  assert.throws(() => loadConfig(withoutApp), /IMPLICIT_APP_BINDING/);
+  assert.throws(() => loadConfig(env({ PENNSYNC_API_APP_ID: '' })), /IMPLICIT_APP_BINDING/);
+
+  // Stating it is all that is asked, and either reviewed app may be stated.
+  for (const app of ['694ec16e72e01b60d22f7cbf', '6a9881683dc68a0bd54f1ef7']) {
+    assert.equal(loadConfig(env({ PENNSYNC_API_APP_ID: app })).appId, app);
+  }
+
+  // Unreleased, the service serves nothing, so the default is harmless and the
+  // bare config must still load — this guard closes a release, not a startup.
+  const bare = loadConfig({});
+  assert.equal(bare.released, false);
+  assert.equal(bare.appId, '694ec16e72e01b60d22f7cbf');
+  assert.equal(publicReadiness(bare).ready, false);
 });
 
 test('readiness reports no Base44 dependency and never claims a cutover', async () => {

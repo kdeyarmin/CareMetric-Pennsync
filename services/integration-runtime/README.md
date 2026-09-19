@@ -24,7 +24,16 @@ unless an operator sets it, so no deployment changes authority by accident.
 | `base44` (default) | The adapter invokes Base44 `getMyTenantContext`. An explicitly retained Base44 execution dependency, not a zero-credit claim. | `base44ExecutionDependency:true` |
 | `independent` | The caller's own Supabase Auth access token is replayed to the owned authority store's fixed `pennsync_staging_context` RPC. | `base44ExecutionDependency:false` |
 
-Independent mode additionally requires `INTEGRATIONS_AUTHORITY_URL` (one of the
+Independent mode additionally requires `INTEGRATIONS_APP_ID` to be set
+explicitly. In `base44` mode the app id is a label and its long-standing
+production default is correct; in independent mode it becomes the request's key
+into the owned store, whose `actor()` admits exactly the one app its deployment
+was pinned to. That pin defaults to **staging** while this default is
+**production**, so an independent deployment that states neither is the one
+combination that reports `base44ExecutionDependency:false` and is refused by
+every authorization call. It is refused at startup instead.
+
+Independent mode also requires `INTEGRATIONS_AUTHORITY_URL` (one of the
 two reviewed targets pinned in `authority.mjs`) and
 `INTEGRATIONS_AUTHORITY_PUBLISHABLE_KEY` (a modern publishable key; a secret or
 service-role key is refused at startup, because it would read past the caller's

@@ -7,7 +7,11 @@ const DEFAULT_APP = '694ec16e72e01b60d22f7cbf';
 const ALLOWED_APPS = new Set([DEFAULT_APP, '6a9881683dc68a0bd54f1ef7']);
 export const BUCKET = 'pennsync-external-integrations';
 export function loadConfig(env = process.env) {
-  const appId = env.INTEGRATIONS_APP_ID || DEFAULT_APP;
+  // Kept separate from the resolved id so independent mode can tell a binding an
+  // operator chose from one that merely defaulted. Deliberately untrimmed: a value
+  // with stray whitespace still fails ALLOWED_APPS as it does today.
+  const explicitApp = env.INTEGRATIONS_APP_ID || '';
+  const appId = explicitApp || DEFAULT_APP;
   if (!ALLOWED_APPS.has(appId)) throw new Error('INVALID_APP_BINDING');
   const operations = (env.INTEGRATIONS_ALLOWED_OPERATIONS || '').split(',').filter(Boolean);
   if (operations.some(operation => !OPERATIONS.includes(operation)) || new Set(operations).size !== operations.length) throw new Error('INVALID_OPERATION_CONFIGURATION');
@@ -32,6 +36,13 @@ export function loadConfig(env = process.env) {
   if (authorityKey && !validAuthorityKey(authorityKey)) throw new Error('INVALID_AUTHORITY_KEY');
   const authorityConfigured = validAuthorityTarget(authorityUrl) && validAuthorityKey(authorityKey);
   if (authorityMode === 'independent' && !authorityConfigured) throw new Error('INCOMPLETE_AUTHORITY_CONFIGURATION');
+  // In independent mode the app id stops being a label and becomes the request's
+  // key into the owned store: `actor()` admits exactly the one app its deployment
+  // was pinned to, and the store's pin defaults to STAGING while this default is
+  // PRODUCTION. A defaulted binding is therefore the one combination that reports
+  // ready and is refused by every authorization call. Make the operator say which
+  // app this runtime serves rather than inherit a default from the other path.
+  if (authorityMode === 'independent' && !explicitApp) throw new Error('IMPLICIT_APP_BINDING');
   const configured = !!supabaseUrl && !!env.SUPABASE_SERVICE_ROLE_KEY
     && /^[a-f0-9]{64}$/.test(encryptionKey) && /^[a-f0-9]{64}$/.test(hashKey) && encryptionKey !== hashKey
     && (authorityMode !== 'independent' || authorityConfigured);

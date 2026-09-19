@@ -60,12 +60,20 @@ only.
 | `PENNSYNC_API_AUTHORITY_URL` | One of the two reviewed authority targets |
 | `PENNSYNC_API_AUTHORITY_PUBLISHABLE_KEY` | A modern publishable key |
 | `PENNSYNC_API_ALLOWED_ORIGINS` | Optional HTTPS origin allowlist; defaults to the two production origins |
-| `PENNSYNC_API_APP_ID` | Optional; production or the staging app id |
+| `PENNSYNC_API_APP_ID` | Required once released; production or the staging app id, and it must name the app the target store was pinned to |
 | `PENNSYNC_API_DOCUMENT_LOGO` | Optional inline `data:image/png;base64,…` logo for ported documents. A remote address is refused |
 
 Releasing without a usable authority throws at startup rather than serving
 unauthorized work. A released name that is not in the registry also throws, so
 a typo fails immediately instead of releasing nothing or something else.
+
+Releasing without `PENNSYNC_API_APP_ID` throws for a subtler reason. This
+service is always independent-authority, so its app id is not a label: it is the
+request's key into the owned store, whose `actor()` admits exactly the one app
+its deployment was pinned to. That pin defaults to **staging** while this
+setting defaults to **production**, so a release that states neither is the one
+combination that reports `ready:true` and is refused by every authorization
+call. The operator says which app this deployment serves, or it does not start.
 
 ## Ported handlers
 
