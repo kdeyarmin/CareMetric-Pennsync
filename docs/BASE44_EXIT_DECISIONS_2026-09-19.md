@@ -127,8 +127,11 @@ receipts attesting both the baseline pause and the preserved pause. Disabling a
 working feature is not preservation, and releasing one during a migration would
 mean proving two changes at once.
 
-Consequence: 94 handlers and 51 entity schemas are carried without being
+Consequence: 102 handlers and 51 entity schemas are carried without being
 activated. Their schemas and data still migrate; only their execution stays off.
+Eight of those handlers are counted here only because the evidence check below
+reclassified them: seven were wrongly `port` or `broker`, and one was
+`undecided`. All eight are fail-closed pauses, not live work.
 
 ## D8 — Learning moves to the Support Hub rather than being ported
 
@@ -150,6 +153,37 @@ entity schema, workflow and Core integration. `pnpm run check:transition-disposi
 and its test fail when a capability is added without a disposition, or when a
 manifest entry survives a capability that no longer exists.
 
+A disposition is also checked against the source it describes. `port`, `broker`
+and `hub` each assert that a capability still has behavior worth carrying, so
+none of them may be given to a function whose module cannot do anything: one
+that imports nothing, awaits nothing, reaches no network or environment and
+constructs no Base44 client serves the same constant response to every caller.
+That is the shape this repository uses to hold a quarantined, paused or retired
+endpoint fail closed, and 30 of the 282 functions have it today. Such a function
+can only be carried `preserved_paused` or retired; claiming otherwise would send
+a reviewer to port an endpoint with nothing left in it. The check reads the
+module rather than the wording of its comment or the status code it serves, so a
+constant `200` that skips its own work is treated the same as a constant `503`.
+
+Eight entries asserted exactly that before the check existed, and all eight are
+now corrected:
+
+| Function | Was | Is | Why |
+| --- | --- | --- | --- |
+| `analyzeClinicalData` | `port` | `preserved_paused` | Fail-closed pending a tenant-authorized broker |
+| `analyzeDocument` | `port` | `preserved_paused` | Fail-closed pending a private write broker |
+| `analyzeNursePerformance` | `port` | `preserved_paused` | Fail-closed pending immutable tenant provenance |
+| `autoAssignNurseToPatient` | `port` | `preserved_paused` | Assignment trigger disabled pending an audited workflow |
+| `generateDischargeSummary` | `port` | `preserved_paused` | Fail-closed pending a tenant-owned sink |
+| `generatePatientEducation` | `port` | `preserved_paused` | Fail-closed pending a tenant-owned sink |
+| `getPatientContext` | `port` | `retire` | Answers `410`; superseded by purpose-bound read brokers |
+| `runSecurityAudit` | `broker` | `preserved_paused` | Fail-closed pending immutable tenant provenance |
+
+`getUserActivityLog` was `undecided` and is a pause of the same kind, so the
+evidence resolves it to `preserved_paused` as well. The `UserActivity` entity
+behind it stays `undecided`: whether that history is carried at all remains a
+decision for its owners, and the endpoint being paused does not make it.
+
 Current coverage, measured on this branch:
 
 | Family | Capabilities | Classified |
@@ -159,7 +193,7 @@ Current coverage, measured on this branch:
 | Native workflows | 7 | 7 |
 | Core integrations | 7 | 7 |
 
-Thirty-two entries are `undecided` and are reported as blocking. They are not an
+Thirty-one entries are `undecided` and are reported as blocking. They are not an
 oversight: each is a capability whose target home depends on a decision this
 record deliberately does not make. They are the unmigrated `Notification`
 producers, the reusable-content roots whose legacy tenant ownership is

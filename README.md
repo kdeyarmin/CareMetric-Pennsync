@@ -42,7 +42,7 @@ Start here to work on the migration:
 
 Migration checks:
 
-- `pnpm run check:transition-disposition` — every capability carries a disposition
+- `pnpm run check:transition-disposition` — every capability carries a disposition, and no function that can perform no work is declared `port`, `broker` or `hub`
 - `pnpm run check:base44-surface` — remaining Base44 coupling stays within its baseline
 - `pnpm run check:file-references` — the schema file-reference census is current
 - `pnpm run check:entity-schema-plan` — the candidate PostgreSQL schema matches the entity definitions

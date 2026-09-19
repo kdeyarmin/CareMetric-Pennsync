@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  DISPOSITIONS, FORMAT, FORMAT_VERSION, checkCoverage, discoverCapabilities,
-  discoverIntegrations, main, parseManifest,
+  ACTIVE_DISPOSITIONS, DISPOSITIONS, FORMAT, FORMAT_VERSION, checkCoverage, discoverCapabilities,
+  discoverEvidence, discoverInertFunctions, discoverIntegrations, isInertFunction, main, parseManifest,
 } from './tools-transition-disposition.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -29,6 +29,91 @@ test('every repository capability carries exactly one disposition', () => {
   assert.equal(report.coverage_complete, true);
   assert.ok(report.families.functions.capabilities > 250);
   assert.ok(report.families.entities.capabilities > 250);
+});
+
+test('no committed disposition contradicts the source it describes', () => {
+  const raw = readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8');
+  const report = checkCoverage(discoverCapabilities(repository), parseManifest(raw), discoverEvidence(repository));
+  assert.deepEqual(report.contradicted_disposition, []);
+  assert.equal(report.evidence_consistent, true);
+  // The check must be looking at a real population, not an empty one.
+  assert.ok(report.inert_functions > 25, `only ${report.inert_functions} inert functions found`);
+});
+
+test('a fail-closed endpoint is never declared port, broker or hub', () => {
+  // These are quarantined, paused or retired in the repository: each serves one
+  // constant response and reaches nothing. Declaring any of them active would
+  // send a reviewer to port an endpoint that has no behavior left to port.
+  const declared = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')).functions;
+  const inert = discoverInertFunctions(repository);
+  for (const name of ['analyzeClinicalData', 'analyzeDocument', 'analyzeNursePerformance',
+    'autoAssignNurseToPatient', 'generateDischargeSummary', 'generatePatientEducation',
+    'getPatientContext', 'runSecurityAudit', 'getUserActivityLog']) {
+    assert.ok(inert.includes(name), `${name} should be detected as inert`);
+    assert.equal(ACTIVE_DISPOSITIONS.includes(declared[name]), false,
+      `${name} is declared ${declared[name]} but performs no work`);
+  }
+  // The retired endpoint is retired, not merely paused.
+  assert.equal(declared.getPatientContext, 'retire');
+});
+
+test('inertness is read from what the module can do, not from its wording', () => {
+  const stub = "Deno.serve(() => Response.json({ error: 'paused' }, { status: 503 }));";
+  assert.equal(isInertFunction(stub), true);
+  // A constant 200 with no work is just as inert as a constant 503.
+  assert.equal(isInertFunction("Deno.serve(async (_req) => Response.json({ success: true, skipped: 'disabled' }));"), true);
+  // Anything that can reach a client, the network, the environment or a
+  // promise is live, however paused its comment claims to be.
+  assert.equal(isInertFunction("// paused\nimport { createClientFromRequest } from 'npm:@base44/sdk';\nDeno.serve(() => Response.json({}));"), false);
+  assert.equal(isInertFunction('Deno.serve(async () => { await base44.entities.Patient.list(); });'), false);
+  assert.equal(isInertFunction("Deno.serve(async () => { const r = await fetch('https://example.test'); return r; });"), false);
+  assert.equal(isInertFunction("Deno.serve(() => Response.json({ key: Deno.env.get('X') }));"), false);
+  // Branching on the method alone is still one constant answer per method.
+  assert.equal(isInertFunction('Deno.serve((req) => (req.method === "POST" '
+    + '? Response.json({ paused: true }, { status: 503 }) : Response.json({}, { status: 405 })));'), true);
+  // Reading anything else from the request means the answer varies with the
+  // caller, so a synchronous endpoint that needs no await is still live.
+  assert.equal(isInertFunction('Deno.serve((req) => Response.json({ echo: new URL(req.url).searchParams.get("q") }));'), false);
+  assert.equal(isInertFunction('Deno.serve((_req) => Response.json({ h: _req.headers.get("x") }));'), false);
+  assert.equal(isInertFunction('Deno.serve((request) => Response.json({ u: request.url }));'), false);
+  // Not an endpoint at all.
+  assert.equal(isInertFunction('export const helper = () => 1;'), false);
+  assert.equal(isInertFunction(null), false);
+});
+
+test('every function the detector calls inert serves one constant response', () => {
+  // A false positive is the dangerous direction: it would push a live handler
+  // out of port. Nothing currently detected reads its request beyond a method
+  // check, so each really does answer every caller identically.
+  for (const name of discoverInertFunctions(repository)) {
+    const source = readFileSync(resolve(repository, 'base44/functions', name, 'entry.ts'), 'utf8');
+    const reads = [...source.matchAll(/\b_?req(?:uest)?\s*\.\s*(\w+)/g)].map(match => match[1]);
+    assert.deepEqual(reads.filter(property => property !== 'method'), [], `${name} reads its request`);
+  }
+});
+
+test('an inert function declared active is reported and fails the gate', () => {
+  const evidence = { inertFunctions: ['alpha'] };
+  for (const value of ACTIVE_DISPOSITIONS) {
+    const report = checkCoverage(capabilities(), manifest({ functions: { alpha: value } }), evidence);
+    assert.equal(report.evidence_consistent, false);
+    assert.equal(report.contradicted_disposition.length, 1);
+    assert.match(report.contradicted_disposition[0], new RegExp(`^functions:alpha declared ${value} `));
+    assert.equal(report.census_ready, false);
+  }
+  // Carrying it paused or retiring it are both consistent readings.
+  for (const value of ['preserved_paused', 'retire', 'undecided']) {
+    assert.deepEqual(checkCoverage(capabilities(), manifest({ functions: { alpha: value } }), evidence).contradicted_disposition, []);
+  }
+  // Only functions carry this evidence; a same-named entity is untouched.
+  assert.deepEqual(checkCoverage(capabilities({ functions: [], entities: ['alpha'] }),
+    manifest({ functions: {}, entities: { alpha: 'port' } }), evidence).contradicted_disposition, []);
+});
+
+test('a contradiction blocks the census even when owners accepted', () => {
+  const report = checkCoverage(capabilities(), manifest({ review_state: 'accepted' }), { inertFunctions: ['alpha'] });
+  assert.equal(report.coverage_complete, true);
+  assert.equal(report.census_ready, false);
 });
 
 test('the committed manifest never reports itself as reviewed or authorized', () => {

@@ -8,6 +8,12 @@
  * each one exactly once, with no entry left over for a capability that no
  * longer exists.
  *
+ * Coverage alone would let a disposition contradict the source it describes,
+ * so each function's declared disposition is also checked against what its
+ * module can actually do. A function that cannot perform any I/O has no live
+ * behavior to move, and claiming otherwise would send reviewers to port a
+ * deliberately fail-closed endpoint.
+ *
  * It is deterministic and offline. It reads no secret, contacts no provider,
  * performs no hosted inventory and authorizes nothing. Coverage is not the
  * same as review: `undecided` entries are counted and reported as blocking,
@@ -25,6 +31,8 @@ export const MANIFEST_FILE = 'tools-transition-disposition.json';
 export const FAMILIES = Object.freeze(['functions', 'entities', 'workflows', 'integrations']);
 export const DISPOSITIONS = Object.freeze(['port', 'broker', 'hub', 'retire', 'preserved_paused', 'undecided']);
 export const REVIEW_STATES = Object.freeze(['proposed', 'accepted']);
+/** Dispositions that assert the capability still has behavior worth carrying. */
+export const ACTIVE_DISPOSITIONS = Object.freeze(['port', 'broker', 'hub']);
 /** Only `accepted` plus zero undecided entries makes the census usable. */
 export const BLOCKING = Object.freeze(['undecided']);
 
@@ -76,6 +84,49 @@ export function discoverIntegrations(repository) {
   return [...found].sort();
 }
 
+/**
+ * A function module is inert when it cannot perform any work: it imports
+ * nothing, awaits nothing, reaches no network or environment, constructs no
+ * Base44 client, and reads nothing from the request but its method, so every
+ * caller gets the same constant response. That is the shape this repository
+ * uses to keep a quarantined, paused or retired endpoint fail-closed, and it is
+ * decided from the source rather than from the wording of its comment or the
+ * status code it happens to serve.
+ *
+ * Every condition errs toward calling a module live. A synchronous endpoint
+ * that answers from its query string reads the request and is not inert, and an
+ * `await`, `fetch` or client mention inside a comment is enough to disqualify
+ * one. A missed pause is a disposition left as its author wrote it; a live
+ * handler wrongly called inert would push real behavior out of `port`.
+ */
+export function isInertFunction(source) {
+  if (typeof source !== 'string') return false;
+  if (!/\bDeno\s*\.\s*serve\b/.test(source)) return false;
+  if (/^\s*import\s/m.test(source)) return false;
+  if (/\bawait\b/.test(source)) return false;
+  if (/\bfetch\s*\(/.test(source)) return false;
+  if (/\bDeno\s*\.\s*env\b/.test(source)) return false;
+  if (/createClientFromRequest|\bbase44\s*\./.test(source)) return false;
+  // Reading the request at all means the response can vary with the caller.
+  // Branching on the method only is still one constant answer per method.
+  return [...source.matchAll(/\b_?req(?:uest)?\s*\.\s*(\w+)/g)].every(match => match[1] === 'method');
+}
+
+export function discoverInertFunctions(repository) {
+  const root = join(repository, 'base44/functions');
+  const inert = [];
+  for (const name of listDirectories(root)) {
+    let source;
+    try { source = readFileSync(join(root, name, 'entry.ts'), 'utf8'); } catch { continue; }
+    if (isInertFunction(source)) inert.push(name);
+  }
+  return inert.sort();
+}
+
+export function discoverEvidence(repository) {
+  return { inertFunctions: discoverInertFunctions(repository) };
+}
+
 export function discoverCapabilities(repository) {
   return {
     functions: listDirectories(join(repository, 'base44/functions')),
@@ -103,11 +154,13 @@ export function parseManifest(raw) {
   return manifest;
 }
 
-export function checkCoverage(capabilities, manifest) {
+export function checkCoverage(capabilities, manifest, evidence = {}) {
+  const inert = new Set(Array.isArray(evidence.inertFunctions) ? evidence.inertFunctions : []);
   const families = {};
   const missing = [];
   const unknown = [];
   const undecided = [];
+  const contradicted = [];
   for (const family of FAMILIES) {
     const declared = manifest[family];
     const present = new Set(capabilities[family]);
@@ -117,11 +170,17 @@ export function checkCoverage(capabilities, manifest) {
       const value = declared[name];
       counts[value] = (counts[value] || 0) + 1;
       if (BLOCKING.includes(value)) undecided.push(`${family}:${name}`);
+      // An endpoint that cannot run has nothing to port, broker or hand to the
+      // hub; carrying it paused or retiring it are the only honest readings.
+      if (family === 'functions' && inert.has(name) && ACTIVE_DISPOSITIONS.includes(value)) {
+        contradicted.push(`${family}:${name} declared ${value} but its module performs no work`);
+      }
     }
     for (const name of Object.keys(declared)) if (!present.has(name)) unknown.push(`${family}:${name}`);
     families[family] = { capabilities: capabilities[family].length, declared: Object.keys(declared).length, counts };
   }
   const complete = missing.length === 0 && unknown.length === 0;
+  const consistent = contradicted.length === 0;
   return {
     format: FORMAT,
     schema_version: FORMAT_VERSION,
@@ -131,8 +190,12 @@ export function checkCoverage(capabilities, manifest) {
     unknown_capability: unknown.sort(),
     undecided: undecided.sort(),
     coverage_complete: complete,
-    // Every capability classified AND none left undecided AND owners accepted.
-    census_ready: complete && undecided.length === 0 && manifest.review_state === 'accepted',
+    inert_functions: inert.size,
+    contradicted_disposition: contradicted.sort(),
+    evidence_consistent: consistent,
+    // Every capability classified AND consistent with its source AND none left
+    // undecided AND owners accepted.
+    census_ready: complete && consistent && undecided.length === 0 && manifest.review_state === 'accepted',
     owner_review_complete: manifest.review_state === 'accepted',
     // This tool inventories the repository only.
     hosted_inventory_reconciled: false,
@@ -147,7 +210,11 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
   }
   let report;
   try {
-    report = checkCoverage(discoverCapabilities(repository), parseManifest(readFileSync(join(repository, MANIFEST_FILE), 'utf8')));
+    report = checkCoverage(
+      discoverCapabilities(repository),
+      parseManifest(readFileSync(join(repository, MANIFEST_FILE), 'utf8')),
+      discoverEvidence(repository),
+    );
   } catch (error) {
     log(JSON.stringify({ error: error?.message === 'ENOENT' ? 'MANIFEST_UNAVAILABLE' : (error?.message || 'MANIFEST_UNAVAILABLE') }));
     return 2;
@@ -156,11 +223,13 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
     const totals = Object.entries(report.families)
       .map(([family, value]) => `${family}=${value.capabilities}`).join(' ');
     log(`disposition coverage ${report.coverage_complete ? 'complete' : 'INCOMPLETE'} (${totals}); `
-      + `undecided=${report.undecided.length}; review_state=${report.review_state}; census_ready=${report.census_ready}`);
+      + `contradicted=${report.contradicted_disposition.length}; undecided=${report.undecided.length}; `
+      + `review_state=${report.review_state}; census_ready=${report.census_ready}`);
+    for (const entry of report.contradicted_disposition) log(`  contradicted: ${entry}`);
   } else {
     log(JSON.stringify(report, null, 2));
   }
-  return report.coverage_complete ? 0 : 1;
+  return report.coverage_complete && report.evidence_consistent ? 0 : 1;
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {

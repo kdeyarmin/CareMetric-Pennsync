@@ -33,7 +33,7 @@ On the default path the Base44 platform (auth, data entities, and the Deno funct
 
 The product is migrating off Base44. `VITE_PENNSYNC_BACKEND=independent-staging` builds the same app against Supabase Auth and the owned authority store in `services/authority-store`, through `services/authority-client`. That path is synthetic staging only: four fixed test accounts, names-only patients, and unsupported operations fail closed with no Base44 fallback. Two Railway services support it — `services/integration-runtime` (deployed, paused) and `services/pennsync-api` (source only, not deployed).
 
-Before changing anything in the migration, read [the transition plan](docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md) and [the exit decisions](docs/BASE44_EXIT_DECISIONS_2026-09-19.md). Adding a backend function, entity schema, workflow or Core integration requires a disposition in `tools-transition-disposition.json`, and adding Base44 coupling to `src/` fails the surface ratchet. Both run in `pnpm test`.
+Before changing anything in the migration, read [the transition plan](docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md) and [the exit decisions](docs/BASE44_EXIT_DECISIONS_2026-09-19.md). Adding a backend function, entity schema, workflow or Core integration requires a disposition in `tools-transition-disposition.json`; a function whose module can do no work (no import, await, network, environment or Base44 client, and no request read beyond the method) cannot be `port`, `broker` or `hub`, so pausing an endpoint means moving it to `preserved_paused` or `retire` in the same change. Adding Base44 coupling to `src/` fails the surface ratchet. Both run in `pnpm test`.
 
 Use pnpm through Corepack. Do not use npm or yarn for installs.
 

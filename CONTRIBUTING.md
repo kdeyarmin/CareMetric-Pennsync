@@ -45,8 +45,13 @@ pnpm run check:file-references
 
 These are also covered by `pnpm test`. A new backend function, entity schema,
 workflow or Core integration needs a disposition in
-`tools-transition-disposition.json`. New Base44 coupling in `src/` fails the
-surface ratchet: migrate the consumer, or record and justify the increase.
+`tools-transition-disposition.json`, and that disposition is checked against the
+source: `port`, `broker` and `hub` each claim there is live behavior to carry, so
+none of them may be given to a function whose module does no work. If you pause
+an endpoint by replacing its body with a constant response, move it to
+`preserved_paused` or `retire` in the same change. New Base44 coupling in `src/`
+fails the surface ratchet: migrate the consumer, or record and justify the
+increase.
 
 `pnpm run typecheck` and `pnpm run audit:prod` are useful informational baselines, but they are configured as non-blocking in CI.
 
