@@ -7,6 +7,7 @@ import {
   BLOCKING_KINDS, EXPECTATIONS_FILE, FORMAT, FORMAT_VERSION, KINDS, RESOLVING_KINDS, ROOT_ENTITY,
   buildPaths, carriedEntities, comparePaths, isActorColumn, main, normalize, parseExpectations, referenceColumns,
 } from './tools-tenant-path.mjs';
+import { STAMPED_KINDS } from './tools-entity-schema-plan.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 const paths = buildPaths(repository);
@@ -62,11 +63,20 @@ test('the isolation gap stays counted rather than estimated', () => {
   assert.ok(paths.totals.blocking > 0, 'the gap is real; a zero here means the detector broke');
   assert.equal(paths.totals.carried, paths.totals.root + paths.totals.direct + paths.totals.reference
     + paths.totals.actor + paths.totals.profile_claim + paths.totals.unresolved);
-  // Agreed with the schema plan: its tenant-scoped count is every entity that
-  // declares agency_id, which is the direct keys plus the one profile claim.
+  // Agreed with the schema plan. Its tenant-scoped count is every table that
+  // ends up with agency_id: the ones that declared it (the direct keys plus the
+  // one profile claim) and the ones a decision stamps it onto. The gap this
+  // test counts is closed by deciding, not by the resolver getting cleverer,
+  // so the two numbers are kept in agreement here rather than restated.
   const plan = JSON.parse(readFileSync(resolve(repository, 'tools-entity-schema-plan-expectations.json'), 'utf8'));
-  assert.equal(plan.totals.tenant_scoped, paths.totals.direct + paths.totals.profile_claim);
+  const decisions = JSON.parse(readFileSync(resolve(repository, 'tools-tenant-decision.json'), 'utf8')).entities;
+  const stamped = Object.values(decisions).filter(decision => STAMPED_KINDS.includes(decision.kind)).length;
+  const declared = paths.totals.direct + paths.totals.profile_claim;
+  assert.equal(plan.totals.tenant_scoped, declared + stamped);
   assert.equal(plan.totals.carried, paths.totals.carried);
+  // Every blocking entity is decided except the profile claim, which is
+  // excluded from authorization rather than decided, so nothing is left unowned.
+  assert.equal(paths.totals.blocking, Object.keys(decisions).length + paths.totals.profile_claim);
 });
 
 test('the plan never claims a path was reviewed or a policy written', () => {

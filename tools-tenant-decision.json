@@ -1,0 +1,374 @@
+{
+  "format": "pennsync-tenant-decision",
+  "version": 1,
+  "decided_on": "2026-09-19",
+  "decided_by": "Kevin Deyarmin (owner)",
+  "note": "agency is the default. A kind other than agency is a positive claim that the gate re-checks against the schema.",
+  "entities": {
+    "AIConfiguration": {
+      "kind": "agency",
+      "because": "Mixed, and not positively self-owned. Its schema carries per-account AI preferences keyed by user_email, but AIConfigurationManager.jsx lists it unfiltered and writes setting_name rows with no user_email at all, so a self predicate would refuse those writes and hide every other account's settings. Falls back to the restrictive default, at the cost of per-account preferences being visible agency-wide."
+    },
+    "AIContentAgreementAttestation": {
+      "kind": "self",
+      "subject": "user_id",
+      "because": "The row is the account's own setting or record, keyed by user_id; no agency owns it, so a membership change cannot move it."
+    },
+    "AIFeedback": {
+      "kind": "self",
+      "subject": "user_email",
+      "because": "The row is the account's own setting or record, keyed by user_email; no agency owns it, so a membership change cannot move it."
+    },
+    "AIInsightFeedback": {
+      "kind": "agency",
+      "because": "Keyed by nurse_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "AIKnowledgeBase": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "AILearningPattern": {
+      "kind": "agency",
+      "because": "Keyed by provider_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "AIModelConfiguration": {
+      "kind": "global",
+      "because": "Model, prompt and A/B assignment for the platform itself; no agency authors or reads a row of its own."
+    },
+    "AIModelTestResult": {
+      "kind": "self",
+      "subject": "user_email",
+      "because": "The row is the account's own setting or record, keyed by user_email; no agency owns it, so a membership change cannot move it."
+    },
+    "AgencyComplianceRule": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "AgencyFeatureAccess": {
+      "kind": "agency",
+      "because": "Carries agency_code, a reference to Agency under another name rather than no tenancy signal at all. It takes agency_id before load so the predicate reads a key instead of a code."
+    },
+    "AgencyInvitation": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is invited_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "AgencyInvoice": {
+      "kind": "agency",
+      "because": "Carries agency_code, a reference to Agency under another name rather than no tenancy signal at all. It takes agency_id before load so the predicate reads a key instead of a code."
+    },
+    "AgencySettings": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is credential_digest_claimed_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "AlertTriggerRule": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is created_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "Announcement": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "ApprovalRequest": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is approved_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "AutomaticCarePlanTrigger": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "BIIntegration": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "CareSetting": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "CitationLibrary": {
+      "kind": "global",
+      "because": "Published sources and their citations; the rows describe outside documents, not any agency.",
+      "external_locators": [
+        "url"
+      ]
+    },
+    "ClinicalLibraryFolder": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is created_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "ClinicalPathway": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is created_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "ComplianceRule": {
+      "kind": "global",
+      "because": "Regulatory rule definitions that describe the law rather than any agency practising under it."
+    },
+    "ComplianceViolation": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is resolved_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "CustomValidationRule": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "DataArchivePolicy": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "DocumentAutomationWorkflow": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "DocumentTemplate": {
+      "kind": "shared",
+      "platform_flag": "is_system_template",
+      "because": "Holds platform templates and agency-authored ones in one table; is_system_template already marks which."
+    },
+    "DocumentVersion": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is uploaded_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "DocumentationTemplate": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "EducationMaterial": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is created_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "EmployeePayrollProfile": {
+      "kind": "agency",
+      "because": "Keyed by employee_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "FacilityDocumentationRule": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is created_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "FeaturePackage": {
+      "kind": "agency",
+      "because": "Carries agency_code, a reference to Agency under another name rather than no tenancy signal at all. It takes agency_id before load so the predicate reads a key instead of a code."
+    },
+    "FeatureToggle": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "FollowUpRuleConfig": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is updated_by_email, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "FormTemplate": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "InsuranceProvider": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "InvitationSettings": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "LearnedFormatPattern": {
+      "kind": "agency",
+      "because": "Keyed by provider_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "LibraryDocument": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "MedicareComplianceRule": {
+      "kind": "global",
+      "because": "Conditions of Participation rules published by the regulator, identical for every agency."
+    },
+    "MedicareGuideline": {
+      "kind": "global",
+      "because": "CMS manual guidance published by the regulator, identical for every agency.",
+      "external_locators": [
+        "url"
+      ]
+    },
+    "NewFeature": {
+      "kind": "global",
+      "because": "Product announcements about the platform, shown to everyone."
+    },
+    "NoteTemplate": {
+      "kind": "shared",
+      "platform_flag": "is_system_template",
+      "because": "Holds platform templates and agency-authored ones in one table; is_system_template already marks which."
+    },
+    "NotificationPreference": {
+      "kind": "self",
+      "subject": "user_email",
+      "because": "The row is the account's own setting or record, keyed by user_email; no agency owns it, so a membership change cannot move it."
+    },
+    "NotificationPreferences": {
+      "kind": "self",
+      "subject": "user_email",
+      "because": "The row is the account's own setting or record, keyed by user_email; no agency owns it, so a membership change cannot move it."
+    },
+    "NotificationRule": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "NurseGoal": {
+      "kind": "agency",
+      "because": "Keyed by nurse_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "NursePerformanceMetric": {
+      "kind": "agency",
+      "because": "Keyed by nurse_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "OCRFeedback": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is corrected_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "OCRTrainingSession": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is initiated_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "OnCallShift": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is assigned_user_email, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "PDFTemplate": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "PatientEducationMaterial": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is created_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "PayerRateConfig": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is updated_by_email, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "PersonnelCredential": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is approved_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "Physician": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "PolicyAcknowledgment": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is distributed_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "PolicyLibrary": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "ProviderDashboardCustomization": {
+      "kind": "agency",
+      "because": "Keyed by provider_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "ProviderFacilityAssignment": {
+      "kind": "agency",
+      "because": "Keyed by provider_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "ProviderPermission": {
+      "kind": "agency",
+      "because": "Keyed by provider_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "ProviderPracticeInfo": {
+      "kind": "agency",
+      "because": "Keyed by provider_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "ProviderPreferences": {
+      "kind": "agency",
+      "because": "Keyed by provider_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "ProviderSettings": {
+      "kind": "global",
+      "because": "Keyed by provider_type rather than a person or an agency: platform defaults for a discipline.",
+      "external_locators": [
+        "regulatory_references[].url"
+      ]
+    },
+    "ProviderSpecialization": {
+      "kind": "agency",
+      "because": "Keyed by provider_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "ProviderUsagePattern": {
+      "kind": "agency",
+      "because": "Keyed by provider_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "RegulatoryUpdate": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is reviewed_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "ReminderLog": {
+      "kind": "agency",
+      "because": "Keyed by signer_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "ReportTemplate": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "ScheduledReport": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "ServiceCode": {
+      "kind": "global",
+      "because": "Billing code catalogue. The price column is a platform default; an agency rate lives in PayerRateConfig."
+    },
+    "SessionTimeout": {
+      "kind": "self",
+      "subject": "user_email",
+      "because": "The row is the account's own setting or record, keyed by user_email; no agency owns it, so a membership change cannot move it."
+    },
+    "SharedDocument": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is last_modified_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "SharedPhraseLibrary": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "SupplyItem": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "TerminologyGlossary": {
+      "kind": "self",
+      "subject": "user_email",
+      "because": "The row is the account's own setting or record, keyed by user_email; no agency owns it, so a membership change cannot move it."
+    },
+    "TimeOffRequest": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is reviewed_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "Timesheet": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is reviewed_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "TranscriptionLearning": {
+      "kind": "self",
+      "subject": "user_email",
+      "because": "The row is the account's own setting or record, keyed by user_email; no agency owns it, so a membership change cannot move it."
+    },
+    "UserFavorite": {
+      "kind": "self",
+      "subject": "user_email",
+      "because": "The row is the account's own setting or record, keyed by user_email; no agency owns it, so a membership change cannot move it."
+    },
+    "UserInvitation": {
+      "kind": "agency",
+      "because": "Its only tenancy signal is invited_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "UserLearnedPattern": {
+      "kind": "self",
+      "subject": "user_email",
+      "because": "The row is the account's own setting or record, keyed by user_email; no agency owns it, so a membership change cannot move it."
+    },
+    "VerificationCode": {
+      "kind": "agency",
+      "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "VisitPointConfig": {
+      "kind": "agency",
+      "because": "Carries agency_name, which is a display name: not unique and not stable, so it describes the owner without being able to prove one. It takes agency_id before load."
+    }
+  }
+}

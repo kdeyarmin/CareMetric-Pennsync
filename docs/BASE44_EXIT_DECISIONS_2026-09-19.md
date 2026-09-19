@@ -500,3 +500,126 @@ census back down rather than passing unnoticed.
 What acceptance does not do is unchanged: `hosted_inventory_reconciled` and
 `migration_authorized` are hard-coded false in this tool, because it inventories
 the repository and has never contacted a hosted app.
+
+## D13 — What a table with no tenant path in its schema gets instead
+
+`tools-tenant-path.mjs` resolves how 69 of the 156 carried entities reach their
+agency and names the 87 it cannot. Those 87 are not a defect in the resolver:
+the schema genuinely does not say who owns the row, so the answer has to be
+decided and written where a gate can re-check it. This is that decision.
+
+**The question underneath all of them was whether an acting account is a
+tenant, and the answer is no.** Thirty-four of the 87 carry only a column
+naming who touched the row — `created_by`, `approved_by`, `updated_by_email`.
+Scoping such a row by that account's *current* membership is the obvious move
+and it is wrong: when a person moves from agency A to agency B, every row they
+wrote at A becomes visible to B and invisible to A, silently, at the moment the
+membership changes. That is a disclosure in both directions, and it is caused
+by the predicate rather than by any bug. So an actor column either names the
+row's own subject, or it is provenance and the row needs a real key.
+
+Four kinds, recorded per entity in `tools-tenant-decision.json` with a stated
+reason, and `agency` — the restrictive one — is the default that anything not
+positively established as something else falls back to:
+
+| Kind | Entities | Predicate | Why it is safe |
+| --- | ---: | --- | --- |
+| `agency` | 65 | `agency_id` = the caller's agency | The key is added before load, NOT NULL, so a row cannot arrive without an owner |
+| `self` | 11 | the row's own account | Subject is exactly `user_id` or `user_email`; no agency is involved, so a membership change cannot move the row |
+| `shared` | 2 | caller's agency, plus the platform's rows | The table already carries `is_system_template`; platform rows are readable by all, writable by none |
+| `global` | 8 | readable by any authenticated caller | Regulator-published or platform-authored reference: no agency authors a row |
+
+**`agency_id` is added before load, never backfilled.** A row that arrives
+without an owner cannot be given one afterwards without guessing, and a guess
+in this column is a cross-tenant disclosure. `tools-entity-schema-plan.mjs`
+therefore emits `agency_id text not null` on all 67 `agency` and `shared`
+tables, taking the generated schema from 2,336 columns to 2,403 and its
+tenant-scoped count from 15 to 82.
+
+**Being on the `global` list is necessary and not sufficient.** The gate
+re-checks each one against its schema and can only reject: a global table may
+not carry an actor column, may not reference a carried entity, and may not hold
+a file — each is a way tenant data reaches a table every agency reads.
+Reference data does legitimately cite outside sources, so the three fields that
+do (`MedicareGuideline.url`, `CitationLibrary.url`,
+`ProviderSettings.regulatory_references[].url`) are enumerated in the decision
+rather than waved through, the loader must prove each value addresses somewhere
+outside our own storage, and a locator added later fails the gate until someone
+decides about it.
+
+**Reading the schemas rather than the names changed three answers, and one of
+those would have leaked.** `Physician` reads like a shared directory and
+carries `referral_count` and `last_referral_date` — one agency's referral
+volume, which a global table would have shown its competitors. `SupplyItem`
+reads like a catalogue and carries `current_quantity` and `cost_per_unit`: an
+agency's inventory. `CareSetting` reads like reference data and carries
+`location` and `operational_hours`: an agency's facility. All three are
+`agency`.
+
+Two findings came out of the same reading and are recorded rather than acted
+on here. `FeaturePackage`, `AgencyFeatureAccess` and `AgencyInvoice` carry
+`agency_code`, which is a real reference to `Agency` under another name rather
+than no tenancy signal at all — they still take `agency_id` before load, because
+a predicate should read a key and not a code. `VisitPointConfig` carries
+`agency_name`, which is a display name: not unique, not stable, and never
+authority.
+
+`User` is not in this record. Its `agency_id` is a claim the account can
+rewrite about itself, so it is excluded from authorization by construction, and
+the gate refuses a decision written for it.
+
+## D14 — The policies those predicates were blocking
+
+D13 decided what each table's predicate should be, so the generator now writes
+them: 600 policies across the 156 tables, every one derived from the resolved
+path or the recorded decision rather than hand-written.
+
+| Shape | Tables | Read | Write |
+| --- | ---: | --- | --- |
+| root (`Agency`) | 1 | the row is an agency the caller is in | same |
+| direct / decided `agency` | 79 | `agency_id` is one of the caller's | same |
+| reference | 54 | EXISTS through the entity it reaches a key by | same |
+| `self` | 11 | the row's own account | same |
+| `shared` | 2 | the caller's agency, plus platform rows | the caller's agency only |
+| `global` | 8 | everyone | nobody |
+
+Three things about the shape are deliberate.
+
+**The policies name no role.** `to public` rather than `to authenticated`,
+because these tables carry no grant and access runs through SECURITY DEFINER
+brokers. `force row level security` subjects the table's owner to its policies,
+so the broker is bound by the same predicate as anyone else; naming a role here
+would exempt the broker from the rule it exists to enforce.
+
+**A reference path is an EXISTS, joined on the whole primary key.** An id is
+unique only within its source app, so matching on `id` alone would let a row in
+one source app reach a row in the other. The join carries `source_app_id` too.
+
+**A global table has a read policy and no write policy at all.** Forced RLS
+with nothing to permit a write is what refuses the write, so there is no
+write rule to get wrong.
+
+`record-tenant-isolation.test.mjs` proves the denials against a real database
+rather than asserting them: two agencies from the existing fixtures read the
+same tables and each is shown only its own rows; a cross-tenant insert is
+refused; a case cannot be attached to another agency's patient; two accounts in
+the *same* agency cannot see each other's `self` rows, which is the case an
+agency predicate would have passed; the platform row in a `shared` table is
+readable by both and writable by neither; a `global` table refuses every write;
+a caller with no session reaches nothing.
+
+**A correction that came out of writing it.** The helper requires both
+`status = 'active'` and `revoked_at is null`, and this record first said that
+settles the disagreement among the thirteen copied `validateMembershipRows`
+variants about a membership revoked by one marker and not the other. Reading
+the store shows it was never live: `membership_check` already makes that row
+unrepresentable, and the database rejects the update that would create one.
+The variants disagreed about a state that cannot exist. Both markers are still
+asked, because a predicate leaning on a constraint in another schema is one
+migration away from being wrong, and a test now pins the constraint so the
+redundancy cannot quietly become the only thing holding.
+
+What this does not do: nothing is deployed and no row is loaded. The schema and
+its policies are still generated on demand and applied only to a throwaway
+database in tests. The record store itself — a migration that creates this in a
+real deployment — does not exist yet.

@@ -1,6 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { readFile, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
@@ -21,6 +22,13 @@ before(async () => {
   const rendered = renderDdl(repository);
   plan = rendered.plan;
   db = new PGlite();
+  // The policies ask the authority store who the caller is, so the record
+  // schema is applied on top of a real one rather than into an empty database.
+  await db.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
+  const migrationDir = new URL('../supabase/migrations/', import.meta.url);
+  for (const name of (await readdir(migrationDir)).filter(file => file.endsWith('.sql')).sort()) {
+    await db.exec(await readFile(new URL(name, migrationDir), 'utf8'));
+  }
   // One statement batch: a syntax error anywhere fails the whole plan.
   await db.exec(rendered.sql);
 });
@@ -33,7 +41,7 @@ test('the entire generated schema applies to a real PostgreSQL', async () => {
   assert.ok(plan.totals.carried > 100, 'expected the carried set to be substantial');
 });
 
-test('every table forces row level security and carries no policy', async () => {
+test('every table forces row level security and carries exactly the policies its decision calls for', async () => {
   const { rows } = await db.query(`
     select c.relname,
            c.relrowsecurity as enabled,
@@ -42,8 +50,42 @@ test('every table forces row level security and carries no policy', async () => 
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = $1 and c.relkind = 'r'`, [SCHEMA]);
   assert.equal(rows.length, plan.totals.carried);
-  const unprotected = rows.filter(row => !row.enabled || !row.forced || row.policies !== 0);
-  assert.deepEqual(unprotected, [], 'every carried table must force RLS with no policy');
+  assert.deepEqual(rows.filter(row => !row.enabled || !row.forced), [], 'every carried table must force RLS');
+
+  // A global table gets one read policy and no write policy at all: forced RLS
+  // with nothing to permit a write is what refuses the writes. Every other
+  // table gets read, insert, update and delete, so a missing count here is a
+  // table that silently denies or silently permits.
+  const byTable = new Map(rows.map(row => [row.relname, row.policies]));
+  const paths = new Map(JSON.parse(readFileSync(resolve(repository, 'tools-tenant-path-expectations.json'), 'utf8'))
+    .entities.map(entry => [entry.entity, entry.kind]));
+  let excluded = 0;
+  for (const entity of plan.entities) {
+    // A self-editable profile claim gets NO policy: forced RLS then denies
+    // everything, which is the only honest answer for a column the account can
+    // rewrite about itself. Anything else would authorize through it.
+    if (paths.get(entity.entity) === 'profile_claim') {
+      assert.equal(byTable.get(entity.table), 0, `${entity.entity} must carry no policy at all`);
+      excluded += 1;
+      continue;
+    }
+    assert.equal(byTable.get(entity.table), entity.tenant_decision === 'global' ? 1 : 4,
+      `${entity.entity} (${entity.tenant_decision ?? 'derived'}) has the wrong number of policies`);
+  }
+  assert.equal(excluded, 1, 'User is the one entity excluded from authorization');
+});
+
+test('a table every agency reads carries no account identifier', async () => {
+  // `created_by` is a platform column added to every other table. On a global
+  // table it would hand each agency an identifier from whichever agency
+  // authored the row, so it is not emitted there.
+  const globals = plan.entities.filter(entity => entity.tenant_decision === 'global');
+  assert.equal(globals.length, 8);
+  const { rows } = await db.query(`select c.relname, a.attname from pg_attribute a
+    join pg_class c on c.oid = a.attrelid join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = $1 and a.attnum > 0 and not a.attisdropped
+      and c.relname = any($2) and a.attname = 'created_by'`, [SCHEMA, globals.map(entity => entity.table)]);
+  assert.deepEqual(rows, [], 'no global table may carry created_by');
 });
 
 test('no table grants direct access to an ordinary role', async () => {

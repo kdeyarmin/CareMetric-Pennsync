@@ -59,6 +59,18 @@ export const SYSTEM_COLUMNS = Object.freeze([
 ]);
 const SYSTEM_BY_NAME = new Map(SYSTEM_COLUMNS.map(column => [column.name, column]));
 
+/** Where the tenant decisions are recorded; read as data to avoid an import cycle. */
+export const TENANT_DECISION_FILE = 'tools-tenant-decision.json';
+/** The column that names an owning agency. */
+export const TENANT_COLUMN = 'agency_id';
+/**
+ * Decision kinds whose tables carry a tenant key. `agency_id` is added here,
+ * before any row is loaded, rather than backfilled afterwards: a row that
+ * arrives without an owner cannot be given one later without guessing, and a
+ * guess in this column is a cross-tenant disclosure.
+ */
+export const STAMPED_KINDS = Object.freeze(['agency', 'shared']);
+
 export function snakeCase(value) {
   return String(value)
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
@@ -98,7 +110,7 @@ export function enumValues(property) {
   return values;
 }
 
-export function planEntity(name, raw, disposition) {
+export function planEntity(name, raw, disposition, decision = null) {
   const schema = JSON5.parse(raw);
   const table = snakeCase(name);
   const columns = [];
@@ -123,11 +135,20 @@ export function planEntity(name, raw, disposition) {
     const values = type === 'text' ? enumValues(definition) : null;
     if (values) checks.push({ column, values });
   }
+  // A decided tenant key is added as a real column so the table cannot be
+  // loaded without an owner. Appended after the declared columns, so the
+  // output stays byte-deterministic.
+  const declaredTenant = columns.some(column => column.name === TENANT_COLUMN);
+  const stamped = !declaredTenant && STAMPED_KINDS.includes(decision?.kind);
+  if (stamped) columns.push({ name: TENANT_COLUMN, property: null, type: 'text', notNull: true, stamped: true });
   return {
     entity: name,
     disposition,
     table,
-    tenant_key: columns.some(column => column.name === 'agency_id') ? 'agency_id' : null,
+    tenant_key: declaredTenant || stamped ? TENANT_COLUMN : null,
+    tenant_decision: decision?.kind ?? null,
+    self_subject: decision?.kind === 'self' ? snakeCase(decision.subject) : null,
+    platform_flag: decision?.kind === 'shared' ? snakeCase(decision.platform_flag) : null,
     columns: columns.length,
     constrained: checks.length,
     merged_system_columns: merged.length,
@@ -148,9 +169,21 @@ export function renderEntity(plan) {
     // Two constraints sharing a name would silently become one. Fail instead.
     throw new Error(`CONSTRAINT_NAME_COLLISION:${plan.entity}`);
   }
+  // A global table is read by every agency, so the platform's own `created_by`
+  // would hand each of them an account identifier from whichever agency
+  // authored the row. Reference data has no author worth carrying, so the
+  // column is not emitted there at all rather than being filtered later.
+  if (plan.tenant_decision === 'global' && plan.merged_system_columns > 0) {
+    // It declares a platform column of its own, which would be dropped rather
+    // than merged once the platform one is withheld. Silently losing a field
+    // is the defect this generator already had once.
+    throw new Error(`GLOBAL_ENTITY_DECLARES_SYSTEM_COLUMN:${plan.entity}`);
+  }
+  const systemColumns = plan.tenant_decision === 'global'
+    ? SYSTEM_COLUMNS.filter(column => column.name !== 'created_by') : SYSTEM_COLUMNS;
   const lines = [
-    ...SYSTEM_COLUMNS.map(column => `  ${quote(column.name)} ${column.type}${column.notNull ? ' not null' : ''}`),
-    ...plan.definition.columns.map(column => `  ${quote(column.name)} ${column.type}`),
+    ...systemColumns.map(column => `  ${quote(column.name)} ${column.type}${column.notNull ? ' not null' : ''}`),
+    ...plan.definition.columns.map(column => `  ${quote(column.name)} ${column.type}${column.notNull ? ' not null' : ''}`),
     `  constraint ${quote(`${plan.table}_pkey`)} primary key (${quote('source_app_id')}, ${quote('id')})`,
     ...plan.definition.checks.map(check =>
       `  constraint ${quote(constraintName(plan.table, check.column))} `
@@ -169,6 +202,7 @@ export function renderEntity(plan) {
 /** Plan every carried entity exactly once; both callers below reuse the result. */
 function planAll(repository) {
   const dispositions = JSON.parse(readFileSync(join(repository, DISPOSITION_FILE), 'utf8')).entities;
+  const decisions = JSON.parse(readFileSync(join(repository, TENANT_DECISION_FILE), 'utf8')).entities ?? {};
   const directory = join(repository, ENTITY_DIRECTORY);
   const files = readdirSync(directory).filter(file => /\.jsonc?$/.test(file)).sort();
   const plans = [];
@@ -177,7 +211,7 @@ function planAll(repository) {
     const name = file.replace(/\.jsonc?$/, '');
     const disposition = dispositions[name];
     if (!CARRIED.includes(disposition)) { excluded.push({ entity: name, disposition: disposition ?? 'missing' }); continue; }
-    plans.push(planEntity(name, readFileSync(join(directory, file), 'utf8'), disposition));
+    plans.push(planEntity(name, readFileSync(join(directory, file), 'utf8'), disposition, decisions[name] ?? null));
   }
   return { plans, excluded };
 }
@@ -212,10 +246,219 @@ export function buildPlan(repository, prepared = null) {
   };
 }
 
+/**
+ * The caller-binding functions every policy below asks.
+ *
+ * SECURITY DEFINER because `pennsync_private` is not readable by a tenant
+ * role: the answer has to be computed by something that can see the
+ * membership roster without handing the caller access to it. STABLE because a
+ * policy calls these once per row and the answer cannot change inside a
+ * statement.
+ *
+ * A boundary these policies CANNOT enforce, stated because assuming otherwise
+ * is how they get trusted too far: a SUPERUSER or BYPASSRLS role bypasses row
+ * level security even where it is forced. The authority migration requires
+ * exactly such a role to own its objects
+ * (`PENNSYNC_BYPASSRLS_MIGRATION_OWNER_REQUIRED`), so a broker running as the
+ * migration owner is not bound by anything below. Brokers must therefore run
+ * as a role with neither attribute. `record-tenant-isolation.test.mjs`
+ * demonstrates the bypass rather than describing it, so the requirement is
+ * visible instead of implied.
+ *
+ * An active membership requires BOTH `status = 'active'` AND `revoked_at is
+ * null`. The thirteen hand-copied `validateMembershipRows` variants disagreed
+ * on exactly this, some accepting a row whose `revoked_at` is set while its
+ * status still says active. Reading the store settles it: `membership_check`
+ * already makes that row unrepresentable, so the argument was about a state
+ * the database will not hold. Both markers are asked anyway, because a
+ * predicate that leans on a constraint in another schema is one migration
+ * away from being wrong, and a test pins the constraint so the redundancy
+ * cannot quietly become the only thing holding.
+ */
+export const POLICY_HELPERS = [
+  // The single gate, reused rather than reimplemented. `actor()` checks the
+  // authenticated role, the JWT's expiry, a live session row, an active
+  // non-banned native user, and an enabled identity whose email still matches.
+  // An earlier version of this helper asked only `auth.uid()` plus an active
+  // membership, which let a still-valid token from a signed-out or banned
+  // account keep reading. A policy has to filter rather than raise, so the
+  // gate's refusal becomes "no identity" here.
+  `create function ${quote(SCHEMA)}.caller_identity() returns pennsync_private.identity_map
+  language plpgsql stable security definer set search_path = '' as $$
+  declare v_identity pennsync_private.identity_map;
+  begin
+    begin
+      v_identity := pennsync_private.actor(pennsync_private.deployment_app_id(), false);
+    exception when others then return null;
+    end;
+    return v_identity;
+  end $$;`,
+  `create function ${quote(SCHEMA)}.caller_identified() returns boolean
+  language sql stable security definer set search_path = '' as $$
+  select (${quote(SCHEMA)}.caller_identity()).auth_user_id is not null
+$$;`,
+  // A suspended agency keeps its membership rows, so the agency's own status
+  // is checked here the way `context_value` checks it.
+  `create function ${quote(SCHEMA)}.caller_agencies() returns setof text
+  language sql stable security definer set search_path = '' as $$
+  select m.agency_id::text
+  from ${quote(SCHEMA)}.caller_identity() i
+  join pennsync_private.membership m
+    on m.app_id = i.app_id and m.auth_user_id = i.auth_user_id
+   and m.base44_user_id = i.base44_user_id
+  join pennsync_private.agency a on a.app_id = m.app_id and a.id = m.agency_id
+  where i.auth_user_id is not null
+    and m.status = 'active' and m.revoked_at is null
+    and a.status in ('active','trial')
+$$;`,
+  `create function ${quote(SCHEMA)}.caller_user_id() returns text
+  language sql stable security definer set search_path = '' as $$
+  select (${quote(SCHEMA)}.caller_identity()).base44_user_id
+$$;`,
+  `create function ${quote(SCHEMA)}.caller_email() returns text
+  language sql stable security definer set search_path = '' as $$
+  select (${quote(SCHEMA)}.caller_identity()).expected_email
+$$;`,
+  // Nothing may call these directly; they exist to be asked by a policy.
+  // `source_app_id` is plain text on these tables, so nothing stops a row of
+  // another source app existing here — and ids collide across the two apps,
+  // which is why the primary key is composite. Without this, a caller whose
+  // agency key matches would read the other app's row. Every predicate below
+  // asks it.
+  `create function ${quote(SCHEMA)}.deployment_app() returns text
+  language sql stable security definer set search_path = '' as $$
+  select pennsync_private.deployment_app_id()
+$$;`,
+  `revoke all on function ${quote(SCHEMA)}.caller_identity(), ${quote(SCHEMA)}.caller_identified(),
+  ${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_user_id(),
+  ${quote(SCHEMA)}.caller_email(), ${quote(SCHEMA)}.deployment_app() from public, anon, authenticated, service_role;`,
+];
+
+/** Where the resolved tenant paths are recorded; read as data to avoid an import cycle. */
+export const TENANT_PATH_FILE = 'tools-tenant-path-expectations.json';
+
+/**
+ * The predicate proving a row of `entity` belongs to an agency the caller is
+ * in, as SQL against `alias`.
+ *
+ * A `reference` entity does not carry a key: it reaches one through another
+ * entity, so its predicate is an EXISTS over that entity carrying the same
+ * question one hop further in. The resolver caps a path at three hops and
+ * resolves only through `root`, `direct` and `reference`, so this terminates;
+ * `depth` is threaded through anyway so a cycle introduced later fails loudly
+ * instead of recursing forever.
+ */
+export function tenantPredicate(entity, alias, index, { paths, tables }, depth = 0) {
+  if (depth > 4) throw new Error(`TENANT_PATH_TOO_DEEP:${entity}`);
+  const path = paths.get(entity);
+  const agencies = `${quote(SCHEMA)}.caller_agencies()`;
+  if (!path) throw new Error(`TENANT_PATH_MISSING:${entity}`);
+  // `Agency` is not in a tenant, it is one.
+  if (path.kind === 'root') return `${alias}.${quote('id')} in (select ${agencies})`;
+  if (path.kind === 'direct') return `${alias}.${quote(TENANT_COLUMN)} in (select ${agencies})`;
+  if (path.kind === 'reference') {
+    const next = `t${index + 1}`;
+    const target = tables.get(path.target);
+    if (!target) throw new Error(`TENANT_PATH_TARGET_UNKNOWN:${entity}:${path.target}`);
+    const inner = tenantPredicate(path.target, next, index + 1, { paths, tables }, depth + 1);
+    // Joined on the whole primary key: an id is only unique within its source
+    // app, so matching on id alone would reach across the two source apps.
+    return `exists (select 1 from ${quote(SCHEMA)}.${quote(target)} ${next}`
+      + ` where ${next}.${quote('source_app_id')} = ${alias}.${quote('source_app_id')}`
+      + ` and ${next}.${quote('id')} = ${alias}.${quote(snakeCase(path.via))}`
+      + ` and ${inner})`;
+  }
+  // A self-editable profile claim is excluded from authorization by
+  // construction — it is the defect that paused `analyzeClinicalData`. Falling
+  // through to the agency predicate here would authorize `User` reads through
+  // the very column the account can rewrite about itself, so this refuses to
+  // generate anything rather than generating something wrong.
+  if (path.kind === 'profile_claim') throw new Error(`TENANT_PATH_IS_PROFILE_CLAIM:${entity}`);
+  if (path.kind !== 'actor' && path.kind !== 'unresolved') throw new Error(`TENANT_PATH_UNHANDLED:${entity}:${path.kind}`);
+  // Anything still blocking here was decided, and a decision stamps the key on.
+  return `${alias}.${quote(TENANT_COLUMN)} in (select ${agencies})`;
+}
+
+/** The subject column a `self` table matches against, by the column's name. */
+const SELF_BINDING = Object.freeze({ user_id: 'caller_user_id', user_email: 'caller_email' });
+
+/**
+ * Policies are `to public` rather than `to authenticated` on purpose. These
+ * tables carry no grant, so no role reaches them directly; access runs through
+ * SECURITY DEFINER brokers, and `force row level security` subjects the table
+ * owner — and therefore the broker — to these policies too. Naming a role here
+ * would exempt the broker from the predicate it exists to enforce.
+ */
+export function renderPolicies(plan, resolution) {
+  const qualified = `${quote(SCHEMA)}.${quote(plan.table)}`;
+  const name = suffix => quote(`${plan.table}_${suffix}`.slice(0, MAX_IDENTIFIER));
+  const self = quote(plan.table);
+  // The deployment serves one app; a row belonging to the other is not this
+  // deployment's to show or touch, however its agency key reads.
+  const thisApp = `${self}.${quote('source_app_id')} = ${quote(SCHEMA)}.deployment_app()`;
+  const kind = plan.tenant_decision;
+
+  // `User` carries only a claim it can edit about itself, so no predicate here
+  // can be trusted. Forced RLS with NO policy is the honest answer: the table
+  // exists, holds its rows, and is unreachable through this surface until a
+  // decision says how it may be read.
+  if (resolution.paths.get(plan.entity)?.kind === 'profile_claim') {
+    return [`-- ${plan.table}: excluded from authorization (self-editable profile claim); forced RLS, no policy.`];
+  }
+  const tenant = `${thisApp} and ${tenantPredicate(plan.entity, self, 0, resolution)}`;
+
+  if (kind === 'global') {
+    // Platform reference: every caller reads it and no tenant surface writes
+    // it. Forced RLS with no write policy is what refuses the writes. Still
+    // scoped to the deployment's own app, because global means every agency
+    // here, not every app.
+    // `using (true)` let any role that reached the table read every row with no
+    // session at all. Global means every *identified* caller in this
+    // deployment, so the identity check is in the predicate rather than left
+    // for each future broker to remember.
+    return [`create policy ${name('read')} on ${qualified} for select `
+      + `using (${thisApp} and ${quote(SCHEMA)}.caller_identified());`];
+  }
+  let read = tenant;
+  if (kind === 'self') {
+    const binding = SELF_BINDING[plan.self_subject];
+    if (!binding) throw new Error(`SELF_SUBJECT_UNSUPPORTED:${plan.entity}:${plan.self_subject}`);
+    read = `${thisApp} and ${self}.${quote(plan.self_subject)} = ${quote(SCHEMA)}.${binding}()`;
+  } else if (kind === 'shared') {
+    read = `(${tenant}) or (${thisApp} and ${self}.${quote(plan.platform_flag)} is true)`;
+  }
+  // A shared table's write must also refuse to SET the platform flag. Without
+  // that an agency writes its own row — which the tenant predicate allows —
+  // marks it platform, and the read policy above then shows it to every other
+  // agency. Restricting the row's agency is not enough; the flag is the thing
+  // that publishes it.
+  const write = kind === 'self' ? read
+    : kind === 'shared' ? `${tenant} and ${self}.${quote(plan.platform_flag)} is not true`
+      : tenant;
+  return [
+    `create policy ${name('read')} on ${qualified} for select using (${read});`,
+    `create policy ${name('insert')} on ${qualified} for insert with check (${write});`,
+    `create policy ${name('update')} on ${qualified} for update using (${write}) with check (${write});`,
+    `create policy ${name('delete')} on ${qualified} for delete using (${write});`,
+  ];
+}
+
 export function renderDdl(repository) {
   const prepared = planAll(repository);
   const plan = buildPlan(repository, prepared);
-  const statements = [`create schema ${quote(SCHEMA)};`, ...prepared.plans.map(renderEntity)];
+  const recorded = JSON.parse(readFileSync(join(repository, TENANT_PATH_FILE), 'utf8')).entities;
+  const resolution = {
+    paths: new Map(recorded.map(entry => [entry.entity, entry])),
+    tables: new Map(prepared.plans.map(entity => [entity.entity, entity.table])),
+  };
+  // Every table before any policy: a reference path names the table it reaches
+  // through, and that table is not always created first in name order.
+  const statements = [
+    `create schema ${quote(SCHEMA)};`,
+    ...POLICY_HELPERS,
+    ...prepared.plans.map(renderEntity),
+    ...prepared.plans.flatMap(plan => renderPolicies(plan, resolution)),
+  ];
   return { plan, sql: statements.join('\n\n') + '\n' };
 }
 
@@ -224,12 +467,17 @@ export function comparePlan(plan, expectations) {
   const recorded = new Map(expectations.entities.map(entity => [entity.entity, entity]));
   const added = [...current.keys()].filter(name => !recorded.has(name)).sort();
   const removed = [...recorded.keys()].filter(name => !current.has(name)).sort();
+  // Every field the emitted policies are derived from. Comparing only the
+  // table's shape let an authorization change pass as `unchanged`: swapping a
+  // shared table's platform flag for another existing boolean, or changing a
+  // self subject, rewrites the predicate while leaving columns and the tenant
+  // key identical. The decision gate checks a new value is admissible; this is
+  // what checks it matches the one that was accepted.
+  const COMPARED = ['table', 'columns', 'constrained', 'tenant_key',
+    'tenant_decision', 'self_subject', 'platform_flag'];
   const changed = [...current.entries()]
-    .filter(([name, entity]) => recorded.has(name) && (
-      recorded.get(name).table !== entity.table
-      || recorded.get(name).columns !== entity.columns
-      || recorded.get(name).constrained !== entity.constrained
-      || recorded.get(name).tenant_key !== entity.tenant_key))
+    .filter(([name, entity]) => recorded.has(name)
+      && COMPARED.some(field => recorded.get(name)[field] !== entity[field]))
     .map(([name]) => name).sort();
   return { added, removed, changed, matches_expectations: !added.length && !removed.length && !changed.length };
 }
