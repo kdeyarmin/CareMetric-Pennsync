@@ -482,6 +482,58 @@ test('creating a chart is not narrowed to a chart that does not exist yet', asyn
     delete from ${SCHEMA}."document"; delete from ${SCHEMA}."visit"; delete from ${SCHEMA}."patient";`); }
 });
 
+test('a row its own schema calls append-only cannot be rewritten by anybody', async () => {
+  // Four entity descriptions say the ROW is immutable or append-only, and the
+  // store carries that by having NO update and NO delete policy — the same
+  // absence the activity trail and the roster rely on. Demonstrated rather
+  // than described, because a permissive-looking policy that evaluates false
+  // is one edit away from being true and this is not that.
+  await seed(`insert into ${SCHEMA}.patient("source_app_id","id","agency_id") values
+    ('${APP}','patient-note-a','agency-a') on conflict do nothing;
+    insert into ${SCHEMA}.visit("source_app_id","id","agency_id","patient_id") values
+    ('${APP}','visit-note-a','agency-a','patient-note-a') on conflict do nothing;
+    insert into ${SCHEMA}.patient_note_history_entry
+      ("source_app_id","id","agency_id","patient_id","visit_id","note")
+      values ('${APP}','note-a','agency-a','patient-note-a','visit-note-a','First revision');`);
+  await seed(`insert into pennsync_private.chart_assignment
+    (app_id,agency_id,patient_id,membership_id,status,changed_by)
+    values ('${APP}','agency-a','patient-note-a','membership-1',
+      'active','${uid(AGENCY_A)}') on conflict do nothing;`);
+
+  // The caller reads it and appends beside it, which is what an append-only
+  // log is for.
+  assert.deepEqual(ids(await as(AGENCY_A,
+    `select "id" from ${SCHEMA}.patient_note_history_entry`)), ['note-a']);
+  assert.deepEqual(await as(AGENCY_A,
+    `insert into ${SCHEMA}.patient_note_history_entry
+      ("source_app_id","id","agency_id","patient_id","visit_id","note")
+      values ('${APP}','note-b','agency-a','patient-note-a','visit-note-a','Second revision')
+      returning "id"`), [{ id: 'note-b' }]);
+  // And cannot rewrite or remove one. The shape of the refusal is worth being
+  // exact about: an operation with NO policy matches no rows rather than
+  // raising, so the statement succeeds and changes nothing. The row is equally
+  // unchangeable either way, and the caller is not told it exists — which is
+  // the better of the two answers.
+  assert.deepEqual(await as(AGENCY_A,
+    `update ${SCHEMA}.patient_note_history_entry set "note" = 'rewritten'
+     where "id" = 'note-a' returning "id"`), []);
+  assert.deepEqual(await as(AGENCY_A,
+    `delete from ${SCHEMA}.patient_note_history_entry where "id" = 'note-a' returning "id"`), []);
+  assert.deepEqual((await db.query(
+    `select "note" from ${SCHEMA}.patient_note_history_entry where "id" = 'note-a'`)).rows,
+  [{ note: 'First revision' }]);
+  // The other half — that the role which OWNS the table is bound too, which is
+  // the load-bearing one because every contract runs as it — needs the owner
+  // role to exist. This file applies the DDL without the migration's role
+  // wrapper, so `record-contract-postgres.test.mjs` proves it on a real
+  // PostgreSQL where the role is there.
+  // A mutable clinical table beside it still updates, so this is the schema's
+  // claim taking effect rather than something global.
+  assert.deepEqual(await as(AGENCY_A,
+    `update ${SCHEMA}.visit set "visit_time" = '09:00' where "id" = 'visit-note-a' returning "id"`),
+  [{ id: 'visit-note-a' }]);
+});
+
 test('a row belonging to the other source app is not this deployment to show', async () => {
   // `source_app_id` is plain text here and the primary key is composite
   // precisely because ids COLLIDE across the two source apps. So a row of the

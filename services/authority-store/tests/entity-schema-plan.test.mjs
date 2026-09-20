@@ -52,24 +52,44 @@ test('every table forces row level security and carries exactly the policies its
   assert.equal(rows.length, plan.totals.carried);
   assert.deepEqual(rows.filter(row => !row.enabled || !row.forced), [], 'every carried table must force RLS');
 
-  // Two decisions produce a read policy and no write policy at all, and in
-  // both cases forced RLS with nothing to permit a write is what refuses the
-  // writes:
+  // Three shapes, and every one of them refuses by ABSENCE rather than by a
+  // predicate that evaluates false — forced RLS with nothing to permit an
+  // operation is what denies it:
   //
   // - `global`, a platform reference table every agency reads and no tenant
-  //   surface writes;
-  // - `roster`, which is `User` — D23 serves the roster from the authority
-  //   store's membership and deliberately leaves the profile-write path
-  //   undecided. A write policy here would decide it by accident.
+  //   surface writes, and `roster`, which is `User` — D23 serves the roster
+  //   from the authority store's membership and deliberately leaves the
+  //   profile-write path undecided, so a write policy would decide it by
+  //   accident. One policy each.
+  // - An entity whose own schema calls the ROW immutable or append-only gets a
+  //   read and an insert and NO update or delete, so a rewrite is refused from
+  //   everyone including the record owner. Two policies.
+  // - Everything else gets read, insert, update and delete.
   //
-  // Every other table gets read, insert, update and delete, so a count that is
-  // neither 1 nor 4 is a table silently denying or silently permitting.
+  // A count outside that set is a table silently denying or silently
+  // permitting.
   const byTable = new Map(rows.map(row => [row.relname, row.policies]));
   const readOnly = new Set(['global', 'roster']);
+  const expected = entity => (readOnly.has(entity.tenant_decision) ? 1
+    : entity.append_only ? 2 : 4);
   for (const entity of plan.entities) {
-    assert.equal(byTable.get(entity.table), readOnly.has(entity.tenant_decision) ? 1 : 4,
+    assert.equal(byTable.get(entity.table), expected(entity),
       `${entity.entity} (${entity.tenant_decision ?? 'derived'}) has the wrong number of policies`);
   }
+  // The four that say so, named: a fifth would be a claim somebody added
+  // without deciding, and the generator refuses that outright.
+  assert.deepEqual(plan.entities.filter(entity => entity.append_only).map(entity => entity.entity),
+    ['ContentScopeBinding', 'DocumentTenantBinding', 'FleetServiceReview',
+      'PatientNoteHistoryEntry']);
+  // And the absence is real rather than a permissive policy nobody reads: the
+  // two commands that are gone are gone, not narrowed.
+  const { rows: appendOnly } = await db.query(`
+    select c.relname, p.polcmd from pg_policy p
+    join pg_class c on c.oid = p.polrelid join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = $1 and c.relname = any($2) order by c.relname, p.polcmd`,
+  [SCHEMA, plan.entities.filter(entity => entity.append_only).map(entity => entity.table)]);
+  assert.deepEqual([...new Set(appendOnly.map(row => row.polcmd))].sort(), ['a', 'r'],
+    'an append-only table carries select and insert policies and nothing else');
   const roster = plan.entities.filter(entity => entity.tenant_decision === 'roster');
   assert.deepEqual(roster.map(entity => entity.entity), ['User'], 'User is the one roster table');
   // And its one policy reads the authority store rather than the row: the

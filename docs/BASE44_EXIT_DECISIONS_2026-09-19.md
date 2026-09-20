@@ -571,7 +571,7 @@ the gate refuses a decision written for it.
 ## D14 — The policies those predicates were blocking
 
 D13 decided what each table's predicate should be, so the generator now writes
-them: 596 policies across the 156 tables, every one derived from the resolved
+them: 589 policies across the 156 tables, every one derived from the resolved
 path or the recorded decision rather than hand-written.
 
 | Shape | Tables | Read | Write |
@@ -661,7 +661,7 @@ broker owned by that role.
 was recorded as open. `force row level security` binds a table's owner, but
 never a `SUPERUSER` or `BYPASSRLS` role, and every authority migration requires
 exactly such an administrator (`PENNSYNC_BYPASSRLS_MIGRATION_OWNER_REQUIRED`).
-Tables left under that role would carry 596 policies that nothing obeys. The
+Tables left under that role would carry 589 policies that nothing obeys. The
 migration creates a role carrying neither attribute, creates the tables while
 acting as it, and refuses outright if a role of that name already exists with
 either attribute — adopting it would emit the policies and silently void them.
@@ -2087,3 +2087,64 @@ Two smaller things the port settled on the way:
   Base44 gives it no transaction. `select … for update` takes the row lock and
   the UPDATE policy's authorization in one statement, so there is no window to
   defend and nothing to undo afterwards.
+
+## D32 — The entities that say they are append-only now are
+
+Reading `PatientNoteHistoryEntry` before porting it turned up a gap that had
+been there since the record store was generated. Its schema description is
+"Immutable, server-authored clinical-note revision", and the store gave it a
+full set of four policies — read, insert, **update and delete** — because the
+generator applies the same family to every carried table and never looked at
+what the entity said about itself.
+
+So the immutability of an immutable clinical log rested entirely on every
+future contract remembering not to rewrite it. That is exactly the arrangement
+D25 rejected for the activity trail, where the absence of an update policy is
+the mechanism and the comment says "do not add one".
+
+### Four tables, and the signal is not the `rls` block
+
+The obvious place to look is each schema's `rls` block, and it is the wrong
+one. Sixty-eight of the 156 carried entities declare
+`{create, read, update, delete: false}` — including `Patient` and `Visit`,
+which are plainly mutable. In Base44 that block means "no *client* may do this,
+only a service-role function may", and in the record store every path is a
+service-role path. It says nothing about whether the row can change.
+
+The signal is the entity's own description, and reading all of them is what
+separated the cases. Twelve mention immutability. **Four say it about the
+ROW** — `ContentScopeBinding`, `DocumentTenantBinding`, `FleetServiceReview`
+("Append-only … No application update or deletion path") and
+`PatientNoteHistoryEntry` — and **eight say it about a FIELD inside a row that
+is otherwise versioned**: `AgencyMembership` binds "an immutable Base44 User
+id" and then transitions through pending, active, suspended and revoked;
+`PatientCareTeamAssignment` is explicitly "versioned" and D24 depends on its
+lifecycle. A regular expression cannot tell those apart, so all twelve are
+enumerated in `DECLARED_IMMUTABLE` by kind, a `field` claim owes a reason, and
+a thirteenth mention fails the run. Three of the twelve name entities that are
+not carried; they are enumerated anyway, so the list keeps covering the schemas
+as dispositions move.
+
+### The mechanism is an absence, and its shape is worth being exact about
+
+An append-only table gets a read policy and an insert policy and nothing else.
+With no policy for a command, PostgreSQL has nothing to evaluate — so the
+statement **succeeds and matches no rows** rather than raising. That is not a
+weaker refusal: the row is equally unchangeable, and the caller is not told it
+exists, which is the better of the two answers. The tests assert zero rows
+rather than an error, because the first draft asserted an error and was wrong.
+
+The half that matters is that it binds the **record owner**, since every
+contract is SECURITY DEFINER owned by that role. `record-tenant-isolation.test.mjs`
+proves the caller half on PGlite, where the migration's role wrapper is not
+applied; `record-contract-postgres.test.mjs` proves the owner half on a real
+PostgreSQL, where the role exists. The second draft of that assertion used the
+migration administrator, which is a superuser and bypasses RLS however it is
+declared — the same trap this file's own BYPASSRLS test exists to name.
+
+589 policies now, down from 597: four tables × two commands.
+
+One consequence to carry forward: a capability that needs to correct one of
+these rows writes a new one. That is what append-only means, and it is what
+`appendPatientNoteHistory` already does — every save creates a new
+tenant-stamped event rather than editing the last.

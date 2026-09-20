@@ -4,9 +4,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  CARRIED, CHART_ROOT, CHART_SUBJECTS, DECLARED_UNIQUE, EXPECTATIONS_FILE, FORMAT, FORMAT_VERSION,
+  CARRIED, CHART_ROOT, CHART_SUBJECTS, DECLARED_IMMUTABLE, DECLARED_UNIQUE, EXPECTATIONS_FILE,
+  FORMAT, FORMAT_VERSION, IMMUTABILITY_CLAIM, IMMUTABLE_KINDS,
   RECORD_MIGRATION_FILE, SCHEMA, UNIQUENESS_CLAIM, UNIQUE_KINDS,
-  buildPlan, chartPredicate, chartSubject, columnType, comparePlan, constraintName, declaredUniqueness, enumValues, main, parseExpectations, planEntity, renderEntity, snakeCase, uniqueIndexName,
+  buildPlan, chartPredicate, chartSubject, columnType, comparePlan, constraintName, declaredImmutability, declaredUniqueness, enumValues, main, parseExpectations, planEntity, renderEntity, renderPolicies, snakeCase, uniqueIndexName,
 } from './tools-entity-schema-plan.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -384,4 +385,70 @@ test('the committed migration carries an index for every carried unique key', ()
   for (const table of ['content_scope_binding', 'physician_agency_profile']) {
     assert.equal(emitted.some(name => name.startsWith(table)), false, table);
   }
+});
+
+test('an entity whose schema calls the ROW immutable gets no update or delete policy', () => {
+  // Twelve entity descriptions mention immutability and four of them say it
+  // about the ROW. The other eight say it about a field inside a row that is
+  // otherwise versioned — `AgencyMembership` binds "an immutable Base44 User
+  // id" and then transitions through a whole lifecycle — so a regular
+  // expression cannot tell them apart and all twelve are enumerated.
+  const rows = declaredImmutability(repository);
+  assert.deepEqual([...rows].sort(), ['ContentScopeBinding', 'DocumentTenantBinding',
+    'FleetServiceReview', 'PatientNoteHistoryEntry', 'SignatureArtifactBinding',
+    'SignatureAuditEvent', 'SmsConsent']);
+  assert.equal(Object.keys(DECLARED_IMMUTABLE).length, 12);
+  for (const [entity, claim] of Object.entries(DECLARED_IMMUTABLE)) {
+    assert.ok(IMMUTABLE_KINDS.includes(claim.kind), entity);
+    // A `field` claim withholds the guarantee, so it owes a reason; a `row`
+    // claim takes the description at its word and needs none.
+    if (claim.kind === 'field') assert.ok(claim.because?.length > 20, `${entity} says why`);
+    else assert.equal(claim.because, undefined, entity);
+  }
+  // The plan carries it, so the checked-in artefact says which tables cannot
+  // be rewritten rather than leaving it to be re-derived.
+  const plan = buildPlan(repository);
+  const carried = plan.entities.filter(entity => entity.append_only).map(entity => entity.entity);
+  assert.deepEqual(carried.sort(), ['ContentScopeBinding', 'DocumentTenantBinding',
+    'FleetServiceReview', 'PatientNoteHistoryEntry'], 'the three uncarried ones have no table');
+  assert.equal(plan.totals.append_only, 4);
+});
+
+test('a new immutability claim, or one that moved, fails the run', () => {
+  const claims = description => declaredImmutability(null, () => [['Probe', { description }]]);
+  // The half that matters: somebody writes "append-only" on a new entity and
+  // the generator stops until a kind is decided, rather than that entity
+  // quietly getting update and delete policies.
+  assert.throws(() => claims('Append-only ledger of something.'),
+    error => /^IMMUTABILITY_CLAIM_UNENUMERATED:Probe/.test(error.message));
+  assert.throws(() => claims('An ordinary entity.'),
+    error => /^IMMUTABILITY_CLAIM_STALE:/.test(error.message));
+  // A description that no longer says it, for an entity the list still names.
+  assert.ok(IMMUTABILITY_CLAIM.test('Immutable, server-authored clinical-note revision.'));
+  assert.ok(IMMUTABILITY_CLAIM.test('Append-only vehicle-service review annotations.'));
+  assert.equal(IMMUTABILITY_CLAIM.test('An ordinary clinical record.'), false);
+});
+
+test('the append-only policies are an absence, not a predicate that says no', () => {
+  // The mechanism is the same one the activity trail and the roster use: with
+  // no policy for a command, forced RLS refuses it from everyone including the
+  // table owner. A permissive-looking policy that evaluates false would be one
+  // edit away from being true.
+  const definition = entity('Probe', { agency_id: { type: 'string' }, note: { type: 'string' } });
+  const resolution = {
+    paths: new Map([['Probe', { entity: 'Probe', kind: 'direct' }]]),
+    tables: new Map([['Probe', 'probe']]),
+    plans: new Map(),
+  };
+  const mutable = planEntity('Probe', definition, 'port', { kind: 'agency' });
+  resolution.plans.set('Probe', mutable);
+  const four = renderPolicies(mutable, resolution);
+  assert.equal(four.length, 4);
+  const appendOnly = planEntity('Probe', definition, 'port', { kind: 'agency' }, [], true);
+  resolution.plans.set('Probe', appendOnly);
+  const two = renderPolicies(appendOnly, resolution);
+  assert.deepEqual(two.slice(0, 2), four.slice(0, 2), 'the read and the insert are unchanged');
+  assert.equal(two.filter(line => line.startsWith('create policy')).length, 2);
+  assert.match(two.at(-1), /^-- probe: append-only by its own schema/);
+  for (const line of two) assert.equal(/for (update|delete)/.test(line), false);
 });

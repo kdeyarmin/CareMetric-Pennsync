@@ -170,6 +170,45 @@ test('the index is what holds, and it is the one the contract names', () => lab(
   assert.deepEqual(present, emitted);
 }));
 
+test('the record owner cannot rewrite a row its schema calls append-only', () => lab(async ({ setup }) => {
+  // The load-bearing half of D32, and it needs the owner role to exist: every
+  // contract is SECURITY DEFINER owned by `pennsync_records_owner`, so a
+  // guarantee that binds only callers would bind nothing that matters.
+  // `record-tenant-isolation.test.mjs` proves the caller half on PGlite, where
+  // the migration's role wrapper is not applied.
+  await setup.query(`insert into ${SCHEMA}.patient("source_app_id","id","agency_id")
+    values ($1,'chart-append','agency-a')`, [APP]);
+  await setup.query(`insert into ${SCHEMA}.patient_note_history_entry
+    ("source_app_id","id","agency_id","patient_id","note")
+    values ($1,'note-append','agency-a','chart-append','First revision')`, [APP]);
+  await setup.query('begin');
+  await setup.query('set local role "pennsync_records_owner"');
+  const rewritten = await setup.query(
+    `update ${SCHEMA}.patient_note_history_entry set "note" = 'owner rewrite' returning "id"`);
+  const removed = await setup.query(
+    `delete from ${SCHEMA}.patient_note_history_entry returning "id"`);
+  await setup.query('rollback');
+  // No policy for the command means no rows match rather than an error: the
+  // statement succeeds, changes nothing, and does not disclose that the row is
+  // there. The row is equally unchangeable either way.
+  assert.equal(rewritten.rowCount, 0, 'the record owner cannot rewrite it');
+  assert.equal(removed.rowCount, 0, 'the record owner cannot delete it');
+  assert.equal((await setup.query(
+    `select "note" from ${SCHEMA}.patient_note_history_entry where "id" = 'note-append'`))
+    .rows[0].note, 'First revision');
+  // The control is structural rather than another write, because a write as
+  // the owner with no caller claims fails the TENANT predicate too and would
+  // prove nothing: `patient` carries an update policy and this table carries
+  // none, which is the difference the schemas asked for.
+  const commands = async table => (await setup.query(
+    `select p.polcmd from pg_policy p join pg_class c on c.oid = p.polrelid
+     join pg_namespace n on n.oid = c.relnamespace
+     where n.nspname = $1 and c.relname = $2 order by p.polcmd`, [SCHEMA, table]))
+    .rows.map(row => row.polcmd);
+  assert.deepEqual(await commands('patient_note_history_entry'), ['a', 'r']);
+  assert.deepEqual(await commands('patient'), ['a', 'd', 'r', 'w']);
+}));
+
 test('a duplicate key cannot be written around the contract either', () => lab(async ({ setup }) => {
   // The constraint is the table's, not the capability's. A second writer — a
   // future ported handler, an import — meets the same refusal.

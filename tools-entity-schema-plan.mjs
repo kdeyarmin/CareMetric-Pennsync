@@ -101,6 +101,96 @@ export const STAMPED_KINDS = Object.freeze(['agency', 'shared']);
  *   Which rows is an authority decision the generator cannot read off a
  *   sentence, so these get nothing and say why.
  */
+/**
+ * The entities whose schemas say the ROW cannot change once written.
+ *
+ * Twelve entity descriptions mention immutability. Four of them say it about
+ * the row — "Immutable, server-authored clinical-note revision", "Append-only
+ * vehicle-service review annotations. No application update or deletion path."
+ * — and eight say it about a FIELD inside a row that is otherwise versioned:
+ * `AgencyMembership` binds "an immutable Base44 User id" and then transitions
+ * through a whole lifecycle. A regular expression cannot tell those apart, so
+ * all twelve are enumerated by kind and a thirteenth fails the run.
+ *
+ * What a `row` claim changes: the table gets a read policy and an insert
+ * policy and **no update or delete policy at all**. Forced RLS then refuses a
+ * rewrite from everyone, the record owner included — the same absence D25 made
+ * load-bearing for the activity trail, and the same one D23 uses to keep the
+ * roster read-only. A capability that needs to correct such a row writes a new
+ * one, which is what "append-only" means.
+ *
+ * Only a CARRIED entity has a table. A claim on one that is not carried is
+ * enumerated anyway, so the list keeps covering the schemas as dispositions
+ * move.
+ */
+export const IMMUTABILITY_CLAIM = /immutable|append-only/i;
+export const DECLARED_IMMUTABLE = Object.freeze({
+  AgencyMembership: Object.freeze({
+    kind: 'field',
+    because: 'The immutable thing is the Base44 User id it binds. The row itself is '
+      + 'versioned and transitions through pending, active, suspended and revoked.',
+  }),
+  AgencyMessage: Object.freeze({
+    kind: 'field',
+    because: 'A retired model whose rows are quarantined. The sentence describes what a '
+      + 'future replacement would have to bind, not this row.',
+  }),
+  ContentScopeBinding: Object.freeze({ kind: 'row' }),
+  DocumentTenantBinding: Object.freeze({ kind: 'row' }),
+  FleetServiceReview: Object.freeze({ kind: 'row' }),
+  Message: Object.freeze({
+    kind: 'field',
+    because: 'The immutable things are the tenant, thread, sender and idempotency '
+      + 'bindings a row must carry to be eligible at all; provenance status moves.',
+  }),
+  PatientCareTeamAssignment: Object.freeze({
+    kind: 'field',
+    because: 'The immutable thing is the Base44 User id. The row is explicitly '
+      + '"versioned" and carries a grant, suspend and revoke lifecycle — D24 depends on it.',
+  }),
+  PatientNoteHistoryEntry: Object.freeze({ kind: 'row' }),
+  SignatureArtifactBinding: Object.freeze({ kind: 'row' }),
+  SignatureAuditEvent: Object.freeze({ kind: 'row' }),
+  SmsConsent: Object.freeze({ kind: 'row' }),
+  TelecomDestinationBinding: Object.freeze({
+    kind: 'field',
+    because: 'Provider, destination and tenant identity are immutable; the row itself '
+      + 'has lifecycle changes, through a versioned backend workflow.',
+  }),
+});
+export const IMMUTABLE_KINDS = Object.freeze(['row', 'field']);
+
+/**
+ * Read the claims back out of the schemas and check them against the list.
+ *
+ * Entity descriptions only: a field that calls itself immutable is a statement
+ * about that column, and dozens of them do.
+ */
+export function declaredImmutability(repository, load = readSchemas) {
+  const found = new Set();
+  for (const [entity, schema] of load(repository)) {
+    if (IMMUTABILITY_CLAIM.test(schema?.description ?? '')) found.add(entity);
+  }
+  for (const entity of found) {
+    if (!Object.hasOwn(DECLARED_IMMUTABLE, entity)) {
+      throw new Error(`IMMUTABILITY_CLAIM_UNENUMERATED:${entity}`);
+    }
+  }
+  for (const [entity, claim] of Object.entries(DECLARED_IMMUTABLE)) {
+    if (!found.has(entity)) throw new Error(`IMMUTABILITY_CLAIM_STALE:${entity}`);
+    if (!IMMUTABLE_KINDS.includes(claim.kind)) {
+      throw new Error(`IMMUTABILITY_KIND_UNKNOWN:${entity}`);
+    }
+    // A `field` claim withholds the guarantee, so it owes a reason. A `row`
+    // claim takes the description at its word and needs none.
+    if (claim.kind === 'field' && !claim.because) {
+      throw new Error(`IMMUTABILITY_REASON_MISSING:${entity}`);
+    }
+  }
+  return new Set(Object.entries(DECLARED_IMMUTABLE)
+    .filter(([, claim]) => claim.kind === 'row').map(([entity]) => entity));
+}
+
 export const UNIQUENESS_CLAIM = /uniqueness is not assumed|datastore uniqueness|uniqueness constraint/i;
 export const DECLARED_UNIQUE = Object.freeze({
   'AgencyMembership.membership_key': Object.freeze({ kind: 'unique' }),
@@ -250,7 +340,7 @@ export function chartSubject(entity, tenantKey, columns) {
   return CHART_SUBJECTS.find(column => names.has(column)) ?? null;
 }
 
-export function planEntity(name, raw, disposition, decision = null, claims = []) {
+export function planEntity(name, raw, disposition, decision = null, claims = [], appendOnly = false) {
   const schema = JSON5.parse(raw);
   const table = snakeCase(name);
   const columns = [];
@@ -302,6 +392,7 @@ export function planEntity(name, raw, disposition, decision = null, claims = [])
     constrained: checks.length,
     unique_keys: claims.filter(claim => claim.kind === 'unique')
       .map(claim => claim.column).sort(),
+    append_only: appendOnly,
     merged_system_columns: merged.length,
     skipped,
     definition: { columns, checks, claims },
@@ -381,6 +472,7 @@ function planAll(repository) {
   // Checked across EVERY schema before any table is planned, so a claim in an
   // entity that gets no table is still accounted for.
   const claims = declaredUniqueness(repository);
+  const appendOnly = declaredImmutability(repository);
   const plans = [];
   const excluded = [];
   for (const file of files) {
@@ -388,7 +480,7 @@ function planAll(repository) {
     const disposition = dispositions[name];
     if (!CARRIED.includes(disposition)) { excluded.push({ entity: name, disposition: disposition ?? 'missing' }); continue; }
     plans.push(planEntity(name, readFileSync(join(directory, file), 'utf8'), disposition,
-      decisions[name] ?? null, claims.get(name) ?? []));
+      decisions[name] ?? null, claims.get(name) ?? [], appendOnly.has(name)));
   }
   return { plans, excluded };
 }
@@ -413,6 +505,7 @@ export function buildPlan(repository, prepared = null) {
       skipped_properties: plans.reduce((sum, plan) => sum + plan.skipped.length, 0),
       merged_system_columns: plans.reduce((sum, plan) => sum + plan.merged_system_columns, 0),
       unique_keys: plans.reduce((sum, plan) => sum + plan.unique_keys.length, 0),
+      append_only: plans.filter(plan => plan.append_only).length,
     },
     entities: plans.map(({ definition, ...rest }) => rest),
     // Everything this schema deliberately does not decide. `indexes_planned`
@@ -849,9 +942,20 @@ export function renderPolicies(plan, resolution) {
       : tenant;
   read = scoped(read);
   const guarded = scoped(write);
-  return [
+  const policies = [
     `create policy ${name('read')} on ${qualified} for select using (${read});`,
     `create policy ${name('insert')} on ${qualified} for insert with check (${rootInsert ? write : guarded});`,
+  ];
+  // A row the schema calls immutable gets NO update and NO delete policy, so
+  // forced RLS refuses both from everyone including the record owner. The
+  // absence is the mechanism — the same one the activity trail and the roster
+  // already rely on — and adding either policy back would make the guarantee
+  // rest on every future contract remembering not to.
+  if (plan.append_only) {
+    return [...policies,
+      `-- ${plan.table}: append-only by its own schema; no update or delete policy, deliberately.`];
+  }
+  return [...policies,
     `create policy ${name('update')} on ${qualified} for update using (${guarded}) with check (${guarded});`,
     `create policy ${name('delete')} on ${qualified} for delete using (${guarded});`,
   ];
@@ -886,7 +990,7 @@ export function renderDdl(repository) {
  * not a `SUPERUSER` or `BYPASSRLS` role, which bypasses RLS however it is
  * declared. The authority store's migrations require exactly such an
  * administrator (`PENNSYNC_BYPASSRLS_MIGRATION_OWNER_REQUIRED`), so leaving
- * these tables owned by the migration role would leave all 596 policies
+ * these tables owned by the migration role would leave all 589 policies
  * decorative: anything running as that role reads every agency's rows.
  *
  * So the migration creates a role with neither attribute, and the tables are
@@ -1079,7 +1183,7 @@ export function comparePlan(plan, expectations) {
   // it is a list, and `!==` on two equal arrays is always true.
   const COMPARED = ['table', 'columns', 'constrained', 'tenant_key',
     'tenant_decision', 'self_subject', 'platform_flag', 'disposition', 'chart_subject',
-    'unique_keys'];
+    'unique_keys', 'append_only'];
   const changed = [...current.entries()]
     .filter(([name, entity]) => recorded.has(name)
       && COMPARED.some(field =>

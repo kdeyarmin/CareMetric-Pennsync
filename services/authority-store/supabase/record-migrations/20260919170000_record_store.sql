@@ -5054,9 +5054,7 @@ create policy "content_scope_binding_read" on "pennsync_records"."content_scope_
 
 create policy "content_scope_binding_insert" on "pennsync_records"."content_scope_binding" for insert with check ("content_scope_binding"."source_app_id" = "pennsync_records".deployment_app() and "content_scope_binding"."agency_id" in (select "pennsync_records".caller_agencies()));
 
-create policy "content_scope_binding_update" on "pennsync_records"."content_scope_binding" for update using ("content_scope_binding"."source_app_id" = "pennsync_records".deployment_app() and "content_scope_binding"."agency_id" in (select "pennsync_records".caller_agencies())) with check ("content_scope_binding"."source_app_id" = "pennsync_records".deployment_app() and "content_scope_binding"."agency_id" in (select "pennsync_records".caller_agencies()));
-
-create policy "content_scope_binding_delete" on "pennsync_records"."content_scope_binding" for delete using ("content_scope_binding"."source_app_id" = "pennsync_records".deployment_app() and "content_scope_binding"."agency_id" in (select "pennsync_records".caller_agencies()));
+-- content_scope_binding: append-only by its own schema; no update or delete policy, deliberately.
 
 create policy "custom_validation_rule_read" on "pennsync_records"."custom_validation_rule" for select using ("custom_validation_rule"."source_app_id" = "pennsync_records".deployment_app() and "custom_validation_rule"."agency_id" in (select "pennsync_records".caller_agencies()));
 
@@ -5134,9 +5132,7 @@ create policy "document_tenant_binding_read" on "pennsync_records"."document_ten
 
 create policy "document_tenant_binding_insert" on "pennsync_records"."document_tenant_binding" for insert with check ("document_tenant_binding"."source_app_id" = "pennsync_records".deployment_app() and "document_tenant_binding"."agency_id" in (select "pennsync_records".caller_agencies()) and ("document_tenant_binding"."patient_id" is null or "pennsync_records".caller_opens_every_chart("document_tenant_binding"."agency_id") or "document_tenant_binding"."patient_id" in (select "pennsync_records".caller_assigned_patients("document_tenant_binding"."agency_id"))));
 
-create policy "document_tenant_binding_update" on "pennsync_records"."document_tenant_binding" for update using ("document_tenant_binding"."source_app_id" = "pennsync_records".deployment_app() and "document_tenant_binding"."agency_id" in (select "pennsync_records".caller_agencies()) and ("document_tenant_binding"."patient_id" is null or "pennsync_records".caller_opens_every_chart("document_tenant_binding"."agency_id") or "document_tenant_binding"."patient_id" in (select "pennsync_records".caller_assigned_patients("document_tenant_binding"."agency_id")))) with check ("document_tenant_binding"."source_app_id" = "pennsync_records".deployment_app() and "document_tenant_binding"."agency_id" in (select "pennsync_records".caller_agencies()) and ("document_tenant_binding"."patient_id" is null or "pennsync_records".caller_opens_every_chart("document_tenant_binding"."agency_id") or "document_tenant_binding"."patient_id" in (select "pennsync_records".caller_assigned_patients("document_tenant_binding"."agency_id"))));
-
-create policy "document_tenant_binding_delete" on "pennsync_records"."document_tenant_binding" for delete using ("document_tenant_binding"."source_app_id" = "pennsync_records".deployment_app() and "document_tenant_binding"."agency_id" in (select "pennsync_records".caller_agencies()) and ("document_tenant_binding"."patient_id" is null or "pennsync_records".caller_opens_every_chart("document_tenant_binding"."agency_id") or "document_tenant_binding"."patient_id" in (select "pennsync_records".caller_assigned_patients("document_tenant_binding"."agency_id"))));
+-- document_tenant_binding: append-only by its own schema; no update or delete policy, deliberately.
 
 create policy "document_version_read" on "pennsync_records"."document_version" for select using ("document_version"."source_app_id" = "pennsync_records".deployment_app() and "document_version"."agency_id" in (select "pennsync_records".caller_agencies()));
 
@@ -5222,9 +5218,7 @@ create policy "fleet_service_review_read" on "pennsync_records"."fleet_service_r
 
 create policy "fleet_service_review_insert" on "pennsync_records"."fleet_service_review" for insert with check ("fleet_service_review"."source_app_id" = "pennsync_records".deployment_app() and "fleet_service_review"."agency_id" in (select "pennsync_records".caller_agencies()));
 
-create policy "fleet_service_review_update" on "pennsync_records"."fleet_service_review" for update using ("fleet_service_review"."source_app_id" = "pennsync_records".deployment_app() and "fleet_service_review"."agency_id" in (select "pennsync_records".caller_agencies())) with check ("fleet_service_review"."source_app_id" = "pennsync_records".deployment_app() and "fleet_service_review"."agency_id" in (select "pennsync_records".caller_agencies()));
-
-create policy "fleet_service_review_delete" on "pennsync_records"."fleet_service_review" for delete using ("fleet_service_review"."source_app_id" = "pennsync_records".deployment_app() and "fleet_service_review"."agency_id" in (select "pennsync_records".caller_agencies()));
+-- fleet_service_review: append-only by its own schema; no update or delete policy, deliberately.
 
 create policy "fleet_vehicle_read" on "pennsync_records"."fleet_vehicle" for select using ("fleet_vehicle"."source_app_id" = "pennsync_records".deployment_app() and "fleet_vehicle"."agency_id" in (select "pennsync_records".caller_agencies()));
 
@@ -5564,9 +5558,7 @@ create policy "patient_note_history_entry_read" on "pennsync_records"."patient_n
 
 create policy "patient_note_history_entry_insert" on "pennsync_records"."patient_note_history_entry" for insert with check ("patient_note_history_entry"."source_app_id" = "pennsync_records".deployment_app() and "patient_note_history_entry"."agency_id" in (select "pennsync_records".caller_agencies()) and ("patient_note_history_entry"."patient_id" is null or "pennsync_records".caller_opens_every_chart("patient_note_history_entry"."agency_id") or "patient_note_history_entry"."patient_id" in (select "pennsync_records".caller_assigned_patients("patient_note_history_entry"."agency_id"))));
 
-create policy "patient_note_history_entry_update" on "pennsync_records"."patient_note_history_entry" for update using ("patient_note_history_entry"."source_app_id" = "pennsync_records".deployment_app() and "patient_note_history_entry"."agency_id" in (select "pennsync_records".caller_agencies()) and ("patient_note_history_entry"."patient_id" is null or "pennsync_records".caller_opens_every_chart("patient_note_history_entry"."agency_id") or "patient_note_history_entry"."patient_id" in (select "pennsync_records".caller_assigned_patients("patient_note_history_entry"."agency_id")))) with check ("patient_note_history_entry"."source_app_id" = "pennsync_records".deployment_app() and "patient_note_history_entry"."agency_id" in (select "pennsync_records".caller_agencies()) and ("patient_note_history_entry"."patient_id" is null or "pennsync_records".caller_opens_every_chart("patient_note_history_entry"."agency_id") or "patient_note_history_entry"."patient_id" in (select "pennsync_records".caller_assigned_patients("patient_note_history_entry"."agency_id"))));
-
-create policy "patient_note_history_entry_delete" on "pennsync_records"."patient_note_history_entry" for delete using ("patient_note_history_entry"."source_app_id" = "pennsync_records".deployment_app() and "patient_note_history_entry"."agency_id" in (select "pennsync_records".caller_agencies()) and ("patient_note_history_entry"."patient_id" is null or "pennsync_records".caller_opens_every_chart("patient_note_history_entry"."agency_id") or "patient_note_history_entry"."patient_id" in (select "pennsync_records".caller_assigned_patients("patient_note_history_entry"."agency_id"))));
+-- patient_note_history_entry: append-only by its own schema; no update or delete policy, deliberately.
 
 create policy "patient_pathway_assignment_read" on "pennsync_records"."patient_pathway_assignment" for select using ("patient_pathway_assignment"."source_app_id" = "pennsync_records".deployment_app() and exists (select 1 from "pennsync_records"."patient" t1 where t1."source_app_id" = "patient_pathway_assignment"."source_app_id" and t1."id" = "patient_pathway_assignment"."patient_id" and t1."agency_id" in (select "pennsync_records".caller_agencies()) and ("pennsync_records".caller_opens_every_chart(t1."agency_id") or t1."id" in (select "pennsync_records".caller_assigned_patients(t1."agency_id")))));
 
