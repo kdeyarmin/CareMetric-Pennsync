@@ -2991,3 +2991,67 @@ redirect out of the product — and the projection carries no `metadata`, no
 and the envelope columns are authority rather than content.
 
 Port queue: `records_schema` 42 → 41, written 45 → 46.
+
+## D46 — Two of eight actions needed no SQL, and a reservation protocol became a lock
+
+**Decision.** Port `manageVehicleMaintenance` as six contracts, route its other
+two actions to contracts that already exist, and replace its creation-claim
+protocol with the lock it was emulating.
+
+**Check which store already models what the original reads.** D34 established
+this for `listMyTenantMemberships` and `getMyTenantContext`; here it applies
+inside a single capability. `context` lists the agencies the caller may keep a
+fleet in — that is `contract_tenant_memberships`, with `tenant_role` in place of
+its `can_manage`. `staff` is the assignee picker: the original lists
+`AgencyMembership`, re-reads every lifecycle state to prove the page
+unambiguous, and joins `User` for a name — which is `contract_roster` exactly.
+Neither got a line of new SQL. **Two of eight.** A test reads the migration and
+fails if a `contract_fleet_context` or `contract_fleet_staff` ever appears.
+
+The one honest seam that leaves: D22's roster pages by KEYSET and the original
+pages by a numeric offset, and the two do not translate. The original already
+solves this for its own `history` action — it forwards an opaque token in the
+offset property, and *"Stale numeric offsets are rejected, not skipped"* — so
+`staff` does the same, passing a cursor through and refusing a number that is
+not the first page rather than silently answering the first page again.
+
+**`createOnce` becomes `select … for update`.** None of the three fleet entities
+claims uniqueness on `request_key` in its own schema, so D30 emits no index, and
+the original compensates with a reservation protocol: hash the scope into a
+64-hex key, append a `{key, token}` claim to a `*_creation_claims` ARRAY on a
+PARENT row, re-read, then create. Here the parent row always exists — an agency
+for a vehicle, a vehicle for an entry, an entry for a review — so locking it
+serializes the check and the insert in one transaction, which is what the
+protocol was emulating. The `creation_claim_token` and `*_creation_claims`
+columns are carried and this contract writes neither; a test asserts they stay
+null. Note the contrast with D44: there the parent of a deduplicated incident is
+the incident itself, which does not exist yet, so `for update` had nothing to
+lock and the race stayed open.
+
+**D32 working, rather than being asserted.** `FleetServiceReview` is one of the
+four entities whose own description calls the ROW immutable, so it has a read
+and an insert policy and no update or delete policy at all. The original already
+honours that, in its own words — *"Reviews are independent immutable rows. Never
+replace the service entry's review array: concurrent administrators cannot erase
+each other"* — so a review INSERTS a row and touches the entry not at all. The
+entry's stored `review_status` stays `pending` and the ANSWER's is the latest
+event; a test checks both.
+
+**Two more compensations deleted.** `validFleetMembership` and
+`validAssigneeMembership` re-prove a membership row's whole canonical lifecycle
+on every request, because in Base44 any service-role writer could half-write
+one; `pennsync_private.membership` holds it with CHECK constraints, and D34
+already deleted the same forty-line `validateMemberships`. And the history page
+is ONE keyset statement: the original runs up to three queries and re-sorts in
+JavaScript for a reason it states — *"The SDK supports one sort field"* — while
+a row comparison over `(service_date, id)` sorts on two. The cursor's
+`v1:<agency>:<vehicle>:<day>:<id>` shape is kept verbatim, because
+already-published clients forward it.
+
+**Two narrowings the policies do not give.** `fleet_vehicle`'s policies are
+agency-wide, so "a vehicle assigned to me, and not retired" is the contract's
+rule — D45's lesson a third time. And an assignee is proved through membership
+(D23) with their verified address as the display name, because the carried
+`user` table has no name column (D38).
+
+Port queue: `records_schema` 41 → 40, written 46 → 47.

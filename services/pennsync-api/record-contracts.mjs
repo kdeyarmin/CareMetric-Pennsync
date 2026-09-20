@@ -570,6 +570,141 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_CONFIG_EMPLOYEE_UNKNOWN',
     ]),
   }),
+  // Vehicle maintenance. Six of `manageVehicleMaintenance`'s eight actions;
+  // the other two need no SQL, because `context` is D34's tenant memberships
+  // and `staff` is D22's roster. The rule D34 established generalises: check
+  // which store already models what the original reads.
+  //
+  // The original's `createOnce` reservation protocol — a hashed claim appended
+  // to an array on a parent row — becomes a `for update` on that same parent,
+  // which is what it was emulating. And a review INSERTS an immutable row
+  // (D32) rather than rewriting the entry's array, which is what the original
+  // says it is doing too.
+  listFleetVehicles: Object.freeze({
+    rpc: 'pennsync_contract_fleet_vehicles',
+    params: Object.freeze(['offset', 'include_retired']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_offset: args.offset === undefined ? null : args.offset,
+      p_include_retired: args.include_retired === undefined ? null : args.include_retired,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_FLEET_AGENCY_NOT_HELD',
+      'PENNSYNC_FLEET_OFFSET_INVALID',
+    ]),
+  }),
+  getFleetVehicleHistory: Object.freeze({
+    rpc: 'pennsync_contract_fleet_history',
+    params: Object.freeze(['vehicle_id', 'cursor']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_vehicle_id: args.vehicle_id ?? null,
+      p_cursor: args.cursor === undefined ? null : args.cursor,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_FLEET_AGENCY_NOT_HELD',
+      'PENNSYNC_FLEET_SUBJECT_INVALID',
+      'PENNSYNC_FLEET_VEHICLE_NOT_FOUND',
+      'PENNSYNC_FLEET_VEHICLE_NOT_YOURS',
+      'PENNSYNC_FLEET_CURSOR_INVALID',
+      'PENNSYNC_FLEET_FIELD_INVALID',
+    ]),
+  }),
+  createFleetVehicle: Object.freeze({
+    rpc: 'pennsync_contract_fleet_vehicle_create',
+    params: Object.freeze(['request_id', 'vehicle']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_request_id: args.request_id ?? null,
+      p_vehicle: args.vehicle === undefined ? null : args.vehicle,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_FLEET_AGENCY_NOT_HELD',
+      'PENNSYNC_FLEET_FORBIDDEN',
+      'PENNSYNC_FLEET_REQUEST_INVALID',
+      'PENNSYNC_FLEET_VEHICLE_INVALID',
+      'PENNSYNC_FLEET_FIELD_UNSUPPORTED',
+      'PENNSYNC_FLEET_FIELD_INVALID',
+      'PENNSYNC_FLEET_VIN_INVALID',
+      'PENNSYNC_FLEET_SUBJECT_INVALID',
+      'PENNSYNC_FLEET_ASSIGNEE_UNKNOWN',
+    ]),
+  }),
+  updateFleetVehicle: Object.freeze({
+    rpc: 'pennsync_contract_fleet_vehicle_update',
+    params: Object.freeze(['vehicle_id', 'expected_version', 'vehicle']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_vehicle_id: args.vehicle_id ?? null,
+      p_expected_version: args.expected_version === undefined ? null : args.expected_version,
+      p_vehicle: args.vehicle === undefined ? null : args.vehicle,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_FLEET_AGENCY_NOT_HELD',
+      'PENNSYNC_FLEET_FORBIDDEN',
+      'PENNSYNC_FLEET_SUBJECT_INVALID',
+      'PENNSYNC_FLEET_VEHICLE_NOT_FOUND',
+      'PENNSYNC_FLEET_VEHICLE_STALE',
+      'PENNSYNC_FLEET_VEHICLE_INVALID',
+      'PENNSYNC_FLEET_FIELD_UNSUPPORTED',
+      'PENNSYNC_FLEET_FIELD_INVALID',
+      'PENNSYNC_FLEET_VIN_INVALID',
+      'PENNSYNC_FLEET_ASSIGNEE_UNKNOWN',
+    ]),
+  }),
+  addFleetServiceEntry: Object.freeze({
+    rpc: 'pennsync_contract_fleet_entry_add',
+    params: Object.freeze(['vehicle_id', 'request_id', 'entry']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_vehicle_id: args.vehicle_id ?? null,
+      p_request_id: args.request_id ?? null,
+      p_entry: args.entry === undefined ? null : args.entry,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_FLEET_AGENCY_NOT_HELD',
+      'PENNSYNC_FLEET_REQUEST_INVALID',
+      'PENNSYNC_FLEET_SUBJECT_INVALID',
+      'PENNSYNC_FLEET_VEHICLE_NOT_FOUND',
+      'PENNSYNC_FLEET_VEHICLE_NOT_YOURS',
+      'PENNSYNC_FLEET_VEHICLE_RETIRED',
+      'PENNSYNC_FLEET_ENTRY_INVALID',
+      'PENNSYNC_FLEET_FIELD_UNSUPPORTED',
+      'PENNSYNC_FLEET_FIELD_INVALID',
+      'PENNSYNC_FLEET_SERVICE_DATE_FUTURE',
+      'PENNSYNC_FLEET_NEXT_DATE_BEFORE',
+      'PENNSYNC_FLEET_NEXT_ODOMETER_BEFORE',
+    ]),
+  }),
+  reviewFleetServiceEntry: Object.freeze({
+    rpc: 'pennsync_contract_fleet_entry_review',
+    params: Object.freeze(['vehicle_id', 'entry_id', 'request_id',
+      'expected_review_count', 'status', 'note']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_vehicle_id: args.vehicle_id ?? null,
+      p_entry_id: args.entry_id ?? null,
+      p_request_id: args.request_id === undefined ? null : args.request_id,
+      p_expected_review_count: args.expected_review_count === undefined
+        ? null : args.expected_review_count,
+      p_status: args.status ?? null,
+      p_note: args.note === undefined ? null : args.note,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_FLEET_AGENCY_NOT_HELD',
+      'PENNSYNC_FLEET_FORBIDDEN',
+      'PENNSYNC_FLEET_SUBJECT_INVALID',
+      'PENNSYNC_FLEET_VEHICLE_NOT_FOUND',
+      'PENNSYNC_FLEET_VEHICLE_NOT_YOURS',
+      'PENNSYNC_FLEET_ENTRY_NOT_FOUND',
+      'PENNSYNC_FLEET_REVIEW_STATUS_INVALID',
+      'PENNSYNC_FLEET_REVIEW_COUNT_INVALID',
+      'PENNSYNC_FLEET_REVIEW_STALE',
+      'PENNSYNC_FLEET_REVIEW_HISTORY_FULL',
+      'PENNSYNC_FLEET_REQUEST_INVALID',
+      'PENNSYNC_FLEET_FIELD_INVALID',
+    ]),
+  }),
   // A person's own notifications, and the second capability where tenancy is
   // not ownership (D36) — this time the policy says so plainly, because
   // `notification_read` and `notification_update` are agency-WIDE. Every

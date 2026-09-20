@@ -357,6 +357,75 @@ export const HANDLERS = Object.freeze({
       return contract('savePayrollProfile', params);
     },
   }),
+  manageVehicleMaintenance: Object.freeze({
+    // Eight actions, six contracts. `context` and `staff` are routed to
+    // contracts that already exist — D34's tenant memberships and D22's
+    // roster — because the authority store has modelled both since before
+    // this capability was looked at. The envelope's per-action key sets are
+    // the original's `actionKeys` table, field for field.
+    handle({ params, contract }) {
+      if (!isObject(params)) fail(400, 'INVALID_PARAMS');
+      if (params.action === 'context') {
+        exactObject(params, ['action'], 'INVALID_PARAMS');
+        return contract('listMyTenantMemberships', {});
+      }
+      if (params.action === 'staff') {
+        exactObject(params, ['action', 'offset'], 'INVALID_PARAMS');
+        // D22's roster pages by KEYSET and the original pages by a numeric
+        // offset, which cannot be translated into one. The original already
+        // solves this for its own `history` action — it forwards an opaque
+        // token in the offset property and, in its own words, "Stale numeric
+        // offsets are rejected, not skipped" — so `staff` does the same: a
+        // cursor is passed through, and a number that is not the first page
+        // is refused rather than silently answering the first page again.
+        if (typeof params.offset === 'number' && params.offset !== 0) {
+          fail(400, 'INVALID_PARAMS');
+        }
+        const after = typeof params.offset === 'string' ? params.offset : undefined;
+        return contract('listAgencyRoster', after === undefined ? {} : { after });
+      }
+      if (params.action === 'vehicles') {
+        exactObject(params, ['action', 'offset', 'include_retired'], 'INVALID_PARAMS');
+        return contract('listFleetVehicles', params);
+      }
+      if (params.action === 'history') {
+        exactObject(params, ['action', 'vehicle_id', 'offset', 'cursor'], 'INVALID_PARAMS');
+        // The original accepts the opaque token in either property and
+        // refuses a stale numeric offset rather than skipping it.
+        if (params.cursor !== undefined && params.offset !== undefined) {
+          fail(400, 'INVALID_PARAMS');
+        }
+        return contract('getFleetVehicleHistory', {
+          vehicle_id: params.vehicle_id,
+          cursor: params.cursor ?? params.offset ?? null,
+        });
+      }
+      if (params.action === 'create_vehicle') {
+        exactObject(params, ['action', 'request_id', 'vehicle'], 'INVALID_PARAMS');
+        if (!isObject(params.vehicle)) fail(400, 'INVALID_PARAMS');
+        return contract('createFleetVehicle', params);
+      }
+      if (params.action === 'update_vehicle') {
+        exactObject(params, ['action', 'vehicle_id', 'expected_version', 'vehicle'],
+          'INVALID_PARAMS');
+        if (!isObject(params.vehicle)
+          || !Number.isSafeInteger(params.expected_version)) fail(400, 'INVALID_PARAMS');
+        return contract('updateFleetVehicle', params);
+      }
+      if (params.action === 'add_entry') {
+        exactObject(params, ['action', 'vehicle_id', 'request_id', 'entry'], 'INVALID_PARAMS');
+        if (!isObject(params.entry)) fail(400, 'INVALID_PARAMS');
+        return contract('addFleetServiceEntry', params);
+      }
+      if (params.action === 'review_entry') {
+        exactObject(params, ['action', 'vehicle_id', 'entry_id', 'request_id',
+          'expected_review_count', 'status', 'note'], 'INVALID_PARAMS');
+        if (!Number.isSafeInteger(params.expected_review_count)) fail(400, 'INVALID_PARAMS');
+        return contract('reviewFleetServiceEntry', params);
+      }
+      return fail(400, 'INVALID_PARAMS');
+    },
+  }),
   manageMyNotifications: Object.freeze({
     // The original's one envelope over three actions, and its own rule for
     // which keys each carries: a list and a mark-all name no row, and the two
