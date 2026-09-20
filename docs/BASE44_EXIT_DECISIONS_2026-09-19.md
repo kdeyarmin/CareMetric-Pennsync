@@ -3594,3 +3594,94 @@ re-read what it is actually naming.
 
 Port queue: unchanged — 23 `records_schema`, 56 written. This records what the
 blockers mean; it moves nothing.
+
+## D57 — When the arithmetic is the capability, prove it against the original rather than against a retyped copy
+
+**Decision.** Port `predictSupplyNeeds` onto a record contract, replace its
+`assigned_nurses` authorization with the chart policies, and prove the ported
+arithmetic by running the original's own block rather than by asserting
+expected numbers.
+
+**The authorization is the D21/D24 reconstruction one more time**, and this
+original is unusually candid about it. Its comment reads:
+
+> *"Authorize against the patient (assigned nurse or admin) before reading their
+> supply usage and writing a SupplyPrediction. The 404 above only covers global
+> non-existence, not access. RLS-independent code check."*
+
+It then reads `created_by`, `assigned_nurses`, `account_type` and `agency_name`,
+and lists five thousand `User` rows to decide whether the patient is in the
+caller's agency. All of that is gone. `supply_usage_log` and `supply_prediction`
+have no `agency_id` and reach tenancy through `patient_id`, exactly as the chart
+does, so the policies answer both halves of the question — who may ask, and
+which usage rows the answer is built from — and the contract's own visibility
+check exists only to name the refusal.
+
+**What is new here is the TEST, not the port.** Almost the whole capability is
+arithmetic: six-month bucketing, a trend classification, a population standard
+deviation, a confidence clamp, a reorder projection. Asserting a table of
+expected numbers would prove that the SQL agrees with numbers *I* computed,
+which is the transcription D12 settled against — and every one of those numbers
+is a place a port can quietly drift. So `contract-supply-prediction.test.mjs`
+lifts the arithmetic out of `entry.ts` between the original's own two comments,
+wraps it in a function over the five names it is closed over, runs it, and
+requires the contract to agree field for field on seven series at once. The
+anchors are asserted, so a rewrite upstream fails the test loudly instead of
+quietly proving nothing. Perturbing a single trend threshold in the SQL — 1.2 to
+1.5 — fails it, which is the check that the harness bites.
+
+**D38 did the same thing and could import a named function.** This handler keeps
+every line inline in `Deno.serve`, so there was nothing to import. The block
+still lifts cleanly because it is closed over `usageData`, `supply`, `supplyId`,
+`patientId` and `now`, and that is the general trick: an inline block is
+importable if you can name what it reads.
+
+**The floor is the load-bearing detail, and it is not what the comment says.**
+The original reads:
+
+```js
+const usageData = usageBySupply[supplyId];
+if (usageData.length < 2) continue; // Need at least 2 data points
+```
+
+`usageData` is USAGE LOG ROWS. The `data_points` it then reports is
+`quantities.length`, which is distinct MONTHS. Two logs in one month therefore
+produce a prediction with one data point, zero variance and the 95 confidence
+ceiling — and porting the comment instead of the code would have silently
+stopped producing predictions the product produces today. **D36's rule cuts both
+ways: a comment is not a permission, and it is not the behaviour either.** The
+contract's header says so where the next reader will look.
+
+**Six divergences, each recorded in the file.** The chart decides (1). Every
+date is a stored date or `agency_today()`, never the server process's zone (2) —
+the original buckets a UTC-midnight `Date` through LOCAL `getFullYear()` and
+`getMonth()`, so behind UTC the last day of a month lands in the month before,
+and it then builds the reorder date by local `setDate()` and serialises it
+through a UTC `toISOString()`. A prediction with no reorder date sorts LAST (3);
+the original sorts on `a.days - b.days`, which is `NaN` for every comparison
+involving the null a zero predicted usage produces. `supply_item` is joined on
+the caller's agency (4); the original reads the five thousand newest supplies in
+the DEPLOYMENT and matches by id, so another agency's figures could build this
+agency's prediction and this agency's supply could fall off the page and
+silently produce nothing. The six-month window is six months (5); the original's
+`setMonth(getMonth() - 6)` overflows from a month end onto the 3rd of the
+following month. A log row with no `quantity_used` counts as zero (6) rather
+than poisoning every number in the row with `NaN`.
+
+**One rounding detail worth keeping.** `supply_round` multiplies in DOUBLE and
+then rounds, because the original does `Math.round(x * 10) / 10` on a double and
+`round(x::numeric, 1)` is exact decimal rounding — they disagree in the last
+digit wherever the binary representation falls just under a half. The parity
+test would have caught it; the function is there so the reason is written down.
+
+**Not diverged:** every run appends a new prediction row per supply.
+`SupplyPrediction` claims no uniqueness in its own schema, and deciding whether
+a re-run replaces or appends is an entity decision, which D30 is where it
+belongs.
+
+**One request-shape change.** The original's body key is `patientId`, the only
+camelCase body in the set; every capability in the ported API names a chart
+`patient_id`, and nothing in `src/` calls this one, so there is no caller to
+keep in step with the outlier.
+
+Port queue: `records_schema` 23 → 22, written 56 → 57.

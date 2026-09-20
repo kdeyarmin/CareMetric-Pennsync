@@ -1240,6 +1240,22 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_TENANT_AGENCY_UNAVAILABLE',
     ]),
   }),
+  // Supply forecasting from a patient's own usage log. The arithmetic is the
+  // capability and it is ported term for term; the authorization is the D21
+  // and D24 reconstruction one more time — the original's own comment calls
+  // its `assigned_nurses` and `agency_name` scan an "RLS-independent code
+  // check", and `supply_usage_log` reaches tenancy through `patient_id`
+  // exactly as the chart does, so the policies answer all of it.
+  predictSupplyNeeds: Object.freeze({
+    rpc: 'pennsync_contract_supply_prediction_generate',
+    params: Object.freeze(['patient_id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_patient_id: args.patient_id ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_SUPPLY_AGENCY_NOT_HELD',
+      'PENNSYNC_SUPPLY_SUBJECT_INVALID',
+      'PENNSYNC_SUPPLY_PATIENT_NOT_VISIBLE',
+    ]),
+  }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
     params: Object.freeze(['user_id']),

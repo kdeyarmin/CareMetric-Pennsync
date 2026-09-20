@@ -525,6 +525,16 @@ export const HANDLERS = Object.freeze({
       return contract('checkAdrDeadlines', params);
     },
   }),
+  predictSupplyNeeds: Object.freeze({
+    // The original's body key is `patientId`, the one camelCase body in the
+    // set; every capability here names a chart `patient_id`, and nothing in
+    // `src/` calls this one, so there is no caller to keep in step with the
+    // outlier. The rename is the whole of the request-shape change.
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id'], 'INVALID_PARAMS');
+      return contract('predictSupplyNeeds', params);
+    },
+  }),
   sendPersonnelExpirationNotifications: Object.freeze({
     handle({ params, contract }) {
       exactObject(params, [], 'INVALID_PARAMS');

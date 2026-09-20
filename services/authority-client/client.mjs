@@ -109,6 +109,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   reviewTimeOffRequest: 'json',
   reviewTimesheet: 'json',
   submitTimesheet: 'json',
+  predictSupplyNeeds: 'json',
   policyAcknowledgment: 'json',
   validatePatientData: 'json',
 });
