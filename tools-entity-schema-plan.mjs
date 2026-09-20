@@ -71,6 +71,107 @@ export const TENANT_COLUMN = 'agency_id';
  */
 export const STAMPED_KINDS = Object.freeze(['agency', 'shared']);
 
+/**
+ * The keys an entity schema says would be unique if the datastore allowed one.
+ *
+ * Eleven fields across eleven entities say so IN THEIR OWN DESCRIPTIONS —
+ * `Patient.patient_creation_key` is "Best-effort until Base44 exposes a
+ * datastore uniqueness constraint", and nine more say some version of "code
+ * must still detect duplicates because datastore uniqueness is not assumed".
+ * Every one of them is a server-derived idempotency or identity key, and every
+ * one carries a hand-written duplicate check in the capability that writes it,
+ * because Base44 gave them nothing to lean on.
+ *
+ * We own the datastore now. So the claim is carried rather than re-argued, and
+ * it is carried the way D27 carries a binding claim: enumerated here, checked
+ * against the schema on every run, and a claim that does not hold throws
+ * rather than falling back. A field whose description makes this claim and is
+ * NOT enumerated fails the run too — which is the half that matters, because
+ * the next such key will be written by somebody who has not read this.
+ *
+ * Three kinds, and the difference is the schemas' own:
+ *
+ * - `unique` — duplicates are a defect the writing code works around. These
+ *   get a partial unique index on `(source_app_id, column)`.
+ * - `unproved` — the description says uniqueness "must still be proved before
+ *   migration", which is a statement that the EXISTING rows have not been
+ *   shown to satisfy it. An index would fail to build on import, and building
+ *   it is not what proves the data; these get nothing until somebody proves it.
+ * - `conditional` — unique among a subset of rows rather than all of them.
+ *   Which rows is an authority decision the generator cannot read off a
+ *   sentence, so these get nothing and say why.
+ */
+export const UNIQUENESS_CLAIM = /uniqueness is not assumed|datastore uniqueness|uniqueness constraint/i;
+export const DECLARED_UNIQUE = Object.freeze({
+  'AgencyMembership.membership_key': Object.freeze({ kind: 'unique' }),
+  'ContentScopeBinding.binding_key': Object.freeze({
+    kind: 'unproved',
+    because: 'Its own description: "Datastore uniqueness must still be proved before migration."',
+  }),
+  'DocumentTenantBinding.binding_key': Object.freeze({ kind: 'unique' }),
+  'Message.message_creation_key': Object.freeze({ kind: 'unique' }),
+  'Notification.dedupe_key': Object.freeze({ kind: 'unique' }),
+  'Patient.patient_creation_key': Object.freeze({ kind: 'unique' }),
+  'PatientCareTeamAssignment.assignment_key': Object.freeze({ kind: 'unique' }),
+  'PhysicianAgencyProfile.profile_key': Object.freeze({
+    kind: 'unproved',
+    because: 'Its own description: "Datastore uniqueness must still be proved before migration."',
+  }),
+  'Referral.referral_creation_key': Object.freeze({ kind: 'unique' }),
+  'ScheduledFax.schedule_key': Object.freeze({ kind: 'unique' }),
+  'TelecomDestinationBinding.binding_key': Object.freeze({
+    kind: 'conditional',
+    because: 'Unique among ACTIVE rows only, per its own description. Which column '
+      + 'means active, and whether a superseded binding may repeat a key, is an '
+      + 'authority decision about telecom routing rather than a schema detail.',
+  }),
+});
+export const UNIQUE_KINDS = Object.freeze(['unique', 'unproved', 'conditional']);
+
+/**
+ * Read the claims back out of the schemas and check them against the list.
+ *
+ * Every entity file, not only the carried ones: a claim in an entity that gets
+ * no table still has to be accounted for, or the enumeration would silently
+ * stop covering the schemas as dispositions move.
+ */
+export function readSchemas(repository) {
+  const directory = join(repository, ENTITY_DIRECTORY);
+  return readdirSync(directory).filter(name => /\.jsonc?$/.test(name)).sort()
+    .map(file => [file.replace(/\.jsonc?$/, ''),
+      JSON5.parse(readFileSync(join(directory, file), 'utf8'))]);
+}
+
+export function declaredUniqueness(repository, load = readSchemas) {
+  const found = new Map();
+  for (const [entity, schema] of load(repository)) {
+    for (const [property, definition] of Object.entries(schema.properties || {})) {
+      if (!UNIQUENESS_CLAIM.test(definition?.description ?? '')) continue;
+      found.set(`${entity}.${property}`, { entity, property, column: snakeCase(property) });
+    }
+  }
+  for (const key of found.keys()) {
+    if (!Object.hasOwn(DECLARED_UNIQUE, key)) throw new Error(`UNIQUENESS_CLAIM_UNENUMERATED:${key}`);
+  }
+  for (const key of Object.keys(DECLARED_UNIQUE)) {
+    if (!found.has(key)) throw new Error(`UNIQUENESS_CLAIM_STALE:${key}`);
+    if (!UNIQUE_KINDS.includes(DECLARED_UNIQUE[key].kind)) {
+      throw new Error(`UNIQUENESS_KIND_UNKNOWN:${key}`);
+    }
+    // A kind that withholds the index owes a reason, because "no index" and
+    // "no index yet, and here is what would settle it" are different states.
+    if (DECLARED_UNIQUE[key].kind !== 'unique' && !DECLARED_UNIQUE[key].because) {
+      throw new Error(`UNIQUENESS_REASON_MISSING:${key}`);
+    }
+  }
+  const byEntity = new Map();
+  for (const [key, claim] of found) {
+    const entry = { ...claim, ...DECLARED_UNIQUE[key] };
+    byEntity.set(claim.entity, [...(byEntity.get(claim.entity) ?? []), entry]);
+  }
+  return byEntity;
+}
+
 export function snakeCase(value) {
   return String(value)
     .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
@@ -149,7 +250,7 @@ export function chartSubject(entity, tenantKey, columns) {
   return CHART_SUBJECTS.find(column => names.has(column)) ?? null;
 }
 
-export function planEntity(name, raw, disposition, decision = null) {
+export function planEntity(name, raw, disposition, decision = null, claims = []) {
   const schema = JSON5.parse(raw);
   const table = snakeCase(name);
   const columns = [];
@@ -180,6 +281,14 @@ export function planEntity(name, raw, disposition, decision = null) {
   const declaredTenant = columns.some(column => column.name === TENANT_COLUMN);
   const stamped = !declaredTenant && STAMPED_KINDS.includes(decision?.kind);
   if (stamped) columns.push({ name: TENANT_COLUMN, property: null, type: 'text', notNull: true, stamped: true });
+  // A claimed key must still be a column of this table, or the index would
+  // name something that is not there. Refused rather than skipped: a claim
+  // whose column was renamed is drift, not an absence.
+  for (const claim of claims) {
+    if (!columns.some(column => column.name === claim.column)) {
+      throw new Error(`UNIQUENESS_COLUMN_MISSING:${name}.${claim.property}`);
+    }
+  }
   return {
     entity: name,
     disposition,
@@ -191,15 +300,22 @@ export function planEntity(name, raw, disposition, decision = null) {
     platform_flag: decision?.kind === 'shared' ? snakeCase(decision.platform_flag) : null,
     columns: columns.length,
     constrained: checks.length,
+    unique_keys: claims.filter(claim => claim.kind === 'unique')
+      .map(claim => claim.column).sort(),
     merged_system_columns: merged.length,
     skipped,
-    definition: { columns, checks },
+    definition: { columns, checks, claims },
   };
 }
 
 /** PostgreSQL truncates a long identifier, which can merge two constraints into one. */
 export function constraintName(table, column) {
   return `${table}_${column}_allowed`.slice(0, MAX_IDENTIFIER);
+}
+
+/** Same truncation hazard, same guard: two indexes sharing a name is an error. */
+export function uniqueIndexName(table, column) {
+  return `${table}_${column}_unique`.slice(0, MAX_IDENTIFIER);
 }
 
 export function renderEntity(plan) {
@@ -229,6 +345,20 @@ export function renderEntity(plan) {
       `  constraint ${quote(constraintName(plan.table, check.column))} `
       + `check (${quote(check.column)} is null or ${quote(check.column)} in (${check.values.map(literal).join(', ')}))`),
   ];
+  // The keys the entity's own description says would be unique if the
+  // datastore allowed one (`DECLARED_UNIQUE`). Partial, because an absent key
+  // is not a duplicate of another absent key: these columns are null on every
+  // row whose capability does not key on them, and an empty string is how a
+  // caller sends "none" through a text field.
+  //
+  // Scoped by `source_app_id` like the primary key, so two deployments sharing
+  // the store do not collide. The agency is already inside every one of these
+  // keys, which is what makes a tenant column unnecessary here.
+  const unique = plan.unique_keys ?? [];
+  const indexNames = unique.map(column => uniqueIndexName(plan.table, column));
+  if (new Set(indexNames).size !== indexNames.length) {
+    throw new Error(`UNIQUE_INDEX_NAME_COLLISION:${plan.entity}`);
+  }
   return [
     `create table ${qualified} (`,
     lines.join(',\n'),
@@ -236,6 +366,9 @@ export function renderEntity(plan) {
     `alter table ${qualified} enable row level security;`,
     `alter table ${qualified} force row level security;`,
     `revoke all on ${qualified} from public;`,
+    ...unique.map(column => `create unique index ${quote(uniqueIndexName(plan.table, column))} `
+      + `on ${qualified} (${quote('source_app_id')}, ${quote(column)}) `
+      + `where ${quote(column)} is not null and ${quote(column)} <> '';`),
   ].join('\n');
 }
 
@@ -245,13 +378,17 @@ function planAll(repository) {
   const decisions = JSON.parse(readFileSync(join(repository, TENANT_DECISION_FILE), 'utf8')).entities ?? {};
   const directory = join(repository, ENTITY_DIRECTORY);
   const files = readdirSync(directory).filter(file => /\.jsonc?$/.test(file)).sort();
+  // Checked across EVERY schema before any table is planned, so a claim in an
+  // entity that gets no table is still accounted for.
+  const claims = declaredUniqueness(repository);
   const plans = [];
   const excluded = [];
   for (const file of files) {
     const name = file.replace(/\.jsonc?$/, '');
     const disposition = dispositions[name];
     if (!CARRIED.includes(disposition)) { excluded.push({ entity: name, disposition: disposition ?? 'missing' }); continue; }
-    plans.push(planEntity(name, readFileSync(join(directory, file), 'utf8'), disposition, decisions[name] ?? null));
+    plans.push(planEntity(name, readFileSync(join(directory, file), 'utf8'), disposition,
+      decisions[name] ?? null, claims.get(name) ?? []));
   }
   return { plans, excluded };
 }
@@ -275,9 +412,13 @@ export function buildPlan(repository, prepared = null) {
       tenant_scoped: plans.filter(plan => plan.tenant_key).length,
       skipped_properties: plans.reduce((sum, plan) => sum + plan.skipped.length, 0),
       merged_system_columns: plans.reduce((sum, plan) => sum + plan.merged_system_columns, 0),
+      unique_keys: plans.reduce((sum, plan) => sum + plan.unique_keys.length, 0),
     },
     entities: plans.map(({ definition, ...rest }) => rest),
-    // Everything this schema deliberately does not decide.
+    // Everything this schema deliberately does not decide. `indexes_planned`
+    // stays false: the unique indexes above are a uniqueness CONSTRAINT the
+    // entity schemas ask for by name, not a performance plan, and nothing here
+    // has looked at a query.
     indexes_planned: false,
     foreign_keys_planned: false,
     retention_planned: false,
@@ -932,11 +1073,17 @@ export function comparePlan(plan, expectations) {
   // 28 entities out of that family and the recorded plan went on saying
   // `broker` for 42 of them, unnoticed, because nothing asked. A checked-in
   // artefact that disagrees with the manifest is worse than no artefact.
+  //
+  // `unique_keys` is here for the same reason `disposition` is: it decides
+  // something the table's shape does not say. It is compared as JSON because
+  // it is a list, and `!==` on two equal arrays is always true.
   const COMPARED = ['table', 'columns', 'constrained', 'tenant_key',
-    'tenant_decision', 'self_subject', 'platform_flag', 'disposition', 'chart_subject'];
+    'tenant_decision', 'self_subject', 'platform_flag', 'disposition', 'chart_subject',
+    'unique_keys'];
   const changed = [...current.entries()]
     .filter(([name, entity]) => recorded.has(name)
-      && COMPARED.some(field => recorded.get(name)[field] !== entity[field]))
+      && COMPARED.some(field =>
+        JSON.stringify(recorded.get(name)[field] ?? null) !== JSON.stringify(entity[field] ?? null)))
     .map(([name]) => name).sort();
   return { added, removed, changed, matches_expectations: !added.length && !removed.length && !changed.length };
 }

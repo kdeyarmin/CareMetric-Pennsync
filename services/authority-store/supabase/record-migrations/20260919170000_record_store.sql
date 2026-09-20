@@ -652,6 +652,7 @@ create table "pennsync_records"."agency_membership" (
 alter table "pennsync_records"."agency_membership" enable row level security;
 alter table "pennsync_records"."agency_membership" force row level security;
 revoke all on "pennsync_records"."agency_membership" from public;
+create unique index "agency_membership_membership_key_unique" on "pennsync_records"."agency_membership" ("source_app_id", "membership_key") where "membership_key" is not null and "membership_key" <> '';
 
 create table "pennsync_records"."agency_settings" (
   "source_app_id" text not null,
@@ -1659,6 +1660,7 @@ create table "pennsync_records"."document_tenant_binding" (
 alter table "pennsync_records"."document_tenant_binding" enable row level security;
 alter table "pennsync_records"."document_tenant_binding" force row level security;
 revoke all on "pennsync_records"."document_tenant_binding" from public;
+create unique index "document_tenant_binding_binding_key_unique" on "pennsync_records"."document_tenant_binding" ("source_app_id", "binding_key") where "binding_key" is not null and "binding_key" <> '';
 
 create table "pennsync_records"."document_version" (
   "source_app_id" text not null,
@@ -2619,6 +2621,7 @@ create table "pennsync_records"."notification" (
 alter table "pennsync_records"."notification" enable row level security;
 alter table "pennsync_records"."notification" force row level security;
 revoke all on "pennsync_records"."notification" from public;
+create unique index "notification_dedupe_key_unique" on "pennsync_records"."notification" ("source_app_id", "dedupe_key") where "dedupe_key" is not null and "dedupe_key" <> '';
 
 create table "pennsync_records"."notification_preference" (
   "source_app_id" text not null,
@@ -2965,6 +2968,7 @@ create table "pennsync_records"."patient" (
 alter table "pennsync_records"."patient" enable row level security;
 alter table "pennsync_records"."patient" force row level security;
 revoke all on "pennsync_records"."patient" from public;
+create unique index "patient_patient_creation_key_unique" on "pennsync_records"."patient" ("source_app_id", "patient_creation_key") where "patient_creation_key" is not null and "patient_creation_key" <> '';
 
 create table "pennsync_records"."patient_alert" (
   "source_app_id" text not null,
@@ -3068,6 +3072,7 @@ create table "pennsync_records"."patient_care_team_assignment" (
 alter table "pennsync_records"."patient_care_team_assignment" enable row level security;
 alter table "pennsync_records"."patient_care_team_assignment" force row level security;
 revoke all on "pennsync_records"."patient_care_team_assignment" from public;
+create unique index "patient_care_team_assignment_assignment_key_unique" on "pennsync_records"."patient_care_team_assignment" ("source_app_id", "assignment_key") where "assignment_key" is not null and "assignment_key" <> '';
 
 create table "pennsync_records"."patient_document" (
   "source_app_id" text not null,
@@ -3919,6 +3924,7 @@ create table "pennsync_records"."referral" (
 alter table "pennsync_records"."referral" enable row level security;
 alter table "pennsync_records"."referral" force row level security;
 revoke all on "pennsync_records"."referral" from public;
+create unique index "referral_referral_creation_key_unique" on "pennsync_records"."referral" ("source_app_id", "referral_creation_key") where "referral_creation_key" is not null and "referral_creation_key" <> '';
 
 create table "pennsync_records"."regulatory_update" (
   "source_app_id" text not null,

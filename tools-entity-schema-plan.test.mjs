@@ -4,8 +4,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  CARRIED, CHART_ROOT, CHART_SUBJECTS, EXPECTATIONS_FILE, FORMAT, FORMAT_VERSION, RECORD_MIGRATION_FILE, SCHEMA,
-  buildPlan, chartPredicate, chartSubject, columnType, comparePlan, constraintName, enumValues, main, parseExpectations, planEntity, renderEntity, snakeCase,
+  CARRIED, CHART_ROOT, CHART_SUBJECTS, DECLARED_UNIQUE, EXPECTATIONS_FILE, FORMAT, FORMAT_VERSION,
+  RECORD_MIGRATION_FILE, SCHEMA, UNIQUENESS_CLAIM, UNIQUE_KINDS,
+  buildPlan, chartPredicate, chartSubject, columnType, comparePlan, constraintName, declaredUniqueness, enumValues, main, parseExpectations, planEntity, renderEntity, snakeCase, uniqueIndexName,
 } from './tools-entity-schema-plan.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -287,4 +288,100 @@ test('the chart subject is derived from the columns, never from a name', () => {
   assert.ok(!root.includes('is null'), 'the chart root has no absent-subject case');
   assert.equal(chartPredicate(plan({ ...agency, note: { type: 'string' } }), '"t"'), null);
   assert.equal(chartPredicate(null, '"t"'), null);
+});
+
+test('every key a schema says would be unique is accounted for, and eight say so', () => {
+  // The claim is the SCHEMAS', not this tool's: eleven descriptions say a key
+  // would be unique if the datastore allowed one, and every one of them is a
+  // server-derived idempotency or identity key with a hand-written duplicate
+  // check in the capability that writes it. We own the datastore now.
+  const found = declaredUniqueness(repository);
+  const keys = [...found.values()].flat().map(claim => `${claim.entity}.${claim.property}`).sort();
+  assert.deepEqual(keys, Object.keys(DECLARED_UNIQUE).sort(),
+    'a claim in a schema and not in the list, or the other way round');
+  assert.equal(keys.length, 11);
+  const byKind = kind => Object.entries(DECLARED_UNIQUE)
+    .filter(([, claim]) => claim.kind === kind).map(([key]) => key);
+  assert.deepEqual(byKind('unique'), ['AgencyMembership.membership_key',
+    'DocumentTenantBinding.binding_key', 'Message.message_creation_key',
+    'Notification.dedupe_key', 'Patient.patient_creation_key',
+    'PatientCareTeamAssignment.assignment_key', 'Referral.referral_creation_key',
+    'ScheduledFax.schedule_key']);
+  // Two schemas say uniqueness "must still be proved before migration", which
+  // is a statement about the EXISTING rows rather than a hedge. An index would
+  // fail to build on import and building it is not what proves the data.
+  assert.deepEqual(byKind('unproved'),
+    ['ContentScopeBinding.binding_key', 'PhysicianAgencyProfile.profile_key']);
+  // And one is unique among ACTIVE rows only, which is an authority decision
+  // about telecom routing rather than something to read off a sentence.
+  assert.deepEqual(byKind('conditional'), ['TelecomDestinationBinding.binding_key']);
+  // Every kind that withholds an index owes a reason, because "no index" and
+  // "no index yet, and here is what would settle it" are different states.
+  for (const [key, claim] of Object.entries(DECLARED_UNIQUE)) {
+    assert.ok(UNIQUE_KINDS.includes(claim.kind), key);
+    if (claim.kind !== 'unique') assert.ok(claim.because?.length > 20, `${key} says why`);
+  }
+});
+
+test('a claim that appears, moves or loses its column fails the run', () => {
+  const claims = properties => declaredUniqueness(null, () => [['Probe', { properties }]]);
+  // The half that matters: the next key like this will be written by somebody
+  // who has not read the enumeration, so an unenumerated claim is an error
+  // rather than a field that quietly gets no constraint.
+  assert.throws(() => claims({ new_key: { type: 'string', description: 'datastore uniqueness is not assumed.' } }),
+    error => /^UNIQUENESS_CLAIM_UNENUMERATED:/.test(error.message));
+  // And a claim the enumeration still carries after the schema dropped it.
+  assert.throws(() => claims({}), error => /^UNIQUENESS_CLAIM_STALE:/.test(error.message));
+  // A claimed column that is not a column of the table it belongs to.
+  assert.throws(() => planEntity('Probe', entity({ kept: { type: 'string' } }), 'port', null,
+    [{ entity: 'Probe', property: 'gone_key', column: 'gone_key', kind: 'unique' }]),
+  error => error.message === 'UNIQUENESS_COLUMN_MISSING:Probe.gone_key');
+  // The phrase is what locates a claim, and it is the schemas' own wording.
+  for (const said of ['datastore uniqueness is not assumed', 'schema-level uniqueness is not assumed',
+    'Best-effort until Base44 exposes a datastore uniqueness constraint',
+    'schema uniqueness is not assumed', 'Datastore uniqueness must still be proved before migration']) {
+    assert.ok(UNIQUENESS_CLAIM.test(said), said);
+  }
+  assert.equal(UNIQUENESS_CLAIM.test('Server-derived key for a workflow.'), false);
+});
+
+test('a declared unique key becomes a partial index on the deployment and the key', () => {
+  const sql = renderEntity(planEntity('Probe',
+    entity({ probe_key: { type: 'string' }, other: { type: 'string' } }), 'port', null,
+    [{ entity: 'Probe', property: 'probe_key', column: 'probe_key', kind: 'unique' }]));
+  assert.match(sql, /create unique index "probe_probe_key_unique" on "pennsync_records"\."probe" \("source_app_id", "probe_key"\)/);
+  // Partial, because an absent key is not a duplicate of another absent key:
+  // these columns are null on every row whose capability does not key on them,
+  // and an empty string is how a caller sends "none" through a text field.
+  assert.match(sql, /where "probe_key" is not null and "probe_key" <> ''/);
+  // A kind that withholds the index emits nothing at all, rather than a
+  // commented-out index somebody would later uncomment without the proof.
+  for (const kind of ['unproved', 'conditional']) {
+    assert.equal(renderEntity(planEntity('Probe',
+      entity({ probe_key: { type: 'string' } }), 'port', null,
+      [{ entity: 'Probe', property: 'probe_key', column: 'probe_key', kind, because: 'x' }]))
+      .includes('create unique index'), false, kind);
+  }
+  // Long names truncate, and two that truncate to one name would silently
+  // become one index — the same hazard `constraintName` already guards.
+  assert.equal(uniqueIndexName('t'.repeat(60), 'c').length, 63);
+});
+
+test('the committed migration carries an index for every carried unique key', () => {
+  const plan = buildPlan(repository);
+  const expected = plan.entities.flatMap(row => row.unique_keys.map(column => `${row.table}_${column}_unique`)).sort();
+  const sql = readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8');
+  const emitted = [...sql.matchAll(/create unique index "([a-z_]+)"/g)].map(match => match[1]).sort();
+  assert.deepEqual(emitted, expected);
+  assert.equal(plan.totals.unique_keys, expected.length);
+  // Six of the eight `unique` claims, because `Message` and `ScheduledFax` get
+  // no table here at all — their entities are not carried, and a claim in a
+  // schema without a table is still enumerated rather than forgotten.
+  assert.equal(expected.length, 6);
+  assert.ok(emitted.includes('patient_patient_creation_key_unique'));
+  // And the two `unproved` ones are not among them, which is the whole of
+  // what their schemas asked for.
+  for (const table of ['content_scope_binding', 'physician_agency_profile']) {
+    assert.equal(emitted.some(name => name.startsWith(table)), false, table);
+  }
 });

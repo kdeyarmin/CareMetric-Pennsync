@@ -1914,14 +1914,82 @@ consequence — a clinician cannot correct a medical record number.
 
 **What would remove it is a uniqueness constraint on the column, and the entity
 schemas are worth reading before adding one.** `Patient.medical_record_number`
-declares nothing. But four other fields say, in their own descriptions, that
-they would be unique if the datastore allowed it: `Patient.patient_creation_key`
-("Best-effort until Base44 exposes a datastore uniqueness constraint"),
-`Message.message_key`, `PatientCareTeamAssignment.assignment_key` and
-`ScheduledFax`'s idempotency key, each adding that code must detect duplicates
-"because datastore uniqueness is not assumed". We own the datastore now. Those
-four are a decision waiting to be made and the first one matters immediately:
-`createAuthorizedPatient`'s idempotency is a read-then-insert with no
-constraint underneath it, exactly as the original's was. MRN is not among the
-four, so giving it a constraint would be inventing a rule rather than carrying
-one, and that is why this contract narrows instead.
+declares nothing. Eleven other fields do — they say in their own descriptions
+that they would be unique if the datastore allowed it, starting with
+`Patient.patient_creation_key` ("Best-effort until Base44 exposes a datastore
+uniqueness constraint"). We own the datastore now, and D30 carries those. MRN
+is not among them, so giving it a constraint would be inventing a rule rather
+than carrying one, and that is why this contract narrows instead.
+
+## D30 — The keys the schemas said would be unique are unique now
+
+Eleven entity schemas say, in the descriptions of their own fields, that a key
+would be unique if the datastore allowed one. `Patient.patient_creation_key` is
+"Best-effort until Base44 exposes a datastore uniqueness constraint"; the rest
+say some version of "code must still detect duplicates because datastore
+uniqueness is not assumed". Every one is a server-derived idempotency or
+identity key, and every one carries a hand-written duplicate check in the
+capability that writes it, because Base44 gave them nothing to lean on.
+
+**We own the datastore.** So the claim is carried rather than re-argued, and it
+is carried the way D27 carries a binding claim: enumerated in
+`DECLARED_UNIQUE`, checked against the schemas on every generator run, and a
+claim that does not hold throws rather than falling back. The half that matters
+is the other direction — a field whose description makes this claim and is NOT
+enumerated fails the run, because the next such key will be written by somebody
+who has not read the list.
+
+### Three kinds, and the difference is the schemas' own
+
+Reading all eleven rather than the two that were obvious is what produced the
+split:
+
+- **`unique` (8)** — duplicates are a defect the writing code works around.
+  `AgencyMembership.membership_key`, `DocumentTenantBinding.binding_key`,
+  `Message.message_creation_key`, `Notification.dedupe_key`,
+  `Patient.patient_creation_key`, `PatientCareTeamAssignment.assignment_key`,
+  `Referral.referral_creation_key`, `ScheduledFax.schedule_key`. Six of the
+  eight get a partial unique index on `(source_app_id, column)`; `Message` and
+  `ScheduledFax` are not carried entities and have no table to index, which the
+  enumeration records rather than forgets.
+- **`unproved` (2)** — `ContentScopeBinding.binding_key` and
+  `PhysicianAgencyProfile.profile_key` say uniqueness "must still be proved
+  before migration". That is a statement about the EXISTING rows, not a hedge:
+  an index would fail to build on import, and building it is not what proves
+  the data. They get nothing, and the reason is in the enumeration rather than
+  in somebody's memory.
+- **`conditional` (1)** — `TelecomDestinationBinding.binding_key` is unique
+  among ACTIVE rows only. Which column means active, and whether a superseded
+  binding may repeat a key, is an authority decision about telecom routing. A
+  generator cannot read that off a sentence, so it gets nothing and says so.
+
+The indexes are partial (`where key is not null and key <> ''`) because an
+absent key is not a duplicate of another absent key: these columns are null on
+almost every row, and an empty string is how a caller sends "none" through a
+text field. They are scoped by `source_app_id` like the primary key. The agency
+is already inside every one of these keys, which is what makes a tenant column
+unnecessary here.
+
+### What it fixes immediately
+
+`createAuthorizedPatient`'s idempotency was a lookup followed by an insert with
+nothing underneath it — exactly what the original's own comment admits. Two
+retries of one request could both miss the lookup and both insert, and the
+product would hold two charts for one patient with neither caller told.
+
+The contract now runs the claim and the insert inside one plpgsql block, which
+is a savepoint, and catches `unique_violation` **for that index by name**,
+re-raising anything else. The loser unwinds — its minted chart id and its
+care-team grant go with it — re-reads the key and answers the chart the winner
+made. `record-contract-postgres.test.mjs` proves it with two real connections
+and a real lock wait rather than a sleep: one chart, one care-team seat, from
+two concurrent requests carrying one key. It is the twelfth suite that needs a
+real PostgreSQL, registered in `.github/workflows/pennsync-authority.yml` and
+in AGENTS.md, because PGlite is one connection and cannot interleave two
+callers.
+
+One consequence to know before a data migration: these indexes mean an import
+carrying duplicate keys will fail to load rather than quietly accepting them.
+That is the correct outcome — it is the defect the schemas were describing —
+but it is work to do at import time, and the two `unproved` entities are the
+ones that said so first.

@@ -38,6 +38,15 @@
 -- match, because answering the first chart would silently discard the second
 -- request's data.
 --
+-- **And it is no longer best-effort.** The original's own words for
+-- `patient_creation_key` are "Best-effort until Base44 exposes a datastore
+-- uniqueness constraint", because a lookup followed by an insert is two
+-- statements and a concurrent retry fits between them. The record store
+-- carries that constraint now (`patient_patient_creation_key_unique`), so the
+-- race ends in a unique violation this contract catches, unwinds and answers
+-- with the chart the winner made — rather than in a second chart neither
+-- caller knows about.
+--
 -- DIVERGENCES from the original, each a narrowing, each deliberate:
 --
 -- 1. `platform_owner` is not a creating role here; D14 and D22 removed the
@@ -103,11 +112,30 @@ create function "pennsync_records".patient_created(p "pennsync_records"."patient
     'client_request_id', p."client_request_id")
 $projection$;
 
+-- The answer a key that already exists deserves, in one place because the
+-- contract reaches it from two directions: the lookup before the insert, and
+-- the unique violation when a concurrent request got there first.
+--
+-- A key that names a chart with different names is a CONFLICT rather than a
+-- match: answering the first would silently discard this request's data.
+create function "pennsync_records".patient_creation_answer(
+  p "pennsync_records"."patient", p_first text, p_last text, p_user text) returns jsonb
+  language plpgsql stable set search_path = '' as $answer$
+begin
+  if p."first_name" is distinct from p_first or p."last_name" is distinct from p_last
+    or p."created_by_user_id" is distinct from p_user then
+    raise exception using errcode='22023', message='PENNSYNC_PATIENT_REQUEST_CONFLICT';
+  end if;
+  return jsonb_build_object('created', false,
+    'patient', "pennsync_records".patient_created(p));
+end $answer$;
+
 create function "pennsync_records".contract_patient_create(
   p_agency text, p_client_request_id text, p_patient jsonb)
   returns jsonb language plpgsql security definer set search_path = '' as $contract$
 declare
   v_role text; v_user text; v_email text; v_key text; v_id text; v_field text;
+  v_constraint text;
   v_row "pennsync_records"."patient"; v_existing "pennsync_records"."patient";
 begin
   v_role := "pennsync_records".caller_tenant_role(p_agency);
@@ -158,45 +186,66 @@ begin
   where p."source_app_id" = "pennsync_records".deployment_app()
     and p."patient_creation_key" = v_key;
   if found then
-    -- A key that exists but names a different chart is a conflict, not a
-    -- match: answering the first would silently discard this request's data.
-    if v_existing."first_name" is distinct from p_patient->>'first_name'
-      or v_existing."last_name" is distinct from p_patient->>'last_name'
-      or v_existing."created_by_user_id" is distinct from v_user then
-      raise exception using errcode='22023', message='PENNSYNC_PATIENT_REQUEST_CONFLICT';
-    end if;
-    return jsonb_build_object('created', false,
-      'patient', "pennsync_records".patient_created(v_existing));
+    return "pennsync_records".patient_creation_answer(v_existing,
+      p_patient->>'first_name', p_patient->>'last_name', v_user);
   end if;
 
-  -- Claim the chart and take the care-team seat, then write the row. Both in
-  -- this transaction: neither survives the other failing.
-  v_id := pennsync_private.claim_new_chart(p_agency);
-
-  -- The payload becomes a row by column name rather than by a list this
-  -- contract would have to keep in step with the extracted one. Unknown keys
-  -- cannot reach here — the loop above refused them — so nothing is silently
-  -- dropped, and a value the column cannot hold raises rather than truncating.
+  -- Claim the chart, write the row, and hold BOTH inside one block so that a
+  -- lost idempotency race rolls the claim back with the insert. `begin … end`
+  -- is a savepoint in plpgsql, which is the whole reason the claim is inside
+  -- it: unwinding to before the claim is what keeps a grant from being left
+  -- behind pointing at a chart that was never written.
   begin
-    v_row := jsonb_populate_record(null::"pennsync_records"."patient", p_patient);
-  exception when others then
-    raise exception using errcode='22023', message='PENNSYNC_PATIENT_FIELD_INVALID';
-  end;
-  v_row."source_app_id" := "pennsync_records".deployment_app();
-  v_row."id" := v_id;
-  v_row."agency_id" := p_agency;
-  v_row."created_by_user_id" := v_user;
-  v_row."created_by_user_email_normalized" := v_email;
-  v_row."created_by" := v_email;
-  v_row."client_request_id" := p_client_request_id;
-  v_row."patient_creation_key" := v_key;
-  v_row."status" := 'active';
-  v_row."is_sample" := false;
-  v_row."is_archived" := false;
-  v_row."created_date" := clock_timestamp();
-  v_row."updated_date" := v_row."created_date";
+    v_id := pennsync_private.claim_new_chart(p_agency);
 
-  insert into "pennsync_records"."patient" select (v_row).*;
+    -- The payload becomes a row by column name rather than by a list this
+    -- contract would have to keep in step with the extracted one. Unknown keys
+    -- cannot reach here — the loop above refused them — so nothing is silently
+    -- dropped, and a value the column cannot hold raises rather than truncating.
+    begin
+      v_row := jsonb_populate_record(null::"pennsync_records"."patient", p_patient);
+    exception when others then
+      raise exception using errcode='22023', message='PENNSYNC_PATIENT_FIELD_INVALID';
+    end;
+    v_row."source_app_id" := "pennsync_records".deployment_app();
+    v_row."id" := v_id;
+    v_row."agency_id" := p_agency;
+    v_row."created_by_user_id" := v_user;
+    v_row."created_by_user_email_normalized" := v_email;
+    v_row."created_by" := v_email;
+    v_row."client_request_id" := p_client_request_id;
+    v_row."patient_creation_key" := v_key;
+    v_row."status" := 'active';
+    v_row."is_sample" := false;
+    v_row."is_archived" := false;
+    v_row."created_date" := clock_timestamp();
+    v_row."updated_date" := v_row."created_date";
+
+    insert into "pennsync_records"."patient" select (v_row).*;
+  exception when unique_violation then
+    -- The lookup above found nothing and the insert found a duplicate, so a
+    -- concurrent request carrying the SAME key committed in between. Without
+    -- the index this contract would have made a second chart for one request
+    -- and neither caller would know — which is precisely what the entity
+    -- schema means by "best-effort until Base44 exposes a datastore uniqueness
+    -- constraint". We own the datastore, so it is not best-effort here.
+    --
+    -- The constraint is read rather than assumed: any other unique violation
+    -- is a different defect and is re-raised untouched.
+    get stacked diagnostics v_constraint = constraint_name;
+    if v_constraint is distinct from 'patient_patient_creation_key_unique' then raise; end if;
+    select * into v_existing from "pennsync_records"."patient" p
+    where p."source_app_id" = "pennsync_records".deployment_app()
+      and p."patient_creation_key" = v_key;
+    -- Read committed takes a fresh snapshot per statement, so the winner's row
+    -- is visible here. If it is not, the caller cannot be shown the chart its
+    -- own request made, and answering anything else would be a guess.
+    if not found then
+      raise exception using errcode='22023', message='PENNSYNC_PATIENT_REQUEST_CONFLICT';
+    end if;
+    return "pennsync_records".patient_creation_answer(v_existing,
+      p_patient->>'first_name', p_patient->>'last_name', v_user);
+  end;
   return jsonb_build_object('created', true,
     'patient', "pennsync_records".patient_created(v_row));
 end $contract$;
@@ -204,6 +253,7 @@ end $contract$;
 reset role;
 
 revoke all on function "pennsync_records".patient_created("pennsync_records"."patient"),
+  "pennsync_records".patient_creation_answer("pennsync_records"."patient",text,text,text),
   "pennsync_records".contract_patient_create(text,text,jsonb)
   from public, anon, authenticated, service_role;
 

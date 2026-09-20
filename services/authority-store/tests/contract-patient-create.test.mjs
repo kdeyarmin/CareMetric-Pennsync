@@ -153,6 +153,27 @@ test('a retry answers the same chart, and a reused id with different names is a 
   assert.notEqual(other.patient.id, first.patient.id);
 });
 
+test('a retry whose chart the caller can no longer open is a conflict, not a second chart', async () => {
+  // The lookup reads under the policies and the unique index does not, so a
+  // key whose chart this caller cannot open misses the lookup and then hits
+  // the index. That is exactly the path a lost concurrency race takes, reached
+  // here without two connections — and the answer is the honest one: the
+  // caller cannot be shown the chart, so they are not told it exists either.
+  const id = (await create(CLINICIAN_A, 'req-revoked-1')).patient.id;
+  const grants = async () => (await db.query(
+    'select count(*)::int as n from pennsync_private.chart_assignment')).rows[0].n;
+  await db.query(
+    "update pennsync_private.chart_assignment set status = 'revoked' where patient_id = $1", [id]);
+  const before = await grants();
+  await refusal(create(CLINICIAN_A, 'req-revoked-1'), 'PENNSYNC_PATIENT_REQUEST_CONFLICT');
+  // One chart for one key, which is what the index is for. Without it this
+  // contract would have made a second and answered it as if it were the first.
+  assert.equal((await db.query(
+    `select count(*)::int as n from ${SCHEMA}."patient" where "patient_creation_key" like $1`,
+    ['%:req-revoked-1'])).rows[0].n, 1);
+  assert.equal(await grants(), before, 'the refused attempt took its claim with it');
+});
+
 test('a malformed request never reaches the table', async () => {
   const before = (await db.query(`select count(*)::int as n from ${SCHEMA}."patient"`)).rows[0].n;
   await refusal(create(ADMIN_A, ''), 'PENNSYNC_PATIENT_REQUEST_ID_INVALID');
