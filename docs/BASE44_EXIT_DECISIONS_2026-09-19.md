@@ -2747,3 +2747,51 @@ emitted the string `NaN` into the dashboard.
 Port queue: `records_schema` 49 → 48, written 38 → 39. Three of D40's five
 remain: `monitorClinicalDataForCarePlanUpdates`, `resendInvitation` and
 `resendInvitationV2`.
+
+## D42 — Two capabilities that are one file, and a send with nothing behind it
+
+**Decision.** Port `resendInvitation` and `resendInvitationV2` as **one**
+contract under D40's gate, keeping both handler names. Do not port the
+invitation email.
+
+**They are the same file.** Byte-identical apart from a trailing line in the
+second:
+
+> `// Production replacement endpoint: resendInvitationV2 (registered 2026-09-09)`
+
+Porting them separately would put two identical endpoints in the new service
+and give a future reader two places to keep in agreement. Both names stay, so a
+migrating caller of either gets the behaviour it had, and both reach one
+contract. That is the inverse of `listAuthorizedPatients`, which is one
+capability reaching two contracts because its two modes are genuinely two
+queries. The test READS both files and fails if they ever diverge, rather than
+asserting they are the same — at which point the port has to decide which one
+it serves.
+
+**The send is not a paused delivery; it is a service that does not exist.** The
+original calls `base44.users.inviteUser(...)` — the Base44 platform's own
+invitation service, which mints the account and delivers the link. Everywhere
+else in this port an unported send is an email the integration runtime would
+have carried (`OUTBOUND_DELIVERY_RELEASE`); here it is a platform capability
+with no successor at all. So the contract does the record half — mark the
+invitation pending, extend it seven days, stamp the moment, increment the count
+— the handler reports `delivery_paused`, and **the audit entry itself carries
+`delivery_paused: true`** so the trail does not read as though a message went
+out. Until an owned invitation path exists, a resend records the intent and the
+invitee receives nothing.
+
+**The agency check is the policy's, and the fixture proves why that matters.**
+The original resolves the invitation's agency from its own `agency_name` string
+and, failing that, by looking up the INVITER's `User` row and reading THEIR
+`agency_name` — two self-editable labels, and a second answer to a question the
+policy already answers (D41). The test's fixture sets `agency_name` to
+`'Agency A'` on **every** invitation including agency B's, precisely so that a
+port which read that column would get it wrong; the contract refuses agency B's
+row as not found.
+
+The audit entry goes to D25's trail in the same transaction (D37). The original
+writes a `UserActivity` row inside a `try/catch` and logs the failure, so a
+resend could happen with nothing recording it.
+
+Port queue: `records_schema` 48 → 46, written 39 → 41. One of D40's five
+remains: `monitorClinicalDataForCarePlanUpdates`.

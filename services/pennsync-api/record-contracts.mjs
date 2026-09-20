@@ -538,6 +538,26 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_CREDENTIAL_FORBIDDEN',
     ]),
   }),
+  // Resending a staff invitation, third under D40. ONE contract for TWO Base44
+  // capabilities: `resendInvitation` and `resendInvitationV2` are
+  // byte-identical apart from a comment naming the second the production
+  // replacement, so both handler names reach this. The invitation EMAIL is not
+  // ported — the original calls the Base44 platform's own invitation service,
+  // and there is no platform here.
+  resendInvitation: Object.freeze({
+    rpc: 'pennsync_contract_invitation_resend',
+    params: Object.freeze(['invitation_id']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId, p_invitation_id: args.invitation_id ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_INVITATION_FORBIDDEN',
+      'PENNSYNC_INVITATION_SUBJECT_INVALID',
+      'PENNSYNC_INVITATION_NOT_FOUND',
+      'PENNSYNC_INVITATION_ACCEPTED',
+      'PENNSYNC_INVITATION_CANCELLED',
+    ]),
+  }),
   // The data-quality audit, second under D40. Its whole agency-scoping block
   // disappears: the original rebuilt "which of these are mine" from
   // `agency_name` strings, `created_by` addresses and `assigned_nurses`

@@ -343,6 +343,19 @@ export const HANDLERS = Object.freeze({
       return contract('appendPatientNoteHistory', params);
     },
   }),
+  resendInvitation: Object.freeze({
+    // Both names reach the one contract: the two originals are the same file.
+    async handle({ params, contract }) {
+      exactObject(params, ['invitation_id'], 'INVALID_PARAMS');
+      return { ...(await contract('resendInvitation', params)), delivery_paused: true };
+    },
+  }),
+  resendInvitationV2: Object.freeze({
+    async handle({ params, contract }) {
+      exactObject(params, ['invitation_id'], 'INVALID_PARAMS');
+      return { ...(await contract('resendInvitation', params)), delivery_paused: true };
+    },
+  }),
   auditDataQuality: Object.freeze({
     handle({ params, contract }) {
       exactObject(params, [], 'INVALID_PARAMS');

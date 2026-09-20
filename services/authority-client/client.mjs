@@ -90,6 +90,8 @@ export const PORTED_FUNCTIONS = Object.freeze({
   updateAuthorizedVisit: 'json',
   updateScopedPatientAlert: 'json',
   matchPatientWithAI: 'json',
+  resendInvitation: 'json',
+  resendInvitationV2: 'json',
   reviewPersonnelCredential: 'json',
   reviewTimeOffRequest: 'json',
   policyAcknowledgment: 'json',
