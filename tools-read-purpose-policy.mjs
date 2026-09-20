@@ -1,16 +1,19 @@
 #!/usr/bin/env node
 /**
- * The authorized-patient purpose policies, lifted from the Base44 originals
+ * The authorized-read purpose policies, lifted from the Base44 originals
  * rather than retyped.
  *
- * Two capabilities read a patient and both are purpose-bound: a caller names
- * a purpose, and the purpose decides which fields come back and which tenant
- * roles may ask at all. `listAuthorizedPatients` adds a page bound per
- * purpose; `getAuthorizedPatient` reads one row and has none. The two carry
- * DIFFERENT purposes — a list is asked for `contact` or `roster`, one chart is
- * opened for `smart_note_context` or `oasis_analysis_context` — so they are
- * two policies, not one with a shared vocabulary, and conflating them would
- * hand a list caller a purpose that exists to open a single chart.
+ * Six capabilities read a clinical row — a patient, a visit or a document —
+ * and every one of them is purpose-bound: a caller names a purpose, and the
+ * purpose decides which fields come back and which tenant roles may ask at
+ * all. A list capability may also bound its page per purpose; a single read
+ * has nothing to bound.
+ *
+ * Each of the six carries its OWN purposes. A patient list is asked for
+ * `contact` or `roster`; one chart is opened for `smart_note_context`; a visit
+ * list is asked for `schedule` or `vitals_trend`. They are six policies, not
+ * one shared vocabulary, and merging any two would hand a caller a projection
+ * that exists for a different question.
  *
  * Each original fences its policy between `<<<BEGIN … POLICY>>>` and
  * `<<<END …>>>`, and `patientReadAuthorizationContract.test.js` already
@@ -29,7 +32,7 @@
  * generated from it and a test re-extracts and compares both, so neither can
  * diverge from the source it came from.
  *
- * Regenerate with `node tools-patient-purpose-policy.mjs --write`.
+ * Regenerate with `node tools-read-purpose-policy.mjs --write`.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -38,48 +41,98 @@ import { transpileTs } from './tools-transpile-ts.mjs';
 import { RECORD_MIGRATION_FILE, SCHEMA, quote } from './tools-entity-schema-plan.mjs';
 
 /** The data module the service reads, for the purposes and their page bounds. */
-export const POLICY_FILE = 'services/pennsync-api/patient-purpose-policy.mjs';
+export const POLICY_FILE = 'services/pennsync-api/read-purpose-policy.mjs';
+/**
+ * Where a domain's generated SQL goes. One file each, because one contract
+ * family reads each.
+ *
+ * A domain is absent here when its policies are extracted but not yet emitted,
+ * and `document` is the one: a `document` row has no `agency_id`, so the
+ * record store reaches its tenancy through `patient_id`, which leaves a
+ * document bound to an agency and no patient — a referral taken before a
+ * patient exists — invisible to everyone, an agency administrator included.
+ * `document_tenant_binding` is what actually carries the agency, and reaching
+ * it means a tenant kind that asks a table pointing BACK at the row rather
+ * than a column the row holds. That is a decision (D27), not a contract's to
+ * make, and emitting policy functions nothing can call yet would be dead SQL
+ * in a migration. The purposes stay extracted and gated in the data module so
+ * the work is not lost and cannot drift while it waits.
+ */
+export const POLICY_SQL_FILES = Object.freeze({
+  patient: 'services/authority-store/supabase/record-migrations/20260920050000_patient_purpose_policy.sql',
+  visit: 'services/authority-store/supabase/record-migrations/20260920070000_visit_purpose_policy.sql',
+});
 /**
  * The same policies as SQL, so the projection a caller receives is decided in
  * the database rather than by the service.
  *
- * The contract beside it is hand-written, as every contract is, because its
- * authorization is its own. This file is not that: it is sixteen field lists,
- * sixteen role sets and eight page bounds, all of them data that already
- * exists in the originals. Typing them into SQL by hand is the transcription
- * D12 settled against, and a dropped field name in a `jsonb_build_object`
- * would silently narrow — or widen — a clinical disclosure. So the data is
- * generated and the authorization is written; the two live in separate files
- * so neither can be mistaken for the other.
+ * The contracts beside them are hand-written, as every contract is, because
+ * their authorization is their own. These files are not that: they are
+ * thirty-eight field lists, thirty-eight role sets and twenty-one page bounds,
+ * all of them data that already exists in the originals. Typing them into SQL
+ * by hand is the transcription D12 settled against, and a dropped field name
+ * in a `jsonb_build_object` would silently narrow — or widen — a clinical
+ * disclosure. So the data is generated and the authorization is written; the
+ * two live in separate files so neither can be mistaken for the other.
  */
-export const POLICY_SQL_FILE =
-  'services/authority-store/supabase/record-migrations/20260920050000_patient_purpose_policy.sql';
-export const TABLE = 'patient';
-
 /**
- * The two policies, each named by the capability it belongs to.
+ * Every fenced policy, each named by the capability it belongs to.
  *
- * `paged` is what tells them apart beyond their purposes: a list has a bound
- * per purpose and a single read has nothing to bound.
+ * Six of them across three domains, and the pairing is the same each time: a
+ * list capability and a single-read capability, each with its OWN purposes. A
+ * visit list is asked for `schedule`; one visit is opened for
+ * `documentation_context`. Nothing in the originals says the vocabularies are
+ * separate — they are separate because each module declares its own — so each
+ * gets its own `_known` function and a purpose from one is refused in the
+ * other.
+ *
+ * `paged` says whether the block carries a bound PER PURPOSE. Two list
+ * policies do not: `listAuthorizedDocuments` bounds every purpose at one
+ * number declared outside the fence, which is the contract's to state rather
+ * than this tool's to read.
  */
 export const POLICIES = Object.freeze([
   Object.freeze({
-    key: 'list',
+    key: 'patient_list', domain: 'patient', table: 'patient',
     original: 'base44/functions/listAuthorizedPatients/entry.ts',
     marker: 'AUTHORIZED PATIENT LIST PURPOSE POLICY',
-    prefix: 'patient_list_purpose',
-    constant: 'PATIENT_LIST_PURPOSE',
-    paged: true,
+    prefix: 'patient_list_purpose', constant: 'PATIENT_LIST_PURPOSE', paged: true,
   }),
   Object.freeze({
-    key: 'exact',
+    key: 'patient_exact', domain: 'patient', table: 'patient',
     original: 'base44/functions/getAuthorizedPatient/entry.ts',
     marker: 'AUTHORIZED PATIENT EXACT PURPOSE POLICY',
-    prefix: 'patient_exact_purpose',
-    constant: 'PATIENT_EXACT_PURPOSE',
-    paged: false,
+    prefix: 'patient_exact_purpose', constant: 'PATIENT_EXACT_PURPOSE', paged: false,
+  }),
+  Object.freeze({
+    key: 'visit_list', domain: 'visit', table: 'visit',
+    original: 'base44/functions/listAuthorizedVisits/entry.ts',
+    marker: 'AUTHORIZED VISIT LIST PURPOSE POLICY',
+    prefix: 'visit_list_purpose', constant: 'VISIT_LIST_PURPOSE', paged: true,
+  }),
+  Object.freeze({
+    key: 'visit_exact', domain: 'visit', table: 'visit',
+    original: 'base44/functions/getAuthorizedVisit/entry.ts',
+    marker: 'AUTHORIZED VISIT EXACT PURPOSE POLICY',
+    prefix: 'visit_exact_purpose', constant: 'VISIT_EXACT_PURPOSE', paged: false,
+  }),
+  Object.freeze({
+    key: 'document_list', domain: 'document', table: 'document',
+    original: 'base44/functions/listAuthorizedDocuments/entry.ts',
+    marker: 'AUTHORIZED DOCUMENT LIST PURPOSE POLICY',
+    prefix: 'document_list_purpose', constant: 'DOCUMENT_LIST_PURPOSE', paged: false,
+  }),
+  Object.freeze({
+    key: 'document_exact', domain: 'document', table: 'document',
+    original: 'base44/functions/getAuthorizedDocument/entry.ts',
+    marker: 'AUTHORIZED DOCUMENT EXACT PURPOSE POLICY',
+    prefix: 'document_exact_purpose', constant: 'DOCUMENT_EXACT_PURPOSE', paged: false,
   }),
 ]);
+/** The domains whose SQL is emitted. A policy outside it is data only. */
+export const DOMAINS = Object.freeze(Object.keys(POLICY_SQL_FILES));
+export const EXTRACTED_ONLY = Object.freeze([...new Set(POLICIES
+  .map(policy => policy.domain).filter(domain => !DOMAINS.includes(domain)))]);
 export const POLICY_KEYS = Object.freeze(POLICIES.map(policy => policy.key));
 export const begin = policy => `// <<<BEGIN ${policy.marker}>>>`;
 export const end = policy => `// <<<END ${policy.marker}>>>`;
@@ -195,7 +248,7 @@ ${purposes.map(purpose => `  ${purpose}: Object.freeze({
   }),`).join('\n')}
 });`;
   };
-  return `// GENERATED by \`node tools-patient-purpose-policy.mjs --write\`. Do not edit.
+  return `// GENERATED by \`node tools-read-purpose-policy.mjs --write\`. Do not edit.
 //
 // The authorized-patient purpose policies, extracted from the two originals
 // rather than retyped. Each purpose decides which fields are disclosed and
@@ -213,14 +266,14 @@ ${section(policy)}`).join('\n')}
 }
 
 /**
- * The columns the record store's `patient` table actually has.
+ * The columns a record-store table actually has.
  *
  * Read from the emitted migration rather than from the entity definition,
  * because the migration is what will exist: a field a policy names and the
  * table lacks would emit SQL that fails at apply time, and finding that out in
  * CI hours later is worse than finding it out here.
  */
-export function tableColumns(repository, file = RECORD_MIGRATION_FILE, table = TABLE) {
+export function tableColumns(repository, table, file = RECORD_MIGRATION_FILE) {
   const sql = readFileSync(join(repository, file), 'utf8');
   const head = `create table ${quote(SCHEMA)}.${quote(table)} (`;
   const first = sql.indexOf(head);
@@ -245,15 +298,19 @@ const purposeCase = (purposes, arm, fallback) =>
  * confused — the single-read policy has no bounds at all and still has to
  * answer the first question.
  */
-export function renderSql(policies, columns) {
-  const known = new Set(columns);
+export function renderSql(policies, domain, columnsFor) {
   const vocabulary = new Set([...TENANT_ROLES, ...UNSUPPORTED_ROLES]);
   const signatures = [];
   const bodies = [];
+  const tables = new Set();
   let dropped = 0;
   let total = 0;
-  for (const policy of POLICIES) {
+  const mine = POLICIES.filter(policy => policy.domain === domain);
+  check(mine.length > 0, `POLICY_DOMAIN_UNKNOWN:${domain}`);
+  for (const policy of mine) {
     const extracted = policies[policy.key];
+    const known = new Set(columnsFor(policy.table));
+    tables.add(policy.table);
     const purposes = Object.keys(extracted);
     const served = {};
     for (const purpose of purposes) {
@@ -292,29 +349,31 @@ $policy$;
 -- Stable rather than immutable: a date or timestamp reaches JSON through the
 -- session's DateStyle and TimeZone, so this is not constant-foldable.
 create function ${name('row')}(
-  p_purpose text, p ${quote(SCHEMA)}.${quote(TABLE)}) returns jsonb
+  p_purpose text, p ${quote(SCHEMA)}.${quote(policy.table)}) returns jsonb
   language sql stable set search_path = '' as $policy$
 ${purposeCase(purposes, purpose => `    when '${purpose}' then jsonb_build_object(\n${
   extracted[purpose].fields.map(field => `      '${field}', p.${quote(field)}`).join(',\n')})`, 'null')}
 $policy$;`);
     signatures.push(`${name('known')}(text)`, `${name('admits')}(text,text)`);
     if (policy.paged) signatures.push(`${name('page_size')}(text)`);
-    signatures.push(`${name('row')}(text,${quote(SCHEMA)}.${quote(TABLE)})`);
+    signatures.push(`${name('row')}(text,${quote(SCHEMA)}.${quote(policy.table)})`);
   }
-  return `-- GENERATED by \`node tools-patient-purpose-policy.mjs --write\`. Do not edit.
+  return `-- GENERATED by \`node tools-read-purpose-policy.mjs --write\`. Do not edit.
 --
--- The authorized-patient purpose policies, as SQL.
+-- The authorized-${domain} purpose policies, as SQL.
 --
--- Reading a patient is purpose-bound: a caller names a purpose, and the
+-- Reading a ${domain} is purpose-bound: a caller names a purpose, and the
 -- purpose decides which fields are disclosed and which tenant roles may ask at
 -- all. Those blocks are the authorization contract, and they are ${total} purposes
--- long between them — so they are extracted from the two originals rather than
--- retyped, and re-extracted by a test on every run. A dropped field name here
--- would widen or narrow a clinical disclosure with nothing to notice it.
+-- long between them — so they are extracted from
+${mine.map(policy => `-- \`${policy.original}\``).join(' and\n')}
+-- rather than retyped, and re-extracted by a test on every run. A dropped
+-- field name here would widen or narrow a clinical disclosure with nothing to
+-- notice it.
 --
--- Two vocabularies, deliberately not merged: a list is asked for \`contact\` or
--- \`roster\`, one chart is opened for \`smart_note_context\`. A purpose from one
--- is not a purpose in the other, and \`<prefix>_known\` is how each contract
+-- Two vocabularies, deliberately not merged: the list capability and the
+-- single-read capability each declare their own purposes, so a purpose from
+-- one is not a purpose in the other and \`<prefix>_known\` is how each contract
 -- says so.
 --
 -- Every function here is pure, and none of them has any authorization: they
@@ -334,7 +393,7 @@ begin;
 
 do $$
 begin
-  if to_regclass('${SCHEMA}.${TABLE}') is null
+  if ${[...tables].map(table => `to_regclass('${SCHEMA}.${table}') is null`).join('\n    or ')}
     or to_regprocedure('${SCHEMA}.caller_tenant_role(text)') is null then
     raise exception using errcode='42501',message='PENNSYNC_RECORD_STORE_REQUIRED';
   end if;
@@ -388,9 +447,16 @@ export function main(args = process.argv.slice(2), {
   let artifacts;
   try {
     policies = extract(repository);
+    // Read each table once: six policies over three tables, and the migration
+    // is 6,000 lines.
+    const columns = new Map();
+    const columnsFor = (table) => {
+      if (!columns.has(table)) columns.set(table, tableColumns(repository, table));
+      return columns.get(table);
+    };
     artifacts = [
       [POLICY_FILE, render(policies)],
-      [POLICY_SQL_FILE, renderSql(policies, tableColumns(repository))],
+      ...DOMAINS.map(domain => [POLICY_SQL_FILES[domain], renderSql(policies, domain, columnsFor)]),
     ];
   } catch (error) { log(JSON.stringify({ error: error?.code ?? 'POLICY_FAILED' })); return 1; }
   if (args.includes('--json')) { log(JSON.stringify(policies, null, 2)); return 0; }
@@ -407,11 +473,11 @@ export function main(args = process.argv.slice(2), {
     return committed !== rendered;
   });
   if (drifted.length === 0) {
-    log(`patient purpose policies unchanged: ${counted}`);
+    log(`read purpose policies unchanged: ${counted}`);
     return 0;
   }
-  log(`patient purpose policies CHANGED in ${drifted.map(([file]) => file).join(', ')}. `
-    + 'Re-run `node tools-patient-purpose-policy.mjs --write`.');
+  log(`read purpose policies CHANGED in ${drifted.map(([file]) => file).join(', ')}. `
+    + 'Re-run `node tools-read-purpose-policy.mjs --write`.');
   return 1;
 }
 

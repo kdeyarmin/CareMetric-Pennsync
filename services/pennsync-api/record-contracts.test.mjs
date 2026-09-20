@@ -228,18 +228,67 @@ test('the capability hands out a function, never the token that authorizes it', 
   assert.ok(!String(contract).includes(KEY));
 });
 
-const PATIENT_SQL = readFileSync(new URL(
-  '../authority-store/supabase/record-migrations/20260920060000_contract_patient_read.sql',
-  import.meta.url), 'utf8');
+const migration = file => readFileSync(new URL(
+  `../authority-store/supabase/record-migrations/${file}`, import.meta.url), 'utf8');
+const PATIENT_SQL = migration('20260920060000_contract_patient_read.sql');
+const VISIT_SQL = migration('20260920080000_contract_visit_read.sql');
 /** The codes one SQL function raises, read from that function's own body. */
-const raisedBy = (name, terminator) => {
-  const start = PATIENT_SQL.indexOf(`create function "pennsync_records".${name}(`);
+const raisedBy = (sql, name, terminator) => {
+  const start = sql.indexOf(`create function "pennsync_records".${name}(`);
   assert.ok(start > 0, `${name} is not in the migration`);
-  const body = PATIENT_SQL.slice(start, PATIENT_SQL.indexOf(terminator, start));
+  const body = sql.slice(start, sql.indexOf(terminator, start));
   return new Set([...body.matchAll(/message\s*=\s*'(PENNSYNC_[A-Z_]+)'/g)].map(match => match[1]));
 };
 
-test('each patient contract declares exactly the refusals it can actually raise', () => {
+/**
+ * Every contract's declared vocabulary against the SQL it fronts.
+ *
+ * Read from the migration rather than trusted, and per contract rather than
+ * per file. A code the SQL raises that this module does not know reaches a
+ * handler as a generic outage; a code this module expects that the contract it
+ * calls cannot raise is a branch nothing can take, and it reads like a
+ * guarantee somebody wrote. `CURSOR_UNKNOWN` is the one that would go wrong
+ * here: only a page contract can raise it, and a flat list would have the id
+ * batch and the single read claiming it too.
+ *
+ * Each family shares a gate, so the gate's refusals count for all of its
+ * contracts — which is the point of having one: the order in which a caller
+ * learns that they do not hold the agency, that the purpose does not exist,
+ * and that their role is not admitted is decided once per family.
+ */
+const FAMILIES = [
+  { sql: PATIENT_SQL, prefix: 'PENNSYNC_PATIENT_', gate: 'patient_purpose_gate', contracts: {
+    listAuthorizedPatientsPage: 'contract_patient_list',
+    listAuthorizedPatientsBatch: 'contract_patient_batch',
+    getAuthorizedPatient: 'contract_patient_get',
+  } },
+  { sql: VISIT_SQL, prefix: 'PENNSYNC_VISIT_', gate: 'visit_purpose_gate', contracts: {
+    listAuthorizedVisits: 'contract_visit_list',
+    getAuthorizedVisit: 'contract_visit_get',
+  } },
+];
+
+test('each clinical contract declares exactly the refusals it can actually raise', () => {
+  for (const family of FAMILIES) {
+    const gate = raisedBy(family.sql, family.gate, 'end $gate$;');
+    for (const [name, sqlName] of Object.entries(family.contracts)) {
+      assert.deepEqual([...RECORD_CONTRACTS[name].codes].sort(),
+        [...new Set([...gate, ...raisedBy(family.sql, sqlName, 'end $contract$;')])].sort(), name);
+    }
+    // Only a page contract can end a walk, so only it may say so.
+    for (const name of Object.keys(family.contracts).filter(entry => !/Page$|^listAuthorizedVisits$/.test(entry))) {
+      assert.ok(!RECORD_CONTRACTS[name].codes.includes(`${family.prefix}CURSOR_UNKNOWN`), name);
+    }
+    // Between them the family's contracts account for every refusal its
+    // migration raises, so a new one cannot be added unnoticed.
+    const raised = new Set([...family.sql.matchAll(new RegExp(`message\\s*=\\s*'(${family.prefix}[A-Z_]+)'`, 'g'))]
+      .map(match => match[1]));
+    assert.deepEqual([...raised].sort(), [...new Set(Object.keys(family.contracts)
+      .flatMap(name => RECORD_CONTRACTS[name].codes))].sort(), family.prefix);
+  }
+});
+
+test('the patient family keeps the walk refusal to the capability that can walk', () => {
   // Read from the migration rather than trusted, and per contract rather than
   // per file. A code the SQL raises that this module does not know reaches a
   // handler as a generic outage; a code this module expects that the contract
@@ -252,24 +301,15 @@ test('each patient contract declares exactly the refusals it can actually raise'
   // which is the point of having one: the order in which a caller learns that
   // they do not hold the agency, that the purpose does not exist, and that
   // their role is not admitted is decided once.
-  const gate = raisedBy('patient_purpose_gate', 'end $gate$;');
-  const expected = (name) => [...new Set([...gate, ...raisedBy(name, 'end $contract$;')])].sort();
-  assert.deepEqual([...RECORD_CONTRACTS.listAuthorizedPatientsPage.codes].sort(),
-    expected('contract_patient_list'));
-  assert.deepEqual([...RECORD_CONTRACTS.listAuthorizedPatientsBatch.codes].sort(),
-    expected('contract_patient_batch'));
-  assert.deepEqual([...RECORD_CONTRACTS.getAuthorizedPatient.codes].sort(),
-    expected('contract_patient_get'));
-  // Only the page can end a walk, so only the page may say so.
+  // The id batch and the single read cannot page, so neither may claim the
+  // refusal that ends a walk. Stated separately from the loop above because
+  // it is the one place the three patient contracts genuinely differ.
+  assert.ok(RECORD_CONTRACTS.listAuthorizedPatientsPage.codes
+    .includes('PENNSYNC_PATIENT_CURSOR_UNKNOWN'));
   for (const name of ['listAuthorizedPatientsBatch', 'getAuthorizedPatient']) {
-    assert.ok(!RECORD_CONTRACTS[name].codes.includes('PENNSYNC_PATIENT_CURSOR_UNKNOWN'), name);
+    for (const code of ['PENNSYNC_PATIENT_CURSOR_UNKNOWN', 'PENNSYNC_PATIENT_CURSOR_INVALID',
+      'PENNSYNC_PATIENT_PAGE_SIZE_INVALID', 'PENNSYNC_PATIENT_STATUS_INVALID']) {
+      assert.ok(!RECORD_CONTRACTS[name].codes.includes(code), `${name} cannot raise ${code}`);
+    }
   }
-  // Between them the three account for every patient refusal the migration
-  // raises, so a new one cannot be added unnoticed.
-  const raised = new Set([...PATIENT_SQL.matchAll(/message\s*=\s*'(PENNSYNC_PATIENT_[A-Z_]+)'/g)]
-    .map(match => match[1]));
-  assert.deepEqual([...raised].sort(), [...new Set([
-    ...RECORD_CONTRACTS.listAuthorizedPatientsPage.codes,
-    ...RECORD_CONTRACTS.listAuthorizedPatientsBatch.codes,
-    ...RECORD_CONTRACTS.getAuthorizedPatient.codes])].sort());
 });

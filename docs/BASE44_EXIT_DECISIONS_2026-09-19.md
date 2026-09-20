@@ -1574,8 +1574,8 @@ against, and the failure mode is silent — the user-guide parity test caught a
 single dropped trailing space in a much shorter text, and a dropped field name
 here would narrow or widen a clinical disclosure with nothing to notice.
 
-So `tools-patient-purpose-policy.mjs` evaluates the fenced blocks and writes
-two artifacts: `services/pennsync-api/patient-purpose-policy.mjs` for the
+So `tools-read-purpose-policy.mjs` evaluates the fenced blocks and writes
+two artifacts: `services/pennsync-api/read-purpose-policy.mjs` for the
 service, and `20260920050000_patient_purpose_policy.sql` for the database. The
 SQL has no authorization in it at all — it answers what a policy says, never
 who is asking. `20260920060000_contract_patient_read.sql` is hand-written as
@@ -1623,3 +1623,57 @@ page and a bounded batch of ids. Keeping name equality would have forced either
 one contract doing both jobs or a handler named after neither capability. The
 invariant now reads the handlers' own source for what they call, which is what
 it was a proxy for.
+
+## D27 — A document's tenancy is the binding, and the store cannot reach it yet
+
+Porting the authorized visit read alongside the patient one went exactly as
+D26's machinery intended: two more fenced policies extracted, one more
+hand-written contract, four capabilities. The document pair did not, and the
+reason is worth recording because it is a defect in the record store rather
+than in the capability.
+
+`pennsync_records.document` has no `agency_id`. D13 resolved its tenancy the
+only way a generated path can — through a column the row itself holds — so
+`document_read` reaches `patient` by `document.patient_id`. The consequence is
+that **a document with no patient is invisible to everyone, an agency
+administrator included.** That is not a narrowing anybody chose. It is what a
+referral document looks like before an intake becomes a patient, and both
+originals serve it: `DocumentTenantBinding` carries `agency_id` and a nullable
+`patient_id`, and `binding_purpose` is `patient_document` or `referral`
+precisely to tell those apart.
+
+This was found by building the contract and testing it, not by reading the
+schema: the binding is visible to an agency admin, the document row is not, and
+the join answers nothing. Seven of eight cases passed. The one that failed was
+the fixture row invented to cover "a binding with no patient", which is the
+same case D24 deliberately preserved for patients and visits — *a referral
+taken before a patient exists is not yet anybody's chart, so it stays
+agency-scoped.* For documents the generator had no agency column to say that
+with.
+
+**The decision: `document` needs a tenant kind that asks the binding, and it is
+its own change.** The binding points at the document, not the other way round,
+so no path the generator can follow expresses it — this is the same shape as
+D23's `roster` kind, whose predicate asks the authority store instead of
+reading the row's own column. It changes `document_read` for every consumer and
+regenerates the store, so it does not belong at the tail of a port.
+
+What was done instead, so the work is neither lost nor half-shipped:
+
+- The two document purpose policies **are** extracted, committed and gated in
+  `services/pennsync-api/read-purpose-policy.mjs`, exactly as the four that
+  shipped. They cannot drift from the originals while they wait.
+- No document SQL is emitted. `POLICY_SQL_FILES` names the domains whose
+  policies become functions, `document` is absent from it, and a test asserts
+  that its prefixes appear in no migration. Policy functions nothing can call
+  would be dead SQL, which is what the contract-reachability invariant exists
+  to prevent.
+
+One thing the aborted attempt established that is worth keeping: **no document
+purpose discloses a file locator, and the capability never needed one.** Not
+`download`, which returns `file_name`, `file_size` and `file_type` and nothing
+to fetch with. The original goes further and refuses a document whose
+`file_url` is not null, which is how it enforces that the locator has already
+been moved out of the row. So when D27 lands, the document read is portable
+*ahead of the file layer* rather than behind it — the opposite of what the
+`files` blocker would suggest, and only visible by reading the projections.

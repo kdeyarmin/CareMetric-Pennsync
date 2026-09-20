@@ -215,6 +215,28 @@ export const HANDLERS = Object.freeze({
       return { patient };
     },
   }),
+  listAuthorizedVisits: Object.freeze({
+    // The same shape as the patient list and for the same reasons; the one
+    // thing worth naming is `patient_id`, which is what a chart's visit
+    // history is. It narrows a read the caller is already entitled to and
+    // cannot widen one: D24 decided which visits they can see at all.
+    handle({ params, contract }) {
+      exactObject(params, ['purpose', 'patient_id', 'status', 'sort', 'page_size', 'after'], 'INVALID_PARAMS');
+      // The contract orders by id ascending and has no second ordering to
+      // offer. The original takes the argument and refuses anything else.
+      if (params.sort !== undefined && params.sort !== 'id_asc') fail(400, 'INVALID_PARAMS');
+      const { sort: unused, ...rest } = params;
+      return contract('listAuthorizedVisits', rest);
+    },
+  }),
+  getAuthorizedVisit: Object.freeze({
+    async handle({ params, contract }) {
+      exactObject(params, ['purpose', 'visit_id'], 'INVALID_PARAMS');
+      const visit = await contract('getAuthorizedVisit', params);
+      if (visit === null) fail(404, 'VISIT_UNAVAILABLE');
+      return { visit };
+    },
+  }),
   generateBagTechniquePDF: Object.freeze({
     binary: true,
     handle({ params, config }) {

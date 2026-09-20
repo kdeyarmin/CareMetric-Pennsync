@@ -7,10 +7,10 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
 import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
-import { POLICY_SQL_FILE } from '../../../tools-patient-purpose-policy.mjs';
+import { POLICY_SQL_FILES } from '../../../tools-read-purpose-policy.mjs';
 import {
   PATIENT_EXACT_PURPOSE_POLICY, PATIENT_LIST_PURPOSE_POLICY,
-} from '../../pennsync-api/patient-purpose-policy.mjs';
+} from '../../pennsync-api/read-purpose-policy.mjs';
 
 /**
  * The authorized patient read (`contract_patient_list` / `contract_patient_get`).
@@ -77,7 +77,7 @@ before(async () => {
   // The broker family is what grants `authenticated` USAGE on the schema; a
   // contract reached through it inherits that and grants nothing of its own.
   await db.exec(readFileSync(resolve(repository, BROKER_MIGRATION_FILE), 'utf8'));
-  await db.exec(readFileSync(resolve(repository, POLICY_SQL_FILE), 'utf8'));
+  await db.exec(readFileSync(resolve(repository, POLICY_SQL_FILES.patient), 'utf8'));
   await db.exec(readFileSync(resolve(repository, CONTRACT), 'utf8'));
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   for (const row of PATIENTS) {

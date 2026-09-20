@@ -124,6 +124,51 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_PATIENT_SUBJECT_INVALID',
     ]),
   }),
+  // The authorized visit read. One mode on the list, not two: the original has
+  // no id batch here, and inventing one would be a capability nobody asked for.
+  //
+  // `schedule`, `documentation` and `compliance_review` are purposes on BOTH
+  // capabilities and mean different projections — one visit under
+  // `compliance_review` discloses fourteen fields, a row of a list eight. The
+  // database keeps them apart; nothing here has to know which is which.
+  listAuthorizedVisits: Object.freeze({
+    rpc: 'pennsync_contract_visit_list',
+    params: Object.freeze(['purpose', 'patient_id', 'status', 'page_size', 'after']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_purpose: args.purpose ?? null,
+      p_patient_id: args.patient_id === undefined ? null : args.patient_id,
+      p_status: args.status === undefined ? null : args.status,
+      p_page_size: args.page_size === undefined ? 25 : args.page_size,
+      p_after: args.after === undefined ? null : args.after,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_VISIT_AGENCY_NOT_HELD',
+      'PENNSYNC_VISIT_PURPOSE_INVALID',
+      'PENNSYNC_VISIT_FORBIDDEN',
+      'PENNSYNC_VISIT_STATUS_INVALID',
+      'PENNSYNC_VISIT_SUBJECT_INVALID',
+      'PENNSYNC_VISIT_PAGE_SIZE_INVALID',
+      'PENNSYNC_VISIT_CURSOR_INVALID',
+      'PENNSYNC_VISIT_CURSOR_UNKNOWN',
+    ]),
+  }),
+  getAuthorizedVisit: Object.freeze({
+    rpc: 'pennsync_contract_visit_get',
+    params: Object.freeze(['purpose', 'visit_id']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_purpose: args.purpose ?? null,
+      p_visit_id: args.visit_id ?? null,
+    }),
+    nullable: true,
+    codes: Object.freeze([
+      'PENNSYNC_VISIT_AGENCY_NOT_HELD',
+      'PENNSYNC_VISIT_PURPOSE_INVALID',
+      'PENNSYNC_VISIT_FORBIDDEN',
+      'PENNSYNC_VISIT_SUBJECT_INVALID',
+    ]),
+  }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
     params: Object.freeze(['user_id']),
