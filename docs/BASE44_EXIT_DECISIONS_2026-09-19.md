@@ -1369,6 +1369,70 @@ patient exists is intake data and not yet anybody's chart, and hiding it from
 every clinician would break intake to protect a chart that is not there.
 `Patient` has no such case, its subject being the primary key.
 
+### The second half, and the thing that made it impossible
+
+Writing the backfill turned up the finding that matters most in this decision,
+and it was three constraints deep:
+
+1. `pennsync_private.assignment` had a foreign key to
+   `pennsync_private.patient`;
+2. that table's `display_name` must be `like 'Synthetic %'`;
+3. its `synthetic` column carries `check (synthetic)`, so it can never be
+   false.
+
+Together those mean **an assignment could only ever name a synthetic patient**.
+The patients of record live in `pennsync_records.patient`. So the backfill D24
+requires could not have written a single row, and the first person to find out
+would have been whoever ran it at cutover — which is exactly the shape of
+failure D21 said this decision must not have.
+
+The foreign key comes off, and the reasoning was already written down in this
+store: the disclosure-audit tables beside it carry it verbatim — *"Deliberately
+no patient FK: immutable disclosure provenance must survive source lifecycle
+changes and must not create a cascading patient-delete path."* An assignment
+**is** disclosure provenance. It records that a person was given access to a
+chart, and that record has to outlive the chart. Two more reasons it is the
+right direction rather than the convenient one: the two schemas are separately
+owned, and a key across that boundary would give the record owner a referential
+hold on authority rows; and the failure mode inverts safely, because the
+narrowing is a *filter*, so an assignment matching no row admits no row, while
+an assignment that cannot be written denies a clinician their own patients. The
+staging mutation path is unchanged — `pennsync_private.mutate` already looks
+the patient up itself and raises `PENNSYNC_PATIENT_DENIED`, so the key was a
+second copy of a check that was already there, and only the copy could not tell
+a real patient from a synthetic one.
+
+**What the backfill refuses**, every case decided by D21's asymmetry — a
+dropped row is a support ticket, an invented one is a disclosure nobody
+reports:
+
+- An address resolves **exactly or not at all**, after the same normalisation
+  the store's own CHECK applies and nothing more. No display-name matching, no
+  domain fallback, no plus-suffix folding — each of those would match addresses
+  the store considers different, which is how an assignment lands on the wrong
+  person.
+- The membership must be in the **patient's** agency. A nurse working for two
+  agencies has two memberships, and carrying an assignment into the wrong one
+  hands them a chart nobody gave them.
+- A role that does not open charts, or a revoked membership, is dropped.
+- **It never revokes and never re-grants.** An assignment already in the store
+  is left exactly as it is, including a revoked one: `assigned_nurses` cannot
+  distinguish "never assigned" from "access deliberately withdrawn", so
+  re-granting a revoked assignment is the invented row arriving by another
+  route.
+- A malformed export **fails the run** rather than carrying the rows that
+  happened to parse.
+
+Every drop is named in a report the operator reads before anything is written,
+and that report carries counts and reasons only — no address, no name, no
+patient id, because a line of it will be pasted into a ticket. The plan is
+digest-addressed, so what was reviewed is what applies; the command line plans
+and cannot write.
+
+The two halves are proved to meet against a real database rather than
+separately: the backfill writes a row, and the narrowing then opens that chart
+and no other.
+
 
 ## D25 — There is a general activity trail, and retiring the old tables did not remove the obligation
 

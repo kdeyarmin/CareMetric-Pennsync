@@ -419,6 +419,31 @@ export function discoverActivityTrail(repository) {
   catch { return false; }
 }
 
+/**
+ * D24's two halves, each read from the file that provides it.
+ *
+ * The decision named both and said neither is optional, and the reason is the
+ * one that would not have been noticed: moving authority to
+ * `pennsync_private.assignment` without carrying today's rows across means
+ * every clinician loses access to their own patients at cutover. So a
+ * capability that authorizes on care-team membership is blocked until BOTH
+ * exist, and the queue answers that by looking rather than by asserting.
+ *
+ * Delete either file and the 36 are blocked again, which is the right answer
+ * in a tree that has only half of it.
+ */
+export const CHART_SCOPE_EVIDENCE = Object.freeze({
+  helper: 'services/authority-store/supabase/record-migrations/20260919170000_record_store.sql',
+  backfill: 'tools-pennsync-assignment-backfill.mjs',
+});
+export function discoverChartScope(repository) {
+  const holds = (file, token) => {
+    try { return readFileSync(join(repository, file), 'utf8').includes(token); } catch { return false; }
+  };
+  return holds(CHART_SCOPE_EVIDENCE.helper, 'caller_assigned_patients')
+    && holds(CHART_SCOPE_EVIDENCE.backfill, 'planBackfill');
+}
+
 export function discoverPortBlockers(repository) {
   const root = join(repository, 'base44/functions');
   const blockers = {};
@@ -441,6 +466,7 @@ export function discoverEvidence(repository) {
     policylessEntities: discoverPolicylessEntities(repository),
     careTeamDependents: discoverCareTeamDependents(repository),
     activityTrail: discoverActivityTrail(repository),
+    chartScope: discoverChartScope(repository),
   };
 }
 
@@ -620,7 +646,9 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
     // Last of the three because it is the narrowest: the tables exist and are
     // readable, and what is missing is which representation of care-team
     // membership authorizes a read of them.
-    return careTeam.has(name) ? 'patient_access_model' : blocker;
+    // D24. Both halves exist, so a care-team dependency is no longer a thing
+    // to decide — it is a port to write, against a store that can answer.
+    return careTeam.has(name) && !evidence.chartScope ? 'patient_access_model' : blocker;
   };
   const brokeredEntities = new Set(Object.keys(manifest.entities || {})
     .filter(entity => manifest.entities[entity] === 'broker'));

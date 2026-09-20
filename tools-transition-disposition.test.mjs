@@ -5,7 +5,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ACTIVE_DISPOSITIONS, ACTIVITY_TRAIL_MIGRATION, AUDITED_ENTITIES, DISPOSITIONS, FORMAT, FORMAT_VERSION,
-  MUTATING, PORT_BLOCKERS, RETENTION_BASES, checkCoverage, classifyPortBlocker, discoverActivityTrail,
+  CHART_SCOPE_EVIDENCE, MUTATING, PORT_BLOCKERS, RETENTION_BASES, checkCoverage, classifyPortBlocker,
+  discoverActivityTrail, discoverChartScope,
   discoverCapabilities, discoverEntityPolicies, discoverEvidence, discoverInertFunctions, discoverIntegrations,
   discoverPausedFunctions, discoverPolicylessEntities, discoverPortBlockers, discoverPortedFunctions,
   entitiesTouched, isInertFunction, isPausedFunction, main, parseManifest,
@@ -466,6 +467,31 @@ test('a record blocker is refined by what the module actually reads', () => {
   }
 });
 
+test('a care-team dependency blocks until BOTH halves of D24 exist', () => {
+  // D24 named two things and said neither is optional, and the reason is the
+  // one that would not have been noticed: moving authority to
+  // `pennsync_private.assignment` without carrying today's rows across means
+  // every clinician loses access to their own patients at cutover. So the
+  // queue asks for both, by looking at the files rather than asserting.
+  const declare = () => manifest({ functions: { alpha: 'port' }, entities: { Kept: 'port' } });
+  const queue = (chartScope) => {
+    const report = checkCoverage(capabilities(), declare(),
+      { portBlockers: { alpha: 'records_schema' }, careTeamDependents: ['alpha'], chartScope,
+        entityReach: { alpha: { names: ['Kept'], dynamic: false, writes: [] } } });
+    return Object.entries(report.port_blockers).filter(([, names]) => names.length).map(([key]) => key);
+  };
+  assert.deepEqual(queue(false), ['patient_access_model'], 'half of D24 is not D24');
+  assert.deepEqual(queue(undefined), ['patient_access_model'], 'absent evidence is not a built prerequisite');
+  assert.deepEqual(queue(true), ['records_schema'], 'with both, it is a port to write');
+  // And the committed tree really has both, or the distribution above proves
+  // nothing. Each is read from the file that provides it.
+  assert.equal(discoverChartScope(repository), true);
+  assert.equal(discoverChartScope(resolve(repository, 'services')), false);
+  assert.match(readFileSync(resolve(repository, CHART_SCOPE_EVIDENCE.helper), 'utf8'),
+    /caller_assigned_patients/);
+  assert.match(readFileSync(resolve(repository, CHART_SCOPE_EVIDENCE.backfill), 'utf8'), /planBackfill/);
+});
+
 test('a retired log table blocks until there is somewhere to audit to', () => {
   // D25. The three log tables are dispositioned `retire`, which decided where
   // their EXISTING rows go and never whether the product keeps auditing. Read
@@ -517,6 +543,9 @@ test('a retired log table blocks until there is somewhere to audit to', () => {
 
 test('a capability is held by the care-team question whatever its entities are', () => {
   const declare = () => manifest({ functions: { alpha: 'port' }, entities: { Kept: 'port', Gone: 'retire' } });
+  // `chartScope: false` is the tree D24 was decided in and not yet built in.
+  // With both halves present the bucket empties, which the case below proves
+  // separately; here it stays false so the ranking is what is under test.
   const queue = (evidence) => {
     const report = checkCoverage(capabilities(), declare(),
       { portBlockers: { alpha: 'records_schema' }, careTeamDependents: ['alpha'], ...evidence });
@@ -547,8 +576,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 10, patient_access_model: 36,
-    records_schema: 40, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
+  assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 10, patient_access_model: 0,
+    records_schema: 76, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
     external_secret: 1, none: 11 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
@@ -586,15 +615,20 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'calculateDataQualityScores', 'enforceDataCompleteness',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Forty. That is how many of the hundred can be written today, and the
+  // Seventy-six. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
-  // out what actually did.
-  assert.equal(report.port_blockers.records_schema.length, 40);
-  assert.ok(report.port_blockers.patient_access_model.includes('getScopedPatientAlerts'));
-  // Dynamic entity access does not hide this one, because reading
-  // `assigned_nurses` is a property of the source rather than of the entity set.
-  assert.ok(report.port_blockers.patient_access_model.includes('appendPatientNoteHistory'));
+  // out what actually did. Nothing in the queue waits on a decision now, and
+  // nothing waits on a shared prerequisite either.
+  assert.equal(report.port_blockers.records_schema.length, 76);
+  // D24's bucket is empty because both halves exist — not because the
+  // dependency went away. `getScopedPatientAlerts` and
+  // `appendPatientNoteHistory` still authorize on care-team membership; the
+  // store can answer them now.
+  assert.deepEqual(report.port_blockers.patient_access_model, []);
+  for (const name of ['getScopedPatientAlerts', 'appendPatientNoteHistory']) {
+    assert.ok(report.port_blockers.records_schema.includes(name), name);
+  }
   // Twelve functions were counted against the record store until they were
   // read. Every one calls a Core integration and touches no entity row, so what
   // they waited on was the integration runtime's brokered path — already

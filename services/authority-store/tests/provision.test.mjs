@@ -155,8 +155,21 @@ test('an already provisioned store is refused rather than migrated twice', async
 });
 
 test('the migrations are read in the order the store expects', () => {
-  const names = readMigrations(repository).map(migration => migration.name);
-  assert.deepEqual(names, [...names].sort(), 'name order is the apply order');
+  const migrations = readMigrations(repository);
+  const names = migrations.map(migration => migration.name);
+  // Two sequences, not one: the authority store's directory then the record
+  // store's, each in name order. It read as one sorted list until an authority
+  // migration was dated after a record one — which is an ordinary thing to
+  // need, and which the old assertion would have read as a reordering.
+  const directories = [...new Set(migrations.map(migration => migration.from))];
+  assert.equal(directories.length, 2, 'the two directories are applied in sequence');
+  for (const directory of directories) {
+    const within = migrations.filter(migration => migration.from === directory).map(migration => migration.name);
+    assert.deepEqual(within, [...within].sort(), `${directory} is applied in name order`);
+  }
+  const boundary = migrations.findIndex(migration => migration.from === directories[1]);
+  assert.ok(migrations.slice(boundary).every(migration => migration.from === directories[1]),
+    'every authority migration precedes every record migration');
   assert.ok(names[0].startsWith('20260918015112'), 'the authority schema comes first');
   assert.ok(names.includes('20260919090000_deployment_app_pin.sql'));
   // The record store lives in its own directory, so nothing discovers it by

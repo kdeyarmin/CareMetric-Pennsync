@@ -79,7 +79,11 @@ export function readMigrations(repository) {
   const read = relative => {
     const directory = join(resolve(repository), relative);
     return readdirSync(directory).filter(name => name.endsWith('.sql')).sort()
-      .map(name => ({ name, sql: readFileSync(join(directory, name), 'utf8') }));
+      // `from` names the directory, so the order can be checked as the two
+      // sequences it actually is. It stopped being one sorted list the moment
+      // an authority migration was dated after a record one, which is a
+      // perfectly ordinary thing to need and had been true only by accident.
+      .map(name => ({ name, from: relative, sql: readFileSync(join(directory, name), 'utf8') }));
   };
   // Authority first: every record policy is written in terms of
   // `pennsync_private`, and the record store refuses a database without it.
