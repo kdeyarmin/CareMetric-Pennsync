@@ -2929,3 +2929,65 @@ to name. Closing it means the SCHEMA claiming uniqueness, which is an entity
 decision and not this contract's to make.
 
 Port queue: `records_schema` 44 → 42, written 43 → 45.
+
+## D45 — The authority envelope is not a derived scope, and porting the reader proved the writer wrong
+
+**Decision.** Port `manageMyNotifications` as three contracts behind its one
+action envelope, keep the notification authority envelope, and delete the
+revalidation machinery built around it.
+
+**Tenancy is not ownership, and this time the policy says so plainly.**
+`notification_read` and `notification_update` are agency-WIDE: every member of
+the agency matches them. A port that trusted the policies would have let anybody
+in the agency read and dismiss anybody else's notifications. The predicate that
+makes a row the caller's is the contract's own, and it is two columns rather
+than one — `recipient_user_id` is the identity and `user_email` is what the
+original's integrity check requires to agree with it, so a row carrying one of
+each is delivered to neither person. That is D36's rule reaching a second
+capability; **read the policy to tell which case you are in** remains the
+instruction.
+
+**The envelope looks like the derived scope D41 and D43 delete, and it is the
+opposite.** The original filters, and then re-checks, on `recipient_user_id`,
+`recipient_membership_id`, `recipient_membership_version`, `authority_version`,
+`authority_state` and `user_email`. A derived scope ASKS a self-editable field
+who the caller is. This RECORDS which membership, at which version, a
+notification was minted for — so a person whose membership changed stops seeing
+what was addressed to the grant they no longer hold. It is kept, and
+`recipient_membership_id`/`_version` come from `pennsync_private.caller_membership`
+— this store's membership, as D34 settled — never from Base44's
+`AgencyMembership`. The list FILTERS on it, so a stale row is hidden rather than
+refused; the integrity check on top can then only fire for content, which in
+this store means a contract wrote a bad row, and that is worth failing on.
+
+**What is deleted is the compensation around it.** `manageMyNotifications` calls
+`revalidateScope` three to five times per request, re-reads each transitioned
+row and asserts its new version, and verifies `updateMany`'s
+`{success, updated, has_more}` — all because between any two of its service-role
+calls the caller's membership could change and nothing would notice. One
+transaction removes every one of those. `mark_all_read` becomes a single
+statement instead of one full transition per row, each with three scope reloads,
+which is also why the original has to report how much of the page it got
+through.
+
+**Porting the reader found a defect in the writer, and nothing else could
+have.** D44's urgent-alert fan-out stamped `recipient_user_id`, `user_email`,
+`type` and `priority` — three of the six columns this reader filters on — and
+none of `recipient_membership_id`, `recipient_membership_version`,
+`authority_version`, `authority_state` or `version`. Every alert it wrote would
+have matched no reader's filter and been invisible to the administrator it was
+for. Both contracts' own suites passed throughout. The fix is in D44's file,
+`pennsync_private.agency_admin_recipients` now carries the recipient's
+membership id and version, and the guard is a CROSS-CONTRACT test: submit an
+urgent incident through one contract, read the alert through the other. **A
+capability that writes a row another capability reads is not proved by either
+suite alone.**
+
+**Two projection rules kept as the original states them.** `safeActionUrl`
+admits a same-origin path and nothing else — a notification's link is rendered
+as a button, so an absolute URL or a protocol-relative `//host` would be an open
+redirect out of the product — and the projection carries no `metadata`, no
+`user_email` and no recipient identity, because the caller knows who they are
+and the envelope columns are authority rather than content.
+
+Port queue: `records_schema` 42 → 41, written 45 → 46.

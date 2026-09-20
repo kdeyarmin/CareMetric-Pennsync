@@ -357,6 +357,28 @@ export const HANDLERS = Object.freeze({
       return contract('savePayrollProfile', params);
     },
   }),
+  manageMyNotifications: Object.freeze({
+    // The original's one envelope over three actions, and its own rule for
+    // which keys each carries: a list and a mark-all name no row, and the two
+    // single-row actions name one with the version they saw.
+    handle({ params, contract }) {
+      if (!isObject(params)) fail(400, 'INVALID_PARAMS');
+      if (params.action === 'list') {
+        exactObject(params, ['action'], 'INVALID_PARAMS');
+        return contract('listMyNotifications', {});
+      }
+      if (params.action === 'mark_all_read') {
+        exactObject(params, ['action'], 'INVALID_PARAMS');
+        return contract('markAllMyNotificationsRead', {});
+      }
+      if (params.action !== 'mark_read' && params.action !== 'dismiss') {
+        fail(400, 'INVALID_PARAMS');
+      }
+      exactObject(params, ['action', 'notification_id', 'expected_version'], 'INVALID_PARAMS');
+      if (!Number.isSafeInteger(params.expected_version)) fail(400, 'INVALID_PARAMS');
+      return contract('transitionMyNotification', params);
+    },
+  }),
   submitIncidentReport: Object.freeze({
     // The flat payload both callers send — the reporting form and the retired
     // offline queue's drain, which is the only sender of `client_request_id`

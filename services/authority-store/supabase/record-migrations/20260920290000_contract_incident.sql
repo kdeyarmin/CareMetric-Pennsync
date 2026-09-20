@@ -119,14 +119,15 @@ end $$;
  * of that approximation rather than of the feature.
  */
 create function pennsync_private.agency_admin_recipients(p_agency text)
-  returns table(base44_user_id text, expected_email text)
+  returns table(base44_user_id text, expected_email text,
+    membership_id text, membership_version integer)
   language plpgsql stable security definer set search_path = '' as $recipients$
 begin
   if "pennsync_records".caller_tenant_role(p_agency) is null then
     raise exception using errcode='42501', message='PENNSYNC_INCIDENT_AGENCY_NOT_HELD';
   end if;
   return query
-    select m.base44_user_id, im.expected_email
+    select m.base44_user_id, im.expected_email, m.id::text, m.version::integer
     from pennsync_private.membership m
     join pennsync_private.agency ag on ag.app_id = m.app_id and ag.id = m.agency_id
     join pennsync_private.identity_map im
@@ -335,20 +336,33 @@ begin
 
   -- Divergences 5 and 6: the agency's administrators, from membership, with no
   -- patient on the alert.
+  --
+  -- The authority envelope is `createNotification`'s and is NOT optional: the
+  -- recipient's own reader filters on all six columns and refuses a row that
+  -- fails the integrity check. A first version of this fan-out stamped three
+  -- of them, so every alert it wrote would have been invisible to the person
+  -- it was for. `contract_notification_list` is the thing that proves it.
   if v_alert then
     for v_recipient in
-      select r.base44_user_id, r.expected_email
+      select r.base44_user_id, r.expected_email, r.membership_id, r.membership_version
       from pennsync_private.agency_admin_recipients(p_agency) r
     loop
       insert into "pennsync_records"."notification"
         ("source_app_id", "id", "agency_id", "dedupe_key", "recipient_user_id",
+         "recipient_membership_id", "recipient_membership_version",
+         "authority_version", "authority_state", "version",
          "user_email", "title", "message", "type", "priority",
-         "action_url", "action_label", "metadata", "is_read",
+         "action_url", "action_label", "metadata",
+         "is_read", "read_at", "dismissed", "dismissed_at",
+         "email_sent", "push_sent",
          "created_by", "created_date", "updated_date")
       values ("pennsync_records".deployment_app(),
         pg_catalog.substr(pg_catalog.md5(pg_catalog.gen_random_uuid()::text), 1, 24),
         p_agency, 'incident:' || v_id || ':' || v_recipient.expected_email,
-        v_recipient.base44_user_id, v_recipient.expected_email,
+        v_recipient.base44_user_id,
+        v_recipient.membership_id, v_recipient.membership_version,
+        1, 'active', 1,
+        v_recipient.expected_email,
         'Urgent incident: ' || coalesce(nullif(v_row."incident_name", ''),
           v_row."incident_type"),
         v_email || ' submitted a ' || v_severity || ' severity incident.',
@@ -356,7 +370,8 @@ begin
         case when v_severity = 'high' then 'critical' else 'high' end,
         '/Incidents', 'Review incident',
         jsonb_build_object('incident_id', v_id, 'reported_by', v_email),
-        false, v_email, v_now, v_now);
+        false, null, false, null, false, false,
+        v_email, v_now, v_now);
       v_notified := v_notified + 1;
     end loop;
   end if;

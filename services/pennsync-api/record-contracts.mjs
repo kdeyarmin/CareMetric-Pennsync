@@ -570,6 +570,49 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_CONFIG_EMPLOYEE_UNKNOWN',
     ]),
   }),
+  // A person's own notifications, and the second capability where tenancy is
+  // not ownership (D36) — this time the policy says so plainly, because
+  // `notification_read` and `notification_update` are agency-WIDE. Every
+  // ownership rule here is the contract's.
+  //
+  // One Base44 capability, three contracts, because its three actions are
+  // three different statements: a page, one row under an optimistic version,
+  // and one set-based update. The handler keeps the original's single
+  // `action` envelope.
+  listMyNotifications: Object.freeze({
+    rpc: 'pennsync_contract_notification_list',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: Object.freeze([
+      'PENNSYNC_NOTIFICATION_AGENCY_NOT_HELD',
+      'PENNSYNC_NOTIFICATION_INTEGRITY',
+    ]),
+  }),
+  transitionMyNotification: Object.freeze({
+    rpc: 'pennsync_contract_notification_transition',
+    params: Object.freeze(['notification_id', 'expected_version', 'action']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_notification_id: args.notification_id ?? null,
+      p_expected_version: args.expected_version === undefined ? null : args.expected_version,
+      p_action: args.action ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_NOTIFICATION_AGENCY_NOT_HELD',
+      'PENNSYNC_NOTIFICATION_ACTION_INVALID',
+      'PENNSYNC_NOTIFICATION_SUBJECT_INVALID',
+      'PENNSYNC_NOTIFICATION_VERSION_INVALID',
+      'PENNSYNC_NOTIFICATION_NOT_FOUND',
+      'PENNSYNC_NOTIFICATION_INTEGRITY',
+      'PENNSYNC_NOTIFICATION_STALE',
+    ]),
+  }),
+  markAllMyNotificationsRead: Object.freeze({
+    rpc: 'pennsync_contract_notification_mark_all',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: Object.freeze(['PENNSYNC_NOTIFICATION_AGENCY_NOT_HELD']),
+  }),
   // Reporting an incident, and moving one through its review.
   //
   // The reviewer-only field set (`severity`, `state_reportable`, `ai_tags`) is

@@ -46,6 +46,9 @@ export const MIGRATION_CODES = Object.freeze([
   // D40's credential review refuses to apply without the submission half it
   // shares a projection with.
   'PENNSYNC_CREDENTIAL_SUBMIT_REQUIRED',
+  // D45's notification contract needs D34's `caller_membership`, because the
+  // authority envelope it filters on is THIS store's membership.
+  'PENNSYNC_CALLER_MEMBERSHIP_REQUIRED',
 ]);
 let pinnedDaemon;
 const localDaemon = value => typeof value === 'string' &&
