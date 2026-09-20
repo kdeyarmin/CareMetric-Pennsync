@@ -484,7 +484,7 @@ $$;`,
     on m.app_id = i.app_id and m.auth_user_id = i.auth_user_id
    and m.base44_user_id = i.base44_user_id
   join pennsync_private.agency ag on ag.app_id = m.app_id and ag.id = m.agency_id
-  join pennsync_private.assignment a
+  join pennsync_private.chart_assignment a
     on a.app_id = m.app_id and a.agency_id = m.agency_id and a.membership_id = m.id
   where i.auth_user_id is not null
     and m.agency_id::text = p_agency

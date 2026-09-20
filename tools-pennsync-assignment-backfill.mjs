@@ -2,11 +2,17 @@
 /**
  * The care-team backfill D24 requires, and the one thing it must never do.
  *
- * D24 makes `pennsync_private.assignment` the authority on who may open a
- * chart. Today's real assignments do not live there: they live in
+ * D24 makes the authority store's assignment model the authority on who may
+ * open a chart. Today's real assignments do not live there: they live in
  * `Patient.assigned_nurses`, an array of email addresses on the patient row.
  * Moving authority without carrying those across means every clinician loses
  * access to their own patients on cutover. This carries them across.
+ *
+ * It writes `pennsync_private.chart_assignment`, not `assignment`. The latter
+ * keys to `pennsync_private.patient`, which can hold only synthetic rows, and
+ * that key is also one of four the archive-import tool relies on to refuse
+ * rolling back a patient something clinical still references. One table cannot
+ * key to two patient populations, so production has its own.
  *
  * **The failure it must not have is the quiet one.** D21 recorded the
  * asymmetry and it decides every judgement in this file: a backfill that drops
@@ -226,7 +232,7 @@ export async function applyBackfill(execute, plan, { actorId, expectedDigest }) 
       // planning and applying is somebody else's decision, and overwriting it
       // would be this tool deciding something it was not asked to.
       const result = await execute(
-        `insert into pennsync_private.assignment
+        `insert into pennsync_private.chart_assignment
            (app_id, agency_id, patient_id, membership_id, status, changed_by)
          values ($1,$2,$3,$4,'active',$5)
          on conflict (app_id, patient_id, membership_id) do nothing

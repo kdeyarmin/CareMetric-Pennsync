@@ -351,7 +351,7 @@ test('a revoked assignment closes the chart, and every table that hangs off it',
     assert.deepEqual(await as(ASSIGNED, `select "id" from ${SCHEMA}."document"`).then(ids), ['doc-1']);
     await db.exec('begin');
     try {
-      await db.query(`update pennsync_private.assignment set status = 'revoked'
+      await db.query(`update pennsync_private.chart_assignment set status = 'revoked'
         where patient_id = 'patient-a1' and membership_id = 'membership-2'`);
       await db.query("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({
         sub: uid(ASSIGNED), session_id: sid(ASSIGNED), role: 'authenticated',

@@ -1374,33 +1374,54 @@ every clinician would break intake to protect a chart that is not there.
 Writing the backfill turned up the finding that matters most in this decision,
 and it was three constraints deep:
 
-1. `pennsync_private.assignment` had a foreign key to
+1. `pennsync_private.assignment` has a foreign key to
    `pennsync_private.patient`;
 2. that table's `display_name` must be `like 'Synthetic %'`;
 3. its `synthetic` column carries `check (synthetic)`, so it can never be
    false.
 
-Together those mean **an assignment could only ever name a synthetic patient**.
-The patients of record live in `pennsync_records.patient`. So the backfill D24
-requires could not have written a single row, and the first person to find out
-would have been whoever ran it at cutover — which is exactly the shape of
-failure D21 said this decision must not have.
+Together those mean **an assignment over that table could only ever name a
+synthetic patient**. The patients of record live in `pennsync_records.patient`.
+So the backfill D24 requires could not have written a single row, and the first
+person to find out would have been whoever ran it at cutover — which is exactly
+the shape of failure D21 said this decision must not have.
 
-The foreign key comes off, and the reasoning was already written down in this
-store: the disclosure-audit tables beside it carry it verbatim — *"Deliberately
-no patient FK: immutable disclosure provenance must survive source lifecycle
-changes and must not create a cascading patient-delete path."* An assignment
-**is** disclosure provenance. It records that a person was given access to a
-chart, and that record has to outlive the chart. Two more reasons it is the
-right direction rather than the convenient one: the two schemas are separately
-owned, and a key across that boundary would give the record owner a referential
-hold on authority rows; and the failure mode inverts safely, because the
-narrowing is a *filter*, so an assignment matching no row admits no row, while
-an assignment that cannot be written denies a clinician their own patients. The
-staging mutation path is unchanged — `pennsync_private.mutate` already looks
-the patient up itself and raises `PENNSYNC_PATIENT_DENIED`, so the key was a
-second copy of a check that was already there, and only the copy could not tell
-a real patient from a synthetic one.
+**The first attempt at the fix was wrong, and CI caught it.** It dropped
+`assignment`'s patient key, on the reasoning that the key was a second copy of
+a check `pennsync_private.mutate` already makes (`PENNSYNC_PATIENT_DENIED`).
+That reasoning was true of the *grant* path and false of everything else. The
+key has a second job: it is one of four RESTRICT keys that make rolling back an
+imported patient **refuse** while something clinical still references it.
+`tools-pennsync-archive-import.mjs` names those four and refuses the whole
+import if the set differs, and its postgres suite proves the behaviour —
+"dependent clinical assignment prevents deletion". Dropping the key removed a
+deletion guard, and all sixteen import cases failed with
+`IMPORT_SCHEMA_UNSAFE`.
+
+**What is actually true:** one table cannot key to two patient populations.
+`pennsync_private.assignment` is the *staging* care team — its patients are
+synthetic by constraint, `mutate` grants it, `visible_patient` reads it, and
+the import tool guards it. Production gets a sibling,
+`pennsync_private.chart_assignment`, with the same shape, the same
+provenance-immutable trigger, forced RLS and no policy, and the same
+membership key. It carries no patient key, and there that is the honest answer
+rather than a concession: `pennsync_records` belongs to
+`pennsync_records_owner`, a role this store's administrator deliberately is
+not, and a key across that boundary would give the record owner a referential
+hold on authority rows. The failure mode inverts safely, because the narrowing
+is a *filter* — an assignment naming a patient that does not exist admits no
+row.
+
+`caller_assigned_patients()` reads the new table; the backfill writes it; the
+staging surface is untouched.
+
+**Why the default test run missed it.** `test:pennsync-import:postgres` needs a
+real PostgreSQL, is gated behind `PENNSYNC_TEST_PG_URL`, and is not part of
+`pnpm test` — so the change passed lint, the whole suite, the build, the
+typecheck gate and all seven gates, and failed only in CI. That gap is closed:
+`record-store-migration.test.mjs` now reads the import tool's pinned key list
+and the migrations' actual inbound keys and asserts they agree, which runs
+everywhere `pnpm test` does. Reintroducing the bug fails it.
 
 **What the backfill refuses**, every case decided by D21's asymmetry — a
 dropped row is a support ticket, an invented one is a disclosure nobody

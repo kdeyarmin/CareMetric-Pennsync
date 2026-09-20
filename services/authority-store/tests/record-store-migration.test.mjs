@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
@@ -127,6 +127,49 @@ test('the committed migration is exactly what the generator produces', async () 
   assert.equal(committed, renderMigration(repository).sql,
     'The record store migration has drifted from the generator. '
     + 'Re-run `node tools-entity-schema-plan.mjs --write-migration` rather than editing the SQL.');
+});
+
+test('the import tool inbound-key guard still matches the schema it guards', () => {
+  // `tools-pennsync-archive-import.mjs` names the inbound foreign keys to
+  // `pennsync_private.patient` EXACTLY and refuses the whole import if the set
+  // differs, because those RESTRICT keys are what make rolling back an
+  // imported patient refuse while something clinical still references it.
+  //
+  // That coupling is invisible from either side. Its own suite proves it, but
+  // that suite needs a real PostgreSQL, is gated behind `PENNSYNC_TEST_PG_URL`
+  // and is NOT part of `pnpm test` — so a change dropping one of those keys
+  // passes the whole default run and fails only in CI. It did: D24's first
+  // attempt dropped `assignment`'s patient key to let an assignment name a
+  // patient of record, and every one of the sixteen import cases refused with
+  // `IMPORT_SCHEMA_UNSAFE`.
+  //
+  // This is the same assertion, read from both files rather than from a
+  // database, so it runs everywhere `pnpm test` does.
+  const tool = readFileSync(resolve(repository, 'tools-pennsync-archive-import.mjs'), 'utf8');
+  const expected = tool.match(/same\(dependencies\.map\(d => d\.name\), \[([^\]]*)\]/);
+  assert.ok(expected, 'the import tool must still pin its inbound keys by name');
+  const guarded = [...expected[1].matchAll(/'([a-z0-9_]+)'/g)].map(match => match[1]).sort();
+
+  const migrations = new URL('../supabase/migrations/', import.meta.url);
+  const sql = readdirSync(migrations).filter(name => name.endsWith('.sql')).sort()
+    .map(name => readFileSync(new URL(name, migrations), 'utf8')).join('\n');
+  // Every table declaring a foreign key into `patient`, taken from the SQL the
+  // deployment actually applies.
+  const declared = new Set();
+  for (const match of sql.matchAll(/create table pennsync_private\.([a-z0-9_]+)\s*\(([\s\S]*?)\n\);/g)) {
+    if (/references pennsync_private\.patient\s*\(/.test(match[2])) declared.add(match[1]);
+  }
+  for (const match of sql.matchAll(/alter table pennsync_private\.([a-z0-9_]+)[^;]*?references pennsync_private\.patient\s*\(/g)) {
+    declared.add(match[1]);
+  }
+  for (const match of sql.matchAll(/alter table pennsync_private\.([a-z0-9_]+)\s+drop constraint[^;]*patient_id_fkey/g)) {
+    declared.delete(match[1]);
+  }
+  assert.deepEqual([...declared].sort(), guarded,
+    'a table gained or lost a foreign key into patient; the archive import guard must be updated with it');
+  // And the one D24 nearly removed is named, so its absence is loud.
+  assert.ok(guarded.includes('assignment'),
+    'assignment keys to patient on purpose: it is what refuses a rollback that would orphan a care team');
 });
 
 test('the record owner is a role row level security applies to', async () => {

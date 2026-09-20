@@ -168,7 +168,7 @@ scenario('database identity provenance, duplicate memberships and cross-agency a
   await denied(()=>db.exec("insert into pennsync_private.identity_map(app_id,auth_user_id,base44_user_id,expected_email,source_evidence_sha256,verified_at) values('6a9881683dc68a0bd54f1ef7','10000000-0000-4000-8000-000000000001','6a98816d3dc68a0bd54f1ef8','owner@example.invalid',repeat('a',64),clock_timestamp())"),'check constraint');
 });
 scenario('browser table CRUD, internal helper execution and anonymous wrappers are denied',async()=>{
-  for(const name of ['identity_map','agency','membership','patient','assignment','mutation_receipt','archive_patient_import_receipt','visit_disclosure_audit','patient_context','patient_disclosure_audit','visit_list_disclosure_audit']) {
+  for(const name of ['identity_map','agency','membership','patient','assignment','chart_assignment','mutation_receipt','archive_patient_import_receipt','visit_disclosure_audit','patient_context','patient_disclosure_audit','visit_list_disclosure_audit']) {
     await denied(()=>db.exec(`select * from pennsync_private.${name}`),'permission denied');
   }
   await denied(()=>db.query('select pennsync_private.actor($1,false)',[app]),'permission denied');
@@ -182,7 +182,7 @@ scenario('public wrappers are invoker-only; private grants and RLS are complete'
   assert.deepEqual(rows.rows.map(x=>x.proname).sort(),['context','memberships','patients','patient','assignment','revoke_membership','s4_create','s4_read','s3_create','s3_confirm','s3_read','s3_list','visit_documentation','patient_context','visits_schedule','referral_patient','referral_patients'].map(x=>`pennsync_staging_${x}`).sort());
   assert.equal(rows.rows.some(x=>x.prosecdef),false);
   const tables=await privileged("select relname,relrowsecurity,relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='pennsync_private' and relkind='r'");
-  assert.deepEqual(tables.rows.map(x=>x.relname).sort(),['identity_map','agency','membership','patient','assignment','mutation_receipt','archive_patient_import_receipt','visit_disclosure_audit','patient_context','patient_disclosure_audit','visit_list_disclosure_audit','s4_visit','s4_note_history','s4_note_conversion','s4_compliance_audit','s4_create_receipt','s3_referral','s3_receipt','known_app','deployment','enrollment_receipt'].sort());
+  assert.deepEqual(tables.rows.map(x=>x.relname).sort(),['identity_map','agency','membership','patient','assignment','chart_assignment','mutation_receipt','archive_patient_import_receipt','visit_disclosure_audit','patient_context','patient_disclosure_audit','visit_list_disclosure_audit','s4_visit','s4_note_history','s4_note_conversion','s4_compliance_audit','s4_create_receipt','s3_referral','s3_receipt','known_app','deployment','enrollment_receipt'].sort());
   assert.equal(tables.rows.every(x=>x.relrowsecurity&&x.relforcerowsecurity),true);
   const paths=await privileged("select proname,proconfig from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='pennsync_private'");
   assert.equal(paths.rows.every(x=>x.proconfig?.includes('search_path=""')),true);

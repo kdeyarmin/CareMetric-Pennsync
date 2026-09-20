@@ -16,9 +16,9 @@ import {
  *
  * The unit tests prove what the planner refuses. This proves the two halves
  * meet — which is the half of D24 nobody can check by reading either file,
- * and the half that was structurally impossible until the patient foreign key
- * came off `pennsync_private.assignment`. Until then an assignment could only
- * name a SYNTHETIC patient, so the backfill could not have written one row.
+ * and the half that was structurally impossible while the only assignment
+ * table keyed to `pennsync_private.patient`, which can hold only synthetic
+ * rows. Production assignments live in `chart_assignment` for that reason.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const APP = '6a9881683dc68a0bd54f1ef7';
@@ -77,23 +77,39 @@ async function roster() {
 }
 async function existing() {
   const { rows } = await db.query(
-    'select patient_id, membership_id, status from pennsync_private.assignment where app_id = $1', [APP]);
+    'select patient_id, membership_id, status from pennsync_private.chart_assignment where app_id = $1', [APP]);
   return rows;
 }
 
-test('an assignment can name a patient of record, which is what made the backfill possible', async () => {
-  // Before the key came off, this insert was refused outright — and with it,
-  // every row the backfill would ever write.
-  const { rows } = await db.query(`select conname from pg_catalog.pg_constraint
-    where conrelid = 'pennsync_private.assignment'::regclass and contype = 'f'`);
-  assert.deepEqual(rows.map(row => row.conname), ['assignment_app_id_agency_id_membership_id_fkey'],
-    'the patient key is gone and the membership key stays');
-  // The staging mutation path still requires a patient this store holds: the
-  // key was a second copy of a check `pennsync_private.mutate` already makes,
-  // and only the copy could not tell a real patient from a synthetic one.
-  const source = readFileSync(resolve(repository,
-    'services/authority-store/supabase/migrations/20260918015112_independent_staging_authority.sql'), 'utf8');
-  assert.match(source, /PENNSYNC_PATIENT_DENIED/);
+test('production assignments have their own table, and the staging one keeps its keys', async () => {
+  // The first attempt at D24 dropped `assignment`'s patient key so it could
+  // name a patient of record. That key has a second job — it is one of four
+  // RESTRICT keys `tools-pennsync-archive-import.mjs` relies on to refuse
+  // rolling back an imported patient something clinical still references — so
+  // dropping it removed a deletion guard, and its postgres suite said so.
+  const keys = async (table) => (await db.query(`select conname from pg_catalog.pg_constraint
+    where conrelid = $1::regclass and contype = 'f' order by conname`, [table])).rows.map(row => row.conname);
+  assert.deepEqual(await keys('pennsync_private.assignment'),
+    ['assignment_app_id_agency_id_membership_id_fkey', 'assignment_app_id_agency_id_patient_id_fkey'],
+    'the staging table keeps BOTH keys, the patient one included');
+  // The production table keys its membership and not its patient, because the
+  // patient of record lives in a schema owned by a different role.
+  assert.deepEqual(await keys('pennsync_private.chart_assignment'),
+    ['chart_assignment_app_id_agency_id_membership_id_fkey']);
+  const refused = async (sql, params) => {
+    await db.exec('begin');
+    try { await db.query(sql, params); return null; }
+    catch (error) { return error.message; }
+    finally { await db.exec('rollback'); }
+  };
+  assert.equal(await refused(`insert into pennsync_private.chart_assignment
+    (app_id,agency_id,patient_id,membership_id,status,changed_by)
+    values ($1,'agency-a','rec-p1','membership-2','active',$2)`, [APP, uid(ADMIN_A)]), null,
+  'a patient of record is nameable here');
+  assert.match(await refused(`insert into pennsync_private.chart_assignment
+    (app_id,agency_id,patient_id,membership_id,status,changed_by)
+    values ($1,'agency-a','rec-p1','membership-nope','active',$2)`, [APP, uid(ADMIN_A)]),
+  /foreign key/, 'a membership that does not exist still is not');
 });
 
 test('the backfill carries a care team across, and the chart opens for exactly those it named', async () => {
@@ -139,7 +155,7 @@ test('running it again writes nothing, and a withdrawal stays withdrawn', async 
   // And the case that matters most: access somebody deliberately withdrew.
   // `assigned_nurses` cannot tell that from never having been assigned, so a
   // second run must not restore it.
-  await db.exec(`update pennsync_private.assignment set status = 'revoked'
+  await db.exec(`update pennsync_private.chart_assignment set status = 'revoked'
     where app_id = '${APP}' and patient_id = 'rec-p1'`);
   assert.deepEqual(await chartsOf(CLINICIAN_A), [], 'the revocation closes the chart');
   const afterRevoke = planBackfill(readExport(exported), await roster(), await existing());
