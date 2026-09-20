@@ -28,6 +28,8 @@ const REVIEW_SQL = 'services/authority-store/supabase/record-migrations/'
   + '20260920250000_contract_credential_review.sql';
 const ASSIGNMENT = 'services/authority-store/supabase/record-migrations/'
   + '20260920180000_contract_assignment.sql';
+const SWEEP_SQL = 'services/authority-store/supabase/record-migrations/'
+  + '20260920340000_contract_credential_sweep.sql';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const email = n => ['', 'admin-a', 'clinician-a', 'clinician-empty', 'admin-b'][n]
@@ -35,6 +37,8 @@ const email = n => ['', 'admin-a', 'clinician-a', 'clinician-empty', 'admin-b'][
 const ADMIN_A = 1; const CLINICIAN_A = 2; const SPARE_A = 3;
 const SUBMIT = 'select "public"."pennsync_contract_credential_submit"($1,$2,$3,$4) as result';
 const REVIEW = 'select "public"."pennsync_contract_credential_review"($1,$2,$3,$4) as result';
+const EXPIRY_SWEEP = 'select "public"."pennsync_contract_credential_expiration_sweep"($1) as result';
+const RENEWAL_SWEEP = 'select "public"."pennsync_contract_credential_renewal_sweep"($1) as result';
 const A = 'agency-a'; const B = 'agency-b';
 const GOOD = Object.freeze({
   item_type: 'license', title: 'RN Licence', issuing_organization: 'PA Board',
@@ -54,7 +58,7 @@ before(async () => {
   // rather than declaring a second date parser that could drift from it.
   // The assignment migration carries `bounded_reason`, which the review reuses.
   for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, ASSIGNMENT,
-    TIME_OFF, CREDENTIAL, REVIEW_SQL]) {
+    TIME_OFF, CREDENTIAL, REVIEW_SQL, SWEEP_SQL]) {
     await db.exec(readFileSync(resolve(repository, file), 'utf8'));
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
@@ -254,4 +258,101 @@ test('a rejection needs a reason, and a decision happens once', async () => {
   // A credential in another agency is not reviewable.
   await refusal(review(ADMIN_A, 'no-such-credential', 'approve'),
     'PENNSYNC_CREDENTIAL_NOT_FOUND');
+});
+
+const APP_ID = '6a9881683dc68a0bd54f1ef7';
+const expirySweep = (n, agency = A) => as(n, EXPIRY_SWEEP, [agency], true);
+const renewalSweep = (n, agency = A) => as(n, RENEWAL_SWEEP, [agency], true);
+const seedCredential = async (id, agency, days, overrides = {}) => {
+  const row = {
+    user_id: email(CLINICIAN_A), title: 'RN Licence', item_type: 'license',
+    status: 'approved', reminder_offsets_sent: null,
+    renewal_email_offsets_sent: null, ...overrides,
+  };
+  const keys = Object.keys(row);
+  await db.query(
+    `insert into ${SCHEMA}."personnel_credential" ("source_app_id","id","agency_id",
+      "expiration_date",${keys.map(k => `"${k}"`).join(',')})
+     values ($1,$2,$3,(current_date + $4::integer),${keys.map((_, i) => `$${i + 5}`).join(',')})`,
+    [APP_ID, id, agency, days, ...keys.map(k => row[k])]);
+};
+const statusOf = async id => (await db.query(
+  `select "status","reminder_offsets_sent" as sent, "renewal_email_offsets_sent" as renewal
+   from ${SCHEMA}."personnel_credential" where "id" = $1`, [id])).rows[0];
+
+test('the sweep expires what has run out, whatever its age', async () => {
+  // Divergence 1. The original constrains to a ninety-day window BEFORE its
+  // thousand-row cap, because "a historical backlog of already-expired
+  // credentials ... [would] fill the 1000-row cap and starve the upcoming
+  // expirations this job exists to notify about". A SQL update-where has no
+  // cap to starve, so the window has nothing left to protect — and keeping it
+  // would leave this one permanently un-flipped.
+  await db.query(`delete from ${SCHEMA}."personnel_credential"`);
+  await seedCredential('cred-ancient', A, -400);
+  await seedCredential('cred-recent', A, -3);
+  await seedCredential('cred-live', A, 200);
+  await seedCredential('cred-elsewhere', B, -5);
+  const result = await expirySweep(ADMIN_A);
+  assert.equal(result.marked_expired, 2);
+  assert.equal((await statusOf('cred-ancient')).status, 'expired');
+  assert.equal((await statusOf('cred-recent')).status, 'expired');
+  assert.equal((await statusOf('cred-live')).status, 'approved');
+  assert.equal((await statusOf('cred-elsewhere')).status, 'approved', 'agency B is untouched');
+  // Running it again flips nothing, because nothing is left to flip.
+  assert.equal((await expirySweep(ADMIN_A)).marked_expired, 0);
+});
+
+test('a tier fires at or below its offset, and is counted rather than claimed', async () => {
+  // Divergence 2, and the originals' reason for it: "so a missed cron run
+  // (downtime/deploy/DST) doesn't skip a tier permanently".
+  await db.query(`delete from ${SCHEMA}."personnel_credential"`);
+  await seedCredential('cred-13', A, 13);
+  await seedCredential('cred-45', A, 45);
+  await seedCredential('cred-200', A, 200);
+  const result = await expirySweep(ADMIN_A);
+  assert.equal(result.reminders_due, 2, 'the one 200 days out has crossed no tier');
+  const by = Object.fromEntries(result.credentials.map(c => [c.id, c.due_offsets]));
+  // Thirteen days out has crossed every tier at or above it, not only the 14.
+  assert.deepEqual(by['cred-13'], [90, 60, 30, 14]);
+  assert.deepEqual(by['cred-45'], [90, 60]);
+  assert.equal(result.notifications_sent, 0);
+  assert.equal(result.delivery_paused, true);
+  assert.equal(result.code, 'OUTBOUND_DELIVERY_RELEASE_PAUSED');
+  // The claim is what is NOT written: the tier belongs to the send, and there
+  // is none. "do not claim a reminder tier ... that did not run."
+  assert.equal((await statusOf('cred-13')).sent, null);
+  // An already-claimed tier is not offered again.
+  await db.query(`update ${SCHEMA}."personnel_credential"
+    set "reminder_offsets_sent" = '[90,60,30]'::jsonb where "id" = 'cred-13'`);
+  const second = await expirySweep(ADMIN_A);
+  assert.deepEqual(second.credentials.find(c => c.id === 'cred-13').due_offsets, [14]);
+  // An expired credential reminds nobody; the status flip covers it.
+  await db.query(`delete from ${SCHEMA}."personnel_credential"`);
+  await seedCredential('cred-gone', A, -1);
+  assert.equal((await expirySweep(ADMIN_A)).reminders_due, 0);
+});
+
+test('the two sweeps do not consume each other s tiers', async () => {
+  // The bug the renewal original documents: "The three credential-reminder
+  // crons previously shared `reminder_offsets_sent` with different tier sets,
+  // so whichever fired a shared tier first consumed it for the others."
+  await db.query(`delete from ${SCHEMA}."personnel_credential"`);
+  await seedCredential('cred-6', A, 6);
+  // The renewal sweep has a seventh-day tier the expiration sweep does not.
+  assert.deepEqual((await renewalSweep(ADMIN_A)).credentials[0].due_offsets,
+    [90, 60, 30, 14, 7]);
+  assert.deepEqual((await expirySweep(ADMIN_A)).credentials[0].due_offsets,
+    [90, 60, 30, 14]);
+  // Claiming every tier on ONE marker leaves the other sweep untouched.
+  await db.query(`update ${SCHEMA}."personnel_credential"
+    set "reminder_offsets_sent" = '[90,60,30,14]'::jsonb where "id" = 'cred-6'`);
+  assert.equal((await expirySweep(ADMIN_A)).reminders_due, 0);
+  assert.deepEqual((await renewalSweep(ADMIN_A)).credentials[0].due_offsets,
+    [90, 60, 30, 14, 7], 'the renewal tiers are its own');
+});
+
+test('only the agency administrator sweeps, and only their own agency', async () => {
+  await refusal(expirySweep(CLINICIAN_A), 'PENNSYNC_CREDENTIAL_FORBIDDEN');
+  await refusal(renewalSweep(CLINICIAN_A), 'PENNSYNC_CREDENTIAL_FORBIDDEN');
+  await refusal(expirySweep(ADMIN_A, B), 'PENNSYNC_CREDENTIAL_FORBIDDEN');
 });

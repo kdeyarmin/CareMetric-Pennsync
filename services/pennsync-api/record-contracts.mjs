@@ -915,6 +915,32 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_CREDENTIAL_TRANSITION',
     ]),
   }),
+  // The credential sweeps, fifth and sixth under D40 and both scheduler
+  // capabilities under D49: their human gate is the built-in admin, and their
+  // machine gate is a shared secret over every tenant, which has no successor
+  // because nothing in this store is cross-tenant.
+  //
+  // They are two contracts rather than one because the renewal original says
+  // in its own comment why they must be: the three credential-reminder crons
+  // once shared `reminder_offsets_sent` with different tier sets, so whichever
+  // fired a shared tier first consumed it for the others. Three marker
+  // columns, one each.
+  //
+  // The send is `Core.SendEmail`, which nothing brokers, so each answer is the
+  // original's OWN paused branch: expiry is maintained, the due tiers are
+  // counted and not claimed, and it says so.
+  sendPersonnelExpirationNotifications: Object.freeze({
+    rpc: 'pennsync_contract_credential_expiration_sweep',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: Object.freeze(['PENNSYNC_CREDENTIAL_FORBIDDEN']),
+  }),
+  sendCredentialRenewalReminders: Object.freeze({
+    rpc: 'pennsync_contract_credential_renewal_sweep',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: Object.freeze(['PENNSYNC_CREDENTIAL_FORBIDDEN']),
+  }),
   // The time-off domain. All four originals decide who may act by reading the
   // carried `User` row — `is_approved`, `is_manager`, `role`, `account_type`
   // and string comparisons of `agency_name` — and D23 says that row decides

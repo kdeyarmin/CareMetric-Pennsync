@@ -3236,3 +3236,54 @@ page to overflow. It is the clearest statement in the tree of what these ports
 keep deleting.
 
 Port queue: `records_schema` 35 → 34, written 48 → 49.
+
+## D50 — Three crons shared a marker column once, and the table still carries the scar
+
+**Decision.** Port `sendPersonnelExpirationNotifications` and
+`sendCredentialRenewalReminders` as TWO contracts over one shared sweep, under
+D40's gate and D49's open scheduler decision.
+
+**The reason they are separate is the most important thing either records.**
+From the renewal capability's own comment:
+
+> *"Use a marker field dedicated to THIS job. The three credential-reminder
+> crons previously shared `reminder_offsets_sent` with different tier sets, so
+> whichever fired a shared tier first consumed it for the others (e.g.
+> sendExpirationNotifications marking tier 30 suppressed this renewal email)."*
+
+That is why `personnel_credential` carries `reminder_offsets_sent`,
+`renewal_email_offsets_sent` AND `expiration_note_offsets_sent`. The shared body
+takes the marker column and the tier set as parameters precisely so a future
+change cannot quietly give one capability the other's column, and a test proves
+that claiming every tier on one marker leaves the other sweep's tiers
+untouched. **Do not merge them, and do not give a third caller either of
+theirs.**
+
+**The ±90-day window goes, and every past-due credential is flipped.** The
+original constrains to that window *"BEFORE the row cap"*, because otherwise *"a
+historical backlog of already-expired credentials (which accumulates without
+bound over time) [would] fill the 1000-row cap and starve the upcoming
+expirations this job exists to notify about."* A SQL `update … where` has no cap
+to starve, so the window has nothing left to protect — and keeping it would
+leave a credential that expired 200 days ago permanently un-flipped, which is
+the artefact rather than the rule. This is the second port in a row where a
+limit existed only to survive a paged client (D49's was 5000 rows); both are
+deleted for the same reason.
+
+**Two rules kept exactly as the originals state them.** A tier fires AT OR BELOW
+its offset rather than on an exact-day match — *"so a missed cron run
+(downtime/deploy/DST) doesn't skip a tier permanently"* — and today is the
+agency's calendar day, because these compare *"on local calendar days, not UTC
+midnight"*.
+
+**And the ordering rule for when a send returns.** Both originals claim the tier
+BEFORE sending and re-read to confirm the claim, and say why: *"Prior code
+stamped offsets in a bulk `updates` array before emails ran — if send failed,
+the tier was still marked sent and the reminder was permanently lost; concurrent
+runs could also both send before either stamp landed."* The send is
+`Core.SendEmail`, which nothing here brokers, so these ports are the originals'
+own paused branch — expiry maintained, tiers counted and not claimed — and the
+claim-before-send ordering is recorded in the contract header so it returns with
+the send rather than being rediscovered.
+
+Port queue: `records_schema` 34 → 32, written 49 → 51.
