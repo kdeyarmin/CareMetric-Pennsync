@@ -317,8 +317,8 @@ for (const [name, raw] of Object.entries({
 test('what blocks a port is read from the module, not from a status note', () => {
   // Precedence runs from the most binding blocker to the least: a function that
   // both reads rows and renders a PDF cannot be written until the rows exist.
-  assert.deepEqual([...PORT_BLOCKERS], ['entity_not_carried', 'entity_authorization', 'records_schema',
-    'files', 'ported_function', 'core_integration', 'pdf_rendering', 'external_secret', 'none']);
+  assert.deepEqual([...PORT_BLOCKERS], ['entity_not_carried', 'entity_authorization', 'patient_access_model',
+    'records_schema', 'files', 'ported_function', 'core_integration', 'pdf_rendering', 'external_secret', 'none']);
   // The first two are not properties of the module, so `classifyPortBlocker`
   // cannot see them: they depend on the dispositions of the entities it reads.
   // They are applied over its verdict in `checkCoverage`, and only ever over
@@ -394,6 +394,28 @@ test('a record blocker is refined by what the module actually reads', () => {
   }
 });
 
+test('a capability is held by the care-team question whatever its entities are', () => {
+  const declare = () => manifest({ functions: { alpha: 'port' }, entities: { Kept: 'port', Gone: 'retire' } });
+  const queue = (evidence) => {
+    const report = checkCoverage(capabilities(), declare(),
+      { portBlockers: { alpha: 'records_schema' }, careTeamDependents: ['alpha'], ...evidence });
+    return Object.entries(report.port_blockers).filter(([, names]) => names.length).map(([key]) => key);
+  };
+  assert.deepEqual(queue({ entityReach: { alpha: { names: ['Kept'], dynamic: false } } }), ['patient_access_model']);
+  // Unlike the two entity-disposition refinements, this one survives a computed
+  // key: it is read from the source text, not from the entity set.
+  assert.deepEqual(queue({ entityReach: { alpha: { names: ['Kept'], dynamic: true } } }), ['patient_access_model']);
+  assert.deepEqual(queue({ entityReach: {} }), ['patient_access_model']);
+  // An entity that gets no table still outranks it: whether the capability
+  // survives comes before who may read a patient.
+  assert.deepEqual(queue({ entityReach: { alpha: { names: ['Gone'], dynamic: false } } }), ['entity_not_carried']);
+  // And a capability with no care-team dependency is untouched by it.
+  const clean = checkCoverage(capabilities(), declare(),
+    { portBlockers: { alpha: 'records_schema' }, careTeamDependents: [],
+      entityReach: { alpha: { names: ['Kept'], dynamic: false } } });
+  assert.deepEqual(clean.port_blockers.records_schema, ['alpha']);
+});
+
 test('the port queue is work that cannot start yet, and says why', () => {
   // Reading the census as "86 ports awaiting review" would send someone to work
   // nothing in the repository can support. Exactly one of them was writable
@@ -404,8 +426,9 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { entity_not_carried: 34, entity_authorization: 34, records_schema: 25, files: 4,
-    ported_function: 1, core_integration: 1, pdf_rendering: 0, external_secret: 1, none: 11 });
+  assert.deepEqual(counts, { entity_not_carried: 34, entity_authorization: 34, patient_access_model: 15,
+    records_schema: 10, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
+    external_secret: 1, none: 11 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -414,6 +437,14 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // the store existing.
   assert.equal(report.port_blockers.entity_authorization.length, 34);
   assert.ok(report.port_blockers.entity_not_carried.includes('acceptAiContentAgreement'));
+  // Ten. That is how many of the hundred can be written today, and the number
+  // is the point: `records_schema=94` said the record store was what stood in
+  // front of the queue, and it stands in front of a tenth of it.
+  assert.equal(report.port_blockers.records_schema.length, 10);
+  assert.ok(report.port_blockers.patient_access_model.includes('getScopedPatientAlerts'));
+  // Dynamic entity access does not hide this one, because reading
+  // `assigned_nurses` is a property of the source rather than of the entity set.
+  assert.ok(report.port_blockers.patient_access_model.includes('appendPatientNoteHistory'));
   // Twelve functions were counted against the record store until they were
   // read. Every one calls a Core integration and touches no entity row, so what
   // they waited on was the integration runtime's brokered path — already

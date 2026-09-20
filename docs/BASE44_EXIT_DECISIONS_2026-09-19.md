@@ -1075,3 +1075,57 @@ thing standing in front of a third of the remaining queue.
 number a test pins, that two thirds of the remaining queue is waiting on
 decisions rather than on the store — and names which decision each one waits
 for.
+
+
+## D21 — Which representation of a care team authorizes a chart read
+
+**Not decided here.** This records the question, names what it blocks, and
+puts a number on it, because the queue was reporting those capabilities as
+waiting on a schema they are not waiting on.
+
+**Three representations exist, and nothing says which governs.**
+
+1. **`pennsync_private.assignment`** in the authority store. Not hypothetical:
+   `pennsync_private.context` already uses it to scope a clinician, so the
+   owned identity path has been answering this question all along.
+2. **`PatientCareTeamAssignment`**, carried into the record store as its own
+   `port` entity with its own table and policies.
+3. **`Patient.assigned_nurses`** — an array of emails — plus `created_by`,
+   which is what every Base44 original actually reads.
+
+**What it blocks: 15 capabilities**, including every document read and write,
+visit creation and update, patient update, the clinical task generators, the
+alert readers and the note history. `getScopedPatientAlerts` is typical — its
+whole authorization is "a patient the caller created or is assigned to".
+
+**Why it is not per-capability contract work.** D19 settles that a capability's
+authorization is its own and belongs in its contract. This is the exception
+that proves the rule: the answer has to be the *same* for all fifteen or the
+system contradicts itself about who may open a chart, and a contract written
+against one representation while another governs is a silent authorization
+bug rather than a visible one. So it is a decision first and contracts after.
+
+**The cost of getting it wrong is asymmetric.** Choosing a representation that
+is too narrow means a clinician cannot see their own patient's alerts —
+visible, annoying, safe. Too broad means they can see someone else's — invisible,
+and a disclosure. The narrow failure is the recoverable one.
+
+**Two further facts worth having before deciding**, both measured rather than
+assumed. `assigned_nurses` is an email array on the patient row, so it is
+editable by anyone who can update a patient, which is a weaker guarantee than
+either of the other two. And `pennsync_private.assignment` is the only one of
+the three that already has a working authorization path written against it.
+
+**Where the queue stands once this is named**, out of 100 unwritten ports:
+
+| Blocker | Count | What it waits for |
+| --- | --- | --- |
+| `entity_not_carried` | 34 | A decision about capabilities reading an entity that gets no table here |
+| `entity_authorization` | 34 | Whether the roster comes from the authority store (D20) |
+| `patient_access_model` | 15 | This decision |
+| `records_schema` | 10 | The record store itself |
+| `files` | 4 | The file layer |
+| other | 3 | A port, a third-party key, `Core.SendEmail` |
+
+**Ten.** That is how many of the hundred can be written today. The queue said
+94 were waiting on the record store; it stands in front of a tenth of them.

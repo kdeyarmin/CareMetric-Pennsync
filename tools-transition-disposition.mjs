@@ -311,10 +311,28 @@ export function discoverInertFunctions(repository) {
  * existing, and `entity_not_carried` above `entity_authorization` because
  * whether a capability survives at all comes before how a table is read.
  */
-export const PORT_BLOCKERS = Object.freeze(['entity_not_carried', 'entity_authorization', 'records_schema',
-  'files', 'ported_function', 'core_integration', 'pdf_rendering', 'external_secret', 'none']);
+export const PORT_BLOCKERS = Object.freeze(['entity_not_carried', 'entity_authorization', 'patient_access_model',
+  'records_schema', 'files', 'ported_function', 'core_integration', 'pdf_rendering', 'external_secret', 'none']);
 /** A disposition whose entity gets no table in the record store. */
 export const UNCARRIED_DISPOSITIONS = Object.freeze(['retire', 'hub', 'preserved_paused']);
+/**
+ * Three representations of "who may see this patient" exist, and which one
+ * governs has never been decided:
+ *
+ * 1. `pennsync_private.assignment` in the authority store, which
+ *    `pennsync_private.context` ALREADY uses to scope a clinician;
+ * 2. `PatientCareTeamAssignment`, carried into the record store as its own
+ *    `port` entity;
+ * 3. `Patient.assigned_nurses` — an array of emails — plus `created_by`, which
+ *    is what every Base44 original actually reads.
+ *
+ * A capability reading the third cannot be ported until one of them is
+ * authoritative, and the answer has to be the same for all of them or the
+ * system contradicts itself about who may open a chart. It is not per-capability
+ * contract work for that reason, and getting it wrong means a clinician cannot
+ * see their own patient or can see somebody else's.
+ */
+export const CARE_TEAM_SIGNALS = Object.freeze(['assigned_nurses', 'PatientCareTeamAssignment']);
 
 export function classifyPortBlocker(source) {
   if (typeof source !== 'string') return 'records_schema';
@@ -375,6 +393,7 @@ export function discoverEvidence(repository) {
     portedFunctions: discoverPortedFunctions(repository),
     entityReach: discoverEntityReach(repository),
     policylessEntities: discoverPolicylessEntities(repository),
+    careTeamDependents: discoverCareTeamDependents(repository),
   };
 }
 
@@ -385,6 +404,18 @@ export function discoverEvidence(repository) {
  * comment instead of a policy for a `profile_claim`, and the path file is where
  * that verdict is recorded.
  */
+/** Functions whose authorization depends on how care-team membership is represented. */
+export function discoverCareTeamDependents(repository) {
+  const root = join(repository, 'base44/functions');
+  const dependents = [];
+  for (const name of listDirectories(root)) {
+    let source;
+    try { source = readFileSync(join(root, name, 'entry.ts'), 'utf8'); } catch { continue; }
+    if (CARE_TEAM_SIGNALS.some(signal => source.includes(signal))) dependents.push(name);
+  }
+  return dependents.sort();
+}
+
 export function discoverPolicylessEntities(repository) {
   let recorded;
   try {
@@ -457,6 +488,7 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
   const ported = new Set(Array.isArray(evidence.portedFunctions) ? evidence.portedFunctions : []);
   const reach = evidence.entityReach && typeof evidence.entityReach === 'object' ? evidence.entityReach : {};
   const policyless = new Set(Array.isArray(evidence.policylessEntities) ? evidence.policylessEntities : []);
+  const careTeam = new Set(Array.isArray(evidence.careTeamDependents) ? evidence.careTeamDependents : []);
   /**
    * What a module reads can make a `records_schema` verdict wrong, and only in
    * that direction: a blocker the source already named is never overridden,
@@ -465,11 +497,23 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
   const refine = (blocker, name) => {
     if (blocker !== 'records_schema') return blocker;
     const touched = reach[name];
-    if (!touched || touched.dynamic) return blocker;
-    for (const entity of touched.names) {
-      if (UNCARRIED_DISPOSITIONS.includes((manifest.entities || {})[entity])) return 'entity_not_carried';
+    // The first two need the entity set, so a module using a computed key is
+    // left alone by them: nothing can be claimed about a set nothing can
+    // enumerate.
+    if (touched && !touched.dynamic) {
+      for (const entity of touched.names) {
+        if (UNCARRIED_DISPOSITIONS.includes((manifest.entities || {})[entity])) return 'entity_not_carried';
+      }
+      if (touched.names.some(entity => policyless.has(entity))) return 'entity_authorization';
     }
-    return touched.names.some(entity => policyless.has(entity)) ? 'entity_authorization' : blocker;
+    // The third does not, because reading `assigned_nurses` is a property of
+    // the source text rather than of the entity set. Gating it behind the same
+    // guard left `appendPatientNoteHistory` and `getAuthorizedPatientNoteHistory`
+    // counted against the record store when what they wait on is this decision.
+    // Last of the three because it is the narrowest: the tables exist and are
+    // readable, and what is missing is which representation of care-team
+    // membership authorizes a read of them.
+    return careTeam.has(name) ? 'patient_access_model' : blocker;
   };
   const brokeredEntities = new Set(Object.keys(manifest.entities || {})
     .filter(entity => manifest.entities[entity] === 'broker'));
