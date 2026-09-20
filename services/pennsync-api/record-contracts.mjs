@@ -512,6 +512,32 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_ASSIGNMENT_REQUEST_CONFLICT',
     ]),
   }),
+  // Filing a staff credential. Its sibling `reviewPersonnelCredential` is NOT
+  // here and has no contract at all: its only gate is `u.role === 'admin'`,
+  // the platform tier D14 and D22 removed, so the whole capability has no
+  // performer left. Who may approve a credential is a product decision.
+  submitPersonnelCredential: Object.freeze({
+    rpc: 'pennsync_contract_credential_submit',
+    params: Object.freeze(['credential_id', 'renews_credential_id', 'credential']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_credential_id: args.credential_id === undefined ? null : args.credential_id,
+      p_renews_id: args.renews_credential_id === undefined ? null : args.renews_credential_id,
+      p_credential: args.credential === undefined ? null : args.credential,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_CREDENTIAL_AGENCY_NOT_HELD',
+      'PENNSYNC_CREDENTIAL_INVALID',
+      'PENNSYNC_CREDENTIAL_FIELD_UNSUPPORTED',
+      'PENNSYNC_CREDENTIAL_REQUIRED',
+      'PENNSYNC_CREDENTIAL_DATE_INVALID',
+      'PENNSYNC_CREDENTIAL_DATE_ORDER',
+      'PENNSYNC_CREDENTIAL_FILE_URL_INVALID',
+      'PENNSYNC_CREDENTIAL_SUBJECT_INVALID',
+      'PENNSYNC_CREDENTIAL_NOT_FOUND',
+      'PENNSYNC_CREDENTIAL_FORBIDDEN',
+    ]),
+  }),
   // The time-off domain. All four originals decide who may act by reading the
   // carried `User` row — `is_approved`, `is_manager`, `role`, `account_type`
   // and string comparisons of `agency_name` — and D23 says that row decides

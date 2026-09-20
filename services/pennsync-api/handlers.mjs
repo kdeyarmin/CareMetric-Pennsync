@@ -343,6 +343,14 @@ export const HANDLERS = Object.freeze({
       return contract('appendPatientNoteHistory', params);
     },
   }),
+  submitPersonnelCredential: Object.freeze({
+    async handle({ params, contract }) {
+      exactObject(params, ['credential_id', 'renews_credential_id', 'credential'],
+        'INVALID_PARAMS');
+      if (!isObject(params.credential)) fail(400, 'INVALID_PARAMS');
+      return { ...(await contract('submitPersonnelCredential', params)), delivery_paused: true };
+    },
+  }),
   submitTimeOffRequest: Object.freeze({
     // `delivery_paused` is reported the way the original reports it when
     // `OUTBOUND_DELIVERY_RELEASE` is not `enabled-v1`: the record work is done

@@ -84,6 +84,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   getMyTenantContext: 'json',
   managePatientCareTeamAssignment: 'json',
   updateAuthorizedPatient: 'json',
+  submitPersonnelCredential: 'json',
   submitTimeOffRequest: 'json',
   updateAuthorizedVisit: 'json',
   updateScopedPatientAlert: 'json',

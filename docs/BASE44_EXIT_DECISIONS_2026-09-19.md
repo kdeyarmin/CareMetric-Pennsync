@@ -2596,3 +2596,61 @@ gate is closed, because outbound delivery belongs to the integration runtime,
 which is deployed and paused.
 
 Port queue: `records_schema` 55 → 51, written 32 → 36.
+
+## D39 — A whole capability with no performer, and the question that raises
+
+**Decision.** Port `submitPersonnelCredential`. Do **not** port
+`reviewPersonnelCredential`, and do not add an approve path to
+`20260920240000_contract_credential.sql` until somebody decides who may approve
+a credential.
+
+**This is the first time the platform tier takes a whole endpoint.** Three
+earlier ports lost ONE ACTION of a capability whose others survived — D31's
+`set_ai_tags`, D35's `provision`, D36's `list`. `reviewPersonnelCredential`
+does nothing else. Its entire gate is:
+
+> `if (!isAdminLike(user)) return 403;` — where `isAdminLike = u.role === 'admin'`
+
+the Base44 built-in admin, removed by D14 and D22. Approving and rejecting is
+all the endpoint does, so there is no half of it left to port.
+
+**The open question, stated so it can be answered.** A credential filed through
+the ported contract stays `pending_approval` for ever. An `agency_admin` is the
+obvious candidate for the missing reviewer, and giving them the power would be
+a **widening** — the code never granted it to anyone but the platform admin,
+and every earlier decision here refused exactly that move. So the question goes
+in this document rather than into the SQL:
+
+> **Who approves a staff credential once there is no platform tier?** The
+> candidates are an `agency_admin` of the employee's agency (consistent with
+> how every other review in the product now works, and a widening of the
+> original), or a new operator path outside the caller-facing API (consistent
+> with how `provision` was handled in D35).
+
+Until that is answered, `reviewPersonnelCredential` stays in the port queue.
+That is the accurate state: it is not waiting on a schema, it is waiting on a
+decision, and the queue showing it as unwritten is the reminder.
+
+The contract's test asserts the ABSENCE rather than leaving it to be noticed:
+it fails if the migration ever sets `status` to `'approved'` or writes
+`approved_by`/`approved_at` to anything but null, so adding an approve path
+without this decision breaks a test instead of slipping through review.
+
+**What the ported half does.** The writable set is the original's
+`SELF_SERVICE_FIELDS`, and an unknown key is **refused rather than filtered**.
+The original filters silently, so a caller who misspells `expiration_date`
+files a credential with no expiry and is never told — and the same silent
+filter is what keeps `status` and `approved_by` out of a caller's reach, which
+is worth making explicit rather than implicit. Editing a credential returns it
+to `pending_approval` and clears the previous decision, because an edited
+credential is not the one that was approved. A renewal stamps the old
+credential's notes and leaves its status alone, so it stays valid until a
+reviewer supersedes it — and a renewal naming somebody else's credential stamps
+nothing.
+
+`uploaded_file_url` is carried with the original's own check — HTTPS, no user
+information in the authority — and it is stored but not projected back. Nothing
+in the port fetches a locator, which is the position the document pair already
+took, so this is not the file-layer dependency that blocks an upload capability.
+
+Port queue: `records_schema` 51 → 50, written 36 → 37.
