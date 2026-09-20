@@ -3342,3 +3342,53 @@ deadline is treated as missing and the claim is denied."*
 
 Port queue: `records_schema` 32 → 31, written 51 → 52. D49's four are now three
 ported and one — the unattended run itself — still open.
+
+## D52 — Almost nothing an employee sends decides what they are paid
+
+**Decision.** Port `submitTimesheet` and `reviewTimesheet` as one domain, and
+delete the unscoped legacy point-config fallback that is the read side of D43's
+bug.
+
+**The originals are unusually disciplined, and the port's job is mostly to keep
+that.** The service line and points eligibility come from the payroll profile an
+administrator keeps, *"not chosen by the employee"*. Points are the agency's
+configured per-type values times the visit counts, *"server-authoritative, so
+the client cannot set points directly"*. Paid time off carries in from approved
+`TimeOffRequest` rows rather than being typed. The phone reimbursement is the
+profile's, *"an expense reimbursement (not pay/wages)"*. In daily mode the
+per-day rows are authoritative and the client's period totals are discarded. All
+five are ported, and each has a test that sends something else and checks it was
+ignored.
+
+**Divergence 2 is D43's bug from the other side.** The original, failing to find
+a point config for the caller's `agency_name`, adopts the newest row in the
+DEPLOYMENT, *"so nurses with an agency don't silently compute 0 points"*. D43
+deleted the same fallback from the WRITE side, where the original's own comment
+records what it cost: *"a platform admin (no agency) saving config silently
+overwrote that agency's point math."* Reading it is the same defect: one
+agency's point schedule paying another agency's nurses. An agency with no
+schedule now computes zero and the answer says `point_config_missing`, so the
+gap is visible rather than papered over with somebody else's numbers. The test
+seeds agency B's schedule and checks agency A's nurse earns nothing from it.
+
+**Three labels stop deciding things.** The submission gate was
+`user.is_approved !== true`; the approver test was `role === 'admin' ||
+account_type === … || is_manager === true` followed by an `agency_name` string
+comparison; the reviewer test was the same. All are self-editable fields on the
+carried profile (D23), and membership answers all of it — an approver is a
+colleague whose tenant role is `agency_admin` or `manager`, and a reviewer is an
+`agency_admin` or the sheet's own assigned approver.
+
+**And tenancy is not ownership, for the third time.** `timesheet_read` and
+`timesheet_update` are agency-WIDE, so "my timesheet" and "a timesheet I may
+review" are the contract's rules. Both originals already refuse self-review
+*"even as an admin"*, and that is kept by identity rather than by two address
+comparisons.
+
+One detail worth keeping: on an edit the original sets the review fields to
+EMPTY rather than `undefined`, because *"undefined ... JSON-omits and would
+leave the stale values in place"* — a rejected sheet that was resubmitted would
+otherwise still show who rejected it. The port nulls them, and a test
+resubmits and checks.
+
+Port queue: `records_schema` 31 → 29, written 52 → 54.

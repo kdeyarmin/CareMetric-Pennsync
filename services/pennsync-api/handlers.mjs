@@ -497,6 +497,26 @@ export const HANDLERS = Object.freeze({
       return contract('updateIncident', params);
     },
   }),
+  submitTimesheet: Object.freeze({
+    // The original's flat body, packed: `timesheet_id` names an existing sheet
+    // and everything else is the sheet itself.
+    handle({ params, contract }) {
+      exactObject(params, ['timesheet_id', 'pay_period_start', 'pay_period_end',
+        'notes', 'manager_email', 'status', 'entry_mode', 'daily_entries',
+        'visit_counts', 'regular_points', 'emergency_visit_points', 'regular_hours',
+        'overtime_hours', 'vacation_hours', 'holiday_hours', 'on_call_hours',
+        'on_call_visits', 'miles', 'reimbursement'], 'INVALID_PARAMS');
+      const { timesheet_id: id, ...timesheet } = params;
+      if (id !== undefined && typeof id !== 'string') fail(400, 'INVALID_PARAMS');
+      return contract('submitTimesheet', { timesheet_id: id ?? null, timesheet });
+    },
+  }),
+  reviewTimesheet: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['timesheet_id', 'decision', 'note'], 'INVALID_PARAMS');
+      return contract('reviewTimesheet', params);
+    },
+  }),
   checkAdrDeadlines: Object.freeze({
     handle({ params, contract }) {
       exactObject(params, [], 'INVALID_PARAMS');

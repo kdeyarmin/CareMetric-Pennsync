@@ -954,6 +954,68 @@ export const RECORD_CONTRACTS = Object.freeze({
     body: agencyId => ({ p_agency: agencyId }),
     codes: Object.freeze(['PENNSYNC_CREDENTIAL_FORBIDDEN']),
   }),
+  // The timesheet pair: a submission and the decision on it, one domain as the
+  // time-off four are.
+  //
+  // Almost nothing the caller sends decides what they are paid. The service
+  // line and points eligibility are the payroll profile's, the points are the
+  // agency's configured per-type values times the visit counts, the paid time
+  // off carries in from approved requests, and the phone reimbursement is the
+  // profile's — each server-authoritative in the original and here.
+  //
+  // `timesheet_read` and `timesheet_update` are agency-WIDE, so "my timesheet"
+  // and "one I may review" are the contract's rules (D45). The employee and
+  // approver notifications mint through the facility (D48); their EMAIL halves
+  // are `Core.SendEmail`, which nothing brokers.
+  submitTimesheet: Object.freeze({
+    rpc: 'pennsync_contract_timesheet_submit',
+    params: Object.freeze(['timesheet_id', 'timesheet']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_timesheet_id: args.timesheet_id === undefined ? null : args.timesheet_id,
+      p_sheet: args.timesheet === undefined ? null : args.timesheet,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_TIMESHEET_AGENCY_NOT_HELD',
+      'PENNSYNC_TIMESHEET_INVALID',
+      'PENNSYNC_TIMESHEET_FIELD_UNSUPPORTED',
+      'PENNSYNC_TIMESHEET_STATUS_INVALID',
+      'PENNSYNC_TIMESHEET_PERIOD_INVALID',
+      'PENNSYNC_TIMESHEET_PERIOD_UNALIGNED',
+      'PENNSYNC_TIMESHEET_SERVICE_TYPE_INVALID',
+      'PENNSYNC_TIMESHEET_NUMBER_INVALID',
+      'PENNSYNC_TIMESHEET_DAILY_INVALID',
+      'PENNSYNC_TIMESHEET_DAILY_DUPLICATE',
+      'PENNSYNC_TIMESHEET_APPROVER_SELF',
+      'PENNSYNC_TIMESHEET_APPROVER_UNKNOWN',
+      'PENNSYNC_TIMESHEET_APPROVER_INVALID',
+      'PENNSYNC_TIMESHEET_PERIOD_EXISTS',
+      'PENNSYNC_TIMESHEET_PERIOD_APPROVED',
+      'PENNSYNC_TIMESHEET_SUBJECT_INVALID',
+      'PENNSYNC_TIMESHEET_NOT_FOUND',
+      'PENNSYNC_TIMESHEET_FORBIDDEN',
+      'PENNSYNC_TIMESHEET_APPROVED_LOCKED',
+    ]),
+  }),
+  reviewTimesheet: Object.freeze({
+    rpc: 'pennsync_contract_timesheet_review',
+    params: Object.freeze(['timesheet_id', 'decision', 'note']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_timesheet_id: args.timesheet_id ?? null,
+      p_decision: args.decision ?? null,
+      p_note: args.note === undefined ? null : args.note,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_TIMESHEET_AGENCY_NOT_HELD',
+      'PENNSYNC_TIMESHEET_DECISION_INVALID',
+      'PENNSYNC_TIMESHEET_SUBJECT_INVALID',
+      'PENNSYNC_TIMESHEET_NOT_FOUND',
+      'PENNSYNC_TIMESHEET_REVIEW_FORBIDDEN',
+      'PENNSYNC_TIMESHEET_REVIEW_SELF',
+      'PENNSYNC_TIMESHEET_NOT_AWAITING_REVIEW',
+    ]),
+  }),
   // The time-off domain. All four originals decide who may act by reading the
   // carried `User` row — `is_approved`, `is_manager`, `role`, `account_type`
   // and string comparisons of `agency_name` — and D23 says that row decides

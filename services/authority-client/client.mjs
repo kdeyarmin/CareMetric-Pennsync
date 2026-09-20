@@ -105,6 +105,8 @@ export const PORTED_FUNCTIONS = Object.freeze({
   resendInvitationV2: 'json',
   reviewPersonnelCredential: 'json',
   reviewTimeOffRequest: 'json',
+  reviewTimesheet: 'json',
+  submitTimesheet: 'json',
   policyAcknowledgment: 'json',
   validatePatientData: 'json',
 });
