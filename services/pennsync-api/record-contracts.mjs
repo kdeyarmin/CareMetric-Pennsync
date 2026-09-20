@@ -538,6 +538,16 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_CREDENTIAL_FORBIDDEN',
     ]),
   }),
+  // The data-quality audit, second under D40. Its whole agency-scoping block
+  // disappears: the original rebuilt "which of these are mine" from
+  // `agency_name` strings, `created_by` addresses and `assigned_nurses`
+  // arrays, and the policies answer it here.
+  auditDataQuality: Object.freeze({
+    rpc: 'pennsync_contract_data_quality_audit',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: Object.freeze(['PENNSYNC_QUALITY_FORBIDDEN']),
+  }),
   // D40: an `agency_admin` scoped to their own agency is the successor to
   // Base44's built-in `role === 'admin'`. A WIDENING, granted by the owner,
   // and the self-approval check the contract adds is what that widening makes

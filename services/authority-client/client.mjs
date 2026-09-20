@@ -55,6 +55,7 @@ export const API_TARGETS = Object.freeze([
 export const PORTED_FUNCTIONS = Object.freeze({
   acceptAiContentAgreement: 'json',
   analyzeReferral: 'json',
+  auditDataQuality: 'json',
   cancelTimeOffRequest: 'json',
   appendPatientNoteHistory: 'json',
   analyzeReferralIntake: 'json',

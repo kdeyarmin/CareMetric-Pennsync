@@ -2699,3 +2699,51 @@ again explicitly.
 
 Port queue: `records_schema` 50 → 49, written 37 → 38 with the first of the
 five.
+
+## D41 — A derived scope leaks; a policy cannot
+
+**Decision.** Port `auditDataQuality` under D40's gate, and delete its entire
+agency-scoping block rather than reimplementing it.
+
+**What the original does.** It fetches every active patient, every user, every
+completed visit and every credential in the deployment, then rebuilds "which of
+these are mine" in JavaScript: filter users by
+`u.agency_name === user.agency_name`, collect their addresses into
+`agencyEmails`, keep a patient whose `created_by` is one of those OR whose
+`assigned_nurses` array contains one, keep a visit whose `patient_id` survived
+that, keep a credential matched by `agency_name` or `employee_email`.
+
+Every input to that is a representation this migration has already thrown out.
+`agency_name` is the self-editable label D23 refuses; `assigned_nurses` is the
+stale-address care team D21 and D24 replaced; `created_by` is an address on a
+row rather than an authority.
+
+**The original's own comment is the argument.** It records that the filter had
+to be rewritten once already, because the first version kept `super_admin`
+accounts and so "surfaced platform-staff profiles in every agency's
+user_issues", and seeded `agencyEmails` such that "any patient created by a
+super_admin (central intake / bulk import) counted as in-agency for EVERY
+tenant and their name + gaps leaked cross-agency."
+
+That is the characteristic failure of a derived scope: it is a second answer to
+a question the store already answers, and the two drift. The test seeds exactly
+that shape — agency B's patient, created by agency A's administrator, carrying
+agency A's clinician in `assigned_nurses` — and asserts agency A's audit does
+not see it. Under the original's filter it would have.
+
+Here all four tables are agency-tenanted by their own policies, so the rows a
+caller can see ARE the agency's and the block has nothing left to do. The
+audited population of PEOPLE is the roster rather than every `User` row whose
+`agency_name` string matches, which also supplies the verified address the
+carried table has no column for.
+
+**Two computations kept exactly.** `nurse_notes` counts as missing below a
+hundred characters rather than when empty. And an empty object or array counts
+as missing, which the original had to say out loud because `vital_signs: {}` is
+TRUTHY in JavaScript and a bare `!v` inflated the score. The percentages keep
+the original's zero-guard, added because a tenant with no completed visits
+emitted the string `NaN` into the dashboard.
+
+Port queue: `records_schema` 49 → 48, written 38 → 39. Three of D40's five
+remain: `monitorClinicalDataForCarePlanUpdates`, `resendInvitation` and
+`resendInvitationV2`.
