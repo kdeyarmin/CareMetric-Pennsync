@@ -73,22 +73,27 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
     return { data: { subject: { user_id: result.user_id, user_email: result.user_email, is_platform_owner: false },
       memberships: result.memberships.map(value => pick(value, membershipKeys)) } };
   };
+  /**
+   * A ported handler, if the app has been pointed at the service. Everything
+   * about this path is explicit: the name has to be one the service serves,
+   * the call site has to supply `agency_id` — the ported service requires a
+   * current agency membership where its Base44 original accepted any
+   * authenticated caller — and with no service configured every name falls
+   * through to the same refusal any unsupported name gets.
+   */
+  const routesPorted = name => Object.hasOwn(PORTED_FUNCTIONS, name) && !!config.target.apiUrl;
+  const portedCall = async (name, input) => {
+    const { agency_id: agencyId, ...params } = input;
+    if (!agencyId) fail('STAGING_TENANT_SELECTION_REQUIRED');
+    const active = client, lease = generation;
+    if (!active || !signedIn) fail('AUTHENTICATION_REQUIRED', 401);
+    const result = await active.callFunction(name, agencyId, params);
+    current(lease);
+    return result;
+  };
+
   const invoke = async (name, input = {}) => {
-    // A ported handler, if the app has been pointed at the service. Everything
-    // about this path is explicit: the name has to be one the service serves,
-    // the call site has to supply `agency_id` — the ported service requires a
-    // current agency membership where its Base44 original accepted any
-    // authenticated caller — and with no service configured it falls through to
-    // the same refusal every other unsupported name gets.
-    if (Object.hasOwn(PORTED_FUNCTIONS, name) && config.target.apiUrl) {
-      const { agency_id: agencyId, ...params } = input;
-      if (!agencyId) fail('STAGING_TENANT_SELECTION_REQUIRED');
-      const active = client, lease = generation;
-      if (!active || !signedIn) fail('AUTHENTICATION_REQUIRED', 401);
-      const result = await active.callFunction(name, agencyId, params);
-      current(lease);
-      return { data: result };
-    }
+    if (routesPorted(name)) return { data: await portedCall(name, input) };
     if (name === 'getMyTenantContext') return getContext(input);
     if (name === 'manageAuthorizedReferral') {
       if (!exact(input, ['action','params'])) fail('STAGING_OPERATION_UNAVAILABLE');
@@ -151,6 +156,37 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
       page: { page_size: input.page_size, sort: 'id_asc', after_id: input.cursor?.after_id ?? null,
         has_more: result.next_cursor !== null, next_cursor: result.next_cursor === null ? null : expectedCursor(result.next_cursor) } } };
   };
+  /**
+   * The fetch-shaped surface, which is how the app downloads a document.
+   *
+   * `UserGuides.jsx` and `Help.jsx` deliberately call `functions.fetch` rather
+   * than `invoke` because the axios-based invoke wrapper decodes PDF bytes as
+   * UTF-8 and corrupts them. This adapter exposed no `fetch` at all, so those
+   * flows could not reach the ported document handlers however they were
+   * configured — adding routing to `invoke` alone left three of the eleven
+   * unreachable from the only call sites that use them.
+   *
+   * Both paths go through `portedCall`, so the agency requirement and the
+   * session fence cannot drift between them.
+   */
+  const fetchFunction = async (name, init = {}) => {
+    if (!routesPorted(name)) fail('STAGING_OPERATION_UNAVAILABLE');
+    let input;
+    try { input = init.body ? JSON.parse(init.body) : {}; }
+    catch { fail('STAGING_OPERATION_UNAVAILABLE'); }
+    if (!input || typeof input !== 'object' || Array.isArray(input)) fail('STAGING_OPERATION_UNAVAILABLE');
+    const result = await portedCall(name, input);
+    // A document answers with its bytes; a JSON handler reached this way is
+    // encoded, so the surface stays a faithful transport either way.
+    const bytes = result instanceof Uint8Array
+      ? result : new TextEncoder().encode(JSON.stringify(result));
+    return Object.freeze({
+      ok: true,
+      status: 200,
+      arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength),
+    });
+  };
+
   const auth = Object.freeze({
     hasSession: () => signedIn,
     async signIn(email, password, signal) {
@@ -189,7 +225,8 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
   const unavailable = () => fail('STAGING_OPERATION_UNAVAILABLE');
   return Object.freeze({ auth,
     raw: Object.freeze({ auth: Object.freeze({ me, logout: signOut, redirectToLogin: unavailable, setToken: unavailable }),
-      functions: Object.freeze({ invoke }), entities: Object.freeze({}), integrations: Object.freeze({}),
+      functions: Object.freeze({ invoke, fetch: fetchFunction }),
+      entities: Object.freeze({}), integrations: Object.freeze({}),
       cleanup: () => { generation++; signedIn = false; for (const value of clients.values()) value.invalidate(); } }),
     authority: Object.freeze({ me, getMyTenantContext: getContext, listMyTenantMemberships: memberships }),
   });

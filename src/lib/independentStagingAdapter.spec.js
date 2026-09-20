@@ -155,6 +155,47 @@ describe('the ported API caller', () => {
     expect(fixture.apiCalls).toHaveLength(0);
   });
 
+  it('serves a document through the fetch surface the download flows actually use', async () => {
+    // `UserGuides.jsx` and `Help.jsx` call `functions.fetch` rather than
+    // `invoke`, because the invoke wrapper decodes PDF bytes as UTF-8 and
+    // corrupts them. Routing only `invoke` left those three handlers
+    // unreachable from the only call sites that use them.
+    const fixture = stagingFixture();
+    const config = readIndependentStagingConfig(ported);
+    const adapter = createIndependentStagingAdapter(config, { fetchImpl: fixture.fetch });
+    await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    fixture.apiResponse = () => new Response(new Uint8Array([37, 80, 68, 70]),
+      { headers: { 'content-type': 'application/pdf' } });
+
+    const response = await adapter.raw.functions.fetch('generateUserManual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agency_id: 'agency-a' }),
+    });
+    expect(response.ok).toBe(true);
+    expect(response.status).toBe(200);
+    // The bytes survive: that is the whole reason these call sites use fetch.
+    expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([37, 80, 68, 70]);
+
+    // The same refusals as `invoke`, because both go through one path.
+    await expect(adapter.raw.functions.fetch('generateUserManual', { body: JSON.stringify({}) }))
+      .rejects.toThrow(/STAGING_TENANT_SELECTION_REQUIRED/);
+    await expect(adapter.raw.functions.fetch('getDashboardData', { body: JSON.stringify({ agency_id: 'agency-a' }) }))
+      .rejects.toThrow(/STAGING_OPERATION_UNAVAILABLE/);
+    await expect(adapter.raw.functions.fetch('generateUserManual', { body: 'not json' }))
+      .rejects.toThrow(/STAGING_OPERATION_UNAVAILABLE/);
+  });
+
+  it('exposes no fetch route at all when the service is not configured', async () => {
+    const fixture = stagingFixture();
+    const adapter = createIndependentStagingAdapter(readIndependentStagingConfig(stagingEnv),
+      { fetchImpl: fixture.fetch });
+    await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    await expect(adapter.raw.functions.fetch('generateUserManual',
+      { body: JSON.stringify({ agency_id: 'agency-a' }) })).rejects.toThrow(/STAGING_OPERATION_UNAVAILABLE/);
+    expect(fixture.apiCalls).toHaveLength(0);
+  });
+
   it('still fails closed for every name the service does not serve', async () => {
     const { fixture, adapter } = await signedIn();
     for (const name of ['getDashboardData', 'offboardUser', 'createAuthorizedPatient', 'nope']) {
