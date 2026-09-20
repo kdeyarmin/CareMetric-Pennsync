@@ -2654,3 +2654,48 @@ in the port fetches a locator, which is the position the document pair already
 took, so this is not the file-layer dependency that blocks an upload capability.
 
 Port queue: `records_schema` 51 → 50, written 36 → 37.
+
+## D40 — The built-in admin's successor is an agency administrator
+
+**Decision (the owner's, not the port's).** Where a capability's only gate is
+Base44's built-in `role === 'admin'` — the platform tier D14 and D22 removed —
+the successor is an **`agency_admin`, scoped to their own agency**.
+
+**This is the first deliberate WIDENING in the whole migration, and it is
+recorded as one.** Every earlier decision refused exactly this move: D31 left
+`set_ai_tags` unported, D35 left `provision`, D36 left `list`, and D39 left
+`reviewPersonnelCredential` — each time because dropping a platform gate does
+not narrow an action, it opens it, and who may perform it is a product decision
+rather than a rendering detail. That reasoning still holds. What changed is that
+the decision has now been taken, by the person entitled to take it, and the
+rule the port follows is no longer "refuse" but "grant to the agency's own
+administrator, over the agency's own rows, and nothing wider."
+
+**What it unblocks.** Five capabilities in the port queue are refused outright
+without it: `reviewPersonnelCredential`, `auditDataQuality`,
+`monitorClinicalDataForCarePlanUpdates`, `resendInvitation` and
+`resendInvitationV2` — a tenth of what remained.
+
+**The scope is the narrowest reading.** `agency_admin` and no other role;
+`super_admin` and the cross-agency branches stay closed with the tier; and the
+agency half is the table's own policy rather than a predicate in the contract,
+so a capability cannot widen past its rows by accident.
+
+**A widening creates risks a narrowing never does, and the first one is already
+here.** `reviewPersonnelCredential`'s own header says the approval lives in a
+function precisely so that staff cannot approve their own credential. Under
+Base44 the reviewer was a platform admin, who holds no credentials in any
+agency, so self-approval was impossible *by construction*. An `agency_admin` is
+a member of staff with credentials of their own, so it is possible for the first
+time — and `20260920250000_contract_credential_review.sql` refuses it
+explicitly, the way `contract_time_off_review` refuses self-review. **That check
+is not redundant with the role gate; the role gate is what makes it necessary.**
+
+The general form, for the four that follow: when this decision hands a
+capability to an `agency_admin`, re-read what the platform tier was
+*structurally* preventing, not just what it was permitting. Anything that was
+safe only because the reviewer stood outside every agency has to be made safe
+again explicitly.
+
+Port queue: `records_schema` 50 → 49, written 37 → 38 with the first of the
+five.

@@ -13,13 +13,12 @@
 -- was ONE ACTION of a capability whose other actions survived. Here it is the
 -- entire endpoint: approving and rejecting a credential is all it does.
 --
--- So this migration deliberately carries no approve path, and a credential
--- submitted through it stays `pending_approval` until somebody decides who may
--- approve one. That is a product decision — an `agency_admin` is the obvious
--- candidate and would be a WIDENING of what the code ever granted — and it is
--- recorded in the exit decisions rather than taken here. Do not add an approve
--- contract to this file without that decision: `status`, `approved_by`,
--- `approved_at` and `rejection_reason` are server-controlled in the original
+-- That question has since been answered. **D40** records the owner's decision
+-- that an `agency_admin`, scoped to their own agency, is the successor to the
+-- built-in admin — a WIDENING, granted deliberately — and the approve path
+-- lives in `20260920250000_contract_credential_review.sql`, not here. This
+-- file still carries NO decision field: `status`, `approved_by`, `approved_at`
+-- and `rejection_reason` stay server-controlled on the submission side,
 -- precisely because a staff member with row access could otherwise approve
 -- their own licence.
 --

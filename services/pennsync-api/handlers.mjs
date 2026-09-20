@@ -343,6 +343,12 @@ export const HANDLERS = Object.freeze({
       return contract('appendPatientNoteHistory', params);
     },
   }),
+  reviewPersonnelCredential: Object.freeze({
+    async handle({ params, contract }) {
+      exactObject(params, ['credential_id', 'action', 'rejection_reason'], 'INVALID_PARAMS');
+      return { ...(await contract('reviewPersonnelCredential', params)), delivery_paused: true };
+    },
+  }),
   submitPersonnelCredential: Object.freeze({
     async handle({ params, contract }) {
       exactObject(params, ['credential_id', 'renews_credential_id', 'credential'],

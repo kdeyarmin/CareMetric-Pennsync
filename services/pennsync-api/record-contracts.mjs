@@ -538,6 +538,30 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_CREDENTIAL_FORBIDDEN',
     ]),
   }),
+  // D40: an `agency_admin` scoped to their own agency is the successor to
+  // Base44's built-in `role === 'admin'`. A WIDENING, granted by the owner,
+  // and the self-approval check the contract adds is what that widening makes
+  // necessary — the original's reviewer held no credentials in any agency.
+  reviewPersonnelCredential: Object.freeze({
+    rpc: 'pennsync_contract_credential_review',
+    params: Object.freeze(['credential_id', 'action', 'rejection_reason']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_credential_id: args.credential_id ?? null,
+      p_action: args.action ?? null,
+      p_rejection_reason: args.rejection_reason === undefined ? null : args.rejection_reason,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_CREDENTIAL_FORBIDDEN',
+      'PENNSYNC_CREDENTIAL_SUBJECT_INVALID',
+      'PENNSYNC_CREDENTIAL_ACTION_INVALID',
+      'PENNSYNC_CREDENTIAL_REASON_REQUIRED',
+      'PENNSYNC_CREDENTIAL_REASON_UNEXPECTED',
+      'PENNSYNC_CREDENTIAL_NOT_FOUND',
+      'PENNSYNC_CREDENTIAL_SELF',
+      'PENNSYNC_CREDENTIAL_TRANSITION',
+    ]),
+  }),
   // The time-off domain. All four originals decide who may act by reading the
   // carried `User` row — `is_approved`, `is_manager`, `role`, `account_type`
   // and string comparisons of `agency_name` — and D23 says that row decides

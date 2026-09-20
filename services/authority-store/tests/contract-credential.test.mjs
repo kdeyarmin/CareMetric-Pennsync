@@ -11,25 +11,30 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
 /**
  * Submitting a staff credential (`contract_credential_submit`).
  *
- * The property worth the file is what is NOT here. `reviewPersonnelCredential`
- * is the first whole capability with no performer left — its only gate is
- * `u.role === 'admin'`, the platform tier D14 and D22 removed — so nothing in
- * this migration can move a credential out of `pending_approval`, and the last
- * test asserts that rather than leaving it to be noticed. Who may approve a
- * credential is a product decision, and taking it here would have widened what
- * the code ever granted.
+ * `reviewPersonnelCredential` was the first whole capability with no performer
+ * left — its only gate is `u.role === 'admin'`, the platform tier D14 and D22
+ * removed. **D40 answered it**: an `agency_admin`, scoped to their own agency,
+ * is the successor, granted deliberately as a widening. So the review half is
+ * here too, and the property worth the file is the one the widening created:
+ * an `agency_admin` is a member of staff with credentials of their own, so
+ * self-approval became possible for the first time — and is refused.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const TIME_OFF = 'services/authority-store/supabase/record-migrations/'
   + '20260920230000_contract_time_off.sql';
 const CREDENTIAL = 'services/authority-store/supabase/record-migrations/'
   + '20260920240000_contract_credential.sql';
+const REVIEW_SQL = 'services/authority-store/supabase/record-migrations/'
+  + '20260920250000_contract_credential_review.sql';
+const ASSIGNMENT = 'services/authority-store/supabase/record-migrations/'
+  + '20260920180000_contract_assignment.sql';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const email = n => ['', 'admin-a', 'clinician-a', 'clinician-empty', 'admin-b'][n]
   + '@example.invalid';
 const ADMIN_A = 1; const CLINICIAN_A = 2; const SPARE_A = 3;
 const SUBMIT = 'select "public"."pennsync_contract_credential_submit"($1,$2,$3,$4) as result';
+const REVIEW = 'select "public"."pennsync_contract_credential_review"($1,$2,$3,$4) as result';
 const A = 'agency-a'; const B = 'agency-b';
 const GOOD = Object.freeze({
   item_type: 'license', title: 'RN Licence', issuing_organization: 'PA Board',
@@ -47,7 +52,9 @@ before(async () => {
   }
   // The time-off migration carries `time_off_date`, which this one reuses
   // rather than declaring a second date parser that could drift from it.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, TIME_OFF, CREDENTIAL]) {
+  // The assignment migration carries `bounded_reason`, which the review reuses.
+  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, ASSIGNMENT,
+    TIME_OFF, CREDENTIAL, REVIEW_SQL]) {
     await db.exec(readFileSync(resolve(repository, file), 'utf8'));
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
@@ -68,6 +75,8 @@ async function as(n, sql, params = [], commit = false) {
 }
 const submit = (n, credential = GOOD, { id = null, renews = null, agency = A } = {}) =>
   as(n, SUBMIT, [agency, id, renews, JSON.stringify(credential)], true);
+const review = (n, id, action, reason = null, agency = A) =>
+  as(n, REVIEW, [agency, id, action, reason], true);
 const refusal = (promise, code) => assert.rejects(promise, error => {
   assert.match(String(error?.message ?? error), new RegExp(code));
   return true;
@@ -190,25 +199,59 @@ test('a renewal stamps the old credential and leaves its status alone', async ()
   assert.equal((await rowOf(theirs.id)).notes, before);
 });
 
-test('nothing here can approve a credential, and that is the point', async () => {
-  // `reviewPersonnelCredential` gates on `u.role === 'admin'` — the platform
-  // tier D14 and D22 removed — so the whole capability has no performer left
-  // and is deliberately unported. This asserts the absence, so adding an
-  // approve path without the product decision fails a test rather than
-  // slipping through review.
-  const source = readFileSync(resolve(repository, CREDENTIAL), 'utf8')
-    .split('\n').filter(line => !line.trim().startsWith('--')).join('\n');
-  for (const forbidden of ["'approved'", "'rejected'", '"approved_by" =', '"approved_at" ='] ) {
-    // The only mentions are the ones that CLEAR a decision, which is a null.
-    const uses = [...source.matchAll(new RegExp(forbidden.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'))];
-    for (const use of uses) {
-      const tail = source.slice(use.index, use.index + 40);
-      assert.match(tail, /= null|approved_by" = null|approved_at" = null/,
-        `${forbidden} is only ever cleared, never set: ${tail}`);
-    }
-  }
-  assert.equal(/contract_credential_(approve|review|reject)/.test(source), false);
-  // And a submitted credential is pending, full stop.
-  const fresh = (await submit(CLINICIAN_A, { ...GOOD, title: 'Still pending' })).credential;
-  assert.equal(fresh.status, 'pending_approval');
+test('an agency administrator approves, and supersedes the copy it renews', async () => {
+  // D40: the agency's own administrator, which the original's platform-admin
+  // gate never granted. The submission side still writes no decision field.
+  const filed = (await submit(CLINICIAN_A, { ...GOOD, title: 'BLS Card' })).credential;
+  await refusal(as(CLINICIAN_A, REVIEW, [A, filed.id, 'approve', null], true),
+    'PENNSYNC_CREDENTIAL_FORBIDDEN');
+  const approved = await review(ADMIN_A, filed.id, 'approve');
+  assert.equal(approved.credential.status, 'approved');
+  assert.equal(approved.credential.approved_by, email(ADMIN_A));
+  assert.equal(approved.superseded, 0);
+
+  // The renewal of the same credential supersedes the copy it replaces, so a
+  // compliance report does not count both.
+  const renewal = (await submit(CLINICIAN_A, { ...GOOD, title: 'BLS Card' },
+    { renews: filed.id })).credential;
+  const second = await review(ADMIN_A, renewal.id, 'approve');
+  assert.equal(second.superseded, 1);
+  const old = await rowOf(filed.id);
+  assert.equal(old.status, 'expired');
+  assert.match(old.notes, /\[Superseded by renewal on \d{4}-\d{2}-\d{2}\]/);
+  // A credential with a DIFFERENT title is not superseded by it.
+  const other = (await submit(CLINICIAN_A, { ...GOOD, title: 'RN Licence' })).credential;
+  await review(ADMIN_A, other.id, 'approve');
+  assert.equal((await rowOf(other.id)).status, 'approved');
+});
+
+test('nobody approves their own credential, which the widening made possible', async () => {
+  // Under Base44 the reviewer was a platform admin, who holds no credentials
+  // in any agency, so this could not happen. D40 makes the reviewer a member
+  // of staff, so it can — and the contract refuses it.
+  const own = (await submit(ADMIN_A, { ...GOOD, title: 'Admin RN Licence' })).credential;
+  await refusal(review(ADMIN_A, own.id, 'approve'), 'PENNSYNC_CREDENTIAL_SELF');
+  await refusal(review(ADMIN_A, own.id, 'reject', 'no'), 'PENNSYNC_CREDENTIAL_SELF');
+  assert.equal((await rowOf(own.id)).status, 'pending_approval');
+});
+
+test('a rejection needs a reason, and a decision happens once', async () => {
+  const filed = (await submit(CLINICIAN_A, { ...GOOD, title: 'Insurance' })).credential;
+  await refusal(review(ADMIN_A, filed.id, 'reject', '   '),
+    'PENNSYNC_CREDENTIAL_REASON_REQUIRED');
+  // And an approval does not carry one.
+  await refusal(review(ADMIN_A, filed.id, 'approve', 'why not'),
+    'PENNSYNC_CREDENTIAL_REASON_UNEXPECTED');
+  await refusal(review(ADMIN_A, filed.id, 'shrug', null),
+    'PENNSYNC_CREDENTIAL_ACTION_INVALID');
+  const rejected = await review(ADMIN_A, filed.id, 'reject', 'the scan is unreadable');
+  assert.equal(rejected.credential.status, 'rejected');
+  assert.equal(rejected.credential.rejection_reason, 'the scan is unreadable');
+  // Reviewed once is reviewed; a resubmission is how it comes back.
+  await refusal(review(ADMIN_A, filed.id, 'approve'), 'PENNSYNC_CREDENTIAL_TRANSITION');
+  assert.equal((await submit(CLINICIAN_A, { ...GOOD, title: 'Insurance' },
+    { id: filed.id })).credential.status, 'pending_approval');
+  // A credential in another agency is not reviewable.
+  await refusal(review(ADMIN_A, 'no-such-credential', 'approve'),
+    'PENNSYNC_CREDENTIAL_NOT_FOUND');
 });

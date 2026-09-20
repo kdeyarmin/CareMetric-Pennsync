@@ -43,6 +43,9 @@ export const MIGRATION_CODES = Object.freeze([
   // D37's: the first contract to depend on D25's trail refuses to apply to a
   // store that has none.
   'PENNSYNC_ACTIVITY_TRAIL_REQUIRED',
+  // D40's credential review refuses to apply without the submission half it
+  // shares a projection with.
+  'PENNSYNC_CREDENTIAL_SUBMIT_REQUIRED',
 ]);
 let pinnedDaemon;
 const localDaemon = value => typeof value === 'string' &&
