@@ -3491,3 +3491,46 @@ there, so the scan now covers every module of the service. Scanning one file
 would have reported a live contract as dead surface.
 
 Port queue: `records_schema` 28 → 27, written 55 → 56.
+
+## D55 — When the trail is a module's whole record half, `records_schema` names something already finished
+
+**Decision.** Re-classify a capability whose ONLY entity reach is one of D25's
+three retired log tables by what else its module needs.
+
+**The second correction in this queue, and the same shape as the first.**
+`classifyPortBlocker` answers with the first thing it finds, and entities come
+first — which is right while the record store is the question. It stops being
+right for a module whose only entity is `UserActivity`, `SecurityLog` or
+`SystemLog`: D25 built the trail those retire into, so the record half of such a
+module is **already done**, and `records_schema` names a finished thing.
+
+The refinement already skipped past an audited entity so it would not become
+`entity_not_carried`. It never re-asked what was left. Four capabilities sat in
+the queue as record work:
+
+| Capability | Only entity | Actually waits on |
+| --- | --- | --- |
+| `mergePDFs` | `UserActivity` | the file layer |
+| `reorderDeletePDFPages` | `UserActivity` | the file layer |
+| `generatePatientHandout` | `SystemLog` | `Core.SendEmail`, which nothing brokers |
+| `transcribeAudioWithWhisper` | `UserActivity` | `OPENAI_API_KEY`, called directly rather than through the brokered runtime |
+
+A reader going by the count would have started a record contract for a
+capability whose records are finished.
+
+**The entity accesses are masked rather than the classifier reordered**, because
+the order is correct for every module this does not apply to: a capability that
+reads a chart AND uploads a file waits on the chart first. `classifyWithoutEntities`
+is consulted only when every entity a module touches is an audited retired one,
+and a test pins both directions — including that a chart plus a file is still
+`records_schema`.
+
+**The rule, and it is D47's rule arriving from the other side.** D47 found
+capabilities counted as available that refuse every caller. This finds
+capabilities counted as blocked on a thing that is built. Both are the same
+failure: **a bucket keeps its name after the reason for it has gone.** When a
+decision supplies something the queue was waiting for, re-measure what the
+waiting was actually for rather than assuming the bucket still describes it.
+
+Port queue: `records_schema` 27 → 23, `files` 4 → 6, `core_integration` 1 → 2,
+`external_secret` 1 → 2. Written unchanged at 56 — nothing was ported here.

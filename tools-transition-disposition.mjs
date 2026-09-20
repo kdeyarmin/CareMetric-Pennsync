@@ -491,11 +491,46 @@ export function discoverPortBlockers(repository) {
   return blockers;
 }
 
+/**
+ * What would block a module if its ENTITY access were already served.
+ *
+ * `classifyPortBlocker` answers with the first thing it finds and entities come
+ * first, which is right while the record store is the question. It stops being
+ * right for a module whose only entity is one of D25's three retired log
+ * tables: the trail IS that module's record half, already built, so
+ * `records_schema` names something that is finished. Four such modules sat in
+ * that bucket — two waiting on the file layer, one on `Core.SendEmail` and one
+ * on a third-party key — and a reader going by the count would have started a
+ * record contract for a capability whose records are done.
+ *
+ * The entity accesses are masked rather than the classifier reordered, because
+ * the ORDER is correct for every module this does not apply to: a capability
+ * that reads a chart AND uploads a file waits on the chart first.
+ */
+export function classifyWithoutEntities(source) {
+  if (typeof source !== 'string') return 'records_schema';
+  return classifyPortBlocker(source
+    .replace(/\.\s*entities\s*[.[]/g, '.$pennsyncMasked[')
+    .replace(/asServiceRole/g, '$pennsyncMasked'));
+}
+
+export function discoverEntityFreeBlockers(repository) {
+  const root = join(repository, 'base44/functions');
+  const blockers = {};
+  for (const name of listDirectories(root)) {
+    let source;
+    try { source = readFileSync(join(root, name, 'entry.ts'), 'utf8'); } catch { continue; }
+    blockers[name] = classifyWithoutEntities(source);
+  }
+  return blockers;
+}
+
 export function discoverEvidence(repository) {
   return {
     inertFunctions: discoverInertFunctions(repository),
     pausedFunctions: discoverPausedFunctions(repository),
     portBlockers: discoverPortBlockers(repository),
+    entityFreeBlockers: discoverEntityFreeBlockers(repository),
     portedFunctions: discoverPortedFunctions(repository),
     entityReach: discoverEntityReach(repository),
     entityPolicies: discoverEntityPolicies(repository),
@@ -662,6 +697,15 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
         // existing even for an entity that shares a name with one of the three.
         if (disposition === 'retire' && audited.has(entity)) continue;
         if (UNCARRIED_DISPOSITIONS.includes(disposition)) return 'entity_not_carried';
+      }
+      // Every entity it touches is a retired log table the trail already
+      // serves, so the record store has nothing left to give this module.
+      // Re-classify by what else it needs; see `classifyWithoutEntities`.
+      if (touched.names.length > 0
+        && touched.names.every(entity => (manifest.entities || {})[entity] === 'retire'
+          && audited.has(entity))) {
+        const rest = (evidence.entityFreeBlockers || {})[name];
+        if (rest && rest !== 'records_schema') return rest;
       }
       if (touched.names.some(entity => policyless.has(entity))) return 'entity_authorization';
       // Readable but not writable. `User` is the one that matters — D23 serves

@@ -9,6 +9,7 @@ import {
   discoverActivityTrail, discoverChartScope,
   discoverCapabilities, discoverEntityPolicies, discoverEvidence, discoverInertFunctions, discoverIntegrations,
   discoverPausedFunctions, discoverPolicylessEntities, discoverPortBlockers, discoverPortedFunctions,
+  classifyWithoutEntities, discoverEntityFreeBlockers,
   entitiesTouched, isInertFunction, isPausedFunction, isRefusingHandler, main, parseManifest,
 } from './tools-transition-disposition.mjs';
 
@@ -149,6 +150,45 @@ test('a handler that refuses from its first statement is paused, whatever gates 
     assert.ok(paused_names.includes(name), `${name} should be detected as paused`);
     assert.equal(ACTIVE_DISPOSITIONS.includes(declared[name]), false,
       `${name} is declared ${declared[name]} but refuses every caller`);
+  }
+});
+
+test('a module whose only entity is the retired trail is re-classified by what else it needs', () => {
+  // `classifyPortBlocker` answers with the first thing it finds and entities
+  // come first, which is right while the record store is the question. It
+  // stops being right for a module whose only entity is one of D25's three
+  // retired log tables: the trail IS that module's record half, already built.
+  const withFile = "base44.asServiceRole.entities.UserActivity.create({});\nUploadFile({ file });";
+  assert.equal(classifyPortBlocker(withFile), 'records_schema');
+  assert.equal(classifyWithoutEntities(withFile), 'files');
+  const withKey = "await base44.asServiceRole.entities.UserActivity.create({});\n"
+    + "const k = Deno.env.get('OPENAI_API_KEY');";
+  assert.equal(classifyWithoutEntities(withKey), 'external_secret');
+  // Masking is not reordering. A module that reads a CHART and uploads a file
+  // waits on the chart first, and this leaves that untouched — the refinement
+  // only consults the entity-free verdict when every entity is an audited one.
+  const withChart = "base44.entities.Patient.get(id);\nUploadFile({ file });";
+  assert.equal(classifyPortBlocker(withChart), 'records_schema');
+  // A module with nothing else to wait on stays where it was.
+  assert.equal(classifyWithoutEntities('base44.entities.UserActivity.create({})'), 'none');
+  assert.equal(classifyWithoutEntities(null), 'records_schema');
+  // The discovery reads every module, so the evidence and the classifier
+  // cannot drift apart.
+  const entityFree = discoverEntityFreeBlockers(repository);
+  assert.equal(entityFree.transcribeAudioWithWhisper, 'external_secret');
+  assert.equal(entityFree.mergePDFs, 'files');
+  // And the four it actually found are in the buckets that describe them.
+  const report = checkCoverage(
+    discoverCapabilities(repository),
+    parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
+    discoverEvidence(repository),
+  );
+  for (const [name, blocker] of [['mergePDFs', 'files'], ['reorderDeletePDFPages', 'files'],
+    ['generatePatientHandout', 'core_integration'],
+    ['transcribeAudioWithWhisper', 'external_secret']]) {
+    assert.ok(report.port_blockers[blocker].includes(name),
+      `${name} should wait on ${blocker}`);
+    assert.equal(report.port_blockers.records_schema.includes(name), false);
   }
 });
 
@@ -687,7 +727,11 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // Then `syncCMSRegulations`, the first whose write is a RECORD contract
   // rather than a trail append — and the first to check a MODEL's answers
   // against the columns' own constraints before storing them.
-  // → 29 → 28 → 27, and 11 → 56 written.
+  // Then a SECOND correction rather than a port: four capabilities whose ONLY
+  // entity is one of D25's three retired log tables were counted against the
+  // record store, when the trail IS their record half and what they actually
+  // wait on is the file layer, `Core.SendEmail` or a third-party key.
+  // → 29 → 28 → 27 → 23, and 11 → 56 written.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -695,8 +739,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 8, patient_access_model: 0,
-    records_schema: 27, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
-    external_secret: 1, none: 56 });
+    records_schema: 23, files: 6, ported_function: 1, core_integration: 2, pdf_rendering: 0,
+    external_secret: 2, none: 56 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -738,13 +782,13 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Twenty-seven. That is how many of the hundred can be written today, and the
+  // Twenty-three. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 27);
+  assert.equal(report.port_blockers.records_schema.length, 23);
   // The thirty-two that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
@@ -798,12 +842,18 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // `Core.SendEmail`, which no entity family can be the replacement for. The
   // function-side ceiling caught that, and `SendEmail` is not in the runtime's
   // brokered set, so it is a real blocker rather than a bookkeeping artefact.
-  assert.deepEqual(report.port_blockers.core_integration, ['sendWelcomeEmail']);
+  // `generatePatientHandout` joins it by the refinement above: its only entity
+  // is `SystemLog`, so what it waits on is the send rather than the store.
+  assert.deepEqual(report.port_blockers.core_integration,
+    ['generatePatientHandout', 'sendWelcomeEmail']);
   // Named, because porting one of these verbatim would carry Base44's storage
   // host into the service, and the `cmfile:` handles that replace those URLs do
   // not exist yet. They wait on the file layer, not on the runtime.
+  // `mergePDFs` and `reorderDeletePDFPages` join them by the refinement: each
+  // touches `UserActivity` and nothing else, so the record store is not what
+  // either is waiting for.
   assert.deepEqual(report.port_blockers.files, ['extractClinicalDocument', 'extractPatientDataFromDocument',
-    'generateDynamicCoverSheet', 'splitReferralPDF']);
+    'generateDynamicCoverSheet', 'mergePDFs', 'reorderDeletePDFPages', 'splitReferralPDF']);
   assert.deepEqual(report.port_blockers.none,
     ['acceptAiContentAgreement', 'analyzeReferral', 'analyzeReferralIntake',
       'analyzeReferralPriority',
@@ -842,7 +892,11 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // All three emptied this bucket once the service adopted a PDF library and a
   // call-sequence parity test; nothing is waiting on a rendering decision now.
   assert.deepEqual(report.port_blockers.pdf_rendering, []);
-  assert.deepEqual(report.port_blockers.external_secret, ['transcribeAndGenerateSOAPNote']);
+  // `transcribeAudioWithWhisper` joins it the same way: its only entity is
+  // `UserActivity`, and it reads `OPENAI_API_KEY` and calls the provider
+  // directly rather than through the brokered runtime.
+  assert.deepEqual(report.port_blockers.external_secret,
+    ['transcribeAndGenerateSOAPNote', 'transcribeAudioWithWhisper']);
   // The sum is every function dispositioned `port`, so nothing falls out of the
   // queue by being unclassifiable.
   assert.equal(Object.values(counts).reduce((total, value) => total + value, 0), report.families.functions.counts.port);
