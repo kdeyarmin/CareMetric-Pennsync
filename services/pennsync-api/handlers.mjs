@@ -343,6 +343,24 @@ export const HANDLERS = Object.freeze({
       return contract('appendPatientNoteHistory', params);
     },
   }),
+  manageAgencyMembership: Object.freeze({
+    // One Base44 capability with six actions reaching two contracts, five of
+    // them served. `provision` is NOT filtered out here: it reaches the
+    // contract and is refused by name, because a caller asking for it is
+    // asking for something real in the original and deserves to be told which
+    // it is rather than "unknown action".
+    handle({ params, contract }) {
+      if (!isObject(params)) fail(400, 'INVALID_PARAMS');
+      if (params.action === 'inspect') {
+        exactObject(params, ['action', 'target_user_id'], 'INVALID_PARAMS');
+        return contract('inspectAgencyMembership', params);
+      }
+      exactObject(params,
+        ['action', 'target_user_id', 'tenant_role', 'reason', 'expected_version'],
+        'INVALID_PARAMS');
+      return contract('transitionAgencyMembership', params);
+    },
+  }),
   listMyTenantMemberships: Object.freeze({
     // The originals take an empty body; so does this.
     handle({ params, contract }) {

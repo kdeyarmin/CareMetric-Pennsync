@@ -512,6 +512,56 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_ASSIGNMENT_REQUEST_CONFLICT',
     ]),
   }),
+  // The membership lifecycle, and the second PARTIAL port. Five of the
+  // original's six actions: `provision` is refused by name because its own
+  // guard reserves it to the protected platform owner D14 and D22 removed, so
+  // it has no performer left — the same shape as D31's `set_ai_tags`.
+  inspectAgencyMembership: Object.freeze({
+    rpc: 'pennsync_contract_membership_inspect',
+    params: Object.freeze(['target_user_id']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId, p_target_user_id: args.target_user_id ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_MEMBERSHIP_FORBIDDEN',
+      'PENNSYNC_MEMBERSHIP_SELF',
+      'PENNSYNC_MEMBERSHIP_SUBJECT_INVALID',
+      'PENNSYNC_MEMBERSHIP_NOT_FOUND',
+      'PENNSYNC_MEMBERSHIP_PRIVILEGED',
+    ]),
+  }),
+  transitionAgencyMembership: Object.freeze({
+    rpc: 'pennsync_contract_membership_transition',
+    params: Object.freeze(['target_user_id', 'action', 'tenant_role', 'reason', 'expected_version']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_target_user_id: args.target_user_id ?? null,
+      p_action: args.action ?? null,
+      p_tenant_role: args.tenant_role === undefined ? null : args.tenant_role,
+      p_reason: args.reason === undefined ? null : args.reason,
+      p_expected_version: args.expected_version === undefined ? null : args.expected_version,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_MEMBERSHIP_FORBIDDEN',
+      'PENNSYNC_MEMBERSHIP_SELF',
+      'PENNSYNC_MEMBERSHIP_SUBJECT_INVALID',
+      'PENNSYNC_MEMBERSHIP_ACTION_UNPORTED',
+      'PENNSYNC_MEMBERSHIP_ACTION_INVALID',
+      'PENNSYNC_MEMBERSHIP_ROLE_INVALID',
+      'PENNSYNC_MEMBERSHIP_ROLE_UNEXPECTED',
+      'PENNSYNC_MEMBERSHIP_ROLE_UNCHANGED',
+      'PENNSYNC_MEMBERSHIP_REASON_REQUIRED',
+      'PENNSYNC_MEMBERSHIP_VERSION_REQUIRED',
+      'PENNSYNC_MEMBERSHIP_VERSION_EXHAUSTED',
+      'PENNSYNC_MEMBERSHIP_NOT_FOUND',
+      'PENNSYNC_MEMBERSHIP_PRIVILEGED',
+      'PENNSYNC_MEMBERSHIP_AGENCY_UNAVAILABLE',
+      'PENNSYNC_MEMBERSHIP_TARGET_DEACTIVATED',
+      'PENNSYNC_MEMBERSHIP_STALE',
+      'PENNSYNC_MEMBERSHIP_REVOKED',
+      'PENNSYNC_MEMBERSHIP_TRANSITION',
+    ]),
+  }),
   // Which agency the caller is acting in, and which they could choose. The
   // first pair whose originals read nothing the record store owns: both read
   // `AgencyMembership` and `Agency`, and the authority store already carries

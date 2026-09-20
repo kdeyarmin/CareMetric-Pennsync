@@ -17,7 +17,7 @@ const expected = {
   'pennsync_private.enrollment_receipt': 'app_id,plan_sha256,projection_sha256,identity_count,agency_count,membership_count,database_name,operator_role,created_at',
   'pennsync_private.identity_map': 'app_id,auth_user_id,base44_user_id,expected_email,source_evidence_sha256,verified_at,enabled,revoked_at,version',
   'pennsync_private.known_app': 'app_id,label',
-  'pennsync_private.membership': 'app_id,id,agency_id,auth_user_id,base44_user_id,membership_key,tenant_role,status,version,revoked_at,revoked_by',
+  'pennsync_private.membership': 'app_id,id,agency_id,auth_user_id,base44_user_id,membership_key,tenant_role,status,version,revoked_at,revoked_by,last_action,last_reason,activated_at,suspended_at',
   'pennsync_private.mutation_receipt': 'app_id,actor_id,request_id,payload,result,created_at',
   'pennsync_private.patient': 'app_id,id,agency_id,display_name,synthetic,version,status',
   'pennsync_private.patient_context': 'app_id,agency_id,patient_id,version,provenance_kind,provenance_sha256,data,data_sha256,created_at',

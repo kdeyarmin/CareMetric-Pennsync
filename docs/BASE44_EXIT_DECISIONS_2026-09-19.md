@@ -2323,3 +2323,81 @@ would let the caller carry on in their other agencies, which is more than the
 originals allow, not less.
 
 Port queue: `records_schema` 61 → 59, written 26 → 28.
+
+## D35 — The membership lifecycle, and the second capability an action outlived its performer
+
+**Decision.** Port `manageAgencyMembership` as a PARTIAL port serving five of
+its six actions — `inspect`, `activate`, `suspend`, `revoke` and `change_role`.
+Extend `pennsync_private.membership` with `pending` and `suspended`, a
+transition trail and the coherence the original re-derives per read. Refuse
+`provision` by name.
+
+**`provision` has no performer left.** Its guard is not a difficulty, it is a
+tier:
+
+> `if (input.action === 'provision') { throw new PublicError(403, 'Only the
+> protected platform owner may provision memberships'); }`
+
+reached for every caller who is not the protected platform owner. D14 and D22
+removed that tier, so nobody can perform it. This is D31's `set_ai_tags`
+exactly: an action a port cannot serve because the only role that could ever
+perform it no longer exists. The same rule takes a slice out of the five that
+ARE served — the original reserves an `agency_admin` target, or a request for
+that role, to the platform owner too, so an agency administrator manages their
+subordinates and can neither make nor unmake another administrator. **Dropping
+the platform tier without keeping that rule would have widened the capability
+rather than narrowing it**, which is why there is a test for it rather than a
+comment.
+
+In this deployment a membership is created by `tools-pennsync-enroll.mjs` or by
+an operator. That is an operator path, not a caller-facing capability, and
+saying so is the honest answer rather than inventing a performer.
+
+**Two statuses, and why adding them closes rather than opens.** Twenty-seven
+places in this store's SQL read a membership and every one filters
+`status = 'active'`. A status that is not `active` is therefore admitted by
+none of them — `caller_agencies`, `caller_tenant_role`, `caller_roster_ids`,
+the staging context and D34's selector all close. This is the same property
+that made D33's `suspended` safe on `chart_assignment`, and it is a property of
+the READERS: it is worth re-checking rather than inheriting if one ever stops
+filtering. The test asserts the closure through D34's selector, the way a
+caller would notice it, rather than through the row.
+
+`activated_at` carries a default, which is D33's lesson applied before it bit
+rather than after. Every existing writer inserts an ACTIVE row and names none
+of the new columns; on `chart_assignment` the equivalent column was merely
+nullable and the coherence check then refused every grant those writers made.
+
+**A defect the test found, and the substitution it forced.** The original's
+`targetCanReceiveMembership` reads the carried `User.is_active`. Reading that
+row here means reading it under `user_read`, whose predicate is
+`id in caller_roster_ids()` — and that helper admits only ACTIVE memberships.
+So a SUSPENDED colleague's profile is invisible, the check failed closed, and
+**no suspended member could ever be reactivated**. The check fired exactly when
+it must not.
+
+The fix is a substitution rather than a workaround, and the store had the right
+column already: `identity_map.enabled`, with `revoked_at` and a coherence check
+beside it. It is visible to the definer regardless of any policy, and it is
+authoritative where a carried `is_active` is a self-editable label D23 says must
+never authorize. Its own trigger makes revocation **one-way** — any update
+setting `enabled` back to true or clearing `revoked_at` is refused — which is
+the strongest argument for the substitution and is what the test asserts. This
+is the move `20260920160000_contract_alert.sql` made when it replaced
+`patientBelongsToCaller` with the policies.
+
+**One narrowing that is the helper's doing rather than a choice.** A SUSPENDED
+agency refuses every action here, where the original refuses only the enabling
+ones: `caller_tenant_role` admits a membership only while its agency is
+`active` or `trial`, so the caller has no standing at all and is refused before
+the agency is looked at. Harmless — a suspended agency already denies every
+capability through `caller_agencies()`, so there is no access left to withdraw.
+The `AGENCY_UNAVAILABLE` check is kept as the second line rather than deleted,
+because it is what would refuse an enabling transition if that helper ever
+stopped gating on agency status.
+
+The reconcile-after-write in the original — write, read back, compare field by
+field, "Provisioned membership could not be reconciled" — is the same
+no-transaction machinery D34 described, and goes for the same reason.
+
+Port queue: `records_schema` 59 → 58, written 28 → 29.

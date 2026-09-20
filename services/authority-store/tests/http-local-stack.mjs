@@ -37,6 +37,9 @@ export const MIGRATION_CODES = Object.freeze([
   // lifecycle columns, because it would otherwise create functions that fail on
   // their first call rather than at migration time.
   'PENNSYNC_ASSIGNMENT_LIFECYCLE_REQUIRED',
+  // D35's, for the same reason: a contract that would create functions failing
+  // on their first call refuses to apply instead.
+  'PENNSYNC_MEMBERSHIP_LIFECYCLE_REQUIRED',
 ]);
 let pinnedDaemon;
 const localDaemon = value => typeof value === 'string' &&

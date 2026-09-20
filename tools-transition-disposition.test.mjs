@@ -589,8 +589,12 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // record store owns at all — `AgencyMembership` and `Agency` are the
   // authority store's own model, so what they needed was a contract over
   // `pennsync_private.membership` rather than a table in `pennsync_records`.
-  // 76 → 74 → 72 → 70 → 69 → 68 → 67 → 66 → 64 → 62 → 61 → 59, and 11 → 28
-  // written.
+  // Then `manageAgencyMembership`, the write half of the same model and the
+  // SECOND partial port: five of its six actions, with `provision` refused by
+  // name because its own guard reserves it to the platform owner D14 and D22
+  // removed.
+  // 76 → 74 → 72 → 70 → 69 → 68 → 67 → 66 → 64 → 62 → 61 → 59 → 58, and
+  // 11 → 29 written.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -598,8 +602,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 10, patient_access_model: 0,
-    records_schema: 59, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
-    external_secret: 1, none: 28 });
+    records_schema: 58, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
+    external_secret: 1, none: 29 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -636,14 +640,14 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'calculateDataQualityScores', 'enforceDataCompleteness',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Fifty-nine. That is how many of the hundred can be written today, and the
+  // Fifty-eight. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 59);
-  // The seventeen that left it are the ported capabilities that touch clinical rows
+  assert.equal(report.port_blockers.records_schema.length, 58);
+  // The eighteen that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
   // carries the SmartNote save — so they are also the proof that the D19
@@ -663,7 +667,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
     'updateAuthorizedPatient', 'createAuthorizedVisit', 'updateAuthorizedVisit',
     'getScopedPatientAlerts', 'updateScopedPatientAlert',
     'appendPatientNoteHistory', 'getAuthorizedPatientNoteHistory',
-    'managePatientCareTeamAssignment', 'getMyTenantContext', 'listMyTenantMemberships']) {
+    'managePatientCareTeamAssignment', 'getMyTenantContext', 'listMyTenantMemberships',
+    'manageAgencyMembership']) {
     assert.ok(report.port_blockers.none.includes(name), `${name} is ported`);
     assert.ok(!report.port_blockers.records_schema.includes(name), name);
   }
@@ -706,7 +711,7 @@ test('the port queue is work that cannot start yet, and says why', () => {
       'getAuthorizedPatientNoteHistory', 'getAuthorizedVisit',
       'getMyTenantContext', 'getScopedPatientAlerts',
       'listAuthorizedDocuments', 'listAuthorizedPatients', 'listAuthorizedVisits',
-      'listMyTenantMemberships', 'listPolicyLibrary',
+      'listMyTenantMemberships', 'listPolicyLibrary', 'manageAgencyMembership',
       'managePatientCareTeamAssignment', 'matchPatientWithAI', 'updateAuthorizedPatient',
       'updateAuthorizedVisit', 'updateScopedPatientAlert', 'validatePatientData'],
     'the set of written ports changed');
