@@ -3113,3 +3113,58 @@ paused is what the evidence supports today.
 
 Port queue: `records_schema` 40 → 36, `entity_authorization` 10 → 8, written
 unchanged at 47.
+
+## D48 — The envelope becomes a facility, and a preference moves to the only session that can read it
+
+**Decision.** Port `createNotification`, move the authority envelope into
+`notification_mint` — a facility both it and the incident fan-out call — and
+honour the recipient's in-app preference in the reader rather than the writer.
+
+**One place left to get it wrong.** D45 found that the incident fan-out stamped
+three of the six authority columns its reader filters on, so every urgent alert
+it wrote was addressed to nobody while both contracts' own suites passed.
+Porting the canonical writer would have inlined that envelope a second time,
+which is the same bet again. `notification_mint` is now the only thing in the
+store that inserts a notification row — a FACILITY rather than an endpoint, the
+shape `contract_activity_append` has under D37, and for the same reason: a
+contract that must write a notification inside its own transaction cannot make a
+second round trip. A test reads the four migrations and fails if any of them but
+the facility contains an `insert into … notification`. It applies BEFORE both
+callers on purpose: a plpgsql body resolves its calls at run time, so a later
+migration could have supplied it and a half-applied store would then have a
+fan-out that fails on its first call instead of at migration time.
+
+`pennsync_private.agency_roster` moves there too, and is the general form of
+three helpers written one at a time as each port needed one: `agency_colleague`
+(by address), `agency_member` (by id) and `agency_admin_recipients` (by role).
+The last is deleted here; the other two should collapse into it the next time
+either changes.
+
+**A preference the sender cannot read.** The original reads the recipient's
+`NotificationPreference` to decide whether to create an in-app row at all. In
+this store `notification_preference_read` is `user_email = caller_email()`, and
+the table is force-RLS so no role escapes it — the policy that makes a
+preference the RECIPIENT's own makes it unreadable by the sender. The reader is
+the only session that can ask, so `contract_notification_list` and
+`contract_notification_mark_all` honour it. That is also the better place: the
+preference that decides what somebody sees is the one they hold now rather than
+the one they held when it was sent, and the row is retained either way, so what
+was sent stays answerable. **Where a check belongs is decided by which session
+can evaluate it, not by which one the original put it in.**
+
+**The email half is not ported**, because `Core.SendEmail` is not in the
+runtime's brokered set, and everything that gated the EMAIL goes with it: quiet
+hours, `digest_mode` and `email_notifications_enabled` are not evaluated,
+because there is nothing for them to gate. The original's own fix to that
+default is recorded in the contract header so it is not lost when the send
+returns: *"a user who never opened Notification Settings got NO emails at all,
+including priority:'critical' patient alerts."*
+
+**"Has the recipient charted on this patient" becomes "does the recipient open
+this chart".** The original answers it by filtering `Visit` for a row the
+recipient created, which is an act rather than an authority; D24 made care-team
+membership the authority for chart access. `pennsync_private.member_opens_chart`
+asks that, and it has to be a helper rather than a policy because the question
+is about the RECIPIENT and a policy binds the caller.
+
+Port queue: `records_schema` 36 → 35, written 47 → 48.

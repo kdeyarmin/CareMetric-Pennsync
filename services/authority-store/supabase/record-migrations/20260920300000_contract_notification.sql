@@ -157,6 +157,27 @@ create function "pennsync_records".notification_row(r "pennsync_records"."notifi
     'version', r."version")
 $row$;
 
+/*
+ * A preference this migration cannot yet read.
+ *
+ * The recipient's in-app preference is honoured by the READER, because
+ * `notification_preference_read` is `user_email = caller_email()` and the
+ * SENDER therefore cannot ask. The function that reads it arrives with the
+ * create contract; until then this answers false, which is what an absent
+ * preference row means anyway.
+ */
+create function "pennsync_records".notification_in_app_off_safe(p_type text)
+  returns boolean language plpgsql stable security definer set search_path = '' as $safe$
+declare v_off boolean;
+begin
+  if to_regprocedure('pennsync_records.notification_in_app_off(text)') is null then
+    return false;
+  end if;
+  execute 'select "pennsync_records".notification_in_app_off($1)'
+    into v_off using p_type;
+  return coalesce(v_off, false);
+end $safe$;
+
 create function "pennsync_records".contract_notification_list(p_agency text)
   returns jsonb language plpgsql security definer set search_path = '' as $contract$
 declare
@@ -182,6 +203,16 @@ begin
       and n."recipient_membership_version" = v_member.membership_version
       and n."authority_version" = 1 and n."authority_state" = 'active'
       and n."dismissed" is not true
+      -- The recipient's own in-app preference, honoured HERE because the
+      -- sender cannot read it: `notification_preference_read` is
+      -- `user_email = caller_email()`, so only this session can ask. It is
+      -- also the more correct place — the preference that decides what
+      -- somebody sees is the one they hold now, not the one they held when it
+      -- was sent — and the row is retained either way, so what was sent stays
+      -- answerable. Added by the create contract's migration; until that
+      -- applies the function does not exist and every row is shown, which is
+      -- the same answer an absent preference row gives.
+      and not "pennsync_records".notification_in_app_off_safe(n."type")
     order by n."created_date" desc, n."id"
     limit 101
   ) n;
@@ -292,6 +323,7 @@ begin
       and n."recipient_membership_version" = v_member.membership_version
       and n."authority_version" = 1 and n."authority_state" = 'active'
       and n."dismissed" is not true and n."is_read" is not true
+      and not "pennsync_records".notification_in_app_off_safe(n."type")
     returning 1)
   select count(*)::integer into v_marked from marked;
   return jsonb_build_object('success', true, 'action', 'mark_all_read',
@@ -301,6 +333,7 @@ end $contract$;
 reset role;
 
 revoke all on function
+  "pennsync_records".notification_in_app_off_safe(text),
   "pennsync_records".notification_action_url(text),
   "pennsync_records".notification_text(text,integer),
   "pennsync_records".notification_sound("pennsync_records"."notification"),

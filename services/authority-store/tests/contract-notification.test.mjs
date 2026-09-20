@@ -31,6 +31,8 @@ const TIME_OFF = 'services/authority-store/supabase/record-migrations/'
   + '20260920230000_contract_time_off.sql';
 const INCIDENT = 'services/authority-store/supabase/record-migrations/'
   + '20260920290000_contract_incident.sql';
+const MINT = 'services/authority-store/supabase/record-migrations/'
+  + '20260920285000_notification_mint.sql';
 const NOTIFICATION = 'services/authority-store/supabase/record-migrations/'
   + '20260920300000_contract_notification.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
@@ -82,7 +84,7 @@ before(async () => {
   // `caller_membership` arrives with the note-history contract (D34); the
   // incident contract is here for the cross-contract test at the end.
   for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, AUDIT,
-    NOTE_HISTORY, TIME_OFF, INCIDENT, NOTIFICATION]) {
+    NOTE_HISTORY, TIME_OFF, MINT, INCIDENT, NOTIFICATION]) {
     await db.exec(readFileSync(resolve(repository, file), 'utf8'));
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));

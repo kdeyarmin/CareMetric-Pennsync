@@ -705,6 +705,39 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_FLEET_FIELD_INVALID',
     ]),
   }),
+  // Creating a notification for somebody else: the writer half of D45.
+  //
+  // It mints through `notification_mint`, the facility that owns the authority
+  // envelope and is the only thing in the store that inserts a notification
+  // row — `contract_incident_submit`'s fan-out inlined it until D48, and got
+  // three of its six columns.
+  //
+  // The email half is `Core.SendEmail`, which nothing here brokers, so the
+  // answer says `delivery_paused`. Everything that gated the EMAIL goes with
+  // it: quiet hours, digest mode and the email preference are not evaluated,
+  // because there is nothing for them to gate. The IN-APP preference moves to
+  // the reader, because `notification_preference_read` is
+  // `user_email = caller_email()` and the sender cannot ask.
+  createNotification: Object.freeze({
+    rpc: 'pennsync_contract_notification_create',
+    params: Object.freeze(['notification']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_notification: args.notification === undefined ? null : args.notification,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_NOTIFICATION_AGENCY_NOT_HELD',
+      'PENNSYNC_NOTIFICATION_INVALID',
+      'PENNSYNC_NOTIFICATION_FIELD_UNSUPPORTED',
+      'PENNSYNC_NOTIFICATION_REQUIRED',
+      'PENNSYNC_NOTIFICATION_ACTION_URL_INVALID',
+      'PENNSYNC_NOTIFICATION_SUBJECT_INVALID',
+      'PENNSYNC_NOTIFICATION_RECIPIENT_UNKNOWN',
+      'PENNSYNC_NOTIFICATION_TYPE_FORBIDDEN',
+      'PENNSYNC_NOTIFICATION_RECIPIENT_FORBIDDEN',
+      'PENNSYNC_NOTIFICATION_PATIENT_FORBIDDEN',
+    ]),
+  }),
   // A person's own notifications, and the second capability where tenancy is
   // not ownership (D36) — this time the policy says so plainly, because
   // `notification_read` and `notification_update` are agency-WIDE. Every

@@ -426,6 +426,19 @@ export const HANDLERS = Object.freeze({
       return fail(400, 'INVALID_PARAMS');
     },
   }),
+  createNotification: Object.freeze({
+    // The original's flat body, packed. `agency_id` is dropped: every request
+    // to this service names its tenant in the envelope, which is the invariant
+    // D34 settled, so a second copy in the body could only disagree with it.
+    handle({ params, contract }) {
+      exactObject(params, ['agency_id', 'user_email', 'title', 'message', 'type',
+        'priority', 'action_url', 'action_label', 'metadata', 'patient_id'],
+      'INVALID_PARAMS');
+      const { agency_id: named, ...notification } = params;
+      if (named !== undefined && typeof named !== 'string') fail(400, 'INVALID_PARAMS');
+      return contract('createNotification', { notification });
+    },
+  }),
   manageMyNotifications: Object.freeze({
     // The original's one envelope over three actions, and its own rule for
     // which keys each carries: a list and a mark-all name no row, and the two

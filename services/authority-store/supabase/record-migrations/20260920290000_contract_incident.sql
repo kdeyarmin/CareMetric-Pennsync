@@ -53,7 +53,8 @@
 --    that disagrees with the chart is a falsehood in a safety record, and the
 --    caller has already been proved able to open that chart to send the id.
 -- 5. **The urgent-alert fan-out keeps the capability and deletes the
---    reconstruction.** The original selects its recipients by listing 5000
+--    reconstruction**, and mints through `notification_mint` rather than
+--    inlining the authority envelope, which is what D45 caught it doing. The original selects its recipients by listing 5000
 --    `User` rows and comparing `account_type` and `agency_name` — two
 --    self-editable labels — and carries two bug fixes in its own comments for
 --    having got that wrong (admins past the first 200 rows were never
@@ -100,55 +101,13 @@ begin
   if to_regclass('pennsync_records.incident') is null
     or to_regclass('pennsync_records.notification') is null
     or to_regprocedure('pennsync_records.time_off_date(text)') is null
+    or to_regprocedure('pennsync_private.agency_roster(text)') is null
+    or to_regprocedure('pennsync_records.notification_mint(text,text,text,text,integer,'
+      || 'text,text,text,text,text,text,jsonb,text)') is null
     or to_regprocedure('pennsync_records.contract_activity_append(text,text,text,text,jsonb)') is null then
     raise exception using errcode='42501',message='PENNSYNC_ACTIVITY_TRAIL_REQUIRED';
   end if;
 end $$;
-
-/*
- * The agency's administrators, as addresses.
- *
- * SECURITY DEFINER and owned by the migration administrator, like
- * `agency_colleague`: it reads `membership` and `identity_map`, which no
- * tenant role can see. It answers only about an agency the CALLER already
- * holds a membership in, and only with addresses the roster already discloses.
- *
- * This is divergence 5. The original approximates this set by listing 5000
- * `User` rows and comparing `account_type` and `agency_name`; both are
- * self-editable labels, and both of the bugs its comments record are failures
- * of that approximation rather than of the feature.
- */
-create function pennsync_private.agency_admin_recipients(p_agency text)
-  returns table(base44_user_id text, expected_email text,
-    membership_id text, membership_version integer)
-  language plpgsql stable security definer set search_path = '' as $recipients$
-begin
-  if "pennsync_records".caller_tenant_role(p_agency) is null then
-    raise exception using errcode='42501', message='PENNSYNC_INCIDENT_AGENCY_NOT_HELD';
-  end if;
-  return query
-    select m.base44_user_id, im.expected_email, m.id::text, m.version::integer
-    from pennsync_private.membership m
-    join pennsync_private.agency ag on ag.app_id = m.app_id and ag.id = m.agency_id
-    join pennsync_private.identity_map im
-      on im.app_id = m.app_id and im.auth_user_id = m.auth_user_id
-     and im.base44_user_id = m.base44_user_id
-    where m.app_id = pennsync_private.deployment_app_id()
-      and m.agency_id = p_agency and m.status = 'active'
-      and m.tenant_role = 'agency_admin'
-      and ag.status in ('active', 'trial')
-      and im.enabled and im.revoked_at is null
-    order by im.expected_email;
-end $recipients$;
-
-revoke all on function pennsync_private.agency_admin_recipients(text)
-  from public, anon, authenticated, service_role;
--- The same grant `claim_new_chart` and `agency_colleague` make. NEVER pair it
--- with a blanket revoke over this schema: every `pennsync_staging_*` wrapper is
--- an invoker calling an inner function granted to `authenticated`.
-grant usage on schema pennsync_private to "pennsync_records_owner";
-grant execute on function pennsync_private.agency_admin_recipients(text)
-  to "pennsync_records_owner";
 
 do $$
 declare v_admin text := current_user;
@@ -337,32 +296,20 @@ begin
   -- Divergences 5 and 6: the agency's administrators, from membership, with no
   -- patient on the alert.
   --
-  -- The authority envelope is `createNotification`'s and is NOT optional: the
-  -- recipient's own reader filters on all six columns and refuses a row that
-  -- fails the integrity check. A first version of this fan-out stamped three
-  -- of them, so every alert it wrote would have been invisible to the person
-  -- it was for. `contract_notification_list` is the thing that proves it.
+  -- The envelope is `notification_mint`'s, not this contract's. It was inlined
+  -- here and stamped three of the six columns the recipient's own reader
+  -- filters on, so every alert it wrote was addressed to nobody — which is
+  -- what D45 found and why the facility exists.
   if v_alert then
     for v_recipient in
       select r.base44_user_id, r.expected_email, r.membership_id, r.membership_version
-      from pennsync_private.agency_admin_recipients(p_agency) r
+      from pennsync_private.agency_roster(p_agency) r
+      where r.tenant_role = 'agency_admin'
+      order by r.expected_email
     loop
-      insert into "pennsync_records"."notification"
-        ("source_app_id", "id", "agency_id", "dedupe_key", "recipient_user_id",
-         "recipient_membership_id", "recipient_membership_version",
-         "authority_version", "authority_state", "version",
-         "user_email", "title", "message", "type", "priority",
-         "action_url", "action_label", "metadata",
-         "is_read", "read_at", "dismissed", "dismissed_at",
-         "email_sent", "push_sent",
-         "created_by", "created_date", "updated_date")
-      values ("pennsync_records".deployment_app(),
-        pg_catalog.substr(pg_catalog.md5(pg_catalog.gen_random_uuid()::text), 1, 24),
-        p_agency, 'incident:' || v_id || ':' || v_recipient.expected_email,
-        v_recipient.base44_user_id,
+      perform "pennsync_records".notification_mint(
+        p_agency, v_recipient.base44_user_id, v_recipient.expected_email,
         v_recipient.membership_id, v_recipient.membership_version,
-        1, 'active', 1,
-        v_recipient.expected_email,
         'Urgent incident: ' || coalesce(nullif(v_row."incident_name", ''),
           v_row."incident_type"),
         v_email || ' submitted a ' || v_severity || ' severity incident.',
@@ -370,8 +317,7 @@ begin
         case when v_severity = 'high' then 'critical' else 'high' end,
         '/Incidents', 'Review incident',
         jsonb_build_object('incident_id', v_id, 'reported_by', v_email),
-        false, null, false, null, false, false,
-        v_email, v_now, v_now);
+        'incident:' || v_id || ':' || v_recipient.expected_email);
       v_notified := v_notified + 1;
     end loop;
   end if;

@@ -23,6 +23,8 @@ const AUDIT = 'services/authority-store/supabase/record-migrations/'
   + '20260920010000_activity_audit.sql';
 const TIME_OFF = 'services/authority-store/supabase/record-migrations/'
   + '20260920230000_contract_time_off.sql';
+const MINT = 'services/authority-store/supabase/record-migrations/'
+  + '20260920285000_notification_mint.sql';
 const INCIDENT = 'services/authority-store/supabase/record-migrations/'
   + '20260920290000_contract_incident.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
@@ -50,7 +52,8 @@ before(async () => {
   }
   // The time-off migration carries `time_off_date`, which this contract reuses
   // rather than declaring a second date parser.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, AUDIT, TIME_OFF, INCIDENT]) {
+  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, AUDIT, TIME_OFF,
+    MINT, INCIDENT]) {
     await db.exec(readFileSync(resolve(repository, file), 'utf8'));
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
