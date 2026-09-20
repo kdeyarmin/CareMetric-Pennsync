@@ -577,8 +577,9 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // followed on the same machinery. Then D28 found what only a WRITE could
   // show and `createAuthorizedPatient` followed it.
   // Then `updateAuthorizedPatient`, the first ported MUTATION, on the same
-  // fenced-declaration machinery the reads use.
-  // 76 → 74 → 72 → 70 → 69 → 68, and 11 → 19 written.
+  // fenced-declaration machinery the reads use, and `createAuthorizedVisit`
+  // after it.
+  // 76 → 74 → 72 → 70 → 69 → 68 → 67, and 11 → 20 written.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -586,8 +587,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 10, patient_access_model: 0,
-    records_schema: 68, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
-    external_secret: 1, none: 19 });
+    records_schema: 67, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
+    external_secret: 1, none: 20 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -624,23 +625,24 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'calculateDataQualityScores', 'enforceDataCompleteness',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Sixty-eight. That is how many of the hundred can be written today, and the
+  // Sixty-seven. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 68);
-  // The eight that left it are the ported capabilities that touch clinical
+  assert.equal(report.port_blockers.records_schema.length, 67);
+  // The nine that left it are the ported capabilities that touch clinical
   // rows — D26's patient pair, then the visit and document pairs on the same
-  // machinery, then the first WRITE and the first MUTATION — so they are also
-  // the proof that the D19 pattern carries PHI and not only configuration. The
+  // machinery, then the first WRITE, the first MUTATION, and the first write
+  // to a second entity family — so they are also the proof that the D19
+  // pattern carries PHI and not only configuration. The
   // document pair additionally shows that `files` was never the blocker there:
   // no purpose discloses a locator.
   for (const name of ['listAuthorizedPatients', 'getAuthorizedPatient',
     'listAuthorizedVisits', 'getAuthorizedVisit',
     'listAuthorizedDocuments', 'getAuthorizedDocument', 'createAuthorizedPatient',
-    'updateAuthorizedPatient']) {
+    'updateAuthorizedPatient', 'createAuthorizedVisit']) {
     assert.ok(report.port_blockers.none.includes(name), `${name} is ported`);
     assert.ok(!report.port_blockers.records_schema.includes(name), name);
   }
@@ -672,7 +674,7 @@ test('the port queue is work that cannot start yet, and says why', () => {
     'generateDynamicCoverSheet', 'splitReferralPDF']);
   assert.deepEqual(report.port_blockers.none,
     ['analyzeReferral', 'analyzeReferralIntake', 'analyzeReferralPriority',
-      'createAuthorizedPatient', 'generateBagTechniquePDF',
+      'createAuthorizedPatient', 'createAuthorizedVisit', 'generateBagTechniquePDF',
       'generateReferralTasks', 'generateSmartNoteGuide',
       'generateUserGuidePDF', 'generateUserManual',
       'getAuthorizedDocument', 'getAuthorizedPatient', 'getAuthorizedVisit',

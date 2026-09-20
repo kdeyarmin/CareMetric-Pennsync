@@ -334,6 +334,19 @@ create function "pennsync_records"."visit_exact_purpose_row"(
     else null end
 $policy$;
 
+-- The fields a client may supply to `createAuthorizedVisit`
+-- (5 of the 9 its `CLIENT_VISIT_FIELDS` declares; the other
+-- 4 are the contract's to decide, and it refuses a payload naming one).
+create function "pennsync_records"."visit_create_writable"(p_field text) returns boolean
+  language sql immutable set search_path = '' as $write$
+  select p_field in ('visit_date', 'visit_time', 'visit_type', 'start_time', 'end_time')
+$write$;
+
+create function "pennsync_records"."visit_create_reserved"(p_field text) returns boolean
+  language sql immutable set search_path = '' as $write$
+  select p_field in ('agency_id', 'client_request_id', 'patient_id', 'status')
+$write$;
+
 reset role;
 
 -- No caller role may ask a policy anything. The contracts are the only way in.
@@ -343,7 +356,9 @@ revoke all on function "pennsync_records"."visit_list_purpose_known"(text),
   "pennsync_records"."visit_list_purpose_row"(text,"pennsync_records"."visit"),
   "pennsync_records"."visit_exact_purpose_known"(text),
   "pennsync_records"."visit_exact_purpose_admits"(text,text),
-  "pennsync_records"."visit_exact_purpose_row"(text,"pennsync_records"."visit")
+  "pennsync_records"."visit_exact_purpose_row"(text,"pennsync_records"."visit"),
+  "pennsync_records"."visit_create_writable"(text),
+  "pennsync_records"."visit_create_reserved"(text)
   from public, anon, authenticated, service_role;
 
 commit;

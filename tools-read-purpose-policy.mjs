@@ -157,6 +157,17 @@ export const WRITE_POLICIES = Object.freeze([
     prefix: 'patient_create', constant: 'PATIENT_CREATE',
     reserved: Object.freeze(['agency_id', 'client_request_id', 'status']),
   }),
+  Object.freeze({
+    key: 'visit_create', domain: 'visit', table: 'visit',
+    original: 'base44/functions/createAuthorizedVisit/entry.ts',
+    declaration: 'CLIENT_VISIT_FIELDS',
+    prefix: 'visit_create', constant: 'VISIT_CREATE',
+    // Four of the nine. `patient_id` joins the usual three because a visit
+    // names the chart it belongs to, and the chart is what the contract is
+    // authorized against — so it is a parameter rather than a payload field,
+    // and a payload naming it is refused like the other three.
+    reserved: Object.freeze(['agency_id', 'client_request_id', 'patient_id', 'status']),
+  }),
 ]);
 /**
  * The action policies, for the capabilities that MUTATE a row.

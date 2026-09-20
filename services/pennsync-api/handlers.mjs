@@ -286,6 +286,17 @@ export const HANDLERS = Object.freeze({
       return contract('updateAuthorizedPatient', params);
     },
   }),
+  createAuthorizedVisit: Object.freeze({
+    // Scheduling input and nothing else. Which fields a client may supply is
+    // the contract's, checked in SQL against a list extracted from the
+    // original, and so is who may schedule against which chart — so this
+    // handler checks the envelope and carries no copy of either.
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'client_request_id', 'visit'], 'INVALID_PARAMS');
+      if (!isObject(params.visit)) fail(400, 'INVALID_PARAMS');
+      return contract('createAuthorizedVisit', params);
+    },
+  }),
   generateBagTechniquePDF: Object.freeze({
     binary: true,
     handle({ params, config }) {

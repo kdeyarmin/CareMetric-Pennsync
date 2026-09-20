@@ -218,6 +218,11 @@ export const DOCUMENT_EXACT_PURPOSE_POLICY = Object.freeze({
 export const PATIENT_CREATE_WRITABLE = Object.freeze(["first_name","middle_name","last_name","date_of_birth","medical_record_number","address","phone","email","payor","emergency_contact_name","emergency_contact_phone","emergency_contact_relationship","physician_name","physician_phone","physician_email","caregiver_name","caregiver_email","caregiver_phone","primary_diagnosis","secondary_diagnoses","chronic_conditions","past_surgeries","family_medical_history","social_determinants","allergies","current_medications","past_medical_history","past_hospitalizations","baseline_vitals","functional_status","social_history","mental_health","pain_management","wounds","advance_directives","insurance_primary","insurance_secondary","admission_date","admission_source","care_type","validation_overrides","clinical_notes","goals_of_care"]);
 export const PATIENT_CREATE_RESERVED = Object.freeze(["agency_id","client_request_id","status"]);
 //
+// The fields a client may supply to `createAuthorizedVisit`, and the
+// ones the contract decides instead. Extracted from `CLIENT_VISIT_FIELDS`.
+export const VISIT_CREATE_WRITABLE = Object.freeze(["visit_date","visit_time","visit_type","start_time","end_time"]);
+export const VISIT_CREATE_RESERVED = Object.freeze(["agency_id","client_request_id","patient_id","status"]);
+//
 // The workflow actions `updateAuthorizedPatient` accepts, from its own
 // `ACTION_FIELD_NAMES` and `ACTION_ROLE_NAMES`. An action decides which fields it
 // may touch and which tenant roles may perform it; the field sets are

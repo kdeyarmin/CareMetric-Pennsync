@@ -283,6 +283,39 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_PATIENT_MRN_TAKEN',
     ]),
   }),
+  // Scheduling a visit. `patient_id` is a parameter rather than a payload
+  // field because it is what the authorization is about; the five fields a
+  // client may supply are the contract's, extracted in SQL from the original's
+  // own `CLIENT_VISIT_FIELDS`. `client_request_id` is optional here, unlike
+  // the patient create's: the original accepts a visit without one and simply
+  // does not dedupe it.
+  createAuthorizedVisit: Object.freeze({
+    rpc: 'pennsync_contract_visit_create',
+    params: Object.freeze(['patient_id', 'client_request_id', 'visit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_client_request_id: args.client_request_id === undefined ? null : args.client_request_id,
+      p_visit: args.visit === undefined ? null : args.visit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_VISIT_AGENCY_NOT_HELD',
+      'PENNSYNC_VISIT_FORBIDDEN',
+      'PENNSYNC_VISIT_PATIENT_INVALID',
+      'PENNSYNC_VISIT_REQUEST_ID_INVALID',
+      'PENNSYNC_VISIT_PAYLOAD_INVALID',
+      'PENNSYNC_VISIT_FIELD_RESERVED',
+      'PENNSYNC_VISIT_FIELD_UNKNOWN',
+      'PENNSYNC_VISIT_FIELD_INVALID',
+      'PENNSYNC_VISIT_DATE_INVALID',
+      'PENNSYNC_VISIT_TYPE_INVALID',
+      'PENNSYNC_VISIT_PATIENT_NOT_VISIBLE',
+      'PENNSYNC_VISIT_PATIENT_UNAVAILABLE',
+      'PENNSYNC_VISIT_REQUEST_AMBIGUOUS',
+      'PENNSYNC_VISIT_REQUEST_CONFLICT',
+      'PENNSYNC_VISIT_IDENTITY_EXHAUSTED',
+    ]),
+  }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
     params: Object.freeze(['user_id']),
