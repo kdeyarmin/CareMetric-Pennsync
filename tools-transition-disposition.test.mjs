@@ -579,8 +579,9 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // Then `updateAuthorizedPatient`, the first ported MUTATION, on the same
   // fenced-declaration machinery the reads use, the visit pair after it, and
   // the scoped alert pair — the first capabilities whose OWN authorization was
-  // the `assigned_nurses` representation D21 and D24 threw out.
-  // 76 → 74 → 72 → 70 → 69 → 68 → 67 → 66 → 64, and 11 → 23 written.
+  // the `assigned_nurses` representation D21 and D24 threw out — and the note
+  // history pair, whose table D32 made genuinely append-only first.
+  // 76 → 74 → 72 → 70 → 69 → 68 → 67 → 66 → 64 → 62, and 11 → 25 written.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -588,8 +589,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 10, patient_access_model: 0,
-    records_schema: 64, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
-    external_secret: 1, none: 23 });
+    records_schema: 62, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
+    external_secret: 1, none: 25 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -626,14 +627,14 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'calculateDataQualityScores', 'enforceDataCompleteness',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Sixty-four. That is how many of the hundred can be written today, and the
+  // Sixty-two. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 64);
-  // The twelve that left it are the ported capabilities that touch clinical rows
+  assert.equal(report.port_blockers.records_schema.length, 62);
+  // The fourteen that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
   // carries the SmartNote save — so they are also the proof that the D19
@@ -646,7 +647,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
     'listAuthorizedVisits', 'getAuthorizedVisit',
     'listAuthorizedDocuments', 'getAuthorizedDocument', 'createAuthorizedPatient',
     'updateAuthorizedPatient', 'createAuthorizedVisit', 'updateAuthorizedVisit',
-    'getScopedPatientAlerts', 'updateScopedPatientAlert']) {
+    'getScopedPatientAlerts', 'updateScopedPatientAlert',
+    'appendPatientNoteHistory', 'getAuthorizedPatientNoteHistory']) {
     assert.ok(report.port_blockers.none.includes(name), `${name} is ported`);
     assert.ok(!report.port_blockers.records_schema.includes(name), name);
   }
@@ -657,8 +659,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // representation D21 and D24 threw out. `appendPatientNoteHistory` is the
   // same shape and is still waiting.
   assert.deepEqual(report.port_blockers.patient_access_model, []);
-  assert.ok(report.port_blockers.records_schema.includes('appendPatientNoteHistory'));
-  for (const name of ['getScopedPatientAlerts', 'updateScopedPatientAlert']) {
+  for (const name of ['getScopedPatientAlerts', 'updateScopedPatientAlert',
+    'appendPatientNoteHistory', 'getAuthorizedPatientNoteHistory']) {
     assert.ok(report.port_blockers.none.includes(name), `${name} is ported`);
   }
   // Twelve functions were counted against the record store until they were
@@ -681,10 +683,12 @@ test('the port queue is work that cannot start yet, and says why', () => {
     'generateDynamicCoverSheet', 'splitReferralPDF']);
   assert.deepEqual(report.port_blockers.none,
     ['analyzeReferral', 'analyzeReferralIntake', 'analyzeReferralPriority',
+      'appendPatientNoteHistory',
       'createAuthorizedPatient', 'createAuthorizedVisit', 'generateBagTechniquePDF',
       'generateReferralTasks', 'generateSmartNoteGuide',
       'generateUserGuidePDF', 'generateUserManual',
-      'getAuthorizedDocument', 'getAuthorizedPatient', 'getAuthorizedVisit',
+      'getAuthorizedDocument', 'getAuthorizedPatient',
+      'getAuthorizedPatientNoteHistory', 'getAuthorizedVisit',
       'getScopedPatientAlerts',
       'listAuthorizedDocuments', 'listAuthorizedPatients', 'listAuthorizedVisits',
       'listPolicyLibrary', 'matchPatientWithAI', 'updateAuthorizedPatient',

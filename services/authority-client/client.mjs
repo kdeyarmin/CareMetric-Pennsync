@@ -54,6 +54,7 @@ export const API_TARGETS = Object.freeze([
 ]);
 export const PORTED_FUNCTIONS = Object.freeze({
   analyzeReferral: 'json',
+  appendPatientNoteHistory: 'json',
   analyzeReferralIntake: 'json',
   analyzeReferralPriority: 'json',
   generateBagTechniquePDF: 'binary',
@@ -67,6 +68,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   getAuthorizedDocument: 'json',
   getScopedPatientAlerts: 'json',
   getAuthorizedPatient: 'json',
+  getAuthorizedPatientNoteHistory: 'json',
   getAuthorizedVisit: 'json',
   listAgencyRoster: 'json',
   listAuthorizedDocuments: 'json',

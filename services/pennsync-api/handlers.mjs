@@ -327,6 +327,22 @@ export const HANDLERS = Object.freeze({
       return contract('updateScopedPatientAlert', params);
     },
   }),
+  getAuthorizedPatientNoteHistory: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'event_limit', 'offset'], 'INVALID_PARAMS');
+      return contract('getAuthorizedPatientNoteHistory', params);
+    },
+  }),
+  appendPatientNoteHistory: Object.freeze({
+    // Every save appends an event; nothing edits one. The store enforces that
+    // rather than the handler: D32 gives the table no update or delete policy
+    // at all, because its own schema calls the row immutable.
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'mode', 'entry', 'clinical_notes'], 'INVALID_PARAMS');
+      if (!isObject(params.entry)) fail(400, 'INVALID_PARAMS');
+      return contract('appendPatientNoteHistory', params);
+    },
+  }),
   generateBagTechniquePDF: Object.freeze({
     binary: true,
     handle({ params, config }) {
