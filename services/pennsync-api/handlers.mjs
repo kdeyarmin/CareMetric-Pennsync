@@ -343,6 +343,20 @@ export const HANDLERS = Object.freeze({
       return contract('appendPatientNoteHistory', params);
     },
   }),
+  saveVisitPointConfig: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['config'], 'INVALID_PARAMS');
+      if (!isObject(params.config)) fail(400, 'INVALID_PARAMS');
+      return contract('saveVisitPointConfig', params);
+    },
+  }),
+  savePayrollProfile: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['employee_email', 'profile'], 'INVALID_PARAMS');
+      if (!isObject(params.profile)) fail(400, 'INVALID_PARAMS');
+      return contract('savePayrollProfile', params);
+    },
+  }),
   resendInvitation: Object.freeze({
     // Both names reach the one contract: the two originals are the same file.
     async handle({ params, contract }) {

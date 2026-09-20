@@ -2795,3 +2795,50 @@ resend could happen with nothing recording it.
 
 Port queue: `records_schema` 48 → 46, written 39 → 41. One of D40's five
 remains: `monitorClinicalDataForCarePlanUpdates`.
+
+## D43 — The third and fourth originals whose own comments document a derived-scope bug
+
+**Decision.** Port `saveVisitPointConfig` and `savePayrollProfile` as one
+contract file under D40, and delete both of their scope reconstructions.
+
+**They share a shape and a scar.** Each is a single-row-per-scope upsert whose
+scope the original rebuilds in JavaScript, and each records in its own comments
+what that cost:
+
+* `saveVisitPointConfig` reads its agency from `user.agency_name`, lists up to
+  fifty rows matching that string, and when none match scans the fifty newest
+  for an UNSCOPED legacy row. Its comment: *"The removed `length <= 1` arm also
+  adopted a lone TENANT-scoped row, so a platform admin (no agency) saving
+  config silently overwrote that agency's point math."*
+* `savePayrollProfile` looks the target employee up by address in `User`, reads
+  THEIR `agency_name`, compares it to the caller's, filters up to five thousand
+  profiles by address, and then — after creating one — re-reads the table to
+  collapse duplicates it may just have made.
+
+Both tables are agency-tenanted here, so "the caller's row" is what the policy
+returns. The legacy scan, the duplicate collapse and the `agency_name`
+comparison all have nothing left to do. That is now the third and fourth time
+an original's own comments have documented a bug a derived scope caused and a
+policy cannot — after D41's audit and D42's invitation lookup. It is the most
+common defect this migration finds, and the fix is always the same: delete the
+reconstruction, do not port it.
+
+The test seeds the exact shape the point-config comment describes — another
+agency's row with no `agency_name`, which is what that scan looked for — and
+checks it is untouched.
+
+**Two computations kept as the originals compute them**, because they are
+business rules rather than validation: `toNonNegativeNumber` turns anything
+that is not a finite non-negative number into **zero** rather than refusing, so
+a save stays a save; and a hospice profile earns no points while `earns_points`
+must be an explicit `true` to count. The one guard kept verbatim is the
+point-config empty-body refusal, which exists because *"an accidental
+invocation with no body would overwrite the facility's point config with all
+zeros."*
+
+The payroll employee is proved a colleague through `agency_colleague` —
+membership — rather than by comparing the target's self-editable `agency_name`
+to the caller's. A string on a profile deciding who may be paid what is exactly
+what D23 refuses.
+
+Port queue: `records_schema` 46 → 44, written 41 → 43.

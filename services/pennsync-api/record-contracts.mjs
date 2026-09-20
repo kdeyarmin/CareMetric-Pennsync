@@ -538,6 +538,38 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_CREDENTIAL_FORBIDDEN',
     ]),
   }),
+  // Two agency configuration rows, both under D40. Each original is a
+  // single-row-per-scope upsert whose scope it rebuilt in JavaScript, and each
+  // carries a bug in its own comments from having got that wrong (D43).
+  saveVisitPointConfig: Object.freeze({
+    rpc: 'pennsync_contract_visit_points_save',
+    params: Object.freeze(['config']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId, p_config: args.config === undefined ? null : args.config,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_CONFIG_FORBIDDEN',
+      'PENNSYNC_CONFIG_INVALID',
+      'PENNSYNC_CONFIG_EMPTY',
+      'PENNSYNC_CONFIG_FIELD_UNSUPPORTED',
+    ]),
+  }),
+  savePayrollProfile: Object.freeze({
+    rpc: 'pennsync_contract_payroll_profile_save',
+    params: Object.freeze(['employee_email', 'profile']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_employee_email: args.employee_email ?? null,
+      p_profile: args.profile === undefined ? null : args.profile,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_CONFIG_FORBIDDEN',
+      'PENNSYNC_CONFIG_INVALID',
+      'PENNSYNC_CONFIG_FIELD_UNSUPPORTED',
+      'PENNSYNC_CONFIG_EMPLOYEE_REQUIRED',
+      'PENNSYNC_CONFIG_EMPLOYEE_UNKNOWN',
+    ]),
+  }),
   // Resending a staff invitation, third under D40. ONE contract for TWO Base44
   // capabilities: `resendInvitation` and `resendInvitationV2` are
   // byte-identical apart from a comment naming the second the production
