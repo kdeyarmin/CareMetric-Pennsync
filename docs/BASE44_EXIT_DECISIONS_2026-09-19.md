@@ -1742,5 +1742,40 @@ harmful behind, while inserting first and failing on the grant leaves a chart
 its creator cannot open. The two orders are not equally safe and the safe one
 is available.
 
-Until that is built, the port queue is honest about it: the patient write
-family stays unported, and this is the reason rather than a missing schema.
+### The bridge, built
+
+`20260920110000_claim_new_chart.sql` is that path, and it takes an agency and
+nothing else. Three properties are the whole security argument:
+
+- **The identity is minted here, never accepted from the caller.** A caller who
+  could name the id would name a chart that already exists, and the grant would
+  hand them somebody else's record. There is no parameter for one, which is why
+  the first test reads the signature rather than the behaviour.
+- **The seat is the caller's own.** Nothing takes a subject, so this cannot put
+  another person on a care team.
+- **Only the roles that may create a patient may claim a chart** — the
+  original's `PATIENT_CREATE_ROLES`, and no wider. A social worker opens the
+  charts they are assigned to and does not start one.
+
+Minting also makes the collision check exact rather than probabilistic: the
+function reads `pennsync_records.patient` to confirm the id is free, which it
+can do because it is owned by the administrator that owns both schemas'
+helpers, and it refuses after a bounded number of attempts rather than looping.
+What the caller learns is only that a freshly minted id was free, which it
+always is.
+
+It lives in the RECORD migration directory although it creates objects in
+`pennsync_private`, and that is dependency order rather than ownership: it asks
+`pennsync_records.caller_tenant_role`, and every authority migration is applied
+before any record one. It is the first migration there that is a bridge rather
+than a record-store object, which is what a cross-store write looks like.
+
+The test proves the loop the way a caller sees it, through
+`pennsync_contract_patient_get` rather than a privilege no caller holds: claim,
+insert the patient, and the creator opens the chart while a colleague who was
+not granted it does not. It also proves the half that makes the ordering safe —
+a grant with no patient behind it opens nothing.
+
+What is still not built is the create capability itself. The bridge has no
+caller yet, and wiring one before the contract exists would be surface with
+nothing behind it.
