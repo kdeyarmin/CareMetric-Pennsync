@@ -130,6 +130,42 @@ export function isInertFunction(source) {
 }
 
 /**
+ * The SECOND shape a paused handler takes: the refusal is the first statement
+ * of the handler itself, with the real body unreachable below it.
+ *
+ * This needs no heuristics either. `Deno.serve(async (req) => { return ... })`
+ * refuses every caller whatever follows, and nine modules here do exactly that
+ * — six of them carried `port`, and counted as writable work, because the flag
+ * check below could not see a pause that uses no flag. That is the same
+ * failure the flag check was written to fix, in a shape nobody re-measured.
+ *
+ * It errs toward calling a module live the same way: only a handler whose
+ * opening brace is followed by nothing but comments and a `return` counts, so
+ * a guard, an assignment or an `await` first is a live module.
+ */
+export function isRefusingHandler(source) {
+  if (typeof source !== 'string') return false;
+  const serve = source.search(/Deno\.serve\s*\(\s*(?:async\s*)?\(?\s*[A-Za-z_$][\w$]*\s*\)?\s*=>\s*\{/);
+  if (serve === -1) return false;
+  let body = source.slice(source.indexOf('{', serve) + 1);
+  // Comments are not statements. A pause is normally introduced by one saying
+  // why, so skipping them is the whole point rather than a convenience.
+  for (;;) {
+    const trimmed = body.replace(/^\s+/, '');
+    if (trimmed.startsWith('//')) { body = trimmed.slice(trimmed.indexOf('\n') + 1); continue; }
+    if (trimmed.startsWith('/*')) {
+      const close = trimmed.indexOf('*/');
+      if (close === -1) return false;
+      body = trimmed.slice(close + 2);
+      continue;
+    }
+    body = trimmed;
+    break;
+  }
+  return /^return\b/.test(body);
+}
+
+/**
  * A function module is paused when a module-level flag pinned `false` gates its
  * handler with a refusal.
  *
@@ -180,7 +216,7 @@ export function discoverPausedFunctions(repository) {
   for (const name of listDirectories(root)) {
     let source;
     try { source = readFileSync(join(root, name, 'entry.ts'), 'utf8'); } catch { continue; }
-    if (isPausedFunction(source)) paused.push(name);
+    if (isPausedFunction(source) || isRefusingHandler(source)) paused.push(name);
   }
   return paused.sort();
 }

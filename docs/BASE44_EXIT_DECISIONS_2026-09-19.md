@@ -3055,3 +3055,61 @@ rule — D45's lesson a third time. And an assignee is proved through membership
 `user` table has no name column (D38).
 
 Port queue: `records_schema` 41 → 40, written 46 → 47.
+
+## D47 — The paused-at-source check was measuring one shape, and six capabilities hid in the other
+
+**Decision.** Teach the paused-at-source check the unconditional-return shape,
+and carry the six capabilities it finds as `preserved_paused` rather than
+`port`.
+
+**This is the same failure the check was written to fix.** D7 says a paused
+domain is carried paused and ported only after it is turned back on, and
+`isPausedFunction` enforces that by finding a module-level `const FLAG = false`
+whose guard returns a refusal. Its own comment records what that was worth:
+*"seven paused capabilities sat in the port queue as writable work — the inert
+check could not see them, and a reader going by the feature name would not
+either."*
+
+Nine modules here pause with **no flag at all**. The refusal is simply the first
+statement of the handler, with the real body unreachable below it:
+
+```ts
+Deno.serve(async (req) => {
+  // SECURITY CONTAINMENT: keep the legacy bulk Patient writer unreachable
+  // until an immutable tenant-authorized, atomic replacement is available.
+  return Response.json({ error: '…', code: 'legacy_patient_service_writer_paused' }, { status: 503 });
+
+  try { /* four hundred unreachable lines */ }
+});
+```
+
+Six of the nine were dispositioned `port` and counted in the port queue as work
+somebody could start: `calculateDataQualityScores`, `enforceDataCompleteness`,
+`monitorClinicalDataForCarePlanUpdates`, `predictPatientRisks`,
+`predictiveRiskAnalysis` and `processDischargeReport`. Two more were already
+`retire` and one already `preserved_paused`, so only the six move.
+
+`isRefusingHandler` errs toward calling a module live in exactly the way the
+flag check does: only a handler whose opening brace is followed by nothing but
+comments and a `return` counts, so a guard, an assignment or an `await` first is
+a live module, and an expression-bodied handler has no first statement to
+inspect at all — that is `isInertFunction`'s question. Comments are skipped
+because a pause is normally introduced by one saying why.
+
+**The rule this leaves.** A measurement is only as good as the shape it looks
+for, and "we already check for that" is not the same as "we check for every way
+it is written." When a check exists to stop a class of mistake, re-derive the
+shapes from the tree rather than from the check.
+
+**What is NOT decided here.** Every one of the six names the same conditions —
+*immutable tenant authorization and an atomic write broker* — and
+`predictiveRiskAnalysis` names three more precisely: a conditional claim, a
+datastore-enforced unique idempotency key on `PatientAlert`, and an atomic alert
+write. Those are conditions the owned store may now meet, which makes each a
+D33-shaped question rather than a product judgement: D24 gives immutable tenant
+authorization and a contract gives an atomic write. Re-enabling any of them is
+its own decision with its own contract, and none is taken here. Carrying them
+paused is what the evidence supports today.
+
+Port queue: `records_schema` 40 → 36, `entity_authorization` 10 → 8, written
+unchanged at 47.

@@ -9,7 +9,7 @@ import {
   discoverActivityTrail, discoverChartScope,
   discoverCapabilities, discoverEntityPolicies, discoverEvidence, discoverInertFunctions, discoverIntegrations,
   discoverPausedFunctions, discoverPolicylessEntities, discoverPortBlockers, discoverPortedFunctions,
-  entitiesTouched, isInertFunction, isPausedFunction, main, parseManifest,
+  entitiesTouched, isInertFunction, isPausedFunction, isRefusingHandler, main, parseManifest,
 } from './tools-transition-disposition.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -113,6 +113,43 @@ test('a fail-closed endpoint is never declared port, broker or hub', () => {
   }
   // The retired endpoint is retired, not merely paused.
   assert.equal(declared.getPatientContext, 'retire');
+});
+
+test('a handler that refuses from its first statement is paused, whatever gates it', () => {
+  // The second pause shape, and the reason it needed finding: the flag check
+  // looks for `const FLAG = false`, and nine modules here pause with no flag
+  // at all — the refusal is simply the first statement of the handler, with
+  // the real body unreachable below it. Six of them were carried `port` and
+  // counted as writable work until this was measured.
+  const paused = "Deno.serve(async (req) => {\n"
+    + "  // SECURITY CONTAINMENT: keep the legacy bulk Patient writer unreachable.\n"
+    + "  return Response.json({ error: 'paused' }, { status: 503 });\n"
+    + "  try { const base44 = createClientFromRequest(req); } catch {}\n});";
+  assert.equal(isRefusingHandler(paused), true);
+  // A block comment says why just as often as a line comment does.
+  assert.equal(isRefusingHandler('Deno.serve(async (req) => {\n/* paused */\nreturn x;\n});'), true);
+  // And everything else is live. A guard, an assignment or an await FIRST
+  // means some caller gets through, so the shape errs toward calling a module
+  // live exactly as the flag check does.
+  assert.equal(isRefusingHandler('Deno.serve(async (req) => { if (!ok) return deny; return run(); });'), false);
+  assert.equal(isRefusingHandler('Deno.serve(async (req) => { const body = await req.json(); return run(body); });'), false);
+  assert.equal(isRefusingHandler('Deno.serve(async (req) => { await audit(req); return deny; });'), false);
+  // An expression-bodied handler has no first statement to inspect; that is
+  // `isInertFunction`'s question, not this one's.
+  assert.equal(isRefusingHandler('Deno.serve(req => handle(req, client));'), false);
+  assert.equal(isRefusingHandler(null), false);
+  // The six this found are carried paused now, and the gate refuses any of
+  // them being called active again.
+  const declared = parseManifest(readFileSync(
+    resolve(repository, 'tools-transition-disposition.json'), 'utf8')).functions;
+  const paused_names = discoverPausedFunctions(repository);
+  for (const name of ['calculateDataQualityScores', 'enforceDataCompleteness',
+    'monitorClinicalDataForCarePlanUpdates', 'predictPatientRisks',
+    'predictiveRiskAnalysis', 'processDischargeReport']) {
+    assert.ok(paused_names.includes(name), `${name} should be detected as paused`);
+    assert.equal(ACTIVE_DISPOSITIONS.includes(declared[name]), false,
+      `${name} is declared ${declared[name]} but refuses every caller`);
+  }
 });
 
 test('inertness is read from what the module can do, not from its wording', () => {
@@ -622,15 +659,20 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // this reader filters on, so its alerts were addressed to nobody.
   // Then `manageVehicleMaintenance`, TWO of whose eight actions needed no SQL
   // at all: `context` is D34's tenant memberships and `staff` is D22's roster.
-  // 55 → 51 → 50 → 49 → 48 → 46 → 44 → 42 → 41 → 40, and 11 → 47 written.
+  // Then a CORRECTION rather than a port: six capabilities carried `port` and
+  // counted here refuse every caller from the first statement of their own
+  // handler. The paused-at-source check could not see them because it looks
+  // for a `const FLAG = false`, and these use no flag — the same failure that
+  // check was written to fix, in a shape nobody re-measured.
+  // 55 → 51 → 50 → 49 → 48 → 46 → 44 → 42 → 41 → 40 → 36, and 11 → 47 written.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 10, patient_access_model: 0,
-    records_schema: 40, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
+  assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 8, patient_access_model: 0,
+    records_schema: 36, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
     external_secret: 1, none: 47 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
@@ -664,17 +706,22 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // - two that write `MedicareGuideline`, a `global` reference table no tenant
   //   surface may write. That was always true and was never reported, because
   //   the classifier could not tell reading a table from writing one.
+  //
+  // Two of these left it by being MEASURED rather than decided:
+  // `calculateDataQualityScores` and `enforceDataCompleteness` refuse every
+  // caller from the first statement of their handler, so what blocked them was
+  // never a profile write.
   assert.deepEqual(report.port_blockers.entity_authorization,
-    ['autoApproveInvitedUser', 'autoEndDutyDay', 'calculateDataQualityScores', 'enforceDataCompleteness',
+    ['autoApproveInvitedUser', 'autoEndDutyDay',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Forty. That is how many of the hundred can be written today, and the
+  // Thirty-six. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 40);
+  assert.equal(report.port_blockers.records_schema.length, 36);
   // The thirty-two that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
