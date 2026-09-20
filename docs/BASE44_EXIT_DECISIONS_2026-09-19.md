@@ -1830,3 +1830,98 @@ Idempotency is the original's and is not a convenience: a retry of the same
 user so nobody can collide with somebody else's, and the same id with different
 names is a conflict rather than a match — answering the first chart would
 silently discard the second request's data.
+
+## D29 — A workflow action is a policy too, and porting a mutation is what shows what D24 costs
+
+`updateAuthorizedPatient` is the first ported capability that CHANGES a
+clinical row, and it turned out to need one new idea, to confirm one old one,
+and to make two narrowings visible that nothing before it could have shown.
+
+### An action is the same kind of declaration as a purpose
+
+D26 settled that a read's purpose policy is data and is extracted rather than
+retyped. A mutation declares the mirror image and the original fences it the
+same way: `ACTION_FIELD_NAMES` and `ACTION_ROLE_NAMES`, six named workflow
+actions over twenty-nine fields, each deciding both which columns it may touch
+and which tenant roles may perform it. A caller never sends a patch — it names
+an action — which is the whole reason the capability can be ported at all,
+because an arbitrary patch would have no reviewable authorization.
+
+So the same tool carries it, and `tools-read-purpose-policy.mjs` now emits
+`patient_action_known`, `_admits`, `_writes` and `_rank` beside the purpose
+functions. Three checks the read policies did not need:
+
+- **The field sets must be DISJOINT.** The original merges a batch of actions
+  into one write and throws at runtime if two of them assign the same field.
+  That property was asserted and never proved; the generator proves it now and
+  refuses to render without it. It is what lets the contract do one `UPDATE`
+  whose result does not depend on the order the caller sent the actions in.
+- **No action field may be one the original protects.** `PROTECTED_PATIENT_FIELDS`
+  is read as a check and deliberately NOT emitted: the contract accepts only
+  the fields an action declares, so a protected one cannot reach it, and a
+  policy function nothing can call is dead SQL. What the check catches is
+  drift — an action that grew `agency_id` fails the run rather than shipping.
+- **An action's field list must not carry `id`.** A read projection must
+  (D26's rule, so a row can be followed up); a mutation names the row and
+  never rewrites its identity.
+
+The canonical order is emitted too, as `_rank`, because the original declares
+`ACTION_CANONICAL_ORDER` and sorts a submitted batch into it. It is the one
+piece of a policy that exists so an answer does not depend on arrival order.
+
+### The set list is built from the keys that moved, not from a column list
+
+The contract could have enumerated twenty-nine columns in its `UPDATE`. It
+builds the assignment list from the keys the caller actually supplied instead,
+each already proven by `patient_action_writes` against a closed list of
+literals. That is not a convenience. A hand-kept column list has exactly one
+failure mode and it is silent: a field added to an action in the original would
+pass validation and then not be written, and the caller would be told it
+changed. The dynamic list cannot have that bug, and a test writes every one of
+the twenty-nine fields through the contract and reads the column back.
+
+### Two narrowings, and neither is this contract's doing
+
+**`office_staff` can perform no action on any chart.** The original admits that
+role for `edit_demographics` and `edit_insurance`. The action gate here admits
+it too — faithfully, because the gate answers the policy's question — and D24
+answers a different one: `office_staff` opens no chart at all, so the read
+finds nothing and the action never runs. The refusal a caller sees is
+`PENNSYNC_PATIENT_NOT_VISIBLE` rather than a role refusal, which is the honest
+one. Restoring the capability means deciding that `office_staff` opens charts.
+That is a D24 decision and it is not a contract's to make.
+
+The same boundary is why the original's creator-may-edit rule needs no
+translation: D28 puts the creator on the care team at the moment of creation,
+so the two agree for every chart made through the ported path. A chart carried
+in from Base44 whose creator was never assigned is the case that narrows, and
+`tools-pennsync-assignment-backfill.mjs` is what decides it.
+
+### The collision check that cannot see the whole agency
+
+`medical_record_number` is the one field where faithfulness and D24 genuinely
+conflict. The original refuses a number that already belongs to another patient
+in the agency, and it can ask that question because it holds a service role.
+This contract is bound by the same policies as its caller, so it sees only the
+charts they open — and **a collision check that cannot see every chart is not a
+narrower check, it is a broken one**: it would let a duplicate through, which
+is the one thing a port may not do.
+
+So the field is admitted exactly where the check is honest: a caller for whom
+`caller_opens_every_chart` is true gets the original's behaviour, and everybody
+else gets `PENNSYNC_PATIENT_MRN_SCOPE`. A narrowing, recorded, with a real
+consequence — a clinician cannot correct a medical record number.
+
+**What would remove it is a uniqueness constraint on the column, and the entity
+schemas are worth reading before adding one.** `Patient.medical_record_number`
+declares nothing. But four other fields say, in their own descriptions, that
+they would be unique if the datastore allowed it: `Patient.patient_creation_key`
+("Best-effort until Base44 exposes a datastore uniqueness constraint"),
+`Message.message_key`, `PatientCareTeamAssignment.assignment_key` and
+`ScheduledFax`'s idempotency key, each adding that code must detect duplicates
+"because datastore uniqueness is not assumed". We own the datastore now. Those
+four are a decision waiting to be made and the first one matters immediately:
+`createAuthorizedPatient`'s idempotency is a read-then-insert with no
+constraint underneath it, exactly as the original's was. MRN is not among the
+four, so giving it a constraint would be inventing a rule rather than carrying
+one, and that is why this contract narrows instead.

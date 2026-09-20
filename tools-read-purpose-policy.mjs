@@ -158,6 +158,32 @@ export const WRITE_POLICIES = Object.freeze([
     reserved: Object.freeze(['agency_id', 'client_request_id', 'status']),
   }),
 ]);
+/**
+ * The action policies, for the capabilities that MUTATE a row.
+ *
+ * A third shape and the same argument. A mutation capability does not take a
+ * patch; it takes a named workflow action, and the action decides both which
+ * fields it may touch and which tenant roles may perform it. Six actions over
+ * twenty-nine fields for a patient — two declarations the original fences for
+ * exactly the reason the purpose blocks are fenced.
+ *
+ * `fields` and `roles` name the two declarations inside the fence.
+ * `protect` names the list of columns the original never accepts from a
+ * caller. It is read as a CHECK and never emitted: the contract accepts only
+ * the fields an action declares, so a protected one cannot reach it, and a
+ * policy function nothing can call is dead SQL. What it catches is drift — an
+ * action that grew `agency_id` fails the run here rather than shipping.
+ */
+export const ACTION_POLICIES = Object.freeze([
+  Object.freeze({
+    key: 'patient_action', domain: 'patient', table: 'patient',
+    original: 'base44/functions/updateAuthorizedPatient/entry.ts',
+    marker: 'PATIENT MUTATION ACTION POLICY',
+    fields: 'ACTION_FIELD_NAMES', roles: 'ACTION_ROLE_NAMES',
+    protect: 'PROTECTED_PATIENT_FIELDS',
+    prefix: 'patient_action', constant: 'PATIENT_ACTION',
+  }),
+]);
 export const begin = policy => `// <<<BEGIN ${policy.marker}>>>`;
 export const end = policy => `// <<<END ${policy.marker}>>>`;
 /**
@@ -267,20 +293,29 @@ export function readDeclaration(source, policy) {
   const { declaration } = policy;
   const start = source.search(new RegExp(`^const\\s+${declaration}\\s*=`, 'm'));
   check(start >= 0, `WRITE_DECLARATION_MISSING:${declaration}`);
-  const end = source.indexOf(']);', start);
-  check(end > start, `WRITE_DECLARATION_UNREADABLE:${declaration}`);
-  const js = transpileTs(source.slice(start, end + 3)).outputText;
+  // `new Set([…])` closes with `]);` and a bare array with `];`. Take
+  // whichever closer comes first so one reader serves both; scanning past it
+  // would swallow the next declaration whole. The two never collide: the
+  // three characters before a `;` are either `]`, `)` or `…`, `]`.
+  const closers = [']);', '];']
+    .map(closer => ({ closer, at: source.indexOf(closer, start) }))
+    .filter(candidate => candidate.at >= start)
+    .sort((left, right) => left.at - right.at);
+  check(closers.length > 0, `WRITE_DECLARATION_UNREADABLE:${declaration}`);
+  const [{ closer, at }] = closers;
+  const js = transpileTs(source.slice(start, at + closer.length)).outputText;
   const value = new Function(`${js}\nreturn ${declaration};`)();
   const fields = value instanceof Set ? [...value] : value;
   check(Array.isArray(fields) && fields.length > 0, `WRITE_DECLARATION_EMPTY:${declaration}`);
-  for (const field of policy.reserved) {
+  for (const field of policy.reserved ?? []) {
     // A reserved field the declaration does not carry is a list that moved on
     // without this one, which is the drift the extraction exists to catch.
     check(fields.includes(field), `WRITE_RESERVED_ABSENT:${policy.key}.${field}`);
   }
-  const writable = fields.filter(field => !policy.reserved.includes(field));
+  const reserved = policy.reserved ?? [];
+  const writable = fields.filter(field => !reserved.includes(field));
   check(writable.length > 0, `WRITE_DECLARATION_ALL_RESERVED:${policy.key}`);
-  return { declared: [...fields], writable, reserved: [...policy.reserved] };
+  return { declared: [...fields], writable, reserved: [...reserved] };
 }
 
 /** Every purpose policy, keyed the way the artifacts below name them. */
@@ -295,7 +330,75 @@ export function extractWrites(repository) {
     [policy.key, readDeclaration(readFileSync(join(repository, policy.original), 'utf8'), policy)]));
 }
 
-export function render(policies, writes) {
+/**
+ * Evaluate a fenced action block and read its two declarations out of it.
+ *
+ * The same machinery the purpose blocks use, and three checks they do not
+ * need. An action's fields must be DISJOINT from every other action's,
+ * because the original merges a batch of actions into one write and throws if
+ * two of them assign the same field — a property it asserts at runtime and
+ * nothing proved beforehand. An action must name at least one role, or it is a
+ * workflow nobody can perform. And no action may name a protected column.
+ *
+ * Unlike a read projection, an action's field list must NOT carry `id`: a
+ * caller names the row, never re-writes its identity.
+ */
+export function readActionPolicy(source, policy) {
+  const block = policyBlock(source, policy);
+  const names = [policy.fields, policy.roles];
+  for (const name of names) {
+    check(new RegExp(`const\\s+${name}\\b`).test(block), `ACTION_MISSING_${name}`);
+  }
+  const js = transpileTs(block).outputText;
+  // Same reasoning as `readPolicy`: this repository's own source, read from
+  // disk by a developer tool, never reached by the service.
+  const values = new Function(`${js}\nreturn { ${names.join(', ')} };`)();
+  const declaredFields = values[policy.fields];
+  const declaredRoles = values[policy.roles];
+  // Declaration order, NOT sorted, unlike a purpose vocabulary: the original
+  // names this order `ACTION_CANONICAL_ORDER` and sorts a submitted batch into
+  // it, so it is part of what is being carried rather than an artifact of how
+  // the object was written.
+  const actions = Object.keys(declaredFields);
+  check(actions.length > 0, 'ACTION_POLICY_EMPTY');
+  const protectedFields = readDeclaration(source, { ...policy, declaration: policy.protect });
+  const guarded = new Set(protectedFields.declared);
+  const seen = new Map();
+  const extracted = {};
+  for (const action of actions) {
+    const fields = declaredFields[action];
+    const roles = declaredRoles?.[action];
+    check(Array.isArray(fields) && fields.length > 0, `ACTION_FIELDS_INVALID:${action}`);
+    check(Array.isArray(roles) && roles.length > 0, `ACTION_ROLES_INVALID:${action}`);
+    for (const field of fields) {
+      check(!guarded.has(field), `ACTION_FIELD_PROTECTED:${action}.${field}`);
+      check(field !== 'id', `ACTION_FIELD_IS_IDENTITY:${action}`);
+      const owner = seen.get(field);
+      check(owner === undefined, `ACTION_FIELD_SHARED:${field}:${owner}+${action}`);
+      seen.set(field, action);
+    }
+    extracted[action] = {
+      // The original's order, like a projection's: it is the order a reader
+      // compares this against the fence.
+      fields: [...fields],
+      roles: [...roles].sort(),
+    };
+  }
+  // An action the roles declaration names and the fields declaration does not
+  // is a role grant for a workflow that no longer exists.
+  for (const action of Object.keys(declaredRoles ?? {})) {
+    check(extracted[action] !== undefined, `ACTION_ROLES_ORPHANED:${action}`);
+  }
+  return extracted;
+}
+
+/** The action policies, keyed the way the artifacts below name them. */
+export function extractActions(repository) {
+  return Object.fromEntries(ACTION_POLICIES.map(policy =>
+    [policy.key, readActionPolicy(readFileSync(join(repository, policy.original), 'utf8'), policy)]));
+}
+
+export function render(policies, writes, actions) {
   const section = (policy) => {
     const extracted = policies[policy.key];
     const purposes = Object.keys(extracted);
@@ -327,6 +430,18 @@ ${WRITE_POLICIES.map(policy => `//
 // ones the contract decides instead. Extracted from \`${policy.declaration}\`.
 export const ${policy.constant}_WRITABLE = Object.freeze(${JSON.stringify(writes[policy.key].writable)});
 export const ${policy.constant}_RESERVED = Object.freeze(${JSON.stringify(writes[policy.key].reserved)});`).join('\n')}
+${ACTION_POLICIES.map(policy => `//
+// The workflow actions \`${policy.original.split('/').at(-2)}\` accepts, from its own
+// \`${policy.fields}\` and \`${policy.roles}\`. An action decides which fields it
+// may touch and which tenant roles may perform it; the field sets are
+// disjoint, so a batch of actions is one write.
+export const ${policy.constant}S = Object.freeze(${JSON.stringify(Object.keys(actions[policy.key]))});
+export const ${policy.constant}_POLICY = Object.freeze({
+${Object.entries(actions[policy.key]).map(([action, entry]) => `  ${action}: Object.freeze({
+    fields: Object.freeze(${JSON.stringify(entry.fields)}),
+    roles: Object.freeze(${JSON.stringify(entry.roles)}),
+  }),`).join('\n')}
+});`).join('\n')}
 `;
 }
 
@@ -363,22 +478,26 @@ const purposeCase = (purposes, arm, fallback) =>
  * confused — the single-read policy has no bounds at all and still has to
  * answer the first question.
  */
-export function renderSql(policies, domain, columnsFor, writes = {}) {
+export function renderSql(policies, domain, columnsFor, writes = {}, actions = {}) {
   const vocabulary = new Set([...TENANT_ROLES, ...UNSUPPORTED_ROLES]);
   const signatures = [];
   const bodies = [];
   const tables = new Set();
   let dropped = 0;
   let total = 0;
+  let actionDropped = 0;
+  let actionTotal = 0;
+  const served = {};
   const mine = POLICIES.filter(policy => policy.domain === domain);
   check(mine.length > 0, `POLICY_DOMAIN_UNKNOWN:${domain}`);
   const writesHere = WRITE_POLICIES.filter(policy => policy.domain === domain);
+  const actionsHere = ACTION_POLICIES.filter(policy => policy.domain === domain);
   for (const policy of mine) {
     const extracted = policies[policy.key];
     const known = new Set(columnsFor(policy.table));
     tables.add(policy.table);
     const purposes = Object.keys(extracted);
-    const served = {};
+    const admitted = {};
     for (const purpose of purposes) {
       for (const field of extracted[purpose].fields) {
         check(known.has(field), `POLICY_FIELD_NOT_A_COLUMN:${policy.key}.${purpose}.${field}`);
@@ -391,7 +510,7 @@ export function renderSql(policies, domain, columnsFor, writes = {}) {
       // is, the port has turned a capability off by accident, and that is a
       // decision rather than a rendering detail.
       check(roles.length > 0, `POLICY_PURPOSE_ADMITS_NOBODY:${policy.key}.${purpose}`);
-      served[purpose] = roles;
+      admitted[purpose] = roles;
       total += 1;
       if (roles.length !== extracted[purpose].roles.length) dropped += 1;
     }
@@ -404,7 +523,7 @@ $policy$;
 
 create function ${name('admits')}(p_purpose text, p_role text) returns boolean
   language sql immutable set search_path = '' as $policy$
-${purposeCase(purposes, purpose => `    when '${purpose}' then p_role in (${served[purpose].map(role => `'${role}'`).join(', ')})`, 'false')}
+${purposeCase(purposes, purpose => `    when '${purpose}' then p_role in (${admitted[purpose].map(role => `'${role}'`).join(', ')})`, 'false')}
 $policy$;
 ${policy.paged ? `
 create function ${name('page_size')}(p_purpose text) returns integer
@@ -447,6 +566,62 @@ create function ${name('reserved')}(p_field text) returns boolean
 $write$;`);
     signatures.push(`${name('writable')}(text)`, `${name('reserved')}(text)`);
   }
+  for (const policy of actionsHere) {
+    const entry = actions[policy.key];
+    check(entry !== undefined, `ACTION_POLICY_NOT_EXTRACTED:${policy.key}`);
+    const known = new Set(columnsFor(policy.table));
+    const names = Object.keys(entry);
+    for (const action of names) {
+      for (const field of entry[action].fields) {
+        check(known.has(field), `ACTION_FIELD_NOT_A_COLUMN:${policy.key}.${action}.${field}`);
+      }
+      for (const role of entry[action].roles) {
+        check(vocabulary.has(role), `ACTION_ROLE_UNKNOWN:${policy.key}.${action}.${role}`);
+      }
+      const roles = entry[action].roles.filter(role => !UNSUPPORTED_ROLES.includes(role));
+      // Same rule the purposes get: dropping the platform tier must never be
+      // what turns a workflow off.
+      check(roles.length > 0, `ACTION_ADMITS_NOBODY:${policy.key}.${action}`);
+      served[policy.key] ??= {};
+      served[policy.key][action] = roles;
+      actionTotal += 1;
+      if (roles.length !== entry[action].roles.length) actionDropped += 1;
+    }
+    tables.add(policy.table);
+    const name = suffix => `${quote(SCHEMA)}.${quote(`${policy.prefix}_${suffix}`)}`;
+    const actionCase = (arm, fallback) =>
+      `  select case p_action\n${names.map(arm).join('\n')}\n    else ${fallback} end`;
+    bodies.push(`-- The workflow actions \`${policy.original.split('/').at(-2)}\` accepts
+-- (${names.length} of them over ${new Set(names.flatMap(action => entry[action].fields)).size} fields, from its own \`${policy.fields}\`
+-- and \`${policy.roles}\`). The field sets are disjoint and the generator
+-- refuses to render if they stop being, because the original merges a batch
+-- of actions into ONE write and two actions assigning one field would make
+-- the answer depend on their order.
+create function ${name('known')}(p_action text) returns boolean
+  language sql immutable set search_path = '' as $action$
+${actionCase(action => `    when '${action}' then true`, 'false')}
+$action$;
+
+create function ${name('admits')}(p_action text, p_role text) returns boolean
+  language sql immutable set search_path = '' as $action$
+${actionCase(action => `    when '${action}' then p_role in (${served[policy.key][action].map(role => `'${role}'`).join(', ')})`, 'false')}
+$action$;
+
+create function ${name('writes')}(p_action text, p_field text) returns boolean
+  language sql immutable set search_path = '' as $action$
+${actionCase(action => `    when '${action}' then p_field in (${entry[action].fields.map(field => `'${field}'`).join(', ')})`, 'false')}
+$action$;
+
+-- The original's \`ACTION_CANONICAL_ORDER\`: the order the declaration is
+-- written in, which it sorts a submitted batch into so that the answer does
+-- not depend on the order a caller happened to send.
+create function ${name('rank')}(p_action text) returns integer
+  language sql immutable set search_path = '' as $action$
+${actionCase((action, index) => `    when '${action}' then ${index + 1}`, 'null')}
+$action$;`);
+    signatures.push(`${name('known')}(text)`, `${name('admits')}(text,text)`,
+      `${name('writes')}(text,text)`, `${name('rank')}(text)`);
+  }
   return `-- GENERATED by \`node tools-read-purpose-policy.mjs --write\`. Do not edit.
 --
 -- The authorized-${domain} purpose policies, as SQL.
@@ -469,15 +644,21 @@ ${mine.map(policy => `-- \`${policy.original}\``).join(' and\n')}
 -- answer what a policy says, never who is asking. The contracts beside them
 -- are hand-written and decide that, because a capability's authorization is
 -- its own.
---
+${actionTotal === 0 ? '' : `--
+-- The action policies here are the same kind of thing for a capability that
+-- MUTATES a ${domain}: ${actionTotal} named workflow actions, each deciding which fields
+-- it may touch and which roles may perform it. Their field sets are disjoint,
+-- so a batch of actions is one write and its result does not depend on the
+-- order they arrived in.
+`}--
 -- One divergence from the originals, and it is a narrowing: ${UNSUPPORTED_ROLES.join(', ')} is
--- admitted by ${dropped} of the ${total} purposes there and by none here. D14 and D22
--- removed the platform tier, \`caller_tenant_role\` can only answer one of
--- ${TENANT_ROLES.slice(0, 3).join(', ')},
+-- admitted by ${dropped + actionDropped} of the ${total + actionTotal} purposes and actions there and by none
+-- here. D14 and D22 removed the platform tier, \`caller_tenant_role\` can only
+-- answer one of ${TENANT_ROLES.slice(0, 3).join(', ')},
 -- ${TENANT_ROLES.slice(3).join(', ')}, and emitting a branch nothing
--- can take would read like a tier that still exists. Every purpose still
--- admits somebody without it; the generator refuses to render if one would
--- not.
+-- can take would read like a tier that still exists. Every purpose and every
+-- action still admits somebody without it; the generator refuses to render if
+-- one would not.
 begin;
 
 do $$
@@ -537,6 +718,7 @@ export function main(args = process.argv.slice(2), {
   try {
     policies = extract(repository);
     const writes = extractWrites(repository);
+    const actions = extractActions(repository);
     // Read each table once: six policies over three tables, and the migration
     // is 6,000 lines.
     const columns = new Map();
@@ -545,9 +727,9 @@ export function main(args = process.argv.slice(2), {
       return columns.get(table);
     };
     artifacts = [
-      [POLICY_FILE, render(policies, writes)],
+      [POLICY_FILE, render(policies, writes, actions)],
       ...DOMAINS.map(domain =>
-        [POLICY_SQL_FILES[domain], renderSql(policies, domain, columnsFor, writes)]),
+        [POLICY_SQL_FILES[domain], renderSql(policies, domain, columnsFor, writes, actions)]),
     ];
   } catch (error) { log(JSON.stringify({ error: error?.code ?? 'POLICY_FAILED' })); return 1; }
   if (args.includes('--json')) { log(JSON.stringify(policies, null, 2)); return 0; }

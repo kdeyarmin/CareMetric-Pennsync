@@ -241,6 +241,48 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_PATIENT_REQUEST_CONFLICT',
     ]),
   }),
+  // The authorized patient mutation. A caller names workflow actions rather
+  // than sending a patch, and the actions — which fields each may touch, and
+  // which tenant roles may perform it — are the contract's, extracted in SQL
+  // from the original's own fenced declaration. Nothing about them is
+  // repeated here, for the reason this module carries no authorization at all.
+  updateAuthorizedPatient: Object.freeze({
+    rpc: 'pennsync_contract_patient_update',
+    params: Object.freeze(['patient_id', 'expected_updated_date', 'actions']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_expected_updated_date: args.expected_updated_date ?? null,
+      p_actions: args.actions === undefined ? null : args.actions,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_PATIENT_AGENCY_NOT_HELD',
+      'PENNSYNC_PATIENT_ID_INVALID',
+      'PENNSYNC_PATIENT_EXPECTED_REQUIRED',
+      'PENNSYNC_PATIENT_ACTIONS_INVALID',
+      'PENNSYNC_PATIENT_ACTION_SHAPE',
+      'PENNSYNC_PATIENT_ACTION_UNKNOWN',
+      'PENNSYNC_PATIENT_ACTION_FORBIDDEN',
+      'PENNSYNC_PATIENT_CHANGES_INVALID',
+      'PENNSYNC_PATIENT_FIELD_UNSUPPORTED',
+      'PENNSYNC_PATIENT_FIELD_REPEATED',
+      'PENNSYNC_PATIENT_FIELD_INVALID',
+      'PENNSYNC_PATIENT_FIELD_TOO_LARGE',
+      'PENNSYNC_PATIENT_STATUS_REQUIRED',
+      'PENNSYNC_PATIENT_NOT_VISIBLE',
+      'PENNSYNC_PATIENT_UNAVAILABLE',
+      'PENNSYNC_PATIENT_STALE',
+      'PENNSYNC_PATIENT_NOT_CLINICALLY_ACTIVE',
+      'PENNSYNC_PATIENT_EPISODE_DISCHARGED',
+      'PENNSYNC_PATIENT_CARE_TYPE_LOCKED',
+      'PENNSYNC_PATIENT_STATUS_TRANSITION',
+      'PENNSYNC_PATIENT_DISCHARGE_FIELDS_REQUIRED',
+      'PENNSYNC_PATIENT_DISCHARGE_FIELDS_UNEXPECTED',
+      'PENNSYNC_PATIENT_DISCHARGE_BEFORE_ADMISSION',
+      'PENNSYNC_PATIENT_MRN_SCOPE',
+      'PENNSYNC_PATIENT_MRN_TAKEN',
+    ]),
+  }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
     params: Object.freeze(['user_id']),

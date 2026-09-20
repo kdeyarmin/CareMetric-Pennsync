@@ -23,13 +23,13 @@
 -- its own.
 --
 -- One divergence from the originals, and it is a narrowing: platform_owner is
--- admitted by 16 of the 16 purposes there and by none here. D14 and D22
--- removed the platform tier, `caller_tenant_role` can only answer one of
--- agency_admin, manager, clinician,
+-- admitted by 16 of the 16 purposes and actions there and by none
+-- here. D14 and D22 removed the platform tier, `caller_tenant_role` can only
+-- answer one of agency_admin, manager, clinician,
 -- office_staff, social_worker, spiritual_care, and emitting a branch nothing
--- can take would read like a tier that still exists. Every purpose still
--- admits somebody without it; the generator refuses to render if one would
--- not.
+-- can take would read like a tier that still exists. Every purpose and every
+-- action still admits somebody without it; the generator refuses to render if
+-- one would not.
 begin;
 
 do $$

@@ -273,6 +273,19 @@ export const HANDLERS = Object.freeze({
       return contract('createAuthorizedPatient', params);
     },
   }),
+  updateAuthorizedPatient: Object.freeze({
+    // A caller names workflow actions, never a patch. Which actions exist,
+    // which fields each one may touch and which roles may perform it are all
+    // the contract's, checked in SQL against the original's own fenced
+    // declaration — so this handler checks the envelope and nothing else, and
+    // an action added to the original reaches the database by regenerating
+    // rather than by remembering.
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'expected_updated_date', 'actions'], 'INVALID_PARAMS');
+      if (!Array.isArray(params.actions)) fail(400, 'INVALID_PARAMS');
+      return contract('updateAuthorizedPatient', params);
+    },
+  }),
   generateBagTechniquePDF: Object.freeze({
     binary: true,
     handle({ params, config }) {

@@ -22,14 +22,20 @@
 -- are hand-written and decide that, because a capability's authorization is
 -- its own.
 --
+-- The action policies here are the same kind of thing for a capability that
+-- MUTATES a patient: 6 named workflow actions, each deciding which fields
+-- it may touch and which roles may perform it. Their field sets are disjoint,
+-- so a batch of actions is one write and its result does not depend on the
+-- order they arrived in.
+--
 -- One divergence from the originals, and it is a narrowing: platform_owner is
--- admitted by 16 of the 16 purposes there and by none here. D14 and D22
--- removed the platform tier, `caller_tenant_role` can only answer one of
--- agency_admin, manager, clinician,
+-- admitted by 16 of the 22 purposes and actions there and by none
+-- here. D14 and D22 removed the platform tier, `caller_tenant_role` can only
+-- answer one of agency_admin, manager, clinician,
 -- office_staff, social_worker, spiritual_care, and emitting a branch nothing
--- can take would read like a tier that still exists. Every purpose still
--- admits somebody without it; the generator refuses to render if one would
--- not.
+-- can take would read like a tier that still exists. Every purpose and every
+-- action still admits somebody without it; the generator refuses to render if
+-- one would not.
 begin;
 
 do $$
@@ -357,6 +363,63 @@ create function "pennsync_records"."patient_create_reserved"(p_field text) retur
   select p_field in ('agency_id', 'client_request_id', 'status')
 $write$;
 
+-- The workflow actions `updateAuthorizedPatient` accepts
+-- (6 of them over 29 fields, from its own `ACTION_FIELD_NAMES`
+-- and `ACTION_ROLE_NAMES`). The field sets are disjoint and the generator
+-- refuses to render if they stop being, because the original merges a batch
+-- of actions into ONE write and two actions assigning one field would make
+-- the answer depend on their order.
+create function "pennsync_records"."patient_action_known"(p_action text) returns boolean
+  language sql immutable set search_path = '' as $action$
+  select case p_action
+    when 'edit_demographics' then true
+    when 'edit_clinical_profile' then true
+    when 'edit_care_episode' then true
+    when 'edit_insurance' then true
+    when 'set_primary_diagnosis' then true
+    when 'change_status' then true
+    else false end
+$action$;
+
+create function "pennsync_records"."patient_action_admits"(p_action text, p_role text) returns boolean
+  language sql immutable set search_path = '' as $action$
+  select case p_action
+    when 'edit_demographics' then p_role in ('agency_admin', 'clinician', 'manager', 'office_staff')
+    when 'edit_clinical_profile' then p_role in ('agency_admin', 'clinician', 'manager')
+    when 'edit_care_episode' then p_role in ('agency_admin', 'clinician', 'manager')
+    when 'edit_insurance' then p_role in ('agency_admin', 'manager', 'office_staff')
+    when 'set_primary_diagnosis' then p_role in ('agency_admin', 'clinician', 'manager')
+    when 'change_status' then p_role in ('agency_admin', 'clinician', 'manager')
+    else false end
+$action$;
+
+create function "pennsync_records"."patient_action_writes"(p_action text, p_field text) returns boolean
+  language sql immutable set search_path = '' as $action$
+  select case p_action
+    when 'edit_demographics' then p_field in ('first_name', 'middle_name', 'last_name', 'date_of_birth', 'medical_record_number', 'address', 'phone', 'email', 'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship', 'physician_name', 'physician_phone', 'physician_email', 'caregiver_name', 'caregiver_email', 'caregiver_phone')
+    when 'edit_clinical_profile' then p_field in ('secondary_diagnoses', 'allergies', 'past_medical_history', 'goals_of_care')
+    when 'edit_care_episode' then p_field in ('admission_date', 'admission_source', 'care_type')
+    when 'edit_insurance' then p_field in ('payor')
+    when 'set_primary_diagnosis' then p_field in ('primary_diagnosis')
+    when 'change_status' then p_field in ('status', 'discharge_date', 'discharge_disposition')
+    else false end
+$action$;
+
+-- The original's `ACTION_CANONICAL_ORDER`: the order the declaration is
+-- written in, which it sorts a submitted batch into so that the answer does
+-- not depend on the order a caller happened to send.
+create function "pennsync_records"."patient_action_rank"(p_action text) returns integer
+  language sql immutable set search_path = '' as $action$
+  select case p_action
+    when 'edit_demographics' then 1
+    when 'edit_clinical_profile' then 2
+    when 'edit_care_episode' then 3
+    when 'edit_insurance' then 4
+    when 'set_primary_diagnosis' then 5
+    when 'change_status' then 6
+    else null end
+$action$;
+
 reset role;
 
 -- No caller role may ask a policy anything. The contracts are the only way in.
@@ -368,7 +431,11 @@ revoke all on function "pennsync_records"."patient_list_purpose_known"(text),
   "pennsync_records"."patient_exact_purpose_admits"(text,text),
   "pennsync_records"."patient_exact_purpose_row"(text,"pennsync_records"."patient"),
   "pennsync_records"."patient_create_writable"(text),
-  "pennsync_records"."patient_create_reserved"(text)
+  "pennsync_records"."patient_create_reserved"(text),
+  "pennsync_records"."patient_action_known"(text),
+  "pennsync_records"."patient_action_admits"(text,text),
+  "pennsync_records"."patient_action_writes"(text,text),
+  "pennsync_records"."patient_action_rank"(text)
   from public, anon, authenticated, service_role;
 
 commit;

@@ -217,3 +217,35 @@ export const DOCUMENT_EXACT_PURPOSE_POLICY = Object.freeze({
 // ones the contract decides instead. Extracted from `CLIENT_PATIENT_FIELDS`.
 export const PATIENT_CREATE_WRITABLE = Object.freeze(["first_name","middle_name","last_name","date_of_birth","medical_record_number","address","phone","email","payor","emergency_contact_name","emergency_contact_phone","emergency_contact_relationship","physician_name","physician_phone","physician_email","caregiver_name","caregiver_email","caregiver_phone","primary_diagnosis","secondary_diagnoses","chronic_conditions","past_surgeries","family_medical_history","social_determinants","allergies","current_medications","past_medical_history","past_hospitalizations","baseline_vitals","functional_status","social_history","mental_health","pain_management","wounds","advance_directives","insurance_primary","insurance_secondary","admission_date","admission_source","care_type","validation_overrides","clinical_notes","goals_of_care"]);
 export const PATIENT_CREATE_RESERVED = Object.freeze(["agency_id","client_request_id","status"]);
+//
+// The workflow actions `updateAuthorizedPatient` accepts, from its own
+// `ACTION_FIELD_NAMES` and `ACTION_ROLE_NAMES`. An action decides which fields it
+// may touch and which tenant roles may perform it; the field sets are
+// disjoint, so a batch of actions is one write.
+export const PATIENT_ACTIONS = Object.freeze(["edit_demographics","edit_clinical_profile","edit_care_episode","edit_insurance","set_primary_diagnosis","change_status"]);
+export const PATIENT_ACTION_POLICY = Object.freeze({
+  edit_demographics: Object.freeze({
+    fields: Object.freeze(["first_name","middle_name","last_name","date_of_birth","medical_record_number","address","phone","email","emergency_contact_name","emergency_contact_phone","emergency_contact_relationship","physician_name","physician_phone","physician_email","caregiver_name","caregiver_email","caregiver_phone"]),
+    roles: Object.freeze(["agency_admin","clinician","manager","office_staff"]),
+  }),
+  edit_clinical_profile: Object.freeze({
+    fields: Object.freeze(["secondary_diagnoses","allergies","past_medical_history","goals_of_care"]),
+    roles: Object.freeze(["agency_admin","clinician","manager"]),
+  }),
+  edit_care_episode: Object.freeze({
+    fields: Object.freeze(["admission_date","admission_source","care_type"]),
+    roles: Object.freeze(["agency_admin","clinician","manager"]),
+  }),
+  edit_insurance: Object.freeze({
+    fields: Object.freeze(["payor"]),
+    roles: Object.freeze(["agency_admin","manager","office_staff"]),
+  }),
+  set_primary_diagnosis: Object.freeze({
+    fields: Object.freeze(["primary_diagnosis"]),
+    roles: Object.freeze(["agency_admin","clinician","manager"]),
+  }),
+  change_status: Object.freeze({
+    fields: Object.freeze(["status","discharge_date","discharge_disposition"]),
+    roles: Object.freeze(["agency_admin","clinician","manager"]),
+  }),
+});

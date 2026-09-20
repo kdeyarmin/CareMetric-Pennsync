@@ -4,9 +4,9 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  DOMAINS, EXTRACTED_ONLY, POLICIES, POLICY_FILE, POLICY_SQL_FILES, TENANT_ROLES, UNSUPPORTED_ROLES,
-  WRITE_POLICIES, begin, declarations, end, extract, extractWrites, main, policyBlock, readDeclaration,
-  readPolicy, render, renderSql, tableColumns,
+  ACTION_POLICIES, DOMAINS, EXTRACTED_ONLY, POLICIES, POLICY_FILE, POLICY_SQL_FILES, TENANT_ROLES,
+  UNSUPPORTED_ROLES, WRITE_POLICIES, begin, declarations, end, extract, extractActions, extractWrites,
+  main, policyBlock, readActionPolicy, readDeclaration, readPolicy, render, renderSql, tableColumns,
 } from './tools-read-purpose-policy.mjs';
 import * as committed from './services/pennsync-api/read-purpose-policy.mjs';
 
@@ -50,10 +50,12 @@ test('the committed policies are exactly what the originals declare', () => {
   // And every committed FILE matches what the generator renders, so an edit to
   // an artifact is caught as well as an edit to a policy.
   const writes = extractWrites(repository);
-  assert.equal(readFileSync(resolve(repository, POLICY_FILE), 'utf8'), render(extracted, writes));
+  const actions = extractActions(repository);
+  assert.equal(readFileSync(resolve(repository, POLICY_FILE), 'utf8'),
+    render(extracted, writes, actions));
   for (const domain of DOMAINS) {
     assert.equal(readFileSync(resolve(repository, POLICY_SQL_FILES[domain]), 'utf8'),
-      renderSql(extracted, domain, columnsFor, writes), `${domain} SQL has drifted`);
+      renderSql(extracted, domain, columnsFor, writes, actions), `${domain} SQL has drifted`);
   }
   assert.equal(main(['--write'], { repository, log: () => {}, write: () => {} }), 0);
   assert.equal(main([], { repository, log: () => {} }), 0, 'the committed copies are current');
@@ -329,4 +331,115 @@ test('the emitted writable check is the extracted list, and nothing else', () =>
   // The two sets never overlap, or a field would be both refusable and
   // writable and which one won would depend on the order of two checks.
   assert.deepEqual(create.writable.filter(field => create.reserved.includes(field)), []);
+});
+
+test('the committed action policy is exactly what the original declares', () => {
+  // A mutation capability declares its workflow actions the same way a read
+  // declares its purposes, and the stakes are the mirror image: a field added
+  // to an action by hand lets a caller WRITE a column the original never let
+  // them near, and a role added lets somebody perform a workflow they were
+  // never admitted to.
+  const actions = extractActions(repository);
+  assert.deepEqual(Object.keys(actions), ACTION_POLICIES.map(policy => policy.key));
+  const patient = actions.patient_action;
+  assert.deepEqual(Object.keys(patient), [...committed.PATIENT_ACTIONS]);
+  // Declaration order, not sorted: the original names this order
+  // `ACTION_CANONICAL_ORDER` and sorts a submitted batch into it.
+  assert.deepEqual(Object.keys(patient), ['edit_demographics', 'edit_clinical_profile',
+    'edit_care_episode', 'edit_insurance', 'set_primary_diagnosis', 'change_status']);
+  for (const [action, entry] of Object.entries(patient)) {
+    assert.deepEqual([...committed.PATIENT_ACTION_POLICY[action].fields], entry.fields, action);
+    assert.deepEqual([...committed.PATIENT_ACTION_POLICY[action].roles], entry.roles, action);
+    assert.ok(entry.fields.length > 0 && entry.roles.length > 0, action);
+  }
+  // Disjoint, which is what lets a batch of actions be ONE write whose result
+  // does not depend on the order it arrived in. The original asserts this at
+  // runtime and throws; nothing proved it beforehand until this did.
+  const fields = Object.values(patient).flatMap(entry => entry.fields);
+  assert.equal(fields.length, 29);
+  assert.equal(new Set(fields).size, 29, 'no field belongs to two actions');
+  // And every action field is a column the record store actually has, or the
+  // emitted SQL would fail at apply time.
+  const known = new Set(columnsFor('patient'));
+  for (const field of fields) assert.ok(known.has(field), field);
+  // The roles are the store's vocabulary. `platform_owner` never appears in
+  // this block at all, so nothing is dropped from it.
+  for (const entry of Object.values(patient)) {
+    for (const role of entry.roles) assert.ok(TENANT_ROLES.includes(role), role);
+  }
+});
+
+test('an action block that shares a field, admits nobody or names a column nobody may send is refused', () => {
+  const [policy] = ACTION_POLICIES;
+  const source = (fields, roles, guarded = "['agency_id',\n'assigned_nurses',\n]") => [
+    `const ${policy.protect} = [\n${guarded.slice(1, -1)}\n];`,
+    begin(policy),
+    `const ${policy.fields} = ${fields};`,
+    `const ${policy.roles} = ${roles};`,
+    end(policy),
+  ].join('\n');
+  const good = source("{ a: ['first_name'], b: ['last_name'] }",
+    "{ a: ['manager'], b: ['clinician'] }");
+  assert.deepEqual(readActionPolicy(good, policy),
+    { a: { fields: ['first_name'], roles: ['manager'] },
+      b: { fields: ['last_name'], roles: ['clinician'] } });
+  const refuses = (text, code) => assert.throws(() => readActionPolicy(text, policy),
+    error => error?.code === code, code);
+  // Two actions assigning one field would make a batch's result depend on the
+  // order the caller sent it in.
+  refuses(source("{ a: ['first_name'], b: ['first_name'] }",
+    "{ a: ['manager'], b: ['clinician'] }"), 'ACTION_FIELD_SHARED:first_name:a+b');
+  // A column the original never accepts from a caller.
+  refuses(source("{ a: ['agency_id'] }", "{ a: ['manager'] }"),
+    'ACTION_FIELD_PROTECTED:a.agency_id');
+  // A caller names the row; it never re-writes its identity.
+  refuses(source("{ a: ['id'] }", "{ a: ['manager'] }"), 'ACTION_FIELD_IS_IDENTITY:a');
+  // An action nobody may perform reads like a strict rule and is a workflow
+  // that has been turned off by accident.
+  refuses(source("{ a: ['first_name'] }", "{ a: [] }"), 'ACTION_ROLES_INVALID:a');
+  refuses(source("{ a: ['first_name'] }", '{ }'), 'ACTION_ROLES_INVALID:a');
+  refuses(source('{ }', '{ }'), 'ACTION_POLICY_EMPTY');
+  // And a role grant for a workflow the fields declaration no longer has.
+  refuses(source("{ a: ['first_name'] }", "{ a: ['manager'], gone: ['manager'] }"),
+    'ACTION_ROLES_ORPHANED:gone');
+  // Extraction is by name inside the fence, so a renamed declaration fails
+  // the run rather than producing an empty policy.
+  refuses(source("{ a: ['first_name'] }", "{ a: ['manager'] }").replace(policy.roles, 'RENAMED'),
+    `ACTION_MISSING_${policy.roles}`);
+});
+
+test('the emitted action SQL is the policy, and a caller cannot ask it anything', () => {
+  const sql = readFileSync(resolve(repository, POLICY_SQL_FILES.patient), 'utf8');
+  const patient = extractActions(repository).patient_action;
+  const arms = (name, pattern) => {
+    const start = sql.indexOf(`"${name}"(`);
+    assert.ok(start > 0, name);
+    const body = sql.slice(start, sql.indexOf('$action$;', start));
+    return Object.fromEntries([...body.matchAll(pattern)]
+      .map(match => [match[1], [...match[2].matchAll(/'([a-z_]+)'/g)].map(item => item[1])]));
+  };
+  const writes = arms('patient_action_writes', /when '([a-z_]+)' then p_field in \(([^)]*)\)/g);
+  const admits = arms('patient_action_admits', /when '([a-z_]+)' then p_role in \(([^)]*)\)/g);
+  for (const [action, entry] of Object.entries(patient)) {
+    assert.deepEqual(writes[action], entry.fields, `${action} writes`);
+    assert.deepEqual(admits[action], entry.roles, `${action} admits`);
+  }
+  assert.deepEqual(Object.keys(writes).sort(), Object.keys(patient).sort());
+  // The canonical order is emitted as a rank, because the contract sorts a
+  // submitted batch by it and a batch's answer should not depend on arrival
+  // order.
+  const rank = sql.slice(sql.indexOf('"patient_action_rank"('));
+  assert.deepEqual([...rank.slice(0, rank.indexOf('$action$;')).matchAll(/when '([a-z_]+)' then (\d+)/g)]
+    .map(match => [match[1], Number(match[2])]),
+  Object.keys(patient).map((action, index) => [action, index + 1]));
+  // `PROTECTED_PATIENT_FIELDS` is read as a check and never emitted: the
+  // contract accepts only the fields an action declares, so a policy function
+  // for the protected list would be SQL nothing can call.
+  assert.equal(sql.includes('patient_action_protected'), false);
+  // And no caller role may ask any of them. The contract is the only way in.
+  const revoked = sql.slice(sql.lastIndexOf('revoke all on function'));
+  for (const suffix of ['known', 'admits', 'writes', 'rank']) {
+    assert.ok(revoked.includes(`"patient_action_${suffix}"`), suffix);
+  }
+  assert.match(revoked, /from public, anon, authenticated, service_role;/);
 });
