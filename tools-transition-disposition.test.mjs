@@ -4,10 +4,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  ACTIVE_DISPOSITIONS, DISPOSITIONS, FORMAT, FORMAT_VERSION, PORT_BLOCKERS, RETENTION_BASES, checkCoverage,
-  classifyPortBlocker, discoverCapabilities, discoverEvidence, discoverInertFunctions, discoverIntegrations,
-  discoverPausedFunctions, discoverPortBlockers, discoverPortedFunctions, entitiesTouched, isInertFunction,
-  isPausedFunction, main, parseManifest,
+  ACTIVE_DISPOSITIONS, ACTIVITY_TRAIL_MIGRATION, AUDITED_ENTITIES, DISPOSITIONS, FORMAT, FORMAT_VERSION,
+  PORT_BLOCKERS, RETENTION_BASES, checkCoverage, classifyPortBlocker, discoverActivityTrail, discoverCapabilities,
+  discoverEvidence, discoverInertFunctions, discoverIntegrations, discoverPausedFunctions, discoverPortBlockers,
+  discoverPortedFunctions, entitiesTouched, isInertFunction, isPausedFunction, main, parseManifest,
 } from './tools-transition-disposition.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -394,6 +394,55 @@ test('a record blocker is refined by what the module actually reads', () => {
   }
 });
 
+test('a retired log table blocks until there is somewhere to audit to', () => {
+  // D25. The three log tables are dispositioned `retire`, which decided where
+  // their EXISTING rows go and never whether the product keeps auditing. Read
+  // the first way, a capability that writes one waits forever on a table that
+  // is not coming; read the second, it is an ordinary port. This is the whole
+  // difference, and the tool answers it by looking for the migration rather
+  // than by asserting it.
+  const declare = () => manifest({ functions: { alpha: 'port' },
+    entities: { Kept: 'port', UserActivity: 'retire', SecurityLog: 'retire', SystemLog: 'retire', Gone: 'retire' } });
+  const queue = (evidence) => {
+    const report = checkCoverage(capabilities(), declare(),
+      { portBlockers: { alpha: 'records_schema' }, ...evidence });
+    return Object.entries(report.port_blockers).filter(([, names]) => names.length).map(([key]) => key);
+  };
+  for (const entity of AUDITED_ENTITIES) {
+    assert.deepEqual(queue({ activityTrail: true, entityReach: { alpha: { names: ['Kept', entity], dynamic: false } } }),
+      ['records_schema'], `${entity} has a successor`);
+    assert.deepEqual(queue({ activityTrail: false, entityReach: { alpha: { names: ['Kept', entity], dynamic: false } } }),
+      ['entity_not_carried'], `${entity} has nowhere to go without the trail`);
+  }
+  // Absent evidence is the same as no trail: a tool that assumed one would
+  // report the queue as shorter than the tree it is reading can support.
+  assert.deepEqual(queue({ entityReach: { alpha: { names: ['UserActivity'], dynamic: false } } }),
+    ['entity_not_carried']);
+  // The exemption is per entity, not per capability. A module that writes an
+  // audit row AND reads a retired domain table still has nowhere to read from.
+  assert.deepEqual(queue({ activityTrail: true,
+    entityReach: { alpha: { names: ['UserActivity', 'Gone'], dynamic: false } } }), ['entity_not_carried']);
+  // And it is tied to `retire`, not to the name. An entity going to the hub has
+  // a different destination and a paused one has none, so neither is answered
+  // by this table existing even under one of the three names.
+  for (const disposition of ['hub', 'preserved_paused']) {
+    const report = checkCoverage(capabilities(), manifest({ functions: { alpha: 'port' },
+      entities: { Kept: 'port', UserActivity: disposition } }),
+    { portBlockers: { alpha: 'records_schema' }, activityTrail: true,
+      entityReach: { alpha: { names: ['UserActivity'], dynamic: false } } });
+    assert.deepEqual(report.port_blockers.entity_not_carried, ['alpha'], `${disposition} is not the trail`);
+  }
+  // The committed manifest does disposition all three `retire`, which is what
+  // makes the exemption above apply to anything at all.
+  const committed = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8'));
+  for (const entity of AUDITED_ENTITIES) assert.equal(committed.entities[entity], 'retire', entity);
+  // And it is the repository that answers it. The committed tree has the
+  // migration; a tree without it gets the stricter verdict from the same code.
+  assert.equal(discoverActivityTrail(repository), true);
+  assert.equal(discoverActivityTrail(resolve(repository, 'services')), false);
+  assert.ok(readFileSync(resolve(repository, ACTIVITY_TRAIL_MIGRATION), 'utf8').includes('activity_audit'));
+});
+
 test('a capability is held by the care-team question whatever its entities are', () => {
   const declare = () => manifest({ functions: { alpha: 'port' }, entities: { Kept: 'port', Gone: 'retire' } });
   const queue = (evidence) => {
@@ -426,8 +475,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { entity_not_carried: 34, entity_authorization: 34, patient_access_model: 15,
-    records_schema: 10, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
+  assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 43, patient_access_model: 23,
+    records_schema: 20, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
     external_secret: 1, none: 11 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
@@ -435,12 +484,26 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // and thirty-four read `User`, which carries forced RLS and no policy because
   // D14 deliberately left how it may be read undecided. Neither is helped by
   // the store existing.
-  assert.equal(report.port_blockers.entity_authorization.length, 34);
-  assert.ok(report.port_blockers.entity_not_carried.includes('acceptAiContentAgreement'));
-  // Ten. That is how many of the hundred can be written today, and the number
-  // is the point: `records_schema=94` said the record store was what stood in
-  // front of the queue, and it stands in front of a tenth of it.
-  assert.equal(report.port_blockers.records_schema.length, 10);
+  //
+  // Then D25 halved the first of those. Of the 34, twenty-seven were held by a
+  // retired log table and nothing else, and `retire` had decided where those
+  // rows GO, never whether the product keeps auditing. With a trail to write
+  // to they redistribute across the three buckets behind them, which is why
+  // those grew while the total did not move. Seven remain, and each reads a
+  // table from a domain that is actually going away rather than a log.
+  assert.deepEqual(report.port_blockers.entity_not_carried,
+    ['analyzeNurseDeficits', 'analyzeRealTimePerformance', 'distributePolicyAcknowledgment', 'generateAIReport',
+      'getCommsDashboard', 'offboardUser', 'sendExpirationNotifications'],
+    'only a capability reading a domain table that is going away belongs here');
+  // `acceptAiContentAgreement` writes `UserActivity` and reads nothing else
+  // uncarried. It sat here for exactly as long as retiring the table was read
+  // as retiring the obligation.
+  assert.ok(!report.port_blockers.entity_not_carried.includes('acceptAiContentAgreement'));
+  assert.equal(report.port_blockers.entity_authorization.length, 43);
+  // Twenty. That is how many of the hundred can be written today, and the
+  // number is still the point: `records_schema=94` said the record store was
+  // what stood in front of the queue, and it stands in front of a fifth of it.
+  assert.equal(report.port_blockers.records_schema.length, 20);
   assert.ok(report.port_blockers.patient_access_model.includes('getScopedPatientAlerts'));
   // Dynamic entity access does not hide this one, because reading
   // `assigned_nurses` is a property of the source rather than of the entity set.

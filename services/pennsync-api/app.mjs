@@ -9,6 +9,7 @@ import { HANDLERS } from './handlers.mjs';
 import { integrationCapability } from './integrations.mjs';
 import { recordCapability } from './records.mjs';
 import { contractCapability } from './record-contracts.mjs';
+import { auditCapability } from './audit.mjs';
 import { publicReadiness } from './runtime.mjs';
 
 const FUNCTION_PATH = /^\/v1\/functions\/([A-Za-z][A-Za-z0-9_]{0,63})$/;
@@ -82,8 +83,11 @@ export function createHandler(config, dependencies = {}) {
       // sixth record operation: it does what the generic family is specifically
       // not allowed to do, so it carries its own allowlist.
       const contract = (dependencies.contract || contractCapability)(bound, dependencies.fetcher);
+      // Auditing is something a capability does while serving, not an endpoint,
+      // so it is a facility rather than a contract with a handler of its own.
+      const audit = (dependencies.audit || auditCapability)(bound, dependencies.fetcher);
       const result = await handlers[name].handle({
-        actor, params: input.params ?? {}, config, integration, records, contract,
+        actor, params: input.params ?? {}, config, integration, records, contract, audit,
       });
       // A ported document answers with the bytes its Base44 original answered
       // with, so a migrated caller is not asked to decode something new. Only a

@@ -299,13 +299,17 @@ export function discoverInertFunctions(repository) {
  *
  * - **`entity_not_carried`** — the module reads an entity dispositioned
  *   `retire`, `hub` or `preserved_paused`, so the table it wants will not exist
- *   here. Nineteen touch `UserActivity` alone. What is owed is a decision about
- *   that use, not a schema.
+ *   here. It counted 34 until the three retired log tables were separated out
+ *   from the rest (`AUDITED_ENTITIES`, below): 27 of the 34 were held by one of
+ *   those and nothing else, and D25 gives all three a successor. Seven remain,
+ *   and each reads a table from a domain that is genuinely going away — the
+ *   training records, the paused comms logs, the real-time metrics.
  * - **`entity_authorization`** — the module reads a carried entity that has
  *   forced RLS and no policy. That is `User`, and it is deliberate: D14 left it
  *   "unreachable through this surface until a decision says how it may be
- *   read". Fifty of the queue touch it and thirty-four are held by nothing
- *   else, which makes it the single largest gate in front of the port queue.
+ *   read". D23 answers it — the roster is served from the authority store's
+ *   membership rows rather than from the carried table — so what this bucket
+ *   now counts is a roster read waiting on that RPC, not an undecided one.
  *
  * Both rank above `records_schema` because neither is helped by the store
  * existing, and `entity_not_carried` above `entity_authorization` because
@@ -374,6 +378,32 @@ export function discoverPortedFunctions(repository) {
     .map(match => match[1]).sort();
 }
 
+/**
+ * The three retired log tables the general activity trail replaces (D25), and
+ * whether that trail actually exists yet.
+ *
+ * `retire` decided where a table's EXISTING rows go, never whether the product
+ * keeps auditing, and the two readings were indistinguishable in this queue: 27
+ * of the 34 capabilities counted `entity_not_carried` are held by one of these
+ * three and nothing else. Read as "no table for it exists here" they wait on a
+ * schema that is never coming; read as "the successor is the activity trail"
+ * they are ordinary ports.
+ *
+ * Which reading applies is a question about the repository, not about this
+ * tool, so it is answered by looking for the migration. Delete
+ * `20260920010000_activity_audit.sql` and all 27 go back to being blocked,
+ * which is the correct answer in a tree that has no audit sink.
+ */
+export const AUDITED_ENTITIES = Object.freeze(['SecurityLog', 'SystemLog', 'UserActivity']);
+export const ACTIVITY_TRAIL_MIGRATION =
+  'services/authority-store/supabase/record-migrations/20260920010000_activity_audit.sql';
+
+/** True when the store this branch commits actually has somewhere to audit to. */
+export function discoverActivityTrail(repository) {
+  try { return readFileSync(join(repository, ACTIVITY_TRAIL_MIGRATION), 'utf8').includes('activity_audit'); }
+  catch { return false; }
+}
+
 export function discoverPortBlockers(repository) {
   const root = join(repository, 'base44/functions');
   const blockers = {};
@@ -394,6 +424,7 @@ export function discoverEvidence(repository) {
     entityReach: discoverEntityReach(repository),
     policylessEntities: discoverPolicylessEntities(repository),
     careTeamDependents: discoverCareTeamDependents(repository),
+    activityTrail: discoverActivityTrail(repository),
   };
 }
 
@@ -489,6 +520,10 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
   const reach = evidence.entityReach && typeof evidence.entityReach === 'object' ? evidence.entityReach : {};
   const policyless = new Set(Array.isArray(evidence.policylessEntities) ? evidence.policylessEntities : []);
   const careTeam = new Set(Array.isArray(evidence.careTeamDependents) ? evidence.careTeamDependents : []);
+  // D25. With a trail to write to, a retired log table is a destination that
+  // moved rather than one that vanished; without it, this set is empty and
+  // every one of them still blocks.
+  const audited = new Set(evidence.activityTrail ? AUDITED_ENTITIES : []);
   /**
    * What a module reads can make a `records_schema` verdict wrong, and only in
    * that direction: a blocker the source already named is never overridden,
@@ -502,7 +537,13 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
     // enumerate.
     if (touched && !touched.dynamic) {
       for (const entity of touched.names) {
-        if (UNCARRIED_DISPOSITIONS.includes((manifest.entities || {})[entity])) return 'entity_not_carried';
+        const disposition = (manifest.entities || {})[entity];
+        // `retire` only. The trail is the successor to a RETIRED log table; a
+        // `hub` disposition names a different destination and a `preserved_
+        // paused` one names none, so neither is answered by this table
+        // existing even for an entity that shares a name with one of the three.
+        if (disposition === 'retire' && audited.has(entity)) continue;
+        if (UNCARRIED_DISPOSITIONS.includes(disposition)) return 'entity_not_carried';
       }
       if (touched.names.some(entity => policyless.has(entity))) return 'entity_authorization';
     }

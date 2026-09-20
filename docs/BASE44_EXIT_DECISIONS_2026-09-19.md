@@ -1182,3 +1182,124 @@ still correct; what changed is the honest answer to "what may it serve", and
 D2's shortcut turns out to apply to almost nothing in this app. The 28 join the
 125 entities that need a reviewed contract under D19, which was always the
 safer path and is now very nearly the only one.
+
+
+## D23 — The roster comes from the authority store
+
+**Decision.** The staff roster is served from `pennsync_private.membership`
+joined to `pennsync_private.identity_map`. The carried `User` table keeps
+forced RLS and no policy, as D14 left it.
+
+**Why.** D20 measured what the fifty `User`-touching capabilities actually
+want: 41 read a roster, 9 write a profile, 0 want only their own claims. And
+the fields they read most are `agency_name` (120 references) and
+`account_type` (89) — precisely the claims `SELF_EDITABLE` names and D13
+refused to build tenancy on. A policy over the carried table would hand those
+back as though a user's own assertion about which agency they belong to were
+trustworthy.
+
+The authority store already models the roster, it is not editable by its
+subject, and `pennsync_private.context` already authorizes against it. Serving
+it from there is the smaller change *and* the stronger guarantee.
+
+**What this unblocks.** The 34 capabilities counted `entity_authorization`.
+They do not become written by this decision — each still needs its port — but
+nothing in front of them is undecided now.
+
+**What it still leaves open.** The 9 profile writes need a mutation path, which
+is a narrower question than the roster and is not answered here. Until it is,
+a capability that writes a profile stays blocked and should not be ported by
+reading a profile write as a roster read.
+
+
+## D24 — `pennsync_private.assignment` decides who may open a chart
+
+**Decision.** Of the three representations D21 named, the authority store's
+`assignment` table governs. `PatientCareTeamAssignment` and
+`Patient.assigned_nurses` do not authorize anything.
+
+**Why.** It is the only one of the three that already has a working
+authorization path written against it — `pennsync_private.context` uses it to
+scope a clinician today — and the only one that is not editable by the people
+it authorizes. `assigned_nurses` is an array of emails on the patient row, so
+anyone who may update a patient may grant themselves access to it; that is not
+a basis for deciding who may open a chart.
+
+**What this unblocks.** The 15 capabilities counted `patient_access_model`:
+every document read and write, visit creation and update, patient update, the
+clinical task generators, the alert readers, the note history. One answer for
+all fifteen, which is what D21 said this had to be.
+
+**What has to be built before a single one of them is ported.** Two things,
+and neither is optional:
+
+1. **A caller helper the policies can ask.** The record store's policies are
+   written in terms of `caller_agencies()`. Patient-level scoping needs the
+   equivalent for assignment, owned by the administrator and granted to the
+   record owner alone, exactly as `caller_tenant_role` is.
+2. **A backfill.** Today's real assignments live in `assigned_nurses`. Moving
+   authority to `assignment` without carrying those across means every
+   clinician loses access to their own patients on cutover. The backfill is a
+   reviewed data migration with its own rehearsal, and the failure it must not
+   have is the quiet one: a clinician who *gains* access to a patient they were
+   never assigned.
+
+**The asymmetry D21 recorded still holds** and should shape the rehearsal: too
+narrow is visible and safe, too broad is a disclosure. A backfill that drops a
+row is a support ticket; one that invents a row is an incident.
+
+
+## D25 — There is a general activity trail, and retiring the old tables did not remove the obligation
+
+**Decision.** The record store gains an append-only
+`pennsync_records.activity_audit`, written through a contract and readable only
+by an agency administrator. The 28 capabilities that wrote `UserActivity`,
+`SecurityLog` or `SystemLog` write here instead.
+
+**Why this was nearly lost.** Those three entities are dispositioned `retire`
+with retention `archive / 6 years` — which decided where the EXISTING rows go,
+not whether the product keeps auditing. Reading the modules shows what that
+elision would have cost: of the 19 capabilities touching `UserActivity`, **all
+19 write and only one reads**. They are not consumers of an audit table, they
+are producers of the audit trail. Retiring the table without naming a successor
+drops 28 audit paths in a regulated product, and the loss is invisible until
+somebody needs the record.
+
+Neither store had a general sink. The authority store has purpose-specific
+receipts (`mutation_receipt`, `patient_disclosure_audit`,
+`visit_disclosure_audit`) and the record store has domain logs; none of them is
+a place to record "this user did this thing".
+
+**Shape, and why each part is the way it is.**
+
+- **Append-only by absence.** The table carries an insert policy and a read
+  policy and no update or delete policy at all. Forced RLS with no policy is a
+  refusal, so nothing can rewrite or remove an audit row — not a caller, not a
+  contract, not the record owner. An audit trail that can be edited is a log.
+- **The actor is stamped, never supplied.** `actor_user_id` and `actor_email`
+  come from the caller helpers. A capability cannot write an audit row
+  attributing an action to somebody else, which is the one thing an audit
+  trail must refuse.
+- **Appending needs no privilege; reading needs administrator.** Every
+  capability audits as it works, so any member may append. Reading the trail is
+  an administrative act and the contract requires `agency_admin` — the same
+  division D19 drew, where the policy decides whose rows these are and the
+  contract decides who may ask.
+- **Detail is bounded.** A free `jsonb` column would become the place people
+  put a patient's record. It is capped, and the contract refuses an oversized
+  payload rather than truncating it, because a silently truncated audit entry
+  is worse than a refused write.
+- **It reads in time order, and the timestamps can separate two entries from
+  one request.** Both halves were wrong in the first draft and neither is
+  cosmetic. The list paged on `id`, which is a random uuid, so an administrator
+  would have been handed the trail in arbitrary order — correct as keyset
+  pagination and useless as an audit trail, which exists to answer what
+  happened in what order. And the stamp was `now()`, the *transaction*
+  timestamp, so a handler auditing twice while serving one request wrote two
+  rows that nothing could order against each other. It is `clock_timestamp()`
+  now, and the page key is `(occurred_at, id)` descending, with the id kept as
+  the tiebreaker because two entries can still share a microsecond and a cursor
+  that cannot separate them either repeats a row or skips one. The cursor is
+  opaque and the caller does not build it; an unparseable one is refused rather
+  than read as "from the beginning", because silently answering page one to a
+  request for page nine looks like duplicated activity to the person reading.

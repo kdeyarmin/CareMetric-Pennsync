@@ -174,6 +174,13 @@ test('the migrations are read in the order the store expects', () => {
     'the record store is applied after the authority store');
   assert.ok(names.indexOf(brokers) > names.indexOf(record),
     'the brokers are applied after the tables they broker');
+  // The hand-written migrations come after the generated store they extend:
+  // each one refuses a database without `caller_tenant_role`, so the order is
+  // enforced by the migrations themselves and asserted here so a reordering is
+  // caught before a deployment discovers it.
+  for (const name of names.filter(entry => /_contract_|_activity_audit/.test(entry))) {
+    assert.ok(names.indexOf(name) > names.indexOf(record), `${name} must follow the record store`);
+  }
 });
 
 test('the command line refuses before it opens a connection, and reports codes only', async () => {
