@@ -1044,6 +1044,33 @@ file layer, because that stays true whatever happens to the rows. A module using
 a computed key (`entities[name]`) names a set nothing can enumerate, so nothing
 is claimed about it and it stays where the source put it.
 
+**What the `User` 50 actually want, measured rather than assumed.** "Decide how
+`User` may be read" sounds like it reopens what an identity is. Reading the
+modules says it does not, because the need splits cleanly and neither half
+wants the self-editable profile table:
+
+- **41 read the roster** — `User.list`, `User.filter` or `User.get`, wanting the
+  members of an agency and their attributes. The authority store already owns
+  exactly that: `pennsync_private.membership` joined to `identity_map` is the
+  roster, it is not self-editable, and it is already exposed as
+  `pennsync_staging_memberships`.
+- **9 write a profile** — `User.update`, which needs a mutation path rather
+  than a read policy.
+- **0 want only their own claims.** Every one of the 50 touches the entity
+  itself, so none of them is resolved by the tenant context they already get.
+
+What those fields are is the other half of the argument. Across the 50 the most
+read are `agency_name` (120), `email` (117), `account_type` (89) and `role`
+(72) — and `agency_name` and `account_type` are precisely the claims
+`SELF_EDITABLE` names and D13 refused to build tenancy on. A policy over the
+carried `User` table would hand those back as though they were trustworthy.
+
+So the decision in front of the 34 is narrower than "how is `User` read": it is
+whether the roster is served from the authority store, which already models it
+and cannot be edited by its subject, rather than from the carried profile table.
+That is a decision to take rather than a design to invent, and it is the one
+thing standing in front of a third of the remaining queue.
+
 **What this does not do.** It moves no work and unblocks nothing. It says, in a
 number a test pins, that two thirds of the remaining queue is waiting on
 decisions rather than on the store — and names which decision each one waits
