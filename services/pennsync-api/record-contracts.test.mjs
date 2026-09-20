@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
   CONTRACT_CODES, CONTRACT_NAMES, RECORD_CONTRACTS, contractCapability,
 } from './record-contracts.mjs';
@@ -35,14 +36,32 @@ const answers = (value, status = 200) => () => new Response(JSON.stringify(value
   { status, headers: { 'content-type': 'application/json' } });
 const rejects = (promise, code) => assert.rejects(promise, error => error?.code === code, `expected ${code}`);
 
-test('every declared contract has a handler, and every handler name is real', () => {
+test('every declared contract is reached by a handler, and every reached contract is real', () => {
   // A contract nothing can reach is dead surface; a handler naming a contract
   // that does not exist is a 409 nobody expected.
+  //
+  // Read from the registry's own source rather than from the handler names,
+  // because the two stopped being the same thing: `listAuthorizedPatients` is
+  // one Base44 capability with two modes, and the modes are two different
+  // queries — a keyset page and a bounded batch of ids — so it reaches two
+  // contracts. Matching on names would have forced either one contract doing
+  // both jobs or a handler named after neither capability, and both of those
+  // are worse than looking at what the handlers actually call.
+  const source = readFileSync(new URL('./handlers.mjs', import.meta.url), 'utf8');
+  const reached = [...source.matchAll(/\bcontract\('([A-Za-z]+)'/g)].map(match => match[1]);
+  assert.ok(reached.length > 0, 'expected the handlers to reach a contract');
+  assert.deepEqual([...new Set(reached)].sort(), [...CONTRACT_NAMES].sort(),
+    'every contract is reached, and nothing reaches a contract that does not exist');
   for (const name of CONTRACT_NAMES) {
-    assert.ok(HANDLER_NAMES.includes(name), `${name} has no handler`);
     const entry = RECORD_CONTRACTS[name];
     assert.match(entry.rpc, /^pennsync_contract_[a-z_]+$/, `${name} rpc name`);
     assert.ok(Array.isArray(entry.params) && typeof entry.body === 'function');
+  }
+  // And each Base44 capability a contract serves is still a handler by its own
+  // name, which is what the port queue counts as ported.
+  for (const name of ['listPolicyLibrary', 'listAgencyRoster', 'getAgencyRosterMember',
+    'listAuthorizedPatients', 'getAuthorizedPatient']) {
+    assert.ok(HANDLER_NAMES.includes(name), `${name} has no handler`);
   }
 });
 
@@ -207,4 +226,50 @@ test('the capability hands out a function, never the token that authorizes it', 
   assert.deepEqual(Object.keys(contract), []);
   assert.ok(!JSON.stringify(Object.getOwnPropertyDescriptors(contract)).includes('synthetic.caller.token'));
   assert.ok(!String(contract).includes(KEY));
+});
+
+const PATIENT_SQL = readFileSync(new URL(
+  '../authority-store/supabase/record-migrations/20260920060000_contract_patient_read.sql',
+  import.meta.url), 'utf8');
+/** The codes one SQL function raises, read from that function's own body. */
+const raisedBy = (name, terminator) => {
+  const start = PATIENT_SQL.indexOf(`create function "pennsync_records".${name}(`);
+  assert.ok(start > 0, `${name} is not in the migration`);
+  const body = PATIENT_SQL.slice(start, PATIENT_SQL.indexOf(terminator, start));
+  return new Set([...body.matchAll(/message\s*=\s*'(PENNSYNC_[A-Z_]+)'/g)].map(match => match[1]));
+};
+
+test('each patient contract declares exactly the refusals it can actually raise', () => {
+  // Read from the migration rather than trusted, and per contract rather than
+  // per file. A code the SQL raises that this module does not know reaches a
+  // handler as a generic outage; a code this module expects that the contract
+  // it calls cannot raise is a branch nothing can take, and it reads like a
+  // guarantee somebody wrote. `PENNSYNC_PATIENT_CURSOR_UNKNOWN` is the one
+  // that would go wrong here: only the page contract can raise it, and a flat
+  // list would have the id batch claiming it too.
+  //
+  // The three share a gate, so the gate's refusals count for all of them —
+  // which is the point of having one: the order in which a caller learns that
+  // they do not hold the agency, that the purpose does not exist, and that
+  // their role is not admitted is decided once.
+  const gate = raisedBy('patient_purpose_gate', 'end $gate$;');
+  const expected = (name) => [...new Set([...gate, ...raisedBy(name, 'end $contract$;')])].sort();
+  assert.deepEqual([...RECORD_CONTRACTS.listAuthorizedPatientsPage.codes].sort(),
+    expected('contract_patient_list'));
+  assert.deepEqual([...RECORD_CONTRACTS.listAuthorizedPatientsBatch.codes].sort(),
+    expected('contract_patient_batch'));
+  assert.deepEqual([...RECORD_CONTRACTS.getAuthorizedPatient.codes].sort(),
+    expected('contract_patient_get'));
+  // Only the page can end a walk, so only the page may say so.
+  for (const name of ['listAuthorizedPatientsBatch', 'getAuthorizedPatient']) {
+    assert.ok(!RECORD_CONTRACTS[name].codes.includes('PENNSYNC_PATIENT_CURSOR_UNKNOWN'), name);
+  }
+  // Between them the three account for every patient refusal the migration
+  // raises, so a new one cannot be added unnoticed.
+  const raised = new Set([...PATIENT_SQL.matchAll(/message\s*=\s*'(PENNSYNC_PATIENT_[A-Z_]+)'/g)]
+    .map(match => match[1]));
+  assert.deepEqual([...raised].sort(), [...new Set([
+    ...RECORD_CONTRACTS.listAuthorizedPatientsPage.codes,
+    ...RECORD_CONTRACTS.listAuthorizedPatientsBatch.codes,
+    ...RECORD_CONTRACTS.getAuthorizedPatient.codes])].sort());
 });

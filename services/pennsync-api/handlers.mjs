@@ -165,6 +165,56 @@ export const HANDLERS = Object.freeze({
       return contract('getAgencyRosterMember', params);
     },
   }),
+  listAuthorizedPatients: Object.freeze({
+    // The first ported capability that reads clinical rows.
+    //
+    // The original is 1,404 lines, and almost all of them are work Base44
+    // forced on it: no row-level security, so it built the tenant query
+    // itself, re-resolved the caller's membership four times around it,
+    // re-read every care-team assignment after choosing the rows, and ran the
+    // whole read twice to catch an authority change in between. Here the rows
+    // a caller may see are decided by the policies on the table inside one
+    // statement in one snapshot — tenancy from `caller_agencies()`, the chart
+    // from D24 — so there is no window between the check and the read to
+    // fence off, and nothing for this handler to re-check.
+    //
+    // What is left for the handler is the shape of the request, and the shape
+    // is per mode, exactly as the original's is: naming `patient_ids` on a
+    // page is not a request anybody meant, and neither is naming a cursor on
+    // a batch. Who may see which fields is the contract's, in the database,
+    // and is not restated here.
+    handle({ params, contract }) {
+      if (!isObject(params)) fail(400, 'INVALID_PARAMS');
+      const mode = params.mode === undefined ? 'page' : params.mode;
+      if (mode === 'page') {
+        exactObject(params, ['mode', 'purpose', 'status', 'sort', 'page_size', 'after'], 'INVALID_PARAMS');
+        // The contract orders by id ascending and has no second ordering to
+        // offer. The original takes the argument and refuses anything else,
+        // so a caller that sends it still gets the answer it expects.
+        if (params.sort !== undefined && params.sort !== 'id_asc') fail(400, 'INVALID_PARAMS');
+        const { mode: unused, sort: alsoUnused, ...rest } = params;
+        return contract('listAuthorizedPatientsPage', rest);
+      }
+      if (mode === 'ids') {
+        exactObject(params, ['mode', 'purpose', 'patient_ids'], 'INVALID_PARAMS');
+        const { mode: unused, ...rest } = params;
+        return contract('listAuthorizedPatientsBatch', rest);
+      }
+      fail(400, 'INVALID_PARAMS');
+    },
+  }),
+  getAuthorizedPatient: Object.freeze({
+    // One chart, under its own purposes. The contract answers null for a
+    // chart that is not there and for one that is not this caller's, in the
+    // same words, so that an id cannot be tested for existence; the original
+    // answers 404 to both for the same reason, and so does this.
+    async handle({ params, contract }) {
+      exactObject(params, ['purpose', 'patient_id'], 'INVALID_PARAMS');
+      const patient = await contract('getAuthorizedPatient', params);
+      if (patient === null) fail(404, 'PATIENT_UNAVAILABLE');
+      return { patient };
+    },
+  }),
   generateBagTechniquePDF: Object.freeze({
     binary: true,
     handle({ params, config }) {

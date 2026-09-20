@@ -100,7 +100,7 @@ test('a name the service does not serve never becomes a request', async () => {
   const { client, calls } = harness(() => assert.fail('the API must not have been called'));
   await client.signIn(password);
   const before = calls.length;
-  for (const name of ['getDashboardData', 'listAuthorizedPatients', 'context', '',
+  for (const name of ['getDashboardData', 'createAuthorizedPatient', 'context', '',
     'validatePatientData ', '../../etc/passwd', 'toString', 'constructor', null, 42]) {
     await rejects(client.callFunction(name, 'agency-a'), 'PENNSYNC_API_FUNCTION_UNKNOWN');
   }

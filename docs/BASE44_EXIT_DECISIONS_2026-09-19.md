@@ -1542,3 +1542,84 @@ a place to record "this user did this thing".
   opaque and the caller does not build it; an unparseable one is refused rather
   than read as "from the beginning", because silently answering page one to a
   request for page nine looks like duplicated activity to the person reading.
+
+## D26 — A purpose policy is data, and it is extracted rather than retyped
+
+`listAuthorizedPatients` and `getAuthorizedPatient` are the first ported
+capabilities that read clinical rows, and the first where the authorization has
+two independent halves.
+
+The first half is which rows, and the record store already answers it: tenancy
+from `caller_agencies()` and D24's chart narrowing on top, both inside the
+policies on `pennsync_records.patient`. The second half is **which fields, and
+who may ask for them at all**, and no policy can express it — it is a property
+of the request's stated purpose, not of the row or the caller alone. A
+clinician assigned to a chart may open it; that does not entitle them to pull
+the whole agency's contact details under the `contact` purpose, or anybody's
+date of birth under `identity_match`.
+
+The originals carry that second half as a fenced block of declarations, and
+`patientReadAuthorizationContract.test.js` already asserted the markers existed
+— somebody had decided the block must not drift, without anything yet reading
+it as data.
+
+**The decision: generate the policy, hand-write the contract.**
+
+D19 says a per-capability contract is hand-written, because a capability's
+authorization is its own and there is nothing to generate from. That reason is
+materially false for the projection here: sixteen field lists, sixteen role
+sets and eight page bounds already exist, in the originals, as data. Typing
+them into `jsonb_build_object` by hand is the transcription D12 settled
+against, and the failure mode is silent — the user-guide parity test caught a
+single dropped trailing space in a much shorter text, and a dropped field name
+here would narrow or widen a clinical disclosure with nothing to notice.
+
+So `tools-patient-purpose-policy.mjs` evaluates the fenced blocks and writes
+two artifacts: `services/pennsync-api/patient-purpose-policy.mjs` for the
+service, and `20260920050000_patient_purpose_policy.sql` for the database. The
+SQL has no authorization in it at all — it answers what a policy says, never
+who is asking. `20260920060000_contract_patient_read.sql` is hand-written as
+usual and is the only thing that decides. A gate re-extracts and compares, so
+neither artifact can drift from the source it came from.
+
+Five things this settled that were not obvious going in:
+
+- **The two capabilities have different purposes, and merging them would be a
+  disclosure.** A list is asked for `contact` or `roster`; one chart is opened
+  for `smart_note_context`, which carries the medication list and the clinical
+  notes. Nothing in either original says the vocabularies are separate — they
+  are separate because each module declares its own — so the port keeps two
+  `_known` functions rather than one, and a purpose from one is
+  `PENNSYNC_PATIENT_PURPOSE_INVALID` in the other.
+- **`platform_owner` is dropped, and that is the one authorization
+  divergence.** Every purpose in both originals admits it. D14 and D22 removed
+  the platform tier, so `caller_tenant_role` cannot answer it and emitting the
+  branch would read like a tier that still exists. The generator refuses to
+  render if dropping it would leave a purpose admitting nobody, because that
+  would be turning a capability off by accident rather than narrowing it.
+- **Creator provenance is not a basis, and that is a real narrowing.** The
+  original grants a non-agency-wide caller the union of their active care-team
+  assignments *and* the patients they created. D24 carries only the first into
+  RLS. The remedy is a backfill pass recording those grants, not a second
+  predicate in this contract: a creator check here would have to be repeated in
+  fifty-six reference policies to stay consistent, and D24 chose one place for
+  it.
+- **The continuation is an id, not a context echo.** The original's cursor
+  carries agency, purpose, status, page size, membership and role and refuses
+  when any changed. Here those arrive as arguments, so a changed one is simply
+  a different query; what is re-checked is the row the cursor names, against
+  the current filter and against what the caller may still see. A revoked
+  assignment or a discharged patient ends the walk in a refusal rather than
+  silently reporting an agency of three hundred as an agency of fifty.
+- **A merged duplicate no longer makes an agency unreadable.** The original
+  rejects the whole page when one row's status is `merged` or `archived`. Both
+  refuse to disclose the row; failing the page as well is a worse answer to the
+  same question, so the port skips it.
+
+One thing this cost: `record-contracts.mjs`'s "every contract has a handler"
+invariant was name equality, and `listAuthorizedPatients` is one Base44
+capability with two modes that are two genuinely different queries — a keyset
+page and a bounded batch of ids. Keeping name equality would have forced either
+one contract doing both jobs or a handler named after neither capability. The
+invariant now reads the handlers' own source for what they call, which is what
+it was a proxy for.

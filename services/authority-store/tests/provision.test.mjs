@@ -187,11 +187,17 @@ test('the migrations are read in the order the store expects', () => {
     'the record store is applied after the authority store');
   assert.ok(names.indexOf(brokers) > names.indexOf(record),
     'the brokers are applied after the tables they broker');
-  // The hand-written migrations come after the generated store they extend:
-  // each one refuses a database without `caller_tenant_role`, so the order is
-  // enforced by the migrations themselves and asserted here so a reordering is
-  // caught before a deployment discovers it.
-  for (const name of names.filter(entry => /_contract_|_activity_audit/.test(entry))) {
+  // Everything else in the directory comes after the generated store it
+  // extends: each one refuses a database without `caller_tenant_role`, so the
+  // order is enforced by the migrations themselves and asserted here so a
+  // reordering is caught before a deployment discovers it. Stated as "every
+  // other file" rather than as a list of prefixes, because a migration added
+  // under a name nobody thought to pattern-match would otherwise be the one
+  // case this does not check.
+  const inRecordDirectory = migrations
+    .filter(migration => migration.from === directories[1]).map(migration => migration.name);
+  assert.ok(inRecordDirectory.includes(record), 'the record store is in the record directory');
+  for (const name of inRecordDirectory.filter(entry => entry !== record)) {
     assert.ok(names.indexOf(name) > names.indexOf(record), `${name} must follow the record store`);
   }
 });

@@ -57,6 +57,73 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_ROSTER_CURSOR_UNKNOWN',
     ]),
   }),
+  // The authorized patient read. Three contracts for two Base44 capabilities,
+  // because `listAuthorizedPatients` is one endpoint with two modes and the
+  // two are different queries: a keyset page, and a bounded batch of ids. The
+  // RPC is still fixed per entry and chosen by nothing a caller sends — the
+  // handler picks the entry from the mode, and the mode is one of two words.
+  //
+  // `getAuthorizedPatient` carries its OWN purposes. A list is asked for
+  // `contact` or `roster`; one chart is opened for `smart_note_context`. The
+  // database keeps the two vocabularies apart, so a purpose from one is
+  // `PENNSYNC_PATIENT_PURPOSE_INVALID` in the other rather than a projection
+  // nobody meant to allow.
+  listAuthorizedPatientsPage: Object.freeze({
+    rpc: 'pennsync_contract_patient_list',
+    params: Object.freeze(['purpose', 'status', 'page_size', 'after']),
+    // Absent is the original's default; an explicit null is not, and reaches
+    // the contract as null so the contract refuses it. The same rule the
+    // policy library's `mode` follows.
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_purpose: args.purpose ?? null,
+      p_status: args.status === undefined ? null : args.status,
+      p_page_size: args.page_size === undefined ? 25 : args.page_size,
+      p_after: args.after === undefined ? null : args.after,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_PATIENT_AGENCY_NOT_HELD',
+      'PENNSYNC_PATIENT_PURPOSE_INVALID',
+      'PENNSYNC_PATIENT_FORBIDDEN',
+      'PENNSYNC_PATIENT_STATUS_INVALID',
+      'PENNSYNC_PATIENT_PAGE_SIZE_INVALID',
+      'PENNSYNC_PATIENT_CURSOR_INVALID',
+      'PENNSYNC_PATIENT_CURSOR_UNKNOWN',
+    ]),
+  }),
+  listAuthorizedPatientsBatch: Object.freeze({
+    rpc: 'pennsync_contract_patient_batch',
+    params: Object.freeze(['purpose', 'patient_ids']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_purpose: args.purpose ?? null,
+      p_patient_ids: args.patient_ids ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_PATIENT_AGENCY_NOT_HELD',
+      'PENNSYNC_PATIENT_PURPOSE_INVALID',
+      'PENNSYNC_PATIENT_FORBIDDEN',
+      'PENNSYNC_PATIENT_SUBJECT_INVALID',
+    ]),
+  }),
+  getAuthorizedPatient: Object.freeze({
+    rpc: 'pennsync_contract_patient_get',
+    params: Object.freeze(['purpose', 'patient_id']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_purpose: args.purpose ?? null,
+      p_patient_id: args.patient_id ?? null,
+    }),
+    // Null is an answer here, not an outage: a chart that is not there and a
+    // chart that is not this caller's are made indistinguishable on purpose.
+    nullable: true,
+    codes: Object.freeze([
+      'PENNSYNC_PATIENT_AGENCY_NOT_HELD',
+      'PENNSYNC_PATIENT_PURPOSE_INVALID',
+      'PENNSYNC_PATIENT_FORBIDDEN',
+      'PENNSYNC_PATIENT_SUBJECT_INVALID',
+    ]),
+  }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
     params: Object.freeze(['user_id']),

@@ -570,6 +570,10 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // Reading the census as "86 ports awaiting review" would send someone to work
   // nothing in the repository can support. Exactly one of them was writable
   // without something the transition has not built, and it has been written.
+  //
+  // `records_schema` moves by work now rather than by reclassification: D26
+  // ported `listAuthorizedPatients` and `getAuthorizedPatient`, the first two
+  // capabilities that read clinical rows, so 76 → 74 and 11 → 13.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -577,8 +581,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 10, patient_access_model: 0,
-    records_schema: 76, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
-    external_secret: 1, none: 11 });
+    records_schema: 74, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
+    external_secret: 1, none: 13 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -615,12 +619,20 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'calculateDataQualityScores', 'enforceDataCompleteness',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Seventy-six. That is how many of the hundred can be written today, and the
+  // Seventy-four. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
-  // nothing waits on a shared prerequisite either.
-  assert.equal(report.port_blockers.records_schema.length, 76);
+  // nothing waits on a shared prerequisite either — so from here the bucket
+  // only falls by ports being written, which is what took it off 76.
+  assert.equal(report.port_blockers.records_schema.length, 74);
+  // The two that left it are the first ported capabilities that read clinical
+  // rows (D26), so they are also the proof that the D19 pattern carries PHI
+  // and not only configuration.
+  for (const name of ['listAuthorizedPatients', 'getAuthorizedPatient']) {
+    assert.ok(report.port_blockers.none.includes(name), `${name} is ported`);
+    assert.ok(!report.port_blockers.records_schema.includes(name), name);
+  }
   // D24's bucket is empty because both halves exist — not because the
   // dependency went away. `getScopedPatientAlerts` and
   // `appendPatientNoteHistory` still authorize on care-team membership; the
@@ -650,7 +662,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   assert.deepEqual(report.port_blockers.none,
     ['analyzeReferral', 'analyzeReferralIntake', 'analyzeReferralPriority', 'generateBagTechniquePDF',
       'generateReferralTasks', 'generateSmartNoteGuide', 'generateUserGuidePDF', 'generateUserManual',
-      'listPolicyLibrary', 'matchPatientWithAI', 'validatePatientData'],
+      'getAuthorizedPatient', 'listAuthorizedPatients', 'listPolicyLibrary', 'matchPatientWithAI',
+      'validatePatientData'],
     'the set of written ports changed');
   // `listPolicyLibrary` is the first of these to read an entity row. Everything
   // before it either computed an answer, rendered a document or asked a model,
