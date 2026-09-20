@@ -67,6 +67,18 @@ export const PORTED_FUNCTIONS = Object.freeze({
 });
 /** The ported API's one route shape. No caller names a path. */
 const FUNCTION_PATH = name => `/v1/functions/${name}`;
+/**
+ * A ported handler gets longer than an authority RPC, because it is not one.
+ *
+ * `rpc` asks the database a bounded question and 15s is generous for it. A
+ * ported handler may reach the integration runtime, which allows its own 30s
+ * for a model call — so inheriting the RPC deadline aborted the browser at 15s
+ * while both backend services were still working, and the larger referral
+ * prompts and the eleven-section user guide are exactly the calls that take
+ * that long. This exceeds the downstream deadline rather than matching it, so
+ * the timeout that fires is the one that knows why.
+ */
+export const FUNCTION_TIMEOUT_MS = 45000;
 const AGENCY = /^[A-Za-z0-9_-]{1,128}$/;
 
 export class AuthorityClientError extends Error {
@@ -245,7 +257,7 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
     && session.token_type === 'bearer';
   async function request(path, { lease, bearer, body, noBody = false, method = 'POST', cleanup = false,
     receivedGrant, maxResponseBytes = 1024 * 1024, origin = config.projectUrl, apikey = true,
-    expect = 'application/json' }) {
+    expect = 'application/json', deadlineMs = timeoutMs }) {
     if (!cleanup) current(lease);
     const controller = new AbortController();
     if (!cleanup) pending.add(controller);
@@ -253,7 +265,7 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
     const stopped = new Promise((_, reject) => { rejectStopped = reject; });
     const onAbort = () => rejectStopped(new AuthorityClientError('AUTHORITY_REQUEST_ABORTED'));
     controller.signal.addEventListener('abort', onAbort, { once: true });
-    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    const timeout = setTimeout(() => controller.abort(), deadlineMs);
     const live = () => { if (!cleanup) current(lease); if (controller.signal.aborted) fail('AUTHORITY_REQUEST_ABORTED'); };
     const execute = async () => {
       const response = await fetchImpl(origin + path, {
@@ -278,7 +290,7 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
         void response.body?.cancel().catch(() => {});
         live(); return null;
       }
-      const result = await boundedJson(response, maxResponseBytes, timeoutMs, expect);
+      const result = await boundedJson(response, maxResponseBytes, deadlineMs, expect);
       if (receivedGrant) await receivedGrant(result, controller.signal.aborted || lease !== epoch);
       live();
       return result;
@@ -371,7 +383,7 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
       const binary = PORTED_FUNCTIONS[name] === 'binary';
       const result = await request(FUNCTION_PATH(name), {
         lease, bearer: token, body: { agency_id: agencyId, params },
-        origin: config.apiUrl, apikey: false,
+        origin: config.apiUrl, apikey: false, deadlineMs: FUNCTION_TIMEOUT_MS,
         ...(binary ? { expect: 'application/pdf', maxResponseBytes: 8 * 1024 * 1024 } : {}),
       });
       current(lease);

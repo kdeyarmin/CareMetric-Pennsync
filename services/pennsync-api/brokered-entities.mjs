@@ -9,37 +9,9 @@
 // `global` is reference data: readable by any member of the deployment, and
 // writable through no operation here.
 export const BROKERED_ENTITIES = Object.freeze({
-  AIConfiguration: "tenant",
-  AIContentAgreementAttestation: "self",
-  AIFeedback: "self",
-  AIInsightFeedback: "tenant",
-  AIKnowledgeBase: "tenant",
-  AILearningPattern: "tenant",
-  AIModelConfiguration: "global",
-  AIModelTestResult: "self",
-  Announcement: "tenant",
-  ApprovalRequest: "tenant",
-  AutomaticCarePlanTrigger: "tenant",
-  CitationLibrary: "global",
-  ContentScopeBinding: "tenant",
-  CustomValidationRule: "tenant",
-  DataArchivePolicy: "tenant",
-  FacilityDocumentationRule: "tenant",
-  FeaturePackage: "tenant",
-  FeatureToggle: "tenant",
-  FollowUpRuleConfig: "tenant",
-  InvitationSettings: "tenant",
-  LearnedFormatPattern: "tenant",
-  NewFeature: "global",
-  OCRTrainingSession: "tenant",
-  PayerRateConfig: "tenant",
-  RegulatoryUpdate: "tenant",
-  ReminderLog: "tenant",
-  ScheduledReport: "tenant",
-  ServiceCode: "global",
-  SharedPhraseLibrary: "tenant",
-  TerminologyGlossary: "self",
-  TranscriptionLearning: "self",
+  Announcement: "readonly",
+  FacilityDocumentationRule: "readonly",
+  RegulatoryUpdate: "readonly",
 });
 
 export const BROKER_CODES = Object.freeze({
@@ -55,5 +27,8 @@ export const BROKER_CODES = Object.freeze({
 
 export const BROKER_REFUSALS = Object.freeze(Object.values(BROKER_CODES));
 
+/** Modes the family serves for reads only. A caller must not try to write one. */
+export const READ_ONLY_MODES = Object.freeze(["global","readonly"]);
+
 export const READ_ONLY_ENTITIES = Object.freeze(
-  Object.keys(BROKERED_ENTITIES).filter(entity => BROKERED_ENTITIES[entity] === 'global'));
+  Object.keys(BROKERED_ENTITIES).filter(entity => READ_ONLY_MODES.includes(BROKERED_ENTITIES[entity])));

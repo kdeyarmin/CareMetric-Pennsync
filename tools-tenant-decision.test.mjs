@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  brokerWritable, schemaAuthority,
   auditBrokerCeiling, auditDecision, checkDecisions, EXCLUDED, KINDS, readDecisions, STAMPED_KINDS,
 } from './tools-tenant-decision.mjs';
 import { readFileSync } from 'node:fs';
+import { readEntity } from './tools-tenant-path.mjs';
 
 const REPO = process.cwd();
 const carried = new Map([['patient', 'Patient'], ['agency', 'Agency']]);
@@ -186,12 +188,27 @@ test('every entity the manifest brokers is inside D2 ceiling', () => {
   const manifest = JSON.parse(readFileSync(`${REPO}/tools-transition-disposition.json`, 'utf8'));
   const brokered = Object.keys(manifest.entities).filter(name => manifest.entities[name] === 'broker');
   assert.equal(report.brokered, brokered.length);
-  assert.ok(brokered.length >= 25, `expected a substantial broker set, saw ${brokered.length}`);
-  // The ones reading names had wrongly admitted. Each now needs a reviewed
-  // per-contract handler rather than a generic family.
+  // Pinned exactly, and small on purpose. This asserted `>= 25` when a large
+  // broker set was believed to be the healthy state; D22 says the opposite.
+  // Every entity's schema carries an `rls` block, and 28 of the 31 declare an
+  // authority decision — most denying direct access outright — which is
+  // precisely what D2 forbids a generic family from serving.
+  assert.deepEqual(brokered, ['Announcement', 'FacilityDocumentationRule', 'RegulatoryUpdate']);
+  // The ones reading names had wrongly admitted, plus the ones reading fields
+  // missed. Each now needs a reviewed per-contract handler rather than a
+  // generic family.
   for (const entity of ['VerificationCode', 'PDFIndex', 'TeamNote', 'SessionTimeout', 'BIIntegration',
-    'EmbedConfig', 'ScheduleFeedback', 'TermsAcceptanceAudit', 'PolicyLibrary', 'LibraryDocument']) {
+    'EmbedConfig', 'ScheduleFeedback', 'TermsAcceptanceAudit', 'PolicyLibrary', 'LibraryDocument',
+    'AIKnowledgeBase', 'ServiceCode', 'OCRTrainingSession', 'ScheduledReport', 'ApprovalRequest',
+    'TranscriptionLearning', 'LearnedFormatPattern']) {
     assert.equal(manifest.entities[entity], 'port', `${entity} exceeds the broker ceiling`);
+  }
+  // And every survivor plainly permits a read while conditioning its writes,
+  // which is why the family serves them read-only.
+  for (const entity of brokered) {
+    const schema = readEntity(REPO, entity);
+    assert.equal(schemaAuthority(schema).read, 'allow', `${entity} must permit a plain read`);
+    assert.equal(brokerWritable(schema), false, `${entity} is writable; the family has no coverage for that`);
   }
   // Moving them changes who may serve the table, never whether it is carried.
   assert.ok(['port', 'broker'].includes(manifest.entities.VerificationCode));

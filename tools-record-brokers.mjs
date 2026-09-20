@@ -53,7 +53,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { OWNER_ROLE, SCHEMA, TENANT_PATH_FILE, buildPlan, quote } from './tools-entity-schema-plan.mjs';
-import { checkDecisions } from './tools-tenant-decision.mjs';
+import { brokerWritable, checkDecisions, schemaAuthority } from './tools-tenant-decision.mjs';
+import { readEntity } from './tools-tenant-path.mjs';
 
 export const BROKER_MIGRATION_FILE =
   'services/authority-store/supabase/record-migrations/20260919180000_record_brokers.sql';
@@ -69,9 +70,26 @@ export const BROKER_MIGRATION_FILE =
 export const WRAPPER_SCHEMA = 'public';
 export const WRAPPER_PREFIX = 'pennsync_records_';
 export const OPERATIONS = Object.freeze(['list', 'get', 'insert', 'update', 'delete']);
-export const MODES = Object.freeze(['tenant', 'self', 'global']);
-/** A `global` table carries a read policy and no write policy at all. */
-export const READ_ONLY_MODES = Object.freeze(['global']);
+export const MODES = Object.freeze(['tenant', 'self', 'global', 'readonly']);
+/**
+ * A `global` table carries a read policy and no write policy at all — and so,
+ * now, does any entity whose own schema does not plainly permit every write.
+ * `readonly` is that second case: the rows are tenant-scoped and readable, but
+ * the schema conditions who may create, update or delete them, and a generic
+ * family cannot evaluate a condition it never saw.
+ */
+export const READ_ONLY_MODES = Object.freeze(['global', 'readonly']);
+/**
+ * Modes whose table carries `agency_id`, and which the family therefore
+ * narrows to the one agency a request names.
+ *
+ * Spelled as a set rather than as `= 'tenant'`, which is what it was: adding
+ * `readonly` renamed the mode of three tenant-scoped entities and silently
+ * stopped the narrowing firing for them, so a caller holding two agencies saw
+ * both agencies' rows. The two-membership case caught it the same run.
+ */
+export const TENANT_SCOPED_MODES = Object.freeze(['tenant', 'readonly']);
+const tenantScoped = column => `${column} = any(array[${TENANT_SCOPED_MODES.map(literal).join(', ')}])`;
 export const SELF_BINDING = Object.freeze({ user_id: 'caller_user_id', user_email: 'caller_email' });
 /**
  * Columns the broker sets and a payload may not. `agency_id` and a `self`
@@ -158,7 +176,19 @@ export function brokerPlan(repository) {
       }
     } else if (entity.tenant_key === TENANT_COLUMN) mode = 'tenant';
     else throw new Error(`BROKER_TENANCY_UNRESOLVED:${entity.entity}`);
-    entries.push({ entity: entity.entity, table: entity.table, mode, subject });
+    // The schema's own authorization decides writability, not the tenancy
+    // shape. An entity that conditions who may write is served read-only
+    // rather than not at all, because the read itself was plainly permitted.
+    const schema = readEntity(repository, entity.entity);
+    if (mode === 'tenant' && !brokerWritable(schema)) mode = 'readonly';
+    if (mode === 'self' && !brokerWritable(schema)) {
+      // A `self` table served read-only would be indistinguishable from one
+      // nobody may write, and nothing needs that today. Refuse rather than
+      // quietly narrowing a shape the family does not model.
+      throw new Error(`BROKER_SELF_NOT_WRITABLE:${entity.entity}`);
+    }
+    entries.push({ entity: entity.entity, table: entity.table, mode, subject,
+      authority: schemaAuthority(schema) });
   }
   entries.sort(byEntity);
   const counts = Object.fromEntries(MODES.map(mode => [mode, entries.filter(e => e.mode === mode).length]));
@@ -293,7 +323,7 @@ end $broker$;`,
 create function ${fn('broker_reserved')}(p_mode text, p_subject text)
   returns text[] language sql immutable set search_path = '' as $broker$
   select case
-    when p_mode = 'tenant' then array[${STAMPED_COLUMNS.map(literal).join(', ')}, ${literal(TENANT_COLUMN)}]
+    when ${tenantScoped('p_mode')} then array[${STAMPED_COLUMNS.map(literal).join(', ')}, ${literal(TENANT_COLUMN)}]
     when p_mode = 'self' then array[${STAMPED_COLUMNS.map(literal).join(', ')}] || p_subject
     else array[${STAMPED_COLUMNS.map(literal).join(', ')}]
   end
@@ -332,7 +362,7 @@ begin
   v_limit := least(greatest(coalesce(p_limit, ${DEFAULT_PAGE}), 1), ${MAX_PAGE});
   -- The only narrowing this family does: one agency out of the several a caller
   -- may hold. Everything else about who sees what is left to the policies.
-  if v_scope.mode = 'tenant' then
+  if ${tenantScoped('v_scope.mode')} then
     return query execute format(
       'select to_jsonb(t) from %I.%I t where t.%I = $2 and ($1 is null or t.%I > $1) order by t.%I limit %L::integer',
       ${literal(SCHEMA)}, v_scope.tbl, ${literal(TENANT_COLUMN)}, ${literal(ID_COLUMN)}, ${literal(ID_COLUMN)}, v_limit)
@@ -354,7 +384,7 @@ begin
   if p_id is null or p_id = '' then
     raise exception using errcode='22023', message='${BROKER_CODES.idRequired}';
   end if;
-  if v_scope.mode = 'tenant' then
+  if ${tenantScoped('v_scope.mode')} then
     execute format('select to_jsonb(t) from %I.%I t where t.%I = $1 and t.%I = $2',
       ${literal(SCHEMA)}, v_scope.tbl, ${literal(ID_COLUMN)}, ${literal(TENANT_COLUMN)}) into v_row using p_id, p_agency;
   else
@@ -382,7 +412,7 @@ begin
     'created_date', to_jsonb(v_now),
     'updated_date', to_jsonb(v_now),
     'created_by', to_jsonb(${fn('caller_email')}()));
-  if v_scope.mode = 'tenant' then
+  if ${tenantScoped('v_scope.mode')} then
     v_stamped := v_stamped || jsonb_build_object(${literal(TENANT_COLUMN)}, p_agency);
   elsif v_scope.mode = 'self' then
     v_stamped := v_stamped || jsonb_build_object(v_scope.subject, case v_scope.subject
@@ -416,7 +446,7 @@ begin
   v_sets := v_sets || format('%I = now()', 'updated_date');
   v_sql := format('update %I.%I as t set %s where t.%I = $2',
     ${literal(SCHEMA)}, v_scope.tbl, array_to_string(v_sets, ', '), ${literal(ID_COLUMN)});
-  if v_scope.mode = 'tenant' then
+  if ${tenantScoped('v_scope.mode')} then
     v_sql := v_sql || format(' and t.%I = $3', ${literal(TENANT_COLUMN)});
     execute v_sql || ' returning to_jsonb(t)' into v_row using p_patch, p_id, p_agency;
   else
@@ -437,7 +467,7 @@ begin
   if p_id is null or p_id = '' then
     raise exception using errcode='22023', message='${BROKER_CODES.idRequired}';
   end if;
-  if v_scope.mode = 'tenant' then
+  if ${tenantScoped('v_scope.mode')} then
     execute format('with gone as (delete from %I.%I as t where t.%I = $1 and t.%I = $2 returning 1) select count(*) > 0 from gone',
       ${literal(SCHEMA)}, v_scope.tbl, ${literal(ID_COLUMN)}, ${literal(TENANT_COLUMN)}) into v_removed using p_id, p_agency;
   else
@@ -529,8 +559,11 @@ ${codes}
 
 export const BROKER_REFUSALS = Object.freeze(Object.values(BROKER_CODES));
 
+/** Modes the family serves for reads only. A caller must not try to write one. */
+export const READ_ONLY_MODES = Object.freeze(${JSON.stringify([...READ_ONLY_MODES])});
+
 export const READ_ONLY_ENTITIES = Object.freeze(
-  Object.keys(BROKERED_ENTITIES).filter(entity => BROKERED_ENTITIES[entity] === 'global'));
+  Object.keys(BROKERED_ENTITIES).filter(entity => READ_ONLY_MODES.includes(BROKERED_ENTITIES[entity])));
 `;
 }
 

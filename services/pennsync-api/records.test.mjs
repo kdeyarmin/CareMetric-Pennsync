@@ -24,8 +24,13 @@ import { AUTHORITY_TARGETS } from './authority.mjs';
 const TARGET = AUTHORITY_TARGETS[1];
 const KEY = 'sb_publishable_synthetic0000000000';
 const BEARER = 'Bearer synthetic.caller.token';
-const TENANT = 'AIKnowledgeBase';
-const GLOBAL = Object.keys(BROKERED_ENTITIES).find(entity => BROKERED_ENTITIES[entity] === 'global');
+/**
+ * The family serves three entities after D22, all read-only. It served 31 until
+ * the ceiling was taught to read each schema's own `rls` block, and 28 of those
+ * declared an authority decision the family cannot evaluate.
+ */
+const TENANT = Object.keys(BROKERED_ENTITIES)[0];
+const READABLE = Object.keys(BROKERED_ENTITIES);
 const config = () => ({ authorityUrl: TARGET, authorityKey: KEY });
 const request = (authorization = BEARER) =>
   new Request('https://api.example/v1/functions/probe', { headers: authorization ? { authorization } : {} });
@@ -61,16 +66,17 @@ test('each operation sends exactly the parameters its broker declares', async ()
     return answers(url.endsWith('delete') ? true : url.endsWith('list') ? [] : { id: 'row-1' })();
   };
   const records = capability({}, fetcher);
+  // Only the reachable operations. The family has no writable entity after
+  // D22, so `insert`, `update` and `delete` are refused before a body is built
+  // — which the read-only case asserts for every entity rather than this one
+  // pretending to exercise a path nothing can take.
   await records('list', TENANT, {});
   await records('get', TENANT, { id: 'row-1' });
-  await records('insert', TENANT, { record: { title: 'New' } });
-  await records('update', TENANT, { id: 'row-1', patch: { title: 'Changed' } });
-  await records('delete', TENANT, { id: 'row-1' });
-  assert.deepEqual(Object.keys(sent).sort(), RECORD_OPERATIONS.map(op => RECORD_RPC[op]).sort());
+  assert.deepEqual(Object.keys(sent).sort(), [RECORD_RPC.get, RECORD_RPC.list].sort());
   assert.equal(sent[RECORD_RPC.list].p_limit, DEFAULT_PAGE, 'the unasked page size is the declared default');
-  assert.deepEqual(sent[RECORD_RPC.insert], { p_agency: 'agency-a', p_entity: TENANT, p_record: { title: 'New' } });
-  assert.deepEqual(sent[RECORD_RPC.update],
-    { p_agency: 'agency-a', p_entity: TENANT, p_id: 'row-1', p_patch: { title: 'Changed' } });
+  assert.deepEqual(sent[RECORD_RPC.get], { p_agency: 'agency-a', p_entity: TENANT, p_id: 'row-1' });
+  assert.deepEqual(RECORD_OPERATIONS, ['list', 'get', 'insert', 'update', 'delete'],
+    'the write operations still exist; nothing may currently reach them');
   // No agency, entity or id reaches the store except as a bound parameter: the
   // RPC name is fixed per operation and nothing a caller sends is concatenated.
   for (const body of Object.values(sent)) assert.ok(body.p_agency === 'agency-a' && body.p_entity === TENANT);
@@ -86,18 +92,25 @@ test('an entity outside the family never becomes a request', async () => {
   }
 });
 
-test('reference data is readable and not writable', async () => {
-  assert.ok(GLOBAL, 'the family serves at least one global entity');
+test('every entity the family serves is readable and none is writable', async () => {
+  assert.ok(READABLE.length > 0, 'the family serves at least one entity');
   const fetcher = async () => { throw new Error('the store must not have been called'); };
-  for (const operation of ['insert', 'update', 'delete']) {
-    await rejects(capability({}, fetcher)(operation, GLOBAL, { id: 'x', patch: {}, record: {} }),
-      BROKER_CODES.entityReadOnly);
+  // Refused here as well as in the database, and refused for EVERY entity —
+  // the family has nothing writable, which is a property of the ceiling rather
+  // than a coincidence of these three.
+  for (const entity of READABLE) {
+    for (const operation of ['insert', 'update', 'delete']) {
+      await rejects(capability({}, fetcher)(operation, entity, { id: 'x', patch: {}, record: {} }),
+        BROKER_CODES.entityReadOnly);
+    }
   }
   let called = 0;
-  const reader = async (url) => { called += 1; return answers(url.endsWith('list') ? [] : { id: 'svc-1' })(); };
-  await capability({}, reader)('list', GLOBAL, {});
-  await capability({}, reader)('get', GLOBAL, { id: 'svc-1' });
-  assert.equal(called, 2);
+  const reader = async (url) => { called += 1; return answers(url.endsWith('list') ? [] : { id: 'row-1' })(); };
+  for (const entity of READABLE) {
+    await capability({}, reader)('list', entity, {});
+    await capability({}, reader)('get', entity, { id: 'row-1' });
+  }
+  assert.equal(called, READABLE.length * 2);
 });
 
 test('an argument nobody declared is refused rather than dropped', async () => {
@@ -107,7 +120,6 @@ test('an argument nobody declared is refused rather than dropped', async () => {
   // something it did not — the same defect the HTTP edge refuses for params.
   await rejects(records('list', TENANT, { filter: { agency_id: 'agency-b' } }), 'RECORD_ARGUMENTS_INVALID');
   await rejects(records('get', TENANT, { id: 'row-1', agency_id: 'agency-b' }), 'RECORD_ARGUMENTS_INVALID');
-  await rejects(records('insert', TENANT, { record: {}, id: 'chosen' }), 'RECORD_ARGUMENTS_INVALID');
   await rejects(records('list', TENANT, null), 'RECORD_ARGUMENTS_REQUIRED');
 
   await rejects(records('list', TENANT, { limit: MAX_PAGE + 1 }), 'RECORD_LIMIT_INVALID');
@@ -118,8 +130,10 @@ test('an argument nobody declared is refused rather than dropped', async () => {
   for (const id of [undefined, null, '', 'has spaces', 42]) {
     await rejects(records('get', TENANT, { id }), 'RECORD_ID_REQUIRED');
   }
-  await rejects(records('insert', TENANT, { record: 'a string' }), 'RECORD_REQUIRED');
-  await rejects(records('update', TENANT, { id: 'row-1', patch: [] }), 'RECORD_PATCH_REQUIRED');
+  // A write is refused for BEING a write before its arguments are looked at,
+  // so the read-only refusal is what a caller sees rather than a shape error.
+  await rejects(records('insert', TENANT, { record: 'a string' }), BROKER_CODES.entityReadOnly);
+  await rejects(records('update', TENANT, { id: 'row-1', patch: [] }), BROKER_CODES.entityReadOnly);
 });
 
 test('a misconfigured or unauthenticated service does not reach the store', async () => {
@@ -138,7 +152,7 @@ test('a misconfigured or unauthenticated service does not reach the store', asyn
 test('only the family own declared refusals cross back; everything else is one code', async () => {
   for (const code of BROKER_REFUSALS) {
     await rejects(capability({}, answers({ message: code, hint: 'internal', details: 'agency_id' }, 400))
-      ('insert', TENANT, { record: {} }), code);
+      ('list', TENANT, {}), code);
   }
   // A PostgREST message, a constraint name, a stack — none of it is vocabulary
   // this service speaks, so none of it reaches a caller.
@@ -159,7 +173,7 @@ test('only the family own declared refusals cross back; everything else is one c
 test('a store that answers the wrong shape is an outage, not a surprise in a handler', async () => {
   for (const [operation, args, body] of [
     ['list', {}, { rows: [] }], ['list', {}, [null]], ['list', {}, ['a string']],
-    ['delete', { id: 'row-1' }, 'true'], ['delete', { id: 'row-1' }, 1],
+
     ['get', { id: 'row-1' }, 'a string'], ['get', { id: 'row-1' }, [1]],
   ]) {
     await rejects(capability({}, answers(body))(operation, TENANT, args), 'RECORD_STORE_UNREADABLE');
@@ -168,12 +182,11 @@ test('a store that answers the wrong shape is an outage, not a surprise in a han
     'RECORD_STORE_UNREADABLE');
   await rejects(capability({}, () => { throw new TypeError('network'); })('list', TENANT, {}),
     'RECORD_STORE_UNREACHABLE');
-  // An absent row is an answer, not a failure: `get` and `update` say null the
-  // same way for "not there" and "not yours", which is what keeps an id in
-  // another agency from being reported as existing.
+  // An absent row is an answer, not a failure: `get` says null the same way for
+  // "not there" and "not yours", which is what keeps an id in another agency
+  // from being reported as existing. `update` and `delete` share that property
+  // in the SQL and are not exercised here, because no entity is writable.
   assert.equal(await capability({}, answers(null))('get', TENANT, { id: 'row-1' }), null);
-  assert.equal(await capability({}, answers(null))('update', TENANT, { id: 'row-1', patch: {} }), null);
-  assert.equal(await capability({}, answers(false))('delete', TENANT, { id: 'row-1' }), false);
   assert.deepEqual(await capability({}, answers([]))('list', TENANT, {}), []);
 });
 

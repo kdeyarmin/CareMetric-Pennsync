@@ -33,10 +33,18 @@ const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 /** 1 and 2 are in agency-a, 4 is in agency-b. */
 const ADMIN_A = 1; const CLINICIAN_A = 2; const ADMIN_B = 4;
-const EMAIL = { 1: 'admin-a@example.invalid', 2: 'clinician-a@example.invalid', 4: 'admin-b@example.invalid' };
 const A = 'agency-a'; const B = 'agency-b';
-/** One entity of each tenancy shape the family serves. */
-const TENANT = 'AIKnowledgeBase'; const SELF = 'AIFeedback'; const GLOBAL = 'ServiceCode';
+/**
+ * What the family serves after D22: three entities, all read-only.
+ *
+ * It served thirty-one until the ceiling was taught to read each schema's own
+ * `rls` block. Twenty-eight of those declared an authority decision — most
+ * denying direct access outright — and these three are the only ones whose
+ * schema plainly permits a read. None permits every write, so the write
+ * operations exist and are provably unreachable, which the cases below hold.
+ */
+const TENANT = 'Announcement';
+const READ_ONLY = ['Announcement', 'FacilityDocumentationRule', 'RegulatoryUpdate'];
 const CALLER_ROLES = ['anon', 'authenticated', 'service_role'];
 let db;
 
@@ -57,13 +65,13 @@ before(async () => {
   // and every assertion afterwards is about what a caller can reach, not about
   // what a caller managed to write.
   await db.exec(`
-    insert into ${SCHEMA}."ai_knowledge_base"("source_app_id","id","agency_id","title") values
-      ('${APP}','kb-a1','${A}','Agency A first'), ('${APP}','kb-a2','${A}','Agency A second'),
-      ('${APP}','kb-b1','${B}','Agency B only');
-    insert into ${SCHEMA}."ai_feedback"("source_app_id","id","user_email","feedback_text") values
-      ('${APP}','fb-1','${EMAIL[1]}','Seen by one'), ('${APP}','fb-2','${EMAIL[2]}','Seen by two');
-    insert into ${SCHEMA}."service_code"("source_app_id","id","code","name") values
-      ('${APP}','svc-1','G0151','Physical therapy');`);
+    insert into ${SCHEMA}."announcement"("source_app_id","id","agency_id","title") values
+      ('${APP}','ann-a1','${A}','Agency A first'), ('${APP}','ann-a2','${A}','Agency A second'),
+      ('${APP}','ann-b1','${B}','Agency B only');
+    insert into ${SCHEMA}."facility_documentation_rule"("source_app_id","id","agency_id","rule_name") values
+      ('${APP}','rule-a1','${A}','Agency A rule'), ('${APP}','rule-b1','${B}','Agency B rule');
+    insert into ${SCHEMA}."regulatory_update"("source_app_id","id","agency_id","title") values
+      ('${APP}','reg-a1','${A}','Agency A update'), ('${APP}','reg-b1','${B}','Agency B update');`);
   // A second membership for one caller, so the family's ONE narrowing — a
   // request names one agency out of the several a caller may hold — is
   // exercised by someone who really holds two. Without it every caller has a
@@ -90,21 +98,6 @@ async function asRows(n, sql, params = []) {
     await db.exec('set local role authenticated');
     const { rows } = await db.query(sql, params);
     return rows;
-  } finally { await db.exec('rollback'); }
-}
-
-/** The same, kept open so a write can be read back in the transaction that made it. */
-async function session(n, run) {
-  await db.exec('begin');
-  try {
-    await db.query("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({
-      sub: uid(n), session_id: sid(n), role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600,
-    })]);
-    await db.exec('set local role authenticated');
-    return await run(async (sql, params = []) => {
-      const { rows } = await db.query(sql, params);
-      return sql === listSql ? rows[0].page.map(row => ({ row })) : rows;
-    });
   } finally { await db.exec('rollback'); }
 }
 
@@ -147,10 +140,10 @@ test('every refusal the SQL can raise is one the service knows the name of', () 
 
 test('a caller holding nothing reads its own agency and not the other one', async () => {
   const rows = await as(ADMIN_A, listSql, [A, TENANT, 50, null]);
-  assert.deepEqual(rows.map(r => r.row.id).sort(), ['kb-a1', 'kb-a2']);
+  assert.deepEqual(rows.map(r => r.row.id).sort(), ['ann-a1', 'ann-a2']);
   assert.ok(rows.every(r => r.row.agency_id === A));
   const other = await as(ADMIN_B, listSql, [B, TENANT, 50, null]);
-  assert.deepEqual(other.map(r => r.row.id), ['kb-b1']);
+  assert.deepEqual(other.map(r => r.row.id), ['ann-b1']);
 });
 
 test('a caller holding two agencies sees one at a time', async () => {
@@ -158,33 +151,32 @@ test('a caller holding two agencies sees one at a time', async () => {
   // apart is the agency the request named, and this is the only place the
   // family narrows anything at all.
   assert.deepEqual((await as(CLINICIAN_A, listSql, [A, TENANT, 50, null])).map(r => r.row.id).sort(),
-    ['kb-a1', 'kb-a2']);
-  assert.deepEqual((await as(CLINICIAN_A, listSql, [B, TENANT, 50, null])).map(r => r.row.id), ['kb-b1']);
-  assert.equal((await as(CLINICIAN_A, get, [A, TENANT, 'kb-b1']))[0].row, null);
-  assert.ok((await as(CLINICIAN_A, get, [B, TENANT, 'kb-b1']))[0].row);
-  // And a write lands in the agency the request named, not in whichever one
-  // the caller happens to hold first.
-  await session(CLINICIAN_A, async (run) => {
-    const [{ row }] = await run(insert, [B, TENANT, { title: 'Into B' }]);
-    assert.equal(row.agency_id, B);
-    assert.equal((await run(get, [A, TENANT, row.id]))[0].row, null);
-  });
+    ['ann-a1', 'ann-a2']);
+  assert.deepEqual((await as(CLINICIAN_A, listSql, [B, TENANT, 50, null])).map(r => r.row.id), ['ann-b1']);
+  assert.equal((await as(CLINICIAN_A, get, [A, TENANT, 'ann-b1']))[0].row, null);
+  assert.ok((await as(CLINICIAN_A, get, [B, TENANT, 'ann-b1']))[0].row);
+  // The write half of this case is gone with D22: no brokered entity is
+  // writable, so there is no write to land anywhere. What it was protecting —
+  // that the narrowing follows the agency the request NAMED rather than
+  // whichever the caller holds first — is what the four reads above assert,
+  // and they are the cases that caught the narrowing breaking when `readonly`
+  // was introduced.
 });
 
 test('an id from another agency is absent rather than refused', async () => {
   // Telling "not yours" apart from "not there" reports whether an id exists
   // somewhere else, which is the thing the tenant boundary is for.
-  const [row] = await as(ADMIN_A, get, [A, TENANT, 'kb-b1']);
+  const [row] = await as(ADMIN_A, get, [A, TENANT, 'ann-b1']);
   assert.equal(row.row, null);
-  const [mine] = await as(ADMIN_A, get, [A, TENANT, 'kb-a1']);
+  const [mine] = await as(ADMIN_A, get, [A, TENANT, 'ann-a1']);
   assert.equal(mine.row.title, 'Agency A first');
 });
 
 test('naming an agency the caller does not hold is refused before any row is touched', async () => {
   await refusal(as(ADMIN_A, listSql, [B, TENANT, 50, null]), 'PENNSYNC_BROKER_AGENCY_NOT_HELD');
-  await refusal(as(ADMIN_A, get, [B, TENANT, 'kb-b1']), 'PENNSYNC_BROKER_AGENCY_NOT_HELD');
+  await refusal(as(ADMIN_A, get, [B, TENANT, 'ann-b1']), 'PENNSYNC_BROKER_AGENCY_NOT_HELD');
   await refusal(as(ADMIN_A, insert, [B, TENANT, { title: 'x' }]), 'PENNSYNC_BROKER_AGENCY_NOT_HELD');
-  await refusal(as(ADMIN_A, remove, [B, TENANT, 'kb-b1']), 'PENNSYNC_BROKER_AGENCY_NOT_HELD');
+  await refusal(as(ADMIN_A, remove, [B, TENANT, 'ann-b1']), 'PENNSYNC_BROKER_AGENCY_NOT_HELD');
   await refusal(as(ADMIN_A, listSql, [null, TENANT, 50, null]), 'PENNSYNC_BROKER_AGENCY_REQUIRED');
 });
 
@@ -196,99 +188,44 @@ test('an entity outside the allowlist is unreachable even though its table exist
   }
 });
 
-test('an insert is stamped, not trusted', async () => {
-  await session(ADMIN_A, async (run) => {
-    const [{ row }] = await run(insert, [A, TENANT, { title: 'Written through the broker', is_active: true }]);
-    assert.equal(row.agency_id, A, 'the broker stamps the agency it verified');
-    assert.equal(row.source_app_id, APP);
-    assert.equal(row.created_by, EMAIL[ADMIN_A]);
-    assert.match(row.id, /^[0-9a-f]{32}$/, 'the id is generated rather than accepted');
-    assert.ok(row.created_date && row.updated_date);
-    assert.equal(row.title, 'Written through the broker');
-    // Read back through the broker, so what is asserted is the stored row.
-    const [{ row: stored }] = await run(get, [A, TENANT, row.id]);
-    assert.deepEqual(stored, row);
-  });
-});
-
-test('a payload naming a stamped column is refused rather than silently stripped', async () => {
-  // Stripping it leaves a caller believing it set an owner it did not.
-  for (const payload of [{ agency_id: B }, { agency_id: A }, { source_app_id: 'other' },
-    { id: 'chosen' }, { created_by: 'someone@example.invalid' }, { created_date: '2020-01-01' },
-    { title: 'fine', agency_id: B }]) {
-    await refusal(as(ADMIN_A, insert, [A, TENANT, payload]), 'PENNSYNC_BROKER_COLUMN_NOT_WRITABLE');
-    await refusal(as(ADMIN_A, update, [A, TENANT, 'kb-a1', payload]), 'PENNSYNC_BROKER_COLUMN_NOT_WRITABLE');
+test('every brokered entity is read-only, and every write is refused', async () => {
+  // Not an incidental property of these three: the ceiling only admits an
+  // entity whose schema plainly permits a read, and none of the three permits
+  // every write. The family's insert/update/delete therefore exist and are
+  // unreachable — asserted per entity so that an entity which later becomes
+  // writable arrives without coverage and fails loudly rather than quietly.
+  for (const entity of READ_ONLY) {
+    await refusal(as(ADMIN_A, insert, [A, entity, { title: 'x' }]), 'PENNSYNC_BROKER_ENTITY_READ_ONLY');
+    await refusal(as(ADMIN_A, update, [A, entity, 'ann-a1', { title: 'x' }]), 'PENNSYNC_BROKER_ENTITY_READ_ONLY');
+    await refusal(as(ADMIN_A, remove, [A, entity, 'ann-a1']), 'PENNSYNC_BROKER_ENTITY_READ_ONLY');
   }
+  // The refusal precedes the payload check, so a well-formed write is refused
+  // for being a write rather than for its shape.
+  await refusal(as(ADMIN_A, insert, [A, TENANT, { agency_id: B }]), 'PENNSYNC_BROKER_ENTITY_READ_ONLY');
+  // Nothing was written by any of the above.
+  assert.deepEqual((await as(ADMIN_A, listSql, [A, TENANT, 50, null])).map(r => r.row.id).sort(),
+    ['ann-a1', 'ann-a2']);
 });
 
-test('a payload naming something that is not a column is refused', async () => {
-  for (const payload of [{ nope: 1 }, { 'title; drop table x': 1 }, { TITLE: 'case matters' }]) {
-    await refusal(as(ADMIN_A, insert, [A, TENANT, payload]), 'PENNSYNC_BROKER_COLUMN_UNKNOWN');
+test('the reads stay inside the agency for every entity the family serves', async () => {
+  const expected = { Announcement: ['ann-a1', 'ann-a2'], FacilityDocumentationRule: ['rule-a1'],
+    RegulatoryUpdate: ['reg-a1'] };
+  for (const entity of READ_ONLY) {
+    assert.deepEqual((await as(ADMIN_A, listSql, [A, entity, 50, null])).map(r => r.row.id).sort(),
+      expected[entity], entity);
+    // And agency B sees only its own.
+    assert.equal((await as(ADMIN_B, listSql, [B, entity, 50, null])).length, 1, entity);
+    await refusal(as(ADMIN_A, listSql, [B, entity, 50, null]), 'PENNSYNC_BROKER_AGENCY_NOT_HELD');
   }
-  for (const payload of [null, '"text"', '[]', '5']) {
-    await refusal(as(ADMIN_A, insert, [A, TENANT, payload]), 'PENNSYNC_BROKER_RECORD_REQUIRED');
-  }
-});
-
-test('an update patches the named keys, touches the stamp, and reaches no other agency', async () => {
-  await session(ADMIN_A, async (run) => {
-    const [{ row }] = await run(update, [A, TENANT, 'kb-a1', { title: 'Renamed', category: 'compliance' }]);
-    assert.equal(row.title, 'Renamed');
-    assert.equal(row.category, 'compliance');
-    assert.equal(row.agency_id, A);
-    assert.ok(row.updated_date, 'the broker stamps the update time');
-    // An explicit null clears; an absent key does not.
-    const [{ row: cleared }] = await run(update, [A, TENANT, 'kb-a1', { category: null }]);
-    assert.equal(cleared.category, null);
-    assert.equal(cleared.title, 'Renamed');
-    // Another agency's row is not found, rather than refused or changed.
-    const [{ row: missing }] = await run(update, [A, TENANT, 'kb-b1', { title: 'Reached across' }]);
-    assert.equal(missing, null);
-  });
-  const [{ row: untouched }] = await as(ADMIN_B, get, [B, TENANT, 'kb-b1']);
-  assert.equal(untouched.title, 'Agency B only', 'the cross-tenant update must not have landed');
-});
-
-test('a delete removes only what the caller could already see', async () => {
-  await session(ADMIN_A, async (run) => {
-    assert.equal((await run(remove, [A, TENANT, 'kb-b1']))[0].removed, false);
-    assert.equal((await run(remove, [A, TENANT, 'kb-a2']))[0].removed, true);
-    assert.equal((await run(get, [A, TENANT, 'kb-a2']))[0].row, null);
-  });
-  const [{ row }] = await as(ADMIN_B, get, [B, TENANT, 'kb-b1']);
-  assert.ok(row, 'agency B still has its row');
-});
-
-test('a self-scoped entity is bound to the caller, not to the agency', async () => {
-  assert.deepEqual((await as(ADMIN_A, listSql, [A, SELF, 50, null])).map(r => r.row.id), ['fb-1']);
-  assert.deepEqual((await as(CLINICIAN_A, listSql, [A, SELF, 50, null])).map(r => r.row.id), ['fb-2'],
-    'two callers in the SAME agency must not see each other here');
-  await session(CLINICIAN_A, async (run) => {
-    const [{ row }] = await run(insert, [A, SELF, { feedback_text: 'Mine' }]);
-    assert.equal(row.user_email, EMAIL[CLINICIAN_A], 'the subject is stamped from the caller');
-    assert.equal(row.created_by, EMAIL[CLINICIAN_A]);
-  });
-  // The subject is stamped, so naming it is refused like any other stamped column.
-  await refusal(as(CLINICIAN_A, insert, [A, SELF, { user_email: EMAIL[ADMIN_A] }]),
-    'PENNSYNC_BROKER_COLUMN_NOT_WRITABLE');
-});
-
-test('a global entity is readable by every member and writable by none', async () => {
-  for (const [who, agency] of [[ADMIN_A, A], [ADMIN_B, B]]) {
-    assert.deepEqual((await as(who, listSql, [agency, GLOBAL, 50, null])).map(r => r.row.code), ['G0151']);
-  }
-  await refusal(as(ADMIN_A, insert, [A, GLOBAL, { code: 'G9999' }]), 'PENNSYNC_BROKER_ENTITY_READ_ONLY');
-  await refusal(as(ADMIN_A, update, [A, GLOBAL, 'svc-1', { name: 'Renamed' }]), 'PENNSYNC_BROKER_ENTITY_READ_ONLY');
-  await refusal(as(ADMIN_A, remove, [A, GLOBAL, 'svc-1']), 'PENNSYNC_BROKER_ENTITY_READ_ONLY');
 });
 
 test('the page is bounded and walks by key rather than by offset', async () => {
   const first = await as(ADMIN_A, listSql, [A, TENANT, 1, null]);
   assert.equal(first.length, 1);
-  assert.equal(first[0].row.id, 'kb-a1');
-  const next = await as(ADMIN_A, listSql, [A, TENANT, 1, 'kb-a1']);
-  assert.deepEqual(next.map(r => r.row.id), ['kb-a2']);
-  assert.equal((await as(ADMIN_A, listSql, [A, TENANT, 1, 'kb-a2'])).length, 0);
+  assert.equal(first[0].row.id, 'ann-a1');
+  const next = await as(ADMIN_A, listSql, [A, TENANT, 1, 'ann-a1']);
+  assert.deepEqual(next.map(r => r.row.id), ['ann-a2']);
+  assert.equal((await as(ADMIN_A, listSql, [A, TENANT, 1, 'ann-a2'])).length, 0);
   // A limit above the ceiling is clamped, not honoured, and a nonsense one is
   // not an error the caller has to handle.
   for (const limit of [MAX_PAGE + 1, 1_000_000, 0, -5, null]) {

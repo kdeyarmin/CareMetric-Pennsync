@@ -144,9 +144,54 @@ export const CREDENTIAL_FIELD = /(^|_)(token|secret|password|api_key|apikey|cred
 export const CODE_FIELD = /(^|_)code$/i;
 export const REDEMPTION_MARKER = /^(expires_at|expired_at|verified|verified_at|used_at|redeemed_at|consumed_at)$/i;
 
+/**
+ * What an entity's own schema says about who may touch it.
+ *
+ * Base44 records this in an `rls` block, and it is an AUTHORITY DECISION in
+ * exactly D2's sense — the sentence that caps the `broker` disposition at "no
+ * PHI and no authority decision". D16 checked these schemas for dangerous
+ * FIELDS and never read this block at all, which was the wrong half: all 31
+ * brokered entities carry one, and most of them deny direct access outright.
+ *
+ * `false` is the strongest statement in the vocabulary. It does not mean "no
+ * rule"; it means no client may perform that operation at all, and the rows are
+ * reachable only through a reviewed backend function. Serving such an entity
+ * through a generic family inverts it — every member of the agency gets what
+ * the schema gave nobody.
+ *
+ * A missing block is the platform default, which is open, so it reads as
+ * `allow`. Anything that is not plainly open is a decision somebody made.
+ */
+export const AUTHORITY_OPERATIONS = Object.freeze(['read', 'create', 'update', 'delete']);
+export function schemaAuthority(schema) {
+  const rls = schema && typeof schema === 'object' ? schema.rls : null;
+  const verdict = value => {
+    if (value === undefined || value === true) return 'allow';
+    if (value === false) return 'deny';
+    return 'condition';
+  };
+  if (!rls || typeof rls !== 'object' || Array.isArray(rls)) {
+    return Object.fromEntries(AUTHORITY_OPERATIONS.map(operation => [operation, 'allow']));
+  }
+  return Object.fromEntries(AUTHORITY_OPERATIONS.map(operation => [operation, verdict(rls[operation])]));
+}
+/** Whether a generic family may serve this entity at all, and whether it may write it. */
+export const brokerReadable = schema => schemaAuthority(schema).read === 'allow';
+export const brokerWritable = schema => AUTHORITY_OPERATIONS.every(op => schemaAuthority(schema)[op] === 'allow');
+
 export function auditBrokerCeiling({ entity, schema, path, locators, exempt = [] }) {
   const problems = [];
   const spared = new Set(exempt);
+  // The schema's own authorization, before any field is looked at. An entity
+  // whose reads are denied or conditioned is one somebody already decided not
+  // to expose directly, and a generic family is the most direct exposure there
+  // is. Writes are not rejected here: the family can serve an entity read-only,
+  // which `tools-record-brokers.mjs` derives from the same block.
+  const authority = schemaAuthority(schema);
+  if (authority.read !== 'allow') {
+    problems.push(`${entity}: its schema ${authority.read === 'deny' ? 'denies direct reads' : 'conditions reads'}`
+      + ', which is an authority decision D2 does not allow a generic family to serve');
+  }
   if (path?.kind === 'reference' && CLINICAL_TARGETS.includes(path.target)) {
     problems.push(`${entity}: reaches tenancy through ${path.target}, so a generic broker would serve clinical rows`);
   }

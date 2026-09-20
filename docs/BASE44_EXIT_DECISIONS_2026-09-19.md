@@ -1129,3 +1129,56 @@ the three that already has a working authorization path written against it.
 
 **Ten.** That is how many of the hundred can be written today. The queue said
 94 were waiting on the record store; it stands in front of a tenth of them.
+
+
+## D22 — The broker family serves three entities, not thirty-one
+
+**Decision.** D16's ceiling is extended to read each entity's own `rls` block.
+Twenty-eight of the thirty-one brokered entities fail it and move to `port`.
+The three that remain are served **read-only**. Found in review, and it is the
+most consequential correction on this branch.
+
+**What was wrong.** D2 caps `broker` at "no PHI and **no authority decision**".
+D16 checked schemas for dangerous *fields* — credentials, clinical subjects,
+file locators — and never read the block where Base44 records the entity's own
+authorization. Every one of the thirty-one carries one:
+
+| What the schema says | Entities | What the family did |
+| --- | --- | --- |
+| `read/create/update/delete: false` | 13, including `AIKnowledgeBase`, `AIInsightFeedback`, `AutomaticCarePlanTrigger`, `ServiceCode` | Served all four operations to any agency member |
+| Conditioned — admin-only, owner-only | 15, including `OCRTrainingSession`, `ScheduledReport`, `ApprovalRequest` | Ignored the condition entirely |
+| `read: true`, writes conditioned | 3 | Served writes the schema conditioned |
+
+`false` is the strongest statement in that vocabulary: it does not mean "no
+rule", it means no client may perform that operation at all and the rows are
+reachable only through a reviewed backend function. Serving such an entity
+through a generic family **inverts** it — every member of the agency gets what
+the schema gave nobody. That is a widening against Base44, introduced by this
+branch, and D17's own test suite could not see it because it tested the
+mechanism rather than the allowlist's right to exist.
+
+**The rule now.** An entity is brokerable only if its schema plainly permits a
+read, and writable through the family only if it plainly permits every write.
+Nothing satisfies the second, so `insert`, `update` and `delete` exist and are
+provably unreachable — asserted per entity, so an entity that later becomes
+writable arrives without coverage and fails loudly.
+
+**Survivors:** `Announcement`, `FacilityDocumentationRule`, `RegulatoryUpdate`.
+All three declare `read: true` and condition their writes, all three are agency
+configuration rather than clinical data, and none reaches tenancy through a
+clinical entity.
+
+**A regression the fix introduced, caught the same run.** Renaming those three
+from mode `tenant` to `readonly` stopped the family's agency narrowing firing,
+because the SQL asked `mode = 'tenant'` literally — so a caller holding two
+agencies saw both agencies' rows. The two-membership case added in D17
+precisely because single-membership fixtures cannot see that failure caught it
+immediately. The narrowing is keyed to a set of tenant-scoped modes now.
+
+**What this costs, stated plainly.** D17 described a family serving 31 entities
+through 5 operations. It serves 3 through 2. The machinery — the stamping, the
+payload refusal, the tenant narrowing, the ownership boundary — is unchanged and
+still correct; what changed is the honest answer to "what may it serve", and
+D2's shortcut turns out to apply to almost nothing in this app. The 28 join the
+125 entities that need a reviewed contract under D19, which was always the
+safer path and is now very nearly the only one.

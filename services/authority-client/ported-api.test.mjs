@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { API_TARGETS, PORTED_FUNCTIONS, STAGING_APP_ID, createStagingAuthorityClient } from './client.mjs';
+import {
+  API_TARGETS, FUNCTION_TIMEOUT_MS, PORTED_FUNCTIONS, STAGING_APP_ID, createStagingAuthorityClient,
+} from './client.mjs';
 import { HANDLERS, HANDLER_NAMES } from '../pennsync-api/handlers.mjs';
 
 /**
@@ -194,6 +196,23 @@ test('the service answering something other than it promised is refused', async 
     await client.signIn(password);
     await rejects(client.callFunction('validatePatientData', 'agency-a'), code);
   }
+});
+
+test('a ported handler gets longer than an authority RPC, because it is not one', async () => {
+  // The integration runtime allows 30s for a model call. Inheriting the 15s
+  // RPC deadline aborted the browser while both backend services were still
+  // working — and the larger referral prompts and the user guide are exactly
+  // the calls that take that long.
+  assert.ok(FUNCTION_TIMEOUT_MS > 30000,
+    'the client deadline must exceed the integration runtime it waits on');
+
+  const { client, calls } = harness();
+  await client.signIn(password);
+  await client.callFunction('validatePatientData', 'agency-a', {});
+  // The signal is the client's own, so what is asserted is that the call was
+  // made with a live one rather than an already-aborted short deadline.
+  const { init } = calls.at(-1);
+  assert.ok(init.signal && init.signal.aborted === false);
 });
 
 test('the capability exposes no token and adds no new surface', async () => {

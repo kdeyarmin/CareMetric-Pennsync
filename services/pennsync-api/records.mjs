@@ -31,11 +31,11 @@
 // same database as the authority store — its migration refuses to apply
 // without it — so this reuses the authority target and key that `authority.mjs`
 // already validates against a fixed pair.
-import { BROKERED_ENTITIES, BROKER_CODES, BROKER_REFUSALS } from './brokered-entities.mjs';
+import { BROKERED_ENTITIES, BROKER_CODES, BROKER_REFUSALS, READ_ONLY_MODES } from './brokered-entities.mjs';
 import { ID, MAX_UPSTREAM_BYTES, fail, isObject, readJson } from './contracts.mjs';
 import { validAuthorityKey, validAuthorityTarget } from './authority.mjs';
 
-export { BROKERED_ENTITIES, BROKER_CODES, BROKER_REFUSALS };
+export { BROKERED_ENTITIES, BROKER_CODES, BROKER_REFUSALS, READ_ONLY_MODES };
 
 /** Fixed RPC names. No caller, handler, request or environment value selects one. */
 export const RECORD_RPC = Object.freeze({
@@ -101,7 +101,10 @@ export function recordCapability({ config, req, agencyId }, fetcher = fetch) {
     // Refused here as well as in the database. The database's answer is the one
     // that matters; this one keeps a handler's mistake from being a request.
     if (!Object.hasOwn(BROKERED_ENTITIES, entity)) fail(409, BROKER_CODES.entityNotBrokered);
-    if (BROKERED_ENTITIES[entity] === 'global' && operation !== 'list' && operation !== 'get') {
+    // Read from the generated modes rather than naming one: an entity is
+    // read-only when it is reference data OR when its own schema conditions who
+    // may write it, and a rule spelled `=== 'global'` here missed the second.
+    if (READ_ONLY_MODES.includes(BROKERED_ENTITIES[entity]) && operation !== 'list' && operation !== 'get') {
       fail(409, BROKER_CODES.entityReadOnly);
     }
     if (!isObject(args)) fail(400, 'RECORD_ARGUMENTS_REQUIRED');
