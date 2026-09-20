@@ -133,6 +133,22 @@ create function "pennsync_records".caller_email() returns text
   select ("pennsync_records".caller_identity()).expected_email
 $$;
 
+create function "pennsync_records".caller_roster_ids() returns setof text
+  language sql stable security definer set search_path = '' as $$
+  select distinct peer.base44_user_id
+  from "pennsync_records".caller_identity() i
+  join pennsync_private.membership mine
+    on mine.app_id = i.app_id and mine.auth_user_id = i.auth_user_id
+   and mine.base44_user_id = i.base44_user_id
+  join pennsync_private.agency a on a.app_id = mine.app_id and a.id = mine.agency_id
+  join pennsync_private.membership peer
+    on peer.app_id = mine.app_id and peer.agency_id = mine.agency_id
+  where i.auth_user_id is not null
+    and mine.status = 'active' and mine.revoked_at is null
+    and a.status in ('active','trial')
+    and peer.status = 'active' and peer.revoked_at is null
+$$;
+
 create function "pennsync_records".deployment_app() returns text
   language sql stable security definer set search_path = '' as $$
   select pennsync_private.deployment_app_id()
@@ -140,7 +156,7 @@ $$;
 
 revoke all on function "pennsync_records".caller_identity(), "pennsync_records".caller_identified(),
   "pennsync_records".caller_agencies(), "pennsync_records".caller_tenant_role(text),
-  "pennsync_records".caller_user_id(),
+  "pennsync_records".caller_user_id(), "pennsync_records".caller_roster_ids(),
   "pennsync_records".caller_email(), "pennsync_records".deployment_app() from public, anon, authenticated, service_role;
 
 -- The owner may ask who is calling. No caller role may.
@@ -5850,7 +5866,7 @@ create policy "transcription_learning_update" on "pennsync_records"."transcripti
 
 create policy "transcription_learning_delete" on "pennsync_records"."transcription_learning" for delete using ("transcription_learning"."source_app_id" = "pennsync_records".deployment_app() and "transcription_learning"."user_email" = "pennsync_records".caller_email());
 
--- user: excluded from authorization (self-editable profile claim); forced RLS, no policy.
+create policy "user_read" on "pennsync_records"."user" for select using ("user"."source_app_id" = "pennsync_records".deployment_app() and "user"."id" in (select "pennsync_records".caller_roster_ids()));
 
 create policy "user_favorite_read" on "pennsync_records"."user_favorite" for select using ("user_favorite"."source_app_id" = "pennsync_records".deployment_app() and "user_favorite"."user_email" = "pennsync_records".caller_email());
 

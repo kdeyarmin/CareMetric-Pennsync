@@ -54,7 +54,7 @@ before(async () => {
     grant usage on schema ${SCHEMA} to authenticated;
     grant select, insert, update, delete on all tables in schema ${SCHEMA} to authenticated;
     grant execute on function ${SCHEMA}.caller_identity(), ${SCHEMA}.caller_identified(),
-      ${SCHEMA}.caller_agencies(), ${SCHEMA}.caller_user_id(),
+      ${SCHEMA}.caller_agencies(), ${SCHEMA}.caller_user_id(), ${SCHEMA}.caller_roster_ids(),
       ${SCHEMA}.caller_email(), ${SCHEMA}.deployment_app() to authenticated;`);
 });
 after(async () => db?.close());
@@ -192,6 +192,64 @@ test('revoking a membership takes the rows away, and half a revocation cannot ex
     await db.exec('set local role authenticated');
     assert.deepEqual((await db.query(mine)).rows, [], 'a revoked membership reaches no row');
   } finally { await db.exec('rollback'); }
+});
+
+test('the roster shows colleagues and nobody else, and the row own agency label decides nothing', async () => {
+  // D23. `user.agency_id`, `agency_name` and `account_type` are self-editable
+  // profile labels — the entity schema says so in each field's own description
+  // — so the predicate does not read them. It asks the authority store who the
+  // caller shares an agency with.
+  //
+  // The rows below are seeded with LYING labels on purpose: the agency-b
+  // person claims agency-a, and the agency-a people claim agency-b. If the
+  // policy consulted the column, every assertion here would come out exactly
+  // backwards.
+  const rosterId = n => `6aac00000000${'0'.repeat(11)}${n}`;
+  await seed(`insert into ${SCHEMA}."user"("source_app_id","id","agency_id","agency_name","account_type") values
+    ('${APP}','${rosterId(1)}','agency-b','Claimed B','platform_admin'),
+    ('${APP}','${rosterId(2)}','agency-b','Claimed B','platform_admin'),
+    ('${APP}','${rosterId(3)}','agency-b','Claimed B','platform_admin'),
+    ('${APP}','${rosterId(4)}','agency-a','Claimed A','platform_admin');`);
+
+  // 1, 2 and 3 are in agency-a; 4 is in agency-b.
+  assert.deepEqual(ids(await as(AGENCY_A, `select "id" from ${SCHEMA}."user"`)),
+    [rosterId(1), rosterId(2), rosterId(3)].sort());
+  assert.deepEqual(ids(await as(AGENCY_B, `select "id" from ${SCHEMA}."user"`)), [rosterId(4)]);
+  // Naming the row directly does not reach it either.
+  assert.deepEqual(await as(AGENCY_B, `select "id" from ${SCHEMA}."user" where "id" = $1`, [rosterId(1)]), []);
+
+  // Read only, for everyone, and it is deliberate: D23 leaves the
+  // profile-write path open, and a write policy here would have decided it by
+  // accident. The two refusals do not look alike, which is why both are here —
+  // an insert has nothing to permit it and is denied, while an update or
+  // delete is FILTERED to the rows a policy admits and finds none, so it
+  // succeeds against nothing. A test asserting only a raised error would miss
+  // the second entirely, and "no rows changed" is the answer that matters.
+  await refused(AGENCY_A, `insert into ${SCHEMA}."user"("source_app_id","id") values ('${APP}','6aac0000000000000000000f')`);
+  for (const who of [AGENCY_A, AGENCY_B]) {
+    assert.deepEqual(await as(who,
+      `update ${SCHEMA}."user" set "phone" = '555' where "id" = $1 returning "id"`, [rosterId(1)]), []);
+    assert.deepEqual(await as(who,
+      `delete from ${SCHEMA}."user" where "id" = $1 returning "id"`, [rosterId(1)]), []);
+  }
+  // And the row is still there, unchanged, after all of that.
+  assert.deepEqual(await as(AGENCY_A,
+    `select "phone" from ${SCHEMA}."user" where "id" = $1`, [rosterId(1)]), [{ phone: null }]);
+
+  // A caller whose membership is revoked is on nobody's roster — including
+  // their own, because a person with no active membership is not a colleague.
+  await db.exec('begin');
+  try {
+    await db.query(`update pennsync_private.membership set status = 'revoked',
+      revoked_at = clock_timestamp(), revoked_by = $1 where id = 'membership-1'`, [uid(1)]);
+    await db.query("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({
+      sub: uid(1), session_id: sid(1), role: 'authenticated', exp: Math.floor(Date.now() / 1000) + 3600,
+    })]);
+    await db.exec('set local role authenticated');
+    assert.deepEqual(await db.query(`select "id" from ${SCHEMA}."user"`).then(r => r.rows), []);
+  } finally { await db.exec('rollback'); }
+
+  await db.exec(`delete from ${SCHEMA}."user"`);
 });
 
 test('a row belonging to the other source app is not this deployment to show', async () => {

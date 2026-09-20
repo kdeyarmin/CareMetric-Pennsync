@@ -2,30 +2,47 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   brokerWritable, schemaAuthority,
-  auditBrokerCeiling, auditDecision, checkDecisions, EXCLUDED, KINDS, readDecisions, STAMPED_KINDS,
+  auditBrokerCeiling, auditDecision, checkDecisions, KINDS, readDecisions, STAMPED_KINDS,
 } from './tools-tenant-decision.mjs';
 import { readFileSync } from 'node:fs';
 import { readEntity } from './tools-tenant-path.mjs';
 
 const REPO = process.cwd();
 const carried = new Map([['patient', 'Patient'], ['agency', 'Agency']]);
-const audit = (decision, schema = {}, locators = []) =>
-  auditDecision({ entity: 'Example', decision, schema, carried, locators });
+const audit = (decision, schema = {}, extra = []) =>
+  auditDecision({ entity: 'Example', decision, schema, carried,
+    ...(Array.isArray(extra) ? { locators: extra } : { locators: [], ...extra }) });
 const reason = 'A stated reason long enough to be a real one.';
 
 test('every entity without a derivable tenant path has a decision, and none has a spare', () => {
   const report = checkDecisions(REPO);
   assert.deepEqual(report.problems, []);
-  assert.equal(report.blocking, 86);
-  assert.deepEqual(report.counts, { agency: 66, self: 10, shared: 2, global: 8 });
+  // 87, not 86: `User` used to be exempt from needing a decision because every
+  // kind available would have authorized through its own self-editable column.
+  // D23 adds one that does not consult that column at all, so it is decided
+  // like everything else.
+  assert.equal(report.blocking, 87);
+  assert.deepEqual(report.counts, { agency: 66, self: 10, shared: 2, global: 8, roster: 1 });
   // agency and shared both carry a tenant key, so both are stamped before load.
   assert.equal(report.stamped.length, 68);
 });
 
-test('User is excluded from authorization rather than decided', () => {
-  assert.ok(EXCLUDED.includes('User'));
+test('a self-editable profile claim can only be decided roster, and nothing else can be', () => {
+  // The pairing is what keeps D23 from becoming a way to widen anything else.
+  // `roster` does not read the row's tenant column at all, so on an entity
+  // that HAS a usable one it would replace a key with "whoever shares an
+  // agency with the caller" — wider, every time.
   const decided = readDecisions(REPO).entities;
-  assert.equal(decided.User, undefined, 'a self-editable profile claim can never be a predicate');
+  assert.equal(decided.User.kind, 'roster');
+  assert.match(audit({ kind: 'roster', because: reason }, { properties: {} }, {}).join(' '),
+    /roster is only for an entity whose own tenant key is a self-editable claim/);
+  assert.deepEqual(audit({ kind: 'roster', because: reason }, { properties: {} }, { pathKind: 'profile_claim' }), []);
+  for (const kind of ['agency', 'self', 'shared', 'global']) {
+    assert.match(audit({ kind, because: reason, subject: 'user_id', platform_flag: 'shared' },
+      { properties: { user_id: { type: 'string' }, shared: { type: 'boolean' } } },
+      { pathKind: 'profile_claim' }).join(' '),
+    new RegExp(`can only be decided roster, never ${kind}`), kind);
+  }
 });
 
 test('agency is the default, so it is the only kind that claims nothing extra', () => {

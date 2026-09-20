@@ -207,9 +207,14 @@ export function discoverPausedFunctions(repository) {
  * indexes the namespace with a computed key touches a set nothing here can
  * enumerate, so it cannot be shown to stay inside the family.
  */
+/** Operations that change a row, as the Base44 entity client spells them. */
+export const MUTATING = Object.freeze(['create', 'update', 'delete', 'upsert',
+  'bulkCreate', 'bulkUpdate', 'createMany', 'updateMany', 'deleteMany']);
+
 export function entitiesTouched(source, known = null) {
-  if (typeof source !== 'string') return { names: [], dynamic: false };
+  if (typeof source !== 'string') return { names: [], dynamic: false, writes: [] };
   const names = new Set();
+  const writes = new Set();
   let dynamic = /entities\s*\[/.test(source);
   for (const match of source.matchAll(/entities\.([A-Z][A-Za-z0-9_]*)/g)) names.add(match[1]);
   for (const match of source.matchAll(/\{([^{}]*)\}\s*=\s*base44(?:\.asServiceRole)?\.entities/g)) {
@@ -224,8 +229,18 @@ export function entitiesTouched(source, known = null) {
     for (const use of source.matchAll(new RegExp(`\\b${alias}\\.([A-Z][A-Za-z0-9_]*)`, 'g'))) names.add(use[1]);
     if (new RegExp(`\\b${alias}\\s*\\[`).test(source)) dynamic = true;
   }
-  const list = [...names].filter(name => !known || known.has(name)).sort();
-  return { names: list, dynamic };
+  // Which of them the module WRITES, which is a different question from which
+  // it touches and became one worth asking once a table could be readable and
+  // unwritable at the same time. A reference to the entity followed by a
+  // mutating call is the same shape in all three access forms above, so one
+  // pass over the names finds it.
+  for (const name of names) {
+    const escaped = name.replace(/[$]/g, '\\$&');
+    if (new RegExp(`\\b${escaped}\\s*\\.\\s*(?:${MUTATING.join('|')})\\s*\\(`).test(source)) writes.add(name);
+  }
+  const keep = name => !known || known.has(name);
+  const list = [...names].filter(keep).sort();
+  return { names: list, dynamic, writes: [...writes].filter(keep).sort() };
 }
 
 export function discoverEntityReach(repository, known = null) {
@@ -422,6 +437,7 @@ export function discoverEvidence(repository) {
     portBlockers: discoverPortBlockers(repository),
     portedFunctions: discoverPortedFunctions(repository),
     entityReach: discoverEntityReach(repository),
+    entityPolicies: discoverEntityPolicies(repository),
     policylessEntities: discoverPolicylessEntities(repository),
     careTeamDependents: discoverCareTeamDependents(repository),
     activityTrail: discoverActivityTrail(repository),
@@ -447,13 +463,49 @@ export function discoverCareTeamDependents(repository) {
   return dependents.sort();
 }
 
-export function discoverPolicylessEntities(repository) {
-  let recorded;
+/**
+ * What the generated record store actually permits, per entity, read from the
+ * emitted policies rather than inferred from a tenant path.
+ *
+ * It was inferred: "kind is `profile_claim`" stood in for "has no policy",
+ * which was true while a profile claim was the only thing that produced a
+ * table with none. D23 ends that — `User` now has a read policy and no write
+ * policy — and an inference that cannot tell those apart would have reported
+ * all 43 of its readers unblocked along with the 8 that write it.
+ *
+ * Reading the SQL also makes the answer exact for every other entity: a
+ * `global` table has always been readable and unwritable, and nothing until
+ * now could say so.
+ */
+export function discoverEntityPolicies(repository) {
+  let sql; let plan;
   try {
-    recorded = JSON.parse(readFileSync(join(repository, 'tools-tenant-path-expectations.json'), 'utf8')).entities;
-  } catch { return []; }
-  return (Array.isArray(recorded) ? recorded : [])
-    .filter(entry => entry.kind === 'profile_claim').map(entry => entry.entity).sort();
+    sql = readFileSync(join(repository,
+      'services/authority-store/supabase/record-migrations/20260919170000_record_store.sql'), 'utf8');
+    plan = JSON.parse(readFileSync(join(repository, 'tools-entity-schema-plan-expectations.json'), 'utf8')).entities;
+  } catch { return {}; }
+  const byTable = new Map((Array.isArray(plan) ? plan : []).map(entry => [entry.table, entry.entity]));
+  const policies = {};
+  for (const [, table, verb] of sql.matchAll(/create policy "([a-z0-9_]+)_(read|insert|update|delete)" on /g)) {
+    const entity = byTable.get(table);
+    if (!entity) continue;
+    policies[entity] ??= { read: false, write: false };
+    if (verb === 'read') policies[entity].read = true; else policies[entity].write = true;
+  }
+  // A table the generator emitted with no policy at all is absent from that
+  // scan, so it is added here as permitting nothing. Leaving it out would read
+  // as "nothing is known", and nothing-known is how an unreadable table gets
+  // treated as an ordinary one.
+  for (const entry of Array.isArray(plan) ? plan : []) {
+    policies[entry.entity] ??= { read: false, write: false };
+  }
+  return policies;
+}
+
+/** Carried entities with forced RLS and no read policy, so nothing can read them. */
+export function discoverPolicylessEntities(repository) {
+  const policies = discoverEntityPolicies(repository);
+  return Object.keys(policies).filter(entity => !policies[entity].read).sort();
 }
 
 export function discoverCapabilities(repository) {
@@ -519,6 +571,10 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
   const ported = new Set(Array.isArray(evidence.portedFunctions) ? evidence.portedFunctions : []);
   const reach = evidence.entityReach && typeof evidence.entityReach === 'object' ? evidence.entityReach : {};
   const policyless = new Set(Array.isArray(evidence.policylessEntities) ? evidence.policylessEntities : []);
+  // What the store permits per entity, so a module that only reads a
+  // read-only table is not held by the fact that it cannot write one.
+  const permits = evidence.entityPolicies && typeof evidence.entityPolicies === 'object'
+    ? evidence.entityPolicies : {};
   const careTeam = new Set(Array.isArray(evidence.careTeamDependents) ? evidence.careTeamDependents : []);
   // D25. With a trail to write to, a retired log table is a destination that
   // moved rather than one that vanished; without it, this set is empty and
@@ -546,6 +602,16 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
         if (UNCARRIED_DISPOSITIONS.includes(disposition)) return 'entity_not_carried';
       }
       if (touched.names.some(entity => policyless.has(entity))) return 'entity_authorization';
+      // Readable but not writable. `User` is the one that matters — D23 serves
+      // the roster and deliberately leaves the profile-write path open, so the
+      // 8 capabilities that update a profile stay blocked while the 35 that
+      // only read one do not. The same rule catches a module writing a
+      // `global` reference table, which was never possible and was never
+      // reported.
+      const written = Array.isArray(touched.writes) ? touched.writes : [];
+      if (written.some(entity => permits[entity] && permits[entity].read && !permits[entity].write)) {
+        return 'entity_authorization';
+      }
     }
     // The third does not, because reading `assigned_nurses` is a property of
     // the source text rather than of the entity set. Gating it behind the same

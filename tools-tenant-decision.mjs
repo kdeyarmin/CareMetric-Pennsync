@@ -43,7 +43,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
-import { BLOCKING_KINDS, SELF_EDITABLE, buildPaths, isActorColumn, normalize, readEntity } from './tools-tenant-path.mjs';
+import { BLOCKING_KINDS, buildPaths, isActorColumn, normalize, readEntity } from './tools-tenant-path.mjs';
 import { ENTITY_DIRECTORY, censusEntity } from './tools-file-reference-census.mjs';
 import { DISPOSITION_FILE } from './tools-entity-schema-plan.mjs';
 
@@ -51,7 +51,14 @@ export const FORMAT = 'pennsync-tenant-decision';
 export const FORMAT_VERSION = 1;
 export const DECISION_FILE = 'tools-tenant-decision.json';
 /** The kinds a decision may take, restrictive first. */
-export const KINDS = Object.freeze(['agency', 'self', 'shared', 'global']);
+/**
+ * `roster` is the one kind whose predicate does not read the row's own tenant
+ * column, because that column cannot be trusted: an entity eligible for it is
+ * one whose agency key is a self-editable profile claim, and whose rows are
+ * therefore people. Who may read such a row is decided by the authority
+ * store's membership, which the subject cannot edit. D23.
+ */
+export const KINDS = Object.freeze(['agency', 'self', 'shared', 'global', 'roster']);
 /** Kinds whose tables need `agency_id` added before load. */
 export const STAMPED_KINDS = Object.freeze(['agency', 'shared']);
 /**
@@ -59,8 +66,6 @@ export const STAMPED_KINDS = Object.freeze(['agency', 'shared']);
  * and friends are provenance and are deliberately excluded: see the note above.
  */
 export const SELF_SUBJECT = /^user_(id|email)$/;
-/** Entities excluded from authorization entirely rather than decided. */
-export const EXCLUDED = Object.freeze([...SELF_EDITABLE]);
 
 const fieldsOf = schema => Object.keys(schema?.properties ?? {});
 const typeOf = (schema, field) => schema?.properties?.[field]?.type;
@@ -219,7 +224,7 @@ export function auditBrokerCeiling({ entity, schema, path, locators, exempt = []
 }
 
 /** Reasons a single decision is not admissible. Empty means it stands. */
-export function auditDecision({ entity, decision, schema, carried, locators }) {
+export function auditDecision({ entity, decision, schema, carried, locators, pathKind = null }) {
   const problems = [];
   const fields = fieldsOf(schema);
   if (!KINDS.includes(decision?.kind)) return [`${entity}: kind must be one of ${KINDS.join(', ')}`];
@@ -229,6 +234,24 @@ export function auditDecision({ entity, decision, schema, carried, locators }) {
 
   if (decision.kind !== 'global' && decision.external_locators) {
     problems.push(`${entity}: external_locators only applies to a global table`);
+  }
+
+  // The pairing runs both ways, and both directions matter.
+  //
+  // A `roster` decision on anything else would replace a working tenant key
+  // with "whoever shares an agency with the caller", which is wider than the
+  // key it replaced for every entity that has one.
+  //
+  // And a profile claim decided any other way authorizes through the column
+  // the account rewrites about itself — the defect that paused
+  // `analyzeClinicalData`. `renderPolicies` already refuses to generate such a
+  // policy; this refuses the decision that would ask it to.
+  const claim = pathKind === 'profile_claim';
+  if (decision.kind === 'roster' && !claim) {
+    problems.push(`${entity}: roster is only for an entity whose own tenant key is a self-editable claim`);
+  }
+  if (claim && decision.kind !== 'roster') {
+    problems.push(`${entity}: a self-editable profile claim can only be decided roster, never ${decision.kind}`);
   }
 
   if (decision.kind === 'self') {
@@ -276,26 +299,31 @@ export function checkDecisions(repository = process.cwd()) {
   const root = resolve(repository);
   const paths = buildPaths(root).entities;
   const carried = carriedIndex(paths);
-  const blocking = paths.filter(path => BLOCKING_KINDS.includes(path.kind) && !EXCLUDED.includes(path.entity));
+  // `EXCLUDED` used to spare `User` from needing a decision at all, because
+  // the only decisions available would have authorized through its own
+  // self-editable column. D23 adds one that does not, so the exemption is gone
+  // and the entity is decided like every other blocking path. What still
+  // cannot happen is deciding it `agency`, `self`, `shared` or `global`, which
+  // `auditDecision` refuses.
+  const blocking = paths.filter(path => BLOCKING_KINDS.includes(path.kind));
   const record = readDecisions(root);
   const decided = record.entities ?? {};
   const problems = [];
   const counts = Object.fromEntries(KINDS.map(kind => [kind, 0]));
 
   for (const entity of Object.keys(decided)) {
-    if (EXCLUDED.includes(entity)) problems.push(`${entity}: excluded from authorization, so it cannot carry a decision`);
-    else if (!blocking.some(path => path.entity === entity)) {
+    if (!blocking.some(path => path.entity === entity)) {
       problems.push(`${entity}: has a decision but its tenant path already resolves`);
     }
   }
 
-  for (const { entity } of blocking) {
+  for (const { entity, kind: pathKind } of blocking) {
     const decision = decided[entity];
     if (!decision) { problems.push(`${entity}: no tenant decision`); continue; }
     counts[decision.kind] = (counts[decision.kind] ?? 0) + 1;
     const schema = readEntity(root, entity);
     const locators = decision.kind === 'global' ? locatorPaths(root, entity) : [];
-    problems.push(...auditDecision({ entity, decision, schema, carried, locators }));
+    problems.push(...auditDecision({ entity, decision, schema, carried, locators, pathKind }));
   }
 
   // D2's ceiling, over every entity the manifest dispositions `broker` —

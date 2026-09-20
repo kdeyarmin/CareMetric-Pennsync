@@ -348,6 +348,10 @@
       "subject": "user_email",
       "because": "The row is the account's own setting or record, keyed by user_email; no agency owns it, so a membership change cannot move it."
     },
+    "User": {
+      "kind": "roster",
+      "because": "D23. Its agency_id, agency_name and account_type are self-editable profile labels \u2014 each field's own schema description says so and says never to authorize from it \u2014 so no predicate written against this row can decide who may read it. The authority store's membership already models the roster, cannot be edited by its subject, and pennsync_private.context authorizes against it today; caller_roster_ids() asks it. Read only: with no write policy, forced RLS refuses every write from everyone including the record owner, which keeps D23's open profile-write question from quietly resolving itself as allowed."
+    },
     "UserFavorite": {
       "kind": "self",
       "subject": "user_email",

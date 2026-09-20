@@ -352,13 +352,41 @@ $$;`,
   // which is why the primary key is composite. Without this, a caller whose
   // agency key matches would read the other app's row. Every predicate below
   // asks it.
+  // Who the caller shares an agency with, as the authority store sees it.
+  //
+  // This is the whole of D23 in one function. The carried `user` table's own
+  // `agency_id`, `agency_name` and `account_type` are self-editable labels —
+  // the entity schema says so in each field's own description — so no
+  // predicate written against that row can decide who may read it. The
+  // authority store already models the roster, it is not editable by its
+  // subject, and `pennsync_private.context` authorizes against it today.
+  //
+  // It answers base44 user ids, because that is what `user.id` holds. A caller
+  // holding two agencies sees the union, exactly as `caller_agencies()` means
+  // it, and a caller holding none sees nobody — including themselves, because
+  // a person with no active membership is not on anyone's roster.
+  `create function ${quote(SCHEMA)}.caller_roster_ids() returns setof text
+  language sql stable security definer set search_path = '' as $$
+  select distinct peer.base44_user_id
+  from ${quote(SCHEMA)}.caller_identity() i
+  join pennsync_private.membership mine
+    on mine.app_id = i.app_id and mine.auth_user_id = i.auth_user_id
+   and mine.base44_user_id = i.base44_user_id
+  join pennsync_private.agency a on a.app_id = mine.app_id and a.id = mine.agency_id
+  join pennsync_private.membership peer
+    on peer.app_id = mine.app_id and peer.agency_id = mine.agency_id
+  where i.auth_user_id is not null
+    and mine.status = 'active' and mine.revoked_at is null
+    and a.status in ('active','trial')
+    and peer.status = 'active' and peer.revoked_at is null
+$$;`,
   `create function ${quote(SCHEMA)}.deployment_app() returns text
   language sql stable security definer set search_path = '' as $$
   select pennsync_private.deployment_app_id()
 $$;`,
   `revoke all on function ${quote(SCHEMA)}.caller_identity(), ${quote(SCHEMA)}.caller_identified(),
   ${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_tenant_role(text),
-  ${quote(SCHEMA)}.caller_user_id(),
+  ${quote(SCHEMA)}.caller_user_id(), ${quote(SCHEMA)}.caller_roster_ids(),
   ${quote(SCHEMA)}.caller_email(), ${quote(SCHEMA)}.deployment_app() from public, anon, authenticated, service_role;`,
 ];
 
@@ -426,10 +454,24 @@ export function renderPolicies(plan, resolution) {
   const thisApp = `${self}.${quote('source_app_id')} = ${quote(SCHEMA)}.deployment_app()`;
   const kind = plan.tenant_decision;
 
-  // `User` carries only a claim it can edit about itself, so no predicate here
-  // can be trusted. Forced RLS with NO policy is the honest answer: the table
-  // exists, holds its rows, and is unreachable through this surface until a
-  // decision says how it may be read.
+  // `User` carries only a claim it can edit about itself, so no predicate
+  // written against its own row can be trusted. Forced RLS with NO policy was
+  // the honest answer while nothing had decided how it may be read.
+  //
+  // D23 decides it, and the shape of the answer is why `roster` is a kind of
+  // its own rather than a variant of `agency`: the predicate does not read the
+  // row's tenant column at all. It asks the authority store who the caller
+  // shares an agency with, and admits the row if it names one of those people.
+  // The untrusted column is not narrowed — it is not consulted.
+  if (kind === 'roster') {
+    // Read only, and by the same absence that makes the audit trail
+    // append-only: with no insert, update or delete policy, forced RLS refuses
+    // every write to this table from everyone, the record owner included. D23
+    // leaves the profile-write path open deliberately, and this is what keeps
+    // "open" from quietly meaning "allowed".
+    return [`create policy ${name('read')} on ${qualified} for select `
+      + `using (${thisApp} and ${self}.${quote('id')} in (select ${quote(SCHEMA)}.caller_roster_ids()));`];
+  }
   if (resolution.paths.get(plan.entity)?.kind === 'profile_claim') {
     return [`-- ${plan.table}: excluded from authorization (self-editable profile claim); forced RLS, no policy.`];
   }
@@ -671,8 +713,14 @@ export function comparePlan(plan, expectations) {
   // self subject, rewrites the predicate while leaving columns and the tenant
   // key identical. The decision gate checks a new value is admissible; this is
   // what checks it matches the one that was accepted.
+  //
+  // `disposition` is here for a second reason: it decides whether the generic
+  // broker family serves the entity at all, and it was NOT compared. D22 moved
+  // 28 entities out of that family and the recorded plan went on saying
+  // `broker` for 42 of them, unnoticed, because nothing asked. A checked-in
+  // artefact that disagrees with the manifest is worse than no artefact.
   const COMPARED = ['table', 'columns', 'constrained', 'tenant_key',
-    'tenant_decision', 'self_subject', 'platform_flag'];
+    'tenant_decision', 'self_subject', 'platform_flag', 'disposition'];
   const changed = [...current.entries()]
     .filter(([name, entity]) => recorded.has(name)
       && COMPARED.some(field => recorded.get(name)[field] !== entity[field]))

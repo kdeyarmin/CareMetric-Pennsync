@@ -5,9 +5,10 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   ACTIVE_DISPOSITIONS, ACTIVITY_TRAIL_MIGRATION, AUDITED_ENTITIES, DISPOSITIONS, FORMAT, FORMAT_VERSION,
-  PORT_BLOCKERS, RETENTION_BASES, checkCoverage, classifyPortBlocker, discoverActivityTrail, discoverCapabilities,
-  discoverEvidence, discoverInertFunctions, discoverIntegrations, discoverPausedFunctions, discoverPortBlockers,
-  discoverPortedFunctions, entitiesTouched, isInertFunction, isPausedFunction, main, parseManifest,
+  MUTATING, PORT_BLOCKERS, RETENTION_BASES, checkCoverage, classifyPortBlocker, discoverActivityTrail,
+  discoverCapabilities, discoverEntityPolicies, discoverEvidence, discoverInertFunctions, discoverIntegrations,
+  discoverPausedFunctions, discoverPolicylessEntities, discoverPortBlockers, discoverPortedFunctions,
+  entitiesTouched, isInertFunction, isPausedFunction, main, parseManifest,
 } from './tools-transition-disposition.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -205,34 +206,105 @@ test('a broker function is held to what the family can actually serve', () => {
 
 test('the entity reach of a module is read through every access form it uses', () => {
   const known = new Set(['Patient', 'Visit', 'Agency', 'Config']);
+  const reach = (source) => entitiesTouched(source, known);
   // The plain form, which a first version of this found on its own.
-  assert.deepEqual(entitiesTouched('await base44.entities.Patient.filter({})', known),
-    { names: ['Patient'], dynamic: false });
-  assert.deepEqual(entitiesTouched('base44.asServiceRole.entities.Visit.list()', known),
-    { names: ['Visit'], dynamic: false });
+  assert.deepEqual(reach('await base44.entities.Patient.filter({})'),
+    { names: ['Patient'], dynamic: false, writes: [] });
+  assert.deepEqual(reach('base44.asServiceRole.entities.Visit.list()'),
+    { names: ['Visit'], dynamic: false, writes: [] });
   // Destructuring, which it did not. Aliasing a destructured name too.
-  assert.deepEqual(entitiesTouched('const { Patient, Agency: A } = base44.entities;', known),
-    { names: ['Agency', 'Patient'], dynamic: false });
+  assert.deepEqual(reach('const { Patient, Agency: A } = base44.entities;'),
+    { names: ['Agency', 'Patient'], dynamic: false, writes: [] });
   // Aliasing the NAMESPACE, which is how `getDashboardData` reads every active
   // patient while containing no occurrence of `entities.Patient`. A scan that
   // misses this reported six functions as staying inside the family when the
   // real number was zero.
-  assert.deepEqual(entitiesTouched('const sr = base44.asServiceRole.entities;\nawait sr.Patient.filter({});\nsr.Visit.list();', known),
-    { names: ['Patient', 'Visit'], dynamic: false });
-  assert.deepEqual(entitiesTouched('const e = base44.entities\ne.Config.list()', known),
-    { names: ['Config'], dynamic: false });
+  assert.deepEqual(reach('const sr = base44.asServiceRole.entities;\nawait sr.Patient.filter({});\nsr.Visit.list();'),
+    { names: ['Patient', 'Visit'], dynamic: false, writes: [] });
+  assert.deepEqual(reach('const e = base44.entities\ne.Config.list()'),
+    { names: ['Config'], dynamic: false, writes: [] });
   // Dynamic access, through either the namespace or an alias of it.
-  assert.equal(entitiesTouched('base44.entities[name].filter({})', known).dynamic, true);
-  assert.equal(entitiesTouched('const sr = base44.entities;\nsr[name].list()', known).dynamic, true);
+  assert.equal(reach('base44.entities[name].filter({})').dynamic, true);
+  assert.equal(reach('const sr = base44.entities;\nsr[name].list()').dynamic, true);
   // Names that are not entities do not become findings, and a module that
   // touches nothing says so rather than throwing.
-  assert.deepEqual(entitiesTouched('const sr = base44.entities;\nsr.Promise.resolve()', known),
-    { names: [], dynamic: false });
-  assert.deepEqual(entitiesTouched('await base44.integrations.Core.SendEmail({})', known),
-    { names: [], dynamic: false });
+  assert.deepEqual(reach('const sr = base44.entities;\nsr.Promise.resolve()'),
+    { names: [], dynamic: false, writes: [] });
+  assert.deepEqual(reach('await base44.integrations.Core.SendEmail({})'),
+    { names: [], dynamic: false, writes: [] });
   for (const value of [null, undefined, 42, {}]) {
-    assert.deepEqual(entitiesTouched(value, known), { names: [], dynamic: false });
+    assert.deepEqual(entitiesTouched(value, known), { names: [], dynamic: false, writes: [] });
   }
+});
+
+test('which entities a module WRITES is read separately from which it touches', () => {
+  // Reading a table and writing one stopped being the same question when a
+  // table could be readable and unwritable at once: `User` under D23, and
+  // every `global` reference table, which was always so and was never
+  // reported.
+  const known = new Set(['Patient', 'Visit', 'User']);
+  const reach = (source) => entitiesTouched(source, known);
+  for (const operation of MUTATING) {
+    assert.deepEqual(reach(`base44.entities.Patient.${operation}({})`).writes, ['Patient'], operation);
+  }
+  // Reading is not writing, however many times it is read.
+  for (const operation of ['filter', 'list', 'get', 'findOne', 'count']) {
+    assert.deepEqual(reach(`base44.entities.Patient.${operation}({})`).writes, [], operation);
+  }
+  // The write is found through every access form the names are, because it is
+  // the name that is matched rather than the expression that produced it.
+  assert.deepEqual(reach('const { User } = base44.entities;\nawait User.update(id, {});').writes, ['User']);
+  assert.deepEqual(reach('const sr = base44.asServiceRole.entities;\nsr.Visit.create({});').writes, ['Visit']);
+  // One module, two entities, one of them written.
+  const mixed = reach('await base44.entities.Patient.filter({});\nawait base44.entities.User.update(id, {});');
+  assert.deepEqual(mixed, { names: ['Patient', 'User'], dynamic: false, writes: ['User'] });
+  // A name that is not an entity cannot become a write, and neither can a
+  // method that merely shares a word with one.
+  assert.deepEqual(reach('const rows = [];\nrows.update();\nawait base44.entities.Patient.list()').writes, []);
+});
+
+test('what the record store permits per entity is read from the policies it emits', () => {
+  // It used to be inferred from the tenant path — "kind is `profile_claim`"
+  // standing in for "has no policy" — which was true only while a profile
+  // claim was the one thing that produced a table with none. D23 ends that,
+  // and an inference that could not tell "no policy" from "read-only" would
+  // have reported all 43 of `User`'s readers unblocked along with the 8 that
+  // write it.
+  const permits = discoverEntityPolicies(repository);
+  assert.equal(Object.keys(permits).length, 156, 'every carried entity is accounted for');
+  assert.deepEqual(discoverPolicylessEntities(repository), [], 'nothing is unreadable any more');
+  const readOnly = Object.keys(permits).filter(entity => permits[entity].read && !permits[entity].write).sort();
+  // The eight platform reference tables, plus the roster.
+  assert.deepEqual(readOnly, ['AIModelConfiguration', 'CitationLibrary', 'ComplianceRule', 'MedicareComplianceRule',
+    'MedicareGuideline', 'NewFeature', 'ProviderSettings', 'ServiceCode', 'User']);
+  assert.deepEqual(permits.User, { read: true, write: false });
+  assert.deepEqual(permits.Patient, { read: true, write: true });
+  // A tree with no record store says nothing rather than guessing, because an
+  // empty answer here would read as "everything is permitted".
+  assert.deepEqual(discoverEntityPolicies(resolve(repository, 'services')), {});
+});
+
+test('a module that writes a read-only table is still blocked; one that only reads it is not', () => {
+  const declare = () => manifest({ functions: { alpha: 'port' }, entities: { Kept: 'port', Reference: 'port' } });
+  const permits = { Kept: { read: true, write: true }, Reference: { read: true, write: false } };
+  const queue = (evidence) => {
+    const report = checkCoverage(capabilities(), declare(),
+      { portBlockers: { alpha: 'records_schema' }, entityPolicies: permits, ...evidence });
+    return Object.entries(report.port_blockers).filter(([, names]) => names.length).map(([key]) => key);
+  };
+  const touch = (names, writes) => ({ entityReach: { alpha: { names, dynamic: false, writes } } });
+  assert.deepEqual(queue(touch(['Reference'], [])), ['records_schema'], 'reading a reference table is fine');
+  assert.deepEqual(queue(touch(['Reference'], ['Reference'])), ['entity_authorization'], 'writing one is not');
+  assert.deepEqual(queue(touch(['Kept'], ['Kept'])), ['records_schema'], 'writing a writable table is fine');
+  // The read-only refusal applies per entity: a module writing the writable
+  // one and reading the reference one is not held by either.
+  assert.deepEqual(queue(touch(['Kept', 'Reference'], ['Kept'])), ['records_schema']);
+  assert.deepEqual(queue(touch(['Kept', 'Reference'], ['Kept', 'Reference'])), ['entity_authorization']);
+  // Absent evidence changes nothing rather than blocking everything: a tool
+  // that cannot see the policies must not invent a refusal.
+  assert.deepEqual(Object.entries(checkCoverage(capabilities(), declare(),
+    { portBlockers: { alpha: 'records_schema' }, ...touch(['Reference'], ['Reference']) }).port_blockers)
+    .filter(([, names]) => names.length).map(([key]) => key), ['records_schema']);
 });
 
 test('a contradiction blocks the census even when owners accepted', () => {
@@ -475,8 +547,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 43, patient_access_model: 23,
-    records_schema: 20, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
+  assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 10, patient_access_model: 36,
+    records_schema: 40, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
     external_secret: 1, none: 11 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
@@ -499,11 +571,26 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // uncarried. It sat here for exactly as long as retiring the table was read
   // as retiring the obligation.
   assert.ok(!report.port_blockers.entity_not_carried.includes('acceptAiContentAgreement'));
-  assert.equal(report.port_blockers.entity_authorization.length, 43);
-  // Twenty. That is how many of the hundred can be written today, and the
+  // D23 then emptied most of `entity_authorization` the same way. The bucket
+  // meant "reads `User`, which has forced RLS and no policy"; the store now
+  // gives `User` a read policy keyed on the authority store's roster, so what
+  // is left is only what a read policy does not help:
+  //
+  // - the 8 that UPDATE a profile, which D23 deliberately leaves open. The
+  //   roster policy is read-only, so nothing decided that question by
+  //   accident;
+  // - two that write `MedicareGuideline`, a `global` reference table no tenant
+  //   surface may write. That was always true and was never reported, because
+  //   the classifier could not tell reading a table from writing one.
+  assert.deepEqual(report.port_blockers.entity_authorization,
+    ['autoApproveInvitedUser', 'autoEndDutyDay', 'calculateDataQualityScores', 'enforceDataCompleteness',
+      'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
+      'userManagement', 'userManagementV2']);
+  // Forty. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
-  // what stood in front of the queue, and it stands in front of a fifth of it.
-  assert.equal(report.port_blockers.records_schema.length, 20);
+  // what stood in front of the queue, and everything since has been finding
+  // out what actually did.
+  assert.equal(report.port_blockers.records_schema.length, 40);
   assert.ok(report.port_blockers.patient_access_model.includes('getScopedPatientAlerts'));
   // Dynamic entity access does not hide this one, because reading
   // `assigned_nurses` is a property of the source rather than of the entity set.

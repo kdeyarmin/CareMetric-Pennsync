@@ -52,27 +52,40 @@ test('every table forces row level security and carries exactly the policies its
   assert.equal(rows.length, plan.totals.carried);
   assert.deepEqual(rows.filter(row => !row.enabled || !row.forced), [], 'every carried table must force RLS');
 
-  // A global table gets one read policy and no write policy at all: forced RLS
-  // with nothing to permit a write is what refuses the writes. Every other
-  // table gets read, insert, update and delete, so a missing count here is a
-  // table that silently denies or silently permits.
+  // Two decisions produce a read policy and no write policy at all, and in
+  // both cases forced RLS with nothing to permit a write is what refuses the
+  // writes:
+  //
+  // - `global`, a platform reference table every agency reads and no tenant
+  //   surface writes;
+  // - `roster`, which is `User` — D23 serves the roster from the authority
+  //   store's membership and deliberately leaves the profile-write path
+  //   undecided. A write policy here would decide it by accident.
+  //
+  // Every other table gets read, insert, update and delete, so a count that is
+  // neither 1 nor 4 is a table silently denying or silently permitting.
   const byTable = new Map(rows.map(row => [row.relname, row.policies]));
-  const paths = new Map(JSON.parse(readFileSync(resolve(repository, 'tools-tenant-path-expectations.json'), 'utf8'))
-    .entities.map(entry => [entry.entity, entry.kind]));
-  let excluded = 0;
+  const readOnly = new Set(['global', 'roster']);
   for (const entity of plan.entities) {
-    // A self-editable profile claim gets NO policy: forced RLS then denies
-    // everything, which is the only honest answer for a column the account can
-    // rewrite about itself. Anything else would authorize through it.
-    if (paths.get(entity.entity) === 'profile_claim') {
-      assert.equal(byTable.get(entity.table), 0, `${entity.entity} must carry no policy at all`);
-      excluded += 1;
-      continue;
-    }
-    assert.equal(byTable.get(entity.table), entity.tenant_decision === 'global' ? 1 : 4,
+    assert.equal(byTable.get(entity.table), readOnly.has(entity.tenant_decision) ? 1 : 4,
       `${entity.entity} (${entity.tenant_decision ?? 'derived'}) has the wrong number of policies`);
   }
-  assert.equal(excluded, 1, 'User is the one entity excluded from authorization');
+  const roster = plan.entities.filter(entity => entity.tenant_decision === 'roster');
+  assert.deepEqual(roster.map(entity => entity.entity), ['User'], 'User is the one roster table');
+  // And its one policy reads the authority store rather than the row: the
+  // column the subject can rewrite is not narrowed here, it is not consulted.
+  const { rows: predicate } = await db.query(`
+    select pg_catalog.pg_get_expr(p.polqual, p.polrelid) as using_expr, p.polcmd
+    from pg_policy p join pg_class c on c.oid = p.polrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = $1 and c.relname = 'user'`, [SCHEMA]);
+  assert.equal(predicate.length, 1);
+  assert.equal(predicate[0].polcmd, 'r', 'select only');
+  assert.match(predicate[0].using_expr, /caller_roster_ids/);
+  for (const column of ['agency_id', 'agency_name', 'account_type', 'role']) {
+    assert.ok(!predicate[0].using_expr.includes(column),
+      `the roster predicate must not read ${column}, which the subject can rewrite`);
+  }
 });
 
 test('a table every agency reads carries no account identifier', async () => {

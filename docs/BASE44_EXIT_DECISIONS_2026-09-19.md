@@ -1211,6 +1211,50 @@ is a narrower question than the roster and is not answered here. Until it is,
 a capability that writes a profile stays blocked and should not be ported by
 reading a profile write as a roster read.
 
+**How it was built, and what building it found.** The decision above said the
+roster comes from the authority store. What that turned into is a `roster`
+tenant kind in the schema generator, and the shape is worth stating because it
+is why `roster` is a kind of its own rather than a variant of `agency`: **the
+predicate does not read the row's tenant column at all.** It asks
+`caller_roster_ids()` — a new administrator-owned helper over
+`pennsync_private.membership` — who the caller shares an active agency with,
+and admits the row if it names one of those people. The untrusted column is not
+narrowed; it is not consulted. The isolation test seeds rows carrying *lying*
+labels, so a policy that consulted them would come out exactly backwards.
+
+Three consequences, each deliberate:
+
+- **Read only.** One select policy and nothing else, so forced RLS refuses
+  every write from everyone including the record owner. That is what keeps the
+  open profile-write question from resolving itself as "allowed" by accident.
+- **`roster` and `profile_claim` are paired both ways.** A `roster` decision on
+  an entity that has a usable tenant key would replace that key with "whoever
+  shares an agency with the caller", which is wider, every time. And a profile
+  claim decided any other way authorizes through the column its subject
+  rewrites. The gate refuses both.
+- **`User` stops being exempt.** It was excluded from needing a decision at
+  all, because every kind then available would have authorized through that
+  column. Nothing is exempt now.
+
+Two findings came out of measuring rather than assuming:
+
+1. The port queue's `entity_authorization` bucket meant "reads `User`". With a
+   read policy it should have emptied — except **8 of the 43 update a
+   profile**, and the classifier could not tell reading a table from writing
+   one. It records writes now, and what blocks is derived from the policies the
+   store actually emits rather than from the tenant path. 43 → 10.
+2. The same rule caught two capabilities nothing had ever reported:
+   `fetchMedicareGuideline` and `scheduledGuidelineSync` **write
+   `MedicareGuideline`**, a `global` reference table that by decision no tenant
+   surface may write. That was true from the day `global` was defined and was
+   invisible, because every previous version of this check asked only which
+   entities a module touched. They need a platform ingestion path, which is not
+   a caller-facing handler.
+
+A third, smaller: the committed schema plan recorded `broker` for 42 entities
+D22 had already moved to `port`, because `comparePlan` never compared
+`disposition`. It does now.
+
 
 ## D24 — `pennsync_private.assignment` decides who may open a chart
 

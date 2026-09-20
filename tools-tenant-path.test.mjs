@@ -74,9 +74,14 @@ test('the isolation gap stays counted rather than estimated', () => {
   const declared = paths.totals.direct + paths.totals.profile_claim;
   assert.equal(plan.totals.tenant_scoped, declared + stamped);
   assert.equal(plan.totals.carried, paths.totals.carried);
-  // Every blocking entity is decided except the profile claim, which is
-  // excluded from authorization rather than decided, so nothing is left unowned.
-  assert.equal(paths.totals.blocking, Object.keys(decisions).length + paths.totals.profile_claim);
+  // Every blocking entity is decided, the profile claim included. It used to
+  // be the one exception — excluded from authorization rather than decided,
+  // because every kind then available would have authorized through the very
+  // column its subject can rewrite. D23 adds `roster`, which does not read
+  // that column at all, so nothing is left unowned and nothing is exempt.
+  assert.equal(paths.totals.blocking, Object.keys(decisions).length);
+  assert.equal(paths.totals.profile_claim, 1);
+  assert.equal(decisions.User.kind, 'roster');
 });
 
 test('the plan never claims a path was reviewed or a policy written', () => {
