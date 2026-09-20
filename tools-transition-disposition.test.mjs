@@ -596,8 +596,10 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // Then `policyAcknowledgment`, the THIRD partial port: `acknowledge` is
   // served and `list` is not, because its gate is the Base44 built-in admin
   // that D31 already found has no performer left.
-  // 76 → 74 → 72 → 70 → 69 → 68 → 67 → 66 → 64 → 62 → 61 → 59 → 58 → 57,
-  // and 11 → 30 written.
+  // Then the AI content agreement pair, the FIRST port to write D25's
+  // activity trail — every capability ported before it audited nothing.
+  // 76 → 74 → 72 → 70 → 69 → 68 → 67 → 66 → 64 → 62 → 61 → 59 → 58 → 57 →
+  // 55, and 11 → 32 written.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -605,8 +607,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 10, patient_access_model: 0,
-    records_schema: 57, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
-    external_secret: 1, none: 30 });
+    records_schema: 55, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
+    external_secret: 1, none: 32 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -643,14 +645,14 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'calculateDataQualityScores', 'enforceDataCompleteness',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Fifty-seven. That is how many of the hundred can be written today, and the
+  // Fifty-five. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 57);
-  // The nineteen that left it are the ported capabilities that touch clinical rows
+  assert.equal(report.port_blockers.records_schema.length, 55);
+  // The twenty-one that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
   // carries the SmartNote save — so they are also the proof that the D19
@@ -671,7 +673,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
     'getScopedPatientAlerts', 'updateScopedPatientAlert',
     'appendPatientNoteHistory', 'getAuthorizedPatientNoteHistory',
     'managePatientCareTeamAssignment', 'getMyTenantContext', 'listMyTenantMemberships',
-    'manageAgencyMembership', 'policyAcknowledgment']) {
+    'manageAgencyMembership', 'policyAcknowledgment',
+    'acceptAiContentAgreement', 'getAiContentAgreementStatus']) {
     assert.ok(report.port_blockers.none.includes(name), `${name} is ported`);
     assert.ok(!report.port_blockers.records_schema.includes(name), name);
   }
@@ -705,12 +708,13 @@ test('the port queue is work that cannot start yet, and says why', () => {
   assert.deepEqual(report.port_blockers.files, ['extractClinicalDocument', 'extractPatientDataFromDocument',
     'generateDynamicCoverSheet', 'splitReferralPDF']);
   assert.deepEqual(report.port_blockers.none,
-    ['analyzeReferral', 'analyzeReferralIntake', 'analyzeReferralPriority',
+    ['acceptAiContentAgreement', 'analyzeReferral', 'analyzeReferralIntake',
+      'analyzeReferralPriority',
       'appendPatientNoteHistory',
       'createAuthorizedPatient', 'createAuthorizedVisit', 'generateBagTechniquePDF',
       'generateReferralTasks', 'generateSmartNoteGuide',
       'generateUserGuidePDF', 'generateUserManual',
-      'getAuthorizedDocument', 'getAuthorizedPatient',
+      'getAiContentAgreementStatus', 'getAuthorizedDocument', 'getAuthorizedPatient',
       'getAuthorizedPatientNoteHistory', 'getAuthorizedVisit',
       'getMyTenantContext', 'getScopedPatientAlerts',
       'listAuthorizedDocuments', 'listAuthorizedPatients', 'listAuthorizedVisits',

@@ -1,0 +1,217 @@
+-- Accepting the AI content agreement, and reading whether you have.
+--
+-- HAND WRITTEN, like every contract, and the FIRST port to write D25's
+-- activity trail. `UserActivity` is dispositioned `retire`, which decided
+-- where its existing rows go and never that the product stops auditing;
+-- `20260920010000_activity_audit.sql` is where an audited action goes now.
+-- Every other port so far has been a capability that audited nothing.
+--
+-- **The audit entry and the attestation are written in ONE transaction, and
+-- that is the whole difference.** The original writes the `UserActivity` row,
+-- reads it back and compares eleven fields, rechecks the actor, writes the
+-- attestation carrying `audit_event_id`, reads THAT back and compares eight
+-- more, and rechecks the actor twice more — four identity rechecks and two
+-- full readbacks, because a crash between the two writes would leave gate
+-- authority with no audit trail behind it, or an audit entry for an acceptance
+-- that never took effect. Here they are two statements in one transaction and
+-- neither half can exist without the other. The readbacks are not skipped, they
+-- are unnecessary.
+--
+-- `audit.mjs` is the handler-side facility and stays the way a handler audits
+-- something it did. It is not the way to audit something a CONTRACT did: two
+-- round trips cannot be atomic, and the attestation needs the event's id. So
+-- this contract calls `contract_activity_append` directly, which it may because
+-- both are SECURITY DEFINER owned by `pennsync_records_owner`.
+--
+-- DIVERGENCES from the originals, each a narrowing or a no-op, each deliberate:
+--
+-- 1. **`blockedActor` is not ported, because it is already the floor.** The
+--    original refuses a caller whose `User` row is inactive, disabled, a
+--    service account or unverified. Every one of those is a carried,
+--    self-editable label D23 says must never authorize — and it does not have
+--    to here: `pennsync_private.actor` admits an identity only while
+--    `i.enabled and i.revoked_at is null`, so a revoked person has no caller
+--    identity at all and every `caller_*` helper answers null. The check is
+--    carried by construction rather than by copying.
+-- 2. The agreement version and the three acknowledgment sentences are the
+--    originals' constants. They are SQL here because a migration cannot import
+--    a module, so the test proves them byte-identical against the original
+--    rather than trusting this file — the discipline D12 settled on.
+-- 3. The answer carries no `user_name`. The original stamps
+--    `actor.full_name || actorEmail` into the audit row; the trail stamps its
+--    actor from the caller helpers and refuses a payload naming one (D25), so
+--    there is nothing to pass and nothing that could disagree.
+--
+-- One thing NOT to change: `ai_content_agreement_attestation`'s read policy is
+-- `user_id = caller_user_id()`. Unlike `policy_acknowledgment` (D36), tenancy
+-- here IS ownership, so this contract adds no ownership check of its own — it
+-- would be a second answer to keep in agreement with the first.
+begin;
+
+do $$
+begin
+  if to_regclass('pennsync_records.ai_content_agreement_attestation') is null
+    or to_regprocedure('pennsync_records.contract_activity_append(text,text,text,text,jsonb)') is null then
+    raise exception using errcode='42501',message='PENNSYNC_ACTIVITY_TRAIL_REQUIRED';
+  end if;
+end $$;
+
+do $$
+declare v_admin text := current_user;
+begin
+  if exists (select 1 from pg_catalog.pg_roles
+    where rolname = 'pennsync_records_owner' and (rolsuper or rolbypassrls)) then
+    raise exception using errcode='42501',message='PENNSYNC_RECORD_OWNER_MUST_NOT_BYPASS_RLS';
+  end if;
+  begin
+    execute format('grant %I to current_user with set true', 'pennsync_records_owner');
+  exception
+    when syntax_error then execute format('grant %I to current_user', 'pennsync_records_owner');
+    when others then null; -- already held, or not ours to grant; proven below
+  end;
+  begin
+    execute format('set role %I', 'pennsync_records_owner');
+    execute format('set role %I', v_admin);
+  exception when others then
+    raise exception using errcode='42501',message='PENNSYNC_RECORD_OWNER_NOT_ASSUMABLE';
+  end;
+end $$;
+
+set local role "pennsync_records_owner";
+
+-- The originals' `AGREEMENT_VERSION` and `AGREEMENT_ACKNOWLEDGMENTS`. A test
+-- imports both from the original module and compares them to these, so a
+-- change upstream fails the suite instead of silently attesting to different
+-- words than the person read.
+create function "pennsync_records".ai_agreement_version() returns text
+  language sql immutable set search_path = '' as $version$ select '1.0' $version$;
+
+create function "pennsync_records".ai_agreement_acknowledgments() returns jsonb
+  language sql immutable set search_path = '' as $acks$
+  select jsonb_build_array(
+    'I understand that material generated by AI may be incomplete, inaccurate, or contain errors, and that I must not rely on it without review.',
+    'I understand that I am responsible for proofreading, reviewing, and editing all AI-generated material before it is used or submitted.',
+    'I understand that I am solely responsible for the accuracy, completeness, and clinical appropriateness of any material I submit, and that by submitting AI-generated material I attest that I have reviewed it and agree with its contents.')
+$acks$;
+
+/*
+ * The caller's own attestation for the current version, or none.
+ *
+ * No ownership predicate: the table's read policy is
+ * `user_id = caller_user_id()`, so the only rows this can see are the
+ * caller's. Adding one here would be a second answer to keep in agreement
+ * with the first.
+ */
+create function "pennsync_records".contract_ai_agreement_status(p_agency text)
+  returns jsonb language plpgsql security definer set search_path = '' as $contract$
+declare v_row record;
+begin
+  if "pennsync_records".caller_tenant_role(p_agency) is null then
+    raise exception using errcode='42501', message='PENNSYNC_AI_AGREEMENT_AGENCY_NOT_HELD';
+  end if;
+  select a."id", a."accepted_at", a."acknowledgments" into v_row
+  from "pennsync_records"."ai_content_agreement_attestation" a
+  where a."source_app_id" = "pennsync_records".deployment_app()
+    and a."agreement_version" = "pennsync_records".ai_agreement_version()
+  order by a."accepted_at" desc nulls last, a."id"
+  limit 1;
+  return jsonb_build_object(
+    'agreement_version', "pennsync_records".ai_agreement_version(),
+    'acknowledgments', "pennsync_records".ai_agreement_acknowledgments(),
+    'accepted', v_row."id" is not null,
+    'accepted_at', v_row."accepted_at",
+    'attestation_id', v_row."id");
+end $contract$;
+
+create function "pennsync_records".contract_ai_agreement_accept(
+  p_agency text, p_agreement_version text)
+  returns jsonb language plpgsql security definer set search_path = '' as $contract$
+declare
+  v_row record; v_user text; v_email text; v_now timestamptz; v_event text; v_id text;
+begin
+  if "pennsync_records".caller_tenant_role(p_agency) is null then
+    raise exception using errcode='42501', message='PENNSYNC_AI_AGREEMENT_AGENCY_NOT_HELD';
+  end if;
+  -- The original answers a stale version differently from a malformed body:
+  -- somebody who accepted an older agreement has to read the current one.
+  if p_agreement_version is distinct from "pennsync_records".ai_agreement_version() then
+    raise exception using errcode='22023', message='PENNSYNC_AI_AGREEMENT_VERSION_STALE';
+  end if;
+  v_user := "pennsync_records".caller_user_id();
+  v_email := "pennsync_records".caller_email();
+  if v_user is null or v_email is null then
+    raise exception using errcode='42501', message='PENNSYNC_AI_AGREEMENT_AGENCY_NOT_HELD';
+  end if;
+
+  -- Already accepted is an answer, not a second acceptance: the original
+  -- returns the existing attestation and writes nothing.
+  select a."id", a."accepted_at" into v_row
+  from "pennsync_records"."ai_content_agreement_attestation" a
+  where a."source_app_id" = "pennsync_records".deployment_app()
+    and a."agreement_version" = "pennsync_records".ai_agreement_version()
+  order by a."accepted_at" desc nulls last, a."id"
+  limit 1;
+  if v_row."id" is not null then
+    return jsonb_build_object('success', true, 'already_accepted', true,
+      'agreement_version', "pennsync_records".ai_agreement_version(),
+      'accepted_at', v_row."accepted_at", 'attestation_id', v_row."id");
+  end if;
+
+  v_now := clock_timestamp();
+  -- The trail first, so the attestation can carry its id — and in the SAME
+  -- transaction, so neither can exist without the other. The actor is stamped
+  -- by the trail from the caller helpers; a payload naming one is refused.
+  v_event := "pennsync_records".contract_activity_append(
+    p_agency, 'ai_content_agreement_accepted', 'user', v_user,
+    jsonb_build_object(
+      'agreement_version', "pennsync_records".ai_agreement_version(),
+      'accepted_at', v_now,
+      'acknowledgments', "pennsync_records".ai_agreement_acknowledgments(),
+      'severity', 'info'));
+  -- The same id shape the other create contracts mint.
+  v_id := pg_catalog.substr(pg_catalog.md5(pg_catalog.gen_random_uuid()::text), 1, 24);
+  insert into "pennsync_records"."ai_content_agreement_attestation"
+    ("source_app_id", "id", "user_id", "user_email_normalized", "agreement_version",
+     "accepted_at", "acknowledgments", "audit_event_id", "created_date", "updated_date")
+  values ("pennsync_records".deployment_app(), v_id, v_user, pg_catalog.lower(v_email),
+    "pennsync_records".ai_agreement_version(), v_now,
+    "pennsync_records".ai_agreement_acknowledgments(), v_event, v_now, v_now);
+  return jsonb_build_object('success', true, 'already_accepted', false,
+    'agreement_version', "pennsync_records".ai_agreement_version(),
+    'accepted_at', v_now, 'attestation_id', v_id);
+end $contract$;
+
+reset role;
+
+revoke all on function
+  "pennsync_records".ai_agreement_version(),
+  "pennsync_records".ai_agreement_acknowledgments(),
+  "pennsync_records".contract_ai_agreement_status(text),
+  "pennsync_records".contract_ai_agreement_accept(text,text)
+  from public, anon, authenticated, service_role;
+grant execute on function
+  "pennsync_records".contract_ai_agreement_status(text),
+  "pennsync_records".contract_ai_agreement_accept(text,text)
+  to authenticated;
+
+create function "public"."pennsync_contract_ai_agreement_status"(p_agency text) returns jsonb
+  language sql security invoker set search_path = '' as $contract$
+  select "pennsync_records".contract_ai_agreement_status(p_agency)
+$contract$;
+
+create function "public"."pennsync_contract_ai_agreement_accept"(
+  p_agency text, p_agreement_version text) returns jsonb
+  language sql security invoker set search_path = '' as $contract$
+  select "pennsync_records".contract_ai_agreement_accept(p_agency, p_agreement_version)
+$contract$;
+
+revoke all on function
+  "public"."pennsync_contract_ai_agreement_status"(text),
+  "public"."pennsync_contract_ai_agreement_accept"(text,text)
+  from public, anon, authenticated, service_role;
+grant execute on function
+  "public"."pennsync_contract_ai_agreement_status"(text),
+  "public"."pennsync_contract_ai_agreement_accept"(text,text)
+  to authenticated;
+
+commit;

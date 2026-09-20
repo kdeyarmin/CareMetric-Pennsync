@@ -53,6 +53,7 @@ export const API_TARGETS = Object.freeze([
   'http://127.0.0.1:54341',
 ]);
 export const PORTED_FUNCTIONS = Object.freeze({
+  acceptAiContentAgreement: 'json',
   analyzeReferral: 'json',
   appendPatientNoteHistory: 'json',
   analyzeReferralIntake: 'json',
@@ -65,6 +66,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   getAgencyRosterMember: 'json',
   createAuthorizedPatient: 'json',
   createAuthorizedVisit: 'json',
+  getAiContentAgreementStatus: 'json',
   getAuthorizedDocument: 'json',
   getScopedPatientAlerts: 'json',
   getAuthorizedPatient: 'json',

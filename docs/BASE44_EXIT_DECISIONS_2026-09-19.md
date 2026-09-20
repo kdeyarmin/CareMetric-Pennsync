@@ -2455,3 +2455,68 @@ an acknowledgment records *when* somebody signed. The signature is bounded at
 nowhere — narrower, which is the only direction available.
 
 Port queue: `records_schema` 58 → 57, written 29 → 30.
+
+## D37 — The first port that audits, and what one transaction replaces
+
+**Decision.** Port `acceptAiContentAgreement` and `getAiContentAgreementStatus`
+onto `20260920220000_contract_ai_agreement.sql`, and have the accept contract
+write D25's activity trail **in SQL, in the same transaction as the
+attestation** rather than through `audit.mjs`.
+
+**This is the first port that audits anything.** D25 built the activity trail
+because `UserActivity`, `SecurityLog` and `SystemLog` are dispositioned
+`retire` — a decision about where their existing rows GO, never that the
+product stops auditing. Thirty ported capabilities later, none had audited
+anything, so the trail had a test suite and no caller. It has one now.
+
+**Why the contract writes it, and not the handler.** `audit.mjs` is handed to
+every handler as `audit`, and it stays the right way for a handler to record
+something it did. It is the wrong way here for a reason that is structural
+rather than stylistic: the attestation carries `audit_event_id`, so the audit
+entry must exist and be identified *before* the row that references it, and two
+HTTP round trips cannot be one transaction. The contract calls
+`contract_activity_append` directly, which it may because both are SECURITY
+DEFINER owned by `pennsync_records_owner`.
+
+That is the whole difference from the original, and it is worth spelling out
+what it removes. `acceptAiContentAgreement` writes the `UserActivity` row,
+reads it back and compares eleven fields, rechecks the actor, writes the
+attestation, reads THAT back and compares eight more, and rechecks the actor
+twice again — four identity rechecks and two full readbacks. Every one of them
+defends the same gap: a crash between the two writes leaves gate authority with
+no audit trail behind it, or an audit entry for an acceptance that never took
+effect. In one transaction neither half can exist without the other. The
+readbacks are not skipped; they are unnecessary.
+
+**`blockedActor` is not ported, because it is already the floor.** The original
+refuses a caller whose `User` row is `is_active: false`, `disabled: true`,
+`is_service: true` or `is_verified: false`. All four are carried, self-editable
+labels D23 says must never authorize — and none needs porting:
+`pennsync_private.actor` admits an identity only while
+`i.enabled and i.revoked_at is null`, so a revoked person has no caller identity
+at all and every `caller_*` helper answers null. A test revokes an identity and
+watches both contracts refuse, and a second asserts the contract's text contains
+none of those four field names.
+
+**Tenancy IS ownership here, and that is the contrast with D36.**
+`ai_content_agreement_attestation`'s read policy is
+`user_id = caller_user_id()`, so the contract adds no ownership check —
+restating it would be a second answer to keep in agreement with the first. One
+capability earlier, `policy_acknowledgment` is agency-tenanted and the contract
+must check ownership itself. The difference is the policy, and reading it is how
+you tell.
+
+**The words are the original's words.** `AGREEMENT_VERSION` and the three
+`AGREEMENT_ACKNOWLEDGMENTS` sentences are constants in the original module and
+SQL literals here, because a migration cannot import one. The test imports them
+from the original and compares byte for byte — the D12 discipline, and here it
+guards the one defect that would actually matter: attesting to different
+sentences than the person read.
+
+Accepting twice answers the first acceptance and writes nothing — no second
+attestation and no second audit entry, because accepting twice is not an event
+and recording one would be a false trail. A stale version is refused distinctly
+from a malformed request, as the original refuses it, because somebody who
+accepted an older agreement has to go and read the current one.
+
+Port queue: `records_schema` 57 → 55, written 30 → 32.

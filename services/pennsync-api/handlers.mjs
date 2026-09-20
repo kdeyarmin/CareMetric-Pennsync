@@ -343,6 +343,25 @@ export const HANDLERS = Object.freeze({
       return contract('appendPatientNoteHistory', params);
     },
   }),
+  getAiContentAgreementStatus: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      return contract('getAiContentAgreementStatus', params);
+    },
+  }),
+  acceptAiContentAgreement: Object.freeze({
+    // The original's body is exactly `{accepted: true, agreement_version}` and
+    // nothing else. `accepted` carries no information a request to this
+    // endpoint does not already carry, so it is required and then dropped:
+    // a caller that sends `accepted: false` is refused rather than silently
+    // treated as an acceptance.
+    handle({ params, contract }) {
+      exactObject(params, ['accepted', 'agreement_version'], 'INVALID_PARAMS');
+      if (params.accepted !== true) fail(400, 'INVALID_PARAMS');
+      return contract('acceptAiContentAgreement',
+        { agreement_version: params.agreement_version });
+    },
+  }),
   policyAcknowledgment: Object.freeze({
     // The original defaults `action` to `acknowledge` when absent, and this
     // keeps that. `list` is refused HERE rather than at the contract, because

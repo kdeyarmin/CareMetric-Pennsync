@@ -512,6 +512,28 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_ASSIGNMENT_REQUEST_CONFLICT',
     ]),
   }),
+  // The AI content agreement, and the first contract to write D25's activity
+  // trail. It calls `contract_activity_append` in SQL rather than going
+  // through `audit.mjs`, because the attestation carries the audit entry's id
+  // and two round trips cannot be one transaction.
+  getAiContentAgreementStatus: Object.freeze({
+    rpc: 'pennsync_contract_ai_agreement_status',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: Object.freeze(['PENNSYNC_AI_AGREEMENT_AGENCY_NOT_HELD']),
+  }),
+  acceptAiContentAgreement: Object.freeze({
+    rpc: 'pennsync_contract_ai_agreement_accept',
+    params: Object.freeze(['agreement_version']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_agreement_version: args.agreement_version === undefined ? null : args.agreement_version,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_AI_AGREEMENT_AGENCY_NOT_HELD',
+      'PENNSYNC_AI_AGREEMENT_VERSION_STALE',
+    ]),
+  }),
   // Signing a policy acknowledgment: the THIRD partial port. `list` is refused
   // by name because its gate is `u.role === 'admin'`, the Base44 built-in
   // admin — the platform tier D14 and D22 removed, exactly as D31 found for
