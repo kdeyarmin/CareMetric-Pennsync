@@ -149,6 +149,34 @@ create function "pennsync_records".caller_roster_ids() returns setof text
     and peer.status = 'active' and peer.revoked_at is null
 $$;
 
+create function "pennsync_records".caller_roster(p_agency text) returns table(
+    user_id text, email text, agency_id text, agency_name text, tenant_role text, is_active boolean)
+  language sql stable security definer set search_path = '' as $$
+  select peer.base44_user_id, peers.expected_email, m.agency_id::text, a.name,
+         peer.tenant_role::text, peers.enabled
+  from "pennsync_records".caller_identity() i
+  join pennsync_private.membership m
+    on m.app_id = i.app_id and m.auth_user_id = i.auth_user_id
+   and m.base44_user_id = i.base44_user_id
+  join pennsync_private.agency a on a.app_id = m.app_id and a.id = m.agency_id
+  join pennsync_private.membership peer on peer.app_id = m.app_id and peer.agency_id = m.agency_id
+  join pennsync_private.identity_map peers
+    on peers.app_id = peer.app_id and peers.auth_user_id = peer.auth_user_id
+   and peers.base44_user_id = peer.base44_user_id
+  where i.auth_user_id is not null
+    and m.agency_id::text = p_agency
+    and m.status = 'active' and m.revoked_at is null
+    and a.status in ('active','trial')
+    -- The same criterion caller_roster_ids() uses, so the two cannot disagree.
+    -- If this listed revoked colleagues while that policy hid their profile
+    -- row, they would appear on the roster with every profile field empty — a
+    -- phantom that looks like a colleague who never filled anything in. The
+    -- is_active column above is the identity's own flag, which is a different
+    -- fact: whether that person's login is disabled while their membership
+    -- stands.
+    and peer.status = 'active' and peer.revoked_at is null
+$$;
+
 create function "pennsync_records".deployment_app() returns text
   language sql stable security definer set search_path = '' as $$
   select pennsync_private.deployment_app_id()
@@ -156,12 +184,12 @@ $$;
 
 revoke all on function "pennsync_records".caller_identity(), "pennsync_records".caller_identified(),
   "pennsync_records".caller_agencies(), "pennsync_records".caller_tenant_role(text),
-  "pennsync_records".caller_user_id(), "pennsync_records".caller_roster_ids(),
+  "pennsync_records".caller_user_id(), "pennsync_records".caller_roster_ids(), "pennsync_records".caller_roster(text),
   "pennsync_records".caller_email(), "pennsync_records".deployment_app() from public, anon, authenticated, service_role;
 
 -- The owner may ask who is calling. No caller role may.
 
-grant execute on function "pennsync_records".caller_identity(), "pennsync_records".caller_identified(), "pennsync_records".caller_agencies(), "pennsync_records".caller_tenant_role(text), "pennsync_records".caller_user_id(), "pennsync_records".caller_email(), "pennsync_records".deployment_app() to "pennsync_records_owner";
+grant execute on function "pennsync_records".caller_identity(), "pennsync_records".caller_identified(), "pennsync_records".caller_agencies(), "pennsync_records".caller_tenant_role(text), "pennsync_records".caller_user_id(), "pennsync_records".caller_roster_ids(), "pennsync_records".caller_roster(text), "pennsync_records".caller_email(), "pennsync_records".deployment_app() to "pennsync_records_owner";
 
 -- Everything below is created while acting as the owner, so the owner is what
 -- `force row level security` binds.

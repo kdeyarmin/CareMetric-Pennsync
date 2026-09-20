@@ -1255,6 +1255,46 @@ A third, smaller: the committed schema plan recorded `broker` for 42 entities
 D22 had already moved to `port`, because `comparePlan` never compared
 `disposition`. It does now.
 
+**The contract over it.** `20260920030000_contract_roster.sql` is what the 35
+readers will call, and its shape follows from the same decision: the authority
+store's membership is the FROM clause and the carried profile row is joined on.
+So a colleague with a membership and no profile row is on the roster with empty
+profile fields, and a profile row with no membership is not on it at all —
+membership decides who exists. The carried row contributes only what the
+authority store has no column for: staff discipline, duty status, credentials,
+telephone number.
+
+Four fields the old code reads most are therefore **not projected from the
+carried row under any name**. `agency_id` and `agency_name` come from the
+membership and its agency; `role` and `account_type` are replaced by
+`tenant_role`. `is_manager` and `is_approved` are derived too, because both
+exist as self-editable booleans and a handler gating on the stored
+`is_manager` gates on the user's own assertion. Personnel detail — telephone,
+credentials, licence, reporting line — widens only for an authoritative
+`agency_admin` or `manager`, and is null rather than absent for everyone else
+so the shape does not tell a handler which kind of caller it is serving.
+
+Three more defects came out of testing it, and all three were the kind that
+pass a test that only counts rows:
+
+1. **A revoked colleague stayed on the roster.** The policy excluded them and
+   the contract did not, so they would have appeared with every profile field
+   empty — a phantom that reads as somebody who never filled anything in. Both
+   now use one criterion.
+2. **A cursor naming somebody no longer on the roster silently truncated the
+   walk.** That is exactly what a mid-walk revocation produces: an agency of
+   thirty reported as an agency of three. Answering the whole roster instead
+   would repeat every colleague already seen, so it is refused and the caller
+   starts again.
+3. **`caller_roster_ids()` was missing from the record owner's `grant
+   execute`.** A policy expression runs with the querying role's privileges,
+   and inside a broker that role is the owner — so every read of the roster
+   would have failed outright with `permission denied for function` rather
+   than returning no rows. The check for it reads both sides out of the
+   migration now: which helpers the policies call, and which the grant names.
+   The hand-kept list of helpers that let this through is gone; the list is
+   whatever the schema holds.
+
 
 ## D24 — `pennsync_private.assignment` decides who may open a chart
 

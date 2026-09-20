@@ -39,15 +39,17 @@ const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const AGENCY_A = 1; const AGENCY_B = 4;
 const CALLER_ROLES = ['anon', 'authenticated', 'service_role'];
-// Two lists, because the two questions take different spellings: the catalog
-// matches a bare `proname`, while `has_function_privilege` needs a signature.
-// One list of names served both until `caller_tenant_role` took an argument —
-// and asking about `caller_tenant_role()` raises "does not exist" rather than
-// answering false, so the mismatch surfaced instead of quietly passing.
-const HELPERS = ['caller_identity', 'caller_identified', 'caller_agencies', 'caller_tenant_role',
-  'caller_user_id', 'caller_email', 'deployment_app'];
-const HELPER_SIGNATURES = Object.freeze({ caller_tenant_role: 'text' });
-const signature = name => `${name}(${HELPER_SIGNATURES[name] ?? ''})`;
+/**
+ * The caller helpers, read from the database rather than listed here.
+ *
+ * It WAS listed here, and that is how `caller_roster_ids()` — added with D23's
+ * roster policy — was left out of the owner's grant while the policy that asks
+ * it shipped. A hand-kept list of what to check cannot catch the thing it was
+ * not told about, so the list is now whatever the schema holds.
+ */
+let HELPERS = [];
+const signature = entry => (typeof entry === 'string' ? `${entry}()` : `${entry.name}(${entry.args})`);
+const helperName = entry => (typeof entry === 'string' ? entry : entry.name);
 let db;
 
 /**
@@ -90,6 +92,20 @@ before(async () => {
       ${SCHEMA}.broker_add(text, text) to authenticated;`);
   await db.exec(`insert into ${SCHEMA}.supply_item("source_app_id","id","agency_id","name") values
     ('${APP}','supply-a','agency-a','Gauze A'), ('${APP}','supply-b','agency-b','Gauze B');`);
+  // Whatever the migration actually created, minus this file's own brokers.
+  // Both spellings are taken from the catalog, because the two questions below
+  // need different ones: it matches a bare `proname`, while
+  // `has_function_privilege` needs the argument list.
+  // `oidvectortypes` rather than `pg_get_function_identity_arguments`, which
+  // includes parameter NAMES in this server; `has_function_privilege` wants
+  // types alone. `proargtypes` also leaves out OUT parameters, so a
+  // `returns table(...)` helper reports the signature callers actually use.
+  const { rows: helpers } = await db.query(`
+    select p.proname as name, pg_catalog.oidvectortypes(p.proargtypes) as args
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = $1 and p.proname not like 'broker\\_%'`, [SCHEMA]);
+  HELPERS = helpers;
+  assert.ok(HELPERS.length >= 8, `expected the helper set to be substantial, found ${HELPERS.length}`);
 });
 after(async () => db?.close());
 
@@ -139,7 +155,7 @@ test('the tables belong to that role and the caller helpers deliberately do not'
     select p.proname, r.rolname from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     join pg_roles r on r.oid = p.proowner
-    where n.nspname = $1 and p.proname = any($2)`, [SCHEMA, HELPERS]);
+    where n.nspname = $1 and p.proname = any($2)`, [SCHEMA, HELPERS.map(helperName)]);
   assert.equal(helpers.length, HELPERS.length);
   assert.deepEqual(helpers.filter(row => row.rolname === OWNER_ROLE), [],
     'the caller helpers must stay administrator-owned');
@@ -166,6 +182,57 @@ test('no caller role is granted anything: not a table, not a helper', async () =
     const { rows } = await db.query('select has_function_privilege($1, $2, \'execute\') as allowed',
       [OWNER_ROLE, `${SCHEMA}.${signature(helper)}`]);
     assert.equal(rows[0].allowed, true, `${OWNER_ROLE} must be able to execute ${signature(helper)}`);
+  }
+});
+
+test('every helper a policy asks is one the owner may call, because a policy runs as the querying role', () => {
+  // The failure this catches is silent and total: a policy expression is
+  // evaluated with the privileges of the role running the query, and inside a
+  // broker that role is the record owner. A helper a policy asks and the
+  // owner's grant omits does not deny a row — it denies the whole read with
+  // `permission denied for function`.
+  //
+  // It happened. D23's `user_read` asks `caller_roster_ids()`, which was added
+  // to the helpers and left out of the grant, and every check here was over a
+  // hand-kept list that had never heard of it. So this reads BOTH sides out of
+  // the migration: which helpers the policies call, and which the grant names.
+  const sql = recordStore();
+  const asked = new Set();
+  for (const match of sql.matchAll(/create policy "[a-z0-9_]+" on [^;]+;/g)) {
+    for (const [, helper] of match[0].matchAll(/"pennsync_records"\.([a-z_]+)\s*\(/g)) asked.add(helper);
+  }
+  assert.ok(asked.size >= 3, `expected the policies to ask several helpers, found ${[...asked]}`);
+  assert.ok(asked.has('caller_roster_ids'), 'the roster policy asks it, which is how this gap was found');
+  const grant = sql.match(/grant execute on function ([^;]+) to "pennsync_records_owner";/);
+  assert.ok(grant, 'the migration must grant the helpers to the owner');
+  const granted = new Set([...grant[1].matchAll(/"pennsync_records"\.([a-z_]+)\s*\(/g)].map(match => match[1]));
+  assert.deepEqual([...asked].filter(helper => !granted.has(helper)).sort(), [],
+    'a policy asks a helper the owner cannot execute, which denies the read outright');
+});
+
+test('the roster policy really is reachable through a broker, not only in principle', async () => {
+  // The test above reads the grant; this spends it. `user` is the one table
+  // whose policy asks a helper nothing else asks, so it is the one where a
+  // missing grant shows up as an outage rather than as an empty result — and
+  // an empty result is what a test that only counted rows would have accepted.
+  await db.exec(`insert into ${SCHEMA}."user"("source_app_id","id","agency_id") values
+    ('${APP}','6aac00000000000000000001','agency-b'), ('${APP}','6aac00000000000000000004','agency-a');`);
+  await db.exec(`
+    set local role ${OWNER_ROLE};
+    create function ${SCHEMA}.broker_roster() returns table(id text)
+      language sql stable security definer set search_path = '' as $$
+      select "id" from ${SCHEMA}."user" $$;
+    reset role;
+    grant execute on function ${SCHEMA}.broker_roster() to authenticated;`);
+  try {
+    // Seeded with each row claiming the OTHER agency, so a policy reading the
+    // row's own label would answer these two exactly the wrong way round.
+    assert.deepEqual(await as(AGENCY_A, `select * from ${SCHEMA}.broker_roster()`),
+      [{ id: '6aac00000000000000000001' }]);
+    assert.deepEqual(await as(AGENCY_B, `select * from ${SCHEMA}.broker_roster()`),
+      [{ id: '6aac00000000000000000004' }]);
+  } finally {
+    await db.exec(`drop function ${SCHEMA}.broker_roster(); delete from ${SCHEMA}."user";`);
   }
 });
 

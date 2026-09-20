@@ -145,6 +145,26 @@ export const HANDLERS = Object.freeze({
       return contract('listPolicyLibrary', params);
     },
   }),
+  listAgencyRoster: Object.freeze({
+    // D23. Not a ported Base44 name: the original read the `User` entity from
+    // each of 35 capabilities, and what replaces that is one reviewed contract
+    // rather than 35 copies of a query.
+    //
+    // The authorization is the contract's and is not restated here — who sees
+    // a colleague's telephone number and credentials is decided by the
+    // authoritative tenant role in the database, not by this handler and not
+    // by the self-editable `is_manager` flag on the carried row.
+    handle({ params, contract }) {
+      exactObject(params, ['limit', 'after'], 'INVALID_PARAMS');
+      return contract('listAgencyRoster', params);
+    },
+  }),
+  getAgencyRosterMember: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['user_id'], 'INVALID_PARAMS');
+      return contract('getAgencyRosterMember', params);
+    },
+  }),
   generateBagTechniquePDF: Object.freeze({
     binary: true,
     handle({ params, config }) {

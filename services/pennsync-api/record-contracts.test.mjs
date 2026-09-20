@@ -97,10 +97,22 @@ test('a misconfigured or unauthenticated service does not reach the store', asyn
 });
 
 test('only the contract own declared refusals cross back; everything else is one code', async () => {
-  for (const code of CONTRACT_CODES) {
-    await rejects(capability({}, answers({ message: code, hint: 'internal' }, 400))
-      ('listPolicyLibrary', {}), code);
+  // Per contract, not per union. Every contract used to be checked against one
+  // flat list of every code any of them could raise, which let a contract
+  // relay a refusal the contract it called cannot produce — a branch nothing
+  // can take that reads like a guarantee somebody wrote. Invisible with one
+  // contract; with three it is `listPolicyLibrary` claiming it can answer
+  // `PENNSYNC_ROSTER_CURSOR_UNKNOWN`.
+  for (const [name, entry] of Object.entries(RECORD_CONTRACTS)) {
+    for (const code of entry.codes) {
+      await rejects(capability({}, answers({ message: code, hint: 'internal' }, 400))(name, {}), code);
+    }
+    for (const foreign of CONTRACT_CODES.filter(code => !entry.codes.includes(code))) {
+      await rejects(capability({}, answers({ message: foreign }, 400))(name, {}), 'CONTRACT_REFUSED');
+    }
   }
+  assert.ok(CONTRACT_CODES.length > RECORD_CONTRACTS.listPolicyLibrary.codes.length,
+    'the union must be wider than one contract, or the case above proves nothing');
   // A contract raises 42501 for a forbidden mode, which PostgREST reports as
   // 403 — that is the contract speaking, not the gateway rejecting the token,
   // and the two must not be conflated.
@@ -112,6 +124,40 @@ test('only the contract own declared refusals cross back; everything else is one
     { message: 'PENNSYNC_CONTRACT_FORBIDDEN_EXTRA' }, { message: null }, 'a bare string', [1], null]) {
     await rejects(capability({}, answers(body, 400))('listPolicyLibrary', {}), 'CONTRACT_REFUSED');
   }
+});
+
+test('the roster sends what its contract declares and refuses what it does not', async () => {
+  let seen = null;
+  const fetcher = async (url, init) => { seen = { url, init }; return answers({ entries: [], next: null })(); };
+  assert.deepEqual(await capability({}, fetcher)('listAgencyRoster', {}), { entries: [], next: null });
+  assert.equal(seen.url, `${TARGET}/rest/v1/rpc/pennsync_contract_roster_list`);
+  // Absent means absent, not zero: the contract's own defaults decide the page
+  // size, so a service that sent one would be a second answer to keep in step.
+  assert.deepEqual(JSON.parse(seen.init.body), { p_agency: 'agency-a', p_limit: null, p_after: null });
+  await capability({}, fetcher)('listAgencyRoster', { limit: 50, after: 'a'.repeat(24) });
+  assert.deepEqual(JSON.parse(seen.init.body),
+    { p_agency: 'agency-a', p_limit: 50, p_after: 'a'.repeat(24) });
+
+  await capability({}, fetcher)('getAgencyRosterMember', { user_id: 'b'.repeat(24) });
+  assert.equal(seen.url, `${TARGET}/rest/v1/rpc/pennsync_contract_roster_get`);
+  assert.deepEqual(JSON.parse(seen.init.body), { p_agency: 'agency-a', p_user_id: 'b'.repeat(24) });
+
+  // An argument nobody declared is refused rather than dropped: dropping one
+  // leaves a handler believing it paged or filtered something it did not.
+  const reject = async () => { throw new Error('the store must not have been called'); };
+  await rejects(capability({}, reject)('listAgencyRoster', { agency_id: 'agency-b' }), 'CONTRACT_ARGUMENTS_INVALID');
+  await rejects(capability({}, reject)('getAgencyRosterMember', { email: 'x@y' }), 'CONTRACT_ARGUMENTS_INVALID');
+});
+
+test('an absent roster member is an answer, and only where a contract says so', async () => {
+  // `null` from `getAgencyRosterMember` is how "not there" and "not a
+  // colleague of yours" are made indistinguishable, so a caller cannot learn
+  // that an id belongs to somebody in an agency they cannot see. The same
+  // `null` from a contract that returns an object is the store answering
+  // something nobody can use.
+  assert.equal(await capability({}, answers(null))('getAgencyRosterMember', { user_id: 'c'.repeat(24) }), null);
+  await rejects(capability({}, answers(null))('listAgencyRoster', {}), 'RECORD_STORE_UNREADABLE');
+  await rejects(capability({}, answers(null))('listPolicyLibrary', {}), 'RECORD_STORE_UNREADABLE');
 });
 
 test('a store that answers the wrong shape is an outage, not a surprise in a handler', async () => {

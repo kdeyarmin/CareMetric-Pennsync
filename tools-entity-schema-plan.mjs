@@ -380,13 +380,50 @@ $$;`,
     and a.status in ('active','trial')
     and peer.status = 'active' and peer.revoked_at is null
 $$;`,
+  // The roster itself, for a contract that has to ANSWER with it rather than
+  // filter by it. `caller_roster_ids()` decides which carried profile rows a
+  // caller may see; this carries the authority store's own columns — the
+  // agency, its name, the tenant role, whether the membership is live — which
+  // exist nowhere in the record store and are the very fields the carried row
+  // holds an editable imitation of.
+  //
+  // Scoped to `caller_agencies()` and not to the argument alone, so a contract
+  // that forgot to check the caller's membership still cannot read another
+  // agency's roster through it.
+  `create function ${quote(SCHEMA)}.caller_roster(p_agency text) returns table(
+    user_id text, email text, agency_id text, agency_name text, tenant_role text, is_active boolean)
+  language sql stable security definer set search_path = '' as $$
+  select peer.base44_user_id, peers.expected_email, m.agency_id::text, a.name,
+         peer.tenant_role::text, peers.enabled
+  from ${quote(SCHEMA)}.caller_identity() i
+  join pennsync_private.membership m
+    on m.app_id = i.app_id and m.auth_user_id = i.auth_user_id
+   and m.base44_user_id = i.base44_user_id
+  join pennsync_private.agency a on a.app_id = m.app_id and a.id = m.agency_id
+  join pennsync_private.membership peer on peer.app_id = m.app_id and peer.agency_id = m.agency_id
+  join pennsync_private.identity_map peers
+    on peers.app_id = peer.app_id and peers.auth_user_id = peer.auth_user_id
+   and peers.base44_user_id = peer.base44_user_id
+  where i.auth_user_id is not null
+    and m.agency_id::text = p_agency
+    and m.status = 'active' and m.revoked_at is null
+    and a.status in ('active','trial')
+    -- The same criterion caller_roster_ids() uses, so the two cannot disagree.
+    -- If this listed revoked colleagues while that policy hid their profile
+    -- row, they would appear on the roster with every profile field empty — a
+    -- phantom that looks like a colleague who never filled anything in. The
+    -- is_active column above is the identity's own flag, which is a different
+    -- fact: whether that person's login is disabled while their membership
+    -- stands.
+    and peer.status = 'active' and peer.revoked_at is null
+$$;`,
   `create function ${quote(SCHEMA)}.deployment_app() returns text
   language sql stable security definer set search_path = '' as $$
   select pennsync_private.deployment_app_id()
 $$;`,
   `revoke all on function ${quote(SCHEMA)}.caller_identity(), ${quote(SCHEMA)}.caller_identified(),
   ${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_tenant_role(text),
-  ${quote(SCHEMA)}.caller_user_id(), ${quote(SCHEMA)}.caller_roster_ids(),
+  ${quote(SCHEMA)}.caller_user_id(), ${quote(SCHEMA)}.caller_roster_ids(), ${quote(SCHEMA)}.caller_roster(text),
   ${quote(SCHEMA)}.caller_email(), ${quote(SCHEMA)}.deployment_app() from public, anon, authenticated, service_role;`,
 ];
 
@@ -603,9 +640,15 @@ export function renderMigration(repository) {
   if (cut < 0) throw new Error('RECORD_HELPER_REVOKE_NOT_FOUND');
   const helpers = body.slice(0, cut + marker.length).trim();
   const tables = body.slice(cut + marker.length).trim();
+  // Everything the owner must be able to CALL. A policy expression runs with
+  // the privileges of the role running the query, and inside a broker that
+  // role is this owner — so a helper a policy asks and this list omits denies
+  // the read outright. `user_read` asks `caller_roster_ids()`, which is how
+  // that came up.
   const helperList = `${quote(SCHEMA)}.caller_identity(), ${quote(SCHEMA)}.caller_identified(), `
     + `${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_tenant_role(text), `
-    + `${quote(SCHEMA)}.caller_user_id(), `
+    + `${quote(SCHEMA)}.caller_user_id(), ${quote(SCHEMA)}.caller_roster_ids(), `
+    + `${quote(SCHEMA)}.caller_roster(text), `
     + `${quote(SCHEMA)}.caller_email(), ${quote(SCHEMA)}.deployment_app()`;
   const statements = [
     `-- The record store: ${plan.totals.carried} carried entities, ${plan.totals.columns} columns,
