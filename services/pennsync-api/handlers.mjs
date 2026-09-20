@@ -10,6 +10,7 @@
 import { exactObject, fail, isObject } from './contracts.mjs';
 import { syncCmsRegulations } from './cms-regulations.mjs';
 import { triageReferral } from './referral-triage.mjs';
+import { analyzeVisitSupplyUsage } from './visit-supply-usage.mjs';
 import {
   BAG_TECHNIQUE_FILENAME, SMART_NOTE_GUIDE_FILENAME, USER_MANUAL_FILENAME,
   buildBagTechniqueChecklist, buildSmartNoteGuide, buildUserManual, documentDate,
@@ -523,6 +524,17 @@ export const HANDLERS = Object.freeze({
     handle({ params, contract }) {
       exactObject(params, [], 'INVALID_PARAMS');
       return contract('checkAdrDeadlines', params);
+    },
+  }),
+  analyzeVisitForSupplyUsage: Object.freeze({
+    // The body keys are the original's: `src/pages/SmartNoteAssistant.jsx`
+    // sends them and the SPA is shared between both backends, so renaming
+    // them would break the capability on the independent path. That is the
+    // counter-case to D57's rename, which was safe because nothing calls it.
+    needsIntegration: true,
+    handle({ params, integration, contract }) {
+      exactObject(params, ['visitId', 'visitNotes', 'patientId'], 'INVALID_PARAMS');
+      return analyzeVisitSupplyUsage({ params, integration, contract });
     },
   }),
   predictSupplyNeeds: Object.freeze({

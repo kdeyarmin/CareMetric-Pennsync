@@ -3685,3 +3685,89 @@ camelCase body in the set; every capability in the ported API names a chart
 keep in step with the outlier.
 
 Port queue: `records_schema` 23 → 22, written 56 → 57.
+
+## D58 — A reorder task with no patient is a task in no tenant, and the original writes one
+
+**Decision.** Port `analyzeVisitForSupplyUsage` as a read contract, a model call
+and a write contract, and stamp the reorder task it creates with the authorized
+chart — because without a patient the task, and the low-stock alert that names
+it, are written where nobody can read them.
+
+**The fourth instance of one defect, and the first that a stamped envelope
+column does not fix.** D45 found it in the notification envelope, D51 found it
+in the ADR reminder and the incident alert, and here it is again: the original
+ends with
+
+```js
+const task = await base44.asServiceRole.entities.Task.create({
+  title: `Reorder ${matchedSupply.name}`, …, assigned_to: user.email, …
+});
+await base44.asServiceRole.entities.SupplyLowStockAlert.update(alert.id, {
+  reorder_task_created: true, task_id: task.id,
+});
+```
+
+No `patient_id`. In this store `task` reaches tenancy through `patient_id` and
+`supply_low_stock_alert` reaches it through `task_id`, so the pair is in no
+tenant at all — invisible to the agency's administrator, to the care team, and
+to the very clinician the task is assigned to. A test seeds exactly that pair
+and reads it back as two different callers to prove it, rather than asserting
+it.
+
+**The fix is the original's own `assigned_to`.** It hands the reorder task to
+`user.email`, the clinician who just documented the visit, and that clinician
+opens this chart — so the authorized `patient_id` makes the task visible to
+precisely the person it was given to, plus the rest of the care team and anyone
+who opens every chart. The other three capabilities in the tree that create a
+`Task` all name a patient, and `generateFollowUpTasks` says why in its own
+comment: *"Chart-attached tasks require a patient the caller can access."* This
+one is the outlier, and a test reads the original and fails if that ever stops
+being true.
+
+**What was considered and rejected.** Giving `SupplyLowStockAlert` or `Task` an
+`agency_id` of its own would also work, and the tenant-decision gate refuses it
+by name — *"has a decision but its tenant path already resolves"* — because the
+decision file is for entities whose path does NOT resolve. Overriding a
+resolved path is a change to the derivation, not a decision, and it was not
+needed: the capability already knows the chart.
+
+**Three compensations deleted, all of them for having no transaction.**
+
+* `supply_usage_claimed_by`. The original writes a claim token to the visit,
+  reads it back, and treats a mismatch as "claimed by a concurrent run" — and
+  it is racy anyway, since two runs that both write and then both read their
+  own token both proceed. The record contract takes `select … for update` on
+  the visit row and skips what is already logged against it, so the second run
+  is a no-op with no token to lose. D46's rule: a reservation protocol becomes
+  the lock it was emulating.
+* `runningQuantities`. That map exists so two line items in ONE run do not both
+  write against the same frozen snapshot. It does nothing about two concurrent
+  RUNS, which lose one another's decrement entirely.
+  `greatest(0, current_quantity - qty)` under the row lock is correct for both.
+* The create-then-update of the alert. The task is created first, so the alert
+  carries `task_id` and `reorder_task_created` at insert.
+
+**Two divergences that are the store's shape rather than a choice.**
+`supply_item` is matched inside the caller's agency — the original scans the
+five thousand newest supplies in the DEPLOYMENT, which D57 records as a read
+defect and which here WRITES to whatever it matches. And the duplicate-alert
+check sees what the caller sees: the alert is chart-bound, so there is no
+agency-wide read of it to make, and a second clinician on a different chart can
+open a second active alert for the same supply. That is also what the
+original's `assigned_to: user.email` implies, since each of them is handed the
+reorder task.
+
+**Not diverged.** A malformed element of the model's answer is SKIPPED rather
+than refusing the batch, because the original guards each one deliberately and
+says why, and refusing would throw away the extractions that were good — the
+opposite of D54, where the original's per-row `catch` was the accident. Two
+line items matching the same supply in one run both log and both decrement.
+
+**And the body keys stay camelCase**, which is the counter-case to D57.
+`src/pages/SmartNoteAssistant.jsx` sends `{ visitId, visitNotes, patientId }`
+and the SPA is shared between the two backends, so renaming them would break
+the capability on the independent path the moment it shipped. D57's rename was
+safe because nothing in `src/` calls `predictSupplyNeeds`. **Check the call
+site before normalising a request shape.**
+
+Port queue: `records_schema` 22 → 21, written 57 → 58.

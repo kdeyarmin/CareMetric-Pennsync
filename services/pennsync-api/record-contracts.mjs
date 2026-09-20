@@ -1240,6 +1240,50 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_TENANT_AGENCY_UNAVAILABLE',
     ]),
   }),
+  // The supplies a visit consumed, in two halves because a model call sits
+  // between them: the context read authorizes the chart before the call is
+  // paid for, and the record write does the whole of it in one transaction.
+  //
+  // **The port found a defect of D45's and D51's kind and the contract's
+  // header records it.** The original creates a reorder `Task` with no
+  // `patient_id` and an alert naming that task; `task` reaches tenancy through
+  // `patient_id` here and the alert reaches it through `task_id`, so the pair
+  // would be written where nobody — the assignee included — could read it.
+  // The task is stamped with the authorized chart, which is where the
+  // original's own `assigned_to: user.email` already puts it.
+  getVisitSupplyContext: Object.freeze({
+    rpc: 'pennsync_contract_visit_supply_context',
+    params: Object.freeze(['patient_id', 'visit_id']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_visit_id: args.visit_id === undefined ? null : args.visit_id,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_VISIT_SUPPLY_AGENCY_NOT_HELD',
+      'PENNSYNC_VISIT_SUPPLY_SUBJECT_INVALID',
+      'PENNSYNC_VISIT_SUPPLY_PATIENT_NOT_VISIBLE',
+      'PENNSYNC_VISIT_SUPPLY_VISIT_NOT_FOUND',
+    ]),
+  }),
+  recordVisitSupplyUsage: Object.freeze({
+    rpc: 'pennsync_contract_visit_supply_record',
+    params: Object.freeze(['patient_id', 'visit_id', 'supplies']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_visit_id: args.visit_id === undefined ? null : args.visit_id,
+      p_supplies: args.supplies === undefined ? null : args.supplies,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_VISIT_SUPPLY_AGENCY_NOT_HELD',
+      'PENNSYNC_VISIT_SUPPLY_SUBJECT_INVALID',
+      'PENNSYNC_VISIT_SUPPLY_PATIENT_NOT_VISIBLE',
+      'PENNSYNC_VISIT_SUPPLY_VISIT_NOT_FOUND',
+      'PENNSYNC_VISIT_SUPPLY_INVALID',
+      'PENNSYNC_VISIT_SUPPLY_TOO_MANY',
+    ]),
+  }),
   // Supply forecasting from a patient's own usage log. The arithmetic is the
   // capability and it is ported term for term; the authorization is the D21
   // and D24 reconstruction one more time — the original's own comment calls
