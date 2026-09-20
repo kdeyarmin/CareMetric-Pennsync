@@ -37,8 +37,10 @@ const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)))
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-// Fixture identities: 1 to 3 are in agency-a, 4 is in agency-b.
+// Fixture identities: 1 to 3 are in agency-a, 4 is in agency-b. 1 and 4 are
+// `agency_admin`; 2 and 3 are clinicians, and only 2 is assigned to a patient.
 const AGENCY_A = 1; const AGENCY_B = 4;
+const ASSIGNED = 2; const UNASSIGNED = 3;
 let db;
 
 before(async () => {
@@ -55,6 +57,8 @@ before(async () => {
     grant select, insert, update, delete on all tables in schema ${SCHEMA} to authenticated;
     grant execute on function ${SCHEMA}.caller_identity(), ${SCHEMA}.caller_identified(),
       ${SCHEMA}.caller_agencies(), ${SCHEMA}.caller_user_id(), ${SCHEMA}.caller_roster_ids(),
+      ${SCHEMA}.caller_tenant_role(text), ${SCHEMA}.caller_opens_every_chart(text),
+      ${SCHEMA}.caller_assigned_patients(text),
       ${SCHEMA}.caller_email(), ${SCHEMA}.deployment_app() to authenticated;`);
 });
 after(async () => db?.close());
@@ -250,6 +254,115 @@ test('the roster shows colleagues and nobody else, and the row own agency label 
   } finally { await db.exec('rollback'); }
 
   await db.exec(`delete from ${SCHEMA}."user"`);
+});
+
+test('belonging to the agency is not the same as being a chart the caller may open', async () => {
+  // D24. Until this, every member of an agency could read every patient in it.
+  // `patient-a1` is assigned to identity 2's membership in the fixtures;
+  // `patient-a2` is assigned to nobody.
+  // From a known table, not from whatever an earlier case left behind: these
+  // assert an exact set, and a stray row makes them fail for the wrong reason.
+  await seed(`delete from ${SCHEMA}."document"; delete from ${SCHEMA}."patient";
+    insert into ${SCHEMA}."patient"("source_app_id","id","agency_id") values
+    ('${APP}','patient-a1','agency-a'), ('${APP}','patient-a2','agency-a');`);
+  try {
+    const charts = who => as(who, `select "id" from ${SCHEMA}."patient"`).then(ids);
+    // An administrator opens every chart in their agency.
+    assert.deepEqual(await charts(AGENCY_A), ['patient-a1', 'patient-a2']);
+    // A clinician opens the one they are assigned to, and naming the other
+    // does not reach it.
+    assert.deepEqual(await charts(ASSIGNED), ['patient-a1']);
+    assert.deepEqual(await as(ASSIGNED, `select "id" from ${SCHEMA}."patient" where "id" = 'patient-a2'`), []);
+    // A clinician of the same agency with no assignment opens none. This is
+    // the case that separates "narrowed" from "narrowed to the agency".
+    assert.deepEqual(await charts(UNASSIGNED), []);
+    // The other agency sees neither, as before.
+    assert.deepEqual(await charts(AGENCY_B), []);
+  } finally { await db.exec(`delete from ${SCHEMA}."patient"`); }
+});
+
+test('the narrowing travels with a borrowed predicate, not only with its own', async () => {
+  // The defect this catches is the one a first version shipped: a reference
+  // predicate inlines the target's TENANT check, so `document` reached
+  // `patient` and asked only whether the patient was in the caller's agency.
+  // Fifty-four tables looked narrowed and were not — every document, alert,
+  // medication and note of a patient the caller was never assigned to.
+  await seed(`delete from ${SCHEMA}."document"; delete from ${SCHEMA}."visit"; delete from ${SCHEMA}."patient";
+    insert into ${SCHEMA}."patient"("source_app_id","id","agency_id") values
+    ('${APP}','patient-a1','agency-a'), ('${APP}','patient-a2','agency-a');
+    insert into ${SCHEMA}."document"("source_app_id","id","patient_id") values
+    ('${APP}','doc-mine','patient-a1'), ('${APP}','doc-theirs','patient-a2');
+    insert into ${SCHEMA}."visit"("source_app_id","id","agency_id","patient_id") values
+    ('${APP}','visit-mine','agency-a','patient-a1'), ('${APP}','visit-theirs','agency-a','patient-a2');`);
+  try {
+    // `document` borrows its tenancy from `patient`; `visit` carries its own
+    // `agency_id` and its own `patient_id`. Both must narrow, by different
+    // routes, and a test using only one of them would prove half of it.
+    assert.deepEqual(await as(AGENCY_A, `select "id" from ${SCHEMA}."document"`).then(ids),
+      ['doc-mine', 'doc-theirs']);
+    assert.deepEqual(await as(ASSIGNED, `select "id" from ${SCHEMA}."document"`).then(ids), ['doc-mine']);
+    assert.deepEqual(await as(UNASSIGNED, `select "id" from ${SCHEMA}."document"`).then(ids), []);
+
+    assert.deepEqual(await as(ASSIGNED, `select "id" from ${SCHEMA}."visit"`).then(ids), ['visit-mine']);
+    assert.deepEqual(await as(AGENCY_A, `select "id" from ${SCHEMA}."visit"`).then(ids),
+      ['visit-mine', 'visit-theirs']);
+
+    // Writing into a chart you cannot open is the same disclosure in the other
+    // direction, so the narrowing is on the write too.
+    await refused(ASSIGNED, `insert into ${SCHEMA}."document"("source_app_id","id","patient_id")
+      values ('${APP}','doc-intruded','patient-a2')`);
+    assert.deepEqual(await as(ASSIGNED,
+      `update ${SCHEMA}."visit" set "id" = "id" where "id" = 'visit-theirs' returning "id"`), []);
+    // And into their own, they still can.
+    assert.deepEqual(await as(ASSIGNED, `insert into ${SCHEMA}."document"("source_app_id","id","patient_id")
+      values ('${APP}','doc-added','patient-a1') returning "id"`), [{ id: 'doc-added' }]);
+  } finally { await db.exec(`delete from ${SCHEMA}."document"; delete from ${SCHEMA}."visit";
+    delete from ${SCHEMA}."patient";`); }
+});
+
+test('a row naming no chart stays with its agency, because it is not one yet', async () => {
+  // A referral taken before a patient exists is intake data, not anybody's
+  // chart. Hiding it from every clinician would break intake to protect a
+  // chart that is not there — so a null subject is agency-scoped on purpose,
+  // and this is the assertion that says so out loud rather than leaving it to
+  // be read out of a generated predicate.
+  await seed(`delete from ${SCHEMA}."referral"; delete from ${SCHEMA}."patient";
+    insert into ${SCHEMA}."patient"("source_app_id","id","agency_id") values
+    ('${APP}','patient-a2','agency-a');
+    insert into ${SCHEMA}."referral"("source_app_id","id","agency_id","patient_id") values
+    ('${APP}','ref-intake','agency-a',null), ('${APP}','ref-linked','agency-a','patient-a2');`);
+  try {
+    assert.deepEqual(await as(UNASSIGNED, `select "id" from ${SCHEMA}."referral"`).then(ids), ['ref-intake'],
+      'the unlinked referral is visible, the one naming a chart is not');
+    assert.deepEqual(await as(AGENCY_A, `select "id" from ${SCHEMA}."referral"`).then(ids),
+      ['ref-intake', 'ref-linked']);
+    // The other agency sees neither, so "null subject" widens within one
+    // agency and never across two.
+    assert.deepEqual(await as(AGENCY_B, `select "id" from ${SCHEMA}."referral"`).then(ids), []);
+  } finally { await db.exec(`delete from ${SCHEMA}."referral"; delete from ${SCHEMA}."patient";`); }
+});
+
+test('a revoked assignment closes the chart, and every table that hangs off it', async () => {
+  await seed(`delete from ${SCHEMA}."document"; delete from ${SCHEMA}."patient";
+    insert into ${SCHEMA}."patient"("source_app_id","id","agency_id") values
+    ('${APP}','patient-a1','agency-a');
+    insert into ${SCHEMA}."document"("source_app_id","id","patient_id") values ('${APP}','doc-1','patient-a1');`);
+  try {
+    assert.deepEqual(await as(ASSIGNED, `select "id" from ${SCHEMA}."document"`).then(ids), ['doc-1']);
+    await db.exec('begin');
+    try {
+      await db.query(`update pennsync_private.assignment set status = 'revoked'
+        where patient_id = 'patient-a1' and membership_id = 'membership-2'`);
+      await db.query("select set_config('request.jwt.claims',$1,true)", [JSON.stringify({
+        sub: uid(ASSIGNED), session_id: sid(ASSIGNED), role: 'authenticated',
+        exp: Math.floor(Date.now() / 1000) + 3600,
+      })]);
+      await db.exec('set local role authenticated');
+      assert.deepEqual((await db.query(`select "id" from ${SCHEMA}."patient"`)).rows, []);
+      assert.deepEqual((await db.query(`select "id" from ${SCHEMA}."document"`)).rows, [],
+        'the chart closing must close what hangs off it too');
+    } finally { await db.exec('rollback'); }
+  } finally { await db.exec(`delete from ${SCHEMA}."document"; delete from ${SCHEMA}."patient";`); }
 });
 
 test('a row belonging to the other source app is not this deployment to show', async () => {

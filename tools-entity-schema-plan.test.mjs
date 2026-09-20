@@ -4,8 +4,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  CARRIED, EXPECTATIONS_FILE, FORMAT, FORMAT_VERSION, SCHEMA,
-  buildPlan, columnType, comparePlan, constraintName, enumValues, main, parseExpectations, planEntity, renderEntity, snakeCase,
+  CARRIED, CHART_ROOT, CHART_SUBJECTS, EXPECTATIONS_FILE, FORMAT, FORMAT_VERSION, RECORD_MIGRATION_FILE, SCHEMA,
+  buildPlan, chartPredicate, chartSubject, columnType, comparePlan, constraintName, enumValues, main, parseExpectations, planEntity, renderEntity, snakeCase,
 } from './tools-entity-schema-plan.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -205,4 +205,80 @@ test('every real constraint name fits without truncation', () => {
   }
   // Rendering the whole repository must not hit the collision guard.
   assert.doesNotThrow(() => main(['--sql'], { repository, log: () => {} }));
+});
+
+test('every table that names a chart is narrowed to it, by its own predicate or a borrowed one', () => {
+  // D24, and the property this asserts is the one a first version got wrong:
+  // belonging to the caller's agency is not the same as being a chart the
+  // caller may open. A reference predicate inlines the target's TENANT check,
+  // so narrowing `Patient` alone left `document`, `medication`, `patient_alert`
+  // and fifty-one others agency-wide — every row of a chart the caller was
+  // never assigned to.
+  //
+  // It is checked against the emitted SQL rather than against a list, because
+  // a list is the thing that would need remembering. 58 carried entities name
+  // a patient.
+  const sql = readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8');
+  const narrowed = new Set();
+  for (const match of sql.matchAll(/create policy "([a-z0-9_]+)_read" on [^;]+;/g)) {
+    if (match[0].includes('caller_assigned_patients')) narrowed.add(match[1]);
+  }
+  const plan = JSON.parse(readFileSync(resolve(repository, EXPECTATIONS_FILE), 'utf8')).entities;
+  const paths = new Map(JSON.parse(readFileSync(resolve(repository, 'tools-tenant-path-expectations.json'), 'utf8'))
+    .entities.map(entry => [entry.entity, entry]));
+  const subjects = new Map(plan.map(entry => [entry.entity, entry.chart_subject ?? null]));
+  const namesAChart = (entity) => entity === CHART_ROOT || subjects.get(entity) !== null;
+  const reaches = (entity, seen = new Set()) => {
+    if (seen.has(entity)) return false;
+    seen.add(entity);
+    const path = paths.get(entity);
+    if (!path || path.kind !== 'reference') return false;
+    return namesAChart(path.target) || reaches(path.target, seen);
+  };
+  const missing = plan.filter(entry => (namesAChart(entry.entity) || reaches(entry.entity))
+    && !narrowed.has(entry.table)).map(entry => entry.entity);
+  assert.deepEqual(missing, [], 'a table naming a chart must be narrowed to it');
+  assert.ok(narrowed.size > 50, `expected the chart surface to be substantial, found ${narrowed.size}`);
+  // And the converse: nothing is narrowed that has no chart to narrow to, or
+  // the rule would be quietly hiding rows it was never meant to touch.
+  const spurious = plan.filter(entry => narrowed.has(entry.table)
+    && !namesAChart(entry.entity) && !reaches(entry.entity)).map(entry => entry.entity);
+  assert.deepEqual(spurious, []);
+});
+
+test('the chart subject is derived from the columns, never from a name', () => {
+  // Derivation is what makes this a safety rule rather than a checklist: an
+  // entity that grows a `patient_id` is narrowed by the next regeneration
+  // whether or not anybody remembered.
+  const plan = (properties, name = 'Probe') => planEntity(name, entity(properties, name), 'port');
+  const agency = { agency_id: { type: 'string' } };
+  for (const column of CHART_SUBJECTS) {
+    assert.equal(plan({ ...agency, [column]: { type: 'string' } }).chart_subject, column, column);
+  }
+  // The chart root is its own chart, keyed on its identity — which it never
+  // declares, because `id` is a platform column every table already carries.
+  assert.equal(plan(agency, CHART_ROOT).chart_subject, 'id');
+  // No patient column, no narrowing — and no agency column either, because a
+  // predicate that cannot name an agency cannot ask who opens its charts.
+  assert.equal(plan({ ...agency, note: { type: 'string' } }).chart_subject, null);
+  assert.equal(plan({ patient_id: { type: 'string' } }).chart_subject, null,
+    'a row with no tenancy of its own borrows the narrowing through its reference');
+  // Another clinical subject is deliberately not a chart key: those rows reach
+  // a chart through the entity they reference, and adding a second key would
+  // mean a second set to keep in agreement.
+  assert.equal(plan({ ...agency, visit_id: { type: 'string' } }).chart_subject, null);
+  // Called directly it is the same function, with nothing read off a plan.
+  assert.equal(chartSubject('Probe', 'agency_id', [{ name: 'patient_id' }]), 'patient_id');
+  assert.equal(chartSubject('Probe', null, [{ name: 'patient_id' }]), null);
+
+  // The predicate itself: an absent subject stays with its agency, except on
+  // the chart root where the subject is the primary key and cannot be absent.
+  const withPatient = chartPredicate(plan({ ...agency, patient_id: { type: 'string' } }), '"t"');
+  assert.match(withPatient, /"patient_id" is null or/);
+  assert.match(withPatient, /caller_opens_every_chart\("t"\."agency_id"\)/);
+  assert.match(withPatient, /caller_assigned_patients\("t"\."agency_id"\)/);
+  const root = chartPredicate(plan(agency, CHART_ROOT), '"t"');
+  assert.ok(!root.includes('is null'), 'the chart root has no absent-subject case');
+  assert.equal(chartPredicate(plan({ ...agency, note: { type: 'string' } }), '"t"'), null);
+  assert.equal(chartPredicate(null, '"t"'), null);
 });

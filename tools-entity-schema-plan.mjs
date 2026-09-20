@@ -110,6 +110,43 @@ export function enumValues(property) {
   return values;
 }
 
+/**
+ * The column naming the chart a row belongs to, by the column's name (D24).
+ *
+ * Derived rather than listed, which is the property that makes it a safety
+ * rule: an entity that grows a `patient_id` is narrowed by the next
+ * regeneration whether or not anybody remembered. A list would have to be
+ * remembered, and 58 carried entities name a patient.
+ *
+ * The three spellings are the ones the carried schemas actually use. A column
+ * naming some OTHER clinical subject — `visit_id`, `document_id` — is not here
+ * on purpose: those rows reach a chart through the entity they reference, and
+ * the reference predicate narrows with it. Adding a second key would mean a
+ * second set to enumerate and a second thing to keep in agreement.
+ */
+export const CHART_SUBJECTS = Object.freeze(['patient_id', 'target_patient_id', 'related_patient_id']);
+/** `Patient` is its own chart, so its subject is the row's identity. */
+export const CHART_ROOT = 'Patient';
+
+/**
+ * Which column narrows this entity to a chart, or null when nothing does.
+ *
+ * Null covers two very different cases and both are correct: a row with no
+ * clinical subject at all, and a row that borrows its tenancy by reference —
+ * the latter is narrowed by the entity it points at, so restating it here
+ * would be a second copy of a predicate that is already right.
+ *
+ * Recorded on the plan (and therefore compared against the accepted one) so a
+ * table that stops being narrowed is a visible change rather than a quiet one.
+ */
+export function chartSubject(entity, tenantKey, columns) {
+  if (entity === CHART_ROOT) return 'id';
+  // Only where the row's own predicate can name both an agency and a patient.
+  if (!tenantKey) return null;
+  const names = new Set(columns.map(column => column.name));
+  return CHART_SUBJECTS.find(column => names.has(column)) ?? null;
+}
+
 export function planEntity(name, raw, disposition, decision = null) {
   const schema = JSON5.parse(raw);
   const table = snakeCase(name);
@@ -146,6 +183,7 @@ export function planEntity(name, raw, disposition, decision = null) {
     disposition,
     table,
     tenant_key: declaredTenant || stamped ? TENANT_COLUMN : null,
+    chart_subject: chartSubject(name, declaredTenant || stamped ? TENANT_COLUMN : null, columns),
     tenant_decision: decision?.kind ?? null,
     self_subject: decision?.kind === 'self' ? snakeCase(decision.subject) : null,
     platform_flag: decision?.kind === 'shared' ? snakeCase(decision.platform_flag) : null,
@@ -417,6 +455,44 @@ $$;`,
     -- stands.
     and peer.status = 'active' and peer.revoked_at is null
 $$;`,
+  // D24. Who may open a chart, in two parts, because the answer is not one
+  // set: an administrator sees every chart in their agency and that set lives
+  // in the RECORD store (which this cannot read), while a clinician sees an
+  // enumerable set of assignments that lives in the authority store.
+  //
+  // So a boolean for the first and a set for the second, and a policy asks
+  // both. `pennsync_private.visible_patient` already answers the same question
+  // the same way for the synthetic staging surface; this is that decision
+  // written where the record store's policies can reach it.
+  `create function ${quote(SCHEMA)}.caller_opens_every_chart(p_agency text) returns boolean
+  language sql stable security definer set search_path = '' as $$
+  select coalesce(${quote(SCHEMA)}.caller_tenant_role(p_agency) in ('agency_admin','manager'), false)
+$$;`,
+  // A clinician, a social worker and a spiritual care worker see the charts
+  // they are assigned to. Office staff see none: the entity schema says that
+  // role "sees only non-clinical functions", and D21 recorded the asymmetry
+  // that decides the tie — too narrow is a support ticket, too broad is a
+  // disclosure.
+  //
+  // Per agency rather than across all of them, because a caller holding two
+  // agencies must not have an assignment in one widen a chart in the other.
+  `create function ${quote(SCHEMA)}.caller_assigned_patients(p_agency text) returns setof text
+  language sql stable security definer set search_path = '' as $$
+  select a.patient_id::text
+  from ${quote(SCHEMA)}.caller_identity() i
+  join pennsync_private.membership m
+    on m.app_id = i.app_id and m.auth_user_id = i.auth_user_id
+   and m.base44_user_id = i.base44_user_id
+  join pennsync_private.agency ag on ag.app_id = m.app_id and ag.id = m.agency_id
+  join pennsync_private.assignment a
+    on a.app_id = m.app_id and a.agency_id = m.agency_id and a.membership_id = m.id
+  where i.auth_user_id is not null
+    and m.agency_id::text = p_agency
+    and m.status = 'active' and m.revoked_at is null
+    and ag.status in ('active','trial')
+    and m.tenant_role in ('clinician','social_worker','spiritual_care')
+    and a.status = 'active'
+$$;`,
   `create function ${quote(SCHEMA)}.deployment_app() returns text
   language sql stable security definer set search_path = '' as $$
   select pennsync_private.deployment_app_id()
@@ -424,6 +500,7 @@ $$;`,
   `revoke all on function ${quote(SCHEMA)}.caller_identity(), ${quote(SCHEMA)}.caller_identified(),
   ${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_tenant_role(text),
   ${quote(SCHEMA)}.caller_user_id(), ${quote(SCHEMA)}.caller_roster_ids(), ${quote(SCHEMA)}.caller_roster(text),
+  ${quote(SCHEMA)}.caller_opens_every_chart(text), ${quote(SCHEMA)}.caller_assigned_patients(text),
   ${quote(SCHEMA)}.caller_email(), ${quote(SCHEMA)}.deployment_app() from public, anon, authenticated, service_role;`,
 ];
 
@@ -441,7 +518,37 @@ export const TENANT_PATH_FILE = 'tools-tenant-path-expectations.json';
  * `depth` is threaded through anyway so a cycle introduced later fails loudly
  * instead of recursing forever.
  */
-export function tenantPredicate(entity, alias, index, { paths, tables }, depth = 0) {
+/**
+ * D24. The chart narrowing for one entity, as SQL against `alias`, or null when
+ * the entity is not a chart and does not name one.
+ *
+ * Shared by `renderPolicies` and `tenantPredicate`, and that sharing is the
+ * whole of the guarantee. Belonging to the caller's agency is not the same as
+ * being a chart the caller may open, and until this the store said it was.
+ *
+ * It has to travel with the RECURSION, which a first version did not do and
+ * which is easy to miss: a reference predicate inlines the target's TENANT
+ * check, so `document_read` reached `patient` and asked only whether the
+ * patient was in the caller's agency. Fifty-four tables looked narrowed and
+ * were not — every document, alert, medication and note of a patient the
+ * caller was never assigned to.
+ *
+ * A null subject stays agency-scoped, deliberately: a referral taken before a
+ * patient exists is intake data and not yet anybody's chart, and hiding it
+ * from every clinician would break intake to protect a chart that is not
+ * there. `Patient` has no such case, its subject being the primary key, so the
+ * null branch is left off where it could only ever be false.
+ */
+export function chartPredicate(plan, alias) {
+  const subject = plan?.chart_subject ?? null;
+  if (subject === null) return null;
+  const absent = subject === 'id' ? '' : `${alias}.${quote(subject)} is null or `;
+  return `(${absent}${quote(SCHEMA)}.caller_opens_every_chart(${alias}.${quote(TENANT_COLUMN)})`
+    + ` or ${alias}.${quote(subject)} in`
+    + ` (select ${quote(SCHEMA)}.caller_assigned_patients(${alias}.${quote(TENANT_COLUMN)})))`;
+}
+
+export function tenantPredicate(entity, alias, index, { paths, tables, plans }, depth = 0) {
   if (depth > 4) throw new Error(`TENANT_PATH_TOO_DEEP:${entity}`);
   const path = paths.get(entity);
   const agencies = `${quote(SCHEMA)}.caller_agencies()`;
@@ -453,13 +560,16 @@ export function tenantPredicate(entity, alias, index, { paths, tables }, depth =
     const next = `t${index + 1}`;
     const target = tables.get(path.target);
     if (!target) throw new Error(`TENANT_PATH_TARGET_UNKNOWN:${entity}:${path.target}`);
-    const inner = tenantPredicate(path.target, next, index + 1, { paths, tables }, depth + 1);
+    const inner = tenantPredicate(path.target, next, index + 1, { paths, tables, plans }, depth + 1);
+    // The referenced row's own chart narrowing, carried in with its tenancy.
+    // Without this a borrowed predicate borrows only half the answer.
+    const chart = chartPredicate(plans?.get(path.target), next);
     // Joined on the whole primary key: an id is only unique within its source
     // app, so matching on id alone would reach across the two source apps.
     return `exists (select 1 from ${quote(SCHEMA)}.${quote(target)} ${next}`
       + ` where ${next}.${quote('source_app_id')} = ${alias}.${quote('source_app_id')}`
       + ` and ${next}.${quote('id')} = ${alias}.${quote(snakeCase(path.via))}`
-      + ` and ${inner})`;
+      + ` and ${inner}${chart === null ? '' : ` and ${chart}`})`;
   }
   // A self-editable profile claim is excluded from authorization by
   // construction — it is the defect that paused `analyzeClinicalData`. Falling
@@ -513,6 +623,12 @@ export function renderPolicies(plan, resolution) {
     return [`-- ${plan.table}: excluded from authorization (self-editable profile claim); forced RLS, no policy.`];
   }
   const tenant = `${thisApp} and ${tenantPredicate(plan.entity, self, 0, resolution)}`;
+  // D24, ANDed onto both the read and the write. Writing into a chart you
+  // cannot open is the same disclosure in the other direction — a note
+  // appended to a stranger's record — so nothing here distinguishes them.
+  // `chartPredicate` has the rest of the reasoning.
+  const chart = chartPredicate(plan, self);
+  const scoped = predicate => (chart === null ? predicate : `${predicate} and ${chart}`);
 
   if (kind === 'global') {
     // Platform reference: every caller reads it and no tenant surface writes
@@ -542,11 +658,13 @@ export function renderPolicies(plan, resolution) {
   const write = kind === 'self' ? read
     : kind === 'shared' ? `${tenant} and ${self}.${quote(plan.platform_flag)} is not true`
       : tenant;
+  read = scoped(read);
+  const guarded = scoped(write);
   return [
     `create policy ${name('read')} on ${qualified} for select using (${read});`,
-    `create policy ${name('insert')} on ${qualified} for insert with check (${write});`,
-    `create policy ${name('update')} on ${qualified} for update using (${write}) with check (${write});`,
-    `create policy ${name('delete')} on ${qualified} for delete using (${write});`,
+    `create policy ${name('insert')} on ${qualified} for insert with check (${guarded});`,
+    `create policy ${name('update')} on ${qualified} for update using (${guarded}) with check (${guarded});`,
+    `create policy ${name('delete')} on ${qualified} for delete using (${guarded});`,
   ];
 }
 
@@ -557,6 +675,9 @@ export function renderDdl(repository) {
   const resolution = {
     paths: new Map(recorded.map(entry => [entry.entity, entry])),
     tables: new Map(prepared.plans.map(entity => [entity.entity, entity.table])),
+    // Needed by the chart narrowing, which asks a REFERENCED entity for its
+    // subject column rather than only its table name.
+    plans: new Map(prepared.plans.map(entity => [entity.entity, entity])),
   };
   // Every table before any policy: a reference path names the table it reaches
   // through, and that table is not always created first in name order.
@@ -649,6 +770,7 @@ export function renderMigration(repository) {
     + `${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_tenant_role(text), `
     + `${quote(SCHEMA)}.caller_user_id(), ${quote(SCHEMA)}.caller_roster_ids(), `
     + `${quote(SCHEMA)}.caller_roster(text), `
+    + `${quote(SCHEMA)}.caller_opens_every_chart(text), ${quote(SCHEMA)}.caller_assigned_patients(text), `
     + `${quote(SCHEMA)}.caller_email(), ${quote(SCHEMA)}.deployment_app()`;
   const statements = [
     `-- The record store: ${plan.totals.carried} carried entities, ${plan.totals.columns} columns,
@@ -763,7 +885,7 @@ export function comparePlan(plan, expectations) {
   // `broker` for 42 of them, unnoticed, because nothing asked. A checked-in
   // artefact that disagrees with the manifest is worse than no artefact.
   const COMPARED = ['table', 'columns', 'constrained', 'tenant_key',
-    'tenant_decision', 'self_subject', 'platform_flag', 'disposition'];
+    'tenant_decision', 'self_subject', 'platform_flag', 'disposition', 'chart_subject'];
   const changed = [...current.entries()]
     .filter(([name, entity]) => recorded.has(name)
       && COMPARED.some(field => recorded.get(name)[field] !== entity[field]))

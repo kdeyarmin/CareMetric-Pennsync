@@ -1332,6 +1332,43 @@ and neither is optional:
 narrow is visible and safe, too broad is a disclosure. A backfill that drops a
 row is a support ticket; one that invents a row is an incident.
 
+**The first half, built.** Two helpers rather than one, because the answer is
+not a single set: an administrator sees every chart in their agency and that
+set lives in the *record* store, which an authority-store helper cannot read,
+while a clinician sees an enumerable set of assignments that lives in the
+authority store. So `caller_opens_every_chart(agency)` is a boolean and
+`caller_assigned_patients(agency)` is a set, and a policy asks both — the same
+shape `pennsync_private.visible_patient` already uses for the staging surface.
+
+Who opens what, and it is a decision rather than a reading: `agency_admin` and
+`manager` open every chart in their agency; `clinician`, `social_worker` and
+`spiritual_care` open the ones they are assigned to; `office_staff` open none,
+because the entity schema says that role "sees only non-clinical functions".
+Where it was a tie, D21's asymmetry broke it toward narrow.
+
+**What the narrowing is applied to is derived, not listed**, and that is what
+makes it a safety rule: any carried entity with tenancy of its own and a
+top-level patient column is narrowed by the next regeneration, whether or not
+anybody remembered. 58 carried entities name a patient. A list would have to be
+kept.
+
+**The defect worth recording, because it is the one this nearly shipped with.**
+The narrowing has to travel with the RECURSION. A reference predicate inlines
+the target's *tenant* check, so narrowing `Patient` alone left `document`,
+`medication`, `patient_alert`, `care_plan` and fifty others agency-wide — every
+row of a chart the caller was never assigned to, in tables that looked narrowed
+because their target was. The generated SQL said so plainly once it was read:
+`document_read` reached `patient` and asked only whether the patient was in the
+caller's agency. The chart predicate is now carried in at each hop, a test
+asserts every chart-linked table is narrowed by its own predicate or a borrowed
+one, and the real-database case proves both routes rather than one.
+
+One deliberate widening, stated so it is not mistaken for an oversight: a row
+whose subject is **null** stays agency-scoped. A referral taken before a
+patient exists is intake data and not yet anybody's chart, and hiding it from
+every clinician would break intake to protect a chart that is not there.
+`Patient` has no such case, its subject being the primary key.
+
 
 ## D25 — There is a general activity trail, and retiring the old tables did not remove the obligation
 
