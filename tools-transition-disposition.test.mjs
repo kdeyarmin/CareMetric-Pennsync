@@ -614,7 +614,10 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // from a comment naming the second the production replacement.
   // Then the two agency configuration upserts, whose originals each rebuilt
   // their own SCOPE in JavaScript and each record a bug from it.
-  // 55 → 51 → 50 → 49 → 48 → 46 → 44, and 11 → 43 written.
+  // Then the incident pair, where D40's widening puts a REPORTER and a
+  // REVIEWER in the same person for the first time — so the contract adds the
+  // self-review refusal the platform tier used to make unnecessary.
+  // 55 → 51 → 50 → 49 → 48 → 46 → 44 → 42, and 11 → 45 written.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -622,8 +625,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 10, patient_access_model: 0,
-    records_schema: 44, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
-    external_secret: 1, none: 43 });
+    records_schema: 42, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
+    external_secret: 1, none: 45 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -660,13 +663,13 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'calculateDataQualityScores', 'enforceDataCompleteness',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Forty-four. That is how many of the hundred can be written today, and the
+  // Forty-two. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 44);
+  assert.equal(report.port_blockers.records_schema.length, 42);
   // The thirty-two that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
@@ -743,9 +746,11 @@ test('the port queue is work that cannot start yet, and says why', () => {
       'resendInvitation', 'resendInvitationV2',
       'reviewPersonnelCredential', 'reviewTimeOffRequest',
       'savePayrollProfile', 'saveVisitPointConfig',
+      'submitIncidentReport',
       'submitPersonnelCredential', 'submitTimeOffRequest',
       'updateAuthorizedPatient',
-      'updateAuthorizedVisit', 'updateScopedPatientAlert', 'validatePatientData'],
+      'updateAuthorizedVisit', 'updateIncident', 'updateScopedPatientAlert',
+      'validatePatientData'],
     'the set of written ports changed');
   // `listPolicyLibrary` is the first of these to read an entity row. Everything
   // before it either computed an answer, rendered a document or asked a model,

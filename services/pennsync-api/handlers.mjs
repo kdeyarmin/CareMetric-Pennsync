@@ -357,6 +357,42 @@ export const HANDLERS = Object.freeze({
       return contract('savePayrollProfile', params);
     },
   }),
+  submitIncidentReport: Object.freeze({
+    // The flat payload both callers send — the reporting form and the retired
+    // offline queue's drain, which is the only sender of `client_request_id`
+    // and the reason the key survives into the stored row.
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'patient_name', 'incident_type',
+        'incident_name', 'incident_date', 'incident_time', 'severity', 'details',
+        'report', 'photo_urls', 'physician_notified', 'office_notified',
+        'immediate_alert', 'client_request_id'], 'INVALID_PARAMS');
+      // `patient_name` is accepted and ignored: the contract reads the name
+      // off the chart. Refusing it would break the form for no gain.
+      return contract('submitIncidentReport', { incident: params });
+    },
+  }),
+  updateIncident: Object.freeze({
+    // The envelope is action-dependent, as the original's is: a patch carries
+    // no status, a transition carries no patch, and a reassignment carries
+    // only the destination chart. Everything past the envelope — who may act,
+    // which field is a reviewer's, which transition is legal, and whether a
+    // corrective action is owed — is the contract's.
+    handle({ params, contract }) {
+      if (!isObject(params)) fail(400, 'INVALID_PARAMS');
+      if (params.action === 'patch') {
+        exactObject(params, ['action', 'incident_id', 'patch'], 'INVALID_PARAMS');
+        if (!isObject(params.patch)) fail(400, 'INVALID_PARAMS');
+      } else if (params.action === 'transition') {
+        exactObject(params, ['action', 'incident_id', 'to_status',
+          'resolution_notes', 'corrective_action_plan'], 'INVALID_PARAMS');
+      } else if (params.action === 'reassign_patient') {
+        exactObject(params, ['action', 'incident_id', 'patient_id'], 'INVALID_PARAMS');
+      } else {
+        fail(400, 'INVALID_PARAMS');
+      }
+      return contract('updateIncident', params);
+    },
+  }),
   resendInvitation: Object.freeze({
     // Both names reach the one contract: the two originals are the same file.
     async handle({ params, contract }) {

@@ -2842,3 +2842,90 @@ to the caller's. A string on a profile deciding who may be paid what is exactly
 what D23 refuses.
 
 Port queue: `records_schema` 46 → 44, written 41 → 43.
+
+## D44 — The first port where D40's widening puts the reporter and the reviewer in one person
+
+**Decision.** Port `submitIncidentReport` and `updateIncident`'s three actions
+as one contract file, and add the self-review refusal that D40 makes necessary.
+
+**The original's field split is a security control and says so.** `severity`,
+`state_reportable` and `ai_tags` are patchable by a reviewer only, because they
+are the inputs to `incidentNeedsCorrectiveAction`, which is what the resolve
+gate reads:
+
+> *"if the reporter could write them, they could downgrade their own
+> high-severity incident and clear the state-reportable flag, after which the
+> resolve gate reads the softened values and lets it close with no corrective
+> action -- defeating the control this function exists to enforce."*
+
+In the original that control had a second leg nobody wrote down: the reviewer is
+the protected platform owner, who never reports an agency's incidents, so the
+reporter and the reviewer **could not be the same person**. D40 makes the
+reviewer an `agency_admin`, who files incidents like anybody else — and an
+administrator could otherwise report a high-severity event, soften it, and close
+it. `PENNSYNC_INCIDENT_SELF_REVIEW` refuses a privileged patch, a transition and
+a reassignment on one's own incident; the narrative half stays theirs, because
+that is their account of what happened. This is D40's own lesson applied a
+second time, after the credential self-approval refusal: **a widening creates
+risks a narrowing never does — re-read what the platform tier was structurally
+preventing.**
+
+**The severity split has a direction, and reading it as "reviewer-only" breaks
+the control it protects.** The reporter NAMES the severity when filing, exactly
+as the original does, defaulting to `medium`. They may not soften it afterwards.
+A first draft of this contract floored severity at submission on the theory that
+a reviewer's field is a reviewer's field throughout — which would have recorded
+a nurse's high-severity fall as low, and the gate reads the STORED value, so the
+control would never fire. The rule is about mutation, not about authorship.
+
+**Three of the original's six owner-patchable fields have no carried column.**
+`witnesses`, `follow_up_required` and `follow_up_notes` are not in
+`pennsync_records.incident`. They are refused by name as
+`PENNSYNC_INCIDENT_FIELD_NOT_CARRIED` rather than silently dropped: a reporter
+who sent a witness list would otherwise believe it was recorded.
+
+**The urgent-alert fan-out is ported, not paused, because its recipients are
+records rather than a message.** The original selects them by listing five
+thousand `User` rows and comparing `account_type` and `agency_name`, and carries
+two bug fixes in its own comments for having got that wrong — admins past the
+first two hundred rows were never alerted, and an unscoped fan-out *"leaked
+patient name/id to every tenant's agency_admins."* Here the recipients ARE the
+agency's active `agency_admin` memberships, which is what that comparison was
+approximating, and the query cannot reach another tenant at all. That is the
+fifth original whose comments document a derived-scope bug a policy cannot have.
+
+**The alert names no patient, and that is a narrowing this store requires.**
+`notification_read` is agency-WIDE while D24 narrows a chart to its care team, so
+a patient name on a notification would be readable by an `office_staff` member
+who opens no chart. The alert carries the incident's id and its category; the
+addressed administrator opens the incident, which is chart-narrowed, to see
+whose it is. A test asserts the name, the surname and the chart id appear
+nowhere in the title, the message or the metadata.
+
+**Two more narrowings.** `patient_name` is read off the chart rather than taken
+from the payload — a denormalized name that disagrees with the chart is a
+falsehood in a safety record, and the caller has already been proved able to
+open that chart to name it. And `reassign_patient` requires the destination
+chart to be one the reviewer can open; the original accepts any id at all, so
+the duplicate-patient merge it exists for could move a safety event out of the
+agency.
+
+**D37 deletes an apparatus rather than a line.** Both originals write their
+audit entry after the row is already committed, catch its failure, and return
+`audit_recorded: false` with *"Record this transition manually"*. In one
+transaction neither half can exist without the other, so the flag, the catch and
+the warning all go. The patch entry records the KEYS and never the values, which
+is the original's own rule: *"the values can contain incident narrative, witness
+names, notes, or photo URLs and belong only on Incident itself."*
+
+**One divergence deliberately not made.** The offline drain dedupes retries by
+`client_request_id`, and the original explains why the key must survive into the
+row: *"an interrupted drain (server committed, queue removal failed) creates a
+second copy of the same safety event on the next pass."* That check is ported as
+the original has it — read, then insert — and it is racy for the same reason.
+`Incident.client_request_id` makes no uniqueness claim in its own schema, so D30
+emits no index for it and there is nothing for a named `unique_violation` catch
+to name. Closing it means the SCHEMA claiming uniqueness, which is an entity
+decision and not this contract's to make.
+
+Port queue: `records_schema` 44 → 42, written 43 → 45.

@@ -570,6 +570,70 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_CONFIG_EMPLOYEE_UNKNOWN',
     ]),
   }),
+  // Reporting an incident, and moving one through its review.
+  //
+  // The reviewer-only field set (`severity`, `state_reportable`, `ai_tags`) is
+  // the original's own security control: they are the inputs to the resolve
+  // gate, so a reporter who could write them could soften their own incident
+  // and close it with no corrective action. D40 is what makes the contract's
+  // self-review refusal necessary — the original's reviewer was the platform
+  // owner, who never reported an agency's incidents, so the split held by
+  // itself.
+  //
+  // The urgent-alert fan-out is ported rather than paused, because its
+  // recipients are records rather than a message: the agency's active
+  // `agency_admin` memberships, which is what the original's 5000-row `User`
+  // scan over `account_type` and `agency_name` was approximating.
+  submitIncidentReport: Object.freeze({
+    rpc: 'pennsync_contract_incident_submit',
+    params: Object.freeze(['incident']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_incident: args.incident === undefined ? null : args.incident,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_INCIDENT_AGENCY_NOT_HELD',
+      'PENNSYNC_INCIDENT_INVALID',
+      'PENNSYNC_INCIDENT_REQUIRED',
+      'PENNSYNC_INCIDENT_SEVERITY_INVALID',
+      'PENNSYNC_INCIDENT_PATIENT_NOT_VISIBLE',
+    ]),
+  }),
+  updateIncident: Object.freeze({
+    rpc: 'pennsync_contract_incident_update',
+    params: Object.freeze(['incident_id', 'action', 'patch', 'to_status',
+      'corrective_action_plan', 'resolution_notes', 'patient_id']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_incident_id: args.incident_id ?? null,
+      p_action: args.action ?? null,
+      p_patch: args.patch === undefined ? null : args.patch,
+      p_to_status: args.to_status === undefined ? null : args.to_status,
+      p_corrective_action_plan: args.corrective_action_plan === undefined
+        ? null : args.corrective_action_plan,
+      p_resolution_notes: args.resolution_notes === undefined
+        ? null : args.resolution_notes,
+      p_patient_id: args.patient_id === undefined ? null : args.patient_id,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_INCIDENT_AGENCY_NOT_HELD',
+      'PENNSYNC_INCIDENT_SUBJECT_INVALID',
+      'PENNSYNC_INCIDENT_ACTION_INVALID',
+      'PENNSYNC_INCIDENT_NOT_FOUND',
+      'PENNSYNC_INCIDENT_FORBIDDEN',
+      'PENNSYNC_INCIDENT_SELF_REVIEW',
+      'PENNSYNC_INCIDENT_PATCH_EMPTY',
+      'PENNSYNC_INCIDENT_FIELD_NOT_CARRIED',
+      'PENNSYNC_INCIDENT_FIELD_UNSUPPORTED',
+      'PENNSYNC_INCIDENT_FIELD_PRIVILEGED',
+      'PENNSYNC_INCIDENT_SEVERITY_INVALID',
+      'PENNSYNC_INCIDENT_PATIENT_NOT_VISIBLE',
+      'PENNSYNC_INCIDENT_STATUS_REQUIRED',
+      'PENNSYNC_INCIDENT_STATUS_UNCHANGED',
+      'PENNSYNC_INCIDENT_TRANSITION',
+      'PENNSYNC_INCIDENT_CORRECTIVE_ACTION_REQUIRED',
+    ]),
+  }),
   // Resending a staff invitation, third under D40. ONE contract for TWO Base44
   // capabilities: `resendInvitation` and `resendInvitationV2` are
   // byte-identical apart from a comment naming the second the production
