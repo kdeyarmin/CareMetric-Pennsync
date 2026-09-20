@@ -512,6 +512,73 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_ASSIGNMENT_REQUEST_CONFLICT',
     ]),
   }),
+  // The time-off domain. All four originals decide who may act by reading the
+  // carried `User` row — `is_approved`, `is_manager`, `role`, `account_type`
+  // and string comparisons of `agency_name` — and D23 says that row decides
+  // nothing. Membership answers all of it here, so the list capability's
+  // "collect the agency's users and filter by address" step is gone rather
+  // than reimplemented.
+  submitTimeOffRequest: Object.freeze({
+    rpc: 'pennsync_contract_time_off_submit',
+    params: Object.freeze(['request_type', 'start_date', 'end_date', 'half_day',
+      'reason', 'coverage', 'manager_email']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_request_type: args.request_type ?? null,
+      p_start: args.start_date ?? null,
+      p_end: args.end_date ?? null,
+      p_half_day: args.half_day === undefined ? null : args.half_day,
+      p_reason: args.reason === undefined ? null : args.reason,
+      p_coverage: args.coverage === undefined ? null : args.coverage,
+      p_manager_email: args.manager_email === undefined ? null : args.manager_email,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_TIME_OFF_AGENCY_NOT_HELD',
+      'PENNSYNC_TIME_OFF_TYPE_INVALID',
+      'PENNSYNC_TIME_OFF_DATE_INVALID',
+      'PENNSYNC_TIME_OFF_RANGE_INVALID',
+      'PENNSYNC_TIME_OFF_APPROVER_SELF',
+      'PENNSYNC_TIME_OFF_APPROVER_UNKNOWN',
+      'PENNSYNC_TIME_OFF_APPROVER_INVALID',
+    ]),
+  }),
+  cancelTimeOffRequest: Object.freeze({
+    rpc: 'pennsync_contract_time_off_cancel',
+    params: Object.freeze(['request_id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_request_id: args.request_id ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_TIME_OFF_AGENCY_NOT_HELD',
+      'PENNSYNC_TIME_OFF_SUBJECT_INVALID',
+      'PENNSYNC_TIME_OFF_NOT_FOUND',
+      'PENNSYNC_TIME_OFF_FORBIDDEN',
+      'PENNSYNC_TIME_OFF_TRANSITION',
+    ]),
+  }),
+  reviewTimeOffRequest: Object.freeze({
+    rpc: 'pennsync_contract_time_off_review',
+    params: Object.freeze(['request_id', 'decision', 'note']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_request_id: args.request_id ?? null,
+      p_decision: args.decision ?? null,
+      p_note: args.note === undefined ? null : args.note,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_TIME_OFF_AGENCY_NOT_HELD',
+      'PENNSYNC_TIME_OFF_SUBJECT_INVALID',
+      'PENNSYNC_TIME_OFF_DECISION_INVALID',
+      'PENNSYNC_TIME_OFF_NOT_FOUND',
+      'PENNSYNC_TIME_OFF_FORBIDDEN',
+      'PENNSYNC_TIME_OFF_SELF',
+      'PENNSYNC_TIME_OFF_TRANSITION',
+    ]),
+  }),
+  getApprovedTimeOff: Object.freeze({
+    rpc: 'pennsync_contract_time_off_approved',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: Object.freeze(['PENNSYNC_TIME_OFF_AGENCY_NOT_HELD']),
+  }),
   // The AI content agreement, and the first contract to write D25's activity
   // trail. It calls `contract_activity_append` in SQL rather than going
   // through `audit.mjs`, because the attestation carries the audit entry's id

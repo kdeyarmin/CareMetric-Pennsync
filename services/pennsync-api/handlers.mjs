@@ -343,6 +343,37 @@ export const HANDLERS = Object.freeze({
       return contract('appendPatientNoteHistory', params);
     },
   }),
+  submitTimeOffRequest: Object.freeze({
+    // `delivery_paused` is reported the way the original reports it when
+    // `OUTBOUND_DELIVERY_RELEASE` is not `enabled-v1`: the record work is done
+    // and the approver email is not sent. Outbound delivery is the integration
+    // runtime's, which is deployed and paused, so the shape a migrated caller
+    // already handles is the honest answer.
+    async handle({ params, contract }) {
+      exactObject(params, ['request_type', 'start_date', 'end_date', 'half_day',
+        'reason', 'coverage', 'manager_email'], 'INVALID_PARAMS');
+      return { ...(await contract('submitTimeOffRequest', params)), delivery_paused: true };
+    },
+  }),
+  cancelTimeOffRequest: Object.freeze({
+    async handle({ params, contract }) {
+      exactObject(params, ['request_id'], 'INVALID_PARAMS');
+      return { ...(await contract('cancelTimeOffRequest', params)), delivery_paused: true };
+    },
+  }),
+  reviewTimeOffRequest: Object.freeze({
+    async handle({ params, contract }) {
+      exactObject(params, ['request_id', 'decision', 'note'], 'INVALID_PARAMS');
+      return { ...(await contract('reviewTimeOffRequest', params)), delivery_paused: true };
+    },
+  }),
+  getApprovedTimeOff: Object.freeze({
+    // The only one of the four that sends nothing, so it reports nothing.
+    handle({ params, contract }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      return contract('getApprovedTimeOff', params);
+    },
+  }),
   getAiContentAgreementStatus: Object.freeze({
     handle({ params, contract }) {
       exactObject(params, [], 'INVALID_PARAMS');

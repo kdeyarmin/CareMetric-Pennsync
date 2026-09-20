@@ -55,6 +55,7 @@ export const API_TARGETS = Object.freeze([
 export const PORTED_FUNCTIONS = Object.freeze({
   acceptAiContentAgreement: 'json',
   analyzeReferral: 'json',
+  cancelTimeOffRequest: 'json',
   appendPatientNoteHistory: 'json',
   analyzeReferralIntake: 'json',
   analyzeReferralPriority: 'json',
@@ -68,6 +69,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   createAuthorizedVisit: 'json',
   getAiContentAgreementStatus: 'json',
   getAuthorizedDocument: 'json',
+  getApprovedTimeOff: 'json',
   getScopedPatientAlerts: 'json',
   getAuthorizedPatient: 'json',
   getAuthorizedPatientNoteHistory: 'json',
@@ -82,9 +84,11 @@ export const PORTED_FUNCTIONS = Object.freeze({
   getMyTenantContext: 'json',
   managePatientCareTeamAssignment: 'json',
   updateAuthorizedPatient: 'json',
+  submitTimeOffRequest: 'json',
   updateAuthorizedVisit: 'json',
   updateScopedPatientAlert: 'json',
   matchPatientWithAI: 'json',
+  reviewTimeOffRequest: 'json',
   policyAcknowledgment: 'json',
   validatePatientData: 'json',
 });

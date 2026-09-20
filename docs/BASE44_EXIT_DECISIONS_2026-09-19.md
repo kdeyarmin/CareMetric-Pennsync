@@ -2520,3 +2520,79 @@ from a malformed request, as the original refuses it, because somebody who
 accepted an older agreement has to go and read the current one.
 
 Port queue: `records_schema` 57 → 55, written 30 → 32.
+
+## D38 — Four capabilities, one question, four wrong answers
+
+**Decision.** Port the whole time-off domain — `submitTimeOffRequest`,
+`cancelTimeOffRequest`, `reviewTimeOffRequest` and `getApprovedTimeOff` — as one
+contract family in `20260920230000_contract_time_off.sql`.
+
+**They are one change because they are one bug.** Each of the four asks the same
+question — *is this caller entitled to act on this agency's leave?* — and each
+answers it by reading the carried `User` row:
+
+* `submitTimeOffRequest` checks `user.is_approved`, then an approver's
+  `is_manager` and `account_type`, then compares `agency_name` strings.
+* `cancelTimeOffRequest` builds an `isAdminLike` from `role` and
+  `account_type`, then re-reads the employee's `agency_name`.
+* `reviewTimeOffRequest` does the same and adds `manager_email === user.email`.
+* `getApprovedTimeOff` collects every `User` whose `agency_name` matches the
+  caller's and filters the requests by those addresses.
+
+All five fields are self-editable labels D23 says decide nothing. Porting them
+one at a time would have meant writing the substitution four times and getting
+to compare them four times; writing them together makes the shared answer
+obvious, and the test proves it rather than asserting it — a clinician whose
+carried row claims `is_approved`, `is_manager`, `account_type: agency_admin`,
+`agency_name: Agency B` and `role: admin` still has no standing in agency B,
+because membership is what answers.
+
+**What disappears rather than moving.** `getApprovedTimeOff`'s whole
+address-collection step is gone: the table's policy is
+`agency_id in caller_agencies()`, so the rows a caller can see are already the
+agency's. Reimplementing the filter would have been a second answer to keep in
+agreement with the first. Likewise the cancel and review capabilities' "re-read
+the employee and compare `agency_name`" steps — the row is in the caller's
+agency or it is not there.
+
+**Two things the originals compute that this had to reproduce exactly.**
+`totalRequestedDays` counts business days Monday to Friday, subtracts half a
+day for a half-day request and never goes below half a day; a count that
+disagreed would put a different number of days on somebody's leave balance, so
+the test compares the SQL against the original's own function over a table of
+ranges including weekend-only spans and a leap day. And the original rejects
+`2026-02-31` explicitly because JavaScript rolls it forward to March;
+PostgreSQL refuses it outright, so the contract parses the date rather than
+taking a `date` parameter — turning a raw cast error from PostgREST into the
+same named refusal the original gives.
+
+**A defect the tests caught.** The first draft declared the resolved approver as
+a plpgsql `record`. With no approver named — the common path, since the field is
+optional — the record is never assigned and reading a field of it raises
+`record "v_manager" is not assigned yet`. Six of the eight tests failed on it;
+the two that passed were the two that always name an approver.
+
+**The narrowings.** No platform tier, so an `agency_admin` is the widest
+reviewer. An approver must be an `agency_admin` or `manager` of the same agency,
+proved through membership. A `manager` reviews only the request that NAMED them,
+because the original's second reviewer is an address match on the request rather
+than a role. Nobody reviews their own leave whatever their role — and the test
+makes the administrator try. `reason` and `coverage` are truncated at 2000 as
+the original truncates them, because their content is the employee's own words.
+
+**And one thing found on the way.** `employee_name`, `manager_name` and
+`reviewer_name` are addresses here. All three originals write
+`user.full_name || user.email`, and the carried `User` table **has no
+`full_name` column at all** — `contract_roster` projects no name either, for
+the same reason. So the fallback is the only branch that can ever run. Recorded
+rather than silently collapsed, because a reader comparing the two would
+otherwise go looking for where the name went.
+
+**Outbound delivery is not ported.** Three of the four send an approver or
+employee email behind `OUTBOUND_DELIVERY_RELEASE=enabled-v1`. That gate does not
+refuse the request — it skips the send and reports `delivery_paused`. The
+handlers report `delivery_paused: true` exactly as the originals do when the
+gate is closed, because outbound delivery belongs to the integration runtime,
+which is deployed and paused.
+
+Port queue: `records_schema` 55 → 51, written 32 → 36.
