@@ -343,6 +343,23 @@ export const HANDLERS = Object.freeze({
       return contract('appendPatientNoteHistory', params);
     },
   }),
+  listMyTenantMemberships: Object.freeze({
+    // The originals take an empty body; so does this.
+    handle({ params, contract }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      return contract('listMyTenantMemberships', params);
+    },
+  }),
+  getMyTenantContext: Object.freeze({
+    // The original's optional `agency_id` is not a parameter here: the
+    // envelope already names the agency this request acts in, and a second way
+    // to name it is a second thing that can disagree with the first.
+    handle({ params, contract }) {
+      exactObject(params,
+        ['expected_membership_id', 'expected_membership_version'], 'INVALID_PARAMS');
+      return contract('getMyTenantContext', params);
+    },
+  }),
   managePatientCareTeamAssignment: Object.freeze({
     // One Base44 capability with five actions, reaching two contracts — the
     // same shape `listAuthorizedPatients` has. `inspect` was the only action

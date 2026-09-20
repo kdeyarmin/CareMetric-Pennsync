@@ -512,6 +512,53 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_ASSIGNMENT_REQUEST_CONFLICT',
     ]),
   }),
+  // Which agency the caller is acting in, and which they could choose. The
+  // first pair whose originals read nothing the record store owns: both read
+  // `AgencyMembership` and `Agency`, and the authority store already carries
+  // the membership model natively. Most of both originals is machinery for
+  // not having a transaction — three double-reads and a snapshot comparison
+  // each — which one statement in one transaction replaces outright.
+  listMyTenantMemberships: Object.freeze({
+    rpc: 'pennsync_contract_tenant_memberships',
+    params: Object.freeze([]),
+    body: () => ({}),
+    codes: Object.freeze([
+      'PENNSYNC_TENANT_NOT_IDENTIFIED',
+      'PENNSYNC_TENANT_MEMBERSHIPS_EXCEEDED',
+      'PENNSYNC_TENANT_AGENCY_UNAVAILABLE',
+    ]),
+  }),
+  getMyTenantContext: Object.freeze({
+    rpc: 'pennsync_contract_tenant_context',
+    params: Object.freeze(['expected_membership_id', 'expected_membership_version']),
+    // The acting agency comes from the envelope like every other contract's,
+    // NOT from a parameter of its own. The original takes an optional
+    // `agency_id` because a Base44 caller has no envelope; here every request
+    // already names the agency it acts in, and a second way to name it is a
+    // second thing that can disagree with the first.
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_expected_membership_id: args.expected_membership_id === undefined
+        ? null : args.expected_membership_id,
+      p_expected_membership_version: args.expected_membership_version === undefined
+        ? null : args.expected_membership_version,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_TENANT_NOT_IDENTIFIED',
+      'PENNSYNC_TENANT_SUBJECT_INVALID',
+      'PENNSYNC_TENANT_VERSION_INVALID',
+      'PENNSYNC_TENANT_BINDING_INCOMPLETE',
+      'PENNSYNC_TENANT_NO_MEMBERSHIP',
+      'PENNSYNC_TENANT_MEMBERSHIPS_EXCEEDED',
+      // Unreachable through this service, which always names the agency, and
+      // declared anyway: the contract can raise it and a code a contract can
+      // raise but the registry cannot name is what the boundary redacts.
+      'PENNSYNC_TENANT_AGENCY_REQUIRED',
+      'PENNSYNC_TENANT_AGENCY_NOT_HELD',
+      'PENNSYNC_TENANT_MEMBERSHIP_CHANGED',
+      'PENNSYNC_TENANT_AGENCY_UNAVAILABLE',
+    ]),
+  }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
     params: Object.freeze(['user_id']),

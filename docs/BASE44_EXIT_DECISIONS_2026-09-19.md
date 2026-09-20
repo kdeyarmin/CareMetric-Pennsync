@@ -2240,3 +2240,86 @@ after trimming — because the trim removes the vertical tab and form feed the
 class would otherwise reject.
 
 Port queue: `records_schema` 62 → 61, written 25 → 26.
+
+## D34 — The bucket called `records_schema` contained capabilities the record store was never going to serve
+
+**Decision.** Port `listMyTenantMemberships` and `getMyTenantContext` as a
+contract over `pennsync_private.membership` — the authority store's own model —
+rather than over anything in `pennsync_records`. Serve them from
+`20260920190000_contract_tenant_context.sql`, and take the acting agency from
+the request envelope rather than from a parameter of their own.
+
+**What this found.** Both originals read exactly two entities, `AgencyMembership`
+and `Agency`, and the port queue counted them `records_schema` because the
+classifier records "touches an entity". D20 and D21 already split that bucket by
+what each module READS; this is the first case where the right question was
+*which store owns the thing being read*. The authority store has carried a
+native membership model since the first migration — `pennsync_private.membership`
+with a generated `membership_key`, a tenant-role check, a status check and a
+revocation-coherence check. Nothing in `pennsync_records` was ever going to be
+the answer for these two.
+
+That is a category, not a one-off. `records_schema` still means "waits on the
+record store" for 59 capabilities; it meant something else for these two, and
+the way to tell them apart is to read which entities the module touches against
+which store models them, not to look at the bucket.
+
+**Most of both originals is machinery for not having a transaction.** Each loads
+the caller's memberships, does its work, loads them again, compares the two
+snapshots with `JSON.stringify`, and refuses with "Tenant membership changed
+during request" if they differ — then does the same for the agency, then
+re-reads the caller and compares that too. Three double-reads and three
+comparison helpers across two files. One statement in one transaction has no
+interval to be torn, so all of it goes. This is the same fact D33 leaned on when
+it re-enabled a capability whose pause named "no multi-entity transaction", and
+the same fact D28 used to claim a chart and insert it atomically. It keeps
+paying.
+
+`validateMemberships` — the forty-line per-read integrity check — goes for a
+different reason. Every property it re-derives is a CHECK constraint or a
+generated column here. A Base44 entity is re-validated on every read because any
+service-role writer could have corrupted it; a table with the constraint cannot
+hold the bad row at all. The test asserts the constraints themselves, including
+that `membership_key` is stored-generated from `agency_id` and `base44_user_id`,
+so deleting one fails the suite rather than quietly re-opening the gap.
+
+**What reading the names would have got wrong.** The authority store already
+exposes `pennsync_staging_memberships(app_id)` and
+`pennsync_staging_context(app_id, agency_id)`, both granted to `authenticated`,
+and `resolveAuthority` already calls the second on EVERY request the business
+API serves — so `actor` carries the membership id, version, tenant role and
+agency before any handler runs. On the names alone this contract is redundant.
+Reading the bodies shows the difference that matters: the staging pair projects
+`pennsync_private.agency.name`, a column constrained `like 'Synthetic %'`
+because that table holds this deployment's own synthetic tenants, and it labels
+its own answer `staging: true, synthetic: true`. The real name is `agency_name`
+on the carried row, which is what both originals project. The staging pair also
+carries no optimistic binding and bounds at 50 where the originals bound at 25.
+
+**Where they live, and the narrowing that comes with it.** These are PRE-TENANT
+capabilities in Base44: `listMyTenantMemberships` takes an empty body and
+`getMyTenantContext` an optional `agency_id`, because a Base44 caller has no
+envelope. The business API's one invariant is that every request names the
+agency it acts in and `resolveAuthority` proves the caller holds it. So the
+bootstrap — a caller who holds no agency yet asking which they hold — stays on
+the authority store's own RPC, and these two serve a caller already inside one
+agency who wants the full context for it, or the list to switch from. The
+narrowing is explicit: reaching them through the business API requires already
+holding one agency. The alternative was an envelope exemption, and weakening the
+service's one invariant to serve two capabilities that another store already
+bootstraps is the worse trade.
+
+`getMyTenantContext` therefore takes no `agency_id` parameter. The contract keeps
+its auto-select branch for a caller holding exactly one agency because that is
+the correct answer in SQL, but nothing in this service reaches it.
+
+**The narrowings.** No platform owner, and no `is_platform_owner` field at all —
+a field that is always false invites a client to test it. The agency must be
+enabled in the authority store AND carried and enabled in the record store,
+where the originals could only see the second. The optimistic binding is
+all-or-nothing rather than half-ignored. And the whole list is refused when one
+agency is unavailable, as the originals refuse it: omitting that row instead
+would let the caller carry on in their other agencies, which is more than the
+originals allow, not less.
+
+Port queue: `records_schema` 61 → 59, written 26 → 28.
