@@ -359,8 +359,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { records_schema: 94, files: 4, ported_function: 1, core_integration: 1,
-    pdf_rendering: 0, external_secret: 1, none: 10 });
+  assert.deepEqual(counts, { records_schema: 93, files: 4, ported_function: 1, core_integration: 1,
+    pdf_rendering: 0, external_secret: 1, none: 11 });
   // Twelve functions were counted against the record store until they were
   // read. Every one calls a Core integration and touches no entity row, so what
   // they waited on was the integration runtime's brokered path — already
@@ -382,8 +382,13 @@ test('the port queue is work that cannot start yet, and says why', () => {
   assert.deepEqual(report.port_blockers.none,
     ['analyzeReferral', 'analyzeReferralIntake', 'analyzeReferralPriority', 'generateBagTechniquePDF',
       'generateReferralTasks', 'generateSmartNoteGuide', 'generateUserGuidePDF', 'generateUserManual',
-      'matchPatientWithAI', 'validatePatientData'],
+      'listPolicyLibrary', 'matchPatientWithAI', 'validatePatientData'],
     'the set of written ports changed');
+  // `listPolicyLibrary` is the first of these to read an entity row. Everything
+  // before it either computed an answer, rendered a document or asked a model,
+  // so the records bucket had never moved by a port being written — only by a
+  // function being reclassified. It moves now.
+  assert.ok(report.port_blockers.none.includes('listPolicyLibrary'));
   assert.deepEqual(report.port_blockers.ported_function, ['extractReferralDataForSmartNote']);
   // All three emptied this bucket once the service adopted a PDF library and a
   // call-sequence parity test; nothing is waiting on a rendering decision now.

@@ -39,8 +39,15 @@ const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const AGENCY_A = 1; const AGENCY_B = 4;
 const CALLER_ROLES = ['anon', 'authenticated', 'service_role'];
-const HELPERS = ['caller_identity', 'caller_identified', 'caller_agencies',
+// Two lists, because the two questions take different spellings: the catalog
+// matches a bare `proname`, while `has_function_privilege` needs a signature.
+// One list of names served both until `caller_tenant_role` took an argument —
+// and asking about `caller_tenant_role()` raises "does not exist" rather than
+// answering false, so the mismatch surfaced instead of quietly passing.
+const HELPERS = ['caller_identity', 'caller_identified', 'caller_agencies', 'caller_tenant_role',
   'caller_user_id', 'caller_email', 'deployment_app'];
+const HELPER_SIGNATURES = Object.freeze({ caller_tenant_role: 'text' });
+const signature = name => `${name}(${HELPER_SIGNATURES[name] ?? ''})`;
 let db;
 
 /**
@@ -150,15 +157,15 @@ test('no caller role is granted anything: not a table, not a helper', async () =
   for (const role of CALLER_ROLES) {
     for (const helper of HELPERS) {
       const { rows } = await db.query('select has_function_privilege($1, $2, \'execute\') as allowed',
-        [role, `${SCHEMA}.${helper}()`]);
-      assert.equal(rows[0].allowed, false, `${role} must not be able to execute ${helper}()`);
+        [role, `${SCHEMA}.${signature(helper)}`]);
+      assert.equal(rows[0].allowed, false, `${role} must not be able to execute ${signature(helper)}`);
     }
   }
   // The owner may, and must: the policies ask these helpers while the broker runs.
   for (const helper of HELPERS) {
     const { rows } = await db.query('select has_function_privilege($1, $2, \'execute\') as allowed',
-      [OWNER_ROLE, `${SCHEMA}.${helper}()`]);
-    assert.equal(rows[0].allowed, true, `${OWNER_ROLE} must be able to execute ${helper}()`);
+      [OWNER_ROLE, `${SCHEMA}.${signature(helper)}`]);
+    assert.equal(rows[0].allowed, true, `${OWNER_ROLE} must be able to execute ${signature(helper)}`);
   }
 });
 

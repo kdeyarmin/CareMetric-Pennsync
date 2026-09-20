@@ -925,3 +925,76 @@ out is safe — so the exemption is per block, deliberately.
 appearing — it is work that was already there, counted under a disposition that
 said someone else would handle it generically. A queue that is longer and true
 is worth more than one that is shorter because it was measured by name.
+
+
+## D19 — What a reviewed per-capability contract is
+
+**Decision.** A capability the generic family cannot serve gets one
+hand-written SQL function in the record store, owned by
+`pennsync_records_owner` and `SECURITY DEFINER`, reached through a
+`SECURITY INVOKER` wrapper in `public` and through its own allowlist in
+`services/pennsync-api/record-contracts.mjs`. `listPolicyLibrary` is the first,
+and the pattern for the 93 still queued.
+
+**Why it cannot be generated.** The two migrations before it are generated
+because every table gets the same treatment and every brokered entity the same
+five operations. A contract is the opposite: it exists precisely because a
+capability's authorization is its own, so there is nothing to generate from.
+D2 calls this "a reviewed, contract-per-capability transfer" and means it
+literally. What is gated instead is that every contract has a test which proves
+its refusals against the real migration on a real database.
+
+**What a contract may do that the family may not.** Two things, and
+`listPolicyLibrary` needs both:
+
+- **Return a file locator.** It returns `doc_url` — "URL to policy document",
+  an object in our own storage — which is exactly why D16's ceiling keeps
+  `PolicyLibrary` out of the generic family. Handing a locator to every caller
+  of a generic surface is how an uploaded file leaves; handing it to the callers
+  of one reviewed endpoint is a decision about that endpoint.
+- **Decide about the caller rather than the row.** The original gives the full
+  catalog — drafts and archived included — only to a platform-protected
+  built-in admin. No policy can express that: a policy decides whether a row
+  belongs to the caller.
+
+**Three properties the pattern fixes, because 93 more follow:**
+
+1. **The decision is in the database.** The service carries no authorization
+   logic for a contract at all. It would otherwise be a second answer to keep
+   in agreement with the first, and the whole design rests on the database
+   being the one that decides.
+2. **A contract is not an exemption from the policies.** It is owned by the
+   same non-bypass role, so `force row level security` binds it exactly as it
+   binds a broker. `listPolicyLibrary` adds no tenant predicate of its own
+   beyond the agency it was asked for; `policy_library_read` is what keeps
+   another agency's rows out, and a test proves that by giving one caller two
+   real memberships.
+3. **It projects, it does not return the row.** The fifteen columns the
+   original returns are selected by name. Returning the row would mean a column
+   added later is exposed by default, which is the opposite of what a reviewed
+   contract is for.
+
+**A new helper, and why no policy may use it.**
+`pennsync_records.caller_tenant_role(agency)` answers which role the caller
+holds in one agency. No policy asks it and none should — a policy decides
+whether a row is the caller's, and all 596 are written in terms of
+`caller_agencies()`. A contract making a decision *about the caller* had
+nothing to ask, which is the gap the first contract exposed. It is scalar
+because `membership` is unique on `(app_id, agency_id, auth_user_id)`, it
+returns null for a non-member, and it is granted to the record owner alone: a
+caller must not be able to ask its own role directly.
+
+**One divergence, recorded because it is a narrowing rather than a port.** The
+original's administrator is Base44's platform-protected built-in `admin`, who
+saw every agency's drafts. This deployment issues no platform-owner context at
+all — the authority store's contract pins `is_platform_owner` false — so the
+nearest reviewed equivalent is the agency's own `agency_admin`, who sees only
+their own. That is strictly less access than before, and a test asserts both
+halves: a clinician in the agency is refused the catalog, and an administrator
+of another agency is refused the agency entirely.
+
+**What it costs and what it proves.** The port queue moves for the first time
+on a record-backed port: `records_schema` 94 → 93, `none` 10 → 11. Every port
+written before this one either computed an answer, rendered a document or asked
+a model, so the records bucket had only ever moved by reclassification. It
+moves by work now.

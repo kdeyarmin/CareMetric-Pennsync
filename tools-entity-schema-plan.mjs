@@ -311,6 +311,33 @@ $$;`,
     and m.status = 'active' and m.revoked_at is null
     and a.status in ('active','trial')
 $$;`,
+  // Which role the caller holds IN ONE AGENCY, for a contract that has an
+  // authorization decision to make rather than a row set to filter.
+  //
+  // No policy asks this and none should: a policy decides whether a row is the
+  // caller's, and every one of them is written in terms of `caller_agencies()`.
+  // What needs it is a per-capability contract — `listPolicyLibrary` returns
+  // draft and archived policies only to an administrator, which is a decision
+  // about the caller rather than about a row. Putting that decision in the
+  // database keeps it where the rest of this design puts authorization, instead
+  // of in a service that could be wrong about it.
+  //
+  // Scalar rather than `setof`, because `membership` is unique on
+  // (app_id, agency_id, auth_user_id) — so there is exactly one row to find, or
+  // none. None returns null, and a contract reading null refuses.
+  `create function ${quote(SCHEMA)}.caller_tenant_role(p_agency text) returns text
+  language sql stable security definer set search_path = '' as $$
+  select m.tenant_role::text
+  from ${quote(SCHEMA)}.caller_identity() i
+  join pennsync_private.membership m
+    on m.app_id = i.app_id and m.auth_user_id = i.auth_user_id
+   and m.base44_user_id = i.base44_user_id
+  join pennsync_private.agency a on a.app_id = m.app_id and a.id = m.agency_id
+  where i.auth_user_id is not null
+    and m.agency_id::text = p_agency
+    and m.status = 'active' and m.revoked_at is null
+    and a.status in ('active','trial')
+$$;`,
   `create function ${quote(SCHEMA)}.caller_user_id() returns text
   language sql stable security definer set search_path = '' as $$
   select (${quote(SCHEMA)}.caller_identity()).base44_user_id
@@ -330,7 +357,8 @@ $$;`,
   select pennsync_private.deployment_app_id()
 $$;`,
   `revoke all on function ${quote(SCHEMA)}.caller_identity(), ${quote(SCHEMA)}.caller_identified(),
-  ${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_user_id(),
+  ${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_tenant_role(text),
+  ${quote(SCHEMA)}.caller_user_id(),
   ${quote(SCHEMA)}.caller_email(), ${quote(SCHEMA)}.deployment_app() from public, anon, authenticated, service_role;`,
 ];
 
@@ -534,7 +562,8 @@ export function renderMigration(repository) {
   const helpers = body.slice(0, cut + marker.length).trim();
   const tables = body.slice(cut + marker.length).trim();
   const helperList = `${quote(SCHEMA)}.caller_identity(), ${quote(SCHEMA)}.caller_identified(), `
-    + `${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_user_id(), `
+    + `${quote(SCHEMA)}.caller_agencies(), ${quote(SCHEMA)}.caller_tenant_role(text), `
+    + `${quote(SCHEMA)}.caller_user_id(), `
     + `${quote(SCHEMA)}.caller_email(), ${quote(SCHEMA)}.deployment_app()`;
   const statements = [
     `-- The record store: ${plan.totals.carried} carried entities, ${plan.totals.columns} columns,

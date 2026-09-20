@@ -109,6 +109,20 @@ create function "pennsync_records".caller_agencies() returns setof text
     and a.status in ('active','trial')
 $$;
 
+create function "pennsync_records".caller_tenant_role(p_agency text) returns text
+  language sql stable security definer set search_path = '' as $$
+  select m.tenant_role::text
+  from "pennsync_records".caller_identity() i
+  join pennsync_private.membership m
+    on m.app_id = i.app_id and m.auth_user_id = i.auth_user_id
+   and m.base44_user_id = i.base44_user_id
+  join pennsync_private.agency a on a.app_id = m.app_id and a.id = m.agency_id
+  where i.auth_user_id is not null
+    and m.agency_id::text = p_agency
+    and m.status = 'active' and m.revoked_at is null
+    and a.status in ('active','trial')
+$$;
+
 create function "pennsync_records".caller_user_id() returns text
   language sql stable security definer set search_path = '' as $$
   select ("pennsync_records".caller_identity()).base44_user_id
@@ -125,12 +139,13 @@ create function "pennsync_records".deployment_app() returns text
 $$;
 
 revoke all on function "pennsync_records".caller_identity(), "pennsync_records".caller_identified(),
-  "pennsync_records".caller_agencies(), "pennsync_records".caller_user_id(),
+  "pennsync_records".caller_agencies(), "pennsync_records".caller_tenant_role(text),
+  "pennsync_records".caller_user_id(),
   "pennsync_records".caller_email(), "pennsync_records".deployment_app() from public, anon, authenticated, service_role;
 
 -- The owner may ask who is calling. No caller role may.
 
-grant execute on function "pennsync_records".caller_identity(), "pennsync_records".caller_identified(), "pennsync_records".caller_agencies(), "pennsync_records".caller_user_id(), "pennsync_records".caller_email(), "pennsync_records".deployment_app() to "pennsync_records_owner";
+grant execute on function "pennsync_records".caller_identity(), "pennsync_records".caller_identified(), "pennsync_records".caller_agencies(), "pennsync_records".caller_tenant_role(text), "pennsync_records".caller_user_id(), "pennsync_records".caller_email(), "pennsync_records".deployment_app() to "pennsync_records_owner";
 
 -- Everything below is created while acting as the owner, so the owner is what
 -- `force row level security` binds.

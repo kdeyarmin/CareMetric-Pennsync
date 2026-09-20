@@ -8,6 +8,7 @@ import { ApiError, ID, MAX_BODY, exactObject, fail, isObject, readBody } from '.
 import { HANDLERS } from './handlers.mjs';
 import { integrationCapability } from './integrations.mjs';
 import { recordCapability } from './records.mjs';
+import { contractCapability } from './record-contracts.mjs';
 import { publicReadiness } from './runtime.mjs';
 
 const FUNCTION_PATH = /^\/v1\/functions\/([A-Za-z][A-Za-z0-9_]{0,63})$/;
@@ -77,8 +78,12 @@ export function createHandler(config, dependencies = {}) {
       // The same discipline for records: a handler is handed a function, never
       // a connection, a key or a table name it could widen.
       const records = (dependencies.records || recordCapability)(bound, dependencies.fetcher);
+      // A reviewed per-capability contract is a third capability rather than a
+      // sixth record operation: it does what the generic family is specifically
+      // not allowed to do, so it carries its own allowlist.
+      const contract = (dependencies.contract || contractCapability)(bound, dependencies.fetcher);
       const result = await handlers[name].handle({
-        actor, params: input.params ?? {}, config, integration, records,
+        actor, params: input.params ?? {}, config, integration, records, contract,
       });
       // A ported document answers with the bytes its Base44 original answered
       // with, so a migrated caller is not asked to decode something new. Only a

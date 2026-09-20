@@ -129,6 +129,22 @@ export const HANDLERS = Object.freeze({
   // Each original took no parameters and rendered the same document for any
   // authenticated caller. That is kept, with the membership this service
   // requires added, since it has no global scope.
+  listPolicyLibrary: Object.freeze({
+    // The first port that reads an entity row, and the first to reach a
+    // reviewed per-capability contract rather than the generic family.
+    // `PolicyLibrary` returns `doc_url` — a locator into our own storage — so
+    // D16's ceiling keeps it out of the family on purpose; the contract hands
+    // it to this capability's callers, which is a decision about one endpoint.
+    //
+    // The authorization is the contract's and is not restated here. Who may see
+    // drafts and archived policies is answered by the database, where the rest
+    // of this design puts authorization; a copy in this handler would be a
+    // second answer to keep in agreement with it.
+    handle({ params, contract }) {
+      exactObject(params, ['mode'], 'INVALID_PARAMS');
+      return contract('listPolicyLibrary', params);
+    },
+  }),
   generateBagTechniquePDF: Object.freeze({
     binary: true,
     handle({ params, config }) {
