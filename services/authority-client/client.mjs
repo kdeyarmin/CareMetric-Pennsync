@@ -83,6 +83,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   updateAuthorizedVisit: 'json',
   updateScopedPatientAlert: 'json',
   matchPatientWithAI: 'json',
+  policyAcknowledgment: 'json',
   validatePatientData: 'json',
 });
 /** The ported API's one route shape. No caller names a path. */

@@ -2401,3 +2401,57 @@ field, "Provisioned membership could not be reconciled" — is the same
 no-transaction machinery D34 described, and goes for the same reason.
 
 Port queue: `records_schema` 59 → 58, written 28 → 29.
+
+## D36 — Tenancy is not ownership, and a comment is not a permission
+
+**Decision.** Port `policyAcknowledgment`'s `acknowledge` action and refuse
+`list` by name — the third partial port. Record no caller-supplied audit
+fields.
+
+**`list` has no performer left**, for the reason D31 already named. Its gate is
+`isAdminLike(user)`, which is `u.role === 'admin'`: the Base44 built-in admin,
+the platform tier D14 and D22 removed. Dropping the gate would not narrow the
+action, it would open it.
+
+**A comment is not a permission, and this one is a trap.** The original says in
+its own header that the list exists "so account_type-based admins
+(agency_admin/super_admin) are honored", and the body then scopes a
+non-`super_admin` caller to `user.agency_name`. But `isAdminLike` admits
+neither: every caller without `role === 'admin'` is refused before that code is
+reached, so the agency-scoping branch is unreachable. Porting the intent would
+hand an agency administrator a capability the code never gave them — a widening
+dressed as a bug fix. Whether they should have it is a product decision, not a
+port's to take. The comment is quoted in the migration header so the next reader
+meets the argument rather than the temptation.
+
+**Tenancy is not ownership.** This is the property the port turns on, and the
+original states it plainly: the entity's write RLS is admin-only *precisely* so
+a learner cannot sign somebody else's row, and the function does the ownership
+check itself because its write goes through a service role that bypasses RLS.
+In the owned store the write goes through a contract that the policies DO bind
+— and the policies say the row is in an agency the caller holds, which is not
+the same as saying the row is theirs. Two acknowledgments in one agency are
+both visible to both colleagues. The contract's own check is what keeps one
+from signing the other's, and the test proves it by having a colleague try.
+
+The ownership comparison reads `caller_email()` — `identity_map.expected_email`
+— rather than the Base44 profile's `email`, which is D23's rule again.
+`policy_acknowledgment.user_id` holds an EMAIL rather than an id; that is the
+carried column's actual content, and the original's own comparison is
+`sameEmail(ack.user_id, user.email)`.
+
+**No `ip_address`, and no `device_metadata`.** The original reads
+`x-forwarded-for` and `user-agent` from the request. A contract cannot see a
+request, and taking them as parameters would let the person signing choose what
+the audit trail says about them. For a compliance record a forgeable field is
+worse than an absent one, so they are not taken at all and the columns stay
+null. A test asserts the contract contains no statement that writes either, and
+another asserts the answer carries no `doc_url` — the file locator that is why
+D16 keeps this entity's family out of the generic brokers.
+
+Signing twice is idempotent and deliberately does not move the original stamp:
+an acknowledgment records *when* somebody signed. The signature is bounded at
+200 characters with control characters refused, where the original bounds it
+nowhere — narrower, which is the only direction available.
+
+Port queue: `records_schema` 58 → 57, written 29 → 30.

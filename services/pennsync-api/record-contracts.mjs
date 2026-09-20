@@ -512,6 +512,26 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_ASSIGNMENT_REQUEST_CONFLICT',
     ]),
   }),
+  // Signing a policy acknowledgment: the THIRD partial port. `list` is refused
+  // by name because its gate is `u.role === 'admin'`, the Base44 built-in
+  // admin — the platform tier D14 and D22 removed, exactly as D31 found for
+  // `set_ai_tags`.
+  acknowledgePolicy: Object.freeze({
+    rpc: 'pennsync_contract_policy_acknowledge',
+    params: Object.freeze(['acknowledgment_id', 'signed_name']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_acknowledgment_id: args.acknowledgment_id ?? null,
+      p_signed_name: args.signed_name ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_POLICY_ACK_AGENCY_NOT_HELD',
+      'PENNSYNC_POLICY_ACK_SUBJECT_INVALID',
+      'PENNSYNC_POLICY_ACK_NAME_REQUIRED',
+      'PENNSYNC_POLICY_ACK_NOT_FOUND',
+      'PENNSYNC_POLICY_ACK_FORBIDDEN',
+    ]),
+  }),
   // The membership lifecycle, and the second PARTIAL port. Five of the
   // original's six actions: `provision` is refused by name because its own
   // guard reserves it to the protected platform owner D14 and D22 removed, so

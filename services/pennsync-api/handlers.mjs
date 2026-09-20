@@ -343,6 +343,20 @@ export const HANDLERS = Object.freeze({
       return contract('appendPatientNoteHistory', params);
     },
   }),
+  policyAcknowledgment: Object.freeze({
+    // The original defaults `action` to `acknowledge` when absent, and this
+    // keeps that. `list` is refused HERE rather than at the contract, because
+    // there is no contract to refuse it: its only performer was the platform
+    // tier D14 and D22 removed, so nothing was written for it.
+    handle({ params, contract }) {
+      if (!isObject(params)) fail(400, 'INVALID_PARAMS');
+      const action = params.action ?? 'acknowledge';
+      if (action === 'list') fail(403, 'PENNSYNC_POLICY_ACK_ACTION_UNPORTED');
+      if (action !== 'acknowledge') fail(400, 'INVALID_PARAMS');
+      exactObject(params, ['action', 'acknowledgment_id', 'signed_name'], 'INVALID_PARAMS');
+      return contract('acknowledgePolicy', params);
+    },
+  }),
   manageAgencyMembership: Object.freeze({
     // One Base44 capability with six actions reaching two contracts, five of
     // them served. `provision` is NOT filtered out here: it reaches the
