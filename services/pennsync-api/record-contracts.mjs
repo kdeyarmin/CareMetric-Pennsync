@@ -845,6 +845,22 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_INCIDENT_CORRECTIVE_ACTION_REQUIRED',
     ]),
   }),
+  // Sweeping an agency's pending invitations, fourth under D40.
+  //
+  // Its two gates were the built-in admin and a shared secret in a header.
+  // Only the first has a successor; the second is how a SCHEDULER calls it,
+  // and nothing in this store is cross-tenant, so who runs this on a schedule
+  // is an open decision. This is the per-agency half that decision will call.
+  //
+  // The digest is `Core.SendEmail`, which nothing brokers, so the answer is
+  // the original's OWN paused branch: expiry maintenance happens, the
+  // expiring-soon tier is counted and not claimed, and it says so.
+  checkExpiredInvitations: Object.freeze({
+    rpc: 'pennsync_contract_invitation_sweep',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: Object.freeze(['PENNSYNC_INVITATION_FORBIDDEN']),
+  }),
   // Resending a staff invitation, third under D40. ONE contract for TWO Base44
   // capabilities: `resendInvitation` and `resendInvitationV2` are
   // byte-identical apart from a comment naming the second the production

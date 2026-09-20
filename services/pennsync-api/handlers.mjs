@@ -497,6 +497,12 @@ export const HANDLERS = Object.freeze({
       return contract('updateIncident', params);
     },
   }),
+  checkExpiredInvitations: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      return contract('checkExpiredInvitations', params);
+    },
+  }),
   resendInvitation: Object.freeze({
     // Both names reach the one contract: the two originals are the same file.
     async handle({ params, contract }) {

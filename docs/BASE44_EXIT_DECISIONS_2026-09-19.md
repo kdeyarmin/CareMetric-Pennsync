@@ -3168,3 +3168,71 @@ asks that, and it has to be a helper rather than a policy because the question
 is about the RECIPIENT and a policy binds the caller.
 
 Port queue: `records_schema` 36 → 35, written 47 → 48.
+
+## D49 — A scheduled sweep has no tenant, and this store has nothing that is cross-tenant
+
+**Decision.** Port the per-agency half of `checkExpiredInvitations` under D40,
+and record the scheduled cross-tenant half as an OPEN decision covering all four
+scheduler capabilities still in the queue.
+
+**Two gates, one successor.** These capabilities admit either the built-in
+`role === 'admin'` or a shared secret in a header:
+
+```js
+function isSchedulerAdmin(user) { return !!user && user.role === 'admin'; }
+```
+
+D40 answers the first: an `agency_admin`, scoped to their own agency. The second
+is how the SCHEDULER calls it, and it cannot simply be recreated. The original
+sweeps every pending invitation in the deployment; nothing in this store is
+cross-tenant, because `pennsync_records_owner` must never hold `BYPASSRLS` and
+every policy asks `caller_agencies()`. A caller with no tenant sees no rows —
+by design, and the design is load-bearing.
+
+**What the open decision is.** Three shapes were considered and none is taken
+here:
+
+1. **Per-agency, under a real identity.** The scheduler enumerates agencies and
+   calls this contract once per agency as an actor holding that agency. Nothing
+   bypasses anything, the sweep's writes are attributable to a visible and
+   revocable member, and the contract needed is the one written here. It costs
+   a maintenance identity per agency, in `identity_map` and `membership`.
+2. **A `pennsync_private` definer with no caller.** Rejected on inspection: a
+   definer does not escape forced RLS either, so it would need a bypass role,
+   which is the one thing the record store's design forbids outright.
+3. **A maintenance predicate in the policies.** Rejected: it would touch all 589
+   generated policies and reintroduce, as a permanent fixture, exactly the
+   cross-tenant reach D14 and D22 removed.
+
+Shape 1 is the only one that does not contradict something already decided, and
+it is a decision about identity rather than about this capability, which is why
+it is named rather than taken. **The four capabilities it governs**:
+`checkAdrDeadlines`, `checkExpiredInvitations`,
+`sendCredentialRenewalReminders` and `sendPersonnelExpirationNotifications`.
+Each is portable today as an agency administrator's action; each waits on shape
+1 to run unattended.
+
+**The paused branch is the original's own.** It already returns
+`{ expired, expiring_soon, notifications_sent: 0, delivery_paused: true,
+code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED' }` whenever `outboundDeliveryReleased()`
+is false, and in that branch it deliberately does NOT stamp
+`expiring_soon_notified_at` — *"do not claim an email tier that was never
+sent."* The digest is `Core.SendEmail`, which nothing here brokers, so this port
+IS that branch: expiry maintenance happens, the expiring-soon tier is counted
+and not claimed, and the answer says so.
+
+**The sixth derived-scope bug an original documents.** Its digest scopes by
+comparing the invitation's `agency_name` STRING to each admin's, and its comment
+records what that cost: *"Unscoped fan-out emailed invitee names/emails to every
+tenant's admins."* After D41, D42, D43 and D44, the count is six. The test seeds
+agency B's invitation with `agency_name` saying "Agency A" precisely so a port
+reading that field would fail.
+
+**And a comment worth keeping.** The original carries an explicit 5000-row limit
+because *"an unlimited filter() only returns the server's default page (~50), so
+past that this sweep leaves the overflow pending — expired invitations stay
+accepted and the reported counts under-report."* A SQL `update … where` has no
+page to overflow. It is the clearest statement in the tree of what these ports
+keep deleting.
+
+Port queue: `records_schema` 35 → 34, written 48 → 49.

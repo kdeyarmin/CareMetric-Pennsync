@@ -28,11 +28,14 @@ const AUDIT = 'services/authority-store/supabase/record-migrations/'
   + '20260920010000_activity_audit.sql';
 const INVITATION = 'services/authority-store/supabase/record-migrations/'
   + '20260920270000_contract_invitation.sql';
+const SWEEP = 'services/authority-store/supabase/record-migrations/'
+  + '20260920330000_contract_invitation_sweep.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ADMIN_A = 1; const CLINICIAN_A = 2;
 const RESEND = 'select "public"."pennsync_contract_invitation_resend"($1,$2) as result';
+const SWEEP_CALL = 'select "public"."pennsync_contract_invitation_sweep"($1) as result';
 const A = 'agency-a'; const B = 'agency-b';
 let db;
 
@@ -43,7 +46,7 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, AUDIT, INVITATION]) {
+  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, AUDIT, INVITATION, SWEEP]) {
     await db.exec(readFileSync(resolve(repository, file), 'utf8'));
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
@@ -164,4 +167,66 @@ test('the trail records the resend, and does not claim a message went out', asyn
   assert.equal(/exception\s+when/.test(body), false,
     'the trail write is not swallowed the way the original swallows it');
   assert.equal(body.includes('contract_activity_append'), true);
+});
+
+const sweep = (n, agency = A) => as(n, SWEEP_CALL, [agency], true);
+
+test('the sweep expires what has run out, in this agency only', async () => {
+  // Divergence 1, and the sixth original whose own comments document a
+  // derived-scope bug: it scopes its digest by comparing the invitation's
+  // `agency_name` STRING to each admin's, and records what that cost —
+  // "Unscoped fan-out emailed invitee names/emails to every tenant's admins."
+  // Every fixture row says "Agency A", agency B's included, precisely so a
+  // port reading it would get this wrong.
+  await db.query(`update ${SCHEMA}."user_invitation" set "status" = 'pending',
+    "expires_at" = '2020-01-01 00:00:00+00' where "id" in ('inv-expired','inv-elsewhere')`);
+  await db.query(`update ${SCHEMA}."user_invitation" set "status" = 'pending',
+    "expires_at" = null where "id" = 'inv-pending'`);
+  const result = await sweep(ADMIN_A);
+  assert.equal(result.success, true);
+  // Both of agency A's: the one that ran out, and the one with no expiry at
+  // all — the original's fail-closed rule for an expiry it cannot read.
+  assert.equal(result.expired, 2);
+  assert.deepEqual(result.expired_invitations.map(i => i.id).sort(),
+    ['inv-expired', 'inv-pending']);
+  assert.equal((await rowOf('inv-expired')).status, 'expired');
+  assert.equal((await rowOf('inv-pending')).status, 'expired');
+  // Agency B's is untouched although its `agency_name` says Agency A.
+  assert.equal((await rowOf('inv-elsewhere')).status, 'pending');
+  // Neither terminal state is swept.
+  assert.equal((await rowOf('inv-accepted')).status, 'accepted');
+  assert.equal((await rowOf('inv-cancelled')).status, 'cancelled');
+});
+
+test('an expiring invitation is counted and NOT claimed', async () => {
+  // The original's own rule for a paused send: "Preserve expiration
+  // maintenance while the environment-wide delivery gate is closed, but do not
+  // claim an email tier that was never sent." The digest is Core.SendEmail,
+  // which nothing here brokers, so this port is that branch.
+  await db.query(`update ${SCHEMA}."user_invitation"
+    set "status" = 'pending', "expires_at" = clock_timestamp() + interval '6 hours',
+        "expiring_soon_notified_at" = null where "id" = 'inv-expired'`);
+  await db.query(`update ${SCHEMA}."user_invitation"
+    set "status" = 'pending', "expires_at" = clock_timestamp() + interval '9 days'
+    where "id" = 'inv-pending'`);
+  const result = await sweep(ADMIN_A);
+  assert.equal(result.expired, 0, 'nothing has run out yet');
+  assert.equal(result.expiring_soon, 1, 'only the one inside twenty-four hours');
+  assert.equal(result.notifications_sent, 0);
+  assert.equal(result.delivery_paused, true);
+  assert.equal(result.code, 'OUTBOUND_DELIVERY_RELEASE_PAUSED');
+  // The claim stamp is the thing NOT written, so the next run can still send.
+  assert.equal((await rowOf('inv-expired')).last_sent_at !== undefined, true);
+  assert.equal((await db.query(
+    `select "expiring_soon_notified_at" as at from ${SCHEMA}."user_invitation"
+     where "id" = 'inv-expired'`)).rows[0].at, null);
+  // An invitation already claimed is not counted again.
+  await db.query(`update ${SCHEMA}."user_invitation"
+    set "expiring_soon_notified_at" = clock_timestamp() where "id" = 'inv-expired'`);
+  assert.equal((await sweep(ADMIN_A)).expiring_soon, 0);
+});
+
+test('only the agency administrator sweeps, and only their own agency', async () => {
+  await refusal(sweep(CLINICIAN_A), 'PENNSYNC_INVITATION_FORBIDDEN');
+  await refusal(sweep(ADMIN_A, B), 'PENNSYNC_INVITATION_FORBIDDEN');
 });
