@@ -18,7 +18,7 @@
 // 2. **The runtime's words never reach the caller.** Its failures are mapped to
 //    a fixed code here. A provider message, an upstream URL or a stack would
 //    otherwise cross a trust boundary on the way back.
-import { UUID, fail, isObject } from './contracts.mjs';
+import { MAX_UPSTREAM_BYTES, UUID, fail, isObject, readJson } from './contracts.mjs';
 
 /** The runtime's server-to-server route. `/v2` is the browser transport and is revision-bound. */
 export const INTEGRATION_PATH = '/v1/integrations';
@@ -76,7 +76,9 @@ export function integrationCapability({ config, req, agencyId }, fetcher = fetch
     } catch { fail(503, 'INTEGRATION_UNREACHABLE'); }
 
     let body;
-    try { body = await response.json(); } catch { fail(503, 'INTEGRATION_UNREADABLE'); }
+    // Bounded, not `response.json()`: provider and model output is not a size
+    // boundary this service controls.
+    try { body = await readJson(response, MAX_UPSTREAM_BYTES); } catch { fail(503, 'INTEGRATION_UNREADABLE'); }
     if (!response.ok || !isObject(body) || body.success !== true) {
       // Deliberately not `body.error`: the runtime's code is its own vocabulary
       // and may carry provider detail. One code crosses back, whatever failed.

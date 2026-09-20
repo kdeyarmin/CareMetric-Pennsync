@@ -336,3 +336,38 @@ test('the smart-note transform is not reachable as a released handler', () => {
   // exposing it would let a caller supply its own referral payload.
   assert.equal(HANDLER_NAMES.includes('extractReferralDataForSmartNote'), false);
 });
+
+test('readiness accounts for the runtime a released handler actually needs', async () => {
+  // `/readyz` answered 200 while every call failed INTEGRATIONS_NOT_CONFIGURED,
+  // because readiness only asked about release, authority and a non-empty
+  // function list. A service that reports healthy and serves nothing is the
+  // exact failure readiness exists to prevent.
+  const base = {
+    released: true, authorityConfigured: true, revision: 'test',
+    functions: [], integrationsConfigured: false,
+  };
+  const ready = config => publicReadiness({ ...base, ...config });
+
+  // A handler that needs no integration is ready without one.
+  assert.equal(ready({ functions: ['validatePatientData'] }).ready, true);
+  assert.equal(ready({ functions: ['validatePatientData'] }).integrationsRequired, false);
+
+  // One that does is not, and the readiness body says which dependency is missing.
+  for (const name of ['analyzeReferral', 'analyzeReferralIntake', 'analyzeReferralPriority',
+    'generateReferralTasks', 'matchPatientWithAI', 'generateUserGuidePDF']) {
+    const report = ready({ functions: [name] });
+    assert.equal(report.ready, false, `${name} must not report ready without its runtime`);
+    assert.equal(report.integrationsRequired, true);
+    assert.equal(report.integrationsConfigured, false);
+    assert.equal(publicReadiness({ ...base, functions: [name], integrationsConfigured: true }).ready, true);
+  }
+  // Mixed release: one handler needing it is enough to require it.
+  assert.equal(ready({ functions: ['validatePatientData', 'analyzeReferral'] }).ready, false);
+  assert.equal(publicReadiness({
+    ...base, functions: ['validatePatientData', 'analyzeReferral'], integrationsConfigured: true,
+  }).ready, true);
+  // And the other preconditions still gate it.
+  assert.equal(publicReadiness({
+    ...base, released: false, functions: ['validatePatientData'], integrationsConfigured: true,
+  }).ready, false);
+});

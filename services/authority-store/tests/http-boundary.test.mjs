@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { mkdtemp, mkdir, copyFile, writeFile, readFile, rm, access } from 'node:fs/promises';
+import { mkdtemp, mkdir, copyFile, writeFile, readFile, readdir, rm, access } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { resolve, sep } from 'node:path';
 const exec = promisify(execFile);
@@ -99,4 +99,36 @@ test('a start that fails applying a migration is named, and nothing else is forw
   assert.equal(start('ERROR: Cannot connect to the Docker daemon'), 'LOCAL_CLI_START_DAEMON_UNAVAILABLE');
   assert.equal(classifyToolFailure('supabase', ['start'], { stdout: 'ERROR: x', killed: true }),
     'LOCAL_CLI_START_TIMED_OUT');
+});
+
+/**
+ * The classifier names a migration failure by its own code so a redacted CI
+ * log still says what refused. That only works while the allowlist knows every
+ * code the migrations can raise, and it stopped being true the moment the
+ * broker and contract migrations added two of their own: a real
+ * `PENNSYNC_RECORD_STORE_REQUIRED` fell back to the generic verdict, which is
+ * precisely the diagnosis this was built to avoid. Read from the migrations
+ * rather than maintained by hand, so the next one cannot slip either.
+ */
+test('every code the record migrations raise is one the classifier can name', async () => {
+  const { MIGRATION_CODES } = await import('./http-local-stack.mjs');
+  const directory = new URL('../supabase/record-migrations/', import.meta.url);
+  const raised = new Set();
+  for (const name of (await readdir(directory)).filter(file => file.endsWith('.sql')).sort()) {
+    const sql = await readFile(new URL(name, directory), 'utf8');
+    // Only the `do $$ … $$` preconditions. A code raised inside a CREATE
+    // FUNCTION body is a refusal answered to a caller at runtime, not a
+    // migration failure, and naming one here would be wrong in the other
+    // direction — the assertion below holds that line.
+    for (const block of sql.matchAll(/\bdo \$\$([\s\S]*?)\$\$\s*;/g)) {
+      for (const match of block[1].matchAll(/message\s*=\s*'(PENNSYNC_[A-Z_]+)'/g)) raised.add(match[1]);
+    }
+  }
+  assert.ok(raised.size > 0, 'expected the record migrations to raise named codes');
+  const unnamed = [...raised].filter(code => !MIGRATION_CODES.includes(code)).sort();
+  assert.deepEqual(unnamed, [],
+    'these codes would fall back to the generic redacted verdict; add them to MIGRATION_CODES');
+  // A broker refusal is not a migration failure and must not be named as one:
+  // those are answered to a caller at runtime, not printed in a CI log.
+  assert.deepEqual(MIGRATION_CODES.filter(code => /BROKER|CONTRACT/.test(code)), []);
 });

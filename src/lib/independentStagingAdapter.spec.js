@@ -107,6 +107,9 @@ describe('the ported API caller', () => {
 
   it('routes a ported name to the service with the caller own bearer and no project key', async () => {
     const { fixture, adapter } = await signedIn();
+    // `data` is the HANDLER's result, not the service's envelope. Returning
+    // the envelope here is what a consumer reading `data.policies` would have
+    // been broken by — they would have been at `data.result.policies`.
     expect(await adapter.raw.functions.invoke('validatePatientData',
       { agency_id: 'agency-a', patient: { first_name: 'A' } })).toEqual({ data: { valid: true } });
     expect(fixture.apiCalls).toHaveLength(1);
@@ -117,6 +120,29 @@ describe('the ported API caller', () => {
     // bearer to a second origin.
     expect(call.headers.apikey).toBeUndefined();
     expect(call.body).toEqual({ agency_id: 'agency-a', params: { patient: { first_name: 'A' } } });
+  });
+
+  it('unwraps the service envelope exactly once, and refuses one that is missing', async () => {
+    const fixture = stagingFixture();
+    const config = readIndependentStagingConfig(ported);
+    const adapter = createIndependentStagingAdapter(config, { fetchImpl: fixture.fetch });
+    await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    fixture.apiResponse = () => new Response(JSON.stringify({
+      success: true, result: { policies: [{ id: 'pol-1' }] },
+      execution: 'pennsync-api', base44ExecutionDependency: false,
+    }), { headers: { 'content-type': 'application/json' } });
+    const answer = await adapter.raw.functions.invoke('listPolicyLibrary',
+      { agency_id: 'agency-a', mode: 'active' });
+    // What a consumer actually reads.
+    expect(answer.data.policies).toEqual([{ id: 'pol-1' }]);
+    expect(answer.data.result).toBeUndefined();
+
+    // A bare payload — the shape these tests used to send — is refused rather
+    // than passed through as though it were a handler result.
+    fixture.apiResponse = () => new Response(JSON.stringify({ policies: [] }),
+      { headers: { 'content-type': 'application/json' } });
+    await expect(adapter.raw.functions.invoke('listPolicyLibrary', { agency_id: 'agency-a' }))
+      .rejects.toThrow(/PENNSYNC_API_RESPONSE_INVALID/);
   });
 
   it('requires the agency the ported service needs rather than guessing one', async () => {

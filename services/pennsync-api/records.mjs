@@ -32,7 +32,7 @@
 // without it — so this reuses the authority target and key that `authority.mjs`
 // already validates against a fixed pair.
 import { BROKERED_ENTITIES, BROKER_CODES, BROKER_REFUSALS } from './brokered-entities.mjs';
-import { ID, fail, isObject } from './contracts.mjs';
+import { ID, MAX_UPSTREAM_BYTES, fail, isObject, readJson } from './contracts.mjs';
 import { validAuthorityKey, validAuthorityTarget } from './authority.mjs';
 
 export { BROKERED_ENTITIES, BROKER_CODES, BROKER_REFUSALS };
@@ -139,7 +139,9 @@ export function recordCapability({ config, req, agencyId }, fetcher = fetch) {
     if ([401, 403].includes(response.status)) fail(response.status, 'AUTHENTICATION_REJECTED');
 
     let answer;
-    try { answer = await response.json(); } catch { fail(503, 'RECORD_STORE_UNREADABLE'); }
+    // Bounded, not `response.json()`: a `list` may carry 5,000 rows and the
+    // shape checks below run only after the whole body has been read.
+    try { answer = await readJson(response, MAX_UPSTREAM_BYTES); } catch { fail(503, 'RECORD_STORE_UNREADABLE'); }
     if (!response.ok || response.redirected) {
       // The store's vocabulary, only where it is one of the family's own
       // declared codes. Anything else — a PostgREST message, a constraint name,

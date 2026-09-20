@@ -375,10 +375,18 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
         ...(binary ? { expect: 'application/pdf', maxResponseBytes: 8 * 1024 * 1024 } : {}),
       });
       current(lease);
-      // A JSON handler's envelope is the service's; a document is its bytes.
-      // Neither is re-shaped here, because a migrated caller should see what
-      // its Base44 original returned.
-      return result;
+      // A document is its bytes. A JSON handler is wrapped by the service in
+      // `{success, result, execution, base44ExecutionDependency}`, and that
+      // envelope is unwrapped HERE — at one boundary — so a caller sees what
+      // its Base44 original returned rather than a shape the Base44 path never
+      // produced. Returning it unchanged was a real defect: the adapter then
+      // wrapped it again, and a consumer reading `data.policies` found nothing
+      // because the policies were at `data.result.policies`.
+      if (binary) return result;
+      if (!object(result) || result.success !== true || !Object.hasOwn(result, 'result')) {
+        fail('PENNSYNC_API_RESPONSE_INVALID');
+      }
+      return result.result;
     },
     async signOut() {
       invalidate();

@@ -17,7 +17,7 @@
 // The contract itself decides who may see what. This module carries no
 // authorization logic at all, and that is deliberate: a copy here would be a
 // second answer to keep in agreement with the database's.
-import { ID, fail, isObject } from './contracts.mjs';
+import { ID, MAX_UPSTREAM_BYTES, fail, isObject, readJson } from './contracts.mjs';
 import { validAuthorityKey, validAuthorityTarget } from './authority.mjs';
 
 /**
@@ -43,7 +43,6 @@ export const CONTRACT_CODES = Object.freeze([
   'PENNSYNC_CONTRACT_FORBIDDEN',
 ]);
 const REQUEST_TIMEOUT_MS = 15000;
-const MAX_RESPONSE_BYTES = 1024 * 1024;
 
 /**
  * A contract capability bound to one caller, one agency and one request.
@@ -91,7 +90,7 @@ export function contractCapability({ config, req, agencyId }, fetcher = fetch) {
       fail(response.status, 'AUTHENTICATION_REJECTED');
     }
     let answer;
-    try { answer = await readJsonBounded(response); } catch { fail(503, 'RECORD_STORE_UNREADABLE'); }
+    try { answer = await readJson(response, MAX_UPSTREAM_BYTES); } catch { fail(503, 'RECORD_STORE_UNREADABLE'); }
     if (!response.ok || response.redirected) {
       const declared = isObject(answer) && CONTRACT_CODES.includes(answer.message) ? answer.message : null;
       fail(declared ? 409 : 503, declared ?? 'CONTRACT_REFUSED');
@@ -102,15 +101,7 @@ export function contractCapability({ config, req, agencyId }, fetcher = fetch) {
 
   async function declaredRefusal(response) {
     let body;
-    try { body = await response.json(); } catch { return null; }
+    try { body = await readJson(response, MAX_UPSTREAM_BYTES); } catch { return null; }
     return isObject(body) && CONTRACT_CODES.includes(body.message) ? body.message : null;
   }
-}
-
-async function readJsonBounded(response) {
-  const declared = response.headers.get('content-length');
-  if (declared && (!/^\d+$/.test(declared) || Number(declared) > MAX_RESPONSE_BYTES)) {
-    throw new Error('RECORD_STORE_UNREADABLE');
-  }
-  return response.json();
 }

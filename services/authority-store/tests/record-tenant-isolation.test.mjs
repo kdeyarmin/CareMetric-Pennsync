@@ -26,10 +26,12 @@ import { SCHEMA, renderDdl } from '../../../tools-entity-schema-plan.mjs';
  * predicates deny under. What is settled here is the predicate each table
  * carries; what is settled there is that a real caller is held to it.
  *
- * Still open, and deliberately not answered by either file: the shape of the
- * tenant-scoped RPC family the plan calls for. That a broker owned by the
- * record owner is bound by these policies is now demonstrated; which brokers
- * the ported handlers get is the next decision.
+ * What this file covers and what it does not: the PREDICATE each table carries
+ * is settled here, and the transport that reaches it is settled in
+ * `record-brokers.test.mjs`, which applies the real broker migration and holds
+ * the family D17 settled. This comment used to say that family was still an
+ * open decision, which stopped being true when it was built — and a test
+ * describing the security boundary as undecided misstates it.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const APP = '6a9881683dc68a0bd54f1ef7';

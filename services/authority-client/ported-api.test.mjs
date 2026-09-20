@@ -26,10 +26,17 @@ const API = API_TARGETS[1];
 const password = 'Synthetic-test-password-only';
 const user = { id: config.authUserId, email: config.email, email_confirmed_at: '2026-09-17T00:00:00Z', role: 'authenticated', is_anonymous: false };
 const json = value => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } });
+/**
+ * What the service actually answers for a JSON handler. The first version of
+ * these tests used the bare handler payload, so they proved the transport while
+ * missing that nothing unwrapped the envelope — a caller reading `data.policies`
+ * would have found them at `data.result.policies`.
+ */
+const enveloped = result => json({ success: true, result, execution: 'pennsync-api', base44ExecutionDependency: false });
 const pdf = () => new Response(new Uint8Array([37, 80, 68, 70]), { headers: { 'content-type': 'application/pdf' } });
 const session = () => ({ user: { ...user }, access_token: 'synthetic.access.token', token_type: 'bearer' });
 
-function harness(handler = () => json({ valid: true }), patch = {}) {
+function harness(handler = () => enveloped({ valid: true }), patch = {}) {
   const calls = [];
   const client = createStagingAuthorityClient({ ...config, apiUrl: API, ...patch }, { fetchImpl: async (url, init) => {
     calls.push({ url, init });
@@ -57,7 +64,7 @@ test('a call carries the caller own bearer to the pinned API and no project key'
   const { client, calls } = harness();
   await client.signIn(password);
   assert.deepEqual(await client.callFunction('validatePatientData', 'agency-a', { patient: { first_name: 'A' } }),
-    { valid: true });
+    { valid: true }, 'the caller sees the handler result, not the service envelope');
   const call = calls.at(-1);
   assert.equal(call.url, `${API}/v1/functions/validatePatientData`);
   assert.equal(call.init.method, 'POST');
@@ -154,10 +161,24 @@ test('a call in flight when the session ends does not deliver its answer', async
   await settled;
 });
 
+test('a JSON answer that is not the service envelope is refused', async () => {
+  // Including the bare handler payload these tests used to send themselves.
+  for (const body of [{ valid: true }, { policies: [] }, { success: false, error: 'NOPE' },
+    { success: true }, { result: { valid: true } }, [1, 2], 'a string', null]) {
+    const { client } = harness(() => json(body));
+    await client.signIn(password);
+    await rejects(client.callFunction('validatePatientData', 'agency-a'), 'PENNSYNC_API_RESPONSE_INVALID');
+  }
+  // A document is bytes and carries no envelope, so it is not held to one.
+  const { client } = harness(() => pdf());
+  await client.signIn(password);
+  assert.ok((await client.callFunction('generateUserManual', 'agency-a')) instanceof Uint8Array);
+});
+
 test('the service answering something other than it promised is refused', async () => {
   for (const [name, response] of [
     ['validatePatientData', () => pdf()],
-    ['generateUserManual', () => json({ valid: true })],
+    ['generateUserManual', () => enveloped({ valid: true })],
     ['validatePatientData', () => new Response('not json', { headers: { 'content-type': 'application/json' } })],
     ['validatePatientData', () => new Response('{}', { headers: { 'content-type': 'text/html' } })],
   ]) {

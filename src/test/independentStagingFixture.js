@@ -24,7 +24,10 @@ export function stagingFixture() {
     if (url.startsWith(`${stagingApiUrl}/`)) {
       fixture.apiCalls.push({ url, headers: options.headers, body: options.body ? JSON.parse(options.body) : null });
       if (!live.has(options.headers.Authorization?.slice(7))) return response({}, 401);
-      return fixture.apiResponse ? fixture.apiResponse(url) : response({ valid: true });
+      // The envelope the service actually sends. A bare handler payload here
+      // let the adapter's tests pass while nothing unwrapped it.
+      return fixture.apiResponse ? fixture.apiResponse(url)
+        : response({ success: true, result: { valid: true }, execution: 'pennsync-api', base44ExecutionDependency: false });
     }
     if (!url.startsWith('http://127.0.0.1:54321/')) throw new Error('FIXTURE_FOREIGN_DESTINATION');
     const input = options.body ? JSON.parse(options.body) : {};

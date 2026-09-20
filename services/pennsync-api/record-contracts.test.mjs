@@ -4,6 +4,7 @@ import {
   CONTRACT_CODES, CONTRACT_NAMES, RECORD_CONTRACTS, contractCapability,
 } from './record-contracts.mjs';
 import { AUTHORITY_TARGETS } from './authority.mjs';
+import { MAX_UPSTREAM_BYTES, readJson } from './contracts.mjs';
 import { HANDLER_NAMES } from './handlers.mjs';
 
 /**
@@ -119,11 +120,39 @@ test('a store that answers the wrong shape is an outage, not a surprise in a han
   }
   await rejects(capability({}, () => new Response('not json', { status: 200 }))('listPolicyLibrary', {}),
     'RECORD_STORE_UNREADABLE');
-  await rejects(capability({}, () => new Response('{}', {
-    status: 200, headers: { 'content-type': 'application/json', 'content-length': String(2 * 1024 * 1024) },
-  }))('listPolicyLibrary', {}), 'RECORD_STORE_UNREADABLE');
+  // A declared length is NOT the limit, and must not be: an upstream can lie
+  // about it, and the previous version of this checked the header and then
+  // called `response.json()` — which reads the whole body however large. The
+  // bytes actually read are the limit now, so a small body with an absurd
+  // header succeeds and an oversized stream is refused.
+  assert.deepEqual(await capability({}, () => new Response(JSON.stringify({ policies: [] }), {
+    status: 200, headers: { 'content-type': 'application/json', 'content-length': String(64 * 1024 * 1024) },
+  }))('listPolicyLibrary', {}), { policies: [] });
   await rejects(capability({}, () => { throw new TypeError('network'); })('listPolicyLibrary', {}),
     'RECORD_STORE_UNREACHABLE');
+});
+
+test('the bounded reader stops a stream rather than reading whatever arrives', async () => {
+  // Driven with an explicit small maximum so the property is provable without
+  // generating 16MiB. `MAX_UPSTREAM_BYTES` is the production value and is
+  // asserted to be finite and sane rather than exercised at full size.
+  assert.ok(Number.isSafeInteger(MAX_UPSTREAM_BYTES) && MAX_UPSTREAM_BYTES > 0);
+  const chunked = (total, chunk = 1024) => new Response(new ReadableStream({
+    pull(controller) {
+      const size = Math.min(chunk, total);
+      total -= size;
+      if (size === 0) { controller.close(); return; }
+      controller.enqueue(new Uint8Array(size).fill(0x20));
+    },
+  }), { headers: { 'content-type': 'application/json' } });
+
+  // No Content-Length at all, so the header check the old code relied on would
+  // have let this through untouched.
+  await assert.rejects(readJson(chunked(64 * 1024), 8 * 1024),
+    error => error?.code === 'UPSTREAM_RESPONSE_TOO_LARGE');
+  // And a body inside the cap still parses.
+  assert.deepEqual(await readJson(
+    new Response('{"ok":true}', { headers: { 'content-type': 'application/json' } }), 8 * 1024), { ok: true });
 });
 
 test('the capability hands out a function, never the token that authorizes it', () => {

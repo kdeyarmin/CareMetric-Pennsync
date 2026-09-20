@@ -27,6 +27,12 @@ export const MIGRATION_CODES = Object.freeze([
   'PENNSYNC_RECORD_OWNER_MUST_NOT_LOGIN',
   'PENNSYNC_RECORD_OWNER_NOT_ASSUMABLE',
   'PENNSYNC_RECORD_OWNER_NOT_CREATABLE',
+  // Raised by the broker and contract migrations. Omitting them sent exactly
+  // the failures these diagnostics were added for back to the generic redacted
+  // verdict; `record-migration-codes.test.mjs` now reads the migrations and
+  // fails if a code they raise is missing here.
+  'PENNSYNC_RECORD_STORE_REQUIRED',
+  'PENNSYNC_RECORD_OWNER_REQUIRED',
 ]);
 let pinnedDaemon;
 const localDaemon = value => typeof value === 'string' &&

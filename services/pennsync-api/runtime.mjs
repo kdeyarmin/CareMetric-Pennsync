@@ -2,7 +2,7 @@
 //
 // Every control defaults closed. A deployment that sets nothing serves health
 // and readiness only, and readiness reports itself as not ready.
-import { HANDLER_NAMES } from './handlers.mjs';
+import { HANDLERS, HANDLER_NAMES } from './handlers.mjs';
 import { validAuthorityKey, validAuthorityTarget } from './authority.mjs';
 import { validIntegrationTarget } from './integrations.mjs';
 
@@ -72,11 +72,24 @@ export function loadConfig(env = process.env) {
   });
 }
 
+/** Whether any RELEASED handler reaches the integration runtime. */
+export const requiresIntegration = released =>
+  released.some(name => HANDLERS[name]?.needsIntegration === true);
+
 export function publicReadiness(config) {
   return {
-    ready: config.released && config.authorityConfigured && config.functions.length > 0,
+    // A released handler that reaches the integration runtime needs one
+    // configured. Without this, `/readyz` answered 200 while every call to
+    // `analyzeReferral*` or `generateUserGuidePDF` failed
+    // `INTEGRATIONS_NOT_CONFIGURED` — a service reporting healthy and serving
+    // nothing, which is the failure readiness exists to prevent.
+    ready: config.released && config.authorityConfigured && config.functions.length > 0
+      && (config.integrationsConfigured || !requiresIntegration(config.functions)),
     released: config.released,
     authorityConfigured: config.authorityConfigured,
+    // Stated either way, so an operator can see which dependency is missing.
+    integrationsRequired: requiresIntegration(config.functions),
+    integrationsConfigured: config.integrationsConfigured,
     authorityMode: 'independent',
     // This service has no Base44 client, credential or call path at all.
     base44ExecutionDependency: false,

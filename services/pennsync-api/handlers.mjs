@@ -162,6 +162,7 @@ export const HANDLERS = Object.freeze({
   }),
   generateUserGuidePDF: Object.freeze({
     binary: true,
+    needsIntegration: true,
     // The only port that both asks a model and renders. The guide type is
     // resolved before anything else because it reaches the download filename:
     // an unresolved one could mislabel the file or carry into the header, which
@@ -192,6 +193,9 @@ export const HANDLERS = Object.freeze({
     },
   }),
   analyzeReferral: Object.freeze({
+    // Reaches the integration runtime, so releasing it without one configured
+    // is a service that answers ready and then refuses every call.
+    needsIntegration: true,
     // A dispatcher: the action decides which params are required, so the shape
     // is checked inside rather than by one `exactObject` here.
     handle({ params, integration }) {
@@ -200,12 +204,18 @@ export const HANDLERS = Object.freeze({
     },
   }),
   analyzeReferralIntake: Object.freeze({
+    // Reaches the integration runtime, so releasing it without one configured
+    // is a service that answers ready and then refuses every call.
+    needsIntegration: true,
     handle({ params, integration }) {
       exactObject(params, ['extractedData', 'analysisResults'], 'INVALID_PARAMS');
       return runReferralIntake({ params, integration });
     },
   }),
   analyzeReferralPriority: Object.freeze({
+    // Reaches the integration runtime, so releasing it without one configured
+    // is a service that answers ready and then refuses every call.
+    needsIntegration: true,
     // The first port that reaches outside the service. `integration` is bound
     // to this caller by `app.mjs`; the handler never sees the credential that
     // authorizes the brokered call.
@@ -215,12 +225,18 @@ export const HANDLERS = Object.freeze({
     },
   }),
   generateReferralTasks: Object.freeze({
+    // Reaches the integration runtime, so releasing it without one configured
+    // is a service that answers ready and then refuses every call.
+    needsIntegration: true,
     handle({ params, integration }) {
       exactObject(params, ['referralData', 'priorityAnalysis'], 'INVALID_PARAMS');
       return runReferralTasks({ params, integration });
     },
   }),
   matchPatientWithAI: Object.freeze({
+    // Reaches the integration runtime, so releasing it without one configured
+    // is a service that answers ready and then refuses every call.
+    needsIntegration: true,
     handle({ params, integration }) {
       exactObject(params, ['extractedData', 'existingPatients'], 'INVALID_PARAMS');
       return runPatientMatch({ params, integration });
