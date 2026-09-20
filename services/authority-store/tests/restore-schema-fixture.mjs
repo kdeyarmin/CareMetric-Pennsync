@@ -8,6 +8,11 @@ const expected = {
   'pennsync_private.agency': 'app_id,id,name,status,version',
   'pennsync_private.archive_patient_import_receipt': 'app_id,plan_sha256,owner_sha256,projection_sha256,patient_count,patient_ids,state,database_name,operator_role,created_at,rolled_back_at',
   'pennsync_private.assignment': 'app_id,agency_id,patient_id,membership_id,status,version,changed_by,changed_at,id',
+  // D24's production care team, a sibling of `assignment` rather than the same
+  // table: `assignment` keys to `pennsync_private.patient`, which holds
+  // synthetic rows only, and that key is one of four the archive import relies
+  // on to refuse a rollback that would orphan a care team.
+  'pennsync_private.chart_assignment': 'app_id,id,agency_id,patient_id,membership_id,status,version,changed_by,changed_at',
   'pennsync_private.deployment': 'singleton,app_id,source,pinned_at',
   'pennsync_private.enrollment_receipt': 'app_id,plan_sha256,projection_sha256,identity_count,agency_count,membership_count,database_name,operator_role,created_at',
   'pennsync_private.identity_map': 'app_id,auth_user_id,base44_user_id,expected_email,source_evidence_sha256,verified_at,enabled,revoked_at,version',
