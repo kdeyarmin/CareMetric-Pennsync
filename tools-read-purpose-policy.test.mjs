@@ -204,12 +204,12 @@ test('the emitted SQL is the policy, and the platform tier is the one thing it d
     }
     assert.equal(sql.includes(`"${policy.prefix}_page_size"`), policy.paged, policy.key);
   }
-  // A domain that is extracted but not emitted has no SQL anywhere, so
-  // nothing can call a policy no contract reads. `document` is the one:
-  // its tenancy reaches through `patient_id`, which leaves a document bound
-  // to an agency and no patient invisible to everyone, and fixing that is a
-  // decision rather than a contract's to make.
-  assert.deepEqual([...EXTRACTED_ONLY], ['document']);
+  // A domain that is extracted but not emitted would have no SQL anywhere, so
+  // nothing could call a policy no contract reads. `document` was the one, for
+  // exactly as long as it took D27 to decide how a document reaches its
+  // tenancy; every domain is emitted now, and this holds the rule rather than
+  // the exception.
+  assert.deepEqual([...EXTRACTED_ONLY], []);
   for (const policy of POLICIES.filter(entry => EXTRACTED_ONLY.includes(entry.domain))) {
     assert.ok(!Object.hasOwn(POLICY_SQL_FILES, policy.domain));
     for (const domain of DOMAINS) {
@@ -217,10 +217,17 @@ test('the emitted SQL is the policy, and the platform tier is the one thing it d
         .includes(policy.prefix), `${policy.prefix} must not be emitted anywhere`);
     }
   }
-  // And the purposes are still extracted and compared, so the work cannot
-  // drift from the originals while it waits.
-  assert.equal(purposesOf(byKey.document_list).length, 2);
-  assert.equal(purposesOf(byKey.document_exact).length, 4);
+  // A document purpose discloses no file locator, on either capability. That
+  // is the property that lets this family port before the file layer, and it
+  // belongs beside the extraction because it is a fact about the originals
+  // rather than about the contract.
+  for (const key of ['document_list', 'document_exact']) {
+    for (const purpose of purposesOf(byKey[key])) {
+      for (const field of ['file_url', 'file_uri']) {
+        assert.ok(!policyOf(byKey[key])[purpose].fields.includes(field), `${key}.${purpose}`);
+      }
+    }
+  }
 });
 
 test('the extracted policies are real clinical disclosure contracts, not stubs', () => {

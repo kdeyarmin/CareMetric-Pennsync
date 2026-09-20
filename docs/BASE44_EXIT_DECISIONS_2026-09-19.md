@@ -1624,13 +1624,12 @@ one contract doing both jobs or a handler named after neither capability. The
 invariant now reads the handlers' own source for what they call, which is what
 it was a proxy for.
 
-## D27 — A document's tenancy is the binding, and the store cannot reach it yet
+## D27 — A document's tenancy is the binding, not the chart it happens to name
 
 Porting the authorized visit read alongside the patient one went exactly as
 D26's machinery intended: two more fenced policies extracted, one more
 hand-written contract, four capabilities. The document pair did not, and the
-reason is worth recording because it is a defect in the record store rather
-than in the capability.
+reason was a defect in the record store rather than in the capability.
 
 `pennsync_records.document` has no `agency_id`. D13 resolved its tenancy the
 only way a generated path can — through a column the row itself holds — so
@@ -1651,29 +1650,47 @@ taken before a patient exists is not yet anybody's chart, so it stays
 agency-scoped.* For documents the generator had no agency column to say that
 with.
 
-**The decision: `document` needs a tenant kind that asks the binding, and it is
-its own change.** The binding points at the document, not the other way round,
-so no path the generator can follow expresses it — this is the same shape as
-D23's `roster` kind, whose predicate asks the authority store instead of
-reading the row's own column. It changes `document_read` for every consumer and
-regenerates the store, so it does not belong at the tail of a port.
+**The decision: `document` gets a tenant kind that asks the binding.** The
+binding points at the document, not the other way round, so no path the
+generator could follow expressed it — the same shape as D23's `roster` kind,
+whose predicate asks the authority store instead of reading the row's own
+column. `BINDING_TENANCY` in `tools-tenant-path.mjs` declares it, and
+`applyBindingTenancy` re-checks every part of the claim against the schemas
+before resolving it: the entity must be carried, must NOT have an `agency_id`
+of its own (a claim on one would replace a direct key with a join), the source
+must be carried and must resolve to its own `agency_id`, and the source must
+actually carry the named column. A claim that does not hold throws rather than
+falling back, because a silent fallback would restore the defect the moment the
+claim stopped being true.
 
-What was done instead, so the work is neither lost nor half-shipped:
+Declared, never inferred. "Some carried table references me and has an agency"
+is true of dozens of tables, and inferring from it would let any of them
+authorize the row — including one a caller can write.
 
-- The two document purpose policies **are** extracted, committed and gated in
-  `services/pennsync-api/read-purpose-policy.mjs`, exactly as the four that
-  shipped. They cannot drift from the originals while they wait.
-- No document SQL is emitted. `POLICY_SQL_FILES` names the domains whose
-  policies become functions, `document` is absent from it, and a test asserts
-  that its prefixes appear in no migration. Policy functions nothing can call
-  would be dead SQL, which is what the contract-reachability invariant exists
-  to prevent.
+What it changed, and what it did not:
+
+- `document_read` and its three siblings now ask `document_tenant_binding`,
+  carrying that table's own D24 narrowing in — including the null-patient
+  branch, so an intake document is agency-scoped exactly as a referral is.
+- The two tables that reference `Document` (`EmbedConfig`,
+  `TermsAcceptanceAudit`) follow the new path automatically, because a
+  reference predicate inlines its target's. Twelve policies changed in total.
+- A document with **no** binding is now in no tenant and belongs to nobody.
+  That is the same answer both originals give — every document they serve is
+  joined to a binding — and it means a write must create the binding first.
+  The isolation test says so.
+- `RESOLVING_KINDS` gained `binding`, so a reference may resolve through one;
+  the chart-coverage test had to learn the same hop, which is how it reported
+  three tables as narrowed for no reason until it did.
+
+With that decided, `listAuthorizedDocuments` and `getAuthorizedDocument` port
+on the same machinery as the other four.
 
 One thing the aborted attempt established that is worth keeping: **no document
 purpose discloses a file locator, and the capability never needed one.** Not
 `download`, which returns `file_name`, `file_size` and `file_type` and nothing
 to fetch with. The original goes further and refuses a document whose
 `file_url` is not null, which is how it enforces that the locator has already
-been moved out of the row. So when D27 lands, the document read is portable
+been moved out of the row. So the document read is portable
 *ahead of the file layer* rather than behind it — the opposite of what the
 `files` blocker would suggest, and only visible by reading the projections.

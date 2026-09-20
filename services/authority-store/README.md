@@ -328,14 +328,8 @@ be recorded in the file.
 | `20260920060000_contract_patient_read.sql` | `listAuthorizedPatients` (page and id-batch modes) and `getAuthorizedPatient` (D26). The first ported capabilities that read clinical rows. Which ROWS is the policies' answer — tenancy plus D24's chart narrowing; which FIELDS and to whom is the purpose's, and the two vocabularies are kept apart so a list caller cannot reach a single-chart projection |
 | `20260920070000_visit_purpose_policy.sql` | The same, for the visit pair |
 | `20260920080000_contract_visit_read.sql` | `listAuthorizedVisits` and `getAuthorizedVisit`. `visit` carries its own `agency_id` AND a `patient_id`, so D24 wrote the narrowing onto the table: a visit whose subject is null stays agency-scoped, because a visit with no patient is not yet anybody's chart. The two capabilities share three purpose NAMES and mean different projections — `compliance_review` is fourteen fields on one visit and eight on a row of a list — so each asks its own |
-
-The document pair is not here, and D27 says why: `document` has no
-`agency_id`, so the store reaches its tenancy through `patient_id`, which
-leaves a document bound to an agency and no patient — a referral taken before
-a patient exists — invisible to everyone, an agency administrator included.
-Its purposes are extracted and gated like the other four; no SQL is emitted
-for them, and a test asserts none is, because policy functions nothing can
-call are dead SQL in a migration.
+| `20260920090000_document_purpose_policy.sql` | The same, for the document pair |
+| `20260920100000_contract_document_read.sql` | `listAuthorizedDocuments` and `getAuthorizedDocument` (D27). A `document` has no `agency_id`: `document_tenant_binding` carries it, so both the policy and these contracts read FROM the binding, and a document with no binding is in no tenant. No purpose discloses a file locator — not even `download` — which is why this family ports before the file layer rather than after it |
 
 Each one refuses a database without `caller_tenant_role`, so they apply after
 the record store; `tests/provision.test.mjs` asserts that order for every file

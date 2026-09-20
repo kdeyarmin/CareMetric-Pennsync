@@ -286,9 +286,9 @@
     },
     {
       "entity": "Document",
-      "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
+      "kind": "binding",
+      "via": "document_id",
+      "target": "DocumentTenantBinding",
       "depth": 2
     },
     {
@@ -1101,7 +1101,8 @@
     "carried": 156,
     "root": 1,
     "direct": 14,
-    "reference": 54,
+    "reference": 53,
+    "binding": 1,
     "actor": 34,
     "profile_claim": 1,
     "unresolved": 52,

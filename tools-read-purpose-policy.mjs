@@ -46,21 +46,15 @@ export const POLICY_FILE = 'services/pennsync-api/read-purpose-policy.mjs';
  * Where a domain's generated SQL goes. One file each, because one contract
  * family reads each.
  *
- * A domain is absent here when its policies are extracted but not yet emitted,
- * and `document` is the one: a `document` row has no `agency_id`, so the
- * record store reaches its tenancy through `patient_id`, which leaves a
- * document bound to an agency and no patient — a referral taken before a
- * patient exists — invisible to everyone, an agency administrator included.
- * `document_tenant_binding` is what actually carries the agency, and reaching
- * it means a tenant kind that asks a table pointing BACK at the row rather
- * than a column the row holds. That is a decision (D27), not a contract's to
- * make, and emitting policy functions nothing can call yet would be dead SQL
- * in a migration. The purposes stay extracted and gated in the data module so
- * the work is not lost and cannot drift while it waits.
+ * A domain would be absent here if its policies were extracted but not yet
+ * emitted — the state `document` was in for exactly as long as it took D27 to
+ * decide how a document reaches its tenancy, because policy functions nothing
+ * can call are dead SQL in a migration.
  */
 export const POLICY_SQL_FILES = Object.freeze({
   patient: 'services/authority-store/supabase/record-migrations/20260920050000_patient_purpose_policy.sql',
   visit: 'services/authority-store/supabase/record-migrations/20260920070000_visit_purpose_policy.sql',
+  document: 'services/authority-store/supabase/record-migrations/20260920090000_document_purpose_policy.sql',
 });
 /**
  * The same policies as SQL, so the projection a caller receives is decided in

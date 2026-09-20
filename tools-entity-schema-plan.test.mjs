@@ -228,11 +228,17 @@ test('every table that names a chart is narrowed to it, by its own predicate or 
     .entities.map(entry => [entry.entity, entry]));
   const subjects = new Map(plan.map(entry => [entry.entity, entry.chart_subject ?? null]));
   const namesAChart = (entity) => entity === CHART_ROOT || subjects.get(entity) !== null;
+  // A binding path borrows its source's narrowing exactly as a reference
+  // borrows its target's — the difference is which side holds the key, not
+  // what travels — so both hops count here. Leaving `binding` out reported
+  // `Document` and the two tables that reference it as narrowed for no
+  // reason, which is the shape of a rule quietly hiding rows.
+  const BORROWING = ['reference', 'binding'];
   const reaches = (entity, seen = new Set()) => {
     if (seen.has(entity)) return false;
     seen.add(entity);
     const path = paths.get(entity);
-    if (!path || path.kind !== 'reference') return false;
+    if (!path || !BORROWING.includes(path.kind)) return false;
     return namesAChart(path.target) || reaches(path.target, seen);
   };
   const missing = plan.filter(entry => (namesAChart(entry.entity) || reaches(entry.entity))

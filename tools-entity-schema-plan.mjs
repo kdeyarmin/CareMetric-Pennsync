@@ -571,6 +571,29 @@ export function tenantPredicate(entity, alias, index, { paths, tables, plans }, 
       + ` and ${next}.${quote('id')} = ${alias}.${quote(snakeCase(path.via))}`
       + ` and ${inner}${chart === null ? '' : ` and ${chart}`})`;
   }
+  if (path.kind === 'binding') {
+    // The mirror image of a reference: the row holds no key, so the predicate
+    // looks for a row in the BINDING table that names this one. `Document` is
+    // the case (D27) — the binding is what says which agency a document is in,
+    // and following `document.patient_id` instead makes a document bound to an
+    // agency and no patient belong to nobody.
+    //
+    // Two properties follow from the direction and are worth stating. The
+    // binding's own chart narrowing is carried in, exactly as a reference
+    // carries its target's, so a clinician reaches a document through the
+    // binding's patient rather than the document's copy of it. And a row with
+    // no binding at all is visible to nobody, which is the same answer the
+    // originals give: every document they serve is joined to one.
+    const next = `t${index + 1}`;
+    const source = tables.get(path.target);
+    if (!source) throw new Error(`TENANT_PATH_TARGET_UNKNOWN:${entity}:${path.target}`);
+    const inner = tenantPredicate(path.target, next, index + 1, { paths, tables, plans }, depth + 1);
+    const chart = chartPredicate(plans?.get(path.target), next);
+    return `exists (select 1 from ${quote(SCHEMA)}.${quote(source)} ${next}`
+      + ` where ${next}.${quote('source_app_id')} = ${alias}.${quote('source_app_id')}`
+      + ` and ${next}.${quote(snakeCase(path.via))} = ${alias}.${quote('id')}`
+      + ` and ${inner}${chart === null ? '' : ` and ${chart}`})`;
+  }
   // A self-editable profile claim is excluded from authorization by
   // construction — it is the defect that paused `analyzeClinicalData`. Falling
   // through to the agency predicate here would authorize `User` reads through

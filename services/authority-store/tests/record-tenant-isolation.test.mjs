@@ -287,17 +287,23 @@ test('the narrowing travels with a borrowed predicate, not only with its own', a
   // `patient` and asked only whether the patient was in the caller's agency.
   // Fifty-four tables looked narrowed and were not — every document, alert,
   // medication and note of a patient the caller was never assigned to.
-  await seed(`delete from ${SCHEMA}."document"; delete from ${SCHEMA}."visit"; delete from ${SCHEMA}."patient";
+  await seed(`delete from ${SCHEMA}."document_tenant_binding"; delete from ${SCHEMA}."document";
+    delete from ${SCHEMA}."visit"; delete from ${SCHEMA}."patient";
     insert into ${SCHEMA}."patient"("source_app_id","id","agency_id") values
     ('${APP}','patient-a1','agency-a'), ('${APP}','patient-a2','agency-a');
     insert into ${SCHEMA}."document"("source_app_id","id","patient_id") values
     ('${APP}','doc-mine','patient-a1'), ('${APP}','doc-theirs','patient-a2');
+    insert into ${SCHEMA}."document_tenant_binding"
+      ("source_app_id","id","document_id","agency_id","patient_id") values
+    ('${APP}','bind-mine','doc-mine','agency-a','patient-a1'),
+    ('${APP}','bind-theirs','doc-theirs','agency-a','patient-a2');
     insert into ${SCHEMA}."visit"("source_app_id","id","agency_id","patient_id") values
     ('${APP}','visit-mine','agency-a','patient-a1'), ('${APP}','visit-theirs','agency-a','patient-a2');`);
   try {
-    // `document` borrows its tenancy from `patient`; `visit` carries its own
-    // `agency_id` and its own `patient_id`. Both must narrow, by different
-    // routes, and a test using only one of them would prove half of it.
+    // `document` borrows its tenancy from the table that BINDS it (D27);
+    // `visit` carries its own `agency_id` and its own `patient_id`. Both must
+    // narrow, by different routes, and a test using only one of them would
+    // prove half of it.
     assert.deepEqual(await as(AGENCY_A, `select "id" from ${SCHEMA}."document"`).then(ids),
       ['doc-mine', 'doc-theirs']);
     assert.deepEqual(await as(ASSIGNED, `select "id" from ${SCHEMA}."document"`).then(ids), ['doc-mine']);
@@ -313,11 +319,20 @@ test('the narrowing travels with a borrowed predicate, not only with its own', a
       values ('${APP}','doc-intruded','patient-a2')`);
     assert.deepEqual(await as(ASSIGNED,
       `update ${SCHEMA}."visit" set "id" = "id" where "id" = 'visit-theirs' returning "id"`), []);
-    // And into their own, they still can.
+    // A document with no binding is in no tenant, so nobody may insert one —
+    // not even into a chart they hold. D27's direction makes the ordering
+    // explicit: the binding says which agency a document is in, so it has to
+    // exist before the document does.
+    await refused(ASSIGNED, `insert into ${SCHEMA}."document"("source_app_id","id","patient_id")
+      values ('${APP}','doc-unbound','patient-a1')`);
+    // With the binding in place first, into their own chart they still can.
+    await db.exec(`insert into ${SCHEMA}."document_tenant_binding"
+      ("source_app_id","id","document_id","agency_id","patient_id")
+      values ('${APP}','bind-added','doc-added','agency-a','patient-a1')`);
     assert.deepEqual(await as(ASSIGNED, `insert into ${SCHEMA}."document"("source_app_id","id","patient_id")
       values ('${APP}','doc-added','patient-a1') returning "id"`), [{ id: 'doc-added' }]);
-  } finally { await db.exec(`delete from ${SCHEMA}."document"; delete from ${SCHEMA}."visit";
-    delete from ${SCHEMA}."patient";`); }
+  } finally { await db.exec(`delete from ${SCHEMA}."document_tenant_binding";
+    delete from ${SCHEMA}."document"; delete from ${SCHEMA}."visit"; delete from ${SCHEMA}."patient";`); }
 });
 
 test('a row naming no chart stays with its agency, because it is not one yet', async () => {
@@ -343,10 +358,14 @@ test('a row naming no chart stays with its agency, because it is not one yet', a
 });
 
 test('a revoked assignment closes the chart, and every table that hangs off it', async () => {
-  await seed(`delete from ${SCHEMA}."document"; delete from ${SCHEMA}."patient";
+  await seed(`delete from ${SCHEMA}."document_tenant_binding"; delete from ${SCHEMA}."document";
+    delete from ${SCHEMA}."patient";
     insert into ${SCHEMA}."patient"("source_app_id","id","agency_id") values
     ('${APP}','patient-a1','agency-a');
-    insert into ${SCHEMA}."document"("source_app_id","id","patient_id") values ('${APP}','doc-1','patient-a1');`);
+    insert into ${SCHEMA}."document"("source_app_id","id","patient_id") values ('${APP}','doc-1','patient-a1');
+    insert into ${SCHEMA}."document_tenant_binding"
+      ("source_app_id","id","document_id","agency_id","patient_id")
+      values ('${APP}','bind-1','doc-1','agency-a','patient-a1');`);
   try {
     assert.deepEqual(await as(ASSIGNED, `select "id" from ${SCHEMA}."document"`).then(ids), ['doc-1']);
     await db.exec('begin');
@@ -362,7 +381,38 @@ test('a revoked assignment closes the chart, and every table that hangs off it',
       assert.deepEqual((await db.query(`select "id" from ${SCHEMA}."document"`)).rows, [],
         'the chart closing must close what hangs off it too');
     } finally { await db.exec('rollback'); }
-  } finally { await db.exec(`delete from ${SCHEMA}."document"; delete from ${SCHEMA}."patient";`); }
+  } finally { await db.exec(`delete from ${SCHEMA}."document_tenant_binding";
+    delete from ${SCHEMA}."document"; delete from ${SCHEMA}."patient";`); }
+});
+
+test('a document bound to an agency and no patient belongs to that agency', async () => {
+  // D27's case, and the reason `document` stopped borrowing from `patient`. A
+  // referral document exists before an intake becomes a patient: its binding
+  // names an agency and no chart. Reading it through `document.patient_id`
+  // made it belong to nobody, so an agency administrator could not see it
+  // either — which is not a narrowing anybody chose.
+  await seed(`delete from ${SCHEMA}."document_tenant_binding"; delete from ${SCHEMA}."document";
+    delete from ${SCHEMA}."patient";
+    insert into ${SCHEMA}."document"("source_app_id","id") values ('${APP}','doc-intake');
+    insert into ${SCHEMA}."document_tenant_binding"
+      ("source_app_id","id","document_id","agency_id","patient_id")
+      values ('${APP}','bind-intake','doc-intake','agency-a',null);`);
+  try {
+    for (const caller of [AGENCY_A, ASSIGNED, UNASSIGNED]) {
+      assert.deepEqual(await as(caller, `select "id" from ${SCHEMA}."document"`).then(ids),
+        ['doc-intake'], 'intake data stays agency-scoped, as it does for a referral');
+    }
+    assert.deepEqual(await as(AGENCY_B, `select "id" from ${SCHEMA}."document"`).then(ids), [],
+      'and the other agency still sees none of it');
+    // A document with no binding at all is in no tenant and belongs to nobody,
+    // which is the same answer both authorized-read originals give: every
+    // document they serve is joined to a binding.
+    await db.exec(`insert into ${SCHEMA}."document"("source_app_id","id") values ('${APP}','doc-orphan')`);
+    for (const caller of [AGENCY_A, AGENCY_B, ASSIGNED]) {
+      assert.ok(!(await as(caller, `select "id" from ${SCHEMA}."document"`).then(ids)).includes('doc-orphan'));
+    }
+  } finally { await db.exec(`delete from ${SCHEMA}."document_tenant_binding";
+    delete from ${SCHEMA}."document"; delete from ${SCHEMA}."patient";`); }
 });
 
 test('a row belonging to the other source app is not this deployment to show', async () => {

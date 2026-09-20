@@ -237,6 +237,30 @@ export const HANDLERS = Object.freeze({
       return { visit };
     },
   }),
+  listAuthorizedDocuments: Object.freeze({
+    // `binding_purpose` is what a document is attached to — a patient's chart
+    // or a referral — and `patient_id` narrows to one chart. A caller who
+    // does not open every chart must name one; that rule is the contract's,
+    // not this handler's, because it is about who is asking.
+    handle({ params, contract }) {
+      exactObject(params, ['purpose', 'patient_id', 'binding_purpose', 'sort', 'page_size', 'after'],
+        'INVALID_PARAMS');
+      // The contract orders by document id ascending and has no second
+      // ordering to offer. The original takes the argument and refuses
+      // anything else, under its own name for the same order.
+      if (params.sort !== undefined && params.sort !== 'document_id_asc') fail(400, 'INVALID_PARAMS');
+      const { sort: unused, ...rest } = params;
+      return contract('listAuthorizedDocuments', rest);
+    },
+  }),
+  getAuthorizedDocument: Object.freeze({
+    async handle({ params, contract }) {
+      exactObject(params, ['purpose', 'document_id'], 'INVALID_PARAMS');
+      const document = await contract('getAuthorizedDocument', params);
+      if (document === null) fail(404, 'DOCUMENT_UNAVAILABLE');
+      return { document };
+    },
+  }),
   generateBagTechniquePDF: Object.freeze({
     binary: true,
     handle({ params, config }) {

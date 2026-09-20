@@ -232,6 +232,7 @@ const migration = file => readFileSync(new URL(
   `../authority-store/supabase/record-migrations/${file}`, import.meta.url), 'utf8');
 const PATIENT_SQL = migration('20260920060000_contract_patient_read.sql');
 const VISIT_SQL = migration('20260920080000_contract_visit_read.sql');
+const DOCUMENT_SQL = migration('20260920100000_contract_document_read.sql');
 /** The codes one SQL function raises, read from that function's own body. */
 const raisedBy = (sql, name, terminator) => {
   const start = sql.indexOf(`create function "pennsync_records".${name}(`);
@@ -266,6 +267,10 @@ const FAMILIES = [
     listAuthorizedVisits: 'contract_visit_list',
     getAuthorizedVisit: 'contract_visit_get',
   } },
+  { sql: DOCUMENT_SQL, prefix: 'PENNSYNC_DOCUMENT_', gate: 'document_purpose_gate', contracts: {
+    listAuthorizedDocuments: 'contract_document_list',
+    getAuthorizedDocument: 'contract_document_get',
+  } },
 ];
 
 test('each clinical contract declares exactly the refusals it can actually raise', () => {
@@ -276,7 +281,7 @@ test('each clinical contract declares exactly the refusals it can actually raise
         [...new Set([...gate, ...raisedBy(family.sql, sqlName, 'end $contract$;')])].sort(), name);
     }
     // Only a page contract can end a walk, so only it may say so.
-    for (const name of Object.keys(family.contracts).filter(entry => !/Page$|^listAuthorizedVisits$/.test(entry))) {
+    for (const name of Object.keys(family.contracts).filter(entry => !/^list/.test(entry))) {
       assert.ok(!RECORD_CONTRACTS[name].codes.includes(`${family.prefix}CURSOR_UNKNOWN`), name);
     }
     // Between them the family's contracts account for every refusal its

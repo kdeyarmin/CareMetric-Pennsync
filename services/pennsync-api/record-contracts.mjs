@@ -169,6 +169,51 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_VISIT_SUBJECT_INVALID',
     ]),
   }),
+  // The authorized document read. Its tenancy is the binding, not the row
+  // (D27), and its purposes disclose no file locator at all — not even
+  // `download` — which is why it ports before the file layer rather than
+  // after it.
+  listAuthorizedDocuments: Object.freeze({
+    rpc: 'pennsync_contract_document_list',
+    params: Object.freeze(['purpose', 'patient_id', 'binding_purpose', 'page_size', 'after']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_purpose: args.purpose ?? null,
+      p_patient_id: args.patient_id === undefined ? null : args.patient_id,
+      p_binding_purpose: args.binding_purpose === undefined ? null : args.binding_purpose,
+      // Ten is the original's `MAX_PAGE_SIZE` and its default, which are the
+      // same number here because it declares one bound for both purposes.
+      p_page_size: args.page_size === undefined ? 10 : args.page_size,
+      p_after: args.after === undefined ? null : args.after,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_DOCUMENT_AGENCY_NOT_HELD',
+      'PENNSYNC_DOCUMENT_PURPOSE_INVALID',
+      'PENNSYNC_DOCUMENT_FORBIDDEN',
+      'PENNSYNC_DOCUMENT_SUBJECT_REQUIRED',
+      'PENNSYNC_DOCUMENT_SUBJECT_INVALID',
+      'PENNSYNC_DOCUMENT_BINDING_INVALID',
+      'PENNSYNC_DOCUMENT_PAGE_SIZE_INVALID',
+      'PENNSYNC_DOCUMENT_CURSOR_INVALID',
+      'PENNSYNC_DOCUMENT_CURSOR_UNKNOWN',
+    ]),
+  }),
+  getAuthorizedDocument: Object.freeze({
+    rpc: 'pennsync_contract_document_get',
+    params: Object.freeze(['purpose', 'document_id']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_purpose: args.purpose ?? null,
+      p_document_id: args.document_id ?? null,
+    }),
+    nullable: true,
+    codes: Object.freeze([
+      'PENNSYNC_DOCUMENT_AGENCY_NOT_HELD',
+      'PENNSYNC_DOCUMENT_PURPOSE_INVALID',
+      'PENNSYNC_DOCUMENT_FORBIDDEN',
+      'PENNSYNC_DOCUMENT_SUBJECT_INVALID',
+    ]),
+  }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
     params: Object.freeze(['user_id']),

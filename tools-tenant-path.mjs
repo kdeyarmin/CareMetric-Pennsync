@@ -56,9 +56,41 @@ export const SELF_EDITABLE = Object.freeze(['User']);
  * deliberately not counted; nor is a display name, which identifies nobody.
  */
 export const ACTOR_PATTERN = /(^|_)by(_user_id|_email|_id)?$|^user_(id|email)$|_user_email$/;
-export const KINDS = Object.freeze(['root', 'direct', 'reference', 'actor', 'profile_claim', 'unresolved']);
+export const KINDS = Object.freeze([
+  'root', 'direct', 'reference', 'binding', 'actor', 'profile_claim', 'unresolved']);
 /** Kinds a reference may resolve through. */
-export const RESOLVING_KINDS = Object.freeze(['root', 'direct', 'reference']);
+export const RESOLVING_KINDS = Object.freeze(['root', 'direct', 'reference', 'binding']);
+/**
+ * Entities whose tenancy is carried by a table that points AT them, rather
+ * than by a column they hold (D27).
+ *
+ * `Document` is the case that produced this kind and so far the only one. It
+ * has no `agency_id`, so a path resolver following the columns the row holds
+ * finds `patient_id` and reaches `Patient` — which reads as tenancy and is
+ * not. A document bound to an agency and no patient, which is what a referral
+ * document is before an intake becomes a patient, then belongs to nobody and
+ * is invisible to everyone including an agency administrator.
+ * `DocumentTenantBinding` is what actually says which agency a document is in;
+ * the name says so, and both authorized-read originals read it for exactly
+ * that while treating `document.patient_id` as a denormalized copy to
+ * cross-check rather than to trust.
+ *
+ * DECLARED, never inferred. "Some carried table references me and has an
+ * agency" is true of dozens of tables, and inferring from it would let any of
+ * them authorize the row — including one a caller can write. Each entry is a
+ * positive claim, and `buildPaths` re-checks every part of it against the
+ * schemas: the source must be carried, must resolve to its own `agency_id`,
+ * must actually carry the named column, and the entity itself must not have an
+ * `agency_id` of its own to use instead.
+ */
+export const BINDING_TENANCY = Object.freeze({
+  Document: Object.freeze({
+    source: 'DocumentTenantBinding',
+    via: 'document_id',
+    because: 'D27. A document has no agency of its own; the binding carries it, '
+      + 'and a document bound to an agency and no patient is otherwise invisible to everyone.',
+  }),
+});
 /** Kinds that leave a table without a usable policy predicate. */
 export const BLOCKING_KINDS = Object.freeze(['actor', 'profile_claim', 'unresolved']);
 
@@ -96,6 +128,38 @@ export function referenceColumns(properties, byNormalized) {
   return references;
 }
 
+/**
+ * Resolve the declared binding claims, before any reference hop.
+ *
+ * Before, because the whole point is that the reference path is the wrong
+ * answer — `Document` would otherwise reach `Patient` through `patient_id`.
+ * Every part of a claim is checked here rather than trusted, and one that does
+ * not hold throws instead of falling back to the path it was written to
+ * replace: a silent fallback would restore the defect the moment the claim
+ * stopped being true, which is the one failure mode a declaration like this
+ * has.
+ */
+export function applyBindingTenancy({ resolved, names, properties }, claims = BINDING_TENANCY) {
+  for (const [name, claim] of Object.entries(claims)) {
+    if (!names.includes(name)) throw new Error(`BINDING_TENANCY_NOT_CARRIED:${name}`);
+    // An entity with an `agency_id` of its own is already resolved, and a
+    // claim on it would replace a direct key with a join.
+    if (resolved.has(name)) throw new Error(`BINDING_TENANCY_HAS_OWN_TENANT:${name}`);
+    if (!names.includes(claim.source)) throw new Error(`BINDING_SOURCE_NOT_CARRIED:${name}`);
+    const source = resolved.get(claim.source);
+    // The source must carry its own agency. Anything else moves the question
+    // one table along rather than answering it.
+    if (!source || source.kind !== 'direct') throw new Error(`BINDING_SOURCE_NOT_DIRECT:${name}`);
+    if (!Object.hasOwn(properties.get(claim.source) || {}, claim.via)) {
+      throw new Error(`BINDING_SOURCE_COLUMN_MISSING:${name}:${claim.via}`);
+    }
+    resolved.set(name, {
+      kind: 'binding', via: claim.via, target: claim.source, depth: source.depth + 1,
+    });
+  }
+  return resolved;
+}
+
 export function buildPaths(repository) {
   const names = carriedEntities(repository);
   const byNormalized = new Map(names.map(name => [normalize(name), name]));
@@ -111,6 +175,8 @@ export function buildPaths(repository) {
         : { kind: 'direct', via: TENANT_COLUMN, target: null, depth: 1 });
     }
   }
+
+  applyBindingTenancy({ resolved, names, properties });
 
   // Widen by one reference hop at a time so every path recorded is a shortest
   // one, and so a cycle simply never resolves instead of looping.
