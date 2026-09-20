@@ -3392,3 +3392,49 @@ otherwise still show who rejected it. The port nulls them, and a test
 resubmits and checks.
 
 Port queue: `records_schema` 31 → 29, written 52 → 54.
+
+## D53 — Sequencing a model and a write, and where `audit_recorded` belongs
+
+**Decision.** Port `triageReferralWithAI` as the first capability that asks a
+brokered model and then writes, and establish the shape the remaining
+model-backed ports follow.
+
+**This was the open question, and measuring answered it.** Eleven of the
+capabilities still in the port queue call `Core.InvokeLLM` and touch records,
+and the worry was that they needed an orchestration nothing had built. They do
+not. `InvokeLLM` is already brokered, the handler is already handed
+`integration`, `audit`, `records` and `contract`, and the sequence is just: ask
+the model, shape the answer, record only what may be recorded, say whether the
+record was made. What was missing was a worked example, not a mechanism.
+
+**The containment rule is the original's, and it is the interesting part.** From
+its own comment:
+
+> *"Log only the triage category. The analysis contains patient identity and
+> clinical detail; UserActivity is a broad operational audit surface, not a
+> second copy of the referral record."*
+
+So the trail entry carries the urgency level and nothing else — the same
+discipline D44 kept for a patched incident, where only the KEYS of the change
+are recorded. `auditUrgencyLevel` normalises anything unexpected to `UNKNOWN`
+rather than writing what the model said, which matters because a model can
+answer in prose and that prose would otherwise land in the trail. A test sends
+`"EXTREMELY URGENT — patient is Ada Lovelace"` as the urgency and checks the
+trail says `UNKNOWN`.
+
+**`audit_recorded` returns, and that is not a reversal of D37.** D37 deleted
+that flag, its `catch` and its *"Record this transition manually"* warning from
+the incident port, because one transaction made it impossible for the change and
+its record to disagree. This handler has no transaction to offer: the model call
+is one network round trip and the trail append is another, so a failed append
+after a successful analysis is a state that can really happen. The original
+swallows it and returns the analysis, which is right — the analysis has already
+been paid for and losing it helps nobody — and the port says so in the answer
+rather than silently. **The flag belongs wherever a transaction does not, and
+nowhere else.**
+
+The prompt is read out of the original by the test rather than asserted, so a
+rewording fails the suite instead of quietly changing what the model is asked.
+
+Port queue: `records_schema` 29 → 28, written 54 → 55. The eleven model-backed
+ports are now blocked on nothing but their own record contracts.

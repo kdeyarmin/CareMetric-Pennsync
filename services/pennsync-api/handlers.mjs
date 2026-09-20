@@ -8,6 +8,7 @@
 // Every handler receives the caller's already-resolved current authority. A
 // handler never resolves its own authority and never widens it.
 import { exactObject, fail, isObject } from './contracts.mjs';
+import { triageReferral } from './referral-triage.mjs';
 import {
   BAG_TECHNIQUE_FILENAME, SMART_NOTE_GUIDE_FILENAME, USER_MANUAL_FILENAME,
   buildBagTechniqueChecklist, buildSmartNoteGuide, buildUserManual, documentDate,
@@ -785,6 +786,18 @@ export const HANDLERS = Object.freeze({
     handle({ params, integration }) {
       exactObject(params, ['referralData', 'priorityAnalysis'], 'INVALID_PARAMS');
       return runReferralTasks({ params, integration });
+    },
+  }),
+  triageReferralWithAI: Object.freeze({
+    // The first port to sequence a brokered model call and a write. The trail
+    // entry carries the urgency category and nothing else, which is the
+    // original's own containment rule: "The analysis contains patient identity
+    // and clinical detail; UserActivity is a broad operational audit surface,
+    // not a second copy of the referral record."
+    needsIntegration: true,
+    handle({ params, integration, audit }) {
+      exactObject(params, ['referralData'], 'INVALID_PARAMS');
+      return triageReferral({ params, integration, audit });
     },
   }),
   matchPatientWithAI: Object.freeze({
