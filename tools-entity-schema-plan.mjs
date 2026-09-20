@@ -127,6 +127,8 @@ export function enumValues(property) {
 export const CHART_SUBJECTS = Object.freeze(['patient_id', 'target_patient_id', 'related_patient_id']);
 /** `Patient` is its own chart, so its subject is the row's identity. */
 export const CHART_ROOT = 'Patient';
+/** What `chartSubject` answers for the root: its subject is its own identity. */
+export const CHART_ROOT_SUBJECT = 'id';
 
 /**
  * Which column narrows this entity to a chart, or null when nothing does.
@@ -140,7 +142,7 @@ export const CHART_ROOT = 'Patient';
  * table that stops being narrowed is a visible change rather than a quiet one.
  */
 export function chartSubject(entity, tenantKey, columns) {
-  if (entity === CHART_ROOT) return 'id';
+  if (entity === CHART_ROOT) return CHART_ROOT_SUBJECT;
   // Only where the row's own predicate can name both an agency and a patient.
   if (!tenantKey) return null;
   const names = new Set(columns.map(column => column.name));
@@ -652,6 +654,29 @@ export function renderPolicies(plan, resolution) {
   // `chartPredicate` has the rest of the reasoning.
   const chart = chartPredicate(plan, self);
   const scoped = predicate => (chart === null ? predicate : `${predicate} and ${chart}`);
+  /**
+   * The one place the chart narrowing does not belong: inserting the chart
+   * ROOT.
+   *
+   * Everywhere else an insert names a chart that already exists, and writing
+   * into a chart you cannot open is the same disclosure in the other
+   * direction, so the narrowing is exactly right — a clinician may not file a
+   * document or a note against a stranger's record. `Patient` is different:
+   * its subject IS its identity, so the row being inserted is the chart, and
+   * `caller_assigned_patients` can never contain an id that does not exist
+   * yet. Applied there, the predicate does not narrow anything; it makes
+   * creating a patient impossible for every role that does not already open
+   * every chart in the agency.
+   *
+   * Measured rather than reasoned about: an `agency_admin` could insert and a
+   * `clinician` could not, while the Base44 original admits `agency_admin`,
+   * `manager` AND `clinician` to `PATIENT_CREATE_ROLES`. Tenancy still applies
+   * — the new row must name an agency the caller holds — and the read, update
+   * and delete policies keep the narrowing, so a clinician who creates a
+   * patient still cannot open it until an assignment says so. That gap is
+   * real and is not this predicate's to close; see D28.
+   */
+  const rootInsert = plan.chart_subject === CHART_ROOT_SUBJECT;
 
   if (kind === 'global') {
     // Platform reference: every caller reads it and no tenant surface writes
@@ -685,7 +710,7 @@ export function renderPolicies(plan, resolution) {
   const guarded = scoped(write);
   return [
     `create policy ${name('read')} on ${qualified} for select using (${read});`,
-    `create policy ${name('insert')} on ${qualified} for insert with check (${guarded});`,
+    `create policy ${name('insert')} on ${qualified} for insert with check (${rootInsert ? write : guarded});`,
     `create policy ${name('update')} on ${qualified} for update using (${guarded}) with check (${guarded});`,
     `create policy ${name('delete')} on ${qualified} for delete using (${guarded});`,
   ];

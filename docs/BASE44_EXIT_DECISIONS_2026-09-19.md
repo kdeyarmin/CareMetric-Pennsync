@@ -1694,3 +1694,53 @@ to fetch with. The original goes further and refuses a document whose
 been moved out of the row. So the document read is portable
 *ahead of the file layer* rather than behind it — the opposite of what the
 `files` blocker would suggest, and only visible by reading the projections.
+
+## D28 — Creating a chart is not opening it, and closing that gap is a write to two stores
+
+Starting the write half of the authorized-patient family turned up a defect in
+D24 that six ported reads could not have shown, because it is only visible when
+something inserts.
+
+**A clinician could not create a patient at all.** `patient_insert` carried
+D24's chart predicate along with the tenant one, and for `Patient` that
+predicate asks whether the row's own id is in `caller_assigned_patients`. The
+row being inserted *is* the chart, so its id cannot be in anybody's assignments
+yet. Applied there the predicate narrows nothing; it refuses every role that
+does not already open every chart in the agency. Measured exactly that way: an
+`agency_admin` inserted and a `clinician` did not, while the Base44 original
+admits `agency_admin`, `manager` and `clinician` to `PATIENT_CREATE_ROLES`.
+
+**The fix is one policy and no more.** The chart root's INSERT drops the chart
+predicate and keeps the tenant one. Everywhere else an insert names a chart
+that already exists, and narrowing it is exactly right — a clinician may not
+file a document, a visit or a note against a stranger's record, and the
+isolation test proves all three still refuse. Exactly one policy changed.
+
+### What `returning` showed, and the gap it names
+
+The insert succeeds for every role. `insert … returning id` does not: it is a
+read of the row the statement just wrote, so the *read* policy decides it, and
+a clinician who just created a patient cannot read it back. PostgreSQL reports
+that as `new row violates row-level security policy`, which reads like the
+insert was rejected and was not — the same insert without `returning` succeeds
+for the same caller. That message cost an hour and is worth writing down.
+
+So the real gap is not the predicate. It is that **creating a chart and being
+on its care team are two writes to two different stores**: the patient row
+belongs to `pennsync_records`, owned by `pennsync_records_owner`, and the
+care-team grant belongs to `pennsync_private.chart_assignment`, in a schema
+that owner deliberately cannot touch. The Base44 original has no such boundary
+— it records a `patient_creator` assignment as part of creating — and D24's
+decision to make `chart_assignment` the only authority is what introduced it.
+
+**The shape of the answer, for whoever writes it:** grant first, then insert.
+The service holds both connections, and `chart_assignment` carries no patient
+foreign key precisely because it spans stores, so an assignment naming a
+patient that does not exist is inert — the narrowing is a filter, and it admits
+no row. Granting first and failing on the insert therefore leaves nothing
+harmful behind, while inserting first and failing on the grant leaves a chart
+its creator cannot open. The two orders are not equally safe and the safe one
+is available.
+
+Until that is built, the port queue is honest about it: the patient write
+family stays unported, and this is the reason rather than a missing schema.

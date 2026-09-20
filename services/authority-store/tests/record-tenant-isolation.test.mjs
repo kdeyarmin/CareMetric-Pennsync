@@ -415,6 +415,73 @@ test('a document bound to an agency and no patient belongs to that agency', asyn
     delete from ${SCHEMA}."document"; delete from ${SCHEMA}."patient";`); }
 });
 
+test('creating a chart is not narrowed to a chart that does not exist yet', async () => {
+  // D24 narrows a chart to its care team, and on every table but one that
+  // applies to the write as much as the read: filing a note against a
+  // stranger's record is the same disclosure in the other direction.
+  //
+  // `patient` is the exception, and it is not a judgement call. Its subject IS
+  // its identity, so the row being inserted is the chart, and
+  // `caller_assigned_patients` can never contain an id that does not exist
+  // yet. Applied there the predicate narrows nothing — it makes creating a
+  // patient impossible for anybody who does not already open every chart in
+  // the agency, which measured exactly that way: the admin could and the
+  // clinician could not, while the Base44 original admits `agency_admin`,
+  // `manager` AND `clinician` to `PATIENT_CREATE_ROLES`.
+  await seed(`delete from ${SCHEMA}."document_tenant_binding"; delete from ${SCHEMA}."document";
+    delete from ${SCHEMA}."visit"; delete from ${SCHEMA}."patient";
+    insert into ${SCHEMA}."patient"("source_app_id","id","agency_id") values
+    ('${APP}','patient-a1','agency-a'), ('${APP}','patient-a2','agency-a');`);
+  try {
+    // Every role that holds the agency may create a chart in it. The clinician
+    // is assigned to patient-a1 only; the third caller is assigned to nothing.
+    for (const [caller, id] of [[AGENCY_A, 'made-by-admin'], [ASSIGNED, 'made-by-clinician'],
+      [UNASSIGNED, 'made-by-unassigned']]) {
+      assert.deepEqual(await as(caller, `insert into ${SCHEMA}."patient"
+        ("source_app_id","id","agency_id") values ('${APP}','${id}','agency-a')`), [],
+      `${id} must be creatable`);
+    }
+    // Tenancy still applies: the new row must name an agency the caller holds.
+    await refused(ASSIGNED, `insert into ${SCHEMA}."patient"("source_app_id","id","agency_id")
+      values ('${APP}','made-elsewhere','agency-b')`);
+
+    // The exemption is the INSERT alone, and `returning` is where that becomes
+    // visible: it is a read of the row the statement just wrote, so the read
+    // policy decides it. A caller who opens every chart gets the row back; one
+    // who does not is refused — and PostgreSQL reports that as a WITH CHECK
+    // violation, which reads like the insert was rejected and was not. The
+    // insert above, without `returning`, succeeds for the same caller.
+    //
+    // So a clinician can create a patient and cannot then open it. That gap is
+    // real: the Base44 original records a `patient_creator` care-team
+    // assignment as part of creating, and the equivalent here is a write to
+    // `pennsync_private`, a schema the record owner deliberately cannot touch.
+    // It needs a decision about how one capability writes to both stores, not
+    // a wider predicate. Pinned here so the day it is closed, this fails.
+    assert.deepEqual(await as(AGENCY_A, `insert into ${SCHEMA}."patient"
+      ("source_app_id","id","agency_id") values ('${APP}','returned','agency-a') returning "id"`),
+    [{ id: 'returned' }], 'an agency_admin reads back what they created');
+    await refused(ASSIGNED, `insert into ${SCHEMA}."patient"("source_app_id","id","agency_id")
+      values ('${APP}','not-returned','agency-a') returning "id"`);
+
+    // Reading, updating and deleting a chart are all still narrowed.
+    assert.deepEqual(await as(ASSIGNED, `select "id" from ${SCHEMA}."patient"`).then(ids),
+      ['patient-a1'], 'creating a chart does not open it');
+    assert.deepEqual(await as(ASSIGNED,
+      `update ${SCHEMA}."patient" set "id" = "id" where "id" = 'patient-a2' returning "id"`), []);
+    // And every other table keeps the narrowing on the write, because there
+    // the subject names a chart that already exists.
+    await db.exec(`insert into ${SCHEMA}."document_tenant_binding"
+      ("source_app_id","id","document_id","agency_id","patient_id")
+      values ('${APP}','bind-x','doc-x','agency-a','patient-a2')`);
+    await refused(ASSIGNED, `insert into ${SCHEMA}."document"("source_app_id","id","patient_id")
+      values ('${APP}','doc-x','patient-a2')`);
+    await refused(ASSIGNED, `insert into ${SCHEMA}."visit"("source_app_id","id","agency_id","patient_id")
+      values ('${APP}','visit-x','agency-a','patient-a2')`);
+  } finally { await db.exec(`delete from ${SCHEMA}."document_tenant_binding";
+    delete from ${SCHEMA}."document"; delete from ${SCHEMA}."visit"; delete from ${SCHEMA}."patient";`); }
+});
+
 test('a row belonging to the other source app is not this deployment to show', async () => {
   // `source_app_id` is plain text here and the primary key is composite
   // precisely because ids COLLIDE across the two source apps. So a row of the
