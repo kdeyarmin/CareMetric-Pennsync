@@ -184,7 +184,7 @@ export function snakeCase(value) {
 
 /** Quote every identifier: many property names are reserved words. */
 export const quote = value => `"${String(value).replace(/"/g, '""')}"`;
-const literal = value => `'${String(value).replace(/'/g, "''")}'`;
+export const literal = value => `'${String(value).replace(/'/g, "''")}'`;
 
 export function columnType(property) {
   const type = Array.isArray(property?.type) ? property.type[0] : property?.type;

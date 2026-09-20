@@ -1993,3 +1993,97 @@ carrying duplicate keys will fail to load rather than quietly accepting them.
 That is the correct outcome — it is the defect the schemas were describing —
 but it is work to do at import time, and the two `unproved` entities are the
 ones that said so first.
+
+## D31 — A capability can be ported in part, and the part that is not says why
+
+`updateAuthorizedVisit` is the browser's clinical write: it is what SmartNote
+calls to save a note, what the EMR handoff advances through, and what records
+that a clinician reviewed suggested documentation before copying it. It is also
+the first capability that **cannot be ported whole**, and reading it carefully
+is what produced the shape of the answer rather than a judgement call about
+"enough".
+
+Nine actions. Four are ported. The other five are not, and each one is
+unported for a different, statable reason:
+
+- **`set_ai_tags` has no performer left.** `requireActionPolicy` admits it to
+  `user.role === 'admin'` whose address equals the configured
+  `SUPER_ADMIN_EMAIL`, and to nobody else. D14 and D22 removed the platform
+  tier. Dropping it does not narrow the action — it closes it. That is exactly
+  the case the purpose generator already refuses to render silently
+  (`POLICY_PURPOSE_ADMITS_NOBODY`), and the same rule applies here: who may set
+  an AI tag on a visit is a decision to take, not a rendering detail.
+- **`read_ai_processing_source`, `claim_ai_processing` and
+  `publish_ai_processing` are server-to-server**, behind `INTERNAL_FN_SECRET`,
+  and their one caller is `processCompletedVisit`, which is not ported. The
+  record store has no concept of a service identity: every contract asks
+  `caller_tenant_role` and every policy asks `caller_agencies`, and a
+  background job is neither. That is a capability to design.
+- **`legacy_recovery` answers 503 at source**, deliberately, until an
+  owner-approved recovery protocol exists. Porting it would be re-enabling it,
+  which is the same mistake D7 named for paused domains.
+
+### The reasons are data, not comments
+
+The obvious way to ship a partial port is to refuse the rest with one code and
+explain it in a comment. That is worse than it looks, because the next person
+to add an action upstream gets no signal at all — their action simply becomes
+unreachable, and the comment still reads as if it were complete.
+
+So the extraction carries the dispositions. `ACTION_INPUT_POLICIES` names which
+actions this port **serves** and, for each one it does not, **why**, and the
+generator refuses to run if a declared action is neither — or is both. What
+reaches the database is `visit_action_known`, `visit_action_served` and
+`visit_action_unported(action) → text`, so "no such action" and "that action is
+not ported, and here is the reason" are different answers a caller can act on.
+An action added to the original fails the build until somebody decides.
+
+### A second action shape, and the differences are all real
+
+This is not the patient mutation's policy with a flag on it, which is why it is
+a separate list with a reader of its own:
+
+- **The fields are INPUTS, not columns.** `advance_handoff` accepts
+  `next_status` and writes `emr_handoff_status` and its history;
+  `set_review_ack` accepts a hash and writes none of it. So the emitted
+  function is `_accepts`, never `_writes`, and which columns move stays the
+  contract's to decide from the action's own logic.
+- **The sets may overlap.** Disjointness matters when a batch becomes one
+  write. This capability takes one action per call, and `save_documentation`
+  and `set_ai_tags` both accept `ai_tags`.
+- **The roles are code in the original**, one rule per action group, so the
+  contract states them. `requireActionPolicy` requires `tenant_role =
+  'clinician'` — exactly that, not an agency administrator and not a manager —
+  for the three clinical actions, while `reschedule` has no gate of its own and
+  is left to D24. Inventing a data shape for three lines of code would be
+  transcribing a decision rather than carrying one.
+
+### `note_fnv1a`, and why a hash had to be ported exactly
+
+`set_review_ack` stores `note_hash`, a 32-bit FNV-1a of the note text. The
+browser **recomputes that same hash locally** to decide whether an
+acknowledgement has gone stale — `isAcknowledgementStale` in
+`src/components/smartNote/emrHandoff.js` compares the stored value against
+`hashNoteText(currentText)`. So this is not an internal detail with freedom to
+differ: a different answer for one emoji would make every subsequent note look
+edited, and a clinician would be told their review no longer covers text they
+never touched.
+
+JavaScript's `charCodeAt` walks UTF-16 **code units**, so a character outside
+the basic plane is two steps there. The SQL folds two steps for the same
+character. The test imports `hashNoteText` from the frontend rather than
+reimplementing it, because a copy would agree with itself; 250,000 characters
+fold in about 100ms, and a note is usually a few thousand.
+
+Two smaller things the port settled on the way:
+
+- **A NUL in a note is refused by the type system, not by the contract.**
+  `jsonb` rejects `\u0000` on input because PostgreSQL text cannot hold one.
+  The original stored it, because Base44's datastore is JSON all the way down.
+  Worth knowing before a data migration: a carried note containing one will not
+  load.
+- **The row is locked, and that replaces the compare-and-swap.** The original
+  filters its UPDATE on all forty-six columns of the row it read, because
+  Base44 gives it no transaction. `select … for update` takes the row lock and
+  the UPDATE policy's authorization in one statement, so there is no window to
+  defend and nothing to undo afterwards.

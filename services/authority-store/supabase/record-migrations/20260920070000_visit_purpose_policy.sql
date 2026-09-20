@@ -22,6 +22,13 @@
 -- are hand-written and decide that, because a capability's authorization is
 -- its own.
 --
+-- The action policies here belong to a capability that takes ONE named action
+-- per call rather than a batch: 9 actions, of which this port serves
+-- 4. What they carry is each action's INPUTS, because an action interprets
+-- them rather than writing them; which columns move is the contract's. The
+-- roles are the contract's too — the original decides them in code, and
+-- inventing a data shape for a decision is not carrying it.
+--
 -- One divergence from the originals, and it is a narrowing: platform_owner is
 -- admitted by 16 of the 16 purposes and actions there and by none
 -- here. D14 and D22 removed the platform tier, `caller_tenant_role` can only
@@ -347,6 +354,91 @@ create function "pennsync_records"."visit_create_reserved"(p_field text) returns
   select p_field in ('agency_id', 'client_request_id', 'patient_id', 'status')
 $write$;
 
+-- The actions `updateAuthorizedVisit` declares (9), and the
+-- 4 this port serves. An action it does not serve is KNOWN and refused with
+-- the reason below, which is not the same answer as an action that does not
+-- exist — and the generator refuses to render if one is neither.
+create function "pennsync_records"."visit_action_known"(p_action text) returns boolean
+  language sql immutable set search_path = '' as $action$
+  select case p_action
+    when 'save_documentation' then true
+    when 'reschedule' then true
+    when 'set_ai_tags' then true
+    when 'advance_handoff' then true
+    when 'set_review_ack' then true
+    when 'read_ai_processing_source' then true
+    when 'claim_ai_processing' then true
+    when 'publish_ai_processing' then true
+    when 'legacy_recovery' then true
+    else false end
+$action$;
+
+create function "pennsync_records"."visit_action_served"(p_action text) returns boolean
+  language sql immutable set search_path = '' as $action$
+  select case p_action
+    when 'save_documentation' then true
+    when 'reschedule' then true
+    when 'set_ai_tags' then false
+    when 'advance_handoff' then true
+    when 'set_review_ack' then true
+    when 'read_ai_processing_source' then false
+    when 'claim_ai_processing' then false
+    when 'publish_ai_processing' then false
+    when 'legacy_recovery' then false
+    else false end
+$action$;
+
+-- Why an action is not served. A reason rather than a flag, because "not
+-- ported" and "not allowed" are different things to be told.
+create function "pennsync_records"."visit_action_unported"(p_action text) returns text
+  language sql immutable set search_path = '' as $action$
+  select case p_action
+    when 'save_documentation' then null::text
+    when 'reschedule' then null::text
+    when 'set_ai_tags' then 'D14 and D22 removed the platform tier, and the original admits nobody else: `requireActionPolicy` requires `user.role === ''admin''` AND the configured SUPER_ADMIN_EMAIL. Dropping that tier closes the action outright, so who may set an AI tag is a decision rather than a rendering detail.'
+    when 'advance_handoff' then null::text
+    when 'set_review_ack' then null::text
+    when 'read_ai_processing_source' then 'Server-to-server only, behind INTERNAL_FN_SECRET. Its one caller is `processCompletedVisit`, which is not ported, and the record store has no concept of a service identity yet.'
+    when 'claim_ai_processing' then 'Server-to-server only, behind INTERNAL_FN_SECRET.'
+    when 'publish_ai_processing' then 'Server-to-server only, behind INTERNAL_FN_SECRET.'
+    when 'legacy_recovery' then 'Paused at source. The original answers 503 before reading anything, deliberately, until an owner-approved recovery protocol exists; porting it would be re-enabling it.'
+    else null::text end
+$action$;
+
+-- The inputs a served action accepts. Inputs, not columns: `advance_handoff`
+-- accepts `next_status` and writes `emr_handoff_status` and its history, and
+-- which columns move is the contract's to decide from the action's own logic.
+create function "pennsync_records"."visit_action_accepts"(p_action text, p_field text) returns boolean
+  language sql immutable set search_path = '' as $action$
+  select case p_action
+    when 'save_documentation' then p_field in ('patient_id', 'status', 'nurse_notes', 'raw_transcription', 'vital_signs', 'compliance_score', 'compliance_issues', 'homebound_status_verified', 'skilled_intervention_documented', 'homebound_justification', 'documentation_source', 'grounding_pending', 'ai_tags')
+    when 'reschedule' then p_field in ('visit_time')
+    when 'set_ai_tags' then false
+    when 'advance_handoff' then p_field in ('next_status')
+    when 'set_review_ack' then p_field in ('acknowledged', 'nurse_edited', 'expected_note_hash')
+    when 'read_ai_processing_source' then false
+    when 'claim_ai_processing' then false
+    when 'publish_ai_processing' then false
+    when 'legacy_recovery' then false
+    else false end
+$action$;
+
+-- Declaration order, so an answer does not depend on how a caller spelled it.
+create function "pennsync_records"."visit_action_rank"(p_action text) returns integer
+  language sql immutable set search_path = '' as $action$
+  select case p_action
+    when 'save_documentation' then 1
+    when 'reschedule' then 2
+    when 'set_ai_tags' then 3
+    when 'advance_handoff' then 4
+    when 'set_review_ack' then 5
+    when 'read_ai_processing_source' then 6
+    when 'claim_ai_processing' then 7
+    when 'publish_ai_processing' then 8
+    when 'legacy_recovery' then 9
+    else null end
+$action$;
+
 reset role;
 
 -- No caller role may ask a policy anything. The contracts are the only way in.
@@ -358,7 +450,12 @@ revoke all on function "pennsync_records"."visit_list_purpose_known"(text),
   "pennsync_records"."visit_exact_purpose_admits"(text,text),
   "pennsync_records"."visit_exact_purpose_row"(text,"pennsync_records"."visit"),
   "pennsync_records"."visit_create_writable"(text),
-  "pennsync_records"."visit_create_reserved"(text)
+  "pennsync_records"."visit_create_reserved"(text),
+  "pennsync_records"."visit_action_known"(text),
+  "pennsync_records"."visit_action_served"(text),
+  "pennsync_records"."visit_action_unported"(text),
+  "pennsync_records"."visit_action_accepts"(text,text),
+  "pennsync_records"."visit_action_rank"(text)
   from public, anon, authenticated, service_role;
 
 commit;

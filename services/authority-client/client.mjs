@@ -73,6 +73,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   listAuthorizedVisits: 'json',
   listPolicyLibrary: 'json',
   updateAuthorizedPatient: 'json',
+  updateAuthorizedVisit: 'json',
   matchPatientWithAI: 'json',
   validatePatientData: 'json',
 });

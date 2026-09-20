@@ -254,3 +254,58 @@ export const PATIENT_ACTION_POLICY = Object.freeze({
     roles: Object.freeze(["agency_admin","clinician","manager"]),
   }),
 });
+//
+// The actions `updateAuthorizedVisit` declares, from its own
+// `ACTION_FIELDS`, and the INPUTS each one accepts — inputs rather
+// than columns, because an action interprets them. `served` says whether this
+// port carries the action; one that does not says why, and an action that is
+// neither served nor explained fails the extraction.
+export const VISIT_ACTIONS = Object.freeze(["save_documentation","reschedule","set_ai_tags","advance_handoff","set_review_ack","read_ai_processing_source","claim_ai_processing","publish_ai_processing","legacy_recovery"]);
+export const VISIT_ACTIONS_SERVED = Object.freeze(["save_documentation","reschedule","advance_handoff","set_review_ack"]);
+export const VISIT_ACTION_POLICY = Object.freeze({
+  save_documentation: Object.freeze({
+    fields: Object.freeze(["patient_id","status","nurse_notes","raw_transcription","vital_signs","compliance_score","compliance_issues","homebound_status_verified","skilled_intervention_documented","homebound_justification","documentation_source","grounding_pending","ai_tags"]),
+    served: true,
+    because: null,
+  }),
+  reschedule: Object.freeze({
+    fields: Object.freeze(["visit_time"]),
+    served: true,
+    because: null,
+  }),
+  set_ai_tags: Object.freeze({
+    fields: Object.freeze(["ai_tags"]),
+    served: false,
+    because: "D14 and D22 removed the platform tier, and the original admits nobody else: `requireActionPolicy` requires `user.role === 'admin'` AND the configured SUPER_ADMIN_EMAIL. Dropping that tier closes the action outright, so who may set an AI tag is a decision rather than a rendering detail.",
+  }),
+  advance_handoff: Object.freeze({
+    fields: Object.freeze(["next_status"]),
+    served: true,
+    because: null,
+  }),
+  set_review_ack: Object.freeze({
+    fields: Object.freeze(["acknowledged","nurse_edited","expected_note_hash"]),
+    served: true,
+    because: null,
+  }),
+  read_ai_processing_source: Object.freeze({
+    fields: Object.freeze([]),
+    served: false,
+    because: "Server-to-server only, behind INTERNAL_FN_SECRET. Its one caller is `processCompletedVisit`, which is not ported, and the record store has no concept of a service identity yet.",
+  }),
+  claim_ai_processing: Object.freeze({
+    fields: Object.freeze(["claim_token","expected_source_sha256"]),
+    served: false,
+    because: "Server-to-server only, behind INTERNAL_FN_SECRET.",
+  }),
+  publish_ai_processing: Object.freeze({
+    fields: Object.freeze(["claim_token","expected_source_sha256","nurse_notes","raw_transcription","ai_tags","ai_processed_at"]),
+    served: false,
+    because: "Server-to-server only, behind INTERNAL_FN_SECRET.",
+  }),
+  legacy_recovery: Object.freeze({
+    fields: Object.freeze([]),
+    served: false,
+    because: "Paused at source. The original answers 503 before reading anything, deliberately, until an owner-approved recovery protocol exists; porting it would be re-enabling it.",
+  }),
+});

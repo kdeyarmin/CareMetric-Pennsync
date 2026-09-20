@@ -297,6 +297,18 @@ export const HANDLERS = Object.freeze({
       return contract('createAuthorizedVisit', params);
     },
   }),
+  updateAuthorizedVisit: Object.freeze({
+    // A caller names one workflow action and the fields it accepts. Which
+    // actions exist, which this port serves, which inputs each accepts and who
+    // may perform it are all the contract's — so this handler checks the
+    // envelope and nothing else, and the four served actions grow by changing
+    // the extraction rather than by editing here.
+    handle({ params, contract }) {
+      exactObject(params, ['visit_id', 'action', 'fields'], 'INVALID_PARAMS');
+      if (!isObject(params.fields)) fail(400, 'INVALID_PARAMS');
+      return contract('updateAuthorizedVisit', params);
+    },
+  }),
   generateBagTechniquePDF: Object.freeze({
     binary: true,
     handle({ params, config }) {

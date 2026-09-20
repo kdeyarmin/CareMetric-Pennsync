@@ -4,9 +4,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  ACTION_POLICIES, DOMAINS, EXTRACTED_ONLY, POLICIES, POLICY_FILE, POLICY_SQL_FILES, TENANT_ROLES,
-  UNSUPPORTED_ROLES, WRITE_POLICIES, begin, declarations, end, extract, extractActions, extractWrites,
-  main, policyBlock, readActionPolicy, readDeclaration, readPolicy, render, renderSql, tableColumns,
+  ACTION_INPUT_POLICIES, ACTION_POLICIES, DOMAINS, EXTRACTED_ONLY, POLICIES, POLICY_FILE,
+  POLICY_SQL_FILES, TENANT_ROLES, UNSUPPORTED_ROLES, WRITE_POLICIES, begin, declarations, end,
+  extract, extractActionInputs, extractActions, extractWrites, main, policyBlock, readActionInputs,
+  readActionPolicy, readDeclaration, readDeclarations, readPolicy, render, renderSql, tableColumns,
 } from './tools-read-purpose-policy.mjs';
 import * as committed from './services/pennsync-api/read-purpose-policy.mjs';
 
@@ -51,11 +52,12 @@ test('the committed policies are exactly what the originals declare', () => {
   // an artifact is caught as well as an edit to a policy.
   const writes = extractWrites(repository);
   const actions = extractActions(repository);
+  const inputs = extractActionInputs(repository);
   assert.equal(readFileSync(resolve(repository, POLICY_FILE), 'utf8'),
-    render(extracted, writes, actions));
+    render(extracted, writes, actions, inputs));
   for (const domain of DOMAINS) {
     assert.equal(readFileSync(resolve(repository, POLICY_SQL_FILES[domain]), 'utf8'),
-      renderSql(extracted, domain, columnsFor, writes, actions), `${domain} SQL has drifted`);
+      renderSql(extracted, domain, columnsFor, writes, actions, inputs), `${domain} SQL has drifted`);
   }
   assert.equal(main(['--write'], { repository, log: () => {}, write: () => {} }), 0);
   assert.equal(main([], { repository, log: () => {} }), 0, 'the committed copies are current');
@@ -442,4 +444,118 @@ test('the emitted action SQL is the policy, and a caller cannot ask it anything'
     assert.ok(revoked.includes(`"patient_action_${suffix}"`), suffix);
   }
   assert.match(revoked, /from public, anon, authenticated, service_role;/);
+});
+
+test('an action map read by name carries every action, served or explained', () => {
+  // The second action shape: one action per call, roles decided in code, and
+  // not every action ported. The check that matters is the last one — an
+  // action added upstream is either served or explained, never silently
+  // unreachable.
+  const [policy] = ACTION_INPUT_POLICIES;
+  const inputs = extractActionInputs(repository).visit_action;
+  assert.deepEqual(Object.keys(inputs), [...committed.VISIT_ACTIONS]);
+  assert.equal(Object.keys(inputs).length, 9);
+  const served = Object.entries(inputs).filter(([, entry]) => entry.served).map(([name]) => name);
+  assert.deepEqual(served, [...committed.VISIT_ACTIONS_SERVED]);
+  assert.deepEqual(served.sort(),
+    ['advance_handoff', 'reschedule', 'save_documentation', 'set_review_ack']);
+  for (const [action, entry] of Object.entries(inputs)) {
+    assert.deepEqual([...committed.VISIT_ACTION_POLICY[action].fields], entry.fields, action);
+    assert.equal(committed.VISIT_ACTION_POLICY[action].served, entry.served, action);
+    // Served or explained, never neither and never both.
+    assert.equal(entry.served, entry.because === null, action);
+    if (entry.served) assert.ok(entry.fields.length > 0, action);
+    else assert.ok(entry.because.length > 40, `${action} says why`);
+  }
+  // The field sets are allowed to OVERLAP here, unlike a batched action
+  // policy's: `save_documentation` and `set_ai_tags` both accept `ai_tags`,
+  // and one action per call makes that harmless.
+  assert.ok(inputs.save_documentation.fields.includes('ai_tags'));
+  assert.ok(inputs.set_ai_tags.fields.includes('ai_tags'));
+  // `save_documentation` carries the long list, which is the whole reason this
+  // is extracted rather than retyped.
+  assert.equal(inputs.save_documentation.fields.length, 13);
+  // Every served input is a column of the table or a named input the action
+  // interprets; nothing else, so a mistyped column name fails the run.
+  const known = new Set(columnsFor('visit'));
+  for (const action of served) {
+    for (const field of inputs[action].fields) {
+      assert.ok(known.has(field) || policy.inputs.includes(field), `${action}.${field}`);
+    }
+  }
+  assert.deepEqual([...policy.inputs].sort(),
+    ['acknowledged', 'expected_note_hash', 'next_status', 'nurse_edited']);
+});
+
+test('an action map that is silent about an action refuses to render', () => {
+  const [policy] = ACTION_INPUT_POLICIES;
+  const source = map => `const ${policy.declarations[0]} = new Set(['nurse_notes',]);\n`
+    + `const ${policy.declarations.at(-1)}: Record<string, Set<string>> = ${map};`;
+  const refuses = (text, code, entry = policy) => assert.throws(
+    () => readActionInputs(text, entry), error => error?.code === code, code);
+  const good = readActionInputs(
+    source("{ save_documentation: SAVE_DOCUMENTATION_FIELDS, legacy_recovery: new Set() }"),
+    { ...policy, served: ['save_documentation'], unported: { legacy_recovery: 'paused' } });
+  assert.deepEqual(good.save_documentation, { fields: ['nurse_notes'], served: true, because: null });
+  assert.deepEqual(good.legacy_recovery, { fields: [], served: false, because: 'paused' });
+  // An action the map declares and the port neither serves nor explains. This
+  // is the one that keeps a partial port honest as the original grows.
+  refuses(source("{ save_documentation: SAVE_DOCUMENTATION_FIELDS, added_upstream: new Set(['x']) }"),
+    'ACTION_DISPOSITION_MISSING:added_upstream',
+    { ...policy, served: ['save_documentation'], unported: {} });
+  // Both served and explained is a list that moved on without its other half.
+  refuses(source("{ save_documentation: SAVE_DOCUMENTATION_FIELDS }"),
+    'ACTION_DISPOSITION_MISSING:save_documentation',
+    { ...policy, served: ['save_documentation'], unported: { save_documentation: 'why' } });
+  // A served action with no inputs would be a call with no argument and no
+  // effect; the original has two such actions and both are unported.
+  refuses(source("{ save_documentation: new Set() }"), 'ACTION_INPUTS_EMPTY:save_documentation',
+    { ...policy, served: ['save_documentation'], unported: {} });
+  // Served or explained names that the map does not declare at all. Both
+  // lists keep the declared action dispositioned, or the per-action check
+  // above would fire first and say something less useful.
+  refuses(source("{ save_documentation: SAVE_DOCUMENTATION_FIELDS }"),
+    'ACTION_SERVED_UNDECLARED:gone',
+    { ...policy, served: ['save_documentation', 'gone'], unported: {} });
+  refuses(source("{ save_documentation: SAVE_DOCUMENTATION_FIELDS }"),
+    'ACTION_UNPORTED_UNDECLARED:gone',
+    { ...policy, served: ['save_documentation'], unported: { gone: 'why' } });
+  // The declarations are read by NAME, and one is written in terms of the
+  // other, so evaluating the second without the first fails the run.
+  assert.throws(() => readDeclarations(source('{ }').replace(policy.declarations[0], 'RENAMED'),
+    policy.declarations), error => /^WRITE_DECLARATION_MISSING:/.test(error.message));
+});
+
+test('the emitted visit action SQL says which actions are served and why the rest are not', () => {
+  const sql = readFileSync(resolve(repository, POLICY_SQL_FILES.visit), 'utf8');
+  const inputs = extractActionInputs(repository).visit_action;
+  const body = (name) => {
+    const start = sql.indexOf(`"${name}"(`);
+    assert.ok(start > 0, name);
+    return sql.slice(start, sql.indexOf('$action$;', start));
+  };
+  const served = body('visit_action_served');
+  for (const [action, entry] of Object.entries(inputs)) {
+    assert.ok(served.includes(`when '${action}' then ${entry.served}`), `${action} served`);
+  }
+  // Every unported action carries its reason into the SQL, so a caller is told
+  // which of the five it is rather than being left to guess.
+  const unported = body('visit_action_unported');
+  for (const [action, entry] of Object.entries(inputs)) {
+    if (entry.because === null) {
+      assert.ok(unported.includes(`when '${action}' then null::text`), action);
+    } else {
+      assert.ok(unported.includes(entry.because.replace(/'/g, "''")), `${action} reason`);
+    }
+  }
+  // `_accepts` answers only for a served action: an unserved one's inputs are
+  // not a surface, and emitting them would read like a capability.
+  const accepts = body('visit_action_accepts');
+  assert.ok(accepts.includes("when 'set_ai_tags' then false"));
+  assert.ok(accepts.includes("when 'save_documentation' then p_field in ('patient_id'"));
+  // And no caller role may ask any of them.
+  const revoked = sql.slice(sql.lastIndexOf('revoke all on function'));
+  for (const suffix of ['known', 'served', 'unported', 'accepts', 'rank']) {
+    assert.ok(revoked.includes(`"visit_action_${suffix}"`), suffix);
+  }
 });

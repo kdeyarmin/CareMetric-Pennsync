@@ -38,7 +38,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { transpileTs } from './tools-transpile-ts.mjs';
-import { RECORD_MIGRATION_FILE, SCHEMA, quote } from './tools-entity-schema-plan.mjs';
+import { RECORD_MIGRATION_FILE, SCHEMA, literal, quote } from './tools-entity-schema-plan.mjs';
 
 /** The data module the service reads, for the purposes and their page bounds. */
 export const POLICY_FILE = 'services/pennsync-api/read-purpose-policy.mjs';
@@ -195,6 +195,66 @@ export const ACTION_POLICIES = Object.freeze([
     prefix: 'patient_action', constant: 'PATIENT_ACTION',
   }),
 ]);
+/**
+ * The action INPUT policies, for a mutation capability whose actions are not
+ * a batch and whose roles are code.
+ *
+ * A second shape, and the differences from `ACTION_POLICIES` are all real
+ * rather than cosmetic — which is why this is a separate list with a reader
+ * of its own instead of four flags on the first one:
+ *
+ * - **The fields are INPUTS, not columns.** `advance_handoff` accepts
+ *   `next_status` and writes `emr_handoff_status` and `emr_handoff_history`;
+ *   `set_review_ack` accepts `expected_note_hash` and writes none of it. So
+ *   what is emitted is `_accepts`, never `_writes`, and which columns move is
+ *   the contract's to decide from the action's own logic.
+ * - **The sets are allowed to overlap.** Disjointness matters when a batch of
+ *   actions becomes one write. This capability takes ONE action per call, and
+ *   `save_documentation` and `set_ai_tags` both accept `ai_tags`.
+ * - **The roles are not data.** The original decides them in
+ *   `requireActionPolicy`, in code, with one rule per action group. A
+ *   generator that invented a data shape for them would be transcribing a
+ *   decision rather than carrying one, so the contract states them and this
+ *   emits none.
+ * - **Not every action is ported, and each one that is not says why.** An
+ *   action neither served nor explained fails the run, which is the check
+ *   that keeps `served` honest as the port advances.
+ */
+export const ACTION_INPUT_POLICIES = Object.freeze([
+  Object.freeze({
+    key: 'visit_action', domain: 'visit', table: 'visit',
+    original: 'base44/functions/updateAuthorizedVisit/entry.ts',
+    // Read by NAME rather than from a fence, because the original writes its
+    // action map in terms of another declaration instead of inside a marker
+    // pair. Both are named so the first is evaluated before the second.
+    declarations: Object.freeze(['SAVE_DOCUMENTATION_FIELDS', 'ACTION_FIELDS']),
+    prefix: 'visit_action', constant: 'VISIT_ACTION',
+    // The four this port carries. The rest are named below with a reason.
+    served: Object.freeze([
+      'save_documentation', 'reschedule', 'advance_handoff', 'set_review_ack',
+    ]),
+    // An accepted field that is not a column of the table, and is therefore an
+    // INPUT the action interprets. Enumerated so a mistyped column name is
+    // still caught: anything not here must be a column.
+    inputs: Object.freeze([
+      'next_status', 'acknowledged', 'nurse_edited', 'expected_note_hash',
+    ]),
+    unported: Object.freeze({
+      set_ai_tags: 'D14 and D22 removed the platform tier, and the original admits '
+        + 'nobody else: `requireActionPolicy` requires `user.role === \'admin\'` AND the '
+        + 'configured SUPER_ADMIN_EMAIL. Dropping that tier closes the action outright, '
+        + 'so who may set an AI tag is a decision rather than a rendering detail.',
+      read_ai_processing_source: 'Server-to-server only, behind INTERNAL_FN_SECRET. '
+        + 'Its one caller is `processCompletedVisit`, which is not ported, and the record '
+        + 'store has no concept of a service identity yet.',
+      claim_ai_processing: 'Server-to-server only, behind INTERNAL_FN_SECRET.',
+      publish_ai_processing: 'Server-to-server only, behind INTERNAL_FN_SECRET.',
+      legacy_recovery: 'Paused at source. The original answers 503 before reading '
+        + 'anything, deliberately, until an owner-approved recovery protocol exists; '
+        + 'porting it would be re-enabling it.',
+    }),
+  }),
+]);
 export const begin = policy => `// <<<BEGIN ${policy.marker}>>>`;
 export const end = policy => `// <<<END ${policy.marker}>>>`;
 /**
@@ -300,22 +360,40 @@ export function readPolicy(source, policy) {
  * at the top level, and running either would be a side effect a generator has
  * no business having.
  */
-export function readDeclaration(source, policy) {
-  const { declaration } = policy;
-  const start = source.search(new RegExp(`^const\\s+${declaration}\\s*=`, 'm'));
+export function declarationStatement(source, declaration) {
+  const start = source.search(new RegExp(`^const\\s+${declaration}\\s*[:=]`, 'm'));
   check(start >= 0, `WRITE_DECLARATION_MISSING:${declaration}`);
-  // `new Set([…])` closes with `]);` and a bare array with `];`. Take
-  // whichever closer comes first so one reader serves both; scanning past it
-  // would swallow the next declaration whole. The two never collide: the
-  // three characters before a `;` are either `]`, `)` or `…`, `]`.
-  const closers = [']);', '];']
+  // Three shapes and three closers: `new Set([…]);`, a bare array `[…];`, and
+  // an object literal `{…};`. Take whichever comes first so one reader serves
+  // all three; scanning past it would swallow the next declaration whole. They
+  // do not collide, because an entry INSIDE any of them ends with a comma
+  // rather than a semicolon.
+  const closers = [']);', '];', '};']
     .map(closer => ({ closer, at: source.indexOf(closer, start) }))
     .filter(candidate => candidate.at >= start)
     .sort((left, right) => left.at - right.at);
   check(closers.length > 0, `WRITE_DECLARATION_UNREADABLE:${declaration}`);
   const [{ closer, at }] = closers;
-  const js = transpileTs(source.slice(start, at + closer.length)).outputText;
-  const value = new Function(`${js}\nreturn ${declaration};`)();
+  return source.slice(start, at + closer.length);
+}
+
+/**
+ * Evaluate one or more named declarations and return the LAST one's value.
+ *
+ * More than one because a declaration can be written in terms of another —
+ * `ACTION_FIELDS` names `SAVE_DOCUMENTATION_FIELDS` rather than repeating its
+ * thirteen fields — and evaluating the second without the first would fail
+ * rather than silently produce less.
+ */
+export function readDeclarations(source, names) {
+  const statements = names.map(name => declarationStatement(source, name));
+  const js = transpileTs(statements.join('\n')).outputText;
+  return new Function(`${js}\nreturn ${names.at(-1)};`)();
+}
+
+export function readDeclaration(source, policy) {
+  const { declaration } = policy;
+  const value = readDeclarations(source, [declaration]);
   const fields = value instanceof Set ? [...value] : value;
   check(Array.isArray(fields) && fields.length > 0, `WRITE_DECLARATION_EMPTY:${declaration}`);
   for (const field of policy.reserved ?? []) {
@@ -403,13 +481,60 @@ export function readActionPolicy(source, policy) {
   return extracted;
 }
 
+/**
+ * Read an action map that is a named declaration rather than a fenced block.
+ *
+ * Four checks, and the last is the one that keeps a partial port honest: every
+ * action the original declares must be either served here or explained, so an
+ * action added upstream cannot be silently unreachable.
+ */
+export function readActionInputs(source, policy) {
+  const declared = readDeclarations(source, policy.declarations);
+  check(declared && typeof declared === 'object', `ACTION_INPUTS_INVALID:${policy.key}`);
+  const actions = Object.keys(declared);
+  check(actions.length > 0, 'ACTION_INPUTS_EMPTY');
+  const extracted = {};
+  for (const action of actions) {
+    const raw = declared[action];
+    const fields = raw instanceof Set ? [...raw] : raw;
+    check(Array.isArray(fields), `ACTION_INPUTS_INVALID:${action}`);
+    extracted[action] = {
+      fields,
+      served: policy.served.includes(action),
+      because: policy.unported[action] ?? null,
+    };
+    // Served or explained, never neither. An action that is both is a list
+    // that moved on without the other half.
+    check(extracted[action].served !== (extracted[action].because !== null),
+      `ACTION_DISPOSITION_MISSING:${action}`);
+    // A served action with no inputs at all would be a call with no argument
+    // and no effect; the original has two such actions and both are unported.
+    if (extracted[action].served) {
+      check(fields.length > 0, `ACTION_INPUTS_EMPTY:${action}`);
+    }
+  }
+  for (const action of policy.served) {
+    check(extracted[action] !== undefined, `ACTION_SERVED_UNDECLARED:${action}`);
+  }
+  for (const action of Object.keys(policy.unported)) {
+    check(extracted[action] !== undefined, `ACTION_UNPORTED_UNDECLARED:${action}`);
+  }
+  return extracted;
+}
+
+/** The action input policies, keyed the way the artifacts below name them. */
+export function extractActionInputs(repository) {
+  return Object.fromEntries(ACTION_INPUT_POLICIES.map(policy =>
+    [policy.key, readActionInputs(readFileSync(join(repository, policy.original), 'utf8'), policy)]));
+}
+
 /** The action policies, keyed the way the artifacts below name them. */
 export function extractActions(repository) {
   return Object.fromEntries(ACTION_POLICIES.map(policy =>
     [policy.key, readActionPolicy(readFileSync(join(repository, policy.original), 'utf8'), policy)]));
 }
 
-export function render(policies, writes, actions) {
+export function render(policies, writes, actions, inputs) {
   const section = (policy) => {
     const extracted = policies[policy.key];
     const purposes = Object.keys(extracted);
@@ -453,6 +578,22 @@ ${Object.entries(actions[policy.key]).map(([action, entry]) => `  ${action}: Obj
     roles: Object.freeze(${JSON.stringify(entry.roles)}),
   }),`).join('\n')}
 });`).join('\n')}
+${ACTION_INPUT_POLICIES.map(policy => `//
+// The actions \`${policy.original.split('/').at(-2)}\` declares, from its own
+// \`${policy.declarations.at(-1)}\`, and the INPUTS each one accepts — inputs rather
+// than columns, because an action interprets them. \`served\` says whether this
+// port carries the action; one that does not says why, and an action that is
+// neither served nor explained fails the extraction.
+export const ${policy.constant}S = Object.freeze(${JSON.stringify(Object.keys(inputs[policy.key]))});
+export const ${policy.constant}S_SERVED = Object.freeze(${JSON.stringify(
+  Object.entries(inputs[policy.key]).filter(([, entry]) => entry.served).map(([action]) => action))});
+export const ${policy.constant}_POLICY = Object.freeze({
+${Object.entries(inputs[policy.key]).map(([action, entry]) => `  ${action}: Object.freeze({
+    fields: Object.freeze(${JSON.stringify(entry.fields)}),
+    served: ${entry.served},
+    because: ${entry.because === null ? 'null' : JSON.stringify(entry.because)},
+  }),`).join('\n')}
+});`).join('\n')}
 `;
 }
 
@@ -489,7 +630,7 @@ const purposeCase = (purposes, arm, fallback) =>
  * confused — the single-read policy has no bounds at all and still has to
  * answer the first question.
  */
-export function renderSql(policies, domain, columnsFor, writes = {}, actions = {}) {
+export function renderSql(policies, domain, columnsFor, writes = {}, actions = {}, inputs = {}) {
   const vocabulary = new Set([...TENANT_ROLES, ...UNSUPPORTED_ROLES]);
   const signatures = [];
   const bodies = [];
@@ -498,11 +639,14 @@ export function renderSql(policies, domain, columnsFor, writes = {}, actions = {
   let total = 0;
   let actionDropped = 0;
   let actionTotal = 0;
+  let inputTotal = 0;
+  let inputServed = 0;
   const served = {};
   const mine = POLICIES.filter(policy => policy.domain === domain);
   check(mine.length > 0, `POLICY_DOMAIN_UNKNOWN:${domain}`);
   const writesHere = WRITE_POLICIES.filter(policy => policy.domain === domain);
   const actionsHere = ACTION_POLICIES.filter(policy => policy.domain === domain);
+  const inputsHere = ACTION_INPUT_POLICIES.filter(policy => policy.domain === domain);
   for (const policy of mine) {
     const extracted = policies[policy.key];
     const known = new Set(columnsFor(policy.table));
@@ -633,6 +777,66 @@ $action$;`);
     signatures.push(`${name('known')}(text)`, `${name('admits')}(text,text)`,
       `${name('writes')}(text,text)`, `${name('rank')}(text)`);
   }
+  for (const policy of inputsHere) {
+    const entry = inputs[policy.key];
+    check(entry !== undefined, `ACTION_INPUTS_NOT_EXTRACTED:${policy.key}`);
+    const known = new Set(columnsFor(policy.table));
+    const names = Object.keys(entry);
+    const served = names.filter(action => entry[action].served);
+    for (const action of served) {
+      for (const field of entry[action].fields) {
+        // A column, or a named input the action interprets. Anything else is
+        // a mistyped column name, which is the drift this catches.
+        check(known.has(field) || policy.inputs.includes(field),
+          `ACTION_INPUT_UNKNOWN:${policy.key}.${action}.${field}`);
+      }
+    }
+    check(served.length > 0, `ACTION_INPUTS_NONE_SERVED:${policy.key}`);
+    tables.add(policy.table);
+    inputTotal += names.length;
+    inputServed += served.length;
+    const name = suffix => `${quote(SCHEMA)}.${quote(`${policy.prefix}_${suffix}`)}`;
+    const inputCase = (arm, fallback) =>
+      `  select case p_action\n${names.map(arm).join('\n')}\n    else ${fallback} end`;
+    bodies.push(`-- The actions \`${policy.original.split('/').at(-2)}\` declares (${names.length}), and the
+-- ${served.length} this port serves. An action it does not serve is KNOWN and refused with
+-- the reason below, which is not the same answer as an action that does not
+-- exist — and the generator refuses to render if one is neither.
+create function ${name('known')}(p_action text) returns boolean
+  language sql immutable set search_path = '' as $action$
+${inputCase(action => `    when '${action}' then true`, 'false')}
+$action$;
+
+create function ${name('served')}(p_action text) returns boolean
+  language sql immutable set search_path = '' as $action$
+${inputCase(action => `    when '${action}' then ${entry[action].served}`, 'false')}
+$action$;
+
+-- Why an action is not served. A reason rather than a flag, because "not
+-- ported" and "not allowed" are different things to be told.
+create function ${name('unported')}(p_action text) returns text
+  language sql immutable set search_path = '' as $action$
+${inputCase(action => `    when '${action}' then ${entry[action].because === null
+  ? 'null::text' : literal(entry[action].because)}`, 'null::text')}
+$action$;
+
+-- The inputs a served action accepts. Inputs, not columns: \`advance_handoff\`
+-- accepts \`next_status\` and writes \`emr_handoff_status\` and its history, and
+-- which columns move is the contract's to decide from the action's own logic.
+create function ${name('accepts')}(p_action text, p_field text) returns boolean
+  language sql immutable set search_path = '' as $action$
+${inputCase(action => `    when '${action}' then ${entry[action].served
+  ? `p_field in (${entry[action].fields.map(field => `'${field}'`).join(', ')})` : 'false'}`, 'false')}
+$action$;
+
+-- Declaration order, so an answer does not depend on how a caller spelled it.
+create function ${name('rank')}(p_action text) returns integer
+  language sql immutable set search_path = '' as $action$
+${inputCase((action, index) => `    when '${action}' then ${index + 1}`, 'null')}
+$action$;`);
+    signatures.push(`${name('known')}(text)`, `${name('served')}(text)`,
+      `${name('unported')}(text)`, `${name('accepts')}(text,text)`, `${name('rank')}(text)`);
+  }
   return `-- GENERATED by \`node tools-read-purpose-policy.mjs --write\`. Do not edit.
 --
 -- The authorized-${domain} purpose policies, as SQL.
@@ -655,7 +859,14 @@ ${mine.map(policy => `-- \`${policy.original}\``).join(' and\n')}
 -- answer what a policy says, never who is asking. The contracts beside them
 -- are hand-written and decide that, because a capability's authorization is
 -- its own.
-${actionTotal === 0 ? '' : `--
+${inputTotal === 0 ? '' : `--
+-- The action policies here belong to a capability that takes ONE named action
+-- per call rather than a batch: ${inputTotal} actions, of which this port serves
+-- ${inputServed}. What they carry is each action's INPUTS, because an action interprets
+-- them rather than writing them; which columns move is the contract's. The
+-- roles are the contract's too — the original decides them in code, and
+-- inventing a data shape for a decision is not carrying it.
+`}${actionTotal === 0 ? '' : `--
 -- The action policies here are the same kind of thing for a capability that
 -- MUTATES a ${domain}: ${actionTotal} named workflow actions, each deciding which fields
 -- it may touch and which roles may perform it. Their field sets are disjoint,
@@ -730,6 +941,7 @@ export function main(args = process.argv.slice(2), {
     policies = extract(repository);
     const writes = extractWrites(repository);
     const actions = extractActions(repository);
+    const inputs = extractActionInputs(repository);
     // Read each table once: six policies over three tables, and the migration
     // is 6,000 lines.
     const columns = new Map();
@@ -738,9 +950,10 @@ export function main(args = process.argv.slice(2), {
       return columns.get(table);
     };
     artifacts = [
-      [POLICY_FILE, render(policies, writes, actions)],
+      [POLICY_FILE, render(policies, writes, actions, inputs)],
       ...DOMAINS.map(domain =>
-        [POLICY_SQL_FILES[domain], renderSql(policies, domain, columnsFor, writes, actions)]),
+        [POLICY_SQL_FILES[domain],
+          renderSql(policies, domain, columnsFor, writes, actions, inputs)]),
     ];
   } catch (error) { log(JSON.stringify({ error: error?.code ?? 'POLICY_FAILED' })); return 1; }
   if (args.includes('--json')) { log(JSON.stringify(policies, null, 2)); return 0; }

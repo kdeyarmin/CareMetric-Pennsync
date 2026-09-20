@@ -316,6 +316,51 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_VISIT_IDENTITY_EXHAUSTED',
     ]),
   }),
+  // Documenting a visit. Four of the original's nine actions; the other five
+  // are known to the contract and refused with the reason the generator
+  // carries, so "not ported" and "no such action" stay different answers.
+  //
+  // The original's body is flat — `{visit_id, action, ...fields}` — and this
+  // takes the fields as their own object, the way the ported create
+  // capabilities take their payloads. A fixed parameter allowlist is what lets
+  // an unreviewed argument be refused rather than forwarded, and an action's
+  // own field names cannot be in it.
+  updateAuthorizedVisit: Object.freeze({
+    rpc: 'pennsync_contract_visit_update',
+    params: Object.freeze(['visit_id', 'action', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_visit_id: args.visit_id ?? null,
+      p_action: args.action ?? null,
+      p_fields: args.fields === undefined ? null : args.fields,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_VISIT_AGENCY_NOT_HELD',
+      'PENNSYNC_VISIT_ID_INVALID',
+      'PENNSYNC_VISIT_ACTION_UNKNOWN',
+      'PENNSYNC_VISIT_ACTION_UNPORTED',
+      'PENNSYNC_VISIT_CLINICIAN_REQUIRED',
+      'PENNSYNC_VISIT_PAYLOAD_INVALID',
+      'PENNSYNC_VISIT_FIELD_UNSUPPORTED',
+      'PENNSYNC_VISIT_FIELD_INVALID',
+      'PENNSYNC_VISIT_FIELDS_REQUIRED',
+      'PENNSYNC_VISIT_TAG_NOT_SYSTEM',
+      'PENNSYNC_VISIT_NOT_VISIBLE',
+      'PENNSYNC_VISIT_UNAVAILABLE',
+      'PENNSYNC_VISIT_PATIENT_UNAVAILABLE',
+      'PENNSYNC_VISIT_PATIENT_MISMATCH',
+      'PENNSYNC_VISIT_CANCELLED',
+      'PENNSYNC_VISIT_STATUS_REGRESSION',
+      'PENNSYNC_VISIT_GROUNDING_INCONSISTENT',
+      'PENNSYNC_VISIT_NOT_SCHEDULED',
+      'PENNSYNC_VISIT_HANDOFF_HISTORY_INVALID',
+      'PENNSYNC_VISIT_HANDOFF_STEP',
+      'PENNSYNC_VISIT_HANDOFF_FULL',
+      'PENNSYNC_VISIT_NO_DOCUMENTATION',
+      'PENNSYNC_VISIT_NOTE_CHANGED',
+      'PENNSYNC_VISIT_ACK_FIELDS_UNEXPECTED',
+    ]),
+  }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
     params: Object.freeze(['user_id']),
