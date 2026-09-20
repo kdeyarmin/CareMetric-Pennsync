@@ -7,7 +7,19 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import pg from 'pg';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+
+/**
+ * Nothing from the repository root is imported here, and that is a constraint
+ * rather than a preference: this suite runs in a CI job that installs ONLY
+ * `services/authority-store`'s own dependencies, so a root tool that imports
+ * `json5` fails at load before a single test runs. The first draft did exactly
+ * that and the step failed in under a second.
+ *
+ * So the schema name is written out and then PROVED against the applied
+ * database below, and the migrations are read from the directory rather than
+ * through a generator constant.
+ */
+const SCHEMA = 'pennsync_records';
 
 /**
  * What only two connections can show about a record contract.
@@ -25,6 +37,7 @@ import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan
  * is the list of record for the suites that are not.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
+const RECORD_MIGRATIONS = new URL('../supabase/record-migrations/', import.meta.url);
 const raw = process.env.PENNSYNC_TEST_PG_URL;
 if (!raw) throw new Error('PENNSYNC_TEST_PG_URL is required for real PostgreSQL tests');
 const base = new URL(raw);
@@ -145,6 +158,9 @@ test('the loser rolls back if the winner aborts, and the retry then wins', () =>
 }));
 
 test('the index is what holds, and it is the one the contract names', () => lab(async ({ setup }) => {
+  // The schema name above is written out; this is where it is proved.
+  assert.equal((await setup.query(
+    'select 1 from information_schema.schemata where schema_name = $1', [SCHEMA])).rowCount, 1);
   // The contract catches `unique_violation` only for this constraint by name
   // and re-raises anything else, so the name is load-bearing rather than
   // cosmetic — a rename in the generator would silently turn the retry answer
@@ -160,8 +176,13 @@ test('the index is what holds, and it is the one the contract names', () => lab(
   assert.match(live.rows[0].indexdef, /CREATE UNIQUE INDEX/);
   // Partial, because an absent key is not a duplicate of another absent key.
   assert.match(live.rows[0].indexdef, /WHERE .*patient_creation_key IS NOT NULL/);
-  // Every declared key the generator emits is really there, not only this one.
-  const emitted = [...readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8')
+  // Every declared key the migrations emit is really there, not only this one.
+  // Read from the directory that was applied rather than from a generator
+  // constant, for the import reason at the top of this file.
+  const migrations = (await readdir(RECORD_MIGRATIONS)).filter(file => file.endsWith('.sql')).sort();
+  const sources = await Promise.all(migrations.map(file =>
+    readFile(new URL(file, RECORD_MIGRATIONS), 'utf8')));
+  const emitted = [...sources.join('\n')
     .matchAll(/create unique index "([a-z_]+)"/g)].map(match => match[1]).sort();
   assert.ok(emitted.length >= 6, `expected the declared unique keys, saw ${emitted.length}`);
   const present = (await setup.query(

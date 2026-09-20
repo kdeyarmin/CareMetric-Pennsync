@@ -21,14 +21,26 @@ import process from 'node:process';
  */
 
 const ROOTS = ['src', 'base44'];
+/**
+ * `services/` is checked separately because a test there has TWO legitimate
+ * homes: a `test:*` script, or a workflow step. A dozen of them need a real
+ * PostgreSQL or a running local stack and cannot be in `pnpm test` at all.
+ *
+ * It is checked at all because five contract suites drifted exactly the way
+ * this guard was built to catch — written, passing when invoked directly, and
+ * never run again — and the miss surfaced as an unrelated CI failure rather
+ * than as a red test.
+ */
+const SERVICE_ROOT = 'services';
+const WORKFLOWS = '.github/workflows';
 
-function collectNodeTests(dir) {
+function collectNodeTests(dir, pattern = /\.test\.js$/) {
   const out = [];
   for (const entry of readdirSync(dir)) {
     if (entry === 'node_modules') continue;
     const p = join(dir, entry);
-    if (statSync(p).isDirectory()) out.push(...collectNodeTests(p));
-    else if (/\.test\.js$/.test(entry)) out.push(p.replace(/\\/g, '/'));
+    if (statSync(p).isDirectory()) out.push(...collectNodeTests(p, pattern));
+    else if (pattern.test(entry)) out.push(p.replace(/\\/g, '/'));
   }
   return out;
 }
@@ -58,4 +70,92 @@ test('every node:test file is wired into a package.json test script', () => {
       + 'package.json (test:utils is the usual home):\n  '
       + orphans.join('\n  '),
   );
+});
+
+test('every services test runs somewhere: a test script or a workflow step', () => {
+  const pkg = JSON.parse(readFileSync(join(process.cwd(), 'package.json'), 'utf8'));
+  const registry = Object.entries(pkg.scripts)
+    .filter(([name]) => name.startsWith('test:'))
+    .map(([, body]) => body)
+    .join(' ');
+  // A workflow step is a home too: a suite needing a real PostgreSQL or a
+  // running local stack cannot be in `pnpm test`, and pretending otherwise
+  // would push somebody to delete the guard rather than register the file.
+  const workflows = readdirSync(join(process.cwd(), WORKFLOWS))
+    .filter((entry) => /\.ya?ml$/.test(entry))
+    .map((entry) => readFileSync(join(process.cwd(), WORKFLOWS, entry), 'utf8'))
+    .join('\n');
+  const orphans = collectNodeTests(join(process.cwd(), SERVICE_ROOT), /\.test\.mjs$/)
+    .map((abs) => abs.slice(process.cwd().length + 1))
+    .filter((rel) => !registry.includes(rel) && !workflows.includes(rel))
+    // A glob in a script covers a whole directory, which is a real home.
+    .filter((rel) => !registry.includes(`${rel.replace(/\/[^/]+$/, '')}/*.test.mjs`))
+    .sort();
+  assert.deepEqual(orphans, [],
+    'These service tests never run in CI. Add them to a test:* script in '
+      + 'package.json, or to a workflow step when they need a database or a '
+      + 'running stack:\n  ' + orphans.join('\n  '));
+});
+
+test('nothing the isolated authority job runs needs a package that job does not install', () => {
+  // The `postgres` job in `pennsync-authority.yml` installs ONLY
+  // `services/authority-store` and `services/integration-runtime/tests`, each
+  // with `--ignore-workspace`. There is no root `pnpm install` in it. So a
+  // suite there that reaches a root tool importing `json5` fails at LOAD,
+  // before a single test runs — which presents as a step failing in under a
+  // second while the same file passes locally.
+  //
+  // Only that job is checked, because only its install set is narrow and
+  // knowable. Other workflows install the root package and the rule would be
+  // a guess.
+  const workflow = readFileSync(join(process.cwd(), WORKFLOWS, 'pennsync-authority.yml'), 'utf8');
+  const job = workflow.slice(workflow.indexOf('\n  postgres:'), workflow.indexOf('\n  http:'));
+  const installed = new Set(['services/authority-store', 'services/integration-runtime/tests']
+    .flatMap((directory) => {
+      const owner = JSON.parse(readFileSync(join(process.cwd(), directory, 'package.json'), 'utf8'));
+      return [...Object.keys(owner.dependencies ?? {}), ...Object.keys(owner.devDependencies ?? {})];
+    }));
+  // Every bare specifier the file reaches, following relative imports, because
+  // the failure is transitive: the test imported a tool, and the TOOL imported
+  // the package that was missing.
+  const reached = (entry, seen = new Set()) => {
+    if (seen.has(entry)) return [];
+    seen.add(entry);
+    let source;
+    try { source = readFileSync(entry, 'utf8'); } catch { return []; }
+    const bare = [];
+    // `from '…'` on an import or export line, plus a side-effect `import '…'`.
+    // Matching any quoted string after the word `export` picked up every
+    // `export const NAME = 'value'` in the fixtures, which is how the first
+    // draft reported that a test needed a package called `s3_referral`.
+    const specifiers = [
+      ...source.matchAll(/(?:^|\n)\s*(?:import|export)\b[^'"\n]*\bfrom\s*['"]([^'"\n]+)['"]/g),
+      ...source.matchAll(/(?:^|\n)\s*import\s*['"]([^'"\n]+)['"]/g),
+    ];
+    for (const match of specifiers) {
+      const specifier = match[1];
+      if (specifier.startsWith('node:')) continue;
+      if (!specifier.startsWith('.')) { bare.push({ entry, specifier }); continue; }
+      const resolved = join(entry, '..', specifier);
+      bare.push(...[resolved, `${resolved}.mjs`, `${resolved}.js`]
+        .filter((candidate) => { try { return statSync(candidate).isFile(); } catch { return false; } })
+        .flatMap((candidate) => reached(candidate, seen)));
+    }
+    return bare;
+  };
+  const offences = [];
+  for (const absolute of collectNodeTests(join(process.cwd(), SERVICE_ROOT), /\.test\.mjs$/)
+    .concat(readdirSync(process.cwd())
+      .filter((entry) => /^tools-.*\.test\.mjs$/.test(entry))
+      .map((entry) => join(process.cwd(), entry)))) {
+    const relative = absolute.slice(process.cwd().length + 1);
+    if (!job.includes(relative)) continue;
+    for (const { entry, specifier } of reached(absolute)) {
+      if (installed.has(specifier)) continue;
+      offences.push(`${relative}: ${entry.slice(process.cwd().length + 1)} needs ${specifier}`);
+    }
+  }
+  assert.deepEqual([...new Set(offences)].sort(), [],
+    'The isolated authority job does not install these, so the step fails at '
+      + 'load rather than on an assertion:\n  ' + [...new Set(offences)].sort().join('\n  '));
 });

@@ -86,7 +86,7 @@ begin
     execute format('set role %I', 'pennsync_records_owner');
     execute format('set role %I', v_admin);
   exception when others then
-    raise exception using errcode='42501',message='PENNSYNC_CHART_OWNER_NOT_ASSUMABLE';
+    raise exception using errcode='42501',message='PENNSYNC_RECORD_OWNER_NOT_ASSUMABLE';
   end;
 end $$;
 
