@@ -19,6 +19,13 @@ import {
  * and the half that was structurally impossible while the only assignment
  * table keyed to `pennsync_private.patient`, which can hold only synthetic
  * rows. Production assignments live in `chart_assignment` for that reason.
+ *
+ * What the backfill carries is `PatientCareTeamAssignment`, the server-owned
+ * care team the original actually trusts — not `Patient.assigned_nurses`,
+ * which `listAuthorizedPatients` explicitly refuses as authority and which
+ * Base44 already migrated into assignment rows. The case below keeps a stale
+ * address on a patient whose assignment was revoked, because that is the
+ * shape an email-sourced backfill gets wrong.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const APP = '6a9881683dc68a0bd54f1ef7';
@@ -67,14 +74,16 @@ const chartsOf = async (n) => {
 /** What the store answers about itself, which is the only side the planner trusts. */
 async function roster() {
   const { rows } = await db.query(`
-    select i.expected_email as email, m.agency_id::text as agency_id, m.id as membership_id,
-           m.tenant_role, m.status
+    select i.base44_user_id as user_id, i.expected_email as email,
+           m.agency_id::text as agency_id, m.id as membership_id, m.tenant_role, m.status
     from pennsync_private.membership m
     join pennsync_private.identity_map i
       on i.app_id = m.app_id and i.auth_user_id = m.auth_user_id and i.base44_user_id = m.base44_user_id
     where m.app_id = $1`, [APP]);
   return rows;
 }
+/** The Base44 user id the fixtures give identity `n`. */
+const base44 = n => `6aac00000000${'0'.repeat(11)}${n}`;
 async function existing() {
   const { rows } = await db.query(
     'select patient_id, membership_id, status from pennsync_private.chart_assignment where app_id = $1', [APP]);
@@ -121,19 +130,27 @@ test('the backfill carries a care team across, and the chart opens for exactly t
   const exported = JSON.stringify({
     contract: BACKFILL_CONTRACT,
     app_id: APP,
+    assignments: [
+      // The clinician is on the first chart. The administrator is assigned to
+      // it too and is dropped: an administrator already opens every chart, and
+      // writing the row would record an assignment nobody made.
+      { agency_id: 'agency-a', patient_id: 'rec-p1', user_id: base44(2), status: 'active' },
+      { agency_id: 'agency-a', patient_id: 'rec-p1', user_id: base44(1), status: 'active' },
+      // The second chart's assignment was revoked, and the address is STILL on
+      // the patient row — which is exactly how an email-sourced backfill
+      // resurrects access somebody withdrew.
+      { agency_id: 'agency-a', patient_id: 'rec-p2', user_id: base44(2), status: 'revoked' },
+    ],
     patients: [
-      // `clinician-a` is on the first chart. `admin-a` is named on it too and
-      // is dropped: an administrator already opens every chart, and writing
-      // the row would record an assignment nobody made.
-      { id: 'rec-p1', agency_id: 'agency-a',
-        assigned_nurses: ['clinician-a@example.invalid', 'admin-a@example.invalid'] },
-      // The second chart names somebody this deployment has never heard of.
-      { id: 'rec-p2', agency_id: 'agency-a', assigned_nurses: ['agency@example.invalid'] },
+      { id: 'rec-p2', agency_id: 'agency-a', assigned_nurses: ['clinician-a@example.invalid'] },
     ],
   });
   const plan = planBackfill(readExport(exported), await roster(), await existing());
   assert.deepEqual(plan.grants.map(grant => grant.patient_id), ['rec-p1']);
-  assert.deepEqual(plan.skipped.map(entry => entry.reason), ['role_not_assignable', 'address_unknown']);
+  assert.deepEqual(plan.skipped.map(entry => entry.reason).sort(),
+    ['role_not_assignable', 'status_not_active']);
+  // The stale address is reported rather than granted.
+  assert.deepEqual(plan.reconcile.map(entry => entry.patient_id), ['rec-p2']);
 
   assert.deepEqual(await applyBackfill(execute, plan, { actorId: uid(ADMIN_A), expectedDigest: plan.digest }),
     { applied: 1 });
@@ -146,8 +163,8 @@ test('the backfill carries a care team across, and the chart opens for exactly t
 });
 
 test('running it again writes nothing, and a withdrawal stays withdrawn', async () => {
-  const exported = JSON.stringify({ contract: BACKFILL_CONTRACT, app_id: APP, patients: [
-    { id: 'rec-p1', agency_id: 'agency-a', assigned_nurses: ['clinician-a@example.invalid'] }] });
+  const exported = JSON.stringify({ contract: BACKFILL_CONTRACT, app_id: APP, assignments: [
+    { agency_id: 'agency-a', patient_id: 'rec-p1', user_id: base44(2), status: 'active' }] });
   const again = planBackfill(readExport(exported), await roster(), await existing());
   assert.deepEqual(again.grants, []);
   assert.deepEqual(again.skipped.map(entry => entry.reason), ['already_recorded']);

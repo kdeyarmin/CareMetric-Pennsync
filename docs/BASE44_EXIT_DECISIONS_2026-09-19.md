@@ -1423,26 +1423,59 @@ typecheck gate and all seven gates, and failed only in CI. That gap is closed:
 and the migrations' actual inbound keys and asserts they agree, which runs
 everywhere `pnpm test` does. Reintroducing the bug fails it.
 
-**What the backfill refuses**, every case decided by D21's asymmetry — a
-dropped row is a support ticket, an invented one is a disclosure nobody
-reports:
+### What the backfill carries, and the source it must not read
 
-- An address resolves **exactly or not at all**, after the same normalisation
-  the store's own CHECK applies and nothing more. No display-name matching, no
-  domain fallback, no plus-suffix folding — each of those would match addresses
-  the store considers different, which is how an assignment lands on the wrong
-  person.
-- The membership must be in the **patient's** agency. A nurse working for two
-  agencies has two memberships, and carrying an assignment into the wrong one
+The first version read `Patient.assigned_nurses`. That is the wrong source,
+and reading the modules says so plainly rather than by implication:
+
+- `listAuthorizedPatients` states in its own header that "mutable
+  `assigned_nurses` email values **are not treated as authority**";
+- the entity it does trust, `PatientCareTeamAssignment`, is server-owned —
+  its schema carries `rls: {create: false, read: false, update: false,
+  delete: false}`, so no client may touch it at all — and has a full
+  lifecycle: grant, activate, suspend, revoke;
+- that entity's `source` enum contains **`legacy_assigned_nurses`**.
+
+The third is the one that settles it. **The migration off `assigned_nurses`
+already happened inside Base44.** Those addresses were turned into
+server-owned assignment rows with their provenance recorded. Reading them
+again would re-derive a derivation — and, far worse, would **resurrect access
+somebody revoked**, because the address stays on the patient row long after
+the assignment built from it is suspended. That is exactly the invented row
+this tool exists to refuse, arriving by a route the first version did not
+check. A test now keeps a stale address on a patient whose assignment was
+revoked, because that is the shape an email-sourced backfill gets wrong.
+
+Carrying `PatientCareTeamAssignment` instead makes two other problems
+disappear. A patient's creator keeps their own chart, because the original
+records that as an assignment with `source: 'patient_creator'` rather than as
+a separate rule — so D24's single-armed narrowing is complete after all, where
+an `assigned_nurses` backfill would have locked every intake clinician out of
+the patient they had just created. And resolution is by **Base44 user id**,
+which the entity's schema calls authoritative and says never to substitute an
+email for, so none of the address-matching hazards arise at all.
+
+**What it refuses**, every case decided by D21's asymmetry — a dropped row is
+a support ticket, an invented one is a disclosure nobody reports:
+
+- **Only an `active` assignment carries.** `suspended` is reversible and
+  `revoked` is terminal; both mean somebody decided this person should not
+  have the chart.
+- A user id resolves **exactly or not at all**, against
+  `identity_map.base44_user_id`.
+- The membership must be in the **assignment's** agency. A nurse working for
+  two agencies has two memberships, and carrying one into the wrong agency
   hands them a chart nobody gave them.
 - A role that does not open charts, or a revoked membership, is dropped.
-- **It never revokes and never re-grants.** An assignment already in the store
-  is left exactly as it is, including a revoked one: `assigned_nurses` cannot
-  distinguish "never assigned" from "access deliberately withdrawn", so
-  re-granting a revoked assignment is the invented row arriving by another
-  route.
+- **An assignment already in the store is left exactly as it is**, including a
+  revoked one.
+- **`assigned_nurses` is reconciled, never granted.** An address with no live
+  assignment behind it is reported so an operator can see what the earlier
+  in-Base44 migration did not carry — but it never becomes a row, because this
+  tool cannot tell "never migrated" from "migrated and later revoked".
 - A malformed export **fails the run** rather than carrying the rows that
-  happened to parse.
+  happened to parse. A v1 export is refused by contract version, so one
+  written against the old source cannot be read under the new rules.
 
 Every drop is named in a report the operator reads before anything is written,
 and that report carries counts and reasons only — no address, no name, no
