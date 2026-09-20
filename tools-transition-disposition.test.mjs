@@ -580,8 +580,12 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // fenced-declaration machinery the reads use, the visit pair after it, and
   // the scoped alert pair — the first capabilities whose OWN authorization was
   // the `assigned_nurses` representation D21 and D24 threw out — and the note
-  // history pair, whose table D32 made genuinely append-only first.
-  // 76 → 74 → 72 → 70 → 69 → 68 → 67 → 66 → 64 → 62, and 11 → 25 written.
+  // history pair, whose table D32 made genuinely append-only first. Then
+  // `managePatientCareTeamAssignment`, the one capability whose original is
+  // PAUSED AT SOURCE: D33 re-enables its four mutations because the owned store
+  // meets the three conditions the pause names, and it is the port that makes
+  // D24 operable — until it, nothing could take a clinician off a care team.
+  // 76 → 74 → 72 → 70 → 69 → 68 → 67 → 66 → 64 → 62 → 61, and 11 → 26 written.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -589,8 +593,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 10, patient_access_model: 0,
-    records_schema: 62, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
-    external_secret: 1, none: 25 });
+    records_schema: 61, files: 4, ported_function: 1, core_integration: 1, pdf_rendering: 0,
+    external_secret: 1, none: 26 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -627,14 +631,14 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'calculateDataQualityScores', 'enforceDataCompleteness',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Sixty-two. That is how many of the hundred can be written today, and the
+  // Sixty-one. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 62);
-  // The fourteen that left it are the ported capabilities that touch clinical rows
+  assert.equal(report.port_blockers.records_schema.length, 61);
+  // The fifteen that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
   // carries the SmartNote save — so they are also the proof that the D19
@@ -642,13 +646,16 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // is the first that is only PARTLY ported: four of its nine actions, with
   // the other five refused by name and reason. The
   // document pair additionally shows that `files` was never the blocker there:
-  // no purpose discloses a locator.
+  // no purpose discloses a locator. `managePatientCareTeamAssignment` is the
+  // last of them and the odd one: its four mutations were refused at module
+  // scope in the original, so porting it RE-ENABLES rather than reproduces.
   for (const name of ['listAuthorizedPatients', 'getAuthorizedPatient',
     'listAuthorizedVisits', 'getAuthorizedVisit',
     'listAuthorizedDocuments', 'getAuthorizedDocument', 'createAuthorizedPatient',
     'updateAuthorizedPatient', 'createAuthorizedVisit', 'updateAuthorizedVisit',
     'getScopedPatientAlerts', 'updateScopedPatientAlert',
-    'appendPatientNoteHistory', 'getAuthorizedPatientNoteHistory']) {
+    'appendPatientNoteHistory', 'getAuthorizedPatientNoteHistory',
+    'managePatientCareTeamAssignment']) {
     assert.ok(report.port_blockers.none.includes(name), `${name} is ported`);
     assert.ok(!report.port_blockers.records_schema.includes(name), name);
   }
@@ -691,7 +698,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
       'getAuthorizedPatientNoteHistory', 'getAuthorizedVisit',
       'getScopedPatientAlerts',
       'listAuthorizedDocuments', 'listAuthorizedPatients', 'listAuthorizedVisits',
-      'listPolicyLibrary', 'matchPatientWithAI', 'updateAuthorizedPatient',
+      'listPolicyLibrary', 'managePatientCareTeamAssignment', 'matchPatientWithAI',
+      'updateAuthorizedPatient',
       'updateAuthorizedVisit', 'updateScopedPatientAlert', 'validatePatientData'],
     'the set of written ports changed');
   // `listPolicyLibrary` is the first of these to read an entity row. Everything

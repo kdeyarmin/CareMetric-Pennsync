@@ -162,8 +162,10 @@ test('a retry whose chart the caller can no longer open is a conflict, not a sec
   const id = (await create(CLINICIAN_A, 'req-revoked-1')).patient.id;
   const grants = async () => (await db.query(
     'select count(*)::int as n from pennsync_private.chart_assignment')).rows[0].n;
-  await db.query(
-    "update pennsync_private.chart_assignment set status = 'revoked' where patient_id = $1", [id]);
+  // A COHERENT revocation, per D33's lifecycle check.
+  await db.query(`update pennsync_private.chart_assignment
+    set status = 'revoked', last_action = 'revoke', last_reason = 'test withdrawal',
+      revoked_at = clock_timestamp(), version = version + 1 where patient_id = $1`, [id]);
   const before = await grants();
   await refusal(create(CLINICIAN_A, 'req-revoked-1'), 'PENNSYNC_PATIENT_REQUEST_CONFLICT');
   // One chart for one key, which is what the index is for. Without it this
@@ -235,8 +237,9 @@ test('a grant records that somebody was given a chart, and cannot be rewritten',
     ['rewritten', id]));
   await assert.rejects(() => db.query(
     'delete from pennsync_private.chart_assignment where patient_id = $1', [id]));
-  await db.query(
-    "update pennsync_private.chart_assignment set status = 'revoked' where patient_id = $1", [id]);
+  await db.query(`update pennsync_private.chart_assignment
+    set status = 'revoked', last_action = 'revoke', last_reason = 'test withdrawal',
+      revoked_at = clock_timestamp(), version = version + 1 where patient_id = $1`, [id]);
   // And revoking closes the chart, through the read contract the caller uses.
   assert.equal((await as(CLINICIAN_A, GET, [A, 'display', id]))[0].result, null,
     'a revoked seat closes the chart it opened');

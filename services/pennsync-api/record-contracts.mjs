@@ -457,6 +457,61 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_NOTE_IDENTITY_EXHAUSTED',
     ]),
   }),
+  // The care-team assignment lifecycle. The one capability in the port queue
+  // whose original is PAUSED AT SOURCE, re-enabled because the owned store
+  // meets the three conditions its pause names — a create-if-absent unique
+  // constraint, one transaction spanning membership, agency, chart and
+  // assignment, and an authenticated concurrency matrix proved rather than
+  // asserted. `inspect` was always live; the four mutations were not.
+  inspectPatientCareTeamAssignment: Object.freeze({
+    rpc: 'pennsync_contract_assignment_inspect',
+    params: Object.freeze(['patient_id', 'target_user_id']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_target_user_id: args.target_user_id ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_ASSIGNMENT_AGENCY_NOT_HELD',
+      'PENNSYNC_ASSIGNMENT_FORBIDDEN',
+      'PENNSYNC_ASSIGNMENT_SUBJECT_INVALID',
+      'PENNSYNC_ASSIGNMENT_TARGET_NOT_A_COLLEAGUE',
+      'PENNSYNC_ASSIGNMENT_PATIENT_NOT_VISIBLE',
+    ]),
+  }),
+  transitionPatientCareTeamAssignment: Object.freeze({
+    rpc: 'pennsync_contract_assignment_transition',
+    params: Object.freeze([
+      'patient_id', 'target_user_id', 'action', 'client_request_id', 'reason', 'expected_version',
+    ]),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_target_user_id: args.target_user_id ?? null,
+      p_action: args.action ?? null,
+      p_client_request_id: args.client_request_id ?? null,
+      p_reason: args.reason === undefined ? null : args.reason,
+      p_expected_version: args.expected_version === undefined ? null : args.expected_version,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_ASSIGNMENT_AGENCY_NOT_HELD',
+      'PENNSYNC_ASSIGNMENT_FORBIDDEN',
+      'PENNSYNC_ASSIGNMENT_SUBJECT_INVALID',
+      'PENNSYNC_ASSIGNMENT_ACTION_INVALID',
+      'PENNSYNC_ASSIGNMENT_REQUEST_ID_INVALID',
+      'PENNSYNC_ASSIGNMENT_REASON_REQUIRED',
+      'PENNSYNC_ASSIGNMENT_VERSION_REQUIRED',
+      'PENNSYNC_ASSIGNMENT_VERSION_UNEXPECTED',
+      'PENNSYNC_ASSIGNMENT_TARGET_NOT_A_COLLEAGUE',
+      'PENNSYNC_ASSIGNMENT_PATIENT_NOT_VISIBLE',
+      'PENNSYNC_ASSIGNMENT_EXISTS',
+      'PENNSYNC_ASSIGNMENT_NOT_FOUND',
+      'PENNSYNC_ASSIGNMENT_STALE',
+      'PENNSYNC_ASSIGNMENT_REVOKED',
+      'PENNSYNC_ASSIGNMENT_TRANSITION',
+      'PENNSYNC_ASSIGNMENT_REQUEST_CONFLICT',
+    ]),
+  }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
     params: Object.freeze(['user_id']),

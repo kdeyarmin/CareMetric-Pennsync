@@ -2148,3 +2148,95 @@ One consequence to carry forward: a capability that needs to correct one of
 these rows writes a new one. That is what append-only means, and it is what
 `appendPatientNoteHistory` already does — every save creates a new
 tenant-stamped event rather than editing the last.
+
+## D33 — The one capability whose port re-enables it, and the conditions that bought that
+
+**Decision.** Port `managePatientCareTeamAssignment` in full — the `inspect`
+action and all four mutations — even though the four mutations are **paused at
+source** in the Base44 original and refuse with a 503 before the handler reads
+anything. Extend `pennsync_private.chart_assignment` with a `suspended` status
+and a transition trail, and serve the capability from
+`20260920180000_contract_assignment.sql`.
+
+Re-enabling a paused capability is the one thing a port normally must not do, so
+this is a decision rather than a step, and it is deliberately revertible as a
+single commit: nothing else in the port depends on it and `claim_new_chart`
+keeps working without it.
+
+**Why it is allowed here.** The pause is not a product judgement. It names three
+conditions, in its own words:
+
+> HARD RELEASE GATE: Base44 currently exposes no documented atomic
+> create-if-absent/unique constraint for assignment_key and no multi-entity
+> transaction spanning membership, Agency, Patient, and assignment authority.
+> Keep every assignment mutation unavailable until those hosted guarantees and
+> the authenticated concurrency matrix are proved.
+
+Those are Base44's limits. The owned store does not have them:
+
+* **The create-if-absent constraint** is the table's own primary key,
+  `(app_id, patient_id, membership_id)`, plus the partial unique index
+  `chart_assignment_request_key` on `(app_id, last_request_key)` that makes a
+  retry idempotent.
+* **The transaction spanning four authorities** is an ordinary one, because
+  membership, agency, chart and assignment are four tables in one database —
+  the same fact D28 already leaned on when `contract_patient_create` claims a
+  chart and inserts it atomically.
+* **The authenticated concurrency matrix** is the third, and it is a thing to
+  prove rather than assert. `record-contract-postgres.test.mjs` drives two real
+  connections through it: two concurrent grants, two concurrent transitions,
+  and a retry racing its own first attempt.
+
+**What the matrix found.** Not a formality. The first draft passed every PGlite
+test and then failed the two-connection grant race: `select … for update` locks
+a row that exists and therefore serializes nothing when the row does not, so
+both callers reached the insert and the loser was told `duplicate key value
+violates unique constraint "chart_assignment_pkey"`. That leaks the storage to
+the caller and reaches the HTTP boundary as an error it cannot classify. The
+contract now catches `unique_violation` for those two constraints **by name**,
+re-raises anything else, re-reads under the fresh snapshot, and answers
+`PENNSYNC_ASSIGNMENT_EXISTS` — or, if the row carries the caller's own request
+key, answers the grant that request already made. This is the same idiom
+`contract_patient_create` uses for `patient_patient_creation_key_unique`, and it
+was arrived at the same way: by racing it.
+
+**Why it matters more than one capability.** This is what makes **D24 operable**.
+Until now the only writers of `chart_assignment` were the operator backfill and
+`claim_new_chart`, so a clinician could be put on a chart by creating it and
+taken off it by nothing at all. Every other ported capability authorizes on
+these rows through `caller_assigned_patients`. A care-team model with no way to
+suspend a seat is not a care-team model; it is a growing list.
+
+`suspended` rather than only `revoked` is the whole reason the status set grew.
+`caller_assigned_patients` already filters `status = 'active'`, so a suspension
+closes the chart with no helper change, while leaving the record that the person
+was once on it. A revocation stays terminal: putting somebody back afterwards is
+a new decision, not a transition. The lifecycle test asserts the closure through
+`listAuthorizedPatients` — a capability already ported, called as the clinician —
+rather than through the row it just wrote or through a helper no caller may
+execute.
+
+**A trap found on the way.** The coherence constraint requires `granted_at`, and
+both pre-existing writers insert an active row without naming it. With the
+column merely nullable the constraint refused every grant they made — the shared
+test fixtures failed on their first insert. `granted_at` carries a default, and
+the backfill of existing rows runs before the default is attached so an
+assignment that already existed keeps the moment it was actually made.
+
+**The narrowings.** Four, each recorded in the migration header. The protected
+platform owner is neither admitted nor protected as a target, because D14 and
+D22 removed the tier. The agency is the one the caller is acting in rather than
+a request field. The target is named by Base44 user id and resolved through
+`identity_map`. And the answer carries the assignment and the roster identity
+rather than the original's membership and patient snapshots — the caller is an
+agency manager who can ask the roster for the rest.
+
+`boundedReason` is ported rather than approximated, and proved against the
+original's own function across twenty-four inputs. Three things a plain
+`btrim(x) <> '' and length(x) <= 500` gets wrong: JavaScript's trim strips the
+Unicode space separators, `String.prototype.length` counts UTF-16 code units so
+astral characters count twice, and the control-character class is tested only
+after trimming — because the trim removes the vertical tab and form feed the
+class would otherwise reject.
+
+Port queue: `records_schema` 62 → 61, written 25 → 26.

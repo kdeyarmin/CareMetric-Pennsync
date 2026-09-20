@@ -33,6 +33,10 @@ export const MIGRATION_CODES = Object.freeze([
   // fails if a code they raise is missing here.
   'PENNSYNC_RECORD_STORE_REQUIRED',
   'PENNSYNC_RECORD_OWNER_REQUIRED',
+  // D33's contract refuses to apply to a store whose `chart_assignment` has no
+  // lifecycle columns, because it would otherwise create functions that fail on
+  // their first call rather than at migration time.
+  'PENNSYNC_ASSIGNMENT_LIFECYCLE_REQUIRED',
 ]);
 let pinnedDaemon;
 const localDaemon = value => typeof value === 'string' &&

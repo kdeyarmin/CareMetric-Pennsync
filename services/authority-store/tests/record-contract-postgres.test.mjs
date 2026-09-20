@@ -248,3 +248,165 @@ test('a duplicate key cannot be written around the contract either', () => lab(a
   assert.equal((await setup.query(
     `select count(*)::int as n from ${SCHEMA}."patient"`)).rows[0].n, 5);
 }));
+
+/*
+ * ---------------------------------------------------------------------------
+ * The authenticated concurrency matrix.
+ *
+ * `managePatientCareTeamAssignment` is paused at source, and its pause names
+ * three conditions. Two of them the owned store simply has — a unique index
+ * and a transaction spanning membership, agency, chart and assignment. The
+ * third is this: "Keep every assignment mutation unavailable until those
+ * hosted guarantees and the authenticated concurrency matrix are proved."
+ *
+ * These four tests are that matrix. They are the reason the port is allowed to
+ * re-enable the capability, so they must FAIL if the contract stops being
+ * safe under interleaving, not merely pass while it is.
+ */
+const MANAGER_A = 1;
+const SPARE = '6aac00000000000000000003';
+const MOVE = 'select "public"."pennsync_contract_assignment_transition"($1,$2,$3,$4,$5,$6,$7) as result';
+const move = (client, patient, action, request, version = null, reason = 'covering the weekend') =>
+  client.query(MOVE, [A, patient, SPARE, action, request, reason, version])
+    .then(result => result.rows[0].result);
+/** A committed chart of record, made the way the product makes one. */
+async function chart(connect, request) {
+  const client = await connect();
+  await begin(client, CLINICIAN_A);
+  const made = await create(client, request);
+  await client.query('commit');
+  return made.patient.id;
+}
+/** Wait until `client` is blocked, on any lock rather than a named index. */
+async function blocked(monitor, client, what) {
+  const end = Date.now() + 5000;
+  while (Date.now() < end) {
+    const seen = await monitor.query(
+      'select wait_event_type from pg_stat_activity where pid=$1', [client.processID]);
+    if (seen.rows[0]?.wait_event_type === 'Lock') return;
+    await delay(10);
+  }
+  assert.fail(`Expected ${what} to block`);
+}
+
+test('two concurrent grants seat the colleague once, and the loser is told why',
+  () => lab(async ({ connect, setup }) => {
+    const patient = await chart(connect, 'req-seat-1');
+    const first = await connect(); const second = await connect();
+    await begin(first, MANAGER_A); await begin(second, MANAGER_A);
+    // Neither can see the other's uncommitted row, so both pass the lookup and
+    // both reach the insert. This is the create-if-absent the pause said Base44
+    // could not give it.
+    const winner = await move(first, patient, 'grant', 'race-grant-a');
+    assert.equal(winner.assignment.status, 'active');
+    const pending = tracked(move(second, patient, 'grant', 'race-grant-b'));
+    await blocked(setup, second, 'the second grant');
+    await first.query('commit');
+    const loser = await pending;
+    // A NAMED refusal. A raw `duplicate key value violates unique constraint`
+    // would mean the contract had leaked its storage to the caller, and the
+    // http boundary could not classify it.
+    assert.equal(loser.ok, false, 'the loser seated the colleague twice');
+    assert.match(String(loser.error.message), /PENNSYNC_ASSIGNMENT_EXISTS/,
+      `the loser refused with ${loser.error.message}`);
+    await second.query('rollback');
+    assert.equal((await setup.query(
+      `select count(*)::int as n from pennsync_private.chart_assignment
+       where patient_id = $1 and membership_id = 'membership-3'`, [patient])).rows[0].n, 1);
+  }));
+
+test('two concurrent transitions apply one, and the other is refused as stale',
+  () => lab(async ({ connect, setup }) => {
+    const patient = await chart(connect, 'req-seat-2');
+    const opener = await connect();
+    await begin(opener, MANAGER_A);
+    await move(opener, patient, 'grant', 'seat-2');
+    await opener.query('commit');
+
+    const first = await connect(); const second = await connect();
+    await begin(first, MANAGER_A); await begin(second, MANAGER_A);
+    // Both managers read version 1 and both act on it. Exactly one may win:
+    // without the compare-and-swap the second would overwrite a state it never
+    // saw, which is how a reactivation undoes somebody else's suspension.
+    const winner = await move(first, patient, 'suspend', 'race-move-a', 1);
+    assert.equal(winner.assignment.version, 2);
+    const pending = tracked(move(second, patient, 'revoke', 'race-move-b', 1));
+    // Blocked on the row lock the contract takes, not on an index.
+    await blocked(setup, second, 'the second transition');
+    await first.query('commit');
+    const loser = await pending;
+    assert.equal(loser.ok, false, 'the loser applied a transition against a stale read');
+    assert.match(String(loser.error.message), /PENNSYNC_ASSIGNMENT_STALE/,
+      `the loser refused with ${loser.error.message}`);
+    await second.query('rollback');
+    const row = (await setup.query(
+      `select status, version, last_action from pennsync_private.chart_assignment
+       where patient_id = $1 and membership_id = 'membership-3'`, [patient])).rows[0];
+    // `version` is a DOMAIN over integer, which node-pg has no parser for and
+    // hands back as text.
+    assert.deepEqual([row.status, Number(row.version), row.last_action],
+      ['suspended', 2, 'suspend']);
+  }));
+
+test('a retry that races its own first attempt applies the transition once',
+  () => lab(async ({ connect, setup }) => {
+    const patient = await chart(connect, 'req-seat-3');
+    const opener = await connect();
+    await begin(opener, MANAGER_A);
+    await move(opener, patient, 'grant', 'seat-3');
+    await opener.query('commit');
+
+    const first = await connect(); const second = await connect();
+    await begin(first, MANAGER_A); await begin(second, MANAGER_A);
+    // The client that never saw an answer and sent the same request again,
+    // while the first was still in flight. Both carry the same request id and
+    // the same version, so both are the SAME suspension.
+    const winner = await move(first, patient, 'suspend', 'retry-me', 1);
+    const pending = tracked(move(second, patient, 'suspend', 'retry-me', 1));
+    await blocked(setup, second, 'the racing retry');
+    await first.query('commit');
+    const retry = await pending;
+    // Answered, not refused as stale: the retry finds its own request key on
+    // the row and returns what it already did.
+    assert.equal(retry.ok, true, `the retry refused: ${retry.error?.message}`);
+    assert.equal(retry.value.assignment.version, winner.assignment.version);
+    assert.equal(retry.value.assignment.status, 'suspended');
+    await second.query('commit');
+    // One suspension, from two requests carrying one key.
+    const row = (await setup.query(
+      `select status, version from pennsync_private.chart_assignment
+       where patient_id = $1 and membership_id = 'membership-3'`, [patient])).rows[0];
+    assert.deepEqual([row.status, Number(row.version)], ['suspended', 2]);
+  }));
+
+test('the assignment lifecycle is held by constraints, not only by the contract',
+  () => lab(async ({ setup }) => {
+    // The request-key index the pause said Base44 had no equivalent of.
+    const index = await setup.query(
+      'select indexdef from pg_indexes where schemaname = $1 and indexname = $2',
+      ['pennsync_private', 'chart_assignment_request_key']);
+    assert.equal(index.rowCount, 1, 'the request-key index exists in the applied store');
+    assert.match(index.rows[0].indexdef, /CREATE UNIQUE INDEX/);
+    assert.match(index.rows[0].indexdef, /WHERE .*last_request_key IS NOT NULL/);
+    // Every state the contract can reach is coherent, and every one it cannot
+    // is refused by the table itself — so a future writer that skips the
+    // contract cannot invent a suspended row at version 1.
+    const patient = 'direct-write-probe';
+    const insert = (status, version, action, extra = '') => setup.query(
+      `insert into pennsync_private.chart_assignment
+        (app_id, agency_id, patient_id, membership_id, status, version, changed_by,
+         last_action, last_reason ${extra ? `, ${extra}` : ''})
+       values ($1,$2,$3,'membership-3',$4,$5,$6,$7,'because'
+         ${extra ? `, clock_timestamp()` : ''})`,
+      [APP, A, `${patient}-${status}-${version}`, status, version, uid(1), action]);
+    await assert.rejects(insert('suspended', 1, 'suspend', 'suspended_at'),
+      /chart_assignment_lifecycle_coherent/);
+    await assert.rejects(insert('active', 2, 'activate', 'suspended_at'),
+      /chart_assignment_lifecycle_coherent/);
+    await assert.rejects(insert('revoked', 1, 'revoke', 'revoked_at'),
+      /chart_assignment_lifecycle_coherent/);
+    await assert.rejects(insert('active', 1, 'suspend'),
+      /chart_assignment_lifecycle_coherent/);
+    // And the one shape a grant may have.
+    await insert('active', 1, 'grant');
+  }));

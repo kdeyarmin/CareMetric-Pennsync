@@ -343,6 +343,32 @@ export const HANDLERS = Object.freeze({
       return contract('appendPatientNoteHistory', params);
     },
   }),
+  managePatientCareTeamAssignment: Object.freeze({
+    // One Base44 capability with five actions, reaching two contracts — the
+    // same shape `listAuthorizedPatients` has. `inspect` was the only action
+    // the original served: the other four were refused at module scope by
+    // `CARE_TEAM_ASSIGNMENT_MUTATIONS_ENABLED = false` before the handler read
+    // anything, and D33 re-enables them because the owned store meets the
+    // three conditions that pause names.
+    //
+    // The envelope is the original's and is action-dependent, which is why
+    // there are three `exactObject` calls rather than one: an inspect carries
+    // no request id, a grant carries no version, and a transition carries
+    // both. Everything past the envelope — who may ask, who may be named, what
+    // the reason must look like, which transition is legal — is the contract's.
+    handle({ params, contract }) {
+      if (!isObject(params)) fail(400, 'INVALID_PARAMS');
+      const subject = ['patient_id', 'target_user_id'];
+      if (params.action === 'inspect') {
+        exactObject(params, ['action', ...subject], 'INVALID_PARAMS');
+        return contract('inspectPatientCareTeamAssignment', params);
+      }
+      const transition = ['action', ...subject, 'client_request_id', 'reason'];
+      exactObject(params, params.action === 'grant'
+        ? transition : [...transition, 'expected_version'], 'INVALID_PARAMS');
+      return contract('transitionPatientCareTeamAssignment', params);
+    },
+  }),
   generateBagTechniquePDF: Object.freeze({
     binary: true,
     handle({ params, config }) {

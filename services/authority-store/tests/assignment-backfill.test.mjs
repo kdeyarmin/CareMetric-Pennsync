@@ -172,7 +172,11 @@ test('running it again writes nothing, and a withdrawal stays withdrawn', async 
   // And the case that matters most: access somebody deliberately withdrew.
   // `assigned_nurses` cannot tell that from never having been assigned, so a
   // second run must not restore it.
-  await db.exec(`update pennsync_private.chart_assignment set status = 'revoked'
+  // A COHERENT revocation: D33's lifecycle check refuses a row claiming to be
+  // both a grant and revoked, so this reaches the state the contract produces.
+  await db.exec(`update pennsync_private.chart_assignment
+    set status = 'revoked', last_action = 'revoke', last_reason = 'test withdrawal',
+      revoked_at = clock_timestamp(), version = version + 1
     where app_id = '${APP}' and patient_id = 'rec-p1'`);
   assert.deepEqual(await chartsOf(CLINICIAN_A), [], 'the revocation closes the chart');
   const afterRevoke = planBackfill(readExport(exported), await roster(), await existing());
