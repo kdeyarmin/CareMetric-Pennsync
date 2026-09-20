@@ -915,6 +915,24 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_CREDENTIAL_TRANSITION',
     ]),
   }),
+  // The record half of the CMS regulation sync. Every enumerated field the
+  // MODEL supplies is checked against the column's own constraint before
+  // anything is stored, and the answer reports how many were adjusted — the
+  // original writes them straight through, so an unlisted category raises a
+  // check violation and the row is lost inside a catch that only logs.
+  syncCMSRegulations: Object.freeze({
+    rpc: 'pennsync_contract_regulatory_update_store',
+    params: Object.freeze(['regulations']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_regulations: args.regulations === undefined ? null : args.regulations,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_REGULATION_FORBIDDEN',
+      'PENNSYNC_REGULATION_INVALID',
+      'PENNSYNC_REGULATION_TOO_MANY',
+    ]),
+  }),
   // ADR response deadline reminders: the first D49 sweep with nothing paused,
   // because its reminder is a row rather than an email.
   //

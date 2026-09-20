@@ -3438,3 +3438,56 @@ rewording fails the suite instead of quietly changing what the model is asked.
 
 Port queue: `records_schema` 29 → 28, written 54 → 55. The eleven model-backed
 ports are now blocked on nothing but their own record contracts.
+
+## D54 — A model's answer is data, and the columns are what decide whether it may be stored
+
+**Decision.** Port `syncCMSRegulations` as a model call followed by a record
+contract, and have the contract check every enumerated field the model supplies
+against the column's own constraint before storing it.
+
+**This is the first port whose write is a record contract rather than a trail
+append**, so it is where D53's pattern meets a real table. The order is the
+same: ask the model, shape the answer, store what may be stored, record the
+sync. The prompt asks the model to search the internet, so
+`add_context_from_internet` and the response schema pass through the broker
+unchanged — the runtime takes an operation's params as given.
+
+**The interesting part is what the columns refuse.** `regulatory_update`
+constrains `source`, `category`, `impact_level` and `status`, and the thing
+supplying three of them is a MODEL. The original writes them straight through:
+
+```js
+category: reg.category || 'documentation',
+impact_level: reg.impact_level || 'medium',
+```
+
+A model asked for free text will sooner or later answer `"reimbursement policy"`
+where the enum says `billing`, or `"VERY HIGH"` where it says `high`. That
+insert raises a check violation, and the original's per-row `try/catch` logs it
+and continues — so the regulation is silently lost and the reported count is
+wrong. The contract treats an unrecognised value as an ABSENT one, which is the
+only reading that neither loses the regulation nor writes something the store
+refuses, and reports `regulations_adjusted` so the substitution is visible.
+Matching is case-insensitive, and case alone is not counted as an adjustment.
+
+**The batch is one transaction.** The original creates each row in its own call
+inside a `catch` that logs and continues, so a sync can half-succeed and report
+a count nobody can reconcile. A test sends a good regulation beside a malformed
+one and checks that neither lands.
+
+**Two smaller rules.** A regulation with no title is skipped rather than stored
+as a row nothing can act on, and an effective date the store cannot hold becomes
+today — which is what the original already does for an absent one.
+
+**Not diverged:** running the sync twice stores everything twice.
+`RegulatoryUpdate` claims no uniqueness in its own schema, and deciding what
+makes two regulations the same row — title, CMS reference, effective date — is
+an entity decision, which D30 is where it belongs.
+
+**One invariant widened.** `record-contracts.test.mjs` checked that every
+declared contract is reached by scanning `handlers.mjs`; this is the first
+capability whose body lives in its own module and reaches its contract from
+there, so the scan now covers every module of the service. Scanning one file
+would have reported a live contract as dead surface.
+
+Port queue: `records_schema` 28 → 27, written 55 → 56.

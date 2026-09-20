@@ -8,6 +8,7 @@
 // Every handler receives the caller's already-resolved current authority. A
 // handler never resolves its own authority and never widens it.
 import { exactObject, fail, isObject } from './contracts.mjs';
+import { syncCmsRegulations } from './cms-regulations.mjs';
 import { triageReferral } from './referral-triage.mjs';
 import {
   BAG_TECHNIQUE_FILENAME, SMART_NOTE_GUIDE_FILENAME, USER_MANUAL_FILENAME,
@@ -786,6 +787,16 @@ export const HANDLERS = Object.freeze({
     handle({ params, integration }) {
       exactObject(params, ['referralData', 'priorityAnalysis'], 'INVALID_PARAMS');
       return runReferralTasks({ params, integration });
+    },
+  }),
+  syncCMSRegulations: Object.freeze({
+    // Model, then record contract, then trail (D53). The prompt asks the model
+    // to search the internet, so `add_context_from_internet` and the response
+    // schema are the original's and pass through the broker unchanged.
+    needsIntegration: true,
+    handle({ params, integration, contract, audit }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      return syncCmsRegulations({ integration, contract, audit });
     },
   }),
   triageReferralWithAI: Object.freeze({

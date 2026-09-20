@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import {
   CONTRACT_CODES, CONTRACT_NAMES, RECORD_CONTRACTS, contractCapability,
 } from './record-contracts.mjs';
@@ -47,7 +47,16 @@ test('every declared contract is reached by a handler, and every reached contrac
   // contracts. Matching on names would have forced either one contract doing
   // both jobs or a handler named after neither capability, and both of those
   // are worse than looking at what the handlers actually call.
-  const source = readFileSync(new URL('./handlers.mjs', import.meta.url), 'utf8');
+  // Every module of the service, not only `handlers.mjs`: a capability whose
+  // body lives in its own module reaches its contract from there, and
+  // `syncCMSRegulations` is the first that does. Scanning one file would have
+  // reported it as a contract nothing can reach.
+  const directory = new URL('./', import.meta.url);
+  const source = readdirSync(directory)
+    .filter(name => name.endsWith('.mjs') && !name.endsWith('.test.mjs'))
+    .sort()
+    .map(name => readFileSync(new URL(name, directory), 'utf8'))
+    .join('\n');
   const reached = [...source.matchAll(/\bcontract\('([A-Za-z]+)'/g)].map(match => match[1]);
   assert.ok(reached.length > 0, 'expected the handlers to reach a contract');
   assert.deepEqual([...new Set(reached)].sort(), [...CONTRACT_NAMES].sort(),
