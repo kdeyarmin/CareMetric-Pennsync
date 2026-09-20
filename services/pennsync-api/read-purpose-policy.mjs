@@ -212,3 +212,8 @@ export const DOCUMENT_EXACT_PURPOSE_POLICY = Object.freeze({
     roles: Object.freeze(["agency_admin","clinician","manager","platform_owner"]),
   }),
 });
+//
+// The fields a client may supply to `createAuthorizedPatient`, and the
+// ones the contract decides instead. Extracted from `CLIENT_PATIENT_FIELDS`.
+export const PATIENT_CREATE_WRITABLE = Object.freeze(["first_name","middle_name","last_name","date_of_birth","medical_record_number","address","phone","email","payor","emergency_contact_name","emergency_contact_phone","emergency_contact_relationship","physician_name","physician_phone","physician_email","caregiver_name","caregiver_email","caregiver_phone","primary_diagnosis","secondary_diagnoses","chronic_conditions","past_surgeries","family_medical_history","social_determinants","allergies","current_medications","past_medical_history","past_hospitalizations","baseline_vitals","functional_status","social_history","mental_health","pain_management","wounds","advance_directives","insurance_primary","insurance_secondary","admission_date","admission_source","care_type","validation_overrides","clinical_notes","goals_of_care"]);
+export const PATIENT_CREATE_RESERVED = Object.freeze(["agency_id","client_request_id","status"]);

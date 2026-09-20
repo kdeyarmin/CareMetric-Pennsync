@@ -233,6 +233,7 @@ const migration = file => readFileSync(new URL(
 const PATIENT_SQL = migration('20260920060000_contract_patient_read.sql');
 const VISIT_SQL = migration('20260920080000_contract_visit_read.sql');
 const DOCUMENT_SQL = migration('20260920100000_contract_document_read.sql');
+const CREATE_SQL = migration('20260920120000_contract_patient_create.sql');
 /** The codes one SQL function raises, read from that function's own body. */
 const raisedBy = (sql, name, terminator) => {
   const start = sql.indexOf(`create function "pennsync_records".${name}(`);
@@ -271,11 +272,16 @@ const FAMILIES = [
     listAuthorizedDocuments: 'contract_document_list',
     getAuthorizedDocument: 'contract_document_get',
   } },
+  // The write has no shared gate: one contract, and every refusal is its own.
+  { sql: CREATE_SQL, prefix: 'PENNSYNC_PATIENT_', gate: null, contracts: {
+    createAuthorizedPatient: 'contract_patient_create',
+  } },
 ];
 
 test('each clinical contract declares exactly the refusals it can actually raise', () => {
   for (const family of FAMILIES) {
-    const gate = raisedBy(family.sql, family.gate, 'end $gate$;');
+    const gate = family.gate === null
+      ? new Set() : raisedBy(family.sql, family.gate, 'end $gate$;');
     for (const [name, sqlName] of Object.entries(family.contracts)) {
       assert.deepEqual([...RECORD_CONTRACTS[name].codes].sort(),
         [...new Set([...gate, ...raisedBy(family.sql, sqlName, 'end $contract$;')])].sort(), name);

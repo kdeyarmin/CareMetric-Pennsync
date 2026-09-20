@@ -14,12 +14,20 @@
 -- `insert … returning` is a read of the row just written, and the read policy
 -- refuses it. Measured, and pinned in `record-tenant-isolation.test.mjs`.
 --
--- **Grant first, then insert.** That order is not a preference. An assignment
--- naming a patient that does not exist is inert, because the record store's
--- narrowing is a FILTER and admits no row — `chart_assignment` carries no
--- patient foreign key precisely because it spans stores. So a failure between
--- the two writes leaves a row that authorizes nothing. The other order leaves
--- a chart its creator cannot open, which is the failure this exists to remove.
+-- **Both writes are in one transaction.** D28 first reasoned about the order
+-- to use if they could not be — grant first, because an assignment naming a
+-- patient that does not exist is inert while a chart its creator cannot open
+-- is not. That analysis stands and is still what makes the ordering here safe,
+-- but it was answering a harder question than the one in front of us: the two
+-- ownership domains are two SCHEMAS IN ONE DATABASE, not two databases, so a
+-- contract can claim and insert atomically and neither write survives the
+-- other failing. The ordering argument is the failure analysis; atomicity is
+-- the design.
+--
+-- That is why this is reached by the record store's contracts and not by a
+-- client. It is granted to `pennsync_records_owner` and has no public wrapper:
+-- a caller that could claim without creating would only be able to leave
+-- grants behind, and nothing needs to.
 --
 -- **The identity is minted here, never accepted from the caller.** That is the
 -- security property the whole function turns on: a caller who could name the
@@ -107,25 +115,29 @@ begin
   return v_id;
 end $claim$;
 
--- Nothing reads or writes `chart_assignment` directly; this is the way in.
---
--- The same shape every capability in this store already has: a SECURITY
--- DEFINER function in `pennsync_private` granted to `authenticated`, reached
--- through a SECURITY INVOKER wrapper in `public`. The wrapper carries no
--- privilege of its own, so no service-role token bypasses the checks above —
--- a current session is still mandatory, because `caller_tenant_role` answers
--- null without one.
+-- Nothing reads or writes `chart_assignment` directly, and no client reaches
+-- this either: the only caller is a record-store contract, inside its own
+-- transaction. A current session is still mandatory, because
+-- `caller_tenant_role` answers null without one.
 revoke all on function pennsync_private.claim_new_chart(text)
   from public, anon, authenticated, service_role;
-grant execute on function pennsync_private.claim_new_chart(text) to authenticated;
 
-create function public.pennsync_claim_new_chart(p_agency text) returns text
-  language sql security invoker set search_path = '' as $claim$
-  select pennsync_private.claim_new_chart(p_agency)
-$claim$;
+-- The record owner may NAME this schema and call this one function. Usage on
+-- a schema grants nothing on its objects, so the owner reaches no table here
+-- and no other function; a test measures exactly that rather than trusting it.
+grant usage on schema pennsync_private to "pennsync_records_owner";
+grant execute on function pennsync_private.claim_new_chart(text) to "pennsync_records_owner";
 
-revoke all on function public.pennsync_claim_new_chart(text)
-  from public, anon, authenticated, service_role;
-grant execute on function public.pennsync_claim_new_chart(text) to authenticated;
+-- What that usage exposes beyond the function named above, measured rather
+-- than assumed: no table at all, and two trigger functions that later
+-- migrations created after the store's blanket revoke and which therefore
+-- still carry PostgreSQL's default `execute` for everyone. Both refuse to run
+-- outside a trigger, so nothing follows from reaching them.
+--
+-- A blanket `revoke all on all functions in schema pennsync_private` would
+-- tidy those two away and take the entire staging surface with them: every
+-- `pennsync_staging_*` wrapper is an invoker calling an inner function that is
+-- explicitly granted to `authenticated`. Nine suites say so. Left alone
+-- deliberately, and the test below pins the exposure so a real one would show.
 
 commit;

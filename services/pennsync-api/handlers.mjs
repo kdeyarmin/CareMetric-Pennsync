@@ -261,6 +261,18 @@ export const HANDLERS = Object.freeze({
       return { document };
     },
   }),
+  createAuthorizedPatient: Object.freeze({
+    // The first ported write. Which fields a client may supply is the
+    // contract's, checked in SQL against a list extracted from the original
+    // rather than retyped — so this handler does not carry a copy of it, and
+    // a field added to the original reaches the database by regenerating
+    // rather than by remembering.
+    handle({ params, contract }) {
+      exactObject(params, ['client_request_id', 'patient'], 'INVALID_PARAMS');
+      if (!isObject(params.patient)) fail(400, 'INVALID_PARAMS');
+      return contract('createAuthorizedPatient', params);
+    },
+  }),
   generateBagTechniquePDF: Object.freeze({
     binary: true,
     handle({ params, config }) {

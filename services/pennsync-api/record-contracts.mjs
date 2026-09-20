@@ -214,6 +214,33 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_DOCUMENT_SUBJECT_INVALID',
     ]),
   }),
+  // The first ported capability that WRITES a clinical row (D28). It claims
+  // the chart and inserts it in one transaction, so a clinician can open what
+  // they created — which is the gap the six reads could not have shown.
+  //
+  // `client_request_id` is the original's idempotency key and is required: a
+  // retry answers the same chart rather than making a second one. This module
+  // carries none of that; the contract does.
+  createAuthorizedPatient: Object.freeze({
+    rpc: 'pennsync_contract_patient_create',
+    params: Object.freeze(['client_request_id', 'patient']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_client_request_id: args.client_request_id ?? null,
+      p_patient: args.patient === undefined ? null : args.patient,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_PATIENT_AGENCY_NOT_HELD',
+      'PENNSYNC_PATIENT_FORBIDDEN',
+      'PENNSYNC_PATIENT_REQUEST_ID_INVALID',
+      'PENNSYNC_PATIENT_PAYLOAD_INVALID',
+      'PENNSYNC_PATIENT_FIELD_RESERVED',
+      'PENNSYNC_PATIENT_FIELD_UNKNOWN',
+      'PENNSYNC_PATIENT_NAME_REQUIRED',
+      'PENNSYNC_PATIENT_FIELD_INVALID',
+      'PENNSYNC_PATIENT_REQUEST_CONFLICT',
+    ]),
+  }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
     params: Object.freeze(['user_id']),

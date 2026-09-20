@@ -1779,3 +1779,54 @@ a grant with no patient behind it opens nothing.
 What is still not built is the create capability itself. The bridge has no
 caller yet, and wiring one before the contract exists would be surface with
 nothing behind it.
+
+### The create capability, and the correction the bridge needed
+
+`20260920120000_contract_patient_create.sql` is the bridge's caller, and
+writing it corrected the design one commit old.
+
+**D28 reasoned about the safe ORDER for two writes that could not be atomic.
+They can be.** The two ownership domains are two schemas in ONE database, not
+two databases — so a contract owned by `pennsync_records_owner`, granted
+`usage` on `pennsync_private` and `execute` on that one function, claims and
+inserts inside a single transaction. Neither write survives the other failing
+and a caller never observes a half-made chart. The grant-first analysis stands
+as the failure analysis; atomicity is the design.
+
+That also settled the bridge's shape. Its first version had a public wrapper
+and an `authenticated` grant, on the reasoning that it was complete and usable.
+With a contract as the only caller that wrapper was surface a client could
+reach to leave grants behind and create nothing, so both are gone: the bridge
+answers to the record owner alone. What `usage` on the private schema buys that
+owner is measured rather than asserted — no table at all, and two trigger
+functions that refuse to run outside a trigger.
+
+**A blanket `revoke all on all functions in schema pennsync_private` would have
+tidied those two away and taken the entire staging surface with them**, because
+every `pennsync_staging_*` wrapper is an invoker calling an inner function
+granted to `authenticated`. It was written, then removed before it reached a
+commit. Nine suites would have said so.
+
+The contract itself decides four things and the caller decides the rest:
+
+- **The identity**, minted by the bridge and never taken from the payload.
+- **Tenancy** — the agency the caller was checked against, and a payload naming
+  one is refused rather than ignored, because a caller who names `agency_id`
+  believes it took effect.
+- **Provenance** — `created_by_user_id`, the normalized email and
+  `patient_creation_key`, stamped from the caller helpers.
+- **Lifecycle** — `active`, not sample, not archived.
+
+The 43 fields a client may supply are extracted from the original's own
+`CLIENT_PATIENT_FIELDS` rather than retyped, the same argument as the purpose
+policies and a different shape: the declaration is not fenced, so extraction is
+by NAME and a declaration that was renamed or removed fails the run. The
+payload becomes a row through `jsonb_populate_record` rather than a column list
+this contract would have to keep in step with the extracted one — unknown keys
+cannot reach it, because the loop above refuses them.
+
+Idempotency is the original's and is not a convenience: a retry of the same
+`client_request_id` answers the same chart, the key carries the agency and the
+user so nobody can collide with somebody else's, and the same id with different
+names is a conflict rather than a match — answering the first chart would
+silently discard the second request's data.

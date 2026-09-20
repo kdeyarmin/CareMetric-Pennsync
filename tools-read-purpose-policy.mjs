@@ -128,6 +128,36 @@ export const DOMAINS = Object.freeze(Object.keys(POLICY_SQL_FILES));
 export const EXTRACTED_ONLY = Object.freeze([...new Set(POLICIES
   .map(policy => policy.domain).filter(domain => !DOMAINS.includes(domain)))]);
 export const POLICY_KEYS = Object.freeze(POLICIES.map(policy => policy.key));
+/**
+ * The writable field sets, for the capabilities that CREATE a row.
+ *
+ * The same argument as the purpose policies and a different shape. A create
+ * capability declares which fields a client may supply — 46 of them for a
+ * patient — and the comment above that declaration in the original says what
+ * is deliberately absent: tenancy, provenance, assignment, lifecycle, derived
+ * metrics and automation claims. Retyping the list is the transcription D12
+ * settled against, and here a field added by hand would let a caller write a
+ * column the original never let them near.
+ *
+ * Not fenced, because the originals do not fence it. That is not a weaker
+ * guarantee: extraction is by NAME, so a declaration that was renamed or
+ * removed fails the run rather than silently producing less.
+ *
+ * `reserved` names the fields the declaration carries that the CONTRACT
+ * decides rather than the caller — the agency it stamps, the idempotency key
+ * it keys on, the status a new row must have. They are listed here so the
+ * emitted SQL refuses them explicitly instead of a reader having to notice
+ * they are missing.
+ */
+export const WRITE_POLICIES = Object.freeze([
+  Object.freeze({
+    key: 'patient_create', domain: 'patient', table: 'patient',
+    original: 'base44/functions/createAuthorizedPatient/entry.ts',
+    declaration: 'CLIENT_PATIENT_FIELDS',
+    prefix: 'patient_create', constant: 'PATIENT_CREATE',
+    reserved: Object.freeze(['agency_id', 'client_request_id', 'status']),
+  }),
+]);
 export const begin = policy => `// <<<BEGIN ${policy.marker}>>>`;
 export const end = policy => `// <<<END ${policy.marker}>>>`;
 /**
@@ -223,13 +253,49 @@ export function readPolicy(source, policy) {
   return extracted;
 }
 
-/** Both policies, keyed the way the artifacts below name them. */
+/**
+ * Read one named `Set` or array declaration out of a module.
+ *
+ * Evaluated the same way a fenced block is — transpiled and run in a function
+ * scope — because the alternative is retyping it. The declaration is located
+ * by name and its own statement is sliced out, so nothing else in the module
+ * is evaluated: these originals import a Base44 client and call `Deno.serve`
+ * at the top level, and running either would be a side effect a generator has
+ * no business having.
+ */
+export function readDeclaration(source, policy) {
+  const { declaration } = policy;
+  const start = source.search(new RegExp(`^const\\s+${declaration}\\s*=`, 'm'));
+  check(start >= 0, `WRITE_DECLARATION_MISSING:${declaration}`);
+  const end = source.indexOf(']);', start);
+  check(end > start, `WRITE_DECLARATION_UNREADABLE:${declaration}`);
+  const js = transpileTs(source.slice(start, end + 3)).outputText;
+  const value = new Function(`${js}\nreturn ${declaration};`)();
+  const fields = value instanceof Set ? [...value] : value;
+  check(Array.isArray(fields) && fields.length > 0, `WRITE_DECLARATION_EMPTY:${declaration}`);
+  for (const field of policy.reserved) {
+    // A reserved field the declaration does not carry is a list that moved on
+    // without this one, which is the drift the extraction exists to catch.
+    check(fields.includes(field), `WRITE_RESERVED_ABSENT:${policy.key}.${field}`);
+  }
+  const writable = fields.filter(field => !policy.reserved.includes(field));
+  check(writable.length > 0, `WRITE_DECLARATION_ALL_RESERVED:${policy.key}`);
+  return { declared: [...fields], writable, reserved: [...policy.reserved] };
+}
+
+/** Every purpose policy, keyed the way the artifacts below name them. */
 export function extract(repository) {
   return Object.fromEntries(POLICIES.map(policy =>
     [policy.key, readPolicy(readFileSync(join(repository, policy.original), 'utf8'), policy)]));
 }
 
-export function render(policies) {
+/** The writable field sets, keyed the same way. */
+export function extractWrites(repository) {
+  return Object.fromEntries(WRITE_POLICIES.map(policy =>
+    [policy.key, readDeclaration(readFileSync(join(repository, policy.original), 'utf8'), policy)]));
+}
+
+export function render(policies, writes) {
   const section = (policy) => {
     const extracted = policies[policy.key];
     const purposes = Object.keys(extracted);
@@ -256,6 +322,11 @@ ${purposes.map(purpose => `  ${purpose}: Object.freeze({
 ${POLICIES.map(policy => `//
 // From \`${policy.original}\`:
 ${section(policy)}`).join('\n')}
+${WRITE_POLICIES.map(policy => `//
+// The fields a client may supply to \`${policy.original.split('/').at(-2)}\`, and the
+// ones the contract decides instead. Extracted from \`${policy.declaration}\`.
+export const ${policy.constant}_WRITABLE = Object.freeze(${JSON.stringify(writes[policy.key].writable)});
+export const ${policy.constant}_RESERVED = Object.freeze(${JSON.stringify(writes[policy.key].reserved)});`).join('\n')}
 `;
 }
 
@@ -292,7 +363,7 @@ const purposeCase = (purposes, arm, fallback) =>
  * confused — the single-read policy has no bounds at all and still has to
  * answer the first question.
  */
-export function renderSql(policies, domain, columnsFor) {
+export function renderSql(policies, domain, columnsFor, writes = {}) {
   const vocabulary = new Set([...TENANT_ROLES, ...UNSUPPORTED_ROLES]);
   const signatures = [];
   const bodies = [];
@@ -301,6 +372,7 @@ export function renderSql(policies, domain, columnsFor) {
   let total = 0;
   const mine = POLICIES.filter(policy => policy.domain === domain);
   check(mine.length > 0, `POLICY_DOMAIN_UNKNOWN:${domain}`);
+  const writesHere = WRITE_POLICIES.filter(policy => policy.domain === domain);
   for (const policy of mine) {
     const extracted = policies[policy.key];
     const known = new Set(columnsFor(policy.table));
@@ -351,6 +423,29 @@ $policy$;`);
     signatures.push(`${name('known')}(text)`, `${name('admits')}(text,text)`);
     if (policy.paged) signatures.push(`${name('page_size')}(text)`);
     signatures.push(`${name('row')}(text,${quote(SCHEMA)}.${quote(policy.table)})`);
+  }
+  for (const policy of writesHere) {
+    const entry = writes[policy.key];
+    check(entry !== undefined, `WRITE_POLICY_NOT_EXTRACTED:${policy.key}`);
+    const known = new Set(columnsFor(policy.table));
+    for (const field of entry.declared) {
+      check(known.has(field), `WRITE_FIELD_NOT_A_COLUMN:${policy.key}.${field}`);
+    }
+    tables.add(policy.table);
+    const name = suffix => `${quote(SCHEMA)}.${quote(`${policy.prefix}_${suffix}`)}`;
+    bodies.push(`-- The fields a client may supply to \`${policy.original.split('/').at(-2)}\`
+-- (${entry.writable.length} of the ${entry.declared.length} its \`${policy.declaration}\` declares; the other
+-- ${entry.reserved.length} are the contract's to decide, and it refuses a payload naming one).
+create function ${name('writable')}(p_field text) returns boolean
+  language sql immutable set search_path = '' as $write$
+  select p_field in (${entry.writable.map(field => `'${field}'`).join(', ')})
+$write$;
+
+create function ${name('reserved')}(p_field text) returns boolean
+  language sql immutable set search_path = '' as $write$
+  select p_field in (${entry.reserved.map(field => `'${field}'`).join(', ')})
+$write$;`);
+    signatures.push(`${name('writable')}(text)`, `${name('reserved')}(text)`);
   }
   return `-- GENERATED by \`node tools-read-purpose-policy.mjs --write\`. Do not edit.
 --
@@ -441,6 +536,7 @@ export function main(args = process.argv.slice(2), {
   let artifacts;
   try {
     policies = extract(repository);
+    const writes = extractWrites(repository);
     // Read each table once: six policies over three tables, and the migration
     // is 6,000 lines.
     const columns = new Map();
@@ -449,8 +545,9 @@ export function main(args = process.argv.slice(2), {
       return columns.get(table);
     };
     artifacts = [
-      [POLICY_FILE, render(policies)],
-      ...DOMAINS.map(domain => [POLICY_SQL_FILES[domain], renderSql(policies, domain, columnsFor)]),
+      [POLICY_FILE, render(policies, writes)],
+      ...DOMAINS.map(domain =>
+        [POLICY_SQL_FILES[domain], renderSql(policies, domain, columnsFor, writes)]),
     ];
   } catch (error) { log(JSON.stringify({ error: error?.code ?? 'POLICY_FAILED' })); return 1; }
   if (args.includes('--json')) { log(JSON.stringify(policies, null, 2)); return 0; }

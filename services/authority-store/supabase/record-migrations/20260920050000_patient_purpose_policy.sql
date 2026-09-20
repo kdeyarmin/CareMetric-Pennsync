@@ -344,6 +344,19 @@ create function "pennsync_records"."patient_exact_purpose_row"(
     else null end
 $policy$;
 
+-- The fields a client may supply to `createAuthorizedPatient`
+-- (43 of the 46 its `CLIENT_PATIENT_FIELDS` declares; the other
+-- 3 are the contract's to decide, and it refuses a payload naming one).
+create function "pennsync_records"."patient_create_writable"(p_field text) returns boolean
+  language sql immutable set search_path = '' as $write$
+  select p_field in ('first_name', 'middle_name', 'last_name', 'date_of_birth', 'medical_record_number', 'address', 'phone', 'email', 'payor', 'emergency_contact_name', 'emergency_contact_phone', 'emergency_contact_relationship', 'physician_name', 'physician_phone', 'physician_email', 'caregiver_name', 'caregiver_email', 'caregiver_phone', 'primary_diagnosis', 'secondary_diagnoses', 'chronic_conditions', 'past_surgeries', 'family_medical_history', 'social_determinants', 'allergies', 'current_medications', 'past_medical_history', 'past_hospitalizations', 'baseline_vitals', 'functional_status', 'social_history', 'mental_health', 'pain_management', 'wounds', 'advance_directives', 'insurance_primary', 'insurance_secondary', 'admission_date', 'admission_source', 'care_type', 'validation_overrides', 'clinical_notes', 'goals_of_care')
+$write$;
+
+create function "pennsync_records"."patient_create_reserved"(p_field text) returns boolean
+  language sql immutable set search_path = '' as $write$
+  select p_field in ('agency_id', 'client_request_id', 'status')
+$write$;
+
 reset role;
 
 -- No caller role may ask a policy anything. The contracts are the only way in.
@@ -353,7 +366,9 @@ revoke all on function "pennsync_records"."patient_list_purpose_known"(text),
   "pennsync_records"."patient_list_purpose_row"(text,"pennsync_records"."patient"),
   "pennsync_records"."patient_exact_purpose_known"(text),
   "pennsync_records"."patient_exact_purpose_admits"(text,text),
-  "pennsync_records"."patient_exact_purpose_row"(text,"pennsync_records"."patient")
+  "pennsync_records"."patient_exact_purpose_row"(text,"pennsync_records"."patient"),
+  "pennsync_records"."patient_create_writable"(text),
+  "pennsync_records"."patient_create_reserved"(text)
   from public, anon, authenticated, service_role;
 
 commit;

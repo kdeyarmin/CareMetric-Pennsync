@@ -5,7 +5,8 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   DOMAINS, EXTRACTED_ONLY, POLICIES, POLICY_FILE, POLICY_SQL_FILES, TENANT_ROLES, UNSUPPORTED_ROLES,
-  begin, declarations, end, extract, main, policyBlock, readPolicy, render, renderSql, tableColumns,
+  WRITE_POLICIES, begin, declarations, end, extract, extractWrites, main, policyBlock, readDeclaration,
+  readPolicy, render, renderSql, tableColumns,
 } from './tools-read-purpose-policy.mjs';
 import * as committed from './services/pennsync-api/read-purpose-policy.mjs';
 
@@ -48,10 +49,11 @@ test('the committed policies are exactly what the originals declare', () => {
   }
   // And every committed FILE matches what the generator renders, so an edit to
   // an artifact is caught as well as an edit to a policy.
-  assert.equal(readFileSync(resolve(repository, POLICY_FILE), 'utf8'), render(extracted));
+  const writes = extractWrites(repository);
+  assert.equal(readFileSync(resolve(repository, POLICY_FILE), 'utf8'), render(extracted, writes));
   for (const domain of DOMAINS) {
     assert.equal(readFileSync(resolve(repository, POLICY_SQL_FILES[domain]), 'utf8'),
-      renderSql(extracted, domain, columnsFor), `${domain} SQL has drifted`);
+      renderSql(extracted, domain, columnsFor, writes), `${domain} SQL has drifted`);
   }
   assert.equal(main(['--write'], { repository, log: () => {}, write: () => {} }), 0);
   assert.equal(main([], { repository, log: () => {} }), 0, 'the committed copies are current');
@@ -157,10 +159,12 @@ test('the emitted SQL refuses a field the table lacks and a role nothing can hol
   const extracted = extract(repository);
   assert.ok(columnsFor('patient').includes('date_of_birth'));
   assert.ok(columnsFor('visit').includes('id') && columnsFor('document').includes('id'));
+  const writes = extractWrites(repository);
   const refuses = (domain, mutate, code) => {
     const broken = structuredClone(extracted);
     mutate(broken);
-    assert.throws(() => renderSql(broken, domain, columnsFor), error => error?.code === code, code);
+    assert.throws(() => renderSql(broken, domain, columnsFor, writes),
+      error => error?.code === code, code);
   };
   // A field the record store has no column for would emit SQL that fails at
   // apply time; finding that out in CI hours later is worse than here.
@@ -173,7 +177,7 @@ test('the emitted SQL refuses a field the table lacks and a role nothing can hol
   refuses('document', policies => { policies.document_exact.download.roles = [...UNSUPPORTED_ROLES]; },
     'POLICY_PURPOSE_ADMITS_NOBODY:document_exact.download');
   // A domain nobody declared renders nothing rather than an empty migration.
-  assert.throws(() => renderSql(extracted, 'referral', columnsFor),
+  assert.throws(() => renderSql(extracted, 'referral', columnsFor, writes),
     error => error?.code === 'POLICY_DOMAIN_UNKNOWN:referral');
 });
 
@@ -259,4 +263,70 @@ test('the command line refuses an argument nobody declared', () => {
   assert.equal(main(['--nope'], { repository, log: line => lines.push(line) }), 2);
   assert.match(lines.at(-1), /POLICY_INVALID_ARGUMENTS/);
   assert.equal(main(['--json'], { repository, log: () => {} }), 0);
+});
+
+test('the writable field set is extracted too, and the contract keeps what it decides', () => {
+  // A create capability declares which fields a client may supply, and the
+  // comment above that declaration in the original names what is deliberately
+  // absent: tenancy, provenance, assignment, lifecycle, derived metrics and
+  // automation claims. Retyping the list would let a field added by hand
+  // reach a column the original never let a caller near.
+  const writes = extractWrites(repository);
+  assert.deepEqual(Object.keys(writes), WRITE_POLICIES.map(policy => policy.key));
+  const create = writes.patient_create;
+  assert.equal(create.declared.length, 46);
+  assert.equal(create.writable.length, 43);
+  assert.deepEqual(create.reserved, ['agency_id', 'client_request_id', 'status']);
+  assert.deepEqual(create.declared, [...create.writable, ...create.reserved].sort(
+    (left, right) => create.declared.indexOf(left) - create.declared.indexOf(right)));
+  // The columns the original calls out as absent stay absent.
+  for (const field of ['created_by_user_id', 'created_by_user_email_normalized',
+    'patient_creation_key', 'is_sample', 'is_archived', 'assigned_nurses',
+    'data_completeness_score', 'merged_into_id', 'risk_predict_claimed_by']) {
+    assert.ok(!create.declared.includes(field), `${field} is not a client field`);
+  }
+  // And what is committed is what the originals declare.
+  assert.deepEqual([...committed.PATIENT_CREATE_WRITABLE], create.writable);
+  assert.deepEqual([...committed.PATIENT_CREATE_RESERVED], create.reserved);
+});
+
+test('a declaration that moved, emptied or lost a reserved field refuses to render', () => {
+  // Extraction is by NAME rather than by fence, and that is not the weaker
+  // guarantee it looks like: a declaration that was renamed or removed fails
+  // the run instead of silently producing less.
+  const [policy] = WRITE_POLICIES;
+  const refuses = (source, code) => assert.throws(() => readDeclaration(source, policy),
+    error => error?.code === code, code);
+  const good = `const ${policy.declaration} = new Set([\n'agency_id',\n'client_request_id',\n'status',\n'first_name',\n]);`;
+  assert.deepEqual(readDeclaration(good, policy).writable, ['first_name']);
+  refuses('const SOMETHING_ELSE = new Set([]);', `WRITE_DECLARATION_MISSING:${policy.declaration}`);
+  refuses(`const ${policy.declaration} = new Set([]);`, `WRITE_DECLARATION_EMPTY:${policy.declaration}`);
+  // A reserved field the declaration no longer carries means the list moved on
+  // without this one, which is exactly the drift extraction exists to catch.
+  refuses(`const ${policy.declaration} = new Set(['first_name','client_request_id','status',]);`,
+    `WRITE_RESERVED_ABSENT:${policy.key}.agency_id`);
+  // And a declaration that is nothing BUT reserved fields leaves a caller
+  // unable to supply anything, which is a broken capability rather than a
+  // strict one.
+  refuses(`const ${policy.declaration} = new Set(['agency_id','client_request_id','status',]);`,
+    `WRITE_DECLARATION_ALL_RESERVED:${policy.key}`);
+});
+
+test('the emitted writable check is the extracted list, and nothing else', () => {
+  const sql = readFileSync(resolve(repository, POLICY_SQL_FILES.patient), 'utf8');
+  const create = extractWrites(repository).patient_create;
+  // Sliced by name rather than matched with a regex over the whole file: the
+  // first version of this escaped its parentheses wrong and matched nothing,
+  // which a test asserting a list is equal to itself would not have caught.
+  const clause = (name) => {
+    const start = sql.indexOf(`"${name}"(p_field text)`);
+    assert.ok(start > 0, name);
+    const body = sql.slice(start, sql.indexOf('$write$;', start));
+    return [...body.matchAll(/'([a-z_]+)'/g)].map(match => match[1]);
+  };
+  assert.deepEqual(clause('patient_create_writable'), create.writable);
+  assert.deepEqual(clause('patient_create_reserved'), create.reserved);
+  // The two sets never overlap, or a field would be both refusable and
+  // writable and which one won would depend on the order of two checks.
+  assert.deepEqual(create.writable.filter(field => create.reserved.includes(field)), []);
 });

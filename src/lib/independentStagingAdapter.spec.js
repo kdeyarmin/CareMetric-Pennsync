@@ -198,7 +198,7 @@ describe('the ported API caller', () => {
 
   it('still fails closed for every name the service does not serve', async () => {
     const { fixture, adapter } = await signedIn();
-    for (const name of ['getDashboardData', 'offboardUser', 'createAuthorizedPatient', 'nope']) {
+    for (const name of ['getDashboardData', 'offboardUser', 'createAuthorizedVisit', 'nope']) {
       await expect(adapter.raw.functions.invoke(name, { agency_id: 'agency-a' }))
         .rejects.toThrow(/STAGING_OPERATION_UNAVAILABLE/);
     }
