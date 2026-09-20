@@ -3287,3 +3287,58 @@ claim-before-send ordering is recorded in the contract header so it returns with
 the send rather than being rediscovered.
 
 Port queue: `records_schema` 34 → 32, written 49 → 51.
+
+## D51 — The sweep with nothing paused, and the defect that proves the facility
+
+**Decision.** Port `checkAdrDeadlines` whole — the last of D49's four and the
+only one with nothing to pause, because its reminder is a `Notification` ROW
+rather than an email.
+
+**It is the evidence for why `notification_mint` is a facility.** This original
+creates its reminder with `user_email`, `title`, `message`, `type`, `priority`,
+`metadata`, `is_read`, `action_url` and `action_label` — and none of
+`recipient_user_id`, `recipient_membership_id`,
+`recipient_membership_version`, `authority_version` or `version`.
+`manageMyNotifications` FILTERS on all of those. **So in Base44 today, an ADR
+deadline reminder matches no reader's filter and is shown to nobody.**
+`submitIncidentReport` has the same shape and the same result. That is a defect
+in the product rather than in the port, and it is exactly the defect D45 caught
+this migration about to reproduce. Minting through the facility makes it
+impossible to repeat; a test proves the reminder is readable by reading it back
+through the reader, and READS the original to confirm the omission is still
+there, so if it is ever fixed upstream this port's stated reason fails rather
+than going stale.
+
+**Its tenancy is the CHART, not an agency column.** `adr_audit_case` carries no
+`agency_id`; its policies reach tenancy through `patient_id` into `patient`. The
+contract still names the agency in its own predicate rather than leaning on the
+policy, because `caller_agencies()` returns every agency the caller holds and
+one holding two would otherwise sweep the other's cases. **A plpgsql body does
+not resolve column names at creation, so the migration applied cleanly with a
+`c."agency_id"` that does not exist; only the test found it.** That is the
+second time in this migration that building and running the thing caught what
+reading it did not.
+
+One consequence, which is the schema's rather than this contract's: a case with
+a null `patient_id` is in no chart and therefore in no tenant, so it is
+invisible to everyone — the same shape D27 found for a `Document` bound to an
+agency and no patient.
+
+**The once-a-day rule is enforced twice, and the two can disagree.** The
+original's claim is `deadline_reminders.last_notified_date`, a field on the case
+that anything may edit; the port adds `notification_dedupe_key_unique`, an
+index. When they disagree the index wins, the case is counted
+`already_reminded`, and the `unique_violation` is caught BY NAME so any other
+one still raises — the rule D30 set and D44 followed. The original's `claimed_by`
+run token and its release-on-failure path go with the transaction: a reminder
+and its claim cannot now disagree.
+
+**A case whose owner has left is reported, not dropped.** The original mints a
+row addressed to whatever string is on `created_by`. Here the owner is resolved
+through the roster, and a case naming somebody who is no longer a member comes
+back in the answer as `unreachable` — a deadline with no owner is the thing an
+administrator most needs to see, and *"Documentation not received by the
+deadline is treated as missing and the claim is denied."*
+
+Port queue: `records_schema` 32 → 31, written 51 → 52. D49's four are now three
+ported and one — the unattended run itself — still open.

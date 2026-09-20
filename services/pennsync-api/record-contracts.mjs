@@ -915,6 +915,19 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_CREDENTIAL_TRANSITION',
     ]),
   }),
+  // ADR response deadline reminders: the first D49 sweep with nothing paused,
+  // because its reminder is a row rather than an email.
+  //
+  // It is also the evidence for `notification_mint`. The original creates its
+  // reminder with none of the six authority columns `manageMyNotifications`
+  // filters on, so in Base44 today an ADR deadline reminder is shown to
+  // nobody. Minting through the facility makes that impossible to repeat.
+  checkAdrDeadlines: Object.freeze({
+    rpc: 'pennsync_contract_adr_deadline_sweep',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: Object.freeze(['PENNSYNC_ADR_FORBIDDEN']),
+  }),
   // The credential sweeps, fifth and sixth under D40 and both scheduler
   // capabilities under D49: their human gate is the built-in admin, and their
   // machine gate is a shared secret over every tenant, which has no successor

@@ -497,6 +497,12 @@ export const HANDLERS = Object.freeze({
       return contract('updateIncident', params);
     },
   }),
+  checkAdrDeadlines: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      return contract('checkAdrDeadlines', params);
+    },
+  }),
   sendPersonnelExpirationNotifications: Object.freeze({
     handle({ params, contract }) {
       exactObject(params, [], 'INVALID_PARAMS');
