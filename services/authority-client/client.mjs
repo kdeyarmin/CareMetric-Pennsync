@@ -65,6 +65,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   createAuthorizedPatient: 'json',
   createAuthorizedVisit: 'json',
   getAuthorizedDocument: 'json',
+  getScopedPatientAlerts: 'json',
   getAuthorizedPatient: 'json',
   getAuthorizedVisit: 'json',
   listAgencyRoster: 'json',
@@ -74,6 +75,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   listPolicyLibrary: 'json',
   updateAuthorizedPatient: 'json',
   updateAuthorizedVisit: 'json',
+  updateScopedPatientAlert: 'json',
   matchPatientWithAI: 'json',
   validatePatientData: 'json',
 });

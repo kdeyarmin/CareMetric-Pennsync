@@ -361,6 +361,47 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_VISIT_ACK_FIELDS_UNEXPECTED',
     ]),
   }),
+  // Patient alerts. Both originals authorize on `patientBelongsToCaller` —
+  // the patient's `created_by` or an address in `Patient.assigned_nurses` —
+  // which is the representation D21 and D24 threw out, because an address
+  // stays on the chart after the assignment naming it was suspended. The
+  // contract authorizes through D24's policies instead and carries no copy of
+  // either rule.
+  getScopedPatientAlerts: Object.freeze({
+    rpc: 'pennsync_contract_alert_list',
+    params: Object.freeze(['patient_id', 'status', 'severity', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id === undefined ? null : args.patient_id,
+      p_status: args.status === undefined ? null : args.status,
+      p_severity: args.severity === undefined ? null : args.severity,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_ALERT_AGENCY_NOT_HELD',
+      'PENNSYNC_ALERT_PATIENT_INVALID',
+      'PENNSYNC_ALERT_STATUS_INVALID',
+      'PENNSYNC_ALERT_SEVERITY_INVALID',
+    ]),
+  }),
+  updateScopedPatientAlert: Object.freeze({
+    rpc: 'pennsync_contract_alert_update',
+    params: Object.freeze(['alert_id', 'action', 'resolution_notes']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_alert_id: args.alert_id ?? null,
+      p_action: args.action ?? null,
+      p_resolution_notes: args.resolution_notes === undefined ? null : args.resolution_notes,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_ALERT_AGENCY_NOT_HELD',
+      'PENNSYNC_ALERT_ID_INVALID',
+      'PENNSYNC_ALERT_ACTION_INVALID',
+      'PENNSYNC_ALERT_NOTES_UNEXPECTED',
+      'PENNSYNC_ALERT_NOTES_INVALID',
+      'PENNSYNC_ALERT_NOT_VISIBLE',
+    ]),
+  }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
     params: Object.freeze(['user_id']),

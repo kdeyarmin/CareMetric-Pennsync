@@ -309,6 +309,24 @@ export const HANDLERS = Object.freeze({
       return contract('updateAuthorizedVisit', params);
     },
   }),
+  getScopedPatientAlerts: Object.freeze({
+    // "Scoped" in the original meant the caller's own charts, worked out from
+    // `Patient.assigned_nurses`. It means D24's care team now, decided by the
+    // policies, so this handler carries no scope of its own.
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'status', 'severity', 'limit'], 'INVALID_PARAMS');
+      if (params.severity !== undefined && !Array.isArray(params.severity)) {
+        fail(400, 'INVALID_PARAMS');
+      }
+      return contract('getScopedPatientAlerts', params);
+    },
+  }),
+  updateScopedPatientAlert: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['alert_id', 'action', 'resolution_notes'], 'INVALID_PARAMS');
+      return contract('updateScopedPatientAlert', params);
+    },
+  }),
   generateBagTechniquePDF: Object.freeze({
     binary: true,
     handle({ params, config }) {
