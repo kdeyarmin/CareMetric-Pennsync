@@ -3534,3 +3534,63 @@ waiting was actually for rather than assuming the bucket still describes it.
 
 Port queue: `records_schema` 27 → 23, `files` 4 → 6, `core_integration` 1 → 2,
 `external_secret` 1 → 2. Written unchanged at 56 — nothing was ported here.
+
+## D56 — "Waits on the file layer" does not mean the file layer is missing
+
+**Decision.** Record what the fifteen file-bound capabilities are actually
+waiting for, because the phrase this queue has been using for them names the
+wrong thing.
+
+**The adapter is built and acceptance-tested.** `services/integration-runtime`
+implements `UploadFile`, `UploadPrivateFile` and `CreateFileSignedUrl`. Both
+uploads return **durable private `cmfile:` handles, never permanent public
+`file_url` values**; `CreateFileSignedUrl` validates the actual Supabase
+relative storage path and the exact object, host and token, and its links live
+sixty seconds so an expired one needs a new signing request rather than another
+paid upload. The runtime's own operator acceptance exercises private signing and
+a download hash comparison. The transition plan has called this "Adapter only"
+since it was written.
+
+**So what the fifteen wait on is Phase 3's DATA work, not a missing path**: the
+inventory of what exists in both production apps, the copy into the production
+private bucket under a SHA-256 manifest, the `file_url` → `cmfile:`
+compatibility layer, and the migration of 31 `UploadFile` call sites. The
+carried rows hold `file_url` strings pointing at Base44's own storage host —
+`FILE_URL_ALLOWED_HOSTS` in the shared helpers names
+`qtrypzzcjebvfcihiynt.supabase.co`, `base44.app` and `base44.io` — and porting
+any of these capabilities verbatim would carry that host into the service. That
+is the real blocker, and it is a data migration with a compatibility layer
+rather than an adapter to write.
+
+**The service's allowlist is a ratchet, not an inventory of what exists.**
+`BROKERED_OPERATIONS` in `services/pennsync-api/integrations.mjs` is
+`['InvokeLLM', 'ExtractDataFromUploadedFile']`, and its own comment says why:
+*"The runtime brokers more than this; this is the subset the ports in this
+service actually use, so releasing a handler cannot widen the surface by
+accident."* It grows when a port needs it.
+
+**Which means a phrase used in D42, D49, D50, D52 and D54 was true but
+misleading.** Those ports say the email half is not ported because
+`Core.SendEmail` is *"not in the runtime's brokered set"* or *"nothing here
+brokers it"*. Accurate about this service; it reads as though no implementation
+exists. **The runtime implements `SendEmail`.** The delivery halves of those
+ports are therefore waiting on a DECISION to broker it rather than on a
+capability to build — and that decision is the owner's, not this migration's,
+because:
+
+* it is outward-facing and irreversible in a way nothing else on this branch is;
+* the paused digests carry personnel and invitee names, so releasing them
+  releases PHI to an external provider; and
+* the runtime is deployed **paused**, so widening the allowlist alone would
+  change nothing and would remove a guard for no gain.
+
+Nothing is widened here. The allowlist stays at two, and the correction is that
+those ports are one decision away from complete rather than one build away.
+
+**The rule, which is D55's a third time.** A blocker's NAME is not its content.
+"Waits on the file layer" and "nothing brokers it" both survived long after what
+they described had changed shape. Before starting work a blocker implies,
+re-read what it is actually naming.
+
+Port queue: unchanged — 23 `records_schema`, 56 written. This records what the
+blockers mean; it moves nothing.
