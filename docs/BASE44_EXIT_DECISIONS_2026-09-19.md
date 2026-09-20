@@ -998,3 +998,53 @@ on a record-backed port: `records_schema` 94 → 93, `none` 10 → 11. Every por
 written before this one either computed an answer, rendered a document or asked
 a model, so the records bucket had only ever moved by reclassification. It
 moves by work now.
+
+
+## D20 — Only 25 of the 94 were ever waiting on the record store
+
+**Decision.** The `records_schema` blocker is split by what each module
+actually reads, against the dispositions of the entities it reads. Two new
+categories rank above it, both applied over `classifyPortBlocker`'s verdict
+rather than inside it, because neither is a property of the source text.
+
+| Was | Is |
+| --- | --- |
+| records_schema=94 | **entity_not_carried=34**, **entity_authorization=34**, records_schema=25 |
+
+**Why it was wrong.** `records_schema` had come to mean "touches an entity",
+which is the same mistake the `core_integration` and `files` splits already
+corrected once each — a category inferred from the shape of a call rather than
+measured against what the call reaches. A queue saying 94 handlers wait on the
+record store is wrong twice over, and the store arriving tomorrow would not move
+two thirds of them.
+
+- **`entity_not_carried` (34)** — the module reads an entity dispositioned
+  `retire`, `hub` or `preserved_paused`, so the table it wants will not exist
+  here at all. Nineteen touch `UserActivity`, five `SecurityLog`, four
+  `SystemLog`. What is owed is a decision about that use — does the capability
+  drop it, redirect it, or does the entity stop being retired — not a schema.
+- **`entity_authorization` (34)** — the module reads a carried entity that has
+  forced RLS and **no policy**. That entity is `User`, and its absence is
+  deliberate: D14 left it "unreachable through this surface until a decision
+  says how it may be read", because the only tenancy it carries is a claim the
+  user can edit about themselves.
+
+**`User` is the largest single gate in front of the port queue.** Fifty of the
+94 touch it; 34 are held by nothing else. That number is the argument for taking
+the decision D14 deferred rather than continuing to describe it as deferred: no
+amount of record-store work moves those 34, and they are a third of everything
+left.
+
+**Precedence, and what is deliberately not refined.** `entity_not_carried`
+outranks `entity_authorization` because whether a capability survives at all
+comes before how a table is read, and both outrank `records_schema` because
+neither is helped by the store existing. Only a `records_schema` verdict is ever
+refined: a handler that reads a retired entity *and* a file still waits on the
+file layer, because that stays true whatever happens to the rows. A module using
+a computed key (`entities[name]`) names a set nothing can enumerate, so nothing
+is claimed about it and it stays where the source put it.
+
+**What this does not do.** It moves no work and unblocks nothing. It says, in a
+number a test pins, that two thirds of the remaining queue is waiting on
+decisions rather than on the store — and names which decision each one waits
+for.

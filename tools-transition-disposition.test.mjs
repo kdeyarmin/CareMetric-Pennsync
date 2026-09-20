@@ -317,8 +317,13 @@ for (const [name, raw] of Object.entries({
 test('what blocks a port is read from the module, not from a status note', () => {
   // Precedence runs from the most binding blocker to the least: a function that
   // both reads rows and renders a PDF cannot be written until the rows exist.
-  assert.deepEqual([...PORT_BLOCKERS], ['records_schema', 'files', 'ported_function', 'core_integration',
-    'pdf_rendering', 'external_secret', 'none']);
+  assert.deepEqual([...PORT_BLOCKERS], ['entity_not_carried', 'entity_authorization', 'records_schema',
+    'files', 'ported_function', 'core_integration', 'pdf_rendering', 'external_secret', 'none']);
+  // The first two are not properties of the module, so `classifyPortBlocker`
+  // cannot see them: they depend on the dispositions of the entities it reads.
+  // They are applied over its verdict in `checkCoverage`, and only ever over
+  // `records_schema` — reaching a file or a Core integration stays true
+  // whatever the rows turn out to be.
   assert.equal(classifyPortBlocker("await base44.entities.Patient.filter({})"), 'records_schema');
   assert.equal(classifyPortBlocker("base44.asServiceRole.entities.Visit.list()"), 'records_schema');
   // Dynamic access reads rows exactly as the dotted form does.
@@ -349,6 +354,46 @@ test('what blocks a port is read from the module, not from a status note', () =>
   assert.equal(classifyPortBlocker(null), 'records_schema');
 });
 
+test('a record blocker is refined by what the module actually reads', () => {
+  const declare = extra => manifest({ functions: { alpha: 'port' },
+    entities: { Kept: 'port', Gone: 'retire', Elsewhere: 'hub', Claim: 'port' }, ...extra });
+  const queue = (evidence) => {
+    const report = checkCoverage(capabilities(), declare(),
+      { portBlockers: { alpha: 'records_schema' }, policylessEntities: ['Claim'], ...evidence });
+    return Object.entries(report.port_blockers).filter(([, names]) => names.length).map(([key]) => key);
+  };
+  // An entity that gets no table here: the store arriving changes nothing.
+  assert.deepEqual(queue({ entityReach: { alpha: { names: ['Kept', 'Gone'], dynamic: false } } }),
+    ['entity_not_carried']);
+  assert.deepEqual(queue({ entityReach: { alpha: { names: ['Elsewhere'], dynamic: false } } }),
+    ['entity_not_carried']);
+  // A carried entity with forced RLS and no policy — `User` in the real
+  // manifest, which D14 left unreachable until a decision says how it is read.
+  assert.deepEqual(queue({ entityReach: { alpha: { names: ['Kept', 'Claim'], dynamic: false } } }),
+    ['entity_authorization']);
+  // Not carried outranks unreadable: whether the capability survives at all
+  // comes before how a table is read.
+  assert.deepEqual(queue({ entityReach: { alpha: { names: ['Gone', 'Claim'], dynamic: false } } }),
+    ['entity_not_carried']);
+  // Everything carried and readable is still the store's to provide.
+  assert.deepEqual(queue({ entityReach: { alpha: { names: ['Kept'], dynamic: false } } }), ['records_schema']);
+  // A computed key names a set nothing can enumerate, so nothing is claimed
+  // about it, and a module nobody read is left where the source put it.
+  assert.deepEqual(queue({ entityReach: { alpha: { names: ['Gone'], dynamic: true } } }), ['records_schema']);
+  assert.deepEqual(queue({ entityReach: {} }), ['records_schema']);
+
+  // Only a `records_schema` verdict is ever refined. A handler that reads a
+  // retired entity AND a file still waits on the file layer, because that stays
+  // true whatever happens to the rows.
+  for (const blocker of ['files', 'core_integration', 'external_secret', 'ported_function']) {
+    const report = checkCoverage(capabilities(), declare(), {
+      portBlockers: { alpha: blocker }, policylessEntities: ['Claim'],
+      entityReach: { alpha: { names: ['Gone', 'Claim'], dynamic: false } },
+    });
+    assert.deepEqual(report.port_blockers[blocker], ['alpha'], `${blocker} must not be overridden`);
+  }
+});
+
 test('the port queue is work that cannot start yet, and says why', () => {
   // Reading the census as "86 ports awaiting review" would send someone to work
   // nothing in the repository can support. Exactly one of them was writable
@@ -359,8 +404,16 @@ test('the port queue is work that cannot start yet, and says why', () => {
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { records_schema: 93, files: 4, ported_function: 1, core_integration: 1,
-    pdf_rendering: 0, external_secret: 1, none: 11 });
+  assert.deepEqual(counts, { entity_not_carried: 34, entity_authorization: 34, records_schema: 25, files: 4,
+    ported_function: 1, core_integration: 1, pdf_rendering: 0, external_secret: 1, none: 11 });
+  // The correction this distribution records: `records_schema` had come to mean
+  // "touches an entity", and only 25 of those 94 were ever waiting on the
+  // record store. Thirty-four read an entity that gets no table here at all,
+  // and thirty-four read `User`, which carries forced RLS and no policy because
+  // D14 deliberately left how it may be read undecided. Neither is helped by
+  // the store existing.
+  assert.equal(report.port_blockers.entity_authorization.length, 34);
+  assert.ok(report.port_blockers.entity_not_carried.includes('acceptAiContentAgreement'));
   // Twelve functions were counted against the record store until they were
   // read. Every one calls a Core integration and touches no entity row, so what
   // they waited on was the integration runtime's brokered path — already

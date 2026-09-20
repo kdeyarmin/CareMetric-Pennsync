@@ -287,8 +287,34 @@ export function discoverInertFunctions(repository) {
  * Precedence runs from the most binding to the least: a function that both reads
  * rows and renders a PDF is blocked on the rows first.
  */
-export const PORT_BLOCKERS = Object.freeze(['records_schema', 'files', 'ported_function', 'core_integration',
-  'pdf_rendering', 'external_secret', 'none']);
+/**
+ * Two of these are not properties of the module at all, which is why they are
+ * applied after `classifyPortBlocker` rather than inside it.
+ *
+ * `records_schema` had come to mean "touches an entity", and a queue that says
+ * 94 handlers are waiting on the record store is wrong twice over once the
+ * modules are read against the dispositions. A third of them are waiting on a
+ * decision nobody has taken, and the store arriving tomorrow would not move one
+ * of them:
+ *
+ * - **`entity_not_carried`** — the module reads an entity dispositioned
+ *   `retire`, `hub` or `preserved_paused`, so the table it wants will not exist
+ *   here. Nineteen touch `UserActivity` alone. What is owed is a decision about
+ *   that use, not a schema.
+ * - **`entity_authorization`** — the module reads a carried entity that has
+ *   forced RLS and no policy. That is `User`, and it is deliberate: D14 left it
+ *   "unreachable through this surface until a decision says how it may be
+ *   read". Fifty of the queue touch it and thirty-four are held by nothing
+ *   else, which makes it the single largest gate in front of the port queue.
+ *
+ * Both rank above `records_schema` because neither is helped by the store
+ * existing, and `entity_not_carried` above `entity_authorization` because
+ * whether a capability survives at all comes before how a table is read.
+ */
+export const PORT_BLOCKERS = Object.freeze(['entity_not_carried', 'entity_authorization', 'records_schema',
+  'files', 'ported_function', 'core_integration', 'pdf_rendering', 'external_secret', 'none']);
+/** A disposition whose entity gets no table in the record store. */
+export const UNCARRIED_DISPOSITIONS = Object.freeze(['retire', 'hub', 'preserved_paused']);
 
 export function classifyPortBlocker(source) {
   if (typeof source !== 'string') return 'records_schema';
@@ -348,7 +374,24 @@ export function discoverEvidence(repository) {
     portBlockers: discoverPortBlockers(repository),
     portedFunctions: discoverPortedFunctions(repository),
     entityReach: discoverEntityReach(repository),
+    policylessEntities: discoverPolicylessEntities(repository),
   };
+}
+
+/**
+ * Carried entities with forced RLS and no policy, so nothing can read them.
+ *
+ * Read from the tenant paths rather than the SQL: `renderPolicies` emits a
+ * comment instead of a policy for a `profile_claim`, and the path file is where
+ * that verdict is recorded.
+ */
+export function discoverPolicylessEntities(repository) {
+  let recorded;
+  try {
+    recorded = JSON.parse(readFileSync(join(repository, 'tools-tenant-path-expectations.json'), 'utf8')).entities;
+  } catch { return []; }
+  return (Array.isArray(recorded) ? recorded : [])
+    .filter(entry => entry.kind === 'profile_claim').map(entry => entry.entity).sort();
 }
 
 export function discoverCapabilities(repository) {
@@ -413,6 +456,21 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
   const blockers = evidence.portBlockers && typeof evidence.portBlockers === 'object' ? evidence.portBlockers : {};
   const ported = new Set(Array.isArray(evidence.portedFunctions) ? evidence.portedFunctions : []);
   const reach = evidence.entityReach && typeof evidence.entityReach === 'object' ? evidence.entityReach : {};
+  const policyless = new Set(Array.isArray(evidence.policylessEntities) ? evidence.policylessEntities : []);
+  /**
+   * What a module reads can make a `records_schema` verdict wrong, and only in
+   * that direction: a blocker the source already named is never overridden,
+   * because reaching a file or a Core integration is true whatever the rows are.
+   */
+  const refine = (blocker, name) => {
+    if (blocker !== 'records_schema') return blocker;
+    const touched = reach[name];
+    if (!touched || touched.dynamic) return blocker;
+    for (const entity of touched.names) {
+      if (UNCARRIED_DISPOSITIONS.includes((manifest.entities || {})[entity])) return 'entity_not_carried';
+    }
+    return touched.names.some(entity => policyless.has(entity)) ? 'entity_authorization' : blocker;
+  };
   const brokeredEntities = new Set(Object.keys(manifest.entities || {})
     .filter(entity => manifest.entities[entity] === 'broker'));
   const portQueue = Object.fromEntries(PORT_BLOCKERS.map(blocker => [blocker, []]));
@@ -476,7 +534,7 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
       // Informational, never a gate: a port that becomes possible must not fail
       // the census, and a port that is written should move a count here.
       if (family === 'functions' && value === 'port') {
-        portQueue[ported.has(name) ? 'none' : (blockers[name] ?? 'records_schema')].push(name);
+        portQueue[ported.has(name) ? 'none' : refine(blockers[name] ?? 'records_schema', name)].push(name);
       }
     }
     for (const name of Object.keys(declared)) if (!present.has(name)) unknown.push(`${family}:${name}`);
