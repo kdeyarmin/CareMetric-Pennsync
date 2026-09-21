@@ -180,7 +180,7 @@ describe('the ported API caller', () => {
     // The same refusals as `invoke`, because both go through one path.
     await expect(adapter.raw.functions.fetch('generateUserManual', { body: JSON.stringify({}) }))
       .rejects.toThrow(/STAGING_TENANT_SELECTION_REQUIRED/);
-    await expect(adapter.raw.functions.fetch('getDashboardData', { body: JSON.stringify({ agency_id: 'agency-a' }) }))
+    await expect(adapter.raw.functions.fetch('offboardUser', { body: JSON.stringify({ agency_id: 'agency-a' }) }))
       .rejects.toThrow(/STAGING_OPERATION_UNAVAILABLE/);
     await expect(adapter.raw.functions.fetch('generateUserManual', { body: 'not json' }))
       .rejects.toThrow(/STAGING_OPERATION_UNAVAILABLE/);
@@ -198,7 +198,7 @@ describe('the ported API caller', () => {
 
   it('still fails closed for every name the service does not serve', async () => {
     const { fixture, adapter } = await signedIn();
-    for (const name of ['getDashboardData', 'offboardUser', 'transcribeAndGenerateSOAPNote', 'nope']) {
+    for (const name of ['offboardUser', 'transcribeAndGenerateSOAPNote', 'analyzeNurseDeficits', 'nope']) {
       await expect(adapter.raw.functions.invoke(name, { agency_id: 'agency-a' }))
         .rejects.toThrow(/STAGING_OPERATION_UNAVAILABLE/);
     }

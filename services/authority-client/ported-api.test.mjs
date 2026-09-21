@@ -100,7 +100,10 @@ test('a name the service does not serve never becomes a request', async () => {
   const { client, calls } = harness(() => assert.fail('the API must not have been called'));
   await client.signIn(password);
   const before = calls.length;
-  for (const name of ['getDashboardData', 'transcribeAndGenerateSOAPNote', 'context', '',
+  // `offboardUser` reads an entity that is going away and is the example of a
+  // name the service will not serve for a long time; `getDashboardData` used
+  // to stand here and is served now (D72).
+  for (const name of ['offboardUser', 'transcribeAndGenerateSOAPNote', 'context', '',
     'validatePatientData ', '../../etc/passwd', 'toString', 'constructor', null, 42]) {
     await rejects(client.callFunction(name, 'agency-a'), 'PENNSYNC_API_FUNCTION_UNKNOWN');
   }

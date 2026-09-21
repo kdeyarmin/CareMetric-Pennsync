@@ -75,6 +75,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   createNotification: 'json',
   getAiContentAgreementStatus: 'json',
   getAuthorizedDocument: 'json',
+  getDashboardData: 'json',
   getApprovedTimeOff: 'json',
   getScopedPatientAlerts: 'json',
   getAuthorizedPatient: 'json',

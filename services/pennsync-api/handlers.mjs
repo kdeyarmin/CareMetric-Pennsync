@@ -894,6 +894,28 @@ export const HANDLERS = Object.freeze({
       return { binary: true, body, contentType: 'application/pdf', filename: `${guideType}_guide.pdf` };
     },
   }),
+  getDashboardData: Object.freeze({
+    // Five collections, one round trip, and a response shaped as the published
+    // client reads it — `recentCompletedVisits` and `carePlans` are the names
+    // `Dashboard.jsx` destructures, so they are the names that come back.
+    //
+    // The authorization is the contract's. The original's scope is
+    // `patient.created_by` plus `patient.assigned_nurses`, with a
+    // `SUPER_ADMIN_EMAIL` branch for the cross-tenant view; D24 answers the
+    // first two and gives the third to an `agency_admin` or `manager` within
+    // their own agency.
+    async handle({ params, contract }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      const answer = await contract('readDashboard', {});
+      return {
+        patients: answer.patients ?? [],
+        visits: answer.visits ?? [],
+        incidents: answer.incidents ?? [],
+        recentCompletedVisits: answer.recent_completed_visits ?? [],
+        carePlans: answer.care_plans ?? [],
+      };
+    },
+  }),
   searchPDFs: Object.freeze({
     // The indexed-PDF search. The corpus is the contract's and the scoring is
     // the service's, which is D67's split; nothing here reads a file, because

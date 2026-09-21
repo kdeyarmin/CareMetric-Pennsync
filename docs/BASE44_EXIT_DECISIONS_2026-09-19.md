@@ -4575,3 +4575,58 @@ which is exactly why `PDFIndex` is outside the generic family (D16). The
 corpus names the eight columns the scorer reads and no more.
 
 Port queue: `records_schema` 5 → 4, written 68 → 69.
+
+## D72 — A field list is not an invention when it is measured
+
+**Decision.** Port `getDashboardData`. Its five collections are projected by
+name, and the names come from the dashboard's own widgets rather than from a
+judgement about what a dashboard ought to show.
+
+**This is the port that was parked**, and the note against it was right: the
+original returns five WHOLE entity rows — `patients`, `visits`, `incidents`,
+`recentCompletedVisits`, `carePlans` — with no projection at all, D64 requires
+every disclosed column to be named, and two of those entities have no extracted
+read purpose to name them from. "Inventing two field lists is a decision, not a
+transcription."
+
+**What unparked it: the lists exist already, in the consumers.**
+`todayPriorities.js`, `coreWorkQueues.js`, `RealTimePatientAlerts.jsx` and
+`SmartRouteOptimizer.jsx` name every field they read. The projection is those
+fields, and **the test re-derives it from those four files**, so a widget that
+starts reading a new column fails the build instead of silently receiving
+`undefined`. That is D57's shape (run the original's own block) and D70's (read
+the original's own template) applied to a third kind of source. **Before
+deciding that a field set has to be invented, check whether the code that
+consumes it has already written one down.**
+
+**And the derivation found three defects in the live product.** Four fields
+those widgets read exist in NEITHER the record store nor the Base44 entity
+schemas:
+
+- `patient.risk_level` and `patient.hospitalization_risk`. The "N high-risk
+  patients to review" priority is computed from them and from a `riskLevel`
+  spelling that is also absent — so **that priority can never fire**, in Base44
+  today as much as here.
+- `visit.note_id`. The "N completed visits need notes" priority is
+  `visit.status === 'completed' && !visit.note_id`, and with the field always
+  undefined the negation is always true — so it **over-reports**, counting
+  every completed visit rather than the undocumented ones.
+- `patient.full_name` and `patient.name`, the two fallbacks in `patientName()`.
+  Neither exists; the names always come from `first_name` and `last_name`
+  (D38's family again).
+
+None is invented here. The projection carries what the store holds, the
+behaviour is unchanged, and the three are recorded — the same treatment D45 and
+D51 gave the notification envelope. Fixing them means adding columns and
+deciding what populates them, which is a product decision rather than a port.
+
+**Three deletions, each an earlier decision's.** `patientBelongsToCaller` is
+`patient.created_by` plus `patient.assigned_nurses`, exactly as in D70, and
+`patient_read` answers it. `isProtectedSuperAdmin`'s cross-tenant branch is the
+platform tier D14 and D22 removed, and what it was for at tenant scope is
+D24's: an `agency_admin` or `manager` opens every chart in their agency. And
+the five SCAN limits go while the five DISPLAY limits stay — D50's distinction —
+because the scan limits exist only to over-fetch so a JavaScript filter can
+re-check what a service-role query returned. The policies are the boundary.
+
+Port queue: `records_schema` 4 → 3, written 69 → 70.

@@ -1573,6 +1573,16 @@ export const RECORD_CONTRACTS = Object.freeze({
     body: (agencyId, args) => ({ p_agency: agencyId, p_referral_id: args.referral_id ?? null }),
     codes: REFERRAL_CODES,
   }),
+  // The dashboard's five collections. The capability that was PARKED on "two
+  // field lists nobody has decided", and what unparked it is that the lists
+  // are MEASURED: every column is read by a named dashboard widget, and the
+  // contract's test re-derives the set from those widgets' own source.
+  readDashboard: Object.freeze({
+    rpc: 'pennsync_contract_dashboard',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: Object.freeze(['PENNSYNC_DASHBOARD_AGENCY_NOT_HELD']),
+  }),
   // The PDF search's corpus. D67's split: which rows a caller may read is
   // decided in SQL, and BM25 over the query they typed is arithmetic in the
   // service. Two shapes, because the original fetches two — a count that
