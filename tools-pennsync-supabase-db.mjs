@@ -44,7 +44,7 @@
  * line or a refusal's detail. Neither does the SQL: a body here can be half a
  * megabyte, and a diagnostic that quotes it is not a diagnostic.
  */
-import { codeLines } from './tools-pennsync-migrate-shape.mjs';
+import { isReadOnly, transactionControl } from './tools-pennsync-migrate-shape.mjs';
 
 export const SUPABASE_DB_CONTRACT = 'cm.pennsync.supabase-db.v1';
 export const MANAGEMENT_ENDPOINT = 'https://api.supabase.com';
@@ -86,16 +86,21 @@ export function parseManagementUrl(url) {
  * anchored at the first character refused all sixty-nine of them once already.
  */
 export function assertSingleTransaction(sql) {
-  const code = codeLines(sql);
-  const first = code.at(0)?.line ?? '';
-  const last = code.at(-1)?.line ?? '';
-  const opens = /^\s*begin\s*;/i.test(first);
-  const closes = /(commit|rollback)\s*;\s*$/i.test(last);
-  // Either a self-contained transaction, or a body with no transaction control
-  // at all (one implicit statement, which the endpoint wraps itself).
-  if (opens && closes) return;
-  if (!opens && !closes) return;
-  refuse('SUPABASE_DB_TRANSACTION_SPLIT', { opens, closes });
+  const control = transactionControl(sql);
+  // Either exactly one self-contained transaction, or none at all — a body with
+  // no transaction control is one implicit statement the endpoint wraps itself.
+  if (control.length === 0) return;
+  if (control.length === 2 && control[0] === 'begin' && control[1] === 'commit') return;
+
+  // The first version compared only the FIRST and LAST statements, which let
+  // `begin; … commit; begin; … commit;` pass as one transaction. That is worse
+  // than it sounds here: `migrationWithLedgerRow` inserts the ledger row before
+  // the final `commit`, so the earlier block would commit on its own and a
+  // crash between the two would leave schema applied with nothing recording it
+  // — exactly the replay this transport exists to make impossible. No migration
+  // in the repository is shaped that way today; this refuses it anyway, because
+  // the guarantee is what the caller relies on, not the current corpus.
+  refuse('SUPABASE_DB_TRANSACTION_SPLIT', { control });
 }
 
 const sleep = ms => new Promise(done => setTimeout(done, ms));
@@ -130,10 +135,21 @@ export function openManagementClient({
       // Status and the server's own words. Never the token, never the SQL.
       refuse('SUPABASE_DB_QUERY_FAILED', { status: response.status, message });
     }
+    // A 2xx with NOTHING in it is a success that returned no result set. The
+    // endpoint answers `[]` for every no-rowset statement measured against the
+    // real project — a DO block, `set local`, an empty transaction — so this is
+    // hardening rather than an observed shape. It matters anyway: a migration
+    // that committed and was then reported unreadable would be recorded in the
+    // ledger, refused to the operator, and look like a failure that had in fact
+    // applied. Tolerate it as zero rows; every caller above checks the rows it
+    // actually needs.
+    if (text.trim() === '') return { rows: [], rowCount: 0 };
+
     let rows;
     try { rows = JSON.parse(text); } catch { refuse('SUPABASE_DB_RESPONSE_UNREADABLE', { status: response.status }); }
-    // A 2xx that is not a row array is not a result set, and treating it as an
-    // empty one would read as "no rows" to every caller above.
+    // A 2xx carrying JSON that is not a row array is a different thing: it is a
+    // shape nobody here understands, and calling it "no rows" would hand a
+    // silent empty answer to a caller asking which migrations have run.
     if (!Array.isArray(rows)) refuse('SUPABASE_DB_RESPONSE_NOT_ROWS');
     return { rows, rowCount: rows.length };
   };
@@ -149,10 +165,16 @@ export function openManagementClient({
       assertSingleTransaction(sql);                                   // property 2
 
       // Property 3: a body that can change the database gets exactly one
-      // attempt. `codeLines` already told us whether it opens a transaction;
-      // anything that does is a migration, and a migration is never re-sent.
-      const writes = /^\s*begin\s*;/i.test(codeLines(sql).at(0)?.line ?? '');
-      if (writes) return send(sql);
+      // attempt.
+      //
+      // The first version asked only whether the body opened with `begin;`,
+      // which made a bare `insert` or `create table` — perfectly reachable
+      // through this exported client — look like a read and enter the retry
+      // loop, contradicting the guarantee three paragraphs of the header make.
+      // The question FAILS CLOSED now: a body is retryable only when every
+      // statement in it is provably read-only, so a statement the scanner
+      // cannot classify is a write and is sent once.
+      if (!isReadOnly(sql)) return send(sql);
 
       let failure = null;
       for (let attempt = 1; attempt <= READ_ATTEMPTS; attempt += 1) {

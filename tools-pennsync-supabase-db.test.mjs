@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   READ_ATTEMPTS, SupabaseDbError, assertSingleTransaction, isManagementUrl,
   openManagementClient, parseManagementUrl,
 } from './tools-pennsync-supabase-db.mjs';
+import { isReadOnly, transactionControl } from './tools-pennsync-migrate-shape.mjs';
 import { migrationWithLedgerRow } from './tools-pennsync-migrate.mjs';
 
 /**
@@ -13,6 +17,7 @@ import { migrationWithLedgerRow } from './tools-pennsync-migrate.mjs';
  * that reads like a database right up until a migration is half applied. The
  * tests that matter are the three refusals that make the difference explicit.
  */
+const REPOSITORY = dirname(fileURLToPath(import.meta.url));
 const REF = 'xxtyweswohkvgkprimwa';
 const URL_OK = `supabase://${REF}`;
 const TOKEN = 'sbp_test_token_never_logged';
@@ -142,4 +147,80 @@ test('a real migration body passes the transaction check it will be sent under',
   const commit = wrapped.split('\n').findIndex(line => /^\s*commit\s*;/.test(line));
   assert.ok(ledger < commit, 'the ledger row must land inside the transaction');
   assertSingleTransaction(wrapped);
+});
+
+test('a plpgsql block opener is not a transaction boundary', () => {
+  // Every contract in this store is a plpgsql body, and such a body opens with
+  // the word `begin` and closes with `end`. A scan that did not skip `$$ … $$`
+  // would read hundreds of block openers as transaction control and refuse
+  // every migration in the repository — so this is the property the whole
+  // scanner exists for, not an edge case.
+  const body = "begin;\ncreate function f() returns void language plpgsql as $$\n"
+    + "begin\n  perform 1;\n  commit;\nend $$;\ncommit;\n";
+  assert.deepEqual(transactionControl(body), ['begin', 'commit']);
+  assertSingleTransaction(body);
+
+  // Strings and comments are skipped for the same reason.
+  assert.deepEqual(transactionControl("begin; select 'commit;' as t; -- begin;\ncommit;"),
+    ['begin', 'commit']);
+});
+
+test('two transaction blocks in one body are refused', () => {
+  // The ledger row goes in before the FINAL commit, so the first block would
+  // commit alone and a crash between them leaves schema applied with nothing
+  // recording it.
+  const split = 'begin; create schema a; commit; begin; create schema b; commit;';
+  assert.deepEqual(transactionControl(split), ['begin', 'commit', 'begin', 'commit']);
+  assert.throws(() => assertSingleTransaction(split), rejectsWith('SUPABASE_DB_TRANSACTION_SPLIT'));
+});
+
+test('every committed migration is exactly one transaction', () => {
+  // The corpus the transport is actually asked to carry. If a migration is ever
+  // written with two blocks this fails here rather than half way through a
+  // deployment.
+  const directories = ['services/authority-store/supabase/migrations',
+    'services/authority-store/supabase/record-migrations'];
+  const files = directories.flatMap(directory => readdirSync(join(REPOSITORY, directory))
+    .filter(name => name.endsWith('.sql'))
+    .map(name => join(REPOSITORY, directory, name)));
+  assert.ok(files.length >= 69, `expected the committed corpus, found ${files.length}`);
+  for (const file of files) {
+    assert.deepEqual(transactionControl(readFileSync(file, 'utf8')), ['begin', 'commit'], file);
+  }
+});
+
+test('a write is classified by what it does, not by a leading begin', async () => {
+  // A bare mutation reaches this exported client through `runMigrateCli`'s own
+  // `db.query`. Classifying on `begin;` alone made it look like a read and put
+  // it in the retry loop, which is the one thing property 3 forbids.
+  for (const write of ['insert into t values (1)', 'create table t (a int)',
+    'update t set a = 1', 'delete from t', 'drop table t', 'grant select on t to r',
+    'do $$ begin end $$;', 'alter table t add column b int']) {
+    const fetchImpl = fakeFetch([{ status: 503, body: 'nope' }]);
+    assert.equal(isReadOnly(write), false, write);
+    // AWAITED, and that is the whole test. A first draft called `query` without
+    // awaiting it and then read `calls.length`: the first fetch is issued
+    // before the first suspension, so the count was 1 whether or not the body
+    // went on to retry — the assertion passed with the defect in place, which
+    // sabotage is how it was found.
+    await assert.rejects(() => open(fetchImpl).query(write), rejectsWith('SUPABASE_DB_QUERY_FAILED'), write);
+    assert.equal(fetchImpl.calls.length, 1, write);
+  }
+  for (const read of ['select 1', 'show timezone', 'explain select 1', 'begin; select 1; commit;']) {
+    assert.equal(isReadOnly(read), true, read);
+  }
+  // `with` is absent from the allowlist on purpose: a CTE can carry a write.
+  assert.equal(isReadOnly('with x as (select 1) insert into t select * from x'), false);
+});
+
+test('a 2xx with an empty body is zero rows, not a failure', async () => {
+  // A migration that committed and was then reported unreadable would be in the
+  // ledger, refused to the operator, and look like a failure that had applied.
+  const { rows, rowCount } = await open(fakeFetch([{ status: 201, body: '' }])).query('select 1');
+  assert.deepEqual(rows, []);
+  assert.equal(rowCount, 0);
+  // A non-array JSON body is still refused: that is a shape nobody understands,
+  // and calling it "no rows" would answer a ledger read with silence.
+  await assert.rejects(() => open(fakeFetch([{ status: 200, body: { ok: true } }])).query('select 1'),
+    rejectsWith('SUPABASE_DB_RESPONSE_NOT_ROWS'));
 });
