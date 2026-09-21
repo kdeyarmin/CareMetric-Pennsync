@@ -1240,6 +1240,45 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_TENANT_AGENCY_UNAVAILABLE',
     ]),
   }),
+  // The clinical phrase library, in two halves because a model call sits
+  // between them. The resolve decides which template answers a phrase and what
+  // of the patient may go into the prompt; the use records the count.
+  //
+  // **This capability is why D61 exists.** `clinical_library_template`'s only
+  // tenant path was its OPTIONAL `patient_id`, so every generic and every
+  // agency-wide template was in no tenant and readable by nobody. With the
+  // table carrying its own agency, the policies are the whole of the template
+  // scoping — which is what lets the contract delete BOTH of the original's
+  // five-thousand-row `User` scans.
+  resolveClinicalPhrase: Object.freeze({
+    rpc: 'pennsync_contract_clinical_phrase_resolve',
+    params: Object.freeze(['phrase', 'patient_id']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_phrase: args.phrase ?? null,
+      p_patient_id: args.patient_id === undefined ? null : args.patient_id,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_PHRASE_AGENCY_NOT_HELD',
+      'PENNSYNC_PHRASE_REQUIRED',
+      'PENNSYNC_PHRASE_SUBJECT_INVALID',
+      'PENNSYNC_PHRASE_SUBJECT_REQUIRED',
+      'PENNSYNC_PHRASE_PURPOSE_FORBIDDEN',
+      'PENNSYNC_PHRASE_PATIENT_NOT_VISIBLE',
+    ]),
+  }),
+  recordClinicalPhraseUse: Object.freeze({
+    rpc: 'pennsync_contract_clinical_phrase_used',
+    params: Object.freeze(['template_id']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId, p_template_id: args.template_id ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_PHRASE_AGENCY_NOT_HELD',
+      'PENNSYNC_PHRASE_SUBJECT_INVALID',
+      'PENNSYNC_PHRASE_TEMPLATE_NOT_FOUND',
+    ]),
+  }),
   // The record half of the provider directory import. The CSV is parsed in
   // `provider-import.mjs` — text shaping is not authorization — and the store
   // decides who may import, which rows are the same provider and whether a

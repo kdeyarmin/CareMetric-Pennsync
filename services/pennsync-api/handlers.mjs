@@ -12,6 +12,7 @@ import { syncCmsRegulations } from './cms-regulations.mjs';
 import { triageReferral } from './referral-triage.mjs';
 import { analyzeVisitSupplyUsage } from './visit-supply-usage.mjs';
 import { importProviders } from './provider-import.mjs';
+import { expandClinicalPhrase as runClinicalPhrase } from './clinical-phrase.mjs';
 import {
   BAG_TECHNIQUE_FILENAME, SMART_NOTE_GUIDE_FILENAME, USER_MANUAL_FILENAME,
   buildBagTechniqueChecklist, buildSmartNoteGuide, buildUserManual, documentDate,
@@ -525,6 +526,15 @@ export const HANDLERS = Object.freeze({
     handle({ params, contract }) {
       exactObject(params, [], 'INVALID_PARAMS');
       return contract('checkAdrDeadlines', params);
+    },
+  }),
+  expandClinicalPhrase: Object.freeze({
+    // The body keys are the original's: `QuickPhraseTextarea.jsx` sends them
+    // and the SPA is shared between both backends (D58).
+    needsIntegration: true,
+    handle({ params, integration, contract }) {
+      exactObject(params, ['phrase', 'patientId', 'contextData'], 'INVALID_PARAMS');
+      return runClinicalPhrase({ params, integration, contract });
     },
   }),
   importProvidersCsv: Object.freeze({

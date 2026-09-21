@@ -3960,3 +3960,66 @@ found and how the other ten would have been.
 
 Port queue: unchanged. `ClinicalLibraryTemplate` becoming readable is what
 unblocks `expandClinicalPhrase`, which is the next port rather than this one.
+
+## D62 — A template row may not widen what a caller may read about a patient
+
+**Decision.** Port `expandClinicalPhrase` on D61's tenancy, delete both of its
+agency reconstructions, and constrain the patient fields a template can ask for
+to the fields `smart_note_context` already discloses.
+
+**The port D61 was written for.** `clinical_library_template` reached tenancy
+only through its OPTIONAL `patient_id`, so every generic and every agency-wide
+template — nearly the whole library — was in no tenant and readable by nobody.
+With the table carrying its own `agency_id` and D24 still narrowing a bound
+template to the chart it names, the policies are the WHOLE of the template
+scoping, and both of the original's reconstructions of it can go:
+
+* one `User.list('-created_date', 5000)` to decide whether the requested
+  patient is in the caller's agency, and
+* a second to decide whether an agency-wide template was authored there.
+
+That is the fifth original in this migration whose scope reconstruction the
+tenancy replaces, after D41, D42, D43 and D44. Its `isPlatformWide` branch —
+which lets a `super_admin` or a bare `role: 'admin'` use any agency's
+agency-wide template — goes with the tier D14 and D22 removed.
+
+**The new rule is divergence 3, and it is a disclosure rule.** A
+`patient_specific` template names `patient_data_fields`, and the original
+interpolates whatever columns that array holds straight into the prompt:
+
+```js
+template.patient_data_fields.forEach(field => {
+  if (patientData[field]) patientContext += `${field}: ${JSON.stringify(patientData[field])}\n`;
+});
+```
+
+`patientData` there is a full service-role row. So a template — an ordinary
+agency-editable record — could put a patient's address, phone, insurance or
+anything else in front of a caller whose read purposes disclose none of it.
+D26's purposes exist precisely to bound that, so the contract asks
+`patient_exact_purpose_row('smart_note_context', patient)` and selects from
+THAT. The purpose's own role gate is the gate, and a field outside the
+projection is **refused by name in the answer** rather than dropped, because a
+template that quietly stopped including a field would read as a model that
+ignored it.
+
+Note where the refusal is reachable and where it is not: a template BOUND to a
+chart is already narrowed by the policies, so a caller outside the care team
+never sees it to be refused for it. The role gate bites on a `patient_specific`
+template with no `patient_id` — the shape the original reaches through its
+`templates.find(t => !t.patient_id && …)` branch.
+
+**Two smaller things kept deliberately.** A field named twice is interpolated
+twice, because the original's `forEach` appends once per entry; the refusals
+are de-duplicated because the original has no refusal list at all. And the
+phrase is normalised with `bounded_reason`, which performs JavaScript's trim —
+the Unicode space separators included — rather than `btrim`'s ASCII one, so
+`' vitals stable'` matches where it otherwise would not.
+
+**Not diverged.** A patient-bound template wins over a generic one; an
+agency-wide template loses to one the caller authored only by coming second in
+the same scan; `usage_count` is incremented on a template that answers and not
+on a generic AI expansion; an inactive template answers nothing; and the body
+keys stay camelCase because `QuickPhraseTextarea.jsx` sends them (D58).
+
+Port queue: `records_schema` 20 → 19, written 59 → 60.
