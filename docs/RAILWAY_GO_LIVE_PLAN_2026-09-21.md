@@ -213,13 +213,25 @@ operation set; no traffic change anywhere.
   those three — but several originals refuse an unknown key outright
   (`exactObject`), and adding one there would break the live Base44 path. The
   census makes that review finite and ordered; it does not pre-empt it.
-- **`getMyTenantContext` needs deciding before any of this ships.**
-  `routesPorted` is tested FIRST in the adapter's dispatcher, ahead of every
-  special case, so pointing `VITE_PENNSYNC_API_URL` at a service routes the
-  pre-tenant bootstrap to it too — and that capability has no `agency_id`
-  parameter by design (AGENTS.md: the bootstrap stays on the authority store's
-  own RPC rather than taking an envelope exemption). As it stands it would
-  refuse, and nothing downstream could resolve a tenant to send.
+- **`getMyTenantContext` is safe, and an earlier revision of this document said
+  it was not.** `routesPorted` IS tested first in the adapter's dispatcher,
+  ahead of every special case, so pointing `VITE_PENNSYNC_API_URL` at a service
+  does route that name to it. The reason that is harmless took reading the call
+  path rather than the dispatcher, and is worth recording because it is not
+  obvious: the capability has TWO seams. `bootstrapMyTenantContext` — the
+  pre-tenant one, used by `AuthContext` — goes through `tenantAuthorityClient`
+  to the adapter's own `authority` object, which never reaches `invoke` and so
+  never reaches `routesPorted` at all. The other, `getMyTenantContext`, is the
+  revalidation path behind the SDK membrane, and its six call sites all pass
+  `trustedTenantRequest(...).options`, which sets `agencyId` unconditionally and
+  returns null rather than omitting it. So every routed call carries a tenant,
+  `portedCall` lifts it into the envelope, and the contract serves it.
+
+  What remains is a fragility rather than a defect, and it is what the gate
+  above is for: a future bare `getMyTenantContext()`, or a `trustedTenantRequest`
+  that ever returned options without an `agencyId`, would refuse on the routed
+  path while the bootstrap kept working — a failure that would look like a
+  tenant problem and be a dispatcher one.
 - Then release per function, behind the existing per-name gate: the patient read
   pair, then the create, then the visit family, then the rest by blast radius.
 - Each release wants its own hosted proof, not a suite that passed locally.
@@ -324,13 +336,77 @@ settled.
 Evidence packet until `evidence_coverage_complete`; full staging rehearsal with
 the enrolled actors over the minimum observation window; then production write
 freeze on Base44, final delta export and import, canary, observation, and a
-rollback plan that leaves Base44 intact. The domain move
-(`complete_hosting_exit`) waits for a new iOS build: the wrapper hard-binds
-`https://caremetricai.base44.app/` and App-Bound Domains `base44.app` /
-`base44.com`, so moving `app.caremetricai.com` before that build is approved
-breaks every installed app. Blockers 5 (store privacy declarations), 6 (Android
-project recovery) and 7 (physical-device tests) are still open and are Stage L's
-real long pole.
+rollback plan that leaves Base44 intact.
+
+#### The native half, which is a bigger blocker than the migration
+
+**Step one ships without touching the apps at all, and that is the point.**
+Under D3, `business_backend_exit` leaves Base44 serving the static shell at
+`caremetricai.base44.app` while the bundle talks only to Railway and Supabase.
+The origin an installed app loads does not change, so there is no rebuild, no
+resubmission and nothing to approve. Base44 becomes a file host with no
+business role. Everything in stages A to K can land this way.
+
+`WKAppBoundDomains` does not complicate it: it bounds main-frame **navigation**,
+not `fetch`, so a bundle calling Railway and Supabase needs no entry. The
+wrapper also injects no script — `WebViewController.swift` sets
+`limitsNavigationsToAppBoundDomains = true` and uses no `WKUserScript` or
+`evaluateJavaScript` — so the usual app-bound trap (injection restricted to
+app-bound domains) does not apply. One caveat: the current frontend
+deliberately registers no service worker, and app-bound limits DO affect
+service workers, so a Railway static host that adds one changes this analysis.
+
+**Step two, the domain move, is where the apps are at risk**, and the code part
+is the small part:
+
+| Where | What |
+| --- | --- |
+| `ios/PennSync/WebViewController.swift:38` | `appURL` hard-bound to `https://caremetricai.base44.app/` |
+| `ios/PennSync/Info.plist:52-56` | `WKAppBoundDomains` is `base44.app`, `base44.com`. It takes up to 10, so the transitional build lists OLD and NEW and one binary works either side of the DNS move |
+| `base44/functions/createUserWithTempPassword/entry.ts:36-37` | store URLs in the invitation email |
+| `tools-app-store-migration.test.mjs` | byte-pins all 25 `ios/` and `public/` files to baseline `1ff6018` and asserts the Base44 URL is still present, so any of the above FAILS the suite by design. Updating it is a reviewed act, not a fix |
+
+`caremetricai.base44.app` must stay reachable until adoption of the new build is
+high: an installed app on the old binary points there permanently.
+
+**What actually blocks a native release has little to do with Railway.**
+`docs/APP_STORE_SUBMISSION_CHECKLIST.md` opens with a hard STOP — no IPA or AAB
+may be uploaded, *including to TestFlight or Play testing tracks* — and the
+reasons are recovery problems rather than engineering ones:
+
+1. **Signing continuity.** Apple provisioning for `com.caremetric.ai` and Play
+   App Signing for `com.caremetic.ai` must be RECOVERED, not regenerated. A new
+   signing key means existing users cannot update; they would have to uninstall
+   and reinstall.
+2. **There is no `android/` directory in this repository.** Blocker 6 is not an
+   Android update, it is a project that does not exist here.
+3. **Four live in-app purchases** — Monthly $29.99, Quarterly $79.99,
+   Semi-Annual $149.99, Annual $264.99 — and **none of the native IAP
+   implementation is in this repository**: no StoreKit, no receipt validation,
+   no entitlement code, and no server-side subscription state in either store.
+   This is a standing risk today, independent of the migration, and nothing in
+   the migration plan carries subscription state across.
+4. **Guideline 4.2.** It is a web wrapper before and after, so the move changes
+   nothing here. The checklist's own recommendation is Apple Business Manager
+   distribution (unlisted or custom app) rather than public listing, since the
+   audience is one agency's staff.
+5. **EULA.** Live Apple metadata points at `/eula`, which has no approved
+   in-app route; the external page is not confirmed as governing terms.
+6. **Privacy declarations** (blocker 5) are the STORE-side ones — App Store
+   nutrition labels and Play Data safety. The bundled
+   `ios/PennSync/PrivacyInfo.xcprivacy` is already complete and correct and is
+   not what is outstanding; the two must be kept in sync.
+7. **Physical-device tests** (blocker 7) on both platforms with non-PHI data.
+
+One thing the move improves: Guideline 4.8. The hosted `/login` page is
+configured in the Base44 dashboard, outside this repository, so a third-party
+login button appearing there would force Sign in with Apple. Owning the origin
+removes that exposure.
+
+**Sequence accordingly.** Ship the whole backend transfer through step one,
+which carries no store risk at all, and start the three recovery problems —
+signing assets, the Android project, the IAP implementation — now, because they
+are long-lead, unowned, and gate step two no matter how the migration goes.
 
 **Exit:** `cutover` and `independence` production receipts; release-owner
 sign-off; Base44 read-only after the retention window, credit ledger compared
@@ -352,7 +428,11 @@ so none of it sits waiting on a misunderstanding:
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
 | Base44 owner-signed export permits | Stage I | Production and legacy apps |
-| Apple and Google store work: privacy declarations, Android project recovery, physical devices | Stage L | Blockers 5, 6, 7 |
+| Recover Apple provisioning and Play App Signing continuity | Stage L | Must be recovered, never regenerated — a new key means users cannot update |
+| Recover or rebuild the Android project | Stage L | There is no `android/` directory in this repository |
+| Recover or reimplement the IAP entitlement path | Stage L, and today | Four live products; no StoreKit, receipt validation or subscription state in this repository |
+| Store-side privacy declarations, EULA approval, physical-device tests | Stage L | Blockers 5 and 7; the bundled privacy manifest is already correct |
+| Distribution route decision (public listing vs Apple Business Manager) | Stage L | Guideline 4.2 applies to a web wrapper either way |
 
 ## 5. What this plan does not change
 
