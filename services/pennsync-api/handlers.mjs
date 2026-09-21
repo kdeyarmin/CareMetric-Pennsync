@@ -12,7 +12,7 @@ import { buildSmartNoteData } from './transforms.mjs';
 import { syncCmsRegulations } from './cms-regulations.mjs';
 import { triageReferral } from './referral-triage.mjs';
 import { analyzeVisitSupplyUsage } from './visit-supply-usage.mjs';
-import { importProviders } from './provider-import.mjs';
+import { MAX_CSV_BYTES, importProviders } from './provider-import.mjs';
 import { expandClinicalPhrase as runClinicalPhrase } from './clinical-phrase.mjs';
 import { exportPatientChart } from './chart-export.mjs';
 import { searchIndexedPdfs } from './pdf-search.mjs';
@@ -651,6 +651,22 @@ export const HANDLERS = Object.freeze({
     },
   }),
   importProvidersCsv: Object.freeze({
+    /*
+     * The one handler whose request is larger than the service default.
+     * `app.mjs` reads every body at `MAX_BODY` (1 MiB), while this capability
+     * and its Base44 original both advertise a 10 MiB CSV — so every import
+     * between those two figures was refused `BODY_TOO_LARGE` before the
+     * parser ever ran, which is an accidental NARROWING of the original.
+     *
+     * Declared on the handler for the reason `needsIntegration` is: a
+     * hand-maintained list in `app.mjs` would drift from the handler it
+     * describes. The figure is twice `MAX_CSV_BYTES` because the CSV arrives
+     * inside a JSON string, and escaping quotes and newlines can approach
+     * doubling it — a ceiling that only admitted the unescaped size would
+     * reintroduce the same defect for exactly the quote-heavy files most
+     * likely to be near the limit.
+     */
+    maxBody: 2 * MAX_CSV_BYTES,
     // A PARTIAL port. The `csv_text` branch is what the SPA calls and what the
     // original's own comment says needs nothing else — "A provider directory
     // CSV needs no storage upload or AI integration" — while the legacy

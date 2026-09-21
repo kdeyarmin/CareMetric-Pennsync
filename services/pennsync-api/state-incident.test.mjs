@@ -131,3 +131,58 @@ test('a contract refusal crosses back as itself', async () => {
   await assert.rejects(() => submitStateIncident(h),
     error => error?.code === 'PENNSYNC_STATE_INCIDENT_PATIENT_NOT_VISIBLE');
 });
+
+test('a submission with no narrative is refused, as the original refuses it', async () => {
+  /*
+   * The Base44 original guards with
+   *     !(payload.factual_description || payload.report_text)
+   * and this port had no equivalent, so a request carrying only patient, type
+   * and date produced a template whose factual-description section was blank
+   * and stored it as a state-reportable incident. That is a WIDENING of a
+   * compliance submission contract, on the most serious incident class the
+   * product has.
+   */
+  const bare = { patient_id: 'patient-a1', event_type: 'Injury of Unknown Origin',
+    event_type_id: 'IE', event_date: '2026-06-15' };
+  const { asked, ...rest } = harness();
+  await assert.rejects(
+    () => submitStateIncident({ ...rest, params: bare }),
+    error => error.status === 400 && error.code === 'STATE_INCIDENT_NARRATIVE_REQUIRED');
+  // Refused BEFORE the contract, so nothing was stored.
+  assert.deepEqual(asked, []);
+
+  // Either field satisfies it, exactly as the original's `||` does.
+  for (const patch of [{ factual_description: 'Found on floor.' },
+    { report_text: 'A narrative the clinician wrote themselves.' }]) {
+    const run = harness();
+    const answer = await submitStateIncident({ ...run, params: { ...bare, ...patch } });
+    assert.equal(answer.success, true);
+  }
+  // Whitespace is not a narrative.
+  const blank = harness();
+  await assert.rejects(
+    () => submitStateIncident({ ...blank, params: { ...bare, factual_description: '   ' } }),
+    error => error.code === 'STATE_INCIDENT_NARRATIVE_REQUIRED');
+});
+
+test('the answer carries the keys the live callers actually read', async () => {
+  /*
+   * `EventReport.jsx` branches on `admin_count`, then `emails_sent`, then
+   * `pdf_retained`. This port returned none of them, so `(data.admin_count ??
+   * 0) === 0` was always true and every submission took the "NO
+   * administrators were found" branch even when notifications were minted.
+   */
+  const answer = await submitStateIncident(harness());
+  assert.equal(answer.admin_count, 2, 'the number actually notified in-app');
+  assert.equal(answer.admin_count, answer.notified);
+  // Truthful rather than flattering: both halves are paused, so these are the
+  // values that make EventReport.jsx tell the reporter to keep their own copy.
+  assert.equal(answer.emails_sent, 0);
+  assert.equal(answer.pdf_retained, false);
+  assert.equal(answer.delivery_paused, true);
+  // And a submission that reached nobody says so rather than claiming one.
+  const none = await submitStateIncident(harness({
+    answer: { success: true, notified: 0, incident: { id: 'incident-2' } },
+  }));
+  assert.equal(none.admin_count, 0);
+});

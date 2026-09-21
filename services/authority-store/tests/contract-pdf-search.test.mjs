@@ -156,13 +156,18 @@ test('the corpus projects what the scorer reads and not the storage locator', as
   const answer = await corpus(ADMIN_A);
   for (const doc of answer.documents) {
     assert.deepEqual(Object.keys(doc).sort(), ['created_date', 'document_name',
-      'document_type', 'extracted_text', 'id', 'keywords', 'page_contents', 'patient_id']);
+      'document_type', 'extracted_text', 'id', 'keywords', 'metadata',
+      'page_contents', 'patient_id']);
     // `pdf_url` is a locator into Base44's storage, which is why `PDFIndex` is
     // outside the generic family (D16). The original spreads the whole row.
     assert.equal(Object.hasOwn(doc, 'pdf_url'), false);
     assert.equal(Object.hasOwn(doc, 'created_by'), false);
     assert.equal(Object.hasOwn(doc, 'agency_id'), false);
-    assert.equal(Object.hasOwn(doc, 'metadata'), false);
+    // `metadata` is projected NARROWED to the one key the search page reads.
+    // This assertion previously required it to be ABSENT — encoding the defect
+    // as intended behaviour, which is why the suite stayed green while every
+    // document rendered `0 pages`.
+    assert.deepEqual(Object.keys(doc.metadata), ['page_count']);
   }
   assert.match(readFileSync(resolve(repository, ORIGINAL), 'utf8'), /\.\.\.doc,/);
 });
@@ -186,4 +191,50 @@ test('the type filter is the original\'s list, and the fetch cap cannot be raise
   assert.equal((await corpus(ADMIN_A, { limit: 1 })).documents.length, 1);
   assert.equal((await corpus(ADMIN_A, { limit: 0 })).documents.length, 1);
   assert.equal((await corpus(ADMIN_A, { limit: null })).documents.length, 4);
+});
+
+test('a result carries the page count the search page renders, and nothing else of metadata', async () => {
+  /*
+   * D72's rule, arriving as a defect Codex found: `PDFSearchInterface.jsx`
+   * reads `result.metadata?.page_count || 0` to render "N pages", and the
+   * projection omitted `metadata` entirely — so every indexed document showed
+   * `0 pages` under this backend while this suite passed.
+   *
+   * Narrowed to that one key on purpose. `metadata` is an unconstrained jsonb
+   * column, and D64's naming discipline applies to a response as much as to a
+   * prompt.
+   */
+  const id = 'pdf-meta-1';
+  await db.query(`insert into ${SCHEMA}."pdf_index"("source_app_id","id","agency_id",
+    "patient_id","document_type","extracted_text","document_name","created_by",
+    "pdf_url","keywords","page_contents","created_date","metadata")
+    values ($1,$2,$3,$4,'assessment','wound care notes','Wound.pdf','nobody@example.invalid',
+      'https://base44.example/storage/m.pdf','{}','{}',clock_timestamp(),$5)`,
+  [APP, id, A, 'patient-a1', JSON.stringify({ page_count: 7, extracted_by: 'ocr-v2', pdf_url: 'leak' })]);
+
+  const answer = await as(ADMIN_A, CORPUS, [A, null, 'patient-a1', 50, false]);
+  const row = answer.documents.find(entry => entry.id === id);
+  assert.ok(row, 'the seeded row is in the corpus');
+  assert.equal(row.metadata.page_count, 7);
+  // Only that key. The column also held `extracted_by` and a `pdf_url`, and a
+  // swept-in blob would have carried both — the second being the exact column
+  // this contract refuses to project.
+  assert.deepEqual(Object.keys(row.metadata), ['page_count']);
+  assert.equal(Object.hasOwn(row, 'pdf_url'), false);
+});
+
+test('a row with no metadata still answers an object the page can read', async () => {
+  // `result.metadata?.page_count || 0` needs `metadata` to be an object or
+  // absent, never a null that an optional chain then reads through.
+  const id = 'pdf-meta-none';
+  await db.query(`insert into ${SCHEMA}."pdf_index"("source_app_id","id","agency_id",
+    "patient_id","document_type","extracted_text","document_name","created_by",
+    "pdf_url","keywords","page_contents","created_date")
+    values ($1,$2,$3,$4,'assessment','dressing change','Dressing.pdf','nobody@example.invalid',
+      'https://base44.example/storage/n.pdf','{}','{}',clock_timestamp())`,
+  [APP, id, A, 'patient-a1']);
+  const answer = await as(ADMIN_A, CORPUS, [A, null, 'patient-a1', 50, false]);
+  const row = answer.documents.find(entry => entry.id === id);
+  assert.ok(row);
+  assert.deepEqual(row.metadata, { page_count: null });
 });

@@ -71,6 +71,15 @@ export async function submitStateIncident({ params, contract }) {
   if (params.photo_urls !== undefined && !Array.isArray(params.photo_urls)) {
     fail(400, 'STATE_INCIDENT_PHOTOS_INVALID');
   }
+  // The original refuses unless one of these is present:
+  //     !(payload.factual_description || payload.report_text)
+  // Without it a request carrying only patient, type and date produces a
+  // template whose factual-description section is BLANK and stores it as a
+  // state-reportable incident — a widening of a compliance submission
+  // contract, and the most serious incident class the product has.
+  const narrative = [params.factual_description, params.report_text]
+    .some(value => typeof value === 'string' && value.trim());
+  if (!narrative) fail(400, 'STATE_INCIDENT_NARRATIVE_REQUIRED');
 
   // The original accepts a caller-supplied `report_text` and builds one when
   // it is absent. Kept: a clinician who edited the narrative in the form is
@@ -100,13 +109,32 @@ export async function submitStateIncident({ params, contract }) {
         ? {} : { client_request_id: params.client_request_id }),
     },
   });
+  const notified = answer.notified ?? 0;
   return {
     success: true,
     incident: answer.incident,
-    notified: answer.notified ?? 0,
+    notified,
     deduplicated: answer.deduplicated === true,
     // Reported rather than skipped, so nothing reads as though it happened.
     document_retention_paused: true,
     email_paused: true,
+    /*
+     * The ORIGINAL's key names, which the live callers actually read.
+     * `EventReport.jsx` branches on `admin_count`, then `emails_sent`, then
+     * `pdf_retained`; returning none of them made every submission take the
+     * "NO administrators were found" branch even when notifications were
+     * minted. D72's rule: the consumer has already written the field set down.
+     *
+     * They carry TRUTHFUL values rather than flattering ones. `admin_count` is
+     * the number actually notified in-app; `emails_sent` is 0 and
+     * `pdf_retained` is false because both halves are paused, which is what
+     * makes `EventReport.jsx` tell the reporter to keep their own copy — the
+     * correct thing to say while retention is paused. `delivery_paused` is
+     * added so a caller can distinguish "paused" from "failed".
+     */
+    admin_count: notified,
+    emails_sent: 0,
+    pdf_retained: false,
+    delivery_paused: true,
   };
 }

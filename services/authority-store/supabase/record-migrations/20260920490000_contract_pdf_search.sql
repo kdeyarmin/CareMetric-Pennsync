@@ -87,10 +87,21 @@ $types$;
 
 -- One corpus row, in the shape the BM25 scorer reads it. `...doc` in the
 -- original spreads the WHOLE index row into each result, so the response
--- carries `metadata` and `pdf_url` besides; those are named here (D64) rather
--- than swept in, and `pdf_url` is the one column this contract will NOT
--- project — it is a locator into Base44's storage, which is what keeps
--- `PDFIndex` out of the generic family in the first place (D16).
+-- carries `metadata` and `pdf_url` besides.
+--
+-- `pdf_url` is the one column this contract will NOT project — it is a locator
+-- into Base44's storage, which is what keeps `PDFIndex` out of the generic
+-- family in the first place (D16).
+--
+-- `metadata` IS projected, and narrowed to one key. An earlier draft of this
+-- header said both were "named here" while the projection named neither, and
+-- `PDFSearchInterface.jsx` reads exactly `result.metadata?.page_count || 0` to
+-- render "N pages" — so every indexed document rendered as `0 pages` under
+-- this backend. D72's rule is what should have caught it: the code that
+-- consumes a field set has already written it down, so read it rather than
+-- guess. The whole `jsonb` blob is deliberately NOT swept in, because D64's
+-- naming discipline applies to a response as much as to a prompt and nothing
+-- constrains what else that column holds.
 create function "pennsync_records".pdf_search_row(r "pennsync_records"."pdf_index")
   returns jsonb language sql immutable set search_path = '' as $row$
   select jsonb_build_object(
@@ -101,7 +112,12 @@ create function "pennsync_records".pdf_search_row(r "pennsync_records"."pdf_inde
     'created_date', r."created_date",
     'extracted_text', r."extracted_text",
     'page_contents', r."page_contents",
-    'keywords', r."keywords")
+    'keywords', r."keywords",
+    -- Narrowed to the one key the consumer reads, and null-safe: a row whose
+    -- `metadata` is absent answers `{}` rather than dropping the key, so the
+    -- optional chain in the page finds an object either way.
+    'metadata', jsonb_build_object(
+      'page_count', coalesce(r."metadata", '{}'::jsonb) -> 'page_count'))
 $row$;
 
 create function "pennsync_records".contract_pdf_search_corpus(

@@ -64,7 +64,12 @@ export function createHandler(config, dependencies = {}) {
       if (!/^application\/json(?:\s*;.*)?$/i.test(req.headers.get('content-type') || '')) fail(415, 'JSON_REQUIRED');
 
       let input;
-      try { input = JSON.parse((await readBody(req, MAX_BODY, dependencies.bodyDeadlineMs ?? 5000)).toString('utf8')); }
+      // A handler may declare a larger request than the service default, and
+      // exactly one does: `importProvidersCsv` advertises a 10 MiB CSV that a
+      // 1 MiB body could never carry. Read from the registry rather than a
+      // list here, so the ceiling cannot drift from the handler that needs it.
+      const ceiling = handlers[name].maxBody ?? MAX_BODY;
+      try { input = JSON.parse((await readBody(req, ceiling, dependencies.bodyDeadlineMs ?? 5000)).toString('utf8')); }
       catch (error) { if (error instanceof ApiError) throw error; fail(400, 'INVALID_JSON'); }
       exactObject(input, ['agency_id', 'params']);
       if (typeof input.agency_id !== 'string' || !ID.test(input.agency_id)) fail(400, 'AGENCY_REQUIRED');

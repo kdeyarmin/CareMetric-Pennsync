@@ -498,3 +498,41 @@ test('readiness accounts for the runtime a released handler actually needs', asy
     ...base, released: false, functions: ['validatePatientData'], integrationsConfigured: true,
   }).ready, false);
 });
+
+test('a handler may declare a request larger than the service default, and one does', async () => {
+  /*
+   * `importProvidersCsv` and its Base44 original both advertise a 10 MiB CSV,
+   * while `app.mjs` read every body at the 1 MiB service default — so every
+   * import between those figures was refused `BODY_TOO_LARGE` before the
+   * parser ran. An accidental narrowing of the original, found by review.
+   *
+   * Driven through the real request path rather than asserted on the
+   * registry, because what was broken was the path and not the declaration.
+   */
+  const { HANDLERS } = await import('./handlers.mjs');
+  const { MAX_CSV_BYTES } = await import('./provider-import.mjs');
+  assert.equal(HANDLERS.importProvidersCsv.maxBody, 2 * MAX_CSV_BYTES);
+  // Every other handler keeps the default, so this is one exception and not a
+  // service-wide loosening.
+  const declared = Object.entries(HANDLERS).filter(([, entry]) => entry.maxBody !== undefined);
+  assert.deepEqual(declared.map(([name]) => name), ['importProvidersCsv']);
+
+  const send = (name, params) => handlerFor({ PENNSYNC_API_FUNCTIONS: name })(
+    new Request('https://api.example.test/v1/functions/' + name, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: 'Bearer token' },
+      body: JSON.stringify({ agency_id: 'agency-a', params }),
+    }));
+
+  // Two megabytes of CSV: over the old ceiling, under the new one. It must get
+  // past the body boundary — whatever it then answers, it is not BODY_TOO_LARGE.
+  const big = `name,npi\n${'Somebody,1234567890\n'.repeat(100000)}`;
+  assert.ok(big.length > 1024 * 1024 && big.length < MAX_CSV_BYTES);
+  const allowed = await send('importProvidersCsv', { csv_text: big });
+  assert.notEqual(allowed.status, 413);
+  assert.notEqual((await allowed.clone().json()).error, 'BODY_TOO_LARGE');
+
+  // A handler that declared nothing still refuses the same payload at 1 MiB.
+  const refused = await send('validatePatientData', { csv_text: big });
+  assert.equal(refused.status, 413);
+});
