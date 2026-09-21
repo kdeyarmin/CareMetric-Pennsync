@@ -4260,3 +4260,109 @@ contract.** The parity test runs the original's own search over the same inputs
 rather than asserting a copy of it.
 
 Port queue: `records_schema` 9 → 8, written 64 → 65.
+
+## D68 — Two thirds of the largest capability is compensation, and one name carries two capabilities
+
+**Decision.** Port `manageAuthorizedReferral` — all six actions — as one
+contract, and route the synthetic staging flow that shares its name by ACTION
+rather than by name.
+
+**It is 1,275 lines and the contract is 700, and the difference is not
+compression.** Five things go, each of them a workaround for something the
+owned store has:
+
+1. `validateMembershipRows`, `validateActiveAssigneeMembership` and
+   `loadExactEnabledAgency` re-prove a membership row's whole canonical
+   lifecycle on every request — `membership_key`, both normalized addresses,
+   both transition actors, the instant, the reason, the version floor, the
+   status/timestamp coherence — because in Base44 any service-role writer could
+   half-write one. `pennsync_private.membership` holds all of it in CHECK
+   constraints. This is the fourth time a port has deleted the same code (D34,
+   D35, D46).
+2. `loadAuthority(…, expectedSnapshot)` runs two to four times per request and
+   compares a ten-field snapshot each time. One transaction.
+3. `getReferral` reads the row, re-reads authority, reads the row again and
+   compares the two projections. `createReferral` re-reads the row, re-reads
+   the creation key, re-reads authority, and on any failure calls
+   `removeCreatedReferral` — a compensating DELETE, with its own verification
+   read. `updateReferral` and `deleteReferral` re-read and re-compare before
+   writing and verify every field afterwards. One transaction.
+4. `MEMBERSHIP_SCAN_LIMIT`, `USER_SCAN_LIMIT` and `EXACT_ROW_LIMIT` fetch N+1
+   rows to prove a lookup unambiguous, because the SDK pages and a filter is
+   not a key. `(source_app_id, id)` is the primary key here.
+5. `validateReferralIntegrity` re-derives `referral_creation_key` from the
+   row's own columns on every row of every list. The key is a column with a
+   unique index on it (D30).
+
+**One deletion needed reading twice, and the rule is worth more than the
+deletion.** The original writes `where version = <what I just read> and
+updated_date = <what I just read>` and answers 409 when that matches nothing.
+That LOOKS like optimistic concurrency, and it is not: the client sends no
+version, so the predicate is built from a read the same handler performed
+microseconds earlier. It is protecting the handler from itself, which is what a
+transaction does for free — so `select … for update` replaces it and nothing a
+caller relies on is lost. Contrast `updateFleetVehicle` (D46) and
+`contract_patient_update` (D29): both originals take an `expected_version` or
+an `expected_updated_date` **from the caller**, and both ports keep it. **Read
+where the expectation comes from before deciding a version check is
+machinery.**
+
+**`list_assignees` needed no SQL of its own beyond a filter.** The original
+lists `AgencyMembership` and then, for every row, calls `loadExactAssignee` —
+two more queries per person, re-proving a membership and a `User` row. That is
+`pennsync_private.agency_roster` (D48) filtered to three roles, in one
+statement. D34's rule for the fourth time: **check which store already models
+what the original reads.** Note which helper was right: `agency_colleague`
+resolves by address and does not carry the membership id and version the
+published client validates; `agency_roster` does. `full_name` is null, because
+the carried `user` table has no name column (D38, D46).
+
+**D24 narrows this capability, and the narrowing is recorded rather than worked
+around.** `referral` has `agency_id` and a top-level `patient_id`, so its
+policies carry the chart rule. `office_staff` is an INTAKE role in the original
+— the role whose job this is — and opens no chart. So an office_staff caller
+sees a referral until it names a patient, loses it the moment it is linked, and
+cannot create a linked one at all. An `agency_admin` or `manager` opens every
+chart and is unaffected. This is the same shape `contract_patient_update`
+recorded, and it is the price of D24 rather than a decision this contract took.
+**If it bites in practice the answer is a decision about `office_staff` and the
+chart, not an exemption in this contract.**
+
+**The role gate is narrower than D24 in the other direction, and both gates are
+load-bearing.** Intake is `agency_admin`, `manager`, `office_staff`. An
+assignee is `agency_admin`, `manager`, `clinician`. The two sets are different
+in the original and different here: a clinician may be GIVEN a referral and may
+not work the queue, and an office_staff member works the queue and may not be
+given one. Delete either and the policies would admit the wrong half.
+
+**The defect this port introduced, and how it was found.** Adding
+`manageAuthorizedReferral` to `PORTED_FUNCTIONS` broke the synthetic staging
+referral flow. `src/lib/independentStagingAdapter.js` routes to the ported
+service by NAME, and this is the only Base44 name in the tree that carries TWO
+capabilities: the real broker (`list`, `get`, `list_assignees`, `create`,
+`update`, `delete`) and the S3 staging flow (`staging_list`, `staging_create`,
+…), which the adapter serves from its own RPCs. Every `staging_*` call was
+shadowed and failed `STAGING_TENANT_SELECTION_REQUIRED`, because the staging
+envelope is `{action, params}` with no top-level `agency_id`. Every other
+special-cased name there is the SAME capability served two ways, where
+shadowing is the intended fallback — so nothing had ever measured the
+difference. The action decides now, and the regression test asserts the
+REFUSAL CODE rather than the absence of a request: the broken routing also made
+no request, so "nothing was sent" does not tell the two branches apart. **An
+assertion that both the correct and the broken path satisfy proves nothing;
+sabotage the fix and watch the test fail before believing it.**
+
+**Two smaller things worth keeping.** A top-level null is stripped from the
+answer, because the original's `pickFields` yields `undefined` for an unset
+column and `Response.json` drops those keys — while `jsonb_build_object` keeps
+them, and the published client reads `referral.status === undefined ||
+STATUSES.has(referral.status)`, so a null `status` would fail an integrity
+check an absent one passes. Stripped at the TOP LEVEL only: `jsonb_strip_nulls`
+is recursive and would reach inside `extracted_data`, editing a caller's own
+payload on the way out. And the fourteen `follow_up_requests` capability fields
+— the portal token and submission provenance, the inbound-fax binding, the
+stale worker's claim markers — are stripped from what a caller sends and
+carried across from the stored row when the `generated_at` INSTANT matches,
+never its text: a client that reformats the same moment must not reset a claim.
+
+Port queue: `records_schema` 8 → 7, written 65 → 66.

@@ -74,6 +74,25 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
       memberships: result.memberships.map(value => pick(value, membershipKeys)) } };
   };
   /**
+   * One Base44 name, TWO capabilities — the only place that is true.
+   *
+   * `manageAuthorizedReferral` is the ported referral broker (`list`, `get`,
+   * `list_assignees`, `create`, `update`, `delete`) AND the synthetic S3
+   * staging flow, whose actions are all prefixed `staging_` and are served
+   * from this adapter's own RPCs. `routesPorted` is keyed on the NAME, so
+   * adding the broker to `PORTED_FUNCTIONS` sent every `staging_*` call to the
+   * service instead — where the envelope is `{action, params}` with no
+   * top-level `agency_id`, so each one failed `STAGING_TENANT_SELECTION_REQUIRED`.
+   *
+   * Every other special-cased name here is the SAME capability served two
+   * ways, and shadowing it is the intended fallback. This one is not, so the
+   * action decides. The two sets are disjoint and the prefix is this adapter's
+   * own invention, which is what makes it safe to read.
+   */
+  const stagingOwned = (name, input) => name === 'manageAuthorizedReferral'
+    && typeof input?.action === 'string' && input.action.startsWith('staging_');
+
+  /**
    * A ported handler, if the app has been pointed at the service. Everything
    * about this path is explicit: the name has to be one the service serves,
    * the call site has to supply `agency_id` — the ported service requires a
@@ -81,7 +100,8 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
    * authenticated caller — and with no service configured every name falls
    * through to the same refusal any unsupported name gets.
    */
-  const routesPorted = name => Object.hasOwn(PORTED_FUNCTIONS, name) && !!config.target.apiUrl;
+  const routesPorted = (name, input) => Object.hasOwn(PORTED_FUNCTIONS, name)
+    && !!config.target.apiUrl && !stagingOwned(name, input);
   const portedCall = async (name, input) => {
     const { agency_id: agencyId, ...params } = input;
     if (!agencyId) fail('STAGING_TENANT_SELECTION_REQUIRED');
@@ -93,7 +113,7 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
   };
 
   const invoke = async (name, input = {}) => {
-    if (routesPorted(name)) return { data: await portedCall(name, input) };
+    if (routesPorted(name, input)) return { data: await portedCall(name, input) };
     if (name === 'getMyTenantContext') return getContext(input);
     if (name === 'manageAuthorizedReferral') {
       if (!exact(input, ['action','params'])) fail('STAGING_OPERATION_UNAVAILABLE');
@@ -170,11 +190,14 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
    * session fence cannot drift between them.
    */
   const fetchFunction = async (name, init = {}) => {
-    if (!routesPorted(name)) fail('STAGING_OPERATION_UNAVAILABLE');
+    // Parsed BEFORE the gate, because the gate now reads the action: this path
+    // never carries a `staging_*` one, and a gate that could not see the body
+    // would be one call site deciding differently from the other.
     let input;
     try { input = init.body ? JSON.parse(init.body) : {}; }
     catch { fail('STAGING_OPERATION_UNAVAILABLE'); }
     if (!input || typeof input !== 'object' || Array.isArray(input)) fail('STAGING_OPERATION_UNAVAILABLE');
+    if (!routesPorted(name, input)) fail('STAGING_OPERATION_UNAVAILABLE');
     const result = await portedCall(name, input);
     // A document answers with its bytes; a JSON handler reached this way is
     // encoded, so the surface stays a faithful transport either way.

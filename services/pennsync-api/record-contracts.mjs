@@ -21,6 +21,39 @@ import { ID, MAX_UPSTREAM_BYTES, fail, isObject, readJson } from './contracts.mj
 import { validAuthorityKey, validAuthorityTarget } from './authority.mjs';
 
 /**
+ * Referral intake's refusal vocabulary, shared by its six entries because they
+ * are one capability: the original answers every action from one `catch`, so a
+ * code one action can raise is a code the endpoint can raise. That is the
+ * opposite of the usual rule — each contract declares its own so a code one
+ * cannot raise never crosses back from another — and it holds here only
+ * because the six ARE one contract, split by statement rather than by
+ * authorization.
+ */
+const REFERRAL_CODES = Object.freeze([
+  'PENNSYNC_REFERRAL_AGENCY_NOT_HELD',
+  'PENNSYNC_REFERRAL_FORBIDDEN',
+  'PENNSYNC_REFERRAL_NOT_FOUND',
+  'PENNSYNC_REFERRAL_ID_INVALID',
+  'PENNSYNC_REFERRAL_LIMIT_INVALID',
+  'PENNSYNC_REFERRAL_REQUEST_ID_INVALID',
+  'PENNSYNC_REFERRAL_REQUEST_CONFLICT',
+  'PENNSYNC_REFERRAL_FIELDS_INVALID',
+  'PENNSYNC_REFERRAL_FIELDS_EMPTY',
+  'PENNSYNC_REFERRAL_FIELD_UNKNOWN',
+  'PENNSYNC_REFERRAL_FIELD_INVALID',
+  'PENNSYNC_REFERRAL_FOLLOW_UP_INVALID',
+  'PENNSYNC_REFERRAL_FOLLOW_UP_EMPTY',
+  'PENNSYNC_REFERRAL_PATIENT_ID_INVALID',
+  'PENNSYNC_REFERRAL_PATIENT_UNAVAILABLE',
+  'PENNSYNC_REFERRAL_STATUS_INVALID',
+  'PENNSYNC_REFERRAL_PRIORITY_INVALID',
+  'PENNSYNC_REFERRAL_DOCUMENT_TYPE_INVALID',
+  'PENNSYNC_REFERRAL_ASSIGNEE_INVALID',
+  'PENNSYNC_REFERRAL_ASSIGNEE_UNAVAILABLE',
+  'PENNSYNC_REFERRAL_ASSIGNMENT_FILTER_FORBIDDEN',
+]);
+
+/**
  * One entry per ported capability. `params` is the exact argument set the
  * capability accepts — anything else is refused rather than dropped — and
  * `body` maps it to the contract's parameters, which are never caller-chosen.
@@ -1479,6 +1512,66 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_SUPPLY_SUBJECT_INVALID',
       'PENNSYNC_SUPPLY_PATIENT_NOT_VISIBLE',
     ]),
+  }),
+  // Referral intake: six actions over one entity, and the largest capability
+  // in the migration. Six entries because they are six statements with six
+  // refusal sets, not because the original split them — it is one endpoint
+  // whose `action` chooses among them, and the handler does the choosing so
+  // the RPC stays fixed per entry and caller-chosen by nothing.
+  //
+  // There is no `listReferralAssignees` RPC of this contract's own beyond the
+  // one below, and the reason is D34's: the assignee picker IS the roster, and
+  // `pennsync_private.agency_roster` already carries the membership id and
+  // version the published client validates.
+  listAuthorizedReferrals: Object.freeze({
+    rpc: 'pennsync_contract_referral_list',
+    params: Object.freeze(['limit', 'patient_id', 'status', 'assigned_to']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_limit: args.limit === undefined ? 200 : args.limit,
+      p_patient_id: args.patient_id === undefined ? null : args.patient_id,
+      p_status: args.status === undefined ? null : args.status,
+      p_assigned_to: args.assigned_to === undefined ? null : args.assigned_to,
+    }),
+    codes: REFERRAL_CODES,
+  }),
+  getAuthorizedReferral: Object.freeze({
+    rpc: 'pennsync_contract_referral_get',
+    params: Object.freeze(['referral_id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_referral_id: args.referral_id ?? null }),
+    codes: REFERRAL_CODES,
+  }),
+  listAuthorizedReferralAssignees: Object.freeze({
+    rpc: 'pennsync_contract_referral_assignees',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: REFERRAL_CODES,
+  }),
+  createAuthorizedReferral: Object.freeze({
+    rpc: 'pennsync_contract_referral_create',
+    params: Object.freeze(['client_request_id', 'referral']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_client_request_id: args.client_request_id ?? null,
+      p_referral: args.referral === undefined ? null : args.referral,
+    }),
+    codes: REFERRAL_CODES,
+  }),
+  updateAuthorizedReferral: Object.freeze({
+    rpc: 'pennsync_contract_referral_update',
+    params: Object.freeze(['referral_id', 'changes']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_referral_id: args.referral_id ?? null,
+      p_changes: args.changes === undefined ? null : args.changes,
+    }),
+    codes: REFERRAL_CODES,
+  }),
+  archiveAuthorizedReferral: Object.freeze({
+    rpc: 'pennsync_contract_referral_archive',
+    params: Object.freeze(['referral_id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_referral_id: args.referral_id ?? null }),
+    codes: REFERRAL_CODES,
   }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',

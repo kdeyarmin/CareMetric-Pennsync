@@ -161,6 +161,59 @@ export const HANDLERS = Object.freeze({
       return contract('listPolicyLibrary', params);
     },
   }),
+  manageAuthorizedReferral: Object.freeze({
+    // Referral intake, six actions over one contract. The largest capability
+    // in the migration, and the envelope's per-action key sets are the
+    // original's `assertOnlyKeys` table, field for field — so a caller who
+    // sends `limit` to `get` is refused rather than having it ignored.
+    //
+    // `list_assignees` routes to this contract's own statement, which is a
+    // filter over `pennsync_private.agency_roster` (D48). It is NOT routed to
+    // `listAgencyRoster` the way the fleet's `staff` action is, and the
+    // difference is worth knowing: that roster pages by keyset and projects
+    // personnel detail by role, while this picker is a bounded list of three
+    // roles with the membership id and version the published client
+    // validates. Routing it to D22's roster would have handed an intake
+    // clerk a paged staff directory to reassemble.
+    //
+    // The authorization is the contract's and is not restated here. Which
+    // roles may work the queue, who may be given a referral, and which
+    // referrals a caller opens at all are all decided in the database.
+    handle({ params, contract }) {
+      if (!isObject(params)) fail(400, 'INVALID_PARAMS');
+      if (params.action === 'list') {
+        exactObject(params, ['action', 'limit', 'patient_id', 'status', 'assigned_to'],
+          'INVALID_PARAMS');
+        return contract('listAuthorizedReferrals', params);
+      }
+      if (params.action === 'get') {
+        exactObject(params, ['action', 'referral_id'], 'INVALID_PARAMS');
+        return contract('getAuthorizedReferral', params);
+      }
+      if (params.action === 'list_assignees') {
+        exactObject(params, ['action'], 'INVALID_PARAMS');
+        return contract('listAuthorizedReferralAssignees', {});
+      }
+      if (params.action === 'create') {
+        exactObject(params, ['action', 'client_request_id', 'referral'], 'INVALID_PARAMS');
+        if (!isObject(params.referral)) fail(400, 'INVALID_PARAMS');
+        return contract('createAuthorizedReferral', params);
+      }
+      if (params.action === 'update') {
+        exactObject(params, ['action', 'referral_id', 'changes'], 'INVALID_PARAMS');
+        if (!isObject(params.changes)) fail(400, 'INVALID_PARAMS');
+        return contract('updateAuthorizedReferral', params);
+      }
+      // The original's action is called `delete` and archives; the contract is
+      // called `archive` and says so. The wire name stays the original's
+      // because published clients send it.
+      if (params.action === 'delete') {
+        exactObject(params, ['action', 'referral_id'], 'INVALID_PARAMS');
+        return contract('archiveAuthorizedReferral', params);
+      }
+      return fail(400, 'INVALID_PARAMS');
+    },
+  }),
   listAgencyRoster: Object.freeze({
     // D23. Not a ported Base44 name: the original read the `User` entity from
     // each of 35 capabilities, and what replaces that is one reviewed contract

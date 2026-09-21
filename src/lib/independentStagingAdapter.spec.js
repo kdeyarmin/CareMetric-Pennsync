@@ -205,6 +205,44 @@ describe('the ported API caller', () => {
     expect(fixture.apiCalls).toHaveLength(0);
   });
 
+  it('leaves the synthetic referral flow alone, because one name carries two capabilities', async () => {
+    // `manageAuthorizedReferral` is the ported broker AND this adapter's own
+    // S3 staging flow. Routing was keyed on the NAME, so adding the broker to
+    // `PORTED_FUNCTIONS` sent every `staging_*` action to the service — where
+    // the `{action, params}` envelope has no top-level `agency_id` and each
+    // one failed `STAGING_TENANT_SELECTION_REQUIRED`. Every other
+    // special-cased name is the same capability served two ways; this one is
+    // not, so the action decides.
+    const { fixture, adapter } = await signedIn();
+    // Asserted on the REFUSAL rather than on the absence of a request: the
+    // broken routing also made no request — it failed inside `portedCall` on
+    // the missing top-level `agency_id` — so "nothing was sent" does not tell
+    // the two branches apart. These codes come from the staging branch's own
+    // validators and `portedCall` cannot reach either of them.
+    const refusal = async action => adapter.raw.functions.invoke('manageAuthorizedReferral',
+      { action, params: { p_agency_id: 'agency-a' } }).then(() => null, error => error?.code);
+    for (const action of ['staging_list', 'staging_roster', 'staging_create',
+      'staging_confirm', 'staging_read']) {
+      expect(await refusal(action)).toBe('INVALID_AUTHORITY_REQUEST');
+    }
+    expect(await refusal('staging_prepare')).toBe('STAGING_OPERATION_UNAVAILABLE');
+    expect(await refusal('staging_invented')).toBe('STAGING_OPERATION_UNAVAILABLE');
+    expect(fixture.apiCalls).toHaveLength(0);
+    // And the broker's own actions still do.
+    fixture.apiResponse = () => new Response(JSON.stringify({
+      success: true, result: { referrals: [], scope: {} },
+      execution: 'pennsync-api', base44ExecutionDependency: false,
+    }), { headers: { 'content-type': 'application/json' } });
+    const answer = await adapter.raw.functions.invoke('manageAuthorizedReferral',
+      { agency_id: 'agency-a', action: 'list', limit: 200 });
+    expect(answer.data.referrals).toEqual([]);
+    expect(fixture.apiCalls).toHaveLength(1);
+    expect(fixture.apiCalls[0].url).toBe(`${stagingApiUrl}/v1/functions/manageAuthorizedReferral`);
+    expect(fixture.apiCalls[0].body).toEqual({
+      agency_id: 'agency-a', params: { action: 'list', limit: 200 },
+    });
+  });
+
   it('reaches nothing once the session ends', async () => {
     const { fixture, adapter } = await signedIn();
     await adapter.auth.signOut();

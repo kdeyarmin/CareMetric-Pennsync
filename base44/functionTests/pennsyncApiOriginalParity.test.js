@@ -545,3 +545,58 @@ test('the extraction prompt, schema and anchor search are the original s', async
     quote);
   }
 });
+
+test('every referral action accepts exactly the keys its original accepts', async () => {
+  // The handler is pure routing, so the one thing worth proving about it is
+  // that its per-action key sets ARE the original's `assertOnlyKeys` table.
+  // Read from both files rather than retyped, so a key added upstream fails
+  // here instead of being silently refused at the boundary.
+  const original = await readFile(resolve(repository,
+    'base44/functions/manageAuthorizedReferral/entry.ts'), 'utf8');
+  const handler = readFileSync(resolve(repository,
+    'services/pennsync-api/handlers.mjs'), 'utf8');
+  const keys = text => [...text.matchAll(/'([a-z_]+)'/g)].map(match => match[1]).sort();
+  const declared = Object.fromEntries([...original.matchAll(
+    /assertOnlyKeys\(\s*(?:body,\s*)?\n?\s*\[([^\]]*)\][\s\S]{0,60}?'Referral ([a-z ]+)'/g)]
+    .map(match => [match[2], keys(match[1])]));
+  // All six, the multi-line `list` and `create` included.
+  assert.deepEqual(Object.keys(declared).sort(),
+    ['assignee list', 'create', 'delete', 'get', 'list', 'update']);
+  assert.deepEqual(declared.list,
+    ['action', 'agency_id', 'assigned_to', 'limit', 'patient_id', 'status']);
+  assert.deepEqual(declared.get, ['action', 'agency_id', 'referral_id']);
+  assert.deepEqual(declared.create, ['action', 'agency_id', 'client_request_id', 'referral']);
+  assert.deepEqual(declared.update, ['action', 'agency_id', 'changes', 'referral_id']);
+  assert.deepEqual(declared.delete, ['action', 'agency_id', 'referral_id']);
+  assert.deepEqual(declared['assignee list'], ['action', 'agency_id']);
+
+  const block = handler.slice(handler.indexOf('manageAuthorizedReferral: Object.freeze('),
+    handler.indexOf('listAgencyRoster: Object.freeze('));
+  const served = Object.fromEntries([...block.matchAll(
+    /params\.action === '([a-z_]+)'\)\s*\{\s*exactObject\(params,\s*\[([^\]]*)\]/g)]
+    .map(match => [match[1], keys(match[2])]));
+  assert.deepEqual(Object.keys(served).sort(),
+    ['create', 'delete', 'get', 'list', 'list_assignees', 'update']);
+  // `agency_id` is the ENVELOPE's here rather than a body key — the service
+  // takes it beside `params` — so it is the one name that drops out of each
+  // set, and the rest must agree exactly.
+  for (const [action, upstream] of [['list', 'list'], ['get', 'get'], ['create', 'create'],
+    ['update', 'update'], ['delete', 'delete'], ['list_assignees', 'assignee list']]) {
+    assert.deepEqual(served[action],
+      declared[upstream].filter(key => key !== 'agency_id'), action);
+  }
+
+  // And the six RPCs this capability reaches are the six it declares: a
+  // seventh contract entry with no action behind it would be unreachable.
+  const referral = Object.keys(RECORD_CONTRACTS)
+    .filter(name => /Referral/.test(name)).sort();
+  assert.deepEqual(referral, ['archiveAuthorizedReferral', 'createAuthorizedReferral',
+    'getAuthorizedReferral', 'listAuthorizedReferralAssignees', 'listAuthorizedReferrals',
+    'updateAuthorizedReferral']);
+  for (const name of referral) {
+    assert.ok(block.includes(`contract('${name}'`), `${name} is reachable`);
+    // One shared refusal vocabulary, because the six ARE one capability.
+    assert.deepEqual(RECORD_CONTRACTS[name].codes, RECORD_CONTRACTS.listAuthorizedReferrals.codes);
+    assert.ok(RECORD_CONTRACTS[name].codes.every(code => code.startsWith('PENNSYNC_REFERRAL_')));
+  }
+});
