@@ -175,8 +175,22 @@ test('the trail reads newest first and pages without repeating or skipping a row
     // chance — which is why it is asserted rather than eyeballed.
     const times = all.entries.map(entry => entry.occurred_at);
     assert.deepEqual(times, [...times].sort().reverse());
-    assert.equal(all.entries[0].action, 'step.9');
-    assert.equal(all.entries[8].action, 'step.1');
+    // TIE-AWARE, and it has to be. This asserted `entries[0].action` was
+    // 'step.9' and CI caught it being 'step.8' once in nine runs: two appends
+    // landed in the same microsecond, and the contract's own header says the
+    // id is in the key as a TIEBREAKER FOR PAGING — it is a random uuid, so
+    // which of a tied pair sorts first is a coin flip and cannot be asserted.
+    // What the ordering does guarantee is the timestamp, so the newest append
+    // is among the newest-stamped entries and the first is among the oldest.
+    // Do not tighten this back without giving the table a monotonic column.
+    const at = instant => all.entries.filter(entry => entry.occurred_at === instant)
+      .map(entry => entry.action);
+    assert.ok(at(times[0]).includes('step.9'), `newest group was ${at(times[0])}`);
+    assert.ok(at(times[8]).includes('step.1'), `oldest group was ${at(times[8])}`);
+    // And every append is present exactly once, which is what the two row
+    // assertions were standing in for.
+    assert.deepEqual(all.entries.map(entry => entry.action).sort(),
+      Array.from({ length: 9 }, (unused, index) => `step.${index + 1}`).sort());
     // A full page carries a cursor; the last page does not, because a cursor
     // there invites a round trip that can only come back empty.
     assert.equal(all.next, null);
@@ -195,6 +209,53 @@ test('the trail reads newest first and pages without repeating or skipping a row
     assert.equal(new Set(walked).size, 9, 'no row may appear twice');
     assert.equal(cursor, null, 'the walk must terminate');
   });
+});
+
+test('two rows sharing an instant still page exactly once, in either order', async () => {
+  // The tie the test above must NOT assert a position for, forced rather than
+  // waited for: a microsecond collision is rare enough that CI hit it once in
+  // nine runs and this machine does not reproduce it at all. Written directly
+  // so the case is deterministic.
+  //
+  // What the contract guarantees for a tie is the keyset, not the display
+  // order — `(occurred_at, id)` is total, so the walk is exact; `id` is a
+  // random uuid, so WHICH of the pair is first is a coin flip. Both are
+  // asserted here, and that is the whole shape of the bug in the test above.
+  const instant = '2026-06-15T12:00:00.000000Z';
+  for (const [id, action] of [['a'.repeat(32), 'tied.one'], ['b'.repeat(32), 'tied.two']]) {
+    await db.query(`insert into ${SCHEMA}."activity_audit"("source_app_id","id","agency_id",
+      "occurred_at","actor_user_id","actor_email","action")
+      values ($1,$2,$3,$4::timestamptz,'actor-1','a@example.invalid',$5)`,
+    [APP, id, A, instant, action]);
+  }
+  try {
+    await session(ADMIN_A, async (run) => {
+      const [{ result: all }] = await run(LIST, [A, 100, null]);
+      const tied = all.entries.filter(entry => entry.action.startsWith('tied.'));
+      assert.equal(tied.length, 2, 'both tied rows are returned');
+      assert.equal(tied[0].occurred_at, tied[1].occurred_at, 'they really do share an instant');
+      // Either order is correct. Asserting one would be asserting a coin flip.
+      assert.deepEqual(tied.map(entry => entry.action).sort(), ['tied.one', 'tied.two']);
+      // The timestamps still descend across the whole trail.
+      const times = all.entries.map(entry => entry.occurred_at);
+      assert.deepEqual(times, [...times].sort().reverse());
+      // And a walk in ONES crosses the tie without repeating or skipping —
+      // which is what the id is in the key for.
+      const walked = [];
+      let cursor = null;
+      for (let page = 0; page < all.entries.length + 2; page += 1) {
+        const [{ result }] = await run(LIST, [A, 1, cursor]);
+        walked.push(...result.entries.map(entry => entry.id));
+        cursor = result.next;
+        if (!cursor) break;
+      }
+      assert.deepEqual(walked, all.entries.map(entry => entry.id),
+        'the walk must be the trail, in order, across the tie');
+      assert.equal(new Set(walked).size, walked.length, 'no row may appear twice');
+    });
+  } finally {
+    await db.query(`delete from ${SCHEMA}."activity_audit" where "action" like 'tied.%'`);
+  }
 });
 
 test('a cursor nobody can parse is refused rather than read as the beginning', async () => {
