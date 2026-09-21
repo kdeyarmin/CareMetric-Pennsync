@@ -20,6 +20,7 @@ backend handlers ported out of Base44 and is source only, not deployed.
 Start here to work on the migration:
 
 - [Transition plan](docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md) — what is done, what remains, and the phased plan.
+- [Railway go-live plan](docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md) — the hosted state measured by live probe, and the stages left to finish the move.
 - [Exit decisions](docs/BASE44_EXIT_DECISIONS_2026-09-19.md) — the eight decisions the implementation assumes.
 - `tools-transition-disposition.json` — the per-capability disposition for all 549 functions, entities, workflows and integrations.
 - [Independent staging app](docs/INDEPENDENT_STAGING_APP.md) — how to run the independent build.
