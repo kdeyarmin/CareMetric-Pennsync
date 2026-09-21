@@ -187,3 +187,153 @@ makes the pin read-back mean anything.
 What it does not do: it creates no hosted project, holds no credential, and
 writes no row. Enrolling anyone is `tools-pennsync-enroll.mjs`, and that needs
 the people to have accepted their Supabase Auth invitations first.
+
+## The record store and its owner
+
+`supabase/record-migrations/20260919170000_record_store.sql` creates
+`pennsync_records`: the 156 carried entities, with forced row level security
+and the 596 policies derived from their tenant paths and decisions (D13, D14).
+It is **generated** — regenerate with
+`node tools-entity-schema-plan.mjs --write-migration` and never edit the SQL by
+hand; a test fails if the committed file and the generator disagree.
+
+It sits in its own directory rather than beside the authority migrations, and
+that is deliberate. `supabase/migrations/` is applied wholesale by every
+authority harness — the disposable local stack the acceptance jobs bring up,
+and the restore rehearsal, whose hand-reviewed fixture enumerates every table
+it expects to find. None of them exercises a record table, so putting 156
+generated tables there makes each one build and inventory a store it does not
+use, and turns a reviewable fixture into 2,404 columns nobody can read. They
+are two stores in any case: different schemas, different owners, created at
+different times. `tools-pennsync-provision.mjs` applies the authority
+directory and then this one, so a real deployment still gets both.
+
+Two properties of the file are the decision it carries (D15), not incidental:
+
+**The tables are owned by `pennsync_records_owner`, which holds neither
+`SUPERUSER` nor `BYPASSRLS`.** `force row level security` binds a table's owner
+— but never a role with either attribute, and every migration here requires
+exactly such an administrator. Under the administrator the 596 policies would
+be decorative. The migration creates the role if it is absent, and refuses
+outright (`PENNSYNC_RECORD_OWNER_MUST_NOT_BYPASS_RLS`) if a role of that name
+already exists carrying either attribute, rather than adopting it and emitting
+policies nothing obeys.
+
+Creating that role is not the same as being able to act as it. Since
+PostgreSQL 16 a `CREATEROLE` administrator that creates a role receives
+`ADMIN OPTION` but neither `INHERIT` nor `SET`, so `create schema …
+authorization` refuses with *must be able to SET ROLE* — which is exactly what
+a non-superuser deployment role such as Supabase's `postgres` hits, while a
+superuser never does. The migration asks for `SET` explicitly and then proves
+it by performing the `SET ROLE`, rather than trusting a catalog answer whose
+privilege names differ between versions. A role it cannot obtain that grant
+for raises `PENNSYNC_RECORD_OWNER_NOT_ASSUMABLE`, and one it cannot create at
+all (`BYPASSRLS` does not carry `CREATEROLE`) raises
+`PENNSYNC_RECORD_OWNER_NOT_CREATABLE`. It also refuses a database with no authority store to
+ask (`PENNSYNC_AUTHORITY_STORE_REQUIRED`), because every policy is written in
+terms of `pennsync_private`.
+
+**No caller role is granted anything — not a table, not a helper.** RLS policy
+expressions are evaluated with the privileges of the role running the query, so
+a caller granted direct table access would also need `EXECUTE` on the caller
+helpers, which answer *who is asking* and are revoked from `authenticated` for
+that reason. The record owner may execute them; `anon`, `authenticated` and
+`service_role` may do nothing at all.
+
+So a caller reaches a row only through a `SECURITY DEFINER` broker owned by
+`pennsync_records_owner`. Inside such a broker `current_user` becomes the owner
+— so the policies bind and the helpers are callable — while the `role` setting
+still reads `authenticated`, which is what `pennsync_private.actor()` requires
+before it will name an identity. A broker that runs as anything else either
+bypasses the policies (if it bypasses RLS) or is refused by the caller gate.
+
+`tests/record-store-migration.test.mjs` applies the committed migration and
+holds each of those properties, including that the owner is filtered by its own
+policies and that a cross-tenant write through a broker is still refused.
+
+What it does not do: applying it needs the production Supabase project. The
+broker in that test exists to prove the boundary, not to be the family.
+
+## The broker family
+
+`record-migrations/20260919180000_record_brokers.sql` is the family, and the
+only bridge across that empty grant set. Five operations — `list`, `get`,
+`insert`, `update`, `delete` — over a generated allowlist of the entities
+dispositioned `broker`, owned by `pennsync_records_owner` and SECURITY DEFINER,
+so `current_user` becomes the owner (the policies bind, the caller helpers are
+callable) while the `role` setting still reads `authenticated` (the caller gate
+still recognises the session).
+
+It grants `authenticated` USAGE on the schema and EXECUTE on those five
+functions. Nothing else — not the allowlist, not the scope gate, not the payload
+check, and never a table. SECURITY INVOKER wrappers in `public` keep it
+reachable over PostgREST without the project exposing `pennsync_records`, which
+is the shape the authority store's own RPC surface already has.
+
+Two properties it is worth stating plainly:
+
+- **A broker stamps tenancy; it never reads it from a payload.** `agency_id`,
+  `source_app_id`, `id`, the platform timestamps, `created_by` and a `self`
+  table's subject are set by the broker from the caller's verified identity. A
+  payload naming one of them is refused rather than stripped. The agency is
+  still a parameter — a caller may hold several — and it is checked against
+  `caller_agencies()`, the membership roster, not against the request.
+- **A broker never re-implements a policy.** It narrows a read to the one agency
+  the request named and refuses to write reference data. Every other question of
+  who may see what stays in the 596 policies.
+
+Generated, not written: change the dispositions, the tenant decisions or
+`tools-record-brokers.mjs` and re-run `node tools-record-brokers.mjs --write`.
+It writes the SQL and the service's copy of the allowlist together, refuses to
+run while any brokered entity fails D16's ceiling, and `check:record-brokers`
+fails if either committed file has drifted.
+
+`tests/record-brokers.test.mjs` applies the real migration on top of the real
+record store and holds eighteen cases. The one worth knowing about gives a
+single fixture caller two real memberships: with one membership each, RLS alone
+produces the right answer, so a broker that dropped its narrowing would pass
+every other case in the file.
+
+This too creates nothing anywhere: applying it needs the production Supabase
+project. And it serves **three** entities, all read-only — every clinical table
+is deliberately outside it, and so is almost everything else. The allowlist was
+31 until D22 taught the ceiling to read each schema's own `rls` block, which is
+the platform's own statement of what a client may do to a table: 28 of the 31
+declare an authority decision a generic family cannot evaluate, and `false`
+there means no client may touch the rows at all. Restoring one takes a schema
+that permits the read, not an edit to the allowlist — the generator refuses to
+run while any allowlisted entity fails the ceiling.
+
+## Per-capability contracts
+
+The 28 that left the family, and the 125 clinical tables that were never in it,
+are reached by a reviewed contract instead: one endpoint, one authorization,
+owned by `pennsync_records_owner` and SECURITY DEFINER so the policies bind it
+exactly as they bind a broker. A contract is **hand-written**, because it exists
+precisely when a capability's authorization is its own and there is nothing to
+generate from. Each keeps that authorization in SQL —
+`services/pennsync-api/record-contracts.mjs` carries none, deliberately, so
+there is no second answer to keep in agreement with the database's — projects
+named columns rather than returning a row, adds no tenant predicate the policies
+already enforce, and needs a test proving its refusals against the real
+migration. Any divergence from the Base44 original must be a narrowing and must
+be recorded in the file.
+
+| Migration | Capability |
+| --- | --- |
+| `20260920000000_contract_policy_library.sql` | `listPolicyLibrary`. D19's worked example: it returns `doc_url`, the locator that keeps `PolicyLibrary` out of the family, and decides about the CALLER — drafts and archived go only to an administrator |
+| `20260920010000_activity_audit.sql` | The general activity trail (D25). Append-only by absence: an insert policy and a read policy and no update or delete policy at all, so forced RLS refuses a rewrite from everyone including the record owner. A facility rather than an endpoint, reached through `services/pennsync-api/audit.mjs` |
+| `20260920030000_contract_roster.sql` | `listAgencyRoster` / `getAgencyRosterMember` (D23). The authority store's membership is the FROM clause and the carried profile row contributes only what that store has no column for |
+| `20260920050000_patient_purpose_policy.sql` | Not a contract: the authorized-patient purpose policies as pure functions, with no authorization in them at all. Generated by `node tools-read-purpose-policy.mjs --write` from the fenced blocks in the originals, because thirty-eight field lists across six capabilities are data and retyping them is the transcription D12 settled against |
+| `20260920060000_contract_patient_read.sql` | `listAuthorizedPatients` (page and id-batch modes) and `getAuthorizedPatient` (D26). The first ported capabilities that read clinical rows. Which ROWS is the policies' answer — tenancy plus D24's chart narrowing; which FIELDS and to whom is the purpose's, and the two vocabularies are kept apart so a list caller cannot reach a single-chart projection |
+| `20260920070000_visit_purpose_policy.sql` | The same, for the visit pair |
+| `20260920080000_contract_visit_read.sql` | `listAuthorizedVisits` and `getAuthorizedVisit`. `visit` carries its own `agency_id` AND a `patient_id`, so D24 wrote the narrowing onto the table: a visit whose subject is null stays agency-scoped, because a visit with no patient is not yet anybody's chart. The two capabilities share three purpose NAMES and mean different projections — `compliance_review` is fourteen fields on one visit and eight on a row of a list — so each asks its own |
+| `20260920090000_document_purpose_policy.sql` | The same, for the document pair |
+| `20260920100000_contract_document_read.sql` | `listAuthorizedDocuments` and `getAuthorizedDocument` (D27). A `document` has no `agency_id`: `document_tenant_binding` carries it, so both the policy and these contracts read FROM the binding, and a document with no binding is in no tenant. No purpose discloses a file locator — not even `download` — which is why this family ports before the file layer rather than after it |
+| `20260920110000_claim_new_chart.sql` | Not a contract and not a record-store object: the cross-store bridge (D28). `pennsync_claim_new_chart(agency)` mints a chart identity and takes the caller's own care-team seat, so that a creator can open what they created — creating a chart and being on its care team are writes to two owners. It takes an agency and nothing else, because a caller who could name the id would name a chart that already exists. It has no public wrapper and answers to the record owner alone, since its only caller is the contract below. Here rather than in the authority directory by dependency order: it asks `caller_tenant_role` |
+| `20260920120000_contract_patient_create.sql` | `createAuthorizedPatient` (D28). The first ported capability that WRITES a clinical row: it claims the chart and inserts it in **one transaction**, so a clinician can open what they created. The 43 fields a client may supply are extracted from the original's own `CLIENT_PATIENT_FIELDS`; identity, tenancy, provenance and lifecycle are the contract's, and a payload naming one is refused rather than ignored |
+
+Each one refuses a database without `caller_tenant_role`, so they apply after
+the record store; `tests/provision.test.mjs` asserts that order for every file
+in the directory. `caller_tenant_role(agency)` exists for contracts only: no
+policy may ask it, and it is granted to the record owner alone.

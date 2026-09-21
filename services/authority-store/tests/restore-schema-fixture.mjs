@@ -8,11 +8,16 @@ const expected = {
   'pennsync_private.agency': 'app_id,id,name,status,version',
   'pennsync_private.archive_patient_import_receipt': 'app_id,plan_sha256,owner_sha256,projection_sha256,patient_count,patient_ids,state,database_name,operator_role,created_at,rolled_back_at',
   'pennsync_private.assignment': 'app_id,agency_id,patient_id,membership_id,status,version,changed_by,changed_at,id',
+  // D24's production care team, a sibling of `assignment` rather than the same
+  // table: `assignment` keys to `pennsync_private.patient`, which holds
+  // synthetic rows only, and that key is one of four the archive import relies
+  // on to refuse a rollback that would orphan a care team.
+  'pennsync_private.chart_assignment': 'app_id,id,agency_id,patient_id,membership_id,status,version,changed_by,changed_at,last_action,last_reason,last_request_key,granted_at,suspended_at,revoked_at',
   'pennsync_private.deployment': 'singleton,app_id,source,pinned_at',
   'pennsync_private.enrollment_receipt': 'app_id,plan_sha256,projection_sha256,identity_count,agency_count,membership_count,database_name,operator_role,created_at',
   'pennsync_private.identity_map': 'app_id,auth_user_id,base44_user_id,expected_email,source_evidence_sha256,verified_at,enabled,revoked_at,version',
   'pennsync_private.known_app': 'app_id,label',
-  'pennsync_private.membership': 'app_id,id,agency_id,auth_user_id,base44_user_id,membership_key,tenant_role,status,version,revoked_at,revoked_by',
+  'pennsync_private.membership': 'app_id,id,agency_id,auth_user_id,base44_user_id,membership_key,tenant_role,status,version,revoked_at,revoked_by,last_action,last_reason,activated_at,suspended_at',
   'pennsync_private.mutation_receipt': 'app_id,actor_id,request_id,payload,result,created_at',
   'pennsync_private.patient': 'app_id,id,agency_id,display_name,synthetic,version,status',
   'pennsync_private.patient_context': 'app_id,agency_id,patient_id,version,provenance_kind,provenance_sha256,data,data_sha256,created_at',

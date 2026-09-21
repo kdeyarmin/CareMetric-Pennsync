@@ -2,8 +2,9 @@
 //
 // Every control defaults closed. A deployment that sets nothing serves health
 // and readiness only, and readiness reports itself as not ready.
-import { HANDLER_NAMES } from './handlers.mjs';
+import { HANDLERS, HANDLER_NAMES } from './handlers.mjs';
 import { validAuthorityKey, validAuthorityTarget } from './authority.mjs';
+import { validIntegrationTarget } from './integrations.mjs';
 
 const DEFAULT_APP = '694ec16e72e01b60d22f7cbf';
 const ALLOWED_APPS = new Set([DEFAULT_APP, '6a9881683dc68a0bd54f1ef7']);
@@ -45,6 +46,13 @@ export function loadConfig(env = process.env) {
   const documentLogoDataUrl = env.PENNSYNC_API_DOCUMENT_LOGO || '';
   if (documentLogoDataUrl && !DOCUMENT_LOGO.test(documentLogoDataUrl)) throw new Error('INVALID_DOCUMENT_LOGO');
 
+  // The brokered Core integrations. Unset means no handler that needs one can
+  // run: the capability refuses before it reaches the network, rather than the
+  // service reporting ready and failing per request.
+  const integrationsUrl = env.PENNSYNC_API_INTEGRATIONS_URL || '';
+  if (integrationsUrl && !validIntegrationTarget(integrationsUrl)) throw new Error('INVALID_INTEGRATION_TARGET');
+  const integrationsConfigured = validIntegrationTarget(integrationsUrl);
+
   const released = env.PENNSYNC_API_RELEASE === 'enabled-v1';
   // Releasing without a usable authority would mean serving unauthorized work.
   if (released && !authorityConfigured) throw new Error('INCOMPLETE_AUTHORITY_CONFIGURATION');
@@ -59,15 +67,29 @@ export function loadConfig(env = process.env) {
   return Object.freeze({
     appId, functions: Object.freeze(functions), origins: Object.freeze(origins),
     authorityUrl, authorityKey, authorityConfigured, released, documentLogoDataUrl,
+    integrationsUrl, integrationsConfigured,
     revision: /^[0-9a-f]{40}$/.test(env.RAILWAY_GIT_COMMIT_SHA || '') ? env.RAILWAY_GIT_COMMIT_SHA : 'unbound',
   });
 }
 
+/** Whether any RELEASED handler reaches the integration runtime. */
+export const requiresIntegration = released =>
+  released.some(name => HANDLERS[name]?.needsIntegration === true);
+
 export function publicReadiness(config) {
   return {
-    ready: config.released && config.authorityConfigured && config.functions.length > 0,
+    // A released handler that reaches the integration runtime needs one
+    // configured. Without this, `/readyz` answered 200 while every call to
+    // `analyzeReferral*` or `generateUserGuidePDF` failed
+    // `INTEGRATIONS_NOT_CONFIGURED` — a service reporting healthy and serving
+    // nothing, which is the failure readiness exists to prevent.
+    ready: config.released && config.authorityConfigured && config.functions.length > 0
+      && (config.integrationsConfigured || !requiresIntegration(config.functions)),
     released: config.released,
     authorityConfigured: config.authorityConfigured,
+    // Stated either way, so an operator can see which dependency is missing.
+    integrationsRequired: requiresIntegration(config.functions),
+    integrationsConfigured: config.integrationsConfigured,
     authorityMode: 'independent',
     // This service has no Base44 client, credential or call path at all.
     base44ExecutionDependency: false,

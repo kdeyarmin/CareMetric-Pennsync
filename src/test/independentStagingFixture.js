@@ -9,13 +9,26 @@ export const stagingEnv = {
   VITE_PENNSYNC_STAGING_PUBLISHABLE_KEY: 'sb_publishable_synthetic_test_key',
   VITE_PENNSYNC_STAGING_ACTORS: JSON.stringify(Object.fromEntries(stagingEmails.map((email, index) => [email, `10000000-0000-4000-8000-00000000000${index + 1}`]))),
 };
+/** The ported API's origin, added per test rather than by default. */
+export const stagingApiUrl = 'http://127.0.0.1:54341';
 export function stagingFixture() {
   const requests = [], live = new Map();
   let next = 0;
-  const fixture = { requests, live, holdPatient: null, beforeReturn: null, denyContext: false };
+  const fixture = { requests, live, apiCalls: [], apiResponse: null, holdPatient: null, beforeReturn: null, denyContext: false };
   const response = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
   fixture.fetch = async (url, options) => {
     requests.push({ url, method: options.method });
+    // The ported API is a second origin and nothing else is. A bearer still
+    // has to be a live one, so an unauthenticated call cannot reach a handler
+    // here any more than it could reach the store.
+    if (url.startsWith(`${stagingApiUrl}/`)) {
+      fixture.apiCalls.push({ url, headers: options.headers, body: options.body ? JSON.parse(options.body) : null });
+      if (!live.has(options.headers.Authorization?.slice(7))) return response({}, 401);
+      // The envelope the service actually sends. A bare handler payload here
+      // let the adapter's tests pass while nothing unwrapped it.
+      return fixture.apiResponse ? fixture.apiResponse(url)
+        : response({ success: true, result: { valid: true }, execution: 'pennsync-api', base44ExecutionDependency: false });
+    }
     if (!url.startsWith('http://127.0.0.1:54321/')) throw new Error('FIXTURE_FOREIGN_DESTINATION');
     const input = options.body ? JSON.parse(options.body) : {};
     if (url.endsWith('/token?grant_type=password')) {

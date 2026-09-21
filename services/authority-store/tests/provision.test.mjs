@@ -8,6 +8,8 @@ import {
   KNOWN_APPS, PIN_SETTING, ProvisionError, RETIRED_APP,
   applyProvision, planProvision, readMigrations, runProvisionCli,
 } from '../../../tools-pennsync-provision.mjs';
+import { RECORD_MIGRATION_FILE } from '../../../tools-entity-schema-plan.mjs';
+import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
 
 /**
  * D11 makes the pin unchangeable once the first migration has run, so a
@@ -153,10 +155,51 @@ test('an already provisioned store is refused rather than migrated twice', async
 });
 
 test('the migrations are read in the order the store expects', () => {
-  const names = readMigrations(repository).map(migration => migration.name);
-  assert.deepEqual(names, [...names].sort(), 'name order is the apply order');
+  const migrations = readMigrations(repository);
+  const names = migrations.map(migration => migration.name);
+  // Two sequences, not one: the authority store's directory then the record
+  // store's, each in name order. It read as one sorted list until an authority
+  // migration was dated after a record one — which is an ordinary thing to
+  // need, and which the old assertion would have read as a reordering.
+  const directories = [...new Set(migrations.map(migration => migration.from))];
+  assert.equal(directories.length, 2, 'the two directories are applied in sequence');
+  for (const directory of directories) {
+    const within = migrations.filter(migration => migration.from === directory).map(migration => migration.name);
+    assert.deepEqual(within, [...within].sort(), `${directory} is applied in name order`);
+  }
+  const boundary = migrations.findIndex(migration => migration.from === directories[1]);
+  assert.ok(migrations.slice(boundary).every(migration => migration.from === directories[1]),
+    'every authority migration precedes every record migration');
   assert.ok(names[0].startsWith('20260918015112'), 'the authority schema comes first');
   assert.ok(names.includes('20260919090000_deployment_app_pin.sql'));
+  // The record store lives in its own directory, so nothing discovers it by
+  // walking the authority migrations. Provisioning is what gives a real
+  // deployment all three, and the order between them is not cosmetic: every
+  // record policy is written in terms of `pennsync_private` and the record
+  // migration refuses a database without it, while the broker migration
+  // refuses a database with no record schema and no owner to act as. Asserted
+  // as a relation rather than a fixed tail, so adding a fourth does not need
+  // this line rewritten — only kept true.
+  const record = RECORD_MIGRATION_FILE.split('/').pop();
+  const brokers = BROKER_MIGRATION_FILE.split('/').pop();
+  for (const name of [record, brokers]) assert.equal(names.filter(entry => entry === name).length, 1);
+  assert.ok(names.indexOf(record) > names.indexOf('20260919090000_deployment_app_pin.sql'),
+    'the record store is applied after the authority store');
+  assert.ok(names.indexOf(brokers) > names.indexOf(record),
+    'the brokers are applied after the tables they broker');
+  // Everything else in the directory comes after the generated store it
+  // extends: each one refuses a database without `caller_tenant_role`, so the
+  // order is enforced by the migrations themselves and asserted here so a
+  // reordering is caught before a deployment discovers it. Stated as "every
+  // other file" rather than as a list of prefixes, because a migration added
+  // under a name nobody thought to pattern-match would otherwise be the one
+  // case this does not check.
+  const inRecordDirectory = migrations
+    .filter(migration => migration.from === directories[1]).map(migration => migration.name);
+  assert.ok(inRecordDirectory.includes(record), 'the record store is in the record directory');
+  for (const name of inRecordDirectory.filter(entry => entry !== record)) {
+    assert.ok(names.indexOf(name) > names.indexOf(record), `${name} must follow the record store`);
+  }
 });
 
 test('the command line refuses before it opens a connection, and reports codes only', async () => {

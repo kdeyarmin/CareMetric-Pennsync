@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { createIndependentStagingAdapter, readIndependentStagingConfig } from './independentStagingAdapter';
-import { stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
+import { stagingApiUrl, stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
 
 describe('finite independent app adapter', () => {
   it('preserves default backend and rejects foreign targets, secret keys and unbound actors before I/O', () => {
@@ -80,5 +80,174 @@ describe('finite independent app adapter', () => {
     expect(fixture.live.size).toBe(1);
     expect((await adapter.authority.me()).email).toBe(stagingEmails[3]);
     await adapter.auth.signOut(); expect(fixture.live.size).toBe(0);
+  });
+});
+
+describe('the ported API caller', () => {
+  const ported = { ...stagingEnv, VITE_PENNSYNC_API_URL: stagingApiUrl };
+  const signedIn = async (env = ported) => {
+    const fixture = stagingFixture();
+    const adapter = createIndependentStagingAdapter(readIndependentStagingConfig(env), { fetchImpl: fixture.fetch });
+    await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    return { fixture, adapter };
+  };
+
+  it('is absent unless the app has been pointed at the service, and pinned when it is', () => {
+    // Unset, every ported name falls through to the refusal any other
+    // unsupported name gets, so adding this path changes nothing until an
+    // operator opts in.
+    expect(readIndependentStagingConfig(stagingEnv).target.apiUrl).toBeNull();
+    expect(readIndependentStagingConfig(ported).target.apiUrl).toBe(stagingApiUrl);
+    for (const VITE_PENNSYNC_API_URL of ['https://pennsync-api-production.up.railway.app.evil.test',
+      'https://example.test', 'http://127.0.0.1:54342']) {
+      expect(() => readIndependentStagingConfig({ ...stagingEnv, VITE_PENNSYNC_API_URL }))
+        .toThrow(/INVALID_STAGING_TARGET/);
+    }
+  });
+
+  it('routes a ported name to the service with the caller own bearer and no project key', async () => {
+    const { fixture, adapter } = await signedIn();
+    // `data` is the HANDLER's result, not the service's envelope. Returning
+    // the envelope here is what a consumer reading `data.policies` would have
+    // been broken by — they would have been at `data.result.policies`.
+    expect(await adapter.raw.functions.invoke('validatePatientData',
+      { agency_id: 'agency-a', patient: { first_name: 'A' } })).toEqual({ data: { valid: true } });
+    expect(fixture.apiCalls).toHaveLength(1);
+    const [call] = fixture.apiCalls;
+    expect(call.url).toBe(`${stagingApiUrl}/v1/functions/validatePatientData`);
+    expect(call.headers.Authorization).toMatch(/^Bearer synthetic\.session\d+\.token$/);
+    // The publishable key names the Supabase project and must not follow the
+    // bearer to a second origin.
+    expect(call.headers.apikey).toBeUndefined();
+    expect(call.body).toEqual({ agency_id: 'agency-a', params: { patient: { first_name: 'A' } } });
+  });
+
+  it('unwraps the service envelope exactly once, and refuses one that is missing', async () => {
+    const fixture = stagingFixture();
+    const config = readIndependentStagingConfig(ported);
+    const adapter = createIndependentStagingAdapter(config, { fetchImpl: fixture.fetch });
+    await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    fixture.apiResponse = () => new Response(JSON.stringify({
+      success: true, result: { policies: [{ id: 'pol-1' }] },
+      execution: 'pennsync-api', base44ExecutionDependency: false,
+    }), { headers: { 'content-type': 'application/json' } });
+    const answer = await adapter.raw.functions.invoke('listPolicyLibrary',
+      { agency_id: 'agency-a', mode: 'active' });
+    // What a consumer actually reads.
+    expect(answer.data.policies).toEqual([{ id: 'pol-1' }]);
+    expect(answer.data.result).toBeUndefined();
+
+    // A bare payload — the shape these tests used to send — is refused rather
+    // than passed through as though it were a handler result.
+    fixture.apiResponse = () => new Response(JSON.stringify({ policies: [] }),
+      { headers: { 'content-type': 'application/json' } });
+    await expect(adapter.raw.functions.invoke('listPolicyLibrary', { agency_id: 'agency-a' }))
+      .rejects.toThrow(/PENNSYNC_API_RESPONSE_INVALID/);
+  });
+
+  it('requires the agency the ported service needs rather than guessing one', async () => {
+    // The Base44 original accepted any authenticated caller; the ported service
+    // requires a current agency membership. A call site not reviewed for that
+    // is refused instead of being given a tenant on its behalf.
+    const { fixture, adapter } = await signedIn();
+    await expect(adapter.raw.functions.invoke('validatePatientData', { patient: {} }))
+      .rejects.toThrow(/STAGING_TENANT_SELECTION_REQUIRED/);
+    expect(fixture.apiCalls).toHaveLength(0);
+  });
+
+  it('serves a document through the fetch surface the download flows actually use', async () => {
+    // `UserGuides.jsx` and `Help.jsx` call `functions.fetch` rather than
+    // `invoke`, because the invoke wrapper decodes PDF bytes as UTF-8 and
+    // corrupts them. Routing only `invoke` left those three handlers
+    // unreachable from the only call sites that use them.
+    const fixture = stagingFixture();
+    const config = readIndependentStagingConfig(ported);
+    const adapter = createIndependentStagingAdapter(config, { fetchImpl: fixture.fetch });
+    await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    fixture.apiResponse = () => new Response(new Uint8Array([37, 80, 68, 70]),
+      { headers: { 'content-type': 'application/pdf' } });
+
+    const response = await adapter.raw.functions.fetch('generateUserManual', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agency_id: 'agency-a' }),
+    });
+    expect(response.ok).toBe(true);
+    expect(response.status).toBe(200);
+    // The bytes survive: that is the whole reason these call sites use fetch.
+    expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([37, 80, 68, 70]);
+
+    // The same refusals as `invoke`, because both go through one path.
+    await expect(adapter.raw.functions.fetch('generateUserManual', { body: JSON.stringify({}) }))
+      .rejects.toThrow(/STAGING_TENANT_SELECTION_REQUIRED/);
+    await expect(adapter.raw.functions.fetch('offboardUser', { body: JSON.stringify({ agency_id: 'agency-a' }) }))
+      .rejects.toThrow(/STAGING_OPERATION_UNAVAILABLE/);
+    await expect(adapter.raw.functions.fetch('generateUserManual', { body: 'not json' }))
+      .rejects.toThrow(/STAGING_OPERATION_UNAVAILABLE/);
+  });
+
+  it('exposes no fetch route at all when the service is not configured', async () => {
+    const fixture = stagingFixture();
+    const adapter = createIndependentStagingAdapter(readIndependentStagingConfig(stagingEnv),
+      { fetchImpl: fixture.fetch });
+    await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    await expect(adapter.raw.functions.fetch('generateUserManual',
+      { body: JSON.stringify({ agency_id: 'agency-a' }) })).rejects.toThrow(/STAGING_OPERATION_UNAVAILABLE/);
+    expect(fixture.apiCalls).toHaveLength(0);
+  });
+
+  it('still fails closed for every name the service does not serve', async () => {
+    const { fixture, adapter } = await signedIn();
+    for (const name of ['offboardUser', 'transcribeAndGenerateSOAPNote', 'analyzeNurseDeficits', 'nope']) {
+      await expect(adapter.raw.functions.invoke(name, { agency_id: 'agency-a' }))
+        .rejects.toThrow(/STAGING_OPERATION_UNAVAILABLE/);
+    }
+    expect(fixture.apiCalls).toHaveLength(0);
+  });
+
+  it('leaves the synthetic referral flow alone, because one name carries two capabilities', async () => {
+    // `manageAuthorizedReferral` is the ported broker AND this adapter's own
+    // S3 staging flow. Routing was keyed on the NAME, so adding the broker to
+    // `PORTED_FUNCTIONS` sent every `staging_*` action to the service — where
+    // the `{action, params}` envelope has no top-level `agency_id` and each
+    // one failed `STAGING_TENANT_SELECTION_REQUIRED`. Every other
+    // special-cased name is the same capability served two ways; this one is
+    // not, so the action decides.
+    const { fixture, adapter } = await signedIn();
+    // Asserted on the REFUSAL rather than on the absence of a request: the
+    // broken routing also made no request — it failed inside `portedCall` on
+    // the missing top-level `agency_id` — so "nothing was sent" does not tell
+    // the two branches apart. These codes come from the staging branch's own
+    // validators and `portedCall` cannot reach either of them.
+    const refusal = async action => adapter.raw.functions.invoke('manageAuthorizedReferral',
+      { action, params: { p_agency_id: 'agency-a' } }).then(() => null, error => error?.code);
+    for (const action of ['staging_list', 'staging_roster', 'staging_create',
+      'staging_confirm', 'staging_read']) {
+      expect(await refusal(action)).toBe('INVALID_AUTHORITY_REQUEST');
+    }
+    expect(await refusal('staging_prepare')).toBe('STAGING_OPERATION_UNAVAILABLE');
+    expect(await refusal('staging_invented')).toBe('STAGING_OPERATION_UNAVAILABLE');
+    expect(fixture.apiCalls).toHaveLength(0);
+    // And the broker's own actions still do.
+    fixture.apiResponse = () => new Response(JSON.stringify({
+      success: true, result: { referrals: [], scope: {} },
+      execution: 'pennsync-api', base44ExecutionDependency: false,
+    }), { headers: { 'content-type': 'application/json' } });
+    const answer = await adapter.raw.functions.invoke('manageAuthorizedReferral',
+      { agency_id: 'agency-a', action: 'list', limit: 200 });
+    expect(answer.data.referrals).toEqual([]);
+    expect(fixture.apiCalls).toHaveLength(1);
+    expect(fixture.apiCalls[0].url).toBe(`${stagingApiUrl}/v1/functions/manageAuthorizedReferral`);
+    expect(fixture.apiCalls[0].body).toEqual({
+      agency_id: 'agency-a', params: { action: 'list', limit: 200 },
+    });
+  });
+
+  it('reaches nothing once the session ends', async () => {
+    const { fixture, adapter } = await signedIn();
+    await adapter.auth.signOut();
+    await expect(adapter.raw.functions.invoke('validatePatientData', { agency_id: 'agency-a', patient: {} }))
+      .rejects.toThrow(/AUTHENTICATION_REQUIRED/);
+    expect(fixture.apiCalls).toHaveLength(0);
   });
 });

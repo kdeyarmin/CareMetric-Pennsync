@@ -45,6 +45,18 @@ export async function readBody(req, maximum = MAX_BODY, deadlineMs = 5000) {
   return Buffer.concat(chunks);
 }
 
+/**
+ * The ceiling on an upstream JSON body this service will read.
+ *
+ * Sized for the largest legitimate answer rather than tightly: the broker's
+ * `list` caps at 5,000 rows and a row may hold sizeable JSON, so a smaller cap
+ * would refuse valid pages. The point is that it is BOUNDED — `response.json()`
+ * reads whatever arrives, and a chunked or headerless response from a
+ * misbehaving upstream would otherwise exhaust the service before any shape
+ * check runs. Exceeding it is a refusal, not a crash.
+ */
+export const MAX_UPSTREAM_BYTES = 16 * 1024 * 1024;
+
 export async function readJson(response, maximum = 64 * 1024) {
   const reader = response.body?.getReader();
   if (!reader) fail(502, 'INVALID_UPSTREAM_RESPONSE');

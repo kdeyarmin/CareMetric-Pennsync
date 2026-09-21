@@ -161,10 +161,15 @@ test('every app-scoped column carries the domain rather than plain text', async 
   // entirely, so the count is pinned: adding one is a deliberate act.
   const scoped = await staging.query(`select table_name, column_name from information_schema.columns
     where table_schema = 'pennsync_private' and domain_name = 'deployment_app' order by table_name, column_name`);
-  assert.equal(scoped.rows.length, 19, 'the number of app-scoped columns changed');
+  assert.equal(scoped.rows.length, 20, 'the number of app-scoped columns changed');
   // Exactly one per table: no table carries a second, separately typed app id.
   assert.equal(new Set(scoped.rows.map(r => r.table_name)).size, scoped.rows.length);
   for (const name of ['identity_map', 'agency', 'membership', 'patient', 'assignment',
+    // D24's production care team. It is a sibling of `assignment` rather than
+    // the same table because `assignment` keys to `pennsync_private.patient`,
+    // which holds synthetic rows only — and that key is load-bearing for the
+    // archive import's rollback guard, so it could not simply come off.
+    'chart_assignment',
     'patient_disclosure_audit', 'visit_disclosure_audit', 'visit_list_disclosure_audit',
     'enrollment_receipt']) {
     assert.ok(scoped.rows.some(r => r.table_name === name), `${name} must stay app-scoped`);

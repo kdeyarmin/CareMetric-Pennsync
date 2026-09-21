@@ -27,3 +27,10 @@ insert into pennsync_private.patient(app_id,id,agency_id,display_name) values
  ('6a9881683dc68a0bd54f1ef7','patient-b1','agency-b','Synthetic Patient B1');
 insert into pennsync_private.assignment(app_id,agency_id,patient_id,membership_id,status,changed_by)
   values('6a9881683dc68a0bd54f1ef7','agency-a','patient-a1','membership-2','active','10000000-0000-4000-8000-000000000001');
+-- The same care team, in the table D24 authorizes from. Two tables rather than
+-- one because `assignment` keys to `pennsync_private.patient` — synthetic rows
+-- only, and that key guards the archive import's rollback — while a chart of
+-- record lives in `pennsync_records.patient`. Both rows name the same
+-- clinician and the same patient id, so a test reading either sees one team.
+insert into pennsync_private.chart_assignment(app_id,agency_id,patient_id,membership_id,status,changed_by)
+  values('6a9881683dc68a0bd54f1ef7','agency-a','patient-a1','membership-2','active','10000000-0000-4000-8000-000000000001');

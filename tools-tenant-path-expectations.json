@@ -62,10 +62,10 @@
     },
     {
       "entity": "AdrAuditCase",
-      "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
-      "depth": 2
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
     },
     {
       "entity": "Agency",
@@ -223,10 +223,10 @@
     },
     {
       "entity": "ClinicalLibraryTemplate",
-      "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
-      "depth": 2
+      "kind": "actor",
+      "via": "created_by",
+      "target": null,
+      "depth": null
     },
     {
       "entity": "ClinicalPathway",
@@ -238,8 +238,8 @@
     {
       "entity": "ComplianceAudit",
       "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
+      "via": "visit_id",
+      "target": "Visit",
       "depth": 2
     },
     {
@@ -286,17 +286,17 @@
     },
     {
       "entity": "Document",
-      "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
+      "kind": "binding",
+      "via": "document_id",
+      "target": "DocumentTenantBinding",
       "depth": 2
     },
     {
       "entity": "DocumentAnalysisHistory",
-      "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
-      "depth": 2
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
     },
     {
       "entity": "DocumentAutomationWorkflow",
@@ -314,10 +314,10 @@
     },
     {
       "entity": "DocumentRecord",
-      "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
-      "depth": 2
+      "kind": "actor",
+      "via": "uploaded_by",
+      "target": null,
+      "depth": null
     },
     {
       "entity": "DocumentTemplate",
@@ -370,10 +370,10 @@
     },
     {
       "entity": "FaceToFaceEncounter",
-      "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
-      "depth": 2
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
     },
     {
       "entity": "FacilityDocumentationRule",
@@ -503,10 +503,10 @@
     },
     {
       "entity": "MaterialInteraction",
-      "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
-      "depth": 2
+      "kind": "actor",
+      "via": "user_email",
+      "target": null,
+      "depth": null
     },
     {
       "entity": "MedicalCode",
@@ -552,17 +552,17 @@
     },
     {
       "entity": "NoteConversion",
-      "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
-      "depth": 2
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
     },
     {
       "entity": "NoteFeedback",
-      "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
-      "depth": 2
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
     },
     {
       "entity": "NoteTemplate",
@@ -636,10 +636,10 @@
     },
     {
       "entity": "PDFIndex",
-      "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
-      "depth": 2
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
     },
     {
       "entity": "PDFTemplate",
@@ -916,10 +916,10 @@
     },
     {
       "entity": "ScheduleFeedback",
-      "kind": "reference",
-      "via": "visit_id",
-      "target": "Visit",
-      "depth": 2
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
     },
     {
       "entity": "ScheduledReport",
@@ -979,10 +979,10 @@
     },
     {
       "entity": "SupplyLowStockAlert",
-      "kind": "reference",
-      "via": "task_id",
-      "target": "Task",
-      "depth": 3
+      "kind": "actor",
+      "via": "acknowledged_by",
+      "target": null,
+      "depth": null
     },
     {
       "entity": "SupplyPrediction",
@@ -1000,10 +1000,10 @@
     },
     {
       "entity": "Task",
-      "kind": "reference",
-      "via": "patient_id",
-      "target": "Patient",
-      "depth": 2
+      "kind": "unresolved",
+      "via": null,
+      "target": null,
+      "depth": null
     },
     {
       "entity": "TeamNote",
@@ -1101,11 +1101,12 @@
     "carried": 156,
     "root": 1,
     "direct": 14,
-    "reference": 54,
-    "actor": 34,
+    "reference": 41,
+    "binding": 1,
+    "actor": 38,
     "profile_claim": 1,
-    "unresolved": 52,
+    "unresolved": 60,
     "max_depth": 3,
-    "blocking": 87
+    "blocking": 99
   }
 }

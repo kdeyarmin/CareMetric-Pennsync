@@ -37,6 +37,14 @@ import { fileURLToPath } from 'node:url';
 
 export const PROVISION_CONTRACT = 'cm.pennsync.provision.v1';
 export const MIGRATION_DIRECTORY = join('services', 'authority-store', 'supabase', 'migrations');
+/**
+ * The record store, applied after the authority store it asks about. It is a
+ * separate directory because it is a separate store with its own owner, and
+ * because the authority harnesses apply their directory wholesale and have no
+ * use for 156 record tables. Provisioning a deployment needs both.
+ */
+export const RECORD_MIGRATION_DIRECTORY =
+  join('services', 'authority-store', 'supabase', 'record-migrations');
 /** The setting the migration reads once, to generate the pin from. */
 export const PIN_SETTING = 'pennsync.deployment_app_id';
 /**
@@ -68,10 +76,20 @@ export function planProvision(requestedApp) {
 
 /** The migrations, in the order the store expects them applied. */
 export function readMigrations(repository) {
-  const directory = join(resolve(repository), MIGRATION_DIRECTORY);
-  const names = readdirSync(directory).filter(name => name.endsWith('.sql')).sort();
-  if (!names.length) refuse('PROVISION_MIGRATIONS_MISSING');
-  return names.map(name => ({ name, sql: readFileSync(join(directory, name), 'utf8') }));
+  const read = relative => {
+    const directory = join(resolve(repository), relative);
+    return readdirSync(directory).filter(name => name.endsWith('.sql')).sort()
+      // `from` names the directory, so the order can be checked as the two
+      // sequences it actually is. It stopped being one sorted list the moment
+      // an authority migration was dated after a record one, which is a
+      // perfectly ordinary thing to need and had been true only by accident.
+      .map(name => ({ name, from: relative, sql: readFileSync(join(directory, name), 'utf8') }));
+  };
+  // Authority first: every record policy is written in terms of
+  // `pennsync_private`, and the record store refuses a database without it.
+  const migrations = [...read(MIGRATION_DIRECTORY), ...read(RECORD_MIGRATION_DIRECTORY)];
+  if (!migrations.length) refuse('PROVISION_MIGRATIONS_MISSING');
+  return migrations;
 }
 
 /**

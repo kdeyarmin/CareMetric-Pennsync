@@ -6,6 +6,10 @@
 import { resolveAuthority } from './authority.mjs';
 import { ApiError, ID, MAX_BODY, exactObject, fail, isObject, readBody } from './contracts.mjs';
 import { HANDLERS } from './handlers.mjs';
+import { integrationCapability } from './integrations.mjs';
+import { recordCapability } from './records.mjs';
+import { contractCapability } from './record-contracts.mjs';
+import { auditCapability } from './audit.mjs';
 import { publicReadiness } from './runtime.mjs';
 
 const FUNCTION_PATH = /^\/v1\/functions\/([A-Za-z][A-Za-z0-9_]{0,63})$/;
@@ -60,13 +64,36 @@ export function createHandler(config, dependencies = {}) {
       if (!/^application\/json(?:\s*;.*)?$/i.test(req.headers.get('content-type') || '')) fail(415, 'JSON_REQUIRED');
 
       let input;
-      try { input = JSON.parse((await readBody(req, MAX_BODY, dependencies.bodyDeadlineMs ?? 5000)).toString('utf8')); }
+      // A handler may declare a larger request than the service default, and
+      // exactly one does: `importProvidersCsv` advertises a 10 MiB CSV that a
+      // 1 MiB body could never carry. Read from the registry rather than a
+      // list here, so the ceiling cannot drift from the handler that needs it.
+      const ceiling = handlers[name].maxBody ?? MAX_BODY;
+      try { input = JSON.parse((await readBody(req, ceiling, dependencies.bodyDeadlineMs ?? 5000)).toString('utf8')); }
       catch (error) { if (error instanceof ApiError) throw error; fail(400, 'INVALID_JSON'); }
       exactObject(input, ['agency_id', 'params']);
       if (typeof input.agency_id !== 'string' || !ID.test(input.agency_id)) fail(400, 'AGENCY_REQUIRED');
 
       const actor = await authority(config, req, input.agency_id);
-      const result = await handlers[name].handle({ actor, params: input.params ?? {}, config });
+      // Bound here, not in the handler: the capability closes over this
+      // request's Authorization header so a brokered call carries the caller's
+      // own authority, while the handler is handed a function rather than a
+      // token it could read, log or forward.
+      const bound = { config, req, agencyId: input.agency_id };
+      const integration = (dependencies.integration || integrationCapability)(bound, dependencies.fetcher);
+      // The same discipline for records: a handler is handed a function, never
+      // a connection, a key or a table name it could widen.
+      const records = (dependencies.records || recordCapability)(bound, dependencies.fetcher);
+      // A reviewed per-capability contract is a third capability rather than a
+      // sixth record operation: it does what the generic family is specifically
+      // not allowed to do, so it carries its own allowlist.
+      const contract = (dependencies.contract || contractCapability)(bound, dependencies.fetcher);
+      // Auditing is something a capability does while serving, not an endpoint,
+      // so it is a facility rather than a contract with a handler of its own.
+      const audit = (dependencies.audit || auditCapability)(bound, dependencies.fetcher);
+      const result = await handlers[name].handle({
+        actor, params: input.params ?? {}, config, integration, records, contract, audit,
+      });
       // A ported document answers with the bytes its Base44 original answered
       // with, so a migrated caller is not asked to decode something new. Only a
       // handler that declares itself binary may take this path, and the shape it

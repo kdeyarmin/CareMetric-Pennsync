@@ -7,6 +7,7 @@ import {
   BAG_TECHNIQUE_FILENAME, SMART_NOTE_GUIDE_FILENAME, USER_MANUAL_FILENAME,
   buildBagTechniqueChecklist, documentDate,
 } from './documents.mjs';
+import { fail } from './contracts.mjs';
 import { loadConfig } from './runtime.mjs';
 
 /**
@@ -143,4 +144,79 @@ test('the same day renders the same document, so a diff is a real change', async
   // page count and length are what a content change would move.
   assert.equal(first.length, second.length);
   assert.ok(first.length > 4096);
+});
+
+test('the roster report walks the whole roster and counts it once', async () => {
+  // The first document whose content comes from a CONTRACT, so the walk is
+  // this handler's own behaviour and is proved here rather than in the parity
+  // test: the summary is the contract's (counted over the agency) and the
+  // table is every page, so a handler that took only the first page would
+  // render a report contradicting its own total.
+  const page = (from, to, next) => ({
+    entries: Array.from({ length: to - from }, (unused, index) => ({
+      email: `person${from + index}@example.invalid`, credential_type: 'RN',
+      tenant_role: 'clinician', care_scope: 'both', is_approved: true,
+    })),
+    next,
+    summary: { total: 1200, approved: 1100, pending: 100, rn: 700, lpn: 500 },
+  });
+  const asked = [];
+  const pages = [page(0, 500, 'cursor-a'), page(500, 1000, 'cursor-b'), page(1000, 1200, null)];
+  const handler = createHandler(loadConfig(env({ PENNSYNC_API_FUNCTIONS: 'generateUserRosterPDF' })), {
+    fetcher: async () => Response.json({ ...context(), tenant_role: 'agency_admin' }),
+    contract: () => async (name, args) => { asked.push([name, args]); return pages[asked.length - 1]; },
+  });
+  const response = await handler(post({}, 'generateUserRosterPDF'));
+  assert.equal(response.status, 200, await response.clone().text().catch(() => ''));
+  assert.equal(response.headers.get('content-type'), 'application/pdf');
+  assert.match(response.headers.get('content-disposition'),
+    /attachment; filename="User_Roster_\d{4}-\d{2}-\d{2}\.pdf"/);
+  // Three pages, each asking for the next by the cursor the last one gave.
+  assert.deepEqual(asked, [['readRosterReport', {}],
+    ['readRosterReport', { after: 'cursor-a' }], ['readRosterReport', { after: 'cursor-b' }]]);
+  const bytes = Buffer.from(await response.arrayBuffer());
+  assert.equal(bytes.subarray(0, 5).toString('latin1'), '%PDF-');
+  assert.ok(bytes.length > 20000, '1,200 people is a long document');
+});
+
+test('a contract that never stops paging is bounded rather than trusted', async () => {
+  // A cursor equal to its own input would spin forever; one that always
+  // differs would spin until memory ran out. Neither is this handler's to
+  // trust, so both end.
+  for (const [label, next] of [['repeated', () => 'same'], ['endless', count => `cursor-${count}`]]) {
+    let count = 0;
+    const handler = createHandler(loadConfig(env({ PENNSYNC_API_FUNCTIONS: 'generateUserRosterPDF' })), {
+      fetcher: async () => Response.json({ ...context(), tenant_role: 'agency_admin' }),
+      contract: () => async () => {
+        count += 1;
+        return { entries: [{ email: `a${count}@example.invalid`, is_approved: true }],
+          next: next(count), summary: { total: 1, approved: 1, pending: 0, rn: 0, lpn: 0 } };
+      },
+    });
+    const response = await handler(post({}, 'generateUserRosterPDF'));
+    assert.equal(response.status, 200, label);
+    assert.ok(count <= 200, `${label}: ${count} pages`);
+    assert.equal(count, label === 'repeated' ? 2 : 200, label);
+  }
+});
+
+test('the roster report takes no parameters, and its refusals are the contract\'s', async () => {
+  const handler = createHandler(loadConfig(env({ PENNSYNC_API_FUNCTIONS: 'generateUserRosterPDF' })), {
+    fetcher: async () => Response.json({ ...context(), tenant_role: 'agency_admin' }),
+    contract: () => async () => fail(409, 'PENNSYNC_ROSTER_REPORT_FORBIDDEN'),
+  });
+  // A caller cannot ask for a page, a limit or another agency's roster: the
+  // agency is the envelope's and the walk is the handler's.
+  for (const params of [{ limit: 5 }, { after: 'cursor' }, { agency_id: 'agency-b' }]) {
+    const refused = createHandler(loadConfig(env({ PENNSYNC_API_FUNCTIONS: 'generateUserRosterPDF' })), {
+      fetcher: async () => Response.json({ ...context(), tenant_role: 'agency_admin' }),
+    });
+    const response = await refused(post(params, 'generateUserRosterPDF'));
+    assert.equal(response.status, 400, JSON.stringify(params));
+    assert.equal((await response.json()).error, 'INVALID_PARAMS');
+  }
+  // And the contract's refusal crosses back as itself rather than as an outage.
+  const response = await handler(post({}, 'generateUserRosterPDF'));
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, 'PENNSYNC_ROSTER_REPORT_FORBIDDEN');
 });

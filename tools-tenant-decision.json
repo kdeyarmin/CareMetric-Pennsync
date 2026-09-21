@@ -40,6 +40,10 @@
       "subject": "user_email",
       "because": "The row is the account's own setting or record, keyed by user_email; no agency owns it, so a membership change cannot move it."
     },
+    "AdrAuditCase": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `patient_id`, so every row without one was in no tenant and no policy could admit it (D61). The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
+    },
     "AgencyComplianceRule": {
       "kind": "agency",
       "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
@@ -95,6 +99,10 @@
       "kind": "agency",
       "because": "Its only tenancy signal is created_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
     },
+    "ClinicalLibraryTemplate": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `patient_id`, so every row without one was in no tenant and no policy could admit it (D61). The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
+    },
     "ClinicalPathway": {
       "kind": "agency",
       "because": "Its only tenancy signal is created_by, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
@@ -115,9 +123,17 @@
       "kind": "agency",
       "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
     },
+    "DocumentAnalysisHistory": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `patient_id`, so every row without one was in no tenant and no policy could admit it (D61). The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
+    },
     "DocumentAutomationWorkflow": {
       "kind": "agency",
       "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
+    },
+    "DocumentRecord": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `patient_id`, so every row without one was in no tenant and no policy could admit it (D61). The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
     },
     "DocumentTemplate": {
       "kind": "shared",
@@ -139,6 +155,10 @@
     "EmployeePayrollProfile": {
       "kind": "agency",
       "because": "Keyed by employee_email, a person who works for an agency. The person is not the tenant, and the row outlives their membership, so it takes agency_id before load."
+    },
+    "FaceToFaceEncounter": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `patient_id`, so every row without one was in no tenant and no policy could admit it (D61). The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
     },
     "FacilityDocumentationRule": {
       "kind": "agency",
@@ -176,6 +196,10 @@
       "kind": "agency",
       "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
     },
+    "MaterialInteraction": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `patient_id`, so every row without one was in no tenant and no policy could admit it (D61). The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
+    },
     "MedicareComplianceRule": {
       "kind": "global",
       "because": "Conditions of Participation rules published by the regulator, identical for every agency."
@@ -190,6 +214,14 @@
     "NewFeature": {
       "kind": "global",
       "because": "Product announcements about the platform, shown to everyone."
+    },
+    "NoteConversion": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `patient_id`, so every row without one was in no tenant and no policy could admit it (D61). The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
+    },
+    "NoteFeedback": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `patient_id`, so every row without one was in no tenant and no policy could admit it (D61). The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
     },
     "NoteTemplate": {
       "kind": "shared",
@@ -229,6 +261,10 @@
     "OnCallShift": {
       "kind": "agency",
       "because": "Its only tenancy signal is assigned_user_email, which records who acted rather than whose row it is. Scoping by that account's current membership would move the row when the person changes agency, so it takes a real key instead."
+    },
+    "PDFIndex": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `patient_id`, so every row without one was in no tenant and no policy could admit it (D61). The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
     },
     "PDFTemplate": {
       "kind": "agency",
@@ -305,6 +341,10 @@
       "kind": "agency",
       "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
     },
+    "ScheduleFeedback": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `visit_id`, so every row without one was in no tenant and no policy could admit it (D61). The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
+    },
     "ScheduledReport": {
       "kind": "agency",
       "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
@@ -330,6 +370,14 @@
       "kind": "agency",
       "because": "Agency configuration or operational state; nothing in the schema names a tenant, so the key is added before load rather than guessed afterwards."
     },
+    "SupplyLowStockAlert": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `task_id`, so every row without one was in no tenant and no policy could admit it (D61). The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
+    },
+    "Task": {
+      "kind": "agency",
+      "because": "Its only tenant path was an OPTIONAL `patient_id`, so every row without one was in no tenant and no policy could admit it (D61). The key is its own now, and D24 narrows the row to a chart wherever a subject is named."
+    },
     "TerminologyGlossary": {
       "kind": "self",
       "subject": "user_email",
@@ -347,6 +395,10 @@
       "kind": "self",
       "subject": "user_email",
       "because": "The row is the account's own setting or record, keyed by user_email; no agency owns it, so a membership change cannot move it."
+    },
+    "User": {
+      "kind": "roster",
+      "because": "D23. Its agency_id, agency_name and account_type are self-editable profile labels \u2014 each field's own schema description says so and says never to authorize from it \u2014 so no predicate written against this row can decide who may read it. The authority store's membership already models the roster, cannot be edited by its subject, and pennsync_private.context authorizes against it today; caller_roster_ids() asks it. Read only: with no write policy, forced RLS refuses every write from everyone including the record owner, which keeps D23's open profile-write question from quietly resolving itself as allowed."
     },
     "UserFavorite": {
       "kind": "self",

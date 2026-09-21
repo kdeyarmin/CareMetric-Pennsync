@@ -98,6 +98,8 @@ jobs:
           pnpm run check:entity-schema-plan
           pnpm run check:tenant-paths
           pnpm run check:tenant-decisions
+          pnpm run check:record-brokers
+          pnpm run check:read-purpose-policy
 
       - name: Typecheck informational baseline
         run: pnpm run typecheck
