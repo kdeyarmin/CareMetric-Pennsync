@@ -65,6 +65,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   generateSmartNoteGuide: 'json',
   generateUserGuidePDF: 'binary',
   generateUserManual: 'binary',
+  generateUserRosterPDF: 'binary',
   getAgencyRosterMember: 'json',
   checkAdrDeadlines: 'json',
   checkExpiredInvitations: 'json',

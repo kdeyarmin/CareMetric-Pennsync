@@ -1573,6 +1573,30 @@ export const RECORD_CONTRACTS = Object.freeze({
     body: (agencyId, args) => ({ p_agency: agencyId, p_referral_id: args.referral_id ?? null }),
     codes: REFERRAL_CODES,
   }),
+  // The roster report's page. Separate from `listAgencyRoster` because of its
+  // GATE, not its answer: the roster admits every member of an agency, and
+  // the original of `generateUserRosterPDF` admits only an `agency_admin` —
+  // which its three-way test obscures, because `withTrustedClaims` strips a
+  // claimed `account_type` and leaves one live branch.
+  //
+  // The two cursor codes are INHERITED: the contract delegates its paging to
+  // `contract_roster_list` and those refusals really can reach a caller
+  // through it. Declared rather than assumed, and its suite raises both.
+  readRosterReport: Object.freeze({
+    rpc: 'pennsync_contract_roster_report',
+    params: Object.freeze(['limit', 'after']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_limit: args.limit === undefined ? null : args.limit,
+      p_after: args.after === undefined ? null : args.after,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_ROSTER_REPORT_AGENCY_NOT_HELD',
+      'PENNSYNC_ROSTER_REPORT_FORBIDDEN',
+      'PENNSYNC_ROSTER_CURSOR_INVALID',
+      'PENNSYNC_ROSTER_CURSOR_UNKNOWN',
+    ]),
+  }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
     params: Object.freeze(['user_id']),

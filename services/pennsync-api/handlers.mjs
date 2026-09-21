@@ -28,6 +28,9 @@ import {
   BAG_TECHNIQUE_FILENAME, SMART_NOTE_GUIDE_FILENAME, USER_MANUAL_FILENAME,
   buildBagTechniqueChecklist, buildSmartNoteGuide, buildUserManual, documentDate,
 } from './documents.mjs';
+import {
+  ROSTER_FORMAT, buildUserRoster, rosterFilename,
+} from './document-user-roster.mjs';
 import { analyzeReferralPriority as runReferralPriority } from './referral-priority.mjs';
 import { analyzeReferralIntake as runReferralIntake } from './referral-intake.mjs';
 import { generateReferralTasks as runReferralTasks } from './referral-tasks.mjs';
@@ -887,6 +890,42 @@ export const HANDLERS = Object.freeze({
         generatedOn: documentDate(now), year: now.getFullYear(),
       }).output('arraybuffer');
       return { binary: true, body, contentType: 'application/pdf', filename: `${guideType}_guide.pdf` };
+    },
+  }),
+  generateUserRosterPDF: Object.freeze({
+    binary: true,
+    // The roster report. Everything interesting about the port is a deletion:
+    // the original lists 5,000 `User` rows across every tenant and keeps the
+    // ones whose `agency_name` STRING matches the caller's — plus every row
+    // whose `account_type` is `super_admin`, which put a platform tier into
+    // every agency's report. `contract_roster_report` answers from the
+    // authority store's own membership, and the gate is the contract's.
+    //
+    // The whole roster is paged here rather than in the document, because the
+    // report's summary is counted over the agency and its table is not: the
+    // contract supplies the first and this loop supplies the second.
+    async handle({ params, contract, config }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      const entries = [];
+      let summary = null;
+      let after;
+      // Bounded, so a contract that answered a cursor equal to its own input
+      // could not spin here. Five hundred a page is the roster's own ceiling.
+      for (let page = 0; page < 200; page += 1) {
+        const answer = await contract('readRosterReport',
+          after === undefined ? {} : { after });
+        entries.push(...(Array.isArray(answer.entries) ? answer.entries : []));
+        summary ??= answer.summary;
+        if (!answer.next || answer.next === after) break;
+        after = answer.next;
+      }
+      const { jsPDF } = await import('jspdf');
+      const now = new Date();
+      const body = buildUserRoster(new jsPDF(ROSTER_FORMAT), { entries, summary },
+        { logoDataUrl: config?.documentLogoDataUrl || null, generatedOn: documentDate(now) })
+        .output('arraybuffer');
+      return { binary: true, body, contentType: 'application/pdf',
+        filename: rosterFilename(now.toISOString().split('T')[0]) };
     },
   }),
   generateUserManual: Object.freeze({

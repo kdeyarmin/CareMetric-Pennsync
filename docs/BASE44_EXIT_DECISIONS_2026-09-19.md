@@ -4366,3 +4366,82 @@ carried across from the stored row when the `generated_at` INSTANT matches,
 never its text: a client that reformats the same moment must not reset a claim.
 
 Port queue: `records_schema` 8 → 7, written 65 → 66.
+
+## D69 — A three-way gate with two dead branches, and a column with no source
+
+**Decision.** Port `generateUserRosterPDF` on a contract that delegates its
+paging to D22's roster, gates on `agency_admin`, and counts its summary over
+the whole agency. Drop the Name column rather than filling it.
+
+**The gate reads wider than it is, and that was worth measuring.** The original
+admits
+
+```js
+user.role === 'admin' || user.account_type === 'agency_admin'
+  || user.account_type === 'super_admin'
+```
+
+and `account_type` has already been through the shared `withTrustedClaims`
+helper, which **strips** a claimed `agency_admin` or `super_admin` back to
+`'user'` unless a canonical ACTIVE `AgencyMembership` says otherwise. So:
+
+- `account_type === 'super_admin'` can never be true — `super_admin` is in
+  `PRIVILEGED_PROFILE_ACCOUNT_TYPES`, so a profile claiming it is demoted, and
+  the trusted branch only ever writes `'agency_admin'` or the non-privileged
+  base. The test is dead code.
+- `account_type === 'agency_admin'` means "holds an `agency_admin` membership".
+- `role === 'admin'` is the platform tier D14 and D22 removed.
+
+**So this is NOT one of D40's widenings**, which is what it looked like before
+the helper was read. An `agency_admin` could already run the report; what
+leaves is the platform admin. D36's rule with the polarity reversed: there, a
+comment promised a capability the code never gave; here, a gate appears to
+offer three ways in and has one. **Read what the code can reach, not what it
+appears to offer** — and note that the test proved it by DRIVING the original
+through that helper with a canonical membership row, not by reading it.
+
+**The derived scope goes, for the fourth time.** The original lists 5,000
+`User` rows across every tenant and keeps the ones whose `agency_name` STRING
+matches the caller's — plus every row whose `account_type` is `super_admin`,
+which put the removed platform tier into every agency's report. This is the
+reconstruction D41 and D43 delete, and `caller_roster(agency)` is the answer
+the authority store already holds.
+
+**Why a second roster contract rather than reusing the first.** The answer is
+the same; the GATE is not. `contract_roster_list` admits every member, because
+35 capabilities want the working roster, and reusing it would have handed a
+clinician the agency's staff report. So `contract_roster_report` gates and then
+**delegates** — it calls `contract_roster_list` for the page rather than
+copying the keyset, the two cursor refusals and the projection. That makes two
+of its four declared refusal codes INHERITED, which is the exception to "each
+contract declares its own": a code can cross when one contract really calls
+another, and the suite raises both through it rather than asserting the
+comment.
+
+**The summary is counted over the whole agency, not the page,** because the
+original counts its entire unpaged list. A first page reporting "Total Users:
+25" for an agency of 600 is worse than no total. The handler walks every page
+for the table and takes the summary once — and the walk is **bounded**, because
+a contract answering a cursor equal to its own input would spin.
+
+**There is no name, and the column goes.** The carried `user` table has no name
+field (D38, D46), so `full_name || 'N/A'` has no source. Three answers were
+possible: print 'N/A' down the page, substitute the verified address as D46
+did, or drop the column. D46's substitution worked because there was no
+adjacent email field; here there is one right beside it, so substituting prints
+the same string twice. The column goes and the five that remain take its 60mm.
+The parity test expresses exactly that as one transform of the original's
+recorded calls — **scoped to the table**, because the summary draws
+`Total Users:` at x=15 and `LPN:` at x=250, the same coordinates the Name and
+Status columns use, so an x-only rule would have deleted the total and moved
+the LPN count.
+
+**Two more columns stop reading a self-editable label.** `Status` was
+`u.is_approved || u.role === 'admin'` and is now the identity being enabled —
+an authoritative, one-way fact, and the right one: a colleague who can no
+longer sign in while their membership stands is exactly who a roster report
+should show as pending. `Role` was `u.role || 'user'`, the Base44 built-in,
+which is `'user'` for everybody but the removed tier — a column of one value —
+and is now the tenant role.
+
+Port queue: `records_schema` 7 → 6, written 66 → 67.
