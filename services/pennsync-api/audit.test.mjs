@@ -1,8 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   AUDIT_CODES, AUDIT_LIST_CODES, AUDIT_RPC, MAX_ACTION, MAX_DETAIL_BYTES, SUBJECT_KINDS, auditCapability,
 } from './audit.mjs';
@@ -33,40 +30,6 @@ const capability = (overrides = {}, fetcher) => auditCapability({
 const answers = (value, status = 200) => () => new Response(JSON.stringify(value),
   { status, headers: { 'content-type': 'application/json' } });
 const rejects = (promise, code) => assert.rejects(promise, error => error?.code === code, `expected ${code}`);
-
-const SQL = readFileSync(resolve(fileURLToPath(new URL('../../', import.meta.url)),
-  'services/authority-store/supabase/record-migrations/20260920010000_activity_audit.sql'), 'utf8');
-/** The codes one contract raises, read from that contract's own body. */
-const raisedBy = (contract) => {
-  const start = SQL.indexOf(`create function "pennsync_records".${contract}(`);
-  assert.ok(start > 0, `${contract} is not in the migration`);
-  const body = SQL.slice(start, SQL.indexOf('end $contract$;', start));
-  return [...new Set([...body.matchAll(/message\s*=\s*'(PENNSYNC_AUDIT_[A-Z_]+)'/g)].map(m => m[1]))].sort();
-};
-
-test('the declared vocabulary matches the contract it fronts', () => {
-  // Read from the migration rather than trusted, and per contract rather than
-  // per file: a code the SQL raises that this module does not know becomes a
-  // generic outage for the caller, and one it expects that nothing raises is a
-  // branch that can never be taken. Checking the file as a whole misses the
-  // second — `PENNSYNC_AUDIT_FORBIDDEN` is raised by the migration and cannot
-  // reach an append, because reading the trail needs an administrator and
-  // appending to it does not.
-  const sql = SQL;
-  assert.deepEqual(raisedBy('contract_activity_append'), [...AUDIT_CODES].sort());
-  assert.deepEqual(raisedBy('contract_activity_list'), [...AUDIT_LIST_CODES].sort());
-  // Between them the two lists account for every code the migration raises, so
-  // a new refusal cannot be added to either contract unnoticed.
-  const raised = [...new Set([...sql.matchAll(/message\s*=\s*'(PENNSYNC_AUDIT_[A-Z_]+)'/g)].map(m => m[1]))];
-  assert.deepEqual(raised.sort(), [...new Set([...AUDIT_CODES, ...AUDIT_LIST_CODES])].sort());
-  assert.ok(!AUDIT_CODES.includes('PENNSYNC_AUDIT_FORBIDDEN'));
-  // And the subject kinds this module accepts are exactly the ones the table's
-  // check constraint admits.
-  // `in` and its list are on separate lines in the migration, so the gap is
-  // part of the pattern rather than something to assume away.
-  const constraint = sql.match(/"subject_kind" in\s*\(([^)]*)\)/)[1];
-  assert.deepEqual([...constraint.matchAll(/'([a-z]+)'/g)].map(m => m[1]).sort(), [...SUBJECT_KINDS].sort());
-});
 
 test('an entry carries the caller own bearer to the fixed RPC', async () => {
   let seen = null;

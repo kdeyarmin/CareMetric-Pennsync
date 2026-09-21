@@ -11,6 +11,7 @@ import { exactObject, fail, isObject } from './contracts.mjs';
 import { syncCmsRegulations } from './cms-regulations.mjs';
 import { triageReferral } from './referral-triage.mjs';
 import { analyzeVisitSupplyUsage } from './visit-supply-usage.mjs';
+import { importProviders } from './provider-import.mjs';
 import {
   BAG_TECHNIQUE_FILENAME, SMART_NOTE_GUIDE_FILENAME, USER_MANUAL_FILENAME,
   buildBagTechniqueChecklist, buildSmartNoteGuide, buildUserManual, documentDate,
@@ -524,6 +525,17 @@ export const HANDLERS = Object.freeze({
     handle({ params, contract }) {
       exactObject(params, [], 'INVALID_PARAMS');
       return contract('checkAdrDeadlines', params);
+    },
+  }),
+  importProvidersCsv: Object.freeze({
+    // A PARTIAL port. The `csv_text` branch is what the SPA calls and what the
+    // original's own comment says needs nothing else — "A provider directory
+    // CSV needs no storage upload or AI integration" — while the legacy
+    // `file_url` branch downloads through an allowlist naming Base44's own
+    // storage host, which is the file-layer dependency D56 measured.
+    handle({ params, contract }) {
+      exactObject(params, ['csv_text', 'file_url'], 'INVALID_PARAMS');
+      return importProviders({ params, contract });
     },
   }),
   analyzeVisitForSupplyUsage: Object.freeze({

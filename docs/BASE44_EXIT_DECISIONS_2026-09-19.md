@@ -3771,3 +3771,119 @@ safe because nothing in `src/` calls `predictSupplyNeeds`. **Check the call
 site before normalising a request shape.**
 
 Port queue: `records_schema` 22 → 21, written 57 → 58.
+
+## D59 — A capability with two input sources can be half of it today
+
+**Decision.** Port `importProvidersCsv`'s `csv_text` branch and refuse its
+legacy `file_url` branch by name, because only one of the two touches the file
+layer — and the original's own comment says which.
+
+**The fourth partial port**, after D31's nine visit actions, D35's six
+membership actions and D36's policy acknowledgment. The shape is the same: the
+branch that has a successor is served, the one that does not is refused BY NAME
+with its reason, and a test asserts the refusal so the gap cannot close by
+accident. What is new is the axis — earlier partial ports split on an ACTION,
+this one splits on where the input comes from.
+
+The original accepts exactly one of `csv_text` or `file_url`. The second
+downloads through `isSafeFetchUrl`, whose `FILE_URL_ALLOWED_HOSTS` is
+`qtrypzzcjebvfcihiynt.supabase.co`, `base44.app` and `base44.io` — carrying that
+into the service is precisely what D56 measured as the file-bound blocker, and
+it is a data migration with a compatibility layer rather than a path to write.
+The first needs none of it, and the original says so in its own words: *"A
+provider directory CSV needs no storage upload or AI integration."* It is also
+the only branch `src/components/physician/ProviderCsvImport.jsx` calls.
+
+**D40's widening was half made in this original already.** Its gate is
+
+```js
+const isAdminUser = (user) => user?.role === 'admin'
+  || user?.account_type === 'agency_admin' || user?.account_type === 'super_admin';
+```
+
+Three tiers, of which the built-in `admin` is the one D40 replaces, the
+`account_type` check is the self-editable label D23 says decides nothing, and
+`super_admin` is the tier D14 and D22 removed. All three collapse onto
+`caller_tenant_role(agency) = 'agency_admin'`, so the ported gate is narrower
+than what the label allowed and no wider than what D40 grants.
+
+**And the derived scan D41 and D43 keep deleting is here in its WRITING form.**
+The original builds its duplicate map from `Physician.list('-updated_date',
+5000)` — every provider in the DEPLOYMENT — and then UPDATES whatever it
+matched. `Physician` is agency-tenanted under D15, so one agency's import could
+rewrite another agency's directory entry, and past five thousand providers it
+would silently create duplicates instead of finding its own. The policy answers
+both: the match runs inside `caller_agencies()` and has no page. That is the
+fourth original whose scope reconstruction is a bug, and the third time a row
+limit turns out to be the artefact of a paged client rather than a rule.
+
+**Where the split falls.** Text shaping is not authorization, so the
+character-by-character CSV parser stays in `services/pennsync-api/
+provider-import.mjs` and every record decision — who may import, which rows are
+the same provider, create or update — is the contract's. The six helpers
+(`parseCSV`, `normalizeHeader`, `cleanValue`, `cleanPhone`, `titleCase`,
+`formatProviderName`) are named functions in the original, so the test imports
+them and compares over a table of awkward inputs rather than asserting a retyped
+copy — D38's parity, available directly this time where D57 had to lift an
+inline block.
+
+That parity caught one thing worth keeping: `titleCase` lowercases the whole
+string before capitalising each word, so `"Smith, John, MD"` becomes
+`"John Md Smith"`. It is the original's behaviour, the test says so, and
+correcting it would be a divergence nobody asked for.
+
+**One transaction.** The original creates and updates in chunks of three with a
+150 ms pause between them, so a failure halfway leaves a partly-imported
+directory and a count nobody can reconcile. A test sends seven good rows beside
+one malformed field and checks that none of them lands.
+
+Port queue: `records_schema` 21 → 20, written 58 → 59.
+
+## D60 — The containment check was measuring imports, and five tests had been reading files
+
+**Decision.** Make `services/pennsync-api`'s build-context guard check whether a
+quoted literal RESOLVES TO A FILE outside the directory, rather than whether it
+matches a pattern — and move the five suites that were reading one.
+
+**How it surfaced.** D59's provider-import test imported `transpileTs` from
+`../../`, which the guard caught immediately. Its comment explains itself
+clearly: the Dockerfile copies that directory as its entire build context and
+runs `node --test *.test.mjs` inside it, so anything reaching `../` fails the
+image build, and *"Test files count: they are copied and executed too."*
+
+**But the guard read import specifiers and nothing else.** Five suites in that
+directory were reading a file outside it by PATH — `referral-triage.test.mjs`
+and `visit-supply-usage.test.mjs` read their Base44 originals to compare a
+prompt against them, `provider-import.test.mjs` read one to lift six helpers,
+`audit.test.mjs` read the activity-trail migration to check its refusal codes,
+and `record-contracts.test.mjs` read four more. Every one of those breaks the
+image build exactly as an import does. Three of the five were written in this
+session, under a check whose own comment named the class it was meant to stop.
+
+**That is D47's lesson a second time, and it is now stated twice in the tree:
+when a check exists to stop a class of mistake, re-derive the shapes from the
+tree rather than from the check.** The first time it was a paused handler with
+no flag; this time a file read with no import.
+
+**And the fix went through two wrong patterns first, which is the other half of
+the lesson.** A pattern for `'../…'` flagged the guard's own
+`startsWith('../')`. A pattern for `'../…'` plus a repository directory name
+flagged `'../../etc/passwd.pdf'`, a path-traversal FIXTURE that names no file,
+and missed `'../authority-store/…'`, which names a real one. So the check stopped
+guessing: a literal is a finding when it resolves to a file that exists outside
+the directory. A fixture resolves to nothing. A bare `'../../'` is a directory.
+A path in a comment is prose, so comments are stripped first.
+
+**Proved by doing the thing rather than modelling it.** The directory was copied
+to an empty temporary tree with its dependencies and `node --test *.test.mjs`
+was run there — which is what the image does. That is how the fifth instance
+(`record-contracts.test.mjs`) was found after the widened pattern had declared
+the directory clean, and it is the check worth repeating when this guard next
+changes.
+
+The five suites' original-reading halves now live in
+`base44/functionTests/pennsyncApiOriginalParity.test.js`, beside the other
+`pennsyncApi*Parity` suites, where both trees are visible and neither ships.
+What they prove is unchanged.
+
+Port queue: unchanged. This fixes a guard and moves tests; it ports nothing.

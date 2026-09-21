@@ -263,6 +263,17 @@ test('a rejection needs a reason, and a decision happens once', async () => {
 const APP_ID = '6a9881683dc68a0bd54f1ef7';
 const expirySweep = (n, agency = A) => as(n, EXPIRY_SWEEP, [agency], true);
 const renewalSweep = (n, agency = A) => as(n, RENEWAL_SWEEP, [agency], true);
+/**
+ * `agency_today()`, never `current_date`.
+ *
+ * The contract measures a credential's remaining days against the store's own
+ * day, which is America/New_York, while `current_date` is the server's — UTC
+ * in CI. Between 00:00 and 04:00 UTC the two are different dates, so a
+ * credential seeded at `current_date - 1` is `agency_today()` exactly, crosses
+ * the 14-day tier and reminds somebody the test expects to hear nothing about.
+ * Caught by running the suite at 00:05 UTC; it would otherwise have been a CI
+ * flake in a four-hour window nobody had run in.
+ */
 const seedCredential = async (id, agency, days, overrides = {}) => {
   const row = {
     user_id: email(CLINICIAN_A), title: 'RN Licence', item_type: 'license',
@@ -273,7 +284,7 @@ const seedCredential = async (id, agency, days, overrides = {}) => {
   await db.query(
     `insert into ${SCHEMA}."personnel_credential" ("source_app_id","id","agency_id",
       "expiration_date",${keys.map(k => `"${k}"`).join(',')})
-     values ($1,$2,$3,(current_date + $4::integer),${keys.map((_, i) => `$${i + 5}`).join(',')})`,
+     values ($1,$2,$3,(pennsync_records.agency_today() + $4::integer),${keys.map((_, i) => `$${i + 5}`).join(',')})`,
     [APP_ID, id, agency, days, ...keys.map(k => row[k])]);
 };
 const statusOf = async id => (await db.query(

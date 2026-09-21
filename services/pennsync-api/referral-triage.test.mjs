@@ -1,8 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   TRIAGE_MODEL, TRIAGE_URGENCY_LEVELS, auditUrgencyLevel, buildTriagePrompt, triageReferral,
 } from './referral-triage.mjs';
@@ -18,7 +15,6 @@ import {
  * from the incident port because one transaction made the change and its record
  * inseparable, and this handler has no transaction to offer.
  */
-const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../');
 const ANALYSIS = {
   patient_name: 'Ada Lovelace', date_of_birth: '1815-12-10',
   primary_diagnosis: 'CHF exacerbation', urgency_level: 'HIGH',
@@ -43,31 +39,6 @@ const harness = (overrides = {}) => {
     },
   };
 };
-
-test('the prompt is the original s, and the model is the one it names', async () => {
-  const h = harness();
-  await triageReferral(h);
-  assert.equal(h.calls.length, 1);
-  assert.equal(h.calls[0].operation, 'InvokeLLM');
-  assert.equal(h.calls[0].payload.model, TRIAGE_MODEL);
-  // Read from the original rather than asserted, so a reworded prompt fails
-  // here instead of quietly changing what the model is asked.
-  const original = readFileSync(resolve(repository,
-    'base44/functions/triageReferralWithAI/entry.ts'), 'utf8');
-  const start = original.indexOf('You are an expert home health triage nurse.');
-  const end = original.indexOf('Return ONLY valid JSON, no markdown or explanation.');
-  assert.ok(start > 0 && end > start, 'the original still carries the prompt');
-  const prompt = buildTriagePrompt('REFERRAL');
-  for (const line of original.slice(start, end).split('\n')) {
-    const trimmed = line.trim();
-    // The referral payload itself is interpolated, so its line differs.
-    if (!trimmed || trimmed.startsWith('${')) continue;
-    assert.ok(prompt.includes(trimmed), `the prompt lost: ${trimmed}`);
-  }
-  assert.ok(prompt.includes('REFERRAL'), 'and the referral is interpolated into it');
-  // Nothing but the prompt and the model: no schema, no temperature.
-  assert.deepEqual(Object.keys(h.calls[0].payload).sort(), ['model', 'prompt']);
-});
 
 test('the trail entry carries the category and nothing else', async () => {
   const h = harness();

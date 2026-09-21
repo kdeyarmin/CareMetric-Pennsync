@@ -1240,6 +1240,29 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_TENANT_AGENCY_UNAVAILABLE',
     ]),
   }),
+  // The record half of the provider directory import. The CSV is parsed in
+  // `provider-import.mjs` — text shaping is not authorization — and the store
+  // decides who may import, which rows are the same provider and whether a
+  // row is a create or an update.
+  //
+  // Its gate is D40's for the second time, and the original had the widening
+  // half made already: `role === 'admin'` OR `account_type === 'agency_admin'`
+  // OR `'super_admin'`, of which only the first has a successor, the second is
+  // the self-editable label D23 says decides nothing, and the third is the
+  // tier D14 and D22 removed.
+  importProvidersCsv: Object.freeze({
+    rpc: 'pennsync_contract_provider_import',
+    params: Object.freeze(['rows']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_rows: args.rows === undefined ? null : args.rows,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_PROVIDER_IMPORT_FORBIDDEN',
+      'PENNSYNC_PROVIDER_IMPORT_INVALID',
+      'PENNSYNC_PROVIDER_IMPORT_FIELD_UNSUPPORTED',
+    ]),
+  }),
   // The supplies a visit consumed, in two halves because a model call sits
   // between them: the context read authorizes the chart before the call is
   // paid for, and the record write does the whole of it in one transaction.

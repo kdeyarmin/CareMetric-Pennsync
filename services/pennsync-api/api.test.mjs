@@ -43,24 +43,63 @@ const post = (body, { path = '/v1/functions/validatePatientData', auth = 'Bearer
 const serveContext = (patch = {}) => async () => Response.json(context(patch));
 const handlerFor = (patch = {}, fetcher = serveContext()) => createHandler(config(patch), { fetcher });
 
-test('nothing in this directory imports out of it, because the image is built from it', async () => {
+test('nothing in this directory reaches out of it, because the image is built from it', async () => {
   // The Dockerfile copies this directory as its build context and runs
   // `node --test *.test.mjs` during the build. Anything reaching `../` is
   // unresolvable there, so a single such import fails the image build — which
   // is exactly what `parity.test.mjs` did until it was moved to
   // `base44/functionTests/`, where both services are visible and neither ships
   // it. Test files count: they are copied and executed too.
+  //
+  // **An import is not the only shape, and a pattern is not the check.** This
+  // measured import specifiers alone until five suites here had been written
+  // that READ a file outside this directory by path to compare a port against
+  // its original — which breaks the build exactly as an import does, and which
+  // nothing saw. Two successive patterns then each missed a case the others
+  // caught. So the rule is not a pattern at all: a quoted literal is a finding
+  // when it RESOLVES TO A FILE that exists outside this directory. A fixture
+  // like `'../../etc/passwd.pdf'` names nothing and is not a finding; a bare
+  // `'../../'` is a directory and is not one either. That is D47's lesson a
+  // second time — re-derive the shapes from the tree rather than from the
+  // check — and the five moved to
+  // `base44/functionTests/pennsyncApiOriginalParity.test.js`.
   const { readdir, readFile } = await import('node:fs/promises');
+  const { statSync } = await import('node:fs');
+  const { fileURLToPath } = await import('node:url');
+  const { resolve } = await import('node:path');
   const here = new URL('./', import.meta.url);
+  const directory = fileURLToPath(here);
+  const repository = resolve(directory, '../../');
   const files = (await readdir(here)).filter(name => name.endsWith('.mjs'));
   assert.ok(files.length >= 8, 'the directory scan found nothing to scan');
   const SPECIFIER = /(?:^|\s)(?:import|export)[^'"\n]*?from\s*['"]([^'"]+)['"]|\bimport\(\s*['"]([^'"]+)['"]\s*\)/g;
+  const LITERAL = /['"`]([^'"`\n${}]+)['"`]/g;
+  const isFile = path => { try { return statSync(path).isFile(); } catch { return false; } };
+  // A path named in PROSE is not one the build resolves, so comments go first —
+  // including this file's own explanation above.
+  const code = text => text
+    .replace(/\/\*[\s\S]*?\*\//g, ' ')
+    .split('\n').map(line => {
+      const index = line.search(/(?<!:)\/\//);
+      return index === -1 ? line : line.slice(0, index);
+    }).join('\n');
   for (const name of files) {
     const source = await readFile(new URL(name, here), 'utf8');
     for (const match of source.matchAll(SPECIFIER)) {
       const specifier = match[1] ?? match[2];
       assert.ok(!specifier.startsWith('../'),
         `${name} imports ${specifier}, which does not exist in the Docker build context`);
+    }
+    for (const [, literal] of code(source).matchAll(LITERAL)) {
+      // Either walked up out of the directory, or named from the repository
+      // root the way a `resolve(repository, ...)` call does.
+      const candidates = literal.startsWith('../') ? [resolve(directory, literal)]
+        : literal.includes('/') && !literal.includes(':') ? [resolve(repository, literal)] : [];
+      for (const candidate of candidates) {
+        if (candidate.startsWith(directory) || !isFile(candidate)) continue;
+        assert.fail(`${name} names ${literal}, which resolves to a file outside `
+          + 'the Docker build context');
+      }
     }
   }
 });

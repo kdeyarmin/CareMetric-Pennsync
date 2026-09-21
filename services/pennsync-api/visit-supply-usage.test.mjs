@@ -1,8 +1,5 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import {
   SUPPLY_MODEL, SUPPLY_RESPONSE_SCHEMA, analyzeVisitSupplyUsage, buildSupplyPrompt,
 } from './visit-supply-usage.mjs';
@@ -16,8 +13,6 @@ import {
  * much is left, whether that is an alert — belongs to the record contract,
  * which makes all of it in one transaction.
  */
-const repository = resolve(dirname(fileURLToPath(import.meta.url)), '../../');
-const ORIGINAL = 'base44/functions/analyzeVisitForSupplyUsage/entry.ts';
 const EXTRACTION = {
   supplies: [
     { name: 'gauze 4x4', quantity: 2, unit: 'boxes', purpose: 'wound care' },
@@ -76,33 +71,6 @@ test('the order is read contract, model, write contract', async () => {
   assert.deepEqual(result, { success: true, usageLogs: 2, alertsCreated: 0, alerts: [] });
 });
 
-test('the prompt and the schema are the original s, read from its source', async () => {
-  const h = harness();
-  await analyzeVisitSupplyUsage(h);
-  assert.equal(h.calls.length, 1);
-  assert.equal(h.calls[0].operation, 'InvokeLLM');
-  assert.equal(h.calls[0].payload.model, SUPPLY_MODEL);
-  assert.deepEqual(Object.keys(h.calls[0].payload).sort(),
-    ['model', 'prompt', 'response_json_schema']);
-  const original = readFileSync(resolve(repository, ORIGINAL), 'utf8');
-  const start = original.indexOf('You are a clinical documentation analyzer.');
-  const end = original.indexOf('Return ONLY valid JSON array, no other text.');
-  assert.ok(start > 0 && end > start, 'the original still carries the prompt');
-  const prompt = buildSupplyPrompt('NOTES');
-  for (const line of original.slice(start, end).split('\n')) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.includes('${')) continue;
-    assert.ok(prompt.includes(trimmed), `the prompt lost: ${trimmed}`);
-  }
-  assert.ok(prompt.includes('Visit Notes: "NOTES"'), 'and the notes are interpolated');
-  // The schema marks no field required, which is exactly why the contract
-  // guards every one of them.
-  assert.deepEqual(Object.keys(SUPPLY_RESPONSE_SCHEMA.properties.supplies.items.properties),
-    ['name', 'quantity', 'unit', 'purpose']);
-  assert.equal('required' in SUPPLY_RESPONSE_SCHEMA.properties.supplies.items, false);
-  assert.ok(original.includes('response_json_schema'), 'the original passes one too');
-});
-
 test('an answer that is not an extraction is an empty one, not a failure', async () => {
   // `analysisResult?.supplies || []`, exactly.
   for (const answer of [undefined, null, {}, { supplies: null }, { supplies: 'gauze' }, 'prose']) {
@@ -130,17 +98,4 @@ test('an absent visit is a null, which the contract reads as no dedupe', async (
     assert.equal(h.contracts[0].args.visit_id, null);
     assert.equal(h.contracts[1].args.visit_id, null);
   }
-});
-
-test('the body keys stay the original s, because the SPA sends them', async () => {
-  // D57 renamed `predictSupplyNeeds`'s `patientId` safely because nothing in
-  // `src/` calls it. This one is called, and the SPA is shared between the two
-  // backends, so the keys are read from the call site rather than chosen.
-  const caller = readFileSync(resolve(repository, 'src/pages/SmartNoteAssistant.jsx'), 'utf8');
-  assert.match(caller,
-    /analyzeVisitForSupplyUsage\(\{\s*visitId,\s*visitNotes:\s*noteText,\s*patientId\s*\}\)/);
-  const handlers = readFileSync(resolve(repository, 'services/pennsync-api/handlers.mjs'), 'utf8');
-  const entry = handlers.slice(handlers.indexOf('analyzeVisitForSupplyUsage: Object.freeze({'));
-  assert.match(entry.slice(0, entry.indexOf('}),')),
-    /exactObject\(params, \['visitId', 'visitNotes', 'patientId'\]/);
 });
