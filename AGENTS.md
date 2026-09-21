@@ -106,7 +106,7 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 | Regenerate the broker family | `node tools-record-brokers.mjs --write` |
 | Re-extract the read purpose policies | `node tools-read-purpose-policy.mjs --write` |
 | Ported business API | `pnpm run test:pennsync-api` |
-| Plan a deployment's pending migrations | `PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs` |
+| Plan a deployment's pending migrations | `PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs` (a postgres URL, or `supabase://<project-ref>` plus `SUPABASE_ACCESS_TOKEN` where only HTTPS is reachable) |
 | Apply them | `… node tools-pennsync-migrate.mjs --apply` |
 
 ## Environment config

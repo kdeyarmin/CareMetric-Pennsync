@@ -56,6 +56,8 @@ import {
   RECORD_MIGRATION_DIRECTORY,
   readMigrations,
 } from './tools-pennsync-provision.mjs';
+import { codeLines } from './tools-pennsync-migrate-shape.mjs';
+import { isManagementUrl, openManagementClient } from './tools-pennsync-supabase-db.mjs';
 
 export const MIGRATE_CONTRACT = 'cm.pennsync.migrate.v1';
 
@@ -232,9 +234,7 @@ export function migrationWithLedgerRow(migration) {
   // characters: every migration opens with a `--` header, so a check anchored
   // at the start refused all sixty-nine of them.
   const lines = migration.sql.split('\n');
-  const code = lines
-    .map((line, index) => ({ line, index }))
-    .filter(entry => entry.line.trim() !== '' && !/^\s*--/.test(entry.line));
+  const code = codeLines(migration.sql);
   const first = code.at(0), last = code.at(-1);
   if (!first || !/^\s*begin\s*;/i.test(first.line) || !/commit\s*;\s*$/i.test(last.line)) {
     refuse('MIGRATE_MIGRATION_NOT_TRANSACTIONAL', { file: migration.name });
@@ -361,6 +361,10 @@ export async function runMigrateCli({ env = process.env, argv = process.argv.sli
   write = console.log, error = console.error, connect = null,
   repository = resolve(dirname(fileURLToPath(import.meta.url))) } = {}) {
   const open = connect ?? (async url => {
+    // Two transports, chosen by the URL rather than by a flag, so the operator
+    // states the target once. `supabase://<ref>` is ordinary HTTPS and is the
+    // only one reachable where the direct host is IPv6-only or 5432 is closed.
+    if (isManagementUrl(url)) return openManagementClient({ url, token: env.SUPABASE_ACCESS_TOKEN });
     const require = createRequire(new URL('./services/authority-store/package.json', import.meta.url));
     const { Client } = require('pg');
     const client = new Client({ connectionString: url });
