@@ -4211,3 +4211,52 @@ store's own, which the contract returns, rather than whichever zone a service
 happened to run in.
 
 Port queue: `records_schema` 10 → 9, written 63 → 64.
+
+## D67 — A spread is a field set nobody chose
+
+**Decision.** Port `extractClinicalEvents` on the established shape, and store
+the ten fields its own response schema declares rather than whatever the model
+returned.
+
+**The defect is one line of JavaScript.** The original builds each row as
+
+```js
+const eventData = { patient_id, visit_id, event_date: visit_date, ...event,
+  text_anchor_start, text_anchor_end, verified: false };
+await base44.asServiceRole.entities.ClinicalEvent.create(eventData);
+```
+
+`...event` is **every key the model returned**. The platform accepts unknown
+keys quietly, so a model that answers `verified: true`, `verified_by`, or a
+`patient_id` of its own writes them — and `verified` is the field a nurse's
+fact-check sets. The contract names the ten fields the response schema
+declares, sets `verified` itself, and IGNORES everything else.
+
+**Ignoring rather than refusing is D54's rule, not D59's.** An operator's CSV
+column that nobody recognises is a typo worth refusing, because somebody meant
+it. A model's extra key is noise, and refusing the batch would lose the events
+that were good. The two rules look alike and the source decides which applies.
+
+**Two more the pattern already covers.** `event_date` comes from the VISIT
+rather than from a `visit_date` in the request body — the visit is bound to the
+patient by then, so its own date is the only one that cannot be claimed. And
+`events_extract_claimed_by`, its read-back and the "re-check the claim before
+stamping" dance become the row lock they were emulating; the original's own
+comment calls its version *"best-effort; not true CAS"*.
+
+**One new divergence.** The follow-up task is assigned to the CALLER, not to
+`evPatient.created_by || user.email`. A chart's creator is an address on a
+carried row that may belong to nobody in the agency any more, and the original
+says in its own comment why the field matters at all: without an assignee *"the
+create is rejected and the follow-up task is silently never made"*.
+
+**And one split worth naming.** The text anchors stay in the SERVICE. They are
+`indexOf` over a string the caller sent, with a case-insensitive retry, and
+reproducing JavaScript's `indexOf`, `trim` and `toLowerCase` in SQL would be a
+transcription with nothing to gain — the same call D59 made for the CSV parser.
+The rule that emerges from both: **text arithmetic over caller-supplied input
+belongs in the service; every decision about what may be STORED belongs in the
+contract.** The parity test runs the original's own search over the same inputs
+rather than asserting a copy of it.
+
+Port queue: `records_schema` 9 → 8, written 64 → 65.

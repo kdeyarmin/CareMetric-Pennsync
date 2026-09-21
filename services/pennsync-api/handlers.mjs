@@ -22,6 +22,9 @@ import {
   analyzeAndGenerateClinicalTasks as runTaskSuggestions,
 } from './clinical-task-suggestions.mjs';
 import {
+  extractClinicalEvents as runClinicalExtraction,
+} from './clinical-extraction.mjs';
+import {
   BAG_TECHNIQUE_FILENAME, SMART_NOTE_GUIDE_FILENAME, USER_MANUAL_FILENAME,
   buildBagTechniqueChecklist, buildSmartNoteGuide, buildUserManual, documentDate,
 } from './documents.mjs';
@@ -534,6 +537,15 @@ export const HANDLERS = Object.freeze({
     handle({ params, contract }) {
       exactObject(params, [], 'INVALID_PARAMS');
       return contract('checkAdrDeadlines', params);
+    },
+  }),
+  extractClinicalEvents: Object.freeze({
+    // The body keys are the original's, and `visit_date` is NOT among them:
+    // the event's date is the visit's own, which the contract returns.
+    needsIntegration: true,
+    handle({ params, integration, contract }) {
+      exactObject(params, ['visit_id', 'patient_id', 'nurse_notes'], 'INVALID_PARAMS');
+      return runClinicalExtraction({ params, integration, contract });
     },
   }),
   analyzeAndGenerateClinicalTasks: Object.freeze({

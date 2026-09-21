@@ -1240,6 +1240,43 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_TENANT_AGENCY_UNAVAILABLE',
     ]),
   }),
+  // The clinical events a model extracted from a visit note, and the tasks and
+  // alerts they imply. The original builds its row as `{…, ...event, …}`, so a
+  // model answering an unexpected key would write it; the contract names the
+  // ten fields the response schema declares and ignores the rest.
+  getClinicalExtractionContext: Object.freeze({
+    rpc: 'pennsync_contract_clinical_extract_context',
+    params: Object.freeze(['patient_id', 'visit_id']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_visit_id: args.visit_id ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_EXTRACT_AGENCY_NOT_HELD',
+      'PENNSYNC_EXTRACT_SUBJECT_INVALID',
+      'PENNSYNC_EXTRACT_PATIENT_NOT_VISIBLE',
+      'PENNSYNC_EXTRACT_VISIT_NOT_FOUND',
+    ]),
+  }),
+  recordClinicalEvents: Object.freeze({
+    rpc: 'pennsync_contract_clinical_extract_record',
+    params: Object.freeze(['patient_id', 'visit_id', 'events']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_visit_id: args.visit_id ?? null,
+      p_events: args.events === undefined ? null : args.events,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_EXTRACT_AGENCY_NOT_HELD',
+      'PENNSYNC_EXTRACT_SUBJECT_INVALID',
+      'PENNSYNC_EXTRACT_PATIENT_NOT_VISIBLE',
+      'PENNSYNC_EXTRACT_VISIT_NOT_FOUND',
+      'PENNSYNC_EXTRACT_INVALID',
+      'PENNSYNC_EXTRACT_TOO_MANY',
+    ]),
+  }),
   // The chart a model reads to SUGGEST clinical tasks. It creates none — the
   // capability's name says "generate" and D64 is the reason to say plainly
   // that there is no write contract behind this one.

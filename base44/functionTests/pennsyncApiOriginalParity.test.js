@@ -30,6 +30,9 @@ import {
 import {
   buildTaskSuggestionPrompt,
 } from '../../services/pennsync-api/clinical-task-suggestions.mjs';
+import {
+  EXTRACTION_SCHEMA, buildExtractionPrompt, textAnchors,
+} from '../../services/pennsync-api/clinical-extraction.mjs';
 
 /**
  * Every ported-handler test that has to READ its Base44 original.
@@ -504,4 +507,41 @@ test('the task-suggestion prompt is the original s, and it creates no task', asy
   assert.equal(/entities\s*\.\s*Task\s*\.\s*create/.test(original), false,
     'the original still creates no task');
   assert.match(original, /tasksWithDates/);
+});
+
+test('the extraction prompt, schema and anchor search are the original s', async () => {
+  const original = await readFile(resolve(repository,
+    'base44/functions/extractClinicalEvents/entry.ts'), 'utf8');
+  const start = original.indexOf('Extract ALL significant clinical events');
+  const end = original.indexOf('IMPORTANT: For source_text', start);
+  assert.ok(start > 0 && end > start, 'the original still carries the prompt');
+  const prompt = buildExtractionPrompt('NOTE');
+  for (const line of original.slice(start, end).split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.includes('${')) continue;
+    assert.ok(prompt.includes(trimmed), `the prompt lost: ${trimmed}`);
+  }
+  assert.match(prompt, /Visit Note:\nNOTE/);
+  // Both enums are what the CONTRACT coerces against, so they are read from
+  // the original rather than retyped.
+  const items = EXTRACTION_SCHEMA.properties.events.items.properties;
+  assert.deepEqual(items.severity.enum, ['low', 'medium', 'high', 'critical']);
+  assert.equal(items.event_type.enum.length, 21);
+  for (const value of items.event_type.enum) {
+    assert.ok(original.includes(`"${value}"`), `event_type lost ${value}`);
+  }
+  // And the anchor search is the block it replaces, proved by running the
+  // original's own logic over the same inputs.
+  assert.match(original, /const index = nurse_notes\.indexOf\(sourceText\);/);
+  assert.match(original, /const fuzzyIndex = lowerNotes\.indexOf\(lowerSource\);/);
+  const note = 'Visit at 0900. Found on floor by bed.';
+  for (const quote of ['  Found on floor  ', 'FOUND ON FLOOR', 'never said this']) {
+    const sourceText = quote.trim();
+    let expectedStart = note.indexOf(sourceText);
+    if (expectedStart === -1) expectedStart = note.toLowerCase().indexOf(sourceText.toLowerCase());
+    assert.deepEqual(textAnchors(note, quote), expectedStart === -1
+      ? { text_anchor_start: null, text_anchor_end: null }
+      : { text_anchor_start: expectedStart, text_anchor_end: expectedStart + sourceText.length },
+    quote);
+  }
 });
