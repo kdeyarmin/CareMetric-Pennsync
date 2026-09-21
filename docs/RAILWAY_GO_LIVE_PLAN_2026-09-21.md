@@ -24,7 +24,7 @@ Probed 2026-09-21:
 | `app.caremetricai.com/` | HTTP 200 | Base44 |
 | `caremetricai.base44.app/` | HTTP 200 | Base44 |
 | Supabase account project list | `CM Train`, `caremetric-pennsync-staging`, `PennPaps`, `CareMetric Support Hub`, `bolt-native-database-62871816` | **No production project** |
-| `caremetric-pennsync-staging` migration list | 9 versions, newest `20260918204105` | Five authority migrations behind; **no record store at all** |
+| `caremetric-pennsync-staging` migration list | 9 versions, newest `20260918204105` | Five authority migrations behind; **no record store at all**. **Closed later the same day: 59 applied, 68 recorded — see stage A** |
 | `node tools-pennsync-cutover.mjs --check` | `status: blocked`, `PINNED_INPUTS_REQUIRED`, `release_authorized:false` | None of the 15 gates has a receipt |
 | `pnpm run check:base44-surface` | `client_importers=366/366 entity_call_sites=445/445 core_integration_sites=41/41 function_wrappers=83/83` | The frontend has not moved one call site |
 
@@ -39,8 +39,8 @@ plan's status table reads as progress without saying where the progress lives.
 
 | Artifact | Built | Applied or deployed anywhere hosted |
 | --- | ---: | ---: |
-| Authority store migrations | 15 | 9 (one is deliberately never hosted; **five are simply behind**) |
-| Record store migrations (store, brokers, 51 contracts, purpose policies, file map) | 54 | **0** |
+| Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
+| Record store migrations (store, brokers, 51 contracts, purpose policies, file map) | 54 | ~~0~~ **54** — applied 2026-09-21 |
 | Ported handlers registered in `services/pennsync-api/handlers.mjs` | 74 | **0** |
 | Railway services | 2 defined | 1 deployed, paused; 1 never created |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
@@ -68,9 +68,12 @@ the file layer, a brokered send, or a new brokered operation — not more schema
 
 Six things gate everything else, in this order. Only the first is free.
 
-1. **Apply what is already committed to the staging project.** No new cost, no
-   new approval, no new resource. Until this happens, 54 migrations and 74
-   handlers are unproven in the only environment that counts.
+1. ~~**Apply what is already committed to the staging project.**~~ **Done
+   2026-09-21**: all 59 outstanding migrations applied to
+   `caremetric-pennsync-staging`, 68 recorded in the ledger, the pin landed on
+   staging with `source 'default'`. The 54 record migrations are no longer
+   unproven against a hosted database; the 74 handlers still are, because
+   nothing has served a request yet — that is stage B.
 2. **Create the `pennsync-api` Railway service**, deployed paused, exactly as the
    integration runtime was.
 3. **Enroll real people.** Ten Supabase Auth invitations accepted and verified
@@ -163,19 +166,104 @@ critical path that needs nothing from anybody.
 - CI reports the gap read-only on every run once
   `PENNSYNC_STAGING_DATABASE_URL` exists (`hosted-gap` in
   `pennsync-authority.yml`); it never applies anything.
-- Re-run the suites that today prove themselves against PGlite —
-  `record-store-migration`, `record-brokers`, `record-tenant-isolation`,
-  `activity-audit`, `contract-*` — against the hosted project.
-- Add the hosted-target job to `pennsync-authority.yml` (secrets: publishable key
-  and the actor UUID map), which Phase 1 has owed since it was written.
 
-Expect this stage to find things. A role and grant model built on the assumption
-that `pennsync_records_owner` holds neither `SUPERUSER` nor `BYPASSRLS` is
-exactly the kind of thing a managed Postgres can contradict, and finding that
-out now costs days rather than finding it out during a cutover window.
+#### Applied 2026-09-21
 
-**Exit:** every committed migration applied to one real hosted project, its
-suites green there, and CI running them on every PR.
+**The write path has been run against `caremetric-pennsync-staging`.** All 59
+outstanding migrations applied, in the provisioner's two-sequence order, each
+recording itself inside its own transaction. `applied: 59`, `mutated: true`, no
+failures and no partial run; a second read-only plan immediately afterwards
+reports `pending: 0`, `already_applied: 68`, `deployment_pin_pending: false`.
+
+- **The pin landed as predicted and was verified independently of the tool that
+  wrote it**: `app_id 6a9881683dc68a0bd54f1ef7`, `label staging`, **`source
+  'default'`**, one `deployment` row. `pennsync.deployment_app_id` was left
+  unset, so the pin resolved to the restrictive default. That answers this
+  stage's one open decision by taking it: staging was not chosen explicitly, it
+  was defaulted to, and the `deployment` row says so. Anyone who wants the pin
+  to record a deliberate choice has to say so before the store is built,
+  because D11 makes it immutable afterwards.
+- **The ledger holds one row per migration**: 68 rows, 68 distinct versions, 68
+  distinct names, no duplicates — the nine that were already there plus the 59
+  applied. `synthetic_archive_patient_import` is absent, which is the point of
+  holding it back in `LOCAL_ONLY_MIGRATIONS`.
+- The store came out at **157 record tables, all owned by
+  `pennsync_records_owner`, row level security enabled *and* forced on every
+  one, 591 policies, 82 contract functions** in `public`.
+
+#### What the stage found
+
+The assumption the stage was told to distrust **holds**: on managed Postgres
+`pennsync_records_owner` has neither `SUPERUSER` nor `BYPASSRLS`, so the 591
+policies bind on the role the brokers run as. So does the rest of the
+composition — a PGlite database built from the same committed migrations and
+measured by the same SQL is byte-identical to the hosted one on tables, owners,
+forced RLS, policy names, contract inventory, helper inventory and function
+ownership. Nothing about managed Postgres contradicted the model.
+
+Two things a local database could not have told us, and both are about the
+platform rather than the store:
+
+- **Four platform roles reach the record store past RLS.** A hosted project
+  carries five roles holding `SUPERUSER` or `BYPASSRLS`, and `postgres`,
+  `supabase_admin`, `supabase_etl_admin` and `supabase_read_only_user` all hold
+  `USAGE` on both schemas. `supabase_read_only_user` is the one to say out
+  loud: it bypasses all 591 policies, so Supabase's own read-only access reads
+  every record table past the tenant predicates. This is inherent to managed
+  Supabase and cannot be revoked from inside the store; it is recorded as a
+  baseline set in `hosted-store.test.mjs` so a sixth one fails the suite. It
+  belongs in the evidence packet as a stated property of the hosting, not as a
+  defect to fix.
+- **`service_role` bypasses RLS and is held out by the grant model alone.** It
+  holds `BYPASSRLS` and no `USAGE` on either schema, so unlike every other
+  caller nothing about the policies contains it. Granting it schema usage at
+  any future point would silently open the whole store; PGlite cannot show
+  this, because there `service_role` has no bypass at all.
+
+#### The suites, hosted
+
+- **Added `services/authority-store/tests/hosted-store.test.mjs`** and the
+  `hosted-store` job in `pennsync-authority.yml`. It measures the migrated
+  project against a reference built from the same committed migrations rather
+  than against constants written into the test, so it fails on drift in either
+  direction, and it asserts the platform facts above that no reference build
+  can produce. It is read-only structurally rather than by intention: every
+  statement is checked with the migrate tool's own `isReadOnly`, which fails
+  closed, before it is sent. 14 tests, green against hosted staging.
+- **The row-behaviour half cannot run hosted yet, and that is a finding rather
+  than an omission.** `record-tenant-isolation`, `activity-audit` and the 42
+  `contract-*` suites prove what a policy *means* by seeding callers, and a
+  caller in this store is an `auth.users` row —
+  `pennsync_private.identity_map.auth_user_id` carries a foreign key to it.
+  `fixtures.sql` fabricates those rows and refuses to load anywhere
+  `auth.pennsync_local_test_double()` is missing, which is every hosted
+  project; writing synthetic identities into a real Supabase Auth schema is
+  precisely what that guard exists to prevent. So the hosted proof of isolation
+  is **blocked on stage C**, not on engineering here, and the publishable key
+  and actor UUID map the hosted-target job was to carry are owed to that stage
+  rather than to this one. What stage A can prove without a caller — that the
+  policies bind, that they all arrived, that the helpers are unreachable and
+  that no caller holds a direct grant — is proved.
+- The PGlite suites themselves remain green and unchanged: they are still the
+  proof of what the predicates mean, and now they are no longer the *only*
+  proof that the store a deployment holds is the one they describe.
+
+#### The residual gap, stated plainly
+
+The `hosted-store` job hands its secrets to the checked-out suite, so it gets
+them **only on `main`**, for the reason already recorded on `hosted-gap`: on a
+pull request that file is whatever the branch author wrote, and
+`SUPABASE_ACCESS_TOKEN` is account-wide. The job still runs on every pull
+request — the suite is exercised and skips each hosted assertion with a stated
+reason — but the hosted measurements happen on main and on a manual run from
+main. That is narrower than "CI running them on every PR" and it is the safe
+reading of it. Closing it properly needs a credential scoped to reads on one
+project, which Supabase does not offer today.
+
+**Exit:** every committed migration applied to one real hosted project — **done**;
+the structural suites green there and running in CI — **done**; the row-behaviour
+suites green there — **blocked on stage C**, which is where the identities come
+from.
 
 ### Stage B — Deploy `services/pennsync-api`, paused (size S; owner creates the service)
 
@@ -217,6 +305,15 @@ operation set; no traffic change anywhere.
 
 - Send Supabase Auth invitations; each enrollee accepts their own. The tool
   cannot create a native account and must not be given a way to.
+- **This stage now also carries stage A's unfinished half.** The hosted proof of
+  tenant isolation — `record-tenant-isolation`, `activity-audit` and the 42
+  `contract-*` suites run against the hosted project rather than PGlite — needs
+  seeded callers, and a caller is an `auth.users` row that only a real accepted
+  invitation can create. Stage A proved the policies bind, arrived intact and
+  are unreachable except through the brokers; what it could not prove is what
+  any one of them returns to a real person. The publishable key and actor UUID
+  map belong to that job, here, rather than to the structural suite stage A
+  added.
 - Verify each identity out of band, then run `tools-pennsync-enroll.mjs` with the
   digest-addressed plan. Every run lands in `enrollment_receipt`.
 - Retire the four pinned actor IDs in `services/authority-client/client.mjs` in
@@ -506,7 +603,7 @@ so none of it sits waiting on a misunderstanding:
 
 | Needed | For | Note |
 | --- | --- | --- |
-| Approval to run the migrate tool's write path against hosted staging | Stage A | The credentials, the transport and the verified plan all exist here; an agent session's guardrail classifies any write to a hosted database as a production deploy and cannot tell this staging project from a production one. This unblocks the stage rather than completing it — the suites that today prove themselves against PGlite still have to be re-run against the hosted project, and the hosted-target CI job still has to be added, and the stage's exit needs both green |
+| ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green; what the stage's exit still lacks is the row-behaviour half, which needs identities and so moved to stage C |
 | Create the `pennsync-api` Railway service | Stage B | Cost approval; same project and pattern as the runtime |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this |

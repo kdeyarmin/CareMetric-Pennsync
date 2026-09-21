@@ -247,3 +247,57 @@ jobs:
               ;;
           esac
           node tools-pennsync-migrate.mjs
+
+  hosted-store:
+    name: Verify the committed store on hosted staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+          cache-dependency-path: services/authority-store/pnpm-lock.yaml
+      - name: Install isolated authority dependencies
+        run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+      # The suites above build their own database and are green whatever the
+      # hosted project holds -- which is how it stayed fifty-nine migrations
+      # behind without anything going red. This one measures the migrated
+      # project against a reference built from the same committed migrations,
+      # so it fails on drift in either direction and on the things only a
+      # managed Postgres can contradict: the record owner's attributes, the
+      # platform roles that bypass RLS, the grants a caller actually holds.
+      #
+      # READ-ONLY, and structurally so rather than by intent: the suite checks
+      # every statement with the migrate tool's own `isReadOnly`, which fails
+      # closed, before sending it. It applies nothing -- a deployment is
+      # migrated by an operator who can see the plan first, never by CI.
+      #
+      # The step ALWAYS runs so the suite itself is exercised on a pull
+      # request; without the secrets it skips each hosted assertion with a
+      # reason rather than passing silently.
+      #
+      # The SECRETS are handed over only on main, for the reason recorded on
+      # `hosted-gap` above: the checked-out `hosted-store.test.mjs` is the code
+      # the secrets are given to, and on a pull request that file is whatever
+      # the branch author wrote. The ref decides rather than the event, so a
+      # `workflow_dispatch` against a ref a collaborator controls does not
+      # reach them either. That matters most for the token, which is
+      # account-wide and reaches every project in the organisation, while the
+      # URL names one staging database.
+      #
+      # So the hosted half of stage A's exit runs on main and on a manual run
+      # from main, and not on a pull request branch. That is narrower than the
+      # plan's "CI running them on every PR" and it is the safe reading of it;
+      # closing the gap needs a credential scoped to reads on one project,
+      # which does not exist today.
+      - name: Measure the hosted staging store
+        env:
+          PENNSYNC_HOSTED_DATABASE_URL: ${{ github.ref == 'refs/heads/main' && secrets.PENNSYNC_STAGING_DATABASE_URL || '' }}
+          SUPABASE_ACCESS_TOKEN: ${{ github.ref == 'refs/heads/main' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+        run: node --test services/authority-store/tests/hosted-store.test.mjs
