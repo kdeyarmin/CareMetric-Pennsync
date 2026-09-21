@@ -11,6 +11,7 @@ import {
   discoverPausedFunctions, discoverPolicylessEntities, discoverPortBlockers, discoverPortedFunctions,
   classifyWithoutEntities, discoverEntityFreeBlockers,
   entitiesTouched, isInertFunction, isPausedFunction, isRefusingHandler, main, parseManifest,
+  discoverClaimsOnlyFunctions, TRUSTED_CLAIMS_FENCE,
 } from './tools-transition-disposition.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -739,7 +740,7 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 8, patient_access_model: 0,
-    records_schema: 2, files: 12, ported_function: 1, core_integration: 2, pdf_rendering: 0,
+    records_schema: 1, files: 12, ported_function: 1, core_integration: 3, pdf_rendering: 0,
     external_secret: 2, none: 71 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
@@ -782,13 +783,13 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Two. That is how many of the hundred can be written today, and the
+  // One. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 2);
+  assert.equal(report.port_blockers.records_schema.length, 1);
   // The thirty-eight that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
@@ -848,7 +849,7 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // `generatePatientHandout` joins it by the refinement above: its only entity
   // is `SystemLog`, so what it waits on is the send rather than the store.
   assert.deepEqual(report.port_blockers.core_integration,
-    ['generatePatientHandout', 'sendWelcomeEmail']);
+    ['generatePatientHandout', 'sendAccountReadyEmail', 'sendWelcomeEmail']);
   // Named, because porting one of these verbatim would carry Base44's storage
   // host into the service, and the `cmfile:` handles that replace those URLs do
   // not exist yet. They wait on the file layer, not on the runtime.
@@ -1035,4 +1036,45 @@ test('the contradiction is reported rather than tolerated', () => {
   const report = checkCoverage(discoverCapabilities(repository), drifted, discoverEvidence(repository));
   assert.ok(report.contradicted_disposition.some(entry => entry.includes(victim) && entry.includes('paused at source')),
     `${victim} declared port should be contradicted`);
+});
+
+test('a capability whose only entities are the claims helper is not waiting on the record store', () => {
+  // D74, and the fifth correction of this shape. The generated
+  // `trustedCallerClaims` helper reads `AgencyMembership` and `Agency` to
+  // answer ONE question — what tenant role does this caller hold — and the
+  // ported service answers it from the request envelope. D34 settled that
+  // those two are the authority store's native model.
+  const claims = discoverClaimsOnlyFunctions(repository);
+  // Measured, not asserted: the set is derived by removing the fence and
+  // re-running the SAME extractor, so a module that also reads a real row
+  // keeps its entities and is untouched.
+  for (const name of claims) {
+    const source = readFileSync(resolve(repository, 'base44/functions', name, 'entry.ts'), 'utf8');
+    assert.ok(entitiesTouched(source).names.length > 0, `${name} touches entities`);
+    const bare = entitiesTouched(source.replace(TRUSTED_CLAIMS_FENCE, ''));
+    assert.deepEqual(bare.names, [], `${name} touches none outside the helper`);
+    assert.equal(bare.dynamic, false, `${name} indexes no namespace`);
+  }
+  // The two the measurement finds, and what each one is.
+  assert.deepEqual([...claims].sort(), ['autoImportPatients', 'sendAccountReadyEmail']);
+
+  const report = checkCoverage(
+    discoverCapabilities(repository),
+    parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
+    discoverEvidence(repository),
+  );
+  // `sendAccountReadyEmail`'s whole body is one `Core.SendEmail`, so reporting
+  // it as startable-today said a capability could be written whose only work
+  // is the send D56 has not decided. It reads `core_integration` now, which is
+  // the answer the classifier had already computed and was discarding.
+  assert.ok(report.port_blockers.core_integration.includes('sendAccountReadyEmail'));
+  assert.equal(report.port_blockers.records_schema.includes('sendAccountReadyEmail'), false);
+  // `autoImportPatients` is `preserved_paused` and in no bucket, so the
+  // refinement changes nothing for it — which is the check that this fires
+  // where it should and nowhere else.
+  for (const names of Object.values(report.port_blockers)) {
+    assert.equal(names.includes('autoImportPatients'), false);
+  }
+  // And the one capability left waiting on the record store is a real one.
+  assert.deepEqual(report.port_blockers.records_schema, ['processCompletedVisit']);
 });

@@ -529,6 +529,41 @@ export function discoverEntityFreeBlockers(repository) {
   return blockers;
 }
 
+/**
+ * The generated `trustedCallerClaims` helper, whose two entities are
+ * AUTHORIZATION rather than records.
+ *
+ * It reads `AgencyMembership` and `Agency` to answer one question — what
+ * tenant role does this caller hold — and the ported service answers it from
+ * the request envelope instead: `resolveAuthority` runs on every request, and
+ * D34 settled that those two are the authority store's native model rather
+ * than anything `pennsync_records` was ever going to serve.
+ *
+ * So a module whose ENTIRE entity reach is inside that fence is not waiting on
+ * the record store. Measured by removing the fence and re-running the same
+ * extractor: a module that also reads a real row keeps its entities and is
+ * untouched by this.
+ */
+export const TRUSTED_CLAIMS_FENCE =
+  /\/\/ <<<BEGIN SHARED HELPER: trustedCallerClaims[\s\S]*?\/\/ <<<END SHARED HELPER: trustedCallerClaims>>>/g;
+
+export function discoverClaimsOnlyFunctions(repository) {
+  const root = join(repository, 'base44', 'functions');
+  const names = new Set();
+  let entries = [];
+  try { entries = readdirSync(root, { withFileTypes: true }); } catch { return names; }
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    let source;
+    try { source = readFileSync(join(root, entry.name, 'entry.ts'), 'utf8'); } catch { continue; }
+    const whole = entitiesTouched(source);
+    if (whole.dynamic || whole.names.length === 0) continue;
+    const bare = entitiesTouched(source.replace(TRUSTED_CLAIMS_FENCE, ''));
+    if (!bare.dynamic && bare.names.length === 0) names.add(entry.name);
+  }
+  return names;
+}
+
 export function discoverEvidence(repository) {
   return {
     inertFunctions: discoverInertFunctions(repository),
@@ -542,6 +577,7 @@ export function discoverEvidence(repository) {
     careTeamDependents: discoverCareTeamDependents(repository),
     activityTrail: discoverActivityTrail(repository),
     chartScope: discoverChartScope(repository),
+    claimsOnlyFunctions: discoverClaimsOnlyFunctions(repository),
   };
 }
 
@@ -708,6 +744,24 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
       if (touched.names.length > 0
         && touched.names.every(entity => (manifest.entities || {})[entity] === 'retire'
           && audited.has(entity))) {
+        const rest = (evidence.entityFreeBlockers || {})[name];
+        if (rest && rest !== 'records_schema') return rest;
+      }
+      /*
+       * D74, and the fifth correction of this shape. A module whose ENTIRE
+       * entity reach is the generated `trustedCallerClaims` helper is reading
+       * AUTHORIZATION, not records: those two entities answer "what tenant
+       * role does this caller hold", and the ported service answers it from
+       * the request envelope — `resolveAuthority` runs on every request, and
+       * D34 settled that `AgencyMembership` and `Agency` are the authority
+       * store's native model.
+       *
+       * It sits beside the retired-log fall-through above because it is the
+       * same sentence with a different reason: the record store has nothing
+       * left to give this module, so re-classify by what else it needs. The
+       * classifier had already computed that answer and was discarding it.
+       */
+      if ((evidence.claimsOnlyFunctions || new Set()).has(name)) {
         const rest = (evidence.entityFreeBlockers || {})[name];
         if (rest && rest !== 'records_schema') return rest;
       }

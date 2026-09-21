@@ -4693,3 +4693,47 @@ strip comments now. A check that reads a file for an absent name has to say
 whether it means absent from the code or absent from the page.
 
 Port queue: `records_schema` 3 → 2, written 70 → 71.
+
+## D74 — The claims helper reads authorization, not records
+
+**Decision.** A capability whose ENTIRE entity reach is the generated
+`trustedCallerClaims` helper is not waiting on the record store. Re-classify it
+by what else it needs.
+
+**The fifth correction of this shape**, after D47, D55, D60 and D65, and the
+same sentence every time: *a bucket keeps its name after the reason for it has
+gone.*
+
+`trustedCallerClaims` reads `AgencyMembership` and `Agency` to answer one
+question — what tenant role does this caller hold. The ported service answers
+it from the request envelope: `resolveAuthority` runs on every request, and
+**D34 already settled** that those two are the authority store's native model
+rather than anything `pennsync_records` was ever going to serve. The classifier
+did not know, because its rule is "touches an entity → `records_schema`", and
+that rule was written before there was a second store to be native to.
+
+**It fires on exactly one capability in the queue, and the effect is the
+number the plan leads with.** `sendAccountReadyEmail`'s whole body is one
+`Core.SendEmail` behind an admin gate — it reaches no record at all — so
+reporting it as startable-today said a capability could be written whose only
+work is the send D56 has not decided. It reads `core_integration` now, which is
+**the answer the classifier had already computed** in `entityFreeBlockers` and
+was discarding. `records_schema` 2 → 1, `core_integration` 2 → 3.
+
+**Measured, not asserted.** The set is derived by removing the fence and
+re-running the SAME extractor the classifier uses: a module that also reads a
+real row keeps its entities and is untouched. That matters because three other
+capabilities have all their entity references inside a shared helper and are
+NOT in this set — `discoverTelnyxResources` and `retryFailedFax` read
+`IntegrationSecret`, `AgencySettings` and `FaxRetryConfig` through their own
+credential helpers, and a credential is a record. Only the claims helper is
+authorization.
+
+`autoImportPatients` also qualifies and is `preserved_paused`, so it is in no
+bucket and the refinement changes nothing for it — which is the check that this
+fires where it should and nowhere else.
+
+**One capability is left waiting on the record store**: `processCompletedVisit`,
+which writes `Task` and `Notification` and is real record work.
+
+Port queue: `records_schema` 2 → 1, `core_integration` 2 → 3, written 71.
