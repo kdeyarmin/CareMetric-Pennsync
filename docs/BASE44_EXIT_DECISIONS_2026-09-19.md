@@ -4983,3 +4983,90 @@ The copy itself needs a live Base44 app and a live bucket. Nothing here fetches
 an object, and the twelve file-bound capabilities stay blocked until an
 operator runs the plan — but what they wait on is now DATA rather than design,
 which is what D56 said it should be.
+
+## D78 — The trap this repository wrote down, and then walked into twice
+
+**Decision.** Two ported contracts were guarding a create-if-absent with
+`select … for update`, which **locks nothing when the row does not exist**.
+Give each the composite unique index its correctness was already assuming,
+enumerate those keys in the generator rather than hand-writing them beside the
+contracts, and prove both with two real connections.
+
+**The defect is the same one, in two capabilities.**
+
+`contract_timesheet_submit` looks for a timesheet matching `(agency, employee,
+service line, pay period)`, refuses when it finds one, and inserts when it does
+not. Two submissions of one period — a retried request, a second tab — both
+found nothing and both inserted. The original's own comment says what that
+costs: *"Prevents a duplicate row from being double-counted in payroll."* The
+port kept the sentence and lost the guarantee.
+
+`contract_visit_points_save` has the same shape over an agency's point
+schedule. An agency setting one for the first time from two sessions ended up
+with two active configs, and since every reader takes `active is not false`
+with `limit 1`, which one paid its nurses depended on an `order by`.
+
+**What makes this worth a decision rather than a patch** is that D33 already
+wrote the rule down, about `chart_assignment`, in this document:
+
+> `select … for update` serializes nothing when the row does not exist, so two
+> concurrent grants both reach the insert, and the contract catches
+> `unique_violation` … **by name**.
+
+Two later ports were written with exactly the shape that paragraph warns
+about. Neither could be caught by its own suite: PGlite is one connection, and
+one connection cannot interleave. **A rule in a document is not a check.** The
+only reason these were found at all is that a reviewer read the SQL.
+
+### The keys are generated, and each one names the contract that catches it
+
+`pennsync_records` table DDL is generated — that is the repository's rule, and
+an index hand-written beside a contract would split the source of truth for a
+table's shape. So `CONTRACT_UNIQUE` in `tools-entity-schema-plan.mjs` is a
+second, separate family beside `DECLARED_UNIQUE`, and the distinction is real:
+
+| | `DECLARED_UNIQUE` (D30) | `CONTRACT_UNIQUE` (D78) |
+| --- | --- | --- |
+| Where the claim comes from | the entity SCHEMA's own description | a hand-written CONTRACT's correctness |
+| Shape | one column | a composite business key |
+| Checked against | the schemas, in both directions | the planned columns, and the contract's catch |
+
+Each entry owes its columns, a reason, **and the contract and migration that
+depend on it**. That last pair is what makes the index NAME checkable, and D30
+is the reason it has to be: it says a rename *"turns a correct retry answer
+into a raw database error"* — and then nothing checked it for sixty ports.
+`tools-entity-schema-plan.test.mjs` now reads the named migration and fails
+unless it compares the caught constraint against exactly this index. Renaming
+one key fails four tests.
+
+**Columns only, never an expression.** Free SQL in a generator is a predicate
+nobody re-derives. The timesheet's lookup normalises with
+`lower(coalesce(employee_email, ''))`, so a plain-column index is only
+equivalent because the contract WRITES `caller_email()` and
+`pennsync_private.identity_map` constrains `expected_email` to
+`lower(btrim(expected_email))`. That is an argument the enumeration's reason
+has to make, not something the emitter may assume.
+
+**The point-config index is partial over active rows, and that is the general
+rule: constrain exactly what is relied on.** A whole-table key would have said
+one schedule per agency ever, which is a narrowing of the entity nobody asked
+for; a deactivated schedule is history it may keep, and no reader consults it.
+
+### The two answers are different, and both are the uncontended one
+
+The timesheet's loser is **refused**, with the same code the lookup gives for
+the same state — a duplicate period is not a legitimate second request. The
+point config's loser is **answered**: saving your own agency's schedule twice
+is legitimate, so it retries once and lands on the winner's row rather than
+beside it, carrying the values this caller sent. In both cases the caller
+cannot tell a race from the uncontended path, which is the point.
+
+### Proved with two connections, and watched failing
+
+`record-contract-postgres.test.mjs` gains both races. What they assert is the
+**block** rather than the row count: with the two indexes commented out of the
+generated migration the second caller does not wait for the first, so the
+lock-wait assertion is what fails, seconds before any duplicate is counted.
+Four tests fail under that sabotage. That is the only way to tell a test that
+works from one that merely passes — and given that this decision exists because
+a written-down rule was not a check, it seemed worth doing to the check as well.

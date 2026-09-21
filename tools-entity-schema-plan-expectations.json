@@ -11,6 +11,7 @@
     "skipped_properties": 0,
     "merged_system_columns": 7,
     "unique_keys": 6,
+    "contract_unique_keys": 2,
     "append_only": 4
   },
   "entities": [
@@ -26,6 +27,7 @@
       "columns": 25,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -42,6 +44,7 @@
       "columns": 6,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -58,6 +61,7 @@
       "columns": 10,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -74,6 +78,7 @@
       "columns": 14,
       "constrained": 4,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -90,6 +95,7 @@
       "columns": 16,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -106,6 +112,7 @@
       "columns": 12,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -122,6 +129,7 @@
       "columns": 16,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -138,6 +146,7 @@
       "columns": 12,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -154,6 +163,7 @@
       "columns": 27,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -170,6 +180,7 @@
       "columns": 30,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -186,6 +197,7 @@
       "columns": 11,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -202,6 +214,7 @@
       "columns": 5,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -218,6 +231,7 @@
       "columns": 10,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -234,6 +248,7 @@
       "columns": 18,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -252,6 +267,7 @@
       "unique_keys": [
         "membership_key"
       ],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -268,6 +284,7 @@
       "columns": 57,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -284,6 +301,7 @@
       "columns": 17,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 1,
       "skipped": []
@@ -300,6 +318,7 @@
       "columns": 8,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -316,6 +335,7 @@
       "columns": 11,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -332,6 +352,7 @@
       "columns": 13,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -348,6 +369,7 @@
       "columns": 19,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -364,6 +386,7 @@
       "columns": 12,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -380,6 +403,7 @@
       "columns": 11,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -396,6 +420,7 @@
       "columns": 31,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -412,6 +437,7 @@
       "columns": 17,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -428,6 +454,7 @@
       "columns": 12,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -444,6 +471,7 @@
       "columns": 17,
       "constrained": 4,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -460,6 +488,7 @@
       "columns": 19,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -476,6 +505,7 @@
       "columns": 10,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -492,6 +522,7 @@
       "columns": 18,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -508,6 +539,7 @@
       "columns": 6,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 1,
       "skipped": []
@@ -524,6 +556,7 @@
       "columns": 14,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 1,
       "skipped": []
@@ -540,6 +573,7 @@
       "columns": 20,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 1,
       "skipped": []
@@ -556,6 +590,7 @@
       "columns": 15,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -572,6 +607,7 @@
       "columns": 13,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -588,6 +624,7 @@
       "columns": 21,
       "constrained": 5,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -604,6 +641,7 @@
       "columns": 12,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": true,
       "merged_system_columns": 0,
       "skipped": []
@@ -620,6 +658,7 @@
       "columns": 9,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -636,6 +675,7 @@
       "columns": 13,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -652,6 +692,7 @@
       "columns": 27,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -668,6 +709,7 @@
       "columns": 23,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -684,6 +726,7 @@
       "columns": 10,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -700,6 +743,7 @@
       "columns": 17,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -716,6 +760,7 @@
       "columns": 31,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -732,6 +777,7 @@
       "columns": 17,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -748,6 +794,7 @@
       "columns": 18,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -766,6 +813,7 @@
       "unique_keys": [
         "binding_key"
       ],
+      "contract_unique_keys": [],
       "append_only": true,
       "merged_system_columns": 0,
       "skipped": []
@@ -782,6 +830,7 @@
       "columns": 19,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -798,6 +847,7 @@
       "columns": 8,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -814,6 +864,7 @@
       "columns": 13,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 1,
       "skipped": []
@@ -830,6 +881,7 @@
       "columns": 14,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -846,6 +898,7 @@
       "columns": 8,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -862,6 +915,7 @@
       "columns": 17,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -878,6 +932,7 @@
       "columns": 12,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 1,
       "skipped": []
@@ -894,6 +949,7 @@
       "columns": 11,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -910,6 +966,7 @@
       "columns": 6,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -926,6 +983,7 @@
       "columns": 21,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -942,6 +1000,7 @@
       "columns": 10,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": true,
       "merged_system_columns": 0,
       "skipped": []
@@ -958,6 +1017,7 @@
       "columns": 20,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -974,6 +1034,7 @@
       "columns": 6,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -990,6 +1051,7 @@
       "columns": 7,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1006,6 +1068,7 @@
       "columns": 14,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1022,6 +1085,7 @@
       "columns": 20,
       "constrained": 4,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1038,6 +1102,7 @@
       "columns": 15,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1054,6 +1119,7 @@
       "columns": 29,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1070,6 +1136,7 @@
       "columns": 9,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1086,6 +1153,7 @@
       "columns": 24,
       "constrained": 4,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1102,6 +1170,7 @@
       "columns": 4,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1118,6 +1187,7 @@
       "columns": 18,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1134,6 +1204,7 @@
       "columns": 12,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1150,6 +1221,7 @@
       "columns": 8,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1166,6 +1238,7 @@
       "columns": 11,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1182,6 +1255,7 @@
       "columns": 15,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1198,6 +1272,7 @@
       "columns": 17,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1214,6 +1289,7 @@
       "columns": 15,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1230,6 +1306,7 @@
       "columns": 14,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1246,6 +1323,7 @@
       "columns": 21,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1262,6 +1340,7 @@
       "columns": 6,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1278,6 +1357,7 @@
       "columns": 17,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1294,6 +1374,7 @@
       "columns": 15,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1310,6 +1391,7 @@
       "columns": 9,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1328,6 +1410,7 @@
       "unique_keys": [
         "dedupe_key"
       ],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1344,6 +1427,7 @@
       "columns": 8,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1360,6 +1444,7 @@
       "columns": 9,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1376,6 +1461,7 @@
       "columns": 12,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1392,6 +1478,7 @@
       "columns": 14,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1408,6 +1495,7 @@
       "columns": 24,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1424,6 +1512,7 @@
       "columns": 13,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1440,6 +1529,7 @@
       "columns": 16,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1456,6 +1546,7 @@
       "columns": 9,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1472,6 +1563,7 @@
       "columns": 9,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1488,6 +1580,7 @@
       "columns": 17,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1506,6 +1599,7 @@
       "unique_keys": [
         "patient_creation_key"
       ],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1522,6 +1616,7 @@
       "columns": 21,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1538,6 +1633,7 @@
       "columns": 16,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1556,6 +1652,7 @@
       "unique_keys": [
         "assignment_key"
       ],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1572,6 +1669,7 @@
       "columns": 16,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1588,6 +1686,7 @@
       "columns": 18,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1604,6 +1703,7 @@
       "columns": 17,
       "constrained": 4,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1620,6 +1720,7 @@
       "columns": 15,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1636,6 +1737,7 @@
       "columns": 11,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1652,6 +1754,7 @@
       "columns": 16,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 1,
       "skipped": []
@@ -1668,6 +1771,7 @@
       "columns": 19,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": true,
       "merged_system_columns": 0,
       "skipped": []
@@ -1684,6 +1788,7 @@
       "columns": 11,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1700,6 +1805,7 @@
       "columns": 17,
       "constrained": 4,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1716,6 +1822,7 @@
       "columns": 15,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1732,6 +1839,7 @@
       "columns": 9,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1748,6 +1856,7 @@
       "columns": 9,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1764,6 +1873,7 @@
       "columns": 8,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1780,6 +1890,7 @@
       "columns": 11,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1796,6 +1907,7 @@
       "columns": 26,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1812,6 +1924,7 @@
       "columns": 29,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1828,6 +1941,7 @@
       "columns": 16,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1844,6 +1958,7 @@
       "columns": 17,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1860,6 +1975,7 @@
       "columns": 12,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1876,6 +1992,7 @@
       "columns": 13,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1892,6 +2009,7 @@
       "columns": 14,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1908,6 +2026,7 @@
       "columns": 11,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1924,6 +2043,7 @@
       "columns": 11,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1940,6 +2060,7 @@
       "columns": 16,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1956,6 +2077,7 @@
       "columns": 10,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1972,6 +2094,7 @@
       "columns": 10,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -1988,6 +2111,7 @@
       "columns": 15,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2004,6 +2128,7 @@
       "columns": 13,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2022,6 +2147,7 @@
       "unique_keys": [
         "referral_creation_key"
       ],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2038,6 +2164,7 @@
       "columns": 17,
       "constrained": 4,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2054,6 +2181,7 @@
       "columns": 13,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2070,6 +2198,7 @@
       "columns": 9,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2086,6 +2215,7 @@
       "columns": 10,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2102,6 +2232,7 @@
       "columns": 9,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2118,6 +2249,7 @@
       "columns": 8,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2134,6 +2266,7 @@
       "columns": 14,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2150,6 +2283,7 @@
       "columns": 11,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2166,6 +2300,7 @@
       "columns": 7,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2182,6 +2317,7 @@
       "columns": 6,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2198,6 +2334,7 @@
       "columns": 15,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2214,6 +2351,7 @@
       "columns": 8,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2230,6 +2368,7 @@
       "columns": 16,
       "constrained": 4,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2246,6 +2385,7 @@
       "columns": 12,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2262,6 +2402,7 @@
       "columns": 13,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2278,6 +2419,7 @@
       "columns": 13,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2294,6 +2436,7 @@
       "columns": 11,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2310,6 +2453,7 @@
       "columns": 27,
       "constrained": 6,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2326,6 +2470,7 @@
       "columns": 4,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2342,6 +2487,7 @@
       "columns": 6,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2358,6 +2504,7 @@
       "columns": 12,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2374,6 +2521,7 @@
       "columns": 17,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2390,6 +2538,22 @@
       "columns": 30,
       "constrained": 3,
       "unique_keys": [],
+      "contract_unique_keys": [
+        {
+          "key": "period",
+          "index": "timesheet_period_unique",
+          "columns": [
+            "agency_id",
+            "employee_email",
+            "service_type",
+            "pay_period_start",
+            "pay_period_end"
+          ],
+          "live": null,
+          "contract": "contract_timesheet_submit",
+          "migration": "20260920360000_contract_timesheet.sql"
+        }
+      ],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2406,6 +2570,7 @@
       "columns": 5,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2422,6 +2587,7 @@
       "columns": 43,
       "constrained": 6,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2438,6 +2604,7 @@
       "columns": 5,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2454,6 +2621,7 @@
       "columns": 16,
       "constrained": 4,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2470,6 +2638,7 @@
       "columns": 13,
       "constrained": 2,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2486,6 +2655,7 @@
       "columns": 7,
       "constrained": 1,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2502,6 +2672,7 @@
       "columns": 42,
       "constrained": 4,
       "unique_keys": [],
+      "contract_unique_keys": [],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []
@@ -2518,6 +2689,18 @@
       "columns": 9,
       "constrained": 0,
       "unique_keys": [],
+      "contract_unique_keys": [
+        {
+          "key": "active_agency",
+          "index": "visit_point_config_active_agency_unique",
+          "columns": [
+            "agency_id"
+          ],
+          "live": "active",
+          "contract": "contract_visit_points_save",
+          "migration": "20260920280000_contract_agency_config.sql"
+        }
+      ],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []

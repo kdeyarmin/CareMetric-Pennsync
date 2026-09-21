@@ -47,6 +47,17 @@
 --    it carries the authority envelope its reader filters on. Its EMAIL half is
 --    `Core.SendEmail`, which nothing brokers, so the answer says
 --    `delivery_paused`.
+--
+-- AND ONE CORRECTION TO THIS PORT, recorded because the shape recurs (D78).
+-- The duplicate-period check below was written as a lookup with `for update`,
+-- which reads like a lock and is not one when the row does not exist — the trap
+-- D33 wrote down about `chart_assignment` two ports earlier. Two submissions of
+-- one pay period, from a retried request or a second tab, both found nothing
+-- and both inserted, and payroll counted the period twice. That is the exact
+-- outcome the sentence above says the check exists to prevent.
+-- `timesheet_period_unique` is what holds it now, the write catches that
+-- constraint BY NAME, and `record-contract-postgres.test.mjs` proves it with two
+-- real connections rather than asserting it.
 begin;
 
 do $$
@@ -196,7 +207,7 @@ declare
   v_numbers jsonb := '{}'::jsonb; v_field text; v_manager record; v_manager_email text := '';
   v_manager_name text := ''; v_now timestamptz; v_id text; v_pto double precision;
   v_phone double precision := 0; v_seen text[] := array[]::text[]; v_notified integer := 0;
-  v_recipient record; v_missing boolean := false;
+  v_recipient record; v_missing boolean := false; v_constraint text;
 begin
   -- Divergence 1: membership, not `is_approved`.
   v_role := "pennsync_records".caller_tenant_role(p_agency);
@@ -370,6 +381,11 @@ begin
   v_now := clock_timestamp();
   -- One timesheet per (employee, service line, pay period). The original's own
   -- reason: *"Prevents a duplicate row from being double-counted in payroll."*
+  --
+  -- This lookup gives the REFUSAL; it does not give the guarantee. `for update`
+  -- locks the row it finds and locks nothing at all when there is none, so what
+  -- stops two concurrent first submissions is `timesheet_period_unique` and the
+  -- handler at the write below. See the note there.
   select * into v_row from "pennsync_records"."timesheet" t
   where t."source_app_id" = "pennsync_records".deployment_app()
     and t."agency_id" = p_agency
@@ -412,6 +428,23 @@ begin
       v_now, v_now);
   end if;
 
+  -- THE WRITE IS GUARDED BY THE INDEX, not by the lookup above (D78).
+  -- `select … for update` **locks nothing when the row does not exist** — D33
+  -- wrote that down about `chart_assignment`, and this port walked into it
+  -- anyway: two concurrent submissions of the same pay period both found
+  -- nothing, both inserted, and payroll counted the period twice, which is the
+  -- exact outcome the original says its own check exists to prevent.
+  -- `timesheet_period_unique` is what actually holds; this is where its refusal
+  -- becomes the answer the uncontended path already gives.
+  --
+  -- The period columns are set by THIS statement rather than by the skeleton
+  -- insert above, so the index is reached here on both paths — creating a
+  -- timesheet and moving an existing one onto another's period alike. A caught
+  -- exception rolls back only as far as this block, so the skeleton row from
+  -- the create path outlives the handler; the re-raise below is what takes it
+  -- with the caller's transaction, and the race test commits rather than rolls
+  -- back to prove there is no orphan either way.
+  begin
   update "pennsync_records"."timesheet" t set
     "employee_email" = v_email, "employee_name" = v_email,
     "service_type" = v_service,
@@ -440,6 +473,28 @@ begin
     "updated_date" = v_now
   where t."source_app_id" = "pennsync_records".deployment_app() and t."id" = v_id
   returning * into v_row;
+  exception when unique_violation then
+    -- The constraint is read rather than assumed: any other unique violation is
+    -- a different defect and is re-raised untouched.
+    get stacked diagnostics v_constraint = constraint_name;
+    if v_constraint is distinct from 'timesheet_period_unique' then raise; end if;
+    -- Read committed takes a fresh snapshot per statement, so the winner's row
+    -- is visible here and the answer is the one the lookup above would have
+    -- given had it run a moment later. The predicate is that lookup's, to the
+    -- letter, so a caller cannot tell a race from a duplicate and need not.
+    select * into v_row from "pennsync_records"."timesheet" t
+    where t."source_app_id" = "pennsync_records".deployment_app()
+      and t."agency_id" = p_agency
+      and pg_catalog.lower(coalesce(t."employee_email", '')) = v_email
+      and t."service_type" = v_service
+      and t."pay_period_start" = v_start and t."pay_period_end" = v_end
+      and (p_timesheet_id is null or t."id" <> p_timesheet_id)
+    limit 1;
+    raise exception using errcode='22023', message=
+      case when found and v_row."status" = 'approved'
+        then 'PENNSYNC_TIMESHEET_PERIOD_APPROVED'
+      else 'PENNSYNC_TIMESHEET_PERIOD_EXISTS' end;
+  end;
 
   -- Divergence 6: the approvers are told, through the facility.
   if v_status = 'submitted' then

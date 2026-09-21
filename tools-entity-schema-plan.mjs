@@ -219,6 +219,64 @@ export const DECLARED_UNIQUE = Object.freeze({
 export const UNIQUE_KINDS = Object.freeze(['unique', 'unproved', 'conditional']);
 
 /**
+ * Composite keys a hand-written CONTRACT depends on (D78).
+ *
+ * `DECLARED_UNIQUE` above is driven by the SCHEMAS: an entity whose own
+ * description says a column would be unique if the datastore allowed one. This
+ * enumeration is the other direction, and it is a different thing. Neither
+ * `Timesheet` nor `VisitPointConfig` claims uniqueness anywhere, and the
+ * contracts over them both depend on it, because each is a lookup followed by
+ * an insert and **`select … for update` locks nothing when the row does not
+ * exist** — D33's trap, written down in this repository and then walked into
+ * twice.
+ *
+ * Each key owes the two things a schema claim owes — its columns and a reason —
+ * plus one more: the CONTRACT that depends on it, and the migration that
+ * carries it. Those last two are what make the index NAME load-bearing rather
+ * than cosmetic: each of these contracts catches `unique_violation` for its
+ * index by name and re-raises anything else, so a rename here would turn a
+ * correct answer into a raw database error at the HTTP boundary. D30 says so
+ * about `patient_patient_creation_key_unique` and nothing checked it;
+ * `tools-entity-schema-plan.test.mjs` reads the named migration now and fails
+ * if the two ever disagree.
+ *
+ * COLUMNS ONLY, never an expression. Free SQL in a generator is a predicate
+ * nobody re-derives, and the alternative is cheap: where a contract's lookup
+ * normalises a column, the write side has to normalise it too for a
+ * plain-column index to mean the same thing, and that is an argument the reason
+ * has to make rather than something the emitter can assume.
+ */
+export const CONTRACT_UNIQUE = Object.freeze({
+  'Timesheet.period': Object.freeze({
+    columns: Object.freeze(['agency_id', 'employee_email', 'service_type',
+      'pay_period_start', 'pay_period_end']),
+    contract: 'contract_timesheet_submit',
+    migration: '20260920360000_contract_timesheet.sql',
+    because: 'One timesheet per employee, service line and pay period — the original\'s '
+      + 'own rule, in its own words: "Prevents a duplicate row from being double-counted '
+      + 'in payroll." The port looked for one and inserted when it found none, so two '
+      + 'concurrent submissions of one period both inserted and payroll counted it '
+      + 'twice. The PLAIN column is right for `employee_email` because the contract '
+      + 'writes `caller_email()`, and `pennsync_private.identity_map` constrains '
+      + '`expected_email` to `lower(btrim(expected_email))`, so the stored value is '
+      + 'already the normalised one the contract\'s own lookup compares against.',
+  }),
+  'VisitPointConfig.active_agency': Object.freeze({
+    columns: Object.freeze(['agency_id']),
+    live: 'active',
+    contract: 'contract_visit_points_save',
+    migration: '20260920280000_contract_agency_config.sql',
+    because: 'At most one ACTIVE point schedule per agency, which is what both readers '
+      + 'already assume: `contract_visit_points_save` updates the active row in place '
+      + 'and never adds a second, and `contract_timesheet_submit` takes `active is not '
+      + 'false` with `limit 1`, so a second active row makes an agency\'s point math '
+      + 'depend on an `order by`. PARTIAL rather than whole-table because a deactivated '
+      + 'schedule is history the entity is entitled to keep and no reader consults it — '
+      + 'the constraint is exactly what is relied on and nothing more.',
+  }),
+});
+
+/**
  * Read the claims back out of the schemas and check them against the list.
  *
  * Every entity file, not only the carried ones: a claim in an entity that gets
@@ -392,6 +450,7 @@ export function planEntity(name, raw, disposition, decision = null, claims = [],
     constrained: checks.length,
     unique_keys: claims.filter(claim => claim.kind === 'unique')
       .map(claim => claim.column).sort(),
+    contract_unique_keys: contractUniqueKeys(name, table, columns),
     append_only: appendOnly,
     merged_system_columns: merged.length,
     skipped,
@@ -407,6 +466,55 @@ export function constraintName(table, column) {
 /** Same truncation hazard, same guard: two indexes sharing a name is an error. */
 export function uniqueIndexName(table, column) {
   return `${table}_${column}_unique`.slice(0, MAX_IDENTIFIER);
+}
+
+/** Same shape for a contract key, whose local name is already a noun. */
+export function contractUniqueName(table, key) {
+  return `${table}_${key}_unique`.slice(0, MAX_IDENTIFIER);
+}
+
+/**
+ * The enumerated contract keys for one entity, resolved against its columns.
+ *
+ * Every refusal here is a way the enumeration could drift away from the tables
+ * it constrains: a column renamed in a schema, a key on an entity that stopped
+ * being carried, a `live` flag that is not a boolean. The enumeration is passed
+ * in rather than read, so a test can raise each one without editing the list
+ * the real store depends on.
+ */
+export function contractUniqueKeys(entity, table, columns, declared = CONTRACT_UNIQUE) {
+  const byName = new Map(columns.map(column => [column.name, column]));
+  const keys = [];
+  for (const [name, entry] of Object.entries(declared)) {
+    const [owner, key] = name.split('.');
+    if (owner !== entity) continue;
+    if (!key || !/^[a-z][a-z0-9_]*$/.test(key)) throw new Error(`CONTRACT_UNIQUE_KEY_INVALID:${name}`);
+    if (!entry.because) throw new Error(`CONTRACT_UNIQUE_REASON_MISSING:${name}`);
+    if (!entry.contract || !entry.migration) throw new Error(`CONTRACT_UNIQUE_CONTRACT_MISSING:${name}`);
+    if (!Array.isArray(entry.columns) || entry.columns.length === 0) {
+      throw new Error(`CONTRACT_UNIQUE_COLUMNS_EMPTY:${name}`);
+    }
+    if (new Set(entry.columns).size !== entry.columns.length) {
+      throw new Error(`CONTRACT_UNIQUE_COLUMN_REPEATED:${name}`);
+    }
+    for (const column of entry.columns) {
+      // The deployment is prepended by the emitter, exactly as it is for a
+      // declared key. Naming it here would put it in the index twice.
+      if (column === 'source_app_id') throw new Error(`CONTRACT_UNIQUE_COLUMN_RESERVED:${name}`);
+      if (!byName.has(column)) throw new Error(`CONTRACT_UNIQUE_COLUMN_UNKNOWN:${name}.${column}`);
+    }
+    if (entry.live !== undefined) {
+      if (byName.get(entry.live)?.type !== 'boolean') throw new Error(`CONTRACT_UNIQUE_LIVE_INVALID:${name}`);
+      // A flag inside the key would make the two states two different rows,
+      // which is the opposite of what a partial index over it says.
+      if (entry.columns.includes(entry.live)) throw new Error(`CONTRACT_UNIQUE_LIVE_IN_KEY:${name}`);
+    }
+    keys.push({
+      key, index: contractUniqueName(table, key), columns: [...entry.columns],
+      live: entry.live ?? null, contract: entry.contract, migration: entry.migration,
+    });
+  }
+  return keys.sort((left, right) => left.key.localeCompare(right.key));
 }
 
 export function renderEntity(plan) {
@@ -446,10 +554,18 @@ export function renderEntity(plan) {
   // the store do not collide. The agency is already inside every one of these
   // keys, which is what makes a tenant column unnecessary here.
   const unique = plan.unique_keys ?? [];
-  const indexNames = unique.map(column => uniqueIndexName(plan.table, column));
+  // The composite keys a CONTRACT depends on (D78). Checked for collisions in
+  // the same breath as the declared ones, because both families truncate at
+  // the same identifier length and two indexes sharing a name silently become
+  // one — the constraint a contract catches by name would then be the other
+  // one's.
+  const contractKeys = plan.contract_unique_keys ?? [];
+  const indexNames = [...unique.map(column => uniqueIndexName(plan.table, column)),
+    ...contractKeys.map(key => key.index)];
   if (new Set(indexNames).size !== indexNames.length) {
     throw new Error(`UNIQUE_INDEX_NAME_COLLISION:${plan.entity}`);
   }
+  const byColumn = new Map(plan.definition.columns.map(column => [column.name, column]));
   return [
     `create table ${qualified} (`,
     lines.join(',\n'),
@@ -460,6 +576,18 @@ export function renderEntity(plan) {
     ...unique.map(column => `create unique index ${quote(uniqueIndexName(plan.table, column))} `
       + `on ${qualified} (${quote('source_app_id')}, ${quote(column)}) `
       + `where ${quote(column)} is not null and ${quote(column)} <> '';`),
+    // Partial for the same reason the declared keys are, one part at a time: a
+    // row missing any part of the business key is not a duplicate of another
+    // row missing it. `<> ''` only where the column is text, because an empty
+    // string is how a caller sends "none" through a text field and nothing
+    // else has an empty value to send. A `live` flag narrows the index to the
+    // rows the contract's own reader looks at.
+    ...contractKeys.map(key => `create unique index ${quote(key.index)} `
+      + `on ${qualified} (${quote('source_app_id')}, ${key.columns.map(quote).join(', ')}) `
+      + `where ${[...key.columns.map(column => byColumn.get(column).type === 'text'
+        ? `${quote(column)} is not null and ${quote(column)} <> ''`
+        : `${quote(column)} is not null`),
+        ...(key.live ? [`${quote(key.live)} is not false`] : [])].join(' and ')};`),
   ].join('\n');
 }
 
@@ -492,6 +620,15 @@ export function buildPlan(repository, prepared = null) {
   if (collisions.length) throw new Error(`TABLE_NAME_COLLISION:${[...new Set(collisions)].sort().join(',')}`);
   const oversized = plans.filter(plan => plan.table.length > MAX_IDENTIFIER).map(plan => plan.entity);
   if (oversized.length) throw new Error(`TABLE_NAME_TOO_LONG:${oversized.join(',')}`);
+  // A contract key naming an entity that stopped being carried would emit
+  // nothing and say nothing, which is exactly how the declared family would
+  // have drifted without its own stale check. The per-entity resolver cannot
+  // see this case, because it is never called for an entity with no table —
+  // and this is the funnel every caller passes through, `planAll` included.
+  const carried = new Set(plans.map(plan => plan.entity));
+  for (const name of Object.keys(CONTRACT_UNIQUE)) {
+    if (!carried.has(name.split('.')[0])) throw new Error(`CONTRACT_UNIQUE_ENTITY_NOT_CARRIED:${name}`);
+  }
   return {
     format: FORMAT,
     schema_version: FORMAT_VERSION,
@@ -505,13 +642,15 @@ export function buildPlan(repository, prepared = null) {
       skipped_properties: plans.reduce((sum, plan) => sum + plan.skipped.length, 0),
       merged_system_columns: plans.reduce((sum, plan) => sum + plan.merged_system_columns, 0),
       unique_keys: plans.reduce((sum, plan) => sum + plan.unique_keys.length, 0),
+      contract_unique_keys: plans.reduce((sum, plan) => sum + plan.contract_unique_keys.length, 0),
       append_only: plans.filter(plan => plan.append_only).length,
     },
     entities: plans.map(({ definition, ...rest }) => rest),
     // Everything this schema deliberately does not decide. `indexes_planned`
-    // stays false: the unique indexes above are a uniqueness CONSTRAINT the
-    // entity schemas ask for by name, not a performance plan, and nothing here
-    // has looked at a query.
+    // stays false: the unique indexes above are a uniqueness CONSTRAINT — one
+    // family the entity schemas ask for by name, one a contract's correctness
+    // depends on — not a performance plan, and nothing here has looked at a
+    // query.
     indexes_planned: false,
     foreign_keys_planned: false,
     retention_planned: false,
@@ -1181,9 +1320,14 @@ export function comparePlan(plan, expectations) {
   // `unique_keys` is here for the same reason `disposition` is: it decides
   // something the table's shape does not say. It is compared as JSON because
   // it is a list, and `!==` on two equal arrays is always true.
+  //
+  // `contract_unique_keys` (D78) is here for a sharper version of that reason:
+  // a contract catches its index by name, so a key that quietly moved, lost a
+  // column or changed its predicate is a correct retry answer turning into a
+  // raw database error.
   const COMPARED = ['table', 'columns', 'constrained', 'tenant_key',
     'tenant_decision', 'self_subject', 'platform_flag', 'disposition', 'chart_subject',
-    'unique_keys', 'append_only'];
+    'unique_keys', 'contract_unique_keys', 'append_only'];
   const changed = [...current.entries()]
     .filter(([name, entity]) => recorded.has(name)
       && COMPARED.some(field =>

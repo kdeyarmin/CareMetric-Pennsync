@@ -41,6 +41,18 @@
 -- 3. `agency_name` is still written on a visit point config because the column
 --    exists and the app reads it, but it is taken from the CARRIED agency row
 --    rather than from the caller's profile.
+--
+-- AND ONE CORRECTION TO THIS PORT, recorded because the shape recurs (D78).
+-- The point-schedule save was written as a lookup with `for update` followed by
+-- an insert when it found nothing, which reads like a lock and is not one when
+-- the row does not exist — the trap D33 wrote down about `chart_assignment`.
+-- An agency setting its schedule for the first time from two sessions ended up
+-- with two active configs, and which one paid its nurses then depended on an
+-- `order by`. `visit_point_config_active_agency_unique` is what holds it now:
+-- the save catches that constraint BY NAME and retries onto the winner's row
+-- rather than beside it, and `record-contract-postgres.test.mjs` proves it with
+-- two real connections rather than asserting it. The index is PARTIAL over
+-- active rows, so a deactivated schedule is still history this entity may keep.
 begin;
 
 do $$
@@ -93,7 +105,7 @@ create function "pennsync_records".contract_visit_points_save(
   returns jsonb language plpgsql security definer set search_path = '' as $contract$
 declare
   v_row "pennsync_records"."visit_point_config"; v_key text; v_now timestamptz;
-  v_id text; v_email text; v_agency_name text;
+  v_id text; v_email text; v_agency_name text; v_attempt integer; v_constraint text;
 begin
   -- D40's gate. The originals admit the built-in admin and nobody else.
   if "pennsync_records".caller_tenant_role(p_agency) is distinct from 'agency_admin' then
@@ -125,6 +137,26 @@ begin
   -- The caller's agency row is whatever the POLICY returns, so the legacy-row
   -- scan the original needs has nothing to scan. Active preferred, then
   -- newest, which is the original's `find(active !== false) || [0]`.
+  --
+  -- ONE ATTEMPT AND ONE RETRY, and the retry is not defensive padding (D78).
+  -- `select … for update` **locks nothing when the row does not exist** — D33
+  -- wrote that down about `chart_assignment` and this port walked into it
+  -- anyway: an agency saving its point schedule for the first time from two
+  -- sessions had both lookups find nothing and both inserts succeed, leaving
+  -- two active schedules where every reader takes `limit 1`. Which one paid
+  -- the nurses then depended on an `order by`.
+  --
+  -- `visit_point_config_active_agency_unique` is what actually serializes it,
+  -- and this is where the loser joins the winner's row instead of adding a
+  -- second one beside it: read committed takes a fresh snapshot per statement,
+  -- so the second pass sees the committed winner and updates it with the values
+  -- this caller sent. The whole find-or-create is inside the handler because
+  -- either half can raise — the insert when the winner committed first, and the
+  -- update when it flips a deactivated schedule back on while a concurrent
+  -- insert is minting a new one.
+  <<attempt>>
+  for v_attempt in 1..2 loop
+  begin
   select * into v_row from "pennsync_records"."visit_point_config" c
   where c."source_app_id" = "pennsync_records".deployment_app()
     and c."agency_id" = p_agency
@@ -161,6 +193,23 @@ begin
       v_email, v_now, v_now)
     returning * into v_row;
   end if;
+  exit attempt;
+  exception when unique_violation then
+    -- The constraint is read rather than assumed: any other unique violation is
+    -- a different defect and is re-raised untouched.
+    get stacked diagnostics v_constraint = constraint_name;
+    if v_constraint is distinct from 'visit_point_config_active_agency_unique' then
+      raise;
+    end if;
+    -- Twice means the row the retry was going to adopt was gone again by the
+    -- time it looked, which no caller can act on. Say so in this contract's own
+    -- vocabulary rather than letting a raw duplicate-key error cross the HTTP
+    -- boundary, which cannot classify one.
+    if v_attempt = 2 then
+      raise exception using errcode='22023', message='PENNSYNC_CONFIG_CONFLICT';
+    end if;
+  end;
+  end loop attempt;
 
   return jsonb_build_object('success', true, 'config', jsonb_build_object(
     'id', v_row."id", 'agency_id', v_row."agency_id", 'agency_name', v_row."agency_name",

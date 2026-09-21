@@ -410,3 +410,115 @@ test('the assignment lifecycle is held by constraints, not only by the contract'
     // And the one shape a grant may have.
     await insert('active', 1, 'grant');
   }));
+
+/*
+ * ---------------------------------------------------------------------------
+ * D78: the two contracts whose lookup was holding nothing.
+ *
+ * `select … for update` locks nothing when the row does not exist. This
+ * repository wrote that down about `chart_assignment` — the paragraph above is
+ * it — and then two later ports were written with exactly the shape it warns
+ * about: look for a row, insert when there is none, and assume the lock made
+ * that atomic. Neither could be caught by its own suite, because PGlite is one
+ * connection and one connection cannot interleave.
+ *
+ * So these tests are not a formality either, and what they assert is the BLOCK
+ * rather than the row count: with the index dropped the second caller does not
+ * wait for the first, so `blocked` is what fails, several seconds before any
+ * duplicate is counted. That is the more precise claim — the index is what
+ * serializes them — and the row assertions after it are the second line rather
+ * than the first. Both were watched failing with the two indexes commented out
+ * of the generated migration, which is the only way to tell a test that works
+ * from one that merely passes.
+ */
+const PERIOD = Object.freeze({ pay_period_start: '2026-06-14', pay_period_end: '2026-06-27' });
+const submit = (client, sheet = {}) => client.query(
+  'select "public"."pennsync_contract_timesheet_submit"($1,$2,$3) as result',
+  [A, null, JSON.stringify({ ...PERIOD, ...sheet })]).then(result => result.rows[0].result);
+const points = (client, config) => client.query(
+  'select "public"."pennsync_contract_visit_points_save"($1,$2) as result',
+  [A, JSON.stringify(config)]).then(result => result.rows[0].result);
+
+test('two concurrent submissions of one pay period make one timesheet, not two',
+  () => lab(async ({ connect, setup }) => {
+    const first = await connect(); const second = await connect();
+    await begin(first, CLINICIAN_A); await begin(second, CLINICIAN_A);
+    // The employee whose client never saw an answer and sent the period again,
+    // or who has the app open twice. Neither transaction can see the other's
+    // uncommitted row, so both pass the duplicate-period lookup — which is
+    // where the second timesheet used to appear, and the original's own comment
+    // says what that costs: "Prevents a duplicate row from being
+    // double-counted in payroll."
+    const winner = await submit(first, { regular_hours: 40 });
+    assert.equal(winner.success, true);
+    const pending = tracked(submit(second, { regular_hours: 8 }));
+    await blocked(setup, second, 'the second submission');
+    await first.query('commit');
+    const loser = await pending;
+    // A NAMED refusal, and specifically the one the uncontended path gives for
+    // the same state. A raw `duplicate key value violates unique constraint`
+    // would mean the contract had leaked its storage to the caller.
+    assert.equal(loser.ok, false, 'the loser submitted the period twice');
+    assert.match(String(loser.error.message), /PENNSYNC_TIMESHEET_PERIOD_EXISTS/,
+      `the loser refused with ${loser.error.message}`);
+    // COMMIT rather than rollback, because that is what the boundary would do
+    // and it is the stronger claim: the create path inserts a skeleton row
+    // before the write that raises, and a caught exception rolls back only to
+    // the start of its own block. An aborted transaction commits as a rollback,
+    // so the skeleton goes with it — but only a commit here says so.
+    await second.query('commit');
+    const sheets = await setup.query(
+      `select "id", "regular_hours" from ${SCHEMA}."timesheet"`);
+    assert.equal(sheets.rowCount, 1, 'payroll sees one period, not two');
+    assert.equal(sheets.rows[0].id, winner.timesheet.id);
+    assert.equal(Number(sheets.rows[0].regular_hours), 40, 'the winner\'s hours stand');
+  }));
+
+test('two concurrent saves make one point schedule, and the loser lands on it',
+  () => lab(async ({ connect, setup }) => {
+    const first = await connect(); const second = await connect();
+    await begin(first, MANAGER_A); await begin(second, MANAGER_A);
+    // An agency setting its point schedule for the first time, from two
+    // sessions. Both lookups find nothing, so both reach the insert.
+    const winner = await points(first, { soc_points: 10 });
+    assert.equal(winner.success, true);
+    const pending = tracked(points(second, { soc_points: 25 }));
+    await blocked(setup, second, 'the second save');
+    await first.query('commit');
+    const loser = await pending;
+    // ANSWERED, not refused: unlike the timesheet, a second save of an
+    // agency's own schedule is a legitimate request, and the retry is where it
+    // lands on the row that now exists rather than beside it.
+    assert.equal(loser.ok, true, `the loser refused: ${loser.error?.message}`);
+    assert.equal(loser.value.config.id, winner.config.id, 'the same schedule, not a second');
+    assert.equal(Number(loser.value.config.soc_points), 25, 'and it carries what this caller sent');
+    await second.query('commit');
+    const live = await setup.query(
+      `select "id", "soc_points" from ${SCHEMA}."visit_point_config" where "active" is not false`);
+    assert.equal(live.rowCount, 1, 'one active schedule, so no order by decides the pay');
+    assert.equal(Number(live.rows[0].soc_points), 25);
+  }));
+
+test('the point schedule is held by the index, and history may still sit beside it',
+  () => lab(async ({ setup }) => {
+    // The constraint is the table's, not the capability's: a future writer —
+    // an import, another ported handler — meets the same refusal.
+    const row = (id, active) => setup.query(`insert into ${SCHEMA}."visit_point_config"
+      ("source_app_id","id","agency_id","active") values ($1,$2,$3,$4)`, [APP, id, A, active]);
+    await row('config-live', true);
+    await assert.rejects(() => row('config-second', true),
+      error => /duplicate key value|unique constraint/.test(String(error?.message)));
+    // `null` is "not false" too, which is the predicate every reader uses.
+    await assert.rejects(() => row('config-null', null),
+      error => /duplicate key value|unique constraint/.test(String(error?.message)));
+    // PARTIAL, and this is the part that is not incidental: a DEACTIVATED
+    // schedule is history the entity keeps and no reader consults, so the
+    // index constrains exactly what is relied on and nothing more.
+    await row('config-retired', false);
+    await row('config-retired-2', false);
+    // And another agency's schedule is not this one's duplicate.
+    await setup.query(`insert into ${SCHEMA}."visit_point_config"
+      ("source_app_id","id","agency_id","active") values ($1,'config-b','agency-b',true)`, [APP]);
+    assert.equal((await setup.query(
+      `select count(*)::int as n from ${SCHEMA}."visit_point_config"`)).rows[0].n, 4);
+  }));

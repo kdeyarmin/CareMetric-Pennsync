@@ -6,8 +6,8 @@ import { fileURLToPath } from 'node:url';
 import {
   CARRIED, CHART_ROOT, CHART_SUBJECTS, DECLARED_IMMUTABLE, DECLARED_UNIQUE, EXPECTATIONS_FILE,
   FORMAT, FORMAT_VERSION, IMMUTABILITY_CLAIM, IMMUTABLE_KINDS,
-  RECORD_MIGRATION_FILE, SCHEMA, UNIQUENESS_CLAIM, UNIQUE_KINDS,
-  buildPlan, chartPredicate, chartSubject, columnType, comparePlan, constraintName, declaredImmutability, declaredUniqueness, enumValues, main, parseExpectations, planEntity, renderEntity, renderPolicies, snakeCase, uniqueIndexName,
+  CONTRACT_UNIQUE, RECORD_MIGRATION_FILE, SCHEMA, UNIQUENESS_CLAIM, UNIQUE_KINDS,
+  buildPlan, chartPredicate, chartSubject, columnType, comparePlan, constraintName, contractUniqueKeys, contractUniqueName, declaredImmutability, declaredUniqueness, enumValues, main, parseExpectations, planEntity, renderEntity, renderPolicies, snakeCase, uniqueIndexName,
 } from './tools-entity-schema-plan.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -370,20 +370,131 @@ test('a declared unique key becomes a partial index on the deployment and the ke
 
 test('the committed migration carries an index for every carried unique key', () => {
   const plan = buildPlan(repository);
-  const expected = plan.entities.flatMap(row => row.unique_keys.map(column => `${row.table}_${column}_unique`)).sort();
+  const declared = plan.entities.flatMap(row => row.unique_keys.map(column => `${row.table}_${column}_unique`)).sort();
+  const byContract = plan.entities.flatMap(row => row.contract_unique_keys.map(key => key.index)).sort();
+  const expected = [...declared, ...byContract].sort();
   const sql = readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8');
   const emitted = [...sql.matchAll(/create unique index "([a-z_]+)"/g)].map(match => match[1]).sort();
   assert.deepEqual(emitted, expected);
-  assert.equal(plan.totals.unique_keys, expected.length);
+  assert.equal(plan.totals.unique_keys, declared.length);
+  assert.equal(plan.totals.contract_unique_keys, byContract.length);
   // Six of the eight `unique` claims, because `Message` and `ScheduledFax` get
   // no table here at all — their entities are not carried, and a claim in a
   // schema without a table is still enumerated rather than forgotten.
-  assert.equal(expected.length, 6);
+  assert.equal(declared.length, 6);
   assert.ok(emitted.includes('patient_patient_creation_key_unique'));
   // And the two `unproved` ones are not among them, which is the whole of
   // what their schemas asked for.
   for (const table of ['content_scope_binding', 'physician_agency_profile']) {
     assert.equal(emitted.some(name => name.startsWith(table)), false, table);
+  }
+});
+
+test('a contract key becomes a partial composite index over the columns it names', () => {
+  // `renderEntity` is a pure function of the plan, so the enumeration is
+  // injected rather than edited: a test that had to add a real key to
+  // `CONTRACT_UNIQUE` to exercise the emitter would be changing the store.
+  const plan = planEntity('Probe', entity({
+    email: { type: 'string' }, day: { type: 'string', format: 'date' },
+    live: { type: 'boolean' },
+  }), 'port');
+  plan.contract_unique_keys = contractUniqueKeys('Probe', plan.table, plan.definition.columns, {
+    'Probe.window': { columns: ['email', 'day'], live: 'live',
+      contract: 'contract_probe', migration: 'probe.sql', because: 'a reason' },
+  });
+  const sql = renderEntity(plan);
+  assert.match(sql, /create unique index "probe_window_unique" on "pennsync_records"\."probe" \("source_app_id", "email", "day"\)/);
+  // `<> ''` only where the column is TEXT. An empty string is how a caller
+  // sends "none" through a text field; a date has no empty value to send, and
+  // `"day" <> ''` would not even be valid SQL.
+  assert.match(sql, /where "email" is not null and "email" <> '' and "day" is not null and "live" is not false;/);
+  // A key with no live flag emits no predicate for one.
+  plan.contract_unique_keys = contractUniqueKeys('Probe', plan.table, plan.definition.columns, {
+    'Probe.window': { columns: ['email'], contract: 'c', migration: 'm.sql', because: 'r' },
+  });
+  assert.match(renderEntity(plan), /where "email" is not null and "email" <> '';/);
+  // And the two families share one collision check, because they truncate at
+  // the same length and two indexes with one name silently become one.
+  assert.equal(contractUniqueName('t'.repeat(60), 'k').length, 63);
+  assert.throws(() => renderEntity({ ...plan, unique_keys: ['window_unique_x'],
+    contract_unique_keys: [{ key: 'w', index: 'probe_window_unique_x_unique', columns: ['email'], live: null }] }),
+  error => /^UNIQUE_INDEX_NAME_COLLISION:/.test(error.message));
+});
+
+test('a contract key that drifts from the table it constrains fails the run', () => {
+  const columns = [{ name: 'email', type: 'text' }, { name: 'live', type: 'boolean' }];
+  const raise = declared => contractUniqueKeys('Probe', 'probe', columns, declared);
+  const key = (extra = {}) => ({ 'Probe.window': { columns: ['email'],
+    contract: 'c', migration: 'm.sql', because: 'r', ...extra } });
+  // Each of these is a way the enumeration and the tables could drift apart
+  // while both still looked right on their own page.
+  assert.throws(() => raise({ 'Probe.Window': key()['Probe.window'] }),
+    error => error.message === 'CONTRACT_UNIQUE_KEY_INVALID:Probe.Window');
+  assert.throws(() => raise(key({ because: undefined })),
+    error => error.message === 'CONTRACT_UNIQUE_REASON_MISSING:Probe.window');
+  // The contract and the migration are what make the index NAME checkable,
+  // which is the whole reason this family exists rather than a bare index.
+  for (const missing of ['contract', 'migration']) {
+    assert.throws(() => raise(key({ [missing]: undefined })),
+      error => error.message === 'CONTRACT_UNIQUE_CONTRACT_MISSING:Probe.window');
+  }
+  assert.throws(() => raise(key({ columns: [] })),
+    error => error.message === 'CONTRACT_UNIQUE_COLUMNS_EMPTY:Probe.window');
+  assert.throws(() => raise(key({ columns: ['email', 'email'] })),
+    error => error.message === 'CONTRACT_UNIQUE_COLUMN_REPEATED:Probe.window');
+  // The deployment is prepended by the emitter, so naming it would index it twice.
+  assert.throws(() => raise(key({ columns: ['source_app_id', 'email'] })),
+    error => error.message === 'CONTRACT_UNIQUE_COLUMN_RESERVED:Probe.window');
+  // A column renamed in a schema. This is the one that would otherwise be
+  // silent: the index would simply not be emitted and the contract would catch
+  // a constraint that no longer exists.
+  assert.throws(() => raise(key({ columns: ['gone'] })),
+    error => error.message === 'CONTRACT_UNIQUE_COLUMN_UNKNOWN:Probe.window.gone');
+  assert.throws(() => raise(key({ live: 'email' })),
+    error => error.message === 'CONTRACT_UNIQUE_LIVE_INVALID:Probe.window');
+  assert.throws(() => raise(key({ live: 'absent' })),
+    error => error.message === 'CONTRACT_UNIQUE_LIVE_INVALID:Probe.window');
+  // A flag inside the key would make its two states two rows, which is the
+  // opposite of what a partial index over it says.
+  assert.throws(() => raise({ 'Probe.window': { columns: ['email', 'live'], live: 'live',
+    contract: 'c', migration: 'm.sql', because: 'r' } }),
+  error => error.message === 'CONTRACT_UNIQUE_LIVE_IN_KEY:Probe.window');
+  // A key on an entity with no table emits nothing and says nothing, which is
+  // exactly how the declared family would have drifted without its stale check.
+  assert.throws(() => buildPlan(repository, {
+    plans: [{ entity: 'Elsewhere', table: 'elsewhere', unique_keys: [], contract_unique_keys: [],
+      columns: 0, constrained: 0, skipped: [], merged_system_columns: 0 }],
+    excluded: [],
+  }), error => /^CONTRACT_UNIQUE_ENTITY_NOT_CARRIED:/.test(error.message));
+});
+
+test('every contract key is caught by name in the contract that names it', () => {
+  // D30 says a rename "turns a correct retry answer into a raw database error"
+  // and nothing checked it. This is the check: the enumeration names a
+  // migration, the migration has to compare the caught constraint against
+  // exactly this index, and the function it claims to belong to has to be there.
+  const plan = buildPlan(repository);
+  const keys = plan.entities.flatMap(row => row.contract_unique_keys);
+  assert.equal(keys.length, 2, 'two contracts depend on a key of their own');
+  assert.deepEqual(keys.map(key => key.index).sort(),
+    ['timesheet_period_unique', 'visit_point_config_active_agency_unique']);
+  for (const key of keys) {
+    const sql = readFileSync(resolve(repository,
+      'services/authority-store/supabase/record-migrations', key.migration), 'utf8');
+    assert.ok(sql.includes(`create function "pennsync_records".${key.contract}(`),
+      `${key.migration} defines ${key.contract}`);
+    // The comparison, not merely the string: a header that MENTIONS the index
+    // while the code catches something else is the shape D36 warns about.
+    assert.match(sql, new RegExp(`v_constraint is distinct from '${key.index}'`),
+      `${key.contract} catches ${key.index} by name`);
+    // And it re-raises anything else, so an unrelated unique violation is not
+    // swallowed as this one.
+    assert.match(sql, /get stacked diagnostics v_constraint = constraint_name;/);
+  }
+  // Every entry owes a reason, and a real one: this is the only place the
+  // argument for the constraint is written down.
+  for (const [name, entry] of Object.entries(CONTRACT_UNIQUE)) {
+    assert.ok(entry.because.length > 200, `${name} says why at length`);
   }
 });
 

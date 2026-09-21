@@ -4537,6 +4537,7 @@ create table "pennsync_records"."timesheet" (
 alter table "pennsync_records"."timesheet" enable row level security;
 alter table "pennsync_records"."timesheet" force row level security;
 revoke all on "pennsync_records"."timesheet" from public;
+create unique index "timesheet_period_unique" on "pennsync_records"."timesheet" ("source_app_id", "agency_id", "employee_email", "service_type", "pay_period_start", "pay_period_end") where "agency_id" is not null and "agency_id" <> '' and "employee_email" is not null and "employee_email" <> '' and "service_type" is not null and "service_type" <> '' and "pay_period_start" is not null and "pay_period_end" is not null;
 
 create table "pennsync_records"."transcription_learning" (
   "source_app_id" text not null,
@@ -4791,6 +4792,7 @@ create table "pennsync_records"."visit_point_config" (
 alter table "pennsync_records"."visit_point_config" enable row level security;
 alter table "pennsync_records"."visit_point_config" force row level security;
 revoke all on "pennsync_records"."visit_point_config" from public;
+create unique index "visit_point_config_active_agency_unique" on "pennsync_records"."visit_point_config" ("source_app_id", "agency_id") where "agency_id" is not null and "agency_id" <> '' and "active" is not false;
 
 create policy "ai_configuration_read" on "pennsync_records"."ai_configuration" for select using ("ai_configuration"."source_app_id" = "pennsync_records".deployment_app() and "ai_configuration"."agency_id" in (select "pennsync_records".caller_agencies()));
 

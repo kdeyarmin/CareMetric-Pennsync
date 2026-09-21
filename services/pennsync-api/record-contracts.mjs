@@ -585,6 +585,11 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_CONFIG_INVALID',
       'PENNSYNC_CONFIG_EMPTY',
       'PENNSYNC_CONFIG_FIELD_UNSUPPORTED',
+      // D78: the contract retries once onto a concurrent winner's row, so this
+      // is only reachable if that row was gone again by the time it looked.
+      // Undeclared it would be opaque, which is the one answer a caller of a
+      // save cannot act on.
+      'PENNSYNC_CONFIG_CONFLICT',
     ]),
   }),
   savePayrollProfile: Object.freeze({
