@@ -45,11 +45,17 @@ Migration checks:
 
 - `pnpm run check:transition-disposition` — every capability carries a disposition, no function that can perform no work is declared `port`, `broker` or `hub`, and every retired entity says where its existing rows go
 - `pnpm run check:base44-surface` — remaining Base44 coupling stays within its baseline
+- `pnpm run check:ported-call-sites` — every `src/` call site reaching a ported capability names a tenant, or is pinned as one that still does not
 - `pnpm run check:file-references` — the schema file-reference census is current
 - `pnpm run check:entity-schema-plan` — the candidate PostgreSQL schema matches the entity definitions
 - `pnpm run check:tenant-paths` — how each carried entity reaches its agency; `node tools-tenant-path.mjs --blocking` lists the ones that cannot
 - `pnpm run emit:entity-schema` — print the generated schema SQL
 - `pnpm run test:pennsync-api` — the ported business API and its port parity guards
+
+Migrating a deployment:
+
+- `node tools-pennsync-provision.mjs` — build a store from nothing: pin the deployment, then apply every migration. Refuses a database that already holds one.
+- `node tools-pennsync-migrate.mjs` — bring a store that already exists up to the committed migrations. Plans by default; applies with `--apply`. Refuses a database with no store, so between the two every database has exactly one right tool.
 
 
 ## Environment variables

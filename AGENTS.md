@@ -94,6 +94,7 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 | Tests | `pnpm test` |
 | Capability dispositions (gate) | `pnpm run check:transition-disposition` |
 | Base44 coupling ratchet (gate) | `pnpm run check:base44-surface` |
+| Ported call-site tenants (gate) | `pnpm run check:ported-call-sites` |
 | File-reference census (gate) | `pnpm run check:file-references` |
 | Entity schema plan (gate) | `pnpm run check:entity-schema-plan` |
 | Tenant paths (gate) | `pnpm run check:tenant-paths` |
@@ -105,6 +106,8 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 | Regenerate the broker family | `node tools-record-brokers.mjs --write` |
 | Re-extract the read purpose policies | `node tools-read-purpose-policy.mjs --write` |
 | Ported business API | `pnpm run test:pennsync-api` |
+| Plan a deployment's pending migrations | `PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs` |
+| Apply them | `… node tools-pennsync-migrate.mjs --apply` |
 
 ## Environment config
 

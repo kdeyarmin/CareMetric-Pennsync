@@ -105,7 +105,31 @@ critical path that needs nothing from anybody.
 - Then apply all 54 `supabase/record-migrations/` files, in order.
   `tools-pennsync-provision.mjs` cannot do this — it refuses a database that
   already holds `pennsync_private` (`PROVISION_STORE_ALREADY_PRESENT`), by
-  design, so this goes through the ordinary migration path.
+  design, because re-provisioning would try to re-pin an immutable pin.
+- **The tool for it now exists**: `tools-pennsync-migrate.mjs`, the mirror of
+  the provisioner. It refuses a database with no store, refuses a
+  half-provisioned one, reconciles what has run BY NAME against the Supabase
+  ledger, refuses a sequence with a hole in it, applies the pending set in the
+  provisioner's own order, and re-reads the pin afterwards to prove nothing
+  moved it. It plans by default and applies only with `--apply`:
+
+  ```sh
+  PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs           # plan
+  PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs --apply   # run
+  ```
+
+  Two things it encodes that were previously prose only. Migrations are
+  matched on NAME, because the hosted project's versions were stamped by the
+  CLI at push time and do not match the repository's file prefixes — matching
+  on version would report every applied migration as pending and re-run the
+  lot. And `synthetic_archive_patient_import` is held back explicitly, with
+  its reason, in `LOCAL_ONLY_MIGRATIONS`: the hosted project was built without
+  it deliberately, that fact lived in one sentence of the transition plan, and
+  a tool applying "everything pending" would have installed it on the next run
+  with nothing to complain.
+- CI reports the gap read-only on every run once
+  `PENNSYNC_STAGING_DATABASE_URL` exists (`hosted-gap` in
+  `pennsync-authority.yml`); it never passes `--apply`.
 - Re-run the suites that today prove themselves against PGlite —
   `record-store-migration`, `record-brokers`, `record-tenant-isolation`,
   `activity-audit`, `contract-*` — against the hosted project.
@@ -158,12 +182,44 @@ operation set; no traffic change anywhere.
 
 ### Stage D — Release handlers end to end, one at a time (size M)
 
-- **Fix the `agency_id` gap first.** The ported service requires a tenant its
-  Base44 original did not, and *no existing call site sends one* —
-  `ReferralIntake.jsx`, `src/functions/listPolicyLibrary.js`, `UserGuides.jsx`
-  and `Help.jsx` all invoke without a tenant. Setting `VITE_PENNSYNC_API_URL`
-  today makes those flows refuse rather than work. The adapter declines to pick a
-  tenant on the caller's behalf, which is right; the callers have to be changed.
+- **Fix the `agency_id` gap first, and it is seventeen times the documented
+  size.** The transition plan names four call sites. That was measured when
+  the adapter routed ELEVEN ported names; `PORTED_FUNCTIONS` holds seventy-four
+  now and nobody re-measured. `tools-ported-call-sites.mjs` measures it:
+
+  | | Count |
+  | --- | ---: |
+  | Ported capabilities `src/` reaches | 52 of 74 |
+  | Routed call sites | 70 |
+  | …naming a tenant | **3** |
+  | …demonstrably not naming one | 32 |
+  | …whose payload is a variable, so unreadable | 35 |
+  | **Work Stage D has to do** | **67** |
+
+  The 35 are carried with the 32 deliberately: a call site whose tenant cannot
+  be read is not evidence that it has one. Two further reaches are excluded
+  because they go through `rawBase44`, which the adapter is not in — they are
+  the two that bootstrap the tenant itself and could not name one.
+
+  `tools-ported-call-sites-expectations.json` pins the list and
+  `pnpm run check:ported-call-sites` gates it, so a new tenant-free call site
+  is a build failure and the count cannot go stale again. This is the same
+  shape as D47, D55, D74 and D75 — a number that kept its meaning after the
+  reason for it had gone.
+- **The fix is per capability, not a sweep.** Whether a call site may simply
+  gain an `agency_id` depends on its Base44 original: `generateUserGuidePDF`
+  destructures one key, `listPolicyLibrary` reads `body?.mode` and
+  `generateUserManual` reads no body at all, so an extra key is harmless in
+  those three — but several originals refuse an unknown key outright
+  (`exactObject`), and adding one there would break the live Base44 path. The
+  census makes that review finite and ordered; it does not pre-empt it.
+- **`getMyTenantContext` needs deciding before any of this ships.**
+  `routesPorted` is tested FIRST in the adapter's dispatcher, ahead of every
+  special case, so pointing `VITE_PENNSYNC_API_URL` at a service routes the
+  pre-tenant bootstrap to it too — and that capability has no `agency_id`
+  parameter by design (AGENTS.md: the bootstrap stays on the authority store's
+  own RPC rather than taking an envelope exemption). As it stands it would
+  refuse, and nothing downstream could resolve a tenant to send.
 - Then release per function, behind the existing per-name gate: the patient read
   pair, then the create, then the visit family, then the rest by blast radius.
 - Each release wants its own hosted proof, not a suite that passed locally.

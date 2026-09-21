@@ -1,0 +1,174 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp, mkdir, readFile, writeFile, rm } from 'node:fs/promises';
+import { readdirSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { PGlite } from '@electric-sql/pglite';
+import {
+  MIGRATION_DIRECTORY, PIN_SETTING, RECORD_MIGRATION_DIRECTORY, applyProvision,
+} from '../../../tools-pennsync-provision.mjs';
+import {
+  LOCAL_ONLY_MIGRATIONS, MigrateError, applyMigrations, ledgerName,
+} from '../../../tools-pennsync-migrate.mjs';
+
+/**
+ * The database half of bringing an existing store forward.
+ *
+ * The offline refusals are in `tools-pennsync-migrate.test.mjs`. What needs a
+ * real database is the thing the hosted staging project is actually going to
+ * do: a store built when the repository had ten migrations, carrying a pin
+ * that must survive, having fifty-four record migrations applied to it in one
+ * run — against the committed SQL rather than a fixture of it.
+ */
+const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
+const STAGING = '6a9881683dc68a0bd54f1ef7';
+
+/**
+ * The provisioner's own harness: `alter database ... set` runs for real, and a
+ * "new session" is modelled by reading what the statement persisted rather
+ * than by being told the answer. PGlite is one connection, so a session that
+ * trusted itself would agree with itself and prove nothing.
+ */
+async function persistedPin(db) {
+  const { rows } = await db.query(`select s.setconfig from pg_db_role_setting s
+    join pg_database d on d.oid = s.setdatabase where d.datname = current_database()`);
+  const entry = (rows[0]?.setconfig ?? []).find(item => item.startsWith(`${PIN_SETTING}=`));
+  return entry ? entry.slice(PIN_SETTING.length + 1) : null;
+}
+
+function harness(db) {
+  return {
+    query: (sql, params = []) => db.query(sql, params),
+    session: async run => {
+      const pinned = await persistedPin(db);
+      return run({
+        query: async (sql, params = []) => (/current_setting/.test(sql) && params[0] === PIN_SETTING
+          ? { rows: [{ value: pinned }] }
+          : db.query(sql, params)),
+        exec: async sql => db.exec(pinned ? `set ${PIN_SETTING} = '${pinned}';\n${sql}` : sql),
+      });
+    },
+  };
+}
+
+async function fresh() {
+  const db = new PGlite();
+  await db.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
+  return db;
+}
+
+/**
+ * A repository holding only the authority migrations a hosted deployment
+ * would have — the local-only one excluded, exactly as the hosted staging
+ * project was built — and an empty record directory. Provisioning from this
+ * produces the shape the real project is in today.
+ */
+async function deploymentShapedRepository() {
+  const root = await mkdtemp(join(tmpdir(), 'pennsync-migrate-'));
+  const authority = join(root, MIGRATION_DIRECTORY);
+  await mkdir(authority, { recursive: true });
+  await mkdir(join(root, RECORD_MIGRATION_DIRECTORY), { recursive: true });
+  const carried = readdirSync(join(repository, MIGRATION_DIRECTORY))
+    .filter(file => file.endsWith('.sql') && !LOCAL_ONLY_MIGRATIONS[file])
+    .sort();
+  for (const file of carried) {
+    await writeFile(join(authority, file), await readFile(join(repository, MIGRATION_DIRECTORY, file), 'utf8'));
+  }
+  return { root, carried };
+}
+
+/** The ledger the Supabase CLI keeps, seeded with what this store already ran. */
+async function seedLedger(db, names) {
+  await db.exec('create schema if not exists supabase_migrations;'
+    + ' create table if not exists supabase_migrations.schema_migrations'
+    + ' (version text primary key, statements text[], name text);');
+  for (const [index, name] of names.entries()) {
+    await db.query('insert into supabase_migrations.schema_migrations (version, name) values ($1, $2)',
+      // Deliberately NOT the repository's own prefixes: the hosted project's
+      // versions were stamped by the CLI at push time and do not match the
+      // file names, which is the whole reason the tool matches on name.
+      [`2026091807${String(index).padStart(4, '0')}`, name]);
+  }
+}
+
+test('a store with no ledger is refused rather than migrated blind', async () => {
+  const { root } = await deploymentShapedRepository();
+  const db = await fresh();
+  try {
+    await applyProvision({ db: harness(db), requestedApp: STAGING, repository: root });
+    await assert.rejects(() => applyMigrations({ db: harness(db), repository }), error => {
+      assert.ok(error instanceof MigrateError);
+      // The migrations create schemas and tables; they are not re-runnable,
+      // so "no ledger" has to stop the run rather than start it over.
+      assert.equal(error.code, 'MIGRATE_LEDGER_MISSING');
+      return true;
+    });
+  } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test('an empty database is sent to the provisioner', async () => {
+  const db = await fresh();
+  try {
+    await assert.rejects(() => applyMigrations({ db: harness(db), repository }), error => {
+      assert.equal(error.code, 'MIGRATE_STORE_ABSENT');
+      return true;
+    });
+  } finally { await db.close(); }
+});
+
+test('the hosted gap is applied in one run, the pin survives it, and a second run is a no-op', async () => {
+  const { root, carried } = await deploymentShapedRepository();
+  const db = await fresh();
+  try {
+    await applyProvision({ db: harness(db), requestedApp: STAGING, repository: root });
+    await seedLedger(db, carried.map(ledgerName));
+
+    const before = await db.query('select pennsync_private.deployment_app_id() as app_id');
+
+    const planned = await applyMigrations({ db: harness(db), repository });
+    assert.equal(planned.mutated, false, 'the default must touch nothing');
+    assert.ok(planned.pending.length >= 54, `expected the record store pending, got ${planned.pending.length}`);
+    assert.equal(planned.deployment.app_id, STAGING);
+
+    const run = await applyMigrations({ db: harness(db), repository, apply: true });
+    assert.equal(run.mutated, true);
+    assert.deepEqual(run.applied, planned.pending, 'applied exactly what the plan named, in that order');
+
+    // The property the tool exists to protect: nothing above may move the pin,
+    // because the pin is what keeps one deployment's rows out of another's
+    // database. `applyMigrations` checks it too; this proves it independently.
+    const after = await db.query('select pennsync_private.deployment_app_id() as app_id');
+    assert.equal(after.rows[0].app_id, before.rows[0].app_id);
+    assert.equal(after.rows[0].app_id, STAGING);
+
+    // The store really is there, not merely reported as applied.
+    const { rows: tables } = await db.query(
+      "select count(*)::int as count from pg_tables where schemaname = 'pennsync_records'");
+    assert.ok(tables[0].count > 100, `expected the record store, got ${tables[0].count} tables`);
+
+    const again = await applyMigrations({ db: harness(db), repository });
+    assert.deepEqual(again.pending, [], 'a second run must find nothing pending');
+    assert.equal(again.mutated, false);
+  } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test('the local-only migration is never applied to a deployment, even by the full run', async () => {
+  const { root, carried } = await deploymentShapedRepository();
+  const db = await fresh();
+  try {
+    await applyProvision({ db: harness(db), requestedApp: STAGING, repository: root });
+    await seedLedger(db, carried.map(ledgerName));
+    const run = await applyMigrations({ db: harness(db), repository, apply: true });
+
+    for (const file of Object.keys(LOCAL_ONLY_MIGRATIONS)) {
+      assert.ok(!run.applied.includes(file), `${file} must not reach a deployment`);
+      assert.ok(run.skipped.some(entry => entry.name === file), `${file} must be reported, not dropped`);
+    }
+    // Its table is the observable consequence: present locally, absent here.
+    const { rows } = await db.query(`select count(*)::int as count from pg_tables
+      where schemaname = 'pennsync_private' and tablename = 'archive_patient_import_receipt'`);
+    assert.equal(rows[0].count, 0, 'the local-only receipt table must not exist on a deployment');
+  } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});

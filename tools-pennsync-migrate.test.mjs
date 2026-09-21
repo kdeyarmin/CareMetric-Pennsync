@@ -1,0 +1,240 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import {
+  LOCAL_ONLY_MIGRATIONS, MIGRATE_CONTRACT, MigrateError,
+  applyMigrations, ledgerName, ledgerVersion, planMigration, readAppliedNames, runMigrateCli,
+} from './tools-pennsync-migrate.mjs';
+import {
+  MIGRATION_DIRECTORY, RECORD_MIGRATION_DIRECTORY, readMigrations,
+} from './tools-pennsync-provision.mjs';
+
+/**
+ * The offline half of migrating a store that already exists: everything
+ * decidable without a database.
+ *
+ * The database half lives in `services/authority-store/tests/migrate.test.mjs`
+ * and drives the real committed migrations through PGlite. These are the
+ * refusals that have to hold before a connection is ever opened — a ledger
+ * that cannot be matched, a sequence with a hole in it, a deliberate omission
+ * quietly becoming an accident.
+ */
+const REPOSITORY = new URL('.', import.meta.url).pathname;
+
+const migration = (name, from) => ({ name, from, sql: `-- ${name}\n` });
+const authority = name => migration(name, MIGRATION_DIRECTORY);
+const record = name => migration(name, RECORD_MIGRATION_DIRECTORY);
+
+/** Runs a synchronous call expected to refuse, and hands back the refusal. */
+const refusal = (run, code) => {
+  let failure = null;
+  try { run(); } catch (error) { failure = error; }
+  assert.ok(failure instanceof MigrateError, `expected a MigrateError, got ${failure}`);
+  assert.equal(failure.code, code);
+  return failure;
+};
+
+/**
+ * A validator for `assert.rejects`, which requires exactly `true` — a truthy
+ * object is not enough and silently passes anything.
+ */
+const rejectsWith = code => error => {
+  assert.ok(error instanceof MigrateError, `expected a MigrateError, got ${error}`);
+  assert.equal(error.code, code);
+  return true;
+};
+
+test('a ledger name is the file name without its version, because the two sides do not share one', () => {
+  assert.equal(ledgerName('20260918015112_independent_staging_authority.sql'), 'independent_staging_authority');
+  assert.equal(ledgerVersion('20260918015112_independent_staging_authority.sql'), '20260918015112');
+  // The hosted staging project holds this name at version 20260918070751,
+  // which is not the repository's prefix. Matching on version would report
+  // every applied migration as pending and re-run the lot.
+  assert.notEqual(ledgerVersion('20260918015112_independent_staging_authority.sql'), '20260918070751');
+});
+
+test('nothing pending when the ledger already names every migration', () => {
+  const migrations = [authority('001_a.sql'), record('002_b.sql')];
+  const plan = planMigration({ migrations, applied: ['a', 'b'] });
+  assert.equal(plan.contract, MIGRATE_CONTRACT);
+  assert.deepEqual(plan.pending, []);
+  assert.deepEqual(plan.applied, ['001_a.sql', '002_b.sql']);
+});
+
+test('pending keeps the provisioner order: every authority migration before any record one', () => {
+  const migrations = [authority('001_a.sql'), authority('002_b.sql'), record('000_c.sql')];
+  const plan = planMigration({ migrations, applied: [] });
+  // `000_c` sorts first by name and must still come last: these are two
+  // sequences, and every record policy is written against `pennsync_private`.
+  assert.deepEqual(plan.pending, ['001_a.sql', '002_b.sql', '000_c.sql']);
+});
+
+test('a hole in a directory is refused rather than repaired', () => {
+  const migrations = [authority('001_a.sql'), authority('002_b.sql'), authority('003_c.sql')];
+  // `b` never ran and `c` did, so applying `b` now would run it against a
+  // schema `c` has already changed.
+  const failure = refusal(() => planMigration({ migrations, applied: ['a', 'c'] }), 'MIGRATE_OUT_OF_ORDER');
+  assert.equal(failure.detail.applied, '003_c.sql');
+  assert.equal(failure.detail.after, '002_b.sql');
+});
+
+test('a hole in one directory is not created by the other being behind', () => {
+  // Every authority migration applied, no record migration applied: ordinary,
+  // and exactly the hosted staging project's shape.
+  const migrations = [authority('001_a.sql'), record('002_b.sql'), record('003_c.sql')];
+  const plan = planMigration({ migrations, applied: ['a'] });
+  assert.deepEqual(plan.pending, ['002_b.sql', '003_c.sql']);
+});
+
+test('a ledger naming something the repository does not have is refused', () => {
+  const failure = refusal(
+    () => planMigration({ migrations: [authority('001_a.sql')], applied: ['a', 'from_another_tree'] }),
+    'MIGRATE_LEDGER_UNKNOWN');
+  assert.deepEqual(failure.detail.names, ['from_another_tree']);
+});
+
+test('two files sharing a ledger name are refused, because "has this run" would have no answer', () => {
+  const migrations = [authority('001_shared.sql'), record('002_shared.sql')];
+  const failure = refusal(() => planMigration({ migrations, applied: [] }), 'MIGRATE_NAME_COLLISION');
+  assert.equal(failure.detail.name, 'shared');
+});
+
+test('the committed migrations carry no ledger-name collision', () => {
+  // The guard above is worth nothing if the real tree already violates it.
+  const plan = planMigration({ migrations: readMigrations(REPOSITORY), applied: [] });
+  assert.ok(plan.pending.length > 60, `expected the whole tree pending, got ${plan.pending.length}`);
+});
+
+test('a local-only migration is skipped with its reason and never pends', () => {
+  const [file] = Object.keys(LOCAL_ONLY_MIGRATIONS);
+  const plan = planMigration({ migrations: readMigrations(REPOSITORY), applied: [] });
+  assert.ok(!plan.pending.includes(file), `${file} must never be planned for a deployment`);
+  const skipped = plan.skipped.find(entry => entry.name === file);
+  assert.ok(skipped, `${file} must be reported as skipped rather than silently dropped`);
+  // An entry here is a decision, so it owes a reason somebody can read rather
+  // than a placeholder.
+  assert.ok(skipped.reason.length > 40, `${file} is held back without a stated reason`);
+});
+
+test('every local-only migration names a file that exists, so a stale entry cannot hide one', () => {
+  const onDisk = new Set(readdirSync(join(REPOSITORY, MIGRATION_DIRECTORY))
+    .concat(readdirSync(join(REPOSITORY, RECORD_MIGRATION_DIRECTORY))));
+  for (const file of Object.keys(LOCAL_ONLY_MIGRATIONS)) {
+    assert.ok(onDisk.has(file), `${file} is held back but no longer exists`);
+  }
+});
+
+test('the local-only set is exactly what the hosted staging project is missing below its high-water mark', () => {
+  // The nine names the hosted project actually holds, read from it on
+  // 2026-09-21. Everything in the authority directory dated at or before the
+  // last of them either IS one of them or is deliberately held back — which
+  // is what makes the omission a decision rather than drift.
+  const hosted = new Set(['independent_staging_authority', 'synthetic_s4_create_subset',
+    'synthetic_s3_manual_referral', 's4_ecmascript_blank_note', 'current_visit_documentation',
+    'current_patient_context', 'current_visit_schedule', 'referral_patient_selection',
+    'current_referral_list']);
+  const authorityFiles = readdirSync(join(REPOSITORY, MIGRATION_DIRECTORY)).sort();
+  const highWater = authorityFiles.filter(file => hosted.has(ledgerName(file))).pop();
+  const belowMark = authorityFiles.filter(file => file <= highWater);
+  const unexplained = belowMark
+    .filter(file => !hosted.has(ledgerName(file)) && !LOCAL_ONLY_MIGRATIONS[file]);
+  assert.deepEqual(unexplained, [],
+    'a migration older than the hosted high-water mark that is neither applied nor explained');
+});
+
+test('a database with no store is sent to the provisioner rather than migrated', async () => {
+  const db = { query: async () => ({ rows: [{ count: 0 }] }) };
+  await assert.rejects(() => applyMigrations({ db, repository: REPOSITORY }),
+    rejectsWith('MIGRATE_STORE_ABSENT'));
+});
+
+test('a half-provisioned store is refused rather than built on', async () => {
+  const answers = [{ count: 1 }, { count: 0 }];
+  const db = { query: async () => ({ rows: [answers.shift()] }) };
+  await assert.rejects(() => applyMigrations({ db, repository: REPOSITORY }),
+    rejectsWith('MIGRATE_STORE_PARTIALLY_PROVISIONED'));
+});
+
+test('a ledger that is absent stops the run rather than being guessed at', async () => {
+  const db = { query: async sql => {
+    if (sql.includes('pg_namespace')) return { rows: [{ count: 1 }] };
+    if (sql.includes('pg_proc')) return { rows: [{ count: 1 }] };
+    if (sql.includes('deployment_app_id')) {
+      return { rows: [{ app_id: '6a9881683dc68a0bd54f1ef7', label: 'staging', source: 'setting' }] };
+    }
+    return { rows: [{ count: 0 }] };
+  } };
+  await assert.rejects(() => applyMigrations({ db, repository: REPOSITORY }),
+    rejectsWith('MIGRATE_LEDGER_MISSING'));
+});
+
+test('a ledger row with no name stops the run, because a version is not an identity', async () => {
+  const db = { query: async sql => {
+    if (sql.includes('information_schema.tables')) return { rows: [{ count: 1 }] };
+    if (sql.includes('schema_migrations')) return { rows: [{ version: '20260918070751', name: null }] };
+    return { rows: [{ count: 1 }] };
+  } };
+  await assert.rejects(() => readAppliedNames(db), rejectsWith('MIGRATE_LEDGER_UNNAMED'));
+});
+
+test('planning mutates nothing and says so', async () => {
+  const applied = ['independent_staging_authority', 'synthetic_s4_create_subset',
+    'synthetic_s3_manual_referral', 's4_ecmascript_blank_note', 'current_visit_documentation',
+    'current_patient_context', 'current_visit_schedule', 'referral_patient_selection',
+    'current_referral_list'];
+  let sessions = 0;
+  const db = {
+    query: async sql => {
+      if (sql.includes('pg_namespace')) return { rows: [{ count: 1 }] };
+      if (sql.includes('pg_proc')) return { rows: [{ count: 1 }] };
+      if (sql.includes('deployment_app_id')) {
+        return { rows: [{ app_id: '6a9881683dc68a0bd54f1ef7', label: 'staging', source: 'setting' }] };
+      }
+      if (sql.includes('information_schema.tables')) return { rows: [{ count: 1 }] };
+      if (sql.includes('schema_migrations')) {
+        return { rows: applied.map(name => ({ version: '1', name })) };
+      }
+      throw new Error(`unexpected statement: ${sql}`);
+    },
+    session: async () => { sessions += 1; },
+  };
+  const result = await applyMigrations({ db, repository: REPOSITORY });
+  assert.equal(result.mutated, false);
+  assert.equal(sessions, 0, 'a plan must open no session');
+  assert.equal(result.deployment.label, 'staging');
+  assert.equal(result.already_applied, applied.length);
+  // The five authority migrations the hosted project is behind, then every
+  // record migration. This is the number the plan document reports.
+  assert.ok(result.pending.length >= 59, `expected the hosted gap, got ${result.pending.length}`);
+  assert.equal(result.pending[0], '20260919090000_deployment_app_pin.sql');
+});
+
+test('the CLI refuses with a code and never echoes the connection string', async () => {
+  const errors = [];
+  const code = await runMigrateCli({
+    env: { PENNSYNC_MIGRATE_DATABASE_URL: 'postgresql://user:secret@host/db' },
+    argv: [],
+    write: () => {},
+    error: line => errors.push(line),
+    connect: async () => { throw new MigrateError('MIGRATE_CONNECT_REFUSED'); },
+  });
+  assert.equal(code, 1);
+  assert.equal(JSON.parse(errors[0]).error, 'MIGRATE_CONNECT_REFUSED');
+  assert.ok(!errors.join('\n').includes('secret'), 'a diagnostic must not carry the credential');
+});
+
+test('the CLI needs a target before it opens anything', async () => {
+  const errors = [];
+  let opened = false;
+  const code = await runMigrateCli({
+    env: {},
+    argv: ['--apply'],
+    write: () => {},
+    error: line => errors.push(line),
+    connect: async () => { opened = true; },
+  });
+  assert.equal(code, 1);
+  assert.equal(JSON.parse(errors[0]).error, 'MIGRATE_TARGET_REQUIRED');
+  assert.equal(opened, false);
+});
