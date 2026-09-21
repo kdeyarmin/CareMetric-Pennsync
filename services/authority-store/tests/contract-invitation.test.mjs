@@ -86,7 +86,7 @@ const refusal = (promise, code) => assert.rejects(promise, error => {
   return true;
 }, `expected ${code}`);
 const rowOf = async id => (await db.query(
-  `select "status","resend_count","expires_at","last_sent_at"
+  `select "status","resend_count","expires_at","last_sent_at","updated_date"
    from ${SCHEMA}."user_invitation" where "id" = $1`, [id])).rows[0];
 
 test('the two originals really are one capability', async () => {
@@ -114,22 +114,45 @@ test('only the agency administrator may resend, and only their own agency', asyn
   await refusal(resend(ADMIN_A, 'has spaces'), 'PENNSYNC_INVITATION_SUBJECT_INVALID');
 });
 
-test('a resend revives an expired invitation and counts itself', async () => {
+test('a resend reopens an expired invitation and records no send, because none happened', async () => {
+  /*
+   * This test was called "and counts itself" and asserted `resend_count` rose
+   * to 3 with `last_sent_at` stamped — pinning as correct a row that claimed a
+   * delivery nothing performed. D42 ported this capability knowing the send
+   * has NO successor and put `delivery_paused: true` on the audit entry for
+   * that reason; D73's standard is that the RECORD must not read as though it
+   * happened either, and that half was missed.
+   */
   const before = await rowOf('inv-expired');
   assert.equal(before.status, 'expired');
   const result = await resend(ADMIN_A, 'inv-expired');
   assert.equal(result.success, true);
+  // The window really does reopen — that is the part a resend means which does
+  // not claim a delivery, and it is what lets an operator send the link by
+  // hand without fighting a stale row.
   assert.equal(result.invitation.status, 'pending');
-  assert.equal(result.invitation.resend_count, 3, 'the original increments from 2');
   const after = await rowOf('inv-expired');
   assert.equal(after.status, 'pending');
-  assert.equal(Number(after.resend_count), 3);
-  assert.ok(after.last_sent_at, 'the moment is stamped');
-  // Seven days, which is the original's window.
-  const days = (new Date(after.expires_at) - new Date(after.last_sent_at)) / 86400000;
+  const days = (new Date(after.expires_at) - new Date(after.updated_date)) / 86400000;
   assert.ok(Math.abs(days - 7) < 0.01, `expected seven days, saw ${days}`);
-  // A null count starts at one rather than becoming NaN.
-  assert.equal((await resend(ADMIN_A, 'inv-pending')).invitation.resend_count, 1);
+
+  // And the two delivery-success fields do NOT move.
+  assert.equal(Number(after.resend_count), Number(before.resend_count),
+    'resend_count must not count a send that did not happen');
+  assert.equal(after.last_sent_at?.toISOString?.() ?? after.last_sent_at,
+    before.last_sent_at?.toISOString?.() ?? before.last_sent_at,
+    'last_sent_at must not be stamped when nothing was sent');
+  assert.equal(result.invitation.resend_count, Number(before.resend_count));
+
+  // The caller is TOLD, at the top level rather than only in the trail — the
+  // SPA cannot read the trail, which is why it said "resent successfully!".
+  assert.equal(result.delivery_paused, true);
+
+  // An invitation that never had a count stays without one rather than
+  // becoming 1 by being asked about.
+  const pending = await resend(ADMIN_A, 'inv-pending');
+  assert.equal(pending.delivery_paused, true);
+  assert.equal(pending.invitation.resend_count, 0);
 });
 
 test('an accepted or cancelled invitation is not resent', async () => {

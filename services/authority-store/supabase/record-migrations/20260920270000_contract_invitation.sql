@@ -108,12 +108,27 @@ begin
 
   v_now := clock_timestamp();
   v_expires := v_now + interval '7 days';
-  v_count := coalesce(v_row."resend_count", 0)::integer + 1;
+  /*
+   * NOTHING WAS SENT, SO NOTHING RECORDS A SEND.
+   *
+   * D42 ported this capability knowing its delivery has no successor — the
+   * original calls `base44.users.inviteUser`, which MINTS the account and
+   * delivers the link, and nothing here does either. The audit entry was given
+   * `delivery_paused: true` for exactly that reason, and then the row was
+   * updated as though a message had gone out anyway: `last_sent_at` set to
+   * now, `resend_count` incremented. D73's standard is the one that applies —
+   * a paused half is reported as paused so the RECORD cannot read as though it
+   * happened — and it was applied to the trail and not to the table.
+   *
+   * `last_sent_at` and `resend_count` therefore do not move. What does move is
+   * the part a resend legitimately means and which does not claim a delivery:
+   * an EXPIRED invitation returns to `pending` with a fresh window, so an
+   * operator who sends the link by hand is not fighting a stale row.
+   */
+  v_count := coalesce(v_row."resend_count", 0)::integer;
   update "pennsync_records"."user_invitation" i set
     "status" = 'pending',
     "expires_at" = v_expires,
-    "last_sent_at" = v_now,
-    "resend_count" = v_count,
     "updated_date" = v_now
   where i."source_app_id" = v_row."source_app_id" and i."id" = v_row."id"
   returning * into v_row;
@@ -125,13 +140,19 @@ begin
     p_agency, 'invitation_resent', 'other', v_row."id",
     jsonb_build_object(
       'invited_email', v_row."email",
+      -- The UNCHANGED count, so the trail does not imply a send either.
       'resend_count', v_count,
       'new_expires_at', v_expires,
       -- Recorded on the entry itself, so the trail does not read as though a
       -- message went out.
       'delivery_paused', true));
 
+  -- `delivery_paused` at the TOP LEVEL, not only inside the audit detail: a
+  -- caller cannot read the trail, and `UserManagement.jsx` reported
+  -- "Invitation resent successfully!" precisely because nothing in the answer
+  -- told it otherwise.
   return jsonb_build_object('success', true, 'audit_event_id', v_event,
+    'delivery_paused', true,
     'invitation', jsonb_build_object(
       'id', v_row."id", 'email', v_row."email", 'status', v_row."status",
       'expires_at', v_row."expires_at", 'last_sent_at', v_row."last_sent_at",

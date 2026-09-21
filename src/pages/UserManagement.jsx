@@ -150,8 +150,16 @@ export default function UserManagement() {
       if (data?.error) throw new Error(data.error);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['userInvitations'] });
+      // Under the independent backend nothing is delivered — the invite link is
+      // minted by a platform service with no successor yet — so say what
+      // actually happened rather than claiming a send. The invitation's window
+      // really was reopened, which is the part an operator can act on.
+      if (data?.delivery_paused) {
+        toast.success('Invitation reopened. No email was sent — send the invite link manually.');
+        return;
+      }
       toast.success('Invitation resent successfully!');
     },
     onError: (error) => {
