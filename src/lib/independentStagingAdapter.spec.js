@@ -1,6 +1,24 @@
+import { readFile } from 'node:fs/promises';
 import { describe, it, expect } from 'vitest';
 import { createIndependentStagingAdapter, readIndependentStagingConfig } from './independentStagingAdapter';
+import { bindTrustedTenantContext, clearTrustedTenantContext, getActiveTrustedTenantContext } from '@/lib/roles';
 import { stagingApiUrl, stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
+
+/** The principal AuthContext binds, which is where a ported call's tenant comes from. */
+const boundUser = Object.freeze({ id: 'user-1', email: 'nurse@example.test' });
+const boundContext = (overrides = {}) => ({
+  user_id: 'user-1',
+  user_email: 'nurse@example.test',
+  membership_id: 'membership-1',
+  membership_key: 'agency-a:user-1',
+  membership_version: 3,
+  agency_id: 'agency-a',
+  tenant_role: 'clinician',
+  membership_status: 'active',
+  is_platform_owner: false,
+  agency: { id: 'agency-a', name: 'Synthetic Agency', status: 'active' },
+  ...overrides,
+});
 
 describe('finite independent app adapter', () => {
   it('preserves default backend and rejects foreign targets, secret keys and unbound actors before I/O', () => {
@@ -83,11 +101,30 @@ describe('finite independent app adapter', () => {
   });
 });
 
+describe('the adapter module under plain node', () => {
+  it('carries no "@/" alias import, because a node suite loads this file directly', async () => {
+    // `services/authority-client/browser/actual-app-acceptance.test.mjs` runs
+    // it under `node --test`, where Vite's alias does not resolve. Adding
+    // `import { getActiveTrustedTenantContext } from '@/lib/roles'` here passed
+    // lint, the whole of `pnpm test`, the build and every gate, and failed CI
+    // with ERR_MODULE_NOT_FOUND — the trap AGENTS.md records as twenty suites
+    // that `pnpm test` does not run. A relative import would not have saved it
+    // either: `roles.js` reaches `@/lib/superAdmin` itself, which is why the
+    // accessor is INJECTED by the composition root instead.
+    // A repo-relative path, not `import.meta.url`: vitest serves modules over
+    // http, so that URL is not a `file:` one and `readFile` rejects it.
+    const source = await readFile('src/lib/independentStagingAdapter.js', 'utf8');
+    const aliased = [...source.matchAll(/^\s*import\s[^;]*?from\s+['"`](@\/[^'"`]+)['"`]/gm)].map(m => m[1]);
+    expect(aliased).toEqual([]);
+  });
+});
+
 describe('the ported API caller', () => {
   const ported = { ...stagingEnv, VITE_PENNSYNC_API_URL: stagingApiUrl };
   const signedIn = async (env = ported) => {
     const fixture = stagingFixture();
-    const adapter = createIndependentStagingAdapter(readIndependentStagingConfig(env), { fetchImpl: fixture.fetch });
+    const adapter = createIndependentStagingAdapter(readIndependentStagingConfig(env),
+      { fetchImpl: fixture.fetch, boundTenant: getActiveTrustedTenantContext });
     await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
     return { fixture, adapter };
   };
@@ -145,14 +182,62 @@ describe('the ported API caller', () => {
       .rejects.toThrow(/PENNSYNC_API_RESPONSE_INVALID/);
   });
 
-  it('requires the agency the ported service needs rather than guessing one', async () => {
+  it('refuses when there is no bound principal to take a tenant from', async () => {
     // The Base44 original accepted any authenticated caller; the ported service
-    // requires a current agency membership. A call site not reviewed for that
-    // is refused instead of being given a tenant on its behalf.
+    // requires a current agency membership. With nothing bound there is no
+    // tenant to act as, so the refusal stands — this is the case it is for.
     const { fixture, adapter } = await signedIn();
+    clearTrustedTenantContext();
     await expect(adapter.raw.functions.invoke('validatePatientData', { patient: {} }))
       .rejects.toThrow(/STAGING_TENANT_SELECTION_REQUIRED/);
     expect(fixture.apiCalls).toHaveLength(0);
+  });
+
+  it('takes the tenant from the bound principal when the call site names none', async () => {
+    // The recorded plan was to edit all 67 call sites instead. That is unsafe
+    // rather than merely large: `src/functions/*` wrappers serve BOTH backends,
+    // and roughly a third of the Base44 originals reject an unknown key — a
+    // first scan called `createAuthorizedPatient` tolerant and it rejects at
+    // `entry.ts:149`. So the tenant is supplied here, where it reaches only the
+    // ported service and can never enter a Base44 payload.
+    const { fixture, adapter } = await signedIn();
+    bindTrustedTenantContext(boundUser, boundContext());
+    try {
+      expect(await adapter.raw.functions.invoke('validatePatientData', { patient: { first_name: 'A' } }))
+        .toEqual({ data: { valid: true } });
+      const [call] = fixture.apiCalls;
+      // Lifted into the envelope exactly as an explicit one is, and never into
+      // `params`, which is what the handler receives.
+      expect(call.body).toEqual({ agency_id: 'agency-a', params: { patient: { first_name: 'A' } } });
+    } finally { clearTrustedTenantContext(); }
+  });
+
+  it('refuses an explicitly falsy tenant instead of substituting the bound one', async () => {
+    const { fixture, adapter } = await signedIn();
+    bindTrustedTenantContext(boundUser, boundContext());
+    try {
+      // A present-but-empty tenant is a lookup that produced nothing, not an
+      // absent key. `supplied || bound` answered it with the bound agency,
+      // which acts on a tenant nobody chose; the key's presence decides now.
+      for (const agency_id of [null, '', undefined]) {
+        await expect(adapter.raw.functions.invoke('validatePatientData', { agency_id, patient: {} }))
+          .rejects.toThrow(/STAGING_TENANT_SELECTION_REQUIRED/);
+      }
+      expect(fixture.apiCalls).toHaveLength(0);
+    } finally { clearTrustedTenantContext(); }
+  });
+
+  it('never overrides a tenant the call site did name', async () => {
+    const { fixture, adapter } = await signedIn();
+    // Bound to one agency, asked for another: the request decides, because a
+    // caller naming a tenant is making a choice the bound context must not
+    // silently replace. The server re-checks the membership regardless.
+    bindTrustedTenantContext(boundUser, boundContext({ agency_id: 'agency-bound' }));
+    try {
+      await adapter.raw.functions.invoke('validatePatientData',
+        { agency_id: 'agency-a', patient: { first_name: 'A' } });
+      expect(fixture.apiCalls.at(-1).body.agency_id).toBe('agency-a');
+    } finally { clearTrustedTenantContext(); }
   });
 
   it('serves a document through the fetch surface the download flows actually use', async () => {

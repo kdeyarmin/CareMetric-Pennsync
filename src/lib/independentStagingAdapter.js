@@ -33,7 +33,8 @@ export function readIndependentStagingConfig(env = {}) {
 }
 
 /** Finite adaptation of existing app contracts; never a generic SDK or entity proxy. */
-export function createIndependentStagingAdapter(config, { fetchImpl = globalThis.fetch } = {}) {
+export function createIndependentStagingAdapter(config,
+  { fetchImpl = globalThis.fetch, boundTenant = () => null } = {}) {
   let client = null;
   let generation = 0;
   let signedIn = false;
@@ -102,8 +103,56 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
    */
   const routesPorted = (name, input) => Object.hasOwn(PORTED_FUNCTIONS, name)
     && !!config.target.apiUrl && !stagingOwned(name, input);
+  /**
+   * The tenant a ported call carries, and a REVERSAL of a recorded decision.
+   *
+   * The transition plan says this adapter "refuses rather than choosing a
+   * tenant on the caller's behalf, which is the point", and that the fix
+   * belongs at each call site. Measuring it moved the ground under that: the
+   * adapter routes 70 call sites across 52 capabilities and 3 name a tenant,
+   * so the recorded plan is 67 edits — and each edit adds a key to a payload
+   * the LIVE Base44 original also receives, because `src/functions/*` wrappers
+   * serve both backends.
+   *
+   * That is the part that makes the call-site fix unsafe rather than merely
+   * large. Roughly a third of those originals reject an unknown key outright
+   * and there is no trustworthy way to tell which: a first scan here called
+   * `createAuthorizedPatient` tolerant, and it rejects unknown keys at
+   * `entry.ts:149` with a `for (const key of Object.keys(body))` loop the scan
+   * did not know. Widening the scan found more shapes, which is the same
+   * lesson D47 and D75 record — when a check exists to stop a class of
+   * mistake, re-derive the shapes from the tree rather than from the check —
+   * and it is exactly why "no rejection shape found" cannot be read as proof
+   * of tolerance. Adding `agency_id` on that evidence would break patient
+   * creation in production.
+   *
+   * So the tenant is supplied HERE, where it reaches only the ported service
+   * and can never touch a Base44 payload. What it supplies is not an
+   * invention: `boundTenant` is wired to `getActiveTrustedTenantContext` by
+   * `independentStagingSession.js`, the composition root, rather than imported
+   * here — this module is also loaded under plain `node --test`, where a `@/`
+   * alias does not resolve, which is why every import in it is relative. It is
+   * the principal AuthContext
+   * already bound and validated, the same source the six revalidation hooks
+   * use through `trustedTenantRequest`, and its own contract states that it is
+   * not an authorization grant because the server independently re-checks the
+   * principal and membership before work and before disclosure.
+   *
+   * A call site that names its tenant still decides — this only answers the
+   * case where none was named — and with no bound principal at all the
+   * original refusal stands, because then there genuinely is no tenant to act
+   * as.
+   */
   const portedCall = async (name, input) => {
-    const { agency_id: agencyId, ...params } = input;
+    const { agency_id: supplied, ...params } = input;
+    // Only an ABSENT tenant falls back. A call site that named one has made
+    // the choice even when it named it badly: `agency_id: null` is a lookup
+    // that produced nothing, and answering that with the bound agency would
+    // act on a tenant nobody chose. `||` did exactly that, so the key's
+    // presence decides and an explicit falsy value falls to the refusal below.
+    const agencyId = Object.hasOwn(input, 'agency_id')
+      ? supplied
+      : (boundTenant()?.agency_id ?? null);
     if (!agencyId) fail('STAGING_TENANT_SELECTION_REQUIRED');
     const active = client, lease = generation;
     if (!active || !signedIn) fail('AUTHENTICATION_REQUIRED', 401);

@@ -101,7 +101,7 @@ jobs:
             runner_codename="$(. /etc/os-release && test "$ID" = ubuntu && printf '%s' "$VERSION_CODENAME")"
             [[ "$runner_codename" =~ ^[a-z]+$ ]]
             sudo install -d /usr/share/postgresql-common/pgdg
-            sudo curl --fail --silent --show-error --location --retry 3 --max-time 60 \
+            sudo curl --fail --silent --show-error --location --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 \
               https://www.postgresql.org/media/keys/ACCC4CF8.asc \
               --output /usr/share/postgresql-common/pgdg/pennsync-ci.asc
             printf 'deb [signed-by=/usr/share/postgresql-common/pgdg/pennsync-ci.asc] https://apt.postgresql.org/pub/repos/apt %s-pgdg main\n' "$runner_codename" \
@@ -148,7 +148,7 @@ jobs:
         run: |
           set -euo pipefail
           cli_dir="$(mktemp -d "$RUNNER_TEMP/pennsync-supabase.XXXXXX")"
-          curl --fail --silent --show-error --location --retry 3 \
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 5 --retry-all-errors \
             https://github.com/supabase/cli/releases/download/v2.109.1/supabase_2.109.1_linux_amd64.tar.gz \
             --output "$cli_dir/cli.tar.gz"
           printf '%s  %s\n' '36d87b7fe6b4bcfe89ac47a4354e526cff22480224de426d7b370f6934556976' "$cli_dir/cli.tar.gz" | sha256sum --check
@@ -171,3 +171,52 @@ jobs:
       - name: Stop isolated local stack
         if: always()
         run: node services/authority-store/tests/http-local-stack.mjs stop
+
+  hosted-gap:
+    name: Report the hosted staging migration gap
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+          cache-dependency-path: services/authority-store/pnpm-lock.yaml
+      - name: Install isolated authority dependencies
+        run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+      # Read-only. `tools-pennsync-migrate.mjs` plans by default and applies
+      # only with `--apply`, which this job never passes: a deployment is
+      # migrated by an operator who can see the plan first, never by CI.
+      #
+      # It reports how far the hosted staging project is behind the committed
+      # migrations. That gap went unmeasured from the day the record store
+      # merged, because nothing looked -- the suites all run against PGlite and
+      # a throwaway local cluster, which are green whatever the hosted project
+      # holds.
+      #
+      # Skips rather than fails without the secret, so a fork's pull request
+      # still passes. Once the secret exists the plan is visible on every run.
+      # NEVER on `pull_request`. The earlier condition deliberately ran it for
+      # same-repository branches, which handed PENNSYNC_STAGING_DATABASE_URL to
+      # the PR's own checked-out `tools-pennsync-migrate.mjs`: anyone able to
+      # push a branch could edit that script, or this step, to disclose the
+      # credential or write with it before review. The URL needs migration-owner
+      # privileges for `--apply`, so it is only ever handed to code that has
+      # already landed on main, or to a deliberate manual run.
+      - name: Plan the hosted staging migration
+        if: ${{ github.event_name != 'pull_request' }}
+        env:
+          PENNSYNC_MIGRATE_DATABASE_URL: ${{ secrets.PENNSYNC_STAGING_DATABASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PENNSYNC_MIGRATE_DATABASE_URL:-}" ]; then
+            echo "PENNSYNC_STAGING_DATABASE_URL is not configured; skipping the hosted plan." >&2
+            echo "The gap stays unmeasured until it is. See docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md stage A." >&2
+            exit 0
+          fi
+          node tools-pennsync-migrate.mjs

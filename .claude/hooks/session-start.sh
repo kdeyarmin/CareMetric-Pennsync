@@ -13,14 +13,31 @@ fi
 REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)}"
 cd "$REPO_ROOT"
 
-# Install JS dependencies so linters, type-checks, tests, and builds work.
-# Use `npm install` (not `npm ci`) so a partially-cached node_modules is
-# reused on warm containers; it is idempotent and safe to re-run.
-#
 # SessionStart hook stdout is injected into the conversation context, so route
 # all status and install logging to stderr (still captured in hook logs) to
 # keep the model's context clean.
-echo "[session-start] Installing npm dependencies..." >&2
-npm install --no-audit --no-fund >&2
+
+# pnpm through Corepack, never npm: the repository pins pnpm 11.9.0 and commits
+# `pnpm-lock.yaml`, and AGENTS.md says so in as many words. `npm install` here
+# resolved a different tree from the committed lockfile and left a stray
+# `package-lock.json` behind.
+echo "[session-start] Enabling Corepack and pnpm..." >&2
+corepack enable >&2
+corepack prepare pnpm@11.9.0 --activate >&2
+
+echo "[session-start] Installing root dependencies..." >&2
+pnpm install --frozen-lockfile >&2
+
+# `services/authority-store` is NOT a member of the root workspace — the root
+# `pnpm-workspace.yaml` declares no `packages`, so a root install leaves that
+# directory empty. Its devDependencies (`@electric-sql/pglite`, `pg`) are what
+# the authority, record-store, broker and every contract suite import, so
+# without this `pnpm test` dies at load with
+# `Cannot find package '@electric-sql/pglite'` before a single assertion runs
+# — 56 tests reported as failures that are really an uninstalled workspace.
+# `--ignore-workspace` is required: without it pnpm resolves the root workspace
+# and installs nothing here.
+echo "[session-start] Installing isolated authority-store dependencies..." >&2
+pnpm --dir services/authority-store install --frozen-lockfile --ignore-workspace >&2
 
 echo "[session-start] Dependencies installed." >&2
