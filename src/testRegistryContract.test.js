@@ -159,3 +159,43 @@ test('nothing the isolated authority job runs needs a package that job does not 
     'The isolated authority job does not install these, so the step fails at '
       + 'load rather than on an assertion:\n  ' + [...new Set(offences)].sort().join('\n  '));
 });
+
+test('a step handed an account-wide management token is gated on main', () => {
+  // `SUPABASE_ACCESS_TOKEN` is a Supabase PERSONAL access token: its scope is
+  // the whole organisation, not one project. A staging database URL reaches one
+  // database and is bad to leak; this reaches every project in the account.
+  //
+  // Excluding `pull_request` does not contain it. `workflow_dispatch` names no
+  // branch, so a collaborator can dispatch a workflow against a ref they
+  // control, `actions/checkout` takes that ref, and the step runs THEIR copy of
+  // the script with the secret in its environment. The ref has to decide, not
+  // the event.
+  //
+  // This is a ratchet rather than a review note because the property lives in
+  // one `if:` line, and a later edit that widened it back would look like a
+  // convenience and read as one.
+  const offenders = [];
+  for (const entry of readdirSync(join(process.cwd(), WORKFLOWS))) {
+    if (!entry.endsWith('.yml') && !entry.endsWith('.yaml')) continue;
+    const source = readFileSync(join(process.cwd(), WORKFLOWS, entry), 'utf8');
+    for (const chunk of source.split(/\n\s*- (?=name:|uses:|run:)/)) {
+      // Comments go first, and that is the point rather than tidiness: a step
+      // split leaves the comments that PRECEDE a step at the end of the
+      // previous chunk, so a prose mention of the token — like the one
+      // explaining this very gate — reported the step above it. A check that
+      // reads a file for a name has to say whether it means the code or the
+      // page; this means the code.
+      const step = chunk.split('\n').filter((line) => !/^\s*#/.test(line)).join('\n');
+      // An `env:` binding, not a mention.
+      if (!/^\s*SUPABASE_ACCESS_TOKEN:\s*\S/m.test(step)) continue;
+      // The gate must be the ref, and must name main exactly.
+      if (!/if:\s*\$\{\{\s*github\.ref\s*==\s*'refs\/heads\/main'\s*\}\}/.test(step)) {
+        offenders.push(`${entry}: ${(step.split('\n')[0] ?? '').trim().slice(0, 60)}`);
+      }
+    }
+  }
+  assert.deepEqual(offenders, [],
+    'every step receiving SUPABASE_ACCESS_TOKEN must be gated on '
+    + "if: ${{ github.ref == 'refs/heads/main' }} — excluding pull_request is not enough, "
+    + 'because workflow_dispatch can select any ref');
+});

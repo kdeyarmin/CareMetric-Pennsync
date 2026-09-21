@@ -207,7 +207,19 @@ jobs:
       # push a branch could edit that script, or this step, to disclose the
       # credential or write with it before review. The URL needs migration-owner
       # privileges for `--apply`, so it is only ever handed to code that has
-      # already landed on main, or to a deliberate manual run.
+      # already landed on main.
+      #
+      # The REF decides, not the event. Excluding `pull_request` was enough while
+      # the only secret here was a staging-specific database URL; it is not now.
+      # `workflow_dispatch` names no branch, so a collaborator could dispatch
+      # this workflow against a ref they control, `actions/checkout` would take
+      # that ref, and the step would hand their edited script the secrets. A
+      # manual run on main is still fine and still reaches this; a manual run on
+      # anything else no longer does.
+      #
+      # That distinction matters more for the token than for the URL: the URL
+      # reaches one staging database, while a Supabase management token is
+      # account-wide and would reach every project in the organisation.
       # The URL may be a postgres one or `supabase://<project-ref>`, and on a
       # hosted runner it usually has to be the second: Supabase's direct
       # database host is IPv6-only and the poolers want TCP 5432/6543, neither
@@ -215,7 +227,7 @@ jobs:
       # else. The management transport needs SUPABASE_ACCESS_TOKEN, which is
       # why both secrets are here; a postgres URL simply ignores it.
       - name: Plan the hosted staging migration
-        if: ${{ github.event_name != 'pull_request' }}
+        if: ${{ github.ref == 'refs/heads/main' }}
         env:
           PENNSYNC_MIGRATE_DATABASE_URL: ${{ secrets.PENNSYNC_STAGING_DATABASE_URL }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}

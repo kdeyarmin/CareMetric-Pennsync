@@ -189,6 +189,27 @@ suites green there, and CI running them on every PR.
 - Point it at hosted staging from Stage A.
 - Redeploy the integration runtime at the same time; it is two commits stale.
 
+**Verified 2026-09-21 by running the service, not by reading it.** Started from
+this repository with **no environment at all**, which is the state a freshly
+created Railway service boots in:
+
+- `/healthz` → **200** `{"status":"alive","release":"paused","revision":"unbound"}`.
+  This is the property the stage depends on and the one worth proving first: the
+  healthcheck passes *while the release gate is shut*, so the first deploy goes
+  green and stays paused. A service whose health endpoint only answered when
+  configured would fail its first healthcheck and look broken.
+- `/readyz` → **503**, `released:false`, `operations:[]`, `authorityMode:"independent"`,
+  `base44ExecutionDependency:false`, and **74 handlers** in `implemented`.
+- An unknown route → 404 `NOT_FOUND`, not a stack trace.
+- `loadConfig` defaults every value and only opens on
+  `PENNSYNC_API_RELEASE=enabled-v1`, refusing that outright without a usable
+  authority (`INCOMPLETE_AUTHORITY_CONFIGURATION`). A typo in the released
+  function list fails at startup rather than releasing nothing quietly.
+
+So there is **no engineering gap in front of this stage** — it is the Railway
+service itself. The `Dockerfile` also runs `node --test *.test.mjs` during the
+build, so an image that builds is an image whose suite passed.
+
 **Exit:** `/healthz` alive on both services; `/readyz` 503 on both with an empty
 operation set; no traffic change anywhere.
 
@@ -317,6 +338,19 @@ transport still unreleased.
 defaulted; `deployment` row dated.
 
 ### Stage G — The last 32 ports (size M, parallel to D and E)
+
+**Measured 2026-09-21: the startable side is at ZERO.** `tools-transition-disposition.mjs`
+reports 72 capabilities with no blocker, and all 72 are registered in
+`services/pennsync-api` — so every port that *can* be written without a decision
+has been. Two buckets the queue used to report are also empty now, on
+corrections rather than ports: `records_schema` (D75) and `ported_function`
+(D76). What is left is exactly the 32 below, and **not one of them is waiting on
+engineering capacity**.
+
+Re-derive that from the registry rather than by searching for quoted names: a
+first pass here looked for each capability as a quoted string and reported 18
+outstanding, because `handlers.mjs` registers them as bare object keys. The
+answer was 0. That is D47's lesson once more — read the shape from the tree.
 
 Each bucket needs a different thing, and only one of them is code:
 
@@ -472,7 +506,7 @@ so none of it sits waiting on a misunderstanding:
 
 | Needed | For | Note |
 | --- | --- | --- |
-| Approval to run the migrate tool's write path against hosted staging | Stage A | The credentials, the transport and the verified plan all exist here; an agent session's guardrail classifies any write to a hosted database as a production deploy and cannot tell this staging project from a production one. Nothing else in Stage A is outstanding |
+| Approval to run the migrate tool's write path against hosted staging | Stage A | The credentials, the transport and the verified plan all exist here; an agent session's guardrail classifies any write to a hosted database as a production deploy and cannot tell this staging project from a production one. This unblocks the stage rather than completing it — the suites that today prove themselves against PGlite still have to be re-run against the hosted project, and the hosted-target CI job still has to be added, and the stage's exit needs both green |
 | Create the `pennsync-api` Railway service | Stage B | Cost approval; same project and pattern as the runtime |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this |
