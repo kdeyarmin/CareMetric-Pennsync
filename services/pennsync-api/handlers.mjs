@@ -13,6 +13,7 @@ import { triageReferral } from './referral-triage.mjs';
 import { analyzeVisitSupplyUsage } from './visit-supply-usage.mjs';
 import { importProviders } from './provider-import.mjs';
 import { expandClinicalPhrase as runClinicalPhrase } from './clinical-phrase.mjs';
+import { exportPatientChart } from './chart-export.mjs';
 import { generateFollowUpTasks as runFollowUpTasks } from './follow-up-tasks.mjs';
 import {
   analyzeClinicalEvents as runClinicalEvents,
@@ -890,6 +891,22 @@ export const HANDLERS = Object.freeze({
         generatedOn: documentDate(now), year: now.getFullYear(),
       }).output('arraybuffer');
       return { binary: true, body, contentType: 'application/pdf', filename: `${guideType}_guide.pdf` };
+    },
+  }),
+  generatePatientChartPDF: Object.freeze({
+    needsIntegration: true,
+    // D53's sequence with no write behind it, because the answer is a document
+    // rather than a record — and, despite the name, not a PDF: the original
+    // asks a model for formatted text and returns the text.
+    //
+    // The authorization is the contract's. The original's own gate was
+    // `patient.created_by`, `patient.assigned_nurses` and the `SUPER_ADMIN_EMAIL`
+    // platform owner, all three of which D21, D22 and D24 removed, so what
+    // decides now is whether the caller opens the chart.
+    handle({ params, contract, integration, audit }) {
+      exactObject(params, ['patient_id', 'include_visits', 'include_incidents'],
+        'INVALID_PARAMS');
+      return exportPatientChart({ params, contract, integration, audit });
     },
   }),
   generateUserRosterPDF: Object.freeze({

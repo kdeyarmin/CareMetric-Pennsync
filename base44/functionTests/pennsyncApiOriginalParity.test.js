@@ -25,6 +25,9 @@ import {
 } from '../../services/pennsync-api/follow-up-tasks.mjs';
 import { buildGenericPrompt, buildPersonalPrompt } from '../../services/pennsync-api/clinical-phrase.mjs';
 import {
+  CHART_EXPORT_SCHEMA, buildChartPrompt,
+} from '../../services/pennsync-api/chart-export.mjs';
+import {
   buildEventReviewPrompt, buildTrendPrompt,
 } from '../../services/pennsync-api/clinical-analysis.mjs';
 import {
@@ -304,6 +307,29 @@ const PATIENT_SQL = migration('20260920060000_contract_patient_read.sql');
 const VISIT_SQL = migration('20260920080000_contract_visit_read.sql');
 const DOCUMENT_SQL = migration('20260920100000_contract_document_read.sql');
 const CREATE_SQL = migration('20260920120000_contract_patient_create.sql');
+/**
+ * A template's LITERAL text, with every balanced `${…}` cut out.
+ *
+ * Skipping lines that merely contain `${` is not enough: an interpolation can
+ * span lines — `${JSON.stringify(visits.map(v => ({` opens one and several
+ * lines of JavaScript follow inside it — so the regions are matched by brace
+ * depth instead. Two prompt-parity tests share this; a second copy would be a
+ * second thing to keep in step.
+ */
+const literal = text => {
+  let out = ''; let depth = 0;
+  for (let index = 0; index < text.length; index += 1) {
+    if (depth === 0 && text[index] === '$' && text[index + 1] === '{') { depth = 1; index += 1; continue; }
+    if (depth > 0) {
+      if (text[index] === '{') depth += 1;
+      else if (text[index] === '}') depth -= 1;
+      continue;
+    }
+    out += text[index];
+  }
+  return out;
+};
+
 /** The codes one SQL function raises, read from that function's own body. */
 const refusalsOf = (sql, name, terminator) => {
   const start = sql.indexOf(`create function "pennsync_records".${name}(`);
@@ -480,23 +506,6 @@ test('the task-suggestion prompt is the original s, and it creates no task', asy
   const end = original.indexOf('Return ONLY valid JSON, no prose or code fences', start);
   assert.ok(start > 0 && end > start, 'the original still carries the prompt');
   const built = buildTaskSuggestionPrompt({ patient: {}, visits: [], alerts: [], tasks: [] });
-  // This prompt's interpolations span LINES — `${JSON.stringify(visits.map(v => ({`
-  // opens one and several lines of JavaScript follow inside it — so skipping
-  // lines that merely contain `${` is not enough. Cut each balanced `${…}`
-  // region out first.
-  const literal = text => {
-    let out = ''; let depth = 0;
-    for (let index = 0; index < text.length; index += 1) {
-      if (depth === 0 && text[index] === '$' && text[index + 1] === '{') { depth = 1; index += 1; continue; }
-      if (depth > 0) {
-        if (text[index] === '{') depth += 1;
-        else if (text[index] === '}') depth -= 1;
-        continue;
-      }
-      out += text[index];
-    }
-    return out;
-  };
   for (const line of literal(original.slice(start, end)).split('\n')) {
     const trimmed = line.trim();
     if (!trimmed) continue;
@@ -599,4 +608,76 @@ test('every referral action accepts exactly the keys its original accepts', asyn
     assert.deepEqual(RECORD_CONTRACTS[name].codes, RECORD_CONTRACTS.listAuthorizedReferrals.codes);
     assert.ok(RECORD_CONTRACTS[name].codes.every(code => code.startsWith('PENNSYNC_REFERRAL_')));
   }
+});
+
+test('the chart export prompt is the original s, interpolation for interpolation', async () => {
+  const original = await readFile(resolve(repository,
+    'base44/functions/generatePatientChartPDF/entry.ts'), 'utf8');
+  const start = original.indexOf('const prompt = `');
+  const template = original.slice(start + 'const prompt = `'.length, original.indexOf('`;', start));
+  assert.ok(template.length > 2000, 'the original still carries the prompt');
+  // A chart whose every field is present, so each interpolation lands on a
+  // value and the two sides can be compared line by line.
+  const patient = {
+    first_name: 'Ada', middle_name: 'Q', last_name: 'Lovelace', date_of_birth: '1815-12-10',
+    medical_record_number: 'MRN-1', address: '1 Main St', phone: '555-0100',
+    email: 'ada@example.invalid', physician_name: 'Dr Who', physician_phone: '555-0199',
+    physician_email: 'dr@example.invalid', emergency_contact_name: 'Next Kin',
+    emergency_contact_phone: '555-0111', emergency_contact_relationship: 'sibling',
+    primary_diagnosis: 'CHF', secondary_diagnoses: ['COPD'], allergies: 'Penicillin',
+    past_medical_history: ['Stroke 2019'],
+    baseline_vitals: { blood_pressure_systolic: 120, blood_pressure_diastolic: 80,
+      heart_rate: 72, respiratory_rate: 16, temperature: 98.6, oxygen_saturation: 97,
+      weight: 150, height: 64, bmi: 25.8 },
+    functional_status: { ambulation: 'walker', adl_independence: 'partial',
+      cognitive_status: 'alert', fall_risk: 'high' },
+    social_history: { living_situation: 'alone', primary_language: 'Welsh',
+      support_system: 'daughter', smoking_status: 'former' },
+    advance_directives: { has_living_will: true, has_healthcare_proxy: false,
+      dnr_status: true },
+  };
+  const visits = [{ visit_date: '2026-07-01', visit_type: 'skilled_nursing' }];
+  const incidents = [{ incident_date: '2026-06-16', incident_type: 'fall', severity: 'high' }];
+  const built = buildChartPrompt({ patient, visits, incidents });
+  // Every literal RUN of the original's template survives, run by run rather
+  // than line by line: this template interpolates mid-line
+  // (`BP: ${systolic}/${diastolic}`), so a stripped LINE reads `BP: /` and is
+  // in neither prompt. The runs between interpolations are what both sides
+  // must share, and the values are asserted below.
+  const runs = literal(template.replace(/\$\{/g, '\u0000${')).split('\u0000')
+    .map(run => run.trim()).filter(run => /[A-Za-z]/.test(run) && run.length >= 3);
+  assert.ok(runs.length > 30, `only ${runs.length} literal runs found`);
+  for (const run of runs) {
+    for (const line of run.split('\n').map(part => part.trim()).filter(Boolean)) {
+      assert.ok(built.includes(line), `the prompt lost: ${line}`);
+    }
+  }
+  // And every value the original would have printed is printed.
+  for (const expected of ['Name: Ada Q Lovelace', 'DOB: 1815-12-10', 'MRN: MRN-1',
+    'Address: 1 Main St', 'Phone: 555-0100', 'Email: ada@example.invalid',
+    'Name: Dr Who', 'Phone: 555-0199', 'Email: dr@example.invalid',
+    'Name: Next Kin', 'Phone: 555-0111', 'Relationship: sibling',
+    'Primary Diagnosis: CHF', 'Secondary Diagnoses: COPD', 'Allergies: Penicillin',
+    'Past Medical History: Stroke 2019', 'BP: 120/80', 'HR: 72 bpm', 'RR: 16 rpm',
+    'Temp: 98.6F', 'O2 Sat: 97%', 'Weight: 150 lbs', 'Height: 64 inches', 'BMI: 25.8',
+    'Ambulation: walker', 'ADL Independence: partial', 'Cognitive Status: alert',
+    'Fall Risk: high', 'Living Situation: alone', 'Primary Language: Welsh',
+    'Support System: daughter', 'Smoking Status: former', 'Has Living Will: Yes',
+    'Has Healthcare Proxy: No', 'DNR Status: Yes', 'RECENT VISITS (1):',
+    '1. 2026-07-01: skilled_nursing', 'CLINICAL INCIDENTS (1):',
+    '1. 2026-06-16: fall (high)']) {
+    assert.ok(built.includes(expected), `the prompt lost: ${expected}`);
+  }
+  // The response schema is the original's, field for field.
+  const schemaStart = original.indexOf('response_json_schema: {');
+  const schema = original.slice(schemaStart, original.indexOf('});', schemaStart));
+  for (const key of ['document_content', 'page_count',
+    'Full formatted content for the document', 'Estimated page count']) {
+    assert.ok(schema.includes(key), `the schema lost ${key}`);
+  }
+  assert.deepEqual(Object.keys(CHART_EXPORT_SCHEMA.properties), ['document_content', 'page_count']);
+  assert.equal(CHART_EXPORT_SCHEMA.properties.page_count.type, 'number');
+  // And the original really does render no PDF, despite its name.
+  assert.equal(/jsPDF|new Blob|application\/pdf/.test(original), false,
+    'the original still renders no PDF');
 });

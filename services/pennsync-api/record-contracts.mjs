@@ -1573,6 +1573,28 @@ export const RECORD_CONTRACTS = Object.freeze({
     body: (agencyId, args) => ({ p_agency: agencyId, p_referral_id: args.referral_id ?? null }),
     codes: REFERRAL_CODES,
   }),
+  // The chart export's read: one patient, their recent visits and their recent
+  // incidents, in the exact columns that reach a model's prompt (D64).
+  //
+  // The original's whole authorization was an address on a carried row, an
+  // `assigned_nurses` entry and the platform owner — the three things D21, D22
+  // and D24 removed — so there is no gate beyond the chart, and the policies
+  // are it.
+  readChartExportContext: Object.freeze({
+    rpc: 'pennsync_contract_chart_export_context',
+    params: Object.freeze(['patient_id', 'include_visits', 'include_incidents']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_include_visits: args.include_visits === undefined ? true : args.include_visits,
+      p_include_incidents: args.include_incidents === undefined ? true : args.include_incidents,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_CHART_EXPORT_AGENCY_NOT_HELD',
+      'PENNSYNC_CHART_EXPORT_SUBJECT_INVALID',
+      'PENNSYNC_CHART_EXPORT_PATIENT_NOT_VISIBLE',
+    ]),
+  }),
   // The roster report's page. Separate from `listAgencyRoster` because of its
   // GATE, not its answer: the roster admits every member of an agency, and
   // the original of `generateUserRosterPDF` admits only an `agency_admin` —

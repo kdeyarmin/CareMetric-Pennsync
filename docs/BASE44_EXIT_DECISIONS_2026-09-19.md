@@ -4445,3 +4445,69 @@ which is `'user'` for everybody but the removed tier — a column of one value �
 and is now the tenant role.
 
 Port queue: `records_schema` 7 → 6, written 66 → 67.
+
+## D70 — A capability whose entire gate is what three decisions removed
+
+**Decision.** Port `generatePatientChartPDF`. Its authorization becomes the
+chart policies, because its own gate no longer exists; every column reaching
+the prompt is named; the `SecurityLog` write becomes D25's trail.
+
+**All three of its tests are gone.** The original admits a caller who is
+
+- `normalizeProtectedEmail(patient.created_by) === callerEmail` — an address on
+  a carried row, which is the derived scope D41 and D43 delete;
+- in `patient.assigned_nurses` — which `listAuthorizedPatients` says **in its
+  own header** is not authority, and which the D24 backfill refuses to read for
+  a reason that applies exactly here: the address stays on the patient row
+  after an assignment is suspended, so reading it resurrects access somebody
+  revoked;
+- `isProtectedSuperAdmin(user)` — the `SUPER_ADMIN_EMAIL` platform tier D14 and
+  D22 removed.
+
+So the port adds no gate at all. `patient_read`, `visit_read` and
+`incident_read` narrow to the care team (D24): an `office_staff` member opens
+no chart and is refused by the read, a clinician opens the charts they are
+assigned, and an `agency_admin` or `manager` opens every chart in their agency.
+That is **narrower** than the original where it matters — a revoked nurse whose
+address is still on the row no longer qualifies — and wider only where D24
+already decided it should be. When a capability's whole gate is made of things
+earlier decisions removed, the answer is not to reconstruct it; it is to check
+that the policies already say what it was trying to say.
+
+**The projection is the widest in the application, so every column is named.**
+The prompt carries the patient's home address, telephone, electronic address,
+physician's contact details and emergency contact alongside diagnoses,
+allergies, medications history, vitals, functional status, social history and
+advance directives. D64's rule earns its keep here: `select *` would have meant
+a column added to `patient` reaching a model because somebody regenerated a
+migration. The test reads the twenty-two columns **out of the original's own
+template** — and had to widen its scan past the template itself, because
+`secondary_diagnoses` and `past_medical_history` are joined into locals a few
+lines above it and a regex over the template alone reported twenty.
+
+**Three things about the original worth recording rather than fixing.**
+
+1. **It renders no PDF**, despite its name. It asks a model for formatted text
+   and answers with the text; nothing in it touches a PDF library. Same reading
+   D64 made of `analyzeAndGenerateClinicalTasks`, whose name says generate and
+   which creates nothing. Kept, because correcting it would change what a
+   caller receives.
+2. **What the model contributes is formatting.** A deterministic renderer, of
+   the kind `documents.mjs` already holds three of, would produce the same
+   document without sending a complete chart to a model at all. That is a
+   product decision rather than a porting one, and it is recorded here for the
+   owner rather than taken.
+3. **It has no caller in the SPA.** `src/` references it nowhere; only two
+   Base44 contract tests do. It is ported because its disposition is `port` and
+   removing a capability is not a porting decision — but if it is to be wired
+   up, point 2 is the moment to decide it.
+
+**Two smaller carries.** The `includeVisits` / `includeIncidents` flags stay
+booleans-only, and the original says why in its own comment: they reach a
+privileged audit record, so a caller-supplied object or string could put
+arbitrary data — or PHI — into it. And the trail entry carries those two flags
+and the patient id and nothing else; the original's `ip_address: 'server-side'`
+is dropped rather than carried, because a constant standing in for an address
+is worse than an absent one (D36).
+
+Port queue: `records_schema` 6 → 5, written 67 → 68.
