@@ -538,6 +538,72 @@ export function classifyWithoutEntities(source) {
     .replace(/asServiceRole/g, '$pennsyncMasked'));
 }
 
+/**
+ * Which Base44 functions a module invokes, and whether the set can be enumerated.
+ *
+ * `ported_function` says in its own words that the capability "waits on that
+ * one". Six ports later, the thing it waits on can already be written — and
+ * the classifier goes on reporting the wait, because its rule is a single
+ * unconditional `return` on the shape of the call rather than a question about
+ * the callee. This reads the callee names so the wait can end.
+ *
+ * It fails CLOSED. Every `base44.functions` reach is counted, and only the two
+ * shapes the tree actually uses are parsed — `invoke('name', …)` and
+ * `fetch('/name', …)`, the second being a path. A reach this does not parse
+ * (`testAutomations` invokes a name it was handed) leaves `dynamic` true, and
+ * a dynamic set claims nothing, for the same reason `entityReach` claims
+ * nothing about a computed key: a set nothing can enumerate cannot be shown to
+ * be fully ported.
+ */
+export function invokedFunctions(source) {
+  if (typeof source !== 'string') return { names: [], dynamic: true };
+  const reaches = [...source.matchAll(/\bbase44\s*\.\s*functions\b/g)].length;
+  const parsed = [...source.matchAll(
+    /\bbase44\s*\.\s*functions\s*\.\s*(invoke|fetch)\s*\(\s*(?:'([^'\\]*)'|"([^"\\]*)")/g)];
+  const names = parsed.map(match =>
+    // `fetch` addresses the function by path; `invoke` names it directly.
+    (match[1] === 'fetch' ? (match[2] ?? match[3]).replace(/^\//, '') : (match[2] ?? match[3])));
+  return {
+    names: [...new Set(names)].sort(),
+    dynamic: parsed.length !== reaches || names.some(name => !name),
+  };
+}
+
+export function discoverInvokedFunctions(repository) {
+  const root = join(repository, 'base44/functions');
+  const invoked = {};
+  for (const name of listDirectories(root)) {
+    let source;
+    try { source = readFileSync(join(root, name, 'entry.ts'), 'utf8'); } catch { continue; }
+    invoked[name] = invokedFunctions(source);
+  }
+  return invoked;
+}
+
+/**
+ * What a module needs once the function it called is no longer a reason to
+ * wait. The sibling of `classifyWithoutEntities`, and masked the same way.
+ *
+ * It needs no entity masking of its own: `classifyPortBlocker` answers
+ * `records_schema` and `files` BEFORE `ported_function`, so a module that
+ * reached this verdict has neither.
+ */
+export function classifyWithoutInvocations(source) {
+  if (typeof source !== 'string') return 'records_schema';
+  return classifyPortBlocker(source.replace(/\bbase44\s*\.\s*functions\b/g, '$pennsyncMasked'));
+}
+
+export function discoverInvocationFreeBlockers(repository) {
+  const root = join(repository, 'base44/functions');
+  const blockers = {};
+  for (const name of listDirectories(root)) {
+    let source;
+    try { source = readFileSync(join(root, name, 'entry.ts'), 'utf8'); } catch { continue; }
+    blockers[name] = classifyWithoutInvocations(source);
+  }
+  return blockers;
+}
+
 export function discoverEntityFreeBlockers(repository) {
   const root = join(repository, 'base44/functions');
   const blockers = {};
@@ -590,6 +656,8 @@ export function discoverEvidence(repository) {
     pausedFunctions: discoverPausedFunctions(repository),
     portBlockers: discoverPortBlockers(repository),
     entityFreeBlockers: discoverEntityFreeBlockers(repository),
+    invokedFunctions: discoverInvokedFunctions(repository),
+    invocationFreeBlockers: discoverInvocationFreeBlockers(repository),
     portedFunctions: discoverPortedFunctions(repository),
     entityReach: discoverEntityReach(repository),
     entityPolicies: discoverEntityPolicies(repository),
@@ -743,6 +811,31 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
    * because reaching a file or a Core integration is true whatever the rows are.
    */
   const refine = (blocker, name) => {
+    /*
+     * D76, and the sixth correction of the recurring shape — the first that
+     * ends a wait rather than renaming one. `ported_function` means "calls
+     * another Base44 function, so it waits on that one", and the queue kept
+     * saying it after that one was written: the rule is an unconditional
+     * `return` on the SHAPE of the call, and nothing ever asked who the callee
+     * was.
+     *
+     * The five before it (D47, D55, D65, D74, D75) each corrected a bucket's
+     * NAME. This one moves a capability from blocked to startable, so it is
+     * also the answer to "what else is holding this": re-classify by what the
+     * module needs once the call is not it.
+     *
+     * Every callee must be ported, and the set must be enumerable. A module
+     * invoking a name it was handed claims nothing — the same rule
+     * `entityReach` follows for a computed key.
+     */
+    if (blocker === 'ported_function') {
+      const invoked = (evidence.invokedFunctions || {})[name];
+      if (invoked && !invoked.dynamic && invoked.names.length > 0
+        && invoked.names.every(callee => ported.has(callee))) {
+        const rest = (evidence.invocationFreeBlockers || {})[name];
+        if (rest && rest !== 'ported_function') return rest;
+      }
+    }
     if (blocker !== 'records_schema') return blocker;
     const touched = reach[name];
     // The first two need the entity set, so a module using a computed key is

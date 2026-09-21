@@ -316,6 +316,26 @@ test('the three enum checks, including the one the table does not carry', async 
     'PENNSYNC_REFERRAL_PATIENT_ID_INVALID');
 });
 
+test('a get with no usable identifier is refused before any row is looked for', async () => {
+  // D76 leans on this. `extractReferralDataForSmartNote` validates no
+  // identifier of its own — `exactObject` refuses an unknown key and does not
+  // require a known one — so a caller who sends `{}` reaches the contract with
+  // a null id, and this is what answers. Nothing proved it until the handler
+  // depended on it.
+  const row = await seed();
+  for (const id of [null, '', ' leading-space', 'trailing-space ', '$ne', 'a'.repeat(201),
+    'control\u0007char']) {
+    await refusal(get(ADMIN_A, id), 'PENNSYNC_REFERRAL_ID_INVALID');
+  }
+  // A well-formed id that names nothing is a different refusal, and that
+  // difference is the point: it is the one a caller could use to probe.
+  await refusal(get(ADMIN_A, 'referral-that-does-not-exist'), 'PENNSYNC_REFERRAL_NOT_FOUND');
+  assert.equal((await get(ADMIN_A, row.id)).referral.id, row.id);
+  // The role gate runs FIRST, so a caller who may not work the queue learns
+  // nothing about whether the id was even shaped right.
+  await refusal(get(CLINICIAN_A, null), 'PENNSYNC_REFERRAL_FORBIDDEN');
+});
+
 test('one request id makes one referral, and a different payload under it is refused', async () => {
   const payload = { patient_name: 'Grace Hopper', diagnosis: 'COPD', priority: 'high' };
   const first = await create(ADMIN_A, payload, { request: 'req-fixed' });

@@ -8,6 +8,7 @@
 // Every handler receives the caller's already-resolved current authority. A
 // handler never resolves its own authority and never widens it.
 import { exactObject, fail, isObject } from './contracts.mjs';
+import { buildSmartNoteData } from './transforms.mjs';
 import { syncCmsRegulations } from './cms-regulations.mjs';
 import { triageReferral } from './referral-triage.mjs';
 import { analyzeVisitSupplyUsage } from './visit-supply-usage.mjs';
@@ -905,6 +906,56 @@ export const HANDLERS = Object.freeze({
     handle({ params, contract }) {
       exactObject(params, STATE_INCIDENT_FIELDS, 'INVALID_PARAMS');
       return submitStateIncident({ params, contract });
+    },
+  }),
+  extractReferralDataForSmartNote: Object.freeze({
+    // D76. The one capability the queue held as `ported_function`, and the
+    // whole port is a wiring: the transform was written and parity-pinned long
+    // ago, and `api.test.mjs` recorded in its own words why the handler was
+    // withheld — "it needs an authorized referral read that this service does
+    // not yet have; exposing it would let a caller supply its own referral
+    // payload". D68 built that read, so the reason expired and nothing but
+    // this registry entry was missing.
+    //
+    // Everything the original does between the two is the wire check it needed
+    // for a cross-function HTTP hop and this does not have: `exactKeys` over
+    // the broker's envelope, `referral.agency_id !== agencyId`, the
+    // safe-integer version, the two `Date.parse` calls. A contract taking
+    // `p_agency` and `p_referral_id` and selecting on exactly those cannot
+    // answer about a different referral, so validating that it did not is
+    // D68's compensation-for-having-no-transaction in its cross-call form.
+    //
+    // Its `INTAKE_ROLES` gate goes the same way and for D69's reason rather
+    // than this one: `referral_authority` admits `agency_admin`, `manager` and
+    // `office_staff` and nothing else, so the refusal is INHERITED from the
+    // contract this delegates to. A clinician who may be assigned a referral
+    // still cannot seed a note from one.
+    //
+    // What is NOT machinery is the `extracted_data` check. That is a business
+    // rule — a referral nobody has run the extractor over has nothing to seed
+    // a note with — and `referral_row` drops null-valued keys, so an
+    // unprocessed referral arrives with no such key at all.
+    async handle({ params, contract }) {
+      exactObject(params, ['referral_id'], 'INVALID_PARAMS');
+      const answer = await contract('getAuthorizedReferral', params);
+      const referral = isObject(answer?.referral) ? answer.referral : null;
+      if (!referral || !isObject(referral.extracted_data)) {
+        fail(404, 'REFERRAL_NOT_PROCESSED');
+      }
+      return {
+        smartNoteData: buildSmartNoteData(referral),
+        // The original's own key casing. `getDashboardData` matches the
+        // widget that destructures it; nothing in `src/` calls this one, so
+        // the only shape that could have a consumer is the deployed
+        // endpoint's — and `contract_referral_get`'s scope is snake_case
+        // beside it. What does NOT carry over is the `success: true` envelope,
+        // which no ported handler returns.
+        scope: {
+          agency_id: answer?.scope?.agency_id,
+          referral_id: referral.id,
+          referral_version: referral.version,
+        },
+      };
     },
   }),
   getDashboardData: Object.freeze({

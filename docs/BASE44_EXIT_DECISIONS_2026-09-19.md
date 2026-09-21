@@ -4783,3 +4783,76 @@ switched off long ago and the disposition never caught up, so the widened check
 contradicted it until it did — which is the gate working.
 
 Port queue: `records_schema` 1 → 0, written 71.
+
+## D76 — "Waits on that one" stopped being true the day that one was written
+
+**Decision.** Teach `ported_function` to ask who the callee is, and port the
+capability it was holding — `extractReferralDataForSmartNote`.
+
+**The sixth correction of the recurring shape, and the first that ends a wait
+rather than renaming one.** D47, D55, D65, D74 and D75 each found a bucket
+keeping its name after the reason for it had gone, and each moved capabilities
+between categories. This one moves one from blocked to startable.
+
+The rule was a single unconditional line:
+
+```js
+if (/\bbase44\s*\.\s*functions\b/.test(source)) return 'ported_function';
+```
+
+and the bucket's own documentation says what it means: *"calls another Base44
+function, so it waits on that one."* It answers on the SHAPE of the call.
+Nothing ever asked who the callee was, so the queue went on reporting the wait
+for sixty-eight ports after **D68 wrote the thing being waited for.**
+
+`discoverPortedFunctions` was already in the file, with a comment reading
+*"Nothing blocks a port that has happened"* — but it was only consulted about
+the capability itself, never about what the capability calls.
+
+**The discovery fails closed.** Every `base44.functions` reach is counted and
+only the two shapes the tree uses are parsed — `invoke('name', …)` and
+`fetch('/name', …)`, the second addressing the function by PATH. A reach the
+parser does not consume leaves the set `dynamic`, and a dynamic set claims
+nothing: `testAutomations` invokes a name it was handed, which is the same case
+`entityReach` refuses to claim anything about for a computed key. Eleven
+modules invoke a function; ten are enumerable and one is not.
+
+**The port itself was almost entirely already written.** The transform and its
+admission-note template were built and parity-pinned long ago, and
+`api.test.mjs` carried an assertion that the handler was NOT registered, with a
+comment stating the reason:
+
+> It needs an authorized referral read that this service does not yet have;
+> exposing it would let a caller supply its own referral payload.
+
+D68 built that read. The reason expired and the assertion outlived it, which is
+this decision's shape in miniature — a guard that records why it exists is the
+kind that can be retired honestly.
+
+**What the port deletes is the cross-call half of D68's rule.** Between
+invoking the broker and mapping its answer, the original runs `exactKeys` over
+the envelope, re-checks `referral.agency_id !== agencyId`, requires a safe
+integer version and parses two dates. Every one of those asks *did the other
+function answer about the thing I asked about* — the cross-call form of the
+compensations D68 deleted for having no transaction. A contract taking
+`p_agency` and `p_referral_id` and selecting on exactly those cannot answer
+about a different referral.
+
+Its `INTAKE_ROLES` check goes for **D69's** reason rather than this one:
+`referral_authority` admits `agency_admin`, `manager` and `office_staff` and
+nothing else, so the refusal is INHERITED from the contract this delegates to.
+A clinician who may be ASSIGNED a referral still cannot seed a note from one.
+
+**What is not machinery is the `extracted_data` check.** A referral nobody has
+run the extractor over has nothing to seed a note with, and `referral_row`
+drops null-valued keys, so an unprocessed referral arrives with no such key at
+all rather than a null one.
+
+**The port found a gap in D68's own suite.** `exactObject` refuses an unknown
+key and does not require a known one, so a caller sending `{}` reaches the
+contract with a null id — and nothing proved that `contract_referral_get`
+refuses it. It does, with `PENNSYNC_REFERRAL_ID_INVALID`, and now a test says
+so; sabotaging the guard fails it. **A refusal a handler depends on needs a
+test on the side that raises it**, not on the side that inherits it.
+
+Port queue: `ported_function` 1 → 0, written 71 → 72.

@@ -370,10 +370,98 @@ test('the smart-note seed invents nothing when the extraction is empty', async (
   assert.equal(seed.clinical_summary.instructions_from_referral, '');
 });
 
-test('the smart-note transform is not reachable as a released handler', () => {
-  // It needs an authorized referral read that this service does not yet have;
-  // exposing it would let a caller supply its own referral payload.
-  assert.equal(HANDLER_NAMES.includes('extractReferralDataForSmartNote'), false);
+// The referral this capability seeds a note from, as `contract_referral_get`
+// answers: `referral_row` drops null-valued keys, so an unprocessed referral
+// arrives with no `extracted_data` key rather than a null one.
+const referralAnswer = (patch = {}) => ({
+  referral: {
+    id: 'referral-a1', agency_id: 'agency-a', version: 3, patient_id: 'patient-a1',
+    extracted_data: { admission_details: { admission_date: '2026-03-02' } },
+    ...patch,
+  },
+  scope: {
+    agency_id: 'agency-a', membership_id: 'm1', membership_version: 1,
+    tenant_role: 'office_staff',
+  },
+});
+
+test('the smart-note seed is read through the referral contract, never supplied', async () => {
+  // This assertion used to read `false`, and its comment said why: "it needs an
+  // authorized referral read that this service does not yet have; exposing it
+  // would let a caller supply its own referral payload". D68 built that read.
+  assert.equal(HANDLER_NAMES.includes('extractReferralDataForSmartNote'), true);
+  const { HANDLERS } = await import('./handlers.mjs');
+  const asked = [];
+  const answer = await HANDLERS.extractReferralDataForSmartNote.handle({
+    params: { referral_id: 'referral-a1' },
+    contract: (name, args) => { asked.push([name, args]); return referralAnswer(); },
+  });
+  // The referral comes from the contract and from nothing else, and the id the
+  // caller named is the only thing that reaches it.
+  assert.deepEqual(asked, [['getAuthorizedReferral', { referral_id: 'referral-a1' }]]);
+  assert.equal(answer.smartNoteData.patient_id, 'patient-a1');
+  assert.equal(answer.smartNoteData.visit_date, '2026-03-02');
+  assert.deepEqual(answer.scope,
+    { agency_id: 'agency-a', referral_id: 'referral-a1', referral_version: 3 });
+  // The original's `success: true` envelope is not carried; no ported handler
+  // returns one.
+  assert.equal(Object.hasOwn(answer, 'success'), false);
+});
+
+test('the smart-note seed refuses a caller-supplied referral payload', async () => {
+  const { HANDLERS } = await import('./handlers.mjs');
+  // A referral body, an agency, a version to trust — every one of them is the
+  // thing the contract decides, so none of them is a parameter.
+  for (const params of [
+    { referral_id: 'referral-a1', referral: { extracted_data: { diagnoses: {} } } },
+    { referral_id: 'referral-a1', agency_id: 'agency-b' },
+    { extracted_data: { diagnoses: {} } },
+  ]) {
+    await assert.rejects(
+      async () => HANDLERS.extractReferralDataForSmartNote.handle({
+        params, contract: () => referralAnswer(),
+      }),
+      error => error.status === 400 && error.code === 'INVALID_PARAMS',
+      JSON.stringify(params),
+    );
+  }
+  // An EMPTY body is not one of them, and the difference is worth stating:
+  // `exactObject` refuses an unknown key and does not require a known one, so
+  // `{}` reaches the contract with no id and `PENNSYNC_REFERRAL_ID_INVALID` is
+  // the answer. That refusal is inherited (D69), and `contract-referral`
+  // proves it — nothing did until this handler depended on it.
+  const asked = [];
+  await assert.rejects(
+    async () => HANDLERS.extractReferralDataForSmartNote.handle({
+      params: {},
+      contract: (name, args) => {
+        asked.push(args);
+        const error = new Error('PENNSYNC_REFERRAL_ID_INVALID');
+        error.status = 400; error.code = 'PENNSYNC_REFERRAL_ID_INVALID';
+        throw error;
+      },
+    }),
+    error => error.code === 'PENNSYNC_REFERRAL_ID_INVALID',
+  );
+  assert.deepEqual(asked, [{}]);
+});
+
+test('a referral nobody has run the extractor over seeds no note', async () => {
+  const { HANDLERS } = await import('./handlers.mjs');
+  // Not machinery: the wire checks around it are, but a referral with no
+  // extraction has nothing to seed a note with, and the original says so with
+  // its own 404.
+  for (const referral of [{ extracted_data: undefined }, { extracted_data: [] },
+    { extracted_data: 'pending' }, { extracted_data: null }]) {
+    await assert.rejects(
+      async () => HANDLERS.extractReferralDataForSmartNote.handle({
+        params: { referral_id: 'referral-a1' },
+        contract: () => referralAnswer(referral),
+      }),
+      error => error.status === 404 && error.code === 'REFERRAL_NOT_PROCESSED',
+      JSON.stringify(referral),
+    );
+  }
 });
 
 test('readiness accounts for the runtime a released handler actually needs', async () => {

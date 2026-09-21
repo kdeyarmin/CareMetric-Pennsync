@@ -12,6 +12,7 @@ import {
   classifyWithoutEntities, discoverEntityFreeBlockers,
   entitiesTouched, isInertFunction, isPausedFunction, isRefusingHandler, main, parseManifest,
   discoverClaimsOnlyFunctions, TRUSTED_CLAIMS_FENCE,
+  invokedFunctions, classifyWithoutInvocations, discoverInvocationFreeBlockers,
 } from './tools-transition-disposition.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -733,6 +734,13 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // record store, when the trail IS their record half and what they actually
   // wait on is the file layer, `Core.SendEmail` or a third-party key.
   // → 29 → 28 → 27 → 23, and 11 → 56 written.
+  // Then D75 took the record bucket to ZERO on a correction, and D76 emptied
+  // `ported_function` the same way: the queue reported the wait for sixty-eight
+  // ports after D68 wrote the thing being waited for, because the rule reads
+  // the SHAPE of the call and never asked who the callee was. Unlike the five
+  // corrections before it, this one moved a capability from blocked to
+  // startable rather than renaming its bucket — and it was written the same
+  // day. → 71 → 72 written.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -740,8 +748,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 8, patient_access_model: 0,
-    records_schema: 0, files: 12, ported_function: 1, core_integration: 3, pdf_rendering: 0,
-    external_secret: 2, none: 71 });
+    records_schema: 0, files: 12, ported_function: 0, core_integration: 3, pdf_rendering: 0,
+    external_secret: 2, none: 72 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -881,6 +889,7 @@ test('the port queue is work that cannot start yet, and says why', () => {
       'createAuthorizedPatient', 'createAuthorizedVisit', 'createNotification',
       'expandClinicalPhrase',
       'extractClinicalEvents',
+      'extractReferralDataForSmartNote',
       'generateBagTechniquePDF', 'generateFollowUpTasks',
       'generatePatientChartPDF', 'generateReferralTasks', 'generateSmartNoteGuide',
       'generateUserGuidePDF', 'generateUserManual', 'generateUserRosterPDF',
@@ -910,7 +919,11 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // so the records bucket had never moved by a port being written — only by a
   // function being reclassified. It moves now.
   assert.ok(report.port_blockers.none.includes('listPolicyLibrary'));
-  assert.deepEqual(report.port_blockers.ported_function, ['extractReferralDataForSmartNote']);
+  // D76. This read `['extractReferralDataForSmartNote']` for sixty-eight ports,
+  // because `ported_function` answers on the SHAPE of the call and never asked
+  // who the callee was. D68 wrote the callee.
+  assert.deepEqual(report.port_blockers.ported_function, []);
+  assert.ok(report.port_blockers.none.includes('extractReferralDataForSmartNote'));
   // All three emptied this bucket once the service adopted a PDF library and a
   // call-sequence parity test; nothing is waiting on a rendering decision now.
   assert.deepEqual(report.port_blockers.pdf_rendering, []);
@@ -923,6 +936,61 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // queue by being unclassifiable.
   assert.equal(Object.values(counts).reduce((total, value) => total + value, 0), report.families.functions.counts.port);
 });
+
+test('a function call is only a reason to wait while the callee is unported', () => {
+  const invoked = invokedFunctions(`
+    const a = await base44.functions.invoke('portedOne', {});
+    const b = await base44.functions.fetch('/portedTwo', {});
+  `);
+  assert.deepEqual(invoked, { names: ['portedOne', 'portedTwo'], dynamic: false });
+  // `fetch` addresses the function by PATH, so the leading slash is not part of
+  // the name and a set that kept it would match nothing in the registry.
+  assert.equal(invoked.names.includes('/portedTwo'), false);
+});
+
+test('a function set nothing can enumerate claims nothing', () => {
+  // `testAutomations` invokes a name it was handed. Every reach is counted and
+  // only the parsed shapes are named, so an unparsed one leaves the set
+  // dynamic and the capability keeps waiting — the same rule `entityReach`
+  // follows for a computed key, and the same direction: fail closed.
+  assert.deepEqual(invokedFunctions(`
+    const r = await base44.functions.invoke(fnName, {});
+  `), { names: [], dynamic: true });
+  assert.deepEqual(invokedFunctions(`
+    await base44.functions.invoke('known', {});
+    await base44.functions[pick]('other', {});
+  `), { names: ['known'], dynamic: true });
+  for (const value of [null, undefined, 42, {}]) {
+    assert.deepEqual(invokedFunctions(value), { names: [], dynamic: true });
+  }
+});
+
+test('the callee is read from the call, never from the module that holds it', () => {
+  // `asServiceRole` never reaches this bucket — `classifyPortBlocker` answers
+  // `records_schema` for it first — and the same regex is what counts reaches
+  // here, so the two agree about what a reach is.
+  assert.equal(classifyPortBlocker("await base44.functions.invoke('x', {});"), 'ported_function');
+  assert.equal(classifyPortBlocker("await base44.asServiceRole.functions.invoke('x', {});"),
+    'records_schema');
+  assert.deepEqual(invokedFunctions("await base44.asServiceRole.functions.invoke('x', {});"),
+    { names: [], dynamic: false });
+});
+
+test('what is left once the call is not the reason is asked, not assumed', () => {
+  // The sibling of `classifyWithoutEntities`, masked the same way. It needs no
+  // entity masking: `records_schema` and `files` are answered BEFORE
+  // `ported_function`, so a module reaching this verdict has neither.
+  assert.equal(classifyWithoutInvocations("await base44.functions.invoke('x', {});"), 'none');
+  assert.equal(classifyWithoutInvocations(
+    "await base44.functions.invoke('x', {}); await base44.integrations.Core.SendEmail({});"),
+  'core_integration');
+  assert.equal(classifyWithoutInvocations(
+    "await base44.functions.invoke('x', {}); const k = Deno.env.get('OPENAI_API_KEY');"),
+  'external_secret');
+  // And the real module: nothing but the call was ever holding it.
+  assert.equal(discoverInvocationFreeBlockers(repository).extractReferralDataForSmartNote, 'none');
+});
+
 
 test('what counts as already ported is read from the service, not maintained here', async () => {
   // The parse would be worth nothing if it could silently stop matching the

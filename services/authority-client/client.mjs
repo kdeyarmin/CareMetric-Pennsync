@@ -73,6 +73,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   createAuthorizedPatient: 'json',
   createAuthorizedVisit: 'json',
   createNotification: 'json',
+  extractReferralDataForSmartNote: 'json',
   getAiContentAgreementStatus: 'json',
   getAuthorizedDocument: 'json',
   getDashboardData: 'json',
