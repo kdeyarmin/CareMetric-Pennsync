@@ -50,6 +50,9 @@ import {
 
 export const MIGRATE_CONTRACT = 'cm.pennsync.migrate.v1';
 
+/** The migration that creates the deployment pin every later read depends on. */
+export const PIN_MIGRATION = 'deployment_app_pin';
+
 /**
  * Migrations that exist in the repository and are deliberately NOT applied to
  * a hosted deployment, with the reason each one is held back.
@@ -95,11 +98,25 @@ export function ledgerName(fileName) {
   return fileName.replace(/\.sql$/, '').replace(/^\d+_/, '');
 }
 
-/** The version this tool would record for a migration it applies. */
+/**
+ * The version this tool records for a migration it applies.
+ *
+ * The file's WHOLE stem, not its timestamp prefix, because the prefix is not
+ * unique and `version` is the ledger's primary key. Two pairs collide today —
+ * `20260920180000_chart_assignment_lifecycle` with
+ * `20260920180000_contract_assignment`, and the two `20260920200000_*` files —
+ * one from each migration directory, which is an ordinary thing for two
+ * sequences dated the same day. Recording the prefix made the second of each
+ * pair raise `unique_violation`; now that the row commits inside the
+ * migration's transaction that would roll the whole migration back and abort
+ * the run partway, on the real hosted target, at `contract_assignment`.
+ *
+ * The stem stays sortable and stays readable, and the ledger's own uniqueness
+ * check is what the tool relies on.
+ */
 export function ledgerVersion(fileName) {
-  const [version] = /^\d+/.exec(fileName) ?? [];
-  if (!version) refuse('MIGRATE_MIGRATION_UNVERSIONED', { file: fileName });
-  return version;
+  if (!/^\d+_/.test(fileName)) refuse('MIGRATE_MIGRATION_UNVERSIONED', { file: fileName });
+  return fileName.replace(/\.sql$/, '');
 }
 
 /**
@@ -122,6 +139,17 @@ export function planMigration({ migrations, applied }) {
     const seen = byLedgerName.get(name);
     if (seen) refuse('MIGRATE_NAME_COLLISION', { name, files: [seen.name, migration.name] });
     byLedgerName.set(name, migration);
+  }
+
+  // `version` is the ledger's primary key, so two migrations sharing one abort
+  // the run at the second. Checked here, before anything is applied, rather
+  // than discovered as a `unique_violation` half way through a deployment.
+  const byVersion = new Map();
+  for (const migration of migrations) {
+    const version = ledgerVersion(migration.name);
+    const seen = byVersion.get(version);
+    if (seen) refuse('MIGRATE_VERSION_COLLISION', { version, files: [seen, migration.name] });
+    byVersion.set(version, migration.name);
   }
 
   const pending = [];
@@ -187,7 +215,7 @@ export function migrationWithLedgerRow(migration) {
   const name = ledgerName(migration.name);
   // Interpolated into SQL, so checked rather than trusted. Both come from a
   // committed file name, but a file name is not a promise.
-  if (!/^\d+$/.test(version) || !/^[A-Za-z0-9_]+$/.test(name)) {
+  if (!/^[A-Za-z0-9_]+$/.test(version) || !/^[A-Za-z0-9_]+$/.test(name)) {
     refuse('MIGRATE_MIGRATION_NAME_UNUSABLE', { file: migration.name });
   }
 
@@ -255,20 +283,40 @@ export async function applyMigrations({ db, repository, apply = false, log = () 
   // neither can be talked into the other's job.
   if (store[0].count === 0) refuse('MIGRATE_STORE_ABSENT');
 
+  const migrations = readMigrations(repository);
+  const plan = planMigration({ migrations, applied: await readAppliedNames(db) });
+
   const { rows: pinned } = await db.query(`select count(*)::int as count from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'pennsync_private' and p.proname = 'deployment_app_id'`);
-  // A schema with no pin is a provision that died part-way. D11 says such a
-  // database is replaced, not continued, so this will not build on it.
-  if (pinned[0].count !== 1) refuse('MIGRATE_STORE_PARTIALLY_PROVISIONED');
+  const pinPending = plan.pending.some(file => ledgerName(file) === PIN_MIGRATION);
 
-  const before = await readPin(db);
-  const migrations = readMigrations(repository);
-  const plan = planMigration({ migrations, applied: await readAppliedNames(db) });
+  /**
+   * An absent pin is only a broken store if the migration that CREATES it has
+   * already run.
+   *
+   * The first version refused any store without `deployment_app_id` as
+   * `MIGRATE_STORE_PARTIALLY_PROVISIONED`, before it had read the ledger. That
+   * rejected the one database this tool was written for: hosted staging holds
+   * the first nine authority migrations, and the pin is created by
+   * `20260919090000_deployment_app_pin.sql`, which is the FIRST thing pending
+   * there. So Stage A and the `hosted-gap` job could not run against their own
+   * target, and the suites did not notice because the fixture provisioned with
+   * every authority migration — a store more convenient than the real one.
+   *
+   * The ledger decides now. Pin missing and its migration pending is the
+   * ordinary legacy store. Pin missing and its migration already applied is a
+   * provision that died part-way, which D11 says is replaced rather than
+   * continued.
+   */
+  if (pinned[0].count !== 1 && !pinPending) refuse('MIGRATE_STORE_PARTIALLY_PROVISIONED');
+  const before = pinned[0].count === 1 ? await readPin(db) : null;
 
   const result = {
     contract: MIGRATE_CONTRACT,
     deployment: before,
+    // Said plainly rather than left to be inferred from a null deployment.
+    deployment_pin_pending: pinPending,
     pending: plan.pending,
     skipped: plan.skipped,
     already_applied: plan.applied.length,
@@ -288,13 +336,15 @@ export async function applyMigrations({ db, repository, apply = false, log = () 
   }
 
   const after = await readPin(db);
-  // Nothing above is supposed to be able to do this, which is the reason to
-  // check: the pin is what keeps one deployment's PHI out of another's
-  // database, and a migration that regenerated it would move the store.
-  if (after.app_id !== before.app_id || after.label !== before.label) {
+  // Nothing above is supposed to be able to move a pin that already existed,
+  // which is the reason to check: the pin is what keeps one deployment's PHI
+  // out of another's database. Where there was none, the run just created it,
+  // so what matters is that it came out pinned somewhere known — an unset
+  // setting defaults to staging, the restrictive outcome.
+  if (before && (after.app_id !== before.app_id || after.label !== before.label)) {
     refuse('MIGRATE_PIN_MOVED', { before, after });
   }
-  return Object.freeze({ ...result, mutated: true });
+  return Object.freeze({ ...result, deployment: after, mutated: true });
 }
 
 /** The operator entry point. */

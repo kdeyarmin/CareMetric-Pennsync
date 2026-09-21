@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  LOCAL_ONLY_MIGRATIONS, MIGRATE_CONTRACT, MigrateError,
+  LOCAL_ONLY_MIGRATIONS, MIGRATE_CONTRACT, MigrateError, PIN_MIGRATION,
   applyMigrations, ledgerName, ledgerVersion, migrationWithLedgerRow, planMigration,
   readAppliedNames, runMigrateCli,
 } from './tools-pennsync-migrate.mjs';
@@ -48,11 +48,13 @@ const rejectsWith = code => error => {
 
 test('a ledger name is the file name without its version, because the two sides do not share one', () => {
   assert.equal(ledgerName('20260918015112_independent_staging_authority.sql'), 'independent_staging_authority');
-  assert.equal(ledgerVersion('20260918015112_independent_staging_authority.sql'), '20260918015112');
-  // The hosted staging project holds this name at version 20260918070751,
-  // which is not the repository's prefix. Matching on version would report
-  // every applied migration as pending and re-run the lot.
-  assert.notEqual(ledgerVersion('20260918015112_independent_staging_authority.sql'), '20260918070751');
+  // The WHOLE stem, because the timestamp prefix is not unique and `version`
+  // is the ledger's primary key: two pairs of committed migrations share a
+  // prefix, one from each directory.
+  assert.equal(ledgerVersion('20260918015112_independent_staging_authority.sql'),
+    '20260918015112_independent_staging_authority');
+  assert.notEqual(ledgerVersion('20260920180000_chart_assignment_lifecycle.sql'),
+    ledgerVersion('20260920180000_contract_assignment.sql'));
 });
 
 test('nothing pending when the ledger already names every migration', () => {
@@ -160,7 +162,7 @@ test('the ledger row commits inside the migration own transaction', () => {
   assert.match(sql, /insert into supabase_migrations\.schema_migrations/);
   // The row is before the commit, so both land in one transaction.
   assert.ok(sql.indexOf('insert into supabase_migrations') < sql.lastIndexOf('commit;'));
-  assert.match(sql, /values \('20260919114500', 'enrollment_receipt'\)/);
+  assert.match(sql, /values \('20260919114500_enrollment_receipt', 'enrollment_receipt'\)/);
 });
 
 test('a leading comment header does not make a migration look untransactional', () => {
@@ -203,11 +205,56 @@ test('a database with no store is sent to the provisioner rather than migrated',
     rejectsWith('MIGRATE_STORE_ABSENT'));
 });
 
-test('a half-provisioned store is refused rather than built on', async () => {
-  const answers = [{ count: 1 }, { count: 0 }];
-  const db = { query: async () => ({ rows: [answers.shift()] }) };
-  await assert.rejects(() => applyMigrations({ db, repository: REPOSITORY }),
-    rejectsWith('MIGRATE_STORE_PARTIALLY_PROVISIONED'));
+/** The nine migrations the hosted staging project actually holds. */
+const HOSTED_STAGING = Object.freeze(['independent_staging_authority', 'synthetic_s4_create_subset',
+  'synthetic_s3_manual_referral', 's4_ecmascript_blank_note', 'current_visit_documentation',
+  'current_patient_context', 'current_visit_schedule', 'referral_patient_selection',
+  'current_referral_list']);
+
+/** A database answering the shape `applyMigrations` asks about. */
+const storeDb = ({ hasPin, applied }) => ({
+  query: async sql => {
+    // `pg_proc` FIRST: the pin-existence query joins `pg_namespace` too, so a
+    // mock that tested for that string first answered it with the store check's
+    // own count and reported a pin that was not there.
+    if (sql.includes('pg_proc')) return { rows: [{ count: hasPin ? 1 : 0 }] };
+    if (sql.includes('pg_namespace')) return { rows: [{ count: 1 }] };
+    if (sql.includes('information_schema.tables')) return { rows: [{ count: 1 }] };
+    if (sql.includes('schema_migrations')) {
+      return { rows: applied.map(name => ({ version: name, name })) };
+    }
+    if (sql.includes('deployment_app_id')) {
+      return { rows: [{ app_id: '6a9881683dc68a0bd54f1ef7', label: 'staging', source: 'setting' }] };
+    }
+    throw new Error(`unexpected statement: ${sql}`);
+  },
+  session: async () => { throw new Error('a plan must open no session'); },
+});
+
+test('a store whose pin migration has already run but has no pin is refused', async () => {
+  // Genuinely half-provisioned: the migration that creates the pin is recorded
+  // as applied and the function is not there. The ledger has to be a valid
+  // PREFIX to reach that check — applying the pin alone is a hole, and the
+  // order check fires first and rightly.
+  await assert.rejects(() => applyMigrations({
+    db: storeDb({ hasPin: false, applied: [...HOSTED_STAGING, PIN_MIGRATION] }),
+    repository: REPOSITORY,
+  }), rejectsWith('MIGRATE_STORE_PARTIALLY_PROVISIONED'));
+});
+
+test('the legacy store this tool exists for is accepted, pin still pending', async () => {
+  // The hosted staging shape: the first nine authority migrations and no pin,
+  // because `deployment_app_pin` is the FIRST thing pending. Refusing this was
+  // refusing the tool's own target, and the fixture hid it by provisioning
+  // with every authority migration.
+  const result = await applyMigrations({
+    db: storeDb({ hasPin: false, applied: HOSTED_STAGING }),
+    repository: REPOSITORY,
+  });
+  assert.equal(result.mutated, false);
+  assert.equal(result.deployment, null, 'there is no pin to report yet');
+  assert.equal(result.deployment_pin_pending, true);
+  assert.equal(ledgerName(result.pending[0]), PIN_MIGRATION, 'the pin is what runs first');
 });
 
 test('a ledger that is absent stops the run rather than being guessed at', async () => {

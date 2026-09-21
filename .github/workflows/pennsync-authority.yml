@@ -201,8 +201,15 @@ jobs:
       #
       # Skips rather than fails without the secret, so a fork's pull request
       # still passes. Once the secret exists the plan is visible on every run.
+      # NEVER on `pull_request`. The earlier condition deliberately ran it for
+      # same-repository branches, which handed PENNSYNC_STAGING_DATABASE_URL to
+      # the PR's own checked-out `tools-pennsync-migrate.mjs`: anyone able to
+      # push a branch could edit that script, or this step, to disclose the
+      # credential or write with it before review. The URL needs migration-owner
+      # privileges for `--apply`, so it is only ever handed to code that has
+      # already landed on main, or to a deliberate manual run.
       - name: Plan the hosted staging migration
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        if: ${{ github.event_name != 'pull_request' }}
         env:
           PENNSYNC_MIGRATE_DATABASE_URL: ${{ secrets.PENNSYNC_STAGING_DATABASE_URL }}
         run: |

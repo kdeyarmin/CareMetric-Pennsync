@@ -207,3 +207,67 @@ test('a migration that fails leaves neither its objects nor its ledger row', asy
     assert.equal(created[0].count, 0, 'the migration must not leave objects behind');
   } finally { await db.close(); }
 });
+
+/**
+ * The hosted staging project as it actually is: the first nine authority
+ * migrations applied directly, no deployment pin, and a ledger naming them.
+ *
+ * `deploymentShapedRepository` provisions through `applyProvision`, which sets
+ * the pin and applies every authority migration — a store more convenient than
+ * the real one, and the reason the suites did not notice that `applyMigrations`
+ * refused its own target. This builds the real shape instead, so the rehearsal
+ * below is the run Stage A will actually perform.
+ */
+const HOSTED_STAGING = ['independent_staging_authority', 'synthetic_s4_create_subset',
+  'synthetic_s3_manual_referral', 's4_ecmascript_blank_note', 'current_visit_documentation',
+  'current_patient_context', 'current_visit_schedule', 'referral_patient_selection',
+  'current_referral_list'];
+
+async function legacyStore(db) {
+  const files = readdirSync(join(repository, MIGRATION_DIRECTORY)).sort()
+    .filter(file => HOSTED_STAGING.includes(ledgerName(file)));
+  assert.equal(files.length, HOSTED_STAGING.length, 'the hosted set must resolve to real files');
+  for (const file of files) {
+    await db.exec(await readFile(join(repository, MIGRATION_DIRECTORY, file), 'utf8'));
+  }
+  await seedLedger(db, files.map(ledgerName));
+}
+
+test('the real hosted shape is accepted and migrated end to end, pin and all', async () => {
+  const db = await fresh();
+  try {
+    await legacyStore(db);
+    // No pin exists yet: `deployment_app_pin` is the first thing pending.
+    const { rows: absent } = await db.query(`select count(*)::int as count from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+      where n.nspname = 'pennsync_private' and p.proname = 'deployment_app_id'`);
+    assert.equal(absent[0].count, 0);
+
+    const planned = await applyMigrations({ db: harness(db), repository });
+    assert.equal(planned.deployment, null, 'there is no pin to report yet');
+    assert.equal(planned.deployment_pin_pending, true);
+    assert.equal(ledgerName(planned.pending[0]), 'deployment_app_pin');
+
+    const run = await applyMigrations({ db: harness(db), repository, apply: true });
+    assert.equal(run.mutated, true);
+    assert.deepEqual(run.applied, planned.pending);
+
+    // An unset setting defaults to staging, the restrictive outcome, and the
+    // run reports the pin it created rather than the null it started with.
+    assert.equal(run.deployment.app_id, STAGING);
+    assert.equal(run.deployment.source, 'default');
+
+    const { rows: tables } = await db.query(
+      "select count(*)::int as count from pg_tables where schemaname = 'pennsync_records'");
+    assert.ok(tables[0].count > 100, `expected the record store, got ${tables[0].count} tables`);
+
+    // Both colliding version pairs are in this run, so a prefix-keyed ledger
+    // would have aborted it at `contract_assignment`.
+    const { rows: ledger } = await db.query(
+      'select count(*)::int as count from supabase_migrations.schema_migrations');
+    assert.equal(ledger[0].count, HOSTED_STAGING.length + run.applied.length);
+
+    const again = await applyMigrations({ db: harness(db), repository });
+    assert.deepEqual(again.pending, []);
+  } finally { await db.close(); }
+});
