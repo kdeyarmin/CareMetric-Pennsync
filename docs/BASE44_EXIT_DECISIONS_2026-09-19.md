@@ -4856,3 +4856,130 @@ so; sabotaging the guard fails it. **A refusal a handler depends on needs a
 test on the side that raises it**, not on the side that inherits it.
 
 Port queue: `ported_function` 1 → 0, written 71 → 72.
+
+## D77 — Half the file census has nothing here to re-point
+
+**Decision.** Build the two halves of D56's file work this repository can hold
+— the `file_url` → `cmfile:` mapping with its resolver, and the copy PLANNER —
+and record that the copy-and-rewrite scope is **34 locator fields across 27
+entities**, not the census's 66 across 58.
+
+**The measurement came first and changed the shape of the work.** The census
+(`tools-file-reference-census.mjs`) lists every field in every entity schema
+that can hold a retrievable address. Split by disposition:
+
+| Disposition | Entities | Locator fields |
+| --- | ---: | ---: |
+| `port` (carried) | 27 | **34** |
+| `preserved_paused` | 17 | 18 |
+| `hub` | 8 | 13 |
+| `retire` | 1 | 1 |
+
+**An inventory should be complete and a rewrite should not.** You look at every
+file before deciding what to do with it, so the census stays at 66. But a
+locator on `FaxLog`, `TrainingModule` or `CallLog` has no row in the record
+store to re-point — those entities get no table at all — so copying their bytes
+into this store's bucket would be copying them for a reader that does not
+exist. The planner reports both numbers and refuses to merge them.
+
+### The mapping, and why it is immutable
+
+`20260920520000_file_locator_map.sql` creates `pennsync_private.file_object`
+and `pennsync_private.resolve_file_locator(text)`. Four properties are the
+whole design, each proved rather than asserted:
+
+**It is not a place a caller reads.** A locator is projected by the contract
+that authorizes the read of the row holding it — D71 makes that explicit by
+deliberately NOT projecting `pdf_url` from `pdf_index`, *because a storage
+locator is why `PDFIndex` is outside the generic broker family at all*. So the
+table has forced RLS and **no policy**, like `chart_assignment`, and the
+resolver is granted to `pennsync_records_owner` alone with no public wrapper,
+like `claim_new_chart`. A caller who could ask it directly would be asking
+about a file without having read the row that references it.
+
+**It is keyed on the locator, not on (entity, row, field).** A `Document`, the
+`DocumentVersion` under it and a `Referral` naming the same upload are three
+paths to one object. Keying on the row would copy it three times and let two of
+the copies drift.
+
+**A mapping is immutable, and that is load-bearing.** Every carried row holding
+a legacy URL resolves through this table, so remapping one locator silently
+repoints every row referencing it at different bytes — a patient's document
+becoming another patient's, with nothing in either row changed to show it.
+D32's rule in its strongest form: the trigger refuses every update and every
+delete, including of a column that looks harmless.
+
+**It fails closed.** An unmapped legacy locator resolves to **null**, never to
+itself. The tempting alternative is exactly what D56 forbids: *"Do not widen
+the allowlist to unblock yourself."* A fallback that returned the input would
+hand a Base44 storage URL back to a caller that asked for an owned handle, and
+the caller would fetch it — carrying that host into the service the exit exists
+to remove, silently, for precisely the rows the copy missed. Sabotaging this
+one line fails three tests.
+
+**And an owned handle passes straight through**, because the write side is
+already owned: the integration runtime returns durable private `cmfile:`
+handles from both uploads, so a row written after cutover needs no mapping and
+a resolver that demanded one would break the half that already works.
+
+### The planner, and the asymmetry it inherits
+
+`tools-pennsync-file-copy.mjs` copies nothing. Like the census it contacts no
+app and downloads no object; like the D24 backfill it plans from an operator's
+export, reports, and applies only a plan whose digest matches what was
+reviewed.
+
+**The backfill's asymmetry is sharper for files.** A copy that DROPS a file is
+a support ticket — somebody opens a document, it is not there, and they say so.
+A copy that maps a locator to the WRONG BYTES is a disclosure, and nobody
+reports it, because the row looks right to the person now reading another
+patient's document. So every ambiguity skips, every skip is named by FIELD (never
+by row), and a locator the copy did not produce is dropped rather than guessed
+at. That is also why the database mapping is immutable: a plan that mapped a
+locator wrongly cannot be corrected in place.
+
+Two details worth keeping. `isStorageLocator` matches a host exactly or as a
+suffix after a dot, never as a substring — `notbase44.app` and
+`base44.app.evil.example` are not Base44, and a test drives both. And the
+`uncarried_entity` check runs AFTER the shape checks, so an unfamiliar path on
+a paused entity is still reported as unfamiliar: a census the schemas have
+outgrown is a finding whatever the disposition says.
+
+### The test defect worth recording
+
+The first draft of the planner's suite typed its own field paths —
+`DocumentVersion.file_url` and `FaxLog.file_url`. The real ones are `pdf_url`
+and `document_url`, so the deduplication test was exercising `unknown_field`
+while claiming to exercise deduplication, and passed two of three references.
+**D72's rule arriving as a test defect**: before deciding a field list has to
+be written, check whether something has already written it down. The paths are
+read from the census now, so a census change fails the build.
+
+### The cross-contract test, and the second defect it took to get right
+
+The PLANNER computes `locator_key` in JavaScript and the RESOLVER recomputes it
+in SQL. If they ever disagreed, every mapping would be invisible — resolving to
+null, which is exactly what an unmapped locator does — and **both suites would
+go on passing**, because the planner's compares its key only to itself and the
+migration's computes the key the same way the planner does. That is D45's rule
+in the shape that makes it necessary, so a test drives a plan all the way
+through `applyFileCopy` into the database and reads it back through the
+function.
+
+Its first draft did not work, and the way it failed is the lesson. The locator
+it used was `…?v=3&x=%20%C3%A9` — described in its own comment as "a non-ASCII,
+query-bearing locator on purpose", and **entirely ASCII**, because `%C3%A9` is
+percent-escaped text rather than the character it encodes. Changing the
+planner to hash in `latin1` instead of `utf8` left both suites green. With a
+RAW `é` in the locator the planner's twelve tests still pass and the
+cross-check fails, which is the whole point of having it.
+
+**Sabotage is what told the two apart.** A test whose comment describes
+something the test does not do reads exactly like one that works.
+
+### What this does not do
+
+The copy itself needs a live Base44 app and a live bucket. Nothing here fetches
+an object, and the twelve file-bound capabilities stay blocked until an
+operator runs the plan — but what they wait on is now DATA rather than design,
+which is what D56 said it should be.
