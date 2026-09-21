@@ -5004,13 +5004,34 @@ not about this table, and D56's rule applies to an ownership check exactly as
 it applies to a host allowlist: do not widen it to unblock yourself.
 
 What D78's rule about checks demanded here is that the constraint not live only
-in this paragraph. `applyFileCopy` now takes a `readerModel` from the operator
-and refuses `uploader_owned` **by name**, the way a partial port refuses an
-action it does not serve (D31, D35, D59), so the copy cannot be run into a set
-of handles nobody but one person can open. And the refusal is tied to its
-reason rather than asserted: a test reads the runtime's two checks out of its
-own source and fails when either goes, which is the signal that the refusal can
-be lifted.
+in this paragraph. **So `applyFileCopy` refuses every apply**, unconditionally,
+and the first attempt at that is worth recording because it read as a control
+and was a hint.
+
+That version took a `readerModel` from the operator, refused `uploader_owned`
+by name and **accepted `record_authorized`** — which nothing implements. The
+label was never checked against anything, so the only accepted value was the one
+that cannot be true, and the refusal message named it: an operator following the
+error would type the word that let immutable rows be written for handles nobody
+but one person can open. **Pre-allowing the name of a model nobody has built is
+worse than no check at all, and an attestation a tool cannot verify is not a
+control.** Codex caught it on the revision that introduced it.
+
+So there is no label. `RUNTIME_READER_MODEL` pins what the runtime implements,
+`REQUIRED_READER_MODEL` what a migrated object needs, and the refusal is that
+they differ — which makes lifting it one line when the decision lands. The pin
+is a fact about another service, so a test reads that service's own two checks
+and fails when either goes.
+
+The capability splits from its primitive so the refusal costs nothing else:
+`fileCopyRows` validates and builds the rows, `writeFileObjects` is the
+transaction and the lock, and `applyFileCopy` is the refusal plus both. The
+round-trip test drives the planner's own `locator_key` through those two into
+the database and back out through the resolver, because that property — the key
+the planner writes is the key the resolver reads — is about the two halves of a
+hash agreeing, not about whether a copy may be recorded. Sabotaging the
+encoding still leaves the planner's own suite green and fails only the
+cross-check, which is what having it is for.
 
 Note also which way this fails. An unopenable handle is `FILE_ACCESS_DENIED` —
 a loud refusal and a support ticket, the same safe half of the asymmetry the

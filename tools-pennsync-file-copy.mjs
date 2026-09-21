@@ -60,19 +60,18 @@ export const STORAGE_HOSTS = Object.freeze(['qtrypzzcjebvfcihiynt.supabase.co', 
 export const UNCARRIED_DISPOSITIONS = Object.freeze(['retire', 'hub', 'preserved_paused']);
 
 /**
- * WHO MAY OPEN A COPIED OBJECT, which is not this table's question and is not
- * answered yet (D77).
+ * WHO MAY OPEN A COPIED OBJECT — the question that stops every apply (D77).
  *
  * A mapping is keyed on the LOCATOR, so one upload referenced by three rows
- * becomes one owned handle — which is the property that stops two copies
- * drifting, and is also what makes this the sharp end. The runtime that would
- * serve that handle,`services/integration-runtime/providers.mjs`, is
+ * becomes one owned handle. That is the property that stops two copies
+ * drifting, and it is also what makes this the sharp end. The runtime that
+ * would serve that handle, `services/integration-runtime/providers.mjs`, is
  * UPLOADER-OWNED: `fileRecord` admits a row only when `subject` equals the
  * caller's hashed subject, and the object path embeds that subject as well. Its
  * `id` is a primary key, so the same handle cannot be registered once per
  * reader. A migrated object has no uploader, so whichever subject the copy ran
- * as would be the only person who could ever open it and every other authorized
- * caregiver would get `FILE_ACCESS_DENIED`.
+ * as would be the only person who could ever open it, and every other
+ * authorized caregiver would get `FILE_ACCESS_DENIED`.
  *
  * That model is right for what it was built for — a file a caller uploaded in
  * their own session — and wrong for a carried row whose readers are decided by
@@ -81,15 +80,26 @@ export const UNCARRIED_DISPOSITIONS = Object.freeze(['retire', 'hub', 'preserved
  * "do not widen the allowlist to unblock yourself", and the same applies to an
  * ownership check.
  *
- * What this tool does instead is refuse the broken model BY NAME, the way a
- * partial port refuses an action it does not serve (D31, D35, D59). The
- * operator declares which model their copy minted handles under; the only one
- * that exists today is refused with the reason, so the copy cannot be run into
- * a set of handles nobody but one person can open. A paragraph in a decision
- * document is not a check — this branch is the check.
+ * SO EVERY APPLY IS REFUSED, and the first version of this got it backwards in
+ * a way worth recording. It took a `readerModel` from the operator, refused
+ * `uploader_owned` by name and accepted `record_authorized` — which nothing
+ * implements. The label was never checked against anything, so the accepted
+ * value was the one that CANNOT be true, the refusal message named it, and an
+ * operator following the error would type the word that let immutable rows be
+ * written for handles nobody but one person could open. **Pre-allowing the name
+ * of a model nobody has built is worse than no check: it reads as a control and
+ * it is a hint.** An attestation a tool cannot verify is not a control either.
+ *
+ * `RUNTIME_READER_MODEL` is a fact about another service, so it is pinned here
+ * and a test reads that service's own source to keep it honest — when the
+ * runtime stops being uploader-owned, that test fails and this refusal is the
+ * one line to delete. Until then `fileCopyRows` and `writeFileObjects` below
+ * stay reachable, because the round trip they prove (the planner writes
+ * `locator_key`, the resolver reads it) is what stops every future mapping
+ * resolving to null.
  */
-export const REFUSED_READER_MODEL = 'uploader_owned';
-export const READER_MODELS = Object.freeze(['record_authorized']);
+export const RUNTIME_READER_MODEL = 'uploader_owned';
+export const REQUIRED_READER_MODEL = 'record_authorized';
 
 /** Why one reference produced no copy. Reported, never silent. */
 export const SKIPS = Object.freeze([
@@ -284,27 +294,17 @@ export function summarize(plan) {
 }
 
 /**
- * Record the mappings for a copy that has already happened.
- *
- * `readerModel` is the operator's statement of how the handles they minted are
- * authorized, and `uploader_owned` — the only model the runtime implements
- * today — is refused by name. `READER_MODELS` above is the whole argument.
+ * The rows a copy's results would become, validated.
  *
  * `results` is what the operator's copy produced, keyed by locator: the owned
- * handle, the digest of the bytes it wrote, and their size. This writes the
+ * handle, the digest of the bytes it wrote, and their size. This builds the
  * mapping rows and nothing else — it does not fetch, and it cannot verify that
  * the digest describes the bytes, because it never sees them. What it CAN do,
  * and does, is refuse a result whose shape could not address anything, and
  * refuse to proceed on a plan that is not the one reviewed.
  */
-export async function applyFileCopy(execute, plan,
-  { actorId, expectedDigest, copyRun, results, readerModel }) {
+export function fileCopyRows(plan, { actorId, expectedDigest, copyRun, results }) {
   check(isObject(plan) && plan.contract === COPY_CONTRACT, 'FILE_COPY_PLAN_INVALID');
-  // Refused by NAME and before anything else, so the reason reaches the
-  // operator rather than a generic "invalid". See `READER_MODELS` above.
-  check(readerModel !== REFUSED_READER_MODEL, 'FILE_COPY_READER_MODEL_UPLOADER_OWNED');
-  check(typeof readerModel === 'string' && READER_MODELS.includes(readerModel),
-    'FILE_COPY_READER_MODEL_INVALID');
   check(typeof actorId === 'string' && UUID.test(actorId), 'FILE_COPY_ACTOR_INVALID');
   check(typeof copyRun === 'string' && copyRun.length > 0 && copyRun.length <= 200,
     'FILE_COPY_RUN_INVALID');
@@ -327,6 +327,18 @@ export async function applyFileCopy(execute, plan,
     rows.push([plan.app_id, copy.locator_key, copy.locator, result.file_uri,
       result.content_sha256, result.byte_size, copyRun, actorId]);
   }
+  return rows;
+}
+
+/**
+ * Write the mapping rows, which is a transaction and a lock and nothing else.
+ *
+ * Separated from `applyFileCopy` because it is the PRIMITIVE rather than the
+ * capability: it decides nothing about whether a copy may be recorded, and the
+ * round-trip test needs the planner's own `locator_key` to travel through the
+ * real insert rather than through a second one written beside it.
+ */
+export async function writeFileObjects(execute, rows) {
   // ONE transaction, as `applyBackfill` already does — and the lock is the
   // reason rather than a nicety. `pg_advisory_xact_lock` is an XACT lock: with
   // `execute` being a plain client's query function, each statement would be
@@ -353,6 +365,27 @@ export async function applyFileCopy(execute, plan,
     await execute('rollback').catch(() => {});
     throw error;
   }
+  return recorded;
+}
+
+/**
+ * Record the mappings for a copy that has already happened — REFUSED, always.
+ *
+ * This is the documented apply path, and it is the one place an operator would
+ * enter. See `RUNTIME_READER_MODEL` above for the whole argument: the runtime
+ * mints handles only its uploader can open, a migrated object has no uploader,
+ * and a mapping is immutable, so recording one is a permanent row for bytes
+ * every other authorized reader is refused.
+ *
+ * The body below is what runs when that is answered. Deleting the refusal is
+ * the whole change; everything under it is already proved.
+ */
+export async function applyFileCopy(execute, plan, options) {
+  // Before the plan is even read, so the reason is what the operator sees.
+  check(RUNTIME_READER_MODEL === REQUIRED_READER_MODEL,
+    'FILE_COPY_READER_MODEL_UNRESOLVED');
+  const rows = fileCopyRows(plan, options);
+  const recorded = await writeFileObjects(execute, rows);
   return { recorded, planned: plan.copies.length, dropped: plan.copies.length - rows.length };
 }
 

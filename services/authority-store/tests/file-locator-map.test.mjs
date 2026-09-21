@@ -7,7 +7,7 @@ import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { RECORD_MIGRATION_FILE } from '../../../tools-entity-schema-plan.mjs';
-import { applyFileCopy, locatorKey, planFileCopy, readExport, COPY_CONTRACT }
+import { fileCopyRows, writeFileObjects, locatorKey, planFileCopy, readExport, COPY_CONTRACT }
   from '../../../tools-pennsync-file-copy.mjs';
 
 /**
@@ -184,17 +184,22 @@ test('the key the planner writes is the key the resolver reads', async () => {
   JSON.parse(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')));
   assert.equal(plan.copies.length, 1);
   const uri = 'cmfile:3f2504e0-4f89-41d3-9a0c-0305e82c33aa';
-  const applied = await applyFileCopy(
+  // Through the PLANNER's own row builder and the real insert, not a second
+  // one written beside them: the property this test exists for is that the
+  // `locator_key` the planner writes is the one the resolver reads. The
+  // capability wrapper `applyFileCopy` is refused unconditionally (D77 — the
+  // runtime mints handles only their uploader can open), and that refusal is
+  // about whether a copy may be RECORDED, not about whether the two halves of
+  // the key agree.
+  const applied = await writeFileObjects(
     async (sql, params) => { await db.query(sql, params); },
-    plan,
-    {
+    fileCopyRows(plan, {
       actorId: '00000000-0000-4000-8000-000000000001',
       expectedDigest: plan.digest,
       copyRun: 'cross-check',
-      readerModel: 'record_authorized',
       results: { [locator]: { file_uri: uri, content_sha256: zeros, byte_size: 7 } },
-    });
-  assert.deepEqual(applied, { recorded: 1, planned: 1, dropped: 0 });
+    }));
+  assert.equal(applied, 1, 'one mapping recorded');
   // The round trip. Both sides hash the UTF-8 bytes of the exact string, so a
   // normalisation OR a different encoding on either side shows up here and
   // nowhere else: the planner's own suite compares its key only to itself, and
