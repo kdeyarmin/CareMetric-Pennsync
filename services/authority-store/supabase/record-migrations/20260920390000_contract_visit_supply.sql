@@ -13,33 +13,31 @@
 -- `assigned_nurses`, `account_type` and `agency_name`, and lists five thousand
 -- `User` rows for the last one. The chart policies answer all of it.
 --
--- **THE DEFECT THIS PORT FOUND, which is the fourth of its kind.** The original
+-- **THE DEFECT THIS PORT FOUND, and what D61 then did with it.** The original
 -- creates a reorder `Task` with NO `patient_id`, and then a
--- `SupplyLowStockAlert` whose `task_id` names it. In this store `task` reaches
--- tenancy through `patient_id` and `supply_low_stock_alert` reaches it through
--- `task_id`, so a task with no patient is in no tenant and the alert pointing
--- at it is in no tenant either: BOTH would be written where nobody — the
--- assignee included — could ever read them. D45 found this shape in the
--- notification envelope and D51 found it in the ADR and incident alerts; it is
--- the first time the fix is not a stamped envelope column.
+-- `SupplyLowStockAlert` whose `task_id` names it. When this was written, `task`
+-- reached tenancy through `patient_id` and `supply_low_stock_alert` reached it
+-- through `task_id`, so a task with no patient was in no tenant and the alert
+-- pointing at it was in no tenant either: BOTH would have been written where
+-- nobody — the assignee included — could ever read them. D45 found that shape
+-- in the notification envelope and D51 found it in the ADR and incident alerts.
 --
--- The fix is the original's own `assigned_to`. It assigns the reorder task to
--- `user.email`, the clinician who just documented the visit, and that clinician
--- opens this chart — so stamping the task with the authorized `patient_id`
--- makes it visible to exactly the person it is assigned to, plus the rest of
--- the care team and anyone who opens every chart. The other three capabilities
--- in the tree that create a `Task` all name a patient, and
--- `generateFollowUpTasks` says why in its own comment: *"Chart-attached tasks
--- require a patient the caller can access."* This one is the outlier.
+-- This port's first answer was to stamp the authorized chart on the task,
+-- which worked and was too narrow. **D61 then measured the class** — thirteen
+-- carried entities reached tenancy only through an OPTIONAL column — and gave
+-- these two an `agency_id` of their own. So the task names no patient, exactly
+-- as the original has it, and is visible because the TABLE carries the tenancy
+-- rather than because this contract invented a subject for it. A reorder task
+-- is about the agency's inventory, and the agency is who can now see it.
 --
 -- DIVERGENCES from the original, each deliberate:
 --
 -- 1. The chart decides. The explicit checks are for the NAMED refusals.
--- 2. **The reorder task names the chart the usage came from**, per the note
---    above, and the task is created BEFORE the alert so the alert can carry
---    `task_id` and `reorder_task_created` at insert. That deletes the
---    original's follow-up update, which only existed because it had no
---    transaction in which to create the pair.
+-- 2. The task and the alert are stamped with the agency D61 gave those tables,
+--    and the task is created BEFORE the alert so the alert can carry `task_id`
+--    and `reorder_task_created` at insert. That deletes the original's
+--    follow-up update, which only existed because it had no transaction in
+--    which to create the pair.
 -- 3. **`supply_usage_claimed_by` is gone.** The original writes a claim token
 --    to the visit, reads it back, and treats a mismatch as "claimed by a
 --    concurrent run" — a compensation for having no transaction, and a racy
@@ -255,12 +253,14 @@ begin
         where a."source_app_id" = "pennsync_records".deployment_app()
           and a."supply_id" = v_supply."id" and a."status" = 'active') then
         v_priority := case when v_severity = 'warning' then 'medium' else 'high' end;
-        -- Divergence 2: the task names the chart, and comes first.
+        -- Divergence 2: the agency D61 gave the table, and the task first.
+        -- No `patient_id`, as the original has it: a reorder task is the
+        -- agency's, not the chart's.
         v_task_id := pg_catalog.substr(pg_catalog.md5(pg_catalog.gen_random_uuid()::text), 1, 24);
         insert into "pennsync_records"."task"
-          ("source_app_id","id","patient_id","title","description","status",
+          ("source_app_id","id","agency_id","title","description","status",
            "priority","assigned_to","due_date","created_by","created_date","updated_date")
-        values ("pennsync_records".deployment_app(), v_task_id, p_patient_id,
+        values ("pennsync_records".deployment_app(), v_task_id, p_agency,
           pg_catalog.concat('Reorder ', v_supply."name"),
           -- Divergence 7: a null renders as empty, not as "undefined".
           pg_catalog.concat(v_supply."name", ' is ',
@@ -270,11 +270,11 @@ begin
           'pending', v_priority, v_email, v_today, v_email, v_now, v_now);
         v_alert_id := pg_catalog.substr(pg_catalog.md5(pg_catalog.gen_random_uuid()::text), 1, 24);
         insert into "pennsync_records"."supply_low_stock_alert"
-          ("source_app_id","id","supply_id","supply_name","current_quantity",
+          ("source_app_id","id","agency_id","supply_id","supply_name","current_quantity",
            "threshold_quantity","recommended_reorder","severity","status",
            "triggered_date","reorder_task_created","task_id",
            "created_by","created_date","updated_date")
-        values ("pennsync_records".deployment_app(), v_alert_id, v_supply."id",
+        values ("pennsync_records".deployment_app(), v_alert_id, p_agency, v_supply."id",
           v_supply."name", v_after, v_supply."low_stock_threshold",
           v_supply."reorder_quantity", v_severity, 'active', v_now, true, v_task_id,
           v_email, v_now, v_now);

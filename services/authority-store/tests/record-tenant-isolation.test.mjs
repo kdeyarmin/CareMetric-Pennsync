@@ -102,18 +102,23 @@ test('an agency-keyed table shows each agency only its own rows, and refuses to 
 });
 
 test('a row reached only through another entity inherits that entity tenancy', async () => {
+  // `supply_usage_log`, and not `adr_audit_case`, which used to be the example
+  // here: D61 gave that one a key of its own, because its `patient_id` was
+  // OPTIONAL and a case filed before a chart existed was in no tenant at all.
+  // A reference is still a tenancy where the schema REQUIRES the column, which
+  // it does for a usage log's patient.
   await seed(`insert into ${SCHEMA}.patient("source_app_id","id","agency_id") values
       ('${APP}','patient-a','agency-a'), ('${APP}','patient-b','agency-b');
-    insert into ${SCHEMA}.adr_audit_case("source_app_id","id","patient_id") values
-      ('${APP}','case-a','patient-a'), ('${APP}','case-b','patient-b');`);
+    insert into ${SCHEMA}.supply_usage_log("source_app_id","id","patient_id") values
+      ('${APP}','log-a','patient-a'), ('${APP}','log-b','patient-b');`);
 
-  // adr_audit_case carries no key of its own; it reaches one through patient.
-  assert.deepEqual(ids(await as(AGENCY_A, `select "id" from ${SCHEMA}.adr_audit_case`)), ['case-a']);
-  assert.deepEqual(ids(await as(AGENCY_B, `select "id" from ${SCHEMA}.adr_audit_case`)), ['case-b']);
-  // Attaching a case to the other agency's patient is refused, so the join
+  // supply_usage_log carries no key of its own; it reaches one through patient.
+  assert.deepEqual(ids(await as(AGENCY_A, `select "id" from ${SCHEMA}.supply_usage_log`)), ['log-a']);
+  assert.deepEqual(ids(await as(AGENCY_B, `select "id" from ${SCHEMA}.supply_usage_log`)), ['log-b']);
+  // Attaching a log to the other agency's patient is refused, so the join
   // cannot be used to launder a row into a tenant the caller is not in.
-  await refused(AGENCY_A, `insert into ${SCHEMA}.adr_audit_case("source_app_id","id","patient_id")
-    values ('${APP}','case-c','patient-b')`);
+  await refused(AGENCY_A, `insert into ${SCHEMA}.supply_usage_log("source_app_id","id","patient_id")
+    values ('${APP}','log-c','patient-b')`);
 });
 
 test('a self-keyed row is the account own, not the agency', async () => {

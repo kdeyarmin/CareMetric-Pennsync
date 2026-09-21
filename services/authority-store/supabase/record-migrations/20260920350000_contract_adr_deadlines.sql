@@ -27,9 +27,10 @@
 --
 -- 1. D40's gate for the human path; the machine path is D49's open decision.
 -- 2. **The scope is the CHART, because this table has no agency of its own.**
---    `adr_audit_case` carries no `agency_id`; its policies reach tenancy
---    through `patient_id` into `patient`, so an ADR case is in the agency its
---    patient is in and is visible only to somebody who opens that chart (D24).
+--    `adr_audit_case` carries its own `agency_id` since D61 — its only tenant
+--    path had been an OPTIONAL `patient_id`, so a case filed before a chart
+--    existed was in no tenant at all — and D24 still narrows it to the chart
+--    wherever a subject is named.
 --    The contract still names the agency in its own predicate rather than
 --    leaning on the policy alone: `caller_agencies()` returns EVERY agency the
 --    caller holds, so a caller holding two would otherwise sweep the other's
@@ -145,11 +146,12 @@ begin
       c."response_due_date", c."deadline_reminders"
     from "pennsync_records"."adr_audit_case" c
     where c."source_app_id" = "pennsync_records".deployment_app()
-      -- Divergence 2: the chart carries the tenancy, and the agency is named
-      -- rather than left to `caller_agencies()`.
-      and exists (select 1 from "pennsync_records"."patient" p
-        where p."source_app_id" = c."source_app_id"
-          and p."id" = c."patient_id" and p."agency_id" = p_agency)
+      -- Divergence 2: the agency is NAMED rather than left to
+      -- `caller_agencies()`, which returns every agency the caller holds.
+      -- Since D61 the case carries its own `agency_id`; before it, its only
+      -- tenant path was an optional `patient_id`, so a case filed before a
+      -- chart existed belonged to nobody.
+      and c."agency_id" = p_agency
       and c."status" in ('letter_uploaded', 'checklist_ready', 'packet_uploaded',
         'packet_verified', 'packet_generated')
       and c."created_by" is not null and c."created_by" <> ''

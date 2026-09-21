@@ -21,10 +21,16 @@ test('every entity without a derivable tenant path has a decision, and none has 
   // kind available would have authorized through its own self-editable column.
   // D23 adds one that does not consult that column at all, so it is decided
   // like everything else.
-  assert.equal(report.blocking, 87);
-  assert.deepEqual(report.counts, { agency: 66, self: 10, shared: 2, global: 8, roster: 1 });
+  //
+  // 99, not 87: D61 stopped counting a reference through an OPTIONAL column as
+  // a tenant path, because a row with a null there is in no tenant and no
+  // policy can admit it. Twelve entities moved into the blocking set and were
+  // decided `agency`, which is how a reorder task, an ADR case filed before a
+  // chart existed and a generic phrase template became readable at all.
+  assert.equal(report.blocking, 99);
+  assert.deepEqual(report.counts, { agency: 78, self: 10, shared: 2, global: 8, roster: 1 });
   // agency and shared both carry a tenant key, so both are stamped before load.
-  assert.equal(report.stamped.length, 68);
+  assert.equal(report.stamped.length, 80);
 });
 
 test('a self-editable profile claim can only be decided roster, and nothing else can be', () => {

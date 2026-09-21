@@ -3887,3 +3887,76 @@ The five suites' original-reading halves now live in
 What they prove is unchanged.
 
 Port queue: unchanged. This fixes a guard and moves tests; it ports nothing.
+
+## D61 — A reference the schema does not require is not a tenancy
+
+**Decision.** Stop counting a reference through an OPTIONAL column as a
+resolved tenant path, decide the twelve entities that leaves as `agency`, and
+let D24's chart narrowing apply wherever a subject is named.
+
+**Found by measuring the class D58 stumbled into.** D58 discovered, while
+porting a capability that writes one, that a `Task` with no `patient_id` is in
+no tenant: `task` reaches tenancy through `patient_id`, so a null there means no
+policy admits the row, and the reorder task the original creates was invisible
+to everybody including the person it was assigned to. Rather than fix that one
+row, the question was asked of the whole tree — **how many carried entities
+reach tenancy only through a column their own schema does not require?**
+
+Thirteen, of fifty-three reference-tenanted entities:
+
+```
+AdrAuditCase, ClinicalLibraryTemplate, ComplianceAudit, DocumentAnalysisHistory,
+DocumentRecord, FaceToFaceEncounter, MaterialInteraction, NoteConversion,
+NoteFeedback, PDFIndex, ScheduleFeedback, SupplyLowStockAlert, Task
+```
+
+Every one of them could hold a row that nobody could read — not the care team,
+not the agency's administrator, nobody. Three of those had already produced
+real defects that had to be found one at a time: D58's reorder task and its
+alert, and the ADR test that asserted, as though it were correct, that *"a case
+with no patient is in no chart and therefore in no tenant … invisible to
+everyone, and no predicate here can reach it."*
+
+**The fix is in the derivation, not in a list.** `tools-tenant-path.mjs`
+resolved a reference whenever a column pointed at a tenanted entity, without
+asking whether the column was always there. It now requires the column to be in
+the entity's own `required` list — the same discipline D30 and D32 follow of
+taking the schema's own words as the signal. Twelve entities became blocking
+(`ComplianceAudit` re-resolved through a required `visit_id`) and each was
+decided `agency`, which is the default and needs no positive claim. The
+generator stamps `agency_id` before load, and D24's derivation gives the eleven
+with a `patient_id` the predicate `Referral` already had:
+
+```sql
+agency_id in caller_agencies()
+  and (patient_id is null or caller_opens_every_chart(agency_id)
+       or patient_id in caller_assigned_patients(agency_id))
+```
+
+which is exactly what D24 already said in words: *"A row whose subject is null
+stays agency-scoped, because a referral taken before a patient exists is not yet
+anybody's chart."* The rule existed; only entities with their own key could
+obey it.
+
+**D58's divergence is withdrawn as a result.** That port stamped the authorized
+chart on the reorder task so somebody could read it. With the table carrying
+its own tenancy, the task names no patient — exactly as the original has it —
+and is visible to the agency, which is who reorders supplies. The narrower fix
+is gone and the port is more faithful than it was.
+
+**Three tests changed, and each change is the finding.** The ADR sweep's
+"unreachable case" is now reminded, and the comment says why. The visit-supply
+suite's proof that an orphan pair is readable by nobody became a proof that a
+subjectless task is the agency's and stops at the agency boundary — and that
+the orphan cannot be written at all, because the column is `not null`. The
+isolation suite's example of reference tenancy moved from `adr_audit_case`,
+which no longer has one, to `supply_usage_log`, which does.
+
+**The general rule.** A tenancy that a row can be missing is not a tenancy.
+When a path is derived rather than declared, ask what happens when the thing it
+is derived from is absent — and measure the answer across the tree rather than
+waiting for a port to trip over it, which is how three of these thirteen were
+found and how the other ten would have been.
+
+Port queue: unchanged. `ClinicalLibraryTemplate` becoming readable is what
+unblocks `expandClinicalPhrase`, which is the next port rather than this one.

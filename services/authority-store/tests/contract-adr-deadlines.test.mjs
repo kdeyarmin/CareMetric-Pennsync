@@ -82,10 +82,12 @@ const refusal = (promise, code) => assert.rejects(promise, error => {
 }, `expected ${code}`);
 // `agency_today` is the agency's calendar day, so the fixture dates are built
 // from the same expression rather than from the test runner's clock.
-// `adr_audit_case` has no agency of its own: its tenancy is the CHART, so a
-// case is seeded onto that agency's patient.
+// `adr_audit_case` carries its own agency since D61 — its only tenant path was
+// an OPTIONAL `patient_id`, so a case filed before a chart existed was in no
+// tenant — and D24 still narrows it to the chart wherever a subject is named.
 const seedCase = async (id, agency, days, overrides = {}) => {
   const row = {
+    agency_id: agency,
     created_by: email(CLINICIAN_A), case_name: 'Claim 8812',
     status: 'letter_uploaded', deadline_reminders: null,
     patient_id: agency === A ? 'patient-a1' : 'patient-b1', ...overrides,
@@ -157,15 +159,17 @@ test('a closed case, an unowned case and another agency s are all skipped', asyn
   await seedCase('submitted', A, 3, { status: 'submitted' });
   await seedCase('closed', A, 3, { status: 'closed' });
   await seedCase('no-owner', A, 3, { created_by: '' });
-  // A case with no patient is in no chart and therefore in no tenant — the
-  // same shape D27 found for a Document bound to an agency and no patient. It
-  // is invisible to everyone, and no predicate here can reach it.
+  // A case with no patient IS reminded, and that is D61. Until the case
+  // carried its own `agency_id`, its only tenant path was this optional
+  // `patient_id` — so a case filed before a chart existed was in no tenant,
+  // invisible to everyone including the administrator sweeping for it, and no
+  // predicate here could reach it. This assertion used to say so.
   await seedCase('no-chart', A, 3, { patient_id: null });
   // Agency B's case belongs to agency B's own member; `clinician-a` is not on
   // that roster, so a case of theirs naming them would be unreachable.
   await seedCase('theirs', B, 3, { created_by: email(ADMIN_B) });
   const result = await sweep(ADMIN_A);
-  assert.deepEqual(result.reminders.map(r => r.case_id), ['open']);
+  assert.deepEqual(result.reminders.map(r => r.case_id), ['no-chart', 'open']);
   // Agency B's case is reminded by agency B's administrator, not this one.
   assert.deepEqual((await sweep(ADMIN_B, B)).reminders.map(r => r.case_id), ['theirs']);
 });

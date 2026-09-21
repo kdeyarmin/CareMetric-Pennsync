@@ -167,31 +167,41 @@ test('the chart decides who may record against it, not a nurse list', async () =
   assert.equal((await context(ADMIN_A, 'patient-a2', 'visit-a2')).visit_id, 'visit-a2');
 });
 
-test('a patient-less reorder task, and its alert, are readable by nobody', async () => {
-  // The defect, proved rather than asserted. This is what the original writes:
-  // `Task.create` with no `patient_id`, then an alert naming that task. In this
-  // store `task` reaches tenancy through `patient_id` and
-  // `supply_low_stock_alert` through `task_id`, so the pair is in no tenant.
+test('a reorder task names no patient, and the agency can still read it', async () => {
+  // The defect this port found, and what D61 did with it. The original creates
+  // a `Task` with no `patient_id` and an alert naming that task; until D61 both
+  // tables reached tenancy ONLY through that optional column, so the pair was
+  // in no tenant and this test asserted that nobody could read it. D61 gave the
+  // two tables an `agency_id`, so the row is visible to the agency it belongs
+  // to — and to nobody outside it.
   await reset();
   await db.query(`insert into ${SCHEMA}."task"
-    ("source_app_id","id","title","status","assigned_to")
-    values ($1,'orphan-task','Reorder Gauze','pending',$2)`, [APP, email(CLINICIAN_A)]);
+    ("source_app_id","id","agency_id","title","status","assigned_to")
+    values ($1,'agency-task',$2,'Reorder Gauze','pending',$3)`,
+  [APP, A, email(CLINICIAN_A)]);
   await db.query(`insert into ${SCHEMA}."supply_low_stock_alert"
-    ("source_app_id","id","supply_id","status","task_id")
-    values ($1,'orphan-alert','sup-1','active','orphan-task')`, [APP]);
-  for (const caller of [CLINICIAN_A, ADMIN_A]) {
-    assert.deepEqual(await reads(caller,
-      `select "id" from ${SCHEMA}."task" where "id" = 'orphan-task'`), [],
-    'the task the original writes is in no tenant');
-    assert.deepEqual(await reads(caller,
-      `select "id" from ${SCHEMA}."supply_low_stock_alert" where "id" = 'orphan-alert'`), [],
-    'and so is the alert that names it');
+    ("source_app_id","id","agency_id","supply_id","status","task_id")
+    values ($1,'agency-alert',$2,'sup-1','active','agency-task')`, [APP, A]);
+  for (const caller of [CLINICIAN_A, ADMIN_A, CLINICIAN_EMPTY]) {
+    assert.equal((await reads(caller,
+      `select "id" from ${SCHEMA}."task" where "id" = 'agency-task'`)).length, 1,
+    'a task with no subject is the agency\'s, not nobody\'s');
+    assert.equal((await reads(caller,
+      `select "id" from ${SCHEMA}."supply_low_stock_alert" where "id" = 'agency-alert'`)).length, 1);
   }
-  // Both rows really are there; it is the policies that answer no.
-  assert.equal(Number((await db.query(`select count(*) as n from ${SCHEMA}."task"`)).rows[0].n), 1);
+  // And it stops at the agency boundary.
+  assert.deepEqual(await reads(ADMIN_B,
+    `select "id" from ${SCHEMA}."task" where "id" = 'agency-task'`), []);
+  assert.deepEqual(await reads(ADMIN_B,
+    `select "id" from ${SCHEMA}."supply_low_stock_alert" where "id" = 'agency-alert'`), []);
+  // The column is NOT NULL, so the orphan this test used to demonstrate can no
+  // longer be written at all.
+  await assert.rejects(() => db.query(`insert into ${SCHEMA}."task"
+    ("source_app_id","id","title") values ($1,'orphan-task','Reorder')`, [APP]),
+  error => /agency_id/.test(String(error?.message ?? error)));
 });
 
-test('the contract stamps the chart, so the assignee can read what they were handed', async () => {
+test('the reorder task is the agency s, and the assignee can read it', async () => {
   await reset();
   await supply('sup-low', A, 'Wound gel', 12, 10, { unit: 'tubes', reorder: 24 });
   const result = await record(CLINICIAN_A, [
@@ -208,7 +218,8 @@ test('the contract stamps the chart, so the assignee can read what they were han
   // the alert that names it.
   const [task] = await reads(CLINICIAN_A,
     `select * from ${SCHEMA}."task" where "id" = $1`, [alert.task_id]);
-  assert.equal(task.patient_id, 'patient-a1', 'stamped with the authorized chart');
+  assert.equal(task.agency_id, A, 'stamped with the agency D61 gave the table');
+  assert.equal(task.patient_id, null, 'and no subject, exactly as the original has it');
   assert.equal(task.assigned_to, email(CLINICIAN_A));
   assert.equal(task.title, 'Reorder Wound gel');
   assert.equal(task.priority, 'medium');
@@ -218,8 +229,11 @@ test('the contract stamps the chart, so the assignee can read what they were han
   assert.equal((await reads(CLINICIAN_A,
     `select "id" from ${SCHEMA}."supply_low_stock_alert" where "id" = $1`,
     [alert.id])).length, 1);
-  // And the clinician who opens no chart still cannot.
-  assert.deepEqual(await reads(CLINICIAN_EMPTY,
+  // A colleague who opens no chart still sees it, because a reorder task is
+  // the agency's inventory problem rather than anybody's chart.
+  assert.equal((await reads(CLINICIAN_EMPTY,
+    `select "id" from ${SCHEMA}."task" where "id" = $1`, [alert.task_id])).length, 1);
+  assert.deepEqual(await reads(ADMIN_B,
     `select "id" from ${SCHEMA}."task" where "id" = $1`, [alert.task_id]), []);
 
   const [log] = await logs();

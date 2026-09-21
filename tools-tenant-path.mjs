@@ -20,8 +20,13 @@
  *   would let a caller choose its own tenant. This repository has already
  *   paused one endpoint for exactly that defect.
  * - A reference column resolves only through another entity that is itself
- *   `root`, `direct` or `reference`. A path through a profile claim or an
- *   actor column inherits its weakness and is not a path.
+ *   `root`, `direct` or `reference`, AND only when the schema REQUIRES that
+ *   column. A path through a profile claim or an actor column inherits its
+ *   weakness and is not a path; a path the schema allows to be absent is not a
+ *   path either, because a row with a null there is in no tenant and no policy
+ *   can admit it — thirteen carried entities were in that state until D61
+ *   measured it, and one of them was found the hard way, by porting a
+ *   capability that writes such a row.
  * - An entity whose only tenancy signal is who touched the row is `actor`, and
  *   one with no signal at all is `unresolved`. Both need an owner's decision;
  *   neither is a key, because a person's agency changes over time while the
@@ -163,7 +168,11 @@ export function applyBindingTenancy({ resolved, names, properties }, claims = BI
 export function buildPaths(repository) {
   const names = carriedEntities(repository);
   const byNormalized = new Map(names.map(name => [normalize(name), name]));
-  const properties = new Map(names.map(name => [name, readEntity(repository, name).properties || {}]));
+  const schemas = new Map(names.map(name => [name, readEntity(repository, name)]));
+  const properties = new Map(names.map(name => [name, schemas.get(name).properties || {}]));
+  // A column the schema does not require can be null, and a null reference is
+  // not a tenancy — it is a row in no tenant at all. See `referenceColumns`.
+  const required = new Map(names.map(name => [name, new Set(schemas.get(name).required || [])]));
   const resolved = new Map();
 
   for (const name of names) {
@@ -185,6 +194,10 @@ export function buildPaths(repository) {
     for (const name of names) {
       if (resolved.has(name)) continue;
       const candidates = referenceColumns(properties.get(name), byNormalized)
+        // The column must be one the schema REQUIRES. A reference the schema
+        // allows to be absent leaves rows that no policy can admit, which is
+        // the orphan class D61 measured and closed.
+        .filter(reference => required.get(name).has(reference.column))
         .map(reference => ({ ...reference, resolvedTarget: resolved.get(reference.target) }))
         .filter(reference => reference.resolvedTarget && RESOLVING_KINDS.includes(reference.resolvedTarget.kind));
       if (!candidates.length) continue;
