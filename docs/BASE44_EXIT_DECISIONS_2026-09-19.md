@@ -4108,3 +4108,58 @@ And the event grouping is a SUBSTRING test (`strpos`), because the original's
 medication event, and a row whose type is null is in neither group.
 
 Port queue: `records_schema` 18 → 16, written 61 → 63.
+
+## D65 — The queue put the record store first because the record store did not exist
+
+**Decision.** Where a module reaches the file layer AND its record half is
+otherwise clear, report `files` rather than `records_schema`.
+
+**Found by starting a port that could not be written.** `generateNoteFromRecording`
+sat in `records_schema`, which a reader takes as *startable today*. It is a
+chart read, a transcription and a note — except the transcription is
+
+```js
+await base44.asServiceRole.integrations.Core.InvokeLLM({
+  model: 'gemini_3_flash', file_urls: [audio_url], …
+});
+```
+
+and `audio_url` arrives through `isSafeFetchUrl`, whose `FILE_URL_ALLOWED_HOSTS`
+names `qtrypzzcjebvfcihiynt.supabase.co`, `base44.app` and `base44.io`. It is
+file-bound, and D56 already measured what that means: a data migration, a
+`file_url` → `cmfile:` compatibility layer and thirty-one call sites.
+
+**The classifier said so in its own comment, and the comment had expired.**
+`classifyWithoutEntities` ends:
+
+> *The entity accesses are masked rather than the classifier reordered, because
+> the ORDER is correct for every module this does not apply to: a capability
+> that reads a chart AND uploads a file waits on the chart first.*
+
+That was true when it was written. The record store is built now, with
+sixty-three ports over it and a chart read that is a repeatable shape
+(`clinical_chart_context`, the purpose projections, the contract skeleton). The
+chart is an afternoon; the file layer is not. **So a module needing both is not
+waiting on the store**, and the bucket named the half that was already solved.
+
+**Six capabilities move**, and the "can be written today" count falls from
+sixteen to ten: `createAuthorizedDocument`, `generateAdrPacket`,
+`generateNoteFromRecording`, `indexPDF`, `preparePDFWithPatientInfo` and
+`processPatientFileUpdate`. `files` goes from six to twelve, which makes it the
+largest blocker in the queue by a wide margin and says plainly what the next
+piece of infrastructure is.
+
+**The refinement fires AFTER the entity checks, deliberately.**
+`entity_not_carried` and `entity_authorization` name a DECISION nobody has
+made; the file layer names work that is merely large. A decision outranks size,
+so a capability that also writes a profile still reports the profile.
+
+**This is the fourth correction of one kind on this branch** — D47, D55, D56 and
+now this — and the rule they share is worth restating in the form this one
+takes: **a classifier's precedence encodes what was true when it was written.**
+D55 masked entity access rather than reorder, and said why; the reason it gave
+stopped holding the moment the store it named was finished. Re-read a
+precedence when the thing it ranks first gets built.
+
+Port queue: `records_schema` 16 → 10, `files` 6 → 12. Nothing ported; this
+measures.

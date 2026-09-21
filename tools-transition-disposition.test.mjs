@@ -739,7 +739,7 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 8, patient_access_model: 0,
-    records_schema: 16, files: 6, ported_function: 1, core_integration: 2, pdf_rendering: 0,
+    records_schema: 10, files: 12, ported_function: 1, core_integration: 2, pdf_rendering: 0,
     external_secret: 2, none: 63 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
@@ -782,13 +782,13 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Sixteen. That is how many of the hundred can be written today, and the
+  // Ten. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 16);
+  assert.equal(report.port_blockers.records_schema.length, 10);
   // The thirty-two that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
@@ -854,8 +854,17 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // `mergePDFs` and `reorderDeletePDFPages` join them by the refinement: each
   // touches `UserActivity` and nothing else, so the record store is not what
   // either is waiting for.
-  assert.deepEqual(report.port_blockers.files, ['extractClinicalDocument', 'extractPatientDataFromDocument',
-    'generateDynamicCoverSheet', 'mergePDFs', 'reorderDeletePDFPages', 'splitReferralPDF']);
+  // D65 moved six here from `records_schema`. The classifier returned the
+  // record store first for a module that touches entities AND reaches the file
+  // layer, which was right while the store was the question; it is built now,
+  // with sixty-three ports over it, while the file layer is still a data
+  // migration and thirty-one call sites. `records_schema` reads as "startable
+  // today", and for these six it was not true.
+  assert.deepEqual(report.port_blockers.files, ['createAuthorizedDocument',
+    'extractClinicalDocument', 'extractPatientDataFromDocument', 'generateAdrPacket',
+    'generateDynamicCoverSheet', 'generateNoteFromRecording', 'indexPDF', 'mergePDFs',
+    'preparePDFWithPatientInfo', 'processPatientFileUpdate', 'reorderDeletePDFPages',
+    'splitReferralPDF']);
   assert.deepEqual(report.port_blockers.none,
     ['acceptAiContentAgreement', 'analyzeClinicalEvents', 'analyzeClinicalTrends',
       'analyzeReferral', 'analyzeReferralIntake',

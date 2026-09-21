@@ -504,8 +504,12 @@ export function discoverPortBlockers(repository) {
  * record contract for a capability whose records are done.
  *
  * The entity accesses are masked rather than the classifier reordered, because
- * the ORDER is correct for every module this does not apply to: a capability
- * that reads a chart AND uploads a file waits on the chart first.
+ * the ORDER is correct for every module this does not apply to — with one
+ * exception the store's own progress created. This comment used to end "a
+ * capability that reads a chart AND uploads a file waits on the chart first",
+ * which was true while the record store was the question and stopped being
+ * true once it was built; `refine` uses this function's `files` verdict to say
+ * so (D65). The masking is still how that is measured.
  */
 export function classifyWithoutEntities(source) {
   if (typeof source !== 'string') return 'records_schema';
@@ -718,6 +722,22 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
       if (written.some(entity => permits[entity] && permits[entity].read && !permits[entity].write)) {
         return 'entity_authorization';
       }
+      /*
+       * D65. `classifyWithoutEntities` says in its own comment that the order
+       * is right because "a capability that reads a chart AND uploads a file
+       * waits on the chart first". That was true while the record store was
+       * the question. It is built now, with sixty-three ports over it and a
+       * repeatable chart-read shape, while the file layer is still a data
+       * migration, a `file_url` -> `cmfile:` compatibility layer and
+       * thirty-one call sites. So the chart is not what these wait on, and
+       * `records_schema` — which a reader takes as "startable today" — names
+       * the wrong half.
+       *
+       * It comes AFTER the entity checks above on purpose: those name a
+       * DECISION nobody has made, and a decision outranks work that is merely
+       * large. This one fires only where the record half is otherwise clear.
+       */
+      if ((evidence.entityFreeBlockers || {})[name] === 'files') return 'files';
     }
     // The third does not, because reading `assigned_nurses` is a property of
     // the source text rather than of the entity set. Gating it behind the same
