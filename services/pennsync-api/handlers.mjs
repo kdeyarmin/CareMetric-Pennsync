@@ -14,6 +14,7 @@ import { analyzeVisitSupplyUsage } from './visit-supply-usage.mjs';
 import { importProviders } from './provider-import.mjs';
 import { expandClinicalPhrase as runClinicalPhrase } from './clinical-phrase.mjs';
 import { exportPatientChart } from './chart-export.mjs';
+import { searchIndexedPdfs } from './pdf-search.mjs';
 import { generateFollowUpTasks as runFollowUpTasks } from './follow-up-tasks.mjs';
 import {
   analyzeClinicalEvents as runClinicalEvents,
@@ -891,6 +892,16 @@ export const HANDLERS = Object.freeze({
         generatedOn: documentDate(now), year: now.getFullYear(),
       }).output('arraybuffer');
       return { binary: true, body, contentType: 'application/pdf', filename: `${guideType}_guide.pdf` };
+    },
+  }),
+  searchPDFs: Object.freeze({
+    // The indexed-PDF search. The corpus is the contract's and the scoring is
+    // the service's, which is D67's split; nothing here reads a file, because
+    // `PDFIndex` holds the extracted text rather than the document.
+    handle({ params, contract, audit }) {
+      exactObject(params, ['query', 'document_type', 'patient_id', 'fuzzy',
+        'count_only', 'limit'], 'INVALID_PARAMS');
+      return searchIndexedPdfs({ params, contract, audit });
     },
   }),
   generatePatientChartPDF: Object.freeze({

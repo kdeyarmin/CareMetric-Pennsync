@@ -4511,3 +4511,67 @@ is dropped rather than carried, because a constant standing in for an address
 is worse than an absent one (D36).
 
 Port queue: `records_schema` 6 → 5, written 67 → 68.
+
+## D71 — `created_by` was there because `patient_id` could not be trusted
+
+**Decision.** Port `searchPDFs` with the corpus decided in SQL and BM25 in the
+service, and delete the `created_by` scope its own comment explains away.
+
+**The original says it plainly:**
+
+> Unscoped searches cannot safely infer PDFIndex ownership from the mutable
+> `patient_id` relationship, so an ordinary caller is restricted to Base44's
+> immutable `created_by` field.
+
+So a search with no patient returns only rows the caller CREATED, and a search
+naming one proves access through `created_by`, `assigned_nurses` or the
+`SUPER_ADMIN_EMAIL` owner. Every part of that exists because the relationship
+could not decide who may read a row. **It can now.** `PDFIndex` is one of
+D61's twelve: it carries `agency_id NOT NULL`, and `pdf_index_read` is agency
+plus the chart wherever a subject is named.
+
+Both directions of the change are D24's rather than this contract's, and both
+are worth naming. A clinician **gains** their team's charts' documents — which
+is what a care team is for — and **loses** rows they created for a chart they
+have since been taken off, which is exactly what a revocation should do and
+what `created_by` could never express. An `office_staff` member reaches only
+the rows that name no patient.
+
+**The split is D67's, and this is the case that makes it concrete.** BM25 is
+text arithmetic over a query somebody typed: a token regex, a logarithm, a
+length normalisation and a tie-break. Reproducing it in SQL would be a
+transcription with nothing to gain, exactly as D59 concluded for the CSV parser
+and D67 for the text anchors. Which rows enter the corpus, and whether their
+extracted text travels with them, is the contract's — because that is a
+decision about what may be READ.
+
+**Two bounds are kept because they are disclosure controls rather than paging,
+which is the distinction D50 asks for.** The count mode projects no row at all
+— the original calls it "a safe broker for the browser badge", and its corpus
+is the extracted PHI of every indexed document, so a count that carried text
+would be a search nobody asked for. And the `limit * 2` fetch cap stays, with
+its ceiling re-applied in SQL: a bound a caller could raise is not a bound, and
+the original's own comment records the cost — a caller sending `500000` pulls
+the entire index into memory per request.
+
+**The scorer's parity is D57's, not a table of numbers.** The test lifts the
+original's `tokenize`, `buildBm25`, `bm25Score` and `extractSnippet` out of
+`entry.ts`, imports them, and runs both implementations over the same corpus
+for seven queries — then rebuilds the composite score, the fuzzy gate and the
+sort from the original's own pieces and compares. Perturbing any constant in
+either fails it.
+
+**One thing is carried unfixed and said so.** `extractSnippet` coerces its
+TEXT — the original's comment explains why: "a keywords-only index match can
+reach here with no `extracted_text`" — and then reads `query.length` raw, so an
+undefined query throws. It is unreachable, because the handler refuses a query
+shorter than two characters before anything is scored, and a divergence there
+would change the window for a real value. The test asserts the throw rather
+than papering over it.
+
+**And `pdf_url` is not projected.** The original spreads the whole index row
+into each result (`...doc`); `pdf_url` is a locator into Base44's storage,
+which is exactly why `PDFIndex` is outside the generic family (D16). The
+corpus names the eight columns the scorer reads and no more.
+
+Port queue: `records_schema` 5 → 4, written 68 → 69.

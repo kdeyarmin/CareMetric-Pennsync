@@ -1573,6 +1573,27 @@ export const RECORD_CONTRACTS = Object.freeze({
     body: (agencyId, args) => ({ p_agency: agencyId, p_referral_id: args.referral_id ?? null }),
     codes: REFERRAL_CODES,
   }),
+  // The PDF search's corpus. D67's split: which rows a caller may read is
+  // decided in SQL, and BM25 over the query they typed is arithmetic in the
+  // service. Two shapes, because the original fetches two — a count that
+  // projects no text at all, and a corpus that carries it.
+  readPdfSearchCorpus: Object.freeze({
+    rpc: 'pennsync_contract_pdf_search_corpus',
+    params: Object.freeze(['document_type', 'patient_id', 'limit', 'count_only']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_document_type: args.document_type === undefined ? null : args.document_type,
+      p_patient_id: args.patient_id === undefined ? null : args.patient_id,
+      p_limit: args.limit === undefined ? null : args.limit,
+      p_count_only: args.count_only === undefined ? false : args.count_only,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_PDF_SEARCH_AGENCY_NOT_HELD',
+      'PENNSYNC_PDF_SEARCH_DOCUMENT_TYPE_INVALID',
+      'PENNSYNC_PDF_SEARCH_SUBJECT_INVALID',
+      'PENNSYNC_PDF_SEARCH_PATIENT_NOT_VISIBLE',
+    ]),
+  }),
   // The chart export's read: one patient, their recent visits and their recent
   // incidents, in the exact columns that reach a model's prompt (D64).
   //

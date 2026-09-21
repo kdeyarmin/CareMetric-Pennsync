@@ -28,6 +28,9 @@ import {
   CHART_EXPORT_SCHEMA, buildChartPrompt,
 } from '../../services/pennsync-api/chart-export.mjs';
 import {
+  bm25Score, buildBm25, extractSnippet, scoreCorpus, searchLimit, tokenize,
+} from '../../services/pennsync-api/pdf-search.mjs';
+import {
   buildEventReviewPrompt, buildTrendPrompt,
 } from '../../services/pennsync-api/clinical-analysis.mjs';
 import {
@@ -680,4 +683,96 @@ test('the chart export prompt is the original s, interpolation for interpolation
   // And the original really does render no PDF, despite its name.
   assert.equal(/jsPDF|new Blob|application\/pdf/.test(original), false,
     'the original still renders no PDF');
+});
+
+test('the BM25 scorer is the original s, run against it rather than against retyped numbers', async () => {
+  // D57's rule. Asserting a table of expected scores would prove the port
+  // agrees with numbers somebody typed; this lifts the original's own block
+  // out of `entry.ts` and runs both over the same corpus. Perturb any constant
+  // in either and this fails.
+  const original = await readFile(resolve(repository,
+    'base44/functions/searchPDFs/entry.ts'), 'utf8');
+  const start = original.indexOf('const TOKEN_RE =');
+  const end = original.indexOf('Deno.serve(');
+  assert.ok(start > 0 && end > start, 'the original still carries the scoring block');
+  const snippetStart = original.indexOf('function extractSnippet(');
+  assert.ok(snippetStart > end, 'the snippet helper is below the handler');
+  const block = original.slice(start, end) + original.slice(snippetStart);
+  const file = join(tmpdir(), `pdfsearch_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+  await writeFile(file, transpileTs(
+    `${block}\nexport { tokenize, buildBm25, bm25Score, extractSnippet };`).outputText);
+  let theirs;
+  try { theirs = await import(pathToFileURL(file).href); }
+  finally { await unlink(file).catch(() => {}); }
+
+  // A corpus with the properties BM25 actually depends on: different lengths,
+  // a term in every document, a term in one, and a document with no text.
+  const documents = [
+    { id: 'a', extracted_text: 'wound care consent signed by the patient today',
+      keywords: ['wound'], page_contents: [{ page_number: 1, text: 'wound care consent' }] },
+    { id: 'b', extracted_text: 'wound wound wound dressing changed at the nursing visit '
+      + 'and the wound was clean and dry throughout the entire documented encounter',
+      keywords: [], page_contents: [{ page_number: 2, text: 'wound dressing changed' }] },
+    { id: 'c', extracted_text: 'ambulation improved with a walker', keywords: ['mobility'],
+      page_contents: null },
+    { id: 'd', extracted_text: '', keywords: ['wound', 'consent'], page_contents: [] },
+    { id: 'e', extracted_text: 'consent form for wound photography', keywords: ['consent'],
+      page_contents: [{ page_number: 1, text: 'consent form' }] },
+  ];
+
+  for (const query of ['wound', 'wound care', 'consent', 'ambulation walker',
+    'nothing matches this', 'WOUND CARE', 'wound-care']) {
+    const terms = [...new Set(theirs.tokenize(query))];
+    assert.deepEqual(tokenize(query), theirs.tokenize(query), `tokenize: ${query}`);
+    const mine = buildBm25(documents.map(doc => ({ text: doc.extracted_text || '' })));
+    const model = theirs.buildBm25(documents.map(doc => ({ text: doc.extracted_text || '' })));
+    assert.equal(mine.N, model.N);
+    assert.deepEqual(mine.docLen, model.docLen);
+    assert.equal(mine.avgdl, model.avgdl);
+    for (let index = 0; index < documents.length; index += 1) {
+      assert.equal(bm25Score(mine, index, terms), theirs.bm25Score(model, index, terms),
+        `score ${query} #${index}`);
+    }
+    for (const text of [documents[0].extracted_text, documents[1].extracted_text, '', null]) {
+      assert.equal(extractSnippet(text, query), theirs.extractSnippet(text, query),
+        `snippet ${query}`);
+    }
+  }
+
+  // And the composite the handler builds on top — phrase and keyword boosts,
+  // the fuzzy gate, the page matches and the sort — reproduced from the
+  // original's own pieces rather than from this port's.
+  for (const [query, fuzzy] of [['wound', true], ['wound care', true], ['wound care', false],
+    ['consent', false], ['ambulation', true]]) {
+    const queryLower = query.toLowerCase();
+    const terms = [...new Set(theirs.tokenize(query))];
+    const model = theirs.buildBm25(documents.map(doc => ({ text: doc.extracted_text || '' })));
+    const expected = documents.map((doc, index) => {
+      const bm = theirs.bm25Score(model, index, terms);
+      const matched = terms.filter(term => (model.tf[index]?.get(term) || 0) > 0);
+      const exactPhrase = Boolean(queryLower)
+        && (doc.extracted_text || '').toLowerCase().includes(queryLower);
+      const keywordMatches = (Array.isArray(doc.keywords) ? doc.keywords : [])
+        .map(keyword => String(keyword || '').toLowerCase())
+        .filter(keyword => keyword
+          && (keyword.includes(queryLower) || queryLower.includes(keyword)));
+      const total = bm + (exactPhrase ? 100 : 0) + keywordMatches.length * 5;
+      if (!(bm > 0 || exactPhrase || keywordMatches.length > 0)) return null;
+      if (!fuzzy && !exactPhrase && !(terms.length > 0 && matched.length === terms.length)) {
+        return null;
+      }
+      return { id: doc.id, search_score: Math.round(total * 100) / 100 };
+    }).filter(Boolean).sort((left, right) => right.search_score - left.search_score);
+    assert.deepEqual(
+      scoreCorpus(documents, { query, fuzzy, limit: 50 })
+        .map(row => ({ id: row.id, search_score: row.search_score })),
+      expected, `${query} fuzzy=${fuzzy}`);
+  }
+
+  // The clamp is the original's, read from its own expression.
+  assert.match(original, /Math\.min\(Math\.max\(Math\.floor\(Number\(rawLimit\) \|\| 50\), 1\), 200\)/);
+  for (const raw of [500000, -4, 0, undefined, '25', 25.9, 'nonsense', 200, 201]) {
+    assert.equal(searchLimit(raw),
+      Math.min(Math.max(Math.floor(Number(raw) || 50), 1), 200), String(raw));
+  }
 });
