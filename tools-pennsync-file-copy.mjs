@@ -59,6 +59,38 @@ export const STORAGE_HOSTS = Object.freeze(['qtrypzzcjebvfcihiynt.supabase.co', 
 /** An entity whose disposition gives it no table in the record store. */
 export const UNCARRIED_DISPOSITIONS = Object.freeze(['retire', 'hub', 'preserved_paused']);
 
+/**
+ * WHO MAY OPEN A COPIED OBJECT, which is not this table's question and is not
+ * answered yet (D77).
+ *
+ * A mapping is keyed on the LOCATOR, so one upload referenced by three rows
+ * becomes one owned handle — which is the property that stops two copies
+ * drifting, and is also what makes this the sharp end. The runtime that would
+ * serve that handle,`services/integration-runtime/providers.mjs`, is
+ * UPLOADER-OWNED: `fileRecord` admits a row only when `subject` equals the
+ * caller's hashed subject, and the object path embeds that subject as well. Its
+ * `id` is a primary key, so the same handle cannot be registered once per
+ * reader. A migrated object has no uploader, so whichever subject the copy ran
+ * as would be the only person who could ever open it and every other authorized
+ * caregiver would get `FILE_ACCESS_DENIED`.
+ *
+ * That model is right for what it was built for — a file a caller uploaded in
+ * their own session — and wrong for a carried row whose readers are decided by
+ * a contract. Changing it is a decision about the runtime's authorization, not
+ * about this tool, so it is NOT taken here and NOT worked around: D56's rule is
+ * "do not widen the allowlist to unblock yourself", and the same applies to an
+ * ownership check.
+ *
+ * What this tool does instead is refuse the broken model BY NAME, the way a
+ * partial port refuses an action it does not serve (D31, D35, D59). The
+ * operator declares which model their copy minted handles under; the only one
+ * that exists today is refused with the reason, so the copy cannot be run into
+ * a set of handles nobody but one person can open. A paragraph in a decision
+ * document is not a check — this branch is the check.
+ */
+export const REFUSED_READER_MODEL = 'uploader_owned';
+export const READER_MODELS = Object.freeze(['record_authorized']);
+
 /** Why one reference produced no copy. Reported, never silent. */
 export const SKIPS = Object.freeze([
   'blank',                  // the field is absent or empty on that row
@@ -254,6 +286,10 @@ export function summarize(plan) {
 /**
  * Record the mappings for a copy that has already happened.
  *
+ * `readerModel` is the operator's statement of how the handles they minted are
+ * authorized, and `uploader_owned` — the only model the runtime implements
+ * today — is refused by name. `READER_MODELS` above is the whole argument.
+ *
  * `results` is what the operator's copy produced, keyed by locator: the owned
  * handle, the digest of the bytes it wrote, and their size. This writes the
  * mapping rows and nothing else — it does not fetch, and it cannot verify that
@@ -261,8 +297,14 @@ export function summarize(plan) {
  * and does, is refuse a result whose shape could not address anything, and
  * refuse to proceed on a plan that is not the one reviewed.
  */
-export async function applyFileCopy(execute, plan, { actorId, expectedDigest, copyRun, results }) {
+export async function applyFileCopy(execute, plan,
+  { actorId, expectedDigest, copyRun, results, readerModel }) {
   check(isObject(plan) && plan.contract === COPY_CONTRACT, 'FILE_COPY_PLAN_INVALID');
+  // Refused by NAME and before anything else, so the reason reaches the
+  // operator rather than a generic "invalid". See `READER_MODELS` above.
+  check(readerModel !== REFUSED_READER_MODEL, 'FILE_COPY_READER_MODEL_UPLOADER_OWNED');
+  check(typeof readerModel === 'string' && READER_MODELS.includes(readerModel),
+    'FILE_COPY_READER_MODEL_INVALID');
   check(typeof actorId === 'string' && UUID.test(actorId), 'FILE_COPY_ACTOR_INVALID');
   check(typeof copyRun === 'string' && copyRun.length > 0 && copyRun.length <= 200,
     'FILE_COPY_RUN_INVALID');

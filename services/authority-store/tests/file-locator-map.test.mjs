@@ -191,6 +191,7 @@ test('the key the planner writes is the key the resolver reads', async () => {
       actorId: '00000000-0000-4000-8000-000000000001',
       expectedDigest: plan.digest,
       copyRun: 'cross-check',
+      readerModel: 'record_authorized',
       results: { [locator]: { file_uri: uri, content_sha256: zeros, byte_size: 7 } },
     });
   assert.deepEqual(applied, { recorded: 1, planned: 1, dropped: 0 });

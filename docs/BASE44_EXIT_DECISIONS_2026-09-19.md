@@ -4984,6 +4984,39 @@ an object, and the twelve file-bound capabilities stay blocked until an
 operator runs the plan — but what they wait on is now DATA rather than design,
 which is what D56 said it should be.
 
+### One thing the copy is blocked on that is NOT data: who may open a copy
+
+The mapping is keyed on the locator, so one upload referenced by three rows
+becomes **one** owned handle — the property that stops two copies drifting,
+and also the sharp end. The runtime that would serve that handle is
+**uploader-owned**: `services/integration-runtime/providers.mjs` admits a row
+only when its `subject` equals the caller's hashed subject, the object path
+embeds that subject, and `cm_integration_files.id` is a primary key, so the
+same handle cannot be registered once per reader. A migrated object has no
+uploader. Whichever subject the copy ran as would be the only person who could
+ever open it; every other authorized caregiver would get `FILE_ACCESS_DENIED`.
+
+That model is right for what it was built for — a file a caller uploaded in
+their own session — and wrong for a carried row whose readers are decided by a
+contract. **This decision does not change it.** Giving the runtime record or
+tenant authorization is a decision about that service's authorization model,
+not about this table, and D56's rule applies to an ownership check exactly as
+it applies to a host allowlist: do not widen it to unblock yourself.
+
+What D78's rule about checks demanded here is that the constraint not live only
+in this paragraph. `applyFileCopy` now takes a `readerModel` from the operator
+and refuses `uploader_owned` **by name**, the way a partial port refuses an
+action it does not serve (D31, D35, D59), so the copy cannot be run into a set
+of handles nobody but one person can open. And the refusal is tied to its
+reason rather than asserted: a test reads the runtime's two checks out of its
+own source and fails when either goes, which is the signal that the refusal can
+be lifted.
+
+Note also which way this fails. An unopenable handle is `FILE_ACCESS_DENIED` —
+a loud refusal and a support ticket, the same safe half of the asymmetry the
+planner already takes when it drops an ambiguous locator. It is not a
+disclosure.
+
 ## D78 — The trap this repository wrote down, and then walked into twice
 
 **Decision.** Two ported contracts were guarding a create-if-absent with

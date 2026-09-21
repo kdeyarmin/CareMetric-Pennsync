@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import {
   COPY_CONTRACT, LIMITS, SKIPS, STORAGE_HOSTS, UNCARRIED_DISPOSITIONS, FileCopyError,
+  READER_MODELS, REFUSED_READER_MODEL,
   applyFileCopy, isStorageLocator, locatorKey, locatorPaths, main, planFileCopy,
   readExport, summarize,
 } from './tools-pennsync-file-copy.mjs';
@@ -197,7 +198,7 @@ test('applying writes only what the copy produced, and only the reviewed plan', 
   const actorId = '00000000-0000-4000-8000-000000000001';
   // A locator the copy did not produce is DROPPED, never guessed at.
   const applied = await applyFileCopy(execute, result, {
-    actorId, expectedDigest: result.digest, copyRun: 'run-1',
+    actorId, expectedDigest: result.digest, copyRun: 'run-1', readerModel: 'record_authorized',
     results: { [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11 } },
   });
   assert.deepEqual(applied, { recorded: 1, planned: 2, dropped: 1 });
@@ -228,6 +229,7 @@ test('a failed insert rolls the whole plan back', async () => {
     actorId: '00000000-0000-4000-8000-000000000001',
     expectedDigest: result.digest,
     copyRun: 'run-1',
+    readerModel: 'record_authorized',
     results: {
       [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11 },
       [SECOND]: { file_uri: OTHER_HANDLE, content_sha256: zeros, byte_size: 12 },
@@ -253,10 +255,16 @@ test('a plan that is not the one reviewed applies nothing', async () => {
       'FILE_COPY_RESULT_DIGEST_INVALID'],
     [{ results: { [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: -1 } } },
       'FILE_COPY_RESULT_SIZE_INVALID'],
+    // The reader model, refused BY NAME rather than falling into the generic
+    // "invalid" — the operator has to be told which model is the problem.
+    [{ readerModel: 'uploader_owned' }, 'FILE_COPY_READER_MODEL_UPLOADER_OWNED'],
+    [{ readerModel: undefined }, 'FILE_COPY_READER_MODEL_INVALID'],
+    [{ readerModel: 'something_else' }, 'FILE_COPY_READER_MODEL_INVALID'],
   ]) {
     await assert.rejects(
       () => applyFileCopy(execute, result,
-        { actorId, expectedDigest: result.digest, copyRun: 'run-1', results, ...patch }),
+        { actorId, expectedDigest: result.digest, copyRun: 'run-1',
+          readerModel: 'record_authorized', results, ...patch }),
       error => error.code === code, code);
   }
   // Nothing ran for any of them: a refusal that had already taken the lock and
@@ -304,4 +312,30 @@ test('the command line plans and never copies', async () => {
   lines.length = 0;
   assert.equal(await main(['export.json', '--apply'], { log: l => lines.push(l) }), 2);
   assert.deepEqual(JSON.parse(lines[0]), { error: 'FILE_COPY_USAGE' });
+});
+
+test('the refused reader model is the one the runtime still implements', () => {
+  /*
+   * WHY THIS TEST READS ANOTHER SERVICE'S SOURCE. `applyFileCopy` refuses
+   * `uploader_owned` by name, and that refusal is only correct while the
+   * runtime actually is uploader-owned. If somebody gives
+   * `services/integration-runtime` a shared or record-authorized model, the
+   * refusal becomes an obstruction and this is what says so — it fails, and
+   * the failure points at the line to lift.
+   *
+   * It reads the two checks rather than the word "subject", because the word
+   * appears in every upload path: `fileRecord` admits a row only when its
+   * `subject` equals the CALLER's, and the object path embeds that subject, so
+   * one global handle has exactly one possible reader.
+   */
+  const runtime = readFileSync('services/integration-runtime/providers.mjs', 'utf8');
+  assert.match(runtime, /row\.subject !== ctx\.subject/,
+    'the runtime no longer binds a handle to the caller: revisit REFUSED_READER_MODEL');
+  assert.match(runtime, /row\.object_path !== `\$\{config\.appId\}\/\$\{ctx\.subject\}\/\$\{id\}`/,
+    'the runtime no longer embeds the subject in the path: revisit REFUSED_READER_MODEL');
+  // And the enumeration says what it is for: exactly one model is refused, and
+  // the models that are accepted do not include it.
+  assert.equal(REFUSED_READER_MODEL, 'uploader_owned');
+  assert.equal(READER_MODELS.includes(REFUSED_READER_MODEL), false);
+  assert.ok(READER_MODELS.length >= 1);
 });
