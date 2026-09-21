@@ -206,13 +206,33 @@ operation set; no traffic change anywhere.
   is a build failure and the count cannot go stale again. This is the same
   shape as D47, D55, D74 and D75 — a number that kept its meaning after the
   reason for it had gone.
-- **The fix is per capability, not a sweep.** Whether a call site may simply
-  gain an `agency_id` depends on its Base44 original: `generateUserGuidePDF`
-  destructures one key, `listPolicyLibrary` reads `body?.mode` and
-  `generateUserManual` reads no body at all, so an extra key is harmless in
-  those three — but several originals refuse an unknown key outright
-  (`exactObject`), and adding one there would break the live Base44 path. The
-  census makes that review finite and ordered; it does not pre-empt it.
+- **Those 67 edits are no longer the fix, and attempting them would have broken
+  production.** `src/functions/*` wrappers serve BOTH backends, so every added
+  `agency_id` also reaches the live Base44 original — and roughly a third of
+  those reject an unknown key outright. Which third cannot be settled by
+  scanning: the first attempt classified `createAuthorizedPatient` as tolerant,
+  and it rejects unknown keys at `entry.ts:149` through a
+  `for (const key of Object.keys(body))` loop the scan did not know. Widening
+  the scan found further shapes, so "no rejection shape found" is not proof of
+  tolerance — D47's and D75's lesson arriving a third time. Adding the key on
+  that evidence would have broken patient creation in production.
+
+  **So the tenant is supplied in `portedCall`**, where it reaches only the
+  ported service and can never enter a Base44 payload. It comes from
+  `getActiveTrustedTenantContext()` — the principal `AuthContext` already bound
+  and validated, the same source the six revalidation hooks use — and that
+  helper's own contract states it is not an authorization grant, because the
+  server re-checks the principal and membership before work and before
+  disclosure. A call site that names its tenant still decides; with no bound
+  principal the original refusal stands.
+
+  **This reverses a recorded decision** ("the adapter refuses rather than
+  choosing a tenant on the caller's behalf, which is the point") and is flagged
+  as such in the code. The reversal is narrow: the adapter still invents
+  nothing, it reads an authority the session already holds. The one case worth
+  watching is a caller holding two memberships, where the bound context is the
+  one the UI is showing — which is why naming the tenant explicitly stays
+  better, and why `check:ported-call-sites` keeps ratcheting downward.
 - **`getMyTenantContext` is safe, and an earlier revision of this document said
   it was not.** `routesPorted` IS tested first in the adapter's dispatcher,
   ahead of every special case, so pointing `VITE_PENNSYNC_API_URL` at a service

@@ -18,11 +18,24 @@
  * after the reason for it had gone — so it is measured here rather than
  * quoted, and pinned so it cannot go stale again.
  *
- * What it does NOT do is decide the fix. Whether a call site may simply gain
- * an `agency_id` depends on its Base44 original: several refuse an unknown key
- * outright (`exactObject`), so adding one would break the live path. That is a
- * per-capability review, and this tool exists to make the list of them finite
- * and ordered rather than to pre-empt it.
+ * **The fix is no longer per call site, and this measures something else now.**
+ * Editing all 67 was the recorded plan and it is unsafe rather than merely
+ * large: `src/functions/*` wrappers serve BOTH backends, so every added
+ * `agency_id` also reaches the live Base44 original, and roughly a third of
+ * those reject an unknown key. Which third cannot be established by scanning —
+ * a first attempt here classified `createAuthorizedPatient` as tolerant when it
+ * rejects at `entry.ts:149` through a `for (const key of Object.keys(body))`
+ * loop the scan did not know, and widening it found further shapes. "No
+ * rejection shape found" is not proof of tolerance, which is D47's and D75's
+ * lesson in a third place.
+ *
+ * So `portedCall` in `src/lib/independentStagingAdapter.js` supplies the tenant
+ * from the bound trusted principal, where it reaches only the ported service
+ * and can never enter a Base44 payload. What this number measures is therefore
+ * how many call sites RELY on that fallback rather than naming their tenant.
+ * Naming it is still better — it is explicit, and it is the only way a caller
+ * holding two memberships can mean the other one — so the ratchet stays and
+ * still only moves downward. It is no longer a release blocker.
  */
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';

@@ -1,6 +1,23 @@
 import { describe, it, expect } from 'vitest';
 import { createIndependentStagingAdapter, readIndependentStagingConfig } from './independentStagingAdapter';
+import { bindTrustedTenantContext, clearTrustedTenantContext } from '@/lib/roles';
 import { stagingApiUrl, stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
+
+/** The principal AuthContext binds, which is where a ported call's tenant comes from. */
+const boundUser = Object.freeze({ id: 'user-1', email: 'nurse@example.test' });
+const boundContext = (overrides = {}) => ({
+  user_id: 'user-1',
+  user_email: 'nurse@example.test',
+  membership_id: 'membership-1',
+  membership_key: 'agency-a:user-1',
+  membership_version: 3,
+  agency_id: 'agency-a',
+  tenant_role: 'clinician',
+  membership_status: 'active',
+  is_platform_owner: false,
+  agency: { id: 'agency-a', name: 'Synthetic Agency', status: 'active' },
+  ...overrides,
+});
 
 describe('finite independent app adapter', () => {
   it('preserves default backend and rejects foreign targets, secret keys and unbound actors before I/O', () => {
@@ -145,14 +162,47 @@ describe('the ported API caller', () => {
       .rejects.toThrow(/PENNSYNC_API_RESPONSE_INVALID/);
   });
 
-  it('requires the agency the ported service needs rather than guessing one', async () => {
+  it('refuses when there is no bound principal to take a tenant from', async () => {
     // The Base44 original accepted any authenticated caller; the ported service
-    // requires a current agency membership. A call site not reviewed for that
-    // is refused instead of being given a tenant on its behalf.
+    // requires a current agency membership. With nothing bound there is no
+    // tenant to act as, so the refusal stands — this is the case it is for.
     const { fixture, adapter } = await signedIn();
+    clearTrustedTenantContext();
     await expect(adapter.raw.functions.invoke('validatePatientData', { patient: {} }))
       .rejects.toThrow(/STAGING_TENANT_SELECTION_REQUIRED/);
     expect(fixture.apiCalls).toHaveLength(0);
+  });
+
+  it('takes the tenant from the bound principal when the call site names none', async () => {
+    // The recorded plan was to edit all 67 call sites instead. That is unsafe
+    // rather than merely large: `src/functions/*` wrappers serve BOTH backends,
+    // and roughly a third of the Base44 originals reject an unknown key — a
+    // first scan called `createAuthorizedPatient` tolerant and it rejects at
+    // `entry.ts:149`. So the tenant is supplied here, where it reaches only the
+    // ported service and can never enter a Base44 payload.
+    const { fixture, adapter } = await signedIn();
+    bindTrustedTenantContext(boundUser, boundContext());
+    try {
+      expect(await adapter.raw.functions.invoke('validatePatientData', { patient: { first_name: 'A' } }))
+        .toEqual({ data: { valid: true } });
+      const [call] = fixture.apiCalls;
+      // Lifted into the envelope exactly as an explicit one is, and never into
+      // `params`, which is what the handler receives.
+      expect(call.body).toEqual({ agency_id: 'agency-a', params: { patient: { first_name: 'A' } } });
+    } finally { clearTrustedTenantContext(); }
+  });
+
+  it('never overrides a tenant the call site did name', async () => {
+    const { fixture, adapter } = await signedIn();
+    // Bound to one agency, asked for another: the request decides, because a
+    // caller naming a tenant is making a choice the bound context must not
+    // silently replace. The server re-checks the membership regardless.
+    bindTrustedTenantContext(boundUser, boundContext({ agency_id: 'agency-bound' }));
+    try {
+      await adapter.raw.functions.invoke('validatePatientData',
+        { agency_id: 'agency-a', patient: { first_name: 'A' } });
+      expect(fixture.apiCalls.at(-1).body.agency_id).toBe('agency-a');
+    } finally { clearTrustedTenantContext(); }
   });
 
   it('serves a document through the fetch surface the download flows actually use', async () => {

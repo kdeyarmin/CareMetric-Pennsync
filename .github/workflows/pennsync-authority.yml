@@ -101,7 +101,7 @@ jobs:
             runner_codename="$(. /etc/os-release && test "$ID" = ubuntu && printf '%s' "$VERSION_CODENAME")"
             [[ "$runner_codename" =~ ^[a-z]+$ ]]
             sudo install -d /usr/share/postgresql-common/pgdg
-            sudo curl --fail --silent --show-error --location --retry 3 --max-time 60 \
+            sudo curl --fail --silent --show-error --location --retry 5 --retry-delay 5 --retry-all-errors --max-time 60 \
               https://www.postgresql.org/media/keys/ACCC4CF8.asc \
               --output /usr/share/postgresql-common/pgdg/pennsync-ci.asc
             printf 'deb [signed-by=/usr/share/postgresql-common/pgdg/pennsync-ci.asc] https://apt.postgresql.org/pub/repos/apt %s-pgdg main\n' "$runner_codename" \
@@ -148,7 +148,7 @@ jobs:
         run: |
           set -euo pipefail
           cli_dir="$(mktemp -d "$RUNNER_TEMP/pennsync-supabase.XXXXXX")"
-          curl --fail --silent --show-error --location --retry 3 \
+          curl --fail --silent --show-error --location --retry 5 --retry-delay 5 --retry-all-errors \
             https://github.com/supabase/cli/releases/download/v2.109.1/supabase_2.109.1_linux_amd64.tar.gz \
             --output "$cli_dir/cli.tar.gz"
           printf '%s  %s\n' '36d87b7fe6b4bcfe89ac47a4354e526cff22480224de426d7b370f6934556976' "$cli_dir/cli.tar.gz" | sha256sum --check
