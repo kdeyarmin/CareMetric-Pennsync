@@ -103,6 +103,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   sendPersonnelExpirationNotifications: 'json',
   submitIncidentReport: 'json',
   submitPersonnelCredential: 'json',
+  submitStateReportableIncident: 'json',
   submitTimeOffRequest: 'json',
   updateAuthorizedVisit: 'json',
   updateIncident: 'json',

@@ -30,6 +30,7 @@ import {
 import {
   bm25Score, buildBm25, extractSnippet, scoreCorpus, searchLimit, tokenize,
 } from '../../services/pennsync-api/pdf-search.mjs';
+import { buildReportText } from '../../services/pennsync-api/state-incident.mjs';
 import {
   buildEventReviewPrompt, buildTrendPrompt,
 } from '../../services/pennsync-api/clinical-analysis.mjs';
@@ -775,4 +776,48 @@ test('the BM25 scorer is the original s, run against it rather than against rety
     assert.equal(searchLimit(raw),
       Math.min(Math.max(Math.floor(Number(raw) || 50), 1), 200), String(raw));
   }
+});
+
+test('the state-reportable report text is the original s template', async () => {
+  const original = await readFile(resolve(repository,
+    'base44/functions/submitStateReportableIncident/entry.ts'), 'utf8');
+  const start = original.indexOf('function buildReportText(p) {');
+  const template = original.slice(start, original.indexOf('`.trim();', start));
+  assert.ok(template.includes('STATE REPORTABLE EVENT REPORT'), 'the original still has it');
+  const payload = { patient_id: 'patient-a1', patient_name: 'Ada Lovelace',
+    event_date: '2026-06-15', event_time: '14:30', event_type: 'Injury of Unknown Origin',
+    location_of_event: 'Bathroom', medications: 'Warfarin 5mg', diagnosis: 'CHF',
+    factual_description: 'Found on floor.', followup_action: 'MD notified.',
+    submitted_by_name: 'A Nurse', submitted_by_title: 'RN' };
+  const built = buildReportText(payload, 'SUBMITTED-ON');
+  for (const line of literal(template).split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('function ') || trimmed === 'return `') continue;
+    assert.ok(built.includes(trimmed), `the report lost: ${trimmed}`);
+  }
+  // Every interpolation lands where the original puts it.
+  for (const expected of ['Patient: Ada Lovelace', 'Date of Event: 2026-06-15',
+    'Time of Event: 14:30', 'Event Type: Injury of Unknown Origin',
+    'Location of Event: Bathroom', 'Warfarin 5mg', 'CHF', 'Found on floor.',
+    'MD notified.', 'Submitted By: A Nurse (RN)', 'Submitted On: SUBMITTED-ON']) {
+    assert.ok(built.includes(expected), `the report lost: ${expected}`);
+  }
+  // The two-code event map is read from the original rather than retyped.
+  const map = original.slice(original.indexOf('const STATE_EVENT_TO_INCIDENT_TYPE'),
+    original.indexOf('};', original.indexOf('const STATE_EVENT_TO_INCIDENT_TYPE')));
+  assert.deepEqual([...map.matchAll(/(\w+): '([a-z_]+)'/g)].map(m => [m[1], m[2]]),
+    [['IE', 'hospitalized'], ['HC', 'medication_error']]);
+  // Comments stripped: the contract's header NAMES both paused halves, and a
+  // scan that counted those would fail on the explanation.
+  const sql = readFileSync(resolve(repository, 'services/authority-store/supabase/'
+    + 'record-migrations/20260920510000_contract_state_incident.sql'), 'utf8')
+    .split('\n').filter(line => !line.trim().startsWith('--')).join('\n');
+  assert.match(sql, /when 'IE' then 'hospitalized'/);
+  assert.match(sql, /when 'HC' then 'medication_error'/);
+  assert.match(sql, /else 'other'/);
+  // And the two halves this port pauses really are the two the original has.
+  assert.match(original, /base44\.functions\.invoke\('createAuthorizedDocument'/);
+  assert.match(original, /integrations\.Core\.SendEmail\(/);
+  assert.equal(/Core\.SendEmail|createAuthorizedDocument/.test(sql), false,
+    'neither is reached from the contract');
 });

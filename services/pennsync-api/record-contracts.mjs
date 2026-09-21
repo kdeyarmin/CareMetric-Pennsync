@@ -1573,6 +1573,25 @@ export const RECORD_CONTRACTS = Object.freeze({
     body: (agencyId, args) => ({ p_agency: agencyId, p_referral_id: args.referral_id ?? null }),
     codes: REFERRAL_CODES,
   }),
+  // The state-reportable incident. A sibling of `submitIncidentReport` rather
+  // than an argument to it: `state_reportable` and `severity` are the
+  // reviewer-only fields D44 keeps off a submit, and a caller who could pass
+  // them to the ordinary one would have that control back. This endpoint sets
+  // both itself, which is what it is for.
+  submitStateIncident: Object.freeze({
+    rpc: 'pennsync_contract_state_incident_submit',
+    params: Object.freeze(['incident']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_incident: args.incident === undefined ? null : args.incident,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_STATE_INCIDENT_AGENCY_NOT_HELD',
+      'PENNSYNC_STATE_INCIDENT_INVALID',
+      'PENNSYNC_STATE_INCIDENT_REQUIRED',
+      'PENNSYNC_STATE_INCIDENT_PATIENT_NOT_VISIBLE',
+    ]),
+  }),
   // The dashboard's five collections. The capability that was PARKED on "two
   // field lists nobody has decided", and what unparked it is that the lists
   // are MEASURED: every column is read by a named dashboard widget, and the

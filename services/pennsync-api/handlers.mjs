@@ -15,6 +15,9 @@ import { importProviders } from './provider-import.mjs';
 import { expandClinicalPhrase as runClinicalPhrase } from './clinical-phrase.mjs';
 import { exportPatientChart } from './chart-export.mjs';
 import { searchIndexedPdfs } from './pdf-search.mjs';
+import {
+  STATE_INCIDENT_FIELDS, submitStateIncident,
+} from './state-incident.mjs';
 import { generateFollowUpTasks as runFollowUpTasks } from './follow-up-tasks.mjs';
 import {
   analyzeClinicalEvents as runClinicalEvents,
@@ -892,6 +895,16 @@ export const HANDLERS = Object.freeze({
         generatedOn: documentDate(now), year: now.getFullYear(),
       }).output('arraybuffer');
       return { binary: true, body, contentType: 'application/pdf', filename: `${guideType}_guide.pdf` };
+    },
+  }),
+  submitStateReportableIncident: Object.freeze({
+    // The fifth PARTIAL port. The incident and its notification fan-out ship;
+    // the PDF retention (the file layer) and the email (D56's open decision)
+    // are refused by name, and both are REPORTED as paused rather than
+    // silently skipped.
+    handle({ params, contract }) {
+      exactObject(params, STATE_INCIDENT_FIELDS, 'INVALID_PARAMS');
+      return submitStateIncident({ params, contract });
     },
   }),
   getDashboardData: Object.freeze({

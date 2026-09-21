@@ -4630,3 +4630,66 @@ because the scan limits exist only to over-fetch so a JavaScript filter can
 re-check what a service-role query returned. The policies are the boundary.
 
 Port queue: `records_schema` 4 → 3, written 69 → 70.
+
+## D73 — A reviewer's field is not made a caller's by adding an endpoint that wants it set
+
+**Decision.** Port `submitStateReportableIncident` as a SIBLING of
+`contract_incident_submit`, not as an argument to it. The PDF retention and the
+email are paused by name and reported as paused; the notification fan-out is
+not, because a notification is a row.
+
+**Why a second contract rather than a flag.** D44 made `severity`,
+`state_reportable` and `ai_tags` reviewer-only on a submit, and its header says
+why: they are the inputs to the resolve gate. A caller who could pass
+`state_reportable: true` to the ordinary submit would have that control back.
+So this endpoint **sets both itself**. The reporter chooses the event TYPE —
+one of the state's codes — and the contract decides what that means for the
+record: `state_reportable` true, `severity` high, and an incident type derived
+from the code. **A field a reviewer decides is not made a caller's by adding an
+endpoint that wants it set** — the same rule as D67's `verified` and D29's
+`reserved`, applied to an endpoint rather than a payload.
+
+The type mapping is the original's and is a reporting requirement rather than a
+convenience: its own comment says mapping the state code onto a real
+`incident_type` is what makes "these — the most severe events — appear in
+falls/hospitalization/med-error aggregates instead of vanishing into 'other'."
+
+**The fifth PARTIAL port, and both pauses are reported.** The PDF retention
+calls `createAuthorizedDocument`, which is the file layer — the largest
+remaining blocker, and porting it verbatim would carry Base44's storage host
+into the service. The email is `Core.SendEmail`, D56's open owner decision, as
+for the invitation send and four others. Neither is silently skipped: the
+answer carries `document_retention_paused` and `email_paused`, and — following
+D42 — the incident's own `details` record both, so the compliance record cannot
+read as though a document was retained or a message went out. `alert_triggered`
+stays false for the same reason, which is the original's own discipline: it
+raises those flags only after a side effect succeeds.
+
+**The fan-out is not paused, and the alert names no patient.** A notification
+is a ROW rather than a message (D51), so it ships. Its recipients are the
+agency's active `agency_admin` memberships through
+`pennsync_private.agency_roster` — not the original's 5,000-row `User` scan
+filtered by `role === 'admin'` crossed with the patient's `created_by` and
+`assigned_nurses`, which is the removed platform tier crossed with D41's
+derived scope. And D44's naming rule bites harder here than anywhere: the
+original's message is *"<reporter> submitted a state reportable event for
+<patientName> on <date>"*, `notification_read` is agency-WIDE, and D24 narrows
+a chart to its care team — so an `office_staff` member who opens no chart would
+have read the name of a patient in the most serious incident class the product
+has.
+
+**Two smaller carries.** The reporter on the record is the VERIFIED address,
+not `payload.submitted_by_name`: the carried `user` table has no name column
+(D38), and a compliance record naming whoever the form said is worse than one
+naming the account that filed it. The claimed name still appears inside the
+report narrative, which is the clinician's own account of the event. And a
+caller-supplied `report_text` still wins over the generated one, because a
+clinician who edited the narrative in the form is submitting what they wrote.
+
+**One test note worth keeping.** Two assertions here scan the contract for the
+gates and the integrations it deletes — and both failed first, on the contract's
+own HEADER, which names all of them while explaining what it removes. The scans
+strip comments now. A check that reads a file for an absent name has to say
+whether it means absent from the code or absent from the page.
+
+Port queue: `records_schema` 3 → 2, written 70 → 71.
