@@ -220,6 +220,40 @@ platform rather than the store:
   any future point would silently open the whole store; PGlite cannot show
   this, because there `service_role` has no bypass at all.
 
+And one thing the suite found in the migrations themselves, which is a residue
+rather than a hole and is recorded so it stays visible:
+
+- **A blanket revoke only reaches the functions that exist when it runs.**
+  `20260918015112_independent_staging_authority.sql` does `revoke all on all
+  functions in schema pennsync_private from public, anon, authenticated` and
+  grants back the six it means to expose. Every function a LATER migration adds
+  therefore keeps PostgreSQL's default `PUBLIC EXECUTE`, and three do:
+  `file_object_immutable`, `protect_deployment`, `protect_enrollment_receipt`.
+  All three `returns trigger`, which is what makes this harmless — PostgreSQL
+  refuses a direct call to a trigger function before its body runs, PostgREST
+  does not expose one, and `anon` holds no `USAGE` on that schema anyway, so
+  two independent gates stand in front of the grant. It is identical in the
+  reference build, so it is a property of the committed migrations rather than
+  hosted drift, and correcting it is a migration rather than a fix to make from
+  here. `hosted-store.test.mjs` refuses the thing that would matter — a
+  *callable* private function reachable anonymously — and pins the trigger set,
+  so a fourth one fails.
+
+#### Stage E's database dependency is present
+
+Checked while the store was open, because nothing else checks it and stage E
+fails late without it. `services/integration-runtime/authority.mjs` is the
+whole of `authorityMode: independent`; it pins the project
+(`AUTHORITY_TARGETS` names `xxtyweswohkvgkprimwa`) and a fixed RPC name that no
+caller or environment value selects. Both are real on the migrated project:
+`public.pennsync_staging_context(p_app_id text, p_agency_id text)` exists,
+`authenticated` may execute it, `anon` may not — and the same holds for the
+whole `pennsync_staging_*` family the independent path calls. The runtime's own
+suites stub that endpoint and the store's suites never looked outside PGlite,
+so a changed signature or a revoke that reached `authenticated` would have
+surfaced as the runtime failing to leave `base44` mode on deploy, which is
+where it is least diagnosable. It is asserted now.
+
 #### The suites, hosted
 
 - **Added `services/authority-store/tests/hosted-store.test.mjs`** and the

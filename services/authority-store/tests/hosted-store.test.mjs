@@ -154,7 +154,25 @@ const INVENTORY = `select jsonb_build_object(
       where n.nspname = '${SCHEMA}' group by 1, 2) grouped),
   'caller_table_grants', (select count(*) from information_schema.role_table_grants
     where table_schema in ('${SCHEMA}', '${PRIVATE}')
-      and grantee in ('anon', 'authenticated', 'service_role'))
+      and grantee in ('anon', 'authenticated', 'service_role')),
+  'staging_rpcs', (select jsonb_agg(jsonb_build_object(
+      'name', p.proname,
+      'args', pg_get_function_identity_arguments(p.oid),
+      'authenticated', has_function_privilege('authenticated', p.oid, 'execute'),
+      'anon', has_function_privilege('anon', p.oid, 'execute'))
+      order by p.proname, pg_get_function_identity_arguments(p.oid))
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname like 'pennsync_staging_%'),
+  'private_authority', (select jsonb_agg(jsonb_build_object(
+      'name', p.proname,
+      'args', pg_get_function_identity_arguments(p.oid),
+      'returns', pg_get_function_result(p.oid),
+      'authenticated', has_function_privilege('authenticated', p.oid, 'execute'),
+      'anon', has_function_privilege('anon', p.oid, 'execute'))
+      order by p.proname, pg_get_function_identity_arguments(p.oid))
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = '${PRIVATE}'
+      and has_function_privilege('authenticated', p.oid, 'execute'))
 ) as inventory`;
 
 /**
@@ -340,7 +358,8 @@ test('the reference build produced a store to compare against', { skip }, () => 
   // turn the strongest test in this file into one that passes without reading
   // anything. `readMigrations` returning nothing is all it would take.
   assert.ok(committed.length > 1, `the reference applied ${committed.length} migrations`);
-  for (const part of ['tables', 'policies', 'contracts', 'helpers', 'functions']) {
+  for (const part of ['tables', 'policies', 'contracts', 'helpers', 'functions',
+    'staging_rpcs', 'private_authority']) {
     assert.ok(Array.isArray(reference[part]) && reference[part].length,
       `the reference build produced no ${part}`);
   }
@@ -354,6 +373,74 @@ test('the hosted store is exactly what the committed migrations produce', { skip
   assert.deepEqual(hosted.inventory.contracts, reference.contracts);
   assert.deepEqual(hosted.inventory.helpers, reference.helpers);
   assert.deepEqual(hosted.inventory.functions, reference.functions);
+  assert.deepEqual(hosted.inventory.staging_rpcs, reference.staging_rpcs);
+  assert.deepEqual(hosted.inventory.private_authority, reference.private_authority);
+});
+
+test('the independent authority RPCs the runtime calls are present and callable', { skip }, () => {
+  /**
+   * `services/integration-runtime/authority.mjs` is the whole of stage E's
+   * `authorityMode: independent`, and it pins two things this suite can check
+   * and nothing else does: the project — `AUTHORITY_TARGETS` names
+   * `xxtyweswohkvgkprimwa` — and the RPC, `pennsync_staging_context`, as a
+   * fixed name no caller or environment value selects.
+   *
+   * That module replays the caller's own Supabase token at the RPC and lets
+   * the database authorize the read, so the mode is only as real as the
+   * function being there with the right grants. Nothing measured that against
+   * the hosted project before: the runtime's own suites stub the endpoint, and
+   * the store's suites never look outside PGlite. A migration that changed
+   * this signature, or a `revoke` that reached `authenticated`, would surface
+   * as the runtime failing to leave `base44` mode on deploy — at the point
+   * where it is least diagnosable.
+   */
+  const rpcs = hosted.inventory.staging_rpcs ?? [];
+  const context = rpcs.find(rpc => rpc.name === 'pennsync_staging_context');
+  assert.ok(context, 'pennsync_staging_context is absent; independent authority cannot resolve a caller');
+  assert.equal(context.args, 'p_app_id text, p_agency_id text');
+
+  for (const rpc of rpcs) {
+    // Granted to the caller, because the caller is who it authorizes; closed
+    // to anonymous, because an unauthenticated reader of tenant context is the
+    // failure this whole surface exists to prevent.
+    assert.equal(rpc.authenticated, true, `${rpc.name} is unreachable by an authenticated caller`);
+    assert.equal(rpc.anon, false, `${rpc.name} is reachable anonymously`);
+  }
+
+  /**
+   * The private layer the wrappers delegate to, held to the same rule — with
+   * one exception this suite FOUND and which is stated rather than asserted
+   * away.
+   *
+   * `20260918015112_independent_staging_authority.sql` does
+   * `revoke all on all functions in schema pennsync_private from public, anon,
+   * authenticated` and then grants back the six it means to expose. A blanket
+   * revoke only reaches the functions that exist WHEN IT RUNS, so every
+   * function a later migration adds keeps PostgreSQL's default `PUBLIC
+   * EXECUTE`. Three do: `file_object_immutable`, `protect_deployment` and
+   * `protect_enrollment_receipt`.
+   *
+   * All three `returns trigger`, and that is what makes this a residue rather
+   * than a hole. PostgreSQL refuses a direct call to a trigger function before
+   * its body runs, so there is nothing to invoke, and PostgREST does not
+   * expose one. `anon` also holds no `USAGE` on this schema, so it cannot name
+   * them in the first place — two independent gates, neither of which is the
+   * grant.
+   *
+   * It is identical in the reference build, so it is a property of the
+   * committed migrations and not hosted drift; fixing it means a new migration
+   * and is not this change's to make. What the suite refuses is the thing that
+   * would matter: a CALLABLE private function reachable anonymously. The
+   * trigger set is pinned so a fourth one, or one that stops returning
+   * `trigger`, fails here.
+   */
+  const privateFns = hosted.inventory.private_authority ?? [];
+  const anonReachable = privateFns.filter(fn => fn.anon);
+  assert.deepEqual(anonReachable.map(fn => fn.returns), anonReachable.map(() => 'trigger'),
+    'a callable pennsync_private function is executable by anon');
+  assert.deepEqual(anonReachable.map(fn => fn.name).sort(),
+    ['file_object_immutable', 'protect_deployment', 'protect_enrollment_receipt'],
+    'the set of anon-executable trigger functions changed; re-read the grant residue above');
 });
 
 test('no caller role holds a direct grant on a record or authority table', { skip }, () => {
