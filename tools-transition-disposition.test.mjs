@@ -740,7 +740,7 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 8, patient_access_model: 0,
-    records_schema: 1, files: 12, ported_function: 1, core_integration: 3, pdf_rendering: 0,
+    records_schema: 0, files: 12, ported_function: 1, core_integration: 3, pdf_rendering: 0,
     external_secret: 2, none: 71 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
@@ -783,13 +783,17 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // One. That is how many of the hundred can be written today, and the
+  // ZERO. That is how many of the hundred are still waiting on the record
+  // store, and it reached zero on a CORRECTION rather than on a port: D75
+  // found that the last entry, `processCompletedVisit`, pauses at source with
+  // a flag pinned `true` — the polarity this check did not know — so it
+  // refuses every caller and was never startable. and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 1);
+  assert.equal(report.port_blockers.records_schema.length, 0);
   // The thirty-eight that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
@@ -1075,6 +1079,47 @@ test('a capability whose only entities are the claims helper is not waiting on t
   for (const names of Object.values(report.port_blockers)) {
     assert.equal(names.includes('autoImportPatients'), false);
   }
-  // And the one capability left waiting on the record store is a real one.
-  assert.deepEqual(report.port_blockers.records_schema, ['processCompletedVisit']);
+  // And nothing is left waiting on the record store at all: D75 took the last
+  // entry out of the bucket by finding it had been paused at source all along.
+  assert.deepEqual(report.port_blockers.records_schema, []);
+});
+
+test('a flag pinned true pauses a handler exactly as one pinned false does', () => {
+  // D75, and D47's failure for the third time — in a third shape, with the
+  // same lesson: when a check exists to stop a class of mistake, re-derive the
+  // shapes from the tree rather than from the check.
+  const released = 'const RELEASED = false;\nif (!RELEASED) { return refusal(); }\n';
+  const suspended = 'const THING_PAUSED = true;\nif (THING_PAUSED) { return refusal(); }\n';
+  assert.equal(isPausedFunction(released), true, 'the shape D47 taught it');
+  assert.equal(isPausedFunction(suspended), true, 'and the same pause written the other way');
+  // Neither polarity fires without a RETURN in the guard's own branch: a flag
+  // that merely logs is not a pause.
+  assert.equal(isPausedFunction('const THING_PAUSED = true;\nif (THING_PAUSED) { log(); }\n'),
+    false);
+  // And a live flag is not a pause either way round.
+  assert.equal(isPausedFunction('const RELEASED = true;\nif (!RELEASED) { return refusal(); }\n'),
+    false, 'a true RELEASED with a negated guard is the live branch');
+
+  // Thirteen modules in the tree use the flipped polarity, and the check saw
+  // none of them. Twelve already carried `preserved_paused` because somebody
+  // had read them; the thirteenth carried `port`.
+  const paused = new Set(discoverPausedFunctions(repository));
+  const manifest = parseManifest(
+    readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8'));
+  const flipped = ['createTelehealthToken', 'deduplicatePatients', 'dispatchScheduledSms',
+    'generateMessageSuggestions', 'markMessageRead', 'messagingAssistant',
+    'notifyUrgentMessage', 'processCompletedVisit', 'redriveFailedSms',
+    'saveOasisResponses', 'scheduleSms', 'sendMessage', 'summarizeMessageThread'];
+  for (const name of flipped) {
+    const source = readFileSync(
+      resolve(repository, 'base44/functions', name, 'entry.ts'), 'utf8');
+    assert.match(source, /^const\s+[A-Z][A-Z0-9_]*\s*=\s*true\s*;/m, `${name} pins a flag`);
+    assert.ok(paused.has(name), `${name} is detected as paused`);
+    assert.equal(manifest.functions[name], 'preserved_paused',
+      `${name} carries the disposition its source already had`);
+  }
+  // D47's rule: switching a capability off means changing its disposition in
+  // the same change. `processCompletedVisit` was switched off long ago and the
+  // disposition never caught up, so the gate contradicted it until it did.
+  assert.equal(manifest.functions.processCompletedVisit, 'preserved_paused');
 });

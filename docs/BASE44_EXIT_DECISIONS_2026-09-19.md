@@ -4737,3 +4737,49 @@ fires where it should and nowhere else.
 which writes `Task` and `Notification` and is real record work.
 
 Port queue: `records_schema` 2 → 1, `core_integration` 2 → 3, written 71.
+
+## D75 — A flag pinned `true` is the same pause written the other way round
+
+**Decision.** Teach the paused-at-source check the second polarity, and move
+`processCompletedVisit` to `preserved_paused` in the same change.
+
+**This is D47's failure for the third time, and its own lesson for the third
+time.** D7 named the shape `const RELEASED = false` with `if (!RELEASED)
+return refusal`. D47 found nine modules pausing with **no flag at all** — an
+unconditional return as the handler's first statement — and taught the check
+`isRefusingHandler`, writing down the rule it had just re-learned: *when a
+check exists to stop a class of mistake, re-derive the shapes from the tree
+rather than from the check.*
+
+The tree also uses the polarity the check never learned:
+
+```js
+const PROCESS_COMPLETED_VISIT_PAUSED = true;
+Deno.serve(async (req) => {
+  if (PROCESS_COMPLETED_VISIT_PAUSED) {
+    return Response.json({ error: '…temporarily unavailable…' }, { status: 503 });
+```
+
+**Thirteen modules pause this way and the check detected none of them.** Twelve
+already carried `preserved_paused`, because somebody had read them — which is
+the evidence that the hand-dispositioning was right and only the automated
+check was blind. The thirteenth carried `port`.
+
+**That thirteenth was the last entry in the `records_schema` bucket**, reported
+as the single capability that could still be written against the record store.
+It refuses every caller. So the number the plan leads with reached zero on a
+CORRECTION rather than on a port — which is the honest way to say it, and the
+fourth time this migration has had to.
+
+`records_schema` **1 → 0**. Nothing is left waiting on the record store: every
+capability that could be written against it has been written. What remains is
+twelve on the file layer, eight on what a read policy cannot give, seven on
+domains that are going away, three on `Core.SendEmail` (D56), two on
+third-party keys, and one on another port.
+
+**D47's rule applies to the disposition too**: *switching a capability off
+means changing its disposition in the same change.* `processCompletedVisit` was
+switched off long ago and the disposition never caught up, so the widened check
+contradicted it until it did — which is the gate working.
+
+Port queue: `records_schema` 1 → 0, written 71.

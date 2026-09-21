@@ -239,7 +239,7 @@
     "preflightStagingReadinessFixture": "retire",
     "preparePDFWithPatientInfo": "port",
     "processAnnualEducationRenewals": "hub",
-    "processCompletedVisit": "port",
+    "processCompletedVisit": "preserved_paused",
     "processDischargeReport": "preserved_paused",
     "processFaxOCR": "preserved_paused",
     "processInboundFaxes": "preserved_paused",

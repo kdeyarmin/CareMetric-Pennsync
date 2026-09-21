@@ -186,9 +186,29 @@ export function isRefusingHandler(source) {
  */
 export function isPausedFunction(source) {
   if (typeof source !== 'string') return false;
-  for (const match of source.matchAll(/^const\s+([A-Z][A-Z0-9_]*)\s*=\s*false\s*;/gm)) {
-    const flag = match[1];
-    const guard = source.search(new RegExp(`if\\s*\\(\\s*!\\s*${flag}\\s*\\)`));
+  /*
+   * D75. TWO polarities, because the tree uses both and this check knew one.
+   *
+   * `const RELEASED = false;` with `if (!RELEASED) return refusal` is the
+   * shape D7 named and D47 taught this function. `const X_PAUSED = true;` with
+   * `if (X_PAUSED) return refusal` is the same pause written the other way
+   * round, and thirteen modules use it — twelve already carried
+   * `preserved_paused` because somebody read them, and `processCompletedVisit`
+   * carried `port` and was reported as the single capability left that could
+   * be written against the record store. It refuses every caller.
+   *
+   * That is D47's failure for the third time and its own lesson for the third
+   * time: when a check exists to stop a class of mistake, re-derive the shapes
+   * from the tree rather than from the check.
+   */
+  const flags = [
+    ...[...source.matchAll(/^const\s+([A-Z][A-Z0-9_]*)\s*=\s*false\s*;/gm)]
+      .map(match => [match[1], `if\\s*\\(\\s*!\\s*${match[1]}\\s*\\)`]),
+    ...[...source.matchAll(/^const\s+([A-Z][A-Z0-9_]*)\s*=\s*true\s*;/gm)]
+      .map(match => [match[1], `if\\s*\\(\\s*${match[1]}\\s*\\)`]),
+  ];
+  for (const [, pattern] of flags) {
+    const guard = source.search(new RegExp(pattern));
     if (guard === -1) continue;
     // Only the guard's own branch counts. A fixed window would see the
     // handler's ordinary return further down and call a live module paused, so
