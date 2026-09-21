@@ -19,19 +19,28 @@
  *
  *   1. refuse a database with NO store — that is the provisioner's job, and it
  *      pins first, which this must never do;
- *   2. refuse a half-provisioned one, because D11 says such a database is
- *      replaced rather than continued;
- *   3. read the pin and hold on to it;
- *   4. read which migrations have run, BY NAME, and refuse if that cannot be
+ *   2. read which migrations have run, BY NAME, and refuse if that cannot be
  *      established rather than guessing;
- *   5. plan the pending set and refuse a sequence with a hole in it;
- *   6. apply, in the same two-sequence order the provisioner uses;
- *   7. re-read the pin and refuse if it moved.
+ *   3. plan the pending set, refusing a sequence with a hole in it and any two
+ *      migrations that would claim one ledger row;
+ *   4. only NOW judge the pin, because whether its absence is a fault depends
+ *      on the plan: pending means the ordinary legacy store, already applied
+ *      means a provision that died part-way, which D11 replaces rather than
+ *      continues;
+ *   5. apply, in the same two-sequence order the provisioner uses, each
+ *      migration recording itself inside its own transaction;
+ *   6. re-read the pin and refuse if one that existed has moved.
  *
- * Step 7 is the one that earns the tool. Nothing here is supposed to touch the
- * pin, which is exactly why it is worth proving after the fact: a migration
- * that quietly re-generated `deployment_app_id()` would move a store between
- * deployments, and that is the one failure this design says is impossible.
+ * Step 4's ORDER is the correction that matters. Judging the pin first — before
+ * the ledger — refused the one database this tool was written for: hosted
+ * staging holds nine authority migrations and no pin, because the pin is
+ * created by the first thing PENDING there.
+ *
+ * Step 6 is what earns the tool. Nothing here is supposed to move a pin that
+ * already existed, which is exactly why it is worth proving after the fact: a
+ * migration that quietly re-generated `deployment_app_id()` would move a store
+ * between deployments, and that is the one failure this design says is
+ * impossible.
  *
  * It plans by default and applies only when asked, because the dangerous verb
  * should be the one you have to type.
