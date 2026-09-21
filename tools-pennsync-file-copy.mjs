@@ -285,15 +285,31 @@ export async function applyFileCopy(execute, plan, { actorId, expectedDigest, co
     rows.push([plan.app_id, copy.locator_key, copy.locator, result.file_uri,
       result.content_sha256, result.byte_size, copyRun, actorId]);
   }
-  await execute('select pg_advisory_xact_lock($1,$2)', APP_LOCK);
+  // ONE transaction, as `applyBackfill` already does — and the lock is the
+  // reason rather than a nicety. `pg_advisory_xact_lock` is an XACT lock: with
+  // `execute` being a plain client's query function, each statement would be
+  // its own transaction, so the lock would release the moment the SELECT
+  // returned and every insert would commit independently. A later failure
+  // would then leave earlier mappings committed — and a mapping is IMMUTABLE,
+  // so a partially applied plan is precisely the state that cannot be
+  // corrected in place.
+  await execute('begin');
   let recorded = 0;
-  for (const row of rows) {
-    // No `on conflict`: the table's primary key is the refusal, and a locator
-    // that already has a destination must not quietly get a second one.
-    await execute(`insert into pennsync_private.file_object(app_id,locator_key,locator,
-      file_uri,content_sha256,byte_size,copy_run,recorded_by)
-      values ($1,$2,$3,$4,$5,$6,$7,$8)`, row);
-    recorded += 1;
+  try {
+    await execute('select pg_advisory_xact_lock($1,$2)', APP_LOCK);
+    for (const row of rows) {
+      // No `on conflict`: the table's primary key is the refusal, and a
+      // locator that already has a destination must not quietly get a second
+      // one.
+      await execute(`insert into pennsync_private.file_object(app_id,locator_key,locator,
+        file_uri,content_sha256,byte_size,copy_run,recorded_by)
+        values ($1,$2,$3,$4,$5,$6,$7,$8)`, row);
+      recorded += 1;
+    }
+    await execute('commit');
+  } catch (error) {
+    await execute('rollback').catch(() => {});
+    throw error;
   }
   return { recorded, planned: plan.copies.length, dropped: plan.copies.length - rows.length };
 }

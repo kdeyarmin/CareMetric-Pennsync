@@ -145,9 +145,22 @@ test('nothing reaches the table directly, and the resolver is the owner\'s alone
   // thing the projection rule exists to prevent.
   const grants = await db.query(`select unnest(coalesce(proacl, '{}'))::text as ace
     from pg_proc where oid = 'pennsync_private.resolve_file_locator(text)'::regprocedure`);
-  const grantees = grants.rows.map(row => row.ace.split('=')[0]).filter(Boolean);
-  assert.deepEqual(grantees.filter(name => name !== 'postgres').sort(),
+  // NOT `.filter(Boolean)`. A PUBLIC grant is the EMPTY-NAME entry (`=X/owner`),
+  // so filtering falsy names discarded the one thing this assertion exists to
+  // catch — and it did: PostgreSQL grants EXECUTE to PUBLIC by default and the
+  // migration revoked only on the table. The test read as though it proved
+  // "the record owner alone" while being structurally unable to see PUBLIC.
+  const grantees = grants.rows.map(row => row.ace.split('=')[0]);
+  assert.equal(grantees.includes(''), false, 'PUBLIC must not hold EXECUTE');
+  assert.deepEqual(grantees.filter(name => name && name !== 'postgres').sort(),
     ['pennsync_records_owner']);
+  // And the question a grantee list only answers indirectly, asked directly.
+  for (const role of ['anon', 'authenticated', 'service_role']) {
+    const allowed = await db.query(
+      'select has_function_privilege($1, $2, $3) as ok',
+      [role, 'pennsync_private.resolve_file_locator(text)', 'execute']);
+    assert.equal(allowed.rows[0].ok, false, role);
+  }
 });
 
 test('the key the planner writes is the key the resolver reads', async () => {

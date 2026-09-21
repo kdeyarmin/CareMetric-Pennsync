@@ -131,6 +131,22 @@ begin
   return v_uri;
 end $resolve$;
 
+-- PostgreSQL grants EXECUTE on a new function to PUBLIC by default, so the
+-- grant below is not what decides who may call this — the revoke above it is.
+-- `authenticated` holds USAGE on `pennsync_private` (every `pennsync_staging_*`
+-- wrapper depends on that), so without this revoke any authenticated caller
+-- reaching this schema could translate a known legacy locator into an owned
+-- handle WITHOUT passing the contract that authorizes the row holding it —
+-- which is the one thing the projection rule at the top of this file exists to
+-- prevent. `claim_new_chart` revokes first for the same reason; this file
+-- cited that precedent and then did it only for the TABLE.
+--
+-- Targeted, never a blanket `revoke all on all functions in schema
+-- pennsync_private`: every `pennsync_staging_*` wrapper is an invoker calling
+-- an inner function granted to `authenticated`, and nine suites go red.
+revoke all on function pennsync_private.resolve_file_locator(text)
+  from public, anon, authenticated, service_role;
+
 grant usage on schema pennsync_private to pennsync_records_owner;
 grant execute on function pennsync_private.resolve_file_locator(text) to pennsync_records_owner;
 

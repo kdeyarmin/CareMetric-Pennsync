@@ -14,6 +14,7 @@ const APP = '6a9881683dc68a0bd54f1ef7';
 const STORAGE = 'https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/public/u/a.pdf';
 const SECOND = 'https://base44.app/files/b.pdf';
 const HANDLE = 'cmfile:3f2504e0-4f89-41d3-9a0c-0305e82c3301';
+const OTHER_HANDLE = 'cmfile:3f2504e0-4f89-41d3-9a0c-0305e82c33bb';
 const zeros = '0'.repeat(64);
 
 /**
@@ -200,14 +201,40 @@ test('applying writes only what the copy produced, and only the reviewed plan', 
     results: { [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11 } },
   });
   assert.deepEqual(applied, { recorded: 1, planned: 2, dropped: 1 });
-  // The lock first, so this serialises with every other authority mutation.
-  assert.match(statements[0][0], /pg_advisory_xact_lock/);
-  assert.equal(statements.length, 2);
-  assert.match(statements[1][0], /insert into pennsync_private\.file_object/);
+  // ONE transaction, and the lock INSIDE it. `pg_advisory_xact_lock` is an
+  // xact lock: taken outside a transaction it releases immediately and every
+  // insert commits on its own, so a later failure leaves earlier IMMUTABLE
+  // mappings committed — the one state this design cannot correct in place.
+  const sql = statements.map(([text]) => text.trim().split(/\s+/)[0].toLowerCase());
+  assert.deepEqual(sql, ['begin', 'select', 'insert', 'commit']);
+  assert.match(statements[1][0], /pg_advisory_xact_lock/);
+  assert.match(statements[2][0], /insert into pennsync_private\.file_object/);
   // No `on conflict`: the primary key is the refusal, and a locator that
   // already has a destination must not quietly get a second one.
-  assert.equal(/on conflict/i.test(statements[1][0]), false);
-  assert.deepEqual(statements[1][1].slice(0, 4), [APP, locatorKey(STORAGE), STORAGE, HANDLE]);
+  assert.equal(/on conflict/i.test(statements[2][0]), false);
+  assert.deepEqual(statements[2][1].slice(0, 4), [APP, locatorKey(STORAGE), STORAGE, HANDLE]);
+});
+
+test('a failed insert rolls the whole plan back', async () => {
+  // The half that matters. Without the transaction the first insert would
+  // already be committed and immutable when the second failed.
+  const result = plan([ref(), ref({ locator: SECOND, row_id: 'doc-2' })]);
+  const statements = [];
+  const execute = async (sql, params) => {
+    statements.push(sql.trim().split(/\s+/)[0].toLowerCase());
+    if (/insert/i.test(sql) && params[2] === SECOND) throw new Error('constraint');
+  };
+  await assert.rejects(() => applyFileCopy(execute, result, {
+    actorId: '00000000-0000-4000-8000-000000000001',
+    expectedDigest: result.digest,
+    copyRun: 'run-1',
+    results: {
+      [STORAGE]: { file_uri: HANDLE, content_sha256: zeros, byte_size: 11 },
+      [SECOND]: { file_uri: OTHER_HANDLE, content_sha256: zeros, byte_size: 12 },
+    },
+  }), error => /constraint/.test(error.message));
+  assert.equal(statements.includes('commit'), false);
+  assert.equal(statements.at(-1), 'rollback');
 });
 
 test('a plan that is not the one reviewed applies nothing', async () => {
