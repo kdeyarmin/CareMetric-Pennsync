@@ -1240,6 +1240,20 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_TENANT_AGENCY_UNAVAILABLE',
     ]),
   }),
+  // The chart a model reads to SUGGEST clinical tasks. It creates none — the
+  // capability's name says "generate" and D64 is the reason to say plainly
+  // that there is no write contract behind this one.
+  readClinicalTaskContext: Object.freeze({
+    rpc: 'pennsync_contract_clinical_task_context',
+    params: Object.freeze(['patient_id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_patient_id: args.patient_id ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_TASK_CONTEXT_AGENCY_NOT_HELD',
+      'PENNSYNC_TASK_CONTEXT_SUBJECT_INVALID',
+      'PENNSYNC_TASK_CONTEXT_PURPOSE_FORBIDDEN',
+      'PENNSYNC_TASK_CONTEXT_PATIENT_NOT_VISIBLE',
+    ]),
+  }),
   // Two chart reads for a model to analyse, and nothing behind them: a
   // capability that only reads needs only a read. Both originals scan five
   // thousand `User` rows to decide whether the patient is in the caller's

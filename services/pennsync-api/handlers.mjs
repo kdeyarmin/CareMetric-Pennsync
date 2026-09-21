@@ -19,6 +19,9 @@ import {
   analyzeClinicalTrends as runClinicalTrends,
 } from './clinical-analysis.mjs';
 import {
+  analyzeAndGenerateClinicalTasks as runTaskSuggestions,
+} from './clinical-task-suggestions.mjs';
+import {
   BAG_TECHNIQUE_FILENAME, SMART_NOTE_GUIDE_FILENAME, USER_MANUAL_FILENAME,
   buildBagTechniqueChecklist, buildSmartNoteGuide, buildUserManual, documentDate,
 } from './documents.mjs';
@@ -531,6 +534,13 @@ export const HANDLERS = Object.freeze({
     handle({ params, contract }) {
       exactObject(params, [], 'INVALID_PARAMS');
       return contract('checkAdrDeadlines', params);
+    },
+  }),
+  analyzeAndGenerateClinicalTasks: Object.freeze({
+    needsIntegration: true,
+    handle({ params, integration, contract }) {
+      exactObject(params, ['patientId'], 'INVALID_PARAMS');
+      return runTaskSuggestions({ params, integration, contract });
     },
   }),
   analyzeClinicalEvents: Object.freeze({

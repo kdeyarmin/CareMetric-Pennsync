@@ -4163,3 +4163,51 @@ precedence when the thing it ranks first gets built.
 
 Port queue: `records_schema` 16 → 10, `files` 6 → 12. Nothing ported; this
 measures.
+
+## D66 — "Generate" named a suggestion, and two compensations went with it
+
+**Decision.** Port `analyzeAndGenerateClinicalTasks` as a read contract and a
+model call, with nothing behind them — it creates no task — and delete the two
+service-role compensations its lookup carries.
+
+**The name is the trap D64 exists for.** This capability is called "generate
+clinical tasks"; it reads the chart, asks a model for three to seven
+suggestions, attaches a due date to each and returns them. `Task.create` never
+appears. A reader who took the name for a write would go looking for a write
+contract that should not exist, which is precisely why D64 made "a capability
+that only reads needs only a read" a decision rather than an observation. A
+test asserts the absence against the original's own source.
+
+**Two compensations for not trusting a service-role result.** The original
+fetches the patient with a limit of **two** so it can refuse when it gets two
+rows or a row whose id is not the one it asked for, and then re-checks that
+every visit, alert and task it loaded really names that patient:
+
+```js
+if (childSets.some((rows) => !Array.isArray(rows)
+  || rows.some((row) => row?.patient_id !== patient.id))) { … 409 … }
+```
+
+Both are honest defences against a filter that is not proof. Here `id` is half
+the primary key and the predicate is the contract's own, so the first can
+return nothing to disambiguate and the second is asking whether `where
+patient_id = $1` returned rows with a different `patient_id`.
+
+**And the third deletion is D63's, a second time.** `Deno.env.get('SUPER_ADMIN_EMAIL')`
+is the platform tier D14 and D22 removed, and this is the second capability
+whose only brush with a secret was that comparison.
+
+**One divergence worth the line it costs.** The original maps the visit rows
+and calls `.substring(0, 300)` on each nurse's note in the handler — after the
+whole note has left the store. The contract cuts it in SQL, so the other nine
+hundred characters never travel.
+
+**And one thing deliberately NOT normalised.** The due-date map is
+case-sensitive with a `default` of three days, and the model's `due_timeframe`
+passes through unchanged. D63 normalises exactly this, because there a STORED
+column and its stored date could disagree; nothing here is stored, so there is
+no second thing to agree with. The only change is which day it counts from: the
+store's own, which the contract returns, rather than whichever zone a service
+happened to run in.
+
+Port queue: `records_schema` 10 → 9, written 63 → 64.

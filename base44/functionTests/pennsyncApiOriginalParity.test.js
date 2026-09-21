@@ -27,6 +27,9 @@ import { buildGenericPrompt, buildPersonalPrompt } from '../../services/pennsync
 import {
   buildEventReviewPrompt, buildTrendPrompt,
 } from '../../services/pennsync-api/clinical-analysis.mjs';
+import {
+  buildTaskSuggestionPrompt,
+} from '../../services/pennsync-api/clinical-task-suggestions.mjs';
 
 /**
  * Every ported-handler test that has to READ its Base44 original.
@@ -465,4 +468,40 @@ test('the two clinical analysis prompts are the originals, line for line', async
       assert.ok(built.includes(`"${key}":`), `${file} shape lost: ${key}`);
     }
   }
+});
+
+test('the task-suggestion prompt is the original s, and it creates no task', async () => {
+  const original = await readFile(resolve(repository,
+    'base44/functions/analyzeAndGenerateClinicalTasks/entry.ts'), 'utf8');
+  const start = original.indexOf('You are an expert clinical nurse supervisor');
+  const end = original.indexOf('Return ONLY valid JSON, no prose or code fences', start);
+  assert.ok(start > 0 && end > start, 'the original still carries the prompt');
+  const built = buildTaskSuggestionPrompt({ patient: {}, visits: [], alerts: [], tasks: [] });
+  // This prompt's interpolations span LINES — `${JSON.stringify(visits.map(v => ({`
+  // opens one and several lines of JavaScript follow inside it — so skipping
+  // lines that merely contain `${` is not enough. Cut each balanced `${…}`
+  // region out first.
+  const literal = text => {
+    let out = ''; let depth = 0;
+    for (let index = 0; index < text.length; index += 1) {
+      if (depth === 0 && text[index] === '$' && text[index + 1] === '{') { depth = 1; index += 1; continue; }
+      if (depth > 0) {
+        if (text[index] === '{') depth += 1;
+        else if (text[index] === '}') depth -= 1;
+        continue;
+      }
+      out += text[index];
+    }
+    return out;
+  };
+  for (const line of literal(original.slice(start, end)).split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    assert.ok(built.includes(trimmed), `the prompt lost: ${trimmed}`);
+  }
+  // D64's claim about this capability, checked against the file rather than
+  // remembered: it suggests tasks and creates none.
+  assert.equal(/entities\s*\.\s*Task\s*\.\s*create/.test(original), false,
+    'the original still creates no task');
+  assert.match(original, /tasksWithDates/);
 });
