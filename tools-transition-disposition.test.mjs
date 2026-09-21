@@ -739,8 +739,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 8, patient_access_model: 0,
-    records_schema: 18, files: 6, ported_function: 1, core_integration: 2, pdf_rendering: 0,
-    external_secret: 2, none: 61 });
+    records_schema: 16, files: 6, ported_function: 1, core_integration: 2, pdf_rendering: 0,
+    external_secret: 2, none: 63 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -782,13 +782,13 @@ test('the port queue is work that cannot start yet, and says why', () => {
     ['autoApproveInvitedUser', 'autoEndDutyDay',
       'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
       'userManagement', 'userManagementV2']);
-  // Eighteen. That is how many of the hundred can be written today, and the
+  // Sixteen. That is how many of the hundred can be written today, and the
   // number is still the point: `records_schema=94` said the record store was
   // what stood in front of the queue, and everything since has been finding
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 18);
+  assert.equal(report.port_blockers.records_schema.length, 16);
   // The thirty-two that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
@@ -817,7 +817,7 @@ test('the port queue is work that cannot start yet, and says why', () => {
     'auditDataQuality', 'resendInvitation', 'resendInvitationV2',
     'saveVisitPointConfig', 'savePayrollProfile', 'predictSupplyNeeds',
     'analyzeVisitForSupplyUsage', 'importProvidersCsv', 'expandClinicalPhrase',
-    'generateFollowUpTasks']) {
+    'generateFollowUpTasks', 'analyzeClinicalEvents', 'analyzeClinicalTrends']) {
     assert.ok(report.port_blockers.none.includes(name), `${name} is ported`);
     assert.ok(!report.port_blockers.records_schema.includes(name), name);
   }
@@ -857,7 +857,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   assert.deepEqual(report.port_blockers.files, ['extractClinicalDocument', 'extractPatientDataFromDocument',
     'generateDynamicCoverSheet', 'mergePDFs', 'reorderDeletePDFPages', 'splitReferralPDF']);
   assert.deepEqual(report.port_blockers.none,
-    ['acceptAiContentAgreement', 'analyzeReferral', 'analyzeReferralIntake',
+    ['acceptAiContentAgreement', 'analyzeClinicalEvents', 'analyzeClinicalTrends',
+      'analyzeReferral', 'analyzeReferralIntake',
       'analyzeReferralPriority', 'analyzeVisitForSupplyUsage',
       'appendPatientNoteHistory', 'auditDataQuality', 'cancelTimeOffRequest',
       'checkAdrDeadlines', 'checkExpiredInvitations',

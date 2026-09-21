@@ -1240,6 +1240,34 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_TENANT_AGENCY_UNAVAILABLE',
     ]),
   }),
+  // Two chart reads for a model to analyse, and nothing behind them: a
+  // capability that only reads needs only a read. Both originals scan five
+  // thousand `User` rows to decide whether the patient is in the caller's
+  // agency, and both interpolate the patient straight out of a service-role
+  // row — the chart policies answer the first and D62's purpose projection
+  // bounds the second.
+  reviewClinicalEvents: Object.freeze({
+    rpc: 'pennsync_contract_clinical_event_review',
+    params: Object.freeze(['patient_id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_patient_id: args.patient_id ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_CLINICAL_AGENCY_NOT_HELD',
+      'PENNSYNC_CLINICAL_SUBJECT_INVALID',
+      'PENNSYNC_CLINICAL_PURPOSE_FORBIDDEN',
+      'PENNSYNC_CLINICAL_PATIENT_NOT_VISIBLE',
+    ]),
+  }),
+  readClinicalTrendContext: Object.freeze({
+    rpc: 'pennsync_contract_clinical_trend_context',
+    params: Object.freeze(['patient_id']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_patient_id: args.patient_id ?? null }),
+    codes: Object.freeze([
+      'PENNSYNC_CLINICAL_AGENCY_NOT_HELD',
+      'PENNSYNC_CLINICAL_SUBJECT_INVALID',
+      'PENNSYNC_CLINICAL_PURPOSE_FORBIDDEN',
+      'PENNSYNC_CLINICAL_PATIENT_NOT_VISIBLE',
+    ]),
+  }),
   // The follow-up tasks a finalized note implies: a chart read, a brokered
   // model call, and a write. The second capability D61 unblocked — these are
   // `Task` rows — and the second to apply D62's rule that a prompt may carry

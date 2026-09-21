@@ -4068,3 +4068,43 @@ than written as a row nothing can act on, and the batch is bounded at fifty
 where the prompt asks for two to five and the original bounds nothing.
 
 Port queue: `records_schema` 19 → 18, written 60 → 61.
+
+## D64 — A capability that only reads needs only a read
+
+**Decision.** Port `analyzeClinicalEvents` and `analyzeClinicalTrends` as one
+read contract each and nothing behind them, and name every column that reaches
+a prompt.
+
+**The third step of D53's sequence is genuinely absent here, not paused.**
+Every model-backed port so far has been read, ask, record. These two ask a
+model to analyse a chart and hand the analysis straight back; nothing is
+stored. Saying so is worth a decision, because the alternative reading — that a
+capability which does not write must be waiting on a write contract nobody has
+built — is exactly the mistake D47, D55 and D56 each had to correct once.
+
+**The scoping deletions are the established ones.** Both originals read
+`assigned_nurses` and `created_by` off the patient row and then scan five
+thousand `User` rows to decide whether the patient is in the caller's agency
+(D21, D24, D41), and both interpolate the name, the diagnosis and the
+medication list straight out of a full service-role row, which D62 bounds to
+the `smart_note_context` projection.
+
+**The new rule is divergence 3, and it is one line of SQL.** `clinical_event`
+carries `source_text` — the raw note the event was extracted from — alongside
+`text_anchor_start` and `text_anchor_end`. The originals build their prompt
+context by MAPPING named fields, so neither leaks it today; a contract that
+returned the row would. **Every column that reaches a prompt is named**, and a
+test seeds `source_text` with a sentinel and asserts it appears in neither
+answer.
+
+**Two things kept that look like the artefacts this migration deletes.** The
+page limits stay exactly as the originals have them — five thousand unverified
+events for the review, a hundred events and a hundred visits for the trends.
+D49, D50 and D59 each deleted a limit that existed only to survive a paged
+client, and these look the same, but here the page bounds **what goes into a
+prompt**: raising or lowering it changes the analysis rather than the plumbing.
+And the event grouping is a SUBSTRING test (`strpos`), because the original's
+`event_type?.includes('medication')` is one — so `medication_change` is a
+medication event, and a row whose type is null is in neither group.
+
+Port queue: `records_schema` 18 → 16, written 61 → 63.

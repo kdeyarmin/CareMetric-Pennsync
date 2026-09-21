@@ -24,6 +24,9 @@ import {
   FOLLOW_UP_SCHEMA, buildFollowUpPrompt,
 } from '../../services/pennsync-api/follow-up-tasks.mjs';
 import { buildGenericPrompt, buildPersonalPrompt } from '../../services/pennsync-api/clinical-phrase.mjs';
+import {
+  buildEventReviewPrompt, buildTrendPrompt,
+} from '../../services/pennsync-api/clinical-analysis.mjs';
 
 /**
  * Every ported-handler test that has to READ its Base44 original.
@@ -432,4 +435,34 @@ test('the follow-up prompt and its enums are the original s', async () => {
     }
   }
   assert.deepEqual(properties.priority.enum, ['high', 'medium', 'low']);
+});
+
+test('the two clinical analysis prompts are the originals, line for line', async () => {
+  const patient = { patient_name: 'NAME', primary_diagnosis: 'DX', current_medications: [] };
+  for (const [file, head, tail, built] of [
+    ['base44/functions/analyzeClinicalEvents/entry.ts',
+      'Analyze these clinical events for a patient',
+      'Return ONLY valid JSON, no prose or code fences',
+      buildEventReviewPrompt(patient, [])],
+    ['base44/functions/analyzeClinicalTrends/entry.ts',
+      "Analyze this patient's clinical data over time",
+      'Return ONLY valid JSON, no prose or code fences',
+      buildTrendPrompt(patient, [], [], [], [])],
+  ]) {
+    const original = await readFile(resolve(repository, file), 'utf8');
+    const start = original.indexOf(head);
+    const end = original.indexOf(tail, start);
+    assert.ok(start > 0 && end > start, `the original still carries: ${head}`);
+    for (const line of original.slice(start, end).split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.includes('${')) continue;
+      assert.ok(built.includes(trimmed), `${file} prompt lost: ${trimmed}`);
+    }
+    // The JSON shape each one demands back is part of the prompt, and the
+    // handler's field-by-field fallbacks are built from it.
+    const shape = original.slice(end, original.indexOf('`\n', end));
+    for (const key of [...shape.matchAll(/"([a-z_]+)":/g)].map(m => m[1])) {
+      assert.ok(built.includes(`"${key}":`), `${file} shape lost: ${key}`);
+    }
+  }
 });
