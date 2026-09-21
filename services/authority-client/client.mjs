@@ -112,6 +112,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   analyzeVisitForSupplyUsage: 'json',
   importProvidersCsv: 'json',
   expandClinicalPhrase: 'json',
+  generateFollowUpTasks: 'json',
   predictSupplyNeeds: 'json',
   policyAcknowledgment: 'json',
   validatePatientData: 'json',

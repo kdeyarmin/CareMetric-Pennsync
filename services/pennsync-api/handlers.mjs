@@ -13,6 +13,7 @@ import { triageReferral } from './referral-triage.mjs';
 import { analyzeVisitSupplyUsage } from './visit-supply-usage.mjs';
 import { importProviders } from './provider-import.mjs';
 import { expandClinicalPhrase as runClinicalPhrase } from './clinical-phrase.mjs';
+import { generateFollowUpTasks as runFollowUpTasks } from './follow-up-tasks.mjs';
 import {
   BAG_TECHNIQUE_FILENAME, SMART_NOTE_GUIDE_FILENAME, USER_MANUAL_FILENAME,
   buildBagTechniqueChecklist, buildSmartNoteGuide, buildUserManual, documentDate,
@@ -526,6 +527,16 @@ export const HANDLERS = Object.freeze({
     handle({ params, contract }) {
       exactObject(params, [], 'INVALID_PARAMS');
       return contract('checkAdrDeadlines', params);
+    },
+  }),
+  generateFollowUpTasks: Object.freeze({
+    // The body keys are the original's (D58). `visitType` and `diagnosis` only
+    // reach the prompt; nothing a caller sends decides who may be read.
+    needsIntegration: true,
+    handle({ params, integration, contract }) {
+      exactObject(params, ['noteText', 'patientId', 'visitId', 'visitType', 'diagnosis'],
+        'INVALID_PARAMS');
+      return runFollowUpTasks({ params, integration, contract });
     },
   }),
   expandClinicalPhrase: Object.freeze({

@@ -1240,6 +1240,45 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_TENANT_AGENCY_UNAVAILABLE',
     ]),
   }),
+  // The follow-up tasks a finalized note implies: a chart read, a brokered
+  // model call, and a write. The second capability D61 unblocked — these are
+  // `Task` rows — and the second to apply D62's rule that a prompt may carry
+  // what a read purpose discloses and nothing else.
+  getFollowUpTaskContext: Object.freeze({
+    rpc: 'pennsync_contract_follow_up_context',
+    params: Object.freeze(['patient_id', 'visit_id']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_visit_id: args.visit_id === undefined ? null : args.visit_id,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_FOLLOW_UP_AGENCY_NOT_HELD',
+      'PENNSYNC_FOLLOW_UP_SUBJECT_INVALID',
+      'PENNSYNC_FOLLOW_UP_PURPOSE_FORBIDDEN',
+      'PENNSYNC_FOLLOW_UP_PATIENT_NOT_VISIBLE',
+      'PENNSYNC_FOLLOW_UP_VISIT_NOT_FOUND',
+    ]),
+  }),
+  recordFollowUpTasks: Object.freeze({
+    rpc: 'pennsync_contract_follow_up_record',
+    params: Object.freeze(['patient_id', 'visit_id', 'tasks']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_visit_id: args.visit_id === undefined ? null : args.visit_id,
+      p_tasks: args.tasks === undefined ? null : args.tasks,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_FOLLOW_UP_AGENCY_NOT_HELD',
+      'PENNSYNC_FOLLOW_UP_SUBJECT_INVALID',
+      'PENNSYNC_FOLLOW_UP_PURPOSE_FORBIDDEN',
+      'PENNSYNC_FOLLOW_UP_PATIENT_NOT_VISIBLE',
+      'PENNSYNC_FOLLOW_UP_VISIT_NOT_FOUND',
+      'PENNSYNC_FOLLOW_UP_INVALID',
+      'PENNSYNC_FOLLOW_UP_TOO_MANY',
+    ]),
+  }),
   // The clinical phrase library, in two halves because a model call sits
   // between them. The resolve decides which template answers a phrase and what
   // of the patient may go into the prompt; the use records the count.

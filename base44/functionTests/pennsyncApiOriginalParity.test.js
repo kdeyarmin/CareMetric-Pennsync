@@ -20,6 +20,10 @@ import {
   AUDIT_CODES, AUDIT_LIST_CODES, SUBJECT_KINDS,
 } from '../../services/pennsync-api/audit.mjs';
 import { RECORD_CONTRACTS } from '../../services/pennsync-api/record-contracts.mjs';
+import {
+  FOLLOW_UP_SCHEMA, buildFollowUpPrompt,
+} from '../../services/pennsync-api/follow-up-tasks.mjs';
+import { buildGenericPrompt, buildPersonalPrompt } from '../../services/pennsync-api/clinical-phrase.mjs';
 
 /**
  * Every ported-handler test that has to READ its Base44 original.
@@ -380,4 +384,52 @@ test('the patient family keeps the walk refusal to the capability that can walk'
       assert.ok(!RECORD_CONTRACTS[name].codes.includes(code), `${name} cannot raise ${code}`);
     }
   }
+});
+
+test('the phrase prompts are the original s, both branches', async () => {
+  const original = await readFile(resolve(repository,
+    'base44/functions/expandClinicalPhrase/entry.ts'), 'utf8');
+  const cases = [
+    ['You are a home healthcare documentation assistant. Expand the following clinical phrase',
+      'Expanded documentation:', buildGenericPrompt('PHRASE', null, null)],
+    ['You are a home healthcare documentation assistant. Generate Medicare-compliant',
+      'Expanded documentation:', buildPersonalPrompt(
+        { ai_prompt_instructions: 'INSTRUCTIONS', expanded_text: '' }, 'CONTEXT', null)],
+  ];
+  for (const [head, tail, built] of cases) {
+    const start = original.indexOf(head);
+    const end = original.indexOf(tail, start);
+    assert.ok(start > 0 && end > start, `the original still carries: ${head}`);
+    for (const line of original.slice(start, end).split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.includes('${')) continue;
+      assert.ok(built.includes(trimmed), `the prompt lost: ${trimmed}`);
+    }
+  }
+});
+
+test('the follow-up prompt and its enums are the original s', async () => {
+  const original = await readFile(resolve(repository,
+    'base44/functions/generateFollowUpTasks/entry.ts'), 'utf8');
+  const start = original.indexOf('You are a home health/hospice clinical supervisor');
+  const end = original.indexOf('Return JSON array of tasks.');
+  assert.ok(start > 0 && end > start, 'the original still carries the prompt');
+  const prompt = buildFollowUpPrompt('NOTE', 'CONTEXT', 'recert');
+  for (const line of original.slice(start, end).split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.includes('${')) continue;
+    assert.ok(prompt.includes(trimmed), `the prompt lost: ${trimmed}`);
+  }
+  // The schema's enums are what the contract checks a model's answer against,
+  // so they are read from the original rather than retyped.
+  const properties = FOLLOW_UP_SCHEMA.properties.tasks.items.properties;
+  for (const [field, values] of Object.entries({
+    type: properties.type.enum, priority: properties.priority.enum,
+    due_timeframe: properties.due_timeframe.enum,
+  })) {
+    for (const value of values) {
+      assert.ok(original.includes(`"${value}"`), `${field} lost ${value}`);
+    }
+  }
+  assert.deepEqual(properties.priority.enum, ['high', 'medium', 'low']);
 });

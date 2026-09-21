@@ -4023,3 +4023,48 @@ on a generic AI expansion; an inactive template answers nothing; and the body
 keys stay camelCase because `QuickPhraseTextarea.jsx` sends them (D58).
 
 Port queue: `records_schema` 20 → 19, written 59 → 60.
+
+## D63 — A model's answer decides a column's value and that column's own date
+
+**Decision.** Port `generateFollowUpTasks` on D61's `Task` tenancy, delete its
+`SUPER_ADMIN_EMAIL` read and its claim token, and compute each task's due date
+from the timeframe that is STORED rather than the one the model sent.
+
+**Three deletions, each already established.** The chart decides, replacing the
+`created_by` and `assigned_nurses` reads (D21, D24) — and with them a
+`Deno.env.get('SUPER_ADMIN_EMAIL')` comparison, which is the platform tier D14
+and D22 removed and **the only reason this capability was ever near a secret at
+all**. The patient context in the prompt is the `smart_note_context` projection
+and nothing else (D62). And `followup_tasks_claimed_by` becomes the row lock it
+was emulating, with the original's own `related_visit_id` + `source` dedupe
+doing the work it actually relied on (D46, D58).
+
+**The new rule is a refinement of D54.** `task` constrains `type`, `priority`
+and `due_timeframe`, and the thing supplying all three is a model. The original
+writes them straight through inside a `Promise.all`, so one plausible but
+unlisted answer raises a check violation that loses **every task in the batch**
+— worse than D54's per-row `catch`, which at least kept the others. So an
+unrecognised value takes the same default an absent one does, and case alone is
+not an adjustment.
+
+But there is a second half this port found. The original computes the due date
+separately:
+
+```js
+const map = { today: 0, '24_hours': 1, '48_hours': 2, this_week: 7, next_visit: 3 };
+date.setDate(date.getDate() + (map[timeframe] ?? 3));
+```
+
+That lookup is case-SENSITIVE, and the stored value is
+`task.due_timeframe || 'next_visit'`. So a model answering `TODAY` gets a row
+whose `due_timeframe` is the invalid string `TODAY` and whose `due_date` is
+three days out — a task that says "today" and is due on Thursday. **The date
+follows the value that is stored**, so the two cannot disagree. An unrecognised
+answer still lands on three days, because `next_visit` is the substituted
+default and the map gives it three.
+
+**Two smaller narrowings.** A task with no title is skipped and counted rather
+than written as a row nothing can act on, and the batch is bounded at fifty
+where the prompt asks for two to five and the original bounds nothing.
+
+Port queue: `records_schema` 19 → 18, written 60 → 61.
