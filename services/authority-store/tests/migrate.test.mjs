@@ -10,7 +10,7 @@ import {
   MIGRATION_DIRECTORY, PIN_SETTING, RECORD_MIGRATION_DIRECTORY, applyProvision,
 } from '../../../tools-pennsync-provision.mjs';
 import {
-  LOCAL_ONLY_MIGRATIONS, MigrateError, applyMigrations, ledgerName,
+  LOCAL_ONLY_MIGRATIONS, MigrateError, applyMigrations, ledgerName, migrationWithLedgerRow,
 } from '../../../tools-pennsync-migrate.mjs';
 
 /**
@@ -171,4 +171,39 @@ test('the local-only migration is never applied to a deployment, even by the ful
       where schemaname = 'pennsync_private' and tablename = 'archive_patient_import_receipt'`);
     assert.equal(rows[0].count, 0, 'the local-only receipt table must not exist on a deployment');
   } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+test('a migration that fails leaves neither its objects nor its ledger row', async () => {
+  // The property the separate ledger insert did not have. With two statements,
+  // a failure between them left the migration applied and unrecorded, and the
+  // next run re-executed a file that creates schemas and tables — the ledger
+  // reads as a SUFFIX in that state, so the order check never fired.
+  const db = await fresh();
+  try {
+    await db.exec('create schema supabase_migrations;'
+      + ' create table supabase_migrations.schema_migrations'
+      + ' (version text primary key, statements text[], name text);');
+    const sql = migrationWithLedgerRow({
+      name: '20260101000000_doomed.sql',
+      from: MIGRATION_DIRECTORY,
+      // Creates a table, then fails BEFORE the ledger row and the commit.
+      sql: 'begin;\ncreate table public.doomed (id int);\nselect 1 / 0;\ncommit;\n',
+    });
+    await assert.rejects(() => db.exec(sql));
+    // The failed statement left the transaction open and aborted, because the
+    // trailing `commit;` was skipped with it. The tool is unaffected — it
+    // opens a session per migration and closes it in a `finally`, so the
+    // aborted transaction dies with the connection — but this harness reuses
+    // one connection, so it has to end the block before it can read anything.
+    await db.exec('rollback;');
+
+    const { rows: recorded } = await db.query(
+      "select count(*)::int as count from supabase_migrations.schema_migrations where name = 'doomed'");
+    const { rows: created } = await db.query(
+      "select count(*)::int as count from pg_tables where tablename = 'doomed'");
+    // Both halves rolled back together, which is the whole point: the next run
+    // sees it as pending and re-running it is safe, because nothing landed.
+    assert.equal(recorded[0].count, 0, 'the ledger must not record a migration that failed');
+    assert.equal(created[0].count, 0, 'the migration must not leave objects behind');
+  } finally { await db.close(); }
 });

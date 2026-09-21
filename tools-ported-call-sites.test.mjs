@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  CALL_SITE_CONTRACT, CallSiteError, callText, censusCallSites, checkCallSites,
+  CALL_SITE_CONTRACT, CallSiteError, callText, censusCallSites, checkCallSites, codeOnly,
   readExpectations, reachesIn,
 } from './tools-ported-call-sites.mjs';
 
@@ -65,6 +65,27 @@ test('a bracket inside a string or comment cannot close the call', () => {
   const [site] = sitesIn(
     "base44.functions.invoke('createAuthorizedPatient', { note: ')', /* ) */ agency_id: a });");
   assert.equal(site.tenant, 'named');
+});
+
+test('a tenant named inside a string or a comment is not a tenant the request carries', () => {
+  // `text.includes('agency_id')` read the raw call text, so a ratchet could
+  // count these as named and silently drop a site that refuses at runtime.
+  for (const source of ["base44.functions.invoke('createAuthorizedPatient', { note: 'agency_id' });",
+    "base44.functions.invoke('createAuthorizedPatient', { /* agency_id */ a: 1 });",
+    "base44.functions.invoke('createAuthorizedPatient', { a: 1 }); // agency_id"]) {
+    assert.equal(sitesIn(source)[0].tenant, 'absent', source);
+  }
+  // And the real forms still count, including shorthand.
+  for (const source of ["base44.functions.invoke('createAuthorizedPatient', { agency_id: a });",
+    "base44.functions.invoke('createAuthorizedPatient', { agency_id });"]) {
+    assert.equal(sitesIn(source)[0].tenant, 'named', source);
+  }
+});
+
+test('blanking preserves offsets so a reported line does not shift', () => {
+  const source = "const x = 'aa';\nbase44.functions.invoke('createAuthorizedPatient', { agency_id: a });";
+  assert.equal(codeOnly(source).length, source.length);
+  assert.equal(sitesIn(source)[0].line, 2);
 });
 
 test('an unbalanced call refuses rather than reporting a truncated payload', () => {

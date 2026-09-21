@@ -4,7 +4,8 @@ import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   LOCAL_ONLY_MIGRATIONS, MIGRATE_CONTRACT, MigrateError,
-  applyMigrations, ledgerName, ledgerVersion, planMigration, readAppliedNames, runMigrateCli,
+  applyMigrations, ledgerName, ledgerVersion, migrationWithLedgerRow, planMigration,
+  readAppliedNames, runMigrateCli,
 } from './tools-pennsync-migrate.mjs';
 import {
   MIGRATION_DIRECTORY, RECORD_MIGRATION_DIRECTORY, readMigrations,
@@ -141,6 +142,59 @@ test('the local-only set is exactly what the hosted staging project is missing b
     .filter(file => !hosted.has(ledgerName(file)) && !LOCAL_ONLY_MIGRATIONS[file]);
   assert.deepEqual(unexplained, [],
     'a migration older than the hosted high-water mark that is neither applied nor explained');
+});
+
+test('the ledger row commits inside the migration own transaction', () => {
+  // Applying the migration and then inserting the row as a second statement
+  // left a window: a crash between them leaves the migration applied and
+  // unrecorded, and the next run sees a SUFFIX rather than a hole — so
+  // MIGRATE_OUT_OF_ORDER never fires and a non-idempotent migration re-runs.
+  // An earlier comment here claimed the order check caught that. It did not.
+  const sql = migrationWithLedgerRow({
+    name: '20260919114500_enrollment_receipt.sql',
+    from: MIGRATION_DIRECTORY,
+    sql: '-- header\nbegin;\ncreate table t ();\ncommit;\n',
+  });
+  const lines = sql.trimEnd().split('\n');
+  assert.match(lines.at(-1), /^commit;$/);
+  assert.match(sql, /insert into supabase_migrations\.schema_migrations/);
+  // The row is before the commit, so both land in one transaction.
+  assert.ok(sql.indexOf('insert into supabase_migrations') < sql.lastIndexOf('commit;'));
+  assert.match(sql, /values \('20260919114500', 'enrollment_receipt'\)/);
+});
+
+test('a leading comment header does not make a migration look untransactional', () => {
+  // The first version anchored the check at the file's very start and refused
+  // all sixty-nine migrations, because every one opens with a `--` header.
+  const sql = migrationWithLedgerRow({
+    name: '001_a.sql', from: MIGRATION_DIRECTORY,
+    sql: '-- one\n-- two\n\nbegin;\nselect 1;\ncommit;\n-- trailing note\n',
+  });
+  assert.match(sql, /insert into supabase_migrations/);
+});
+
+test('a migration that manages no transaction is refused rather than appended to', () => {
+  // Appending to a file that commits differently would put the row outside any
+  // transaction and restore the bug silently, so this fails closed.
+  for (const body of ['create table t ();\n', 'begin;\ncreate table t ();\n', 'create table t ();\ncommit;\n']) {
+    refusal(() => migrationWithLedgerRow({ name: '001_a.sql', from: MIGRATION_DIRECTORY, sql: body }),
+      'MIGRATE_MIGRATION_NOT_TRANSACTIONAL');
+  }
+});
+
+test('a name that cannot be interpolated safely is refused', () => {
+  refusal(() => migrationWithLedgerRow({
+    name: "001_a'; drop table x; --.sql", from: MIGRATION_DIRECTORY, sql: 'begin;\nselect 1;\ncommit;\n',
+  }), 'MIGRATE_MIGRATION_NAME_UNUSABLE');
+});
+
+test('every committed migration accepts the ledger row', () => {
+  // The guard above is worth nothing if the real tree cannot satisfy it.
+  const migrations = readMigrations(REPOSITORY);
+  for (const migration of migrations) {
+    assert.match(migrationWithLedgerRow(migration), /insert into supabase_migrations/, migration.name);
+  }
+  assert.ok(migrations.length > 60);
 });
 
 test('a database with no store is sent to the provisioner rather than migrated', async () => {

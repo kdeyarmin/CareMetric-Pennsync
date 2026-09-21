@@ -145,7 +145,14 @@ export function createIndependentStagingAdapter(config,
    */
   const portedCall = async (name, input) => {
     const { agency_id: supplied, ...params } = input;
-    const agencyId = supplied || boundTenant()?.agency_id || null;
+    // Only an ABSENT tenant falls back. A call site that named one has made
+    // the choice even when it named it badly: `agency_id: null` is a lookup
+    // that produced nothing, and answering that with the bound agency would
+    // act on a tenant nobody chose. `||` did exactly that, so the key's
+    // presence decides and an explicit falsy value falls to the refusal below.
+    const agencyId = Object.hasOwn(input, 'agency_id')
+      ? supplied
+      : (boundTenant()?.agency_id ?? null);
     if (!agencyId) fail('STAGING_TENANT_SELECTION_REQUIRED');
     const active = client, lease = generation;
     if (!active || !signedIn) fail('AUTHENTICATION_REQUIRED', 401);

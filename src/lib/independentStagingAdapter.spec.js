@@ -212,6 +212,21 @@ describe('the ported API caller', () => {
     } finally { clearTrustedTenantContext(); }
   });
 
+  it('refuses an explicitly falsy tenant instead of substituting the bound one', async () => {
+    const { fixture, adapter } = await signedIn();
+    bindTrustedTenantContext(boundUser, boundContext());
+    try {
+      // A present-but-empty tenant is a lookup that produced nothing, not an
+      // absent key. `supplied || bound` answered it with the bound agency,
+      // which acts on a tenant nobody chose; the key's presence decides now.
+      for (const agency_id of [null, '', undefined]) {
+        await expect(adapter.raw.functions.invoke('validatePatientData', { agency_id, patient: {} }))
+          .rejects.toThrow(/STAGING_TENANT_SELECTION_REQUIRED/);
+      }
+      expect(fixture.apiCalls).toHaveLength(0);
+    } finally { clearTrustedTenantContext(); }
+  });
+
   it('never overrides a tenant the call site did name', async () => {
     const { fixture, adapter } = await signedIn();
     // Bound to one agency, asked for another: the request decides, because a

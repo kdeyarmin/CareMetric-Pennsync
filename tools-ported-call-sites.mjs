@@ -103,6 +103,46 @@ export function callText(source, open) {
   refuse('CALL_SITE_UNBALANCED', { at: open });
 }
 
+/**
+ * The call text with every string literal and comment blanked out.
+ *
+ * `text.includes('agency_id')` read the raw text, so `{ note: 'agency_id' }`
+ * or a commented-out property counted as naming a tenant — and a ratchet that
+ * over-counts `named` silently drops a call site that will refuse at runtime.
+ * `callText` already skips strings and comments to balance parentheses; the
+ * same discipline has to apply to what is searched, not only to where the call
+ * ends. Blanking preserves offsets, so nothing else shifts.
+ */
+export function codeOnly(text) {
+  const out = [...text];
+  for (let index = 0; index < text.length; index += 1) {
+    const pair = text.slice(index, index + 2);
+    if (pair === '//') {
+      const stop = text.indexOf('\n', index);
+      const end = stop < 0 ? text.length : stop;
+      for (let at = index; at < end; at += 1) out[at] = ' ';
+      index = end; continue;
+    }
+    if (pair === '/*') {
+      const stop = text.indexOf('*/', index);
+      const end = stop < 0 ? text.length : stop + 2;
+      for (let at = index; at < end; at += 1) out[at] = ' ';
+      index = end - 1; continue;
+    }
+    const quote = text[index];
+    if (quote === '"' || quote === "'" || quote === '`') {
+      let at = index + 1;
+      for (; at < text.length; at += 1) {
+        if (text[at] === '\\') { out[at] = ' '; at += 1; out[at] = ' '; continue; }
+        if (text[at] === quote) break;
+        out[at] = ' ';
+      }
+      index = at; continue;
+    }
+  }
+  return out.join('');
+}
+
 /** Where a character offset falls, as a line number. */
 const lineOf = (source, offset) => source.slice(0, offset).split('\n').length;
 
@@ -134,7 +174,9 @@ export function reachesIn({ path, source, names }) {
         // Conservative on purpose. A payload passed as a variable cannot be
         // read here, so it is `indeterminate` rather than assumed absent —
         // the rule `invokedFunctions` follows for a computed key.
-        tenant: text.includes(TENANT_KEY) ? 'named'
+        // Searched in code only: a tenant named inside a string or a
+        // comment is not a tenant the request carries.
+        tenant: new RegExp(`\\b${TENANT_KEY}\\b`).test(codeOnly(text)) ? 'named'
           : /\(\s*['"`][^'"`]+['"`]\s*,\s*[[{]/.test(text) ? 'absent'
             : /\(\s*['"`][^'"`]+['"`]\s*\)/.test(text) ? 'absent' : 'indeterminate',
       });

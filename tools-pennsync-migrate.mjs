@@ -164,6 +164,52 @@ export function planMigration({ migrations, applied }) {
   });
 }
 
+/**
+ * A migration's own transaction, with its ledger row inside it.
+ *
+ * The first version applied the migration and then inserted the ledger row as
+ * a second statement, and its comment claimed "the next run's order check is
+ * what catches the difference". It does not. A migration that committed
+ * without being recorded leaves the ledger reading `… N-1 applied, N
+ * unapplied, N+1 unapplied` — a suffix, not a hole — so `MIGRATE_OUT_OF_ORDER`
+ * never fires and the next run re-executes a migration that creates schemas
+ * and tables. That is the one outcome this tool exists to prevent, and it was
+ * reachable through any crash or dropped connection between the two writes.
+ *
+ * Every committed migration is exactly `begin; … commit;`, so the record of a
+ * migration can commit in the same transaction as the migration. The shape is
+ * CHECKED rather than assumed: one that does not have it is refused, because
+ * appending to a file that manages its own transactions differently would put
+ * the insert outside any of them and restore the bug silently.
+ */
+export function migrationWithLedgerRow(migration) {
+  const version = ledgerVersion(migration.name);
+  const name = ledgerName(migration.name);
+  // Interpolated into SQL, so checked rather than trusted. Both come from a
+  // committed file name, but a file name is not a promise.
+  if (!/^\d+$/.test(version) || !/^[A-Za-z0-9_]+$/.test(name)) {
+    refuse('MIGRATE_MIGRATION_NAME_UNUSABLE', { file: migration.name });
+  }
+
+  // The shape is read as STATEMENTS, not as the file's first and last
+  // characters: every migration opens with a `--` header, so a check anchored
+  // at the start refused all sixty-nine of them.
+  const lines = migration.sql.split('\n');
+  const code = lines
+    .map((line, index) => ({ line, index }))
+    .filter(entry => entry.line.trim() !== '' && !/^\s*--/.test(entry.line));
+  const first = code.at(0), last = code.at(-1);
+  if (!first || !/^\s*begin\s*;/i.test(first.line) || !/commit\s*;\s*$/i.test(last.line)) {
+    refuse('MIGRATE_MIGRATION_NOT_TRANSACTIONAL', { file: migration.name });
+  }
+
+  // Inserted immediately before the closing `commit;` LINE, so the row lands
+  // inside the migration's own transaction rather than after it.
+  const ledger = `insert into supabase_migrations.schema_migrations (version, name)`
+    + `\n  values ('${version}', '${name}');`;
+  return [...lines.slice(0, last.index), ledger, ...lines.slice(last.index)].join('\n');
+}
+
 /** The ledger the Supabase CLI keeps, or a refusal naming why it cannot be read. */
 export async function readAppliedNames(db) {
   const { rows: present } = await db.query(`select count(*)::int as count
@@ -233,14 +279,10 @@ export async function applyMigrations({ db, repository, apply = false, log = () 
   }
 
   for (const migration of plan.plan) {
-    await db.session(session => session.exec(migration.sql));
-    // Recorded only after the migration itself committed, so a run that dies
-    // part-way leaves a ledger that understates what ran rather than one that
-    // claims a migration nobody applied. The next run's order check is what
-    // catches the difference.
-    await db.query(
-      'insert into supabase_migrations.schema_migrations (version, name) values ($1, $2)',
-      [ledgerVersion(migration.name), ledgerName(migration.name)]);
+    // One statement, one transaction: the schema change and the record of it
+    // commit together or neither does, so a crash between them cannot leave a
+    // migration applied and unrecorded for the next run to repeat.
+    await db.session(session => session.exec(migrationWithLedgerRow(migration)));
     result.applied.push(migration.name);
     log(`applied ${migration.name}`);
   }
