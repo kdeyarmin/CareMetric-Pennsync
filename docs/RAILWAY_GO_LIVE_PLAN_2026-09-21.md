@@ -127,9 +127,42 @@ critical path that needs nothing from anybody.
   it deliberately, that fact lived in one sentence of the transition plan, and
   a tool applying "everything pending" would have installed it on the next run
   with nothing to complain.
+- **The plan has now been run against the real target, read-only**, and it is
+  the documented gap exactly: **9 applied, 59 pending, 1 skipped** with its
+  reason, and `deployment_pin_pending: true` — the pin migration is the first
+  thing pending, which is what made judging the pin before reading the ledger
+  refuse this database. `mutated: false`; nothing was written.
+- **A second transport had to exist before that plan could be run at all, and
+  that is a finding rather than a convenience.** From this container — and from
+  any runner allowed outbound HTTPS and nothing else, which includes CI here —
+  the database is not reachable on its own protocol: `db.<ref>.supabase.co`
+  does not resolve, because Supabase's direct host is IPv6-only, and both
+  poolers time out on TCP 5432 and 6543. The management query endpoint runs as
+  `postgres` over ordinary HTTPS and is reachable. So
+  `tools-pennsync-supabase-db.mjs` speaks the migrate tool's `db` interface
+  over that endpoint, chosen by URL scheme — `supabase://<project-ref>`, with
+  the token in the environment rather than the URL, so it cannot reach a log
+  line or a shell history.
+
+  It carries statements and decides nothing. Three of its properties are
+  refusals rather than conventions, because the endpoint is *not* a connection
+  and behaves like one until it matters. It takes no parameters, since dropping
+  them would send a literal `$1`. It refuses a body that would end with a
+  transaction still open, because every POST is its own connection while
+  `applyMigrations` depends on the migration and its ledger row committing
+  together. And it never re-sends a write: a request that times out after the
+  server committed is indistinguishable from one that never arrived, so
+  recovery is to run the tool again — which is safe for exactly the reason the
+  ledger row sits inside the transaction.
+- **The pin's preconditions are verified on the target.** The migration refuses
+  to run without `SUPERUSER` or `BYPASSRLS`; `postgres` there has `BYPASSRLS`
+  and `CREATEROLE`. `pennsync.deployment_app_id` is unset, so the pin resolves
+  to staging — the restrictive default, and the correct value for this project —
+  and the `deployment` row will record `source = 'default'` rather than
+  `'setting'`. Choosing it explicitly is the one open decision in this stage.
 - CI reports the gap read-only on every run once
   `PENNSYNC_STAGING_DATABASE_URL` exists (`hosted-gap` in
-  `pennsync-authority.yml`); it never passes `--apply`.
+  `pennsync-authority.yml`); it never applies anything.
 - Re-run the suites that today prove themselves against PGlite —
   `record-store-migration`, `record-brokers`, `record-tenant-isolation`,
   `activity-audit`, `contract-*` — against the hosted project.
@@ -439,6 +472,7 @@ so none of it sits waiting on a misunderstanding:
 
 | Needed | For | Note |
 | --- | --- | --- |
+| Approval to run the migrate tool's write path against hosted staging | Stage A | The credentials, the transport and the verified plan all exist here; an agent session's guardrail classifies any write to a hosted database as a production deploy and cannot tell this staging project from a production one. Nothing else in Stage A is outstanding |
 | Create the `pennsync-api` Railway service | Stage B | Cost approval; same project and pattern as the runtime |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this |
