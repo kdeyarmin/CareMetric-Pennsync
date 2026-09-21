@@ -62,6 +62,13 @@ import { isManagementUrl, openManagementClient } from '../../../tools-pennsync-s
  * `isReadOnly`, which fails closed, before it is sent. A read-only suite that
  * merely intends to be read-only is one careless edit from seeding the hosted
  * project, and this one runs in CI.
+ *
+ * Not in `pnpm test` — it needs a hosted project, the same reason
+ * `record-contract-postgres.test.mjs` is not.
+ * `.github/workflows/pennsync-authority.yml` is the list of record for the
+ * suites that are not. Unlike that one this file SKIPS rather than throws
+ * without its target, because it is the job's only step and a job that fails
+ * on every fork's pull request teaches people to ignore it.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const SCHEMA = 'pennsync_records';
@@ -235,9 +242,19 @@ function readOnlyClient() {
   };
 }
 
-/** `jsonb` from either driver, as a plain object. */
-const only = result => {
-  const value = Object.values(result.rows[0])[0];
+/**
+ * `jsonb` from either driver, as a plain object.
+ *
+ * Every query here aggregates into one row, so no row means the read did not
+ * happen — a transport that answered `[]` rather than a document. Said with a
+ * name attached, because the alternative is a `TypeError` on `undefined` from
+ * inside `before()` and fourteen tests failing without saying which read was
+ * empty.
+ */
+const only = (label, result) => {
+  const [row] = result.rows;
+  if (!row) throw new Error(`HOSTED_READ_EMPTY: ${label} returned no row`);
+  const value = Object.values(row)[0];
   return typeof value === 'string' ? JSON.parse(value) : value;
 };
 
@@ -260,15 +277,15 @@ before(async () => {
     committed.push(migration.name);
     await reference_db.exec(migration.sql);
   }
-  reference = only(await reference_db.query(INVENTORY));
+  reference = only('the reference inventory', await reference_db.query(INVENTORY));
   await reference_db.close();
 
   const client = readOnlyClient();
   try {
     hosted = {
-      inventory: only(await client.query(INVENTORY)),
-      roles: only(await client.query(ROLES)),
-      ledger: only(await client.query(LEDGER)),
+      inventory: only('the hosted inventory', await client.query(INVENTORY)),
+      roles: only('the hosted roles', await client.query(ROLES)),
+      ledger: only('the hosted ledger', await client.query(LEDGER)),
     };
   } finally { await client.end(); }
 });
