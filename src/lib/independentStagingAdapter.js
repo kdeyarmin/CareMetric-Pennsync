@@ -1,5 +1,4 @@
 import { createStagingAuthorityClient, PORTED_FUNCTIONS, STAGING_APP_ID } from '../../services/authority-client/client.mjs';
-import { getActiveTrustedTenantContext } from '@/lib/roles';
 
 const EMAILS = Object.freeze(['admin-a', 'clinician-a', 'clinician-empty', 'admin-b']
   .map(name => `info+pennsync-${name}@caremetricai.com`));
@@ -34,7 +33,8 @@ export function readIndependentStagingConfig(env = {}) {
 }
 
 /** Finite adaptation of existing app contracts; never a generic SDK or entity proxy. */
-export function createIndependentStagingAdapter(config, { fetchImpl = globalThis.fetch } = {}) {
+export function createIndependentStagingAdapter(config,
+  { fetchImpl = globalThis.fetch, boundTenant = () => null } = {}) {
   let client = null;
   let generation = 0;
   let signedIn = false;
@@ -128,7 +128,11 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
    *
    * So the tenant is supplied HERE, where it reaches only the ported service
    * and can never touch a Base44 payload. What it supplies is not an
-   * invention: `getActiveTrustedTenantContext()` is the principal AuthContext
+   * invention: `boundTenant` is wired to `getActiveTrustedTenantContext` by
+   * `independentStagingSession.js`, the composition root, rather than imported
+   * here — this module is also loaded under plain `node --test`, where a `@/`
+   * alias does not resolve, which is why every import in it is relative. It is
+   * the principal AuthContext
    * already bound and validated, the same source the six revalidation hooks
    * use through `trustedTenantRequest`, and its own contract states that it is
    * not an authorization grant because the server independently re-checks the
@@ -141,7 +145,7 @@ export function createIndependentStagingAdapter(config, { fetchImpl = globalThis
    */
   const portedCall = async (name, input) => {
     const { agency_id: supplied, ...params } = input;
-    const agencyId = supplied || getActiveTrustedTenantContext()?.agency_id || null;
+    const agencyId = supplied || boundTenant()?.agency_id || null;
     if (!agencyId) fail('STAGING_TENANT_SELECTION_REQUIRED');
     const active = client, lease = generation;
     if (!active || !signedIn) fail('AUTHENTICATION_REQUIRED', 401);

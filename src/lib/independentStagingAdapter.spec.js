@@ -1,6 +1,7 @@
+import { readFile } from 'node:fs/promises';
 import { describe, it, expect } from 'vitest';
 import { createIndependentStagingAdapter, readIndependentStagingConfig } from './independentStagingAdapter';
-import { bindTrustedTenantContext, clearTrustedTenantContext } from '@/lib/roles';
+import { bindTrustedTenantContext, clearTrustedTenantContext, getActiveTrustedTenantContext } from '@/lib/roles';
 import { stagingApiUrl, stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
 
 /** The principal AuthContext binds, which is where a ported call's tenant comes from. */
@@ -100,11 +101,30 @@ describe('finite independent app adapter', () => {
   });
 });
 
+describe('the adapter module under plain node', () => {
+  it('carries no "@/" alias import, because a node suite loads this file directly', async () => {
+    // `services/authority-client/browser/actual-app-acceptance.test.mjs` runs
+    // it under `node --test`, where Vite's alias does not resolve. Adding
+    // `import { getActiveTrustedTenantContext } from '@/lib/roles'` here passed
+    // lint, the whole of `pnpm test`, the build and every gate, and failed CI
+    // with ERR_MODULE_NOT_FOUND — the trap AGENTS.md records as twenty suites
+    // that `pnpm test` does not run. A relative import would not have saved it
+    // either: `roles.js` reaches `@/lib/superAdmin` itself, which is why the
+    // accessor is INJECTED by the composition root instead.
+    // A repo-relative path, not `import.meta.url`: vitest serves modules over
+    // http, so that URL is not a `file:` one and `readFile` rejects it.
+    const source = await readFile('src/lib/independentStagingAdapter.js', 'utf8');
+    const aliased = [...source.matchAll(/^\s*import\s[^;]*?from\s+['"`](@\/[^'"`]+)['"`]/gm)].map(m => m[1]);
+    expect(aliased).toEqual([]);
+  });
+});
+
 describe('the ported API caller', () => {
   const ported = { ...stagingEnv, VITE_PENNSYNC_API_URL: stagingApiUrl };
   const signedIn = async (env = ported) => {
     const fixture = stagingFixture();
-    const adapter = createIndependentStagingAdapter(readIndependentStagingConfig(env), { fetchImpl: fixture.fetch });
+    const adapter = createIndependentStagingAdapter(readIndependentStagingConfig(env),
+      { fetchImpl: fixture.fetch, boundTenant: getActiveTrustedTenantContext });
     await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
     return { fixture, adapter };
   };
