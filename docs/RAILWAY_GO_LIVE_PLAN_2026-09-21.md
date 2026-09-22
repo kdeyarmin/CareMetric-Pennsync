@@ -272,6 +272,40 @@ where it is least diagnosable. It is asserted now.
   can produce. It is read-only structurally rather than by intention: every
   statement is checked with the migrate tool's own `isReadOnly`, which fails
   closed, before it is sent. 15 tests, green against hosted staging.
+
+  **What it compares is STRUCTURE rather than counts, and that distinction was
+  a review finding rather than the first design.** The first version compared
+  table names, policy names and function counts grouped by owner — all of
+  which survive the drifts that matter. An `alter policy … using (true)`, a
+  dropped `chart_assignment_request_key`, a rewritten contract body and a
+  `revoke execute … from authenticated` each leave every name and total
+  exactly as they were. The comparison now carries each policy's command,
+  roles, permissiveness, `qual` and `with_check`; each index and constraint
+  definition; each function's owner, security mode, settings, volatility,
+  grants and body digest; each trigger definition; and each column's type and
+  nullability — across **both** schemas, since `pennsync_private` is where the
+  authority answers come from and measuring only the record store left a
+  dropped membership constraint or a detached immutability trigger invisible.
+  Each of those was proved to fail by sabotaging a reference build, not by
+  reading the query.
+
+  Two more of the same kind. Caller table privileges are asked through
+  `has_table_privilege` rather than read from
+  `information_schema.role_table_grants`, because that view lists grants made
+  to a named grantee and omits what a role holds through `PUBLIC`: a
+  `grant select … to public` left the old count at **0** while every caller
+  inherited the privilege, which is measured and recorded rather than
+  asserted. And the read-only barrier is an ALLOWLIST of the three statements
+  the suite sends, not a scan of leading verbs — `select <write contract>(…)`
+  and `explain analyze insert …` both pass a verb scan and both mutate, and
+  the credential in play is account-wide.
+
+  Hosted is PostgreSQL 17.6 and PGlite is 18.3, and everything above compares
+  byte for byte across that gap. The single exception is handled explicitly:
+  PostgreSQL 18 gives NOT NULL its own `pg_constraint` row and 17 does not, so
+  constraints exclude `contype = 'n'` and nullability is compared through
+  `pg_attribute.attnotnull`, which both answer identically. The coverage is
+  kept rather than dropped.
 - **The row-behaviour half cannot run hosted yet, and that is a finding rather
   than an omission.** `record-tenant-isolation`, `activity-audit` and the 42
   `contract-*` suites prove what a policy *means* by seeding callers, and a
@@ -301,6 +335,14 @@ reason — but the hosted measurements happen on main and on a manual run from
 main. That is narrower than "CI running them on every PR" and it is the safe
 reading of it. Closing it properly needs a credential scoped to reads on one
 project, which Supabase does not offer today.
+
+**On `main` a missing credential FAILS rather than skips**, and that too was a
+review finding. The suite turns an absent target into a skipped test, which is
+right for the credential-free step and would be silent failure on main: a
+renamed or expired secret would leave the job green having read nothing, and a
+required check that has quietly stopped checking is the exact shape this job
+exists to catch — the hosted project sat fifty-nine migrations behind because
+nothing looked. The main-only step now refuses before it invokes the suite.
 
 The containment is two steps rather than one, and the repository insisted on
 it. The first version bound the secrets through an env-level

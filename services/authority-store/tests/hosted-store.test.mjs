@@ -6,7 +6,6 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { KNOWN_APPS, readMigrations } from '../../../tools-pennsync-provision.mjs';
 import { LOCAL_ONLY_MIGRATIONS, ledgerName } from '../../../tools-pennsync-migrate.mjs';
-import { isReadOnly } from '../../../tools-pennsync-migrate-shape.mjs';
 import { isManagementUrl, openManagementClient } from '../../../tools-pennsync-supabase-db.mjs';
 
 /**
@@ -41,34 +40,55 @@ import { isManagementUrl, openManagementClient } from '../../../tools-pennsync-s
  * waits for stage C, and until then this file proves the half that does not
  * need a caller.
  *
- * That half is not small. It is every claim the row assertions REST on: that
- * the tables are owned by a role whose policies bind, that row level security
- * is not merely enabled but forced, that all 591 policies survived the trip,
- * that the caller helpers are unreachable by the callers they describe, that
- * the contract surface is the committed one, and that nothing holds a direct
- * grant on a record table. A policy nobody obeys and a policy nobody reaches
- * fail in exactly the same way: silently, and only in production.
+ * That half is not small. It is every claim the row assertions REST on, and
+ * the inventory below is deliberately structural rather than a set of counts:
+ * a count cannot see an `alter policy … using (true)`, a dropped unique index,
+ * a rewritten contract body or a revoked grant, and each of those leaves the
+ * names and totals exactly as they were. So the comparison carries every
+ * policy's command, roles, permissiveness, `qual` and `with_check`; every
+ * index and constraint definition; every function's owner, security mode,
+ * settings, volatility, grants and body digest; every trigger definition; and
+ * every column's type and nullability. A policy nobody obeys, a policy nobody
+ * reaches and a policy quietly widened to `true` all fail the same way:
+ * silently, and only in production.
+ *
+ * BOTH SCHEMAS, because `pennsync_private` is where the authority answers come
+ * from. Measuring only `pennsync_records` would leave a dropped membership
+ * constraint, a disabled force-RLS or a detached immutability trigger invisible
+ * while every other assertion here stayed green.
  *
  * HOW IT DECIDES WHAT IS CORRECT. The expectations are not written down here.
  * They are read out of a PGlite database built from the same committed
  * migrations, by the SAME SQL, and compared. A constant in this file would be a
  * third opinion that drifts from both; a reference build cannot, and it makes
  * the suite say something stronger than "hosted looks sane" — it says hosted is
- * what these migrations produce. The two exceptions are called out where they
- * appear, and both are facts about the platform that a local database has no
- * way to express.
+ * what these migrations produce. The exceptions are called out where they
+ * appear, and each is a fact about the platform a local database cannot state.
  *
- * IT NEVER WRITES. Every statement is checked with the migrate tool's own
- * `isReadOnly`, which fails closed, before it is sent. A read-only suite that
- * merely intends to be read-only is one careless edit from seeding the hosted
- * project, and this one runs in CI.
+ * ONE VERSION DIFFERENCE IS HANDLED EXPLICITLY. Hosted is PostgreSQL 17.6 and
+ * PGlite 0.5.8 is 18.3. Everything above compares byte for byte across that gap
+ * — deparsed `qual`, `indexdef`, `pg_get_constraintdef`, `pg_get_triggerdef`
+ * and `proconfig` all agree — with one exception: PostgreSQL 18 gives NOT NULL
+ * its own `pg_constraint` row and 17 does not, which is 584 rows on one side
+ * and none on the other. Constraints therefore exclude `contype = 'n'`, and
+ * nullability is compared through `pg_attribute.attnotnull` instead, which both
+ * versions answer identically. Dropping the field would have lost the coverage;
+ * this keeps it and says why.
+ *
+ * IT NEVER WRITES, and the barrier is an ALLOWLIST rather than a scanner. An
+ * earlier version passed each statement through the migrate tool's `isReadOnly`,
+ * which only classifies leading verbs — `select write_contract(…)` and
+ * `explain analyze insert …` both pass it, and both mutate. Since this suite
+ * issues exactly three fixed statements, the client holds those three and
+ * refuses everything else, so no edit here can write through an account-wide
+ * management credential.
  *
  * WHAT IT MAY IMPORT is a constraint rather than a preference, and
  * `record-contract-postgres.test.mjs` records why: the CI job running this
  * installs only `services/authority-store`'s own dependencies and does no root
  * install, so a suite here dies at load — before a single assertion — if it
  * reaches a root module with a third-party dependency of its own. PGlite is
- * fine, because it is that package's own devDependency. The four root tools
+ * fine, because it is that package's own devDependency. The three root tools
  * above are fine because they import nothing but node builtins and each other.
  * `tools-entity-schema-plan.mjs` is NOT, because it imports `json5`, which is
  * why `SCHEMA` is written out below rather than taken from it. `KNOWN_APPS`
@@ -80,12 +100,25 @@ import { isManagementUrl, openManagementClient } from '../../../tools-pennsync-s
  * `record-contract-postgres.test.mjs` is not.
  * `.github/workflows/pennsync-authority.yml` is the list of record for the
  * suites that are not. Unlike that one this file SKIPS rather than throws
- * without its target, because it is the job's only step and a job that fails
- * on every fork's pull request teaches people to ignore it.
+ * without its target, because it is the job's only step on a pull request and a
+ * job that fails on every fork teaches people to ignore it. On `main` the
+ * WORKFLOW refuses to reach this file without credentials, so the skip cannot
+ * turn the hosted measurement into a green job that measured nothing.
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const SCHEMA = 'pennsync_records';
 const PRIVATE = 'pennsync_private';
+
+/**
+ * The deployment this suite is for.
+ *
+ * `KNOWN_APPS` holds staging AND production, so accepting "any known app"
+ * would let a mis-set `PENNSYNC_STAGING_DATABASE_URL` point at a production
+ * store and still pass. The runtime's independent authority pins one project,
+ * and this is the store it pins; a production deployment is measured by its
+ * own job when there is one.
+ */
+const EXPECTED_LABEL = 'staging';
 
 /**
  * Roles that must hold no way past a policy. `service_role` is deliberately
@@ -93,6 +126,7 @@ const PRIVATE = 'pennsync_private';
  * grant model instead, which is its own test below.
  */
 const UNPRIVILEGED_ROLES = ['pennsync_records_owner', 'anon', 'authenticated'];
+const CALLER_ROLES = ['anon', 'authenticated', 'service_role'];
 
 /**
  * Privileged roles that can reach the record store on a managed Supabase
@@ -118,66 +152,89 @@ const PRIVILEGED_REACH = Object.freeze([
   'postgres', 'supabase_admin', 'supabase_etl_admin', 'supabase_read_only_user',
 ]);
 
+const SCHEMA_LIST = `'${SCHEMA}', '${PRIVATE}'`;
+
 /**
  * One statement, asked of both databases, so the two sides cannot be measured
  * differently. Everything is aggregated into a single `jsonb` document because
  * each hosted read is an HTTPS round trip, and because `jsonb` sidesteps the
  * bigint-as-string difference between the two drivers.
+ *
+ * Every part is keyed on `k` so a difference names the object rather than an
+ * array index.
  */
 const INVENTORY = `select jsonb_build_object(
   'tables', (select jsonb_agg(jsonb_build_object(
-      'name', c.relname,
+      'k', n.nspname || '.' || c.relname,
       'owner', pg_get_userbyid(c.relowner),
       'rls', c.relrowsecurity,
-      'forced', c.relforcerowsecurity) order by c.relname)
+      'forced', c.relforcerowsecurity) order by n.nspname, c.relname)
     from pg_class c join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = '${SCHEMA}' and c.relkind = 'r'),
-  'policies', (select jsonb_agg((tablename || '.' || policyname) order by tablename, policyname)
-    from pg_policies where schemaname = '${SCHEMA}'),
-  'contracts', (select jsonb_agg(jsonb_build_object(
-      'name', p.proname,
-      'args', pg_get_function_identity_arguments(p.oid),
-      'secdef', p.prosecdef,
-      'authenticated', has_function_privilege('authenticated', p.oid, 'execute'),
-      'anon', has_function_privilege('anon', p.oid, 'execute'))
-      order by p.proname, pg_get_function_identity_arguments(p.oid))
-    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname like 'pennsync_contract_%'),
-  'helpers', (select jsonb_agg(jsonb_build_object(
-      'name', p.proname,
-      'args', pg_get_function_identity_arguments(p.oid),
-      'secdef', p.prosecdef,
-      'authenticated', has_function_privilege('authenticated', p.oid, 'execute'),
-      'anon', has_function_privilege('anon', p.oid, 'execute'))
-      order by p.proname, pg_get_function_identity_arguments(p.oid))
-    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = '${SCHEMA}' and p.proname like 'caller%'),
+    where n.nspname in (${SCHEMA_LIST}) and c.relkind = 'r'),
+  'columns', (select jsonb_agg(jsonb_build_object(
+      'k', n.nspname || '.' || c.relname || '.' || a.attname,
+      'type', format_type(a.atttypid, a.atttypmod),
+      'notnull', a.attnotnull) order by n.nspname, c.relname, a.attname)
+    from pg_attribute a
+    join pg_class c on c.oid = a.attrelid
+    join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname in (${SCHEMA_LIST}) and c.relkind = 'r'
+      and a.attnum > 0 and not a.attisdropped),
+  'constraints', (select jsonb_agg(jsonb_build_object(
+      'k', n.nspname || '.' || rel.relname || '.' || c.conname,
+      'type', c.contype::text,
+      'def', pg_get_constraintdef(c.oid)) order by n.nspname, rel.relname, c.conname)
+    from pg_constraint c
+    join pg_class rel on rel.oid = c.conrelid
+    join pg_namespace n on n.oid = rel.relnamespace
+    where n.nspname in (${SCHEMA_LIST}) and c.contype <> 'n'),
+  'indexes', (select jsonb_agg(jsonb_build_object(
+      'k', schemaname || '.' || tablename || '.' || indexname,
+      'def', indexdef) order by schemaname, tablename, indexname)
+    from pg_indexes where schemaname in (${SCHEMA_LIST})),
+  'policies', (select jsonb_agg(jsonb_build_object(
+      'k', schemaname || '.' || tablename || '.' || policyname,
+      'cmd', cmd, 'permissive', permissive, 'roles', roles::text,
+      'qual', qual, 'with_check', with_check)
+      order by schemaname, tablename, policyname)
+    from pg_policies where schemaname in (${SCHEMA_LIST})),
   'functions', (select jsonb_agg(jsonb_build_object(
-      'owner', owner, 'secdef', secdef, 'count', n) order by owner, secdef)
-    from (select pg_get_userbyid(p.proowner) as owner, p.prosecdef as secdef, count(*) as n
-      from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-      where n.nspname = '${SCHEMA}' group by 1, 2) grouped),
-  'caller_table_grants', (select count(*) from information_schema.role_table_grants
-    where table_schema in ('${SCHEMA}', '${PRIVATE}')
-      and grantee in ('anon', 'authenticated', 'service_role')),
-  'staging_rpcs', (select jsonb_agg(jsonb_build_object(
-      'name', p.proname,
-      'args', pg_get_function_identity_arguments(p.oid),
-      'authenticated', has_function_privilege('authenticated', p.oid, 'execute'),
-      'anon', has_function_privilege('anon', p.oid, 'execute'))
-      order by p.proname, pg_get_function_identity_arguments(p.oid))
-    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname like 'pennsync_staging_%'),
-  'private_authority', (select jsonb_agg(jsonb_build_object(
-      'name', p.proname,
-      'args', pg_get_function_identity_arguments(p.oid),
+      'k', n.nspname || '.' || p.proname
+        || '(' || pg_get_function_identity_arguments(p.oid) || ')',
+      'owner', pg_get_userbyid(p.proowner),
+      'secdef', p.prosecdef,
+      'volatile', p.provolatile::text,
+      'cfg', coalesce(p.proconfig::text, ''),
       'returns', pg_get_function_result(p.oid),
       'authenticated', has_function_privilege('authenticated', p.oid, 'execute'),
-      'anon', has_function_privilege('anon', p.oid, 'execute'))
-      order by p.proname, pg_get_function_identity_arguments(p.oid))
+      'anon', has_function_privilege('anon', p.oid, 'execute'),
+      'body', md5(coalesce(p.prosrc, '')))
+      order by n.nspname, p.proname, pg_get_function_identity_arguments(p.oid))
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = '${PRIVATE}'
-      and has_function_privilege('authenticated', p.oid, 'execute'))
+    where n.nspname in (${SCHEMA_LIST})
+       or (n.nspname = 'public' and p.proname like 'pennsync|_%' escape '|')),
+  'triggers', (select jsonb_agg(jsonb_build_object(
+      'k', n.nspname || '.' || rel.relname || '.' || t.tgname,
+      'def', pg_get_triggerdef(t.oid)) order by n.nspname, rel.relname, t.tgname)
+    from pg_trigger t
+    join pg_class rel on rel.oid = t.tgrelid
+    join pg_namespace n on n.oid = rel.relnamespace
+    where n.nspname in (${SCHEMA_LIST}) and not t.tgisinternal),
+  'caller_table_privileges', (select coalesce(jsonb_agg(granted order by granted), '[]'::jsonb)
+    from (
+      select n.nspname || '.' || c.relname || ':' || r.rolname || ':' || p.priv as granted
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      cross join (select unnest(array['anon', 'authenticated', 'service_role']) as rolname) r
+      cross join (select unnest(array['select', 'insert', 'update', 'delete',
+        'references', 'trigger']) as priv) p
+      where n.nspname in (${SCHEMA_LIST}) and c.relkind = 'r'
+        and has_table_privilege(r.rolname, c.oid, p.priv)) reachable),
+  'schema_usage', (select jsonb_agg(jsonb_build_object(
+      'k', r.rolname || ':' || s.nsp,
+      'usage', has_schema_privilege(r.rolname, s.nsp, 'usage')) order by r.rolname, s.nsp)
+    from (select unnest(array['anon', 'authenticated', 'service_role']) as rolname) r
+    cross join (select unnest(array['${SCHEMA}', '${PRIVATE}']) as nsp) s)
 ) as inventory`;
 
 /**
@@ -221,12 +278,24 @@ const LEDGER = `select jsonb_build_object(
 ) as ledger`;
 
 /**
+ * The only three statements this suite may send.
+ *
+ * An allowlist rather than a scanner, because a scanner over leading verbs is
+ * not a write barrier: `select some_write_contract(…)` is a `select`, and
+ * `explain analyze insert …` is an `explain`, and PostgreSQL executes both.
+ * The credential in play is account-wide, so the barrier has to be the set of
+ * statements rather than a property of them.
+ */
+const ALLOWED = Object.freeze(new Set([INVENTORY, ROLES, LEDGER]));
+
+/**
  * The target, and the reason a missing one skips rather than fails.
  *
  * A fork's pull request has no secrets, and `pnpm test` on a laptop has no
  * hosted project. Neither is a defect in the store, so neither should turn this
- * suite red; what would be a defect is CI reporting success while quietly
- * running nothing, so the skip says why.
+ * suite red. What WOULD be a defect is the hosted job reporting success while
+ * quietly measuring nothing, and the skip cannot cause that: the workflow's
+ * main-only step refuses to invoke this file unless both credentials are set.
  */
 const url = process.env.PENNSYNC_HOSTED_DATABASE_URL;
 const token = process.env.SUPABASE_ACCESS_TOKEN;
@@ -238,15 +307,7 @@ const skip = (() => {
   return false;
 })();
 
-/**
- * A client that cannot write, whatever is asked of it.
- *
- * `isReadOnly` is the migrate tool's own scanner and it fails closed: a
- * statement it cannot classify is a write. Wrapping the transport rather than
- * trusting the queries above means an edit to this file cannot reach the hosted
- * project with an `insert`, and means the direct-postgres transport is held to
- * the same rule as the management one.
- */
+/** A client that can send the three statements above and nothing else. */
 function readOnlyClient() {
   if (!isManagementUrl(url)) {
     // A postgres:// target would need `pg`, which this job does install, but it
@@ -258,7 +319,7 @@ function readOnlyClient() {
   const client = openManagementClient({ url, token });
   return {
     async query(sql) {
-      if (!isReadOnly(sql)) throw new Error('HOSTED_SUITE_IS_READ_ONLY');
+      if (!ALLOWED.has(sql)) throw new Error('HOSTED_SUITE_STATEMENT_NOT_ALLOWED');
       return client.query(sql);
     },
     end: () => client.end(),
@@ -271,8 +332,7 @@ function readOnlyClient() {
  * Every query here aggregates into one row, so no row means the read did not
  * happen — a transport that answered `[]` rather than a document. Said with a
  * name attached, because the alternative is a `TypeError` on `undefined` from
- * inside `before()` and fourteen tests failing without saying which read was
- * empty.
+ * inside `before()` and every test failing without saying which read was empty.
  */
 const only = (label, result) => {
   const [row] = result.rows;
@@ -281,9 +341,47 @@ const only = (label, result) => {
   return typeof value === 'string' ? JSON.parse(value) : value;
 };
 
+/**
+ * Two keyed inventories, compared so a failure NAMES what differs.
+ *
+ * `assert.deepEqual` over 3,402 columns prints both arrays and tells a reader
+ * nothing. This reports the missing keys, the extra keys and the first few
+ * fields that disagree, which is the difference between a diagnosable failure
+ * and a wall of JSON.
+ */
+function compare(part, reference, hosted) {
+  const ref = new Map((reference ?? []).map(entry => [entry.k, entry]));
+  const host = new Map((hosted ?? []).map(entry => [entry.k, entry]));
+  const missing = [...ref.keys()].filter(key => !host.has(key));
+  const extra = [...host.keys()].filter(key => !ref.has(key));
+  const changed = [];
+  for (const [key, expected] of ref) {
+    const actual = host.get(key);
+    if (!actual) continue;
+    for (const field of Object.keys(expected)) {
+      if (field === 'k') continue;
+      if (JSON.stringify(expected[field]) !== JSON.stringify(actual[field])) {
+        changed.push(`${key}.${field}: committed ${JSON.stringify(expected[field])}`
+          + ` hosted ${JSON.stringify(actual[field])}`);
+      }
+    }
+  }
+  const faults = [
+    ...missing.map(key => `missing from hosted: ${key}`),
+    ...extra.map(key => `present on hosted only: ${key}`),
+    ...changed,
+  ];
+  assert.deepEqual(faults.slice(0, 10), [],
+    `${part}: ${faults.length} difference(s) between the committed migrations and hosted`);
+}
+
+/** Functions in one schema, from the shared inventory. */
+const inSchema = (functions, prefix) =>
+  (functions ?? []).filter(entry => entry.k.startsWith(prefix));
+
 let hosted = {};
 let reference = {};
-let committed = [];
+const committed = [];
 
 before(async () => {
   if (skip) return;
@@ -292,16 +390,16 @@ before(async () => {
   // the ones a deployment deliberately never gets. `readMigrations` is the
   // provisioner's list rather than a directory walk here, so this cannot apply
   // them in an order no deployment uses.
-  const reference_db = new PGlite();
-  await reference_db.exec(readFileSync(
+  const referenceDb = new PGlite();
+  await referenceDb.exec(readFileSync(
     resolve(repository, 'services/authority-store/tests/bootstrap.sql'), 'utf8'));
   for (const migration of readMigrations(repository)) {
     if (LOCAL_ONLY_MIGRATIONS[migration.name]) continue;
     committed.push(migration.name);
-    await reference_db.exec(migration.sql);
+    await referenceDb.exec(migration.sql);
   }
-  reference = only('the reference inventory', await reference_db.query(INVENTORY));
-  await reference_db.close();
+  reference = only('the reference inventory', await referenceDb.query(INVENTORY));
+  await referenceDb.close();
 
   const client = readOnlyClient();
   try {
@@ -334,18 +432,47 @@ test('the migration held back locally was not applied', { skip }, () => {
   }
 });
 
-test('the deployment pin names a known app and one row records it', { skip }, () => {
+test('the deployment pin names the staging app and one row records it', { skip }, () => {
   const { ledger } = hosted;
   assert.equal(ledger.deployment_rows, 1, 'the pin is one row or it is not a pin');
   assert.ok(ledger.app_id in KNOWN_APPS, `${ledger.app_id} is not an app a deployment may serve`);
   assert.equal(ledger.label, KNOWN_APPS[ledger.app_id]);
-  // Either is correct; which one it is, is the thing to be able to state. An
-  // unset setting resolves to staging, the restrictive outcome.
+  // Not merely "a known app": `KNOWN_APPS` holds production too, so accepting
+  // any of them would let a mis-set target measure a production store and pass.
+  assert.equal(ledger.label, EXPECTED_LABEL,
+    `this suite measures the ${EXPECTED_LABEL} deployment and the target is pinned to ${ledger.label}`);
+  // Either source is correct; which one it is, is the thing to be able to
+  // state. An unset setting resolves to staging, the restrictive outcome.
   assert.ok(['default', 'setting'].includes(ledger.source), `unknown pin source ${ledger.source}`);
 });
 
+test('the reference build produced a store to compare against', { skip }, () => {
+  // Guarding the comparison below rather than the reference for its own sake.
+  // Every assertion there compares against this document, and two absent values
+  // are equal: a reference that silently came out empty would turn the
+  // strongest test in this file into one that passes without reading anything.
+  // `readMigrations` returning nothing is all it would take.
+  assert.ok(committed.length > 1, `the reference applied ${committed.length} migrations`);
+  for (const part of ['tables', 'columns', 'constraints', 'indexes', 'policies',
+    'functions', 'triggers']) {
+    assert.ok(Array.isArray(reference[part]) && reference[part].length,
+      `the reference build produced no ${part}`);
+  }
+});
+
+test('the hosted store is exactly what the committed migrations produce', { skip }, () => {
+  // Structure rather than counts, in both schemas. Each of these can change
+  // while every name and total stays put: a policy widened in place, an index
+  // dropped, a contract body rewritten, a grant revoked, a trigger detached.
+  for (const part of ['tables', 'columns', 'constraints', 'indexes', 'policies',
+    'functions', 'triggers']) {
+    compare(part, reference[part], hosted.inventory[part]);
+  }
+  assert.deepEqual(hosted.inventory.schema_usage, reference.schema_usage);
+});
+
 test('every record table is owned by the record owner, with RLS forced', { skip }, () => {
-  const tables = hosted.inventory.tables ?? [];
+  const tables = (hosted.inventory.tables ?? []).filter(entry => entry.k.startsWith(`${SCHEMA}.`));
   assert.ok(tables.length, 'the hosted project holds no record tables');
   const owners = [...new Set(tables.map(table => table.owner))];
   assert.deepEqual(owners, ['pennsync_records_owner'],
@@ -356,60 +483,68 @@ test('every record table is owned by the record owner, with RLS forced', { skip 
   assert.deepEqual(unprotected, [], 'record tables without forced row level security');
 });
 
-test('the reference build produced a store to compare against', { skip }, () => {
-  // Guarding the comparison below rather than the reference for its own sake.
-  // Every assertion there is a `deepEqual` against this document, and two
-  // absent values are equal: a reference that silently came out empty would
-  // turn the strongest test in this file into one that passes without reading
-  // anything. `readMigrations` returning nothing is all it would take.
-  assert.ok(committed.length > 1, `the reference applied ${committed.length} migrations`);
-  for (const part of ['tables', 'policies', 'contracts', 'helpers', 'functions',
-    'staging_rpcs', 'private_authority']) {
-    assert.ok(Array.isArray(reference[part]) && reference[part].length,
-      `the reference build produced no ${part}`);
+test('no caller role holds any effective privilege on a record or authority table', { skip }, () => {
+  // Asked as `has_table_privilege` rather than read out of
+  // `information_schema.role_table_grants`, because that view lists grants made
+  // TO a named grantee and omits what a role holds through `PUBLIC`. A
+  // `grant select … to public` is invisible there and reaches every caller,
+  // which is precisely the surface this is meant to refuse.
+  assert.deepEqual(hosted.inventory.caller_table_privileges, []);
+  assert.deepEqual(reference.caller_table_privileges, []);
+});
+
+test('the contract surface is reachable by callers and closed to anonymous ones', { skip }, () => {
+  const contracts = inSchema(hosted.inventory.functions, 'public.pennsync_contract_');
+  assert.ok(contracts.length, 'the hosted project exposes no contracts');
+  for (const contract of contracts) {
+    // Security INVOKER, deliberately: the wrapper is a name in `public` for
+    // PostgREST to find, and the privilege it runs with has to stay the
+    // caller's so the broker it calls is the only thing that elevates.
+    assert.equal(contract.secdef, false, `${contract.k} is security definer`);
+    assert.equal(contract.authenticated, true, `${contract.k} is unreachable by a caller`);
+    assert.equal(contract.anon, false, `${contract.k} is reachable anonymously`);
   }
 });
 
-test('the hosted store is exactly what the committed migrations produce', { skip }, () => {
-  // Compared as whole documents rather than as counts, so a table, a policy or
-  // a contract that exists on one side and not the other names itself.
-  assert.deepEqual(hosted.inventory.tables, reference.tables);
-  assert.deepEqual(hosted.inventory.policies, reference.policies);
-  assert.deepEqual(hosted.inventory.contracts, reference.contracts);
-  assert.deepEqual(hosted.inventory.helpers, reference.helpers);
-  assert.deepEqual(hosted.inventory.functions, reference.functions);
-  assert.deepEqual(hosted.inventory.staging_rpcs, reference.staging_rpcs);
-  assert.deepEqual(hosted.inventory.private_authority, reference.private_authority);
+test('the caller helpers are unreachable by the callers they describe', { skip }, () => {
+  const helpers = inSchema(hosted.inventory.functions, `${SCHEMA}.caller`);
+  assert.ok(helpers.length, 'the hosted project holds no caller helpers');
+  for (const helper of helpers) {
+    // A policy expression runs with the querying role's privileges, so a caller
+    // granted `execute` here could ask "who am I" directly and answer it for
+    // somebody else.
+    assert.equal(helper.secdef, true, `${helper.k} is not security definer`);
+    assert.equal(helper.authenticated, false, `${helper.k} is executable by a caller`);
+    assert.equal(helper.anon, false, `${helper.k} is executable anonymously`);
+  }
 });
 
 test('the independent authority RPCs the runtime calls are present and callable', { skip }, () => {
   /**
    * `services/integration-runtime/authority.mjs` is the whole of stage E's
    * `authorityMode: independent`, and it pins two things this suite can check
-   * and nothing else does: the project — `AUTHORITY_TARGETS` names
-   * `xxtyweswohkvgkprimwa` — and the RPC, `pennsync_staging_context`, as a
-   * fixed name no caller or environment value selects.
+   * and nothing else does: the project and the RPC, `pennsync_staging_context`,
+   * as a fixed name no caller or environment value selects.
    *
-   * That module replays the caller's own Supabase token at the RPC and lets
-   * the database authorize the read, so the mode is only as real as the
-   * function being there with the right grants. Nothing measured that against
-   * the hosted project before: the runtime's own suites stub the endpoint, and
-   * the store's suites never look outside PGlite. A migration that changed
-   * this signature, or a `revoke` that reached `authenticated`, would surface
-   * as the runtime failing to leave `base44` mode on deploy — at the point
-   * where it is least diagnosable.
+   * That module replays the caller's own Supabase token at the RPC and lets the
+   * database authorize the read, so the mode is only as real as the function
+   * being there with the right grants. Nothing measured that against the hosted
+   * project before: the runtime's own suites stub the endpoint, and the store's
+   * suites never look outside PGlite. A migration that changed this signature,
+   * or a `revoke` that reached `authenticated`, would surface as the runtime
+   * failing to leave `base44` mode on deploy — where it is least diagnosable.
    */
-  const rpcs = hosted.inventory.staging_rpcs ?? [];
-  const context = rpcs.find(rpc => rpc.name === 'pennsync_staging_context');
-  assert.ok(context, 'pennsync_staging_context is absent; independent authority cannot resolve a caller');
-  assert.equal(context.args, 'p_app_id text, p_agency_id text');
+  const rpcs = inSchema(hosted.inventory.functions, 'public.pennsync_staging_');
+  const context = rpcs.find(rpc => rpc.k === 'public.pennsync_staging_context(p_app_id text, p_agency_id text)');
+  assert.ok(context, 'pennsync_staging_context is absent or its signature moved;'
+    + ' independent authority cannot resolve a caller');
 
   for (const rpc of rpcs) {
-    // Granted to the caller, because the caller is who it authorizes; closed
-    // to anonymous, because an unauthenticated reader of tenant context is the
+    // Granted to the caller, because the caller is who it authorizes; closed to
+    // anonymous, because an unauthenticated reader of tenant context is the
     // failure this whole surface exists to prevent.
-    assert.equal(rpc.authenticated, true, `${rpc.name} is unreachable by an authenticated caller`);
-    assert.equal(rpc.anon, false, `${rpc.name} is reachable anonymously`);
+    assert.equal(rpc.authenticated, true, `${rpc.k} is unreachable by an authenticated caller`);
+    assert.equal(rpc.anon, false, `${rpc.k} is reachable anonymously`);
   }
 
   /**
@@ -417,20 +552,19 @@ test('the independent authority RPCs the runtime calls are present and callable'
    * one exception this suite FOUND and which is stated rather than asserted
    * away.
    *
-   * `20260918015112_independent_staging_authority.sql` does
-   * `revoke all on all functions in schema pennsync_private from public, anon,
-   * authenticated` and then grants back the six it means to expose. A blanket
-   * revoke only reaches the functions that exist WHEN IT RUNS, so every
-   * function a later migration adds keeps PostgreSQL's default `PUBLIC
-   * EXECUTE`. Three do: `file_object_immutable`, `protect_deployment` and
+   * `20260918015112_independent_staging_authority.sql` does `revoke all on all
+   * functions in schema pennsync_private from public, anon, authenticated` and
+   * then grants back the six it means to expose. A blanket revoke only reaches
+   * the functions that exist WHEN IT RUNS, so every function a later migration
+   * adds keeps PostgreSQL's default `PUBLIC EXECUTE`. Three do:
+   * `file_object_immutable`, `protect_deployment` and
    * `protect_enrollment_receipt`.
    *
    * All three `returns trigger`, and that is what makes this a residue rather
    * than a hole. PostgreSQL refuses a direct call to a trigger function before
-   * its body runs, so there is nothing to invoke, and PostgREST does not
-   * expose one. `anon` also holds no `USAGE` on this schema, so it cannot name
-   * them in the first place — two independent gates, neither of which is the
-   * grant.
+   * its body runs, so there is nothing to invoke, and PostgREST does not expose
+   * one. `anon` also holds no `USAGE` on this schema, so it cannot name them in
+   * the first place — two independent gates, neither of which is the grant.
    *
    * It is identical in the reference build, so it is a property of the
    * committed migrations and not hosted drift; fixing it means a new migration
@@ -442,54 +576,19 @@ test('the independent authority RPCs the runtime calls are present and callable'
    * to `authenticated` — a second `revoke all on all functions in schema
    * pennsync_private` takes that grant away and turns nine suites red. The
    * three names below are what a correction would have to revoke, one at a
-   * time. This note is here rather than only in the plan because this comment
-   * is what somebody reads when this test tells them about the residue.
+   * time.
    *
    * What the suite refuses is the thing that would matter: a CALLABLE private
    * function reachable anonymously. The trigger set is pinned so a fourth one,
    * or one that stops returning `trigger`, fails here.
    */
-  const privateFns = hosted.inventory.private_authority ?? [];
-  const anonReachable = privateFns.filter(fn => fn.anon);
-  assert.deepEqual(anonReachable.map(fn => fn.returns), anonReachable.map(() => 'trigger'),
+  const anonReachable = inSchema(hosted.inventory.functions, `${PRIVATE}.`)
+    .filter(entry => entry.anon);
+  assert.deepEqual(anonReachable.map(entry => entry.returns), anonReachable.map(() => 'trigger'),
     'a callable pennsync_private function is executable by anon');
-  assert.deepEqual(anonReachable.map(fn => fn.name).sort(),
+  assert.deepEqual(anonReachable.map(entry => entry.k.replace(/\(.*$/, '').replace(`${PRIVATE}.`, '')).sort(),
     ['file_object_immutable', 'protect_deployment', 'protect_enrollment_receipt'],
     'the set of anon-executable trigger functions changed; re-read the grant residue above');
-});
-
-test('no caller role holds a direct grant on a record or authority table', { skip }, () => {
-  // The whole surface is meant to be the brokers. A direct grant would let a
-  // caller read the table itself, where the only thing between it and another
-  // agency's rows is a policy that calls helpers it cannot execute.
-  assert.equal(hosted.inventory.caller_table_grants, 0);
-  assert.equal(reference.caller_table_grants, 0);
-});
-
-test('the contract surface is reachable by callers and closed to anonymous ones', { skip }, () => {
-  const contracts = hosted.inventory.contracts ?? [];
-  assert.ok(contracts.length, 'the hosted project exposes no contracts');
-  for (const contract of contracts) {
-    // Security INVOKER, deliberately: the wrapper is a name in `public` for
-    // PostgREST to find, and the privilege it runs with has to stay the
-    // caller's so the broker it calls is the only thing that elevates.
-    assert.equal(contract.secdef, false, `${contract.name} is security definer`);
-    assert.equal(contract.authenticated, true, `${contract.name} is unreachable by a caller`);
-    assert.equal(contract.anon, false, `${contract.name} is reachable anonymously`);
-  }
-});
-
-test('the caller helpers are unreachable by the callers they describe', { skip }, () => {
-  const helpers = hosted.inventory.helpers ?? [];
-  assert.ok(helpers.length, 'the hosted project holds no caller helpers');
-  for (const helper of helpers) {
-    // A policy expression runs with the querying role's privileges, so a caller
-    // granted `execute` here could ask "who am I" directly and answer it for
-    // somebody else.
-    assert.equal(helper.secdef, true, `${helper.name} is not security definer`);
-    assert.equal(helper.authenticated, false, `${helper.name} is executable by a caller`);
-    assert.equal(helper.anon, false, `${helper.name} is executable anonymously`);
-  }
 });
 
 test('the record owner holds nothing that would void its own policies', { skip }, () => {
@@ -533,4 +632,10 @@ test('service_role bypasses RLS and is held out by the grant model alone', { ski
 
 test('an anonymous caller reaches neither schema', { skip }, () => {
   assert.deepEqual(hosted.roles.anon_reach, { records: false, private: false });
+  const usage = Object.fromEntries(
+    (hosted.inventory.schema_usage ?? []).map(entry => [entry.k, entry.usage]));
+  for (const schema of [SCHEMA, PRIVATE]) {
+    assert.equal(usage[`anon:${schema}`], false, `anon holds USAGE on ${schema}`);
+  }
+  assert.ok(CALLER_ROLES.includes('anon'), 'anon is no longer a caller role; re-read this test');
 });
