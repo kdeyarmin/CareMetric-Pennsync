@@ -826,6 +826,36 @@ property of the call site.
 have somewhere for the row to live; whether a ported capability covers the
 operation is Stage G's question and this gate deliberately does not answer it.
 
+**Measured 2026-09-22: none of the 242 has a browser path today, and the obvious
+proxy for "which could" overstates it.** Two facts, both measured:
+
+- *No generic route exists, by design.* `pennsync-api` has exactly three routes —
+  health, readiness, and one release-gated function dispatch — and its header
+  says there is deliberately no generic entity, query or proxy route. So an
+  entity call reaches the owned store **only** through a named handler. In the
+  independent build every entity call now refuses by name
+  (`STAGING_OPERATION_UNAVAILABLE`, `operation: entities.<Entity>.<op>`), where it
+  used to crash with a raw `TypeError`; that seam is where a route to a handler
+  will attach, one call site at a time.
+- *"A shipped handler touches the entity" is not coverage.* Crossing the 242 with
+  what each shipped handler's original reads and writes says **131 covered** —
+  and the list shows why that number must not be used. `AgencySettings.write`
+  (10 sites) counts as covered by `sendCredentialRenewalReminders`, a reminder
+  sweep that stamps a marker, not a settings screen. `AdrAuditCase.write` (8) is
+  "covered" by `checkAdrDeadlines`, a deadline sweep. `User.read` (37) by
+  handlers that read a user to authorize and expose none. A handler that
+  **touches** an entity for its own reasons is not one that **serves** a call
+  site.
+
+So Stage J's unit of work is not "repoint a call site"; it is, per call site,
+*find a handler that exposes the rows this screen needs, under a purpose that
+admits them — or record that none does.* The largest single lead is the 37
+`User.read` sites, whose real successor is the roster pair
+(`listAgencyRoster`, `getAgencyRosterMember`). Even that is not mechanical: the
+roster deliberately projects no `role`, `account_type`, `agency_id` or
+`agency_name` (D23), so a screen that reads a user to decide what to show a user
+needs its authorization moved to the tenant context, not a new data source.
+
 - Replace `src/api/base44Client.js` with a backend-neutral client; the
   independent adapter becomes the default under `VITE_PENNSYNC_BACKEND=independent`.
 - Replace call sites tier by tier; a lint rule blocks new direct entity calls.
