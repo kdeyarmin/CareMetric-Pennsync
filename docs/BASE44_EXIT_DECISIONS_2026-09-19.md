@@ -5330,6 +5330,15 @@ new operation is either a read the broker family might serve or a write it
 refuses, and guessing is the difference between "this is fine" and "this
 silently cannot work".
 
+An entity with **no** disposition at all is a row too, with destination
+`undeclared`, and it fails the gate. The first version skipped such a site: the
+run still failed on the undeclared list, but the report it failed with
+understated the total and the unserved count — in the one state where somebody
+reads them closely — while the comment three lines above said every counted
+site contributes a row. Found by a review bot; a fixture test now drives the
+real walker over a tree with one declared and one undeclared entity and checks
+both are counted.
+
 ### One matcher, so one count
 
 It walks `src/` through the ratchet's own `sourceFiles` and `ENTITY_CALL`

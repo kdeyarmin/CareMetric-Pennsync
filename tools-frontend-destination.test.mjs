@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { dirname, resolve } from 'node:path';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  AUDITED_ENTITIES, DESTINATIONS, FORMAT, FORMAT_VERSION, READ_OPERATIONS, REALTIME_OPERATIONS, SERVED,
+  AUDITED_ENTITIES, DESTINATIONS, FORMAT, FORMAT_VERSION, MANIFEST_FILE, READ_OPERATIONS, REALTIME_OPERATIONS, SERVED,
   WRITE_OPERATIONS, classifyOperation, compare, destinationFor, main, measureDestinations, parseBaseline,
   refineRetired, summarise,
 } from './tools-frontend-destination.mjs';
@@ -95,7 +97,7 @@ test('the measured frontend is two populations, and the smaller one is the surpr
   assert.equal(report.served + report.unserved, report.total);
   assert.deepEqual(report.by_destination, {
     record_store: 232, broker_family: 7, activity_trail: 3,
-    no_table: 193, broker_is_read_only: 9, no_realtime_seam: 1, export_archive_only: 0,
+    no_table: 193, broker_is_read_only: 9, no_realtime_seam: 1, export_archive_only: 0, undeclared: 0,
   });
   // The training domain alone is more call sites than the broker family serves
   // in total, and it is `hub` — a different destination entirely.
@@ -140,6 +142,33 @@ test('an undeclared entity fails the run rather than being counted as fine', () 
   const report = compare(measured, JSON.parse(baseline(0)));
   assert.equal(report.within_baseline, false);
   assert.deepEqual(report.undeclared_entities, ['Invented']);
+});
+
+test('an undeclared call site is still counted, so a failing run reports every site', () => {
+  // The first version skipped the site: the gate failed on `undeclared`, but
+  // the report it failed with understated the total and the unserved count —
+  // in the one state where somebody reads them closely. Measured through the
+  // real walker and matcher over a fixture tree, not a hand-built `measured`.
+  const root = mkdtempSync(join(tmpdir(), 'frontend-destination-'));
+  try {
+    mkdirSync(join(root, 'src'));
+    writeFileSync(join(root, 'src', 'screen.jsx'),
+      'base44.entities.Invented.list();\nbase44.entities.Known.create({});\n');
+    writeFileSync(join(root, MANIFEST_FILE), JSON.stringify({ entities: { Known: 'port' } }));
+    const measured = measureDestinations(root);
+    assert.equal(measured.sites.length, 2, 'both call sites are rows');
+    assert.deepEqual(measured.undeclared, ['Invented']);
+    const report = compare(measured, JSON.parse(baseline(10)));
+    assert.equal(report.total, 2);
+    assert.equal(report.served, 1);
+    assert.equal(report.unserved, 1);
+    assert.equal(report.by_destination.undeclared, 1);
+    assert.deepEqual(report.unserved_entities.Invented, { disposition: null, destination: 'undeclared', sites: 1 });
+    // Under a generous baseline it still fails, because nothing placed it.
+    assert.equal(report.regressed, false);
+    assert.equal(report.within_baseline, false);
+    assert.ok(!SERVED.includes('undeclared'));
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
 test('summarise counts each site exactly once', () => {

@@ -52,9 +52,17 @@ export const REALTIME_OPERATIONS = Object.freeze(['subscribe', 'unsubscribe']);
 /** D25's three retired log tables, whose successor is the activity trail. */
 export const AUDITED_ENTITIES = Object.freeze(['SecurityLog', 'SystemLog', 'UserActivity']);
 
+/**
+ * `undeclared` is a call site whose entity has no disposition at all. It is a
+ * row like any other rather than a site the measurement skips, so the totals
+ * still describe every call site the ratchet counted when the run is failing
+ * for exactly this reason — a first version dropped it, and the report then
+ * understated both the total and the unserved count in the one state where
+ * somebody would read them closely.
+ */
 export const DESTINATIONS = Object.freeze([
   'record_store', 'broker_family', 'activity_trail',
-  'no_table', 'broker_is_read_only', 'no_realtime_seam', 'export_archive_only',
+  'no_table', 'broker_is_read_only', 'no_realtime_seam', 'export_archive_only', 'undeclared',
 ]);
 /** The destinations that mean a call site has somewhere to go. */
 export const SERVED = Object.freeze(['record_store', 'broker_family', 'activity_trail']);
@@ -109,19 +117,23 @@ export function measureDestinations(repository) {
     for (const match of text.matchAll(ENTITY_CALL)) {
       const entity = match[1];
       // The shared matcher ends at the dot, so the operation is the identifier
-      // straight after it. A call site the matcher counted always contributes
-      // one row, even when what follows is not an identifier — dropping it
-      // would make this tool's total disagree with the ratchet's.
+      // straight after it. Every call site the matcher counted is accounted
+      // for, so this tool's total cannot disagree with the ratchet's: a site
+      // whose entity has no disposition is a row with destination `undeclared`
+      // (and fails the gate), and one whose operation is unknown — including
+      // no identifier at all — fails the whole measurement in `destinationFor`
+      // rather than being skipped.
       const tail = text.slice(match.index + match[0].length).match(/^\s*([a-zA-Z][A-Za-z0-9_]*)/);
       const operation = tail ? tail[1] : '';
-      const disposition = entities[entity];
-      if (!disposition) { undeclared.add(entity); continue; }
+      const disposition = entities[entity] ?? null;
+      if (!disposition) undeclared.add(entity);
       sites.push({
         file: relative(repository, file),
         entity,
         operation,
         disposition,
-        destination: refineRetired(destinationFor(disposition, operation), entity),
+        destination: disposition
+          ? refineRetired(destinationFor(disposition, operation), entity) : 'undeclared',
       });
     }
   }
