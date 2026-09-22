@@ -668,11 +668,37 @@ anywhere. The app binding is deferred to stage C as above.
   returns null rather than omitting it. So every routed call carries a tenant,
   `portedCall` lifts it into the envelope, and the contract serves it.
 
-  What remains is a fragility rather than a defect, and it is what the gate
-  above is for: a future bare `getMyTenantContext()`, or a `trustedTenantRequest`
-  that ever returned options without an `agencyId`, would refuse on the routed
-  path while the bootstrap kept working — a failure that would look like a
-  tenant problem and be a dispatcher one.
+  **Updated 2026-09-22: the fragility that remains is real, and this document
+  had its failure mode backwards.** It said a future bare
+  `getMyTenantContext()` "would refuse on the routed path while the bootstrap
+  kept working" — loud, and findable by running the app. Measured against the
+  staging fixture it does not refuse. `portedCall`'s fallback, added in the
+  bullet above, supplies the bound tenant when a call site names none, so the
+  call reaches the service as `{ agency_id: 'agency-a', params: {} }` and
+  resolves. What it drops is `expectedMembershipId` and
+  `expectedMembershipVersion`, the two values `resolveMyTenantContext` compares
+  the answer against — so a revalidation carrying no expectation revalidates
+  nothing. It asks what the bound tenant is and is told, which is the question
+  it already knew the answer to. The fix for the 67 call sites inverted this
+  prediction as a side effect and nobody re-read it, which is D47's and D75's
+  lesson in a fourth place: a claim outlived the code it was measured against.
+
+  The adapter is right to serve such a call — it cannot tell a revalidation
+  apart from any other ported name, and inventing an expectation would be
+  worse — so the invariant belongs at the call sites, and
+  `check:ported-call-sites` is not the gate that holds it. That gate counts
+  tenant-free payloads and these six call sites are not in its census at all:
+  it sees the wrapper's own `invoke` line, not the hooks above it.
+  `tools-tenant-revalidation-path.mjs` holds the two shapes the reasoning
+  above actually rests on — every revalidation call site passes
+  `trustedTenantRequest(...).options`, and the pre-tenant seam keeps its single
+  importer, `src/lib/AuthContext.jsx`. Both are invariants rather than counts,
+  so there is no baseline to drift: a call that does not carry a trusted
+  request fails `pnpm run check:tenant-revalidation` whether it is the first or
+  the seventh. `trustedTenantRequest` returning options without an `agencyId`
+  was already fenced by `src/lib/trustedTenantRequest.spec.js`; the runtime
+  behaviour corrected here is proved in
+  `src/lib/independentStagingAdapter.spec.js`.
 - Then release per function, behind the existing per-name gate: the patient read
   pair, then the create, then the visit family, then the rest by blast radius.
 - Each release wants its own hosted proof, not a suite that passed locally.
