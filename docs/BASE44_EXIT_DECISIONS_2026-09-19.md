@@ -5277,7 +5277,74 @@ Port queue: unchanged at 7 / 8 / 0 / 0 / 12 / 0 / 3 / 0 / 2 / 72 — and one of
 the three in `core_integration` is a partial port waiting to be written rather
 than a capability waiting on the runtime.
 
-## D80 — The partial port D79 found, written
+## D80 — Half the frontend's entity traffic has nowhere to land
+
+**Decision.** Measure every frontend entity call site against its entity's
+disposition, gate it, and size Stage J by what can actually be repointed
+rather than by the call-site count.
+
+**The count was never the question.** The surface ratchet reports 445 entity
+call sites and says nothing about where they go, and Stage J is written as
+"replace call sites tier by tier" — a refactor whose size is the count. Crossed
+against the dispositions:
+
+| Destination | Call sites | |
+| --- | ---: | --- |
+| `record_store` | 232 | a table exists |
+| `broker_family` | 7 | the generic family serves that read |
+| `activity_trail` | 3 | D25's successor |
+| **can land** | **242** | |
+| `no_table` | 193 | `hub` 119, `preserved_paused` 74 |
+| `broker_is_read_only` | 9 | a write the family refuses |
+| `no_realtime_seam` | 1 | `subscribe` |
+| **cannot land** | **203** | |
+
+**203 of 445 reach a domain the migration decided not to carry.** The training
+domain alone is 119 — more call sites than the broker family serves in total —
+and it is `hub`, a different destination entirely. Those are not edits waiting
+for someone's time; each is a product decision about what the feature becomes,
+and a plan sizing the stage by the count is sizing the wrong thing.
+
+### Being served is a property of the entity; having a destination is a property of the call site
+
+The nine `broker_is_read_only` sites are the ones a per-entity tool would have
+reported fine. The family serves exactly three entities — `Announcement`,
+`FacilityDocumentationRule`, `RegulatoryUpdate` — and all three are `readonly`
+under D2's ceiling as D22 re-checks it against each schema. The frontend
+creates, updates and deletes all three. Classify the call, not the table.
+
+`subscribe` is the same shape from the other side: the entity behind it could
+be `port` with a table waiting, and the owned store still has no realtime seam,
+so the operation decides before the disposition does.
+
+### Two things it deliberately does not claim
+
+`store_can_hold` is **not** `a capability serves it`. The 232 `record_store`
+sites have somewhere for the row to live; whether a ported capability covers
+the operation is a narrower question, and answering it by inference is exactly
+how a bucket comes to claim more than it measured — the whole of D74 through
+D79. `check:transition-disposition` owns that half.
+
+And nothing defaults. An unknown operation or disposition **throws**, because a
+new operation is either a read the broker family might serve or a write it
+refuses, and guessing is the difference between "this is fine" and "this
+silently cannot work".
+
+### One matcher, so one count
+
+It walks `src/` through the ratchet's own `sourceFiles` and `ENTITY_CALL`
+rather than re-deriving them, and a test asserts the two totals agree. The
+first measurement of this read **475 call sites and 220 unserved** because it
+included the `.test.` and `.spec.` files the ratchet excludes on purpose — its
+header says why, that they "deliberately model the very surface being retired".
+A real number about a different question, and two walkers agreeing by
+coincidence is how one tool comes to describe a different frontend from the
+other while both pass their own suites (D45).
+
+Proved by sabotage rather than by reading: a new `TrainingCourse.list()` in
+`src/` takes the gate to 204/203 and exits 1, and renaming the shared matcher
+fails four tests.
+## D81 — The partial port D79 found, written
 
 D79's ninth correction said `generatePatientHandout` was startable and that the
 port queue was counting the whole capability blocked on a decision that governs

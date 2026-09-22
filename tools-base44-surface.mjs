@@ -29,11 +29,18 @@ const SKIPPED_DIRECTORIES = new Set(['node_modules', 'dist', 'coverage', '.git',
 const IS_TEST = /\.(test|spec)\.[cm]?[jt]sx?$/;
 const CLIENT_IMPORT = /api\/base44Client/;
 const SDK_IMPORT = /@base44\/sdk/;
-const ENTITY_CALL = /\bbase44\s*\.\s*entities\s*\.\s*([A-Z][A-Za-z0-9_]*)\s*\./g;
+// Exported for the reason `sourceFiles` is: one matcher, so one count.
+export const ENTITY_CALL = /\bbase44\s*\.\s*entities\s*\.\s*([A-Z][A-Za-z0-9_]*)\s*\./g;
 const FUNCTION_INVOKE = /\bfunctions\s*\.\s*invoke\s*\(/g;
 const CORE_INTEGRATION = /\bintegrations\s*\.\s*Core\s*\.\s*[A-Za-z][A-Za-z0-9_]*/g;
 
-function* sourceFiles(root) {
+/**
+ * The production source files this ratchet measures, shared rather than
+ * re-derived. `tools-frontend-destination.mjs` crosses the SAME call sites
+ * against their dispositions, and two walkers that agreed by coincidence would
+ * let one tool's total drift from the other's silently.
+ */
+export function* sourceFiles(root) {
   let entries;
   try { entries = readdirSync(root, { withFileTypes: true }); } catch { return; }
   for (const entry of entries.sort((a, b) => (a.name < b.name ? -1 : 1))) {
