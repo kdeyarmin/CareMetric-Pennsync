@@ -680,16 +680,52 @@ anywhere. The app binding is deferred to stage C as above.
 **Exit:** the independent staging build serves the patient and visit families
 from `pennsync-api` against hosted staging, with the Base44 path untouched.
 
-### Stage E — Independent authority on the runtime (size M)
+### Stage E — Independent authority on the runtime (size ~~M~~ **S: configuration only**)
 
-- The runtime takes caller authority from a Supabase JWT plus the store's context
-  RPC instead of Base44 `getMyTenantContext`. This is the single remaining Base44
-  execution dependency inside the runtime.
-- `caller-binding.test.mjs` and `runtime.test.mjs` updated; `/readyz` reports
-  `authorityMode: independent` and `base44ExecutionDependency: false`.
+**Corrected 2026-09-22: the code this stage describes is written and tested.**
+It was listed as work to do; measured, it is done. `services/integration-runtime`
+already implements `INTEGRATIONS_AUTHORITY_MODE=independent` — caller authority
+from the Supabase session plus the owned store's context RPC, no Base44
+`getMyTenantContext` — and readiness already reports `authorityMode` and
+`base44ExecutionDependency` from the selected mode. The two suites the old text
+said needed updating pass unchanged, alongside the one that covers the mode:
+
+| Suite | Result |
+| --- | --- |
+| `authority-independence.test.mjs` | 28/28 — including *"a released independent deployment completes work without any Base44 request"* |
+| `caller-binding.test.mjs`, `runtime.test.mjs` (with the above) | **111/111**, unchanged |
+
+The suite sits at the service root, not under `tests/`, which is how a search of
+`tests/` alone reports the mode untested.
+
+**What is left is four variables on the Railway runtime, set together:**
+
+| Variable | Value | Where it comes from |
+| --- | --- | --- |
+| `INTEGRATIONS_AUTHORITY_MODE` | `independent` | literal |
+| `INTEGRATIONS_AUTHORITY_URL` | `https://xxtyweswohkvgkprimwa.supabase.co` | the only hosted target `AUTHORITY_TARGETS` admits — the staging store Stage A migrated |
+| `INTEGRATIONS_AUTHORITY_PUBLISHABLE_KEY` | an `sb_publishable_…` key for that project | the same key already set on `pennsync-api` as `PENNSYNC_API_AUTHORITY_PUBLISHABLE_KEY` |
+| `INTEGRATIONS_APP_ID` | **`6a9881683dc68a0bd54f1ef7`** — the staging app | see below |
+
+**The app id is the one value that fails silently, and it is proved by running
+`loadConfig` rather than by reading it.** Every other wrong value refuses at
+startup: omitting the id refuses `IMPLICIT_APP_BINDING`, a secret or
+service-role key refuses `INVALID_AUTHORITY_KEY`, any other URL refuses
+`INVALID_AUTHORITY_TARGET`. But the **production** id `694ec16e72e01b60d22f7cbf`
+is in `ALLOWED_APPS`, so stating it **boots, reports ready, and is then refused
+by every authorization call**, because the store's pin is staging. It is the
+same shape Stage B carried for `PENNSYNC_API_APP_ID`: an absent binding is loud
+and a stated-but-wrong one is silent.
+
+Safe to do now: the runtime is released to nobody (`INTEGRATIONS_RELEASE` unset),
+so the change alters readiness and nothing else, and removing
+`INTEGRATIONS_AUTHORITY_MODE` reverts to the Base44 default. It needs Railway
+access, which this repository does not have.
 
 **Exit:** readiness says `independent` on the hosted runtime with the browser
-transport still unreleased.
+transport still unreleased — `/readyz` reporting `authorityMode: "independent"`
+and `base44ExecutionDependency: false`. Read it from the probe, not from the
+deploy's own report.
 
 ### Stage F — Production Supabase project (size S to provision; owner approves cost)
 
@@ -910,6 +946,7 @@ misunderstanding:
 | ~~Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change~~ | Stage A | **Done 2026-09-22 (#237).** Both secrets are configured and the flag is `'true'`. The job log shows both masked and then 15 tests, 15 passed, 0 skipped against the real project — read from the log rather than from the green tick, which is what this gate exists to distrust. The committed store's drift is now watched on every push to main |
 | ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
+| Set the four `INTEGRATIONS_AUTHORITY_*` / `INTEGRATIONS_APP_ID` variables on the Railway runtime | Stage E | The code is done and tested (111/111); this is the whole of Stage E now. `INTEGRATIONS_APP_ID` must be the **staging** id `6a9881683dc68a0bd54f1ef7` — the production id boots and then refuses every call. Reversible, and the runtime serves nobody |
 | **Correct the Google Play Data Safety declaration** | **Today** — independent of every stage | Live listing says "No data collected" and "No data shared with third parties" for an app handling clinical data. A policy violation that can draw enforcement against the listing. A Play Console form — needs no key and no binary, so nothing else here blocks it |
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
