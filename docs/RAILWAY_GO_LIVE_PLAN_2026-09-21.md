@@ -14,13 +14,17 @@ The app is **not live on Railway**. One of the two Railway services is
 deployed and it is deliberately serving nothing; the other has never been
 created. Every user request today is still answered by Base44.
 
+**Updated 2026-09-22:** the second service now exists and is also deliberately
+serving nothing — see stage B. The last sentence is unchanged and is the one
+that matters: every user request is still answered by Base44.
+
 Probed 2026-09-21:
 
 | Probe | Result | Reading |
 | --- | --- | --- |
 | `pennsync-integrations-production.up.railway.app/healthz` | `{"status":"alive","release":"paused","revision":"cffe376…"}` | Deployed and healthy, released to nobody |
 | same host `/readyz` | HTTP 503; `released:false`, `operations:[]`, `authorityMode:"base44"`, `base44ExecutionDependency:true`, `trafficCutoverVerified:false`, `browserReleased:false` | Zero of seven brokered operations enabled; still asks Base44 who the caller is |
-| `pennsync-api-production.up.railway.app/healthz` | HTTP 404, `Application not found` | The service does not exist |
+| `pennsync-api-production.up.railway.app/healthz` | HTTP 404, `Application not found` | The service does not exist. **Created 2026-09-22: now HTTP 200, `release:"paused"`, revision `f18b053` — see stage B** |
 | `app.caremetricai.com/` | HTTP 200 | Base44 |
 | `caremetricai.base44.app/` | HTTP 200 | Base44 |
 | Supabase account project list | `CM Train`, `caremetric-pennsync-staging`, `PennPaps`, `CareMetric Support Hub`, `bolt-native-database-62871816` | **No production project** |
@@ -30,6 +34,13 @@ Probed 2026-09-21:
 
 The deployed runtime revision `cffe376` is two commits behind `origin/main`
 (`4f73ec6`) — it predates PR #228 and PR #229 entirely.
+
+**Corrected 2026-09-22.** That count is of the REPOSITORY, and it was then read
+as though the service were stale, which is a different claim. Measured against
+the service's own source,
+`git diff --stat cffe376 origin/main -- services/integration-runtime` is EMPTY:
+not one byte of that directory has changed in the seven commits since. The
+runtime is current and the redeploy this sentence implied was withdrawn.
 
 ## 1. The gap that actually matters: built is not deployed
 
@@ -41,17 +52,21 @@ plan's status table reads as progress without saying where the progress lives.
 | --- | ---: | ---: |
 | Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
 | Record store migrations (store, brokers, 51 contracts, purpose policies, file map) | 54 | ~~0~~ **54** — applied 2026-09-21 |
-| Ported handlers registered in `services/pennsync-api/handlers.mjs` | 74 | **0** |
-| Railway services | 2 defined | 1 deployed, paused; 1 never created |
+| Ported handlers registered in `services/pennsync-api/handlers.mjs` | 74 | ~~0~~ **74 deployed, 0 released** — deployed 2026-09-22 |
+| Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ **2 deployed, paused** — 2026-09-22 |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
 
 Everything merged in PRs #227, #228 and #229 — the record store, the care-team
 narrowing, the audit trail and seventy-two ported capabilities — has been proved
-only against PGlite and ephemeral local PostgreSQL. **It has never been applied
-to a hosted database and has never served a request.** The suites are real and
-they pass; what they do not establish is that the migration chain applies in
-order to a Supabase project, that the role and grant model survives contact with
-Supabase's own roles, or that a handler answers over HTTP with a real JWT.
+only against PGlite and ephemeral local PostgreSQL. Two thirds of that gap has
+since closed and the third has not. The chain **does** apply in order to a
+Supabase project and the role and grant model **does** survive contact with
+Supabase's own roles — both measured on 2026-09-21 against
+`caremetric-pennsync-staging`, stage A. What is still unproved is the last
+clause: **no handler has answered over HTTP with a real JWT.** The 74 are
+deployed as of 2026-09-22 and every one of them refuses, because the release
+gate is shut and there is no real identity to authorize. That needs stages C
+and D, not more schema.
 
 The port queue, measured today rather than quoted:
 
@@ -73,9 +88,12 @@ Six things gate everything else, in this order. Only the first is free.
    `caremetric-pennsync-staging`, 68 recorded in the ledger, the pin landed on
    staging with `source 'default'`. The 54 record migrations are no longer
    unproven against a hosted database; the 74 handlers still are, because
-   nothing has served a request yet — that is stage B.
-2. **Create the `pennsync-api` Railway service**, deployed paused, exactly as the
-   integration runtime was.
+   nothing has served a request yet. Stage B has since deployed them, paused —
+   serving one needs an identity, so it is stages C and D.
+2. ~~**Create the `pennsync-api` Railway service**, deployed paused, exactly as
+   the integration runtime was.~~ **Done 2026-09-22**: live at
+   `pennsync-api-production.up.railway.app`, `release: paused`, revision
+   `f18b053`, 74 handlers implemented and every one refusing. See stage B.
 3. **Enroll real people.** Ten Supabase Auth invitations accepted and verified
    out of band. Nothing downstream of authority can be proved with four
    synthetic actors.
@@ -437,10 +455,24 @@ drift nothing is watching.
   configuration in service settings rather than a `railway.toml` — the same
   pattern `services/integration-runtime` already proves.
 - Deploy with the release gate closed and the released-function list empty, so
-  `/readyz` answers 503 with `released:false` and `FUNCTION_NOT_RELEASED` is the
-  answer to every name.
+  `/readyz` answers 503 with `released:false` and every handler name is refused.
+  The refusal is `PENNSYNC_API_NOT_RELEASED` (503, `app.mjs:61`), which is the
+  whole-service gate. An earlier revision of this stage named
+  `FUNCTION_NOT_RELEASED` (409, `app.mjs:63`) and that is the WRONG one: it is
+  the inner refusal for a name absent from `PENNSYNC_API_FUNCTIONS`, reachable
+  only once the service is released. The real behaviour is stricter than this
+  stage used to claim.
 - Point it at hosted staging from Stage A.
-- Redeploy the integration runtime at the same time; it is two commits stale.
+- ~~Redeploy the integration runtime at the same time; it is two commits
+  stale.~~ **Withdrawn 2026-09-22, and the reason is worth keeping.** It is not
+  stale. Its deployed revision is `cffe376` (#227) and
+  `git diff --stat cffe376 origin/main -- services/integration-runtime` is
+  EMPTY: seven commits have landed since and none touches that directory. The
+  original count measured repo HEAD rather than the service's own source, which
+  is the same mistake in miniature as reading a status table as progress. A
+  redeploy would rebuild identical source and only re-stamp
+  `RAILWAY_GIT_COMMIT_SHA`, and `cffe376` is already a valid 40-hex SHA, so
+  `browserRevisionBound` is already true and nothing depends on the bump.
 
 **Verified 2026-09-21 by running the service, not by reading it.** Started from
 this repository with **no environment at all**, which is the state a freshly
@@ -463,8 +495,45 @@ So there is **no engineering gap in front of this stage** — it is the Railway
 service itself. The `Dockerfile` also runs `node --test *.test.mjs` during the
 build, so an image that builds is an image whose suite passed.
 
-**Exit:** `/healthz` alive on both services; `/readyz` 503 on both with an empty
-operation set; no traffic change anywhere.
+#### Deployed 2026-09-22
+
+The service exists at `pennsync-api-production.up.railway.app`. Measured by
+probing it, not taken from the deploying agent's report:
+
+```
+/healthz  200  {"status":"alive","release":"paused",
+                "revision":"f18b0531bfe6cc1a5f92641061e8775e80e308a3"}
+/readyz   503  ready:false  released:false  operations:[]
+               authorityMode:"independent"  base44ExecutionDependency:false
+               authorityConfigured:true     integrationsConfigured:true
+               implemented: 74 handlers
+```
+
+`revision` is #236's merge commit rather than `unbound`, so the deploy is
+traceable to a commit. `authorityConfigured` and `integrationsConfigured` being
+true means the authority URL, the publishable key and the integrations URL all
+passed their allowlists — the three values most likely to be wrong.
+
+**The gate was checked at the request path, not only in the readiness report**,
+because a service can report itself paused and still serve. `POST
+/v1/functions/{listAgencyRoster,createAuthorizedPatient,analyzeReferral}` each
+answer `503 PENNSYNC_API_NOT_RELEASED`, and an unknown route answers `404
+NOT_FOUND` rather than a stack trace.
+
+The integration runtime is byte-identical to its pre-stage state — revision
+`cffe376`, `release: paused`, `authorityMode: "base44"`, `configured: true`,
+`operations: []`. Not redeployed, per the withdrawn bullet above.
+
+**One thing this stage cannot prove, and it is the setting that fails
+silently.** Nothing on `/healthz` or `/readyz` exposes `PENNSYNC_API_APP_ID`. A
+service left on the default binding — production `694ec16e…` against a store
+pinned to staging — reports the payload above verbatim and is then refused by
+every authorization call; `loadConfig` says so in its own comment. The binding
+is unproved until the first authenticated call, and stage C carries it.
+
+**Exit — met 2026-09-22 for both hosted claims:** `/healthz` alive on both
+services; `/readyz` 503 on both with an empty operation set; no traffic change
+anywhere. The app binding is deferred to stage C as above.
 
 ### Stage C — Real identities (size M; ten people plus an operator)
 
@@ -483,6 +552,13 @@ operation set; no traffic change anywhere.
   digest-addressed plan. Every run lands in `enrollment_receipt`.
 - Retire the four pinned actor IDs in `services/authority-client/client.mjs` in
   favour of verified identity-map rows.
+- **Carried from stage B: prove `PENNSYNC_API_APP_ID` on the deployed service.**
+  It must be the staging app `6a9881683dc68a0bd54f1ef7`, because the store's
+  D11 pin on `xxtyweswohkvgkprimwa` resolved to staging. No probe can see it;
+  the first authenticated call is what separates a correct binding from the
+  production default, which reports ready and is refused by everything. If that
+  call fails authorization while the service is otherwise healthy, check this
+  before anything else.
 - Give the four tenant roles that can hold context but cannot use it their roster
   behaviour.
 - **Decide the synthetic-name question.** `agency` and `patient` names must begin
@@ -763,14 +839,15 @@ with the Phase 0 baseline.
 
 ## 4. What only the owner can unblock
 
-Nothing in Stages B, C, F or L can be done from the repository. Listed plainly
-so none of it sits waiting on a misunderstanding:
+Nothing in Stages C, F or L can be done from the repository (Stage B's row is
+settled — see below). Listed plainly so none of it sits waiting on a
+misunderstanding:
 
 | Needed | For | Note |
 | --- | --- | --- |
 | ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. The stage's exit still lacks TWO things: the job actually measuring in CI, which needs the secrets below, and the row-behaviour half, which needs identities and so moved to stage C |
 | Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change | Stage A | Neither is configured today, so the `hosted-store` job stands down on main and the committed store's drift is watched by nobody. The suite is written and green against the real project; this is the only thing between it and running on every push to main. The flag is what makes the check permanent — without it a renamed secret would go back to standing down quietly |
-| Create the `pennsync-api` Railway service | Stage B | Cost approval; same project and pattern as the runtime |
+| ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
