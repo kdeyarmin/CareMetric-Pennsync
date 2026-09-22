@@ -191,6 +191,17 @@ function runStep({ gate, suite = 0 }) {
   const at = workflow.indexOf('- name: Measure the hosted staging store');
   const next = workflow.indexOf('\n      - ', at + 1);
   const step = next === -1 ? workflow.slice(at) : workflow.slice(at, next);
+  // Without an injected answer, exercise the real gate with the workflow's
+  // requirement and absent credentials. A correct gate is not enough if the
+  // workflow stops requiring measurement, so derive this input from its env.
+  if (gate === undefined) {
+    const required = step.match(/^\s+HOSTED_MEASUREMENT_REQUIRED:\s*['"]?([^'"\s]+)['"]?\s*$/m)?.[1];
+    gate = runHostedGateCli({
+      env: { PENNSYNC_HOSTED_DATABASE_URL: '', SUPABASE_ACCESS_TOKEN: '', HOSTED_MEASUREMENT_REQUIRED: required },
+      write() {},
+      error() {},
+    });
+  }
   // The run block's lines, de-indented. Taken from the file rather than
   // retyped, so the thing executed here is the thing that ships.
   const lines = step.slice(step.indexOf('run: |') + 'run: |'.length).split('\n').slice(1);
@@ -240,4 +251,10 @@ test('the step refuses when the gate refuses', () => {
   assert.ok(!refused.out.includes('RAN_SUITE'), 'the suite ran after the gate refused');
   // An unexpected code is a refusal too, never a quiet pass.
   assert.equal(runStep({ gate: 2 }).code, 2);
+});
+
+test('the configured workflow refuses when both hosted credentials disappear', () => {
+  const { code, out } = runStep({});
+  assert.equal(code, 1, 'the workflow stood down instead of enforcing hosted measurement');
+  assert.ok(!out.includes('RAN_SUITE'), 'the suite ran without hosted credentials');
 });
