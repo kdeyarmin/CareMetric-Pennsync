@@ -41,12 +41,22 @@ import { isManagementUrl, openManagementClient } from '../../../tools-pennsync-s
  * WHAT IT NOW DOES PROVE ABOUT BEHAVIOUR is the part of the gate that needs no
  * caller, and the distinction is worth stating because the plan for a while
  * recorded the whole of it as blocked. Four refusals are measured on the hosted
- * project: no claims, an unknown subject, an anonymous role, and a REAL MAPPED
- * identity stopping at the session check. The last is the informative one — it
- * is only reachable by clearing `auth.users` and `identity_map` on live rows,
- * so it says in one measurement that the hosted identities are usable and that
- * a session is the only thing still missing. What those four cannot say is what
- * a policy RETURNS to someone through the gate; that is still stage C's.
+ * project: no claims, an unknown subject, an anonymous role, and a real
+ * enrolled subject stopping at the session check.
+ *
+ * THE ORDER MATTERS AND IS EASY TO GET BACKWARDS, so it is written out once:
+ * claims, `exp`, `auth.users`, `auth.sessions`, THEN `identity_map`
+ * (`20260919090000_deployment_app_pin.sql:183-218`). The session is checked
+ * BEFORE the map. So `PENNSYNC_SESSION_INACTIVE` says the subject cleared
+ * `auth.users` — live, confirmed, unbanned, not anonymous — and says nothing
+ * whatever about `identity_map`: a subject with no map row at all refuses
+ * identically. That the hosted identities are mapped is carried by `CALLERS`
+ * below, which counts the map rows against the same predicate `actor()` uses,
+ * and not by any gate refusal. An earlier version of this comment had the two
+ * the other way round and drew a conclusion the measurement does not support.
+ *
+ * What those four cannot say is what a policy RETURNS to someone through the
+ * gate; that is still stage C's.
  *
  * That half is not small. It is every claim the row assertions REST on, and
  * the inventory below is deliberately structural rather than a set of counts:
@@ -306,13 +316,26 @@ const LEDGER = `select jsonb_build_object(
  * missing is the LIVE SESSION `actor()` also requires. Those are different
  * asks of different people, so the suite counts them separately and the gate
  * tests below read the counts rather than a constant.
+ *
+ * `mapped` carries `actor()`'s OWN map predicate rather than a looser one —
+ * the app id, `enabled`, `revoked_at`, `expected_email` against the user's
+ * current email, `verified_at` in the past, and the `auth.users` conditions
+ * that line 194 applies — because this count is the only thing in this file
+ * that says the hosted identities are enrolled. No gate refusal says it: the
+ * session is checked BEFORE the map, so an unenrolled subject and an enrolled
+ * one refuse identically while there is no session. A count measured against a
+ * weaker predicate than the function's would quietly overstate that.
  */
 const CALLERS = `select jsonb_build_object(
   'auth_users', (select count(*) from auth.users
     where deleted_at is null and email_confirmed_at is not null and is_anonymous is false),
   'mapped', (select count(*) from ${PRIVATE}.identity_map i
     join auth.users u on u.id = i.auth_user_id
-    where i.enabled and i.revoked_at is null and i.expected_email = lower(u.email)),
+      and u.deleted_at is null and u.email_confirmed_at is not null
+      and u.email_confirmed_at <= clock_timestamp() and u.is_anonymous is false
+      and (u.banned_until is null or u.banned_until <= clock_timestamp())
+    where i.app_id = '${EXPECTED_APP}' and i.enabled and i.revoked_at is null
+      and i.expected_email = lower(u.email) and i.verified_at <= clock_timestamp()),
   'memberships', (select count(*) from ${PRIVATE}.membership where status = 'active'),
   'assignments', (select count(*) from ${PRIVATE}.assignment where status = 'active'),
   'chart_assignments', (select count(*) from ${PRIVATE}.chart_assignment where status = 'active'),
@@ -777,8 +800,10 @@ test('a caller with no session claims is refused before anything else', { skip }
 
 test('a subject with no identity row is refused as an inactive identity', { skip }, () => {
   // The users lookup, not the map: `actor()` asks `auth.users` first, so a
-  // subject that is nobody fails there and never reaches `identity_map`. The
-  // test below is the one that proves the map is consulted at all.
+  // subject that is nobody fails there and never reaches `auth.sessions` or
+  // `identity_map`. Nothing here proves the map is consulted at all: that needs
+  // a caller with a live session, which is stage C's, and until then the map is
+  // measured by `CALLERS` rather than exercised.
   assert.match(gates.unknown, /PENNSYNC_IDENTITY_INACTIVE/,
     'the hosted gate admitted a subject that is not an auth user');
 });
@@ -791,30 +816,33 @@ test('an anonymous caller cannot execute the staging surface at all', { skip }, 
     'anon reached the staging surface');
 });
 
-test('a mapped identity gets past the identity checks and stops at the session', { skip }, () => {
+test('an enrolled subject clears the auth user and stops at the session', { skip }, () => {
   const { mapped, live_sessions: live } = hosted.callers;
   if (!mapped) {
-    // Nothing is mapped yet, so the claims resolve to a null subject and the
-    // gate answers the same way it does for no claims at all. Said as a skip
-    // rather than a pass: this test means nothing until an identity exists.
+    // Nothing is enrolled yet, so the subject resolves to null, the claims
+    // fail their own shape check and the gate answers as it does for no claims
+    // at all. Asserted rather than skipped, but it says nothing about the gate
+    // past that first branch: this test only means something once a row exists.
     assert.match(gates.mapped, /PENNSYNC_SESSION_REQUIRED/);
     return;
   }
-  if (live) {
-    // A live session exists, so the fabricated `session_id` is the only thing
-    // wrong with this caller and the gate still has to refuse it.
-    assert.match(gates.mapped, /PENNSYNC_SESSION_INACTIVE/);
-    return;
-  }
-  // The state this project is in today, and it is the measurement stage A's
-  // fourth claim is waiting on. Reaching PENNSYNC_SESSION_INACTIVE means the
-  // subject cleared `auth.users` — live, confirmed, unbanned, not anonymous —
-  // AND that its `identity_map` row matched on `expected_email`, because the
-  // map is read after the users row and before the session. So the only thing
-  // between this project and a real hosted caller is a session row, which a
-  // sign-in creates and no migration can.
-  assert.match(gates.mapped, /PENNSYNC_SESSION_INACTIVE/,
-    'a mapped hosted identity did not reach the session check');
+  // Whether or not some OTHER session is live, this caller's `session_id` is
+  // fabricated, so `auth.sessions` cannot match it and the gate must refuse
+  // there. The branch is kept because the reason differs and a future reader
+  // should not have to re-derive it.
+  const because = live
+    ? 'a fabricated session_id matched a live session'
+    : 'an enrolled hosted subject did not reach the session check';
+  assert.match(gates.mapped, /PENNSYNC_SESSION_INACTIVE/, because);
+
+  // WHAT THIS DOES AND DOES NOT SAY. `actor()` checks `auth.users` (line 194),
+  // then `auth.sessions` (202), then `identity_map` (211). So reaching
+  // PENNSYNC_SESSION_INACTIVE proves the subject cleared `auth.users` — live,
+  // confirmed, unbanned, not anonymous — and proves NOTHING about the map: a
+  // subject with no map row refuses at exactly the same line. The map is
+  // measured by `CALLERS`, against the same predicate `actor()` uses, and the
+  // test below reads it. Taken together they say the session is what is
+  // missing; neither says it alone.
 });
 
 test('the row-behaviour prerequisites are counted rather than assumed', { skip }, () => {

@@ -348,24 +348,35 @@ where it is least diagnosable. It is asserted now.
   `agency-a` and `agency-b`, two clinicians in `agency-a` of which one holds
   the `assignment` on `patient-a1`. `auth.pennsync_local_test_double()` is
   absent, so none of it came from `fixtures.sql`. `identity_map` was never
-  empty; nobody looked.
+  empty; nobody looked. The map rows are counted against `actor()`'s own
+  predicate — app id, `enabled`, `revoked_at`, `expected_email` against the
+  user's current email, `verified_at` in the past — rather than a looser one,
+  because that count is what the enrolment claim rests on.
 
-  What `actor()` refuses on is the SECOND thing it requires, and the plan never
-  named it: a row in `auth.sessions` whose id matches the caller's
-  `session_id` claim and whose `created_at` is **within the last twelve hours**.
-  There are none. Measured on the project through the same transport the
-  structural suite uses, as `authenticated` with a mapped subject and a
-  fabricated session id, the gate answers `PENNSYNC_SESSION_INACTIVE` — which
-  is reachable only by clearing the `auth.users` lookup and the `identity_map`
-  lookup on live rows first. So the identity half of stage C is, for these four
-  callers, already done, and what remains is a sign-in.
+  What `actor()` refuses on is a thing it requires that the plan never named:
+  a row in `auth.sessions` whose id matches the caller's `session_id` claim and
+  whose `created_at` is **within the last twelve hours**. There are none.
+  Measured on the project through the same transport the structural suite uses,
+  as `authenticated` with an enrolled subject and a fabricated session id, the
+  gate answers `PENNSYNC_SESSION_INACTIVE`.
+
+  **Read that refusal for exactly what it says, which is less than an earlier
+  draft of this paragraph claimed.** `actor()` checks `auth.users`
+  (`20260919090000_deployment_app_pin.sql:194`), THEN `auth.sessions` (202),
+  THEN `identity_map` (211) — the session before the map, not after it. So
+  `PENNSYNC_SESSION_INACTIVE` proves the subject cleared `auth.users`, live and
+  confirmed and unbanned and not anonymous, and proves nothing at all about the
+  map: an unenrolled subject refuses at the very same line. The enrolment is
+  carried by the count above and by nothing else. Both together say the session
+  is what is missing; neither says it alone.
 
   **Four gate refusals are therefore measured hosted now**, in
   `hosted-store.test.mjs`: no claims (`PENNSYNC_SESSION_REQUIRED`), an unknown
   subject (`PENNSYNC_IDENTITY_INACTIVE`), `anon` (refused at the grant, which is
   also what proves the role switch takes effect through this transport), and the
-  mapped-identity case above. That is a real slice of claim 4 and it is not the
-  whole of it: none of the four reads a row a policy protects.
+  enrolled-subject case above. That is a real slice of claim 4 and it is not the
+  whole of it: none of the four reads a row a policy protects, and none of them
+  exercises the map, which no caller can reach without a session.
 
   **Three things stand between here and the rest of claim 4, and only the first
   is the owner's.**
