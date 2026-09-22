@@ -440,6 +440,12 @@ where it is least diagnosable. It is asserted now.
   prevent — a guard `hosted-store.test.mjs` now asserts is absent there for this
   reason. It would also prove nothing: a session written by the test satisfying
   a check written in the same repository is not evidence about the environment.
+  And do not write this paragraph into the migration, which is the obvious place
+  for it: `hosted-store.test.mjs` compares `md5(prosrc)` of every function body
+  against the deployed one, so a comment added to `actor()` here turns the
+  hosted equality test red until the migration is applied there. The note
+  belongs in this document and in the suite header, and it is in both.
+
   So what remains open in claim 4 is not the behaviour of the rows. It is
   whether Supabase's own Auth issues a session the gate accepts, on that
   project, with those accounts — and the owner has decided not to answer it
