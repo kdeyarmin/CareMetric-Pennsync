@@ -598,11 +598,14 @@ carried by one "done" that was half true:
    and function bodies proved identical to hosted's — and the one leg that
    composition does not reach is named there.
 
-**Stage A is therefore open on 4 alone**, and the part of 4 that needs a person
-is narrower than this stage said: a sign-in for four accounts that already
-exist, not ten invitations. Three of the four claims are done, the gate itself
-is measured hosted, and the drift on the hosted project is watched on every push
-to main, which is the condition stage B needed.
+**Stage A is therefore open on 4 alone, and nothing in 4 is owed by a person.**
+~~The part of 4 that needs a person is narrower than this stage said: a sign-in
+for four accounts that already exist, not ten invitations.~~ The owner withdrew
+the sign-in on 2026-09-22, so what is left of 4 is not work and not an ask: it
+is the single leg named under "the row-behaviour half" above, which no test can
+reach on hosted by construction. Three of the four claims are done, the gate
+itself is measured hosted, and the drift on the hosted project is watched on
+every push to main, which is the condition stage B needed.
 
 ### Stage B — Deploy `services/pennsync-api`, paused (size S; owner creates the service)
 
@@ -1189,7 +1192,7 @@ misunderstanding:
 
 | Needed | For | Note |
 | --- | --- | --- |
-| ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open. It moved to stage C for identities, and on 2026-09-22 the identities turned out to be largely there already — what it waits on is a sign-in, a seed transport and one `chart_assignment` row, per the correction in stage A |
+| ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open. It moved to stage C for identities, and on 2026-09-22 the identities turned out to be largely there already. ~~What it waits on is a sign-in, a seed transport and one `chart_assignment` row.~~ The owner withdrew the sign-in the same day, which retires the other two with it; claim 4 now rests on the composition recorded in stage A |
 | ~~Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change~~ | Stage A | **Done 2026-09-22 (#237).** Both secrets are configured and the flag is `'true'`. The job log shows both masked and then 15 tests, 15 passed, 0 skipped against the real project — read from the log rather than from the green tick, which is what this gate exists to distrust. The committed store's drift is now watched on every push to main |
 | ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
