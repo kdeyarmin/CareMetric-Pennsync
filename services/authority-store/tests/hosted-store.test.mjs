@@ -27,18 +27,36 @@ import { isManagementUrl, openManagementClient } from '../../../tools-pennsync-s
  *
  * WHAT IT CANNOT DO, and the boundary is deliberate rather than unfinished.
  *
- * It proves no row behaviour. Not one assertion here reads a patient, a visit
- * or a roster, because doing that needs seeded callers and a caller in this
- * store is an `auth.users` row: `pennsync_private.identity_map.auth_user_id`
- * carries a foreign key to it. `fixtures.sql` fabricates those rows, which is
- * safe in a throwaway database and is not something to do to a real Supabase
- * Auth schema — the file says so itself and refuses to load anywhere that
+ * It reads no row a caller owns. Not one assertion here reads a patient, a
+ * visit or a roster, because doing that needs a caller who is through the gate,
+ * and a caller in this store is an `auth.users` row WITH A LIVE SESSION:
+ * `pennsync_private.identity_map.auth_user_id` carries a foreign key to the
+ * first, and `pennsync_private.actor()` looks up the second in `auth.sessions`
+ * and refuses without it. `fixtures.sql` fabricates both, which is safe in a
+ * throwaway database and is not something to do to a real Supabase Auth schema
+ * — the file says so itself and refuses to load anywhere that
  * `auth.pennsync_local_test_double()` is missing, which is every hosted
- * project. Seeding real identities is stage C: ten invitations, each accepted
- * by its own person and verified out of band, and the enrollment tool
- * deliberately cannot create an account. So the hosted proof of isolation
- * waits for stage C, and until then this file proves the half that does not
- * need a caller.
+ * project, and this suite asserts that it is still missing here.
+ *
+ * WHAT IT NOW DOES PROVE ABOUT BEHAVIOUR is the part of the gate that needs no
+ * caller, and the distinction is worth stating because the plan for a while
+ * recorded the whole of it as blocked. Four refusals are measured on the hosted
+ * project: no claims, an unknown subject, an anonymous role, and a real
+ * enrolled subject stopping at the session check.
+ *
+ * THE ORDER MATTERS AND IS EASY TO GET BACKWARDS, so it is written out once:
+ * claims, `exp`, `auth.users`, `auth.sessions`, THEN `identity_map`
+ * (`20260919090000_deployment_app_pin.sql:183-218`). The session is checked
+ * BEFORE the map. So `PENNSYNC_SESSION_INACTIVE` says the subject cleared
+ * `auth.users` — live, confirmed, unbanned, not anonymous — and says nothing
+ * whatever about `identity_map`: a subject with no map row at all refuses
+ * identically. That the hosted identities are mapped is carried by `CALLERS`
+ * below, which counts the map rows against the same predicate `actor()` uses,
+ * and not by any gate refusal. An earlier version of this comment had the two
+ * the other way round and drew a conclusion the measurement does not support.
+ *
+ * What those four cannot say is what a policy RETURNS to someone through the
+ * gate; that is still stage C's.
  *
  * That half is not small. It is every claim the row assertions REST on, and
  * the inventory below is deliberately structural rather than a set of counts:
@@ -78,10 +96,13 @@ import { isManagementUrl, openManagementClient } from '../../../tools-pennsync-s
  * IT NEVER WRITES, and the barrier is an ALLOWLIST rather than a scanner. An
  * earlier version passed each statement through the migrate tool's `isReadOnly`,
  * which only classifies leading verbs — `select write_contract(…)` and
- * `explain analyze insert …` both pass it, and both mutate. Since this suite
- * issues exactly three fixed statements, the client holds those three and
- * refuses everything else, so no edit here can write through an account-wide
- * management credential.
+ * `explain analyze insert …` both pass it, and both mutate. This suite issues a
+ * fixed set of statements and the client holds exactly that set, refusing
+ * everything else, so no edit here can write through an account-wide management
+ * credential. The four gate bodies are in the set for the same reason the other
+ * reads are: they are fixed text, none of them could write had it succeeded,
+ * and every one of them ABORTS, which unwinds the endpoint's implicit
+ * transaction before it could have.
  *
  * WHAT IT MAY IMPORT is a constraint rather than a preference, and
  * `record-contract-postgres.test.mjs` records why: the CI job running this
@@ -119,6 +140,15 @@ const PRIVATE = 'pennsync_private';
  * own job when there is one.
  */
 const EXPECTED_LABEL = 'staging';
+
+/**
+ * That deployment's app id, taken from the provisioner's list rather than
+ * written out, so the caller-gate statements below cannot name an app the
+ * provisioner has stopped admitting. `actor()` checks `app_admitted` before it
+ * looks at anything else, so a stale literal here would turn every gate test
+ * into the same `PENNSYNC_APP_NOT_ADMITTED` and say nothing about the gate.
+ */
+const EXPECTED_APP = Object.keys(KNOWN_APPS).find(id => KNOWN_APPS[id] === EXPECTED_LABEL);
 
 /**
  * Roles that must hold no way past a policy. `service_role` is deliberately
@@ -278,7 +308,88 @@ const LEDGER = `select jsonb_build_object(
 ) as ledger`;
 
 /**
- * The only three statements this suite may send.
+ * What the row-behaviour half is waiting on, counted rather than assumed.
+ *
+ * The plan recorded stage A's fourth claim as blocked because "a caller is an
+ * `auth.users` row" and hosted had none. That stopped being the whole truth:
+ * four accepted identities are mapped on the hosted project, and what is
+ * missing is the LIVE SESSION `actor()` also requires. Those are different
+ * asks of different people, so the suite counts them separately and the gate
+ * tests below read the counts rather than a constant.
+ *
+ * `mapped` carries `actor()`'s OWN map predicate rather than a looser one —
+ * the app id, `enabled`, `revoked_at`, `expected_email` against the user's
+ * current email, `verified_at` in the past, and the `auth.users` conditions
+ * that line 194 applies — because this count is the only thing in this file
+ * that says the hosted identities are enrolled. No gate refusal says it: the
+ * session is checked BEFORE the map, so an unenrolled subject and an enrolled
+ * one refuse identically while there is no session. A count measured against a
+ * weaker predicate than the function's would quietly overstate that.
+ */
+const CALLERS = `select jsonb_build_object(
+  'auth_users', (select count(*) from auth.users
+    where deleted_at is null and email_confirmed_at is not null and is_anonymous is false),
+  'mapped', (select count(*) from ${PRIVATE}.identity_map i
+    join auth.users u on u.id = i.auth_user_id
+      and u.deleted_at is null and u.email_confirmed_at is not null
+      and u.email_confirmed_at <= clock_timestamp() and u.is_anonymous is false
+      and (u.banned_until is null or u.banned_until <= clock_timestamp())
+    where i.app_id = '${EXPECTED_APP}' and i.enabled and i.revoked_at is null
+      and i.expected_email = lower(u.email) and i.verified_at <= clock_timestamp()),
+  'memberships', (select count(*) from ${PRIVATE}.membership where status = 'active'),
+  'assignments', (select count(*) from ${PRIVATE}.assignment where status = 'active'),
+  'chart_assignments', (select count(*) from ${PRIVATE}.chart_assignment where status = 'active'),
+  'live_sessions', (select count(*) from auth.sessions
+    where created_at > clock_timestamp() - interval '12 hours'
+      and (not_after is null or not_after > clock_timestamp())),
+  'local_test_double', (select count(*) from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'auth' and p.proname = 'pennsync_local_test_double')
+) as callers`;
+
+/**
+ * The caller gate, asked of the hosted project with no caller to seed.
+ *
+ * This is the slice of the row-behaviour half that needs no session, and it is
+ * worth having on its own: every `contract-*` assertion begins by getting past
+ * `pennsync_private.actor()`, so a gate that refused differently here than on
+ * PGlite would invalidate all of them at once and nothing else looks.
+ *
+ * Each body REFUSES. That is the assertion — the SQLSTATE and the message are
+ * read from the error — and it is also why these are safe to send through an
+ * account-wide credential: an aborted statement writes nothing, and none of the
+ * four could write anything had it succeeded.
+ *
+ * NO `begin`/`rollback`, deliberately. The endpoint wraps a body carrying no
+ * transaction control in one implicit transaction of its own, which is what
+ * makes `set local` take effect and what makes the abort total;
+ * `assertSingleTransaction` refuses `begin; … rollback;` outright, so the
+ * control-free shape is the only one this transport carries. The role switch
+ * proving itself is `GATE_ANON` (as `postgres` the grant would not refuse) and
+ * the claims proving themselves is `GATE_MAPPED` (as unset claims the answer
+ * would be `PENNSYNC_SESSION_REQUIRED` instead).
+ *
+ * `GATE_MAPPED` reads its subject out of `identity_map` rather than naming a
+ * UUID, because the hosted identities belong to real people and a real account
+ * id does not belong in a repository. It is also what makes the test measure
+ * the hosted rows rather than a constant that drifts from them.
+ */
+const GATE_CLAIMS = subject => `select set_config('request.jwt.claims', jsonb_build_object(
+  'sub', ${subject}, 'session_id', '20000000-0000-4000-8000-00000000000f',
+  'role', 'authenticated', 'exp', '4102444800')::text, true);`;
+const GATE_CALL = role => `set local role ${role};
+select public.pennsync_staging_context('${EXPECTED_APP}', 'agency-a');`;
+const GATE_NO_CLAIMS = GATE_CALL('authenticated');
+const GATE_UNKNOWN = `${GATE_CLAIMS("'00000000-0000-4000-8000-0000000000ff'")}
+${GATE_CALL('authenticated')}`;
+const GATE_MAPPED = `${GATE_CLAIMS(`(select i.auth_user_id from ${PRIVATE}.identity_map i
+    join auth.users u on u.id = i.auth_user_id
+    where i.enabled and i.revoked_at is null and i.expected_email = lower(u.email)
+    order by i.auth_user_id limit 1)`)}
+${GATE_CALL('authenticated')}`;
+const GATE_ANON = GATE_CALL('anon');
+
+/**
+ * The only statements this suite may send.
  *
  * An allowlist rather than a scanner, because a scanner over leading verbs is
  * not a write barrier: `select some_write_contract(…)` is a `select`, and
@@ -286,7 +397,13 @@ const LEDGER = `select jsonb_build_object(
  * The credential in play is account-wide, so the barrier has to be the set of
  * statements rather than a property of them.
  */
-const ALLOWED = Object.freeze(new Set([INVENTORY, ROLES, LEDGER]));
+const GATES = Object.freeze({
+  no_claims: GATE_NO_CLAIMS,
+  unknown: GATE_UNKNOWN,
+  mapped: GATE_MAPPED,
+  anon: GATE_ANON,
+});
+const ALLOWED = Object.freeze(new Set([INVENTORY, ROLES, LEDGER, CALLERS, ...Object.values(GATES)]));
 
 /**
  * The target, and the reason a missing one skips rather than fails.
@@ -380,6 +497,7 @@ const inSchema = (functions, prefix) =>
   (functions ?? []).filter(entry => entry.k.startsWith(prefix));
 
 let hosted = {};
+const gates = {};
 let reference = {};
 const committed = [];
 
@@ -407,9 +525,33 @@ before(async () => {
       inventory: only('the hosted inventory', await client.query(INVENTORY)),
       roles: only('the hosted roles', await client.query(ROLES)),
       ledger: only('the hosted ledger', await client.query(LEDGER)),
+      callers: only('the hosted callers', await client.query(CALLERS)),
     };
+    for (const [name, sql] of Object.entries(GATES)) {
+      gates[name] = await refusal(client, sql);
+    }
   } finally { await client.end(); }
 });
+
+/**
+ * The server's own words for a body that must refuse, or a named failure.
+ *
+ * A gate body that SUCCEEDS is the finding this exists to catch, so it is an
+ * error rather than an empty result: a caller gate that admitted an unmapped
+ * subject would otherwise leave every assertion below reading `undefined` and
+ * passing on a falsy compare.
+ */
+async function refusal(client, sql) {
+  try {
+    await client.query(sql);
+  } catch (error) {
+    // The transport reports the endpoint's status and message and never the
+    // SQL, which is why the message is read rather than the statement matched.
+    if (error?.code === 'SUPABASE_DB_QUERY_FAILED') return String(error.detail?.message ?? '');
+    throw error;
+  }
+  throw new Error('HOSTED_GATE_ADMITTED: a caller gate that had to refuse did not');
+}
 
 test('the ledger holds one row per committed migration', { skip }, () => {
   const { ledger } = hosted;
@@ -638,4 +780,85 @@ test('an anonymous caller reaches neither schema', { skip }, () => {
     assert.equal(usage[`anon:${schema}`], false, `anon holds USAGE on ${schema}`);
   }
   assert.ok(CALLER_ROLES.includes('anon'), 'anon is no longer a caller role; re-read this test');
+});
+
+/**
+ * The caller gate, measured on hosted.
+ *
+ * These are the first hosted assertions in this repository about what the store
+ * DOES rather than what it is made of, and the boundary is still where the
+ * header says: none of them reads a patient, a visit or a roster, because that
+ * needs a caller who is through the gate. What they settle is that the gate
+ * itself refuses on the hosted project for the same reasons and in the same
+ * order as on PGlite, which every `contract-*` assertion rests on and which
+ * nothing else checks.
+ */
+test('a caller with no session claims is refused before anything else', { skip }, () => {
+  assert.match(gates.no_claims, /PENNSYNC_SESSION_REQUIRED/,
+    'the hosted gate admitted a caller carrying no session claims');
+});
+
+test('a subject with no identity row is refused as an inactive identity', { skip }, () => {
+  // The users lookup, not the map: `actor()` asks `auth.users` first, so a
+  // subject that is nobody fails there and never reaches `auth.sessions` or
+  // `identity_map`. Nothing here proves the map is consulted at all: that needs
+  // a caller with a live session, which is stage C's, and until then the map is
+  // measured by `CALLERS` rather than exercised.
+  assert.match(gates.unknown, /PENNSYNC_IDENTITY_INACTIVE/,
+    'the hosted gate admitted a subject that is not an auth user');
+});
+
+test('an anonymous caller cannot execute the staging surface at all', { skip }, () => {
+  // Also the proof that `set local role` takes effect through this transport:
+  // as `postgres` the grant would not refuse, so a role switch that silently
+  // did nothing would fail this test rather than pass the three around it.
+  assert.match(gates.anon, /permission denied for function pennsync_staging_context/,
+    'anon reached the staging surface');
+});
+
+test('an enrolled subject clears the auth user and stops at the session', { skip }, () => {
+  const { mapped, live_sessions: live } = hosted.callers;
+  if (!mapped) {
+    // Nothing is enrolled yet, so the subject resolves to null, the claims
+    // fail their own shape check and the gate answers as it does for no claims
+    // at all. Asserted rather than skipped, but it says nothing about the gate
+    // past that first branch: this test only means something once a row exists.
+    assert.match(gates.mapped, /PENNSYNC_SESSION_REQUIRED/);
+    return;
+  }
+  // Whether or not some OTHER session is live, this caller's `session_id` is
+  // fabricated, so `auth.sessions` cannot match it and the gate must refuse
+  // there. The branch is kept because the reason differs and a future reader
+  // should not have to re-derive it.
+  const because = live
+    ? 'a fabricated session_id matched a live session'
+    : 'an enrolled hosted subject did not reach the session check';
+  assert.match(gates.mapped, /PENNSYNC_SESSION_INACTIVE/, because);
+
+  // WHAT THIS DOES AND DOES NOT SAY. `actor()` checks `auth.users` (line 194),
+  // then `auth.sessions` (202), then `identity_map` (211). So reaching
+  // PENNSYNC_SESSION_INACTIVE proves the subject cleared `auth.users` — live,
+  // confirmed, unbanned, not anonymous — and proves NOTHING about the map: a
+  // subject with no map row refuses at exactly the same line. The map is
+  // measured by `CALLERS`, against the same predicate `actor()` uses, and the
+  // test below reads it. Taken together they say the session is what is
+  // missing; neither says it alone.
+});
+
+test('the row-behaviour prerequisites are counted rather than assumed', { skip }, () => {
+  const callers = hosted.callers;
+  // The fixture double must never exist here. `fixtures.sql` refuses to load
+  // without it, and that refusal is the only thing standing between a test run
+  // and fabricated rows in a real Supabase Auth schema.
+  assert.equal(callers.local_test_double, 0,
+    'auth.pennsync_local_test_double() exists on the hosted project; fixtures.sql would load');
+  // Not assertions about how many there should be — stage C decides that — but
+  // a reading of what is there, so the plan's account of what is missing can be
+  // checked against the project rather than against a memory of it.
+  for (const key of ['auth_users', 'mapped', 'memberships', 'assignments',
+    'chart_assignments', 'live_sessions']) {
+    assert.equal(typeof callers[key], 'number', `the hosted caller count ${key} was not read`);
+  }
+  assert.ok(callers.mapped <= callers.auth_users,
+    'more identity_map rows matched than there are usable auth users');
 });
