@@ -387,10 +387,19 @@ ABSENT credential means:
 
 ~~**Adding those two secrets and flipping the flag to `true` in the same change
 is the last thing stage A owes**, and it is an owner action: the credentials
-cannot be added from the repository.~~ **Done 2026-09-22 in #237**, which added
-both repository secrets and set the flag in one change, as this paragraph asked.
-The bullets above describe the gate's design and are kept; only the "today" in
-the first of them has moved on.
+cannot be added from the repository.~~ **Done 2026-09-22**, in two steps rather
+than one, which is worth recording precisely because this paragraph asked for
+one. The secrets were added in repository settings; #237 set the flag. The
+05:38Z run on main proves that order — it shows `HOSTED_MEASUREMENT_REQUIRED:
+false` alongside both credentials masked and fifteen real measurements, so the
+secrets were already in place about sixteen minutes before #237 merged.
+
+**The gap was harmless, and for the reason the bullets above give.** A usable
+credential is measured whatever the flag says, so the measurement started the
+moment the secrets landed; the flag adds only that the job can never quietly
+stand down again. Had the order been reversed the stage would have gone red
+instead — which is the behaviour asked for, not a defect. Those bullets are
+kept; only the "today" in the first of them has moved on.
 
 **The decision lives in `tools-pennsync-hosted-gate.mjs` rather than in the
 workflow, and that is the fourth version of it.** The first bound the
