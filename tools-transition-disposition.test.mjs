@@ -993,10 +993,15 @@ test('nothing in the queue is startable and unwritten', async () => {
   // asserting is that it is not: all 72 are written, and every capability left
   // is behind a decision or a phase rather than behind somebody's time.
   //
-  // It is an equality in BOTH directions. A capability appearing in `none`
-  // without a handler is startable work the queue stopped surfacing; a handler
-  // for something the queue still calls blocked means a blocker outlived its
-  // reason, which is the shape D74, D75 and D76 each corrected once.
+  // It runs in ONE direction only, and the first draft of this test claimed
+  // two. A capability in `none` with no handler is startable work the queue
+  // stopped surfacing, and that is checkable — sabotaging the registry path
+  // fails this. The converse is not: `checkCoverage` sends a ported capability
+  // to `none` without consulting `refine` at all, so "blocked, yet written"
+  // cannot occur however wrong a blocker is, and an assertion against it
+  // passes for a reason that has nothing to do with the queue being right.
+  // That override has its own test ("nothing blocks a port that has
+  // happened"); this one would only have looked like a second.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -1006,9 +1011,6 @@ test('nothing in the queue is startable and unwritten', async () => {
   const shipped = new Set(HANDLER_NAMES);
   assert.deepEqual(report.port_blockers.none.filter(name => !shipped.has(name)), [],
     'a capability the queue calls portable today has no handler');
-  const blocked = PORT_BLOCKERS.filter(key => key !== 'none').flatMap(key => report.port_blockers[key]);
-  assert.deepEqual(blocked.filter(name => shipped.has(name)), [],
-    'a handler exists for a capability the queue still calls blocked');
   // The two handlers over and above the queue are the roster contract's, which
   // D22 serves as a facility rather than as a Base44 capability — so they are
   // not in `base44/functions` and the queue never counted them.
