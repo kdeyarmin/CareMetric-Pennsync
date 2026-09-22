@@ -36,6 +36,20 @@
  * suite would be a second copy of this logic, in the one place it cannot be
  * tested, which is how all three earlier versions went wrong.
  *
+ * AND THE STEP MUST CALL THIS AS `|| gate=$?`, WHICH IS THE FOURTH MISTAKE.
+ * Actions runs `run:` under `bash -e`, and `set -uo pipefail` does not clear
+ * `-e`, so a bare invocation ends the step AT this module's exit code rather
+ * than letting it branch: the stand-down 3 became a failed step and main went
+ * red a second time, with the `::notice` sitting in the log directly above the
+ * error. The left side of `||` is exempt from `-e`.
+ *
+ * That one is not fixable from inside this module, which is why the suite now
+ * EXECUTES the real step body under `bash -e` with both `node` calls stubbed.
+ * The earlier check ran the same body under a plain `bash script.sh` and so
+ * reproduced everything except the single flag that mattered. A decision this
+ * module gets right is worth nothing if the caller cannot survive receiving
+ * it.
+ *
  * Node builtins only, deliberately: the job that runs this installs just
  * `services/authority-store`'s dependencies and does no root install, so a
  * third-party import here would fail at load.

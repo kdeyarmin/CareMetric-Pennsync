@@ -378,6 +378,17 @@ therefore broken, configuration — took the green stand-down path. Each was
 checked by hand and each looked right, because a shell block inside YAML is the
 one place in this repository nothing can test.
 
+**And a fourth, which the module could not have prevented.** The step invoked
+the gate bare and branched on `$?`. Actions runs `run:` under `bash -e`, which
+`set -uo pipefail` does not clear, so the stand-down exit of 3 ended the step
+at 3 instead of being read — main went red a second time, with the `::notice`
+printed in the log immediately above the error. The call is `|| gate=$?` now,
+the left side of `||` being exempt from `-e`. The check that missed it ran the
+same step body under a plain `bash script.sh`, reproducing everything except
+the one flag that mattered; the suite now executes the real body under
+`bash -e` with both `node` calls stubbed, and that test fails against the shape
+that shipped.
+
 It is a module with a table-driven suite now. Every combination of (target,
 token, required) has a row, the two rules are asserted as properties rather
 than rows — `required` may turn an absent configuration into a failure and may

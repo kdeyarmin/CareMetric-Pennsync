@@ -342,14 +342,17 @@ jobs:
           HOSTED_MEASUREMENT_REQUIRED: 'false'
         run: |
           set -uo pipefail
-          node tools-pennsync-hosted-gate.mjs
-          gate=$?
-          # 0 measure, 3 stand down, anything else refuse. The branch is on the
-          # gate's ANSWER; this step never asks about a credential itself.
-          if [ "$gate" -eq 0 ]; then
-            exec node --test services/authority-store/tests/hosted-store.test.mjs
-          fi
+          # `|| gate=$?` rather than a bare call: Actions runs this under
+          # `bash -e`, which `set -uo pipefail` does NOT clear, so a bare
+          # invocation would end the step AT the gate's exit code instead of
+          # letting it branch -- which is exactly how the stand-down exit of 3
+          # failed main once. The left side of `||` is exempt from -e.
+          gate=0
+          node tools-pennsync-hosted-gate.mjs || gate=$?
           if [ "$gate" -eq 3 ]; then
             exit 0
           fi
-          exit 1
+          if [ "$gate" -ne 0 ]; then
+            exit "$gate"
+          fi
+          node --test services/authority-store/tests/hosted-store.test.mjs
