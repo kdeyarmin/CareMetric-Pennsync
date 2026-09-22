@@ -4789,10 +4789,14 @@ Port queue: `records_schema` 1 → 0, written 71.
 **Decision.** Teach `ported_function` to ask who the callee is, and port the
 capability it was holding — `extractReferralDataForSmartNote`.
 
-**The sixth correction of the recurring shape, and the first that ends a wait
-rather than renaming one.** D47, D55, D65, D74 and D75 each found a bucket
-keeping its name after the reason for it had gone, and each moved capabilities
-between categories. This one moves one from blocked to startable.
+**The seventh correction of the recurring shape, and the first that ends a wait
+rather than renaming one.** D47, D55, D60, D65, D74 and D75 each found a check
+or a bucket keeping its name after the reason for it had gone, and each moved
+capabilities between categories. This one moves one from blocked to startable.
+
+*This paragraph first read "the sixth" and listed five, dropping D60 — which
+D74's own entry counts in the series. Corrected at D79, which needed the
+ordinal to be true before it could claim one.*
 
 The rule was a single unconditional line:
 
@@ -5124,3 +5128,110 @@ lock-wait assertion is what fails, seconds before any duplicate is counted.
 Four tests fail under that sabotage. That is the only way to tell a test that
 works from one that merely passes — and given that this decision exists because
 a written-down rule was not a check, it seemed worth doing to the check as well.
+
+## D79 — Two buckets describing rules they had stopped using
+
+**Decision.** Correct what `entity_authorization` and `CARE_TEAM_SIGNALS` say
+they measure, pin both against the tree, and record that the port queue has
+nothing startable left.
+
+**The eighth correction of the recurring shape, and the first where nothing
+moves.** D47, D55, D60, D65, D74, D75 and D76 each found a check or a bucket
+keeping its name after the reason for it had gone, and every one of them
+reclassified capabilities — a count changed, and the change is what made the
+correction visible. Here the classifier is right, the counts are right, and
+what is wrong is only what a reader is told. That is the harder version of the
+same defect: nothing fails, so nothing surfaces it.
+
+### `entity_authorization` describes a rule that fires on nothing
+
+Its paragraph says the bucket is *"the module reads a carried entity that has
+forced RLS and no policy. That is `User`"*, and that what it now counts is *"a
+roster read waiting on that RPC"*. Measured against this tree:
+
+- `discoverPolicylessEntities` returns **empty**. No carried entity lacks a
+  read policy, so the read rule cannot fire at all;
+- `User` has had a read policy keyed on the authority store's roster since
+  **D23**;
+- the roster RPC the paragraph says eight capabilities are waiting for
+  **shipped**, as `contract_roster` with `listAgencyRoster` and
+  `getAgencyRosterMember` over it.
+
+What populates the bucket is the *write* rule five hundred lines below, and in
+two populations: **six** that UPDATE a profile — the path D23 leaves
+deliberately open, because the roster policy is read-only and nothing may
+settle that question by accident — and **two** that write `MedicareGuideline`,
+a `global` reference table no tenant surface may write. A seventh profile
+writer, `offboardUser`, also reads four `preserved_paused` comms tables and is
+held by `entity_not_carried` first.
+
+A reader acting on the paragraph would go and write a roster RPC that already
+exists. The inline comment beside the live rule was accurate throughout, and
+its counts had drifted the other way — `8` and `35` where the tree measures
+`7` and `39`, because D75 moved three profile writers out of `port` and the
+ports since moved readers into the shipped set.
+
+### `CARE_TEAM_SIGNALS` says an answered question is open
+
+It opens *"Three representations of 'who may see this patient' exist, and which
+one governs has never been decided"* and ends *"A capability reading the third
+cannot be ported until one of them is authoritative."* Four hundred and eighty
+lines below, in the same file, `refine` says:
+
+> D24. Both halves exist, so a care-team dependency is no longer a thing to
+> decide — it is a port to write, against a store that can answer.
+
+`patient_access_model` is empty and has been since D24. **And D24 answered it
+with none of the three the comment lists**: `caller_assigned_patients` reads
+`pennsync_private.chart_assignment`, a production table that the staging
+`assignment` in (1) is not — the two are explicitly not interchangeable — with
+`tools-pennsync-assignment-backfill.mjs` carrying (2) into it. (3) is not
+merely unchosen but **refused as a source**, because an address stays on the
+patient row after its assignment is suspended, so reading those emails again
+resurrects access somebody revoked.
+
+The signals stay, because they are what *enforces* that answer rather than what
+waits on it: delete either half of D24 and every dependent is blocked again.
+
+### The fix is tests, because prose is what failed
+
+Both paragraphs were written accurately and went stale where nothing could
+notice. So the reasons are asserted rather than described — which read-only
+entity holds each member of the bucket, that the policyless set is empty, and
+that the roster handlers exist. A rewrite that gets the reason wrong now fails
+instead of being read and believed. Giving `user` an `update` policy empties
+the bucket and fails four tests.
+
+### The milestone the counts do not state
+
+`none` means *portable today*, and a reader takes a non-empty one as work
+available now. It is 72, and **all 72 are written**: the queue's portable set
+is exactly the shipped handler registry, less the two roster facilities D22
+serves outside `base44/functions`. Nothing is startable and unwritten. Every
+capability left is behind a decision or a phase rather than behind somebody's
+time:
+
+| Bucket | Left | Waiting on |
+| --- | --- | --- |
+| `files` | 12 | Phase 3's data work — and D77's copy, which refuses every apply while the runtime's reader model is uploader-owned |
+| `entity_authorization` | 8 | D23's open profile-write path (6) and how a `global` reference table may be written (2) |
+| `entity_not_carried` | 7 | domains that are going away: training records, paused comms logs, real-time metrics |
+| `core_integration` | 3 | releasing `Core.SendEmail` to the brokered set — an owner decision, since those digests carry personnel and invitee names |
+| `external_secret` | 2 | a third-party transcription key, which belongs to the runtime's brokered path |
+
+### The test's own first draft was the defect it was written against
+
+It asserted the milestone in both directions: nothing in `none` unwritten, and
+nothing blocked with a handler. Only the first is an equality. `checkCoverage`
+sends a ported capability to `none` **without consulting `refine`**, so
+"blocked, yet written" cannot occur however wrong a blocker is.
+
+Found by sabotage rather than by reading: flipping `PolicyLibrary` to `hub`
+should have pushed the shipped `listPolicyLibrary` into `entity_not_carried`.
+The queue did not move at all. The assertion had been passing for a reason that
+has nothing to do with the queue being right, in a test whose comment claimed
+otherwise — **a test whose comment describes something the test does not do
+reads exactly like one that works**, which is D77's lesson arriving in the same
+change that cites it.
+
+Port queue: unchanged at 7 / 8 / 0 / 0 / 12 / 0 / 3 / 0 / 2 / 72.
