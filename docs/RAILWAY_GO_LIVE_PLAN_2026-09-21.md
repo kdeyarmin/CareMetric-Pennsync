@@ -338,6 +338,65 @@ where it is least diagnosable. It is asserted now.
   rather than to this one. What stage A can prove without a caller — that the
   policies bind, that they all arrived, that the helpers are unreachable and
   that no caller holds a direct grant — is proved.
+
+  **Corrected 2026-09-22: "a caller is an `auth.users` row" was true and was
+  not the binding constraint, and reading it as one hid what is actually
+  missing.** The hosted project already carries four accepted identities —
+  real account ids, confirmed emails, none anonymous or banned — each mapped in
+  `identity_map` with `expected_email` matching, each with an active
+  `membership`, in the fixture's own topology: two admins split across
+  `agency-a` and `agency-b`, two clinicians in `agency-a` of which one holds
+  the `assignment` on `patient-a1`. `auth.pennsync_local_test_double()` is
+  absent, so none of it came from `fixtures.sql`. `identity_map` was never
+  empty; nobody looked.
+
+  What `actor()` refuses on is the SECOND thing it requires, and the plan never
+  named it: a row in `auth.sessions` whose id matches the caller's
+  `session_id` claim and whose `created_at` is **within the last twelve hours**.
+  There are none. Measured on the project through the same transport the
+  structural suite uses, as `authenticated` with a mapped subject and a
+  fabricated session id, the gate answers `PENNSYNC_SESSION_INACTIVE` — which
+  is reachable only by clearing the `auth.users` lookup and the `identity_map`
+  lookup on live rows first. So the identity half of stage C is, for these four
+  callers, already done, and what remains is a sign-in.
+
+  **Four gate refusals are therefore measured hosted now**, in
+  `hosted-store.test.mjs`: no claims (`PENNSYNC_SESSION_REQUIRED`), an unknown
+  subject (`PENNSYNC_IDENTITY_INACTIVE`), `anon` (refused at the grant, which is
+  also what proves the role switch takes effect through this transport), and the
+  mapped-identity case above. That is a real slice of claim 4 and it is not the
+  whole of it: none of the four reads a row a policy protects.
+
+  **Three things stand between here and the rest of claim 4, and only the first
+  is the owner's.**
+
+  1. **A live session per caller, which only a sign-in creates.** That needs
+     the project's publishable key and a credential for each of the four
+     accounts. The twelve-hour window is not a token lifetime and refreshing
+     does not move `auth.sessions.created_at`, so a session cannot be held as a
+     CI secret: the job has to sign in at the start of each run.
+  2. **Seeding, which the record store needs and this transport cannot roll
+     back.** `pennsync_records` is empty — 0 patients, 0 visits across all 157
+     tables — so every `contract-*` assertion has to create the rows it reads.
+     On PGlite that is `db.exec` on a database nobody else has; on hosted every
+     request is its own connection, so seed, impersonate, assert and undo must
+     be one body, and `assertSingleTransaction` in
+     `tools-pennsync-supabase-db.mjs` admits only `begin; … commit;` — never
+     `rollback`. `record-tenant-isolation` needs more than that again: it grants
+     its caller role table privileges as part of its own setup, which on a
+     shared project is a real change to the grant model and is exactly what
+     that suite elsewhere proves a deployment must not have.
+  3. **The `chart_assignment` row.** The fixture carries two rows for one care
+     team — `assignment` for the synthetic patient and `chart_assignment` for
+     the chart of record, because D24 authorizes from the second. Hosted has
+     the first and not the second, so sixteen suites would read an empty team
+     and pass for the wrong reason.
+
+  **And a correction to the stage's own name for this work.** "Prove the
+  committed store" is right; "confirm migrated rows behave correctly" — how the
+  claim gets restated — is not, because there are no migrated rows. What was
+  migrated in stage A was the DDL. Customer data is stage I, after stage F.
+  Whatever runs here reads rows a test seeded minutes earlier.
 - The PGlite suites themselves remain green and unchanged: they are still the
   proof of what the predicates mean, and now they are no longer the *only*
   proof that the store a deployment holds is the one they describe.
@@ -456,13 +515,19 @@ carried by one "done" that was half true:
    the measurement ran anyway, because `HOSTED_MEASUREMENT_REQUIRED` governs
    only what an ABSENT credential means and a usable one is measured whatever
    it says. The flag is what stops the job ever silently standing down again;
-4. the row-behaviour suites green there — **blocked on stage C**, which is where
-   the identities come from.
+4. the row-behaviour suites green there — **partly done 2026-09-22; the rest is
+   not all stage C's**. ~~Blocked on stage C, which is where the identities come
+   from.~~ The identities the fixture topology needs are already on the project
+   and the four caller-gate refusals are measured there. What is open is a live
+   session (stage C, and only a sign-in makes one), a seed-and-undo transport
+   the record suites can use, and the missing `chart_assignment` row — see the
+   correction under "the row-behaviour half" above, which names all three.
 
-**Stage A is therefore open on 4 alone**, and 4 cannot be closed from outside
-stage C: a caller here is an `auth.users` row. Three of the four are done and
-the drift on the hosted project is now watched on every push to main, which is
-the condition stage B needed.
+**Stage A is therefore open on 4 alone**, and the part of 4 that needs a person
+is narrower than this stage said: a sign-in for four accounts that already
+exist, not ten invitations. Three of the four claims are done, the gate itself
+is measured hosted, and the drift on the hosted project is watched on every push
+to main, which is the condition stage B needed.
 
 ### Stage B — Deploy `services/pennsync-api`, paused (size S; owner creates the service)
 
@@ -575,6 +640,25 @@ anywhere. The app binding is deferred to stage C as above.
   any one of them returns to a real person. The publishable key and actor UUID
   map belong to that job, here, rather than to the structural suite stage A
   added.
+
+  **Narrowed 2026-09-22.** Four of those invitations were already accepted:
+  four identities are mapped, verified and members, in the fixture's own
+  topology, and stage A now measures the caller gate reaching them. The actor
+  UUID map is therefore readable from the project rather than owed by anybody.
+  Two things are still owed and they are smaller than "ten invitations":
+  - **The publishable (anon) key, and a sign-in credential for each of the four
+    accounts.** `actor()` requires an `auth.sessions` row created within the
+    last twelve hours, which is not a token lifetime and which a refresh does
+    not extend, so the session cannot be a stored secret — the job signs in at
+    the start of each run and works inside that window.
+  - **The `chart_assignment` row for the existing care team.** `assignment` has
+    it and `chart_assignment` does not, and D24 authorizes from the second;
+    sixteen suites read an empty team without it. It is a write to
+    `pennsync_private` on staging rather than an identity, so it belongs to
+    whoever runs the seed, not to an enrollee.
+
+  The other six invitations are still this stage's, and so is everything below;
+  what changed is that stage A's fourth claim no longer waits on all ten.
 - Verify each identity out of band, then run `tools-pennsync-enroll.mjs` with the
   digest-addressed plan. Every run lands in `enrollment_receipt`.
 - Retire the four pinned actor IDs in `services/authority-client/client.mjs` in
@@ -874,11 +958,12 @@ misunderstanding:
 
 | Needed | For | Note |
 | --- | --- | --- |
-| ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open, and it needs identities, so it moved to stage C |
+| ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open. It moved to stage C for identities, and on 2026-09-22 the identities turned out to be largely there already — what it waits on is a sign-in, a seed transport and one `chart_assignment` row, per the correction in stage A |
 | ~~Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change~~ | Stage A | **Done 2026-09-22 (#237).** Both secrets are configured and the flag is `'true'`. The job log shows both masked and then 15 tests, 15 passed, 0 skipped against the real project — read from the log rather than from the green tick, which is what this gate exists to distrust. The committed store's drift is now watched on every push to main |
 | ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
-| Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this |
+| Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this. **Four are already accepted, mapped and verified as of 2026-09-22**; six remain |
+| The publishable (anon) key and a sign-in credential for the four accepted accounts | Stage A claim 4, Stage C | Only a sign-in makes the `auth.sessions` row `actor()` requires, and it is good for twelve hours from sign-in rather than for a token's lifetime, so this cannot be a stored session secret |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
 | A decision to broker `Core.SendEmail` | Stage G | Unblocks 3 ports; the runtime already implements it |
 | Dispositions for 7 capabilities on retiring domains | Stage G | Training records, paused comms logs, real-time metrics |
