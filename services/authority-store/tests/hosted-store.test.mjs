@@ -429,10 +429,20 @@ test('the independent authority RPCs the runtime calls are present and callable'
    *
    * It is identical in the reference build, so it is a property of the
    * committed migrations and not hosted drift; fixing it means a new migration
-   * and is not this change's to make. What the suite refuses is the thing that
-   * would matter: a CALLABLE private function reachable anonymously. The
-   * trigger set is pinned so a fourth one, or one that stops returning
-   * `trigger`, fails here.
+   * and is not this change's to make.
+   *
+   * AND IF SOMEBODY DOES GO AND FIX IT: not by repeating the blanket revoke.
+   * `AGENTS.md` says so in as many words, because every `pennsync_staging_*`
+   * wrapper is an INVOKER calling an inner `pennsync_private` function granted
+   * to `authenticated` — a second `revoke all on all functions in schema
+   * pennsync_private` takes that grant away and turns nine suites red. The
+   * three names below are what a correction would have to revoke, one at a
+   * time. This note is here rather than only in the plan because this comment
+   * is what somebody reads when this test tells them about the residue.
+   *
+   * What the suite refuses is the thing that would matter: a CALLABLE private
+   * function reachable anonymously. The trigger set is pinned so a fourth one,
+   * or one that stops returning `trigger`, fails here.
    */
   const privateFns = hosted.inventory.private_authority ?? [];
   const anonReachable = privateFns.filter(fn => fn.anon);

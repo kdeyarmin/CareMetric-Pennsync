@@ -239,6 +239,14 @@ rather than a hole and is recorded so it stays visible:
   *callable* private function reachable anonymously — and pins the trigger set,
   so a fourth one fails.
 
+  **A correction must revoke the three by name, never by repeating the blanket.**
+  `AGENTS.md` already forbids a second `revoke all on all functions in schema
+  pennsync_private`: every `pennsync_staging_*` wrapper is an invoker calling an
+  inner function granted to `authenticated`, so the blanket takes that grant
+  away and nine suites go red. The obvious reading of this finding is the one
+  thing not to do, which is why it is written down beside the finding and in the
+  test's own comment rather than only here.
+
 #### Stage E's database dependency is present
 
 Checked while the store was open, because nothing else checks it and stage E
