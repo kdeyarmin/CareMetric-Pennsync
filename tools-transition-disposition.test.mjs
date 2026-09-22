@@ -348,8 +348,8 @@ test('what the record store permits per entity is read from the policies it emit
   // standing in for "has no policy" — which was true only while a profile
   // claim was the one thing that produced a table with none. D23 ends that,
   // and an inference that could not tell "no policy" from "read-only" would
-  // have reported all 43 of `User`'s readers unblocked along with the 8 that
-  // write it.
+  // have reported all 39 of `User`'s `port` readers unblocked along with the 7
+  // that write it.
   const permits = discoverEntityPolicies(repository);
   assert.equal(Object.keys(permits).length, 156, 'every carried entity is accounted for');
   assert.deepEqual(discoverPolicylessEntities(repository), [], 'nothing is unreadable any more');
@@ -776,9 +776,10 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // gives `User` a read policy keyed on the authority store's roster, so what
   // is left is only what a read policy does not help:
   //
-  // - the 8 that UPDATE a profile, which D23 deliberately leaves open. The
+  // - the 6 that UPDATE a profile, which D23 deliberately leaves open. The
   //   roster policy is read-only, so nothing decided that question by
-  //   accident;
+  //   accident. A seventh profile writer, `offboardUser`, reaches a table that
+  //   gets no row here at all and is held by `entity_not_carried` first;
   // - two that write `MedicareGuideline`, a `global` reference table no tenant
   //   surface may write. That was always true and was never reported, because
   //   the classifier could not tell reading a table from writing one.
@@ -935,6 +936,84 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // The sum is every function dispositioned `port`, so nothing falls out of the
   // queue by being unclassifiable.
   assert.equal(Object.values(counts).reduce((total, value) => total + value, 0), report.families.functions.counts.port);
+});
+
+test('what holds each member of `entity_authorization` is measured, not described', async () => {
+  // The bucket described itself by a rule it had stopped using. Its paragraph
+  // said "reads a carried entity that has forced RLS and no policy. That is
+  // `User`" and that what it counted was "a roster read waiting on that RPC" —
+  // and by then `User` had a read policy, `discoverPolicylessEntities` was
+  // empty, and the RPC had shipped as `contract_roster` with two handlers over
+  // it. The sixth correction of that shape (D74) and the seventh (D75) each
+  // found the same thing, so what stops the eighth is not better prose: it is
+  // asserting which entity holds each member, so a rewrite that gets the
+  // reason wrong fails here rather than being read and believed.
+  const declared = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8'));
+  const evidence = discoverEvidence(repository);
+  const report = checkCoverage(discoverCapabilities(repository), declared, evidence);
+  const permits = evidence.entityPolicies;
+  const readOnly = (entity) => permits[entity] && permits[entity].read && !permits[entity].write;
+  // Which read-only entities a `port` capability writes, read from the tree.
+  const held = {};
+  for (const [name, reach] of Object.entries(evidence.entityReach)) {
+    if (declared.functions[name] !== 'port' || reach.dynamic) continue;
+    const written = (reach.writes || []).filter(readOnly).sort();
+    if (written.length) held[name] = written;
+  }
+  // Two populations and no third. A `global` reference table was always
+  // unwritable here and was never reported, because the classifier could not
+  // tell reading a table from writing one.
+  assert.deepEqual([...new Set(Object.values(held).flat())].sort(), ['MedicareGuideline', 'User']);
+  assert.deepEqual(Object.keys(held).filter(name => held[name].includes('User')).sort(),
+    ['autoApproveInvitedUser', 'autoEndDutyDay', 'enforceStaffRoleIntegrity', 'offboardUser',
+      'setNurseDutyStatus', 'userManagement', 'userManagementV2'],
+    'the profile-write path D23 leaves open');
+  assert.deepEqual(Object.keys(held).filter(name => held[name].includes('MedicareGuideline')).sort(),
+    ['fetchMedicareGuideline', 'scheduledGuidelineSync']);
+  // Seven write a profile and six are in the bucket: `offboardUser` also reads
+  // four `preserved_paused` comms tables, and whether a capability survives at
+  // all outranks how a table is written.
+  assert.equal(Object.keys(held).filter(name => held[name].includes('User')).length, 7);
+  assert.deepEqual(report.port_blockers.entity_authorization.filter(name => !held[name]), [],
+    'every member is held by a write this measured');
+  assert.ok(report.port_blockers.entity_not_carried.includes('offboardUser'));
+  assert.ok(!report.port_blockers.entity_authorization.includes('offboardUser'));
+  // The other half of the corrected paragraph: the read rule is a guard that
+  // fires on nothing, and the RPC it said these were waiting for exists.
+  assert.deepEqual(discoverPolicylessEntities(repository), []);
+  const { HANDLER_NAMES } = await import('./services/pennsync-api/handlers.mjs');
+  for (const handler of ['listAgencyRoster', 'getAgencyRosterMember']) {
+    assert.ok(HANDLER_NAMES.includes(handler), `${handler} is the roster RPC the bucket said it was waiting for`);
+  }
+});
+
+test('nothing in the queue is startable and unwritten', async () => {
+  // The milestone the counts do not state. `none` means "portable today", and
+  // a reader takes a non-empty one as work available now — so the thing worth
+  // asserting is that it is not: all 72 are written, and every capability left
+  // is behind a decision or a phase rather than behind somebody's time.
+  //
+  // It is an equality in BOTH directions. A capability appearing in `none`
+  // without a handler is startable work the queue stopped surfacing; a handler
+  // for something the queue still calls blocked means a blocker outlived its
+  // reason, which is the shape D74, D75 and D76 each corrected once.
+  const report = checkCoverage(
+    discoverCapabilities(repository),
+    parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
+    discoverEvidence(repository),
+  );
+  const { HANDLER_NAMES } = await import('./services/pennsync-api/handlers.mjs');
+  const shipped = new Set(HANDLER_NAMES);
+  assert.deepEqual(report.port_blockers.none.filter(name => !shipped.has(name)), [],
+    'a capability the queue calls portable today has no handler');
+  const blocked = PORT_BLOCKERS.filter(key => key !== 'none').flatMap(key => report.port_blockers[key]);
+  assert.deepEqual(blocked.filter(name => shipped.has(name)), [],
+    'a handler exists for a capability the queue still calls blocked');
+  // The two handlers over and above the queue are the roster contract's, which
+  // D22 serves as a facility rather than as a Base44 capability — so they are
+  // not in `base44/functions` and the queue never counted them.
+  assert.deepEqual([...shipped].filter(name => !report.port_blockers.none.includes(name)).sort(),
+    ['getAgencyRosterMember', 'listAgencyRoster']);
 });
 
 test('a function call is only a reason to wait while the callee is unported', () => {
