@@ -247,3 +247,104 @@ jobs:
               ;;
           esac
           node tools-pennsync-migrate.mjs
+
+  hosted-store:
+    name: Verify the committed store on hosted staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.9.0
+          run_install: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+          cache: pnpm
+          cache-dependency-path: services/authority-store/pnpm-lock.yaml
+      - name: Install isolated authority dependencies
+        run: pnpm --dir services/authority-store install --ignore-workspace --frozen-lockfile
+      # The suites above build their own database and are green whatever the
+      # hosted project holds -- which is how it stayed fifty-nine migrations
+      # behind without anything going red. This one measures the migrated
+      # project against a reference built from the same committed migrations,
+      # so it fails on drift in either direction and on the things only a
+      # managed Postgres can contradict: the record owner's attributes, the
+      # platform roles that bypass RLS, the grants a caller actually holds.
+      #
+      # READ-ONLY, and structurally so rather than by intent: the suite checks
+      # every statement with the migrate tool's own `isReadOnly`, which fails
+      # closed, before sending it. It applies nothing -- a deployment is
+      # migrated by an operator who can see the plan first, never by CI.
+      #
+      # TWO STEPS, because the measurement needs credentials and exercising the
+      # suite does not.
+      #
+      # This one runs everywhere else and is handed nothing. It proves the file
+      # loads, its imports resolve against a checkout that installs only
+      # `services/authority-store`, and its skip path is a skip rather than a
+      # silent pass. Every hosted assertion reports itself skipped, with the
+      # reason.
+      - name: Exercise the suite without a hosted target
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: node --test services/authority-store/tests/hosted-store.test.mjs
+      # And this one does the measuring, on main only.
+      #
+      # The `if:` is the whole containment and `src/testRegistryContract.test.js`
+      # ratchets it: the step receiving the token must be gated on the REF. An
+      # env-level `github.ref == ... && secrets.X || ''` keeps the secret out of
+      # the environment just as well, and was how this was first written, but
+      # the property then lives in an expression somebody has to evaluate in
+      # their head instead of one line they can read. Excluding `pull_request`
+      # is not enough either: `workflow_dispatch` names no branch, so a
+      # collaborator could dispatch against a ref they control and
+      # `actions/checkout` would take it.
+      #
+      # That matters most for the token. A staging database URL reaches one
+      # database; a Supabase personal access token reaches every project in the
+      # account.
+      #
+      # So the hosted half of stage A's exit runs on main and on a manual run
+      # from main, and not on a pull request branch. That is narrower than the
+      # plan's "CI running them on every PR" and it is the safe reading of it;
+      # closing the gap needs a credential scoped to reads on one project,
+      # which does not exist today.
+      #
+      # The credential check is NOT belt-and-braces. The suite turns a missing
+      # target into `{ skip: <reason> }` on every test, which is right for the
+      # step above and would be silent failure here: a renamed or expired
+      # secret would leave this job green while reading nothing at all, and a
+      # required check that has quietly stopped checking is the exact shape
+      # this whole job exists to catch -- the hosted project sat fifty-nine
+      # migrations behind because nothing looked. So main refuses before it
+      # invokes the suite. The skip stays for the credential-free step.
+      - name: Measure the hosted staging store
+        if: ${{ github.ref == 'refs/heads/main' }}
+        env:
+          PENNSYNC_HOSTED_DATABASE_URL: ${{ secrets.PENNSYNC_STAGING_DATABASE_URL }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${PENNSYNC_HOSTED_DATABASE_URL:-}" ]; then
+            echo "PENNSYNC_STAGING_DATABASE_URL is not configured." >&2
+            echo "On main this is a failure, not a skip: the suite would report every" >&2
+            echo "hosted assertion skipped and this job would go green having measured" >&2
+            echo "nothing. See docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md stage A." >&2
+            exit 1
+          fi
+          case "${PENNSYNC_HOSTED_DATABASE_URL}" in
+            supabase://*)
+              if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+                echo "A supabase:// target needs SUPABASE_ACCESS_TOKEN; it is not configured." >&2
+                exit 1
+              fi
+              ;;
+            *)
+              echo "The hosted target must be supabase://<project-ref>: the direct host is" >&2
+              echo "IPv6-only and the poolers are unreachable from a runner allowed outbound" >&2
+              echo "HTTPS and nothing else." >&2
+              exit 1
+              ;;
+          esac
+          node --test services/authority-store/tests/hosted-store.test.mjs
