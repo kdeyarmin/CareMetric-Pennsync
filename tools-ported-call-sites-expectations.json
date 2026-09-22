@@ -60,6 +60,8 @@
     "src/lib/retiredOfflineQueue.js:494 submitIncidentReport",
     "src/pages/Dashboard.jsx:90 getDashboardData",
     "src/pages/Help.jsx:50 generateUserManual",
+    "src/pages/PatientEducationHub.jsx:289 generatePatientHandout",
+    "src/pages/PatientEducationHub.jsx:370 generatePatientHandout",
     "src/pages/PatientRecordDashboard.jsx:200 getScopedPatientAlerts",
     "src/pages/ReferralIntake.jsx:508 analyzeReferralPriority",
     "src/pages/ReferralIntake.jsx:512 analyzeReferralIntake",

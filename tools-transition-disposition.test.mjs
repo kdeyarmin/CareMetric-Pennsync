@@ -179,6 +179,10 @@ test('a module whose only entity is the retired trail is re-classified by what e
   const entityFree = discoverEntityFreeBlockers(repository);
   assert.equal(entityFree.transcribeAudioWithWhisper, 'external_secret');
   assert.equal(entityFree.mergePDFs, 'files');
+  // The verdict is about the MODULE, so it still reads the handout's send.
+  // What took the handout out of that bucket is D81's port, not a change here:
+  // a written capability is `none` whatever its original reaches.
+  assert.equal(entityFree.generatePatientHandout, 'core_integration');
   // And the four it actually found are in the buckets that describe them.
   const report = checkCoverage(
     discoverCapabilities(repository),
@@ -186,7 +190,7 @@ test('a module whose only entity is the retired trail is re-classified by what e
     discoverEvidence(repository),
   );
   for (const [name, blocker] of [['mergePDFs', 'files'], ['reorderDeletePDFPages', 'files'],
-    ['generatePatientHandout', 'core_integration'],
+    ['generatePatientHandout', 'none'],
     ['transcribeAudioWithWhisper', 'external_secret']]) {
     assert.ok(report.port_blockers[blocker].includes(name),
       `${name} should wait on ${blocker}`);
@@ -348,8 +352,8 @@ test('what the record store permits per entity is read from the policies it emit
   // standing in for "has no policy" — which was true only while a profile
   // claim was the one thing that produced a table with none. D23 ends that,
   // and an inference that could not tell "no policy" from "read-only" would
-  // have reported all 43 of `User`'s readers unblocked along with the 8 that
-  // write it.
+  // have reported all 39 of `User`'s `port` readers unblocked along with the 7
+  // that write it.
   const permits = discoverEntityPolicies(repository);
   assert.equal(Object.keys(permits).length, 156, 'every carried entity is accounted for');
   assert.deepEqual(discoverPolicylessEntities(repository), [], 'nothing is unreadable any more');
@@ -741,6 +745,9 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // corrections before it, this one moved a capability from blocked to
   // startable rather than renaming its bucket — and it was written the same
   // day. → 71 → 72 written.
+  // Then D81, the one D79 found startable while writing itself: the handout's
+  // send sits behind the module's own release gate, so its document action
+  // waited on nothing. `core_integration` 3 → 2, and 73 written.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -748,8 +755,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 8, patient_access_model: 0,
-    records_schema: 0, files: 12, ported_function: 0, core_integration: 3, pdf_rendering: 0,
-    external_secret: 2, none: 72 });
+    records_schema: 0, files: 12, ported_function: 0, core_integration: 2, pdf_rendering: 0,
+    external_secret: 2, none: 73 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -776,9 +783,10 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // gives `User` a read policy keyed on the authority store's roster, so what
   // is left is only what a read policy does not help:
   //
-  // - the 8 that UPDATE a profile, which D23 deliberately leaves open. The
+  // - the 6 that UPDATE a profile, which D23 deliberately leaves open. The
   //   roster policy is read-only, so nothing decided that question by
-  //   accident;
+  //   accident. A seventh profile writer, `offboardUser`, reaches a table that
+  //   gets no row here at all and is held by `entity_not_carried` first;
   // - two that write `MedicareGuideline`, a `global` reference table no tenant
   //   surface may write. That was always true and was never reported, because
   //   the classifier could not tell reading a table from writing one.
@@ -858,10 +866,12 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // `Core.SendEmail`, which no entity family can be the replacement for. The
   // function-side ceiling caught that, and `SendEmail` is not in the runtime's
   // brokered set, so it is a real blocker rather than a bookkeeping artefact.
-  // `generatePatientHandout` joins it by the refinement above: its only entity
-  // is `SystemLog`, so what it waits on is the send rather than the store.
+  // `generatePatientHandout` joined it by the refinement above — its only
+  // entity is `SystemLog` — and left it by being written (D81): the send was
+  // one action of two, refused by the module's own gate, so the document half
+  // never waited on the runtime at all.
   assert.deepEqual(report.port_blockers.core_integration,
-    ['generatePatientHandout', 'sendAccountReadyEmail', 'sendWelcomeEmail']);
+    ['sendAccountReadyEmail', 'sendWelcomeEmail']);
   // Named, because porting one of these verbatim would carry Base44's storage
   // host into the service, and the `cmfile:` handles that replace those URLs do
   // not exist yet. They wait on the file layer, not on the runtime.
@@ -891,7 +901,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
       'extractClinicalEvents',
       'extractReferralDataForSmartNote',
       'generateBagTechniquePDF', 'generateFollowUpTasks',
-      'generatePatientChartPDF', 'generateReferralTasks', 'generateSmartNoteGuide',
+      'generatePatientChartPDF', 'generatePatientHandout', 'generateReferralTasks',
+      'generateSmartNoteGuide',
       'generateUserGuidePDF', 'generateUserManual', 'generateUserRosterPDF',
       'getAiContentAgreementStatus', 'getApprovedTimeOff',
       'getAuthorizedDocument', 'getAuthorizedPatient',
@@ -935,6 +946,141 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // The sum is every function dispositioned `port`, so nothing falls out of the
   // queue by being unclassifiable.
   assert.equal(Object.values(counts).reduce((total, value) => total + value, 0), report.families.functions.counts.port);
+});
+
+test('what holds each member of `entity_authorization` is measured, not described', async () => {
+  // The bucket described itself by a rule it had stopped using. Its paragraph
+  // said "reads a carried entity that has forced RLS and no policy. That is
+  // `User`" and that what it counted was "a roster read waiting on that RPC" —
+  // and by then `User` had a read policy, `discoverPolicylessEntities` was
+  // empty, and the RPC had shipped as `contract_roster` with two handlers over
+  // it. The sixth correction of that shape (D74) and the seventh (D75) each
+  // found the same thing, so what stops the eighth is not better prose: it is
+  // asserting which entity holds each member, so a rewrite that gets the
+  // reason wrong fails here rather than being read and believed.
+  const declared = parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8'));
+  const evidence = discoverEvidence(repository);
+  const report = checkCoverage(discoverCapabilities(repository), declared, evidence);
+  const permits = evidence.entityPolicies;
+  const readOnly = (entity) => permits[entity] && permits[entity].read && !permits[entity].write;
+  // Which read-only entities a `port` capability writes, read from the tree.
+  const held = {};
+  for (const [name, reach] of Object.entries(evidence.entityReach)) {
+    if (declared.functions[name] !== 'port' || reach.dynamic) continue;
+    const written = (reach.writes || []).filter(readOnly).sort();
+    if (written.length) held[name] = written;
+  }
+  // Two populations and no third. A `global` reference table was always
+  // unwritable here and was never reported, because the classifier could not
+  // tell reading a table from writing one.
+  assert.deepEqual([...new Set(Object.values(held).flat())].sort(), ['MedicareGuideline', 'User']);
+  assert.deepEqual(Object.keys(held).filter(name => held[name].includes('User')).sort(),
+    ['autoApproveInvitedUser', 'autoEndDutyDay', 'enforceStaffRoleIntegrity', 'offboardUser',
+      'setNurseDutyStatus', 'userManagement', 'userManagementV2'],
+    'the profile-write path D23 leaves open');
+  assert.deepEqual(Object.keys(held).filter(name => held[name].includes('MedicareGuideline')).sort(),
+    ['fetchMedicareGuideline', 'scheduledGuidelineSync']);
+  // Seven write a profile and six are in the bucket: `offboardUser` also reads
+  // four `preserved_paused` comms tables, and whether a capability survives at
+  // all outranks how a table is written.
+  assert.equal(Object.keys(held).filter(name => held[name].includes('User')).length, 7);
+  assert.deepEqual(report.port_blockers.entity_authorization.filter(name => !held[name]), [],
+    'every member is held by a write this measured');
+  assert.ok(report.port_blockers.entity_not_carried.includes('offboardUser'));
+  assert.ok(!report.port_blockers.entity_authorization.includes('offboardUser'));
+  // The other half of the corrected paragraph: the read rule is a guard that
+  // fires on nothing, and the RPC it said these were waiting for exists.
+  assert.deepEqual(discoverPolicylessEntities(repository), []);
+  const { HANDLER_NAMES } = await import('./services/pennsync-api/handlers.mjs');
+  for (const handler of ['listAgencyRoster', 'getAgencyRosterMember']) {
+    assert.ok(HANDLER_NAMES.includes(handler), `${handler} is the roster RPC the bucket said it was waiting for`);
+  }
+});
+
+test('what `core_integration` blocks is measured per module, not assumed from the reach', () => {
+  // The rule is `/\.\s*integrations\s*\./` and answers on the SHAPE of the
+  // call — D76's defect, in the family next door. It never asks whether the
+  // call sits on a path the module itself already refuses, and for one of the
+  // three it does.
+  //
+  // The discriminator is D74's own words about `sendAccountReadyEmail`, whose
+  // "whole body is one `Core.SendEmail`": does the module have a SUCCESS
+  // answer that is not the integration's result? Where every success path goes
+  // through the send, the send is the capability and the runtime is what it
+  // waits on. Where one does not, the capability is a PARTIAL port — the shape
+  // D42, D49, D50, D52, D54 and D73 already ship six times, with the delivery
+  // paused and REPORTED as paused.
+  const read = (name) => readFileSync(resolve(repository, 'base44/functions', name, 'entry.ts'), 'utf8');
+  const coreReaches = (source) =>
+    [...source.matchAll(/integrations\s*\.\s*Core\s*\.\s*([A-Za-z]+)/g)].map(match => match[1]);
+  for (const name of ['generatePatientHandout', 'sendAccountReadyEmail', 'sendWelcomeEmail']) {
+    assert.deepEqual([...new Set(coreReaches(read(name)))], ['SendEmail'],
+      `${name} reaches a Core operation other than the send`);
+  }
+  // The two the bucket is right about: every success answer they can give is
+  // the send's own confirmation.
+  for (const name of ['sendAccountReadyEmail', 'sendWelcomeEmail']) {
+    const successes = [...read(name).matchAll(/return Response\.json\(\{\s*success: true[^\n]*/g)].map(m => m[0]);
+    assert.equal(successes.length, 1, `${name} has more than one success answer`);
+    assert.match(successes[0], /email sent/, `${name}'s success answer is not the send's`);
+  }
+  // The one it is wrong about. Its single reach is inside an `action ===
+  // 'email'` branch that the module's OWN gate refuses before any work is
+  // done, and two success answers carry a rendered PDF instead.
+  const handout = read('generatePatientHandout');
+  const lines = handout.split('\n');
+  const sendLine = lines.findIndex(line => /integrations\s*\.\s*Core\s*\.\s*SendEmail/.test(line));
+  const guardLine = lines.findIndex(line => /if \(action === 'email' && !outboundDeliveryReleased\(\)\)/.test(line));
+  const branchLine = lines.findLastIndex((line, index) =>
+    index < sendLine && /if \(action === 'email'/.test(line));
+  assert.ok(guardLine > 0 && guardLine < sendLine, 'the release gate no longer precedes the send');
+  assert.ok(branchLine > guardLine, 'the send is no longer inside an action branch');
+  assert.match(lines[guardLine + 1], /outboundDeliveryPausedResponse\('email'\)/,
+    'the gate no longer refuses the email action');
+  const pdfAnswers = [...handout.matchAll(/return Response\.json\(\{[^)]*\bpdf:/g)];
+  assert.equal(pdfAnswers.length, 2, 'the document action no longer answers with a PDF');
+  // So the document action waited on nothing: six sibling capabilities
+  // already rendered a PDF in the ported service, its only entity is a retired
+  // log table D25 gives a successor, and the email action is the owner
+  // decision the six paused-delivery ports already record as paused. It was
+  // WORK, not a decision — which is what `core_integration: 3` read as
+  // denying — and D81 did it: the port serves the document and refuses the
+  // send with the answer this gate gives.
+  for (const sibling of ['generateBagTechniquePDF', 'generateUserRosterPDF', 'generatePatientChartPDF',
+    'generateUserManual', 'generateSmartNoteGuide', 'generateUserGuidePDF', 'generatePatientHandout']) {
+    assert.ok(discoverPortedFunctions(repository).includes(sibling), `${sibling} is a ported PDF`);
+  }
+});
+
+test('nothing in the queue is startable and unwritten', async () => {
+  // The milestone the counts do not state. `none` means "portable today", and
+  // a reader takes a non-empty one as work available now — so the thing worth
+  // asserting is that it is not: all 73 are written, and every capability left
+  // is behind a decision or a phase rather than behind somebody's time.
+  //
+  // It runs in ONE direction only, and the first draft of this test claimed
+  // two. A capability in `none` with no handler is startable work the queue
+  // stopped surfacing, and that is checkable — sabotaging the registry path
+  // fails this. The converse is not: `checkCoverage` sends a ported capability
+  // to `none` without consulting `refine` at all, so "blocked, yet written"
+  // cannot occur however wrong a blocker is, and an assertion against it
+  // passes for a reason that has nothing to do with the queue being right.
+  // That override has its own test ("nothing blocks a port that has
+  // happened"); this one would only have looked like a second.
+  const report = checkCoverage(
+    discoverCapabilities(repository),
+    parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
+    discoverEvidence(repository),
+  );
+  const { HANDLER_NAMES } = await import('./services/pennsync-api/handlers.mjs');
+  const shipped = new Set(HANDLER_NAMES);
+  assert.deepEqual(report.port_blockers.none.filter(name => !shipped.has(name)), [],
+    'a capability the queue calls portable today has no handler');
+  // The two handlers over and above the queue are the roster contract's, which
+  // D22 serves as a facility rather than as a Base44 capability — so they are
+  // not in `base44/functions` and the queue never counted them.
+  assert.deepEqual([...shipped].filter(name => !report.port_blockers.none.includes(name)).sort(),
+    ['getAgencyRosterMember', 'listAgencyRoster']);
 });
 
 test('a function call is only a reason to wait while the callee is unported', () => {

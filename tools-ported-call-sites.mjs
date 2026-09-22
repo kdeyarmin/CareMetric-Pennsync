@@ -13,7 +13,8 @@
  *
  * `docs/BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md` names four such call
  * sites. That count was measured when the adapter routed ELEVEN ported names;
- * `PORTED_FUNCTIONS` now holds seventy-four, and nobody re-measured. This is
+ * `PORTED_FUNCTIONS` held seventy-four when this was written, and nobody had
+ * re-measured. This is
  * the same shape as D47, D55, D74 and D75 — a number that kept its meaning
  * after the reason for it had gone — so it is measured here rather than
  * quoted, and pinned so it cannot go stale again.
@@ -227,10 +228,18 @@ export function readExpectations(root) {
 }
 
 /**
- * The gate. It ratchets DOWNWARD only: a call site that gains a tenant is
- * progress and has to be recorded, and a new one that lacks a tenant is a
- * regression, because it is a flow that will refuse the moment the service is
- * pointed at.
+ * The gate. A call site that gains a tenant is progress and has to be
+ * recorded; one that newly relies on the adapter's fallback is refused until a
+ * reviewed diff admits it.
+ *
+ * It no longer refuses because such a site WILL refuse — `portedCall`
+ * supplies the bound tenant now, so it works. It refuses because the fallback
+ * is only right where the tenant decides nothing the caller could have meant
+ * differently, and that is a property of the capability that someone has to
+ * read. A port with existing callers is the one way the set legitimately
+ * grows: the first after the fallback existed was `generatePatientHandout`
+ * (D81), whose document reads nothing tenant-scoped, so which of a caller's
+ * memberships authorizes it changes nothing on the page.
  */
 export function checkCallSites(root) {
   const census = censusCallSites(root);

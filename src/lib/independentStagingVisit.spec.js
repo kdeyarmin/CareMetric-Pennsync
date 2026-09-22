@@ -52,7 +52,11 @@ describe('independent saved Visit contract bridge', () => {
       ['getAuthorizedVisit', null], ['getAuthorizedPatient', {}], ['getAuthorizedPatientNoteHistory', {}],
       ['updateAuthorizedVisit', {}], ['pennsync_staging_visit_documentation', {}],
     ]) await expect(adapter.raw.functions.invoke(name, input)).rejects.toThrow('STAGING_OPERATION_UNAVAILABLE');
-    expect(fixture.requests).toHaveLength(count); expect(reads).toHaveLength(0); expect(adapter.raw.entities).toEqual({});
+    // A generic entity read refuses by name — before the request count, so the
+    // count proves the refusal made no request. `toEqual({})` stood here and
+    // passes against the refusing seam too, so it had stopped proving anything.
+    await expect(adapter.raw.entities.Visit.list()).rejects.toMatchObject({ code: 'STAGING_OPERATION_UNAVAILABLE' });
+    expect(fixture.requests).toHaveLength(count); expect(reads).toHaveLength(0);
     await adapter.auth.signOut();
   });
   it.each([visitId.toUpperCase(), visitId.replace('abc','aBc')])('bridges UUID spelling %s through the unchanged wrapper after canonical server binding', async requestedId => {

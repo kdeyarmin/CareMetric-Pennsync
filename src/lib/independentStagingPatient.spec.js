@@ -49,7 +49,9 @@ describe('independent explicit patient context contract bridge',()=>{
     for(const name of ['getAuthorizedPatientNoteHistory','updateAuthorizedPatient','pennsync_staging_patient_context'])
       await expect(adapter.raw.functions.invoke(name,{})).rejects.toThrow('STAGING_OPERATION_UNAVAILABLE');
     await expect(adapter.raw.functions.invoke('getAuthorizedPatient',{agency_id:'agency-a',patient_id:'patient-0',purpose:'display',extra:true})).rejects.toThrow();
-    expect(reads).toHaveLength(0);expect(fixture.requests).toHaveLength(count);expect(adapter.raw.entities).toEqual({});await adapter.auth.signOut();
+    // Generic entities refuse by name, and before the count so it covers them.
+    await expect(adapter.raw.entities.Patient.list()).rejects.toMatchObject({code:'STAGING_OPERATION_UNAVAILABLE'});
+    expect(reads).toHaveLength(0);expect(fixture.requests).toHaveLength(count);await adapter.auth.signOut();
   });
   it('rejects wrong patient, current scope drift, malformed fields and audit failures without fallback',async()=>{
     for(const options of [{status:403},{status:503},{mutate:r=>({...r,patient:{...r.patient,id:'foreign'}})},
