@@ -5202,14 +5202,53 @@ that the roster handlers exist. A rewrite that gets the reason wrong now fails
 instead of being read and believed. Giving `user` an `update` policy empties
 the bucket and fails four tests.
 
-### The milestone the counts do not state
+### The milestone the counts do not state, and the one exception
 
 `none` means *portable today*, and a reader takes a non-empty one as work
 available now. It is 72, and **all 72 are written**: the queue's portable set
 is exactly the shipped handler registry, less the two roster facilities D22
-serves outside `base44/functions`. Nothing is startable and unwritten. Every
-capability left is behind a decision or a phase rather than behind somebody's
-time:
+serves outside `base44/functions`. Nothing in `none` is startable and
+unwritten.
+
+**One capability outside it is, and the first draft of this decision said
+otherwise.** `generatePatientHandout` is counted `core_integration`, which the
+bucket defines as needing "the integration runtime's brokered path released".
+That is true of one of its two actions. Its single `Core.SendEmail` sits
+inside `if (action === 'email' && patientEmail)`, and eleven lines after the
+request is parsed the module ALREADY refuses that action itself:
+
+```js
+if (action === 'email' && !outboundDeliveryReleased()) {
+  return outboundDeliveryPausedResponse('email');
+}
+```
+
+The document action reaches no integration, answers with a rendered PDF, and
+waits on nothing: six sibling capabilities already render one in the ported
+service, and its only entity is a retired log table D25 gives a successor. The
+email action is the same owner decision that D42, D49, D50, D52, D54 and D73
+each ship *with the delivery paused and reported as paused* — six precedents
+for exactly this shape.
+
+So this is **D76's defect in the family next door**: the rule is
+`/\.\s*integrations\s*\./`, it answers on the SHAPE of the call, and nothing
+asks whether the call is on a path the module itself already refuses. The
+ninth instance of the recurring shape, found while writing the eighth — and
+nearly shipped inside it, because "nothing is startable" was asserted over the
+`none` bucket and then stated about the whole queue.
+
+The discriminator is D74's own words about `sendAccountReadyEmail`, whose
+"whole body is one `Core.SendEmail`": **does the module have a success answer
+that is not the integration's result?** Measured over all three, the two
+siblings have exactly one success answer each and both read `email sent`;
+`generatePatientHandout` has two that carry a PDF. The test asserts that
+contrast rather than reclassifying, because a general rule derived from one
+instance is what D77 warns against — pre-allowing a shape nobody has measured
+is worse than no check. `core_integration` still reports 3, and what changed
+is that the record now says which of the three is work.
+
+Every other capability left is behind a decision or a phase rather than behind
+somebody's time:
 
 | Bucket | Left | Waiting on |
 | --- | --- | --- |
@@ -5234,4 +5273,6 @@ otherwise — **a test whose comment describes something the test does not do
 reads exactly like one that works**, which is D77's lesson arriving in the same
 change that cites it.
 
-Port queue: unchanged at 7 / 8 / 0 / 0 / 12 / 0 / 3 / 0 / 2 / 72.
+Port queue: unchanged at 7 / 8 / 0 / 0 / 12 / 0 / 3 / 0 / 2 / 72 — and one of
+the three in `core_integration` is a partial port waiting to be written rather
+than a capability waiting on the runtime.

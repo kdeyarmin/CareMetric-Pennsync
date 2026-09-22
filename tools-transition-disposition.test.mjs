@@ -987,6 +987,59 @@ test('what holds each member of `entity_authorization` is measured, not describe
   }
 });
 
+test('what `core_integration` blocks is measured per module, not assumed from the reach', () => {
+  // The rule is `/\.\s*integrations\s*\./` and answers on the SHAPE of the
+  // call — D76's defect, in the family next door. It never asks whether the
+  // call sits on a path the module itself already refuses, and for one of the
+  // three it does.
+  //
+  // The discriminator is D74's own words about `sendAccountReadyEmail`, whose
+  // "whole body is one `Core.SendEmail`": does the module have a SUCCESS
+  // answer that is not the integration's result? Where every success path goes
+  // through the send, the send is the capability and the runtime is what it
+  // waits on. Where one does not, the capability is a PARTIAL port — the shape
+  // D42, D49, D50, D52, D54 and D73 already ship six times, with the delivery
+  // paused and REPORTED as paused.
+  const read = (name) => readFileSync(resolve(repository, 'base44/functions', name, 'entry.ts'), 'utf8');
+  const coreReaches = (source) =>
+    [...source.matchAll(/integrations\s*\.\s*Core\s*\.\s*([A-Za-z]+)/g)].map(match => match[1]);
+  for (const name of ['generatePatientHandout', 'sendAccountReadyEmail', 'sendWelcomeEmail']) {
+    assert.deepEqual([...new Set(coreReaches(read(name)))], ['SendEmail'],
+      `${name} reaches a Core operation other than the send`);
+  }
+  // The two the bucket is right about: every success answer they can give is
+  // the send's own confirmation.
+  for (const name of ['sendAccountReadyEmail', 'sendWelcomeEmail']) {
+    const successes = [...read(name).matchAll(/return Response\.json\(\{\s*success: true[^\n]*/g)].map(m => m[0]);
+    assert.equal(successes.length, 1, `${name} has more than one success answer`);
+    assert.match(successes[0], /email sent/, `${name}'s success answer is not the send's`);
+  }
+  // The one it is wrong about. Its single reach is inside an `action ===
+  // 'email'` branch that the module's OWN gate refuses before any work is
+  // done, and two success answers carry a rendered PDF instead.
+  const handout = read('generatePatientHandout');
+  const lines = handout.split('\n');
+  const sendLine = lines.findIndex(line => /integrations\s*\.\s*Core\s*\.\s*SendEmail/.test(line));
+  const guardLine = lines.findIndex(line => /if \(action === 'email' && !outboundDeliveryReleased\(\)\)/.test(line));
+  const branchLine = lines.findLastIndex((line, index) =>
+    index < sendLine && /if \(action === 'email'/.test(line));
+  assert.ok(guardLine > 0 && guardLine < sendLine, 'the release gate no longer precedes the send');
+  assert.ok(branchLine > guardLine, 'the send is no longer inside an action branch');
+  assert.match(lines[guardLine + 1], /outboundDeliveryPausedResponse\('email'\)/,
+    'the gate no longer refuses the email action');
+  const pdfAnswers = [...handout.matchAll(/return Response\.json\(\{[^)]*\bpdf:/g)];
+  assert.equal(pdfAnswers.length, 2, 'the document action no longer answers with a PDF');
+  // So the document action waits on nothing: six sibling capabilities already
+  // render a PDF in the ported service, its only entity is a retired log table
+  // D25 gives a successor, and the email action is the owner decision the six
+  // paused-delivery ports already record as paused. It is WORK, not a
+  // decision — which is what `core_integration: 3` reads as denying.
+  for (const sibling of ['generateBagTechniquePDF', 'generateUserRosterPDF', 'generatePatientChartPDF',
+    'generateUserManual', 'generateSmartNoteGuide', 'generateUserGuidePDF']) {
+    assert.ok(discoverPortedFunctions(repository).includes(sibling), `${sibling} is the PDF precedent`);
+  }
+});
+
 test('nothing in the queue is startable and unwritten', async () => {
   // The milestone the counts do not state. `none` means "portable today", and
   // a reader takes a non-empty one as work available now — so the thing worth
