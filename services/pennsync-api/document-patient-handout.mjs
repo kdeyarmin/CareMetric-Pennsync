@@ -48,6 +48,18 @@ export const handoutDate = (date) =>
 export const handoutFilename = (condition) => `${condition}_handout.pdf`;
 
 /**
+ * Thrown when the nurse's note cannot fit on a page. Not the original's: its
+ * notes callout has no page break, so a note taller than the content area is
+ * drawn straight past the page's bottom — into the footer, then off the paper —
+ * and the last instructions reach the patient garbled or not at all. The
+ * handler answers it as `HANDOUT_NOTES_TOO_LONG`, and a note that fits draws
+ * exactly as it did.
+ */
+export class HandoutNotesTooLong extends Error {
+  constructor(lines) { super('HANDOUT_NOTES_TOO_LONG'); this.lines = lines; }
+}
+
+/**
  * The original's style defaults. Each falsy value takes the default, which is
  * how an empty string from the client's form means "unset".
  *
@@ -289,6 +301,13 @@ export function buildPatientHandout(doc, request, { logoDataUrl = null, generate
     try {
       const lines = doc.splitTextToSize(clean(customNotes), contentWidth - 16);
       const boxH = lines.length * LINE_SPACING + 16;
+      // Where the last line lands when the callout starts a fresh page, which
+      // is where any note too tall for the space left on this one goes. Past
+      // the content area's bottom it overprints the footer, and a few lines on
+      // it leaves the page. The one addition to this block (see above).
+      if (CONTENT_TOP + 4 + 10 + (lines.length - 1) * LINE_SPACING > CONTENT_BOTTOM) {
+        throw new HandoutNotesTooLong(lines.length);
+      }
       ensureSpace(boxH + 4);
       yPos += 4;
       setFill(COLORS.importantLight); setDraw(COLORS.important); doc.setLineWidth(0.5);
@@ -301,7 +320,10 @@ export function buildPatientHandout(doc, request, { logoDataUrl = null, generate
       doc.setFont(fontFamily, 'normal'); doc.setFontSize(FONT_SIZE_BODY); setColor(COLORS.text);
       lines.forEach((line) => { doc.text(line, margin + 8, yPos); yPos += LINE_SPACING; });
       yPos += 10;
-    } catch { /* the original logged and carried on */ }
+    } catch (error) {
+      if (error instanceof HandoutNotesTooLong) throw error;
+      /* the original logged and carried on */
+    }
   }
 
   // Daily self-care checklist (boxed card).

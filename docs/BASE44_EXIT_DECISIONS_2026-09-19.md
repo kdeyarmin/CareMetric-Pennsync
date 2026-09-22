@@ -5462,5 +5462,41 @@ under the default face the two are the same. **A test whose comment describes
 something the test does not do reads exactly like one that works**, for the
 third time since D77; ten sabotages now fail the suite, each one.
 
+### Three bounds the original did not need, because it ran alone
+
+On Base44 each call ran in its own isolated invocation, so an expensive one
+hurt only itself. This service is one shared Node process and jsPDF renders
+synchronously, so what the original could afford is not automatically
+affordable here. Measured, not assumed:
+
+- **`splitTextToSize` is worse than quadratic in lines.** 20,000 lines take
+  0.85 s and 40,000 take 5.6 s; the service's 1 MiB request cap holds 400,000,
+  which would stall every caller for tens of minutes. Only two caller fields
+  reach it — the nurse's note and the footer — so both are capped **before**
+  any render (a note at 20,000 characters or 400 lines, a footer at 2,000 or
+  40), far above anything that can print. The caps are tested on
+  `handoutRequest`, which never renders, so a regression fails there instead of
+  hanging the suite.
+- **A note too tall for the page is refused by name** (`HANDOUT_NOTES_TOO_LONG`)
+  — the fourth narrowing, and the one with a clinical edge. The original's
+  notes callout has no page break: driven with a 39-line note it draws the last
+  line into the footer band, and at sixty lines below the bottom of the page,
+  still answering 200. The nurse's last instructions reach the patient
+  overprinted or not at all. The edge is measured with a real jsPDF in each
+  layout (38, 45 and 28 lines fit in standard, compact and large print), and a
+  note that fits draws exactly as before. Paginating the note instead would
+  print everything, and is the owner's call: it changes the document.
+- **The answer has a ceiling** (`HANDOUT_TOO_LARGE`, 1 MiB less 16 KiB). The
+  authority client refuses a larger JSON answer as an opaque
+  `INVALID_AUTHORITY_RESPONSE`, after the work; the patient's name is drawn but
+  never split, so it is the one field still able to reach it. The ceiling is
+  proved against the real client by sending an answer of exactly that size
+  through it, not by comparing two constants.
+
+Six sabotages each fail the test meant to catch them. The footer's own
+first-line truncation — the original prints only the first wrapped line of a
+custom footer — is carried and recorded; it is agency boilerplate, not a
+patient's instructions.
+
 Port queue: 7 / 8 / 0 / 0 / 12 / 0 / **2** / 0 / 2 / **73**. What is left in
 `core_integration` is the two whose whole body is the send.

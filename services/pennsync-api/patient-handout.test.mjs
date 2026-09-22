@@ -8,7 +8,9 @@ import {
   HANDOUT_COLOR_SCHEMES, HANDOUT_FONTS, HANDOUT_LAYOUTS, handoutDate,
 } from './document-patient-handout.mjs';
 import { HANDOUT_TEMPLATES } from './patient-handout-templates.mjs';
-import { HANDOUT_FIELDS, HANDOUT_STYLE_FIELDS, generatePatientHandout } from './patient-handout.mjs';
+import {
+  HANDOUT_ANSWER_CEILING, HANDOUT_FIELDS, HANDOUT_STYLE_FIELDS, generatePatientHandout, handoutRequest,
+} from './patient-handout.mjs';
 
 /**
  * The handout end to end: dispatch, authority, render, response.
@@ -181,4 +183,66 @@ test('a handout is released like any other handler', async () => {
   const response = await unreleased(post(clientDownload()));
   assert.equal(response.status, 409);
   assert.equal((await response.json()).error, 'FUNCTION_NOT_RELEASED');
+});
+
+test('text that would stall the render is refused before any render', async () => {
+  // jsPDF's splitTextToSize is worse than quadratic in lines, and only the
+  // note and the footer reach it; a 1 MiB request holds 400,000 lines, which
+  // would freeze this shared process for everybody. So the caps are pinned on
+  // `handoutRequest`, which never renders — a refusal there cannot have cost a
+  // render, and a regression fails here instead of hanging the suite.
+  const code = (params) => {
+    try { handoutRequest({ condition: 'chf', ...params }); } catch (error) { return error.code; }
+    return null;
+  };
+  const style = (customFooter) => ({ styleOptions: { customFooter } });
+  assert.equal(code({ customNotes: `a${'\n'.repeat(400000)}b` }), 'HANDOUT_NOTES_TOO_LONG');
+  assert.equal(code({ customNotes: 'x\n'.repeat(399) + 'x' }), null, '400 lines is the cap, not over it');
+  assert.equal(code({ customNotes: 'x\n'.repeat(400) + 'x' }), 'HANDOUT_NOTES_TOO_LONG');
+  assert.equal(code({ customNotes: 'line\r\n'.repeat(400) }), 'HANDOUT_NOTES_TOO_LONG', 'CRLF counts as one break');
+  assert.equal(code({ customNotes: 'x'.repeat(20_000) }), null);
+  assert.equal(code({ customNotes: 'x'.repeat(20_001) }), 'HANDOUT_NOTES_TOO_LONG');
+  assert.equal(code(style('x\n'.repeat(39) + 'x')), null);
+  assert.equal(code(style('x\n'.repeat(40) + 'x')), 'HANDOUT_FOOTER_TOO_LONG');
+  assert.equal(code(style('x'.repeat(2_001))), 'HANDOUT_FOOTER_TOO_LONG');
+  // Through the service, with a footer the original would have split on every
+  // page: refused by name, where without the cap it renders — its first line
+  // is all that prints — and answers 200.
+  const response = await serve()(post(clientDownload({
+    styleOptions: { ...clientDownload().styleOptions, customFooter: 'x\n'.repeat(5000) } })));
+  assert.deepEqual([response.status, (await response.json()).error], [400, 'HANDOUT_FOOTER_TOO_LONG']);
+});
+
+test('a note too tall for the page is refused by name, and one that fits is printed whole', async () => {
+  // The original's notes callout has no page break: a taller note is drawn
+  // past the page's content area, over the footer and then off the paper.
+  // Measured with a real jsPDF in each layout, on either side of the edge.
+  const handler = serve();
+  const note = (lines) => Array.from({ length: lines }, (_, i) => `Instruction ${i + 1}.`).join('\n');
+  for (const [layout, fits, overflows] of [['standard', 38, 39], ['compact', 45, 46], ['large_print', 28, 29]]) {
+    const styleOptions = { ...clientDownload().styleOptions, layout };
+    let response = await handler(post(clientDownload({ customNotes: note(fits), styleOptions })));
+    assert.equal(response.status, 200, `${layout}: ${fits} lines fit`);
+    const text = pdfText((await response.json()).result.pdf);
+    assert.ok(text.includes(`(Instruction ${fits}.)`), `${layout}: the last line is printed`);
+    response = await handler(post(clientDownload({ customNotes: note(overflows), styleOptions })));
+    assert.deepEqual([response.status, (await response.json()).error], [400, 'HANDOUT_NOTES_TOO_LONG'],
+      `${layout}: ${overflows} lines do not`);
+  }
+});
+
+test('a guide too large for the published client is refused by name', async () => {
+  // The backstop behind the text caps. The patient's name is drawn on one line
+  // and never split, so it costs nothing to render long — but the answer
+  // carries it, and past the authority client's JSON ceiling the client drops
+  // the answer as an opaque INVALID_AUTHORITY_RESPONSE after the work.
+  const handler = serve();
+  let response = await handler(post(clientDownload({ patientName: 'x'.repeat(900_000) })));
+  assert.equal(response.status, 413);
+  assert.equal((await response.json()).error, 'HANDOUT_TOO_LARGE');
+  // A long name that fits is served, under the ceiling.
+  response = await handler(post(clientDownload({ patientName: 'x'.repeat(200_000) })));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.ok(Buffer.byteLength(JSON.stringify(body.result)) <= HANDOUT_ANSWER_CEILING);
 });

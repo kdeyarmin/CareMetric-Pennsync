@@ -13,8 +13,8 @@ import {
   buildUserRoster, careScopeLabel, rosterFilename,
 } from '../../services/pennsync-api/document-user-roster.mjs';
 import {
-  HANDOUT_COLOR_SCHEMES, HANDOUT_FONTS, HANDOUT_LAYOUTS, buildPatientHandout, handoutDate,
-  handoutFilename, selectedHandoutSections,
+  HANDOUT_COLOR_SCHEMES, HANDOUT_FONTS, HANDOUT_LAYOUTS, HandoutNotesTooLong, buildPatientHandout,
+  handoutDate, handoutFilename, selectedHandoutSections,
 } from '../../services/pennsync-api/document-patient-handout.mjs';
 import {
   HANDOUT_CHECKLISTS, HANDOUT_RESOURCES, HANDOUT_TEMPLATES,
@@ -711,4 +711,45 @@ test('the handout refuses to invent a day, and names the one it is given', () =>
   }
   // The original's format, from a supplied instant rather than the clock.
   assert.equal(handoutDate(new Date('2026-09-22T12:00:00Z')), 'September 22, 2026');
+});
+
+test('a note too tall for the page: the original prints it off the paper, the port refuses it', async () => {
+  // The fourth narrowing, proved on the original the way the other three are.
+  // Its notes callout has no page break, so every line is drawn — the later
+  // ones over the footer and then below the bottom of the page. The surface
+  // here splits on line breaks, as jsPDF does, so a note has real lines.
+  const handler = await loadOriginalHandler(HANDOUT_ENTRY);
+  const lineSplitting = () => {
+    const surface = recorder();
+    surface.splitTextToSize = (text, width) => {
+      surface.calls.push(['splitTextToSize', text, width]);
+      return String(text).split('\n');
+    };
+    return surface;
+  };
+  const note = (lines) => Array.from({ length: lines }, (_, i) => `Instruction ${i + 1}.`).join('\n');
+  const noteLines = (calls) => calls.filter(call => call[0] === 'text' && /^Instruction \d+\.$/.test(call[1]));
+  const CONTENT_BOTTOM = PAGE_HEIGHT - 18 - 6;
+
+  // At the edge it still fits, and the port draws it exactly as the original.
+  let body = { condition: 'chf', customNotes: note(38) };
+  let run = await runHandoutOriginal(handler, body, { surface: lineSplitting() });
+  let original = drawn(run.calls);
+  assert.deepEqual(portCalls(body, original, { surface: lineSplitting() }), original);
+  assert.ok(noteLines(original).every(call => call[3] <= CONTENT_BOTTOM), 'every line inside the content area');
+
+  // One more line and the original's last line lands in the footer band; at
+  // sixty, lines are drawn below the page itself — and it still answers 200.
+  for (const [lines, offPage] of [[39, false], [60, true]]) {
+    body = { condition: 'chf', customNotes: note(lines) };
+    run = await runHandoutOriginal(handler, body, { surface: lineSplitting() });
+    assert.equal(run.status, 200);
+    original = drawn(run.calls);
+    assert.equal(noteLines(original).length, lines, 'the original draws every line');
+    assert.ok(noteLines(original).some(call => call[3] > CONTENT_BOTTOM), `${lines}: a line over the footer`);
+    assert.equal(noteLines(original).some(call => call[3] > PAGE_HEIGHT), offPage, `${lines}: off the page`);
+    // The port refuses the same request by name rather than printing it.
+    assert.throws(() => buildPatientHandout(lineSplitting(), handoutRequest(body), { generatedOn: 'x' }),
+      error => error instanceof HandoutNotesTooLong && error.lines === lines);
+  }
 });

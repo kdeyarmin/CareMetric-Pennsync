@@ -14,7 +14,10 @@
 // requires is what every ported document requires: an active membership in the
 // agency the request names. The original required only a signed-in account.
 //
-// Three narrowings, each an input the original could not render:
+// Four narrowings, each an input the original could not render (the fourth,
+// a note too tall for the page, is `HandoutNotesTooLong` in the builder, and
+// the bounds below explain the rest of what this service must refuse because
+// it is shared where the original ran alone):
 //
 // - `condition` must be a string naming one of the twenty templates as an OWN
 //   key. The original indexed a plain object, so `constructor` passed its
@@ -39,8 +42,8 @@
 // does not have.
 import { exactObject, fail, isObject } from './contracts.mjs';
 import {
-  HANDOUT_COLOR_SCHEMES, HANDOUT_FONTS, HANDOUT_LAYOUTS, buildPatientHandout, handoutDate,
-  handoutFilename, selectedHandoutSections,
+  HANDOUT_COLOR_SCHEMES, HANDOUT_FONTS, HANDOUT_LAYOUTS, HandoutNotesTooLong, buildPatientHandout,
+  handoutDate, handoutFilename, selectedHandoutSections,
 } from './document-patient-handout.mjs';
 import { HANDOUT_TEMPLATES } from './patient-handout-templates.mjs';
 
@@ -58,6 +61,47 @@ export const HANDOUT_STYLE_FIELDS = Object.freeze(['colorScheme', 'fontFamily', 
   'customHeader', 'customFooter', 'agencyName', 'agencyPhone']);
 
 const optionalText = (value) => value === undefined || value === null || typeof value === 'string';
+
+/**
+ * How much caller text may reach jsPDF's `splitTextToSize`, checked before any
+ * render.
+ *
+ * Only two fields ever reach it — the nurse's note and the footer — and it is
+ * worse than quadratic in LINES: measured, 20,000 lines take 0.85 s and 40,000
+ * take 5.6 s, and the service's 1 MiB request cap holds 400,000. On Base44 the
+ * original ran in an isolated invocation, so that stalled one request; here it
+ * runs on a shared Node process whose render is synchronous, so it would stall
+ * every caller's. These caps are far above anything that can print: a note
+ * that fits on a page is at most about 45 lines, and the footer prints only its
+ * first line. Whether a note fits is decided by the render itself
+ * (`HandoutNotesTooLong`), because it depends on the layout and the typeface.
+ */
+export const HANDOUT_TEXT_BOUNDS = Object.freeze({
+  customNotes: Object.freeze({ characters: 20_000, lines: 400, code: 'HANDOUT_NOTES_TOO_LONG' }),
+  customFooter: Object.freeze({ characters: 2_000, lines: 40, code: 'HANDOUT_FOOTER_TOO_LONG' }),
+});
+const lineCount = (text) => 1 + (text.match(/\r\n|\r|\n/g)?.length ?? 0);
+
+/**
+ * The largest answer this handler sends, and the one bound its original did
+ * not have.
+ *
+ * The published client reaches this service through `services/authority-client`,
+ * which refuses a JSON answer over 1 MiB with an opaque
+ * `INVALID_AUTHORITY_RESPONSE`, and the handout is the one ported JSON answer
+ * whose size the CALLER decides: the guide carries the nurse's notes, and about
+ * 300 KB of them renders a document the client cannot receive. Measured, the
+ * render itself stays under a second even at the service's 1 MiB request cap,
+ * so what goes wrong is not the work but where it fails — after it, on the
+ * client, under a name that says nothing. It is refused by name here instead.
+ *
+ * Measured on the rendered answer rather than bounded on the inputs, because a
+ * character limit is not a size limit: a note of blank lines renders a text
+ * operator per line. The 16 KiB below the client's ceiling is room for the
+ * service's envelope, and `services/authority-client/ported-api.test.mjs`
+ * proves the two fit by sending this ceiling's answer through the real client.
+ */
+export const HANDOUT_ANSWER_CEILING = 1024 * 1024 - 16 * 1024;
 
 /** Refuses what the original could not render, in the original's order. */
 export function handoutRequest(params) {
@@ -83,21 +127,33 @@ export function handoutRequest(params) {
       || (fontFamily && !HANDOUT_FONTS.includes(fontFamily))
       || (layout && !Object.hasOwn(HANDOUT_LAYOUTS, layout))) fail(400, 'INVALID_STYLE_OPTIONS');
   }
+  for (const [field, value] of [['customNotes', customNotes], ['customFooter', styleOptions?.customFooter]]) {
+    const bound = HANDOUT_TEXT_BOUNDS[field];
+    if (typeof value === 'string' && (value.length > bound.characters || lineCount(value) > bound.lines)) {
+      fail(400, bound.code);
+    }
+  }
   return { condition, patientName, selectedSections, customNotes, styleOptions };
 }
 
 export async function generatePatientHandout({ params, config, now = new Date() }) {
   const request = handoutRequest(params);
   const { jsPDF } = await import('jspdf');
-  const body = buildPatientHandout(new jsPDF(), request, {
-    logoDataUrl: config?.documentLogoDataUrl || null,
-    generatedOn: handoutDate(now),
-  }).output('arraybuffer');
+  let body;
+  try {
+    body = buildPatientHandout(new jsPDF(), request, {
+      logoDataUrl: config?.documentLogoDataUrl || null,
+      generatedOn: handoutDate(now),
+    }).output('arraybuffer');
+  } catch (error) {
+    if (error instanceof HandoutNotesTooLong) fail(400, 'HANDOUT_NOTES_TOO_LONG');
+    throw error;
+  }
   const template = HANDOUT_TEMPLATES[request.condition];
   // The original's success answer, less the `success: true` the service's
   // envelope already carries. `diagnostics` is kept because it is part of that
   // answer; its stage can only be `complete` on this path.
-  return {
+  const answer = {
     pdf: Buffer.from(body).toString('base64'),
     filename: handoutFilename(request.condition),
     diagnostics: {
@@ -106,4 +162,6 @@ export async function generatePatientHandout({ params, config, now = new Date() 
       totalSections: template.sections?.length || 0,
     },
   };
+  if (Buffer.byteLength(JSON.stringify(answer), 'utf8') > HANDOUT_ANSWER_CEILING) fail(413, 'HANDOUT_TOO_LARGE');
+  return answer;
 }
