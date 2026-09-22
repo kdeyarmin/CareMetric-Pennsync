@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { EXIT_STAND_DOWN, decideHostedGate, runHostedGateCli } from './tools-pennsync-hosted-gate.mjs';
 
 /**
@@ -168,4 +169,75 @@ test('the workflow calls this gate rather than carrying its own copy', () => {
   // reaches it.
   assert.ok(!/PENNSYNC_HOSTED_DATABASE_URL:-|SUPABASE_ACCESS_TOKEN:-/.test(code),
     'the hosted step has grown its own credential test again');
+});
+
+/**
+ * The workflow STEP, executed the way Actions executes it.
+ *
+ * The test above proves the step calls the gate. It does not prove the step
+ * survives the gate's answer, and that gap cost main a second red run: Actions
+ * runs `run:` under `bash -e`, `set -uo pipefail` does not clear `-e`, and a
+ * bare `node tools-pennsync-hosted-gate.mjs` therefore ENDED the step at the
+ * gate's exit code. The stand-down exit of 3 became a failed step, with the
+ * `::notice` printed immediately above it in the log.
+ *
+ * The earlier check ran the same body under a plain `bash script.sh`, which
+ * does not set `-e`, so it reproduced everything except the one flag that
+ * mattered. This runs it under `bash -e` with the two `node` calls stubbed, so
+ * the step's own control flow is what is under test.
+ */
+function runStep({ gate, suite = 0 }) {
+  const workflow = readFileSync(new URL('./.github/workflows/pennsync-authority.yml', import.meta.url), 'utf8');
+  const at = workflow.indexOf('- name: Measure the hosted staging store');
+  const next = workflow.indexOf('\n      - ', at + 1);
+  const step = next === -1 ? workflow.slice(at) : workflow.slice(at, next);
+  // The run block's lines, de-indented. Taken from the file rather than
+  // retyped, so the thing executed here is the thing that ships.
+  const lines = step.slice(step.indexOf('run: |') + 'run: |'.length).split('\n').slice(1);
+  const indent = lines.find(line => line.trim())?.match(/^\s*/)[0] ?? '';
+  const body = lines.map(line => line.startsWith(indent) ? line.slice(indent.length) : line).join('\n');
+  // `node` stubbed by name: the gate answers with `gate`, the suite with
+  // `suite`, and nothing else in the body is allowed to be a node call.
+  const script = `node() { case "$1" in
+`
+    + `  tools-pennsync-hosted-gate.mjs) return ${gate} ;;
+`
+    + `  --test) echo RAN_SUITE ; return ${suite} ;;
+`
+    + `  *) echo "UNSTUBBED node $*" ; return 111 ;;
+`
+    + `esac ; }
+${body}`;
+  try {
+    const out = execFileSync('bash', ['-e', '-c', script], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return { code: 0, out };
+  } catch (failure) {
+    return { code: failure.status, out: `${failure.stdout ?? ''}${failure.stderr ?? ''}` };
+  }
+}
+
+test('the step survives the gate standing down', () => {
+  // The regression, stated as its own test: exit 3 means "nothing to measure",
+  // and the step must finish 0 without running the suite. A bare call under
+  // `bash -e` returns 3 here and fails main.
+  const { code, out } = runStep({ gate: 3 });
+  assert.equal(code, 0, 'a stand-down failed the step');
+  assert.ok(!out.includes('RAN_SUITE'), 'the suite ran after the gate stood down');
+});
+
+test('the step runs the suite only when the gate says measure', () => {
+  const ready = runStep({ gate: 0 });
+  assert.equal(ready.code, 0);
+  assert.ok(ready.out.includes('RAN_SUITE'), 'the suite did not run on a ready gate');
+
+  // And a failing suite still fails the step -- the branch must not swallow it.
+  assert.equal(runStep({ gate: 0, suite: 1 }).code, 1, 'a failing suite passed the step');
+});
+
+test('the step refuses when the gate refuses', () => {
+  const refused = runStep({ gate: 1 });
+  assert.equal(refused.code, 1);
+  assert.ok(!refused.out.includes('RAN_SUITE'), 'the suite ran after the gate refused');
+  // An unexpected code is a refusal too, never a quiet pass.
+  assert.equal(runStep({ gate: 2 }).code, 2);
 });
