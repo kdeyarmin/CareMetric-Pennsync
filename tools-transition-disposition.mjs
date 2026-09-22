@@ -375,24 +375,35 @@ export function discoverInertFunctions(repository) {
  *   those and nothing else, and D25 gives all three a successor. Seven remain,
  *   and each reads a table from a domain that is genuinely going away — the
  *   training records, the paused comms logs, the real-time metrics.
- * - **`entity_authorization`** — the module reads a carried entity that has
- *   forced RLS and no policy. That is `User`, and it is deliberate: D14 left it
+ * - **`entity_authorization`** — the module WRITES a carried entity the store
+ *   makes readable and not writable. It meant "reads a carried entity with
+ *   forced RLS and no policy", which was `User` while D14 left it
  *   "unreachable through this surface until a decision says how it may be
- *   read". D23 answers it — the roster is served from the authority store's
- *   membership rows rather than from the carried table — so what this bucket
- *   now counts is a roster read waiting on that RPC, not an undecided one.
+ *   read". D23 ended that, and the bucket went on describing itself by the
+ *   rule it no longer used: `User` has a read policy keyed on the authority
+ *   store's roster, `discoverPolicylessEntities` is empty, and the roster RPC
+ *   this paragraph said the eight were waiting for shipped as
+ *   `contract_roster` with two handlers over it. So the read rule is a guard
+ *   that fires on nothing, and what the bucket counts is the two populations
+ *   a read policy does not help — six that UPDATE a profile, which D23 leaves
+ *   deliberately open because the roster policy is read-only and nothing may
+ *   settle that question by accident, and two that write `MedicareGuideline`,
+ *   a `global` reference table no tenant surface may write. A seventh profile
+ *   writer, `offboardUser`, is held by `entity_not_carried` first. The second
+ *   population was always blocked and was never reported, because the
+ *   classifier could not tell reading a table from writing one.
  *
  * Both rank above `records_schema` because neither is helped by the store
  * existing, and `entity_not_carried` above `entity_authorization` because
- * whether a capability survives at all comes before how a table is read.
+ * whether a capability survives at all comes before how a table is written.
  */
 export const PORT_BLOCKERS = Object.freeze(['entity_not_carried', 'entity_authorization', 'patient_access_model',
   'records_schema', 'files', 'ported_function', 'core_integration', 'pdf_rendering', 'external_secret', 'none']);
 /** A disposition whose entity gets no table in the record store. */
 export const UNCARRIED_DISPOSITIONS = Object.freeze(['retire', 'hub', 'preserved_paused']);
 /**
- * Three representations of "who may see this patient" exist, and which one
- * governs has never been decided:
+ * Three representations of "who may see this patient" existed, and which one
+ * governs was the decision this bucket waited on:
  *
  * 1. `pennsync_private.assignment` in the authority store, which
  *    `pennsync_private.context` ALREADY uses to scope a clinician;
@@ -401,11 +412,23 @@ export const UNCARRIED_DISPOSITIONS = Object.freeze(['retire', 'hub', 'preserved
  * 3. `Patient.assigned_nurses` — an array of emails — plus `created_by`, which
  *    is what every Base44 original actually reads.
  *
- * A capability reading the third cannot be ported until one of them is
- * authoritative, and the answer has to be the same for all of them or the
- * system contradicts itself about who may open a chart. It is not per-capability
- * contract work for that reason, and getting it wrong means a clinician cannot
- * see their own patient or can see somebody else's.
+ * D24 answered it, and with NONE of the three. `caller_assigned_patients`
+ * reads `pennsync_private.chart_assignment` — a production table that the
+ * staging `assignment` in (1) is not, and the two are not interchangeable —
+ * and `tools-pennsync-assignment-backfill.mjs` carries (2) into it. (3) is
+ * not merely unchosen but refused as a source: an address stays on the
+ * patient row after its assignment is suspended, so reading those emails
+ * again resurrects access somebody revoked.
+ *
+ * The signals stay because they are what enforces that answer rather than
+ * what waits on it. `discoverCareTeamDependents` finds a module reading (2)
+ * or (3); `discoverChartScope` asks whether BOTH halves of D24 are in this
+ * tree, and every dependent is blocked again if either is deleted, which is
+ * the right answer in a tree that has half of it. That is also why this was
+ * never per-capability contract work: the answer has to be the same for all
+ * of them or the system contradicts itself about who may open a chart, and
+ * getting it wrong means a clinician cannot see their own patient or can see
+ * somebody else's.
  */
 export const CARE_TEAM_SIGNALS = Object.freeze(['assigned_nurses', 'PatientCareTeamAssignment']);
 
@@ -881,10 +904,13 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
       if (touched.names.some(entity => policyless.has(entity))) return 'entity_authorization';
       // Readable but not writable. `User` is the one that matters — D23 serves
       // the roster and deliberately leaves the profile-write path open, so the
-      // 8 capabilities that update a profile stay blocked while the 35 that
-      // only read one do not. The same rule catches a module writing a
+      // 7 `port` capabilities that update a profile stay blocked while the 39
+      // that only read one do not. The same rule catches a module writing a
       // `global` reference table, which was never possible and was never
-      // reported.
+      // reported. Both counts are pinned against the tree by
+      // `tools-transition-disposition.test.mjs`, because a number in a comment
+      // is what drifted here twice: D75 moved three profile writers out of
+      // `port` and the ports since moved readers into the shipped set.
       const written = Array.isArray(touched.writes) ? touched.writes : [];
       if (written.some(entity => permits[entity] && permits[entity].read && !permits[entity].write)) {
         return 'entity_authorization';

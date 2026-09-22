@@ -4,6 +4,7 @@ import {
   API_TARGETS, FUNCTION_TIMEOUT_MS, PORTED_FUNCTIONS, STAGING_APP_ID, createStagingAuthorityClient,
 } from './client.mjs';
 import { HANDLERS, HANDLER_NAMES } from '../pennsync-api/handlers.mjs';
+import { HANDOUT_ANSWER_CEILING } from '../pennsync-api/patient-handout.mjs';
 
 /**
  * The caller for the ported handlers.
@@ -225,4 +226,27 @@ test('the capability exposes no token and adds no new surface', async () => {
     ['callFunction', 'invalidate', 'rpc', 'signIn', 'signOut']);
   assert.ok(!JSON.stringify(Object.getOwnPropertyDescriptors(client)).includes('synthetic.access.token'));
   assert.ok(Object.isFrozen(client));
+});
+
+test('the largest handout the service sends is one this client receives', async () => {
+  // The handout is the one ported JSON answer whose size the caller decides,
+  // so the service refuses a render over its ceiling by name. That is only a
+  // fix if the ceiling fits under this client's own, envelope included —
+  // proved by sending an answer of exactly that size through the real client
+  // rather than by comparing two constants, either of which could move.
+  const result = (length) => ({ pdf: 'A'.repeat(length), filename: 'chf_handout.pdf',
+    diagnostics: { stage: 'complete', sectionsProcessed: 5, totalSections: 5 } });
+  const overhead = Buffer.byteLength(JSON.stringify(result(0)));
+  const largest = result(HANDOUT_ANSWER_CEILING - overhead);
+  assert.equal(Buffer.byteLength(JSON.stringify(largest)), HANDOUT_ANSWER_CEILING);
+  const fits = harness(() => enveloped(largest));
+  await fits.client.signIn(password);
+  const answer = await fits.client.callFunction('generatePatientHandout', 'agency-a', { condition: 'chf' });
+  assert.equal(answer.pdf.length, largest.pdf.length);
+  // And the client really does refuse past its ceiling, so the one above is a
+  // margin rather than two numbers that happen to agree.
+  const over = harness(() => enveloped(result(1024 * 1024)));
+  await over.client.signIn(password);
+  await rejects(over.client.callFunction('generatePatientHandout', 'agency-a', { condition: 'chf' }),
+    'INVALID_AUTHORITY_RESPONSE');
 });

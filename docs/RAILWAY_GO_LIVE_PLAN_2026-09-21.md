@@ -52,7 +52,7 @@ plan's status table reads as progress without saying where the progress lives.
 | --- | ---: | ---: |
 | Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
 | Record store migrations (store, brokers, 51 contracts, purpose policies, file map) | 54 | ~~0~~ **54** — applied 2026-09-21 |
-| Ported handlers registered in `services/pennsync-api/handlers.mjs` | 74 | ~~0~~ **74 deployed, 0 released** — deployed 2026-09-22 |
+| Ported handlers registered in `services/pennsync-api/handlers.mjs` | 75 | ~~0~~ **74 deployed, 0 released** — deployed 2026-09-22; the 75th (`generatePatientHandout`, D81) ships with the next deploy |
 | Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ **2 deployed, paused** — 2026-09-22 |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
 
@@ -72,11 +72,12 @@ The port queue, measured today rather than quoted:
 
 ```
 port queue: entity_not_carried=7 entity_authorization=8 files=12
-            core_integration=3 external_secret=2 none=72
+            core_integration=2 external_secret=2 none=73
 ```
 
-104 carried capabilities, 72 written, 32 blocked. **No blocker in that list is
-the record store, and none is another port.** The remaining 32 need a decision,
+104 carried capabilities, 73 written, 31 blocked (2026-09-22, after D81 wrote
+`generatePatientHandout`). **No blocker in that list is the record store, and
+none is another port.** The remaining 31 need a decision,
 the file layer, a brokered send, or a new brokered operation — not more schema.
 
 ## 2. The critical path
@@ -700,8 +701,10 @@ anywhere. The app binding is deferred to stage C as above.
 
 - **Fix the `agency_id` gap first, and it is seventeen times the documented
   size.** The transition plan names four call sites. That was measured when
-  the adapter routed ELEVEN ported names; `PORTED_FUNCTIONS` holds seventy-four
-  now and nobody re-measured. `tools-ported-call-sites.mjs` measures it:
+  the adapter routed ELEVEN ported names; `PORTED_FUNCTIONS` held seventy-four
+  when this was measured and nobody had re-measured. `tools-ported-call-sites.mjs`
+  measures it (the gate's summary carries the live count — 75 routed names and
+  72 call sites after D81 admitted the handout's two):
 
   | | Count |
   | --- | ---: |
@@ -794,6 +797,22 @@ anywhere. The app binding is deferred to stage C as above.
   was already fenced by `src/lib/trustedTenantRequest.spec.js`; the runtime
   behaviour corrected here is proved in
   `src/lib/independentStagingAdapter.spec.js`.
+- **Every call the service makes already resolves on hosted staging — measured
+  2026-09-22, and now pinned.** PostgREST matches `/rest/v1/rpc/<name>` by the
+  function's name AND the names of the body's keys, and nothing had checked the
+  service's side of that: every `pennsync-api` suite stubs the network and every
+  contract suite calls its function positionally in SQL, so a parameter renamed
+  on one side would have passed everything and surfaced here, as a release that
+  refuses every request. Queried read-only against `caremetric-pennsync-staging`:
+  all 87 functions the service can call — the authority RPC, the audit append,
+  the broker family's list and get, and the eighty contracts — are present in
+  `public`, executable by `authenticated`, closed to `anon`, not overloaded, and
+  every key the service sends is a parameter while every parameter without a
+  default is sent. `services/authority-store/tests/service-rpc-signatures.test.mjs`
+  now proves the same at PR time: it captures each capability's real request body
+  through its own code path and compares it with `pg_proc` over every migration.
+  What Stage D still has to prove is authority, not wiring — a real signed session
+  and a released name.
 - Then release per function, behind the existing per-name gate: the patient read
   pair, then the create, then the visit family, then the rest by blast radius.
 - Each release wants its own hosted proof, not a suite that passed locally.
@@ -801,16 +820,52 @@ anywhere. The app binding is deferred to stage C as above.
 **Exit:** the independent staging build serves the patient and visit families
 from `pennsync-api` against hosted staging, with the Base44 path untouched.
 
-### Stage E — Independent authority on the runtime (size M)
+### Stage E — Independent authority on the runtime (size ~~M~~ **S: configuration only**)
 
-- The runtime takes caller authority from a Supabase JWT plus the store's context
-  RPC instead of Base44 `getMyTenantContext`. This is the single remaining Base44
-  execution dependency inside the runtime.
-- `caller-binding.test.mjs` and `runtime.test.mjs` updated; `/readyz` reports
-  `authorityMode: independent` and `base44ExecutionDependency: false`.
+**Corrected 2026-09-22: the code this stage describes is written and tested.**
+It was listed as work to do; measured, it is done. `services/integration-runtime`
+already implements `INTEGRATIONS_AUTHORITY_MODE=independent` — caller authority
+from the Supabase session plus the owned store's context RPC, no Base44
+`getMyTenantContext` — and readiness already reports `authorityMode` and
+`base44ExecutionDependency` from the selected mode. The two suites the old text
+said needed updating pass unchanged, alongside the one that covers the mode:
+
+| Suite | Result |
+| --- | --- |
+| `authority-independence.test.mjs` | 28/28 — including *"a released independent deployment completes work without any Base44 request"* |
+| `caller-binding.test.mjs`, `runtime.test.mjs` (with the above) | **111/111**, unchanged |
+
+The suite sits at the service root, not under `tests/`, which is how a search of
+`tests/` alone reports the mode untested.
+
+**What is left is four variables on the Railway runtime, set together:**
+
+| Variable | Value | Where it comes from |
+| --- | --- | --- |
+| `INTEGRATIONS_AUTHORITY_MODE` | `independent` | literal |
+| `INTEGRATIONS_AUTHORITY_URL` | `https://xxtyweswohkvgkprimwa.supabase.co` | the only hosted target `AUTHORITY_TARGETS` admits — the staging store Stage A migrated |
+| `INTEGRATIONS_AUTHORITY_PUBLISHABLE_KEY` | an `sb_publishable_…` key for that project | the same key already set on `pennsync-api` as `PENNSYNC_API_AUTHORITY_PUBLISHABLE_KEY` |
+| `INTEGRATIONS_APP_ID` | **`6a9881683dc68a0bd54f1ef7`** — the staging app | see below |
+
+**The app id is the one value that fails silently, and it is proved by running
+`loadConfig` rather than by reading it.** Every other wrong value refuses at
+startup: omitting the id refuses `IMPLICIT_APP_BINDING`, a secret or
+service-role key refuses `INVALID_AUTHORITY_KEY`, any other URL refuses
+`INVALID_AUTHORITY_TARGET`. But the **production** id `694ec16e72e01b60d22f7cbf`
+is in `ALLOWED_APPS`, so stating it **boots, reports ready, and is then refused
+by every authorization call**, because the store's pin is staging. It is the
+same shape Stage B carried for `PENNSYNC_API_APP_ID`: an absent binding is loud
+and a stated-but-wrong one is silent.
+
+Safe to do now: the runtime is released to nobody (`INTEGRATIONS_RELEASE` unset),
+so the change alters readiness and nothing else, and removing
+`INTEGRATIONS_AUTHORITY_MODE` reverts to the Base44 default. It needs Railway
+access, which this repository does not have.
 
 **Exit:** readiness says `independent` on the hosted runtime with the browser
-transport still unreleased.
+transport still unreleased — `/readyz` reporting `authorityMode: "independent"`
+and `base44ExecutionDependency: false`. Read it from the probe, not from the
+deploy's own report.
 
 ### Stage F — Production Supabase project (size S to provision; owner approves cost)
 
@@ -825,14 +880,16 @@ transport still unreleased.
 **Exit:** production store provisioned; the pin proved chosen rather than
 defaulted; `deployment` row dated.
 
-### Stage G — The last 32 ports (size M, parallel to D and E)
+### Stage G — The last 31 ports (size M, parallel to D and E)
 
-**Measured 2026-09-21: the startable side is at ZERO.** `tools-transition-disposition.mjs`
-reports 72 capabilities with no blocker, and all 72 are registered in
+**Measured 2026-09-22: the startable side is at ZERO.** `tools-transition-disposition.mjs`
+reports 73 capabilities with no blocker, and all 73 are registered in
 `services/pennsync-api` — so every port that *can* be written without a decision
-has been. Two buckets the queue used to report are also empty now, on
+has been. The 73rd is `generatePatientHandout` (D81), which the queue counted
+`core_integration` although only its email action sends: D79 found it, and it
+was written the same day. Two buckets the queue used to report are also empty now, on
 corrections rather than ports: `records_schema` (D75) and `ported_function`
-(D76). What is left is exactly the 32 below, and **not one of them is waiting on
+(D76). What is left is exactly the 31 below, and **not one of them is waiting on
 engineering capacity**.
 
 Re-derive that from the registry rather than by searching for quoted names: a
@@ -847,7 +904,7 @@ Each bucket needs a different thing, and only one of them is code:
 | `files` | 12 | Stage H. The mapping, resolver and planner are built (D77); the bytes are not copied |
 | `entity_authorization` | 8 | A decision, twice. Six UPDATE a profile, which D23 left open deliberately; two write `MedicareGuideline`, a `global` table no tenant surface may write — they need a platform ingestion path, not a caller-facing handler |
 | `entity_not_carried` | 7 | A disposition conversation. These read training records, paused comms logs and real-time metrics from domains that are going away |
-| `core_integration` | 3 | An owner's decision to broker `Core.SendEmail`, which the runtime already implements. This is a release gate, not a build |
+| `core_integration` | 2 | An owner's decision to broker `Core.SendEmail`, which the runtime already implements. Both are capabilities whose whole body is the send; this is a release gate, not a build |
 | `external_secret` | 2 | A new brokered operation for audio transcription, with the reservation, quota, encrypted result and audit the other seven have — over a PHI payload. A capability to design |
 
 ### Stage H — Files (size M, can start once the production bucket exists)
@@ -878,6 +935,77 @@ This is the stage the status tables consistently understate. Nothing has moved:
 445 entity call sites across 69 entity types, 366 files importing the Base44
 client, 198 function invocations through 83 wrappers, 41 Core integration sites,
 4 SDK importers — all at ratchet baseline.
+
+**And the count understates it a second way (D80).** "Replace call sites tier
+by tier" reads as a refactor whose size is the count. Crossing all 445 against
+their entity dispositions — `pnpm run check:frontend-destination`, added
+2026-09-22 — says otherwise:
+
+| | Call sites | |
+| --- | ---: | --- |
+| `record_store` | 232 | a table exists |
+| `broker_family` | 7 | the generic family serves that read |
+| `activity_trail` | 3 | D25's successor |
+| **can land** | **242** | |
+| `no_table` | 193 | `hub` (119) and `preserved_paused` (74) — no table here at all |
+| `broker_is_read_only` | 9 | a write to an entity the family serves readonly |
+| `no_realtime_seam` | 1 | `subscribe`, which the owned store has nowhere to put |
+| **cannot land** | **203** | |
+
+**203 of 445 — 46% — reach a domain the migration has decided not to carry.**
+119 of them are the training domain, whose destination is the Hub; 75 are
+`preserved_paused`. Each needs a product answer about what the feature becomes,
+not an edit somebody has not got to yet, so a plan that sizes this stage by the
+call-site count is sizing the wrong thing.
+
+The nine `broker_is_read_only` are the ones a per-ENTITY reading would have
+called fine: the family serves `Announcement`, `FacilityDocumentationRule` and
+`RegulatoryUpdate` readonly, and the frontend creates, updates and deletes all
+three. Being served is a property of the entity; having a destination is a
+property of the call site.
+
+`store_can_hold` is not `capability serves it`. The 232 `record_store` sites
+have somewhere for the row to live; whether a ported capability covers the
+operation is Stage G's question and this gate deliberately does not answer it.
+
+**Measured 2026-09-22: none of the 242 has a browser path today, and the obvious
+proxy for "which could" overstates it.** Two facts, both measured:
+
+- *No generic route exists, by design.* `pennsync-api` has exactly three routes —
+  health, readiness, and one release-gated function dispatch — and its header
+  says there is deliberately no generic entity, query or proxy route. So an
+  entity call reaches the owned store **only** through a named handler. In the
+  independent build every entity call now refuses by name
+  (`STAGING_OPERATION_UNAVAILABLE`, `operation: entities.<Entity>.<op>`), where it
+  used to crash with a raw `TypeError`; that seam is where a route to a handler
+  will attach, one call site at a time.
+- *"A shipped handler touches the entity" is not coverage.* Crossing the 242 with
+  what each shipped handler's original reads and writes says **131 covered** —
+  and the list shows why that number must not be used. `AgencySettings.write`
+  (10 sites) counts as covered by `sendCredentialRenewalReminders`, a reminder
+  sweep that stamps a marker, not a settings screen. `AdrAuditCase.write` (8) is
+  "covered" by `checkAdrDeadlines`, a deadline sweep. `User.read` (37) by
+  handlers that read a user to authorize and expose none. A handler that
+  **touches** an entity for its own reasons is not one that **serves** a call
+  site.
+
+**The 203 that cannot land have their own docket:**
+[FRONTEND_DECISION_DOCKET_2026-09-22.md](FRONTEND_DECISION_DOCKET_2026-09-22.md).
+Two findings in it change the plan. 81 of the 119 training sites sit in 35
+screens the learning cutover's switch never reaches — the course player and the
+compliance reports among them — so the learning cutover is a *sequencing
+dependency* of the exit. And the paused-domain screens are live today (direct
+entity calls bypass D7's function-level pauses), so D7's "carried paused" and
+"no table" contradict each other at the exit and need an owner's answer.
+
+So Stage J's unit of work is not "repoint a call site"; it is, per call site,
+*find a handler that exposes the rows this screen needs, under a purpose that
+admits them — or record that none does.* The largest single lead is the 37
+`User.read` sites, whose real successor is the roster pair
+(`listAgencyRoster`, `getAgencyRosterMember`). Even that is not mechanical: the
+roster deliberately projects no `role`, `account_type`, `agency_id` or
+`agency_name` (D23), so a screen that reads a user to decide what to show a user
+needs its authorization moved to the tenant context, not a new data source.
 
 - Replace `src/api/base44Client.js` with a backend-neutral client; the
   independent adapter becomes the default under `VITE_PENNSYNC_BACKEND=independent`.
@@ -999,17 +1127,19 @@ misunderstanding:
 | ~~Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change~~ | Stage A | **Done 2026-09-22 (#237).** Both secrets are configured and the flag is `'true'`. The job log shows both masked and then 15 tests, 15 passed, 0 skipped against the real project — read from the log rather than from the green tick, which is what this gate exists to distrust. The committed store's drift is now watched on every push to main |
 | ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
+| Set the four `INTEGRATIONS_AUTHORITY_*` / `INTEGRATIONS_APP_ID` variables on the Railway runtime | Stage E | The code is done and tested (111/111); this is the whole of Stage E now. `INTEGRATIONS_APP_ID` must be the **staging** id `6a9881683dc68a0bd54f1ef7` — the production id boots and then refuses every call. Reversible, and the runtime serves nobody |
+| **Correct the Google Play Data Safety declaration** | **Today** — independent of every stage | Live listing says "No data collected" and "No data shared with third parties" for an app handling clinical data. A policy violation that can draw enforcement against the listing. A Play Console form — needs no key and no binary, so nothing else here blocks it |
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this. **Four are already accepted, mapped and verified as of 2026-09-22**; six remain |
 | The publishable (anon) key and a sign-in credential for the four accepted accounts | Stage A claim 4, Stage C | Only a sign-in makes the `auth.sessions` row `actor()` requires, and it is good for twelve hours from sign-in rather than for a token's lifetime, so this cannot be a stored session secret |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
-| A decision to broker `Core.SendEmail` | Stage G | Unblocks 3 ports; the runtime already implements it |
+| A decision to broker `Core.SendEmail` | Stage G | Unblocks 2 ports whose whole body is the send, and the email action of a third — `generatePatientHandout`, whose document half is ported (D81). The runtime already implements it |
 | Dispositions for 7 capabilities on retiring domains | Stage G | Training records, paused comms logs, real-time metrics |
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
 | Base44 owner-signed export permits | Stage I | Production and legacy apps |
-| Recover Apple provisioning and Play App Signing continuity | Stage L | Must be recovered, never regenerated — a new key means users cannot update |
-| Recover or rebuild the Android project | Stage L | There is no `android/` directory in this repository |
-| Recover or reimplement the IAP entitlement path | Stage L, and today | Four live products; no StoreKit, receipt validation or subscription state in this repository |
+| Recover Android signing, and Apple **account** access | Stage L — and **before the frontend moves** | Corrected 2026-09-22 ([runbook](MOBILE_RECOVERY_RUNBOOK_2026-09-22.md)). *Android:* whether it can ever be updated turns on one setting — Play Console → App integrity → is Play App Signing enabled? If yes, a lost upload key can be reset; if no, the only copy of the key is the PWABuilder output zip, and without it the app cannot be updated. *iOS:* "never regenerated" was wrong here — iOS certificates and profiles are reissued routinely without breaking updates; continuity is the app record `6757097720` staying in the same team, so recovery is signing into that account (lead: team `JC83GT8MG8`). Both apps load `caremetricai.base44.app`, so both must be recoverable before Stage J moves the origin |
+| Find the Android build's origin | Stage L | Searched 2026-09-22: no Android file in this repository's full history (4,338 commits, 175 branches), nor in `CM-Go`, `CMbackup` or `App-Studio` — and all three were created after the live build's Jan 15, 2026 update, so none could have produced it. Per the July audit it is a PWABuilder TWA, which has no source to find; the artefact is the output zip holding the key |
+| Recover or reimplement the IAP entitlement path | Stage L, and today | Four live products; no StoreKit, receipt validation or subscription state in this repository. **This repository's `ios/` is not the live app** — it has no StoreKit and targets iOS 15.0 where the live app requires 15.6 — so submitting it as an update would remove purchase and restore for paying subscribers |
 | Store-side privacy declarations, EULA approval, physical-device tests | Stage L | Blockers 5 and 7; the bundled privacy manifest is already correct |
 | Distribution route decision (public listing vs Apple Business Manager) | Stage L | Guideline 4.2 applies to a web wrapper either way |
 

@@ -4789,10 +4789,14 @@ Port queue: `records_schema` 1 → 0, written 71.
 **Decision.** Teach `ported_function` to ask who the callee is, and port the
 capability it was holding — `extractReferralDataForSmartNote`.
 
-**The sixth correction of the recurring shape, and the first that ends a wait
-rather than renaming one.** D47, D55, D65, D74 and D75 each found a bucket
-keeping its name after the reason for it had gone, and each moved capabilities
-between categories. This one moves one from blocked to startable.
+**The seventh correction of the recurring shape, and the first that ends a wait
+rather than renaming one.** D47, D55, D60, D65, D74 and D75 each found a check
+or a bucket keeping its name after the reason for it had gone, and each moved
+capabilities between categories. This one moves one from blocked to startable.
+
+*This paragraph first read "the sixth" and listed five, dropping D60 — which
+D74's own entry counts in the series. Corrected at D79, which needed the
+ordinal to be true before it could claim one.*
 
 The rule was a single unconditional line:
 
@@ -5124,3 +5128,375 @@ lock-wait assertion is what fails, seconds before any duplicate is counted.
 Four tests fail under that sabotage. That is the only way to tell a test that
 works from one that merely passes — and given that this decision exists because
 a written-down rule was not a check, it seemed worth doing to the check as well.
+
+## D79 — Two buckets describing rules they had stopped using
+
+**Decision.** Correct what `entity_authorization` and `CARE_TEAM_SIGNALS` say
+they measure, pin both against the tree, and record that the port queue has
+nothing startable left.
+
+**The eighth correction of the recurring shape, and the first where nothing
+moves.** D47, D55, D60, D65, D74, D75 and D76 each found a check or a bucket
+keeping its name after the reason for it had gone, and every one of them
+reclassified capabilities — a count changed, and the change is what made the
+correction visible. Here the classifier is right, the counts are right, and
+what is wrong is only what a reader is told. That is the harder version of the
+same defect: nothing fails, so nothing surfaces it.
+
+### `entity_authorization` describes a rule that fires on nothing
+
+Its paragraph says the bucket is *"the module reads a carried entity that has
+forced RLS and no policy. That is `User`"*, and that what it now counts is *"a
+roster read waiting on that RPC"*. Measured against this tree:
+
+- `discoverPolicylessEntities` returns **empty**. No carried entity lacks a
+  read policy, so the read rule cannot fire at all;
+- `User` has had a read policy keyed on the authority store's roster since
+  **D23**;
+- the roster RPC the paragraph says eight capabilities are waiting for
+  **shipped**, as `contract_roster` with `listAgencyRoster` and
+  `getAgencyRosterMember` over it.
+
+What populates the bucket is the *write* rule five hundred lines below, and in
+two populations: **six** that UPDATE a profile — the path D23 leaves
+deliberately open, because the roster policy is read-only and nothing may
+settle that question by accident — and **two** that write `MedicareGuideline`,
+a `global` reference table no tenant surface may write. A seventh profile
+writer, `offboardUser`, also reads four `preserved_paused` comms tables and is
+held by `entity_not_carried` first.
+
+A reader acting on the paragraph would go and write a roster RPC that already
+exists. The inline comment beside the live rule was accurate throughout, and
+its counts had drifted the other way — `8` and `35` where the tree measures
+`7` and `39`, because D75 moved three profile writers out of `port` and the
+ports since moved readers into the shipped set.
+
+### `CARE_TEAM_SIGNALS` says an answered question is open
+
+It opens *"Three representations of 'who may see this patient' exist, and which
+one governs has never been decided"* and ends *"A capability reading the third
+cannot be ported until one of them is authoritative."* Four hundred and eighty
+lines below, in the same file, `refine` says:
+
+> D24. Both halves exist, so a care-team dependency is no longer a thing to
+> decide — it is a port to write, against a store that can answer.
+
+`patient_access_model` is empty and has been since D24. **And D24 answered it
+with none of the three the comment lists**: `caller_assigned_patients` reads
+`pennsync_private.chart_assignment`, a production table that the staging
+`assignment` in (1) is not — the two are explicitly not interchangeable — with
+`tools-pennsync-assignment-backfill.mjs` carrying (2) into it. (3) is not
+merely unchosen but **refused as a source**, because an address stays on the
+patient row after its assignment is suspended, so reading those emails again
+resurrects access somebody revoked.
+
+The signals stay, because they are what *enforces* that answer rather than what
+waits on it: delete either half of D24 and every dependent is blocked again.
+
+### The fix is tests, because prose is what failed
+
+Both paragraphs were written accurately and went stale where nothing could
+notice. So the reasons are asserted rather than described — which read-only
+entity holds each member of the bucket, that the policyless set is empty, and
+that the roster handlers exist. A rewrite that gets the reason wrong now fails
+instead of being read and believed. Giving `user` an `update` policy empties
+the bucket and fails four tests.
+
+### The milestone the counts do not state, and the one exception
+
+`none` means *portable today*, and a reader takes a non-empty one as work
+available now. It is 72, and **all 72 are written**: the queue's portable set
+is exactly the shipped handler registry, less the two roster facilities D22
+serves outside `base44/functions`. Nothing in `none` is startable and
+unwritten.
+
+**One capability outside it is, and the first draft of this decision said
+otherwise.** `generatePatientHandout` is counted `core_integration`, which the
+bucket defines as needing "the integration runtime's brokered path released".
+That is true of one of its two actions. Its single `Core.SendEmail` sits
+inside `if (action === 'email' && patientEmail)`, and eleven lines after the
+request is parsed the module ALREADY refuses that action itself:
+
+```js
+if (action === 'email' && !outboundDeliveryReleased()) {
+  return outboundDeliveryPausedResponse('email');
+}
+```
+
+The document action reaches no integration, answers with a rendered PDF, and
+waits on nothing: six sibling capabilities already render one in the ported
+service, and its only entity is a retired log table D25 gives a successor. The
+email action is the same owner decision that D42, D49, D50, D52, D54 and D73
+each ship *with the delivery paused and reported as paused* — six precedents
+for exactly this shape.
+
+So this is **D76's defect in the family next door**: the rule is
+`/\.\s*integrations\s*\./`, it answers on the SHAPE of the call, and nothing
+asks whether the call is on a path the module itself already refuses. The
+ninth instance of the recurring shape, found while writing the eighth — and
+nearly shipped inside it, because "nothing is startable" was asserted over the
+`none` bucket and then stated about the whole queue.
+
+The discriminator is D74's own words about `sendAccountReadyEmail`, whose
+"whole body is one `Core.SendEmail`": **does the module have a success answer
+that is not the integration's result?** Measured over all three, the two
+siblings have exactly one success answer each and both read `email sent`;
+`generatePatientHandout` has two that carry a PDF. The test asserts that
+contrast rather than reclassifying, because a general rule derived from one
+instance is what D77 warns against — pre-allowing a shape nobody has measured
+is worse than no check. `core_integration` still reports 3, and what changed
+is that the record now says which of the three is work.
+
+Every other capability left is behind a decision or a phase rather than behind
+somebody's time:
+
+| Bucket | Left | Waiting on |
+| --- | --- | --- |
+| `files` | 12 | Phase 3's data work — and D77's copy, which refuses every apply while the runtime's reader model is uploader-owned |
+| `entity_authorization` | 8 | D23's open profile-write path (6) and how a `global` reference table may be written (2) |
+| `entity_not_carried` | 7 | domains that are going away: training records, paused comms logs, real-time metrics |
+| `core_integration` | 3 | releasing `Core.SendEmail` to the brokered set — an owner decision, since those digests carry personnel and invitee names |
+| `external_secret` | 2 | a third-party transcription key, which belongs to the runtime's brokered path |
+
+### The test's own first draft was the defect it was written against
+
+It asserted the milestone in both directions: nothing in `none` unwritten, and
+nothing blocked with a handler. Only the first is an equality. `checkCoverage`
+sends a ported capability to `none` **without consulting `refine`**, so
+"blocked, yet written" cannot occur however wrong a blocker is.
+
+Found by sabotage rather than by reading: flipping `PolicyLibrary` to `hub`
+should have pushed the shipped `listPolicyLibrary` into `entity_not_carried`.
+The queue did not move at all. The assertion had been passing for a reason that
+has nothing to do with the queue being right, in a test whose comment claimed
+otherwise — **a test whose comment describes something the test does not do
+reads exactly like one that works**, which is D77's lesson arriving in the same
+change that cites it.
+
+Port queue: unchanged at 7 / 8 / 0 / 0 / 12 / 0 / 3 / 0 / 2 / 72 — and one of
+the three in `core_integration` is a partial port waiting to be written rather
+than a capability waiting on the runtime. D81 wrote it the same day.
+
+## D80 — Half the frontend's entity traffic has nowhere to land
+
+**Decision.** Measure every frontend entity call site against its entity's
+disposition, gate it, and size Stage J by what can actually be repointed
+rather than by the call-site count.
+
+**The count was never the question.** The surface ratchet reports 445 entity
+call sites and says nothing about where they go, and Stage J is written as
+"replace call sites tier by tier" — a refactor whose size is the count. Crossed
+against the dispositions:
+
+| Destination | Call sites | |
+| --- | ---: | --- |
+| `record_store` | 232 | a table exists |
+| `broker_family` | 7 | the generic family serves that read |
+| `activity_trail` | 3 | D25's successor |
+| **can land** | **242** | |
+| `no_table` | 193 | `hub` 119, `preserved_paused` 74 |
+| `broker_is_read_only` | 9 | a write the family refuses |
+| `no_realtime_seam` | 1 | `subscribe` |
+| **cannot land** | **203** | |
+
+**203 of 445 reach a domain the migration decided not to carry.** The training
+domain alone is 119 — more call sites than the broker family serves in total —
+and it is `hub`, a different destination entirely. Those are not edits waiting
+for someone's time; each is a product decision about what the feature becomes,
+and a plan sizing the stage by the count is sizing the wrong thing.
+
+### Being served is a property of the entity; having a destination is a property of the call site
+
+The nine `broker_is_read_only` sites are the ones a per-entity tool would have
+reported fine. The family serves exactly three entities — `Announcement`,
+`FacilityDocumentationRule`, `RegulatoryUpdate` — and all three are `readonly`
+under D2's ceiling as D22 re-checks it against each schema. The frontend
+creates, updates and deletes all three. Classify the call, not the table.
+
+`subscribe` is the same shape from the other side: the entity behind it could
+be `port` with a table waiting, and the owned store still has no realtime seam,
+so the operation decides before the disposition does.
+
+### Two things it deliberately does not claim
+
+`store_can_hold` is **not** `a capability serves it`. The 232 `record_store`
+sites have somewhere for the row to live; whether a ported capability covers
+the operation is a narrower question, and answering it by inference is exactly
+how a bucket comes to claim more than it measured — the whole of D74 through
+D79. `check:transition-disposition` owns that half.
+
+And nothing defaults. An unknown operation or disposition **throws**, because a
+new operation is either a read the broker family might serve or a write it
+refuses, and guessing is the difference between "this is fine" and "this
+silently cannot work".
+
+An entity with **no** disposition at all is a row too, with destination
+`undeclared`, and it fails the gate. The first version skipped such a site: the
+run still failed on the undeclared list, but the report it failed with
+understated the total and the unserved count — in the one state where somebody
+reads them closely — while the comment three lines above said every counted
+site contributes a row. Found by a review bot; a fixture test now drives the
+real walker over a tree with one declared and one undeclared entity and checks
+both are counted.
+
+### One matcher, so one count
+
+It walks `src/` through the ratchet's own `sourceFiles` and `ENTITY_CALL`
+rather than re-deriving them, and a test asserts the two totals agree. The
+first measurement of this read **475 call sites and 220 unserved** because it
+included the `.test.` and `.spec.` files the ratchet excludes on purpose — its
+header says why, that they "deliberately model the very surface being retired".
+A real number about a different question, and two walkers agreeing by
+coincidence is how one tool comes to describe a different frontend from the
+other while both pass their own suites (D45).
+
+Proved by sabotage rather than by reading: a new `TrainingCourse.list()` in
+`src/` takes the gate to 204/203 and exits 1, and renaming the shared matcher
+fails four tests.
+
+## D81 — The handout was work, so it is written
+
+**Decision.** Port `generatePatientHandout` as the sixth PARTIAL port, after
+D31, D35, D36, D59 and D73. The document action is served. The email action —
+the delivery D42, D49, D50, D52, D54 and D73 each ship paused — is refused with the answer the original itself gives while
+`OUTBOUND_DELIVERY_RELEASE` is not `enabled-v1`: 503,
+`OUTBOUND_DELIVERY_RELEASE_PAUSED`, not retryable, in the original's order
+(the condition checks, then the address, then the pause). Releasing a send to
+a patient's address is D56's owner decision, not something a port may take.
+
+It reads no record — the patient's name is text the caller typed, rendered
+into a document handed back to that caller and stored nowhere — so what it
+requires is what every ported document requires: an active membership in the
+agency the request names. The original required only a signed-in account.
+
+### Carried, and how that is proved
+
+- **The text is copied, never retyped.** The twenty templates, the checklists
+  and the resource links live in `patient-handout-templates.mjs`, extracted
+  from the original's source, and the parity suite compares the two blocks as
+  SOURCE — so a change to a line nothing draws by default (a deselectable
+  bullet, a link target) fails too. This is a patient's instructions at home.
+- **The page is the original's, call for call**, driven through the real
+  transpiled original as every ported document is: all twenty conditions, and
+  then all five colour schemes × four layouts × three typefaces over three
+  conditions whose union the test asserts, from the templates, reaches all
+  eight section and page branches — 180 comparisons on top of the twenty.
+- **So are its failures.** The original catches per block and the catches
+  differ — a failed section leaves a red "[Could not render: …]" line, a failed
+  subsection skips to the next, the notes, checklist, tracker and links drop
+  their block — and the port keeps all six. Both sides are handed a surface
+  that fails while drawing the same named line, and the test then asserts the
+  ORIGINAL took the branch that line was chosen for.
+- **Its answer**: JSON carrying base64, `{ pdf, filename, diagnostics }`,
+  because that is how the original answered. It fits the authority client's
+  1 MiB JSON ceiling with room: the largest guide is 86 KB of base64 and a
+  configured logo is embedded once however many pages carry it.
+- The logo is supplied and the date is supplied, as for every ported document;
+  the date keeps the original's long form ("September 22, 2026").
+
+### Three narrowings, each an input the original could not render
+
+Each is proved by driving the ORIGINAL rather than by reading it (D69):
+
+| Input | What the original did | The port |
+| --- | --- | --- |
+| an unknown colour scheme | threw on the first fill, and its catch answered **`success: true`** with a generic "we could not generate the full guide" page, which the client downloads and reports as a success | `INVALID_STYLE_OPTIONS` |
+| `condition: 'constructor'` | passed its template check (a plain-object index) and drew a page with no title and no sections, as `constructor_handout.pdf` | `INVALID_CONDITION` |
+| an object where text belongs | printed `[object Object]` on the patient's handout | `INVALID_PARAMS` |
+
+Typeface and layout the original defaulted rather than crashed on; they are
+refused too, because one rule is simpler than three and the client cannot
+send anything else. The published client's own request passes all of it, and
+a test sends that request key for key.
+
+### Not carried: the generic page, and the two `SystemLog` writes
+
+Every input that reached the fallback page is refused before a render starts —
+a failed sign-in and an unreadable body by the service itself, the rest above —
+so all that is left to reach it is a render that genuinely fails. A patient
+handed a page saying "contact your nurse", by a nurse who was told the guide
+downloaded, is worse than an error the nurse can see; the failure is the
+service's opaque 503 instead. The two `SystemLog` writes recorded exactly
+those failures and the email's, so they have no successor: this port either
+refuses the case by name or does not have it. The original audited nothing on
+success, and neither does the port.
+
+### Recorded, not fixed: four controls that change nothing
+
+`PatientEducationHub` offers a **Reading Level** selector, a **Format**
+selector, a **Custom Header** field and a **Two Column** layout. The original
+never reads `readingLevel` or `format`, computes `customHeader` and never
+draws it, and renders `two_column` as a single column with a 16 mm margin. The
+port accepts all four — the client sends them, and refusing would break the
+only caller — and draws exactly what the original drew. Honouring them would
+be inventing a behaviour; they are a product question, the same kind D72
+recorded for the dashboard's three dead fields. The original's `clean()` also
+strips "°" from "Fever over 100.4°F" in six templates, printing "100.4F";
+carried, because a port answers the way its original did.
+
+### The first port through the call-site ratchet
+
+`check:ported-call-sites` refused the change: the handout's two call sites in
+`PatientEducationHub.jsx` now route to the service without naming a tenant.
+They are not new call sites — the capability became routed — and
+`portedCall` supplies the bound tenant, so they WORK. They are admitted in a
+reviewed diff because the fallback is right exactly where the tenant decides
+nothing the caller could have meant differently, and here it decides nothing
+on the page. The gate's own comment still said such a site "will refuse the
+moment the service is pointed at", which stopped being true when the adapter
+began supplying the tenant; it now says what the refusal is for.
+
+### The test's first two drafts claimed more than they did
+
+The failure test first injected failures by COUNTING calls, and its comment
+named a subsection bullet, the checklist's second box and the first link.
+Instrumented, every one of them landed in a section catch — the counts shift
+as soon as an earlier block fails — and a failure in the wrong place still
+compares equal, so the test proved one branch while describing four. The style
+matrix's first draft deselected `copd_oxygen`'s last section, which is its
+only `important` one, on a condition with no plain paragraph, checklist or
+links. Both now assert their coverage from data rather than from a comment.
+And one sabotage — the original draws its failure marker in Helvetica whatever
+the document's face — passed until the failure cases ran in Times, because
+under the default face the two are the same. **A test whose comment describes
+something the test does not do reads exactly like one that works**, for the
+third time since D77; ten sabotages now fail the suite, each one.
+
+### Three bounds the original did not need, because it ran alone
+
+On Base44 each call ran in its own isolated invocation, so an expensive one
+hurt only itself. This service is one shared Node process and jsPDF renders
+synchronously, so what the original could afford is not automatically
+affordable here. Measured, not assumed:
+
+- **`splitTextToSize` is worse than quadratic in lines.** 20,000 lines take
+  0.85 s and 40,000 take 5.6 s; the service's 1 MiB request cap holds 400,000,
+  which would stall every caller for tens of minutes. Only two caller fields
+  reach it — the nurse's note and the footer — so both are capped **before**
+  any render (a note at 20,000 characters or 400 lines, a footer at 2,000 or
+  40), far above anything that can print. The caps are tested on
+  `handoutRequest`, which never renders, so a regression fails there instead of
+  hanging the suite.
+- **A note too tall for the page is refused by name** (`HANDOUT_NOTES_TOO_LONG`)
+  — the fourth narrowing, and the one with a clinical edge. The original's
+  notes callout has no page break: driven with a 39-line note it draws the last
+  line into the footer band, and at sixty lines below the bottom of the page,
+  still answering 200. The nurse's last instructions reach the patient
+  overprinted or not at all. The edge is measured with a real jsPDF in each
+  layout (38, 45 and 28 lines fit in standard, compact and large print), and a
+  note that fits draws exactly as before. Paginating the note instead would
+  print everything, and is the owner's call: it changes the document.
+- **The answer has a ceiling** (`HANDOUT_TOO_LARGE`, 1 MiB less 16 KiB). The
+  authority client refuses a larger JSON answer as an opaque
+  `INVALID_AUTHORITY_RESPONSE`, after the work; the patient's name is drawn but
+  never split, so it is the one field still able to reach it. The ceiling is
+  proved against the real client by sending an answer of exactly that size
+  through it, not by comparing two constants.
+
+Six sabotages each fail the test meant to catch them. The footer's own
+first-line truncation — the original prints only the first wrapped line of a
+custom footer — is carried and recorded; it is agency boilerplate, not a
+patient's instructions.
+
+Port queue: 7 / 8 / 0 / 0 / 12 / 0 / **2** / 0 / 2 / **73**. What is left in
+`core_integration` is the two whose whole body is the send.

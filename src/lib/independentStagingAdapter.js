@@ -4,6 +4,52 @@ const EMAILS = Object.freeze(['admin-a', 'clinician-a', 'clinician-empty', 'admi
   .map(name => `info+pennsync-${name}@caremetricai.com`));
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail = (code, status = 403) => { const error = new Error(code); error.code = code; error.status = status; throw error; };
+/**
+ * Every entity and Core-integration call in this build refuses by name.
+ *
+ * Both namespaces were `{}`, so an entity call such as `.TrainingCourse.list()`
+ * read `.list` of `undefined` and threw a raw TypeError — measured by driving it
+ * through the realm gate, not inferred. That failed closed in the sense that
+ * matters (nothing can reach Base44 from here), but as an unclassified
+ * TypeError no caller could tell from a bug, at every one of the frontend's
+ * entity and integration call sites.
+ *
+ * The refusal carries the code every other unsupported operation here uses
+ * and is a REJECTED PROMISE, not a throw: the SDK methods it stands in for
+ * return promises, and the realm gate refuses a closed realm the same way, so
+ * "unavailable" and "realm closed" now reach a caller in one shape rather
+ * than two. `operation` names the call for a staging report; it is a method
+ * name, never an argument.
+ *
+ * There is deliberately no route to the record store behind this. pennsync-api
+ * has no generic entity route by design — an entity reaches the owned store
+ * only through a ported handler, which `invoke` already routes — so a route
+ * added here would be one that service refuses to have.
+ */
+// `then` must read as absent: a function there would make the namespace, or an
+// entity, a thenable, and `await base44.entities` would call it.
+const NOT_AN_OPERATION = new Set(['then', 'toJSON']);
+// Memoised per name, because the SDK's own objects are stable: a caller may
+// hold `base44.entities.Patient` or one of its methods, and the realm gate
+// caches its method facades by owner identity, so a fresh proxy per access
+// would miss that cache on every call.
+const refusingLevel = (resolve) => {
+  const made = new Map();
+  return new Proxy(Object.freeze({}), {
+    get: (_target, name) => {
+      if (typeof name !== 'string' || NOT_AN_OPERATION.has(name)) return undefined;
+      if (!made.has(name)) made.set(name, resolve(name));
+      return made.get(name);
+    },
+  });
+};
+const refusingNamespace = (root) => refusingLevel(group => refusingLevel(operation => () => {
+  const error = new Error('STAGING_OPERATION_UNAVAILABLE');
+  error.code = 'STAGING_OPERATION_UNAVAILABLE';
+  error.status = 403;
+  error.operation = `${root}.${group}.${operation}`;
+  return Promise.reject(error);
+}));
 const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value)
   && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 const contextKeys = ['user_id', 'user_email', 'membership_id', 'membership_key', 'membership_version',
@@ -109,8 +155,9 @@ export function createIndependentStagingAdapter(config,
    * The transition plan says this adapter "refuses rather than choosing a
    * tenant on the caller's behalf, which is the point", and that the fix
    * belongs at each call site. Measuring it moved the ground under that: the
-   * adapter routes 70 call sites across 52 capabilities and 3 name a tenant,
-   * so the recorded plan is 67 edits — and each edit adds a key to a payload
+   * adapter routed 70 call sites across 52 capabilities and 3 named a tenant,
+   * so the recorded plan was 67 edits (`check:ported-call-sites` carries the
+   * live count) — and each edit adds a key to a payload
    * the LIVE Base44 original also receives, because `src/functions/*` wrappers
    * serve both backends.
    *
@@ -298,7 +345,7 @@ export function createIndependentStagingAdapter(config,
   return Object.freeze({ auth,
     raw: Object.freeze({ auth: Object.freeze({ me, logout: signOut, redirectToLogin: unavailable, setToken: unavailable }),
       functions: Object.freeze({ invoke, fetch: fetchFunction }),
-      entities: Object.freeze({}), integrations: Object.freeze({}),
+      entities: refusingNamespace('entities'), integrations: refusingNamespace('integrations'),
       cleanup: () => { generation++; signedIn = false; for (const value of clients.values()) value.invalidate(); } }),
     authority: Object.freeze({ me, getMyTenantContext: getContext, listMyTenantMemberships: memberships }),
   });

@@ -12,6 +12,14 @@ import {
 import {
   buildUserRoster, careScopeLabel, rosterFilename,
 } from '../../services/pennsync-api/document-user-roster.mjs';
+import {
+  HANDOUT_COLOR_SCHEMES, HANDOUT_FONTS, HANDOUT_LAYOUTS, HandoutNotesTooLong, buildPatientHandout,
+  handoutDate, handoutFilename, selectedHandoutSections,
+} from '../../services/pennsync-api/document-patient-handout.mjs';
+import {
+  HANDOUT_CHECKLISTS, HANDOUT_RESOURCES, HANDOUT_TEMPLATES,
+} from '../../services/pennsync-api/patient-handout-templates.mjs';
+import { handoutRequest } from '../../services/pennsync-api/patient-handout.mjs';
 
 /**
  * Drift guard for documents ported out of Base44.
@@ -56,9 +64,13 @@ function recorder() {
     output(...args) { calls.push(['output', ...args]); return new ArrayBuffer(8); },
   };
   for (const name of ['setFillColor', 'rect', 'roundedRect', 'addImage', 'setTextColor',
-    'setFontSize', 'setFont', 'text', 'setLineWidth', 'setDrawColor', 'setPage']) {
+    'setFontSize', 'setFont', 'text', 'setLineWidth', 'setDrawColor', 'setPage',
+    'setProperties', 'circle', 'line', 'textWithLink']) {
     surface[name] = (...args) => { calls.push([name, ...args]); };
   }
+  // A measurement the geometry depends on (the handout rules a line after a
+  // subheading's measured width), so it answers a number both sides agree on.
+  surface.getTextWidth = (text) => { calls.push(['getTextWidth', text]); return String(text).length * 1.75; };
   return surface;
 }
 
@@ -72,7 +84,7 @@ async function loadOriginalHandler(entry, client = null) {
   const stripped = source.replace(/^import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?\s*$/gm, '');
   assert.doesNotMatch(stripped, /from 'npm:/, 'every npm import should be stubbed');
   const preamble = `const { createClientFromRequest, jsPDF, capture } = globalThis.__documentParity;\n`
-    + `const Deno = { serve: capture };\n`;
+    + `const Deno = { serve: capture, env: { get: (name) => globalThis.__documentParity.env?.[name] } };\n`;
   const js = transpileTs(preamble + stripped).outputText;
   const temporary = join(tmpdir(), `docparity_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   await writeFile(temporary, js);
@@ -374,4 +386,370 @@ test('the roster report draws its logo, its subtitle and its scope labels as the
     { generatedOn: 'x' }), TypeError);
   assert.throws(() => buildUserRoster(recorder(), { entries: [], summary: null },
     { generatedOn: 'x' }), TypeError);
+});
+
+/**
+ * The patient education handout, the first ported document that takes a
+ * request: twenty templates, five colour schemes, four layouts, three
+ * typefaces, section and bullet selection, free-text notes and a footer. So
+ * the original is driven with a JSON body, and the comparison runs across the
+ * whole space the published client can reach rather than one default page.
+ */
+const HANDOUT_ENTRY = new URL('../functions/generatePatientHandout/entry.ts', import.meta.url);
+const HANDOUT_PORT = new URL('../../services/pennsync-api/patient-handout-templates.mjs', import.meta.url);
+
+async function runHandoutOriginal(handler, body, { logo = false, surface = recorder() } = {}) {
+  globalThis.__documentParity.surface = surface;
+  const realFetch = globalThis.fetch;
+  const realError = console.error;
+  globalThis.fetch = async () => {
+    if (!logo) throw new Error('logo unavailable');
+    return { blob: async () => ({ arrayBuffer: async () => new Uint8Array([137, 80, 78, 71]).buffer }) };
+  };
+  // The original logs every caught failure; the failure tests cause some on
+  // purpose, and what they assert is the document, not the log.
+  console.error = () => {};
+  let response;
+  try {
+    response = await handler(new Request('https://example.test/', {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body),
+    }));
+  } finally { globalThis.fetch = realFetch; console.error = realError; }
+  return { calls: surface.calls, status: response.status, answer: await response.json() };
+}
+
+/** The day the original stamped on its card: the text drawn after the label. */
+function handoutDay(calls) {
+  const label = calls.findIndex(call => call[0] === 'text' && call[1] === 'DATE PROVIDED');
+  assert.ok(label > 0, 'the original should label the date');
+  const stamped = calls.slice(label + 1).find(call => call[0] === 'text');
+  assert.match(String(stamped[1]), /^[A-Z][a-z]+ \d{1,2}, \d{4}$/);
+  return stamped[1];
+}
+
+/** Drive the port with what the original was sent, on the day it stamped. */
+function portCalls(body, calls, { logoDataUrl = null, surface = recorder() } = {}) {
+  buildPatientHandout(surface, handoutRequest(body), { logoDataUrl, generatedOn: handoutDay(calls) });
+  return surface.calls;
+}
+
+test('every handout template is the original s source, byte for byte', async () => {
+  // Retyping would be the transcription D12 settled against, and this text is
+  // a patient's instructions. The block is compared as SOURCE, so a change to a
+  // line nothing renders by default — a deselectable bullet, a resource URL —
+  // fails here too.
+  const block = (source) => {
+    const start = source.indexOf('const interactiveResources = {');
+    const templates = source.indexOf('const handoutTemplates = {');
+    const end = source.indexOf('\n};\n', templates);
+    assert.ok(start >= 0 && templates > start && end > templates, 'the template block should be found');
+    return source.slice(start, end + 3);
+  };
+  const original = block(await readFile(HANDOUT_ENTRY, 'utf8'));
+  const carried = block(await readFile(HANDOUT_PORT, 'utf8'));
+  assert.equal(carried, original);
+  assert.equal(Object.keys(HANDOUT_TEMPLATES).length, 20);
+});
+
+test('generatePatientHandout is ported call for call, for every condition', async () => {
+  const handler = await loadOriginalHandler(HANDOUT_ENTRY);
+  for (const condition of Object.keys(HANDOUT_TEMPLATES)) {
+    const body = { condition, action: 'download' };
+    const { calls, status, answer } = await runHandoutOriginal(handler, body);
+    assert.equal(status, 200, condition);
+    const original = drawn(calls);
+    assert.deepEqual(portCalls(body, original), original, condition);
+    assert.ok(original.length > 150, `${condition} should draw a real document`);
+    // The answer beside the bytes is the original's too.
+    const template = HANDOUT_TEMPLATES[condition];
+    assert.equal(answer.filename, handoutFilename(condition));
+    assert.deepEqual(answer.diagnostics, { stage: 'complete',
+      sectionsProcessed: selectedHandoutSections(template, undefined).length,
+      totalSections: template.sections.length });
+  }
+});
+
+/** Every branch a section, and the page after the sections, can take. */
+const HANDOUT_BRANCHES = ['highlight', 'paragraph', 'bullets', 'subsections', 'emergency', 'important',
+  'checklist', 'resources'];
+
+/** The branches a condition reaches once a selection has been applied. */
+function reachedBranches(condition, selectedSections) {
+  const reached = new Set();
+  for (const section of selectedHandoutSections(HANDOUT_TEMPLATES[condition], selectedSections)) {
+    if (section.content) reached.add(section.highlight ? 'highlight' : 'paragraph');
+    if (section.subsections) reached.add('subsections');
+    if (section.emergency) reached.add('emergency');
+    else if (section.important) reached.add('important');
+    else if (Array.isArray(section.bullets)) reached.add('bullets');
+  }
+  if (HANDOUT_CHECKLISTS[condition]) reached.add('checklist');
+  if (HANDOUT_RESOURCES[condition]) reached.add('resources');
+  return reached;
+}
+
+test('generatePatientHandout is ported call for call, for every style the client offers', async () => {
+  const handler = await loadOriginalHandler(HANDOUT_ENTRY);
+  // No single condition reaches every branch, so three do between them — and
+  // that is ASSERTED below from the templates rather than claimed here, since
+  // a selection that happened to drop the only important section would leave
+  // the style matrix never drawing one.
+  const conditions = ['copd_oxygen', 'ckd', 'chf'];
+  const selectionFor = (condition) => {
+    const ordinary = HANDOUT_TEMPLATES[condition].sections
+      .filter(section => Array.isArray(section.bullets) && !section.emergency && !section.important);
+    assert.ok(ordinary.length >= 2, `${condition} needs two ordinary sections to select from`);
+    // One section thinned, with a hole where the client's toggle never touched
+    // an index (as JSON sends it), and another dropped.
+    return {
+      [ordinary[0].heading]: { included: true, bullets: [true, false, null, false] },
+      [ordinary.at(-1).heading]: { included: false },
+    };
+  };
+  const reached = new Set(conditions.flatMap(condition => [...reachedBranches(condition, selectionFor(condition))]));
+  assert.deepEqual([...reached].sort(), [...HANDOUT_BRANCHES].sort());
+  let compared = 0;
+  for (const condition of conditions) {
+    const selectedSections = selectionFor(condition);
+    for (const colorScheme of Object.keys(HANDOUT_COLOR_SCHEMES)) {
+      for (const layout of Object.keys(HANDOUT_LAYOUTS)) {
+        for (const fontFamily of HANDOUT_FONTS) {
+          const body = {
+            condition, action: 'download',
+            patientName: 'José Núñez-O’Brien',
+            customNotes: `Walk twice a day. ${'Keep the tubing clear. '.repeat(6)}`,
+            selectedSections, readingLevel: '5th-6th', format: 'comprehensive',
+            styleOptions: { colorScheme, fontFamily, layout, customHeader: 'Never drawn',
+              customFooter: 'Synthetic footer', agencyName: 'Synthetic Home Health', agencyPhone: '555-0100' },
+          };
+          const { calls, answer } = await runHandoutOriginal(handler, body);
+          const original = drawn(calls);
+          assert.deepEqual(portCalls(body, original), original, `${condition} ${colorScheme}/${layout}/${fontFamily}`);
+          assert.equal(answer.diagnostics.sectionsProcessed, HANDOUT_TEMPLATES[condition].sections.length - 1);
+          // The deselected bullet is really absent, so the selection was applied.
+          const thinned = HANDOUT_TEMPLATES[condition].sections.find(section =>
+            section.heading === Object.keys(selectedSections)[0]);
+          assert.equal(original.some(call => call[0] === 'splitTextToSize' && call[1] === thinned.bullets[1]), false);
+          compared += 1;
+        }
+      }
+    }
+  }
+  assert.equal(compared, 180);
+  // The defaults: an empty form, and no style at all.
+  for (const styleOptions of [{ colorScheme: '', fontFamily: '', layout: '', customHeader: '',
+    customFooter: '', agencyName: '', agencyPhone: '' }, null, undefined]) {
+    const body = { condition: 'wound_care', patientName: null, customNotes: null, selectedSections: null, styleOptions };
+    const { calls } = await runHandoutOriginal(handler, body);
+    const original = drawn(calls);
+    assert.deepEqual(portCalls(body, original), original);
+    assert.ok(original.some(call => call[0] === 'text' && call[1] === 'PennSync'), 'the default agency is drawn');
+  }
+});
+
+test('the handout draws its logo on every page when one is configured', async () => {
+  const handler = await loadOriginalHandler(HANDOUT_ENTRY);
+  const body = { condition: 'dementia_care', action: 'download' };
+  const { calls } = await runHandoutOriginal(handler, body, { logo: true });
+  const original = drawn(calls);
+  const images = original.flatMap((call, index) => call[0] === 'addImage' ? [index] : []);
+  // One banner per page, so a multi-page guide carries the logo more than once.
+  assert.ok(images.length > 1, 'the original should paint the logo on every page');
+  for (const index of images) {
+    assert.match(String(original[index][1]), /^data:image\/png;base64,/);
+    assert.deepEqual(original[index].slice(2), ['PNG', 18, 5.5, 40, 15]);
+    original[index] = ['addImage', LOGO, ...original[index].slice(2)];
+  }
+  assert.deepEqual(portCalls(body, original, { logoDataUrl: LOGO }), original);
+});
+
+test('a block that fails mid-render leaves the same marks in both', async () => {
+  // The original catches per block — a section, a subsection, the nurse's
+  // notes, the checklist, the tracker, the links — and the catches differ: a
+  // failed section leaves a red "[Could not render: …]" line, a failed
+  // subsection skips to the next, and the rest drop their block and carry on.
+  // Both sides are handed a surface that fails while drawing the SAME line.
+  //
+  // A failure is chosen by the line it hits rather than by counting calls,
+  // and what each case asserts after the comparison is that the ORIGINAL took
+  // the branch that line was chosen for. A first draft counted calls, and its
+  // comment named four blocks while every failure landed in a section catch —
+  // an injected failure in the wrong place still compares equal, so only the
+  // branch checks make this test about the branches.
+  const failingOn = (lines) => {
+    const surface = recorder();
+    for (const name of ['text', 'textWithLink']) {
+      const record = surface[name];
+      surface[name] = (...args) => {
+        record(...args);
+        if (lines.includes(args[0])) throw new Error(`synthetic failure drawing ${args[0]}`);
+      };
+    }
+    return surface;
+  };
+  const handler = await loadOriginalHandler(HANDOUT_ENTRY);
+  const drewText = (calls, line) => calls.some(call => call[0] === 'text' && call[1] === line);
+  const cases = [
+    {
+      condition: 'copd_oxygen',
+      lines: ['Takes oxygen from room air', 'Wear during sleep if prescribed',
+        'Special Instructions from Your Nurse', 'Daily Symptom Tracker'],
+      branches(calls) {
+        // The subsection catch: the rest of that subsection is gone, the next
+        // subsection still prints, and the section is NOT marked failed.
+        assert.equal(drewText(calls, 'Most common for home use'), false);
+        assert.ok(drewText(calls, 'Portable Oxygen Concentrator (POC)'));
+        assert.equal(drewText(calls, '[Could not render: Types of Oxygen Equipment]'), false);
+        // The section catch: marked, and the section's next bullet is gone.
+        assert.ok(drewText(calls, '[Could not render: Daily Oxygen Use]'));
+        assert.equal(drewText(calls, 'Use during activities and exercise'), false);
+        assert.ok(drewText(calls, 'Contact oxygen supplier 2 weeks before travel'), 'the next section prints');
+        // The notes and the tracker drop their blocks.
+        assert.equal(drewText(calls, 'A synthetic note.'), false);
+        assert.equal(drewText(calls, 'Record daily symptoms and bring this log to your appointments.'), false);
+      },
+    },
+    {
+      condition: 'chf',
+      lines: ['Daily Self-Care Checklist', 'Heart Failure Society Patient Resources'],
+      branches(calls) {
+        assert.equal(drewText(calls, 'I weigh myself daily at the same time'), false);
+        assert.equal(drewText(calls, 'Check off each item as you complete it daily.'), false);
+        // The tracker between them is untouched.
+        assert.ok(drewText(calls, 'Record daily symptoms and bring this log to your appointments.'));
+        assert.equal(calls.some(call => call[0] === 'textWithLink'
+          && call[1] === 'American Heart Association - Heart Failure'), false);
+        assert.equal(drewText(calls, 'Tap the blue links above to visit these trusted websites.'), false);
+        assert.ok(drewText(calls, 'A synthetic note.'), 'the notes print');
+      },
+    },
+  ];
+  for (const { condition, lines, branches } of cases) {
+    // Not the default typeface: the original draws its failure marker in
+    // Helvetica whatever the document's face, and under the default the two
+    // are the same, so a port that followed the document instead would pass.
+    const body = { condition, customNotes: 'A synthetic note.',
+      styleOptions: { colorScheme: 'serene_green', fontFamily: 'times', layout: 'large_print' } };
+    const { calls, status } = await runHandoutOriginal(handler, body, { surface: failingOn(lines) });
+    assert.equal(status, 200);
+    const original = drawn(calls);
+    assert.deepEqual(portCalls(body, original, { surface: failingOn(lines) }), original, condition);
+    branches(original);
+    // Every chosen line really was reached, so none of the failures is idle.
+    for (const line of lines) {
+      assert.ok(original.some(call => ['text', 'textWithLink'].includes(call[0]) && call[1] === line), line);
+    }
+  }
+});
+
+test('the email action is refused with the answer the original gives while delivery is paused', async () => {
+  const handler = await loadOriginalHandler(HANDOUT_ENTRY);
+  const refusal = (body) => {
+    try { handoutRequest(body); } catch (error) { return { status: error.status, code: error.code }; }
+    return null;
+  };
+  // Without an address the original asks for one, before anything else.
+  let run = await runHandoutOriginal(handler, { condition: 'chf', action: 'email' });
+  assert.equal(run.status, 400);
+  assert.equal(run.answer.error, 'patientEmail is required to email the handout');
+  assert.deepEqual(refusal({ condition: 'chf', action: 'email' }), { status: 400, code: 'PATIENT_EMAIL_REQUIRED' });
+  // With one, and `OUTBOUND_DELIVERY_RELEASE` unset, it refuses by code — and
+  // draws nothing, so the refusal really is before the work.
+  run = await runHandoutOriginal(handler, { condition: 'chf', action: 'email', patientEmail: 'p@example.invalid' });
+  assert.equal(run.status, 503);
+  assert.equal(run.answer.code, 'OUTBOUND_DELIVERY_RELEASE_PAUSED');
+  assert.equal(run.answer.retryable, false);
+  assert.deepEqual(run.calls, []);
+  assert.deepEqual(refusal({ condition: 'chf', action: 'email', patientEmail: 'p@example.invalid' }),
+    { status: 503, code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED' });
+  // A style the port would refuse does not outrank the paused send, in either.
+  assert.deepEqual(refusal({ condition: 'chf', action: 'email', patientEmail: 'p@example.invalid',
+    styleOptions: { colorScheme: 'invented' } }), { status: 503, code: 'OUTBOUND_DELIVERY_RELEASE_PAUSED' });
+  // The original's own condition checks come first, and keep their order.
+  assert.deepEqual(refusal({ action: 'email' }), { status: 400, code: 'CONDITION_REQUIRED' });
+  run = await runHandoutOriginal(handler, { action: 'email' });
+  assert.equal(run.answer.error, 'Condition is required');
+});
+
+test('the three narrowings are inputs the original really could not render', async () => {
+  // Driven through the original rather than read from it (D69), because each
+  // one is a claim about what the original DID.
+  const handler = await loadOriginalHandler(HANDOUT_ENTRY);
+  const refused = (body) => {
+    try { handoutRequest(body); } catch (error) { return error.code; }
+    return null;
+  };
+  // An unknown scheme threw on the first fill, and the catch answered SUCCESS
+  // with a generic page the client downloads as though it were the guide.
+  let run = await runHandoutOriginal(handler, { condition: 'chf', styleOptions: { colorScheme: 'invented' } });
+  assert.equal(run.status, 200);
+  assert.equal(run.answer.success, true);
+  assert.equal(run.answer.filename, 'education_guide.pdf');
+  assert.ok(run.calls.some(call => call[0] === 'text' && call[1] === 'We could not generate the full guide right now.'));
+  assert.equal(refused({ condition: 'chf', styleOptions: { colorScheme: 'invented' } }), 'INVALID_STYLE_OPTIONS');
+  // An inherited name passed the template check and drew a page with no title
+  // and no sections, under the inherited name.
+  run = await runHandoutOriginal(handler, { condition: 'constructor' });
+  assert.equal(run.status, 200);
+  assert.equal(run.answer.filename, 'constructor_handout.pdf');
+  assert.equal(run.answer.diagnostics.totalSections, 0);
+  assert.equal(refused({ condition: 'constructor' }), 'INVALID_CONDITION');
+  // An object where text belongs was printed on the patient's handout.
+  run = await runHandoutOriginal(handler, { condition: 'chf', patientName: { first: 'Ada' } });
+  assert.ok(run.calls.some(call => call[0] === 'text' && call[1] === '[object Object]'));
+  assert.equal(refused({ condition: 'chf', patientName: { first: 'Ada' } }), 'INVALID_PARAMS');
+  // And the published client's own request passes all three.
+  assert.equal(refused({ condition: 'chf', patientName: 'Jane Doe', action: 'download', selectedSections: null,
+    customNotes: null, readingLevel: '5th-6th', format: 'comprehensive',
+    styleOptions: { colorScheme: 'penn_health', fontFamily: 'helvetica', layout: 'standard',
+      customHeader: '', customFooter: '', agencyName: '', agencyPhone: '' } }), null);
+});
+
+test('the handout refuses to invent a day, and names the one it is given', () => {
+  for (const value of [undefined, null, '', 0, new Date()]) {
+    assert.throws(() => buildPatientHandout(recorder(), { condition: 'chf' }, { generatedOn: value }), TypeError);
+  }
+  // The original's format, from a supplied instant rather than the clock.
+  assert.equal(handoutDate(new Date('2026-09-22T12:00:00Z')), 'September 22, 2026');
+});
+
+test('a note too tall for the page: the original prints it off the paper, the port refuses it', async () => {
+  // The fourth narrowing, proved on the original the way the other three are.
+  // Its notes callout has no page break, so every line is drawn — the later
+  // ones over the footer and then below the bottom of the page. The surface
+  // here splits on line breaks, as jsPDF does, so a note has real lines.
+  const handler = await loadOriginalHandler(HANDOUT_ENTRY);
+  const lineSplitting = () => {
+    const surface = recorder();
+    surface.splitTextToSize = (text, width) => {
+      surface.calls.push(['splitTextToSize', text, width]);
+      return String(text).split('\n');
+    };
+    return surface;
+  };
+  const note = (lines) => Array.from({ length: lines }, (_, i) => `Instruction ${i + 1}.`).join('\n');
+  const noteLines = (calls) => calls.filter(call => call[0] === 'text' && /^Instruction \d+\.$/.test(call[1]));
+  const CONTENT_BOTTOM = PAGE_HEIGHT - 18 - 6;
+
+  // At the edge it still fits, and the port draws it exactly as the original.
+  let body = { condition: 'chf', customNotes: note(38) };
+  let run = await runHandoutOriginal(handler, body, { surface: lineSplitting() });
+  let original = drawn(run.calls);
+  assert.deepEqual(portCalls(body, original, { surface: lineSplitting() }), original);
+  assert.ok(noteLines(original).every(call => call[3] <= CONTENT_BOTTOM), 'every line inside the content area');
+
+  // One more line and the original's last line lands in the footer band; at
+  // sixty, lines are drawn below the page itself — and it still answers 200.
+  for (const [lines, offPage] of [[39, false], [60, true]]) {
+    body = { condition: 'chf', customNotes: note(lines) };
+    run = await runHandoutOriginal(handler, body, { surface: lineSplitting() });
+    assert.equal(run.status, 200);
+    original = drawn(run.calls);
+    assert.equal(noteLines(original).length, lines, 'the original draws every line');
+    assert.ok(noteLines(original).some(call => call[3] > CONTENT_BOTTOM), `${lines}: a line over the footer`);
+    assert.equal(noteLines(original).some(call => call[3] > PAGE_HEIGHT), offPage, `${lines}: off the page`);
+    // The port refuses the same request by name rather than printing it.
+    assert.throws(() => buildPatientHandout(lineSplitting(), handoutRequest(body), { generatedOn: 'x' }),
+      error => error instanceof HandoutNotesTooLong && error.lines === lines);
+  }
 });

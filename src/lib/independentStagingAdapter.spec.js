@@ -42,7 +42,12 @@ describe('finite independent app adapter', () => {
     await expect(adapter.raw.functions.invoke('createAuthorizedPatient', {})).rejects.toThrow('STAGING_OPERATION_UNAVAILABLE');
     await expect(adapter.raw.functions.invoke('listAuthorizedPatients', { ...input, purpose: 'patient_management' })).rejects.toThrow();
     expect(fixture.requests).toHaveLength(count);
-    expect(adapter.raw.entities).toEqual({});
+    // `toEqual({})` stood here, and it passes against the refusing seam too — a
+    // proxy with no own keys equals an empty object — so it had stopped telling
+    // "no generic operation" from anything. Assert what a caller gets instead.
+    await expect(adapter.raw.entities.Patient.list()).rejects.toMatchObject({
+      code: 'STAGING_OPERATION_UNAVAILABLE', status: 403, operation: 'entities.Patient.list' });
+    expect(fixture.requests).toHaveLength(count);
     await adapter.auth.signOut(); expect(fixture.live.size).toBe(0);
   });
   it('requires live authority, rejects changed cursor scope, and fences delayed results on terminal cleanup', async () => {
@@ -362,5 +367,75 @@ describe('the ported API caller', () => {
     await expect(adapter.raw.functions.invoke('validatePatientData', { agency_id: 'agency-a', patient: {} }))
       .rejects.toThrow(/AUTHENTICATION_REQUIRED/);
     expect(fixture.apiCalls).toHaveLength(0);
+  });
+});
+
+describe('entity and integration calls in the independent build', () => {
+  const adapter = () => createIndependentStagingAdapter(readIndependentStagingConfig(stagingEnv),
+    { fetchImpl: stagingFixture().fetch });
+
+  it('refuse by name where they used to crash', async () => {
+    // Measured before this change by driving the realm gate: `entities` and
+    // `integrations` were `{}`, so `.list` was read off `undefined` and the
+    // caller got `TypeError: Cannot read properties of undefined`.
+    const raw = adapter().raw;
+    await expect(raw.entities.TrainingCourse.list()).rejects.toMatchObject({
+      code: 'STAGING_OPERATION_UNAVAILABLE', status: 403, operation: 'entities.TrainingCourse.list' });
+    await expect(raw.entities.Incident.create({ title: 'x' })).rejects.toMatchObject({
+      operation: 'entities.Incident.create' });
+    await expect(raw.integrations.Core.InvokeLLM({ prompt: 'x' })).rejects.toMatchObject({
+      code: 'STAGING_OPERATION_UNAVAILABLE', operation: 'integrations.Core.InvokeLLM' });
+    // Any verb, including one no SDK has yet: the seam does not enumerate.
+    await expect(raw.entities.CarePlan.futureMutationVerb()).rejects.toMatchObject({
+      operation: 'entities.CarePlan.futureMutationVerb' });
+  });
+
+  it('rejects rather than throws, so a caller sees one shape for unavailable and realm-closed', () => {
+    // The SDK methods return promises and the gate refuses a closed realm with
+    // a rejected one. A synchronous throw would reach `x.list().catch(...)`
+    // before the catch was attached.
+    const pending = adapter().raw.entities.Visit.filter({});
+    expect(pending).toBeInstanceOf(Promise);
+    return expect(pending).rejects.toMatchObject({ code: 'STAGING_OPERATION_UNAVAILABLE' });
+  });
+
+  it('is never a thenable, so awaiting the namespace cannot call into it', async () => {
+    const raw = adapter().raw;
+    expect(raw.entities.then).toBeUndefined();
+    expect(raw.entities.Patient.then).toBeUndefined();
+    expect(raw.integrations.Core.then).toBeUndefined();
+    await expect(Promise.resolve(raw.entities)).resolves.toBe(raw.entities);
+    await expect(Promise.resolve(raw.entities.Patient)).resolves.toBe(raw.entities.Patient);
+    // Symbols and serialisation read as absent rather than as operations.
+    expect(raw.entities[Symbol.iterator]).toBeUndefined();
+    expect(raw.entities.Patient[Symbol.toPrimitive]).toBeUndefined();
+    expect(() => JSON.stringify(raw.entities)).not.toThrow();
+    expect(Object.keys(raw.entities)).toEqual([]);
+  });
+
+  it('hands back the same object and the same method on every read, as the SDK does', () => {
+    // A first version built a fresh proxy per access, which this suite caught
+    // through `toBe`: a held reference compared unequal to the next read, and
+    // the realm gate's per-owner facade cache could never hit.
+    const raw = adapter().raw;
+    expect(raw.entities.Patient).toBe(raw.entities.Patient);
+    expect(raw.entities.Patient.list).toBe(raw.entities.Patient.list);
+    expect(raw.integrations.Core).toBe(raw.integrations.Core);
+    expect(raw.entities.Patient).not.toBe(raw.entities.Visit);
+    expect(raw.entities.Patient.list).not.toBe(raw.entities.Patient.filter);
+  });
+
+  it('refuses by name through the realm gate the app actually wraps it in', async () => {
+    const { createTenantSdkRealmGate } = await import('./tenantSdkRealmGate');
+    const gate = createTenantSdkRealmGate();
+    const client = gate.wrapClient(adapter().raw);
+    // Closed realm: the gate refuses first and the seam is never reached.
+    await expect(client.entities.TrainingCourse.list()).rejects.toMatchObject({ code: 'TENANT_SDK_REALM_CLOSED' });
+    // Open realm: exactly where the TypeError used to surface, a named refusal.
+    expect(gate.open('["user-1","agency-a","membership-1",3]')).toBe(true);
+    await expect(client.entities.TrainingCourse.list()).rejects.toMatchObject({
+      code: 'STAGING_OPERATION_UNAVAILABLE', operation: 'entities.TrainingCourse.list' });
+    await expect(client.integrations.Core.InvokeLLM({})).rejects.toMatchObject({
+      code: 'STAGING_OPERATION_UNAVAILABLE', operation: 'integrations.Core.InvokeLLM' });
   });
 });
