@@ -336,13 +336,38 @@ main. That is narrower than "CI running them on every PR" and it is the safe
 reading of it. Closing it properly needs a credential scoped to reads on one
 project, which Supabase does not offer today.
 
-**On `main` a missing credential FAILS rather than skips**, and that too was a
-review finding. The suite turns an absent target into a skipped test, which is
-right for the credential-free step and would be silent failure on main: a
-renamed or expired secret would leave the job green having read nothing, and a
-required check that has quietly stopped checking is the exact shape this job
-exists to catch — the hosted project sat fifty-nine migrations behind because
-nothing looked. The main-only step now refuses before it invokes the suite.
+**On `main` a missing credential fails once the measurement is REQUIRED**, and
+the shape of that gate was settled the hard way.
+
+The suite turns an absent target into a skipped test, which is right for the
+credential-free step and would be silent failure on main: a renamed or expired
+secret would leave the job green having read nothing, and a required check that
+has quietly stopped checking is the exact shape this job exists to catch — the
+hosted project sat fifty-nine migrations behind because nothing looked. So the
+review asked for a refusal, and the first version refused any absent credential
+on main.
+
+**It turned main red on the first run after merge, and the reason is worth
+keeping.** Neither `PENNSYNC_STAGING_DATABASE_URL` nor `SUPABASE_ACCESS_TOKEN`
+is configured as a repository secret — `hosted-gap` has been skipping for that
+same reason since the day it was written, which is why nobody knew. A refusal
+written for "the credential broke" fired on "the credential was never added",
+and those are not the same event.
+
+`HOSTED_MEASUREMENT_REQUIRED` in the job now separates them, and it governs only
+what an ABSENT credential means:
+
+- absent and not required (today) — a `::notice` saying the store was not
+  measured, and a green job;
+- absent and required — a failure, which is the finding, intact;
+- set but unusable — a failure either way, because a target that is configured
+  and broken is the renamed-or-expired case the finding was actually about;
+- set and usable — measured, whatever the flag says, so the job starts working
+  the moment the secrets land rather than waiting for somebody to remember.
+
+**Adding those two secrets and flipping the flag to `true` in the same change
+is the last thing stage A owes**, and it is an owner action: the credentials
+cannot be added from the repository.
 
 The containment is two steps rather than one, and the repository insisted on
 it. The first version bound the secrets through an env-level
