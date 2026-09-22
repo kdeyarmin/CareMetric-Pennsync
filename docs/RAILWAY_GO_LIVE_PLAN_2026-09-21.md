@@ -758,6 +758,38 @@ This is the stage the status tables consistently understate. Nothing has moved:
 client, 198 function invocations through 83 wrappers, 41 Core integration sites,
 4 SDK importers — all at ratchet baseline.
 
+**And the count understates it a second way (D80).** "Replace call sites tier
+by tier" reads as a refactor whose size is the count. Crossing all 445 against
+their entity dispositions — `pnpm run check:frontend-destination`, added
+2026-09-22 — says otherwise:
+
+| | Call sites | |
+| --- | ---: | --- |
+| `record_store` | 232 | a table exists |
+| `broker_family` | 7 | the generic family serves that read |
+| `activity_trail` | 3 | D25's successor |
+| **can land** | **242** | |
+| `no_table` | 193 | `hub` (119) and `preserved_paused` (74) — no table here at all |
+| `broker_is_read_only` | 9 | a write to an entity the family serves readonly |
+| `no_realtime_seam` | 1 | `subscribe`, which the owned store has nowhere to put |
+| **cannot land** | **203** | |
+
+**203 of 445 — 46% — reach a domain the migration has decided not to carry.**
+119 of them are the training domain, whose destination is the Hub; 75 are
+`preserved_paused`. Each needs a product answer about what the feature becomes,
+not an edit somebody has not got to yet, so a plan that sizes this stage by the
+call-site count is sizing the wrong thing.
+
+The nine `broker_is_read_only` are the ones a per-ENTITY reading would have
+called fine: the family serves `Announcement`, `FacilityDocumentationRule` and
+`RegulatoryUpdate` readonly, and the frontend creates, updates and deletes all
+three. Being served is a property of the entity; having a destination is a
+property of the call site.
+
+`store_can_hold` is not `capability serves it`. The 232 `record_store` sites
+have somewhere for the row to live; whether a ported capability covers the
+operation is Stage G's question and this gate deliberately does not answer it.
+
 - Replace `src/api/base44Client.js` with a backend-neutral client; the
   independent adapter becomes the default under `VITE_PENNSYNC_BACKEND=independent`.
 - Replace call sites tier by tier; a lint rule blocks new direct entity calls.

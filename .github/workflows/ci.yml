@@ -94,6 +94,7 @@ jobs:
         run: |
           pnpm run check:transition-disposition
           pnpm run check:base44-surface
+          pnpm run check:frontend-destination
           pnpm run check:file-references
           pnpm run check:entity-schema-plan
           pnpm run check:tenant-paths
