@@ -354,8 +354,8 @@ same reason since the day it was written, which is why nobody knew. A refusal
 written for "the credential broke" fired on "the credential was never added",
 and those are not the same event.
 
-`HOSTED_MEASUREMENT_REQUIRED` in the job now separates them, and it governs only
-what an ABSENT credential means:
+`HOSTED_MEASUREMENT_REQUIRED` separates them, and it governs only what an
+ABSENT credential means:
 
 - absent and not required (today) — a `::notice` saying the store was not
   measured, and a green job;
@@ -368,6 +368,23 @@ what an ABSENT credential means:
 **Adding those two secrets and flipping the flag to `true` in the same change
 is the last thing stage A owes**, and it is an owner action: the credentials
 cannot be added from the repository.
+
+**The decision lives in `tools-pennsync-hosted-gate.mjs` rather than in the
+workflow, and that is the fourth version of it.** The first bound the
+credentials through an env-level ternary; the second made any absent credential
+fatal and turned main red; the third read "the URL is empty" as "nothing is
+configured", so a token left behind by a renamed URL secret — a partial, and
+therefore broken, configuration — took the green stand-down path. Each was
+checked by hand and each looked right, because a shell block inside YAML is the
+one place in this repository nothing can test.
+
+It is a module with a table-driven suite now. Every combination of (target,
+token, required) has a row, the two rules are asserted as properties rather
+than rows — `required` may turn an absent configuration into a failure and may
+never turn a broken one into a pass; nothing but a wholly unset pair may stand
+down — and a test reads the workflow itself and fails if the step stops calling
+the gate or regrows a credential check of its own. The step branches on an exit
+code (0 measure, 3 stand down, 1 refuse) and asks about no credential at all.
 
 The containment is two steps rather than one, and the repository insisted on
 it. The first version bound the secrets through an env-level
