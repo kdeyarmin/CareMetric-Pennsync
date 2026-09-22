@@ -404,6 +404,21 @@ where it is least diagnosable. It is asserted now.
      the first and not the second, so sixteen suites would read an empty team
      and pass for the wrong reason.
 
+     **And that third one was never a gap, which is worth writing down because
+     it was re-proposed as work within the hour.** The two tables count
+     different populations: `assignment` keys to `pennsync_private.patient`,
+     which holds 3 synthetic rows, while `chart_assignment` names a chart of
+     record in `pennsync_records.patient`, which holds 0. Measured on the
+     project 2026-09-22: patient 3, assignment 1, chart_assignment 0, records
+     patient 0, records visit 0. An empty `chart_assignment` beside a populated
+     `assignment` is exactly what a store with synthetic patients and no charts
+     must look like — there is no chart for a care team to be on. **Do not seed
+     one.** `chart_assignment` is deliberately unkeyed on patient, because a
+     chart lives in a schema another role owns, so nothing would refuse a row
+     naming a chart that does not exist; and D33's provenance trigger refuses
+     every delete and every change to `(id, app_id, agency_id, patient_id,
+     membership_id)`, so that row would be permanent.
+
   **Withdrawn by the owner, 2026-09-22.** The first of those three is off the
   table: no sign-in, no publishable key, no use of the staging accounts. That
   closes the ask rather than deferring it, so the question becomes what claim 4
