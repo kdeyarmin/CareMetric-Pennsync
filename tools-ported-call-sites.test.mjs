@@ -12,7 +12,8 @@ import {
  *
  * The transition plan names four call sites that invoke a ported capability
  * without an `agency_id`. That was true of an adapter routing eleven names;
- * it routes seventy-four now. These tests hold the measurement honest — what
+ * it routed seventy-four when this was written. These tests hold the
+ * measurement honest — what
  * counts as a reach, what counts as naming a tenant, and what is not evidence
  * either way.
  */

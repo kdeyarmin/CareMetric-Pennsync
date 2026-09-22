@@ -52,7 +52,7 @@ plan's status table reads as progress without saying where the progress lives.
 | --- | ---: | ---: |
 | Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
 | Record store migrations (store, brokers, 51 contracts, purpose policies, file map) | 54 | ~~0~~ **54** — applied 2026-09-21 |
-| Ported handlers registered in `services/pennsync-api/handlers.mjs` | 74 | ~~0~~ **74 deployed, 0 released** — deployed 2026-09-22 |
+| Ported handlers registered in `services/pennsync-api/handlers.mjs` | 75 | ~~0~~ **74 deployed, 0 released** — deployed 2026-09-22; the 75th (`generatePatientHandout`, D81) ships with the next deploy |
 | Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ **2 deployed, paused** — 2026-09-22 |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
 
@@ -605,8 +605,10 @@ anywhere. The app binding is deferred to stage C as above.
 
 - **Fix the `agency_id` gap first, and it is seventeen times the documented
   size.** The transition plan names four call sites. That was measured when
-  the adapter routed ELEVEN ported names; `PORTED_FUNCTIONS` holds seventy-four
-  now and nobody re-measured. `tools-ported-call-sites.mjs` measures it:
+  the adapter routed ELEVEN ported names; `PORTED_FUNCTIONS` held seventy-four
+  when this was measured and nobody had re-measured. `tools-ported-call-sites.mjs`
+  measures it (the gate's summary carries the live count — 75 routed names and
+  72 call sites after D81 admitted the handout's two):
 
   | | Count |
   | --- | ---: |
@@ -740,14 +742,16 @@ deploy's own report.
 **Exit:** production store provisioned; the pin proved chosen rather than
 defaulted; `deployment` row dated.
 
-### Stage G — The last 32 ports (size M, parallel to D and E)
+### Stage G — The last 31 ports (size M, parallel to D and E)
 
-**Measured 2026-09-21: the startable side is at ZERO.** `tools-transition-disposition.mjs`
-reports 72 capabilities with no blocker, and all 72 are registered in
+**Measured 2026-09-22: the startable side is at ZERO.** `tools-transition-disposition.mjs`
+reports 73 capabilities with no blocker, and all 73 are registered in
 `services/pennsync-api` — so every port that *can* be written without a decision
-has been. Two buckets the queue used to report are also empty now, on
+has been. The 73rd is `generatePatientHandout` (D81), which the queue counted
+`core_integration` although only its email action sends: D79 found it, and it
+was written the same day. Two buckets the queue used to report are also empty now, on
 corrections rather than ports: `records_schema` (D75) and `ported_function`
-(D76). What is left is exactly the 32 below, and **not one of them is waiting on
+(D76). What is left is exactly the 31 below, and **not one of them is waiting on
 engineering capacity**.
 
 Re-derive that from the registry rather than by searching for quoted names: a
@@ -762,7 +766,7 @@ Each bucket needs a different thing, and only one of them is code:
 | `files` | 12 | Stage H. The mapping, resolver and planner are built (D77); the bytes are not copied |
 | `entity_authorization` | 8 | A decision, twice. Six UPDATE a profile, which D23 left open deliberately; two write `MedicareGuideline`, a `global` table no tenant surface may write — they need a platform ingestion path, not a caller-facing handler |
 | `entity_not_carried` | 7 | A disposition conversation. These read training records, paused comms logs and real-time metrics from domains that are going away |
-| `core_integration` | 3 | An owner's decision to broker `Core.SendEmail`, which the runtime already implements. This is a release gate, not a build |
+| `core_integration` | 2 | An owner's decision to broker `Core.SendEmail`, which the runtime already implements. Both are capabilities whose whole body is the send; this is a release gate, not a build |
 | `external_secret` | 2 | A new brokered operation for audio transcription, with the reservation, quota, encrypted result and audit the other seven have — over a PHI payload. A capability to design |
 
 ### Stage H — Files (size M, can start once the production bucket exists)

@@ -179,6 +179,10 @@ test('a module whose only entity is the retired trail is re-classified by what e
   const entityFree = discoverEntityFreeBlockers(repository);
   assert.equal(entityFree.transcribeAudioWithWhisper, 'external_secret');
   assert.equal(entityFree.mergePDFs, 'files');
+  // The verdict is about the MODULE, so it still reads the handout's send.
+  // What took the handout out of that bucket is D81's port, not a change here:
+  // a written capability is `none` whatever its original reaches.
+  assert.equal(entityFree.generatePatientHandout, 'core_integration');
   // And the four it actually found are in the buckets that describe them.
   const report = checkCoverage(
     discoverCapabilities(repository),
@@ -186,7 +190,7 @@ test('a module whose only entity is the retired trail is re-classified by what e
     discoverEvidence(repository),
   );
   for (const [name, blocker] of [['mergePDFs', 'files'], ['reorderDeletePDFPages', 'files'],
-    ['generatePatientHandout', 'core_integration'],
+    ['generatePatientHandout', 'none'],
     ['transcribeAudioWithWhisper', 'external_secret']]) {
     assert.ok(report.port_blockers[blocker].includes(name),
       `${name} should wait on ${blocker}`);
@@ -741,6 +745,9 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // corrections before it, this one moved a capability from blocked to
   // startable rather than renaming its bucket — and it was written the same
   // day. → 71 → 72 written.
+  // Then D81, the one D79 found startable while writing itself: the handout's
+  // send sits behind the module's own release gate, so its document action
+  // waited on nothing. `core_integration` 3 → 2, and 73 written.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -748,8 +755,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 8, patient_access_model: 0,
-    records_schema: 0, files: 12, ported_function: 0, core_integration: 3, pdf_rendering: 0,
-    external_secret: 2, none: 72 });
+    records_schema: 0, files: 12, ported_function: 0, core_integration: 2, pdf_rendering: 0,
+    external_secret: 2, none: 73 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -859,10 +866,12 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // `Core.SendEmail`, which no entity family can be the replacement for. The
   // function-side ceiling caught that, and `SendEmail` is not in the runtime's
   // brokered set, so it is a real blocker rather than a bookkeeping artefact.
-  // `generatePatientHandout` joins it by the refinement above: its only entity
-  // is `SystemLog`, so what it waits on is the send rather than the store.
+  // `generatePatientHandout` joined it by the refinement above — its only
+  // entity is `SystemLog` — and left it by being written (D81): the send was
+  // one action of two, refused by the module's own gate, so the document half
+  // never waited on the runtime at all.
   assert.deepEqual(report.port_blockers.core_integration,
-    ['generatePatientHandout', 'sendAccountReadyEmail', 'sendWelcomeEmail']);
+    ['sendAccountReadyEmail', 'sendWelcomeEmail']);
   // Named, because porting one of these verbatim would carry Base44's storage
   // host into the service, and the `cmfile:` handles that replace those URLs do
   // not exist yet. They wait on the file layer, not on the runtime.
@@ -892,7 +901,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
       'extractClinicalEvents',
       'extractReferralDataForSmartNote',
       'generateBagTechniquePDF', 'generateFollowUpTasks',
-      'generatePatientChartPDF', 'generateReferralTasks', 'generateSmartNoteGuide',
+      'generatePatientChartPDF', 'generatePatientHandout', 'generateReferralTasks',
+      'generateSmartNoteGuide',
       'generateUserGuidePDF', 'generateUserManual', 'generateUserRosterPDF',
       'getAiContentAgreementStatus', 'getApprovedTimeOff',
       'getAuthorizedDocument', 'getAuthorizedPatient',
@@ -1029,21 +1039,23 @@ test('what `core_integration` blocks is measured per module, not assumed from th
     'the gate no longer refuses the email action');
   const pdfAnswers = [...handout.matchAll(/return Response\.json\(\{[^)]*\bpdf:/g)];
   assert.equal(pdfAnswers.length, 2, 'the document action no longer answers with a PDF');
-  // So the document action waits on nothing: six sibling capabilities already
-  // render a PDF in the ported service, its only entity is a retired log table
-  // D25 gives a successor, and the email action is the owner decision the six
-  // paused-delivery ports already record as paused. It is WORK, not a
-  // decision — which is what `core_integration: 3` reads as denying.
+  // So the document action waited on nothing: six sibling capabilities
+  // already rendered a PDF in the ported service, its only entity is a retired
+  // log table D25 gives a successor, and the email action is the owner
+  // decision the six paused-delivery ports already record as paused. It was
+  // WORK, not a decision — which is what `core_integration: 3` read as
+  // denying — and D81 did it: the port serves the document and refuses the
+  // send with the answer this gate gives.
   for (const sibling of ['generateBagTechniquePDF', 'generateUserRosterPDF', 'generatePatientChartPDF',
-    'generateUserManual', 'generateSmartNoteGuide', 'generateUserGuidePDF']) {
-    assert.ok(discoverPortedFunctions(repository).includes(sibling), `${sibling} is the PDF precedent`);
+    'generateUserManual', 'generateSmartNoteGuide', 'generateUserGuidePDF', 'generatePatientHandout']) {
+    assert.ok(discoverPortedFunctions(repository).includes(sibling), `${sibling} is a ported PDF`);
   }
 });
 
 test('nothing in the queue is startable and unwritten', async () => {
   // The milestone the counts do not state. `none` means "portable today", and
   // a reader takes a non-empty one as work available now — so the thing worth
-  // asserting is that it is not: all 72 are written, and every capability left
+  // asserting is that it is not: all 73 are written, and every capability left
   // is behind a decision or a phase rather than behind somebody's time.
   //
   // It runs in ONE direction only, and the first draft of this test claimed

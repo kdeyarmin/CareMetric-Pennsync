@@ -155,8 +155,9 @@ export function createIndependentStagingAdapter(config,
    * The transition plan says this adapter "refuses rather than choosing a
    * tenant on the caller's behalf, which is the point", and that the fix
    * belongs at each call site. Measuring it moved the ground under that: the
-   * adapter routes 70 call sites across 52 capabilities and 3 name a tenant,
-   * so the recorded plan is 67 edits — and each edit adds a key to a payload
+   * adapter routed 70 call sites across 52 capabilities and 3 named a tenant,
+   * so the recorded plan was 67 edits (`check:ported-call-sites` carries the
+   * live count) — and each edit adds a key to a payload
    * the LIVE Base44 original also receives, because `src/functions/*` wrappers
    * serve both backends.
    *

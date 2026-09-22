@@ -43,6 +43,7 @@ import { generateReferralTasks as runReferralTasks } from './referral-tasks.mjs'
 import { matchPatientWithAI as runPatientMatch } from './patient-match.mjs';
 import { analyzeReferral as runReferralAnalysis } from './referral-analysis.mjs';
 import { GUIDE_FORMAT, buildUserGuide } from './document-user-guide.mjs';
+import { generatePatientHandout } from './patient-handout.mjs';
 import { USER_GUIDE_PROMPTS, USER_GUIDE_SCHEMA, resolveGuideType } from './user-guide-prompts.mjs';
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -887,6 +888,15 @@ export const HANDLERS = Object.freeze({
     handle({ params, config }) {
       exactObject(params, [], 'INVALID_PARAMS');
       return pdfBase64Response(buildSmartNoteGuide, SMART_NOTE_GUIDE_FILENAME, config);
+    },
+  }),
+  generatePatientHandout: Object.freeze({
+    // A PARTIAL port: the document is served, and the email action is refused
+    // with the answer the original itself gives while outbound delivery is
+    // unreleased. JSON carrying base64 rather than bytes, because that is how
+    // the original answered. The narrowings are in `patient-handout.mjs`.
+    handle({ params, config }) {
+      return generatePatientHandout({ params, config });
     },
   }),
   generateUserGuidePDF: Object.freeze({

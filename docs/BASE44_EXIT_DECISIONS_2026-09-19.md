@@ -5275,7 +5275,7 @@ change that cites it.
 
 Port queue: unchanged at 7 / 8 / 0 / 0 / 12 / 0 / 3 / 0 / 2 / 72 — and one of
 the three in `core_integration` is a partial port waiting to be written rather
-than a capability waiting on the runtime.
+than a capability waiting on the runtime. D81 wrote it the same day.
 
 ## D80 — Half the frontend's entity traffic has nowhere to land
 
@@ -5345,3 +5345,113 @@ Proved by sabotage rather than by reading: a new `TrainingCourse.list()` in
 `src/` takes the gate to 204/203 and exits 1, and renaming the shared matcher
 fails four tests.
 
+## D81 — The handout was work, so it is written
+
+**Decision.** Port `generatePatientHandout` as the sixth PARTIAL port, after
+D31, D35, D36, D59 and D73. The document action is served. The email action —
+the delivery D42, D49, D50, D52, D54 and D73 each ship paused — is refused with the answer the original itself gives while
+`OUTBOUND_DELIVERY_RELEASE` is not `enabled-v1`: 503,
+`OUTBOUND_DELIVERY_RELEASE_PAUSED`, not retryable, in the original's order
+(the condition checks, then the address, then the pause). Releasing a send to
+a patient's address is D56's owner decision, not something a port may take.
+
+It reads no record — the patient's name is text the caller typed, rendered
+into a document handed back to that caller and stored nowhere — so what it
+requires is what every ported document requires: an active membership in the
+agency the request names. The original required only a signed-in account.
+
+### Carried, and how that is proved
+
+- **The text is copied, never retyped.** The twenty templates, the checklists
+  and the resource links live in `patient-handout-templates.mjs`, extracted
+  from the original's source, and the parity suite compares the two blocks as
+  SOURCE — so a change to a line nothing draws by default (a deselectable
+  bullet, a link target) fails too. This is a patient's instructions at home.
+- **The page is the original's, call for call**, driven through the real
+  transpiled original as every ported document is: all twenty conditions, and
+  then all five colour schemes × four layouts × three typefaces over three
+  conditions whose union the test asserts, from the templates, reaches all
+  eight section and page branches — 180 comparisons on top of the twenty.
+- **So are its failures.** The original catches per block and the catches
+  differ — a failed section leaves a red "[Could not render: …]" line, a failed
+  subsection skips to the next, the notes, checklist, tracker and links drop
+  their block — and the port keeps all six. Both sides are handed a surface
+  that fails while drawing the same named line, and the test then asserts the
+  ORIGINAL took the branch that line was chosen for.
+- **Its answer**: JSON carrying base64, `{ pdf, filename, diagnostics }`,
+  because that is how the original answered. It fits the authority client's
+  1 MiB JSON ceiling with room: the largest guide is 86 KB of base64 and a
+  configured logo is embedded once however many pages carry it.
+- The logo is supplied and the date is supplied, as for every ported document;
+  the date keeps the original's long form ("September 22, 2026").
+
+### Three narrowings, each an input the original could not render
+
+Each is proved by driving the ORIGINAL rather than by reading it (D69):
+
+| Input | What the original did | The port |
+| --- | --- | --- |
+| an unknown colour scheme | threw on the first fill, and its catch answered **`success: true`** with a generic "we could not generate the full guide" page, which the client downloads and reports as a success | `INVALID_STYLE_OPTIONS` |
+| `condition: 'constructor'` | passed its template check (a plain-object index) and drew a page with no title and no sections, as `constructor_handout.pdf` | `INVALID_CONDITION` |
+| an object where text belongs | printed `[object Object]` on the patient's handout | `INVALID_PARAMS` |
+
+Typeface and layout the original defaulted rather than crashed on; they are
+refused too, because one rule is simpler than three and the client cannot
+send anything else. The published client's own request passes all of it, and
+a test sends that request key for key.
+
+### Not carried: the generic page, and the two `SystemLog` writes
+
+Every input that reached the fallback page is refused before a render starts —
+a failed sign-in and an unreadable body by the service itself, the rest above —
+so all that is left to reach it is a render that genuinely fails. A patient
+handed a page saying "contact your nurse", by a nurse who was told the guide
+downloaded, is worse than an error the nurse can see; the failure is the
+service's opaque 503 instead. The two `SystemLog` writes recorded exactly
+those failures and the email's, so they have no successor: this port either
+refuses the case by name or does not have it. The original audited nothing on
+success, and neither does the port.
+
+### Recorded, not fixed: four controls that change nothing
+
+`PatientEducationHub` offers a **Reading Level** selector, a **Format**
+selector, a **Custom Header** field and a **Two Column** layout. The original
+never reads `readingLevel` or `format`, computes `customHeader` and never
+draws it, and renders `two_column` as a single column with a 16 mm margin. The
+port accepts all four — the client sends them, and refusing would break the
+only caller — and draws exactly what the original drew. Honouring them would
+be inventing a behaviour; they are a product question, the same kind D72
+recorded for the dashboard's three dead fields. The original's `clean()` also
+strips "°" from "Fever over 100.4°F" in six templates, printing "100.4F";
+carried, because a port answers the way its original did.
+
+### The first port through the call-site ratchet
+
+`check:ported-call-sites` refused the change: the handout's two call sites in
+`PatientEducationHub.jsx` now route to the service without naming a tenant.
+They are not new call sites — the capability became routed — and
+`portedCall` supplies the bound tenant, so they WORK. They are admitted in a
+reviewed diff because the fallback is right exactly where the tenant decides
+nothing the caller could have meant differently, and here it decides nothing
+on the page. The gate's own comment still said such a site "will refuse the
+moment the service is pointed at", which stopped being true when the adapter
+began supplying the tenant; it now says what the refusal is for.
+
+### The test's first two drafts claimed more than they did
+
+The failure test first injected failures by COUNTING calls, and its comment
+named a subsection bullet, the checklist's second box and the first link.
+Instrumented, every one of them landed in a section catch — the counts shift
+as soon as an earlier block fails — and a failure in the wrong place still
+compares equal, so the test proved one branch while describing four. The style
+matrix's first draft deselected `copd_oxygen`'s last section, which is its
+only `important` one, on a condition with no plain paragraph, checklist or
+links. Both now assert their coverage from data rather than from a comment.
+And one sabotage — the original draws its failure marker in Helvetica whatever
+the document's face — passed until the failure cases ran in Times, because
+under the default face the two are the same. **A test whose comment describes
+something the test does not do reads exactly like one that works**, for the
+third time since D77; ten sabotages now fail the suite, each one.
+
+Port queue: 7 / 8 / 0 / 0 / 12 / 0 / **2** / 0 / 2 / **73**. What is left in
+`core_integration` is the two whose whole body is the send.

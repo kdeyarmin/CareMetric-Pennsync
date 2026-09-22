@@ -91,6 +91,7 @@ call. The operator says which app this deployment serves, or it does not start.
 | `generateBagTechniquePDF` | `base44/functions/generateBagTechniquePDF/entry.ts` | Renders the infection-control checklist. Answers with the PDF itself, as the original did |
 | `generateSmartNoteGuide` | `base44/functions/generateSmartNoteGuide/entry.ts` | Clinician guide. Answers with base64 in the envelope, as the original did |
 | `generateUserManual` | `base44/functions/generateUserManual/entry.ts` | Product manual. Answers with the PDF itself, as the original did |
+| `generatePatientHandout` | `base44/functions/generatePatientHandout/entry.ts` | Patient education guide (D81), a PARTIAL port: the document is served, and `action: 'email'` gets the original's own paused answer, 503 `OUTBOUND_DELIVERY_RELEASE_PAUSED`. Its twenty templates are copied from the original and compared as source text; its page is proved call-for-call across every condition and style. Answers with base64 inside the envelope, as the original did. Reads and writes no entity row |
 | `analyzeReferralPriority` | `base44/functions/analyzeReferralPriority/entry.ts` | The first port that reaches outside the service: one brokered `InvokeLLM`. Reads and writes no entity row |
 | `analyzeReferralIntake` | `base44/functions/analyzeReferralIntake/entry.ts` | One brokered `InvokeLLM`, and a guard that answers an empty payload without calling the model at all — the original's comment says the call otherwise times out at the 120s proxy limit |
 | `generateReferralTasks` | `base44/functions/generateReferralTasks/entry.ts` | One brokered `InvokeLLM`, with `response_json_schema` rather than the tolerant parser: its schema carries `required` at every level, so the provider takes it |
@@ -191,8 +192,10 @@ Two things the originals did are deliberately not carried:
   fetched nothing, so it ports verbatim.
 
 Each answers the way its original answered: two with the bytes, and
-`generateSmartNoteGuide` with base64 inside the envelope, because that is what
-its original returned.
+`generateSmartNoteGuide` and `generatePatientHandout` with base64 inside the
+envelope, because that is what their originals returned. The handout's date
+keeps its original's long form ("September 22, 2026") and is supplied the same
+way.
 
 #### The user guide, which is both
 
