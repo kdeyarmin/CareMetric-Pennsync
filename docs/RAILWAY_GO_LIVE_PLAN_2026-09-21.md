@@ -339,6 +339,76 @@ where it is least diagnosable. It is asserted now.
   rather than to this one. What stage A can prove without a caller — that the
   policies bind, that they all arrived, that the helpers are unreachable and
   that no caller holds a direct grant — is proved.
+
+  **Corrected 2026-09-22: "a caller is an `auth.users` row" was true and was
+  not the binding constraint, and reading it as one hid what is actually
+  missing.** The hosted project already carries four accepted identities —
+  real account ids, confirmed emails, none anonymous or banned — each mapped in
+  `identity_map` with `expected_email` matching, each with an active
+  `membership`, in the fixture's own topology: two admins split across
+  `agency-a` and `agency-b`, two clinicians in `agency-a` of which one holds
+  the `assignment` on `patient-a1`. `auth.pennsync_local_test_double()` is
+  absent, so none of it came from `fixtures.sql`. `identity_map` was never
+  empty; nobody looked. The map rows are counted against `actor()`'s own
+  predicate — app id, `enabled`, `revoked_at`, `expected_email` against the
+  user's current email, `verified_at` in the past — rather than a looser one,
+  because that count is what the enrolment claim rests on.
+
+  What `actor()` refuses on is a thing it requires that the plan never named:
+  a row in `auth.sessions` whose id matches the caller's `session_id` claim and
+  whose `created_at` is **within the last twelve hours**. There are none.
+  Measured on the project through the same transport the structural suite uses,
+  as `authenticated` with an enrolled subject and a fabricated session id, the
+  gate answers `PENNSYNC_SESSION_INACTIVE`.
+
+  **Read that refusal for exactly what it says, which is less than an earlier
+  draft of this paragraph claimed.** `actor()` checks `auth.users`
+  (`20260919090000_deployment_app_pin.sql:194`), THEN `auth.sessions` (202),
+  THEN `identity_map` (211) — the session before the map, not after it. So
+  `PENNSYNC_SESSION_INACTIVE` proves the subject cleared `auth.users`, live and
+  confirmed and unbanned and not anonymous, and proves nothing at all about the
+  map: an unenrolled subject refuses at the very same line. The enrolment is
+  carried by the count above and by nothing else. Both together say the session
+  is what is missing; neither says it alone.
+
+  **Four gate refusals are therefore measured hosted now**, in
+  `hosted-store.test.mjs`: no claims (`PENNSYNC_SESSION_REQUIRED`), an unknown
+  subject (`PENNSYNC_IDENTITY_INACTIVE`), `anon` (refused at the grant, which is
+  also what proves the role switch takes effect through this transport), and the
+  enrolled-subject case above. That is a real slice of claim 4 and it is not the
+  whole of it: none of the four reads a row a policy protects, and none of them
+  exercises the map, which no caller can reach without a session.
+
+  **Three things stand between here and the rest of claim 4, and only the first
+  is the owner's.**
+
+  1. **A live session per caller, which only a sign-in creates.** That needs
+     the project's publishable key and a credential for each of the four
+     accounts. The twelve-hour window is not a token lifetime and refreshing
+     does not move `auth.sessions.created_at`, so a session cannot be held as a
+     CI secret: the job has to sign in at the start of each run.
+  2. **Seeding, which the record store needs and this transport cannot roll
+     back.** `pennsync_records` is empty — 0 patients, 0 visits across all 157
+     tables — so every `contract-*` assertion has to create the rows it reads.
+     On PGlite that is `db.exec` on a database nobody else has; on hosted every
+     request is its own connection, so seed, impersonate, assert and undo must
+     be one body, and `assertSingleTransaction` in
+     `tools-pennsync-supabase-db.mjs` admits only `begin; … commit;` — never
+     `rollback`. `record-tenant-isolation` needs more than that again: it grants
+     its caller role table privileges as part of its own setup, which on a
+     shared project is a real change to the grant model and is exactly what
+     that suite elsewhere proves a deployment must not have.
+  3. **The `chart_assignment` row.** The fixture carries two rows for one care
+     team — `assignment` for the synthetic patient and `chart_assignment` for
+     the chart of record, because D24 authorizes from the second. Hosted has
+     the first and not the second, so sixteen suites would read an empty team
+     and pass for the wrong reason.
+
+  **And a correction to the stage's own name for this work.** "Prove the
+  committed store" is right; "confirm migrated rows behave correctly" — how the
+  claim gets restated — is not, because there are no migrated rows. What was
+  migrated in stage A was the DDL. Customer data is stage I, after stage F.
+  Whatever runs here reads rows a test seeded minutes earlier.
 - The PGlite suites themselves remain green and unchanged: they are still the
   proof of what the predicates mean, and now they are no longer the *only*
   proof that the store a deployment holds is the one they describe.
@@ -457,13 +527,19 @@ carried by one "done" that was half true:
    the measurement ran anyway, because `HOSTED_MEASUREMENT_REQUIRED` governs
    only what an ABSENT credential means and a usable one is measured whatever
    it says. The flag is what stops the job ever silently standing down again;
-4. the row-behaviour suites green there — **blocked on stage C**, which is where
-   the identities come from.
+4. the row-behaviour suites green there — **partly done 2026-09-22; the rest is
+   not all stage C's**. ~~Blocked on stage C, which is where the identities come
+   from.~~ The identities the fixture topology needs are already on the project
+   and the four caller-gate refusals are measured there. What is open is a live
+   session (stage C, and only a sign-in makes one), a seed-and-undo transport
+   the record suites can use, and the missing `chart_assignment` row — see the
+   correction under "the row-behaviour half" above, which names all three.
 
-**Stage A is therefore open on 4 alone**, and 4 cannot be closed from outside
-stage C: a caller here is an `auth.users` row. Three of the four are done and
-the drift on the hosted project is now watched on every push to main, which is
-the condition stage B needed.
+**Stage A is therefore open on 4 alone**, and the part of 4 that needs a person
+is narrower than this stage said: a sign-in for four accounts that already
+exist, not ten invitations. Three of the four claims are done, the gate itself
+is measured hosted, and the drift on the hosted project is watched on every push
+to main, which is the condition stage B needed.
 
 ### Stage B — Deploy `services/pennsync-api`, paused (size S; owner creates the service)
 
@@ -576,6 +652,25 @@ anywhere. The app binding is deferred to stage C as above.
   any one of them returns to a real person. The publishable key and actor UUID
   map belong to that job, here, rather than to the structural suite stage A
   added.
+
+  **Narrowed 2026-09-22.** Four of those invitations were already accepted:
+  four identities are mapped, verified and members, in the fixture's own
+  topology, and stage A now measures the caller gate reaching them. The actor
+  UUID map is therefore readable from the project rather than owed by anybody.
+  Two things are still owed and they are smaller than "ten invitations":
+  - **The publishable (anon) key, and a sign-in credential for each of the four
+    accounts.** `actor()` requires an `auth.sessions` row created within the
+    last twelve hours, which is not a token lifetime and which a refresh does
+    not extend, so the session cannot be a stored secret — the job signs in at
+    the start of each run and works inside that window.
+  - **The `chart_assignment` row for the existing care team.** `assignment` has
+    it and `chart_assignment` does not, and D24 authorizes from the second;
+    sixteen suites read an empty team without it. It is a write to
+    `pennsync_private` on staging rather than an identity, so it belongs to
+    whoever runs the seed, not to an enrollee.
+
+  The other six invitations are still this stage's, and so is everything below;
+  what changed is that stage A's fourth claim no longer waits on all ten.
 - Verify each identity out of band, then run `tools-pennsync-enroll.mjs` with the
   digest-addressed plan. Every run lands in `enrollment_receipt`.
 - Retire the four pinned actor IDs in `services/authority-client/client.mjs` in
@@ -671,11 +766,37 @@ anywhere. The app binding is deferred to stage C as above.
   returns null rather than omitting it. So every routed call carries a tenant,
   `portedCall` lifts it into the envelope, and the contract serves it.
 
-  What remains is a fragility rather than a defect, and it is what the gate
-  above is for: a future bare `getMyTenantContext()`, or a `trustedTenantRequest`
-  that ever returned options without an `agencyId`, would refuse on the routed
-  path while the bootstrap kept working — a failure that would look like a
-  tenant problem and be a dispatcher one.
+  **Updated 2026-09-22: the fragility that remains is real, and this document
+  had its failure mode backwards.** It said a future bare
+  `getMyTenantContext()` "would refuse on the routed path while the bootstrap
+  kept working" — loud, and findable by running the app. Measured against the
+  staging fixture it does not refuse. `portedCall`'s fallback, added in the
+  bullet above, supplies the bound tenant when a call site names none, so the
+  call reaches the service as `{ agency_id: 'agency-a', params: {} }` and
+  resolves. What it drops is `expectedMembershipId` and
+  `expectedMembershipVersion`, the two values `resolveMyTenantContext` compares
+  the answer against — so a revalidation carrying no expectation revalidates
+  nothing. It asks what the bound tenant is and is told, which is the question
+  it already knew the answer to. The fix for the 67 call sites inverted this
+  prediction as a side effect and nobody re-read it, which is D47's and D75's
+  lesson in a fourth place: a claim outlived the code it was measured against.
+
+  The adapter is right to serve such a call — it cannot tell a revalidation
+  apart from any other ported name, and inventing an expectation would be
+  worse — so the invariant belongs at the call sites, and
+  `check:ported-call-sites` is not the gate that holds it. That gate counts
+  tenant-free payloads and these six call sites are not in its census at all:
+  it sees the wrapper's own `invoke` line, not the hooks above it.
+  `tools-tenant-revalidation-path.mjs` holds the two shapes the reasoning
+  above actually rests on — every revalidation call site passes
+  `trustedTenantRequest(...).options`, and the pre-tenant seam keeps its single
+  importer, `src/lib/AuthContext.jsx`. Both are invariants rather than counts,
+  so there is no baseline to drift: a call that does not carry a trusted
+  request fails `pnpm run check:tenant-revalidation` whether it is the first or
+  the seventh. `trustedTenantRequest` returning options without an `agencyId`
+  was already fenced by `src/lib/trustedTenantRequest.spec.js`; the runtime
+  behaviour corrected here is proved in
+  `src/lib/independentStagingAdapter.spec.js`.
 - **Every call the service makes already resolves on hosted staging — measured
   2026-09-22, and now pinned.** PostgREST matches `/rest/v1/rpc/<name>` by the
   function's name AND the names of the body's keys, and nothing had checked the
@@ -1002,13 +1123,14 @@ misunderstanding:
 
 | Needed | For | Note |
 | --- | --- | --- |
-| ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open, and it needs identities, so it moved to stage C |
+| ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open. It moved to stage C for identities, and on 2026-09-22 the identities turned out to be largely there already — what it waits on is a sign-in, a seed transport and one `chart_assignment` row, per the correction in stage A |
 | ~~Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change~~ | Stage A | **Done 2026-09-22 (#237).** Both secrets are configured and the flag is `'true'`. The job log shows both masked and then 15 tests, 15 passed, 0 skipped against the real project — read from the log rather than from the green tick, which is what this gate exists to distrust. The committed store's drift is now watched on every push to main |
 | ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
 | Set the four `INTEGRATIONS_AUTHORITY_*` / `INTEGRATIONS_APP_ID` variables on the Railway runtime | Stage E | The code is done and tested (111/111); this is the whole of Stage E now. `INTEGRATIONS_APP_ID` must be the **staging** id `6a9881683dc68a0bd54f1ef7` — the production id boots and then refuses every call. Reversible, and the runtime serves nobody |
 | **Correct the Google Play Data Safety declaration** | **Today** — independent of every stage | Live listing says "No data collected" and "No data shared with third parties" for an app handling clinical data. A policy violation that can draw enforcement against the listing. A Play Console form — needs no key and no binary, so nothing else here blocks it |
-| Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this |
+| Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this. **Four are already accepted, mapped and verified as of 2026-09-22**; six remain |
+| The publishable (anon) key and a sign-in credential for the four accepted accounts | Stage A claim 4, Stage C | Only a sign-in makes the `auth.sessions` row `actor()` requires, and it is good for twelve hours from sign-in rather than for a token's lifetime, so this cannot be a stored session secret |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
 | A decision to broker `Core.SendEmail` | Stage G | Unblocks 2 ports whose whole body is the send, and the email action of a third — `generatePatientHandout`, whose document half is ported (D81). The runtime already implements it |
 | Dispositions for 7 capabilities on retiring domains | Stage G | Training records, paused comms logs, real-time metrics |

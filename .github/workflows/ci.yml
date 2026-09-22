@@ -98,6 +98,7 @@ jobs:
           pnpm run check:file-references
           pnpm run check:entity-schema-plan
           pnpm run check:tenant-paths
+          pnpm run check:tenant-revalidation
           pnpm run check:tenant-decisions
           pnpm run check:record-brokers
           pnpm run check:read-purpose-policy

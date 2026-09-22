@@ -217,6 +217,34 @@ describe('the ported API caller', () => {
     } finally { clearTrustedTenantContext(); }
   });
 
+  it('serves a bare revalidation call rather than refusing it, which is why it is gated', async () => {
+    // `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md` predicted that a bare
+    // `getMyTenantContext()` "would refuse on the routed path while the
+    // bootstrap kept working" — a loud failure. The fallback above inverted
+    // that: the call succeeds, carrying the bound agency and an EMPTY
+    // `params`, so `expectedMembershipId` and `expectedMembershipVersion` —
+    // the two values `resolveMyTenantContext` compares the answer against —
+    // are simply absent. A revalidation that carries no expectation
+    // revalidates nothing, and nothing about it looks wrong at runtime.
+    //
+    // The adapter is right to serve it: it cannot tell a revalidation apart
+    // from any other ported name, and inventing an expectation would be worse.
+    // So the invariant lives at the call sites, where
+    // `tools-tenant-revalidation-path.mjs` holds it: every one passes
+    // `trustedTenantRequest(...).options`, which sets `agencyId`
+    // unconditionally and returns null rather than omitting it.
+    const { fixture, adapter } = await signedIn();
+    bindTrustedTenantContext(boundUser, boundContext());
+    try {
+      await adapter.raw.functions.invoke('getMyTenantContext', {});
+      const [call] = fixture.apiCalls;
+      expect(call.url).toBe(`${stagingApiUrl}/v1/functions/getMyTenantContext`);
+      expect(call.body).toEqual({ agency_id: 'agency-a', params: {} });
+      expect(call.body.params.expectedMembershipId).toBeUndefined();
+      expect(call.body.params.expectedMembershipVersion).toBeUndefined();
+    } finally { clearTrustedTenantContext(); }
+  });
+
   it('refuses an explicitly falsy tenant instead of substituting the bound one', async () => {
     const { fixture, adapter } = await signedIn();
     bindTrustedTenantContext(boundUser, boundContext());
