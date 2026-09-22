@@ -294,6 +294,17 @@ main. That is narrower than "CI running them on every PR" and it is the safe
 reading of it. Closing it properly needs a credential scoped to reads on one
 project, which Supabase does not offer today.
 
+The containment is two steps rather than one, and the repository insisted on
+it. The first version bound the secrets through an env-level
+`github.ref == 'refs/heads/main' && secrets.X || ''`, which keeps the token out
+of the environment on every other ref just as effectively —
+`src/testRegistryContract.test.js` failed it anyway, because it ratchets on the
+step carrying the token being gated by a literal `if:` on the REF. The ratchet
+is right: the property then lives in one line a reviewer reads rather than an
+expression they have to evaluate. So the measuring step is `if:` main with the
+secrets, and a second step with no secrets at all runs the suite everywhere
+else, which is what keeps it exercised on a pull request.
+
 **Exit:** every committed migration applied to one real hosted project — **done**;
 the structural suites green there and running in CI — **done**; the row-behaviour
 suites green there — **blocked on stage C**, which is where the identities come

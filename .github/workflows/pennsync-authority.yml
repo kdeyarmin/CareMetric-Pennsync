@@ -278,18 +278,32 @@ jobs:
       # closed, before sending it. It applies nothing -- a deployment is
       # migrated by an operator who can see the plan first, never by CI.
       #
-      # The step ALWAYS runs so the suite itself is exercised on a pull
-      # request; without the secrets it skips each hosted assertion with a
-      # reason rather than passing silently.
+      # TWO STEPS, because the measurement needs credentials and exercising the
+      # suite does not.
       #
-      # The SECRETS are handed over only on main, for the reason recorded on
-      # `hosted-gap` above: the checked-out `hosted-store.test.mjs` is the code
-      # the secrets are given to, and on a pull request that file is whatever
-      # the branch author wrote. The ref decides rather than the event, so a
-      # `workflow_dispatch` against a ref a collaborator controls does not
-      # reach them either. That matters most for the token, which is
-      # account-wide and reaches every project in the organisation, while the
-      # URL names one staging database.
+      # This one runs everywhere else and is handed nothing. It proves the file
+      # loads, its imports resolve against a checkout that installs only
+      # `services/authority-store`, and its skip path is a skip rather than a
+      # silent pass. Every hosted assertion reports itself skipped, with the
+      # reason.
+      - name: Exercise the suite without a hosted target
+        if: ${{ github.ref != 'refs/heads/main' }}
+        run: node --test services/authority-store/tests/hosted-store.test.mjs
+      # And this one does the measuring, on main only.
+      #
+      # The `if:` is the whole containment and `src/testRegistryContract.test.js`
+      # ratchets it: the step receiving the token must be gated on the REF. An
+      # env-level `github.ref == ... && secrets.X || ''` keeps the secret out of
+      # the environment just as well, and was how this was first written, but
+      # the property then lives in an expression somebody has to evaluate in
+      # their head instead of one line they can read. Excluding `pull_request`
+      # is not enough either: `workflow_dispatch` names no branch, so a
+      # collaborator could dispatch against a ref they control and
+      # `actions/checkout` would take it.
+      #
+      # That matters most for the token. A staging database URL reaches one
+      # database; a Supabase personal access token reaches every project in the
+      # account.
       #
       # So the hosted half of stage A's exit runs on main and on a manual run
       # from main, and not on a pull request branch. That is narrower than the
@@ -297,7 +311,8 @@ jobs:
       # closing the gap needs a credential scoped to reads on one project,
       # which does not exist today.
       - name: Measure the hosted staging store
+        if: ${{ github.ref == 'refs/heads/main' }}
         env:
-          PENNSYNC_HOSTED_DATABASE_URL: ${{ github.ref == 'refs/heads/main' && secrets.PENNSYNC_STAGING_DATABASE_URL || '' }}
-          SUPABASE_ACCESS_TOKEN: ${{ github.ref == 'refs/heads/main' && secrets.SUPABASE_ACCESS_TOKEN || '' }}
+          PENNSYNC_HOSTED_DATABASE_URL: ${{ secrets.PENNSYNC_STAGING_DATABASE_URL }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
         run: node --test services/authority-store/tests/hosted-store.test.mjs
