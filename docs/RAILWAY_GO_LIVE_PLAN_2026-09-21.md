@@ -336,13 +336,55 @@ main. That is narrower than "CI running them on every PR" and it is the safe
 reading of it. Closing it properly needs a credential scoped to reads on one
 project, which Supabase does not offer today.
 
-**On `main` a missing credential FAILS rather than skips**, and that too was a
-review finding. The suite turns an absent target into a skipped test, which is
-right for the credential-free step and would be silent failure on main: a
-renamed or expired secret would leave the job green having read nothing, and a
-required check that has quietly stopped checking is the exact shape this job
-exists to catch — the hosted project sat fifty-nine migrations behind because
-nothing looked. The main-only step now refuses before it invokes the suite.
+**On `main` a missing credential fails once the measurement is REQUIRED**, and
+the shape of that gate was settled the hard way.
+
+The suite turns an absent target into a skipped test, which is right for the
+credential-free step and would be silent failure on main: a renamed or expired
+secret would leave the job green having read nothing, and a required check that
+has quietly stopped checking is the exact shape this job exists to catch — the
+hosted project sat fifty-nine migrations behind because nothing looked. So the
+review asked for a refusal, and the first version refused any absent credential
+on main.
+
+**It turned main red on the first run after merge, and the reason is worth
+keeping.** Neither `PENNSYNC_STAGING_DATABASE_URL` nor `SUPABASE_ACCESS_TOKEN`
+is configured as a repository secret — `hosted-gap` has been skipping for that
+same reason since the day it was written, which is why nobody knew. A refusal
+written for "the credential broke" fired on "the credential was never added",
+and those are not the same event.
+
+`HOSTED_MEASUREMENT_REQUIRED` separates them, and it governs only what an
+ABSENT credential means:
+
+- absent and not required (today) — a `::notice` saying the store was not
+  measured, and a green job;
+- absent and required — a failure, which is the finding, intact;
+- set but unusable — a failure either way, because a target that is configured
+  and broken is the renamed-or-expired case the finding was actually about;
+- set and usable — measured, whatever the flag says, so the job starts working
+  the moment the secrets land rather than waiting for somebody to remember.
+
+**Adding those two secrets and flipping the flag to `true` in the same change
+is the last thing stage A owes**, and it is an owner action: the credentials
+cannot be added from the repository.
+
+**The decision lives in `tools-pennsync-hosted-gate.mjs` rather than in the
+workflow, and that is the fourth version of it.** The first bound the
+credentials through an env-level ternary; the second made any absent credential
+fatal and turned main red; the third read "the URL is empty" as "nothing is
+configured", so a token left behind by a renamed URL secret — a partial, and
+therefore broken, configuration — took the green stand-down path. Each was
+checked by hand and each looked right, because a shell block inside YAML is the
+one place in this repository nothing can test.
+
+It is a module with a table-driven suite now. Every combination of (target,
+token, required) has a row, the two rules are asserted as properties rather
+than rows — `required` may turn an absent configuration into a failure and may
+never turn a broken one into a pass; nothing but a wholly unset pair may stand
+down — and a test reads the workflow itself and fails if the step stops calling
+the gate or regrows a credential check of its own. The step branches on an exit
+code (0 measure, 3 stand down, 1 refuse) and asks about no credential at all.
 
 The containment is two steps rather than one, and the repository insisted on
 it. The first version bound the secrets through an env-level
@@ -355,10 +397,27 @@ expression they have to evaluate. So the measuring step is `if:` main with the
 secrets, and a second step with no secrets at all runs the suite everywhere
 else, which is what keeps it exercised on a pull request.
 
-**Exit:** every committed migration applied to one real hosted project — **done**;
-the structural suites green there and running in CI — **done**; the row-behaviour
-suites green there — **blocked on stage C**, which is where the identities come
-from.
+**Exit**, as four claims rather than three, because two of them were being
+carried by one "done" that was half true:
+
+1. every committed migration applied to one real hosted project — **done**
+   (59 applied, 68 recorded, pin on staging);
+2. the structural suites green against that project — **done**, 15 tests, run
+   against `caremetric-pennsync-staging` itself;
+3. those suites RUNNING IN CI — **not done**. The `hosted-store` job exists and
+   its gate is tested, but neither `PENNSYNC_STAGING_DATABASE_URL` nor
+   `SUPABASE_ACCESS_TOKEN` is configured, so on main the job stands down and
+   measures nothing. It becomes done when an owner adds both secrets and sets
+   `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change — the flag is what
+   stops it ever silently standing down again;
+4. the row-behaviour suites green there — **blocked on stage C**, which is where
+   the identities come from.
+
+**Stage A is therefore still open, and 3 is the only part of it anyone can close
+from outside the repository.** Do not read 1 and 2 as the stage: a store that is
+measured once by hand and never again in CI is the state this whole stage was
+written to end, and stage B should not start against a hosted project whose
+drift nothing is watching.
 
 ### Stage B — Deploy `services/pennsync-api`, paused (size S; owner creates the service)
 
@@ -698,7 +757,8 @@ so none of it sits waiting on a misunderstanding:
 
 | Needed | For | Note |
 | --- | --- | --- |
-| ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green; what the stage's exit still lacks is the row-behaviour half, which needs identities and so moved to stage C |
+| ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. The stage's exit still lacks TWO things: the job actually measuring in CI, which needs the secrets below, and the row-behaviour half, which needs identities and so moved to stage C |
+| Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change | Stage A | Neither is configured today, so the `hosted-store` job stands down on main and the committed store's drift is watched by nobody. The suite is written and green against the real project; this is the only thing between it and running on every push to main. The flag is what makes the check permanent — without it a renamed secret would go back to standing down quietly |
 | Create the `pennsync-api` Railway service | Stage B | Cost approval; same project and pattern as the runtime |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this |
