@@ -676,6 +676,22 @@ anywhere. The app binding is deferred to stage C as above.
   that ever returned options without an `agencyId`, would refuse on the routed
   path while the bootstrap kept working — a failure that would look like a
   tenant problem and be a dispatcher one.
+- **Every call the service makes already resolves on hosted staging — measured
+  2026-09-22, and now pinned.** PostgREST matches `/rest/v1/rpc/<name>` by the
+  function's name AND the names of the body's keys, and nothing had checked the
+  service's side of that: every `pennsync-api` suite stubs the network and every
+  contract suite calls its function positionally in SQL, so a parameter renamed
+  on one side would have passed everything and surfaced here, as a release that
+  refuses every request. Queried read-only against `caremetric-pennsync-staging`:
+  all 87 functions the service can call — the authority RPC, the audit append,
+  the broker family's list and get, and the eighty contracts — are present in
+  `public`, executable by `authenticated`, closed to `anon`, not overloaded, and
+  every key the service sends is a parameter while every parameter without a
+  default is sent. `services/authority-store/tests/service-rpc-signatures.test.mjs`
+  now proves the same at PR time: it captures each capability's real request body
+  through its own code path and compares it with `pg_proc` over every migration.
+  What Stage D still has to prove is authority, not wiring — a real signed session
+  and a released name.
 - Then release per function, behind the existing per-name gate: the patient read
   pair, then the create, then the visit family, then the rest by blast radius.
 - Each release wants its own hosted proof, not a suite that passed locally.
