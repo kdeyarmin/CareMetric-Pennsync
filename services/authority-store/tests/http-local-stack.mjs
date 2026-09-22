@@ -3,6 +3,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { readFile, writeFile, mkdir, unlink, access } from 'node:fs/promises';
 import { createServer } from 'node:net';
+import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 const exec = promisify(execFile);
@@ -139,12 +140,35 @@ export async function localStatus() {
     || !/^sb_secret_[A-Za-z0-9_-]{10,200}$/.test(status.SECRET_KEY || '')) fail('LOCAL_MODERN_KEYS_REQUIRED');
   return status; // Callers must keep this object in memory, never report it.
 }
-async function unusedPort(port) {
-  await new Promise((done, reject) => {
-    const server = createServer();
-    server.once('error', () => reject(new Error('LOCAL_PORT_ALREADY_IN_USE')));
-    server.listen(port, '127.0.0.1', () => server.close(done));
-  });
+export const PORT_ATTEMPTS = 6;
+export const PORT_RETRY_MS = 1000;
+const bindOnce = port => new Promise((done, reject) => {
+  const server = createServer();
+  server.once('error', reject);
+  server.listen(port, '127.0.0.1', () => server.close(done));
+});
+/**
+ * Refuse to start when one of the stack's ports is taken, so a collision is a
+ * named refusal instead of a confusing CLI failure several minutes later.
+ *
+ * It RETRIES, and the reason is evidence rather than caution: this check failed
+ * twice on otherwise idle CI runners and passed on the immediate re-run both
+ * times, which is the signature of a port in TIME_WAIT or one a previous step
+ * has not finished releasing. A port something actually HOLDS stays held for
+ * all PORT_ATTEMPTS and still refuses, so the guarantee is unchanged -- only
+ * the window it is measured over. Do not replace this with a single bind: the
+ * two re-runs it cost are the argument for it.
+ */
+export async function unusedPort(port) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      await bindOnce(port);
+      return;
+    } catch {
+      if (attempt >= PORT_ATTEMPTS) throw new Error('LOCAL_PORT_ALREADY_IN_USE');
+      await delay(PORT_RETRY_MS);
+    }
+  }
 }
 async function main(action) {
   await localConfig();
