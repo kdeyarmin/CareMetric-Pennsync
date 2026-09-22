@@ -72,11 +72,12 @@ The port queue, measured today rather than quoted:
 
 ```
 port queue: entity_not_carried=7 entity_authorization=8 files=12
-            core_integration=3 external_secret=2 none=72
+            core_integration=2 external_secret=2 none=73
 ```
 
-104 carried capabilities, 72 written, 32 blocked. **No blocker in that list is
-the record store, and none is another port.** The remaining 32 need a decision,
+104 carried capabilities, 73 written, 31 blocked (2026-09-22, after D81 wrote
+`generatePatientHandout`). **No blocker in that list is the record store, and
+none is another port.** The remaining 31 need a decision,
 the file layer, a brokered send, or a new brokered operation — not more schema.
 
 ## 2. The critical path
@@ -993,7 +994,7 @@ misunderstanding:
 | **Correct the Google Play Data Safety declaration** | **Today** — independent of every stage | Live listing says "No data collected" and "No data shared with third parties" for an app handling clinical data. A policy violation that can draw enforcement against the listing. A Play Console form — needs no key and no binary, so nothing else here blocks it |
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
-| A decision to broker `Core.SendEmail` | Stage G | Unblocks 3 ports; the runtime already implements it |
+| A decision to broker `Core.SendEmail` | Stage G | Unblocks 2 ports whose whole body is the send, and the email action of a third — `generatePatientHandout`, whose document half is ported (D81). The runtime already implements it |
 | Dispositions for 7 capabilities on retiring domains | Stage G | Training records, paused comms logs, real-time metrics |
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
