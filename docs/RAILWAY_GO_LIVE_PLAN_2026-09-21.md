@@ -847,6 +847,15 @@ proxy for "which could" overstates it.** Two facts, both measured:
   **touches** an entity for its own reasons is not one that **serves** a call
   site.
 
+**The 203 that cannot land have their own docket:**
+[FRONTEND_DECISION_DOCKET_2026-09-22.md](FRONTEND_DECISION_DOCKET_2026-09-22.md).
+Two findings in it change the plan. 81 of the 119 training sites sit in 35
+screens the learning cutover's switch never reaches — the course player and the
+compliance reports among them — so the learning cutover is a *sequencing
+dependency* of the exit. And the paused-domain screens are live today (direct
+entity calls bypass D7's function-level pauses), so D7's "carried paused" and
+"no table" contradict each other at the exit and need an owner's answer.
+
 So Stage J's unit of work is not "repoint a call site"; it is, per call site,
 *find a handler that exposes the rows this screen needs, under a purpose that
 admits them — or record that none does.* The largest single lead is the 37
