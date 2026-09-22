@@ -524,12 +524,23 @@ The integration runtime is byte-identical to its pre-stage state — revision
 `cffe376`, `release: paused`, `authorityMode: "base44"`, `configured: true`,
 `operations: []`. Not redeployed, per the withdrawn bullet above.
 
-**One thing this stage cannot prove, and it is the setting that fails
-silently.** Nothing on `/healthz` or `/readyz` exposes `PENNSYNC_API_APP_ID`. A
-service left on the default binding — production `694ec16e…` against a store
-pinned to staging — reports the payload above verbatim and is then refused by
-every authorization call; `loadConfig` says so in its own comment. The binding
-is unproved until the first authenticated call, and stage C carries it.
+**One thing this stage cannot prove.** Nothing on `/healthz` or `/readyz`
+exposes `PENNSYNC_API_APP_ID`, so the payload above is identical whatever it is
+set to. What the probe cannot see splits into TWO cases with opposite failure
+modes, and they need different responses:
+
+| At release time | What happens |
+| --- | --- |
+| **Absent** (unset or empty) | `loadConfig` throws `IMPLICIT_APP_BINDING` and the service does not start. Loud, immediate, and asserted by `api.test.mjs`. |
+| **Stated but wrong** (production `694ec16e…` against a store pinned to staging) | Every startup check passes, `/readyz` reports ready, and every authorization call is refused. |
+
+Only the second is silent, and only the second is what the first authenticated
+call has to catch. The first announces itself the moment
+`PENNSYNC_API_RELEASE` is set, so a service that will not start after a release
+is the *good* outcome here, not a regression to debug.
+
+While the deployment is paused neither case is distinguishable from a correct
+one, which is why stage C carries the binding rather than this stage.
 
 **Exit — met 2026-09-22 for both hosted claims:** `/healthz` alive on both
 services; `/readyz` 503 on both with an empty operation set; no traffic change
@@ -554,11 +565,13 @@ anywhere. The app binding is deferred to stage C as above.
   favour of verified identity-map rows.
 - **Carried from stage B: prove `PENNSYNC_API_APP_ID` on the deployed service.**
   It must be the staging app `6a9881683dc68a0bd54f1ef7`, because the store's
-  D11 pin on `xxtyweswohkvgkprimwa` resolved to staging. No probe can see it;
-  the first authenticated call is what separates a correct binding from the
-  production default, which reports ready and is refused by everything. If that
-  call fails authorization while the service is otherwise healthy, check this
-  before anything else.
+  D11 pin on `xxtyweswohkvgkprimwa` resolved to staging. No probe can see it,
+  and the two ways it can be wrong fail differently: an ABSENT value refuses to
+  start at all (`IMPLICIT_APP_BINDING`, the moment `PENNSYNC_API_RELEASE` is
+  set), while a STATED BUT WRONG one starts, reports ready, and is refused by
+  every authorization call. So a service that will not boot after release has
+  told you the answer; one that boots and then fails authorization while
+  otherwise healthy is the case to check this for, before anything else.
 - Give the four tenant roles that can hold context but cannot use it their roster
   behaviour.
 - **Decide the synthetic-name question.** `agency` and `patient` names must begin

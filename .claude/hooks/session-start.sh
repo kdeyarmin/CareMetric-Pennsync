@@ -84,14 +84,25 @@ if [ "$(node -v 2>/dev/null || true)" = "v$NODE_VERSION" ]; then
   # shellcheck disable=SC2086  # deliberate split on PATH's own separator
   set -- $INHERITED_PATH
   IFS="$saved_ifs"
-  # A user-owned directory is preferred when the inherited PATH actually
-  # contains one, so the links do not shadow a system binary in /usr/bin. Any
-  # writable entry will do if it does not, since a link nothing searches is the
-  # case this loop exists to avoid.
+  # ON PATH IS NOT ENOUGH -- it has to come FIRST. Whatever directory the
+  # inherited PATH resolves `node` from today (/opt/node22/bin here, the
+  # /exec-daemon shim on the VM AGENTS.md describes) shadows every entry after
+  # it, so a link placed further down is searched and never reached. The walk
+  # therefore STOPS at that directory: only entries ahead of it can win.
+  CURRENT_NODE="$(PATH="$INHERITED_PATH" command -v node 2>/dev/null || true)"
+  SHADOWED_FROM=""
+  if [ -n "$CURRENT_NODE" ]; then SHADOWED_FROM="$(dirname "$CURRENT_NODE")"; fi
+
+  # Among those, a user-owned directory is preferred so the links cannot shadow
+  # a system binary in /usr/bin -- as root every directory is writable, so
+  # "first writable" alone would happily pick one.
   PREFERRED_LINK_DIR="$HOME/.local/bin"
   LINK_DIR=""
   FIRST_WRITABLE=""
   for dir in "$@"; do
+    if [ -n "$SHADOWED_FROM" ] && [ "$dir" = "$SHADOWED_FROM" ]; then
+      break
+    fi
     if [ -n "$dir" ] && [ "$dir" != "$NODE_BIN" ] && [ -d "$dir" ] && [ -w "$dir" ]; then
       if [ "$dir" = "$PREFERRED_LINK_DIR" ]; then
         LINK_DIR="$dir"
@@ -119,9 +130,9 @@ if [ "$(node -v 2>/dev/null || true)" = "v$NODE_VERSION" ]; then
     done
     echo "[session-start] Linked node/npm/npx/corepack into $LINK_DIR." >&2
   else
-    echo "[session-start] WARNING: no writable directory on the inherited PATH, so" >&2
-    echo "[session-start]          later shells in this session still resolve" >&2
-    echo "[session-start]          $(PATH="$INHERITED_PATH" command -v node 2>/dev/null || echo 'no node')." >&2
+    echo "[session-start] WARNING: no writable directory on the inherited PATH ahead of" >&2
+    echo "[session-start]          ${SHADOWED_FROM:-its end}, so later shells in this session" >&2
+    echo "[session-start]          still resolve ${CURRENT_NODE:-no node}." >&2
   fi
 else
   # Not fatal: a container that cannot switch can still install and test, just
