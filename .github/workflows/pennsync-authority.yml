@@ -320,26 +320,20 @@ jobs:
       # migrations behind because nothing looked.
       #
       # HOSTED_MEASUREMENT_REQUIRED governs what an ABSENT credential means,
-      # and nothing else. It is 'false' today because neither
-      # PENNSYNC_STAGING_DATABASE_URL nor SUPABASE_ACCESS_TOKEN is configured
-      # as a repository secret -- `hosted-gap` above has been skipping for that
-      # same reason since it was written, and the first main run after this job
-      # merged turned that standing gap into a red main. Flip it to 'true' in
-      # the same change that adds the secrets: that flip is what makes the
-      # check permanent, and it is the last thing stage A owes.
+      # and nothing else. Both PENNSYNC_STAGING_DATABASE_URL and
+      # SUPABASE_ACCESS_TOKEN are required repository secrets for this job.
+      # Keep the flag 'true' so removing either secret fails main rather than
+      # silently leaving the hosted staging store unmeasured.
       #
       # A credential that IS set and unusable is a different case and stays
-      # fatal either way, because that is the renamed-or-broken one the finding
-      # was about. And the flag never decides whether to RUN: present
-      # credentials are measured regardless, so this job starts working the
-      # moment the secrets land rather than waiting for somebody to remember
-      # the flip.
+      # fatal either way. The flag never decides whether to RUN: complete
+      # credentials are measured regardless of its value.
       - name: Measure the hosted staging store
         if: ${{ github.ref == 'refs/heads/main' }}
         env:
           PENNSYNC_HOSTED_DATABASE_URL: ${{ secrets.PENNSYNC_STAGING_DATABASE_URL }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          HOSTED_MEASUREMENT_REQUIRED: 'false'
+          HOSTED_MEASUREMENT_REQUIRED: 'true'
         run: |
           set -uo pipefail
           # `|| gate=$?` rather than a bare call: Actions runs this under
