@@ -220,3 +220,56 @@ test('the roster report takes no parameters, and its refusals are the contract\'
   assert.equal(response.status, 409);
   assert.equal((await response.json()).error, 'PENNSYNC_ROSTER_REPORT_FORBIDDEN');
 });
+
+/**
+ * The handout, whose port is PARTIAL: the document action is served and the
+ * email action is refused with the original's own code.
+ *
+ * D79 measured why that split was invisible. The port queue counted the whole
+ * capability `core_integration` because its module reaches `Core.SendEmail`,
+ * and never asked that the reach sits inside an `action === 'email'` branch
+ * the module's own release gate refuses before any work is done. So the half
+ * that needs no integration at all was counted as blocked on an owner
+ * decision. `pennsyncApiDocumentParity` proves the served half renders the
+ * original's page; these prove the refused half is refused.
+ */
+const handout = (params) => post(params, 'generatePatientHandout');
+const serveHandout = () => serve({ PENNSYNC_API_FUNCTIONS: 'generatePatientHandout' });
+
+test('the handout is registered, and serves the action that reaches no integration', async () => {
+  assert.ok(HANDLER_NAMES.includes('generatePatientHandout'));
+  const response = await serveHandout()(handout({ condition: 'chf', patientName: 'Jane Doe' }));
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.success, true);
+  assert.equal(body.result.filename, 'chf_handout.pdf');
+  assert.equal(typeof body.result.pdf, 'string');
+  // Really a PDF, not an empty string that would satisfy a typeof check.
+  assert.equal(Buffer.from(body.result.pdf, 'base64').subarray(0, 4).toString(), '%PDF');
+});
+
+test('the handout refuses the emailed action with the original\'s own code', async () => {
+  const response = await serveHandout()(handout({
+    condition: 'chf', patientName: 'Jane Doe', action: 'email', patientEmail: 'j@example.test',
+  }));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, 'OUTBOUND_DELIVERY_RELEASE_PAUSED');
+});
+
+test('the handout tells a caller which of the two things is wrong', async () => {
+  const serving = serveHandout();
+  // Order is the original's: a request to email with no address is a bad
+  // request whether or not delivery is released, and saying "paused" to it
+  // would send the caller to an owner decision over a typo.
+  for (const [params, status, error] of [
+    [{ patientName: 'J' }, 400, 'CONDITION_REQUIRED'],
+    [{ condition: 'not_a_condition' }, 400, 'INVALID_CONDITION'],
+    [{ condition: 'chf', action: 'email' }, 400, 'PATIENT_EMAIL_REQUIRED'],
+    [{ condition: 'chf', unexpected: 1 }, 400, 'INVALID_PARAMS'],
+  ]) {
+    const response = await serving(handout(params));
+    assert.equal(response.status, status, error);
+    assert.equal((await response.json()).error, error);
+  }
+});
+

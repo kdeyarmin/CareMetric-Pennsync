@@ -12,6 +12,9 @@ import {
 import {
   buildUserRoster, careScopeLabel, rosterFilename,
 } from '../../services/pennsync-api/document-user-roster.mjs';
+import {
+  HANDOUT_TEMPLATES, buildPatientHandout, handoutFilename, handoutStyle,
+} from '../../services/pennsync-api/document-patient-handout.mjs';
 
 /**
  * Drift guard for documents ported out of Base44.
@@ -54,9 +57,15 @@ function recorder() {
     addPage(...args) { pages.push({}); calls.push(['addPage', ...args]); },
     getNumberOfPages() { calls.push(['getNumberOfPages']); return pages.length - 1; },
     output(...args) { calls.push(['output', ...args]); return new ArrayBuffer(8); },
+    // The handout underlines a link and rules a subheading, so it measures
+    // text. Real jsPDF answers from font metrics the stub cannot have; both
+    // sides ask THIS surface, so they see one deterministic width and any
+    // divergence in what they measure still shows up as a differing call.
+    getTextWidth(text) { calls.push(['getTextWidth', text]); return String(text).length * 1.75; },
   };
   for (const name of ['setFillColor', 'rect', 'roundedRect', 'addImage', 'setTextColor',
-    'setFontSize', 'setFont', 'text', 'setLineWidth', 'setDrawColor', 'setPage']) {
+    'setFontSize', 'setFont', 'text', 'setLineWidth', 'setDrawColor', 'setPage',
+    'circle', 'line', 'textWithLink', 'setProperties']) {
     surface[name] = (...args) => { calls.push([name, ...args]); };
   }
   return surface;
@@ -66,13 +75,17 @@ function recorder() {
  * Transpile the Deno original, stub what it imports and reaches for, and return
  * its captured request handler.
  */
-async function loadOriginalHandler(entry, client = null) {
+async function loadOriginalHandler(entry, client = null, env = {}) {
   const source = await readFile(entry, 'utf8');
   assert.match(source, /Deno\.serve\(/, 'the original should register a Deno handler');
   const stripped = source.replace(/^import\s+\{[^}]*\}\s+from\s+'npm:[^']*';?\s*$/gm, '');
   assert.doesNotMatch(stripped, /from 'npm:/, 'every npm import should be stubbed');
-  const preamble = `const { createClientFromRequest, jsPDF, capture } = globalThis.__documentParity;\n`
-    + `const Deno = { serve: capture };\n`;
+  // `env` as well as `serve`: a module reading a release flag through
+  // `Deno.env.get` on a stub that has none throws, and an original with a
+  // catch-all error path answers 200 with a fallback document instead of the
+  // refusal it really gives. The gate then looks released when it is not.
+  const preamble = `const { createClientFromRequest, jsPDF, capture, env } = globalThis.__documentParity;\n`
+    + `const Deno = { serve: capture, env: { get: key => env[key] } };\n`;
   const js = transpileTs(preamble + stripped).outputText;
   const temporary = join(tmpdir(), `docparity_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
   await writeFile(temporary, js);
@@ -85,6 +98,7 @@ async function loadOriginalHandler(entry, client = null) {
       ?? (() => ({ auth: { me: async () => ({ id: 'u1', is_active: true }) } })),
     jsPDF: function jsPDF() { return globalThis.__documentParity.surface; },
     capture: (fn) => { handler = fn; },
+    env,
     surface: null,
   };
   try {
@@ -95,7 +109,7 @@ async function loadOriginalHandler(entry, client = null) {
 }
 
 /** Run the original, with the logo fetch either succeeding or failing. */
-async function runOriginal(handler, { logo = false } = {}) {
+async function runOriginal(handler, { logo = false, body, status = 200 } = {}) {
   const surface = recorder();
   globalThis.__documentParity.surface = surface;
   const realFetch = globalThis.fetch;
@@ -105,9 +119,11 @@ async function runOriginal(handler, { logo = false } = {}) {
   };
   let response;
   try {
-    response = await handler(new Request('https://example.test/', { method: 'POST' }));
+    response = await handler(new Request('https://example.test/', body === undefined
+      ? { method: 'POST' }
+      : { method: 'POST', body: JSON.stringify(body), headers: { 'content-type': 'application/json' } }));
   } finally { globalThis.fetch = realFetch; }
-  assert.equal(response.status, 200);
+  assert.equal(response.status, status);
   return { calls: surface.calls, response };
 }
 
@@ -223,6 +239,116 @@ test('a document that cannot be dated is refused rather than stamped with today'
   }
   // The manual never read a clock, so it needs no day and invents none.
   assert.doesNotThrow(() => buildUserManual(recorder()));
+});
+
+/** The date the original stamped on the patient card, so the port is asked for the same one. */
+function preparedOn(calls) {
+  const index = calls.findIndex(call => call[0] === 'text' && call[1] === 'DATE PROVIDED');
+  assert.ok(index >= 0, 'the original should label the date on the patient card');
+  const stamped = calls.slice(index + 1).find(call => call[0] === 'text'
+    && /^[A-Z][a-z]+ \d{1,2}, \d{4}$/.test(String(call[1])));
+  assert.ok(stamped, 'the original should stamp a long-form date beside that label');
+  return String(stamped[1]);
+}
+
+/**
+ * The patient handout, which is the first document whose port is PARTIAL.
+ *
+ * Its `action === 'email'` branch reaches `Core.SendEmail` and is refused by
+ * the original's own release gate; the document action reaches no integration
+ * and is what the port serves. D79 found that distinction: the port queue's
+ * `core_integration` rule answers on the SHAPE of the call, so a send the
+ * module already refuses counted as a blocker for the whole capability.
+ *
+ * It is also the first that takes a REQUEST rather than rendering one fixed
+ * page, so the cases below vary the condition, the style and the caller's
+ * section choices — a port that ignored any of them would render the same
+ * document for every request and a single case would not notice.
+ */
+const HANDOUT_REQUESTS = [
+  { what: 'the default style', body: { condition: 'chf', patientName: 'Jane Doe' } },
+  { what: 'a chosen scheme, font and layout',
+    body: { condition: 'copd', patientName: 'John Roe',
+      styleOptions: { colorScheme: 'serene_green', fontFamily: 'times', layout: 'large_print',
+        agencyName: 'Penn Home Health', agencyPhone: '555-0100', customFooter: 'Call us anytime.' } } },
+  { what: 'the nurse\'s own notes', body: { condition: 'diabetes', patientName: 'Ann Poe',
+    customNotes: 'Check feet every morning and call if anything looks different.' } },
+  { what: 'a caller who dropped a section and some bullets',
+    body: { condition: 'wound_care', patientName: 'Sam Loe', selectedSections: null } },
+];
+
+for (const request of HANDOUT_REQUESTS) {
+  test(`generatePatientHandout renders ${request.what} call for call`, async () => {
+    const handler = await loadOriginalHandler(
+      new URL('../functions/generatePatientHandout/entry.ts', import.meta.url));
+    const { calls, response } = await runOriginal(handler, { body: request.body });
+    // This original answered with JSON carrying base64, so the port does too.
+    const answer = await response.json();
+    assert.equal(answer.success, true);
+    assert.equal(answer.filename, handoutFilename(request.body.condition));
+    assert.equal(typeof answer.pdf, 'string');
+
+    const original = drawn(calls);
+    const surface = recorder();
+    buildPatientHandout(surface, {
+      ...request.body, style: handoutStyle(request.body.styleOptions),
+    }, { preparedOn: preparedOn(original) });
+    assert.deepEqual(surface.calls, original);
+    // A document that drew nothing would pass a naive comparison.
+    assert.ok(original.length > 200, 'the original should have drawn a real handout');
+  });
+}
+
+test('every condition the original offers is carried, with its own content', async () => {
+  const handler = await loadOriginalHandler(
+    new URL('../functions/generatePatientHandout/entry.ts', import.meta.url));
+  // The conditions are read from the ORIGINAL rather than listed here, so a
+  // condition added or renamed upstream fails this instead of silently
+  // rendering nothing for a patient whose nurse picked it.
+  const source = await readFile(
+    new URL('../functions/generatePatientHandout/entry.ts', import.meta.url), 'utf8');
+  const block = source.slice(source.indexOf('const handoutTemplates = {'));
+  const conditions = [...block.matchAll(/^ {2}'([a-z_]+)': \{$/gm)].map(match => match[1]);
+  assert.ok(conditions.length >= 20, 'the original should offer its conditions');
+  assert.deepEqual(Object.keys(HANDOUT_TEMPLATES), conditions);
+
+  // And each really renders its own words rather than a shared template.
+  const seen = new Set();
+  for (const condition of conditions) {
+    const { calls } = await runOriginal(handler, { body: { condition, patientName: 'P' } });
+    const original = drawn(calls);
+    const surface = recorder();
+    buildPatientHandout(surface, { condition, patientName: 'P', style: handoutStyle() },
+      { preparedOn: preparedOn(original) });
+    assert.deepEqual(surface.calls, original, `${condition} drifted`);
+    const title = HANDOUT_TEMPLATES[condition].title;
+    assert.equal(seen.has(title), false, `${condition} repeats another condition's title`);
+    seen.add(title);
+  }
+});
+
+test('the handout refuses to invent the date it tells a patient the guide was prepared', () => {
+  for (const value of [undefined, null, '', 0, new Date()]) {
+    assert.throws(() => buildPatientHandout(recorder(),
+      { condition: 'chf', style: handoutStyle() }, { preparedOn: value }), TypeError);
+  }
+});
+
+test('the send the original already refuses is refused, not carried', async () => {
+  const handler = await loadOriginalHandler(
+    new URL('../functions/generatePatientHandout/entry.ts', import.meta.url));
+  // The ORIGINAL's own answer, with the release flag unset as it is everywhere
+  // today. The port refuses with this code rather than inventing one, so the
+  // refusal a caller already handles keeps working.
+  const { response } = await runOriginal(handler,
+    { body: { condition: 'chf', patientName: 'Jane', action: 'email', patientEmail: 'j@example.test' },
+      status: 503 });
+  const answer = await response.json();
+  assert.equal(answer.code, 'OUTBOUND_DELIVERY_RELEASE_PAUSED');
+  assert.equal(answer.channel, 'email');
+  // And it refuses BEFORE rendering, which is why the document half could be
+  // ported without touching the send at all.
+  assert.equal(answer.retryable, false);
 });
 
 /**

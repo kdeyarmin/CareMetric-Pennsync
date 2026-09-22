@@ -186,12 +186,20 @@ test('a module whose only entity is the retired trail is re-classified by what e
     discoverEvidence(repository),
   );
   for (const [name, blocker] of [['mergePDFs', 'files'], ['reorderDeletePDFPages', 'files'],
-    ['generatePatientHandout', 'core_integration'],
     ['transcribeAudioWithWhisper', 'external_secret']]) {
     assert.ok(report.port_blockers[blocker].includes(name),
       `${name} should wait on ${blocker}`);
     assert.equal(report.port_blockers.records_schema.includes(name), false);
   }
+  // The fourth is asserted on the REFINEMENT rather than on the queue, and the
+  // difference is the point. Its verdict is still `core_integration` — its
+  // only entity is the retired trail, so what is left to wait on is the send —
+  // while the queue counts it `none`, because `checkCoverage` sends a ported
+  // capability there without consulting `refine` at all. Both are right: the
+  // send is paused and the half that does not need it is written.
+  assert.equal(entityFree.generatePatientHandout, 'core_integration');
+  assert.ok(report.port_blockers.none.includes('generatePatientHandout'));
+  assert.equal(report.port_blockers.records_schema.includes('generatePatientHandout'), false);
 });
 
 test('inertness is read from what the module can do, not from its wording', () => {
@@ -741,6 +749,14 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // corrections before it, this one moved a capability from blocked to
   // startable rather than renaming its bucket — and it was written the same
   // day. → 71 → 72 written.
+  //
+  // D79 then found a NINTH of the shape and it moved the same way: the
+  // `core_integration` rule answers on the shape of the call and never asked
+  // whether the call sits on a path the module already refuses.
+  // `generatePatientHandout` does, so only its email half was ever blocked;
+  // its document half was startable and is now written. → 72 → 73 written,
+  // and `core_integration` 3 → 2. That bucket is now exactly the two
+  // capabilities whose every success answer is the send's own.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
@@ -748,8 +764,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 8, patient_access_model: 0,
-    records_schema: 0, files: 12, ported_function: 0, core_integration: 3, pdf_rendering: 0,
-    external_secret: 2, none: 72 });
+    records_schema: 0, files: 12, ported_function: 0, core_integration: 2, pdf_rendering: 0,
+    external_secret: 2, none: 73 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -859,10 +875,21 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // `Core.SendEmail`, which no entity family can be the replacement for. The
   // function-side ceiling caught that, and `SendEmail` is not in the runtime's
   // brokered set, so it is a real blocker rather than a bookkeeping artefact.
-  // `generatePatientHandout` joins it by the refinement above: its only entity
-  // is `SystemLog`, so what it waits on is the send rather than the store.
+  // `generatePatientHandout` was the third here and has LEFT by being written,
+  // which is the one exit the other two cannot take. D79 measured why: the
+  // refinement put it here because its only entity is `SystemLog`, and the
+  // bucket then read as "waiting on the send" — true of its `action ===
+  // 'email'` branch and of nothing else in the module. Its document action
+  // reaches no integration, answers with a PDF, and is now served by
+  // `services/pennsync-api`, so the capability is a PARTIAL port and the
+  // paused half is refused with the original's own code.
+  //
+  // The two left are the ones the bucket has always been right about: every
+  // success answer either can give IS the send's own confirmation, so there is
+  // no half of them to write. They leave when `Core.SendEmail` is brokered,
+  // which is an owner decision and not a build.
   assert.deepEqual(report.port_blockers.core_integration,
-    ['generatePatientHandout', 'sendAccountReadyEmail', 'sendWelcomeEmail']);
+    ['sendAccountReadyEmail', 'sendWelcomeEmail']);
   // Named, because porting one of these verbatim would carry Base44's storage
   // host into the service, and the `cmfile:` handles that replace those URLs do
   // not exist yet. They wait on the file layer, not on the runtime.
@@ -892,7 +919,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
       'extractClinicalEvents',
       'extractReferralDataForSmartNote',
       'generateBagTechniquePDF', 'generateFollowUpTasks',
-      'generatePatientChartPDF', 'generateReferralTasks', 'generateSmartNoteGuide',
+      'generatePatientChartPDF', 'generatePatientHandout',
+      'generateReferralTasks', 'generateSmartNoteGuide',
       'generateUserGuidePDF', 'generateUserManual', 'generateUserRosterPDF',
       'getAiContentAgreementStatus', 'getApprovedTimeOff',
       'getAuthorizedDocument', 'getAuthorizedPatient',
@@ -1033,7 +1061,8 @@ test('what `core_integration` blocks is measured per module, not assumed from th
   // render a PDF in the ported service, its only entity is a retired log table
   // D25 gives a successor, and the email action is the owner decision the six
   // paused-delivery ports already record as paused. It is WORK, not a
-  // decision — which is what `core_integration: 3` reads as denying.
+  // decision — which is what `core_integration` counting it read as denying.
+  // It is counted `none` now, on the port rather than on a reclassification.
   for (const sibling of ['generateBagTechniquePDF', 'generateUserRosterPDF', 'generatePatientChartPDF',
     'generateUserManual', 'generateSmartNoteGuide', 'generateUserGuidePDF']) {
     assert.ok(discoverPortedFunctions(repository).includes(sibling), `${sibling} is the PDF precedent`);

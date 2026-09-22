@@ -62,6 +62,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   analyzeReferralPriority: 'json',
   generateBagTechniquePDF: 'binary',
   generatePatientChartPDF: 'json',
+  generatePatientHandout: 'json',
   generateReferralTasks: 'json',
   generateSmartNoteGuide: 'json',
   generateUserGuidePDF: 'binary',

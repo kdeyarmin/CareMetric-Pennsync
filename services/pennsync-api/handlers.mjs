@@ -37,6 +37,9 @@ import {
 import {
   ROSTER_FORMAT, buildUserRoster, rosterFilename,
 } from './document-user-roster.mjs';
+import {
+  HANDOUT_TEMPLATES, buildPatientHandout, handoutDate, handoutFilename, handoutStyle,
+} from './document-patient-handout.mjs';
 import { analyzeReferralPriority as runReferralPriority } from './referral-priority.mjs';
 import { analyzeReferralIntake as runReferralIntake } from './referral-intake.mjs';
 import { generateReferralTasks as runReferralTasks } from './referral-tasks.mjs';
@@ -148,6 +151,26 @@ async function pdfResponse(build, filename, config) {
  */
 async function pdfBase64Response(build, filename, config) {
   return { pdf: Buffer.from(await renderDocument(build, config)).toString('base64'), filename };
+}
+
+/**
+ * Renders a patient handout, which unlike the other ported documents takes a
+ * request: a condition, who it is for, which sections were kept and the nurse's
+ * own notes. The date on the patient card is supplied here for the reason
+ * `document-patient-handout.mjs` gives -- the original called `new Date()`
+ * mid-render, so the same request produced a different document either side of
+ * midnight.
+ */
+async function renderHandout(request, config) {
+  const { jsPDF } = await import('jspdf');
+  const body = buildPatientHandout(new jsPDF(), {
+    ...request, style: handoutStyle(request.styleOptions),
+  }, {
+    logoDataUrl: config?.documentLogoDataUrl || null,
+    preparedOn: handoutDate(),
+  }).output('arraybuffer');
+  return { pdf: Buffer.from(body).toString('base64'),
+    filename: handoutFilename(request.condition) };
 }
 
 export const HANDLERS = Object.freeze({
@@ -879,6 +902,41 @@ export const HANDLERS = Object.freeze({
     handle({ params, config }) {
       exactObject(params, [], 'INVALID_PARAMS');
       return pdfResponse(buildBagTechniqueChecklist, BAG_TECHNIQUE_FILENAME, config);
+    },
+  }),
+  // The PARTIAL port D79 found. Its `action === 'email'` branch reaches
+  // `Core.SendEmail` and is refused here exactly as the original refuses it --
+  // that module's own `outboundDeliveryGate` returns 503 before any work when
+  // the release flag is unset, so the send is paused at source and this is the
+  // port of that refusal rather than a new one. The document action reaches no
+  // integration at all, and it is what this handler serves.
+  //
+  // Releasing the send is the owner decision D56 records for `Core.SendEmail`;
+  // until it is taken, a caller asking to email gets the original's own code.
+  generatePatientHandout: Object.freeze({
+    // Not a binary handler: this original answered with JSON carrying base64.
+    handle({ params, config }) {
+      // `readingLevel` and `format` are ACCEPTED AND IGNORED, which is what the
+      // original does with them: it destructures neither. They are here because
+      // `src/pages/PatientEducationHub.jsx` sends both on every call, and the
+      // SPA is shared between the two backends -- D58's rule, that a request
+      // shape is decided by the call site rather than by what reads it. An
+      // `exactObject` list built from the original's destructuring alone would
+      // refuse every handout the product actually asks for.
+      exactObject(params, ['condition', 'patientName', 'patientEmail', 'action',
+        'selectedSections', 'customNotes', 'styleOptions',
+        'readingLevel', 'format'], 'INVALID_PARAMS');
+      const { condition, patientName, patientEmail, action, selectedSections,
+        customNotes, styleOptions } = params ?? {};
+      if (!condition) fail(400, 'CONDITION_REQUIRED');
+      if (!HANDOUT_TEMPLATES[condition]) fail(400, 'INVALID_CONDITION');
+      // Order matters and is the original's: a request to email with no
+      // address is a bad request whether or not delivery is released, so the
+      // caller is told which of the two is wrong.
+      if (action === 'email' && !patientEmail) fail(400, 'PATIENT_EMAIL_REQUIRED');
+      if (action === 'email') fail(503, 'OUTBOUND_DELIVERY_RELEASE_PAUSED');
+      return renderHandout({ condition, patientName, selectedSections, customNotes,
+        styleOptions }, config);
     },
   }),
   generateSmartNoteGuide: Object.freeze({

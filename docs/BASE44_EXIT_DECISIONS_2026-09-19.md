@@ -5276,3 +5276,73 @@ change that cites it.
 Port queue: unchanged at 7 / 8 / 0 / 0 / 12 / 0 / 3 / 0 / 2 / 72 — and one of
 the three in `core_integration` is a partial port waiting to be written rather
 than a capability waiting on the runtime.
+
+## D80 — The partial port D79 found, written
+
+D79's ninth correction said `generatePatientHandout` was startable and that the
+port queue was counting the whole capability blocked on a decision that governs
+half of it. This writes that half.
+
+**What was actually blocked.** The module has two actions. `action === 'email'`
+reaches `Core.SendEmail`, which is the owner decision D56 records — and the
+module's own `outboundDeliveryGate` already refuses it, 503
+`OUTBOUND_DELIVERY_RELEASE_PAUSED`, eleven lines after the request is parsed and
+before any work is done. The document action reaches no integration at all,
+answers with a rendered PDF, and had nothing to wait for. The queue's rule is
+`/\.\s*integrations\s*\./`, it answers on the SHAPE of the call, and nothing
+asked whether the call sits on a path the module itself already refuses.
+
+So the port is PARTIAL in the shape D31, D35, D36, D59 and D73 already ship: the
+document action is served, and the email action is refused **with the original's
+own code** rather than a new one, so a caller that already handles that refusal
+keeps working. Releasing the send is still the owner's.
+
+| | Reaches an integration? | In the port |
+| --- | --- | --- |
+| `action === 'email'` | `Core.SendEmail` | refused, 503, the original's code |
+| document (default) | no | served |
+
+**Three things are not carried, and two have precedent.** The logo is supplied
+rather than fetched from Base44's storage bucket, and the date on the patient
+card is supplied rather than read from a clock mid-render — `documents.mjs`
+already says why for `generateBagTechniquePDF` and `generateSmartNoteGuide`, and
+this is the same fix. The third is new: the original answers `success: true`
+with a generic "contact your nurse" document when its own render throws, and
+carries the diagnostics into `SystemLog`, a D25 retired table. **A fallback that
+reports success turns a render defect into a handout the patient cannot use and
+the nurse is never told about**, so a render failure is a refusal here. Its
+`diagnostics` field goes with it; the education hub reads neither.
+
+**The defect this port nearly shipped is the one worth keeping.** The original
+destructures seven keys and ignores anything else.
+`src/pages/PatientEducationHub.jsx` sends nine — `readingLevel` and `format`
+besides — and the port validates with `exactObject`, which **refuses** an
+unknown key. A list built from the original's destructuring alone would have
+been correct about the original and would have refused every handout the
+product actually asks for. **A request shape is decided by the call site, not by
+what reads it** — D58's rule, which said the same thing about a body whose keys
+stay camelCase because the shared SPA sends them. The test reads both the page's
+payload literal and the original's destructuring, so a key added in either fails
+the build instead of failing a nurse.
+
+It lives in `base44/functionTests/` rather than beside the handler because D60
+forbids a test in `services/pennsync-api` from reading a file outside that
+directory — the first draft of it broke that rule and the guard caught it.
+
+**Parity is proved on the drawing calls, for every condition.** The original is
+transpiled and run, both sides draw on one recording surface, and all twenty
+conditions are compared call for call with their titles required to differ, so a
+port rendering one shared template for every condition fails. The conditions are
+read from the original rather than listed in the test. Proved by sabotage: a
+coordinate moved 1mm, a line of clinical content altered, and the email refusal
+removed each fail.
+
+That harness had a hole this found. Its Deno stub supplied `serve` and not
+`env`, so `outboundDeliveryReleased()` threw, the original's catch-all answered
+200 with the fallback document, and **the paused gate looked released**. A
+release flag read through a stub that has none is indistinguishable from a
+release. It supplies `env` now.
+
+Port queue: `core_integration` 3 → **2**, `none` 72 → **73**. The two left are
+the ones the bucket has always been right about — every success answer either
+can give is the send's own confirmation, so there is no half of them to write.

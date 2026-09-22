@@ -821,3 +821,47 @@ test('the state-reportable report text is the original s template', async () => 
   assert.equal(/Core\.SendEmail|createAuthorizedDocument/.test(sql), false,
     'neither is reached from the contract');
 });
+
+/**
+ * The handout's request shape is decided by its CALL SITE, not by what reads it.
+ *
+ * `generatePatientHandout`'s original destructures seven keys and ignores
+ * everything else, so `readingLevel` and `format` -- which the education hub
+ * sends on every call -- fall on the floor there. The port validates with
+ * `exactObject`, which refuses an unknown key, so a list built from the
+ * original's destructuring alone would have refused every handout the product
+ * actually asks for. D58 records the same trap from the other side.
+ *
+ * This lives here rather than beside the handler because a test inside
+ * `services/pennsync-api` may not read a file outside it (D60): the Dockerfile
+ * copies that directory as the whole build context.
+ */
+test('the handout accepts every key the education hub sends, including the two ignored', async () => {
+  const root = resolve(dirname(fileURLToPath(import.meta.url)), '../..');
+  const page = await readFile(resolve(root, 'src/pages/PatientEducationHub.jsx'), 'utf8');
+  const block = page.slice(page.indexOf('const payload = {'));
+  const sent = [...block.slice(0, block.indexOf('};')).matchAll(/^\s{8}([A-Za-z]+)[,:]/gm)]
+    .map(match => match[1]);
+  assert.ok(sent.length >= 7, 'the page should still build a payload literal');
+  for (const ignored of ['readingLevel', 'format']) {
+    assert.ok(sent.includes(ignored), `the page no longer sends ${ignored}`);
+  }
+
+  // The original really does ignore them: they are absent from its destructuring.
+  const original = await readFile(
+    resolve(root, 'base44/functions/generatePatientHandout/entry.ts'), 'utf8');
+  const destructured = original.match(/const \{([^}]*)\} = body;/);
+  assert.ok(destructured, 'the original should destructure its request');
+  for (const ignored of ['readingLevel', 'format']) {
+    assert.equal(destructured[1].includes(ignored), false,
+      `${ignored} is read by the original after all`);
+  }
+
+  // And the port accepts each one the page sends.
+  const handlers = await readFile(resolve(root, 'services/pennsync-api/handlers.mjs'), 'utf8');
+  const registered = handlers.slice(handlers.indexOf('generatePatientHandout: Object.freeze({'));
+  const allowed = registered.slice(0, registered.indexOf('INVALID_PARAMS'));
+  for (const key of sent) {
+    assert.ok(allowed.includes(`'${key}'`), `the port would refuse ${key}, which the page sends`);
+  }
+});

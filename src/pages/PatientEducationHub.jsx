@@ -234,7 +234,14 @@ export default function PatientEducationHub() {
     }
   }, [requestedTab, activeTab, setSearchParams]);
 
-  const { data: patients = [] } = useScopedPatients({ purpose: 'education_delivery', sort: '-updated_date', limit: 2000 });
+  const { data: patients = [], tenantScope } = useScopedPatients({ purpose: 'education_delivery', sort: '-updated_date', limit: 2000 });
+  // The ported service serves a capability against a current agency membership.
+  // Named here when the scope has settled, and OMITTED rather than sent as null
+  // when it has not: `portedCall` falls back to the bound tenant only for an
+  // ABSENT key, and answers an explicit `agency_id: null` with
+  // STAGING_TENANT_SELECTION_REQUIRED. Spreading a possibly-null value would
+  // refuse every handout taken before the scope resolves.
+  const handoutAgencyId = tenantScope?.agency_id ?? null;
 
   const selectedPatient = patients.find(p => p.id === patientId);
 
@@ -286,7 +293,8 @@ export default function PatientEducationHub() {
         styleOptions: styleOptions
       };
 
-      const response = await base44.functions.invoke('generatePatientHandout', payload);
+      const response = await base44.functions.invoke('generatePatientHandout',
+        handoutAgencyId ? { ...payload, agency_id: handoutAgencyId } : payload);
 
       // Handle axios response wrapper - check multiple levels
       let data = response;
@@ -368,6 +376,7 @@ export default function PatientEducationHub() {
     
     try {
       const response = await base44.functions.invoke('generatePatientHandout', {
+        ...(handoutAgencyId ? { agency_id: handoutAgencyId } : {}),
         condition: selectedTopic.id,
         patientName: selectedPatient ? `${selectedPatient.first_name} ${selectedPatient.last_name}` : null,
         patientEmail,
