@@ -397,10 +397,27 @@ expression they have to evaluate. So the measuring step is `if:` main with the
 secrets, and a second step with no secrets at all runs the suite everywhere
 else, which is what keeps it exercised on a pull request.
 
-**Exit:** every committed migration applied to one real hosted project — **done**;
-the structural suites green there and running in CI — **done**; the row-behaviour
-suites green there — **blocked on stage C**, which is where the identities come
-from.
+**Exit**, as four claims rather than three, because two of them were being
+carried by one "done" that was half true:
+
+1. every committed migration applied to one real hosted project — **done**
+   (59 applied, 68 recorded, pin on staging);
+2. the structural suites green against that project — **done**, 15 tests, run
+   against `caremetric-pennsync-staging` itself;
+3. those suites RUNNING IN CI — **not done**. The `hosted-store` job exists and
+   its gate is tested, but neither `PENNSYNC_STAGING_DATABASE_URL` nor
+   `SUPABASE_ACCESS_TOKEN` is configured, so on main the job stands down and
+   measures nothing. It becomes done when an owner adds both secrets and sets
+   `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change — the flag is what
+   stops it ever silently standing down again;
+4. the row-behaviour suites green there — **blocked on stage C**, which is where
+   the identities come from.
+
+**Stage A is therefore still open, and 3 is the only part of it anyone can close
+from outside the repository.** Do not read 1 and 2 as the stage: a store that is
+measured once by hand and never again in CI is the state this whole stage was
+written to end, and stage B should not start against a hosted project whose
+drift nothing is watching.
 
 ### Stage B — Deploy `services/pennsync-api`, paused (size S; owner creates the service)
 
@@ -740,7 +757,8 @@ so none of it sits waiting on a misunderstanding:
 
 | Needed | For | Note |
 | --- | --- | --- |
-| ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green; what the stage's exit still lacks is the row-behaviour half, which needs identities and so moved to stage C |
+| ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. The stage's exit still lacks TWO things: the job actually measuring in CI, which needs the secrets below, and the row-behaviour half, which needs identities and so moved to stage C |
+| Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change | Stage A | Neither is configured today, so the `hosted-store` job stands down on main and the committed store's drift is watched by nobody. The suite is written and green against the real project; this is the only thing between it and running on every push to main. The flag is what makes the check permanent — without it a renamed secret would go back to standing down quietly |
 | Create the `pennsync-api` Railway service | Stage B | Cost approval; same project and pattern as the runtime |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this |
