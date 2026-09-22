@@ -2,9 +2,10 @@
 //
 // It is here because the check cost two CI re-runs: `Start fresh owned local
 // Auth and API` failed `LOCAL_PORT_ALREADY_IN_USE` on otherwise idle runners
-// and passed on the immediate re-run both times. A single bind cannot tell a
-// port something HOLDS from one a previous step has not finished releasing,
-// and only the second is transient.
+// and passed on the immediate re-run both times. A single bind collapses two
+// different situations into one refusal: a port another process is holding,
+// and a port that is simply not released yet. Only the second clears on its
+// own, and only the first should stop the stack.
 //
 // The third test is the one that matters: it fails against the single-bind
 // implementation this replaced. The second is what stops the fix from becoming

@@ -34,8 +34,11 @@ if [ -z "$NODE_VERSION" ]; then
   exit 1
 fi
 
-# nvm.sh reads unset variables and returns non-zero in places, so `-u` and `-e`
-# come off around it and go straight back on.
+# The PATH the agent's own tool calls inherit, captured BEFORE nvm prepends
+# anything to it. The link further down has to land in a directory those shells
+# already search, and nvm's own bin directory is not one of them.
+INHERITED_PATH="$PATH"
+
 NVM_SH=""
 for candidate in "${NVM_DIR:-}/nvm.sh" /opt/nvm/nvm.sh "$HOME/.nvm/nvm.sh"; do
   if [ -s "$candidate" ]; then NVM_SH="$candidate"; break; fi
@@ -43,23 +46,69 @@ done
 
 if [ -n "$NVM_SH" ]; then
   echo "[session-start] Selecting Node $NODE_VERSION via nvm..." >&2
+  # nvm.sh reads unset variables and returns non-zero in places, so `-u` and
+  # `-e` come off around it -- but its EXIT STATUS is CAPTURED rather than
+  # dropped. Letting it fall on the floor is how an unavailable download ends
+  # with both installs running on the very engine this block exists to replace,
+  # reported as though it had worked.
+  nvm_status=0
   set +eu
   # shellcheck disable=SC1090
   . "$NVM_SH"
-  nvm install "$NODE_VERSION" >&2
-  nvm use "$NODE_VERSION" >&2
+  nvm install "$NODE_VERSION" >&2 || nvm_status=$?
+  if [ "$nvm_status" -eq 0 ]; then
+    nvm use "$NODE_VERSION" >&2 || nvm_status=$?
+  fi
   set -eu
+  if [ "$nvm_status" -ne 0 ]; then
+    echo "[session-start] nvm could not provide v$NODE_VERSION (status $nvm_status)." >&2
+  fi
+fi
+
+# ONE place decides whether the engine is right, whatever happened above,
+# because a zero status that left the wrong node on PATH is still the wrong
+# node. Ask the runtime rather than trusting the installer.
+if [ "$(node -v 2>/dev/null || true)" = "v$NODE_VERSION" ]; then
   NODE_BIN="$(dirname "$(command -v node)")"
   export PATH="$NODE_BIN:$PATH"
 
-  # The steps below run in THIS shell, but the agent's own tool calls are
-  # separate non-interactive shells that never source ~/.bashrc and inherit a
-  # PATH fixed at container start -- so a PATH export here reaches the installs
-  # and nothing else. Linking into the first writable directory already on that
-  # inherited PATH is what makes `node` mean $NODE_VERSION for the rest of the
-  # session too. Skipped silently if that directory does not exist.
-  LINK_DIR="$HOME/.local/bin"
-  if [ -d "$LINK_DIR" ]; then
+  # That export reaches this hook's own steps and nothing else: the agent's
+  # tool calls are separate non-interactive shells that never source ~/.bashrc
+  # and inherit a PATH fixed at container start. Linking into a directory that
+  # PATH ALREADY SEARCHES is what makes `node` mean $NODE_VERSION for the rest
+  # of the session -- so the directory is FOUND by walking the inherited PATH
+  # rather than assumed, because a link somewhere nobody searches is worse than
+  # no link at all: it reports success and changes nothing.
+  saved_ifs="$IFS"
+  IFS=:
+  # shellcheck disable=SC2086  # deliberate split on PATH's own separator
+  set -- $INHERITED_PATH
+  IFS="$saved_ifs"
+  # A user-owned directory is preferred when the inherited PATH actually
+  # contains one, so the links do not shadow a system binary in /usr/bin. Any
+  # writable entry will do if it does not, since a link nothing searches is the
+  # case this loop exists to avoid.
+  PREFERRED_LINK_DIR="$HOME/.local/bin"
+  LINK_DIR=""
+  FIRST_WRITABLE=""
+  for dir in "$@"; do
+    if [ -n "$dir" ] && [ "$dir" != "$NODE_BIN" ] && [ -d "$dir" ] && [ -w "$dir" ]; then
+      if [ "$dir" = "$PREFERRED_LINK_DIR" ]; then
+        LINK_DIR="$dir"
+        break
+      fi
+      if [ -z "$FIRST_WRITABLE" ]; then FIRST_WRITABLE="$dir"; fi
+    fi
+  done
+  if [ -z "$LINK_DIR" ]; then LINK_DIR="$FIRST_WRITABLE"; fi
+
+  if [ "$(PATH="$INHERITED_PATH" node -v 2>/dev/null || true)" = "v$NODE_VERSION" ]; then
+    # Ask the question that actually matters -- do the agent's own shells
+    # already get the pinned engine? -- rather than comparing directories. A
+    # previous run of this hook, or a container that ships the pin, lands here,
+    # and linking again would only scatter symlinks through another directory.
+    echo "[session-start] Inherited PATH already resolves v$NODE_VERSION." >&2
+  elif [ -n "$LINK_DIR" ]; then
     # An `&&` list, not an `if`, would end the hook here under `set -e` the
     # moment one of these four is absent -- the same shape that broke the
     # hosted-store step twice.
@@ -69,16 +118,15 @@ if [ -n "$NVM_SH" ]; then
       fi
     done
     echo "[session-start] Linked node/npm/npx/corepack into $LINK_DIR." >&2
+  else
+    echo "[session-start] WARNING: no writable directory on the inherited PATH, so" >&2
+    echo "[session-start]          later shells in this session still resolve" >&2
+    echo "[session-start]          $(PATH="$INHERITED_PATH" command -v node 2>/dev/null || echo 'no node')." >&2
   fi
-elif [ "$(node -v 2>/dev/null || true)" = "v$NODE_VERSION" ]; then
-  # No nvm, but the container already ships the pinned version. Nothing is
-  # wrong, so say nothing alarming: a warning that fires when the state is
-  # correct is how people learn to skip warnings.
-  echo "[session-start] nvm not found, and node is already v$NODE_VERSION." >&2
 else
-  # Not fatal: a container without nvm can still install and test, just on the
-  # wrong engine. Say so loudly rather than failing the session.
-  echo "[session-start] WARNING: nvm not found; staying on $(node -v 2>/dev/null || echo 'unknown node')," >&2
+  # Not fatal: a container that cannot switch can still install and test, just
+  # on the wrong engine. Say so loudly rather than failing the session.
+  echo "[session-start] WARNING: running on $(node -v 2>/dev/null || echo 'unknown node')," >&2
   echo "[session-start]          but this repository pins v$NODE_VERSION." >&2
 fi
 echo "[session-start] Node: $(node -v 2>/dev/null || echo unavailable)" >&2
