@@ -55,8 +55,9 @@ parties"**. The app collects account data and clinical data, and sends data to
 model and telecom providers. An inaccurate Data Safety declaration is a Play
 policy violation that can lead to enforcement against the listing.
 
-**Fix:** Play Console → *App content* → *Data safety*. This is a form, not a
-release: it needs no signing key and no new binary, so it is not blocked by
+**Fix:** Play Console → *App content* → *Data safety*, using the drafted
+answers in [PLAY_DATA_SAFETY_DRAFT_2026-09-22.md](PLAY_DATA_SAFETY_DRAFT_2026-09-22.md).
+This is a form, not a release: it needs no signing key and no new binary, so it is not blocked by
 anything else in this runbook. It was first recorded as wrong on 2026-09-04 and
 is still wrong today.
 
