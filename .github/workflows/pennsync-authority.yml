@@ -339,7 +339,7 @@ jobs:
         env:
           PENNSYNC_HOSTED_DATABASE_URL: ${{ secrets.PENNSYNC_STAGING_DATABASE_URL }}
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          HOSTED_MEASUREMENT_REQUIRED: 'false'
+          HOSTED_MEASUREMENT_REQUIRED: 'true'
         run: |
           set -uo pipefail
           # `|| gate=$?` rather than a bare call: Actions runs this under
