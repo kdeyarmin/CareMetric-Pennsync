@@ -367,25 +367,30 @@ on main.
 
 **It turned main red on the first run after merge, and the reason is worth
 keeping.** Neither `PENNSYNC_STAGING_DATABASE_URL` nor `SUPABASE_ACCESS_TOKEN`
-is configured as a repository secret — `hosted-gap` has been skipping for that
-same reason since the day it was written, which is why nobody knew. A refusal
+was configured as a repository secret at the time — `hosted-gap` had been
+skipping for that same reason since the day it was written, which is why nobody
+knew. (Both were added on 2026-09-22; this paragraph records how the gap was
+found, not the current state.) A refusal
 written for "the credential broke" fired on "the credential was never added",
 and those are not the same event.
 
 `HOSTED_MEASUREMENT_REQUIRED` separates them, and it governs only what an
 ABSENT credential means:
 
-- absent and not required (today) — a `::notice` saying the store was not
-  measured, and a green job;
+- absent and not required (the state until 2026-09-22) — a `::notice` saying
+  the store was not measured, and a green job;
 - absent and required — a failure, which is the finding, intact;
 - set but unusable — a failure either way, because a target that is configured
   and broken is the renamed-or-expired case the finding was actually about;
 - set and usable — measured, whatever the flag says, so the job starts working
   the moment the secrets land rather than waiting for somebody to remember.
 
-**Adding those two secrets and flipping the flag to `true` in the same change
+~~**Adding those two secrets and flipping the flag to `true` in the same change
 is the last thing stage A owes**, and it is an owner action: the credentials
-cannot be added from the repository.
+cannot be added from the repository.~~ **Done 2026-09-22 in #237**, which added
+both repository secrets and set the flag in one change, as this paragraph asked.
+The bullets above describe the gate's design and are kept; only the "today" in
+the first of them has moved on.
 
 **The decision lives in `tools-pennsync-hosted-gate.mjs` rather than in the
 workflow, and that is the fourth version of it.** The first bound the
@@ -433,20 +438,22 @@ carried by one "done" that was half true:
    (59 applied, 68 recorded, pin on staging);
 2. the structural suites green against that project — **done**, 15 tests, run
    against `caremetric-pennsync-staging` itself;
-3. those suites RUNNING IN CI — **not done**. The `hosted-store` job exists and
-   its gate is tested, but neither `PENNSYNC_STAGING_DATABASE_URL` nor
-   `SUPABASE_ACCESS_TOKEN` is configured, so on main the job stands down and
-   measures nothing. It becomes done when an owner adds both secrets and sets
-   `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change — the flag is what
-   stops it ever silently standing down again;
+3. those suites RUNNING IN CI — ~~**not done**~~ **done 2026-09-22 (#237)**.
+   Both secrets are configured and `HOSTED_MEASUREMENT_REQUIRED` is `'true'`.
+   Proved from the job log rather than the tick: `PENNSYNC_HOSTED_DATABASE_URL`
+   and `SUPABASE_ACCESS_TOKEN` both masked as `***`, then 15 tests, 15 passed,
+   **0 skipped**, against `caremetric-pennsync-staging` itself. Note which half
+   of the gate carried it: the secrets landed BEFORE the flag was flipped, and
+   the measurement ran anyway, because `HOSTED_MEASUREMENT_REQUIRED` governs
+   only what an ABSENT credential means and a usable one is measured whatever
+   it says. The flag is what stops the job ever silently standing down again;
 4. the row-behaviour suites green there — **blocked on stage C**, which is where
    the identities come from.
 
-**Stage A is therefore still open, and 3 is the only part of it anyone can close
-from outside the repository.** Do not read 1 and 2 as the stage: a store that is
-measured once by hand and never again in CI is the state this whole stage was
-written to end, and stage B should not start against a hosted project whose
-drift nothing is watching.
+**Stage A is therefore open on 4 alone**, and 4 cannot be closed from outside
+stage C: a caller here is an `auth.users` row. Three of the four are done and
+the drift on the hosted project is now watched on every push to main, which is
+the condition stage B needed.
 
 ### Stage B — Deploy `services/pennsync-api`, paused (size S; owner creates the service)
 
@@ -859,7 +866,7 @@ misunderstanding:
 | Needed | For | Note |
 | --- | --- | --- |
 | ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. The stage's exit still lacks TWO things: the job actually measuring in CI, which needs the secrets below, and the row-behaviour half, which needs identities and so moved to stage C |
-| Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change | Stage A | Neither is configured today, so the `hosted-store` job stands down on main and the committed store's drift is watched by nobody. The suite is written and green against the real project; this is the only thing between it and running on every push to main. The flag is what makes the check permanent — without it a renamed secret would go back to standing down quietly |
+| ~~Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change~~ | Stage A | **Done 2026-09-22 (#237).** Both secrets are configured and the flag is `'true'`. The job log shows both masked and then 15 tests, 15 passed, 0 skipped against the real project — read from the log rather than from the green tick, which is what this gate exists to distrust. The committed store's drift is now watched on every push to main |
 | ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this |
