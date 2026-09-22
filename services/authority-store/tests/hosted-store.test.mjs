@@ -63,6 +63,19 @@ import { isManagementUrl, openManagementClient } from '../../../tools-pennsync-s
  * merely intends to be read-only is one careless edit from seeding the hosted
  * project, and this one runs in CI.
  *
+ * WHAT IT MAY IMPORT is a constraint rather than a preference, and
+ * `record-contract-postgres.test.mjs` records why: the CI job running this
+ * installs only `services/authority-store`'s own dependencies and does no root
+ * install, so a suite here dies at load — before a single assertion — if it
+ * reaches a root module with a third-party dependency of its own. PGlite is
+ * fine, because it is that package's own devDependency. The four root tools
+ * above are fine because they import nothing but node builtins and each other.
+ * `tools-entity-schema-plan.mjs` is NOT, because it imports `json5`, which is
+ * why `SCHEMA` is written out below rather than taken from it. `KNOWN_APPS`
+ * comes from the provisioner for the opposite reason: that one qualifies, so
+ * importing it beats copying a list that could drift from what a provision
+ * enforces.
+ *
  * Not in `pnpm test` — it needs a hosted project, the same reason
  * `record-contract-postgres.test.mjs` is not.
  * `.github/workflows/pennsync-authority.yml` is the list of record for the
@@ -78,14 +91,6 @@ const PRIVATE = 'pennsync_private';
  * Roles that must hold no way past a policy. `service_role` is deliberately
  * absent: it holds `BYPASSRLS` on every hosted project and is contained by the
  * grant model instead, which is its own test below.
- *
- * Every import above is a root module that pulls in nothing but node builtins,
- * and that is a constraint rather than a preference — `record-contract-postgres.test.mjs`
- * records why: this suite runs in a CI job that installs only
- * `services/authority-store`'s dependencies, so anything reaching
- * `tools-entity-schema-plan.mjs` fails at load, because that one imports `json5`.
- * The provisioner and the migrate tool qualify, so `KNOWN_APPS` is imported
- * rather than copied and cannot drift from the list a provision enforces.
  */
 const UNPRIVILEGED_ROLES = ['pennsync_records_owner', 'anon', 'authenticated'];
 

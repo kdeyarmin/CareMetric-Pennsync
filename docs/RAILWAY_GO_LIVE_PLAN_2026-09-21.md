@@ -271,7 +271,7 @@ where it is least diagnosable. It is asserted now.
   direction, and it asserts the platform facts above that no reference build
   can produce. It is read-only structurally rather than by intention: every
   statement is checked with the migrate tool's own `isReadOnly`, which fails
-  closed, before it is sent. 14 tests, green against hosted staging.
+  closed, before it is sent. 15 tests, green against hosted staging.
 - **The row-behaviour half cannot run hosted yet, and that is a finding rather
   than an omission.** `record-tenant-isolation`, `activity-audit` and the 42
   `contract-*` suites prove what a policy *means* by seeding callers, and a
