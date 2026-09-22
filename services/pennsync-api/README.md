@@ -5,10 +5,18 @@ destination named in
 [the exit decisions](../../docs/BASE44_EXIT_DECISIONS_2026-09-19.md) (D1) and
 classified per capability in `tools-transition-disposition.json`.
 
-This service is **not deployed**. It is source with a Dockerfile: no Railway
-service, domain, secret or traffic exists for it yet, and creating one needs
-its own cost approval. Nothing here migrates data or changes an existing
-release control.
+This service is **deployed and paused** as of 2026-09-22 (stage B of
+[the go-live plan](../../docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md)). It runs in
+the CareMetric Train Railway project at
+`pennsync-api-production.up.railway.app`, root `/services/pennsync-api`, its
+committed `Dockerfile`, healthcheck `/healthz`, configuration in service
+settings rather than a `railway.toml`.
+
+**No handler is released and no traffic reaches it.** `PENNSYNC_API_RELEASE`
+is unset and `PENNSYNC_API_FUNCTIONS` is empty, so `/readyz` answers 503 with
+`released:false` and every name is refused `PENNSYNC_API_NOT_RELEASED`.
+Releasing one is stage D and needs the real identities stage C creates.
+Nothing here migrates data or changes an existing release control.
 
 ## What it is
 
