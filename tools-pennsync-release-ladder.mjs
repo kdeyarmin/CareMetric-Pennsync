@@ -37,6 +37,11 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+// The ledger's own identity for a migration, imported rather than reproduced:
+// an operator checking a prerequisite queries `supabase_migrations.schema_migrations`,
+// whose `version` is the file's whole STEM, so printing the file name alone
+// gives them a string that matches nothing there.
+import { ledgerVersion } from './tools-pennsync-migrate.mjs';
 
 export const LADDER_CONTRACT = 'cm.pennsync.release-ladder.v1';
 
@@ -483,7 +488,142 @@ export function checkLadder(root) {
   return ladder;
 }
 
-function main(argv, root, write) {
+/**
+ * The other half of the same gap, from the other side. The startup gate cannot
+ * see the STORE, which is what the migrations above are for; the repository
+ * cannot see the DEPLOYMENT. A wave's value is derived from committed source,
+ * and the running service answers from the revision it was built at — so a
+ * wave naming a handler that revision does not implement is
+ * `INVALID_FUNCTION_RELEASE` at startup (`services/pennsync-api/runtime.mjs`),
+ * which is a crash loop rather than a refusal an operator can read.
+ *
+ * `/readyz` states both halves: `implemented` is that revision's registry and
+ * `operations` is what is released on it right now. So the comparison is
+ * arithmetic over a payload, and it is kept separate from fetching one so it
+ * can be tested without a network.
+ */
+export function readinessOf(payload, source) {
+  const strings = value => Array.isArray(value) && value.every(entry => typeof entry === 'string');
+  // Fail CLOSED on a payload this does not recognise. Treating an unreadable
+  // answer as "nothing missing" is the one outcome worse than not asking: it
+  // reports a wave safe against a deployment nobody measured.
+  if (!payload || typeof payload !== 'object'
+    || !strings(payload.implemented) || !strings(payload.operations)
+    || typeof payload.released !== 'boolean'
+    || typeof payload.authorityConfigured !== 'boolean'
+    || typeof payload.integrationsConfigured !== 'boolean'
+    || typeof payload.revision !== 'string') {
+    refuse('LADDER_DEPLOYMENT_UNREADABLE', { source, keys: payload && typeof payload === 'object' ? Object.keys(payload) : null });
+  }
+  // `appId`/`appStated` are read as OPTIONAL, and that is deliberate rather
+  // than lax: they were added to readiness after the running deployment was
+  // built, so demanding them would refuse exactly the revision this check
+  // exists to measure. Absent means unreported, never "fine" — the caller is
+  // told which, and a stated `false` is a blocker.
+  const appStated = typeof payload.appStated === 'boolean' ? payload.appStated : null;
+  return Object.freeze({
+    revision: payload.revision,
+    implemented: Object.freeze([...payload.implemented]),
+    operations: Object.freeze([...payload.operations]),
+    released: payload.released,
+    authorityConfigured: payload.authorityConfigured,
+    integrationsConfigured: payload.integrationsConfigured,
+    appId: typeof payload.appId === 'string' ? payload.appId : null,
+    appStated,
+  });
+}
+
+/**
+ * What setting this wave's value on that deployment would do. `missing` is the
+ * crash; `revokes` is the quieter one — the waves are cumulative, so a value
+ * that omits a name the service is serving today takes that capability away,
+ * and an operator pasting wave 2 over a deployment already at wave 4 would do
+ * it without being told.
+ */
+export function releaseDelta(names, readiness, wave) {
+  const implemented = new Set(readiness.implemented);
+  const asked = new Set(names);
+  const blockers = [];
+  // Both of these are startup throws in `loadConfig`/readiness, not per-call
+  // failures, so they belong in front of the operator rather than in a log.
+  if (!readiness.authorityConfigured) blockers.push('INCOMPLETE_AUTHORITY_CONFIGURATION');
+  if (wave.needsIntegration && !readiness.integrationsConfigured) blockers.push('INTEGRATIONS_NOT_CONFIGURED');
+  // Only a REPORTED default is a blocker. A revision that does not report the
+  // binding at all cannot be cleared here and says so instead.
+  if (readiness.appStated === false) blockers.push('IMPLICIT_APP_BINDING');
+  return Object.freeze({
+    revision: readiness.revision,
+    released: readiness.released,
+    missing: Object.freeze(names.filter(name => !implemented.has(name))),
+    revokes: Object.freeze(readiness.operations.filter(name => !asked.has(name))),
+    adds: Object.freeze(names.filter(name => !readiness.operations.includes(name))),
+    blockers: Object.freeze(blockers),
+  });
+}
+
+/**
+ * Read-only HTTP against a stated target, and https only: this prints a value
+ * an operator will paste into a release, so the answer it is derived from does
+ * not come over a channel anybody can rewrite. `/readyz` answers 503 while the
+ * gate is shut, which is the NORMAL state of a paused deployment and not an
+ * error — a first draft that accepted 200 alone refused every service this is
+ * for.
+ */
+export async function probeDeployment(target, fetchImpl = fetch) {
+  let base;
+  try { base = new URL(target); } catch { base = null; }
+  // A path is refused rather than normalised away: `new URL('/readyz', base)`
+  // discards it, so a target of `https://host/api` would be probed at
+  // `https://host/readyz` and the answer attributed to the wrong service.
+  if (!base || base.protocol !== 'https:' || base.pathname !== '/' || base.search || base.hash) {
+    refuse('LADDER_DEPLOYMENT_TARGET_INVALID', { target });
+  }
+  const url = new URL('/readyz', base).toString();
+  let response;
+  try {
+    response = await fetchImpl(url, { method: 'GET', headers: { accept: 'application/json' } });
+  } catch (failure) {
+    refuse('LADDER_DEPLOYMENT_UNREACHABLE', { url, reason: failure?.message ?? 'fetch failed' });
+  }
+  if (response.status !== 200 && response.status !== 503) {
+    refuse('LADDER_DEPLOYMENT_UNREACHABLE', { url, status: response.status });
+  }
+  let payload;
+  try { payload = await response.json(); } catch { refuse('LADDER_DEPLOYMENT_UNREADABLE', { source: url, keys: null }); }
+  return readinessOf(payload, url);
+}
+
+/**
+ * The `--deployment` half of `--wave`. Kept out of `main` so the reporting is
+ * one function over a readiness payload, and so the gate never reaches the
+ * network: `--summary` reads committed source and nothing else.
+ */
+export function reportDelta(names, readiness, wave, write) {
+  const delta = releaseDelta(names, readiness, wave);
+  write(`# deployment revision ${delta.revision}`
+    + `, release ${delta.released ? 'open' : 'paused'}`
+    + `, serving ${readiness.operations.length} of ${readiness.implemented.length} implemented`);
+  write(`# app binding: ${readiness.appStated === null
+    ? 'not reported by this revision, so it cannot be checked here'
+    : `${readiness.appId ?? 'unknown'} (${readiness.appStated ? 'stated' : 'DEFAULTED'})`}`);
+  if (delta.missing.length) {
+    write(`# REFUSED: this revision does not implement ${delta.missing.join(', ')}.`);
+    write('# Setting the value above would be INVALID_FUNCTION_RELEASE at startup,'
+      + ' which is a crash loop, not a refusal. Redeploy the service first.');
+  }
+  if (delta.revokes.length) {
+    write(`# REFUSED: this would stop serving ${delta.revokes.join(', ')},`
+      + ' which the deployment is serving now. The waves are cumulative;'
+      + ' this value is behind the deployment.');
+  }
+  for (const blocker of delta.blockers) write(`# REFUSED: ${blocker} — a release would throw this at startup.`);
+  if (!delta.missing.length && !delta.revokes.length && !delta.blockers.length) {
+    write(`# this revision implements every name above; the release adds ${delta.adds.length}.`);
+  }
+  return delta.missing.length || delta.revokes.length || delta.blockers.length ? 1 : 0;
+}
+
+async function main(argv, root, write) {
   const waveFlag = argv.indexOf('--wave');
   if (waveFlag >= 0) {
     const asked = argv[waveFlag + 1];
@@ -494,13 +634,19 @@ function main(argv, root, write) {
       return 1;
     }
     const cumulative = ladder.waves.slice(0, ladder.waves.indexOf(found) + 1);
+    const names = cumulative.flatMap(entry => entry.handlers);
     write(`# wave ${found.name}: ${found.reason}`);
-    write(`PENNSYNC_API_FUNCTIONS=${cumulative.flatMap(entry => entry.handlers).join(',')}`);
-    write(`# migrations this deployment must have applied:`);
+    write(`PENNSYNC_API_FUNCTIONS=${names.join(',')}`);
+    write('# migrations this deployment must have applied'
+      + ' (the ledger version is what `supabase_migrations.schema_migrations` holds):');
     for (const migration of [...new Set(cumulative.flatMap(entry => entry.migrations))].sort()) {
-      write(`#   ${migration}`);
+      write(`#   ${migration}  ->  version '${ledgerVersion(migration)}'`);
     }
     if (found.needsIntegration) write('# needs the integration runtime, which is deployed and paused.');
+    const target = argv[argv.indexOf('--deployment') + 1];
+    if (argv.includes('--deployment')) {
+      return reportDelta(names, await probeDeployment(target), found, write);
+    }
     return 0;
   }
   if (argv.includes('--summary')) {
@@ -522,7 +668,7 @@ function main(argv, root, write) {
 if (import.meta.url === `file://${process.argv[1]}`) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)));
   try {
-    process.exitCode = main(process.argv.slice(2), root, message => console.log(message));
+    process.exitCode = await main(process.argv.slice(2), root, message => console.log(message));
   } catch (failure) {
     console.error(JSON.stringify({
       error: failure?.code ?? 'LADDER_FAILED', detail: failure?.detail ?? null,

@@ -7,6 +7,7 @@ import { PGlite } from '@electric-sql/pglite';
 import { KNOWN_APPS, readMigrations } from '../../../tools-pennsync-provision.mjs';
 import { LOCAL_ONLY_MIGRATIONS, ledgerName } from '../../../tools-pennsync-migrate.mjs';
 import { isManagementUrl, openManagementClient } from '../../../tools-pennsync-supabase-db.mjs';
+import { ACTORS } from '../../authority-client/client.mjs';
 
 /**
  * The committed store, measured on the hosted project rather than on PGlite.
@@ -358,6 +359,27 @@ const CALLERS = `select jsonb_build_object(
 ) as callers`;
 
 /**
+ * The identities this project can actually address, under `actor()`'s OWN map
+ * predicate, returned as ids rather than counted.
+ *
+ * `services/authority-client/client.mjs` PINS four Base44 user ids, and the
+ * store is the authority on which identities exist: a pin naming one the store
+ * has revoked, or a live mapped identity the transport cannot address, is
+ * drift that nothing else in this repository would report. The comparison is
+ * two-way and deliberately VACUOUS when the project has no identities, because
+ * enrolment is the owner's and nothing merged may depend on these four accounts
+ * existing — deleting them must leave this suite green.
+ */
+const MAPPED_ACTORS = `select coalesce(jsonb_agg(i.base44_user_id order by i.base44_user_id), '[]'::jsonb) as ids
+  from ${PRIVATE}.identity_map i
+  join auth.users u on u.id = i.auth_user_id
+    and u.deleted_at is null and u.email_confirmed_at is not null
+    and u.email_confirmed_at <= clock_timestamp() and u.is_anonymous is false
+    and (u.banned_until is null or u.banned_until <= clock_timestamp())
+  where i.app_id = '${EXPECTED_APP}' and i.enabled and i.revoked_at is null
+    and i.expected_email = lower(u.email) and i.verified_at <= clock_timestamp()`;
+
+/**
  * The caller gate, asked of the hosted project with no caller to seed.
  *
  * This is the slice of the row-behaviour half that needs no session, and it is
@@ -414,7 +436,7 @@ const GATES = Object.freeze({
   mapped: GATE_MAPPED,
   anon: GATE_ANON,
 });
-const ALLOWED = Object.freeze(new Set([INVENTORY, ROLES, LEDGER, CALLERS, ...Object.values(GATES)]));
+const ALLOWED = Object.freeze(new Set([INVENTORY, ROLES, LEDGER, CALLERS, MAPPED_ACTORS, ...Object.values(GATES)]));
 
 /**
  * The target, and the reason a missing one skips rather than fails.
@@ -537,6 +559,7 @@ before(async () => {
       roles: only('the hosted roles', await client.query(ROLES)),
       ledger: only('the hosted ledger', await client.query(LEDGER)),
       callers: only('the hosted callers', await client.query(CALLERS)),
+      mappedActors: only('the hosted mapped actors', await client.query(MAPPED_ACTORS)),
     };
     for (const [name, sql] of Object.entries(GATES)) {
       gates[name] = await refusal(client, sql);
@@ -874,4 +897,30 @@ test('the row-behaviour prerequisites are counted rather than assumed', { skip }
   }
   assert.ok(callers.mapped <= callers.auth_users,
     'more identity_map rows matched than there are usable auth users');
+});
+
+test('the transport\'s pinned actors and the store\'s identities agree', { skip }, () => {
+  // Two-way, and vacuous on an empty project by construction: `pinned` is
+  // checked only where the store HAS a row, and `mapped` only where the store
+  // has one. So deleting the four staging accounts leaves this green, which is
+  // the property that has to hold — the owner withdrew their use on
+  // 2026-09-22 and nothing merged may depend on them.
+  // `only` unwraps the single aggregated column, so this IS the array.
+  const mapped = hosted.mappedActors;
+  assert.ok(Array.isArray(mapped), 'the hosted mapped actors were not read');
+  const pinned = new Set(ACTORS.values());
+
+  // A live mapped identity this transport cannot name is unreachable through
+  // it, which is the direction that would silently lose a caller.
+  const unaddressable = mapped.filter(id => !pinned.has(id));
+  assert.deepEqual(unaddressable, [],
+    'the hosted project maps identities the staging transport cannot address');
+
+  // And the other direction: a pin is allowed to name nothing (the account may
+  // never have been created, or may have been deleted), but if the store holds
+  // that identity at all it must be the live mapped one. A pin naming a row
+  // the map has revoked is a code constant outliving an authority decision.
+  assert.equal(new Set(mapped).size, mapped.length, 'the hosted map returned a duplicate id');
+  assert.ok(mapped.length <= pinned.size,
+    `the hosted project maps ${mapped.length} identities against ${pinned.size} pinned`);
 });
