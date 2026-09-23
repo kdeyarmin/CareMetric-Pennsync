@@ -5500,3 +5500,466 @@ patient's instructions.
 
 Port queue: 7 / 8 / 0 / 0 / 12 / 0 / **2** / 0 / 2 / **73**. What is left in
 `core_integration` is the two whose whole body is the send.
+
+## D82 — A person may say what is theirs to say, and the store decides which columns those are
+
+**Decision.** The profile-write path D23 left open is settled at the narrowest
+shape that works. `pennsync_records.user` gains **one** write policy — update,
+`id = caller_user_id()`, the same predicate in `using` and `with check` — and a
+`before update` trigger that raises `PENNSYNC_PROFILE_FIELD_NOT_SELF_WRITABLE`
+unless every column that changed is named in `PROFILE_SELF_WRITABLE`. There is
+no insert policy and no delete policy. So: your own row, a named set of columns,
+and nothing else — not for a manager, not for an administrator, not for the
+record owner, which forced RLS binds too.
+
+**Why this shape and not a wider one.** D23 wrote that the question was left
+open "so it would not be settled by accident". The two ways it could still be
+settled by accident are the two this refuses:
+
+- **A predicate alone.** RLS `with check` sees only the row being written; it
+  has no `old`. A policy can say whose row and cannot say which columns, so a
+  self-only update policy by itself lets a clinician set their own `role` to
+  `admin`. Column-level `grant update (…)` does not close it either — the broker
+  runs as the table's owner, and column privileges do not bind an owner the way
+  `force row level security` does. The comparison has to happen where `old` and
+  `new` both exist, which is a trigger.
+- **A denylist.** A list of columns nobody may write settles the question again
+  every time a column is added, in the permissive direction, silently. The
+  columns that get added to a staff table are job titles, approvals and scopes.
+  So the guard is an **allowlist**, driven off `to_jsonb(new)` rather than a
+  column list, and a column added tomorrow is refused until somebody names it.
+
+The narrow shape is also the one that can be widened later without a data
+migration: adding a column to the allowlist is a line in the generator.
+
+### What is on the list, and what is deliberately not
+
+Three kinds of column and nothing else: **preference** (bookmarks, language,
+notification and fax delivery settings), **own contact** (the numbers a person
+can be reached on), and **own presence and mark** (duty status, the off-duty
+message and its schedule, the saved signature).
+
+What is absent is absent by decision:
+
+- `role`, `account_type`, `agency_id`, `agency_name`, `agency_role`,
+  `staff_role`, `care_scope`, `is_manager`, `is_approved`, `is_active` and
+  `manager_email` are **authority**, and D23 already replaced every one of them
+  with the membership. A handler gating on the stored `is_manager` gates on the
+  user's own assertion; so would a person setting it.
+- `credentials`, `credential_type` and `license_number` are **attestations
+  somebody verifies**, and `contract_credential_review` is where that happens.
+- The `offboarded_*` trio is **the record of a decision taken about the person**.
+  A subject who could clear it would re-admit themselves.
+- `work_phone_number` and `twilio_phone_number_sid` are **one provisioned
+  pair**. Letting the subject rewrite half of it points the agency's own number
+  at a handset nobody assigned. `phone`, `phone_number` and `personal_cell_e164`
+  are on the list; these two are not, and the difference is who provisioned them.
+- `ai_content_agreement_accepted` and its two companions are **already
+  answered** by `contract_ai_agreement_accept` against its own attestation
+  table. Writing them here would be a second answer to keep in agreement with
+  the first — the defect D41, D43 and D62 each found in an original.
+
+No insert and no delete, for the same reason in two directions: a profile row
+exists because enrolment created it, and a person who could delete their own row
+would leave the roster while keeping the membership that authorizes them.
+
+### What it does to the queue: nothing, and that is the finding
+
+`entity_authorization` is eight before this decision and eight after it. A
+decision that settles the question a bucket was named for and moves no capability
+out of it is worth stating plainly rather than dressing up, because the reason is
+the useful part: **every one of the eight writes something this decision does not
+permit.** Six write a profile and two write a `global` reference table, which is
+D83's. Of the six:
+
+- `autoApproveInvitedUser` writes `is_approved` and `role` on somebody else's
+  row. `enforceStaffRoleIntegrity` writes `staff_role` on somebody else's.
+  `userManagement` and `userManagementV2` write whatever their `updates` object
+  holds, assembled behind an `isAdmin` gate. All four need the administrative
+  write path, which this decision does not build.
+- **`autoEndDutyDay` is the one worth reading twice.** Both columns it writes —
+  `duty_status`, `duty_on_since` — ARE on the allowlist, and it stays blocked
+  because it has no caller: it carries the `schedulerAuth` fence, and "the
+  caller's own row" admits a shared secret to nothing. A rule written over
+  columns alone would have reported a nightly sweep of every on-duty person in
+  the deployment as a self-service profile edit.
+- **`setNurseDutyStatus` is the one this decision actually reaches**, and it
+  stays in the bucket for a reason worth separating from the other five. Its own
+  gate already reads `let target = user` and requires `isProtectedSuperAdmin` to
+  name anybody else, and every column it touches is on the list — so the self
+  leg now has a shape in the store it can be written against, which it did not
+  have this morning. What keeps it here is that the module writes through
+  `asServiceRole` with a payload assembled elsewhere, so nothing can read it as
+  staying inside the narrowing. Porting it is therefore the D81 shape — the self
+  leg served, the super-admin leg refused by name — rather than a verbatim
+  carry, and it is the next port. It is named here so it is not rediscovered.
+
+### The classifier had to be corrected in the same breath, which is the point
+
+`entity_authorization` asked "does the store permit a write to this table". On
+the day the policy landed that became true of `user`, and all six of its `port`
+writers would have been reported unblocked — the ninth instance of this
+repository's recurring defect, arriving from the other direction: not a bucket
+keeping its name after the reason went, but a bucket LOSING its name while the
+reason stayed. So the classifier now measures two more things, both read from
+what the store emits rather than from the decision that asked for it:
+
+- `discoverColumnNarrowing` parses the guard's allowlist out of the generated
+  SQL, beside `discoverEntityPolicies`, which parses the policies. A second copy
+  kept by hand is a copy that drifts, and this one would drift in silence.
+- `entitiesTouched` records WHICH columns a module writes per entity, and
+  answers `null` where the payload could not be read. Unknown is not empty:
+  `userManagement` hands over an object assembled earlier, and treating that as
+  "writes no columns" is how an admin path reads as a self-service one.
+
+A write is admitted only where the payload can be read, every column of it is
+named, and the module has a caller. Everything else stays blocked.
+
+### Proved against a real database, not against the generator
+
+`record-store-migration.test.mjs` builds a broker over the real migration under
+PGlite and spends it: the caller corrects their own `phone`; the same caller
+updating a colleague's row changes **no rows at all** — not an error, the policy
+simply does not see it, and both callers are on each other's roster, so that is
+the assertion saying sharing an agency is not owning the row; five columns of
+four different kinds each raise with the offending column named; the delete
+finds nothing to remove; and the owner, acting with no identity, updates nothing,
+because `caller_user_id()` is null and forced RLS binds the owner here too.
+
+One rule in the migration test had to be split, and it was worth splitting. It
+asserted that every function in the schema stays administrator-owned and out of
+every caller's reach. The first half is a **caller helper's** rule — those read
+`pennsync_private` through forced RLS, so an owner-owned one would deny every
+row — and it does not apply to a trigger function that reads nothing and
+compares `old` to `new`. The second half applies to both: `create function`
+grants execute to PUBLIC, so a guard nobody revoked is a function every caller
+role can call by name. The test now splits them by the catalog's own return
+type rather than by a naming convention.
+
+Port queue unchanged: 7 / 8 / 0 / 0 / 12 / 0 / 2 / 0 / 2 / 73.
+
+## D83 — A platform reference table is written by migration, and there is no runtime that writes one
+
+**Decision.** A `global` reference table's contents arrive by migration. No
+caller-facing handler and no scheduled job writes one. `fetchMedicareGuideline`
+and `scheduledGuidelineSync` are therefore **not carried**: they are
+dispositioned `retire`, not blocked ports.
+
+**Why.** D23 found these two by accident — the rule that separated reading a
+table from writing one caught them, and nothing had ever reported them, because
+every earlier check asked only which entities a module touched. D23 recorded
+what they needed as "a platform ingestion path, which is not a caller-facing
+handler", and then left them in the queue as `port`, where they read as two
+handlers somebody has yet to write.
+
+They are not. A `global` table is the one table in the store every agency reads
+and no tenant surface writes; that is what the disposition means and what the
+emitted policy enforces — a read policy and no write policy, so forced RLS
+refuses the insert whoever asks. A handler whose whole purpose is to write one
+has no shape it could take here that the store would accept. Porting it would
+mean either widening `global`, which is the decision the disposition exists to
+make, or giving the service a credential that bypasses the store, which is the
+thing the exit is removing.
+
+And what each actually does makes the ingestion reading exact rather than
+charitable. Both fetch a CMS page over HTTP, hand it to a model, and upsert the
+result. `fetchMedicareGuideline` fetches through `api.base44.com/v1/fetch-website`
+— a Base44 platform endpoint, in a capability the exit exists to take off that
+platform. A pipeline that scrapes a public regulator and has a model summarise
+it is content preparation. Content preparation belongs in a migration, where it
+is reviewed once, versioned with the schema, and identical in every deployment,
+rather than in a handler that produces different text each time it runs.
+
+**What this costs, said plainly rather than left to be discovered.**
+`MedicareGuidelinesLibrary.jsx` offers a protected administrator two controls
+that now have no destination: "add a guideline by URL", which called
+`fetchMedicareGuideline`, and "retire this guideline", which wrote
+`is_active: false` directly. Both were runtime writes to a `global` table and
+neither is carried. The page keeps its reading half, which is the whole of what
+a clinician uses it for. Changing the library's contents becomes a change to the
+migration — slower, reviewed, and the same in staging and production, which for
+a table of regulatory citations is the behaviour you want.
+
+Port queue: 7 / **6** / 0 / 0 / 12 / 0 / 2 / 0 / 2 / 73.
+
+## D84 — A capability is not blocked because one of its nine legs is leaving
+
+**Decision.** The seven capabilities `entity_not_carried` held are settled, and
+they do not settle the same way, because they were never the same thing. Three
+change destination; four are carried, each with one uncarried LEG recorded in
+the manifest against the capability it belongs to.
+
+**Why they had to be read one at a time.** The bucket means "reaches a table
+that will not exist here", which is a property of a module and says nothing
+about whether the capability survives. Read as a group they looked like one
+answer — training records, paused comms logs, real-time metrics, none of them
+carried. Read one at a time, four of the seven turned out to be carried
+capabilities where the leaving table supplies a summary row or two figures of a
+report. `generateAIReport` was reported as blocked on the record store for
+`training_completed` and `avg_training_score`, two lines of one PDF, while its
+other eight datasets — visits, patients, incidents, compliance audits, note
+quality, alerts, tasks, nurse performance — are all carried.
+
+### The three that change destination
+
+- **`analyzeNurseDeficits` → `hub`.** `TrainingRecommendation` is the only data
+  it reads; the other three entities are its authorization fence. Its four call
+  sites are all under `src/components/training/`. Of the thirty-five training
+  and learning functions, thirty-three were already `hub`; this was one of the
+  two that were not. Porting it builds the second home for training content
+  that D8 exists to prevent.
+- **`analyzeRealTimePerformance` → `hub`.** An adaptive-difficulty engine over
+  `RealTimePerformanceMetric`, which D9 already sent to the Hub by name as
+  "training telemetry keyed by `training_module_id`". It has no frontend call
+  site anywhere in the tree, so there is not even a caller left behind.
+- **`getCommsDashboard` → `preserved_paused`.** The strongest single
+  measurement in this batch: of the twenty-seven SMS, fax and voice functions,
+  twenty-six are `preserved_paused` and this was the only `port`. It is the
+  READ side of the paused comms domain — strip `SmsMessage`, `CallLog` and
+  `FaxLog` and its summary, its failure list and its per-number breakdown all
+  return empty. D7 carries that domain without activating it, and its dashboard
+  turns on when the domain's own gate passes. D7's own consequence paragraph
+  describes this correction happening seven times before.
+
+### The four that are ports with a settled leg
+
+Each is recorded in `tools-transition-disposition.json` under `uncarried_legs`,
+naming the entities, what serves them instead, and why:
+
+- **`distributePolicyAcknowledgment`** — `PolicyLibrary` to
+  `PolicyAcknowledgment` and `Notification`, all carried. Its one
+  `TrainingAuditLog` row is a fire-and-forget summary written after the loop,
+  whose failure the module already logs and ignores, and whose contents are the
+  shape D25's activity trail takes. Fourteen of the fifteen modules that write
+  that table are `hub`; this was the only `port` one, which is what makes the
+  row an orphan leg of a policy capability rather than a learning capability.
+- **`generateAIReport`** — the two figures above. D8 says learner history is
+  preserved by the Hub cutover rather than this one, and the Hub already has
+  `exportLearningReportCSV` and `getTeamTrainingReadiness`.
+- **`offboardUser`** — the core is carried PHI revocation: deactivate, revoke
+  memberships, unassign charts, clear on-call, cancel invitations. Every
+  uncarried leg is a separate try-caught block appended after it. The three
+  schedule cancels exist to defuse dispatchers that D7 carries paused — the
+  module's own comment says they exist because `dispatchScheduledSms` would
+  otherwise still fire, and it does not run here. The `UserActivity` row is
+  D25's case exactly, and it is load-bearing rather than incidental: the module
+  says an auditor treats its counts as proof that PHI access was withdrawn. It
+  is repointed at the trail as part of the port, never dropped.
+- **`sendExpirationNotifications`** — D9 settled this one by name and the queue
+  had not caught up: the credential half ports and the training half drops out
+  to the Hub, where `sendTrainingNotifications` already lives. The module is two
+  independent symmetric loops feeding one admin fan-out, so the credential half
+  stands alone with the same expiry tiers, the same claim-token idempotency and
+  the same agency scoping.
+
+### Why the reason is in the manifest and not only here
+
+Because a reason that lives only in prose is the failure this repository has now
+recorded nine times: a bucket keeps its name after the reason for it has gone,
+nothing fails, and nothing surfaces it. `uncarried_legs` is checked. An entry is
+refused unless its capability is still a `port` and still reaches every entity
+it names, and a stale entry blocks the census the way an unspecified retention
+does. Repointing a leg, porting it, or retiring the capability each fail the
+check until the entry goes with it. `because` has a floor of twenty characters,
+exactly as `broker_ceiling` requires one, because a reason nobody had to write
+is a reason nobody wrote.
+
+The manifest format goes to version 3.
+
+### What the queue does, which includes a bucket going UP
+
+`entity_not_carried` 7 → **0**. `records_schema` 0 → **3**, and that is the
+queue working rather than regressing: three capabilities left a bucket that
+said "blocked on a schema" for one that says "its port is not written yet",
+against a store that exists. A count that can only ever fall cannot represent
+work arriving, and this queue's whole purpose is to route people to work that
+can start.
+
+Port queue: **0** / 7 / 0 / **3** / 12 / 0 / 2 / 0 / 2 / 73.
+
+## D85 — The file copy's blocker re-measures as true, and the twelve are four different things
+
+**Decision.** Do not carry the bytes. D77's claim holds under re-measurement:
+serving a migrated object needs the integration runtime's authorization model
+changed, and that is a decision about that service. The `files` bucket stays at
+twelve and `applyFileCopy` stays refused.
+
+**Why this was re-measured at all.** D77 was written before the reader model was
+looked at again, and this project has had three documented claims break under
+re-measurement in one day. So the chain was read rather than quoted, and it is
+closed in code rather than in prose:
+
+- `providers.mjs` admits a stored object only when `row.subject` equals the
+  caller's hashed subject AND the object path is `appId/subject/id`. Every read
+  path goes through it; there is none that skips it.
+- The subject is hashed per (app, agency, user), so two clinicians in the same
+  agency have different subjects.
+- The same handle cannot be registered once per reader at three levels: a
+  primary key on the id, a unique constraint on the object path, and a
+  path-binding check in the record function.
+- The bucket is closed to every other identity by a restrictive storage policy,
+  and `pennsync-api` holds no storage credential at all — it forwards the
+  caller's own bearer, so the runtime derives the CALLER's subject, never a
+  service one.
+- `pennsync_private.file_object` holds one handle per locator and is immutable,
+  so it cannot encode a fan-out either.
+
+A migrated object has no uploader, so whichever subject ran the copy would be
+the only person who could ever open it. The verdict stands.
+
+### Three things the re-measurement found that D77 does not record
+
+None of them reverses it; all three change what the queue should say.
+
+1. **The blocker is symmetric and forward-looking, not a property of migrated
+   rows.** D77 frames it as "a migrated object has no uploader". An object
+   uploaded by the PORTED runtime under subject X is equally unreadable by
+   subject Y. So lifting the byte copy alone unblocks none of the twelve — and,
+   in the other direction, **two of the twelve are not waiting on the byte copy
+   at all.** `createAuthorizedDocument` and `generateDynamicCoverSheet` only
+   write; they wait solely on the reader model. D77's summary says the twelve
+   "wait on DATA rather than design", and for those two it is the wrong half of
+   the sentence.
+2. **The enforcement is application-level, which makes "do not widen it" a
+   choice rather than a constraint.** Nothing in storage or RLS enforces
+   uploader-ownership; it is four expressions in one function plus two checks in
+   the migration. And the record-authorized predicate a migrated object needs
+   already exists and is proved in the record store — `pdf_index_read` composes
+   the deployment pin, the caller's agencies, and both chart-scope helpers. What
+   is missing is a path from a handle to that predicate. D77 is right to refuse
+   to decide it; it is one service's authorization model, not a research
+   problem.
+3. **`generateNoteFromRecording` has two further blockers no file work clears.**
+   It carries audio, and the owned bucket's MIME set admits PDF, PNG, JPEG,
+   WebP, plain text and CSV — enforced again by the storage table's own check
+   constraint — so the bytes could never be carried there. It also pins a model
+   the broker does not accept. See D87, which is the same wall from the other
+   side.
+
+So the twelve are: **2** waiting only on the reader model, **5** read-only that
+need the copy and the reader model, **5** partial with a write leg that needs
+neither, and **1** with two independent blockers on top. They are left in one
+bucket in this change, because splitting a blocker is a change to the queue's
+vocabulary and this decision already changes the queue in three other places;
+what is recorded here is that `files` is four questions wearing one name, and
+that the reader-model decision is the single gate that unblocks the most of it.
+
+Port queue unchanged by this decision: 0 / 7 / 0 / 3 / **12** / 0 / 2 / 0 / 2 / 73.
+
+## D86 — Two capabilities whose whole body is a send, ported as the refusal
+
+**Decision.** Port `sendAccountReadyEmail` and `sendWelcomeEmail` as the seventh
+and eighth PARTIAL ports, with nothing in the served half: the caller gate ships
+and the send is refused with the answer the originals give today — 503,
+`OUTBOUND_DELIVERY_RELEASE_PAUSED`, not retryable. The send is not released and
+this decision does not release it; D56 does, and D56 is the owner's.
+
+**Why porting a capability that can only refuse is worth doing.** Because the
+refusal is stronger here than in the original. In Base44 the pause is an
+environment variable: set `OUTBOUND_DELIVERY_RELEASE` to `enabled-v1` and mail
+goes out. In this service the refusal is in the handler AND the operation is not
+in `BROKERED_OPERATIONS`, so a deployment that released the gate still could not
+send. Releasing becomes three deliberate things rather than one variable, and
+none of them can happen by accident.
+
+It also empties `core_integration`, and the empty bucket must not be misread:
+**it does not mean D56 was decided.** It means nothing is waiting on that
+decision in order to be WRITTEN. The decision is exactly where it was.
+
+**The caller gate is a narrowing, and it is D23's.** Both originals gate on
+`user.role`, `user.account_type` or both — self-editable columns of the carried
+profile, so a handler reading them gates on the caller's own assertion about
+themselves. The port asks `tenantRole` from the frozen actor projection, which
+is the membership. The two originals also disagree with each other:
+`sendAccountReadyEmail` admits a platform `admin`, a `super_admin` and an
+`agency_admin`; `sendWelcomeEmail` admits only a platform `admin`. This service
+has no global scope — every request names one agency and is authorized within it
+— so a platform-wide role has nowhere to land, and `agency_admin` is the whole
+of what remains. That is a narrowing for the first and a widening for the
+second, and it is the same narrowing every other port here already made.
+
+**The order of the two checks is the originals' order**, and it is asserted
+rather than assumed: authorization first, the pause second. A non-admin is
+refused 403 by a paused deployment exactly as by a released one. The other way
+round would tell a caller their request would have been accepted.
+
+**What is deliberately NOT carried, so nobody reads this as finished.** Both
+originals validate the body AFTER the pause and then render a branded HTML
+message. None of that runs while the pause holds, so none of it is here: an
+unreachable validation nobody can exercise is not a port, it is a claim.
+Releasing means brokering `SendEmail` in the runtime, carrying the field checks
+and the renderer, and deleting two `fail` lines. The flag flip is the owner's;
+the other two are a morning's work that would be waste if the answer is no.
+
+**Which of the two is the reason D56 exists.** `sendAccountReadyEmail` puts a
+recipient address and a display name on the wire. `sendWelcomeEmail` puts those
+and **a working temporary password** in the message body. Of everything in this
+queue, that is the one that most belongs where D56 put it.
+
+Port queue: 0 / 7 / 0 / 3 / 12 / 0 / **0** / 0 / 2 / **75**.
+
+## D87 — The transcription capability is designed, and the key stays unwired
+
+**Decision.** Design the capability and wire no credential.
+`transcribeAndGenerateSOAPNote` and `transcribeAudioWithWhisper` stay `port` and
+stay blocked, and what they are blocked on is now measured rather than named.
+
+**Why the bucket needed re-measuring.** `external_secret` says "calls a
+third-party API with a key from the environment", which reads as one missing
+credential — as though adding `OPENAI_API_KEY` to the runtime would release
+both. It would not. There are three walls, they are independent, and removing
+any one leaves the other two:
+
+1. **There is no operation to broker.** The integration runtime's whole
+   vocabulary is `InvokeLLM`, `ExtractDataFromUploadedFile`, `SendEmail`,
+   `UploadFile`, `UploadPrivateFile` and `CreateFileSignedUrl`. Nothing carries
+   audio, and a request for anything outside that list is refused
+   `INTEGRATION_NOT_MIGRATED`.
+2. **The runtime holds no key for the provider either function calls.** It
+   holds an Anthropic key and a SendGrid key and nothing else, so even a
+   brokered audio operation would have nothing to call with.
+3. **The owned bucket admits no audio type.** `MIME` is PDF, PNG, JPEG, WebP,
+   plain text and CSV, enforced again by the storage table's own check
+   constraint, so the bytes could not be carried there whatever the reader
+   model D85 discusses decided.
+
+All three are asserted in `tools-transition-disposition.test.mjs` rather than
+written down here alone, because a sentence in a decision is exactly what has
+drifted from the tree three times in this project.
+
+**The design, which is a seam rather than a handler.** The capability divides
+where the credential boundary already falls, and the two halves are not equally
+blocked:
+
+- **Audio to text.** Needs a provider this platform has no relationship with.
+  Blocked on all three walls above, and on a fourth that is this service's own:
+  `pennsync-api` accepts `application/json` under a 1 MiB ceiling, and
+  `transcribeAudioWithWhisper`'s client posts `multipart/form-data` while
+  `transcribeAndGenerateSOAPNote`'s posts base64 that inflates a forty-five
+  second recording to the limit. Releasing this is a vendor decision AND a
+  transport change, and the vendor decision is the owner's for the same reason
+  D56 is: a recording of a clinical visit is the most identifying artefact in
+  the product.
+- **Text to a SOAP draft.** Needs no key at all. It is a prompt and a parse, and
+  `InvokeLLM` already brokers exactly that with the credential held in the
+  runtime, one hop from the handler, where no handler can read it.
+
+**So why the second half is not being written today**, having just said it
+needs nothing. Three changes come with it and none of them is a port decision:
+the brokered contract takes no `system` parameter, so the original's system
+prompt has to fold into the user prompt; the model changes, because the broker
+admits `automatic` or the runtime's configured default and the original pins a
+specific one; and `response_json_schema` is honoured by a forced tool call,
+which would replace the original's regex extraction of the first JSON object.
+Each is a behaviour change to a step that drafts a clinical note. The live
+client already treats that draft as advisory and feeds the raw transcript into
+the note instead, precisely so a fabrication cannot reach a chart unverified —
+so porting the drafting half alone ships the half the product deliberately
+de-emphasises, with three differences from the original, while the half the
+client actually uses stays blocked.
+
+The capability is designed and the seam is named. It is written when the audio
+half has a vendor, so both halves change together and the parity comparison is
+against a whole capability rather than a third of one.
+
+Port queue unchanged: 0 / 7 / 0 / 3 / 12 / 0 / 0 / 0 / 2 / 75.

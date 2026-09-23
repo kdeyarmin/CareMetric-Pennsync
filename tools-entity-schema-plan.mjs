@@ -990,6 +990,97 @@ const SELF_BINDING = Object.freeze({ user_id: 'caller_user_id', user_email: 'cal
  * owner — and therefore the broker — to these policies too. Naming a role here
  * would exempt the broker from the predicate it exists to enforce.
  */
+/**
+ * What a person may say about themselves, and nothing else. D82.
+ *
+ * An ALLOWLIST rather than a denylist, and the difference is the whole point.
+ * D23 left the profile-write path open so it would not be settled by accident;
+ * a denylist settles it by accident every time a column is added, because the
+ * new column is writable until somebody remembers to name it. The columns that
+ * get added to a staff table are job titles, approvals and scopes — precisely
+ * the ones a person must not assert about themselves.
+ *
+ * Three kinds of column are here and nothing else is:
+ *
+ * - **Preference.** Bookmarks, language, notification and fax delivery
+ *   settings. Nobody else's answer is better than the subject's.
+ * - **Own contact.** The numbers a person can be reached on. `work_phone_number`
+ *   and `twilio_phone_number_sid` are NOT here: they are one provisioned pair,
+ *   and letting the subject rewrite half of it points the agency's own number
+ *   at a handset nobody assigned.
+ * - **Own presence and mark.** Duty status, the off-duty message and its
+ *   schedule, and the saved signature. `setNurseDutyStatus` is the capability
+ *   this unblocks, and its own gate already says the self leg needs nothing
+ *   more than being the subject.
+ *
+ * What is deliberately absent, by the decision rather than by oversight:
+ * `role`, `account_type`, `agency_id`, `agency_name`, `agency_role`,
+ * `staff_role`, `care_scope`, `is_manager`, `is_approved`, `is_active` and
+ * `manager_email` are authority, and D23 already replaced every one of them
+ * with the membership. `credentials`, `credential_type` and `license_number`
+ * are attestations somebody verifies. The `offboarded_*` trio is the record of
+ * a decision taken about the person, so a subject who could clear it would
+ * re-admit themselves. And `ai_content_agreement_accepted*` is already answered
+ * by `contract_ai_agreement_accept` against its own attestation table — writing
+ * it here would be a second answer to keep in agreement with the first, which
+ * is the defect D41, D43 and D62 each found in an original.
+ */
+export const PROFILE_SELF_WRITABLE = Object.freeze([
+  'updated_date',
+  'favorited_pages', 'favorited_patients',
+  'preferred_language', 'notification_settings', 'fax_notification_preferences',
+  'two_factor_enabled',
+  'phone', 'phone_number', 'personal_cell_e164',
+  'duty_status', 'duty_on_since', 'off_duty_message',
+  'scheduled_off_duty_start', 'scheduled_off_duty_end', 'scheduled_off_duty_recurring',
+  'saved_signature',
+]);
+
+/**
+ * The column half of D82, as a trigger, because a policy cannot express it.
+ *
+ * RLS `with check` sees only the row being written — it has no `old` — so a
+ * policy can say the row is the caller's and cannot say which of its columns
+ * changed. Column-level `grant update (...)` cannot do it either: the broker
+ * runs as the table's owner, and column privileges do not bind an owner the way
+ * `force row level security` binds it.
+ *
+ * So the comparison is done where `old` and `new` both exist. It is driven off
+ * `to_jsonb` rather than a column list, which is what makes a column added
+ * later refused rather than admitted: an unnamed column is simply not in the
+ * allowlist. It reports every offending column at once so a caller is not told
+ * about them one round trip at a time.
+ *
+ * `create function` grants `execute` to PUBLIC, so the revoke below is not
+ * tidiness: without it every caller role can reach a function in this schema by
+ * name, which is what `record-store-migration.test.mjs` checks for and why the
+ * caller helpers are revoked a few hundred lines above. Ownership is the other
+ * half of that rule and does NOT apply here. A caller helper must stay
+ * administrator-owned because it reads `pennsync_private` through forced RLS;
+ * this reads nothing at all — it compares `old` to `new` and returns — so it is
+ * created with the table, by the table's owner.
+ */
+export function renderProfileGuard(plan) {
+  const guard = quote(`${plan.table}_self_write_guard`.slice(0, MAX_IDENTIFIER));
+  const allowed = PROFILE_SELF_WRITABLE.map(column => `'${column}'`).join(', ');
+  return `create function ${quote(SCHEMA)}.${guard}() returns trigger
+  language plpgsql set search_path = '' as $guard$
+declare v_changed text;
+begin
+  select string_agg(f.key, ', ' order by f.key) into v_changed
+  from jsonb_each(to_jsonb(new)) as f(key, value)
+  where f.key <> all (array[${allowed}])
+    and f.value is distinct from (to_jsonb(old) -> f.key);
+  if v_changed is not null then
+    raise exception using errcode = '42501',
+      message = 'PENNSYNC_PROFILE_FIELD_NOT_SELF_WRITABLE: ' || v_changed;
+  end if;
+  return new;
+end $guard$;
+
+revoke all on function ${quote(SCHEMA)}.${guard}() from public;`;
+}
+
 export function renderPolicies(plan, resolution) {
   const qualified = `${quote(SCHEMA)}.${quote(plan.table)}`;
   const name = suffix => quote(`${plan.table}_${suffix}`.slice(0, MAX_IDENTIFIER));
@@ -1009,13 +1100,37 @@ export function renderPolicies(plan, resolution) {
   // shares an agency with, and admits the row if it names one of those people.
   // The untrusted column is not narrowed — it is not consulted.
   if (kind === 'roster') {
-    // Read only, and by the same absence that makes the audit trail
-    // append-only: with no insert, update or delete policy, forced RLS refuses
-    // every write to this table from everyone, the record owner included. D23
-    // leaves the profile-write path open deliberately, and this is what keeps
-    // "open" from quietly meaning "allowed".
-    return [`create policy ${name('read')} on ${qualified} for select `
-      + `using (${thisApp} and ${self}.${quote('id')} in (select ${quote(SCHEMA)}.caller_roster_ids()));`];
+    // Read by the roster predicate above. Writing is D82, and it is deliberately
+    // two mechanisms rather than one, because a policy can say WHOSE row and
+    // cannot say WHICH COLUMNS.
+    //
+    // The policy answers the first: the caller's own row and nothing else, so
+    // there is no cross-user write at all — not for a manager, not for an
+    // administrator, not for the record owner, which forced RLS binds too. An
+    // administrative write path is a separate decision and stays unbuilt.
+    //
+    // The trigger answers the second, as an ALLOWLIST. A denylist would admit
+    // every column added after it was written, and the column that gets added
+    // to this table next is exactly the kind that should not be self-asserted.
+    // `PROFILE_SELF_WRITABLE` is what a person may say about themselves; a
+    // change to anything else raises, the record owner included.
+    //
+    // No insert and no delete: a profile row exists because enrolment created
+    // it, and a person who could delete their own row would take themselves off
+    // the roster while keeping the membership that authorizes them.
+    const own = `${thisApp} and ${self}.${quote('id')} = ${quote(SCHEMA)}.caller_user_id()`;
+    return [
+      `create policy ${name('read')} on ${qualified} for select `
+        + `using (${thisApp} and ${self}.${quote('id')} in (select ${quote(SCHEMA)}.caller_roster_ids()));`,
+      renderProfileGuard(plan),
+      `create trigger ${quote(`${plan.table}_self_write_guard`.slice(0, MAX_IDENTIFIER))} `
+        + `before update on ${qualified} `
+        + `for each row execute function ${quote(SCHEMA)}.${quote(`${plan.table}_self_write_guard`.slice(0, MAX_IDENTIFIER))}();`,
+      `create policy ${name('update')} on ${qualified} for update `
+        + `using (${own}) with check (${own});`,
+      `-- ${plan.table}: no insert or delete policy; a profile row is enrolment's to create `
+        + `and nobody's to remove. Cross-user writes are D82's open half.`,
+    ];
   }
   if (resolution.paths.get(plan.entity)?.kind === 'profile_claim') {
     return [`-- ${plan.table}: excluded from authorization (self-editable profile claim); forced RLS, no policy.`];

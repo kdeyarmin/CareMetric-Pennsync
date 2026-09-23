@@ -1,6 +1,6 @@
 {
   "format": "pennsync-transition-disposition",
-  "version": 2,
+  "version": 3,
   "review_state": "accepted",
   "retention": {
     "AnomalyAlert": {
@@ -65,10 +65,10 @@
     "analyzeDocument": "preserved_paused",
     "analyzeFaxContent": "preserved_paused",
     "analyzeFaxPriority": "preserved_paused",
-    "analyzeNurseDeficits": "port",
+    "analyzeNurseDeficits": "hub",
     "analyzeNursePerformance": "preserved_paused",
     "analyzeOASISNarrativeMatch": "preserved_paused",
-    "analyzeRealTimePerformance": "port",
+    "analyzeRealTimePerformance": "hub",
     "analyzeReferral": "port",
     "analyzeReferralIntake": "port",
     "analyzeReferralPriority": "port",
@@ -130,7 +130,7 @@
     "extractFaxMetadataOCR": "preserved_paused",
     "extractPatientDataFromDocument": "port",
     "extractReferralDataForSmartNote": "port",
-    "fetchMedicareGuideline": "port",
+    "fetchMedicareGuideline": "retire",
     "fixUserAccount": "retire",
     "generateAIReport": "port",
     "generateAdmissionNoteFromReferral": "preserved_paused",
@@ -181,7 +181,7 @@
     "getAuthorizedPatient": "port",
     "getAuthorizedPatientNoteHistory": "port",
     "getAuthorizedVisit": "port",
-    "getCommsDashboard": "port",
+    "getCommsDashboard": "preserved_paused",
     "getCourseFeedbackSummary": "hub",
     "getCoursePlayerQuestions": "hub",
     "getDashboardData": "port",
@@ -277,7 +277,7 @@
     "saveVisitPointConfig": "port",
     "scheduleSignatureReminders": "preserved_paused",
     "scheduleSms": "preserved_paused",
-    "scheduledGuidelineSync": "port",
+    "scheduledGuidelineSync": "retire",
     "searchPDFs": "port",
     "searchPurchaseTelnyxNumbers": "preserved_paused",
     "seedAnnualMandatoryEducationSamples": "hub",
@@ -611,5 +611,39 @@
     "CreateFileSignedUrl": "port",
     "GenerateImage": "retire"
   },
-  "broker_ceiling": {}
+  "broker_ceiling": {},
+  "uncarried_legs": {
+    "distributePolicyAcknowledgment": {
+      "entities": [
+        "TrainingAuditLog"
+      ],
+      "served_by": "pennsync_records.activity_audit (D25)",
+      "because": "The capability is PolicyLibrary to PolicyAcknowledgment and Notification, all three carried. Its TrainingAuditLog row is one fire-and-forget summary written after the loop, whose failure the module already logs and ignores, and whose contents - actor, policy version, distributed and failed counts - are the shape D25's activity trail takes. Fourteen of the fifteen modules that write that table are hub; this is the only port one, which is what makes the row an orphan leg of a policy capability rather than a learning capability."
+    },
+    "generateAIReport": {
+      "entities": [
+        "TrainingAssignment"
+      ],
+      "served_by": "the Support Hub's own learning reports (D8)",
+      "because": "One of nine parallel datasets, feeding two figures - training_completed and avg_training_score - into one block of one PDF. The other eight are carried clinical and compliance entities. D8 says learner history is preserved by the Hub cutover rather than this one, and exportLearningReportCSV and getTeamTrainingReadiness already live there, so the leg has a destination rather than being dropped."
+    },
+    "offboardUser": {
+      "entities": [
+        "PhoneNumber",
+        "ScheduledFax",
+        "ScheduledSignatureReminder",
+        "ScheduledSms",
+        "UserActivity"
+      ],
+      "served_by": "pennsync_records.activity_audit (D25); the paused comms domain (D7)",
+      "because": "The core is carried PHI revocation - deactivate, revoke memberships, unassign charts, clear on-call, cancel invitations - and every uncarried leg is a separate try-caught block appended after it. The three schedule cancels exist to defuse dispatchers that D7 carries paused, so in this system there is nothing pending to cancel; the module's own comment says the cancels exist because dispatchScheduledSms would still fire, and it does not run. The UserActivity row is D25's case exactly, and it is load-bearing rather than incidental - the module says an auditor treats its counts as proof that PHI access was withdrawn - so it is repointed at the trail as part of the port, never dropped."
+    },
+    "sendExpirationNotifications": {
+      "entities": [
+        "TrainingAssignment"
+      ],
+      "served_by": "sendTrainingNotifications on the Support Hub (D9)",
+      "because": "D9 already settled this one by name: the credential half ports and the training half drops out to the Hub, where sendTrainingNotifications already lives. The module is two independent symmetric loops over TrainingAssignment and PersonnelCredential feeding one admin fan-out, so the credential half stands alone with the same expiry tiers, the same claim-token idempotency and the same agency scoping."
+    }
+  }
 }

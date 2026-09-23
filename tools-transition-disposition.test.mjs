@@ -293,29 +293,29 @@ test('the entity reach of a module is read through every access form it uses', (
   const reach = (source) => entitiesTouched(source, known);
   // The plain form, which a first version of this found on its own.
   assert.deepEqual(reach('await base44.entities.Patient.filter({})'),
-    { names: ['Patient'], dynamic: false, writes: [] });
+    { names: ['Patient'], dynamic: false, writes: [], writeColumns: {} });
   assert.deepEqual(reach('base44.asServiceRole.entities.Visit.list()'),
-    { names: ['Visit'], dynamic: false, writes: [] });
+    { names: ['Visit'], dynamic: false, writes: [], writeColumns: {} });
   // Destructuring, which it did not. Aliasing a destructured name too.
   assert.deepEqual(reach('const { Patient, Agency: A } = base44.entities;'),
-    { names: ['Agency', 'Patient'], dynamic: false, writes: [] });
+    { names: ['Agency', 'Patient'], dynamic: false, writes: [], writeColumns: {} });
   // Aliasing the NAMESPACE, which is how `getDashboardData` reads every active
   // patient while containing no occurrence of `entities.Patient`. A scan that
   // misses this reported six functions as staying inside the family when the
   // real number was zero.
   assert.deepEqual(reach('const sr = base44.asServiceRole.entities;\nawait sr.Patient.filter({});\nsr.Visit.list();'),
-    { names: ['Patient', 'Visit'], dynamic: false, writes: [] });
+    { names: ['Patient', 'Visit'], dynamic: false, writes: [], writeColumns: {} });
   assert.deepEqual(reach('const e = base44.entities\ne.Config.list()'),
-    { names: ['Config'], dynamic: false, writes: [] });
+    { names: ['Config'], dynamic: false, writes: [], writeColumns: {} });
   // Dynamic access, through either the namespace or an alias of it.
   assert.equal(reach('base44.entities[name].filter({})').dynamic, true);
   assert.equal(reach('const sr = base44.entities;\nsr[name].list()').dynamic, true);
   // Names that are not entities do not become findings, and a module that
   // touches nothing says so rather than throwing.
   assert.deepEqual(reach('const sr = base44.entities;\nsr.Promise.resolve()'),
-    { names: [], dynamic: false, writes: [] });
+    { names: [], dynamic: false, writes: [], writeColumns: {} });
   assert.deepEqual(reach('await base44.integrations.Core.SendEmail({})'),
-    { names: [], dynamic: false, writes: [] });
+    { names: [], dynamic: false, writes: [], writeColumns: {} });
   for (const value of [null, undefined, 42, {}]) {
     assert.deepEqual(entitiesTouched(value, known), { names: [], dynamic: false, writes: [] });
   }
@@ -341,7 +341,33 @@ test('which entities a module WRITES is read separately from which it touches', 
   assert.deepEqual(reach('const sr = base44.asServiceRole.entities;\nsr.Visit.create({});').writes, ['Visit']);
   // One module, two entities, one of them written.
   const mixed = reach('await base44.entities.Patient.filter({});\nawait base44.entities.User.update(id, {});');
-  assert.deepEqual(mixed, { names: ['Patient', 'User'], dynamic: false, writes: ['User'] });
+  assert.deepEqual(mixed,
+    { names: ['Patient', 'User'], dynamic: false, writes: ['User'], writeColumns: { User: [] } });
+  // WHICH columns, which became a question when D82 made `user` writable in
+  // part. Top-level keys of an object literal, and nothing deeper: a nested
+  // object is one column holding JSON, so its keys are not columns of this
+  // table and a scan that walked into them would report `duty_status` as
+  // written by a module that only logged it.
+  assert.deepEqual(
+    reach("base44.entities.User.update(id, { duty_status: 'off_duty', duty_on_since: null })").writeColumns,
+    { User: ['duty_on_since', 'duty_status'] });
+  assert.deepEqual(
+    reach('base44.entities.User.create({ role: 1, details: { duty_status: 2, nested: { role: 3 } } })').writeColumns,
+    { User: ['details', 'role'] });
+  // A shorthand key names its column as plainly as a written one does.
+  assert.deepEqual(reach('base44.entities.User.update(id, { phone })').writeColumns, { User: ['phone'] });
+  // Unknown is not empty, and the two shapes that produce it both occur here:
+  // a payload assembled elsewhere, and a conditional spread.
+  assert.equal(reach('await base44.entities.User.update(id, updates);').writeColumns.User, null,
+    'a payload assembled elsewhere cannot be read');
+  assert.equal(reach("base44.entities.User.update(id, { role: 'user', ...(x && { phone: y }) })").writeColumns.User,
+    null, 'a spread hides whatever it carries');
+  // Two calls on one entity are one answer, and either of them being opaque
+  // makes the whole answer opaque.
+  assert.deepEqual(reach('base44.entities.User.update(a, { phone: 1 });\nbase44.entities.User.update(b, { role: 2 });')
+    .writeColumns, { User: ['phone', 'role'] });
+  assert.equal(reach('base44.entities.User.update(a, { phone: 1 });\nbase44.entities.User.update(b, payload);')
+    .writeColumns.User, null);
   // A name that is not an entity cannot become a write, and neither can a
   // method that merely shares a word with one.
   assert.deepEqual(reach('const rows = [];\nrows.update();\nawait base44.entities.Patient.list()').writes, []);
@@ -358,14 +384,60 @@ test('what the record store permits per entity is read from the policies it emit
   assert.equal(Object.keys(permits).length, 156, 'every carried entity is accounted for');
   assert.deepEqual(discoverPolicylessEntities(repository), [], 'nothing is unreadable any more');
   const readOnly = Object.keys(permits).filter(entity => permits[entity].read && !permits[entity].write).sort();
-  // The eight platform reference tables, plus the roster.
+  // The eight platform reference tables. `User` left this list with D82: the
+  // roster is now writable, and `discoverColumnNarrowing` is what says how far.
   assert.deepEqual(readOnly, ['AIModelConfiguration', 'CitationLibrary', 'ComplianceRule', 'MedicareComplianceRule',
-    'MedicareGuideline', 'NewFeature', 'ProviderSettings', 'ServiceCode', 'User']);
-  assert.deepEqual(permits.User, { read: true, write: false });
+    'MedicareGuideline', 'NewFeature', 'ProviderSettings', 'ServiceCode']);
+  assert.deepEqual(permits.User, { read: true, write: true });
   assert.deepEqual(permits.Patient, { read: true, write: true });
   // A tree with no record store says nothing rather than guessing, because an
   // empty answer here would read as "everything is permitted".
   assert.deepEqual(discoverEntityPolicies(resolve(repository, 'services')), {});
+});
+
+test('D84: a settled leg excuses that leg and cannot outlive it', () => {
+  // The entry is not a note. It changes what the queue reports, so the thing
+  // that matters about it is what happens when it stops being true — which is
+  // the shape this repository has now got wrong nine times, always the same
+  // way: nothing fails, so nothing surfaces it.
+  const legs = (entry) => ({ Going: { ...entry } });
+  const declare = (over = {}) => manifest({
+    functions: { alpha: 'port' },
+    entities: { Kept: 'port', Going: 'hub' },
+    ...over,
+  });
+  const reach = { entityReach: { alpha: { names: ['Kept', 'Going'], dynamic: false, writes: [] } } };
+  const run = (over) => checkCoverage(capabilities(), declare(over),
+    { portBlockers: { alpha: 'records_schema' }, ...reach });
+  const bucket = (report) =>
+    Object.entries(report.port_blockers).filter(([, names]) => names.length).map(([key]) => key);
+  const settled = {
+    alpha: { entities: ['Going'], served_by: 'somewhere that exists', because: 'a'.repeat(40) },
+  };
+
+  // Without an entry, one leg into a leaving domain holds the whole capability.
+  assert.deepEqual(bucket(run()), ['entity_not_carried']);
+  // With one, only that leg is excused, and what is left is the port itself.
+  assert.deepEqual(bucket(run({ uncarried_legs: settled })), ['records_schema']);
+  assert.deepEqual(run({ uncarried_legs: settled }).uncarried_legs_unused, []);
+
+  // And the four ways it can stop being true, each of which must fail rather
+  // than go on excusing something.
+  const stale = (over) => run({ uncarried_legs: over }).uncarried_legs_unused;
+  assert.deepEqual(stale({ alpha: { ...settled.alpha, entities: ['Kept'] } }), ['functions:alpha'],
+    'an entity that is carried after all is not a leg to settle');
+  assert.deepEqual(stale({ alpha: { ...settled.alpha, entities: ['Going', 'Absent'] } }), ['functions:alpha'],
+    'an entity the module does not reach is a leg that moved');
+  assert.deepEqual(stale({ beta: settled.alpha }), ['functions:beta'],
+    'an entry for a capability that is not a port here');
+  // A capability whose own disposition changed takes its entry with it.
+  const retired = checkCoverage(capabilities(),
+    manifest({ functions: { alpha: 'retire' }, entities: { Kept: 'port', Going: 'hub' },
+      uncarried_legs: settled, retention: {} }),
+    { portBlockers: { alpha: 'records_schema' }, ...reach });
+  assert.deepEqual(retired.uncarried_legs_unused, ['functions:alpha']);
+  // A stale entry blocks the census, the way an unspecified retention does.
+  assert.equal(run({ uncarried_legs: { beta: settled.alpha } }).census_ready, false);
 });
 
 test('a module that writes a read-only table is still blocked; one that only reads it is not', () => {
@@ -466,6 +538,18 @@ for (const [name, raw] of Object.entries({
   retentionYearsWithoutArchive: JSON.stringify(manifest({ retention: { Beta: { basis: 'none', years: 6 } } })),
   retentionExternalWithoutSystem: JSON.stringify(manifest({ retention: { Beta: { basis: 'external_system_of_record', years: 0 } } })),
   retentionExternalBlankSystem: JSON.stringify(manifest({ retention: { Beta: { basis: 'external_system_of_record', years: 0, system: '  ' } } })),
+  // D84's block, under the same discipline `broker_ceiling` is under: a
+  // settled leg that cannot name its entities, what serves them, or why, is
+  // not a settled leg. The floor on `because` is the load-bearing one — a
+  // reason nobody had to write is a reason nobody wrote.
+  legsNotObject: JSON.stringify(manifest({ uncarried_legs: [] })),
+  legsEntryNotObject: JSON.stringify(manifest({ uncarried_legs: { alpha: 'fine' } })),
+  legsNoEntities: JSON.stringify(manifest({ uncarried_legs: { alpha: { entities: [], served_by: 'x', because: 'a'.repeat(30) } } })),
+  legsEntityNotString: JSON.stringify(manifest({ uncarried_legs: { alpha: { entities: [7], served_by: 'x', because: 'a'.repeat(30) } } })),
+  legsNoServedBy: JSON.stringify(manifest({ uncarried_legs: { alpha: { entities: ['Beta'], because: 'a'.repeat(30) } } })),
+  legsBlankServedBy: JSON.stringify(manifest({ uncarried_legs: { alpha: { entities: ['Beta'], served_by: '  ', because: 'a'.repeat(30) } } })),
+  legsNoReason: JSON.stringify(manifest({ uncarried_legs: { alpha: { entities: ['Beta'], served_by: 'x' } } })),
+  legsShortReason: JSON.stringify(manifest({ uncarried_legs: { alpha: { entities: ['Beta'], served_by: 'x', because: 'because' } } })),
 })) {
   test(`manifest rejects ${name}`, () => assert.throws(() => parseManifest(raw)));
 }
@@ -649,7 +733,7 @@ test('a capability is held by the care-team question whatever its entities are',
   assert.deepEqual(clean.port_blockers.records_schema, ['alpha']);
 });
 
-test('the port queue is work that cannot start yet, and says why', () => {
+test('the port queue is work that cannot start yet, and says why', async () => {
   // Reading the census as "86 ports awaiting review" would send someone to work
   // nothing in the repository can support. Exactly one of them was writable
   // without something the transition has not built, and it has been written.
@@ -747,16 +831,20 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // day. → 71 → 72 written.
   // Then D81, the one D79 found startable while writing itself: the handout's
   // send sits behind the module's own release gate, so its document action
-  // waited on nothing. `core_integration` 3 → 2, and 73 written.
+  // waited on nothing. `core_integration` 3 → 2, and 73 written. D86 wrote the
+  // last two and `core_integration` is 0: both are capabilities whose entire
+  // body is one send, so both ship as the caller gate plus the original's own
+  // paused answer, and a bucket that was a release gate is now a released
+  // decision with the gate inside the handler.
   const report = checkCoverage(
     discoverCapabilities(repository),
     parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
     discoverEvidence(repository),
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
-  assert.deepEqual(counts, { entity_not_carried: 7, entity_authorization: 8, patient_access_model: 0,
-    records_schema: 0, files: 12, ported_function: 0, core_integration: 2, pdf_rendering: 0,
-    external_secret: 2, none: 73 });
+  assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 7, patient_access_model: 0,
+    records_schema: 3, files: 12, ported_function: 0, core_integration: 0, pdf_rendering: 0,
+    external_secret: 2, none: 75 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -770,10 +858,18 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // to they redistribute across the three buckets behind them, which is why
   // those grew while the total did not move. Seven remain, and each reads a
   // table from a domain that is actually going away rather than a log.
-  assert.deepEqual(report.port_blockers.entity_not_carried,
-    ['analyzeNurseDeficits', 'analyzeRealTimePerformance', 'distributePolicyAcknowledgment', 'generateAIReport',
-      'getCommsDashboard', 'offboardUser', 'sendExpirationNotifications'],
-    'only a capability reading a domain table that is going away belongs here');
+  //
+  // D84 empties it, and by two different findings rather than one. Three of
+  // the seven were in the wrong place entirely: `analyzeNurseDeficits` and
+  // `analyzeRealTimePerformance` read training telemetry and nothing else, so
+  // they follow D8 to the Hub, and `getCommsDashboard` was the last `port`
+  // among twenty-seven SMS, fax and voice handlers — the read side of a domain
+  // D7 carries paused. The other four are carried capabilities with one
+  // uncarried LEG, each settled in the manifest with what serves it instead,
+  // so the bucket stops reporting a whole capability as blocked on a schema
+  // because two figures of one PDF come from a table that is leaving.
+  assert.deepEqual(report.port_blockers.entity_not_carried, [],
+    'a capability is held here only by a leg nobody has settled');
   // `acceptAiContentAgreement` writes `UserActivity` and reads nothing else
   // uncarried. It sat here for exactly as long as retiring the table was read
   // as retiring the obligation.
@@ -795,10 +891,19 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // `calculateDataQualityScores` and `enforceDataCompleteness` refuse every
   // caller from the first statement of their handler, so what blocked them was
   // never a profile write.
+  //
+  // D82 and D83 then corrected both halves of that paragraph, in opposite
+  // directions. The two `MedicareGuideline` writers left by being
+  // re-dispositioned: D83 says a `global` reference table is written by
+  // migration and never at runtime, so neither is a caller-facing handler to
+  // write. The six profile writers stayed although `user` became writable,
+  // because D82 permits the caller's OWN row and a named column set, and every
+  // one of them writes somebody else's row, a column outside that set, or a
+  // payload nothing can read. `offboardUser` joined them: it was held by
+  // `entity_not_carried` first, and D84 settled that leg.
   assert.deepEqual(report.port_blockers.entity_authorization,
-    ['autoApproveInvitedUser', 'autoEndDutyDay',
-      'enforceStaffRoleIntegrity', 'fetchMedicareGuideline', 'scheduledGuidelineSync', 'setNurseDutyStatus',
-      'userManagement', 'userManagementV2']);
+    ['autoApproveInvitedUser', 'autoEndDutyDay', 'enforceStaffRoleIntegrity', 'offboardUser',
+      'setNurseDutyStatus', 'userManagement', 'userManagementV2']);
   // ZERO. That is how many of the hundred are still waiting on the record
   // store, and it reached zero on a CORRECTION rather than on a port: D75
   // found that the last entry, `processCompletedVisit`, pauses at source with
@@ -809,7 +914,14 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // out what actually did. Nothing in the queue waits on a decision now, and
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
-  assert.equal(report.port_blockers.records_schema.length, 0);
+  //
+  // It is 3 again, and that is a queue reading correctly rather than a
+  // regression: D84 moved three capabilities OUT of `entity_not_carried` by
+  // settling their one uncarried leg, and what each needs now is its port
+  // written against a store that exists. A bucket that only ever falls is a
+  // bucket nobody can move work into.
+  assert.deepEqual(report.port_blockers.records_schema,
+    ['distributePolicyAcknowledgment', 'generateAIReport', 'sendExpirationNotifications']);
   // The thirty-eight that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
@@ -870,8 +982,19 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // entity is `SystemLog` — and left it by being written (D81): the send was
   // one action of two, refused by the module's own gate, so the document half
   // never waited on the runtime at all.
-  assert.deepEqual(report.port_blockers.core_integration,
-    ['sendAccountReadyEmail', 'sendWelcomeEmail']);
+  //
+  // The last two left it the same way (D86), and the bucket is empty. What
+  // made them writable was not the runtime brokering `SendEmail` — it still
+  // does not — but noticing that a capability whose whole body is a send has a
+  // refusal to ship, and that refusing it here is stronger than refusing it in
+  // Base44: the port cannot send even if someone released the gate, because
+  // `BROKERED_OPERATIONS` does not carry the operation. An empty bucket here
+  // does NOT mean D56 was decided; it means nothing is waiting on that
+  // decision to be written.
+  assert.deepEqual(report.port_blockers.core_integration, []);
+  for (const name of ['sendAccountReadyEmail', 'sendWelcomeEmail']) {
+    assert.ok(report.port_blockers.none.includes(name), `${name} is written`);
+  }
   // Named, because porting one of these verbatim would carry Base44's storage
   // host into the service, and the `cmfile:` handles that replace those URLs do
   // not exist yet. They wait on the file layer, not on the runtime.
@@ -916,7 +1039,8 @@ test('the port queue is work that cannot start yet, and says why', () => {
       'predictSupplyNeeds', 'resendInvitation', 'resendInvitationV2',
       'reviewPersonnelCredential', 'reviewTimeOffRequest', 'reviewTimesheet',
       'savePayrollProfile', 'saveVisitPointConfig', 'searchPDFs',
-      'sendCredentialRenewalReminders', 'sendPersonnelExpirationNotifications',
+      'sendAccountReadyEmail', 'sendCredentialRenewalReminders', 'sendPersonnelExpirationNotifications',
+    'sendWelcomeEmail',
       'submitIncidentReport',
       'submitPersonnelCredential', 'submitStateReportableIncident',
       'submitTimeOffRequest', 'submitTimesheet',
@@ -943,6 +1067,26 @@ test('the port queue is work that cannot start yet, and says why', () => {
   // directly rather than through the brokered runtime.
   assert.deepEqual(report.port_blockers.external_secret,
     ['transcribeAndGenerateSOAPNote', 'transcribeAudioWithWhisper']);
+  // D87 measures what `external_secret` is standing on for these two, because
+  // "a key from the environment" reads as one missing credential and is three
+  // separate walls. The bucket name has been wrong here before, so each is an
+  // assertion rather than a sentence:
+  //
+  // 1. There is no audio operation to broker. `OPERATIONS` is the runtime's
+  //    whole vocabulary and a request for anything outside it is refused.
+  // 2. The runtime holds no key for the provider either function calls, so
+  //    even a brokered operation would have nothing to call with.
+  // 3. The owned bucket admits no audio type, so the bytes could not be
+  //    carried there whatever the reader model decided.
+  //
+  // The first two are what D87 designs around and the third is why the design
+  // stops where it does. Any one of them falling away leaves the other two.
+  const { MIME, OPERATIONS } = await import('./services/integration-runtime/contracts.mjs');
+  assert.ok(!OPERATIONS.some(operation => /audio|transcri|speech/i.test(operation)),
+    'no brokered operation carries audio');
+  const runtimeSource = readFileSync(resolve(repository, 'services/integration-runtime/runtime.mjs'), 'utf8');
+  assert.ok(!runtimeSource.includes('OPENAI_API_KEY'), 'the runtime holds no key for the transcription provider');
+  assert.ok(![...MIME].some(type => type.startsWith('audio/')), 'the owned bucket admits no audio type');
   // The sum is every function dispositioned `port`, so nothing falls out of the
   // queue by being unclassifiable.
   assert.equal(Object.values(counts).reduce((total, value) => total + value, 0), report.families.functions.counts.port);
@@ -962,32 +1106,79 @@ test('what holds each member of `entity_authorization` is measured, not describe
   const evidence = discoverEvidence(repository);
   const report = checkCoverage(discoverCapabilities(repository), declared, evidence);
   const permits = evidence.entityPolicies;
+  const narrowing = evidence.columnNarrowing;
+  const scheduled = new Set(evidence.schedulerAuthFunctions);
+  // A write the store will not take, measured two ways, because after D82 there
+  // are two ways for a store to refuse one.
+  //
+  // `readOnly` is the original: forced RLS with a read policy and no write
+  // policy, which is every `global` reference table and was `User` until D82.
+  //
+  // `outsideNarrowing` is the one D82 adds, and it is the reason this test was
+  // rewritten rather than deleted. `user` is writable now, so a rule asking
+  // only "may this table be written" would have reported all seven of its
+  // writers unblocked on the day the policy landed — the ninth instance of
+  // exactly the defect this file exists to catch, arriving from the other
+  // direction. The narrowing is the caller's OWN row and a named column set, so
+  // a write is covered only where the payload can be read, every column of it
+  // is named, and there is a caller at all.
   const readOnly = (entity) => permits[entity] && permits[entity].read && !permits[entity].write;
-  // Which read-only entities a `port` capability writes, read from the tree.
+  const outsideNarrowing = (name, entity, reach) => {
+    const allowed = narrowing[entity];
+    if (!allowed) return false;
+    if (scheduled.has(name)) return true;
+    const uses = (reach.writeColumns || {})[entity];
+    return !Array.isArray(uses) || uses.some(column => !allowed.includes(column));
+  };
+  // Which entities a `port` capability writes and the store refuses, from the tree.
   const held = {};
   for (const [name, reach] of Object.entries(evidence.entityReach)) {
     if (declared.functions[name] !== 'port' || reach.dynamic) continue;
-    const written = (reach.writes || []).filter(readOnly).sort();
+    const written = (reach.writes || [])
+      .filter(entity => readOnly(entity) || outsideNarrowing(name, entity, reach)).sort();
     if (written.length) held[name] = written;
   }
-  // Two populations and no third. A `global` reference table was always
-  // unwritable here and was never reported, because the classifier could not
-  // tell reading a table from writing one.
-  assert.deepEqual([...new Set(Object.values(held).flat())].sort(), ['MedicareGuideline', 'User']);
+  // One population now, where there were two. `MedicareGuideline` left when
+  // D83 re-dispositioned its two writers: a `global` reference table is
+  // written by migration and never at runtime, so neither
+  // `fetchMedicareGuideline` nor `scheduledGuidelineSync` is a caller-facing
+  // handler somebody has yet to write — and a blocked port and a capability
+  // that is not being carried are not the same thing, however alike they look
+  // in a count.
+  assert.deepEqual([...new Set(Object.values(held).flat())].sort(), ['User']);
+  const declaredNow = declared.functions;
+  for (const name of ['fetchMedicareGuideline', 'scheduledGuidelineSync']) {
+    assert.equal(declaredNow[name], 'retire', `${name} is not carried (D83)`);
+  }
+  // All seven are in the bucket now. `offboardUser` was held by
+  // `entity_not_carried` first until D84 settled that leg, so it arrives here
+  // where the measurement always said it belonged.
   assert.deepEqual(Object.keys(held).filter(name => held[name].includes('User')).sort(),
     ['autoApproveInvitedUser', 'autoEndDutyDay', 'enforceStaffRoleIntegrity', 'offboardUser',
       'setNurseDutyStatus', 'userManagement', 'userManagementV2'],
-    'the profile-write path D23 leaves open');
-  assert.deepEqual(Object.keys(held).filter(name => held[name].includes('MedicareGuideline')).sort(),
-    ['fetchMedicareGuideline', 'scheduledGuidelineSync']);
-  // Seven write a profile and six are in the bucket: `offboardUser` also reads
-  // four `preserved_paused` comms tables, and whether a capability survives at
-  // all outranks how a table is written.
+    'the administrative write path D82 leaves open');
   assert.equal(Object.keys(held).filter(name => held[name].includes('User')).length, 7);
   assert.deepEqual(report.port_blockers.entity_authorization.filter(name => !held[name]), [],
     'every member is held by a write this measured');
-  assert.ok(report.port_blockers.entity_not_carried.includes('offboardUser'));
-  assert.ok(!report.port_blockers.entity_authorization.includes('offboardUser'));
+  // And what holds each of the seven, named, so a later widening of the
+  // allowlist has to come past this list rather than past a count.
+  //
+  // `autoEndDutyDay` is the one worth reading twice: both columns it writes
+  // ARE in D82's allowlist, and it stays blocked because it has no caller —
+  // `schedulerAuth` admits a shared secret, and "the caller's own row" admits a
+  // shared secret to nothing. A rule written over columns alone would have
+  // reported a nightly sweep of every on-duty person in the deployment as a
+  // self-service profile edit.
+  assert.deepEqual(evidence.entityReach.autoEndDutyDay.writeColumns.User, ['duty_on_since', 'duty_status']);
+  assert.ok(scheduled.has('autoEndDutyDay') && !scheduled.has('setNurseDutyStatus'));
+  assert.deepEqual(evidence.entityReach.enforceStaffRoleIntegrity.writeColumns.User, ['staff_role'],
+    'a column nobody may assert about themselves');
+  for (const opaque of ['autoApproveInvitedUser', 'setNurseDutyStatus', 'userManagement', 'userManagementV2']) {
+    assert.equal(evidence.entityReach[opaque].writeColumns.User, null,
+      `${opaque} assembles its payload, so what it sets cannot be read here`);
+  }
+  assert.ok(report.port_blockers.entity_authorization.includes('offboardUser'));
+  assert.deepEqual(report.port_blockers.entity_not_carried, []);
   // The other half of the corrected paragraph: the read rule is a guard that
   // fires on nothing, and the RPC it said these were waiting for exists.
   assert.deepEqual(discoverPolicylessEntities(repository), []);
@@ -1283,19 +1474,31 @@ test('a capability whose only entities are the claims helper is not waiting on t
   );
   // `sendAccountReadyEmail`'s whole body is one `Core.SendEmail`, so reporting
   // it as startable-today said a capability could be written whose only work
-  // is the send D56 has not decided. It reads `core_integration` now, which is
-  // the answer the classifier had already computed and was discarding.
-  assert.ok(report.port_blockers.core_integration.includes('sendAccountReadyEmail'));
+  // is the send D56 has not decided. The refinement that fixed that is still
+  // what runs here — the claims fence is authorization, not records — and the
+  // capability has since been written (D86), so it reads `none`. The check
+  // that matters is unchanged: whatever it reads, it is not `records_schema`,
+  // because its two entity reads never wanted the record store.
   assert.equal(report.port_blockers.records_schema.includes('sendAccountReadyEmail'), false);
+  assert.ok(report.port_blockers.none.includes('sendAccountReadyEmail'));
+  // And the refinement itself, asked directly, still answers what it did: a
+  // port of this capability that had NOT been written would read
+  // `core_integration` rather than `records_schema`.
+  assert.equal(discoverEntityFreeBlockers(repository).sendAccountReadyEmail, 'core_integration');
   // `autoImportPatients` is `preserved_paused` and in no bucket, so the
   // refinement changes nothing for it — which is the check that this fires
   // where it should and nowhere else.
   for (const names of Object.values(report.port_blockers)) {
     assert.equal(names.includes('autoImportPatients'), false);
   }
-  // And nothing is left waiting on the record store at all: D75 took the last
-  // entry out of the bucket by finding it had been paused at source all along.
-  assert.deepEqual(report.port_blockers.records_schema, []);
+  // The bucket reached zero under D75, by finding the last entry had been
+  // paused at source all along, and it is 3 again under D84 — which is the
+  // queue working rather than failing. Those three are carried capabilities
+  // whose one uncarried leg is now settled with a named successor, so what
+  // each waits on is its own port against a store that exists. A count that
+  // only ever falls cannot represent work arriving.
+  assert.deepEqual(report.port_blockers.records_schema,
+    ['distributePolicyAcknowledgment', 'generateAIReport', 'sendExpirationNotifications']);
 });
 
 test('a flag pinned true pauses a handler exactly as one pinned false does', () => {
