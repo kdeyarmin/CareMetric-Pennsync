@@ -313,10 +313,14 @@ jobs:
       # managed Postgres can contradict: the record owner's attributes, the
       # platform roles that bypass RLS, the grants a caller actually holds.
       #
-      # READ-ONLY, and structurally so rather than by intent: the suite checks
-      # every statement with the migrate tool's own `isReadOnly`, which fails
-      # closed, before sending it. It applies nothing -- a deployment is
-      # migrated by an operator who can see the plan first, never by CI.
+      # READ-ONLY, and structurally so rather than by intent: the suite holds a
+      # fixed ALLOWLIST of the statements it may send and refuses everything
+      # else. It was written against the migrate tool's own `isReadOnly` and
+      # that is not what it does now, because a classifier over leading verbs
+      # is not a write barrier -- `select some_write_contract(...)` is a
+      # `select` and `explain analyze insert ...` is an `explain`. It applies
+      # nothing -- a deployment is migrated by an operator who can see the plan
+      # first, never by CI.
       #
       # TWO STEPS, because the measurement needs credentials and exercising the
       # suite does not.
