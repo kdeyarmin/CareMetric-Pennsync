@@ -65,7 +65,13 @@ export function loadConfig(env = process.env) {
   if (released && !explicitApp) throw new Error('IMPLICIT_APP_BINDING');
 
   return Object.freeze({
-    appId, functions: Object.freeze(functions), origins: Object.freeze(origins),
+    appId,
+    // Whether the operator CHOSE the app or inherited the default. Kept on the
+    // config so readiness can state it: a defaulted binding is refused for a
+    // released service above, and reporting it while paused is what lets a
+    // release be checked before it is attempted rather than after it throws.
+    appStated: Boolean(explicitApp),
+    functions: Object.freeze(functions), origins: Object.freeze(origins),
     authorityUrl, authorityKey, authorityConfigured, released, documentLogoDataUrl,
     integrationsUrl, integrationsConfigured,
     revision: /^[0-9a-f]{40}$/.test(env.RAILWAY_GIT_COMMIT_SHA || '') ? env.RAILWAY_GIT_COMMIT_SHA : 'unbound',
@@ -91,6 +97,15 @@ export function publicReadiness(config) {
     integrationsRequired: requiresIntegration(config.functions),
     integrationsConfigured: config.integrationsConfigured,
     authorityMode: 'independent',
+    // Which app this deployment keys into the owned store with, and whether
+    // that was chosen. The id is not a secret — both reviewed ids are literals
+    // in this file and one of them ships in the SPA bundle — while the pairing
+    // is the failure the plan singles out: a store pinned to one app and a
+    // service defaulted to the other reports ready and is refused by every
+    // authorization call. Stating it here lets that be compared against the
+    // store's own pin without releasing anything to find out.
+    appId: config.appId,
+    appStated: config.appStated === true,
     // This service has no Base44 client, credential or call path at all.
     base44ExecutionDependency: false,
     // Implemented handlers versus the ones an operator has actually released.

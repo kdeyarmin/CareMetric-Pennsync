@@ -118,6 +118,13 @@ Six things gate everything else, in this order. Only the first is free.
    the integration runtime was.~~ **Done 2026-09-22**: live at
    `pennsync-api-production.up.railway.app`, `release: paused`, revision
    `f18b053`, 74 handlers implemented and every one refusing. See stage B.
+   **Re-probed 2026-09-23 and unchanged** — the same revision, still paused,
+   `authorityConfigured` and `integrationsConfigured` both true. Recorded again
+   because this line was read as open work twice on 2026-09-23 and a decision
+   card asking the owner to authorize creating it was raised and withdrawn:
+   nothing about this service is an ask, and it is two commits behind main for
+   its own directory, which stage D's deployment probe now measures rather than
+   assumes.
 3. **Enroll real people.** Ten Supabase Auth invitations accepted and verified
    out of band. Nothing downstream of authority can be proved with four
    synthetic actors.
@@ -770,11 +777,21 @@ anywhere. The app binding is deferred to stage C as above.
     which a refresh does not extend, so such a session could never be a stored
     secret and the job would have to sign in at the start of every run. Stage A
     claim 4 no longer waits on it; see the composition recorded there.
-  - **The `chart_assignment` row for the existing care team.** `assignment` has
-    it and `chart_assignment` does not, and D24 authorizes from the second;
-    sixteen suites read an empty team without it. It is a write to
-    `pennsync_private` on staging rather than an identity, so it belongs to
-    whoever runs the seed, not to an enrollee.
+  - ~~**The `chart_assignment` row for the existing care team.**~~ **Retired
+    with the sign-in, 2026-09-23, and the stale copy of it lived HERE while
+    stage A above and the ask table below both carried the correction.** There
+    is no gap: `assignment` keys to the synthetic staging patients and
+    `chart_assignment` names a chart of record in `pennsync_records`, which is
+    empty, so an empty second table beside a populated first is what this store
+    must look like. Measured on the project 2026-09-22 and **re-measured
+    2026-09-23, unchanged**: patient 3, assignment 1, chart_assignment 0,
+    records patient 0, records visit 0. The suites that read
+    it needed a hosted CALLER, which the withdrawn sign-in was to supply, so
+    seeding the row now buys nothing and cannot be undone — the table is
+    deliberately unkeyed on patient, so nothing would refuse a row naming a
+    chart that does not exist, and the provenance trigger refuses every update
+    and delete. **Do not seed it.** It was proposed again within an hour of
+    being refuted once; this bullet is why.
 
   The other six invitations are still this stage's, and so is everything below;
   what changed is that stage A's fourth claim no longer waits on all ten.
@@ -791,8 +808,35 @@ anywhere. The app binding is deferred to stage C as above.
   every authorization call. So a service that will not boot after release has
   told you the answer; one that boots and then fails authorization while
   otherwise healthy is the case to check this for, before anything else.
-- Give the four tenant roles that can hold context but cannot use it their roster
-  behaviour.
+  **"No probe can see it" stopped being true on 2026-09-23**: readiness now
+  reports `appId` and `appStated`, and
+  `tools-pennsync-release-ladder.mjs --wave <name> --deployment <host>` reads
+  them and refuses a release whose binding is defaulted. The running revision
+  predates the fields, so it still answers "not reported" — a redeploy is what
+  makes this checkable, and until then the paragraph above is how to tell.
+- ~~Give the four tenant roles that can hold context but cannot use it their roster
+  behaviour.~~ **Done in the record store 2026-09-23, and it needed no
+  enrollee.** The four are `manager`, `office_staff`, `social_worker` and
+  `spiritual_care` — the roles `current_patient_context` and
+  `current_visit_documentation` exclude, both constraining `tenant_role` to
+  `agency_admin` and `clinician`. `contract_roster` already served them (its
+  admission is "holds a membership", not a role list), but nothing had ever
+  CALLED it as one: every fixture here holds `agency_admin` and `clinician`
+  only, and so does hosted staging (measured 2026-09-23: two and two). So two
+  branches of a shipped contract were unreachable — the privilege gate's
+  `manager` arm and the `is_manager` derivation's, both `in ('agency_admin',
+  'manager')`. `contract-roster.test.mjs` now seeds a third agency whose four
+  members hold those roles and proves that each of them gets the roster and
+  the other agency's refusal, that a `manager` is privileged, and that the
+  other three see the working roster with every administrative field null
+  rather than absent. Three sabotages fail it: dropping `manager` from the
+  privilege gate, dropping it from `is_manager`, and refusing the three
+  context-only roles. What is still owed hosted is only the exercise, which
+  needs memberships in those roles, which needs identities.
+  Note while reading that fixture: the carried `staff_role` admits `nurse`,
+  `office_staff`, `social_worker` and `spiritual_care` and has no `manager` at
+  all — the job label and the tenant role are different things, and only the
+  second decides anything.
 - **Decide the synthetic-name question.** `agency` and `patient` names must begin
   `Synthetic ` in every deployment, and `actor()` refuses any non-staging
   deployment outright with `PENNSYNC_STAGING_RPC_SURFACE_ONLY`. That guard is
@@ -959,6 +1003,52 @@ anywhere. The app binding is deferred to stage C as above.
   already singles out for exactly that reason. So a wave's prerequisites are
   the whole CALL CLOSURE of its contracts, not the migration each contract is
   written in.
+
+  **The mirror of that gap is the deployment, and it bit on the first probe.**
+  The ladder derives its names from committed source; the running service
+  answers from the revision it was built at. Measured 2026-09-23 against
+  `pennsync-api-production.up.railway.app`: revision `f18b053`, release
+  `paused`, **74 handlers implemented against the ladder's 75** — it predates
+  `generatePatientHandout`, which landed two commits later in #240 and sits in
+  the `read-only` wave. Pasting that wave's value onto that revision is
+  `INVALID_FUNCTION_RELEASE` at startup, which is a crash loop rather than a
+  refusal an operator can read. So `--wave <name> --deployment https://<host>`
+  reads `/readyz` and refuses three things before an operator sets anything: a
+  name the revision does not implement, a value BEHIND the deployment (the
+  waves are cumulative, so an earlier wave pasted over a later one revokes what
+  is being served), and a startup throw the payload already predicts —
+  `INCOMPLETE_AUTHORITY_CONFIGURATION`, `INTEGRATIONS_NOT_CONFIGURED` for a
+  wave that needs the paused runtime, and `IMPLICIT_APP_BINDING`.
+
+  That last one needed the service to say something it did not: readiness now
+  reports `appId` and `appStated`, so the binding this stage calls out as
+  silent can be compared against the store's own pin BEFORE a release. Neither
+  id is a secret — both are literals in `runtime.mjs` and one ships in the SPA
+  bundle. The probe reads both as OPTIONAL, because the running revision
+  predates them, and an absent binding is reported as unreported rather than
+  cleared: demanding it would refuse exactly the deployment the check is for.
+  The probe is opt-in and read-only; `check:release-ladder` still reaches no
+  network.
+
+  **The store side of waves 1 to 3 is applied, measured rather than assumed.**
+  All nine prerequisite migrations for `patient-read`, `patient-write` and
+  `visit` are in `caremetric-pennsync-staging`'s ledger (2026-09-23), the
+  handout aside there is nothing else those waves need, and the running
+  revision implements all eight names. The check took one correction to be
+  usable: the ladder printed FILE names while
+  `supabase_migrations.schema_migrations` keys on the file's whole STEM, so an
+  operator comparing the two matched nothing. It now prints both, taking the
+  ledger form from `tools-pennsync-migrate.mjs`'s own `ledgerVersion` rather
+  than reproducing it.
+
+  Measured the same day, for the record of what a release would actually serve:
+  the only PennSync Supabase project that exists is `caremetric-pennsync-staging`
+  (`xxtyweswohkvgkprimwa`), and its `pennsync_private.deployment` pin is
+  `6a9881683dc68a0bd54f1ef7` — the staging app, not this service's default. So
+  a release on that service is a STAGING release, whatever Railway's default
+  environment is named, and it needs `PENNSYNC_API_APP_ID` set to that id or
+  every authorization call is refused. The production store of item 4 does not
+  exist yet.
 
   Two things about the write classifier are worth carrying, because both drafts
   of it were wrong in opposite directions. It first matched

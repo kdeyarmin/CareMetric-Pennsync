@@ -34,6 +34,36 @@ const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const rid = n => `6aac00000000${String(n).padStart(12, '0')}`;
 /** 1 is agency_admin in agency-a, 2 and 3 clinicians there, 4 agency_admin in agency-b. */
 const ADMIN_A = 1; const CLINICIAN_A = 2; const ADMIN_B = 4;
+/**
+ * The four tenant roles the plan's stage C still owes roster behaviour to, in
+ * an agency of their own so the assertions above keep their populations.
+ *
+ * They are the roles that can hold a tenant context and cannot open a chart:
+ * `current_patient_context` and `current_visit_documentation` both constrain
+ * `tenant_role` to `agency_admin` and `clinician`, and the hosted staging
+ * project holds memberships for those two only (measured 2026-09-23: two
+ * `agency_admin`, two `clinician`). So nothing had ever called this contract
+ * as one of them, and `manager` is the sharp case twice over — it is the only
+ * other role the privilege gate admits (`v_role in ('agency_admin','manager')`)
+ * and the only other one `is_manager` is derived true for.
+ */
+const C = 'agency-c';
+const MANAGER_C = 5; const OFFICE_C = 6; const SOCIAL_C = 7; const SPIRITUAL_C = 8;
+/**
+ * The carried `staff_role` is a JOB label and its own constraint admits only
+ * `nurse`, `office_staff`, `social_worker` and `spiritual_care` — there is no
+ * `manager` among them, which is the distinction this suite is about: the job
+ * label and the tenant role are different things and only the second decides
+ * anything.
+ */
+const STAFF_ROLE = Object.freeze({
+  manager: 'nurse', office_staff: 'office_staff',
+  social_worker: 'social_worker', spiritual_care: 'spiritual_care',
+});
+const ROLES_C = Object.freeze([
+  [MANAGER_C, 'manager'], [OFFICE_C, 'office_staff'],
+  [SOCIAL_C, 'social_worker'], [SPIRITUAL_C, 'spiritual_care'],
+]);
 const LIST = 'select "public"."pennsync_contract_roster_list"($1,$2,$3) as result';
 const GET = 'select "public"."pennsync_contract_roster_get"($1,$2) as result';
 const A = 'agency-a'; const B = 'agency-b';
@@ -53,6 +83,32 @@ before(async () => {
   await db.exec(readFileSync(resolve(repository, BROKER_MIGRATION_FILE), 'utf8'));
   await db.exec(readFileSync(resolve(repository, CONTRACT), 'utf8'));
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
+  // A third agency whose four members hold the four roles nothing else here
+  // exercises. Added in this suite rather than in `fixtures.sql`, which is
+  // shared by around fifty others whose populations would all shift.
+  await db.exec(`insert into auth.users(id,email,email_confirmed_at) values
+${'    '}${ROLES_C.map(([n, role]) => `('${uid(n)}','${role}-c@example.invalid',clock_timestamp())`).join(',\n    ')};
+    insert into auth.sessions(id,user_id,not_after) select
+      ('${sid(0).slice(0, -12)}'||right(id::text,12))::uuid,id,clock_timestamp()+interval '1 hour'
+      from auth.users where id in (${ROLES_C.map(([n]) => `'${uid(n)}'`).join(',')});
+    insert into pennsync_private.identity_map(app_id,auth_user_id,base44_user_id,expected_email,source_evidence_sha256,verified_at)
+      select '${APP}',id,'6aac00000000'||right(id::text,12),email,repeat('a',64),clock_timestamp()
+      from auth.users where id in (${ROLES_C.map(([n]) => `'${uid(n)}'`).join(',')});
+    insert into pennsync_private.agency(app_id,id,name,status)
+      values('${APP}','${C}','Synthetic Agency C','active');
+    insert into pennsync_private.membership(app_id,id,agency_id,auth_user_id,base44_user_id,tenant_role,status) values
+${'    '}${ROLES_C.map(([n, role]) => `('${APP}','membership-${n}','${C}','${uid(n)}','${rid(n)}','${role}','active')`).join(',\n    ')};`);
+  // Personnel detail for each, so the widening can be read rather than assumed
+  // absent, and every authority label a lie exactly as above.
+  // The carried row carries NO email — the roster's address is the authority
+  // store's, which is the whole of D23 — so the column list is the one above,
+  // exactly.
+  await db.exec(`insert into ${SCHEMA}."user"
+    ("source_app_id","id","agency_id","agency_name","account_type","role",
+     "staff_role","duty_status","phone","credentials","license_number","manager_email") values
+${'    '}${ROLES_C.map(([n, role]) => `('${APP}','${rid(n)}','agency-a',`
+      + `'Claimed Agency A','platform_admin','admin','${STAFF_ROLE[role]}','off_duty','555-100${n}',`
+      + `'CRED-${n}','LIC-${n}','boss@example.invalid')`).join(',\n    ')};`);
   // Carried profile rows, every authority label a lie. 3 is deliberately
   // absent: a colleague with a membership and no profile row is still on the
   // roster, which is the half of this a join written the other way round
@@ -248,4 +304,58 @@ test('no caller role reaches the roster except through the two contracts', async
   }
   // And the table itself is not a door either.
   await assert.rejects(() => as(ADMIN_A, `select "id" from ${SCHEMA}."user"`), /permission denied/i);
+});
+
+test('every tenant role that holds a membership gets its agency roster', async () => {
+  // The plan's stage C owes these four their roster behaviour, and nothing had
+  // ever called this contract as one of them: `agency_admin` and `clinician`
+  // are the only roles in any fixture here and the only two the hosted staging
+  // project holds. The claim is that holding a membership is the whole of the
+  // admission — the contract asks `caller_tenant_role` for null, not for a
+  // list of roles — so all four see the same four colleagues.
+  for (const [caller, role] of ROLES_C) {
+    const result = await listAs(caller, C);
+    assert.deepEqual(result.entries.map(entry => entry.id), ROLES_C.map(([n]) => rid(n)),
+      `${role} must see agency-c's roster`);
+    for (const entry of result.entries) {
+      assert.equal(entry.agency_id, C, 'the agency comes from the membership, not the carried row');
+      assert.equal(entry.agency_name, 'Synthetic Agency C');
+    }
+    // And none of them reaches another agency, which is the same refusal an
+    // admin gets rather than a softer one.
+    await refusal(as(caller, LIST, [A, 200, null]), 'PENNSYNC_ROSTER_AGENCY_NOT_HELD');
+  }
+});
+
+test('a manager is privileged and the three context-only roles are not', async () => {
+  const DETAIL = ['phone', 'credentials', 'license_number', 'manager_email'];
+  // `manager` is the only role besides `agency_admin` the privilege gate
+  // admits, and the only other one `is_manager` is derived true for. Both
+  // branches were unreachable before this agency existed.
+  const managerView = await listAs(MANAGER_C, C);
+  const [managerEntry] = managerView.entries;
+  assert.equal(managerEntry.tenant_role, 'manager');
+  assert.equal(managerEntry.is_manager, true, 'derived from the tenant role, which is not agency_admin here');
+  for (const field of DETAIL) {
+    assert.ok(managerView.entries.every(entry => entry[field] !== null),
+      `${field} must reach a manager`);
+  }
+
+  for (const [caller, role] of ROLES_C.filter(([, name]) => name !== 'manager')) {
+    const entries = (await listAs(caller, C)).entries;
+    for (const entry of entries) {
+      // Null rather than absent, so the shape never says which caller it is.
+      for (const field of DETAIL) {
+        assert.ok(Object.hasOwn(entry, field), `${field} must still be present for ${role}`);
+        assert.equal(entry[field], null, `${field} is administrative and must not reach ${role}`);
+      }
+      // The working roster is what these roles are for, and it survives.
+      assert.ok(Object.hasOwn(entry, 'staff_role') && Object.hasOwn(entry, 'duty_status'));
+      assert.equal(entry.is_manager, entry.tenant_role === 'manager',
+        'is_manager follows the tenant role of the ROW, whoever is reading');
+    }
+    assert.equal((await as(caller, GET, [C, rid(MANAGER_C)]))[0].result.phone, null,
+      `get widens the same way for ${role}`);
+  }
+  assert.equal((await as(MANAGER_C, GET, [C, rid(OFFICE_C)]))[0].result.phone, `555-100${OFFICE_C}`);
 });

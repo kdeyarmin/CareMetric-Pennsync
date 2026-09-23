@@ -143,6 +143,29 @@ test('a released service refuses an app binding the operator did not choose', ()
   assert.equal(publicReadiness(bare).ready, false);
 });
 
+test('readiness states the app binding, and whether it was chosen', async () => {
+  // The pairing this reports is the failure the go-live plan singles out as
+  // silent: a store pinned to one app and a service defaulted to the other
+  // reports ready and is refused by every authorization call. Reporting it
+  // while PAUSED is the point — it lets a release be checked against the
+  // store's pin before it is attempted, rather than after every call fails.
+  const paused = publicReadiness(loadConfig({}));
+  assert.equal(paused.appId, '694ec16e72e01b60d22f7cbf');
+  assert.equal(paused.appStated, false);
+
+  const stated = publicReadiness(loadConfig(env({ PENNSYNC_API_APP_ID: '6a9881683dc68a0bd54f1ef7' })));
+  assert.equal(stated.appId, '6a9881683dc68a0bd54f1ef7');
+  assert.equal(stated.appStated, true);
+
+  // Over HTTP too, since that is where an operator and the release ladder read
+  // it from, and readiness answers 503 while the gate is shut.
+  const response = await createHandler(loadConfig({}), {})(new Request('https://api.example.test/readyz'));
+  const body = await response.json();
+  assert.equal(response.status, 503);
+  assert.equal(body.appStated, false);
+  assert.equal(body.appId, '694ec16e72e01b60d22f7cbf');
+});
+
 test('readiness reports no Base44 dependency and never claims a cutover', async () => {
   const readiness = publicReadiness(config());
   assert.equal(readiness.base44ExecutionDependency, false);
