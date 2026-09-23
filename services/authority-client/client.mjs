@@ -110,6 +110,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   saveVisitPointConfig: 'json',
   sendAccountReadyEmail: 'json',
   sendCredentialRenewalReminders: 'json',
+  sendExpirationNotifications: 'json',
   sendPersonnelExpirationNotifications: 'json',
   sendWelcomeEmail: 'json',
   submitIncidentReport: 'json',

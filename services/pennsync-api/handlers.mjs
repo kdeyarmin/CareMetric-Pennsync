@@ -712,6 +712,12 @@ export const HANDLERS = Object.freeze({
       return contract('sendCredentialRenewalReminders', params);
     },
   }),
+  sendExpirationNotifications: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, [], 'INVALID_PARAMS');
+      return contract('sendExpirationNotifications', params);
+    },
+  }),
   checkExpiredInvitations: Object.freeze({
     handle({ params, contract }) {
       exactObject(params, [], 'INVALID_PARAMS');

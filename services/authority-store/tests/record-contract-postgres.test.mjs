@@ -615,3 +615,110 @@ test('the distribution key is the table\'s, and a prior version stands beside it
     assert.equal((await setup.query(
       `select count(*)::int as n from ${SCHEMA}."policy_acknowledgment"`)).rows[0].n, 3);
   }));
+
+/*
+ * ---------------------------------------------------------------------------
+ * D90: two enforcements again, and this time the ROW LOCK is the one doing the
+ * work.
+ *
+ * `sendExpirationNotifications` claims a reminder tier by appending it to
+ * `expiration_note_offsets_sent`. The original reads the row, decides which
+ * tiers are newly due, writes them back, then RE-READS the row to check its
+ * own claim token survived — a compensation for having no transaction, and a
+ * racy one, because two runs that read before either wrote both decide the
+ * same tiers are due.
+ *
+ * D89 is why this test asserts what it asserts. There the block came from a
+ * second index rather than the one the case was about, which reading could not
+ * have told you. So this one is written the other way round: the two callers
+ * are driven, and then each enforcement is removed in turn to see which answer
+ * changes. The first draft of this comment predicted the result and got it
+ * wrong, which is the whole point of running the sabotage — three runs:
+ *
+ *   - `for update` removed: the loser STILL blocks, on the dedupe index inside
+ *     the mint, and answers `already_warned: 1` rather than
+ *     `employee_notifications: 0`. It writes nothing and claims nothing,
+ *     because the catch is before the claim. Only the assertion below about
+ *     reaching the mint fails.
+ *   - the dedupe key made unique per mint, the lock kept: everything passes.
+ *     The lock alone holds it.
+ *   - both removed: the loser warns the holder a second time.
+ *
+ * So the two are independent and either alone is enough, which is NOT what the
+ * D89 pair does — there the two indexes key the same thing and one of them
+ * only serialized without preventing. Here the lock decides WHERE the loser
+ * stops and the index decides that it stops at all, and the assertions below
+ * pin which one answered.
+ */
+const EXPIRY_SWEEP = 'select "public"."pennsync_contract_expiration_notice_sweep"($1) as result';
+const expirySweep = client => client.query(EXPIRY_SWEEP, [A])
+  .then(result => result.rows[0].result);
+const credential = (setup, id, days) => setup.query(
+  `insert into ${SCHEMA}."personnel_credential" ("source_app_id","id","agency_id",
+     "user_id","user_name","title","item_type","status","expiration_date")
+   values ($1,$2,$3,'clinician-a@example.invalid','Ada Lovelace','RN License',
+     'license','approved',(${SCHEMA}.agency_today() + $4::integer))`,
+  [APP, id, A, days]);
+
+test('two concurrent expiry sweeps warn the holder once and claim the tier once',
+  () => lab(async ({ connect, setup }) => {
+    await credential(setup, 'cred-race', 5);
+    const first = await connect(); const second = await connect();
+    await begin(first, MANAGER_A); await begin(second, MANAGER_A);
+    const winner = await expirySweep(first);
+    assert.equal(winner.success, true);
+    assert.equal(winner.employee_notifications, 1);
+    // Five days out crosses 30, 14 and 7 at once; 3 is not yet due.
+    assert.deepEqual(winner.notifications[0].claimed_offsets, [30, 14, 7]);
+    const pending = tracked(expirySweep(second));
+    await blocked(setup, second, 'the second expiry sweep');
+    await first.query('commit');
+    const loser = await pending;
+    // ANSWERED rather than refused, and with the same answer an uncontended
+    // second run gives: there was nothing left to claim. A caller cannot tell
+    // whether it raced.
+    assert.equal(loser.ok, true, `the loser refused: ${loser.error?.message}`);
+    assert.equal(loser.value.employee_notifications, 0, 'nobody was warned twice');
+    assert.equal(loser.value.already_warned, 0,
+      'and it did not even reach the mint — the qual was re-checked against the winner');
+    assert.equal(loser.value.admin_summaries_sent, 0, 'so no summary either');
+    await second.query('commit');
+    const warnings = await setup.query(
+      `select count(*)::int as n from ${SCHEMA}."notification"
+       where "type" = 'credential_expiration'`);
+    assert.equal(warnings.rows[0].n, 1, 'one warning, not two');
+    const claimed = await setup.query(
+      `select "expiration_note_offsets_sent" as m from ${SCHEMA}."personnel_credential"
+       where "id" = 'cred-race'`);
+    assert.deepEqual(claimed.rows[0].m, [30, 14, 7],
+      'and the tiers were consumed once, not appended twice');
+  }));
+
+test('a second administrator sweeping at the same time gets one summary between them',
+  () => lab(async ({ connect, setup }) => {
+    // The summary's own key is (agency, day, recipient), so the second sweep's
+    // summary is the one the dedupe index stops rather than the lock — the
+    // administrator is the same person in both transactions. It is COUNTED,
+    // which is the difference between a suppressed duplicate and a lost one.
+    await credential(setup, 'cred-sum-1', 5);
+    await credential(setup, 'cred-sum-2', 20);
+    const first = await connect();
+    await begin(first, MANAGER_A);
+    const winner = await expirySweep(first);
+    assert.equal(winner.admin_summaries_sent, 1);
+    await first.query('commit');
+    // A fresh credential, so the second run has real work and reaches the
+    // summary at all.
+    await credential(setup, 'cred-sum-3', 3);
+    const second = await connect();
+    await begin(second, MANAGER_A);
+    const later = await expirySweep(second);
+    assert.equal(later.employee_notifications, 1, 'the new credential is warned about');
+    assert.equal(later.admin_summaries_sent, 0);
+    assert.equal(later.admin_summaries_suppressed, 1);
+    await second.query('commit');
+    const summaries = await setup.query(
+      `select count(*)::int as n from ${SCHEMA}."notification"
+       where "type" = 'admin_expiration_summary'`);
+    assert.equal(summaries.rows[0].n, 1, 'one a day, whatever the sweep count');
+  }));
