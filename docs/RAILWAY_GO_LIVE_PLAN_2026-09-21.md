@@ -815,7 +815,60 @@ anywhere. The app binding is deferred to stage C as above.
   and a released name.
 - Then release per function, behind the existing per-name gate: the patient read
   pair, then the create, then the visit family, then the rest by blast radius.
+
+  **That ladder is now derived and checked rather than described.**
+  `tools-pennsync-release-ladder.mjs` reads, per handler name, which reviewed
+  contracts it reaches, which record migrations that reach NEEDS, whether any
+  of them writes, and whether it depends on the integration runtime — and
+  `pnpm run check:release-ladder` gates it. The three waves above are declared
+  in the tool, because their order is a judgement about blast radius and this
+  document is where such a judgement belongs; each is then re-checked against
+  the tree, so a declared name that stops being a handler, or a read wave that
+  gains a write, fails the build. "The rest by blast radius" is derived:
+  read-only, then mutating, then the sixteen that reach the paused runtime.
+
+  | Wave | Handlers | Migrations |
+  | --- | ---: | ---: |
+  | `patient-read` (declared) | 2 | 3 |
+  | `patient-write` (declared) | 2 | 5 |
+  | `visit` (declared) | 4 | 5 |
+  | `read-only` (derived) | 21 | 16 |
+  | `mutating` (derived) | 30 | 28 |
+  | `integration` (derived) | 16 | 13 |
+
+  `node tools-pennsync-release-ladder.mjs --wave patient-read` emits the
+  cumulative `PENNSYNC_API_FUNCTIONS` value and the migrations the target
+  deployment must already have applied, so the operator copies a value the
+  repository has checked rather than typing one.
+
+  **What the release gate cannot refuse is the reason this exists.**
+  `loadConfig` already rejects a name that is not in the registry, a duplicate,
+  a release with no authority and a release with no stated app — all loudly, at
+  startup. It cannot see whether the target STORE carries the contract the name
+  reaches. Release `createAuthorizedPatient` against a deployment that has not
+  applied `20260920110000_claim_new_chart.sql` and every startup check passes,
+  `/readyz` reports ready, and each create fails inside the store: the same
+  silent shape as a stated-but-wrong `PENNSYNC_API_APP_ID`, which this stage
+  already singles out for exactly that reason. So a wave's prerequisites are
+  the whole CALL CLOSURE of its contracts, not the migration each contract is
+  written in.
+
+  Two things about the write classifier are worth carrying, because both drafts
+  of it were wrong in opposite directions. It first matched
+  `update\s+"?pennsync\b`, which never fires against the store's own
+  `update "pennsync_records"."patient_alert"` — `_` continues the word — so
+  `contract_alert_update`, whose body is four update statements, read as
+  read-only. It then took each function's body as everything up to the next
+  definition, which swept in the migration's own statements, so
+  `20260920050000_patient_purpose_policy.sql`'s backfill made every patient
+  READ contract look like a write and the declared read wave was refused. A
+  name-shape check catches the first kind and cannot catch the second, so the
+  body is bounded by its dollar quotes and the false-write case is pinned by
+  its own test.
 - Each release wants its own hosted proof, not a suite that passed locally.
+  **Unchanged, and still owed to stage C**: a hosted proof needs a signed-in
+  caller, and the ladder above says only what a release DEPENDS on, never that
+  it has been exercised against hosted staging.
 
 **Exit:** the independent staging build serves the patient and visit families
 from `pennsync-api` against hosted staging, with the Base44 path untouched.
