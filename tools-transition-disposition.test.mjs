@@ -13,6 +13,7 @@ import {
   entitiesTouched, isInertFunction, isPausedFunction, isRefusingHandler, main, parseManifest,
   discoverClaimsOnlyFunctions, TRUSTED_CLAIMS_FENCE,
   invokedFunctions, classifyWithoutInvocations, discoverInvocationFreeBlockers,
+  portQueueLine,
 } from './tools-transition-disposition.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -195,6 +196,40 @@ test('a module whose only entity is the retired trail is re-classified by what e
     assert.ok(report.port_blockers[blocker].includes(name),
       `${name} should wait on ${blocker}`);
     assert.equal(report.port_blockers.records_schema.includes(name), false);
+  }
+});
+
+test('AGENTS.md carries the port queue the tool measures, and names what is startable', () => {
+  // D79 fixed two stale bucket descriptions with assertions rather than better
+  // prose, and the prose about the buckets then went stale the same way: the
+  // page said "the `none` bucket has nothing startable left: it is 73" while
+  // D84 had deliberately moved three capabilities into `records_schema`, and
+  // its parenthetical still listed `entity_not_carried` 7 and
+  // `core_integration` 2, both of which are 0. Nothing failed, because nothing
+  // compared the page with the tool. A reader acting on that sentence would
+  // have concluded the queue was exhausted while three ports waited.
+  const report = checkCoverage(
+    discoverCapabilities(repository),
+    parseManifest(readFileSync(resolve(repository, 'tools-transition-disposition.json'), 'utf8')),
+    discoverEvidence(repository),
+  );
+  const line = portQueueLine(report);
+  const page = readFileSync(resolve(repository, 'AGENTS.md'), 'utf8');
+  assert.ok(page.includes(line),
+    `AGENTS.md does not carry the measured port queue.\n  measured: ${line}\n`
+    + '  Update the port-queue sentence in AGENTS.md, and the decisions doc\'s ledger line,\n'
+    + '  in the SAME change as whatever moved the queue.');
+
+  // The counts alone would pass a swap — one capability into a bucket and one
+  // out leaves every number where it was — so the startable set is pinned by
+  // NAME. These three are ports nobody has written yet, against a store that
+  // exists; moving any of them is a change to what the queue tells a reader to
+  // pick up, so it moves the page too.
+  assert.deepEqual(report.port_blockers.records_schema,
+    ['distributePolicyAcknowledgment', 'generateAIReport', 'sendExpirationNotifications'],
+    'the startable set changed; re-read what each entry now waits on and move AGENTS.md with it');
+  for (const name of report.port_blockers.records_schema) {
+    assert.ok(page.includes(name), `AGENTS.md should name ${name} as startable`);
   }
 });
 

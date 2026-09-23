@@ -1282,6 +1282,23 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
   };
 }
 
+/**
+ * The port queue as one line, so the tool and any page quoting it cannot drift.
+ *
+ * AGENTS.md carried "the `none` bucket has nothing startable left: it is 73"
+ * for as long as it took D84 to move three capabilities into `records_schema`
+ * on purpose, and nothing failed — the same shape D55 and D79 already recorded
+ * about the buckets themselves, arriving this time in the prose that describes
+ * them. A reader acting on that sentence would have concluded the queue was
+ * exhausted while three ports were waiting to be written. So the counts have
+ * exactly one form, this function produces it, and the test fails when
+ * AGENTS.md does not carry what the tool measures.
+ */
+export function portQueueLine(report) {
+  const queue = Object.entries(report.port_blockers).filter(([, names]) => names.length);
+  return `port queue: ${queue.map(([blocker, names]) => `${blocker}=${names.length}`).join(' ') || 'empty'}`;
+}
+
 export function main(args = process.argv.slice(2), { repository = resolve(dirname(fileURLToPath(import.meta.url))), log = console.log } = {}) {
   if (args.some(argument => !['--json', '--summary'].includes(argument))) {
     log(JSON.stringify({ error: 'INVALID_ARGUMENTS' }));
@@ -1308,8 +1325,7 @@ export function main(args = process.argv.slice(2), { repository = resolve(dirnam
     for (const entry of report.contradicted_disposition) log(`  contradicted: ${entry}`);
     for (const entry of report.retention_unspecified) log(`  retirement with no retention basis: ${entry}`);
     for (const entry of report.retention_unused) log(`  retention basis for something not retired: ${entry}`);
-    const queue = Object.entries(report.port_blockers).filter(([, names]) => names.length);
-    log(`  port queue: ${queue.map(([blocker, names]) => `${blocker}=${names.length}`).join(' ') || 'empty'}`);
+    log(`  ${portQueueLine(report)}`);
   } else {
     log(JSON.stringify(report, null, 2));
   }
