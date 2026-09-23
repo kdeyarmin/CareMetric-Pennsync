@@ -1,12 +1,22 @@
 # Railway go-live: measured state and the remaining plan
 
 Date: 2026-09-21
+Last re-measured: **2026-09-23 against `b8e4e021`**, the tree, the CI job logs
+on `main`, and both running Railway services.
 Status: a live-probe assessment and the plan that follows from it. Like
 [the transition plan](BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md) it
 authorizes nothing: every hosted change below still needs its own review, cost
 approval, evidence and release-owner sign-off under
 `docs/REPOSITORY_CONSOLIDATION_2026-09-02.md` and
 `docs/PENNSYNC_EXTERNAL_CUTOVER_EVIDENCE.md`.
+
+**Every count in this document is a hypothesis until re-measured**, and the
+2026-09-23 pass found stale numbers in section 1 and in stages A, B, C, D and G.
+Two of them — the port queue in section 1 and the release-wave table in stage D
+— are pinned to the tools that produce them now, so a change that moves either
+and leaves this page alone fails the build. Everything else here is prose and
+can still go stale: prefer `pnpm run check:*` and a job log to any number
+written below.
 
 ## 0. The answer: no, and the distance is not where the documents suggest
 
@@ -28,7 +38,7 @@ Probed 2026-09-21:
 | `app.caremetricai.com/` | HTTP 200 | Base44 |
 | `caremetricai.base44.app/` | HTTP 200 | Base44 |
 | Supabase account project list | `CM Train`, `caremetric-pennsync-staging`, `PennPaps`, `CareMetric Support Hub`, `bolt-native-database-62871816` | **No production project** |
-| `caremetric-pennsync-staging` migration list | 9 versions, newest `20260918204105` | Five authority migrations behind; **no record store at all**. **Closed later the same day: 59 applied, 68 recorded — see stage A** |
+| `caremetric-pennsync-staging` migration list | 9 versions, newest `20260918204105` | Five authority migrations behind; **no record store at all**. **Closed later the same day: 59 applied, 68 recorded — see stage A. Re-read 2026-09-23 from the `hosted-gap` job on `b8e4e021`: `already_applied: 73`, `pending: []`, one skipped by name** |
 | `node tools-pennsync-cutover.mjs --check` | `status: blocked`, `PINNED_INPUTS_REQUIRED`, `release_authorized:false` | None of the 15 gates has a receipt |
 | `pnpm run check:base44-surface` | `client_importers=366/366 entity_call_sites=445/445 core_integration_sites=41/41 function_wrappers=83/83` | The frontend has not moved one call site |
 
@@ -51,8 +61,8 @@ plan's status table reads as progress without saying where the progress lives.
 | Artifact | Built | Applied or deployed anywhere hosted |
 | --- | ---: | ---: |
 | Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
-| Record store migrations (store, brokers, 51 contracts, purpose policies, file map) | 54 | ~~0~~ **54** — applied 2026-09-21 |
-| Ported handlers registered in `services/pennsync-api/handlers.mjs` | 77 | ~~0~~ **74 deployed, 0 released** — deployed 2026-09-22; the 75th (`generatePatientHandout`, D81) and the two account emails (D86) ship with the next deploy |
+| Record store migrations (store, brokers, 83 contracts, purpose policies, file map) | ~~54~~ **59** | ~~0~~ **59** — 54 on 2026-09-21 and the rest since; the hosted ledger holds 73 of the 74 committed migrations with nothing pending, read from the `hosted-gap` job on `b8e4e021` 2026-09-23 |
+| Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ **74 deployed, 0 released** — deployed 2026-09-22 and unmoved since, so the deployment is now **six** names behind rather than one. They are named in stage D |
 | Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ **2 deployed, paused** — 2026-09-22 |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
 
@@ -68,16 +78,25 @@ deployed as of 2026-09-22 and every one of them refuses, because the release
 gate is shut and there is no real identity to authorize. That needs stages C
 and D, not more schema.
 
-The port queue, measured today rather than quoted:
+**The store half of that table is no longer the moving part; the deployment
+is.** Re-measured 2026-09-23 on `b8e4e021`: the hosted ledger is caught up and
+the running `pennsync-api` revision is eight commits behind its own directory.
+The schema and the service have swapped which one is stale.
+
+The port queue, measured on this tree rather than quoted. The line below is the
+tool's own `portQueueLine` and is now pinned by a test, so a change that moves
+the queue and leaves this page alone fails the build — the guard AGENTS.md got
+in #250 and this page did not:
 
 ```
-port queue: entity_authorization=7 records_schema=3 files=12
-            external_secret=2 none=75
+port queue: entity_authorization=7 files=12 external_secret=2 none=78
 ```
 
-99 carried capabilities, 75 written, 24 blocked (2026-09-23, after D82 to D87
-took the remaining decisions). Four buckets emptied and one reappeared, and both
-halves of that are the point:
+99 carried capabilities, **78 written, 21 blocked** (2026-09-23, after D89, D90
+and D91). `records_schema` is absent from that line rather than zero in it,
+because `portQueueLine` omits an empty bucket — and that bucket is empty with
+every capability in it BUILT, which is the first time. Three of the buckets
+below have emptied, one of them twice, and the fourth has shrunk by one:
 
 - `entity_not_carried` **7 → 0** (D84). Three of the seven were in the wrong
   place — two follow D8 to the Hub, one is the read side of the comms domain D7
@@ -93,15 +112,20 @@ halves of that are the point:
   settled the profile-write path and moved none of them, because all six write
   somebody else's row, a column outside the allowlist, or a payload nothing can
   read.
-- `records_schema` **0 → 3**, which is the queue working rather than regressing:
-  three capabilities left "blocked on a schema" for "its port is not written
-  yet", against a store that exists.
+- `records_schema` **0 → 3 → 0**. D84 moving three capabilities in was the queue
+  working rather than regressing: "blocked on a schema" became "its port is not
+  written yet", against a store that exists. All three have since been written —
+  `distributePolicyAcknowledgment` (D89), `sendExpirationNotifications` (D90)
+  and `generateAIReport` (D91). D75 had taken this bucket to zero on a
+  *correction*; this is the first time it reaches zero with every capability in
+  it built, which is why the count falling is worth reading and the bucket
+  vanishing from the line is not.
 
 **No blocker in that list is the record store, and none is another port.** The
-remaining 24 are: the administrative profile-write path (7), three ports to
-write, the file layer (12, and D85 re-measured that blocker as real — carrying
-the bytes needs the integration runtime's authorization model changed), and a
-transcription vendor (2, D87).
+remaining 21 are: the administrative profile-write path (7), the file layer (12,
+and D85 re-measured that blocker as real — carrying the bytes needs the
+integration runtime's authorization model changed), and a transcription vendor
+(2, D87).
 
 ## 2. The critical path
 
@@ -110,8 +134,10 @@ Six things gate everything else, in this order. Only the first is free.
 1. ~~**Apply what is already committed to the staging project.**~~ **Done
    2026-09-21**: all 59 outstanding migrations applied to
    `caremetric-pennsync-staging`, 68 recorded in the ledger, the pin landed on
-   staging with `source 'default'`. The 54 record migrations are no longer
-   unproven against a hosted database; the 74 handlers still are, because
+   staging with `source 'default'`. **The ledger has since taken the five
+   migrations merged after that and stands at 73 with nothing pending**, read
+   from the `hosted-gap` job on `b8e4e021` rather than from the tick. The 59 record migrations are no
+   longer unproven against a hosted database; the handlers still are, because
    nothing has served a request yet. Stage B has since deployed them, paused —
    serving one needs an identity, so it is stages C and D.
 2. ~~**Create the `pennsync-api` Railway service**, deployed paused, exactly as
@@ -122,9 +148,11 @@ Six things gate everything else, in this order. Only the first is free.
    `authorityConfigured` and `integrationsConfigured` both true. Recorded again
    because this line was read as open work twice on 2026-09-23 and a decision
    card asking the owner to authorize creating it was raised and withdrawn:
-   nothing about this service is an ask, and it is two commits behind main for
-   its own directory, which stage D's deployment probe now measures rather than
-   assumes.
+   nothing about this service is an ask. **Its staleness has grown and is the one
+   number here that moves on its own**: it was two commits behind main for its
+   own directory when that was written and is **eight** on `b8e4e021`
+   (2026-09-23), which is six handler names it does not implement. Stage D's
+   deployment probe measures that rather than assuming it.
 3. **Enroll real people.** Ten Supabase Auth invitations accepted and verified
    out of band. Nothing downstream of authority can be proved with four
    synthetic actors.
@@ -154,7 +182,8 @@ critical path that needs nothing from anybody.
   `20260920200000_membership_lifecycle`. The app pin goes first; unset it
   defaults to staging, which is the correct outcome for this project, but the
   `deployment` row should record that it was *chosen*.
-- Then apply all 54 `supabase/record-migrations/` files, in order.
+- Then apply every `supabase/record-migrations/` file, in order — 54 when this
+  was written, 59 now.
   `tools-pennsync-provision.mjs` cannot do this — it refuses a database that
   already holds `pennsync_private` (`PROVISION_STORE_ALREADY_PRESENT`), by
   design, because re-provisioning would try to re-pin an immutable pin.
@@ -170,6 +199,18 @@ critical path that needs nothing from anybody.
   PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs --apply   # run
   ```
 
+  **Before `5c31d8ae` (#254, 2026-09-23) neither of those lines did anything on
+  Windows, and neither said so.** The direct-invocation guard compared
+  `import.meta.url` against a `file://` string pasted together from
+  `process.argv[1]`, which never matches a backslash path or one holding a
+  space, so the tool exited 0 having printed nothing. Twelve CLIs shared the
+  defect and six of them are CI gates. It is fixed on `main`; a checkout that
+  predates that commit still has it, so **an exit 0 from an older checkout is
+  not evidence that anything ran** — check that the plan's JSON actually
+  printed. The same change added `* text=auto eol=lf`, because the same
+  checkout had been writing `\r\n` into eight Postgres function bodies, which
+  the hosted comparison reads through `md5(prosrc)` and correctly failed on.
+
   Two things it encodes that were previously prose only. Migrations are
   matched on NAME, because the hosted project's versions were stamped by the
   CLI at push time and do not match the repository's file prefixes — matching
@@ -184,6 +225,22 @@ critical path that needs nothing from anybody.
   reason, and `deployment_pin_pending: true` — the pin migration is the first
   thing pending, which is what made judging the pin before reading the ledger
   refuse this database. `mutated: false`; nothing was written.
+
+  **The same plan on 2026-09-23 reads `already_applied: 73, pending: [], 1
+  skipped, mutated: false`**, with the pin still `6a9881683dc68a0bd54f1ef7` /
+  `staging` / `source 'default'`. Read from the `hosted-gap` job's log on
+  `b8e4e021`, which is the only place in this repository that can see the
+  hosted ledger at all.
+
+  **And merging a migration does not apply it — which cost a day before anyone
+  wrote it down (D93).** `planMigration` matches on a file's NAME and the
+  ledger holds no content hash, so an ADDED migration leaves `main` failing
+  `hosted-store`'s ledger check until an operator runs the `--apply` line
+  above, and an EDITED one is skipped on every store that already ran it. The
+  `apply-signal` job now says both on the pull request: which migrations
+  arrive, that the ledger check will be short by that many rows until the
+  apply, and the command. It is a signal and not a gate, because nothing inside
+  a pull request can satisfy it.
 - **A second transport had to exist before that plan could be run at all, and
   that is a finding rather than a convenience.** From this container — and from
   any runner allowed outbound HTTPS and nothing else, which includes CI here —
@@ -320,7 +377,10 @@ where it is least diagnosable. It is asserted now.
   direction, and it asserts the platform facts above that no reference build
   can produce. It is read-only structurally rather than by intention: every
   statement is checked with the migrate tool's own `isReadOnly`, which fails
-  closed, before it is sent. 15 tests, green against hosted staging.
+  closed, before it is sent. 15 tests when it was written; **21 on `b8e4e021`,
+  21 passed, 0 skipped**, read from the job log on 2026-09-23. A green reading
+  of it is dated — the job is what makes hosted drift visible, so re-read the
+  log rather than quoting this line.
 
   **What it compares is STRUCTURE rather than counts, and that distinction was
   a review finding rather than the first design.** The first version compared
@@ -356,7 +416,7 @@ where it is least diagnosable. It is asserted now.
   `pg_attribute.attnotnull`, which both answer identically. The coverage is
   kept rather than dropped.
 - **The row-behaviour half cannot run hosted yet, and that is a finding rather
-  than an omission.** `record-tenant-isolation`, `activity-audit` and the 42
+  than an omission.** `record-tenant-isolation`, `activity-audit` and the 45
   `contract-*` suites prove what a policy *means* by seeding callers, and a
   caller in this store is an `auth.users` row —
   `pennsync_private.identity_map.auth_user_id` carries a foreign key to it.
@@ -624,7 +684,9 @@ carried by one "done" that was half true:
    Both secrets are configured and `HOSTED_MEASUREMENT_REQUIRED` is `'true'`.
    Proved from the job log rather than the tick: `PENNSYNC_HOSTED_DATABASE_URL`
    and `SUPABASE_ACCESS_TOKEN` both masked as `***`, then 15 tests, 15 passed,
-   **0 skipped**, against `caremetric-pennsync-staging` itself. Note which half
+   **0 skipped**, against `caremetric-pennsync-staging` itself. It has kept
+   measuring: the same job on `b8e4e021` (2026-09-23) reports 21 tests, 21
+   passed, 0 skipped. Note which half
    of the gate carried it: the secrets landed BEFORE the flag was flipped, and
    the measurement ran anyway, because `HOSTED_MEASUREMENT_REQUIRED` governs
    only what an ABSENT credential means and a usable one is measured whatever
@@ -718,6 +780,14 @@ traceable to a commit. `authorityConfigured` and `integrationsConfigured` being
 true means the authority URL, the publishable key and the integrations URL all
 passed their allowlists — the three values most likely to be wrong.
 
+**Re-probed 2026-09-23: the same payload, field for field, and that is now the
+finding rather than the reassurance.** Same revision `f18b053`, still paused,
+still 74 implemented — against 80 in the registry and eight commits touching
+that directory since. The payload also carries no `appId` or `appStated`, which
+is the visible sign that this revision predates #247 and therefore cannot have
+its app binding checked from outside. Which six names are missing, and which
+waves they block, is in stage D.
+
 **The gate was checked at the request path, not only in the readiness report**,
 because a service can report itself paused and still serve. `POST
 /v1/functions/{listAgencyRoster,createAuthorizedPatient,analyzeReferral}` each
@@ -727,6 +797,11 @@ NOT_FOUND` rather than a stack trace.
 The integration runtime is byte-identical to its pre-stage state — revision
 `cffe376`, `release: paused`, `authorityMode: "base44"`, `configured: true`,
 `operations: []`. Not redeployed, per the withdrawn bullet above.
+**Re-measured 2026-09-23 and the withdrawal still holds**: 26 commits have
+landed on main since `cffe376` and `git diff --stat cffe376 HEAD --
+services/integration-runtime` is still EMPTY. The two services have diverged on
+exactly this point — one is current because nothing has changed under it, the
+other is stale because a great deal has.
 
 **One thing this stage cannot prove.** Nothing on `/healthz` or `/readyz`
 exposes `PENNSYNC_API_APP_ID`, so the payload above is identical whatever it is
@@ -755,7 +830,7 @@ anywhere. The app binding is deferred to stage C as above.
 - Send Supabase Auth invitations; each enrollee accepts their own. The tool
   cannot create a native account and must not be given a way to.
 - **This stage now also carries stage A's unfinished half.** The hosted proof of
-  tenant isolation — `record-tenant-isolation`, `activity-audit` and the 42
+  tenant isolation — `record-tenant-isolation`, `activity-audit` and the 45
   `contract-*` suites run against the hosted project rather than PGlite — needs
   seeded callers, and a caller is an `auth.users` row that only a real accepted
   invitation can create. Stage A proved the policies bind, arrived intact and
@@ -876,12 +951,14 @@ anywhere. The app binding is deferred to stage C as above.
 **Nothing buildable remains in this stage** — measured item by item 2026-09-23,
 and recorded because "everything waits on the owner" is the kind of claim this
 project has had to re-measure before. Every remaining bullet needs an enrollee
-or an owner decision:
+or an owner decision. Re-read against the tree on `b8e4e021` later the same day
+and unchanged, which is worth one line because this table is the reason not to
+go hunting for work here:
 
 | Item | Waits on |
 | --- | --- |
 | The six invitations | The owner; an enrollee accepts their own |
-| Stage A's hosted half (`record-tenant-isolation`, `activity-audit`, the 42 `contract-*` suites) | A hosted caller, which is an `auth.users` row only an accepted invitation creates. Structurally, not merely queued: the sign-in that would drive it is withdrawn |
+| Stage A's hosted half (`record-tenant-isolation`, `activity-audit`, the 45 `contract-*` suites) | A hosted caller, which is an `auth.users` row only an accepted invitation creates. Structurally, not merely queued: the sign-in that would drive it is withdrawn |
 | `tools-pennsync-enroll.mjs` against real identities | Enrollees. The tool and its suite are built |
 | `PENNSYNC_API_APP_ID` on the deployed service | The redeploy, which is the owner's. Readiness reports it as of #247; the running revision predates the fields |
 | The four context-only roles' roster behaviour, hosted | Memberships in those roles, so identities. Done in the store and proved locally by #247 |
@@ -899,20 +976,22 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
 - **Fix the `agency_id` gap first, and it is seventeen times the documented
   size.** The transition plan names four call sites. That was measured when
   the adapter routed ELEVEN ported names; `PORTED_FUNCTIONS` held seventy-four
-  when this was measured and nobody had re-measured. `tools-ported-call-sites.mjs`
-  measures it (the gate's summary carries the live count — 75 routed names and
-  72 call sites after D81 admitted the handout's two):
+  when this was measured and nobody had re-measured. **The routed-name count
+  has moved twice more since — 74, then 75, and 80 today — which is the argument
+  for reading the gate rather than the table**: `pnpm run check:ported-call-sites`
+  prints the live count, and on `b8e4e021` (2026-09-23) it is 80 routed names
+  over 73 call sites.
 
   | | Count |
   | --- | ---: |
-  | Ported capabilities `src/` reaches | 52 of 74 |
-  | Routed call sites | 70 |
+  | Ported capabilities `src/` reaches | 54 of 80 |
+  | Routed call sites | 73 |
   | …naming a tenant | **3** |
-  | …demonstrably not naming one | 32 |
-  | …whose payload is a variable, so unreadable | 35 |
-  | **Work Stage D has to do** | **67** |
+  | …demonstrably not naming one | 33 |
+  | …whose payload is a variable, so unreadable | 37 |
+  | **Work Stage D has to do** | **70** |
 
-  The 35 are carried with the 32 deliberately: a call site whose tenant cannot
+  The 37 are carried with the 33 deliberately: a call site whose tenant cannot
   be read is not evidence that it has one. Two further reaches are excluded
   because they go through `rawBase44`, which the adapter is not in — they are
   the two that bootstrap the tenant itself and could not name one.
@@ -1001,11 +1080,14 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   contract suite calls its function positionally in SQL, so a parameter renamed
   on one side would have passed everything and surfaced here, as a release that
   refuses every request. Queried read-only against `caremetric-pennsync-staging`:
-  all 87 functions the service can call — the authority RPC, the audit append,
-  the broker family's list and get, and the eighty contracts — are present in
-  `public`, executable by `authenticated`, closed to `anon`, not overloaded, and
-  every key the service sends is a parameter while every parameter without a
-  default is sent. `services/authority-store/tests/service-rpc-signatures.test.mjs`
+  all 87 functions the service could call at the time — the authority RPC, the
+  audit append, the broker family's list and get, and the eighty contracts —
+  are present in `public`, executable by `authenticated`, closed to `anon`, not
+  overloaded, and every key the service sends is a parameter while every
+  parameter without a default is sent. **That 87 grows with each port and the
+  registry now holds 83 contracts**, so it is a dated reading rather than a
+  current inventory: the hosted query was a one-off and what keeps the property
+  true is the suite below. `services/authority-store/tests/service-rpc-signatures.test.mjs`
   now proves the same at PR time: it captures each capability's real request body
   through its own code path and compares it with `pg_proc` over every migration.
   What Stage D still has to prove is authority, not wiring — a real signed session
@@ -1029,14 +1111,33 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 21 | 16 |
-  | `mutating` (derived) | 30 | 28 |
-  | `integration` (derived) | 16 | 13 |
+  | `read-only` (derived) | 23 | 16 |
+  | `mutating` (derived) | 32 | 30 |
+  | `integration` (derived) | 17 | 14 |
+
+  Those six rows are pinned to `checkLadder` by a test, for the reason the port
+  queue in section 1 now is: every port since #245 has landed in a DERIVED wave
+  and the three declared ones have not moved, so this table drifts on its own
+  and nothing used to notice. The counts are each wave's OWN handlers and
+  prerequisite migrations; `--wave <name>` emits the CUMULATIVE value an
+  operator pastes, which is a longer list.
 
   `node tools-pennsync-release-ladder.mjs --wave patient-read` emits the
   cumulative `PENNSYNC_API_FUNCTIONS` value and the migrations the target
   deployment must already have applied, so the operator copies a value the
   repository has checked rather than typing one.
+
+  **`read-only` holds the two account-email capabilities, and releasing their
+  send is refused rather than remembered now (D92).** `sendAccountReadyEmail`
+  and `sendWelcomeEmail` sit in that wave because each refuses
+  `OUTBOUND_DELIVERY_RELEASE_PAUSED` before reaching an integration, and
+  `account-email.mjs`'s own header had been promising for two ports that a
+  release deleting those refusals must set `needsIntegration: true` in the same
+  change. Nothing asked. The ladder now crosses that flag against whether each
+  handler's `handle` destructures `integration` at all, in BOTH directions, so
+  a change releasing the sends while leaving them in the wave whose whole
+  promise is that nothing in it sends fails the build. Wave 4 is one flag flip
+  from being an outbound-mail change, and that flip is the owner's.
 
   **What the release gate cannot refuse is the reason this exists.**
   `loadConfig` already rejects a name that is not in the registry, a duplicate,
@@ -1052,11 +1153,24 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
 
   **The mirror of that gap is the deployment, and it bit on the first probe.**
   The ladder derives its names from committed source; the running service
-  answers from the revision it was built at. Measured 2026-09-23 against
-  `pennsync-api-production.up.railway.app`: revision `f18b053`, release
-  `paused`, **74 handlers implemented against the ladder's 75** — it predates
-  `generatePatientHandout`, which landed two commits later in #240 and sits in
-  the `read-only` wave. Pasting that wave's value onto that revision is
+  answers from the revision it was built at. Re-probed 2026-09-23 on
+  `b8e4e021`: revision `f18b053`, release `paused`, **74 handlers implemented
+  against the ladder's 80**. That gap was one name when this paragraph was
+  written and is six now, which is the part to act on — it widens with every
+  port and closes only with a redeploy:
+
+  | Missing from the running revision | First wave it blocks |
+  | --- | --- |
+  | `generatePatientHandout`, `sendAccountReadyEmail`, `sendWelcomeEmail` | `read-only` |
+  | `distributePolicyAcknowledgment`, `sendExpirationNotifications` | `mutating` |
+  | `generateAIReport` | `integration` |
+
+  So waves 1 to 3 are pasteable against this revision and waves 4 to 6 are not.
+  Driven against the live service rather than reasoned about: `--wave visit
+  --deployment https://pennsync-api-production.up.railway.app` answers "this
+  revision implements every name above", and `--wave read-only` answers
+  "REFUSED: this revision does not implement generatePatientHandout,
+  sendAccountReadyEmail, sendWelcomeEmail". Pasting a refused wave's value is
   `INVALID_FUNCTION_RELEASE` at startup, which is a crash loop rather than a
   refusal an operator can read. So `--wave <name> --deployment https://<host>`
   reads `/readyz` and refuses three things before an operator sets anything: a
@@ -1076,11 +1190,13 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   The probe is opt-in and read-only; `check:release-ladder` still reaches no
   network.
 
-  **The store side of waves 1 to 3 is applied, measured rather than assumed.**
-  All nine prerequisite migrations for `patient-read`, `patient-write` and
-  `visit` are in `caremetric-pennsync-staging`'s ledger (2026-09-23), the
-  handout aside there is nothing else those waves need, and the running
-  revision implements all eight names. The check took one correction to be
+  **The store side of every wave is applied, measured rather than assumed.**
+  The union of `patient-read`, `patient-write` and `visit` is ten prerequisite
+  migrations, and all ten are in `caremetric-pennsync-staging`'s ledger — as is
+  everything the later waves need, because the ledger has nothing pending at
+  all (`already_applied: 73`, read from the `hosted-gap` job on `b8e4e021`,
+  2026-09-23). **The store is no longer what holds any wave back; the running
+  revision is.** The check took one correction to be
   usable: the ladder printed FILE names while
   `supabase_migrations.schema_migrations` keys on the file's whole STEM, so an
   operator comparing the two matched nothing. It now prints both, taking the
@@ -1176,17 +1292,19 @@ deploy's own report.
 **Exit:** production store provisioned; the pin proved chosen rather than
 defaulted; `deployment` row dated.
 
-### Stage G — The last 31 ports (size M, parallel to D and E)
+### Stage G — The last 21 ports (size M, parallel to D and E)
 
-**Measured 2026-09-22: the startable side is at ZERO.** `tools-transition-disposition.mjs`
-reports 73 capabilities with no blocker, and all 73 are registered in
-`services/pennsync-api` — so every port that *can* be written without a decision
-has been. The 73rd is `generatePatientHandout` (D81), which the queue counted
-`core_integration` although only its email action sends: D79 found it, and it
-was written the same day. Two buckets the queue used to report are also empty now, on
-corrections rather than ports: `records_schema` (D75) and `ported_function`
-(D76). What is left is exactly the 31 below, and **not one of them is waiting on
-engineering capacity**.
+**Measured 2026-09-23: the startable side is at ZERO, and the count of what is
+left has fallen twice since this heading was written — 31, then 24 after D82 to
+D87, then 21 once D89 to D91 wrote the three ports those decisions unblocked.**
+`tools-transition-disposition.mjs` reports 78 capabilities with no blocker, and
+all 78 are registered in `services/pennsync-api` — so every port that *can* be
+written without a decision has been. The heading said 31 and says 21; read
+`pnpm run check:transition-disposition` rather than either. Four buckets the
+queue used to report are empty: `records_schema` (D75 on a correction, then
+D84 refilled it and D89 to D91 emptied it again by building all three),
+`ported_function` (D76), `entity_not_carried` (D84) and `core_integration`
+(D86).
 
 Re-derive that from the registry rather than by searching for quoted names: a
 first pass here looked for each capability as a quoted string and reported 18
@@ -1194,15 +1312,16 @@ outstanding, because `handlers.mjs` registers them as bare object keys. The
 answer was 0. That is D47's lesson once more — read the shape from the tree.
 
 Re-measured after D82 to D87 (2026-09-23), which settled every decision this
-table was waiting on. It used to say that only one bucket was code; the
-reverse is now true. What is left is one decision that belongs to another
-service, and ports that are simply not written yet.
+table was waiting on, and again after D89, D90 and D91 wrote the three ports
+those decisions unblocked. **What is left is no longer "ports that are simply
+not written yet"** — that bucket is empty. It is the file layer, seven
+administrative write paths, and a vendor key.
 
 | Blocker | Count | What it needs |
 | --- | ---: | --- |
 | `files` | 12 | Stage H, and one decision that is not this repository's. D85 re-measured D77 and it holds: the integration runtime serves a stored object only to its uploader, and a migrated object has no uploader. The mapping, resolver and planner are built; the bytes are not copied. Four different things in one bucket — 2 wait only on the reader model, 5 need the copy and the reader model, 5 have a write leg that needs neither, and 1 has two further blockers |
 | `entity_authorization` | 7 | Ports to write, not decisions. D82 settled D23's open profile-write path at the caller's own row, and these are the seven admin and scheduled paths it deliberately does NOT reach: `autoApproveInvitedUser`, `autoEndDutyDay`, `enforceStaffRoleIntegrity`, `offboardUser`, `setNurseDutyStatus`, `userManagement`, `userManagementV2`. D83 took the two `MedicareGuideline` writers out of this bucket by retiring them: a `global` table is written by migration |
-| `records_schema` | 3 | Ports to write. Three of the four capabilities D84 kept as `port` with an uncarried leg moved here (the fourth, `offboardUser`, moved to `entity_authorization`), which is the queue working: "blocked on a schema" became "its port is not written yet", against a store that exists |
+| ~~`records_schema`~~ | 0 | **Emptied by D89, D90 and D91.** The three capabilities D84 kept as `port` with an uncarried leg — `distributePolicyAcknowledgment`, `sendExpirationNotifications`, `generateAIReport` — are all written. D75 had taken this bucket to zero on a correction; this is the first time every capability that was in it has been built. Note that `portQueueLine` omits an empty bucket, so it no longer appears in the measured line at all |
 | `external_secret` | 2 | A new brokered operation for audio transcription, with the reservation, quota, encrypted result and audit the other seven have — over a PHI payload. Designed in D87; the key stays unwired, and `generateNoteFromRecording` has two further blockers that no key clears (the owned bucket's MIME set admits no audio, and it pins a model the broker does not accept) |
 | ~~`entity_not_carried`~~ | 0 | Settled by D84. Three changed destination, four stayed `port` with the leg recorded in `uncarried_legs` |
 | ~~`core_integration`~~ | 0 | Emptied by D86, which ported both capabilities as the caller gate and the D56 pause. Releasing `Core.SendEmail` is now a flag flip rather than a build, and it stays the owner's |
@@ -1417,22 +1536,23 @@ with the Phase 0 baseline.
 
 ## 4. What only the owner can unblock
 
-Nothing in Stages C, F or L can be done from the repository (Stage B's row is
-settled — see below). Listed plainly so none of it sits waiting on a
-misunderstanding:
+Nothing in Stages C, F or L can be done from the repository, and stage D now
+has one Railway action of its own (Stage B's creation row is settled — see
+below). Listed plainly so none of it sits waiting on a misunderstanding:
 
 | Needed | For | Note |
 | --- | --- | --- |
 | ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open. It moved to stage C for identities, and on 2026-09-22 the identities turned out to be largely there already. ~~What it waits on is a sign-in, a seed transport and one `chart_assignment` row.~~ The owner withdrew the sign-in the same day, which retires the other two with it; claim 4 now rests on the composition recorded in stage A |
 | ~~Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change~~ | Stage A | **Done 2026-09-22 (#237).** Both secrets are configured and the flag is `'true'`. The job log shows both masked and then 15 tests, 15 passed, 0 skipped against the real project — read from the log rather than from the green tick, which is what this gate exists to distrust. The committed store's drift is now watched on every push to main |
 | ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C |
+| **Redeploy `pennsync-api` from current `main`** | Stages C and D | **The live blocker, and it has grown.** The running revision `f18b053` implements 74 of the 80 committed handlers, so release waves 4, 5 and 6 are refused against it by name, and it predates the readiness fields that would let `PENNSYNC_API_APP_ID` be checked from outside. A redeploy creates nothing and costs nothing new, and a failed build leaves the current revision serving. Waves 1 to 3 do not need it |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
 | Set the four `INTEGRATIONS_AUTHORITY_*` / `INTEGRATIONS_APP_ID` variables on the Railway runtime | Stage E | The code is done and tested (111/111); this is the whole of Stage E now. `INTEGRATIONS_APP_ID` must be the **staging** id `6a9881683dc68a0bd54f1ef7` — the production id boots and then refuses every call. Reversible, and the runtime serves nobody |
 | **Correct the Google Play Data Safety declaration** | **Today** — independent of every stage | Live listing says "No data collected" and "No data shared with third parties" for an app handling clinical data. A policy violation that can draw enforcement against the listing. A Play Console form — needs no key and no binary, so nothing else here blocks it |
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this. **Four are already accepted, mapped and verified as of 2026-09-22**; six remain |
 | ~~The publishable (anon) key and a sign-in credential for the four accepted accounts~~ | ~~Stage A claim 4, Stage C~~ | **Withdrawn 2026-09-22 — the owner declined to use the staging accounts.** Nothing is owed here. Stage A claim 4 stands on the composition recorded in that stage instead, and the one leg it cannot reach is named there |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
-| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. What the yes still costs is named in `services/pennsync-api/account-email.mjs`: broker `SendEmail`, carry the field checks and the renderer that the pause makes unreachable, and delete the two refusals |
+| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. What the yes still costs is named in `services/pennsync-api/account-email.mjs`: broker `SendEmail`, carry the field checks and the renderer that the pause makes unreachable, and delete the two refusals — **plus, since D92, move both capabilities out of the `read-only` release wave in the same change, which the ladder now refuses to let a change skip** |
 | ~~Dispositions for 7 capabilities on retiring domains~~ | Stage G | **Settled by D84 (2026-09-23), and the description of them was wrong.** Measured, the 7 split 3 and 4. Three belong to a retiring domain and change destination: `analyzeNurseDeficits` and `analyzeRealTimePerformance` to the hub, `getCommsDashboard` to preserved-paused. The other four — `distributePolicyAcknowledgment`, `generateAIReport`, `offboardUser`, `sendExpirationNotifications` — are carried capabilities that touch one uncarried entity in passing, so they stay `port` with that leg settled by name and reason in `tools-transition-disposition.json`'s `uncarried_legs`, which the tool re-checks against the tree rather than trusts. None of the four leaves the queue: each moves on to its next real blocker. `fetchMedicareGuideline` and `scheduledGuidelineSync` also stop being carried, but that is D83 and they were never in this bucket |
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
