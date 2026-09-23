@@ -129,7 +129,9 @@ integration runtime's authorization model changed), and a transcription vendor
 
 ## 2. The critical path
 
-Six things gate everything else, in this order. Only the first is free.
+Seven things gate everything else, in this order. Only the first is free, and
+the newest of them — item 3 — is the one that has arrived since this list was
+written.
 
 1. ~~**Apply what is already committed to the staging project.**~~ **Done
    2026-09-21**: all 59 outstanding migrations applied to
@@ -153,15 +155,30 @@ Six things gate everything else, in this order. Only the first is free.
    own directory when that was written and is **eight** on `b8e4e021`
    (2026-09-23), which is six handler names it does not implement. Stage D's
    deployment probe measures that rather than assuming it.
-3. **Enroll real people.** Ten Supabase Auth invitations accepted and verified
+3. **Redeploy `pennsync-api` from current `main`, before releasing any wave —
+   because the running revision cannot report its own app binding.** That is
+   the reason, and it is not the same as the more obvious one. The obvious
+   reason is names: `f18b053` implements 74 of 80, so waves 4, 5 and 6 are
+   refused against it outright. The binding reason applies to **every** wave,
+   the early ones included. This revision predates #247, so `/readyz` carries
+   no `appId` and no `appStated` — probed 2026-09-23, the fields are absent and
+   the ladder answers "app binding: not reported by this revision, so it cannot
+   be checked here". Release onto that and `PENNSYNC_API_APP_ID` is unverified,
+   which is the one silent failure this document names: stated but wrong, the
+   service boots, reports ready, and every authorization call is refused. The
+   redeploy is what makes it checkable. **Do not drop this step because the
+   early waves' names happen to be present** — that is the reading this item
+   exists to refuse. It creates nothing, costs nothing new, and a failed build
+   leaves the current revision serving.
+4. **Enroll real people.** Ten Supabase Auth invitations accepted and verified
    out of band. Nothing downstream of authority can be proved with four
    synthetic actors.
-4. **Create the production Supabase project** (D4) and provision it with
+5. **Create the production Supabase project** (D4) and provision it with
    `tools-pennsync-provision.mjs`, the one path that tool was written for.
-5. **Move the frontend.** 445 entity call sites, 366 client importers, 41 Core
+6. **Move the frontend.** 445 entity call sites, 366 client importers, 41 Core
    integration sites, 83 function wrappers — untouched. This is now the largest
    single body of remaining work in the migration and the least started.
-6. **Assemble the evidence packet** until `tools-pennsync-cutover.mjs` reports
+7. **Assemble the evidence packet** until `tools-pennsync-cutover.mjs` reports
    `evidence_coverage_complete`.
 
 Everything else parallelizes around these.
@@ -960,7 +977,7 @@ go hunting for work here:
 | The six invitations | The owner; an enrollee accepts their own |
 | Stage A's hosted half (`record-tenant-isolation`, `activity-audit`, the 45 `contract-*` suites) | A hosted caller, which is an `auth.users` row only an accepted invitation creates. Structurally, not merely queued: the sign-in that would drive it is withdrawn |
 | `tools-pennsync-enroll.mjs` against real identities | Enrollees. The tool and its suite are built |
-| `PENNSYNC_API_APP_ID` on the deployed service | The redeploy, which is the owner's. Readiness reports it as of #247; the running revision predates the fields |
+| `PENNSYNC_API_APP_ID` on the deployed service | The redeploy, which is the owner's and which comes before any release wave for this reason: readiness reports the binding as of #247 and the running revision predates the fields, so until it is redeployed no wave can be released against a checked binding |
 | The four context-only roles' roster behaviour, hosted | Memberships in those roles, so identities. Done in the store and proved locally by #247 |
 | The synthetic-name question | The owner. A compliance decision about whether this store ever holds real names, not a refactor |
 | The pinned actor IDs | Nothing — withdrawn above as obsolete rather than owed |
@@ -1222,8 +1239,8 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   `6a9881683dc68a0bd54f1ef7` — the staging app, not this service's default. So
   a release on that service is a STAGING release, whatever Railway's default
   environment is named, and it needs `PENNSYNC_API_APP_ID` set to that id or
-  every authorization call is refused. The production store of item 4 does not
-  exist yet.
+  every authorization call is refused. The production store of the critical
+  path's item 5 does not exist yet.
 
   Two things about the write classifier are worth carrying, because both drafts
   of it were wrong in opposite directions. It first matched
