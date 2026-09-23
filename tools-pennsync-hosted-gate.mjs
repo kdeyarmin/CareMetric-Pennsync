@@ -55,6 +55,8 @@
  * third-party import here would fail at load.
  */
 
+import { pathToFileURL } from 'node:url';
+
 export const HOSTED_GATE_CONTRACT = 'cm.pennsync.hosted-gate.v1';
 
 /** The transport the plan found reachable; see stage A. */
@@ -161,6 +163,9 @@ export function runHostedGateCli({ env = process.env, write = console.log, error
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Direct-invocation check through pathToFileURL: a hand-built `file://`
+// string never matches a Windows backslash path or a percent-encoded one,
+// and the CLI then exits 0 having silently done nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.exitCode = runHostedGateCli();
 }

@@ -40,7 +40,7 @@
  */
 import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { PORTED_FUNCTIONS } from './services/authority-client/client.mjs';
 
 export const CALL_SITE_CONTRACT = 'cm.pennsync.ported-call-sites.v1';
@@ -270,7 +270,10 @@ function main(argv, root, write) {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Direct-invocation check through pathToFileURL: a hand-built `file://`
+// string never matches a Windows backslash path or a percent-encoded one,
+// and the CLI then exits 0 having silently done nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)));
   try {
     process.exitCode = main(process.argv.slice(2), root, message => console.log(message));
