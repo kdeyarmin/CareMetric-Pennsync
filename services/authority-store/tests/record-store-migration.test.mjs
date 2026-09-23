@@ -48,6 +48,7 @@ const CALLER_ROLES = ['anon', 'authenticated', 'service_role'];
  * not told about, so the list is now whatever the schema holds.
  */
 let HELPERS = [];
+let TRIGGER_FUNCTIONS = [];
 const signature = entry => (typeof entry === 'string' ? `${entry}()` : `${entry.name}(${entry.args})`);
 const helperName = entry => (typeof entry === 'string' ? entry : entry.name);
 let db;
@@ -100,11 +101,21 @@ before(async () => {
   // includes parameter NAMES in this server; `has_function_privilege` wants
   // types alone. `proargtypes` also leaves out OUT parameters, so a
   // `returns table(...)` helper reports the signature callers actually use.
+  //
+  // Split by what the function IS, not by its name. A caller helper answers
+  // "who is asking" out of `pennsync_private`, which is why it must stay
+  // administrator-owned and out of every caller's reach. A trigger function
+  // answers nothing — D82's profile guard compares `old` to `new` and returns —
+  // so it is created with its table, by the table's owner, and only the
+  // reachability half of the rule applies to it. Asking the catalog for the
+  // return type keeps that distinction from resting on a naming convention.
   const { rows: helpers } = await db.query(`
-    select p.proname as name, pg_catalog.oidvectortypes(p.proargtypes) as args
+    select p.proname as name, pg_catalog.oidvectortypes(p.proargtypes) as args,
+           p.prorettype = 'pg_catalog.trigger'::regtype as is_trigger
     from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
     where n.nspname = $1 and p.proname not like 'broker\\_%'`, [SCHEMA]);
-  HELPERS = helpers;
+  HELPERS = helpers.filter(row => !row.is_trigger);
+  TRIGGER_FUNCTIONS = helpers.filter(row => row.is_trigger);
   assert.ok(HELPERS.length >= 8, `expected the helper set to be substantial, found ${HELPERS.length}`);
 });
 after(async () => db?.close());
@@ -220,6 +231,17 @@ test('no caller role is granted anything: not a table, not a helper', async () =
       assert.equal(rows[0].allowed, false, `${role} must not be able to execute ${signature(helper)}`);
     }
   }
+  // A trigger function is owned by its table rather than by the administrator,
+  // but the reachability rule is the same one: `create function` grants execute
+  // to PUBLIC, so a guard nobody revoked is a function every caller role can
+  // call by name.
+  for (const role of CALLER_ROLES) {
+    for (const guard of TRIGGER_FUNCTIONS) {
+      const { rows } = await db.query('select has_function_privilege($1, $2, \'execute\') as allowed',
+        [role, `${SCHEMA}.${signature(guard)}`]);
+      assert.equal(rows[0].allowed, false, `${role} must not be able to execute ${signature(guard)}`);
+    }
+  }
   // The owner may, and must: the policies ask these helpers while the broker runs.
   for (const helper of HELPERS) {
     const { rows } = await db.query('select has_function_privilege($1, $2, \'execute\') as allowed',
@@ -276,6 +298,89 @@ test('the roster policy really is reachable through a broker, not only in princi
       [{ id: '6aac00000000000000000004' }]);
   } finally {
     await db.exec(`drop function ${SCHEMA}.broker_roster(); delete from ${SCHEMA}."user";`);
+  }
+});
+
+test('D82: a person may correct their own profile, and the store refuses every other write', async () => {
+  // D23 left this open on purpose and D82 closes it at the narrowest shape that
+  // works. The shape is two mechanisms, because one cannot express it: the
+  // policy says WHOSE row, the trigger says WHICH COLUMNS, and a test that
+  // exercised only the policy would pass while a clinician rewrote their own
+  // `role` to `admin`.
+  //
+  // Seeded, again, with each row claiming the OTHER agency, so nothing here can
+  // be passing because a predicate read the label the subject controls.
+  await db.exec(`insert into ${SCHEMA}."user"("source_app_id","id","agency_id","phone","role") values
+    ('${APP}','6aac00000000000000000001','agency-b','111','user'),
+    ('${APP}','6aac00000000000000000004','agency-a','444','user');`);
+  await db.exec(`
+    set local role ${OWNER_ROLE};
+    create function ${SCHEMA}.broker_profile_set(p_id text, p_column text, p_value text)
+      returns table(id text, phone text, role text)
+      language plpgsql volatile security definer set search_path = '' as $broker$
+      begin
+        -- %L rather than a bound parameter: the columns under test are not all
+        -- text, and an untyped literal is coerced to whichever type the column
+        -- has, so one broker can try role, is_approved and offboarded_at.
+        return query execute format(
+          'update %I.%I set %I = %L where "id" = $1 returning "id", "phone", "role"',
+          $$${SCHEMA}$$, 'user', p_column, p_value) using p_id;
+      end $broker$;
+    create function ${SCHEMA}.broker_profile_delete(p_id text) returns table(id text)
+      language sql volatile security definer set search_path = '' as $$
+      delete from ${SCHEMA}."user" where "id" = p_id returning "id" $$;
+    reset role;
+    grant execute on function ${SCHEMA}.broker_profile_set(text, text, text),
+      ${SCHEMA}.broker_profile_delete(text) to authenticated;`);
+  const set = (who, id, column, value) =>
+    as(who, `select * from ${SCHEMA}.broker_profile_set($1, $2, $3)`, [id, column, value]);
+  try {
+    // Their own row, an allowlisted column: the one thing D82 permits.
+    assert.deepEqual(await set(AGENCY_A, '6aac00000000000000000001', 'phone', '222'),
+      [{ id: '6aac00000000000000000001', phone: '222', role: 'user' }]);
+
+    // Somebody else's row. Not an error — no row is visible to the update at
+    // all, which is the policy refusing rather than the trigger. Both callers
+    // are on each other's roster (the read test above proves they can SEE one
+    // another), so this is the assertion that says sharing an agency is not
+    // owning the row.
+    assert.deepEqual(await set(AGENCY_A, '6aac00000000000000000004', 'phone', '555'), []);
+    assert.deepEqual(await set(AGENCY_B, '6aac00000000000000000001', 'phone', '555'), []);
+
+    // Their own row, a column D82 does not admit. This one raises, and the
+    // message names the column, because a caller told only "denied" tries the
+    // next field.
+    // Authority, an attestation, the agency label and the record of a decision
+    // taken about the person — one of each kind the allowlist leaves out.
+    const refused = { role: 'admin', is_approved: 'true', staff_role: 'nurse',
+      agency_name: 'Somewhere Else', offboarded_at: '2026-01-01T00:00:00Z' };
+    for (const [column, value] of Object.entries(refused)) {
+      await assert.rejects(() => set(AGENCY_A, '6aac00000000000000000001', column, value),
+        error => error.message.includes(`PENNSYNC_PROFILE_FIELD_NOT_SELF_WRITABLE: ${column}`),
+        `${column} must not be self-writable`);
+    }
+
+    // And the two commands that have no policy at all are gone rather than
+    // narrowed: a person can neither remove themselves from the roster nor add
+    // somebody to it.
+    assert.deepEqual(await as(AGENCY_A, `select * from ${SCHEMA}.broker_profile_delete($1)`,
+      ['6aac00000000000000000001']), []);
+    const { rows: remaining } = await db.query(
+      `select count(*)::integer as total from ${SCHEMA}."user"`);
+    assert.equal(remaining[0].total, 2, 'the delete found no row to remove');
+
+    // Nothing above was the owner bypassing anything: acting as the owner with
+    // no identity, `caller_user_id()` is null and the predicate matches nobody.
+    await db.exec('begin');
+    try {
+      await db.exec(`set local role ${OWNER_ROLE}`);
+      const { rowCount } = await db.query(`update ${SCHEMA}."user" set "phone" = '999'`);
+      assert.equal(rowCount, 0, 'forced RLS binds the owner here too');
+    } finally { await db.exec('rollback'); }
+  } finally {
+    await db.exec(`drop function ${SCHEMA}.broker_profile_set(text, text, text);
+      drop function ${SCHEMA}.broker_profile_delete(text);
+      delete from ${SCHEMA}."user";`);
   }
 });
 

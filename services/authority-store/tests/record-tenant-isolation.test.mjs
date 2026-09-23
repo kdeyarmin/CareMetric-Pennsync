@@ -227,23 +227,46 @@ test('the roster shows colleagues and nobody else, and the row own agency label 
   // Naming the row directly does not reach it either.
   assert.deepEqual(await as(AGENCY_B, `select "id" from ${SCHEMA}."user" where "id" = $1`, [rosterId(1)]), []);
 
-  // Read only, for everyone, and it is deliberate: D23 leaves the
-  // profile-write path open, and a write policy here would have decided it by
-  // accident. The two refusals do not look alike, which is why both are here —
-  // an insert has nothing to permit it and is denied, while an update or
-  // delete is FILTERED to the rows a policy admits and finds none, so it
-  // succeeds against nothing. A test asserting only a raised error would miss
-  // the second entirely, and "no rows changed" is the answer that matters.
+  // Writable in exactly one direction, and the three refusals do not look
+  // alike, which is why all three are here. D23 left the profile-write path
+  // open and D82 settled it at the caller's OWN row: `rosterId(1)` is
+  // AGENCY_A's row, so AGENCY_A may correct its telephone number and nobody
+  // else may — not AGENCY_B, who is on the same roster and can SEE the row,
+  // which is the assertion that says sharing an agency is not owning it.
+  //
+  // An insert has nothing to permit it and is DENIED. An update or a delete is
+  // FILTERED to the rows a policy admits: the cross-user update finds none and
+  // succeeds against nothing, and the delete has no policy at all so it finds
+  // none for anybody, the owner included. A test asserting only a raised error
+  // would miss both, and "no rows changed" is the answer that matters.
   await refused(AGENCY_A, `insert into ${SCHEMA}."user"("source_app_id","id") values ('${APP}','6aac0000000000000000000f')`);
+  assert.deepEqual(await as(AGENCY_A,
+    `update ${SCHEMA}."user" set "phone" = '555' where "id" = $1 returning "id"`, [rosterId(1)]),
+  [{ id: rosterId(1) }], 'a person may correct their own profile');
+  assert.deepEqual(await as(AGENCY_B,
+    `update ${SCHEMA}."user" set "phone" = '999' where "id" = $1 returning "id"`, [rosterId(1)]), [],
+  'and nobody else may, however well they can see it');
   for (const who of [AGENCY_A, AGENCY_B]) {
-    assert.deepEqual(await as(who,
-      `update ${SCHEMA}."user" set "phone" = '555' where "id" = $1 returning "id"`, [rosterId(1)]), []);
     assert.deepEqual(await as(who,
       `delete from ${SCHEMA}."user" where "id" = $1 returning "id"`, [rosterId(1)]), []);
   }
-  // And the row is still there, unchanged, after all of that.
+  // The column half is a trigger rather than a policy, because a policy cannot
+  // see `old`. `record-store-migration.test.mjs` exercises it through a real
+  // broker; what belongs here is that the two mechanisms compose — the row the
+  // policy admits is still refused a column the guard does not.
+  await assert.rejects(() => as(AGENCY_A,
+    `update ${SCHEMA}."user" set "account_type" = 'super_admin' where "id" = '${rosterId(1)}'`),
+  error => error.message.includes('PENNSYNC_PROFILE_FIELD_NOT_SELF_WRITABLE: account_type'),
+  'the guard raises by name rather than filtering, so the caller is told which column');
+  // And the row is as it was, because every statement above ran in its own
+  // rolled-back transaction — which is this file's design, so that one
+  // capability's writes cannot set up the next one's reads. That the permitted
+  // update returned its row is the proof it was permitted;
+  // `record-store-migration.test.mjs` is where a write is left standing and
+  // read back.
   assert.deepEqual(await as(AGENCY_A,
-    `select "phone" from ${SCHEMA}."user" where "id" = $1`, [rosterId(1)]), [{ phone: null }]);
+    `select "phone", "account_type" from ${SCHEMA}."user" where "id" = $1`, [rosterId(1)]),
+  [{ phone: null, account_type: 'platform_admin' }]);
 
   // A caller whose membership is revoked is on nobody's roster — including
   // their own, because a person with no active membership is not a colleague.

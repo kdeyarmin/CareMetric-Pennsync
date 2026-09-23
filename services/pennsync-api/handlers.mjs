@@ -16,6 +16,7 @@ import { MAX_CSV_BYTES, importProviders } from './provider-import.mjs';
 import { expandClinicalPhrase as runClinicalPhrase } from './clinical-phrase.mjs';
 import { exportPatientChart } from './chart-export.mjs';
 import { searchIndexedPdfs } from './pdf-search.mjs';
+import { sendAccountReadyEmail, sendWelcomeEmail } from './account-email.mjs';
 import {
   STATE_INCIDENT_FIELDS, submitStateIncident,
 } from './state-incident.mjs';
@@ -897,6 +898,23 @@ export const HANDLERS = Object.freeze({
     // the original answered. The narrowings are in `patient-handout.mjs`.
     handle({ params, config }) {
       return generatePatientHandout({ params, config });
+    },
+  }),
+  sendAccountReadyEmail: Object.freeze({
+    // D86, and a PARTIAL port with nothing in the served half: the whole of
+    // this capability is one `Core.SendEmail`, so what ships is the caller gate
+    // and the pause. No `needsIntegration`, for the reason
+    // `generatePatientHandout` gives — the one integration it has is the half
+    // that is paused, so a deployment releasing it does not need the runtime to
+    // report ready.
+    handle({ actor, params }) {
+      return sendAccountReadyEmail({ actor, params });
+    },
+  }),
+  sendWelcomeEmail: Object.freeze({
+    // The same, and the one whose body carries a temporary password.
+    handle({ actor, params }) {
+      return sendWelcomeEmail({ actor, params });
     },
   }),
   generateUserGuidePDF: Object.freeze({
