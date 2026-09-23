@@ -6607,6 +6607,15 @@ inside the same transaction as the migration and its `version` and `name`. A
 row that is already there is **left alone** and reads as `unrecorded`,
 permanently. That is not a gap waiting to be filled; it is the answer.
 
+**So a ledger whose `statements` are almost all null is CORRECT, and is not a
+bug in this change.** Every row hosted staging holds was written before this
+existed and none of them will ever be filled: emptiness there means the text is
+unknown, which is true, and the alternative — a confident wrong answer — is the
+thing D88 was written about. The column fills in from the next migration
+applied through the tool onward, one row at a time, so the longer ago a store
+was built the emptier it looks. Read the `verdict` rather than the column's
+fullness.
+
 **Why now.** D88 is the defect: `planMigration` decides what to apply from a
 migration's NAME — rightly, because the Supabase CLI stamps its own version at
 push time and the name is the only stable key the two sides share — and the row
