@@ -6478,6 +6478,65 @@ longer names `records_schema` at all. What remains is `entity_authorization` 7
 runtime's uploader-owned reader model, D77 and D85) and `external_secret` 2 (the
 transcription key, D87) — none of which is engineering capacity here.
 
+## D92 — The release ladder's integration flag, crossed against what the tree can reach
+
+`tools-pennsync-release-ladder.mjs` places a handler in a wave partly by
+`HANDLERS[name].needsIntegration`, and it reads that flag off the registry
+rather than deriving it. The comment above `integrationDependents` gives the
+reason and the reason is right: `runtime.mjs` decides `/readyz` from the same
+flag, so a second answer computed here could disagree with the thing that
+actually gates the deployment.
+
+**What was missing is the cross-check, and a module header already claimed it
+existed.** `services/pennsync-api/account-email.mjs` ends its own header with
+"Releasing therefore means three things, and a fourth that a gate rather than a
+person asks for", and names the fourth: the release sets `needsIntegration:
+true` on both registry entries in the same change, or the ladder hands a
+deployment two outbound senders inside the wave whose whole promise is that
+nothing in it writes or sends. No gate asked. The sentence described a check
+that did not exist, which is the shape D77 records about a test whose comment
+describes something the test does not do, arriving this time in a module
+header — and D78's lesson exactly: a rule written down is not a check, and
+`chart_assignment`'s locking rule was written down and then broken twice.
+
+**The derivation is the handler's own signature.** `integration` is minted per
+request in `app.mjs` and handed to `handle` as one property of one object;
+there is no module-level access to it. So a handler that does not destructure
+`integration` cannot call the runtime whatever its module imports, and one that
+does can. `integrationReach` reads the parameter list of every registry entry's
+`handle`, and `integrationFlagHolds` refuses `LADDER_INTEGRATION_FLAG_DISAGREES`
+when the two sets differ.
+
+**Both directions are refused and they are different mistakes.** Reach without
+the flag is the wave-4 hazard: a released send placed in a wave that does not
+require the runtime to be configured. The flag without the reach is the
+opposite and still wrong — it holds a name out of an earlier wave for a
+dependency it does not have, and a wave nobody can release is how a ladder
+stops being used.
+
+**It fails closed on a shape it cannot read**, the rule `handlerReach` follows
+for a computed contract name and `invokedFunctions` for an unparsed callee. All
+80 registry entries destructure today; a `handle(deps)` reading
+`deps.integration` is refused as `LADDER_HANDLER_DEPENDENCIES_UNREADABLE`
+rather than read as reaching nothing, because the silent answer is the
+dangerous one. D47 and D75 are three instances of a check that knew one shape
+of a pause and missed two others, so a check written today declares which shape
+it can read.
+
+**One bypass is closed with it.** Four handlers destructure `config`, which
+carries `integrationsUrl`, so a module could fetch the runtime without the
+capability at all. Nothing outside `integrations.mjs` and `runtime.mjs` names
+that field, and `LADDER_INTEGRATION_RUNTIME_REACHED_DIRECTLY` keeps it that
+way — which is what makes the signature derivation sufficient rather than
+merely usual.
+
+On the committed tree the two answers agree on all 17 handlers, so nothing
+moves and no wave changes. `sendAccountReadyEmail` and `sendWelcomeEmail` stay
+in the read-only wave, which is what the shipped code honestly is: they reach
+no runtime while their sends are refused, and `SendEmail` is not in
+`BROKERED_OPERATIONS` either. All four refusals were proved by sabotage against
+the real tree before the fixtures were written.
+
 ## D93 — What merging a migration owes an operator, said before the merge
 
 D88 recorded that a migration a deployment has applied is frozen, and pinned

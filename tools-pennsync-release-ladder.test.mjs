@@ -6,8 +6,8 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   DECLARED_WAVES, LADDER_CONTRACT, LadderError, checkLadder, closureOf, dollarQuotedBody,
-  functionBodies, handlerReach, importedNames, probeDeployment, readinessOf, releaseDelta,
-  releaseLadder, reportDelta,
+  functionBodies, handlerReach, importedNames, integrationDependents, integrationReach,
+  probeDeployment, readinessOf, releaseDelta, releaseLadder, reportDelta,
 } from './tools-pennsync-release-ladder.mjs';
 import { loadConfig, publicReadiness } from './services/pennsync-api/runtime.mjs';
 import { ledgerVersion } from './tools-pennsync-migrate.mjs';
@@ -302,6 +302,111 @@ test('a handler reaching a contract by a computed name leaves the reach unresolv
   assert.deepEqual(failure.detail.handlers, ['pickOne']);
   // The census still reports it rather than throwing, so the name is readable.
   assert.equal(releaseLadder(tree.root).unresolved[0], 'pickOne');
+});
+
+/**
+ * The registry's `needsIntegration` flag against what the tree can reach.
+ *
+ * `account-email.mjs` writes this hazard down in its own header: while its
+ * send stays paused those two capabilities reach no runtime and belong in the
+ * read-only wave, and the release that deletes their two `fail` lines has to
+ * move the flag in the same change or the ladder hands an operator two
+ * outbound senders inside the wave whose promise is that nothing in it sends.
+ * A header is not a check, which is D78's lesson about a rule written down and
+ * then broken twice.
+ */
+test("the registry's integration flag and the tree's reach name the same handlers", () => {
+  // Set equality rather than a count, because the interesting failure is one
+  // name moving in one direction and a count can be right while that happens.
+  assert.deepEqual([...integrationReach(REPOSITORY)].sort(),
+    [...integrationDependents(REPOSITORY)].sort());
+});
+
+test('the two paused email capabilities are honestly read-only today', () => {
+  // Not an aspiration: they destructure no `integration`, so they cannot call
+  // the runtime, and the assertion above is what will make a release say so.
+  const reach = integrationReach(REPOSITORY);
+  const wave = checkLadder(REPOSITORY).waves.find(entry => entry.name === 'read-only');
+  for (const name of ['sendAccountReadyEmail', 'sendWelcomeEmail']) {
+    assert.equal(reach.has(name), false, name);
+    assert.ok(wave.handlers.includes(name), `${name} is in the read-only wave`);
+  }
+});
+
+test('a handler that gains the runtime without the flag is refused', (t) => {
+  // The wave-4 hazard itself: the release deletes the pause and takes
+  // `integration`, and nobody touches the registry.
+  const tree = intactTree(t);
+  fixture(tree, {
+    extraHandler: [
+      '  sendIt: Object.freeze({',
+      "    handle({ params, integration, contract }) {",
+      "      integration('SendEmail', params); return contract('readIt', {});",
+      '    },',
+      '  }),',
+    ].join('\n'),
+  });
+  let failure = null;
+  try { checkLadder(tree.root); } catch (error) { failure = error; }
+  assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
+  assert.equal(failure.code, 'LADDER_INTEGRATION_FLAG_DISAGREES');
+  assert.deepEqual(failure.detail.reach_without_flag, ['sendIt']);
+  assert.deepEqual(failure.detail.flagged_without_reach, []);
+});
+
+test('a handler flagged for a runtime it cannot reach is refused too', (t) => {
+  // The other direction, and a different mistake: it holds a name out of an
+  // earlier wave for a dependency it does not have, and a wave nobody can
+  // release is how a ladder stops being used.
+  const tree = intactTree(t);
+  fixture(tree, {
+    extraHandler: [
+      '  readIt: Object.freeze({',
+      '    needsIntegration: true,',
+      "    handle({ contract }) { return contract('readIt', {}); },",
+      '  }),',
+    ].join('\n'),
+  });
+  let failure = null;
+  try { checkLadder(tree.root); } catch (error) { failure = error; }
+  assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
+  assert.equal(failure.code, 'LADDER_INTEGRATION_FLAG_DISAGREES');
+  assert.deepEqual(failure.detail.flagged_without_reach, ['readIt']);
+});
+
+test('a handle that takes its dependencies some other way is refused, not read as empty', (t) => {
+  // Fails CLOSED, the rule `handlerReach` follows for a computed contract
+  // name. Every `handle` destructures today; a `handle(deps)` reading
+  // `deps.integration` is a shape this cannot answer about, and the silent
+  // answer is the dangerous one.
+  const tree = intactTree(t);
+  fixture(tree, {
+    extraHandler: [
+      '  opaque: Object.freeze({',
+      "    handle(deps) { return deps.contract('readIt', {}); },",
+      '  }),',
+    ].join('\n'),
+  });
+  let failure = null;
+  try { checkLadder(tree.root); } catch (error) { failure = error; }
+  assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
+  assert.equal(failure.code, 'LADDER_HANDLER_DEPENDENCIES_UNREADABLE');
+  assert.equal(failure.detail.handler, 'opaque');
+});
+
+test('a service module reaching the runtime URL itself is refused', (t) => {
+  // The derivation above is sufficient only because nothing but the capability
+  // and the config loader names the runtime's address. Four handlers
+  // destructure `config`, which carries it, so this is the bypass to close.
+  const tree = intactTree(t);
+  fixture(tree);
+  writeFileSync(join(tree.api, 'shortcut.mjs'),
+    'export const target = config => `${config.integrationsUrl}/integrations/v1`;\n');
+  let failure = null;
+  try { checkLadder(tree.root); } catch (error) { failure = error; }
+  assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
+  assert.equal(failure.code, 'LADDER_INTEGRATION_RUNTIME_REACHED_DIRECTLY');
+  assert.equal(failure.detail.file, 'shortcut.mjs');
 });
 
 test('the same function defined twice in the record migrations is refused', (t) => {

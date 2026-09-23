@@ -41,6 +41,13 @@
 // move to the integration wave. Otherwise the ladder would hand a deployment
 // two outbound senders in the wave whose whole promise is that nothing in it
 // writes or sends.
+//
+// That sentence said "a gate rather than a person asks for" before any gate
+// did, which is D92: the ladder now derives the reach from whether each
+// handler's `handle` destructures `integration` and refuses
+// `LADDER_INTEGRATION_FLAG_DISAGREES` when that and the flag disagree. So
+// taking `integration` here without moving the flag fails the build, and the
+// fourth thing really is a gate's to ask.
 import { exactObject, fail } from './contracts.mjs';
 
 /**
