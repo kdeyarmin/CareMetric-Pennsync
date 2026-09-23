@@ -6536,3 +6536,65 @@ in the read-only wave, which is what the shipped code honestly is: they reach
 no runtime while their sends are refused, and `SendEmail` is not in
 `BROKERED_OPERATIONS` either. All four refusals were proved by sabotage against
 the real tree before the fixtures were written.
+
+## D93 — What merging a migration owes an operator, said before the merge
+
+D88 recorded that a migration a deployment has applied is frozen, and pinned
+every file's sha256 so an EDIT to one is answered at PR time. The other half
+was never said anywhere: an ADDED migration is the ordinary case, and merging
+it does not apply it either. `main` then goes red in `hosted-store`, whose
+ledger check is the only thing in the repository that can see the gap, and
+whose credential is why it runs on `refs/heads/main` — structurally after the
+merge. On 2026-09-23 that cost a day: the red was diagnosed from scratch,
+found to be a merge nobody had applied, and cleared by an operator run.
+
+So the consequence of merging is now reported on the pull request, by
+`tools-pennsync-apply-signal.mjs` and the `apply-signal` job beside
+`hosted-gap`. It names the arriving migrations, says that until an operator
+applies them the `hosted-store` job fails its ledger check by that many rows —
+**an expected red rather than new drift** — and gives the command. An edit and
+a withdrawal are reported apart from an addition, because the answers differ: an
+edit wants a forward migration, a withdrawal leaves `MIGRATE_LEDGER_UNKNOWN` on
+every deployment that ran the file.
+
+**It is a signal and not a gate**, and that is the decision rather than a
+default. The apply is an operator action on a machine CI cannot reach, so
+nothing inside a pull request could satisfy a gate, and one would stall every
+merge in the repository on one person's availability. The only non-zero exit is
+a refusal to MEASURE.
+
+**It claims nothing about any deployment, deliberately.** "Does this change add a
+migration" is a fact about the diff and needs no credential; what a store
+actually holds stays `hosted-store.test.mjs`'s half. Merging the two answers is
+how a prediction comes to be read as a measurement.
+
+**What it reads is the pin, and the pin is cross-checked on both sides before
+anything is counted.** `migration-fingerprints.json` already carries every
+committed migration keyed `<directory>/<file>`, and `git show <base>:<pin>` reads
+it at a commit with no worktree and no second copy of the provisioner's ordering
+rules. The risk that brings is this repository's recurring defect — a check that
+decides from one representation and is silently wrong when the same thing arrives
+in another — in its sharpest form: a change that added a migration and did not
+re-pin would be reported here as adding **nothing**, quietly, while the
+fingerprint ratchet failed elsewhere for its own reasons. So the head side is
+compared against the real directories through `fingerprints()` and the base side
+by NAME through `git ls-tree`, and a disagreement REFUSES rather than reporting a
+number. Names only on the base side is a deliberate limit, stated where it is
+enforced: it catches the one drift that would understate the count, a file
+present at the base and missing from its pin, which makes the same file at the
+head look new.
+
+`LOCAL_ONLY_MIGRATIONS` is imported from the migrate tool rather than re-listed,
+so the one migration deliberately held back from every deployment is named with
+its reason and owes no apply — the difference between a count somebody can check
+and one they have to trust.
+
+The base is the caller's to choose and an unreadable one is refused rather than
+defaulted. On a `pull_request` run the checkout is the MERGE commit, so the tree
+is the merged result and its first parent is the base branch: the comparison is
+literally "what would merging do". On a push the payload's `before` is exact
+where `HEAD^` would miss all but the last of several commits.
+
+Each check was proved by SABOTAGE rather than by reading: dropping the head
+cross-check, counting the held-back migration, and dropping the base cross-check
+each fail exactly one test and no others.
