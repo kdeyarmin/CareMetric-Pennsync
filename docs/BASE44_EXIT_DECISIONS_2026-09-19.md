@@ -6356,3 +6356,124 @@ and zero CHANGED, which is the shape that says so.
 written rather than by a correction. What is left is `generateAIReport`, which
 carries two `Core.SendEmail` behind `outboundDeliveryGate` plus an
 `InvokeLLM` — D81's template, and it stops at the owner's flip.
+(**Corrected by D91**, which read the module: it carries ONE `Core.SendEmail`,
+the other match being a docstring, and that one sits on a branch the module
+already refuses itself. It was a partial port rather than a wait, and the
+sentence above is left standing because it is the eleventh instance of the
+defect this entry is about.)
+
+## D91 — The AI report, and a scope filter that let its caller choose its own scope
+
+`generateAIReport` is ported as the **ninth partial port** (after D31, D35,
+D36, D59, D73 and D81): the document is served and `recipients` gets the
+original's own paused refusal. `20260920560000_contract_report_metrics.sql` is
+the read, `services/pennsync-api/report-metrics-source.mjs` carries the
+original's arithmetic and page, `report-metrics.mjs` feeds them and
+`ai-report.mjs` is the capability.
+
+**The label on it was wrong, and this page carried the wrong label.** D90's own
+entry, the port-queue paragraph in AGENTS.md and the working notes all said this
+capability "carries two `Core.SendEmail` behind `outboundDeliveryGate` plus an
+`InvokeLLM`", which made it read as blocked on the owner's delivery decision. It
+has **one** `Core.SendEmail`, at line 393; the other match was a docstring
+saying "Returns an HTML string for SendEmail's body". And the one send sits
+inside `if (recipients.length > 0)`, on a branch the module **already refuses
+itself** at line 275 through the generated gate. That is D79's
+`generatePatientHandout` exactly, and D79 wrote the discriminator for it: does
+the module have a success answer that is NOT the integration's result? This one
+answers with a PDF. So it was never one flip away; it was a partial port, and it
+took an afternoon. **A grep for a call's SHAPE is not a measurement of what the
+code can reach** — that is D76's defect and this is its eleventh instance, again
+in a note somebody wrote confidently the same day.
+
+**What the original's scope filter actually was.** Its own comment says the
+filter exists "so an agency_admin cannot pull every tenant's PHI into a
+PDF/email". No `agency_admin` can reach the code. The gate is `isAdminLike`,
+which is `u.role === 'admin'` and nothing else, and `withTrustedClaims` returns a
+built-in admin's profile **untouched** — its first line is
+`if (profile.role === 'admin') return profile`. So the only caller the code can
+reach is the platform tier, and for that caller `account_type` and `agency_name`
+are the self-editable labels D23 describes. **The scope was selected by the
+person it was meant to constrain**: `account_type: 'super_admin'` skips the
+filter entirely, and any `agency_name` scopes to that agency. D69's rule (read
+what the code can REACH) and D36's (a comment is not a permission) arrive in one
+place. Under D40 the successor is an `agency_admin` scoped to their own agency —
+the sixth widening — and the boundary is real for the first time.
+
+**The contract COUNTS rather than projects,** which is new. The original pulls
+nine collections — up to 5,000 patients, 5,000 profiles, 5,000 tasks, 5,000
+alerts, 5,000 notes, 1,000 visits, 500 incidents, 500 audits — into an isolate
+to count them, and every one of those rows is a chart or a colleague. The report
+is counts, rates and a staff table, so the counting happens where the policies
+are and what crosses the boundary is arithmetic inputs. That also makes D64's
+naming rule trivial to honour: there is no row to project.
+
+The split with the service is D71's. Which rows may be counted is SQL; the
+arithmetic over the counts is the original's own `calculateMetrics` and
+`calculateDailyTrend`, handed arrays rebuilt from the aggregates. **Why that is
+faithful and not a re-implementation:** those functions read each array in
+exactly two ways — count members matching a literal field value, and sum one
+numeric field — so an array with the same members carrying the same values
+produces the same answer, and it is the original's `.filter`, `.reduce`,
+`.toFixed(1)` and division doing the producing. The one thing that could have
+gone wrong is a float sum, and the contract's two groupings are complete
+PARTITIONS of the rows they count, so every sum is carried whole on one member
+and the rest add zero. Where a sum is taken in SQL its accumulation order is
+pinned to the original's, because float addition is not associative and an
+unordered `sum()` is not reproducible between two runs of the same query.
+
+**Two findings about the tables, both from the policies rather than from
+reading the original.** `compliance_audit` reaches tenancy through its **visit**,
+not its patient — the first draft of the contract asked the patient column and
+counted zero audits. And the original's `!x.patient_id || ...` branch is LIVE
+for an audit (visible through the visit) and DEAD for a `patient_alert`, whose
+only path is the patient, so an alert with no chart is in no tenant and nobody
+has ever read one. Read the policy to tell which case you are in.
+
+**Two sabotages found real gaps rather than confirming the tests.**
+
+*The agency naming looked redundant because no fixture held two agencies.*
+Removing `v."agency_id" = p_agency`, and removing the audit's whole visit
+predicate, both left every test green — because the fixtures' callers hold one
+membership each, so the policies' `caller_agencies()` happened to be a single
+agency. That is precisely D51's trap. A test that gives one administrator
+memberships in BOTH agencies and asserts every figure counts one of them now
+exists, and it is the test that gives the agency naming its teeth.
+
+*The daily trend's timezone risk is invisible in a UTC process.*
+`calculateDailyTrend` buckets with `setHours(0, 0, 0, 0)`, which is LOCAL time,
+while the contract counts by UTC day. The bridge feeds it a stub at UTC noon so
+the two frames agree; changing that to midnight passed every test, because the
+test process runs in UTC — and would have shifted every bar a day back in any
+western zone, which is where this service would actually run. The test that can
+tell sets `TZ` to `America/New_York`.
+
+**Recorded and not honoured**, in the original's own shape: `metrics` is
+destructured with a default of `['all']` and never referenced again, so every
+report is the full report; and `Math.floor(Number(raw) || 30)` means a caller
+asking for **zero** days gets the default month rather than one day, while a
+negative number does floor to one. Kept as written.
+
+**One ordering divergence, and it is a narrowing.** The original checks its role
+gate, then `report_type`, then the delivery pause. Authorization is the
+contract's here, so the required-field check moves after it: a caller who may not
+run the report can no longer learn whether their body was well formed.
+
+The training figures are **absent rather than zero**. `TrainingAssignment` is
+`hub` and D84's `uncarried_legs` entry already settled that leg by name, so the
+two lines are omitted from the page — printing the zero an empty array produces
+would tell an administrator that nobody in the agency trained, and a marker in
+their place would render as `Avg Training Score: served_by_hub/100`. The answer
+says where the leg is served. That is D69's scoped transform.
+
+There is no SPA call site for this capability at all, as there was none for
+D70's chart export.
+
+**Port queue:** `records_schema` falls 1 to **0**. D75 took that bucket to zero
+on a CORRECTION; this is the first time it reaches zero with every capability in
+it written — D84 put three there deliberately and D89, D90 and D91 built all
+three. Note that `portQueueLine` omits an empty bucket, so the measured line no
+longer names `records_schema` at all. What remains is `entity_authorization` 7
+(the admin and write paths D82 does not reach), `files` 12 (the integration
+runtime's uploader-owned reader model, D77 and D85) and `external_secret` 2 (the
+transcription key, D87) — none of which is engineering capacity here.

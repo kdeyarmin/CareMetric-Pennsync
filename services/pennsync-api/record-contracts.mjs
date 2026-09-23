@@ -1686,6 +1686,24 @@ export const RECORD_CONTRACTS = Object.freeze({
   // `assigned_nurses` entry and the platform owner — the three things D21, D22
   // and D24 removed — so there is no gate beyond the chart, and the policies
   // are it.
+  // The AI report's corpus, as counts. No chart and no colleague row crosses
+  // this boundary: the original pulls nine collections into an isolate to count
+  // them, and the counting happens in the store now.
+  readReportMetrics: Object.freeze({
+    rpc: 'pennsync_contract_report_metrics',
+    params: Object.freeze(['start', 'end']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_start: args.start ?? null,
+      p_end: args.end ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_REPORT_AGENCY_NOT_HELD',
+      'PENNSYNC_REPORT_FORBIDDEN',
+      'PENNSYNC_REPORT_RANGE_INVALID',
+      'PENNSYNC_REPORT_RANGE_TOO_WIDE',
+    ]),
+  }),
   readChartExportContext: Object.freeze({
     rpc: 'pennsync_contract_chart_export_context',
     params: Object.freeze(['patient_id', 'include_visits', 'include_incidents']),
