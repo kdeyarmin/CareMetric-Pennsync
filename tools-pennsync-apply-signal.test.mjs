@@ -258,3 +258,23 @@ test('an annotation stays on one line, whatever the reason it quotes looks like'
   assert.ok(!held.includes('\n'));
   assert.match(held, /A reason that wraps across lines\./);
 });
+
+test('a refusal from the migration readers is reported as a refusal to measure', () => {
+  // `readMigrations` refuses a migration holding a lone carriage return, which
+  // the head cross-check reaches through `fingerprints()`. That is not a count
+  // of zero and must not read as one: without this the CLI exits on a raw stack
+  // trace, which in a workflow log is the failure mode this tool exists to end.
+  // Not re-pinned, because `pin()` reads the files through the same refusal:
+  // the cross-check reaches `fingerprints()` before it compares anything, so
+  // this is the shape a reader's refusal really arrives in.
+  const repository = baseline();
+  repository.migration('20260103000000_record_carriage.sql', 'select 1;\rselect 2;\n');
+  repository.commit('a lone carriage return');
+
+  const errors = [];
+  assert.equal(runApplySignalCli({
+    argv: ['--base', 'HEAD^'], repository: repository.root, write: () => {},
+    error: line => errors.push(line),
+  }), 1);
+  assert.match(errors[0], /^::error title=Apply signal not measured::PROVISION_MIGRATION_CARRIAGE_RETURN/);
+});

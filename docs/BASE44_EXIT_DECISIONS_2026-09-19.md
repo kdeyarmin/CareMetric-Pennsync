@@ -6478,7 +6478,7 @@ longer names `records_schema` at all. What remains is `entity_authorization` 7
 runtime's uploader-owned reader model, D77 and D85) and `external_secret` 2 (the
 transcription key, D87) — none of which is engineering capacity here.
 
-## D92 — What merging a migration owes an operator, said before the merge
+## D93 — What merging a migration owes an operator, said before the merge
 
 D88 recorded that a migration a deployment has applied is frozen, and pinned
 every file's sha256 so an EDIT to one is answered at PR time. The other half

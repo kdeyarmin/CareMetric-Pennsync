@@ -41,6 +41,12 @@
  * `git ls-tree`, which is what a commit can be asked cheaply. Names only on the
  * base side is a deliberate limit and is stated where it is enforced.
  *
+ * Reading the head side through `fingerprints()` also inherits `readMigrations`'
+ * line-ending normalisation, so a checkout whose `.sql` files are CRLF does not
+ * read as a stale pin — and its refusal of a lone carriage return arrives here
+ * as a refusal to MEASURE rather than as a stack trace, because both mean the
+ * same thing: no count was produced.
+ *
  * `LOCAL_ONLY_MIGRATIONS` is imported from the migrate tool rather than
  * re-listed: a migration deliberately held back from every deployment arrives
  * in the pin like any other and owes no apply. Naming it anyway, with the
@@ -60,7 +66,9 @@ import { appendFileSync } from 'node:fs';
 import { basename, dirname, sep } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { LOCAL_ONLY_MIGRATIONS } from './tools-pennsync-migrate.mjs';
-import { MIGRATION_DIRECTORY, RECORD_MIGRATION_DIRECTORY } from './tools-pennsync-provision.mjs';
+import {
+  MIGRATION_DIRECTORY, ProvisionError, RECORD_MIGRATION_DIRECTORY,
+} from './tools-pennsync-provision.mjs';
 import { PIN_FILE, fingerprints, readPin } from './tools-pennsync-migration-fingerprints.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -270,7 +278,11 @@ export function runApplySignalCli({
   try {
     signal = measure({ base: valueOf('--base'), repository });
   } catch (err) {
-    if (!(err instanceof ApplySignalError)) throw err;
+    // A coded refusal from the readers is a refusal to measure too: a migration
+    // holding a lone carriage return, or a directory that has gone missing,
+    // produces no count either. Anything else is a defect in this file and is
+    // left to crash.
+    if (!(err instanceof ApplySignalError) && !(err instanceof ProvisionError)) throw err;
     // A refusal is the one non-zero exit: the signal was not measured, and a
     // tool that says nothing and exits 0 is indistinguishable from one that
     // measured and found nothing owed.
