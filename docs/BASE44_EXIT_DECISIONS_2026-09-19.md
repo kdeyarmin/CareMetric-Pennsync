@@ -5963,3 +5963,92 @@ half has a vendor, so both halves change together and the parity comparison is
 against a whole capability rather than a third of one.
 
 Port queue unchanged: 0 / 7 / 0 / 3 / 12 / 0 / 0 / 0 / 2 / 75.
+
+## D88 — A migration a deployment has applied is not editable in place
+
+**Decision.** A change to an already-applied migration ships as a FORWARD
+migration in the same change. Regenerating `20260919170000_record_store.sql` is
+a change to what a NEW store gets and reaches nothing that exists, so from here
+the regeneration and the catch-up move together, and a pin over every
+migration's text makes the edit visible where it is made.
+
+**How it was found, which is the whole of it.** D82 put the profile-write path
+into the generated record store migration, as AGENTS.md instructs: change the
+entity definitions and re-run `--write-migration`. Every gate agreed.
+`check:entity-schema-plan` compared the file with the generator and found them
+in step. `record-store-migration.test.mjs` applied it under PGlite and proved
+the policy and the trigger do what D82 says. `record-tenant-isolation.test.mjs`
+proved the narrowing holds against lying agency labels. Sixty-nine suites
+passed, #246 merged, and the hosted comparison on `main` reported
+
+```
+policies: 1 difference(s) between the committed migrations and hosted
++ [ 'missing from hosted: pennsync_records.user.user_update' ]
+```
+
+with `tests 20 / pass 19 / skipped 0` — a real measurement against the hosted
+project, not a stand-down.
+
+**The mechanism.** `planMigration` decides what to apply by NAME:
+`ledgerName(file)`, then `have.has(name)`. That is deliberate and right — the
+Supabase CLI stamps its own versions when a migration is pushed, so the
+timestamp is not an identity and the name is the only stable key the two sides
+share (`tools-pennsync-migrate.mjs` says so in its own words). The consequence
+nothing said is that the ledger holds no CONTENT. A file whose text changes
+after it has been applied is skipped forever on every store that ran it, and
+applied in full on every store built afterwards. Two different databases, one
+committed tree, and nothing between them that compares.
+
+**Why every suite could pass.** Every suite in `services/authority-store/tests`
+builds from nothing. That is the one case this defect cannot appear in, because
+a fresh build applies the edited file. The only thing that reads an existing
+store is `hosted-store.test.mjs`, and `pennsync-authority.yml:332` gates it on
+`refs/heads/main` — correctly, since it holds a hosted credential. So the check
+that could see it was structurally downstream of the merge.
+
+**What ships.** `20260920530000_profile_self_write.sql`, which is DERIVED
+rather than typed: `tools-pennsync-record-catchup.mjs` reads the four
+statements out of the generated migration and wraps each in its idempotent
+form — `create or replace function`, `create or replace trigger`, and a `drop
+policy if exists` before the policy. Derived because a second hand-kept copy
+would drift in precisely the direction nothing measures, which is a deployment
+holding an older rule than a fresh build; and the bodies are byte-identical on
+purpose, because the hosted comparison reads `md5(prosrc)` and
+`pg_get_triggerdef`, so a reformatted body reads as drift rather than as a fix.
+It runs as `pennsync_records_owner` for the same reason: the comparison reads
+`pg_get_userbyid(p.proowner)`, and a catch-up applied as the administrator
+would close one difference and open another.
+
+**The test that matters is the one that does not build from nothing.**
+`record-store-catchup.test.mjs` cuts the D82 block back out of the generated
+migration, builds a store from what the hosted project actually ran, and proves
+the catch-up leaves it field-for-field equal to a fresh build. Asserting that
+the catch-up "creates a policy" against a database that already has one would
+pass with the file empty — the shape of assertion D79's own first draft was
+caught on. Both sabotages were run and both bit: deleting the trigger statement
+failed the equality test, deleting the `revoke` failed the privilege one.
+
+**And a ratchet, because this recurs by instruction.** Regenerating that file
+is not a mistake to avoid; AGENTS.md tells you to do it whenever an entity, a
+tenant decision or the generator changes, and every such regeneration has this
+property — a new table added that way would reach no deployment either.
+`tools-pennsync-migration-fingerprints.mjs` pins all 70 migrations' sha256 and
+reports a CHANGED file apart from an ADDED one, because they ask for different
+things: an added migration wants one line of housekeeping, a changed one wants
+a forward migration or an explicit statement that no deployment has run it yet.
+The pin claims nothing about any deployment — that is a fact about the
+deployment and the hosted comparison is what reads it. It says only that the
+text moved, at PR time, where the person moving it can answer.
+
+**The general rule, and where it sits beside the others.** The repository's
+recurring defect is a bucket keeping its name after the reason for it has gone
+— nine instances, D47 through D81, each found because nothing failed. This is
+the same shape in the migration sequence rather than the classifier: a
+generator that was right while the store was being built stayed right in the
+tree and stopped being right about the world, and the one check that could
+notice ran too late to matter. **When a tool decides what to do from a name,
+ask what it would do if the thing behind the name changed.**
+
+Port queue unchanged: 0 / 7 / 0 / 3 / 12 / 0 / 0 / 0 / 2 / 75. Nothing here
+moves a capability; it carries a policy that had already been decided to the
+store that was missing it.
