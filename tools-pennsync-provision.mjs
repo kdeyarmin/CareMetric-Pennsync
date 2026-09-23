@@ -74,6 +74,37 @@ export function planProvision(requestedApp) {
   return Object.freeze({ contract: PROVISION_CONTRACT, app_id: requestedApp, label });
 }
 
+/**
+ * One migration's text, with Windows line endings undone.
+ *
+ * The bytes of a migration are not formatting. Postgres stores a function's
+ * body verbatim and the hosted comparison reads `md5(prosrc)`, so a store built
+ * from a checkout carrying CRLF differs from one built here in every function
+ * it created — while the ledger, which keys on the file NAME, records both as
+ * having run the same migration. That is D88's shape arriving through the line
+ * ending, and it happened: four migrations applied from a Windows checkout on
+ * 2026-09-23 wrote `\r\n` into eight function bodies, and the hosted job
+ * reported 20 of 21 with nothing in the ledger to explain the one.
+ *
+ * `.gitattributes` now pins `eol=lf`, which protects a checkout made after it
+ * lands and none made before, so the reader undoes it here as well. This is
+ * where it belongs rather than in the migrate tool, because `applyProvision`
+ * reads through the same function and a FRESH store built on Windows would
+ * otherwise carry the difference in from its first migration.
+ *
+ * A carriage return that is not part of a line ending is REFUSED rather than
+ * stripped. `core.autocrlf` only ever writes `\r\n`, so a lone one is a real
+ * difference in the file, and quietly removing it is how a store comes to hold
+ * something nobody wrote. No committed migration contains one; a test asserts
+ * that, so this refusal names a working tree that has been edited rather than
+ * checked out.
+ */
+function readMigrationSql(path) {
+  const sql = readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
+  if (sql.includes('\r')) refuse('PROVISION_MIGRATION_CARRIAGE_RETURN', path);
+  return sql;
+}
+
 /** The migrations, in the order the store expects them applied. */
 export function readMigrations(repository) {
   const read = relative => {
@@ -83,7 +114,7 @@ export function readMigrations(repository) {
       // sequences it actually is. It stopped being one sorted list the moment
       // an authority migration was dated after a record one, which is a
       // perfectly ordinary thing to need and had been true only by accident.
-      .map(name => ({ name, from: relative, sql: readFileSync(join(directory, name), 'utf8') }));
+      .map(name => ({ name, from: relative, sql: readMigrationSql(join(directory, name)) }));
   };
   // Authority first: every record policy is written in terms of
   // `pennsync_private`, and the record store refuses a database without it.

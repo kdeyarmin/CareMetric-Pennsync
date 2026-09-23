@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   LOCAL_ONLY_MIGRATIONS, MIGRATE_CONTRACT, MigrateError, PIN_MIGRATION,
@@ -8,7 +9,7 @@ import {
   readAppliedNames, runMigrateCli,
 } from './tools-pennsync-migrate.mjs';
 import {
-  MIGRATION_DIRECTORY, RECORD_MIGRATION_DIRECTORY, readMigrations,
+  MIGRATION_DIRECTORY, ProvisionError, RECORD_MIGRATION_DIRECTORY, readMigrations,
 } from './tools-pennsync-provision.mjs';
 
 /**
@@ -338,4 +339,82 @@ test('the CLI needs a target before it opens anything', async () => {
   assert.equal(code, 1);
   assert.equal(JSON.parse(errors[0]).error, 'MIGRATE_TARGET_REQUIRED');
   assert.equal(opened, false);
+});
+
+/**
+ * Line endings, which are content here rather than formatting.
+ *
+ * Postgres stores a function's body verbatim and the hosted comparison reads
+ * `md5(prosrc)`, so a migration applied with CRLF builds a store that differs
+ * from every store built here — in every function it created — while the
+ * ledger, which keys on the file NAME, records both as the same migration.
+ * Four migrations applied from a Windows checkout on 2026-09-23 did exactly
+ * that to eight function bodies.
+ *
+ * This is invisible to a suite that writes and compares on one machine, which
+ * is why the cases below MAKE a CRLF checkout rather than waiting for one.
+ */
+const crlfCheckout = migrations => {
+  const root = mkdtempSync(join(tmpdir(), 'pennsync-crlf-'));
+  for (const relative of [MIGRATION_DIRECTORY, RECORD_MIGRATION_DIRECTORY]) {
+    cpSync(join(REPOSITORY, relative), join(root, relative), { recursive: true });
+  }
+  for (const { name, from } of migrations) {
+    const path = join(root, from, name);
+    writeFileSync(path, readFileSync(path, 'utf8').replace(/\n/g, '\r\n'));
+  }
+  return root;
+};
+
+test('a migration read from a CRLF checkout is byte-for-byte the committed one', () => {
+  const committed = readMigrations(REPOSITORY);
+  const root = crlfCheckout(committed);
+
+  // Every file, not a sample: the defect is per-function, so one unconverted
+  // migration is one store that differs and nothing that says so.
+  const raw = readFileSync(join(root, committed[0].from, committed[0].name), 'utf8');
+  assert.ok(raw.includes('\r\n'), 'the fixture must really be a CRLF checkout');
+
+  const read = readMigrations(root);
+  assert.equal(read.length, committed.length);
+  for (const [index, entry] of read.entries()) {
+    assert.equal(entry.name, committed[index].name);
+    assert.equal(entry.sql, committed[index].sql, `${entry.name} differs from the committed file`);
+  }
+});
+
+test('no committed migration carries a carriage return of its own', () => {
+  // Read the FILE, not `readMigrations`: the reader strips `\r\n`, so a
+  // committed file full of them would pass a check made on its answer while
+  // the thing this asserts — that the repository holds LF — was false. A first
+  // draft did read the answer, and planting CRLF in a committed migration left
+  // it green.
+  //
+  // While this holds, the refusal below can only mean an edited working tree,
+  // and the normalization above can only be undoing what a checkout did.
+  for (const { name, from } of readMigrations(REPOSITORY)) {
+    const raw = readFileSync(join(REPOSITORY, from, name), 'utf8');
+    assert.ok(!raw.includes('\r'), `${name} carries a carriage return`);
+  }
+});
+
+test('a carriage return that is not a line ending is refused, never stripped', () => {
+  const committed = readMigrations(REPOSITORY);
+  const root = crlfCheckout([]);
+  const victim = committed[0];
+  const path = join(root, victim.from, victim.name);
+  writeFileSync(path, `${readFileSync(path, 'utf8')}\r-- a lone carriage return\n`);
+
+  let failure = null;
+  try { readMigrations(root); } catch (error) { failure = error; }
+  assert.ok(failure instanceof ProvisionError, `expected a ProvisionError, got ${failure}`);
+  assert.equal(failure.code, 'PROVISION_MIGRATION_CARRIAGE_RETURN');
+  assert.ok(failure.detail.endsWith(victim.name), 'the refusal names the file');
+});
+
+test('.gitattributes pins LF, so a new checkout cannot reintroduce this', () => {
+  // The reader above repairs a checkout that already exists; this is what stops
+  // the next one from needing repair. Deleting the line fails here.
+  const attributes = readFileSync(join(REPOSITORY, '.gitattributes'), 'utf8');
+  assert.match(attributes, /^\* text=auto eol=lf$/m);
 });

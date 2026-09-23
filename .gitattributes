@@ -6,3 +6,26 @@ __pycache__/ export-ignore
 .turbo/ export-ignore
 coverage/ export-ignore
 .nyc_output/ export-ignore
+
+# Line endings are content here, not formatting.
+#
+# `core.autocrlf=true` is the default on Windows, and with no rule in this file
+# it rewrites every text file in the working tree to CRLF. That is invisible in
+# most repositories and is not invisible in this one: `tools-pennsync-migrate`
+# sends a migration's text to Postgres, which stores a function's body verbatim,
+# and the hosted comparison reads `md5(prosrc)`. Applying four migrations from a
+# Windows checkout on 2026-09-23 wrote `\r\n` into eight function bodies, and
+# the store then differed from every store built here while the ledger recorded
+# both as having run the same file.
+#
+# `tools-pennsync-migration-fingerprints` and the generated-SQL tests hash file
+# content too, so they fail wholesale on such a checkout rather than pointing at
+# this.
+#
+# This protects a checkout made after it lands. `readMigrations` undoes CRLF as
+# well, for the ones made before.
+* text=auto eol=lf
+
+*.png -text
+*.pdf -text
+*.tgz -text
