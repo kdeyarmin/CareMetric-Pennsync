@@ -32,6 +32,11 @@
  * fails the run. "The rest by blast radius" is DERIVED rather than typed —
  * read-only first, then mutating, then the ones that need the paused runtime.
  *
+ * Whether a handler needs the runtime is the REGISTRY's answer, because
+ * `/readyz` is decided from the same flag — but it is crossed against what the
+ * tree can reach (D92), both directions, so a released send cannot sit in a
+ * wave that does not require the runtime to be configured.
+ *
  * This authorizes nothing and releases nothing. It reads committed source.
  */
 import { readFileSync, readdirSync } from 'node:fs';
@@ -385,6 +390,7 @@ export function releaseFacts(root) {
   mutationClassifierHolds(origins);
   const reach = handlerReach(root);
   const integration = integrationDependents(root);
+  integrationFlagHolds(integration, integrationReach(root));
   const facts = [];
   for (const entry of reach.values()) {
     const unknown = entry.contracts.filter(name => !origins.has(name));
@@ -407,6 +413,10 @@ export function releaseFacts(root) {
  * from the registry's own flag rather than re-derived: `runtime.mjs` decides
  * readiness from `HANDLERS[name].needsIntegration`, so a second answer here
  * could disagree with the thing that actually gates the deployment.
+ *
+ * That is still the answer the ladder places a handler by. What
+ * `integrationReach` adds is not a second answer but a CROSS-CHECK of this
+ * one, for the reason `account-email.mjs` writes down in its own header.
  */
 export function integrationDependents(root) {
   const source = read(resolve(root, SERVICE, 'handlers.mjs'));
@@ -419,6 +429,87 @@ export function integrationDependents(root) {
     if (/needsIntegration:\s*true/.test(block)) names.add(entry[1]);
   });
   return names;
+}
+
+/**
+ * Which handlers can REACH the integration runtime, derived from the tree.
+ *
+ * `integration` is minted per request in `app.mjs` and handed to `handle` as
+ * one property of one object. There is no module-level access to it, and
+ * nothing outside `integrations.mjs` and `runtime.mjs` names the runtime's URL
+ * at all — both of which this checks below. So a handler that does not
+ * destructure `integration` cannot call the runtime, whatever its module
+ * imports, and one that does can.
+ *
+ * This exists because `account-email.mjs` records the hazard in its own header
+ * and a header is not a check: while the send stays paused those two
+ * capabilities are honestly read-only, and the release that deletes their two
+ * `fail` lines has to set `needsIntegration: true` in the same change or the
+ * ladder hands an operator two outbound senders inside the wave whose whole
+ * promise is that nothing in it writes or sends. D78's lesson, which is the
+ * house one: a rule in a document is not a check, and `chart_assignment`'s
+ * locking rule was written down and then broken twice.
+ *
+ * It fails CLOSED on a signature it cannot read, the rule `handlerReach`
+ * follows for a computed contract name: a `handle` that takes its dependencies
+ * any other way is refused rather than read as reaching nothing, because the
+ * silent answer here is the dangerous one.
+ */
+export function integrationReach(root) {
+  const source = read(resolve(root, SERVICE, 'handlers.mjs'));
+  const start = source.indexOf('export const HANDLERS');
+  if (start < 0) refuse('LADDER_HANDLERS_MISSING', { file: 'handlers.mjs' });
+  const registry = source.slice(start);
+  const entries = [...registry.matchAll(/\n {2}([A-Za-z][A-Za-z0-9]*): Object\.freeze\(\{/g)];
+  if (!entries.length) refuse('LADDER_NO_HANDLERS', { file: 'handlers.mjs' });
+
+  const names = new Set();
+  entries.forEach((entry, index) => {
+    const block = registry.slice(entry.index, entries[index + 1]?.index ?? registry.length);
+    const signature = /\bhandle\s*\(\s*\{([^}]*)\}/s.exec(block);
+    if (!signature) {
+      refuse('LADDER_HANDLER_DEPENDENCIES_UNREADABLE', {
+        handler: entry[1],
+        // Every one of them destructures today. A `handle(deps)` reading
+        // `deps.integration`, or a rest element, is a shape this cannot answer
+        // about, so it is a refusal and not a false negative.
+        reason: 'handle does not destructure its dependency object',
+      });
+    }
+    if (/\bintegration\b/.test(signature[1])) names.add(entry[1]);
+  });
+
+  // The other way to the runtime would be to fetch it directly out of
+  // `config`, which four handlers destructure. Only the capability and the
+  // config loader may name it, so the derivation above stays sufficient.
+  for (const file of serviceFiles(root)) {
+    if (file === 'integrations.mjs' || file === 'runtime.mjs') continue;
+    if (/\bintegrationsUrl\b/.test(read(resolve(root, SERVICE, file)))) {
+      refuse('LADDER_INTEGRATION_RUNTIME_REACHED_DIRECTLY', { file });
+    }
+  }
+  return names;
+}
+
+/**
+ * The registry's flag and the tree's reach must name the same handlers.
+ *
+ * Both directions are refused and they are different mistakes. A handler that
+ * can call the runtime while the registry says it cannot is placed in a wave
+ * that does not require the runtime to be configured, which is the wave-4
+ * hazard above. A handler flagged without the reach is the opposite and still
+ * wrong: it holds a name out of an earlier wave for a dependency it does not
+ * have, and a wave nobody can release is how a ladder stops being used.
+ */
+export function integrationFlagHolds(flagged, reached) {
+  const flaggedWithoutReach = [...flagged].filter(name => !reached.has(name)).sort();
+  const reachWithoutFlag = [...reached].filter(name => !flagged.has(name)).sort();
+  if (flaggedWithoutReach.length || reachWithoutFlag.length) {
+    refuse('LADDER_INTEGRATION_FLAG_DISAGREES', {
+      flagged_without_reach: flaggedWithoutReach,
+      reach_without_flag: reachWithoutFlag,
+    });
+  }
 }
 
 /** The ladder: the declared waves re-checked, then the rest by blast radius. */
