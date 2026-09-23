@@ -751,9 +751,19 @@ test('an anonymous caller reaches neither schema', { skip }, () => {
  * into an assertion is a one-line change to `WHOLE_PARTS` once somebody has
  * read that number.
  */
-test('publication membership for the two schemas is read', { skip }, () => {
+test('publication membership for the two schemas is read', { skip }, t => {
   const published = hosted.inventory.publication_tables;
   assert.ok(Array.isArray(published), 'the hosted publication membership was not read');
+  // PRINTED, not only asserted, and that is what makes the deferral close
+  // itself: a reading nobody ever sees resolves by somebody remembering D95,
+  // and this repository's own record is that a thing remembered goes stale
+  // where nothing can notice. The number lands in the job log in front of
+  // whoever next reads it.
+  t.diagnostic(published.length === 0
+    ? 'publication membership: no record or authority table is published.'
+      + ' Assert it: move publication_tables into WHOLE_PARTS in store-inventory.mjs (D95).'
+    : `publication membership: ${published.length} published — ${published.join(', ')}.`
+      + ' Each streams its rows past every policy here; decide before asserting (D95).');
   assert.deepEqual(reference.publication_tables, [],
     'the committed migrations now publish a table; this reading has an expectation to compare against');
 });
