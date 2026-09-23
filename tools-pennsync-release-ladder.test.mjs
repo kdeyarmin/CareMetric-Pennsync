@@ -6,8 +6,11 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   DECLARED_WAVES, LADDER_CONTRACT, LadderError, checkLadder, closureOf, dollarQuotedBody,
-  functionBodies, handlerReach, importedNames, releaseLadder,
+  functionBodies, handlerReach, importedNames, probeDeployment, readinessOf, releaseDelta,
+  releaseLadder, reportDelta,
 } from './tools-pennsync-release-ladder.mjs';
+import { loadConfig, publicReadiness } from './services/pennsync-api/runtime.mjs';
+import { ledgerVersion } from './tools-pennsync-migrate.mjs';
 
 /**
  * The release ladder, held to the two things it claims: that a handler's
@@ -326,4 +329,143 @@ test('a handler reaching a contract the registry does not carry is refused', (t)
   assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
   assert.equal(failure.code, 'LADDER_CONTRACT_UNKNOWN');
   assert.deepEqual(failure.detail.contracts, ['retiredContract']);
+});
+
+/**
+ * The deployment half. What the running service answers is not invented here:
+ * `publicReadiness` is the thing that writes `/readyz`, so the payload these
+ * measure is built by it, and a field renamed there fails these rather than
+ * being quietly read as absent.
+ */
+const readinessFor = env => publicReadiness(loadConfig(env));
+const RELEASED_ENV = Object.freeze({
+  PENNSYNC_API_RELEASE: 'enabled-v1',
+  PENNSYNC_API_APP_ID: '6a9881683dc68a0bd54f1ef7',
+  PENNSYNC_API_AUTHORITY_URL: 'https://xxtyweswohkvgkprimwa.supabase.co',
+  PENNSYNC_API_AUTHORITY_PUBLISHABLE_KEY: 'sb_publishable_synthetic-acceptance-key',
+});
+
+test('the service readiness payload is the shape the probe reads', () => {
+  const readiness = readinessFor({});
+  const parsed = readinessOf(readiness, 'unit');
+  assert.equal(parsed.released, false);
+  assert.deepEqual(parsed.operations, []);
+  assert.ok(parsed.implemented.length > 0);
+  // The binding, which is what a release throws on before it serves anything.
+  assert.equal(parsed.appStated, false);
+  assert.equal(parsed.appId, '694ec16e72e01b60d22f7cbf');
+});
+
+test('a payload the probe cannot read is refused rather than read as complete', () => {
+  for (const payload of [
+    null,
+    {},
+    { ...readinessFor({}), implemented: undefined },
+    { ...readinessFor({}), implemented: [1, 2] },
+    { ...readinessFor({}), released: 'false' },
+    { ...readinessFor({}), revision: null },
+  ]) {
+    let failure = null;
+    try { readinessOf(payload, 'unit'); } catch (error) { failure = error; }
+    assert.ok(failure instanceof LadderError, `expected a refusal for ${JSON.stringify(payload)?.slice(0, 40)}`);
+    assert.equal(failure.code, 'LADDER_DEPLOYMENT_UNREADABLE');
+  }
+});
+
+test('an app binding a revision does not report is unreported, not cleared', () => {
+  const { appId: _id, appStated: _stated, ...older } = readinessFor(RELEASED_ENV);
+  const parsed = readinessOf(older, 'unit');
+  assert.equal(parsed.appStated, null);
+  assert.equal(parsed.appId, null);
+  const wave = { needsIntegration: false };
+  // Null is not false: an older revision is not accused of defaulting.
+  assert.deepEqual(releaseDelta([], parsed, wave).blockers, []);
+  assert.deepEqual(releaseDelta([], readinessOf(readinessFor({}), 'unit'), wave).blockers,
+    ['INCOMPLETE_AUTHORITY_CONFIGURATION', 'IMPLICIT_APP_BINDING']);
+});
+
+test('a name the deployment does not implement is the refusal, not a note', () => {
+  const readiness = readinessOf(readinessFor(RELEASED_ENV), 'unit');
+  const real = readiness.implemented[0];
+  const delta = releaseDelta([real, 'aHandlerThisRevisionNeverHad'], readiness, { needsIntegration: false });
+  assert.deepEqual(delta.missing, ['aHandlerThisRevisionNeverHad']);
+  const lines = [];
+  assert.equal(reportDelta([real, 'aHandlerThisRevisionNeverHad'], readiness, { needsIntegration: false }, line => lines.push(line)), 1);
+  assert.ok(lines.some(line => line.includes('INVALID_FUNCTION_RELEASE')), lines.join('\n'));
+});
+
+test('a value behind the deployment is refused for what it would revoke', () => {
+  const served = readinessOf(readinessFor({
+    ...RELEASED_ENV, PENNSYNC_API_FUNCTIONS: 'listAuthorizedPatients,getAuthorizedPatient',
+  }), 'unit');
+  assert.deepEqual(served.operations, ['listAuthorizedPatients', 'getAuthorizedPatient']);
+  const delta = releaseDelta(['listAuthorizedPatients'], served, { needsIntegration: false });
+  assert.deepEqual(delta.revokes, ['getAuthorizedPatient']);
+  assert.deepEqual(delta.missing, []);
+  const lines = [];
+  assert.equal(reportDelta(['listAuthorizedPatients'], served, { needsIntegration: false }, line => lines.push(line)), 1);
+  assert.ok(lines.some(line => line.includes('stop serving getAuthorizedPatient')), lines.join('\n'));
+});
+
+test('a wave needing the paused runtime is blocked where it is not configured', () => {
+  const readiness = readinessOf(readinessFor(RELEASED_ENV), 'unit');
+  assert.equal(readiness.integrationsConfigured, false);
+  assert.deepEqual(releaseDelta([], readiness, { needsIntegration: true }).blockers, ['INTEGRATIONS_NOT_CONFIGURED']);
+  assert.deepEqual(releaseDelta([], readiness, { needsIntegration: false }).blockers, []);
+});
+
+test('the probe accepts the 503 a paused service answers with', async () => {
+  const payload = readinessFor({});
+  const asked = [];
+  const fetchImpl = async (url) => {
+    asked.push(url);
+    return { status: 503, json: async () => payload };
+  };
+  const readiness = await probeDeployment('https://api.example.test', fetchImpl);
+  assert.deepEqual(asked, ['https://api.example.test/readyz']);
+  assert.equal(readiness.released, false);
+});
+
+test('the probe refuses a target that is not an https origin', async () => {
+  for (const target of [
+    'http://api.example.test',
+    'https://api.example.test/api',
+    'https://api.example.test/?x=1',
+    'not a url',
+  ]) {
+    let failure = null;
+    try { await probeDeployment(target, async () => assert.fail('must not fetch')); }
+    catch (error) { failure = error; }
+    assert.ok(failure instanceof LadderError, `expected a refusal for ${target}`);
+    assert.equal(failure.code, 'LADDER_DEPLOYMENT_TARGET_INVALID');
+  }
+});
+
+test('an unreachable or unexpected answer is refused, never assumed', async () => {
+  const cases = [
+    [async () => { throw new Error('ECONNREFUSED'); }, 'LADDER_DEPLOYMENT_UNREACHABLE'],
+    [async () => ({ status: 500, json: async () => ({}) }), 'LADDER_DEPLOYMENT_UNREACHABLE'],
+    [async () => ({ status: 200, json: async () => { throw new Error('not json'); } }), 'LADDER_DEPLOYMENT_UNREADABLE'],
+  ];
+  for (const [fetchImpl, code] of cases) {
+    let failure = null;
+    try { await probeDeployment('https://api.example.test', fetchImpl); } catch (error) { failure = error; }
+    assert.ok(failure instanceof LadderError, `expected ${code}`);
+    assert.equal(failure.code, code);
+  }
+});
+
+test('a prerequisite is printed in the form the ledger actually holds', () => {
+  // The ledger's `version` is the file's whole stem, so the file name alone is
+  // a string that matches nothing in `supabase_migrations.schema_migrations` —
+  // which is where an operator checks whether a prerequisite has been applied.
+  // Imported from the migrate tool rather than reproduced here, so the two
+  // cannot drift apart.
+  const ladder = checkLadder(REPOSITORY);
+  const migrations = [...new Set(ladder.waves.flatMap(wave => wave.migrations))];
+  assert.ok(migrations.length > 0);
+  for (const migration of migrations) {
+    assert.match(migration, /^\d+_[a-z0-9_]+\.sql$/);
+    assert.equal(ledgerVersion(migration), migration.replace(/\.sql$/, ''));
+  }
 });

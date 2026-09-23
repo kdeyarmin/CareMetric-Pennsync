@@ -112,6 +112,7 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 | Plan a deployment's pending migrations | `PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs` (a postgres URL, or `supabase://<project-ref>` plus `SUPABASE_ACCESS_TOKEN` where only HTTPS is reachable) |
 | Apply them | `… node tools-pennsync-migrate.mjs --apply` |
 | Emit one release wave's operator settings | `node tools-pennsync-release-ladder.mjs --wave patient-read` |
+| Check a wave against the running deployment | `node tools-pennsync-release-ladder.mjs --wave patient-read --deployment https://<service-host>` |
 
 ## Environment config
 
