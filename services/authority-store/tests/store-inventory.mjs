@@ -180,8 +180,24 @@ export const INVENTORY = `select jsonb_build_object(
 export const KEYED_PARTS = Object.freeze(['tables', 'columns', 'constraints',
   'indexes', 'policies', 'functions', 'triggers']);
 
-/** The unkeyed parts, compared whole. */
-export const WHOLE_PARTS = Object.freeze(['caller_table_privileges', 'schema_privileges']);
+/**
+ * The unkeyed parts, compared whole.
+ *
+ * `publication_tables` joined these on 2026-09-23 (D96). It shipped in D95 as a
+ * reading that was deliberately NOT asserted: a table in a publication streams
+ * its rows to whatever holds the replication slot, which on a Supabase project
+ * is Realtime, and whether Supabase's own `supabase_realtime` publication
+ * arrives empty or `FOR ALL TABLES` is a platform fact no pull request can
+ * measure. Asserting it unmeasured would have put `main` red for a reason
+ * discoverable only after the merge, which is D93's cost.
+ *
+ * The first `main` run under the widened check supplied the number: no record
+ * or authority table is published. So the comparison is now the ordinary one —
+ * the reference publishes nothing, hosted publishes nothing, and a table
+ * enabled for Realtime from the dashboard is a fault with its name in it.
+ */
+export const WHOLE_PARTS = Object.freeze(['caller_table_privileges', 'schema_privileges',
+  'publication_tables']);
 
 /**
  * Two keyed inventories, differenced so a failure NAMES what differs.

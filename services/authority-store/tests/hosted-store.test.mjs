@@ -728,44 +728,44 @@ test('an anonymous caller reaches neither schema', { skip }, () => {
 });
 
 /**
- * Whether any record or authority table is published for logical replication,
- * READ and reported rather than asserted — and the restraint is the point.
+ * What is published for logical replication, now ASSERTED rather than read.
  *
  * A table in a publication streams its rows to whatever holds the replication
  * slot, which on a Supabase project is Realtime, enabled per table from the
  * dashboard with one click. That is a row path out of the store that no policy
- * in this repository sits on, and nothing else here looks at it. The reference
- * build has none, so comparing the two would be an assertion that hosted has
- * none either.
+ * in this repository sits on, and until D96 nothing here compared it.
  *
- * WHY THAT ASSERTION IS NOT MADE HERE. Supabase creates a `supabase_realtime`
- * publication on every project, and whether it arrives empty or `FOR ALL
- * TABLES` is a platform fact this repository cannot measure — the job holding
- * the credential runs on `main`, so asserting it would put main red for a
- * reason discoverable only after the merge. That is D93's cost exactly, and
- * D95 records this as the one dimension left unasserted for want of a
- * measurement rather than for want of a reason.
+ * WHY IT WAS NOT ASSERTED AT FIRST, which is worth keeping. Supabase creates a
+ * `supabase_realtime` publication on every project, and whether it arrives
+ * empty or `FOR ALL TABLES` is a platform fact no pull request can measure —
+ * the job holding the credential runs on `main`, so asserting it unmeasured
+ * would have put main red for a reason discoverable only after the merge, D93's
+ * cost exactly. So D95 shipped the reading with the inventory and PRINTED it,
+ * because a reading nobody sees resolves only if somebody remembers it, and
+ * this repository's own record is that a thing remembered goes stale where
+ * nothing can notice.
  *
- * So the reading goes out with the rest of the inventory, this test proves it
- * happened, and the first green run on main supplies the number. Turning it
- * into an assertion is a one-line change to `WHOLE_PARTS` once somebody has
- * read that number.
+ * The first `main` run under the widened check supplied the number on
+ * 2026-09-23: no record or authority table is published. `publication_tables`
+ * moved into `WHOLE_PARTS` on that reading, so the comparison test above now
+ * fails if hosted ever publishes one, and `store-inventory.test.mjs` plants a
+ * publication to prove that assertion bites.
+ *
+ * This test stays for what the comparison cannot say. A fault names a
+ * DIFFERENCE, so with both sides empty it is silent, and silence is also what a
+ * reading that never happened looks like. This asserts the reading happened and
+ * keeps printing what it found, so the next person sees the state rather than
+ * inferring it from the absence of a complaint.
  */
-test('publication membership for the two schemas is read', { skip }, t => {
+test('publication membership for the two schemas is read and empty', { skip }, t => {
   const published = hosted.inventory.publication_tables;
   assert.ok(Array.isArray(published), 'the hosted publication membership was not read');
-  // PRINTED, not only asserted, and that is what makes the deferral close
-  // itself: a reading nobody ever sees resolves by somebody remembering D95,
-  // and this repository's own record is that a thing remembered goes stale
-  // where nothing can notice. The number lands in the job log in front of
-  // whoever next reads it.
   t.diagnostic(published.length === 0
-    ? 'publication membership: no record or authority table is published.'
-      + ' Assert it: move publication_tables into WHOLE_PARTS in store-inventory.mjs (D95).'
+    ? 'publication membership: no record or authority table is published (asserted since D96).'
     : `publication membership: ${published.length} published — ${published.join(', ')}.`
-      + ' Each streams its rows past every policy here; decide before asserting (D95).');
+      + ' Each streams its rows past every policy here.');
   assert.deepEqual(reference.publication_tables, [],
-    'the committed migrations now publish a table; this reading has an expectation to compare against');
+    'the committed migrations now publish a table; decide what hosted should carry before this compares');
 });
 
 /**

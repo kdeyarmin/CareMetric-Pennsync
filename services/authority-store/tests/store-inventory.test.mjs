@@ -46,6 +46,14 @@ import { INVENTORY, KEYED_PARTS, WHOLE_PARTS, inventoryFaults } from './store-in
  *   STRICT or LEAKPROOF changed    both live outside `prosrc`, so the body
  *                                  digest cannot see either
  *   CREATE granted on a schema     `usage` was asked and `create` was not
+ *   a record table published       its rows stream to whatever holds the
+ *                                  replication slot, past every policy here
+ *
+ * That last one was not blind but UNASSERTED: D95 read it and left it alone,
+ * because whether Supabase's own publication arrives empty or `FOR ALL TABLES`
+ * was a platform fact no pull request could measure, and guessing would have
+ * reddened `main` after the merge. The first `main` run supplied the number and
+ * D96 asserted it, which is what this case now holds in place.
  *
  * The last three cases are the CONTROLS, and they are here for a reason rather
  * than for symmetry: a foreign key's ON DELETE action, a policy widened to
@@ -83,7 +91,8 @@ const read = async db => {
 /**
  * One damaged build carrying every case, rather than one build per case.
  *
- * Twelve reference builds is ninety seconds of `pnpm test` for a property that
+ * Thirteen reference builds is a hundred seconds of `pnpm test` for a property
+ * that
  * needs two, and the faults are asserted INDIVIDUALLY below, so a damage that
  * masked another would fail on the masked one's own assertion rather than pass
  * on a count.
@@ -112,6 +121,14 @@ const DAMAGE = [
   `alter function pennsync_private.s3_hash(jsonb) called on null input`,
   `alter function pennsync_private.s4_utf16_length(text) leakproof`,
   `grant create on schema pennsync_records to authenticated`,
+  // A record table enabled for Realtime. Unlike the nine above this one was
+  // never blind — D95 READ it and deliberately did not assert it, because
+  // whether Supabase's own publication arrives empty or `FOR ALL TABLES` was a
+  // platform fact no pull request could measure. The first `main` run supplied
+  // the number and D96 asserted it, so it is planted here for the same reason
+  // the others are. Supabase names this publication itself; the damage uses
+  // that name rather than an invented one.
+  `create publication supabase_realtime for table pennsync_records.patient`,
   // The controls: three dimensions that were already covered.
   `alter table pennsync_private.identity_map drop constraint identity_map_auth_user_id_fkey`,
   `alter table pennsync_private.identity_map add constraint identity_map_auth_user_id_fkey
@@ -145,6 +162,7 @@ const EXPECTED = [
   ['LEAKPROOF added to a helper',
     'functions: pennsync_private.s4_utf16_length(p_text text).leakproof: committed false hosted true'],
   ['CREATE granted on the record schema', 'schema_privileges: committed'],
+  ['a record table published for replication', 'publication_tables: committed []'],
   ['CONTROL a foreign key action changed',
     'constraints: pennsync_private.identity_map.identity_map_auth_user_id_fkey.def:'],
   ['CONTROL a policy widened to true',
@@ -186,7 +204,7 @@ test('the reference build produced a store worth comparing', () => {
 test('an undamaged build differs from itself in nothing', () => {
   // The other half of the guard, and the one that decides whether the
   // assertions below mean anything: a differencer that reported faults for
-  // everything would satisfy all twelve of them and prove nothing.
+  // everything would satisfy all thirteen of them and prove nothing.
   assert.deepEqual(inventoryFaults(reference, reference), []);
 });
 
@@ -202,13 +220,13 @@ for (const [name, expected] of EXPECTED) {
 test('the expectations are distinct and their number is pinned', () => {
   // What this does NOT do is count faults against damages. A first draft
   // asserted `faults.length >= EXPECTED.length` and passed with NINE of the
-  // twelve cases blind, because one undetected view contributes seventy
+  // twelve cases it then had blind, because one undetected view contributes seventy
   // column faults on its own — a number that looks like coverage and is
   // noise. The per-case assertions above are the whole of the guard; this one
   // only stops a case being added to `DAMAGE` without saying what it must
   // report, and stops two cases sharing an expectation that one of them
   // satisfies alone.
-  assert.equal(EXPECTED.length, 12, 'a damage was added or removed without its expectation');
+  assert.equal(EXPECTED.length, 13, 'a damage was added or removed without its expectation');
   assert.equal(new Set(EXPECTED.map(([, fault]) => fault)).size, EXPECTED.length,
     'two cases share an expected fault, so one of them proves nothing');
 });

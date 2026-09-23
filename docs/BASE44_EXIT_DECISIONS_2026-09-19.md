@@ -6851,3 +6851,108 @@ was replaced by a fixed allowlist, since `isReadOnly` classifies leading verbs
 and `select some_write_contract(…)` passes it. Prose outliving the code it
 describes, next to the credential it describes, is the same shape as everything
 else in this entry.
+
+## D96 — The publication reading, closed by the run that measured it
+
+D95 widened the hosted comparison by eight dimensions and left a ninth
+**read but not asserted**: publication membership. This entry closes it, and
+the reason it is a separate entry rather than a footnote to D95 is that the
+closing is the interesting half.
+
+### What was deferred, and why it had to be
+
+A table in a publication streams its rows to whatever holds the replication
+slot. On a Supabase project that is Realtime, enabled per table from the
+dashboard with one click. It is a row path out of the store that no policy in
+this repository sits on — the record policies gate `select` by the querying
+role, and a replication slot is not a querying role.
+
+So it belonged in the inventory. What it could not be was an assertion. The
+reference build publishes nothing, so comparing the two sides is an assertion
+that **hosted** publishes nothing, and nothing in this repository could
+establish that: Supabase creates a `supabase_realtime` publication on every
+project, and whether it arrives empty or `FOR ALL TABLES` is a platform fact,
+not a property of the tree. The job holding the credential is gated on
+`refs/heads/main`, so a wrong guess would have been discoverable only from a
+red `main` after the merge. That is precisely the cost D93 records and spent a
+day on.
+
+### What was done instead of guessing
+
+The reading shipped with the inventory and the test **printed** it, because the
+alternative — leaving a note that says "somebody should check this" — resolves
+only if somebody remembers, and this repository's own record is that a thing
+remembered goes stale in exactly the place nothing can notice. D79 is the same
+lesson from the other side: the fix for prose that went stale was assertions,
+not better prose.
+
+### The measurement
+
+The first `main` run under the widened check, on `a38a199`, 2026-09-23:
+
+- the pairing was the real one — "Exercise the suite without a hosted target"
+  **skipped**, "Measure the hosted staging store" **executed**;
+- `tests 22 / pass 22 / fail 0 / skipped 0`;
+- the printed reading: **no record or authority table is published.**
+
+Worth recording beside it, because it is the answer to the sharper question
+D95 opened: **"the hosted store is exactly what the committed migrations
+produce" passed under the widened check.** No view, no materialized view, no
+sequence, no dropped default, no removed GENERATED expression, no disabled
+trigger, no invalid index, no changed argument default, no STRICT or LEAKPROOF
+drift, no CREATE granted on either schema. The `relkind = 'r'` filter was a
+hole in the net rather than something already through it. That is a statement
+about hosted staging at that commit and about nothing else; it is exactly as
+durable as the next run.
+
+### The change
+
+`publication_tables` moves from a read-only key into `WHOLE_PARTS` in
+`services/authority-store/tests/store-inventory.mjs`, so it is differenced like
+the caller privileges and the schema privileges. A record table enabled for
+Realtime is now a fault with its own name in it.
+
+The dedicated test in `hosted-store.test.mjs` stays rather than being deleted
+into the comparison, for a reason worth keeping: a fault names a
+**difference**, so with both sides empty the comparison is silent — and silence
+is also what a reading that never happened looks like. The test asserts the
+reading happened and keeps printing what it found, so the next person reads the
+state rather than inferring it from the absence of a complaint.
+
+`store-inventory.test.mjs` gains a thirteenth damage,
+`create publication supabase_realtime for table pennsync_records.patient`, and
+its expectation. **The new assertion was proved to bite before it was
+believed**: with the damage planted and `publication_tables` in `WHOLE_PARTS`
+all thirteen cases report; with the key taken back out, exactly one test fails
+and it is the new one, the other twelve staying green. That ordering is D95's
+own rule about the three controls, applied to the case that closes it — a
+harness that has not been shown to bite proves nothing about what it does not
+report.
+
+Note that this case is not like the other nine in that file. Those were
+**blind** and measured blind before the widening. This one was never blind; it
+was unasserted on purpose. It is planted for the same reason regardless, which
+is that an assertion nobody has broken is an assumption.
+
+### The reusable part
+
+Where a check cannot measure the value it would assert, there are three moves
+and only the third is honest:
+
+1. assert the plausible value — reds `main` after the merge when it is wrong,
+   which is the thing D93 exists to stop;
+2. leave it out and write a note — goes stale where nothing can notice;
+3. **read it, print it, and say in the same breath what closing it takes** —
+   the deferral closes by being seen.
+
+This is the first deferral in the migration taken that way and closed within a
+day of being taken. A dimension judged not worth comparing is still a real
+answer, as D95 says, as long as the reason is written down; a dimension left
+unmeasured is a promise, and a promise needs a date on it.
+
+### What this does not change
+
+Nothing about what is deliberately not compared. Rows, column ordinal position,
+collation, default privileges, storage parameters, replica identity and
+anything cluster-scoped stay out, each with its reason in D95. A longer list of
+comparisons was never the goal.
