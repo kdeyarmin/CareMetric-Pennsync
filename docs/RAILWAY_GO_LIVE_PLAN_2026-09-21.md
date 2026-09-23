@@ -1165,12 +1165,25 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `distributePolicyAcknowledgment`, `sendExpirationNotifications` | `mutating` |
   | `generateAIReport` | `integration` |
 
-  So waves 1 to 3 are pasteable against this revision and waves 4 to 6 are not.
   Driven against the live service rather than reasoned about: `--wave visit
   --deployment https://pennsync-api-production.up.railway.app` answers "this
   revision implements every name above", and `--wave read-only` answers
   "REFUSED: this revision does not implement generatePatientHandout,
-  sendAccountReadyEmail, sendWelcomeEmail". Pasting a refused wave's value is
+  sendAccountReadyEmail, sendWelcomeEmail".
+
+  **Read that answer for what it checks, which is names.** It is tempting to
+  conclude that waves 1 to 3 can therefore be released against the running
+  revision and only the later ones need a redeploy. **They should not be, and
+  the reason is the binding rather than the names.** This revision predates
+  #247, so its readiness reports no `appId` and no `appStated` and the probe
+  says so in as many words: "app binding: not reported by this revision, so it
+  cannot be checked here". A release onto it is therefore a release against a
+  `PENNSYNC_API_APP_ID` nobody can verify from outside — and a stated-but-wrong
+  binding is the one failure this whole document singles out as silent: the
+  service boots, reports ready, and is refused by every authorization call.
+  The redeploy is what makes the binding checkable at all, so **it comes
+  first, before any wave**, and the name gap is the second reason rather than
+  the first. Pasting a refused wave's value is
   `INVALID_FUNCTION_RELEASE` at startup, which is a crash loop rather than a
   refusal an operator can read. So `--wave <name> --deployment https://<host>`
   reads `/readyz` and refuses three things before an operator sets anything: a
@@ -1545,7 +1558,7 @@ below). Listed plainly so none of it sits waiting on a misunderstanding:
 | ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open. It moved to stage C for identities, and on 2026-09-22 the identities turned out to be largely there already. ~~What it waits on is a sign-in, a seed transport and one `chart_assignment` row.~~ The owner withdrew the sign-in the same day, which retires the other two with it; claim 4 now rests on the composition recorded in stage A |
 | ~~Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change~~ | Stage A | **Done 2026-09-22 (#237).** Both secrets are configured and the flag is `'true'`. The job log shows both masked and then 15 tests, 15 passed, 0 skipped against the real project — read from the log rather than from the green tick, which is what this gate exists to distrust. The committed store's drift is now watched on every push to main |
 | ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C |
-| **Redeploy `pennsync-api` from current `main`** | Stages C and D | **The live blocker, and it has grown.** The running revision `f18b053` implements 74 of the 80 committed handlers, so release waves 4, 5 and 6 are refused against it by name, and it predates the readiness fields that would let `PENNSYNC_API_APP_ID` be checked from outside. A redeploy creates nothing and costs nothing new, and a failed build leaves the current revision serving. Waves 1 to 3 do not need it |
+| **Redeploy `pennsync-api` from current `main`** | Stages C and D | **The live blocker, and it comes before any release wave.** Two reasons, and the second is the one that binds. Its revision `f18b053` implements 74 of the 80 committed handlers, so waves 4, 5 and 6 are refused against it by name. And it predates the readiness fields that report the app binding, so **every** wave pasted onto it — the early ones included — would release names against a `PENNSYNC_API_APP_ID` no probe can check, which is this document's one silent failure mode. A redeploy creates nothing and costs nothing new, and a failed build leaves the current revision serving |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
 | Set the four `INTEGRATIONS_AUTHORITY_*` / `INTEGRATIONS_APP_ID` variables on the Railway runtime | Stage E | The code is done and tested (111/111); this is the whole of Stage E now. `INTEGRATIONS_APP_ID` must be the **staging** id `6a9881683dc68a0bd54f1ef7` — the production id boots and then refuses every call. Reversible, and the runtime serves nobody |
 | **Correct the Google Play Data Safety declaration** | **Today** — independent of every stage | Live listing says "No data collected" and "No data shared with third parties" for an app handling clinical data. A policy violation that can draw enforcement against the listing. A Play Console form — needs no key and no binary, so nothing else here blocks it |
