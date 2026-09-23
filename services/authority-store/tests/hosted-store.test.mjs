@@ -492,14 +492,24 @@ const only = (label, result) => {
 };
 
 /**
- * Two keyed inventories, compared so a failure NAMES what differs.
+ * Two keyed inventories, differenced so a failure NAMES what differs.
  *
  * `assert.deepEqual` over 3,402 columns prints both arrays and tells a reader
- * nothing. This reports the missing keys, the extra keys and the first few
- * fields that disagree, which is the difference between a diagnosable failure
- * and a wall of JSON.
+ * nothing. This reports the missing keys, the extra keys and the fields that
+ * disagree, which is the difference between a diagnosable failure and a wall
+ * of JSON.
+ *
+ * It RETURNS the faults rather than asserting them, and that is a correction
+ * rather than a style. It used to assert per category, inside a loop over
+ * seven of them in a fixed order, so the first failing category ended the test
+ * and the ones after it were never compared at all. D82's three missing
+ * objects are one gap — a policy, a function and a trigger — and the suite
+ * could only ever name the policy, so fixing that alone would have gone red at
+ * `functions`, then at `triggers`: three rounds reading like new regressions
+ * when nothing new had happened. One assertion over every category says the
+ * whole divergence in one run.
  */
-function compare(part, reference, hosted) {
+function differences(part, reference, hosted) {
   const ref = new Map((reference ?? []).map(entry => [entry.k, entry]));
   const host = new Map((hosted ?? []).map(entry => [entry.k, entry]));
   const missing = [...ref.keys()].filter(key => !host.has(key));
@@ -516,13 +526,11 @@ function compare(part, reference, hosted) {
       }
     }
   }
-  const faults = [
+  return [
     ...missing.map(key => `missing from hosted: ${key}`),
     ...extra.map(key => `present on hosted only: ${key}`),
     ...changed,
-  ];
-  assert.deepEqual(faults.slice(0, 10), [],
-    `${part}: ${faults.length} difference(s) between the committed migrations and hosted`);
+  ].map(fault => `${part}: ${fault}`);
 }
 
 /** Functions in one schema, from the shared inventory. */
@@ -640,11 +648,20 @@ test('the hosted store is exactly what the committed migrations produce', { skip
   // Structure rather than counts, in both schemas. Each of these can change
   // while every name and total stays put: a policy widened in place, an index
   // dropped, a contract body rewritten, a grant revoked, a trigger detached.
-  for (const part of ['tables', 'columns', 'constraints', 'indexes', 'policies',
-    'functions', 'triggers']) {
-    compare(part, reference[part], hosted.inventory[part]);
+  const faults = ['tables', 'columns', 'constraints', 'indexes', 'policies',
+    'functions', 'triggers']
+    .flatMap(part => differences(part, reference[part], hosted.inventory[part]));
+  // Folded in rather than asserted after, for the same reason: a second
+  // assertion below this one is a second round.
+  if (JSON.stringify(hosted.inventory.schema_usage) !== JSON.stringify(reference.schema_usage)) {
+    faults.push(`schema_usage: committed ${JSON.stringify(reference.schema_usage)}`
+      + ` hosted ${JSON.stringify(hosted.inventory.schema_usage)}`);
   }
-  assert.deepEqual(hosted.inventory.schema_usage, reference.schema_usage);
+  // Capped, because a store that diverged wholesale would otherwise print
+  // thousands of lines; the COUNT is in the message, so a capped list never
+  // reads as the whole of it.
+  assert.deepEqual(faults.slice(0, 10), [],
+    `${faults.length} difference(s) between the committed migrations and hosted`);
 });
 
 test('every record table is owned by the record owner, with RLS forced', { skip }, () => {

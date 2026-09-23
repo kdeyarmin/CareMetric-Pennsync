@@ -6040,6 +6040,41 @@ The pin claims nothing about any deployment — that is a fact about the
 deployment and the hosted comparison is what reads it. It says only that the
 text moved, at PR time, where the person moving it can answer.
 
+**Why the pin is in the repository and not in the ledger.**
+`supabase_migrations.schema_migrations` already carries a `statements` column,
+so the ledger is not unable to record what a migration held — it is being told
+nothing. Measured on hosted staging rather than sampled: 59 of its 68 rows have
+it empty, which is exactly the set `tools-pennsync-migrate.mjs` applied; the
+nine that carry statements were pushed by the Supabase CLI, which populates it.
+Filling it is the better long-run shape and it is deliberately NOT this change,
+for two reasons. It would say nothing about a migration already applied — the
+59 stay empty, and the file that caused this is one of them — so a comparison
+over it would be vacuous for precisely the case it is wanted for. And
+populating it faithfully means splitting a migration into statements, which
+means a parser that handles dollar-quoted bodies; every function in this store
+is one, and a splitter that got it subtly wrong would write a plausible wrong
+answer into the place the next person trusts. The pin answers a different
+question anyway, at a different time: not "what does this deployment hold" but
+"did this commit change a file that was pinned", before a merge and with no
+database. Keep both when the ledger side is built.
+
+**One correction to the suite that found it.** `compare()` asserted per
+category, inside a loop over seven in a fixed order, so the first failing
+category ended the test and the ones after it were never compared. D82's gap is
+three objects — a policy, a function and a trigger — and the run could only
+name the policy; fixing that alone would have gone red at `functions`, then at
+`triggers`, three rounds reading like new regressions when nothing new had
+happened. It now collects across every category and asserts once. Run against
+hosted staging before the catch-up was applied, it states the whole gap in one
+go:
+
+```
+3 difference(s) between the committed migrations and hosted
++ [ 'policies: missing from hosted: pennsync_records.user.user_update',
++   'functions: missing from hosted: pennsync_records.user_self_write_guard()',
++   'triggers: missing from hosted: pennsync_records.user.user_self_write_guard' ]
+```
+
 **The general rule, and where it sits beside the others.** The repository's
 recurring defect is a bucket keeping its name after the reason for it has gone
 — nine instances, D47 through D81, each found because nothing failed. This is
@@ -6051,4 +6086,6 @@ ask what it would do if the thing behind the name changed.**
 
 Port queue unchanged: 0 / 7 / 0 / 3 / 12 / 0 / 0 / 0 / 2 / 75. Nothing here
 moves a capability; it carries a policy that had already been decided to the
-store that was missing it.
+store that was missing it. The store itself still needs the migration applied —
+one pending file, DDL only — and until it is, the hosted comparison stays red
+on the ledger count as well as the three objects.
