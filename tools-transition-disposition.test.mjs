@@ -222,11 +222,12 @@ test('AGENTS.md carries the port queue the tool measures, and names what is star
 
   // The counts alone would pass a swap — one capability into a bucket and one
   // out leaves every number where it was — so the startable set is pinned by
-  // NAME. These three are ports nobody has written yet, against a store that
-  // exists; moving any of them is a change to what the queue tells a reader to
-  // pick up, so it moves the page too.
-  assert.deepEqual(report.port_blockers.records_schema,
-    ['generateAIReport'],
+  // NAME as well. It is EMPTY at D91, which is the state this test exists to
+  // stop anybody asserting in prose: D79 wrote "nothing startable left" into
+  // AGENTS.md, D84 then moved three capabilities back in, and nothing failed.
+  // With the bucket at zero the guard is the measured line above, which carries
+  // `records_schema=0` and changes the moment a decision puts work back.
+  assert.deepEqual(report.port_blockers.records_schema, [],
     'the startable set changed; re-read what each entry now waits on and move AGENTS.md with it');
   for (const name of report.port_blockers.records_schema) {
     assert.ok(page.includes(name), `AGENTS.md should name ${name} as startable`);
@@ -878,8 +879,8 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 7, patient_access_model: 0,
-    records_schema: 1, files: 12, ported_function: 0, core_integration: 0, pdf_rendering: 0,
-    external_secret: 2, none: 77 });
+    records_schema: 0, files: 12, ported_function: 0, core_integration: 0, pdf_rendering: 0,
+    external_secret: 2, none: 78 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -950,12 +951,14 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
   //
-  // It went to 3 and is 1, and BOTH directions are the queue reading
+  // It went to 3 and is 0, and BOTH directions are the queue reading
   // correctly: D84 moved three capabilities OUT of `entity_not_carried` by
-  // settling their one uncarried leg, and D89 and D90 then wrote two of the
+  // settling their one uncarried leg, and D89, D90 and D91 then wrote all
   // three. A bucket that only ever falls is a bucket nobody can move work
-  // into, and one that never falls is a queue nobody is clearing.
-  assert.deepEqual(report.port_blockers.records_schema, ['generateAIReport']);
+  // into, and one that never falls is a queue nobody is clearing. D75 took it
+  // to zero on a CORRECTION; this is the first time it reaches zero with every
+  // capability in it written.
+  assert.deepEqual(report.port_blockers.records_schema, []);
   // The thirty-eight that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
@@ -1058,7 +1061,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
       'expandClinicalPhrase',
       'extractClinicalEvents',
       'extractReferralDataForSmartNote',
-      'generateBagTechniquePDF', 'generateFollowUpTasks',
+      'generateAIReport', 'generateBagTechniquePDF', 'generateFollowUpTasks',
       'generatePatientChartPDF', 'generatePatientHandout', 'generateReferralTasks',
       'generateSmartNoteGuide',
       'generateUserGuidePDF', 'generateUserManual', 'generateUserRosterPDF',
@@ -1530,15 +1533,16 @@ test('a capability whose only entities are the claims helper is not waiting on t
   // The bucket reached zero under D75, by finding the last entry had been
   // paused at source all along, went to 3 under D84 — which is the queue
   // working rather than failing, since those are carried capabilities whose
-  // one uncarried leg now has a named successor — and is 1 since D89 and D90
-  // wrote two of them. A count that only ever falls cannot represent work
+  // one uncarried leg now has a named successor — and is 0 since D89, D90 and
+  // D91 wrote all three. A count that only ever falls cannot represent work
   // arriving, and one that only ever rises is a queue nobody is clearing.
   //
-  // What is LEFT is one capability and it is not a clean pick-up:
-  // `generateAIReport` carries two `Core.SendEmail` behind
-  // `outboundDeliveryGate` plus an `InvokeLLM`, so it is D81's template and
-  // stops at the flip.
-  assert.deepEqual(report.port_blockers.records_schema, ['generateAIReport']);
+  // The label on the last of them was wrong on this page until the module was
+  // read. It was filed as carrying "two `Core.SendEmail` behind
+  // `outboundDeliveryGate`"; it has ONE, and the branch it sits on is one the
+  // module already refuses itself — D79's `generatePatientHandout` exactly, so
+  // D81's partial shape served it. The other "SendEmail" was a docstring.
+  assert.deepEqual(report.port_blockers.records_schema, []);
 });
 
 test('a flag pinned true pauses a handler exactly as one pinned false does', () => {
