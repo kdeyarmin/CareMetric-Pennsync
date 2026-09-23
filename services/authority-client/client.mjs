@@ -8,7 +8,14 @@ import { validPatientContext } from './patient-context.mjs';
 export const AUTHORITY_CONTRACT = 'cm.pennsync.authority.staging.v1';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ID = /^[A-Za-z0-9_-]{1,128}$/;
-const ACTORS = new Map([
+/**
+ * The four synthetic staging accounts, pinned here because this transport is
+ * the synthetic staging path and nothing else. Exported so the hosted suite
+ * can check the pins against `pennsync_private.identity_map`, which is the
+ * authority: a pin for an identity the store has revoked, or a live mapped
+ * identity this transport cannot address, is drift nothing else would report.
+ */
+export const ACTORS = new Map([
   ['info+pennsync-admin-a@caremetricai.com', '6aac58fe36c13a1c49ba7cf8'],
   ['info+pennsync-clinician-a@caremetricai.com', '6aac58ff8ec706a643a7aa42'],
   ['info+pennsync-clinician-empty@caremetricai.com', '6aac58ffa5f6252bcf92f11f'],

@@ -785,8 +785,35 @@ anywhere. The app binding is deferred to stage C as above.
   every authorization call. So a service that will not boot after release has
   told you the answer; one that boots and then fails authorization while
   otherwise healthy is the case to check this for, before anything else.
-- Give the four tenant roles that can hold context but cannot use it their roster
-  behaviour.
+  **"No probe can see it" stopped being true on 2026-09-23**: readiness now
+  reports `appId` and `appStated`, and
+  `tools-pennsync-release-ladder.mjs --wave <name> --deployment <host>` reads
+  them and refuses a release whose binding is defaulted. The running revision
+  predates the fields, so it still answers "not reported" — a redeploy is what
+  makes this checkable, and until then the paragraph above is how to tell.
+- ~~Give the four tenant roles that can hold context but cannot use it their roster
+  behaviour.~~ **Done in the record store 2026-09-23, and it needed no
+  enrollee.** The four are `manager`, `office_staff`, `social_worker` and
+  `spiritual_care` — the roles `current_patient_context` and
+  `current_visit_documentation` exclude, both constraining `tenant_role` to
+  `agency_admin` and `clinician`. `contract_roster` already served them (its
+  admission is "holds a membership", not a role list), but nothing had ever
+  CALLED it as one: every fixture here holds `agency_admin` and `clinician`
+  only, and so does hosted staging (measured 2026-09-23: two and two). So two
+  branches of a shipped contract were unreachable — the privilege gate's
+  `manager` arm and the `is_manager` derivation's, both `in ('agency_admin',
+  'manager')`. `contract-roster.test.mjs` now seeds a third agency whose four
+  members hold those roles and proves that each of them gets the roster and
+  the other agency's refusal, that a `manager` is privileged, and that the
+  other three see the working roster with every administrative field null
+  rather than absent. Three sabotages fail it: dropping `manager` from the
+  privilege gate, dropping it from `is_manager`, and refusing the three
+  context-only roles. What is still owed hosted is only the exercise, which
+  needs memberships in those roles, which needs identities.
+  Note while reading that fixture: the carried `staff_role` admits `nurse`,
+  `office_staff`, `social_worker` and `spiritual_care` and has no `manager` at
+  all — the job label and the tenant role are different things, and only the
+  second decides anything.
 - **Decide the synthetic-name question.** `agency` and `patient` names must begin
   `Synthetic ` in every deployment, and `actor()` refuses any non-staging
   deployment outright with `PENNSYNC_STAGING_RPC_SURFACE_ONLY`. That guard is
