@@ -1010,6 +1010,23 @@ export const RECORD_CONTRACTS = Object.freeze({
     body: agencyId => ({ p_agency: agencyId }),
     codes: Object.freeze(['PENNSYNC_CREDENTIAL_FORBIDDEN']),
   }),
+  // The THIRD of those three crons, and the one the renewal original quotes by
+  // name. Its column is `expiration_note_offsets_sent` and it is a separate
+  // contract rather than a third caller of `credential_sweep`, because that
+  // body counts the due tiers and deliberately does not claim them: its two
+  // capabilities' send is paused, and a claim without a send loses the
+  // reminder permanently. This one's reminder is a row, so it claims.
+  //
+  // Partial on a second axis too: the module's training half reads
+  // `TrainingAssignment`, which is `hub`, and D84's `uncarried_legs` entry
+  // settles that leg by name. The answer says so rather than reporting a zero
+  // that reads like "no training expired".
+  sendExpirationNotifications: Object.freeze({
+    rpc: 'pennsync_contract_expiration_notice_sweep',
+    params: Object.freeze([]),
+    body: agencyId => ({ p_agency: agencyId }),
+    codes: Object.freeze(['PENNSYNC_EXPIRATION_FORBIDDEN']),
+  }),
   // The timesheet pair: a submission and the decision on it, one domain as the
   // time-off four are.
   //

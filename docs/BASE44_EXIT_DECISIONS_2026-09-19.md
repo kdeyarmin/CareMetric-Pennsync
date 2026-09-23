@@ -6235,4 +6235,124 @@ WRITTEN since D75 took it to zero by correction. The two left are
 `generateAIReport`, which carries two `Core.SendEmail` behind
 `outboundDeliveryGate` and stops at the owner's flip, and
 `sendExpirationNotifications`, which is D49's shape and waits on a scheduler
-identity nobody has chosen.
+identity nobody has chosen. (D90 then wrote the second of those, and found
+that second sentence half wrong where it matters most: the capability has no
+integration reach at all, so the wait is on the unattended run and nothing
+else. The measured line is in AGENTS.md; read it rather than this one.)
+
+## D90 — Warning a nurse that a credential is about to expire, and the label that routed a reader wrong
+
+`sendExpirationNotifications` becomes
+`services/authority-store/supabase/record-migrations/20260920550000_contract_expiration_notices.sql`,
+the eighth PARTIAL port (after D31, D35, D36, D59, D73, D81 and D89) and the
+last of D49's four scheduler capabilities. It is partial on two axes and
+NEITHER was decided here — both were already settled and the port only had to
+read them.
+
+**The label was wrong before the module was read, and that is the finding to
+carry.** This page said at D89 that the capability "puts `schedulerAuth`
+beside `role === 'admin'`, which is D49's shape, so the per-agency half ports
+and the unattended cross-tenant run waits on a scheduler identity nobody has
+chosen" — true — and the working notes around it had it filed as a delivery
+hold, "partial at best". It has **zero integration reach**: no `Core.`, no
+`integrations.`, no send of any kind, and every output is a
+`Notification.create` row, which D51 settled is a row rather than a message.
+So it touches no owner hold at all. That is the same error as the routing
+written three hours earlier from three handler NAMES and corrected two minutes
+later by reading three modules, and the same error D74, D75, D76 and D79 each
+record once: **a bucket keeps its name after the reason for it has gone, and
+so does a note about a bucket.** Re-derive from the tree.
+
+**Axis one: the training half is not here and is not zero.** The module is two
+independent sweeps in one handler. The first reads `TrainingAssignment`,
+dispositioned `hub`, and D84's `uncarried_legs` entry already settles that leg
+by name — `sendTrainingNotifications` lives on the Support Hub (D9). The
+answer therefore says `training_expirations: 'served_by_hub'` with a code,
+rather than reporting a count of zero that reads as "no training expired".
+D73's rule about a paused half, arriving about an absent one.
+
+**Axis two: D49's gate, for the fourth and last time.** The human gate is the
+built-in `role === 'admin'` that D14 and D22 removed, whose successor is
+D40's `agency_admin` scoped to their own agency; the machine gate is a shared
+secret over every tenant, which has no successor because nothing in this store
+is cross-tenant. This is the per-agency half. **The scheduler identity was not
+taken to unblock the port, and taking it was not necessary:** "a real
+per-agency identity the scheduler acts as" means minting a long-lived
+credential with standing access across tenants, which is a decision about an
+authorization model rather than a choice among identities that already exist —
+D56's rule, as D77 applied it to the file runtime's ownership check.
+
+**The tier arithmetic is D50's, reused rather than rewritten, and this is the
+capability D50 names.** The renewal original's own comment says the three
+credential-reminder crons once shared `reminder_offsets_sent` with different
+tier sets, "so whichever fired a shared tier first consumed it for the others
+(e.g. sendExpirationNotifications marking tier 30 suppressed this renewal
+email)" — this one. Its column is `expiration_note_offsets_sent`, the third of
+the three, and `credential_due_offsets(expiration, sent, tiers)` already takes
+the marker's VALUE and the tiers as parameters for exactly that reason. It does
+NOT reuse `credential_sweep`: that body COUNTS the due tiers and deliberately
+does not claim them, because its two capabilities' send is paused and a claim
+without a send loses the reminder permanently. Here the send exists, so this
+body claims. The suite proves the isolation in BOTH directions — this sweep
+fires although both sibling markers are full, and the siblings still have work
+after this one claims.
+
+**The deletions are the familiar ones.** The 500-row cap goes (D50's
+distinction: the ASCENDING order is the rule, because the original's own
+comment records a descending sort dropping the imminent expirations off the
+tail; the cap is the paged-client artefact). The 5000-row `User` scan goes
+twice over — once as `agencyByEmail` and once as the administrator list built
+from `role`, `account_type` and `agency_name` — which is D41 and D43's rule
+and the sixth original whose derived scope the tenancy replaces. The claim
+token, the read-back that checks it survived, and the release-on-failure write
+go with the transaction (D46, D51). A credential whose holder is no longer on
+the roster is REPORTED as `unreachable` rather than addressed at a dead
+identity, and its tiers are not consumed, so the warning is still owed.
+
+**Two INDEPENDENT enforcements, and the reading was measured rather than
+reasoned about.** The marker column is a field anything may edit; the dedupe
+key is an index; the row is also taken `for update`. D89's lesson was that
+which enforcement answers cannot be read off the code, so
+`record-contract-postgres.test.mjs` removes each in turn. The result
+contradicted this port's own first draft of the comment: with `for update`
+gone the loser still blocks — on the dedupe index, inside the mint — and
+answers `already_warned: 1` while writing and claiming nothing; with the
+dedupe key made unique per mint the lock alone holds it; only removing BOTH
+warns the holder twice. So unlike D89's pair, either alone is sufficient here,
+the lock decides where the loser stops and the index decides that it stops.
+**The first draft of the header asserted the opposite and read exactly like a
+correct one.**
+
+**The administrators' summary names nobody, and the test that said so proved
+nothing.** The original's `metadata: { expirations: scoped }` carries each
+colleague's name, their credential's title and its date, and
+`notification_read` is agency-WIDE — D44's rule, arriving about personnel
+rather than a patient. Nothing in the SPA reads that blob: the type appears
+only in three allowlists. The first version of the assertion read
+`summary.metadata` back through `pennsync_contract_notification_list`, whose
+`projectNotification` says in its own comment that it returns no `metadata` —
+so putting every name back in the blob passed the test. It now reads the
+STORED row. That the reader drops the column is not a reason to store it: the
+detail would sit in an agency-wide table with nothing reading it, a disclosure
+surface with no consumer, and D45's defect was precisely a writer and a reader
+disagreeing about which columns matter.
+
+**One divergence is the port's own and is a narrowing.** The original mints an
+administrator summary on every invocation; this one keys it on (agency, day,
+recipient), so a second press of the button does not notify colleagues twice.
+The suppressed ones are COUNTED (D54), not hidden. The wording also drops
+"training certifications or", which this half no longer reaches.
+
+One property is inherited rather than chosen and is worth knowing: the mint
+sets no `expires_at`, so neither do the ADR, incident, policy or credential
+ports. Nothing in this store reads that column, so the original's 30-day and
+7-day expiries are inert here.
+
+This port is purely ADDITIVE — no `CONTRACT_UNIQUE` entry, so no regeneration
+and no forward migration under D88. The fingerprint pin shows one ADDED file
+and zero CHANGED, which is the shape that says so.
+
+**Port queue:** `records_schema` falls 2 to 1, the second time by a port being
+written rather than by a correction. What is left is `generateAIReport`, which
+carries two `Core.SendEmail` behind `outboundDeliveryGate` plus an
+`InvokeLLM` — D81's template, and it stops at the owner's flip.
