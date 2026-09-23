@@ -6,8 +6,11 @@ import { join } from 'node:path';
 import {
   LOCAL_ONLY_MIGRATIONS, MIGRATE_CONTRACT, MigrateError, PIN_MIGRATION,
   applyMigrations, ledgerName, ledgerVersion, migrationWithLedgerRow, planMigration,
-  readAppliedNames, runMigrateCli,
+  readAppliedNames, readLedger, recordStatements, runMigrateCli,
 } from './tools-pennsync-migrate.mjs';
+import {
+  LEDGER_STATEMENTS_MARKER, LEDGER_STATEMENT_BUDGET, recordedStatements,
+} from './tools-pennsync-ledger-statements.mjs';
 import {
   MIGRATION_DIRECTORY, ProvisionError, RECORD_MIGRATION_DIRECTORY, readMigrations,
 } from './tools-pennsync-provision.mjs';
@@ -163,7 +166,56 @@ test('the ledger row commits inside the migration own transaction', () => {
   assert.match(sql, /insert into supabase_migrations\.schema_migrations/);
   // The row is before the commit, so both land in one transaction.
   assert.ok(sql.indexOf('insert into supabase_migrations') < sql.lastIndexOf('commit;'));
-  assert.match(sql, /values \('20260919114500_enrollment_receipt', 'enrollment_receipt'\)/);
+  assert.match(sql, /values \('20260919114500_enrollment_receipt', 'enrollment_receipt',/);
+});
+
+test('the row carries the text that ran, so an edit to an applied file can be seen', () => {
+  // D88 at its origin: the ledger keys on the NAME and held no content, so a
+  // migration edited after it ran was skipped forever on the store that ran it
+  // and applied in full on every store built afterwards — and every suite here
+  // builds from nothing, which is the one case that cannot show it.
+  const migration = {
+    name: '20260919114500_enrollment_receipt.sql',
+    from: MIGRATION_DIRECTORY,
+    sql: "-- header\nbegin;\ninsert into t (a) values ('it''s; fine');\ncommit;\n",
+  };
+  const sql = migrationWithLedgerRow(migration);
+  assert.match(sql, /\(version, name, statements\)/);
+  assert.ok(sql.includes(LEDGER_STATEMENTS_MARKER), 'the row says who wrote it');
+  // Dollar-quoted, so the statement stays readable inside the body that
+  // carries it. Quote-doubling would be correct too; what matters is that the
+  // tag is one the text does not contain.
+  assert.ok(sql.includes("insert into t (a) values ('it''s; fine');$pennsync$"),
+    'the statement is inside a dollar-quoted literal, quotes and all');
+  assert.ok(sql.indexOf('insert into supabase_migrations') < sql.lastIndexOf('commit;'));
+});
+
+test('a target whose ledger has no statements column still gets its migration', () => {
+  // The column is Supabase's own and hosted staging has it, but that is a fact
+  // about the target. Losing the ability to apply a migration to a store that
+  // lacks it would be trading the capability for the record.
+  const sql = migrationWithLedgerRow(
+    { name: '001_a.sql', from: MIGRATION_DIRECTORY, sql: 'begin;\nselect 1;\ncommit;\n' },
+    { statements: false });
+  assert.match(sql, /\(version, name\)\n  values \('001_a', 'a'\);/);
+  assert.ok(!sql.includes(LEDGER_STATEMENTS_MARKER));
+});
+
+test('a migration over the budget applies and says its row will be silent', () => {
+  // `record_store.sql` is the one, and the reason is size rather than policy:
+  // recording the text doubles the single request that carries the migration
+  // and its own ledger row. The answer names it rather than leaving an empty
+  // column to be discovered later.
+  const huge = { name: '001_a.sql', from: MIGRATION_DIRECTORY,
+    sql: `begin;\nselect '${'x'.repeat(LEDGER_STATEMENT_BUDGET)}';\ncommit;\n` };
+  assert.match(migrationWithLedgerRow(huge), /\(version, name\)/);
+  assert.deepEqual(recordStatements(huge, { statementsColumn: true }),
+    { name: '001_a.sql', recorded: false, reason: 'over_statement_budget' });
+  assert.deepEqual(recordStatements(huge, { statementsColumn: false }),
+    { name: '001_a.sql', recorded: false, reason: 'ledger_column_absent' });
+  const ordinary = { name: '001_a.sql', from: MIGRATION_DIRECTORY, sql: 'begin;\nselect 1;\ncommit;\n' };
+  assert.deepEqual(recordStatements(ordinary, { statementsColumn: true }),
+    { name: '001_a.sql', recorded: true, reason: null });
 });
 
 test('a leading comment header does not make a migration look untransactional', () => {
@@ -278,6 +330,68 @@ test('a ledger row with no name stops the run, because a version is not an ident
     return { rows: [{ count: 1 }] };
   } };
   await assert.rejects(() => readAppliedNames(db), rejectsWith('MIGRATE_LEDGER_UNNAMED'));
+});
+
+const ledgerDb = ({ hasColumn, rows }) => ({ query: async sql => {
+  if (sql.includes('information_schema.tables')) return { rows: [{ count: 1 }] };
+  if (sql.includes('information_schema.columns')) return { rows: [{ count: hasColumn ? 1 : 0 }] };
+  if (sql.includes('statements')) {
+    if (!hasColumn) throw new Error('column "statements" does not exist');
+    return { rows };
+  }
+  return { rows: rows.map(({ version, name }) => ({ version, name })) };
+} });
+
+test('a ledger without the statements column is read rather than refused', async () => {
+  // Selecting a column the target does not have would turn a perfectly
+  // readable ledger into a failed plan. The column is Supabase's own and
+  // hosted staging has it; that is still a fact about the target.
+  const rows = [{ version: '1', name: 'a', statements: ['x'] }];
+  const present = await readLedger(ledgerDb({ hasColumn: true, rows }));
+  assert.equal(present.statementsColumn, true);
+  assert.deepEqual(present.rows[0].statements, ['x']);
+
+  const absent = await readLedger(ledgerDb({ hasColumn: false, rows }));
+  assert.equal(absent.statementsColumn, false);
+  assert.equal(absent.rows[0].statements, undefined);
+  assert.deepEqual(await readAppliedNames(ledgerDb({ hasColumn: false, rows })), ['a']);
+});
+
+test('a plan reports what the rows already there do and do not say', async () => {
+  // Read on a PLAN, which is the read-only half an operator can run anywhere:
+  // finding drift during an apply is finding it too late.
+  const migrations = readMigrations(REPOSITORY);
+  const carried = migrations.find(candidate => ledgerName(candidate.name) === 'independent_staging_authority');
+  const applied = HOSTED_STAGING.map(name => ({
+    version: name,
+    name,
+    // One row recorded by this tooling and the rest as they are on hosted
+    // today: applied before anything wrote the column, and unrecoverable.
+    statements: name === 'independent_staging_authority' ? [...recordedStatements(carried.sql)] : null,
+  }));
+  const db = { ...storeDb({ hasPin: false, applied: HOSTED_STAGING }) };
+  db.query = async sql => {
+    // The `information_schema` probes NAME `schema_migrations` in their own
+    // where clause, so a mock that matched on that string first answered the
+    // existence check with the ledger's rows. The existing mock above carries
+    // the same warning about `pg_proc`.
+    if (sql.includes('information_schema.tables')) return { rows: [{ count: 1 }] };
+    if (sql.includes('information_schema.columns')) return { rows: [{ count: 1 }] };
+    if (sql.includes('pg_proc')) return { rows: [{ count: 0 }] };
+    if (sql.includes('pg_namespace')) return { rows: [{ count: 1 }] };
+    if (sql.includes('schema_migrations')) return { rows: applied };
+    throw new Error(`unexpected statement: ${sql}`);
+  };
+  const result = await applyMigrations({ db, repository: REPOSITORY });
+  assert.deepEqual(result.statements.verified, ['independent_staging_authority']);
+  assert.equal(result.statements.unrecorded.length, HOSTED_STAGING.length - 1);
+  // Never `verified` while a row says nothing — D88's reason for leaving those
+  // rows alone, kept as the answer rather than as a paragraph.
+  assert.equal(result.statements.verdict, 'unverifiable');
+  // And what the rows this run would write will be able to say.
+  const record = result.statements_recorded.find(entry => entry.name === '20260919170000_record_store.sql');
+  assert.deepEqual(record, { name: '20260919170000_record_store.sql', recorded: false, reason: 'over_statement_budget' });
+  assert.ok(result.statements_recorded.filter(entry => entry.recorded).length > 50);
 });
 
 test('planning mutates nothing and says so', async () => {
