@@ -315,6 +315,40 @@ test('the same function defined twice in the record migrations is refused', (t) 
   assert.deepEqual(failure.detail.files, ['0100_contracts.sql', '0200_again.sql']);
 });
 
+test('a D88 catch-up repeating a definition verbatim is not a second definition', (t) => {
+  // The shape a forward migration has: `create or replace`, byte for byte what
+  // the migration it carries already says. Nothing is ambiguous — both are the
+  // same definition — and the ladder has to keep reading the tree, because a
+  // regenerated record store ships one of these every time it changes.
+  const tree = intactTree(t);
+  fixture(tree);
+  const again = contractSql('contract_read', 'select 1')
+    .replaceAll('create function', 'create or replace function');
+  writeFileSync(join(tree.records, '0200_catchup.sql'), again);
+  const bodies = functionBodies(tree.root);
+  // The FIRST file keeps the key: a catch-up repeats a definition, it does not
+  // become the place the definition lives, and the wave is derived from that.
+  assert.equal(bodies.get('pennsync_records.contract_read').file, '0100_contracts.sql');
+  assert.doesNotThrow(() => checkLadder(tree.root));
+});
+
+test('an or-replace whose body differs is still refused, which is the real ambiguity', (t) => {
+  // The case the exemption must not swallow. Two definitions that disagree
+  // make "which one is this contract" a guess in exactly the way the original
+  // refusal exists to prevent — and `or replace` is what makes it apply
+  // silently rather than failing on the target.
+  const tree = intactTree(t);
+  fixture(tree);
+  const drifted = contractSql('contract_read', 'select 2')
+    .replaceAll('create function', 'create or replace function');
+  writeFileSync(join(tree.records, '0200_catchup.sql'), drifted);
+  let failure = null;
+  try { functionBodies(tree.root); } catch (error) { failure = error; }
+  assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
+  assert.equal(failure.code, 'LADDER_FUNCTION_DEFINED_TWICE');
+  assert.deepEqual(failure.detail.files, ['0100_contracts.sql', '0200_catchup.sql']);
+});
+
 test('a handler reaching a contract the registry does not carry is refused', (t) => {
   const tree = intactTree(t);
   fixture(tree, {

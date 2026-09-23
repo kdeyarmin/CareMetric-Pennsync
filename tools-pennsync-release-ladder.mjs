@@ -144,9 +144,18 @@ const serviceFiles = root => readdirSync(resolve(root, SERVICE))
  * the file, which is what separates one definition from the next here: every
  * migration in this directory defines its functions one after another, and the
  * grants between them carry no DML.
+ *
+ * One re-declaration is legitimate and is admitted by NAME of its shape rather
+ * than by an exception list: a D88 catch-up carries an object from a
+ * regenerated migration to a store that already applied it, so it says
+ * `create or replace` and its body is byte-identical to the one it repeats.
+ * Nothing is a guess there — both definitions are the same definition — and
+ * the migration that DEFINES the contract is still the first. Anything else is
+ * refused as before, including an `or replace` whose body differs, which is
+ * the case that would really make "which one is this" unanswerable.
  */
 export function functionBodies(root) {
-  const pattern = /create\s+(?:or\s+replace\s+)?function\s+(?:"?([a-z_]+)"?\s*\.\s*)?"?([A-Za-z0-9_]+)"?\s*\(/gi;
+  const pattern = /create\s+(or\s+replace\s+)?function\s+(?:"?([a-z_]+)"?\s*\.\s*)?"?([A-Za-z0-9_]+)"?\s*\(/gi;
   const bodies = new Map();
   // Authority first, because that is the order they apply in, and because a
   // helper there is legitimately redefined by a later migration — the store
@@ -156,14 +165,20 @@ export function functionBodies(root) {
     for (const file of readdirSync(path).filter(name => name.endsWith('.sql')).sort()) {
       const sql = read(resolve(path, file));
       for (const match of sql.matchAll(pattern)) {
-        const key = `${(match[1] ?? '').toLowerCase()}.${match[2]}`;
+        const replaces = Boolean(match[1]);
+        const key = `${(match[2] ?? '').toLowerCase()}.${match[3]}`;
+        const body = dollarQuotedBody(sql, match.index, key, file);
         // Within the record migrations a name defined twice would make "the
         // migration that defines this contract" a guess, so it is refused
         // rather than last-one-wins. That invariant is this directory's alone.
-        if (directory === MIGRATIONS && bodies.get(key)?.directory === MIGRATIONS) {
-          refuse('LADDER_FUNCTION_DEFINED_TWICE', { key, files: [bodies.get(key).file, file] });
+        const seen = directory === MIGRATIONS && bodies.get(key)?.directory === MIGRATIONS
+          ? bodies.get(key) : null;
+        if (seen && !(replaces && seen.body === body)) {
+          refuse('LADDER_FUNCTION_DEFINED_TWICE', { key, files: [seen.file, file] });
         }
-        bodies.set(key, { file, body: dollarQuotedBody(sql, match.index, key, file), directory });
+        // The first file keeps the key: a catch-up repeats a definition, it
+        // does not become the place the definition lives.
+        if (!seen) bodies.set(key, { file, body, directory });
       }
     }
   }
