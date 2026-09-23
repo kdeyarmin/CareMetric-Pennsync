@@ -8,6 +8,7 @@ import { KNOWN_APPS, readMigrations } from '../../../tools-pennsync-provision.mj
 import { LOCAL_ONLY_MIGRATIONS, ledgerName } from '../../../tools-pennsync-migrate.mjs';
 import { isManagementUrl, openManagementClient } from '../../../tools-pennsync-supabase-db.mjs';
 import { ACTORS } from '../../authority-client/client.mjs';
+import { INVENTORY, KEYED_PARTS, TABLE_KINDS, inventoryFaults } from './store-inventory.mjs';
 
 /**
  * The committed store, measured on the hosted project rather than on PGlite.
@@ -193,91 +194,6 @@ const CALLER_ROLES = ['anon', 'authenticated', 'service_role'];
 const PRIVILEGED_REACH = Object.freeze([
   'postgres', 'supabase_admin', 'supabase_etl_admin', 'supabase_read_only_user',
 ]);
-
-const SCHEMA_LIST = `'${SCHEMA}', '${PRIVATE}'`;
-
-/**
- * One statement, asked of both databases, so the two sides cannot be measured
- * differently. Everything is aggregated into a single `jsonb` document because
- * each hosted read is an HTTPS round trip, and because `jsonb` sidesteps the
- * bigint-as-string difference between the two drivers.
- *
- * Every part is keyed on `k` so a difference names the object rather than an
- * array index.
- */
-const INVENTORY = `select jsonb_build_object(
-  'tables', (select jsonb_agg(jsonb_build_object(
-      'k', n.nspname || '.' || c.relname,
-      'owner', pg_get_userbyid(c.relowner),
-      'rls', c.relrowsecurity,
-      'forced', c.relforcerowsecurity) order by n.nspname, c.relname)
-    from pg_class c join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname in (${SCHEMA_LIST}) and c.relkind = 'r'),
-  'columns', (select jsonb_agg(jsonb_build_object(
-      'k', n.nspname || '.' || c.relname || '.' || a.attname,
-      'type', format_type(a.atttypid, a.atttypmod),
-      'notnull', a.attnotnull) order by n.nspname, c.relname, a.attname)
-    from pg_attribute a
-    join pg_class c on c.oid = a.attrelid
-    join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname in (${SCHEMA_LIST}) and c.relkind = 'r'
-      and a.attnum > 0 and not a.attisdropped),
-  'constraints', (select jsonb_agg(jsonb_build_object(
-      'k', n.nspname || '.' || rel.relname || '.' || c.conname,
-      'type', c.contype::text,
-      'def', pg_get_constraintdef(c.oid)) order by n.nspname, rel.relname, c.conname)
-    from pg_constraint c
-    join pg_class rel on rel.oid = c.conrelid
-    join pg_namespace n on n.oid = rel.relnamespace
-    where n.nspname in (${SCHEMA_LIST}) and c.contype <> 'n'),
-  'indexes', (select jsonb_agg(jsonb_build_object(
-      'k', schemaname || '.' || tablename || '.' || indexname,
-      'def', indexdef) order by schemaname, tablename, indexname)
-    from pg_indexes where schemaname in (${SCHEMA_LIST})),
-  'policies', (select jsonb_agg(jsonb_build_object(
-      'k', schemaname || '.' || tablename || '.' || policyname,
-      'cmd', cmd, 'permissive', permissive, 'roles', roles::text,
-      'qual', qual, 'with_check', with_check)
-      order by schemaname, tablename, policyname)
-    from pg_policies where schemaname in (${SCHEMA_LIST})),
-  'functions', (select jsonb_agg(jsonb_build_object(
-      'k', n.nspname || '.' || p.proname
-        || '(' || pg_get_function_identity_arguments(p.oid) || ')',
-      'owner', pg_get_userbyid(p.proowner),
-      'secdef', p.prosecdef,
-      'volatile', p.provolatile::text,
-      'cfg', coalesce(p.proconfig::text, ''),
-      'returns', pg_get_function_result(p.oid),
-      'authenticated', has_function_privilege('authenticated', p.oid, 'execute'),
-      'anon', has_function_privilege('anon', p.oid, 'execute'),
-      'body', md5(coalesce(p.prosrc, '')))
-      order by n.nspname, p.proname, pg_get_function_identity_arguments(p.oid))
-    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname in (${SCHEMA_LIST})
-       or (n.nspname = 'public' and p.proname like 'pennsync|_%' escape '|')),
-  'triggers', (select jsonb_agg(jsonb_build_object(
-      'k', n.nspname || '.' || rel.relname || '.' || t.tgname,
-      'def', pg_get_triggerdef(t.oid)) order by n.nspname, rel.relname, t.tgname)
-    from pg_trigger t
-    join pg_class rel on rel.oid = t.tgrelid
-    join pg_namespace n on n.oid = rel.relnamespace
-    where n.nspname in (${SCHEMA_LIST}) and not t.tgisinternal),
-  'caller_table_privileges', (select coalesce(jsonb_agg(granted order by granted), '[]'::jsonb)
-    from (
-      select n.nspname || '.' || c.relname || ':' || r.rolname || ':' || p.priv as granted
-      from pg_class c
-      join pg_namespace n on n.oid = c.relnamespace
-      cross join (select unnest(array['anon', 'authenticated', 'service_role']) as rolname) r
-      cross join (select unnest(array['select', 'insert', 'update', 'delete',
-        'references', 'trigger']) as priv) p
-      where n.nspname in (${SCHEMA_LIST}) and c.relkind = 'r'
-        and has_table_privilege(r.rolname, c.oid, p.priv)) reachable),
-  'schema_usage', (select jsonb_agg(jsonb_build_object(
-      'k', r.rolname || ':' || s.nsp,
-      'usage', has_schema_privilege(r.rolname, s.nsp, 'usage')) order by r.rolname, s.nsp)
-    from (select unnest(array['anon', 'authenticated', 'service_role']) as rolname) r
-    cross join (select unnest(array['${SCHEMA}', '${PRIVATE}']) as nsp) s)
-) as inventory`;
 
 /**
  * The role facts. Hosted only: PGlite's `postgres` is a local superuser and
@@ -491,48 +407,6 @@ const only = (label, result) => {
   return typeof value === 'string' ? JSON.parse(value) : value;
 };
 
-/**
- * Two keyed inventories, differenced so a failure NAMES what differs.
- *
- * `assert.deepEqual` over 3,402 columns prints both arrays and tells a reader
- * nothing. This reports the missing keys, the extra keys and the fields that
- * disagree, which is the difference between a diagnosable failure and a wall
- * of JSON.
- *
- * It RETURNS the faults rather than asserting them, and that is a correction
- * rather than a style. It used to assert per category, inside a loop over
- * seven of them in a fixed order, so the first failing category ended the test
- * and the ones after it were never compared at all. D82's three missing
- * objects are one gap — a policy, a function and a trigger — and the suite
- * could only ever name the policy, so fixing that alone would have gone red at
- * `functions`, then at `triggers`: three rounds reading like new regressions
- * when nothing new had happened. One assertion over every category says the
- * whole divergence in one run.
- */
-function differences(part, reference, hosted) {
-  const ref = new Map((reference ?? []).map(entry => [entry.k, entry]));
-  const host = new Map((hosted ?? []).map(entry => [entry.k, entry]));
-  const missing = [...ref.keys()].filter(key => !host.has(key));
-  const extra = [...host.keys()].filter(key => !ref.has(key));
-  const changed = [];
-  for (const [key, expected] of ref) {
-    const actual = host.get(key);
-    if (!actual) continue;
-    for (const field of Object.keys(expected)) {
-      if (field === 'k') continue;
-      if (JSON.stringify(expected[field]) !== JSON.stringify(actual[field])) {
-        changed.push(`${key}.${field}: committed ${JSON.stringify(expected[field])}`
-          + ` hosted ${JSON.stringify(actual[field])}`);
-      }
-    }
-  }
-  return [
-    ...missing.map(key => `missing from hosted: ${key}`),
-    ...extra.map(key => `present on hosted only: ${key}`),
-    ...changed,
-  ].map(fault => `${part}: ${fault}`);
-}
-
 /** Functions in one schema, from the shared inventory. */
 const inSchema = (functions, prefix) =>
   (functions ?? []).filter(entry => entry.k.startsWith(prefix));
@@ -637,26 +511,26 @@ test('the reference build produced a store to compare against', { skip }, () => 
   // strongest test in this file into one that passes without reading anything.
   // `readMigrations` returning nothing is all it would take.
   assert.ok(committed.length > 1, `the reference applied ${committed.length} migrations`);
-  for (const part of ['tables', 'columns', 'constraints', 'indexes', 'policies',
-    'functions', 'triggers']) {
+  for (const part of KEYED_PARTS) {
     assert.ok(Array.isArray(reference[part]) && reference[part].length,
       `the reference build produced no ${part}`);
   }
 });
 
 test('the hosted store is exactly what the committed migrations produce', { skip }, () => {
-  // Structure rather than counts, in both schemas. Each of these can change
-  // while every name and total stays put: a policy widened in place, an index
-  // dropped, a contract body rewritten, a grant revoked, a trigger detached.
-  const faults = ['tables', 'columns', 'constraints', 'indexes', 'policies',
-    'functions', 'triggers']
-    .flatMap(part => differences(part, reference[part], hosted.inventory[part]));
-  // Folded in rather than asserted after, for the same reason: a second
-  // assertion below this one is a second round.
-  if (JSON.stringify(hosted.inventory.schema_usage) !== JSON.stringify(reference.schema_usage)) {
-    faults.push(`schema_usage: committed ${JSON.stringify(reference.schema_usage)}`
-      + ` hosted ${JSON.stringify(hosted.inventory.schema_usage)}`);
-  }
+  // Structure rather than counts, in both schemas, and REPRESENTATION rather
+  // than structure alone. Each of these can change while every name and total
+  // stays put: a policy widened in place, an index dropped, a contract body
+  // rewritten, a grant revoked, a trigger detached. And each of these can
+  // change while every NAME, total and definition stays put, which is what
+  // `store-inventory.mjs` added and D95 records: a default dropped from a
+  // column, a generated column turned plain, a trigger disabled, an index left
+  // invalid, an argument default removed, a view added beside a record table.
+  //
+  // `store-inventory.test.mjs` plants each of those in a scratch build and
+  // fails if this comparison stays quiet, because reading the SQL is how they
+  // came to be missing in the first place.
+  const faults = inventoryFaults(reference, hosted.inventory);
   // Capped, because a store that diverged wholesale would otherwise print
   // thousands of lines; the COUNT is in the message, so a capped list never
   // reads as the whole of it.
@@ -665,7 +539,15 @@ test('the hosted store is exactly what the committed migrations produce', { skip
 });
 
 test('every record table is owned by the record owner, with RLS forced', { skip }, () => {
-  const tables = (hosted.inventory.tables ?? []).filter(entry => entry.k.startsWith(`${SCHEMA}.`));
+  // Ordinary tables, because that is what RLS is a property OF: a view carries
+  // none of its own and would fail here for a reason that reads as a defect in
+  // this test. A view or a sequence turning up in `pennsync_records` is caught
+  // by the comparison above, as `present on hosted only`, and that is the
+  // failure worth having — a view created by a privileged role and granted to
+  // `authenticated` reads every tenant's rows past every policy, which was
+  // measured rather than reasoned about (D95).
+  const tables = (hosted.inventory.tables ?? [])
+    .filter(entry => entry.k.startsWith(`${SCHEMA}.`) && TABLE_KINDS.includes(entry.kind));
   assert.ok(tables.length, 'the hosted project holds no record tables');
   const owners = [...new Set(tables.map(table => table.owner))];
   assert.deepEqual(owners, ['pennsync_records_owner'],
@@ -826,11 +708,42 @@ test('service_role bypasses RLS and is held out by the grant model alone', { ski
 test('an anonymous caller reaches neither schema', { skip }, () => {
   assert.deepEqual(hosted.roles.anon_reach, { records: false, private: false });
   const usage = Object.fromEntries(
-    (hosted.inventory.schema_usage ?? []).map(entry => [entry.k, entry.usage]));
+    (hosted.inventory.schema_privileges ?? []).map(entry => [entry.k, entry.usage]));
   for (const schema of [SCHEMA, PRIVATE]) {
     assert.equal(usage[`anon:${schema}`], false, `anon holds USAGE on ${schema}`);
   }
   assert.ok(CALLER_ROLES.includes('anon'), 'anon is no longer a caller role; re-read this test');
+});
+
+/**
+ * Whether any record or authority table is published for logical replication,
+ * READ and reported rather than asserted — and the restraint is the point.
+ *
+ * A table in a publication streams its rows to whatever holds the replication
+ * slot, which on a Supabase project is Realtime, enabled per table from the
+ * dashboard with one click. That is a row path out of the store that no policy
+ * in this repository sits on, and nothing else here looks at it. The reference
+ * build has none, so comparing the two would be an assertion that hosted has
+ * none either.
+ *
+ * WHY THAT ASSERTION IS NOT MADE HERE. Supabase creates a `supabase_realtime`
+ * publication on every project, and whether it arrives empty or `FOR ALL
+ * TABLES` is a platform fact this repository cannot measure — the job holding
+ * the credential runs on `main`, so asserting it would put main red for a
+ * reason discoverable only after the merge. That is D93's cost exactly, and
+ * D95 records this as the one dimension left unasserted for want of a
+ * measurement rather than for want of a reason.
+ *
+ * So the reading goes out with the rest of the inventory, this test proves it
+ * happened, and the first green run on main supplies the number. Turning it
+ * into an assertion is a one-line change to `WHOLE_PARTS` once somebody has
+ * read that number.
+ */
+test('publication membership for the two schemas is read', { skip }, () => {
+  const published = hosted.inventory.publication_tables;
+  assert.ok(Array.isArray(published), 'the hosted publication membership was not read');
+  assert.deepEqual(reference.publication_tables, [],
+    'the committed migrations now publish a table; this reading has an expectation to compare against');
 });
 
 /**

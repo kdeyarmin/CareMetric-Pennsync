@@ -6713,3 +6713,141 @@ safe choice was rewritten to say what is actually load-bearing: that the tag is
 checked absent from the text rather than assumed absent. A sabotage that does
 not bite is not always a missing test; sometimes it is prose claiming more than
 the code does.
+
+## D95 — What the hosted comparison could not see, and what it is not asked to
+
+**Decision.** `hosted-store.test.mjs`'s inventory now compares each object by a
+representation chosen against a planted change rather than by the first
+representation that came to hand. Eight dimensions are added — relation KIND,
+column DEFAULT, whether a column is GENERATED or an identity, index VALIDITY,
+a function's full ARGUMENT list, STRICT, LEAKPROOF, and a schema's CREATE
+privilege beside its USAGE. `store-inventory.test.mjs` plants a case for each of
+them in a scratch build and fails if the comparison stays quiet. The dimensions
+listed at the end of this entry are deliberately NOT compared, and the reason
+is written down beside each.
+
+**Why now.** This suite is the project's answer to "do the prerequisites hold".
+Every deployment question routes to it and a green reading is taken as proof
+that the committed migrations and the hosted store are the same artifact. So
+its blind spots are the project's blind spots — and nobody had audited it,
+which means every one would have been found the way the first five instances of
+the house defect were found: by costing something first.
+
+**The finding is the house defect again, in the suite written to catch drift.**
+A check decides from ONE representation and is silently wrong when the same
+thing arrives in another. Here it arrived twice over. The OBJECT KINDS it
+compares left a whole class out: `relkind = 'r'` means ordinary tables, so a
+VIEW beside a record table was invisible in the table list, in the column list
+and in the caller-privilege cross-product at once. And for the kinds it did
+compare, the representation left the semantics out: `format_type` and
+`attnotnull` are not the column, `pg_get_triggerdef` is not the trigger, and
+`pg_get_function_identity_arguments` is not the signature.
+
+**Every change in this table was BLIND, measured and not reasoned about.** Each
+was planted in a PGlite copy of the committed store and the comparison reported
+zero faults. Ten of them; they collapse into the eight dimensions above, and
+the shipped fixture pins one case per dimension rather than all ten — a
+materialized view and a sequence are closed by the same relation-kind widening
+as the view, and pinning the cheapest of the three keeps the suite at two
+builds.
+
+| planted | why it matters |
+| --- | --- |
+| a view over `pennsync_records.patient`, granted to `authenticated` | reads every tenant's rows past every policy |
+| a materialized view, same | the same, with a stale copy of the rows on disk |
+| a sequence granted to callers | a relation kind the store does not create, appearing in it |
+| `chart_assignment.granted_at`'s DEFAULT dropped | D33: both pre-existing writers insert without naming it |
+| `membership.membership_key` made a plain column | D34: it replaces a forty-line `validateMemberships` |
+| `provenance_immutable` disabled | every immutability guard in this store is a trigger |
+| `chart_assignment_request_key` left invalid | a unique index that enforces nothing; D78 catches it by name |
+| an argument default removed from a contract wrapper | PostgREST resolves an RPC by the names of the body's keys, so the defaults decide which call shapes exist |
+| STRICT dropped, LEAKPROOF added | both live outside `prosrc`, which `md5(prosrc)` is the whole of |
+| CREATE granted on `pennsync_records` | `usage` was asked and `create` was not |
+
+The view is the sharpest and was proved rather than argued: on a real
+PostgreSQL 16 cluster, `authenticated` reading `pennsync_records.patient`
+answers `permission denied for function deployment_app` and the same role
+reading a view over it answers the row. A dashboard SQL editor session runs as
+`postgres`, so this is one convenience view away at any time.
+
+**A blind spot I reported to myself and had to withdraw.** A foreign key's ON
+DELETE action first read as uncompared, and it was not: `pg_get_constraintdef`
+carries it, and the scratch harness that "proved" otherwise had quietly dropped
+`constraints` from its own copy of the inventory. Two lessons, and the second
+is the one to keep. Sabotage catches what reading misses, and a sabotage
+harness is itself a check that can be wrong — so a case that comes back BLIND
+is not a finding until the harness has been shown to bite on something. Three
+already-covered dimensions (that foreign key action, a policy widened to
+`true`, a rewritten function body) are now permanent CONTROLS in the new suite
+for exactly this reason: a fixture that only asserts the gaps it just closed
+cannot tell a real gap from a hole in itself.
+
+**The new fields are deparse-stable across the version gap, measured.** Hosted
+is PostgreSQL 17.6 and the reference build is PGlite's 18.3, and two of the
+additions carry deparsed text (`pg_get_expr` for a default, and
+`pg_get_function_arguments`) where a version difference would be a false red
+every run. The whole extended inventory was built on a real PostgreSQL 16
+cluster and compared field for field against the PGlite build: **0 differences
+across 179 relations, 3,402 columns, 582 constraints, 208 indexes, 413
+functions and 21 triggers.** 17 sits between 16 and 18, so this is strong
+evidence and not a measurement OF 17 — the first hosted run is that, and the
+`contype = 'n'` note already in the suite's header is what a real gap looks
+like when there is one.
+
+**One dimension is READ and not asserted, and that is the awkward answer rather
+than the tidy one.** A record table in a logical replication publication
+streams its rows to whatever holds the slot, which on a Supabase project is
+Realtime, enabled per table from the dashboard with one click — a row path out
+of the store that no policy here sits on. The reference build publishes
+nothing, so comparing the two would assert that hosted publishes nothing
+either, and whether Supabase's `supabase_realtime` arrives empty or `FOR ALL
+TABLES` is a platform fact this repository cannot measure: the job holding the
+credential runs on `main`, so a wrong guess puts main red for a reason
+discoverable only after the merge, which is D93's cost exactly. So
+`publication_tables` goes out with the rest of the inventory, a test proves the
+reading happened, and the first green run on `main` supplies the number.
+Turning it into an assertion is then one line in `WHOLE_PARTS`. **Read the
+number and close this**; an unasserted reading is a promise, and promises in
+this repository go stale where nothing can notice.
+
+**What is deliberately NOT compared, and why.** A longer list of comparisons is
+not the goal; a slow or flaky suite would cost more than it caught.
+
+- **Rows.** The suite's header already carries this and it is unchanged: no
+  assertion reads a patient, a visit or a roster, because that needs a caller
+  through the gate and no hosted caller will hold a session (the owner declined
+  the staging accounts on 2026-09-22).
+- **Column ordinal position.** The key is the column's NAME, and every contract
+  projects by name while PostgREST is name-based throughout, so a reordering
+  changes nothing any caller here does — and it cannot happen without a table
+  rebuild, which moves constraints and indexes that ARE compared.
+- **Collation.** No column in either schema declares a non-default collation
+  (measured: zero), and the two sides are different PostgreSQL versions on
+  different libc, so a collation's version legitimately differs and comparing
+  it would be a false red. D78's argument that the timesheet's lookup is
+  equivalent to a plain-column index rests on `identity_map` constraining the
+  address with `lower(btrim(…))`, which is text normalisation rather than
+  collation. **Revisit the day a migration declares one.**
+- **Default privileges.** `alter default privileges` governs objects created in
+  FUTURE, and an object created in future appears in this comparison as a key
+  of its own. Comparing the cause when the effect is already compared buys
+  nothing.
+- **Storage parameters, statistics targets, compression, fillfactor.**
+  Performance, not semantics. None of them changes what a caller may read.
+- **Replica identity.** It decides what a publication streams, and publication
+  membership is the thing read above; with no table published there is nothing
+  for it to qualify.
+- **Extensions, event triggers, publications' own definitions, FDW servers.**
+  Cluster-scoped rather than schema-scoped. The suite reaches the hosted
+  project through an account-wide management credential behind a fixed
+  statement ALLOWLIST, so every read added is a statement that credential can
+  send; widening it past the two schemas this store owns is a cost paid against
+  objects this repository does not create.
+
+**One correction carried in the same change.** The `hosted-store` job's own
+comment said the suite "checks every statement with the migrate tool's own
+`isReadOnly`". It has not for some time — the suite's header records why that
+was replaced by a fixed allowlist, since `isReadOnly` classifies leading verbs
+and `select some_write_contract(…)` passes it. Prose outliving the code it
+describes, next to the credential it describes, is the same shape as everything
+else in this entry.
