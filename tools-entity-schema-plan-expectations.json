@@ -11,7 +11,7 @@
     "skipped_properties": 0,
     "merged_system_columns": 7,
     "unique_keys": 6,
-    "contract_unique_keys": 2,
+    "contract_unique_keys": 3,
     "append_only": 4
   },
   "entities": [
@@ -1958,7 +1958,21 @@
       "columns": 17,
       "constrained": 1,
       "unique_keys": [],
-      "contract_unique_keys": [],
+      "contract_unique_keys": [
+        {
+          "key": "distribution",
+          "index": "policy_acknowledgment_distribution_unique",
+          "columns": [
+            "agency_id",
+            "policy_id",
+            "policy_version",
+            "user_id"
+          ],
+          "live": null,
+          "contract": "contract_policy_distribute",
+          "migration": "20260920540000_contract_policy_distribute.sql"
+        }
+      ],
       "append_only": false,
       "merged_system_columns": 0,
       "skipped": []

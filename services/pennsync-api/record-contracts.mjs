@@ -1181,6 +1181,40 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_POLICY_ACK_FORBIDDEN',
     ]),
   }),
+  // Distributing a policy version, and the SEVENTH partial port. The four
+  // cohort filters have no carried column, so each is refused by its own name
+  // rather than silently dropped — a dropped narrowing distributes to MORE
+  // people than were asked for. They are enumerated rather than matched by
+  // prefix because `declaredRefusal` compares exactly, and a code that only
+  // nearly matches degrades to a 503 that tells the caller nothing.
+  distributePolicyAcknowledgment: Object.freeze({
+    rpc: 'pennsync_contract_policy_distribute',
+    params: Object.freeze(['policyId', 'dueDate', 'userEmails', 'filters']),
+    // camelCase, because the SPA sends these names and is shared between both
+    // backends (D58). `userEmails: []` and `filters: {}` are what the
+    // whole-roster button sends, and the contract reads both as absent.
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_policy_id: args.policyId ?? null,
+      p_due_date: args.dueDate ?? null,
+      p_user_emails: args.userEmails ?? null,
+      p_filters: args.filters ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_POLICY_AGENCY_NOT_HELD',
+      'PENNSYNC_POLICY_CALLER_UNKNOWN',
+      'PENNSYNC_POLICY_DISTRIBUTE_FORBIDDEN',
+      'PENNSYNC_POLICY_ID_REQUIRED',
+      'PENNSYNC_POLICY_NOT_FOUND',
+      'PENNSYNC_POLICY_DUE_DATE_INVALID',
+      'PENNSYNC_POLICY_USER_EMAILS_INVALID',
+      'PENNSYNC_POLICY_FILTERS_INVALID',
+      'PENNSYNC_POLICY_FILTER_UNPORTED:role',
+      'PENNSYNC_POLICY_FILTER_UNPORTED:department',
+      'PENNSYNC_POLICY_FILTER_UNPORTED:business_line',
+      'PENNSYNC_POLICY_FILTER_UNPORTED:location',
+    ]),
+  }),
   // The membership lifecycle, and the second PARTIAL port. Five of the
   // original's six actions: `provision` is refused by name because its own
   // guard reserves it to the protected platform owner D14 and D22 removed, so

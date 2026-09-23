@@ -815,6 +815,21 @@ export const HANDLERS = Object.freeze({
       return contract('acknowledgePolicy', params);
     },
   }),
+  distributePolicyAcknowledgment: Object.freeze({
+    // The distribution half of the policy pair, and the ONLY Base44 name that
+    // reaches this contract. `policyId` is required upstream and is left to
+    // the contract to refuse, which is where the message that names it lives.
+    //
+    // The four keys are the four the SPA sends, camelCase and unchanged: the
+    // bundle is shared between both backends, so normalising the request shape
+    // here would break the Base44 path (D58). An unknown key is refused rather
+    // than ignored, which is what keeps `filters` from arriving as a top-level
+    // field the contract would never read.
+    handle({ params, contract }) {
+      exactObject(params, ['policyId', 'dueDate', 'userEmails', 'filters'], 'INVALID_PARAMS');
+      return contract('distributePolicyAcknowledgment', params);
+    },
+  }),
   manageAgencyMembership: Object.freeze({
     // One Base44 capability with six actions reaching two contracts, five of
     // them served. `provision` is NOT filtered out here: it reaches the

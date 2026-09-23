@@ -37,10 +37,13 @@
  * `pg_get_triggerdef` for a trigger, so a wrapper that reformatted anything
  * would show up as drift rather than fix it.
  *
- * It derives one catch-up, for the objects D82 added. It is not a general
- * "make the store match" tool and must not become one: what a given deployment
- * is missing is a fact about that deployment, and the only thing that reads it
- * is the hosted comparison.
+ * It derives ONE CATCH-UP PER REGENERATION, each named and each reading its own
+ * statements out of the generated file: D82's profile-write objects, and D89's
+ * `policy_acknowledgment_distribution_unique`. It is not a general "make the
+ * store match" tool and must not become one: what a given deployment is
+ * missing is a fact about that deployment, and the only thing that reads it is
+ * the hosted comparison. Each entry here says what ONE change added, which is
+ * a fact about the repository and knowable without a database.
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
@@ -175,18 +178,132 @@ export function renderCatchup(repository = here) {
   return HEADER + idempotent(readProfileBlock(repository)) + FOOTER;
 }
 
+export const INDEX_CATCHUP_MIGRATION =
+  'services/authority-store/supabase/record-migrations/20260920545000_policy_distribution_index.sql';
+
+/** The index D89 declared, exactly as the generator emitted it. */
+export const DISTRIBUTION_INDEX = 'policy_acknowledgment_distribution_unique';
+
+/**
+ * The one `create unique index` statement for D89's composite key.
+ *
+ * Read rather than retyped for the same reason the D82 block is: the emitter
+ * builds the column list AND the non-empty predicate from `CONTRACT_UNIQUE`,
+ * so a column added to the declaration has to move this file too. A retyped
+ * predicate that drifted would be a DIFFERENT index with the same name, which
+ * is the one thing worse than a missing one — `contract_policy_distribute`
+ * catches `unique_violation` on this name and re-raises anything else.
+ */
+export function readDistributionIndex(repository = here) {
+  const sql = readFileSync(resolve(repository, SOURCE_MIGRATION), 'utf8');
+  const opens = `create unique index "${DISTRIBUTION_INDEX}" on `;
+  const start = sql.indexOf(opens);
+  if (start < 0) throw new Error('CATCHUP_INDEX_MISSING');
+  const end = sql.indexOf(';\n', start);
+  if (end < 0) throw new Error('CATCHUP_INDEX_UNTERMINATED');
+  // A second occurrence would mean the generator emitted the name twice, and
+  // taking the first would silently pick one of two different predicates.
+  if (sql.indexOf(opens, start + 1) >= 0) throw new Error('CATCHUP_INDEX_DUPLICATED');
+  return sql.slice(start, end + 1);
+}
+
+/** The statement in the form a store that already has the table can apply. */
+export function idempotentIndex(statement) {
+  const rewritten = statement.replace('create unique index "', 'create unique index if not exists "');
+  if (!rewritten.startsWith('create unique index if not exists "')) {
+    throw new Error('CATCHUP_INDEX_REWRITE_MISSED');
+  }
+  return rewritten;
+}
+
+const INDEX_HEADER = `-- D89's distribution key, for a store that already exists (D88).
+--
+-- \`20260919170000_record_store.sql\` is GENERATED and was regenerated to add
+-- this index when \`CONTRACT_UNIQUE\` gained \`PolicyAcknowledgment.distribution\`.
+-- That reaches a fresh provision and reaches no deployment that had already
+-- applied it, so the change lives in both places and this is the second.
+--
+-- DERIVED, never typed: \`node tools-pennsync-record-catchup.mjs --write\` reads
+-- the statement out of the generated migration and adds \`if not exists\`.
+-- The emitter builds both the column list and the non-empty predicate from the
+-- declaration, so a retyped copy could drift into a DIFFERENT index wearing
+-- the same name -- and \`contract_policy_distribute\` catches
+-- \`unique_violation\` on that name and re-raises everything else, so the name
+-- agreeing while the predicate does not is worse than no index at all.
+--
+-- \`if not exists\` rather than a drop and recreate: on a store that already has
+-- it this must be a no-op, and dropping a unique index even briefly inside a
+-- transaction that might roll back is a window where two distributions can
+-- both insert.
+begin;
+
+do $$
+begin
+  if to_regclass('pennsync_records.policy_acknowledgment') is null then
+    raise exception using errcode='42501',message='PENNSYNC_RECORD_STORE_REQUIRED';
+  end if;
+end $$;
+
+do $$
+declare v_admin text := current_user;
+begin
+  if exists (select 1 from pg_catalog.pg_roles
+    where rolname = 'pennsync_records_owner' and (rolsuper or rolbypassrls)) then
+    raise exception using errcode='42501',message='PENNSYNC_RECORD_OWNER_MUST_NOT_BYPASS_RLS';
+  end if;
+  begin
+    execute format('grant %I to current_user with set true', 'pennsync_records_owner');
+  exception
+    when syntax_error then execute format('grant %I to current_user', 'pennsync_records_owner');
+    when others then null; -- already held, or not ours to grant; proven below
+  end;
+  begin
+    execute format('set role %I', 'pennsync_records_owner');
+    execute format('set role %I', v_admin);
+  exception when others then
+    raise exception using errcode='42501',message='PENNSYNC_RECORD_OWNER_NOT_ASSUMABLE';
+  end;
+end $$;
+
+-- As the owner, because an index is created by the table's owner and the
+-- hosted comparison reads who owns what.
+set local role "pennsync_records_owner";
+
+`;
+
+const INDEX_FOOTER = `
+reset role;
+commit;
+`;
+
+/** The index catch-up, header and all. */
+export function renderIndexCatchup(repository = here) {
+  return INDEX_HEADER + idempotentIndex(readDistributionIndex(repository)) + INDEX_FOOTER;
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
-  const sql = renderCatchup();
-  const target = resolve(here, CATCHUP_MIGRATION);
-  if (process.argv.includes('--write')) {
-    writeFileSync(target, sql);
-    process.stdout.write(`wrote ${CATCHUP_MIGRATION}\n`);
-  } else {
-    const committed = readFileSync(target, 'utf8');
-    if (committed !== sql) {
-      process.stderr.write('CATCHUP_MIGRATION_STALE: re-run with --write\n');
-      process.exit(1);
+  const derived = [
+    [CATCHUP_MIGRATION, renderCatchup()],
+    [INDEX_CATCHUP_MIGRATION, renderIndexCatchup()],
+  ];
+  let stale = false;
+  for (const [file, sql] of derived) {
+    const target = resolve(here, file);
+    if (process.argv.includes('--write')) {
+      writeFileSync(target, sql);
+      process.stdout.write(`wrote ${file}\n`);
+      continue;
     }
-    process.stdout.write('catch-up migration matches the generated record store\n');
+    // Every entry is reported, not just the first: a run that stopped at the
+    // first stale file would send somebody back for a second round over a
+    // difference this one already knew about.
+    if (readFileSync(target, 'utf8') !== sql) {
+      process.stderr.write(`CATCHUP_MIGRATION_STALE: ${file} -- re-run with --write\n`);
+      stale = true;
+    }
+  }
+  if (stale) process.exit(1);
+  if (!process.argv.includes('--write')) {
+    process.stdout.write(`${derived.length} catch-up migrations match the generated record store\n`);
   }
 }

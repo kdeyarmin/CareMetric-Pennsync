@@ -14,7 +14,7 @@
   "migrations/20260920040000_chart_assignment.sql": "c07075b3e63a5e73b68782d546cb2dcc168c82e19eb78be0f62138ed5faf24bc",
   "migrations/20260920180000_chart_assignment_lifecycle.sql": "8a720a023d9c92aea04c8704bc1d88ace84222d4cf06fc172f497e578af14908",
   "migrations/20260920200000_membership_lifecycle.sql": "58f39e139908345ef5fc7ec259f7ea2be7c871c668a9aacdf6e39a96ae44833c",
-  "record-migrations/20260919170000_record_store.sql": "49648eb8a74c38d3a4bc4ea3123417bd3e0842957b4cef7256dad5910bc45ff7",
+  "record-migrations/20260919170000_record_store.sql": "aa381137ffef9092155085612d80b5426cbd39698eef3846780e5bed6c5ea829",
   "record-migrations/20260919180000_record_brokers.sql": "553c24c42b32deeec637c3c26adf448ed6884c81d03d298860a3eea01c5a489e",
   "record-migrations/20260920000000_contract_policy_library.sql": "b5ed76066b6e62793d35bc0c678ef2a740acf14f1208714e0153e1b0e221091b",
   "record-migrations/20260920010000_activity_audit.sql": "237d69c072469357e2fbba2b8fefde2af4a02a37c6e76f0d57f7855ebb0ce4a4",
@@ -68,5 +68,7 @@
   "record-migrations/20260920500000_contract_dashboard.sql": "9676c4fe4d09e15a863362bd00cee26acf1bd9c118553bcf7478ff67e906b3f8",
   "record-migrations/20260920510000_contract_state_incident.sql": "c49704e11bc939fd8f39dc23789442896bd03315069cc0c468b826da942da141",
   "record-migrations/20260920520000_file_locator_map.sql": "d56078c86f87aae407631a321d2d17b2e592d5c93a53d2c6800d07be7a6ada64",
-  "record-migrations/20260920530000_profile_self_write.sql": "7097691f44e92cdab436883c978da452520eee5545e6869aed3bc9081db9c9f3"
+  "record-migrations/20260920530000_profile_self_write.sql": "7097691f44e92cdab436883c978da452520eee5545e6869aed3bc9081db9c9f3",
+  "record-migrations/20260920540000_contract_policy_distribute.sql": "b7c1b94729531a3522f46ef1f7269609bd6e57e2d748d158f8a8dec45e64af0b",
+  "record-migrations/20260920545000_policy_distribution_index.sql": "1a7f1aa9eb4166a6227c6e357e5c544492d57d9c1137baa0fd9ab61836b9ffbd"
 }

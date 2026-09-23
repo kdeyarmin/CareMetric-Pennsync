@@ -6089,3 +6089,150 @@ moves a capability; it carries a policy that had already been decided to the
 store that was missing it. The store itself still needs the migration applied —
 one pending file, DDL only — and until it is, the hosted comparison stays red
 on the ledger count as well as the three objects.
+
+## D89 — Distributing a policy version, and a key declared before its race shipped
+
+**Decision.** `distributePolicyAcknowledgment` is ported as
+`20260920540000_contract_policy_distribute.sql`, the SEVENTH partial port. The
+successor performer is an `agency_admin` scoped to their own agency; the four
+cohort filters have no carried column and are refused by name; the idempotency
+the original's header claims becomes a real composite index under D78; and the
+notification ships, because a notification is a row (D51).
+
+**Who may ask, established by driving rather than reading.** The original's
+gate is
+`role === 'admin' || account_type === 'agency_admin' || account_type === 'super_admin'`,
+which is D69's shape, so it was driven through the module's own
+`withTrustedClaims` helper before anything was decided. Two callers pass: the
+built-in `role === 'admin'` with no membership at all, and a caller whose
+CANONICAL membership says `agency_admin`. The `super_admin` test is DEAD — the
+helper strips a claimed `super_admin` back to `'user'` unless a canonical
+membership says otherwise, and its tenant branch only ever writes
+`'agency_admin'` or that stripped value, so the only caller who could still
+carry it is one who already returned on the first test.
+
+So this is **not** one of D40's widenings: the agency administrator was always
+a live, membership-backed performer here. What is dropped is the platform tier
+D14 and D22 removed, and D44's question — what was that tier structurally
+preventing? — has a sharp answer in this module. The original applies its own
+agency filter only when `me.agency_name` is set, and a built-in admin carries
+no `agency_name`, so for that caller the filter is skipped and the policy is
+distributed to **every tenant in the deployment**. That reach is the thing
+being dropped, and dropping it is the point.
+
+**The first harness proved nothing, which is why driving beat reading.** Its
+first draft stubbed a membership row as `{id, user_id, agency_id, status}` and
+an agency as `{id, name, status}`. `canonicalClaimMembership` rejected every
+one of them, all nine caller shapes printed "refused", and the run read exactly
+like evidence that `agency_admin` was dead too. Only a row satisfying the whole
+of that helper — `membership_key`, `user_email_normalized`, `version`,
+`created_by_user_id`, the transition columns, and an agency carrying
+`agency_name` rather than `name` — reached the live branches. **A harness that
+never reaches the branch answers the question it was built to answer, wrongly
+and confidently.**
+
+**Four filters with no column, refused by name and only where they were read.**
+The original narrows with `filters.role`, `department`, `business_line` and
+`location`. The carried `user` table has none of `department`, `business_line`,
+`location` or `job_title` — only `credential_type` and the self-editable
+`role`, and `role` is matched upstream against `job_title || credential_type ||
+role`, so with `job_title` absent the same request would select a DIFFERENT set
+of people than the administrator saw when they chose it. All four are refused,
+following D44, and dropping them would be worse here than in most places: a
+dropped narrowing does not fail, it distributes a compliance assignment to MORE
+people than were asked for, and every one of them is then overdue on a policy
+nobody meant to give them.
+
+Two details of that refusal are the original's rather than this port's, and
+both were read off its code rather than its comments. `filters` is consulted
+only in the `else` of `userEmails.length > 0`, so a request naming people
+explicitly never had its filters applied in Base44 either and is served here;
+and `userEmails: []` is the ABSENCE of an explicit cohort, not an empty one —
+`PolicyAcknowledgmentManager.jsx` sends all four keys on every call and passes
+`[]` for the whole-roster button, so reading it as "nobody" would have refused
+or no-opped every unfiltered distribution the product makes. D58's rule: check
+the call site before deciding what a request shape means.
+
+**The key, and the race the repository had already written down.** The
+original's header claims it is "idempotent within a version on (policy_id,
+policy_version, user_id)" and its own comment admits the hole in the same
+breath: *"Concurrent distributes can still race the prefetch->create gap."* It
+emulates the constraint with a prefetched set, then a create, then a re-read,
+then a DELETE of its own duplicate. `CONTRACT_UNIQUE` now enumerates
+`PolicyAcknowledgment.distribution` over `(agency_id, policy_id,
+policy_version, user_id)`, D30's emitter writes the partial index, and the
+contract catches `unique_violation` for
+`policy_acknowledgment_distribution_unique` BY NAME and re-raises anything
+else. The prefetch, the re-read and the compensating delete all go.
+
+The key is WHOLE-table rather than partial, unlike D78's point-config entry: an
+acknowledgment of a superseded version is the compliance record that the person
+acknowledged that version, so a new version assigns afresh and the old rows
+stand beside it. Plain columns, no expression.
+
+**What the sabotage found, and what it corrected.** Commenting the index out of
+the generated migration does NOT make the concurrency test's `blocked`
+assertion fail, which is what D78's two existing entries had led the test's
+first comment to claim. The second caller still blocks — on
+`notification_dedupe_key_unique`, which keys the same (policy, version, person)
+through the mint — and then writes the duplicate assignment anyway. So here the
+COUNTS are the claim and the block only holds the timing; commenting out both
+indexes is what makes `blocked` fail. The two back each other up, and a store
+missing the distribution key serializes its distributions and still
+double-assigns. The comment now says what was measured rather than what the
+neighbouring tests measured.
+
+**Two enforcements with different lifetimes.** The assignment row can be
+deleted and the notification row cannot, so a redistribution after an
+assignment was cleared writes a real new assignment and must not hand the
+person a second copy of a message they may not have read. The index wins, as it
+does in D51, and the difference is REPORTED rather than hidden (D54): the
+answer carries `notified` alongside `distributed`, and they differ exactly when
+this fired.
+
+**What the store answers that the original reconstructed.**
+`User.list('-created_date', 5000)` filtered by `u.agency_name ===
+me.agency_name` is D41's and D43's derived scope in its WRITING form, over an
+entity whose own schema calls `agency_name` a self-editable label (D23). It is
+deleted. `pennsync_private.agency_roster` is the authoritative population and
+carries the verified address AND the membership envelope the notification
+needs, so one query replaces the scan, the `is_approved` check, the
+`role !== 'admin'` exclusion and the address lookup. `failed` and `failures` go
+with the compensations: the original reports them because each create stands
+alone, and one transaction has no partial state to report.
+
+The trail entry is `policy_distributed` on subject kind `other`, which is what
+`invitation_resent` uses and what that kind is in the list for — the activity
+trail's kind enumeration lives in a migration every deployment has applied, so
+naming a policy there would be a forward migration against a shared facility
+(D88) to say what the subject id and `policy_title` already say.
+
+**D88 applied on purpose for the first time.** Regenerating the record store to
+add the index is a change to what a NEW store gets and reaches no deployment
+that already ran the file, so `20260920545000_policy_distribution_index.sql`
+ships beside it, DERIVED by `tools-pennsync-record-catchup.mjs` rather than
+typed, with the fingerprints re-pinned in the same change. It uses `create
+unique index if not exists` rather than a drop and recreate: dropping a unique
+index on a live table opens exactly the window the index is there to close.
+**No deployment has run the regenerated file yet**, so nothing is owed beyond
+applying both — and hosted staging is still owed D82's catch-up first.
+
+**The existing call site is admitted, and this is the reasoning the gate asks
+for.** `src/functions/distributePolicyAcknowledgment.js:4` names no tenant, so
+it relies on `portedCall`'s bound one — the second such site after D81's two,
+and the gate refuses until a reviewed diff says the fallback is right here. It
+is. `PolicyAcknowledgmentManager.jsx` lists its policies through
+`listPolicyLibrary`, which binds the same active tenant context, so the policy
+an administrator picks and the roster this distributes to come from one agency;
+and a mismatch cannot distribute to the wrong roster, because the contract
+takes both the policy and the cohort from `p_agency` and answers
+`PENNSYNC_POLICY_NOT_FOUND` when the policy is not in it. Fails closed either
+way.
+
+Port queue: 0 / 7 / 0 / 2 / 12 / 0 / 0 / 0 / 2 / 76 — `records_schema` falls
+from 3 to 2, which is the first time the bucket has fallen by a port being
+WRITTEN since D75 took it to zero by correction. The two left are
+`generateAIReport`, which carries two `Core.SendEmail` behind
+`outboundDeliveryGate` and stops at the owner's flip, and
+`sendExpirationNotifications`, which is D49's shape and waits on a scheduler
+identity nobody has chosen.
