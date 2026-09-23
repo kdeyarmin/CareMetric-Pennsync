@@ -12,6 +12,9 @@ import {
 import {
   LOCAL_ONLY_MIGRATIONS, MigrateError, applyMigrations, ledgerName, migrationWithLedgerRow,
 } from '../../../tools-pennsync-migrate.mjs';
+import {
+  LEDGER_STATEMENTS_MARKER, recordedText,
+} from '../../../tools-pennsync-ledger-statements.mjs';
 
 /**
  * The database half of bringing an existing store forward.
@@ -151,6 +154,74 @@ test('the hosted gap is applied in one run, the pin survives it, and a second ru
     const again = await applyMigrations({ db: harness(db), repository });
     assert.deepEqual(again.pending, [], 'a second run must find nothing pending');
     assert.equal(again.mutated, false);
+  } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
+});
+
+/**
+ * A migration carrying every quoting form this store actually uses, so the
+ * literal that records it is exercised rather than described: a plpgsql body
+ * in dollar quotes, a doubled single quote, semicolons inside a string and
+ * inside both comment forms, and a dollar tag of its own.
+ */
+const AWKWARD = ["-- a header; with a semicolon",
+  'begin;',
+  'create table public.awkward (note text);',
+  "insert into public.awkward (note) values ('it''s; fine');",
+  '/* a block comment; here */',
+  'create function public.awkward_note() returns text language plpgsql as $$',
+  'begin',
+  "  return 'x; y';",
+  'end $$;',
+  "select $pennsync$a literal tag$pennsync$;",
+  'commit;',
+  '-- a trailing note',
+  ''].join('\n');
+
+test('the row a run writes carries the text it ran, and an edit to that file is then visible', async () => {
+  // D88's defect from both sides in one test. The writer and the reader are
+  // two halves, and two halves that only ever meet inside one process are not
+  // proved to agree by either one's own suite (D45) — so this drives a
+  // migration through a real ledger column and back out through the
+  // comparison, then changes the file and watches the answer change.
+  const { root, carried } = await deploymentShapedRepository();
+  const file = join(root, RECORD_MIGRATION_DIRECTORY, '20260101000000_awkward.sql');
+  const db = await fresh();
+  try {
+    await applyProvision({ db: harness(db), requestedApp: STAGING, repository: root });
+    await seedLedger(db, carried.map(ledgerName));
+    await writeFile(file, AWKWARD);
+
+    const run = await applyMigrations({ db: harness(db), repository: root, apply: true });
+    assert.deepEqual(run.applied, ['20260101000000_awkward.sql']);
+    assert.deepEqual(run.statements_recorded,
+      [{ name: '20260101000000_awkward.sql', recorded: true, reason: null }]);
+
+    // Out of the database rather than out of the value that was written.
+    const { rows } = await db.query(
+      "select statements from supabase_migrations.schema_migrations where name = 'awkward'");
+    assert.equal(rows[0].statements[0], LEDGER_STATEMENTS_MARKER);
+    assert.equal(recordedText(rows[0].statements), AWKWARD,
+      'the text has to survive the literal, the column and the read byte for byte');
+    // The dollar-quoted body is one statement, not one per semicolon inside it.
+    assert.ok(rows[0].statements.some(statement => statement.includes("return 'x; y';")));
+
+    const verified = await applyMigrations({ db: harness(db), repository: root });
+    assert.deepEqual(verified.pending, []);
+    assert.deepEqual(verified.statements.verified, ['awkward']);
+    // The rows seeded above are the hosted shape: applied before anything
+    // recorded the column, and no longer recoverable. So the verdict is what
+    // D88 says it must be — not clean, because a store that says nothing must
+    // not read like one that says yes.
+    assert.equal(verified.statements.verdict, 'unverifiable');
+    assert.deepEqual(verified.statements.unrecorded, carried.map(ledgerName).sort());
+
+    // The defect itself: edit an applied migration and the tool still has
+    // nothing to apply, exactly as before. What is new is that it says so.
+    await writeFile(file, AWKWARD.replace("'it''s; fine'", "'it''s; different'"));
+    const drifted = await applyMigrations({ db: harness(db), repository: root });
+    assert.deepEqual(drifted.pending, [], 'an edited migration is still never re-applied');
+    assert.deepEqual(drifted.statements.drifted, ['awkward']);
+    assert.equal(drifted.statements.verdict, 'drifted');
   } finally { await db.close(); await rm(root, { recursive: true, force: true }); }
 });
 
