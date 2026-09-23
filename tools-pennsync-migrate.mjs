@@ -42,6 +42,16 @@
  * between deployments, and that is the one failure this design says is
  * impossible.
  *
+ * Step 5 also records WHAT it applied, not only that it did.
+ * `supabase_migrations.schema_migrations` carries a `statements` column and
+ * this tool told it nothing, which is D88: a migration edited after it ran is
+ * skipped forever on the store that ran it and applied in full on every store
+ * built afterwards, and no suite here can see it because every suite builds
+ * from nothing. A row written from now on carries the text, and every run —
+ * including a plan — reports what the rows already there do and do not say.
+ * `tools-pennsync-ledger-statements.mjs` holds that half, including why the
+ * rows written before it are left alone.
+ *
  * It plans by default and applies only when asked, because the dangerous verb
  * should be the one you have to type.
  *
@@ -57,6 +67,9 @@ import {
   readMigrations,
 } from './tools-pennsync-provision.mjs';
 import { codeLines } from './tools-pennsync-migrate-shape.mjs';
+import {
+  compareLedgerStatements, recordedStatements, statementsLiteral, withinStatementBudget,
+} from './tools-pennsync-ledger-statements.mjs';
 import { isManagementUrl, openManagementClient } from './tools-pennsync-supabase-db.mjs';
 
 export const MIGRATE_CONTRACT = 'cm.pennsync.migrate.v1';
@@ -221,7 +234,7 @@ export function planMigration({ migrations, applied }) {
  * appending to a file that manages its own transactions differently would put
  * the insert outside any of them and restore the bug silently.
  */
-export function migrationWithLedgerRow(migration) {
+export function migrationWithLedgerRow(migration, { statements = true } = {}) {
   const version = ledgerVersion(migration.name);
   const name = ledgerName(migration.name);
   // Interpolated into SQL, so checked rather than trusted. Both come from a
@@ -240,15 +253,52 @@ export function migrationWithLedgerRow(migration) {
     refuse('MIGRATE_MIGRATION_NOT_TRANSACTIONAL', { file: migration.name });
   }
 
+  // What the row can say about the TEXT, which is D88's defect at its origin:
+  // the ledger keys on the name and holds no content, so an edited migration is
+  // skipped forever on a store that ran it. Recorded only when the target's
+  // ledger has the column and the text is within budget; otherwise the
+  // migration still applies and the row says nothing, which `recordStatements`
+  // reports rather than hides.
+  const record = statements && withinStatementBudget(migration.sql);
+  const columns = record ? '(version, name, statements)' : '(version, name)';
+  const values = record
+    ? `('${version}', '${name}', ${statementsLiteral(recordedStatements(migration.sql))})`
+    : `('${version}', '${name}')`;
+
   // Inserted immediately before the closing `commit;` LINE, so the row lands
   // inside the migration's own transaction rather than after it.
-  const ledger = `insert into supabase_migrations.schema_migrations (version, name)`
-    + `\n  values ('${version}', '${name}');`;
+  const ledger = `insert into supabase_migrations.schema_migrations ${columns}`
+    + `\n  values ${values};`;
   return [...lines.slice(0, last.index), ledger, ...lines.slice(last.index)].join('\n');
 }
 
-/** The ledger the Supabase CLI keeps, or a refusal naming why it cannot be read. */
-export async function readAppliedNames(db) {
+/**
+ * Whether a migration's statements will be recorded, and why not when they
+ * will not.
+ *
+ * Said out loud and returned with the result, because the two reasons are
+ * different things an operator may want to act on: a ledger without the column
+ * is a target older than this tooling expects, and a migration over budget is
+ * `record_store.sql` being itself.
+ */
+export function recordStatements(migration, { statementsColumn }) {
+  if (!statementsColumn) return { name: migration.name, recorded: false, reason: 'ledger_column_absent' };
+  if (!withinStatementBudget(migration.sql)) {
+    return { name: migration.name, recorded: false, reason: 'over_statement_budget' };
+  }
+  return { name: migration.name, recorded: true, reason: null };
+}
+
+/**
+ * The ledger the Supabase CLI keeps, or a refusal naming why it cannot be read.
+ *
+ * `statements` is selected only when the column is there. It is part of
+ * Supabase's own `schema_migrations` and hosted staging has it, but that is a
+ * fact about the TARGET and not about this tree — selecting a column a store
+ * does not have would turn a readable ledger into `MIGRATE_LEDGER_MISSING`'s
+ * quieter cousin, a failed plan on a database that is perfectly fine.
+ */
+export async function readLedger(db) {
   const { rows: present } = await db.query(`select count(*)::int as count
     from information_schema.tables
     where table_schema = 'supabase_migrations' and table_name = 'schema_migrations'`);
@@ -257,12 +307,25 @@ export async function readAppliedNames(db) {
   // here means applying a migration twice, so this refuses instead.
   if (present[0].count !== 1) refuse('MIGRATE_LEDGER_MISSING');
 
-  const { rows } = await db.query('select version, name from supabase_migrations.schema_migrations');
+  const { rows: column } = await db.query(`select count(*)::int as count
+    from information_schema.columns
+    where table_schema = 'supabase_migrations' and table_name = 'schema_migrations'
+      and column_name = 'statements'`);
+  const statementsColumn = column[0].count === 1;
+
+  const { rows } = await db.query(statementsColumn
+    ? 'select version, name, statements from supabase_migrations.schema_migrations'
+    : 'select version, name from supabase_migrations.schema_migrations');
   const unnamed = rows.filter(row => typeof row.name !== 'string' || !row.name);
   // An older CLI recorded only the version, and a version is not an identity
   // here (see `ledgerName`). Nothing can be matched, so nothing is assumed.
   if (unnamed.length) refuse('MIGRATE_LEDGER_UNNAMED', { versions: unnamed.map(row => row.version) });
-  return rows.map(row => row.name);
+  return Object.freeze({ rows, statementsColumn });
+}
+
+/** The names alone, for everything that only asks what has run. */
+export async function readAppliedNames(db) {
+  return (await readLedger(db)).rows.map(row => row.name);
 }
 
 /** The pin, read as the store's own two layers read it. */
@@ -293,7 +356,21 @@ export async function applyMigrations({ db, repository, apply = false, log = () 
   if (store[0].count === 0) refuse('MIGRATE_STORE_ABSENT');
 
   const migrations = readMigrations(repository);
-  const plan = planMigration({ migrations, applied: await readAppliedNames(db) });
+  const ledger = await readLedger(db);
+  const plan = planMigration({ migrations, applied: ledger.rows.map(row => row.name) });
+
+  /**
+   * What this store's ledger says about the TEXT it ran — read on every run,
+   * including a plan, because a plan is the read-only half an operator can
+   * take anywhere and drift is not something to find out during an apply.
+   *
+   * A row this tooling wrote before `statements` was recorded reads
+   * `unrecorded` and keeps the verdict at `unverifiable`. That is D88's reason
+   * for not backfilling, kept as an answer rather than as prose: the text those
+   * rows ran is not recoverable from the store or the tree, so writing today's
+   * text into them would assert something nobody observed.
+   */
+  const statements = compareLedgerStatements({ migrations, rows: ledger.rows, ledgerName });
 
   const { rows: pinned } = await db.query(`select count(*)::int as count from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
@@ -330,6 +407,10 @@ export async function applyMigrations({ db, repository, apply = false, log = () 
     skipped: plan.skipped,
     already_applied: plan.applied.length,
     applied: [],
+    statements,
+    // What the rows this run writes will be able to say later.
+    statements_recorded: plan.plan.map(migration =>
+      recordStatements(migration, { statementsColumn: ledger.statementsColumn })),
   };
   if (!apply || !plan.pending.length) {
     return Object.freeze({ ...result, mutated: false });
@@ -339,7 +420,8 @@ export async function applyMigrations({ db, repository, apply = false, log = () 
     // One statement, one transaction: the schema change and the record of it
     // commit together or neither does, so a crash between them cannot leave a
     // migration applied and unrecorded for the next run to repeat.
-    await db.session(session => session.exec(migrationWithLedgerRow(migration)));
+    await db.session(session => session.exec(
+      migrationWithLedgerRow(migration, { statements: ledger.statementsColumn })));
     result.applied.push(migration.name);
     log(`applied ${migration.name}`);
   }

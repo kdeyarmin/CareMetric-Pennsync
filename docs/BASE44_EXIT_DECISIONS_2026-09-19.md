@@ -6598,3 +6598,109 @@ where `HEAD^` would miss all but the last of several commits.
 Each check was proved by SABOTAGE rather than by reading: dropping the head
 cross-check, counting the held-back migration, and dropping the base cross-check
 each fail exactly one test and no others.
+
+## D94 — The ledger records what it ran, from here forward and never backwards
+
+**Decision.** Every migration applied by `tools-pennsync-migrate.mjs` from now
+on records its own text in `supabase_migrations.schema_migrations.statements`,
+inside the same transaction as the migration and its `version` and `name`. A
+row that is already there is **left alone** and reads as `unrecorded`,
+permanently. That is not a gap waiting to be filled; it is the answer.
+
+**Why now.** D88 is the defect: `planMigration` decides what to apply from a
+migration's NAME — rightly, because the Supabase CLI stamps its own version at
+push time and the name is the only stable key the two sides share — and the row
+it wrote carried nothing about the content. So a file edited after it ran is
+skipped forever on the store that ran it and applied in full on every store
+built afterwards, with nothing between them that compares. Every suite in this
+repository builds from nothing, which is the one case the defect cannot appear
+in. D88 recorded that the column exists and the ledger was simply being told
+nothing, deferred filling it, and said **keep both when the ledger side is
+built**. Both are here: the sha256 pin answers "did this commit change a file
+that was pinned", before a merge and with no database; this answers "does this
+store hold what the tree says it ran", with a database and no commit.
+
+**D88's first reason for deferring holds, and is now a verdict rather than a
+paragraph.** Backfilling the rows already there would say nothing true. The
+insert this tooling wrote names `version` and `name` only — re-read from the
+code rather than remembered — so for every migration it has applied, the text
+is not recoverable from the store or from the tree: the row carries no time,
+and the fingerprint pin is a fact about a commit rather than about a
+deployment. Writing today's text into those rows would assert something nobody
+observed, and for `20260919170000_record_store.sql` — the file this defect
+actually happened to — it would record the edited text as though it had been
+applied, erasing the evidence of the gap. So `compareLedgerStatements` reports
+such a row `unrecorded` and the whole verdict `unverifiable`, never `verified`.
+A store that says nothing must not read like a store that says yes.
+
+**D88's second reason is answered by two things rather than by a promise.** The
+hazard it named is real: populating the column faithfully means splitting a
+migration into statements, which means a reader that handles dollar-quoted
+bodies — every function in this store is one — and a splitter subtly wrong
+would write a plausible wrong answer into the place the next person trusts.
+There is no new parser. The split is taken from `executableText`, the reader
+`migrationWithLedgerRow` and the management transport already share, and it
+splits by OFFSET into the original text with the result checked to reconstruct
+it exactly. A split in the wrong place is then still a faithful record of what
+ran; a split that lost or duplicated a byte is a refusal rather than a row.
+Measured against the corpus rather than assumed: a nesting-aware reading of all
+74 committed migrations is byte-for-byte identical to `executableText`'s, so
+nothing in the tree exercises the one construct it reads loosely.
+
+**The ledger has two writers, so a row says who wrote it.** Nine of hosted
+staging's rows were pushed by the Supabase CLI, which populates `statements` in
+its own shape. Comparing one of those against this module's split would report
+drift where there is none, and a check that cries wolf is a check that gets
+ignored. Every array this tooling writes begins with
+`-- pennsync:ledger-statements:v1` — a SQL comment, so the array is still a
+sequence of harmless statements to anything else that reads it, and versioned,
+so a later format is told apart rather than silently compared. A row whose
+first element is not that marker is `foreign` and nothing is claimed about it.
+
+**One migration is over the budget, and it is the ironic one.** Recording the
+text doubles the request that carries it: the migration travels once as SQL and
+once as a literal inside its own ledger row, and it has to be ONE request
+because the row commits inside the migration's transaction. `record_store.sql`
+is about 463 KiB, which already works; about 926 KiB is untested, and the
+management endpoint's real ceiling is not measurable from this repository. So
+`LEDGER_STATEMENT_BUDGET` is **a bound chosen, not a limit measured**, and it
+is written that way. Over it the migration still applies and its row is written
+without statements, reported as skipped with its reason — the capability is
+never traded for the record, and the degradation is in the answer rather than
+in an empty column found later. Exactly one committed migration is over it
+today and a test names which, so the day a second crosses is a failure rather
+than a surprise. It is worth saying plainly that this is the very file D88 was
+about: on a store that has already applied it — which is every store that
+matters — nothing changes, and on a fresh one the forward-migration rule and
+the pin are what cover it.
+
+**What it does not claim.** Nothing about hosted staging. All of its rows
+predate this, so the first thing this can say there is about the next migration
+applied through the tool, and until then its verdict is `unverifiable` and
+correct. The hosted comparison on `main` stays the only thing that reads what a
+deployment holds. Merging the two answers is how a prediction gets read as a
+measurement, which is D93's rule and unchanged.
+
+**The test that matters is the one that is not either half's own.** The writer
+builds a literal and the reader parses a column, and two halves that only ever
+meet inside one process are not proved to agree by either one's suite — D45's
+rule, learned when a fan-out stamped three of six envelope columns and both
+contracts' suites passed. `services/authority-store/tests/migrate.test.mjs`
+applies a migration carrying a plpgsql body, a doubled single quote, semicolons
+inside a string and inside both comment forms, and a dollar tag naming the
+literal's own default, through a real ledger column in PGlite; reads the row
+back out of the database rather than out of the value that was written; then
+edits the file and watches `pending` stay empty — the defect, unchanged and
+unfixable, since an applied migration is never re-applied — while the verdict
+moves to `drifted`. That is the whole of what changes: the tool still will not
+re-apply it, and now it says so.
+
+**Five sabotages were run and the one that did NOT bite is the useful one.**
+Trimming each statement, dropping the marker check, calling an unrecorded
+ledger verified, and splitting on every semicolon each fail the suite. Quoting
+the literal by doubling single quotes instead of dollar-quoting **passed** —
+because it is also correct. So the comment that claimed dollar quoting was the
+safe choice was rewritten to say what is actually load-bearing: that the tag is
+checked absent from the text rather than assumed absent. A sabotage that does
+not bite is not always a missing test; sometimes it is prose claiming more than
+the code does.
