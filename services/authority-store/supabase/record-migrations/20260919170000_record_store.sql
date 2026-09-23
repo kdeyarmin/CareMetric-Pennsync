@@ -3612,6 +3612,7 @@ create table "pennsync_records"."policy_acknowledgment" (
 alter table "pennsync_records"."policy_acknowledgment" enable row level security;
 alter table "pennsync_records"."policy_acknowledgment" force row level security;
 revoke all on "pennsync_records"."policy_acknowledgment" from public;
+create unique index "policy_acknowledgment_distribution_unique" on "pennsync_records"."policy_acknowledgment" ("source_app_id", "agency_id", "policy_id", "policy_version", "user_id") where "agency_id" is not null and "agency_id" <> '' and "policy_id" is not null and "policy_id" <> '' and "policy_version" is not null and "policy_version" <> '' and "user_id" is not null and "user_id" <> '';
 
 create table "pennsync_records"."policy_library" (
   "source_app_id" text not null,

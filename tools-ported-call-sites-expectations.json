@@ -25,6 +25,7 @@
     "src/functions/createAuthorizedPatient.js:31 createAuthorizedPatient",
     "src/functions/createAuthorizedVisit.js:13 createAuthorizedVisit",
     "src/functions/createAuthorizedVisit.js:14 createAuthorizedVisit",
+    "src/functions/distributePolicyAcknowledgment.js:4 distributePolicyAcknowledgment",
     "src/functions/expandClinicalPhrase.js:9 expandClinicalPhrase",
     "src/functions/generateFollowUpTasks.js:3 generateFollowUpTasks",
     "src/functions/generateUserManual.js:3 generateUserManual",

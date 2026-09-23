@@ -261,6 +261,25 @@ export const CONTRACT_UNIQUE = Object.freeze({
       + '`expected_email` to `lower(btrim(expected_email))`, so the stored value is '
       + 'already the normalised one the contract\'s own lookup compares against.',
   }),
+  'PolicyAcknowledgment.distribution': Object.freeze({
+    columns: Object.freeze(['agency_id', 'policy_id', 'policy_version', 'user_id']),
+    contract: 'contract_policy_distribute',
+    migration: '20260920540000_contract_policy_distribute.sql',
+    because: 'One acknowledgment per person per policy VERSION, which is the original\'s own '
+      + 'claim in its own header: "Idempotent within a version on (policy_id, policy_version, '
+      + 'user_id)." It never got the constraint, so it emulates one with a prefetched set of '
+      + 'the version\'s existing rows, and its own comment admits what is left: "Concurrent '
+      + 'distributes can still race the prefetch→create gap." It then creates, re-reads, keeps '
+      + 'the oldest and DELETES its own duplicate — a compensation for the missing key, and one '
+      + 'that loses a row to a failed delete. Two administrators distributing the same version '
+      + 'at once is the ordinary case, not an attack. PLAIN columns are right: all four are '
+      + 'stored verbatim from the policy row and the roster, none is normalised by the '
+      + 'contract, and `user_id` holds the roster\'s `expected_email`, which '
+      + '`pennsync_private.identity_map` already constrains to its lowered, trimmed form. '
+      + 'WHOLE-table rather than partial because every row of a version is part of that '
+      + 'version\'s distribution — there is no inactive half to keep, which is what makes this '
+      + 'different from the point config.',
+  }),
   'VisitPointConfig.active_agency': Object.freeze({
     columns: Object.freeze(['agency_id']),
     live: 'active',

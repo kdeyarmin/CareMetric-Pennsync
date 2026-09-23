@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
 import { RECORD_MIGRATION_FILE } from '../../../tools-entity-schema-plan.mjs';
 import {
-  CATCHUP_MIGRATION, readProfileBlock, renderCatchup,
+  CATCHUP_MIGRATION, DISTRIBUTION_INDEX, INDEX_CATCHUP_MIGRATION,
+  readDistributionIndex, readProfileBlock, renderCatchup, renderIndexCatchup,
 } from '../../../tools-pennsync-record-catchup.mjs';
 
 /**
@@ -140,4 +141,80 @@ test('the guard is still closed to public, which the rewrite could have dropped'
   // rewrite loses it on the path where the function is created rather than
   // replaced.
   assert.deepEqual(afterCatchup.function.map(entry => entry.public_execute), [false]);
+});
+
+/*
+ * The SECOND derivation, and the first time D88's rule was applied on purpose
+ * rather than after the fact.
+ *
+ * D89 adds `policy_acknowledgment_distribution_unique` to the generated
+ * migration, which is a change to what a NEW store gets and reaches no
+ * deployment that already ran the file. The index is the whole of
+ * `contract_policy_distribute`'s idempotency — without it the contract's
+ * `unique_violation` branch is unreachable and every redistribution writes a
+ * duplicate assignment — so a store missing it does not fail, it silently
+ * double-assigns.
+ */
+const indexCatchup = () =>
+  readFileSync(resolve(repository, INDEX_CATCHUP_MIGRATION), 'utf8');
+
+/** The index as the hosted comparison sees it: by name, with its definition. */
+const INDEX_SHAPE = `select jsonb_build_object(
+  'index', (select jsonb_agg(jsonb_build_object('name', indexname, 'def', indexdef)
+      order by indexname)
+    from pg_indexes where schemaname = 'pennsync_records'
+      and tablename = 'policy_acknowledgment')
+) as shape`;
+const indexShapeOf = async db => (await db.query(INDEX_SHAPE)).rows[0].shape;
+
+let beforeIndex = {};
+let afterIndexCatchup = {};
+let freshIndex = {};
+let freshThenIndexCatchup = {};
+
+before(async () => {
+  const statement = readDistributionIndex(repository);
+  const stale = recordStore().replace(statement, '');
+  assert.notEqual(stale, recordStore(), 'the D89 index was not found to remove');
+  const existing = new PGlite();
+  await authority(existing);
+  await existing.exec(stale);
+  beforeIndex = await indexShapeOf(existing);
+  await existing.exec(indexCatchup());
+  afterIndexCatchup = await indexShapeOf(existing);
+  await existing.close();
+
+  const provisioned = new PGlite();
+  await authority(provisioned);
+  await provisioned.exec(recordStore());
+  freshIndex = await indexShapeOf(provisioned);
+  await provisioned.exec(indexCatchup());
+  freshThenIndexCatchup = await indexShapeOf(provisioned);
+  await provisioned.close();
+});
+
+test('the index catch-up is derived from the generated migration too', () => {
+  assert.deepEqual(indexCatchup().split('\n'), renderIndexCatchup(repository).split('\n'),
+    'run `node tools-pennsync-record-catchup.mjs --write`');
+});
+
+test('a store that applied the record migration before D89 has no distribution key', () => {
+  // Asserted, not assumed, for the reason the D82 pair states: if the cut left
+  // the index in place, the next test proves nothing.
+  const names = (beforeIndex.index ?? []).map(entry => entry.name);
+  assert.equal(names.includes(DISTRIBUTION_INDEX), false, names.join(', '));
+});
+
+test('the index catch-up gives that store exactly what a fresh build has', () => {
+  // `indexdef` and not merely the name: an index over the right columns
+  // without the partial predicate is a different constraint, and it is the
+  // predicate that lets a row with no agency exist at all.
+  assert.deepEqual(afterIndexCatchup, freshIndex);
+});
+
+test('applying the index catch-up to a store that already has it changes nothing', () => {
+  // `if not exists` rather than a drop and recreate: dropping a unique index
+  // on a live table opens exactly the window the index is there to close, and
+  // on a big table the rebuild takes a lock nobody asked for.
+  assert.deepEqual(freshThenIndexCatchup, freshIndex);
 });

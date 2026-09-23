@@ -226,7 +226,7 @@ test('AGENTS.md carries the port queue the tool measures, and names what is star
   // exists; moving any of them is a change to what the queue tells a reader to
   // pick up, so it moves the page too.
   assert.deepEqual(report.port_blockers.records_schema,
-    ['distributePolicyAcknowledgment', 'generateAIReport', 'sendExpirationNotifications'],
+    ['generateAIReport', 'sendExpirationNotifications'],
     'the startable set changed; re-read what each entry now waits on and move AGENTS.md with it');
   for (const name of report.port_blockers.records_schema) {
     assert.ok(page.includes(name), `AGENTS.md should name ${name} as startable`);
@@ -878,8 +878,8 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   );
   const counts = Object.fromEntries(Object.entries(report.port_blockers).map(([key, names]) => [key, names.length]));
   assert.deepEqual(counts, { entity_not_carried: 0, entity_authorization: 7, patient_access_model: 0,
-    records_schema: 3, files: 12, ported_function: 0, core_integration: 0, pdf_rendering: 0,
-    external_secret: 2, none: 75 });
+    records_schema: 2, files: 12, ported_function: 0, core_integration: 0, pdf_rendering: 0,
+    external_secret: 2, none: 76 });
   // The correction this distribution records: `records_schema` had come to mean
   // "touches an entity", and only 25 of those 94 were ever waiting on the
   // record store. Thirty-four read an entity that gets no table here at all,
@@ -950,13 +950,13 @@ test('the port queue is work that cannot start yet, and says why', async () => {
   // nothing waits on a shared prerequisite either — so from here the bucket
   // only falls by ports being written, which is what took it off 76.
   //
-  // It is 3 again, and that is a queue reading correctly rather than a
-  // regression: D84 moved three capabilities OUT of `entity_not_carried` by
-  // settling their one uncarried leg, and what each needs now is its port
-  // written against a store that exists. A bucket that only ever falls is a
-  // bucket nobody can move work into.
+  // It went to 3 and is 2, and BOTH directions are the queue reading
+  // correctly: D84 moved three capabilities OUT of `entity_not_carried` by
+  // settling their one uncarried leg, and D89 then wrote the first of the
+  // three. A bucket that only ever falls is a bucket nobody can move work
+  // into, and one that never falls is a queue nobody is clearing.
   assert.deepEqual(report.port_blockers.records_schema,
-    ['distributePolicyAcknowledgment', 'generateAIReport', 'sendExpirationNotifications']);
+    ['generateAIReport', 'sendExpirationNotifications']);
   // The thirty-eight that left it are the ported capabilities that touch clinical rows
   // — D26's patient pair, then the visit and document pairs on the same
   // machinery, then the patient write and mutation, then the visit pair that
@@ -1055,6 +1055,7 @@ test('the port queue is work that cannot start yet, and says why', async () => {
       'appendPatientNoteHistory', 'auditDataQuality', 'cancelTimeOffRequest',
       'checkAdrDeadlines', 'checkExpiredInvitations',
       'createAuthorizedPatient', 'createAuthorizedVisit', 'createNotification',
+      'distributePolicyAcknowledgment',
       'expandClinicalPhrase',
       'extractClinicalEvents',
       'extractReferralDataForSmartNote',
@@ -1527,13 +1528,13 @@ test('a capability whose only entities are the claims helper is not waiting on t
     assert.equal(names.includes('autoImportPatients'), false);
   }
   // The bucket reached zero under D75, by finding the last entry had been
-  // paused at source all along, and it is 3 again under D84 — which is the
-  // queue working rather than failing. Those three are carried capabilities
-  // whose one uncarried leg is now settled with a named successor, so what
-  // each waits on is its own port against a store that exists. A count that
-  // only ever falls cannot represent work arriving.
+  // paused at source all along, went to 3 under D84 — which is the queue
+  // working rather than failing, since those are carried capabilities whose
+  // one uncarried leg now has a named successor — and is 2 since D89 wrote
+  // the first of them. A count that only ever falls cannot represent work
+  // arriving, and one that only ever rises is a queue nobody is clearing.
   assert.deepEqual(report.port_blockers.records_schema,
-    ['distributePolicyAcknowledgment', 'generateAIReport', 'sendExpirationNotifications']);
+    ['generateAIReport', 'sendExpirationNotifications']);
 });
 
 test('a flag pinned true pauses a handler exactly as one pinned false does', () => {

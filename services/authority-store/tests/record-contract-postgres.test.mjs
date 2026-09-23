@@ -522,3 +522,96 @@ test('the point schedule is held by the index, and history may still sit beside 
     assert.equal((await setup.query(
       `select count(*)::int as n from ${SCHEMA}."visit_point_config"`)).rows[0].n, 4);
   }));
+
+/*
+ * ---------------------------------------------------------------------------
+ * D89: the third contract key, and the first declared BEFORE its race shipped.
+ *
+ * `distributePolicyAcknowledgment`'s own header claims it is "idempotent
+ * within a version on (policy_id, policy_version, user_id)" and its own
+ * comment admits the hole in the same breath: "Concurrent distributes can
+ * still race the prefetch->create gap." That is the shape D78 was written
+ * about, one more time, and here it is the whole capability rather than an
+ * edge — an administrator whose browser sent the request twice gives every
+ * nurse in the agency two assignments of one policy, both overdue.
+ *
+ * The order of assertion is the same as the two above and the reading of it is
+ * NOT, which was found by running the sabotage rather than by reasoning about
+ * it. With this index alone commented out of the generated migration, the
+ * second caller still blocks — on `notification_dedupe_key_unique`, which
+ * keys the same (policy, version, person) through the mint — and then goes on
+ * to write the duplicate assignment anyway. So here `blocked` is not the
+ * claim; the COUNTS are, and the block assertion only holds the timing still.
+ * Commenting out both indexes is what makes `blocked` fail, and it is worth
+ * knowing that the two back each other up: a store missing the distribution
+ * key serializes its distributions and still double-assigns.
+ */
+const POLICY = 'policy-race';
+const distribute = client => client.query(
+  'select "public"."pennsync_contract_policy_distribute"($1,$2,$3,$4,$5) as result',
+  [A, POLICY, null, null, null]).then(result => result.rows[0].result);
+const policy = setup => setup.query(`insert into ${SCHEMA}."policy_library"
+  ("source_app_id","id","agency_id","title","policy_number","doc_url","version","status")
+  values ($1,$2,$3,'Hand Hygiene','HH-1','https://example.invalid/p.pdf','3','active')`,
+[APP, POLICY, A]);
+
+test('two concurrent distributions assign each person once, not twice',
+  () => lab(async ({ connect, setup }) => {
+    await policy(setup);
+    const first = await connect(); const second = await connect();
+    await begin(first, MANAGER_A); await begin(second, MANAGER_A);
+    // The administrator who clicked twice, or two administrators acting on the
+    // same compliance deadline. Neither transaction can see the other's
+    // uncommitted rows, so both prefetches find nothing and both reach the
+    // insert — which is exactly what the original's prefetched set could not
+    // prevent and what its create-read-delete compensation tried to clean up
+    // afterwards.
+    const winner = await distribute(first);
+    assert.equal(winner.success, true);
+    assert.ok(winner.distributed > 1, 'the roster is big enough for this to mean something');
+    const pending = tracked(distribute(second));
+    await blocked(setup, second, 'the second distribution');
+    await first.query('commit');
+    const loser = await pending;
+    // ANSWERED rather than refused, like the point schedule and unlike the
+    // timesheet: distributing a policy twice is a legitimate request, and the
+    // right answer is that nobody needed assigning. It is the SAME answer the
+    // uncontended second call gives, which is the property that matters — a
+    // caller cannot tell whether it raced.
+    assert.equal(loser.ok, true, `the loser refused: ${loser.error?.message}`);
+    assert.equal(loser.value.distributed, 0, 'nobody was assigned a second time');
+    assert.equal(loser.value.skipped, winner.distributed);
+    assert.equal(loser.value.candidates, winner.candidates);
+    await second.query('commit');
+    const rows = await setup.query(
+      `select "user_id", count(*)::int as n from ${SCHEMA}."policy_acknowledgment"
+       where "policy_id" = $1 group by "user_id" order by "user_id"`, [POLICY]);
+    assert.equal(rows.rowCount, winner.distributed, 'one row per person');
+    assert.deepEqual(rows.rows.map(row => row.n), rows.rows.map(() => 1),
+      'and not one of them is doubled');
+  }));
+
+test('the distribution key is the table\'s, and a prior version stands beside it',
+  () => lab(async ({ setup }) => {
+    // The constraint is the table's rather than the capability's, so a future
+    // writer meets the same refusal — and it is WHOLE-table rather than
+    // partial, because an acknowledgment of a superseded version is the
+    // compliance record that the person acknowledged that version.
+    await policy(setup);
+    const row = (id, version, user) => setup.query(
+      `insert into ${SCHEMA}."policy_acknowledgment"
+       ("source_app_id","id","agency_id","policy_id","policy_version","user_id")
+       values ($1,$2,$3,$4,$5,$6)`, [APP, id, A, POLICY, version, user]);
+    await row('ack-1', '3', 'clinician-a@example.invalid');
+    await assert.rejects(() => row('ack-2', '3', 'clinician-a@example.invalid'),
+      error => /duplicate key value|unique constraint/.test(String(error?.message)));
+    // A NEW version of the same policy is a new assignment for the same person.
+    await row('ack-3', '4', 'clinician-a@example.invalid');
+    // And another agency's assignment is not this one's duplicate, which is
+    // what putting `agency_id` first in the key buys.
+    await setup.query(`insert into ${SCHEMA}."policy_acknowledgment"
+      ("source_app_id","id","agency_id","policy_id","policy_version","user_id")
+      values ($1,'ack-b','agency-b',$2,'3','clinician-a@example.invalid')`, [APP, POLICY]);
+    assert.equal((await setup.query(
+      `select count(*)::int as n from ${SCHEMA}."policy_acknowledgment"`)).rows[0].n, 3);
+  }));
