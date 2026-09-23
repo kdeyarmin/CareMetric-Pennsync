@@ -88,6 +88,6 @@ async function main() {
 // Only run when invoked directly (allows importing applyHelpers in tests).
 // Use pathToFileURL so the comparison is robust to relative paths / spaces —
 // a bare `file://${process.argv[1]}` can be a malformed URL and silently skip main().
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   main().catch((err) => { console.error(err); process.exit(1); });
 }

@@ -65,6 +65,7 @@
  */
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { pathToFileURL } from 'node:url';
 
 export const BACKFILL_CONTRACT = 'cm.pennsync.assignment-backfill.v2';
 /** The roles the record store's `caller_assigned_patients` actually honours. */
@@ -342,6 +343,9 @@ export async function main(args = process.argv.slice(2), { log = console.log, re
   }
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
+// Direct-invocation check through pathToFileURL: a hand-built `file://`
+// string never matches a Windows backslash path or a percent-encoded one,
+// and the CLI then exits 0 having silently done nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.exit(await main());
 }

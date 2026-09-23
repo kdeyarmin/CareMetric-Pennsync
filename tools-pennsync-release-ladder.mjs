@@ -41,7 +41,7 @@
  */
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 // The ledger's own identity for a migration, imported rather than reproduced:
 // an operator checking a prerequisite queries `supabase_migrations.schema_migrations`,
 // whose `version` is the file's whole STEM, so printing the file name alone
@@ -771,7 +771,10 @@ async function main(argv, root, write) {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Direct-invocation check through pathToFileURL: a hand-built `file://`
+// string never matches a Windows backslash path or a percent-encoded one,
+// and the CLI then exits 0 having silently done nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)));
   try {
     process.exitCode = await main(process.argv.slice(2), root, message => console.log(message));

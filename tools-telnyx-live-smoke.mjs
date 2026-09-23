@@ -14,6 +14,8 @@
 // Exit code is non-zero if any check fails (auth/resource), so it can gate CI
 // or a deploy step when a key is available.
 
+import { pathToFileURL } from 'node:url';
+
 const API = "https://api.telnyx.com/v2";
 
 // The Call Control / Programmable-Fax events the webhook state machine relies
@@ -139,7 +141,11 @@ export async function runSmoke({
 }
 
 // CLI entry — only runs when invoked directly, not when imported by the test.
-const invokedDirectly = process.argv[1] && import.meta.url === `file://${process.argv[1]}`;
+// Direct-invocation check through pathToFileURL: a hand-built `file://`
+// string never matches a Windows backslash path or a percent-encoded one,
+// and the CLI then exits 0 having silently done nothing.
+const invokedDirectly = process.argv[1]
+  && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
   const args = parseArgs(process.argv.slice(2));
   const cfg = {

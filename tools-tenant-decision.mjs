@@ -43,6 +43,7 @@
  */
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { BLOCKING_KINDS, buildPaths, isActorColumn, normalize, readEntity } from './tools-tenant-path.mjs';
 import { ENTITY_DIRECTORY, censusEntity } from './tools-file-reference-census.mjs';
 import { DISPOSITION_FILE } from './tools-entity-schema-plan.mjs';
@@ -356,7 +357,10 @@ export function checkDecisions(repository = process.cwd()) {
   return { blocking: blocking.length, counts, stamped, brokered: brokered.length, problems: problems.sort() };
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Direct-invocation check through pathToFileURL: a hand-built `file://`
+// string never matches a Windows backslash path or a percent-encoded one,
+// and the CLI then exits 0 having silently done nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const report = checkDecisions(process.cwd());
   if (report.problems.length) {
     for (const problem of report.problems) console.error(`  ${problem}`);

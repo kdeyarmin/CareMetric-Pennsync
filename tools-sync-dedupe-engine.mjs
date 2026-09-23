@@ -47,7 +47,7 @@ export function extractEmbeddedEngine(entrySrc) {
 }
 
 // Run as a CLI (not when imported by the test).
-if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const check = process.argv.includes('--check');
   const next = await buildEntrySource();
   const current = await readFile(ENTRY_PATH, 'utf8');

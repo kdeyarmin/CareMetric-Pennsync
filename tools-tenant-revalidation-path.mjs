@@ -44,7 +44,7 @@
  */
 import { readFileSync } from 'node:fs';
 import { dirname, relative, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 // The cousin gate already solved reading a call out of JavaScript with a
 // scanner: `callText` balances parentheses so a nested call cannot end the
 // payload early, and `codeOnly` blanks strings and comments so a name inside
@@ -217,7 +217,10 @@ function main(argv, root, write) {
   return 0;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// Direct-invocation check through pathToFileURL: a hand-built `file://`
+// string never matches a Windows backslash path or a percent-encoded one,
+// and the CLI then exits 0 having silently done nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const root = resolve(dirname(fileURLToPath(import.meta.url)));
   try {
     process.exitCode = main(process.argv.slice(2), root, message => console.log(message));
