@@ -52,7 +52,7 @@ plan's status table reads as progress without saying where the progress lives.
 | --- | ---: | ---: |
 | Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
 | Record store migrations (store, brokers, 51 contracts, purpose policies, file map) | 54 | ~~0~~ **54** — applied 2026-09-21 |
-| Ported handlers registered in `services/pennsync-api/handlers.mjs` | 75 | ~~0~~ **74 deployed, 0 released** — deployed 2026-09-22; the 75th (`generatePatientHandout`, D81) ships with the next deploy |
+| Ported handlers registered in `services/pennsync-api/handlers.mjs` | 77 | ~~0~~ **74 deployed, 0 released** — deployed 2026-09-22; the 75th (`generatePatientHandout`, D81) and the two account emails (D86) ship with the next deploy |
 | Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ **2 deployed, paused** — 2026-09-22 |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
 
@@ -71,14 +71,37 @@ and D, not more schema.
 The port queue, measured today rather than quoted:
 
 ```
-port queue: entity_not_carried=7 entity_authorization=8 files=12
-            core_integration=2 external_secret=2 none=73
+port queue: entity_authorization=7 records_schema=3 files=12
+            external_secret=2 none=75
 ```
 
-104 carried capabilities, 73 written, 31 blocked (2026-09-22, after D81 wrote
-`generatePatientHandout`). **No blocker in that list is the record store, and
-none is another port.** The remaining 31 need a decision,
-the file layer, a brokered send, or a new brokered operation — not more schema.
+99 carried capabilities, 75 written, 24 blocked (2026-09-23, after D82 to D87
+took the remaining decisions). Four buckets emptied and one reappeared, and both
+halves of that are the point:
+
+- `entity_not_carried` **7 → 0** (D84). Three of the seven were in the wrong
+  place — two follow D8 to the Hub, one is the read side of the comms domain D7
+  carries paused. The other four are carried capabilities with one uncarried
+  LEG, now settled per capability in the manifest's `uncarried_legs` block with
+  what serves each leg instead.
+- `core_integration` **2 → 0** (D86). Both are ported, as the caller gate plus
+  the original's own paused answer. That does **not** mean the send was
+  released: D56 is untouched, and `SendEmail` is still not a brokered operation.
+- `entity_authorization` **8 → 7**. D83 took two out by retiring them — a
+  `global` reference table is written by migration, never at runtime — and D84
+  put `offboardUser` in, where the measurement always said it belonged. D82
+  settled the profile-write path and moved none of them, because all six write
+  somebody else's row, a column outside the allowlist, or a payload nothing can
+  read.
+- `records_schema` **0 → 3**, which is the queue working rather than regressing:
+  three capabilities left "blocked on a schema" for "its port is not written
+  yet", against a store that exists.
+
+**No blocker in that list is the record store, and none is another port.** The
+remaining 24 are: the administrative profile-write path (7), three ports to
+write, the file layer (12, and D85 re-measured that blocker as real — carrying
+the bytes needs the integration runtime's authorization model changed), and a
+transcription vendor (2, D87).
 
 ## 2. The critical path
 
@@ -1124,15 +1147,19 @@ first pass here looked for each capability as a quoted string and reported 18
 outstanding, because `handlers.mjs` registers them as bare object keys. The
 answer was 0. That is D47's lesson once more — read the shape from the tree.
 
-Each bucket needs a different thing, and only one of them is code:
+Re-measured after D82 to D87 (2026-09-23), which settled every decision this
+table was waiting on. It used to say that only one bucket was code; the
+reverse is now true. What is left is one decision that belongs to another
+service, and ports that are simply not written yet.
 
 | Blocker | Count | What it needs |
 | --- | ---: | --- |
-| `files` | 12 | Stage H. The mapping, resolver and planner are built (D77); the bytes are not copied |
-| `entity_authorization` | 8 | A decision, twice. Six UPDATE a profile, which D23 left open deliberately; two write `MedicareGuideline`, a `global` table no tenant surface may write — they need a platform ingestion path, not a caller-facing handler |
-| `entity_not_carried` | 7 | A disposition conversation. These read training records, paused comms logs and real-time metrics from domains that are going away |
-| `core_integration` | 2 | An owner's decision to broker `Core.SendEmail`, which the runtime already implements. Both are capabilities whose whole body is the send; this is a release gate, not a build |
-| `external_secret` | 2 | A new brokered operation for audio transcription, with the reservation, quota, encrypted result and audit the other seven have — over a PHI payload. A capability to design |
+| `files` | 12 | Stage H, and one decision that is not this repository's. D85 re-measured D77 and it holds: the integration runtime serves a stored object only to its uploader, and a migrated object has no uploader. The mapping, resolver and planner are built; the bytes are not copied. Four different things in one bucket — 2 wait only on the reader model, 5 need the copy and the reader model, 5 have a write leg that needs neither, and 1 has two further blockers |
+| `entity_authorization` | 7 | Ports to write, not decisions. D82 settled D23's open profile-write path at the caller's own row, and these are the seven admin and scheduled paths it deliberately does NOT reach: `autoApproveInvitedUser`, `autoEndDutyDay`, `enforceStaffRoleIntegrity`, `offboardUser`, `setNurseDutyStatus`, `userManagement`, `userManagementV2`. D83 took the two `MedicareGuideline` writers out of this bucket by retiring them: a `global` table is written by migration |
+| `records_schema` | 3 | Ports to write. Three of the four capabilities D84 kept as `port` with an uncarried leg moved here (the fourth, `offboardUser`, moved to `entity_authorization`), which is the queue working: "blocked on a schema" became "its port is not written yet", against a store that exists |
+| `external_secret` | 2 | A new brokered operation for audio transcription, with the reservation, quota, encrypted result and audit the other seven have — over a PHI payload. Designed in D87; the key stays unwired, and `generateNoteFromRecording` has two further blockers that no key clears (the owned bucket's MIME set admits no audio, and it pins a model the broker does not accept) |
+| ~~`entity_not_carried`~~ | 0 | Settled by D84. Three changed destination, four stayed `port` with the leg recorded in `uncarried_legs` |
+| ~~`core_integration`~~ | 0 | Emptied by D86, which ported both capabilities as the caller gate and the D56 pause. Releasing `Core.SendEmail` is now a flag flip rather than a build, and it stays the owner's |
 
 ### Stage H — Files (size M, can start once the production bucket exists)
 
@@ -1359,8 +1386,8 @@ misunderstanding:
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this. **Four are already accepted, mapped and verified as of 2026-09-22**; six remain |
 | ~~The publishable (anon) key and a sign-in credential for the four accepted accounts~~ | ~~Stage A claim 4, Stage C~~ | **Withdrawn 2026-09-22 — the owner declined to use the staging accounts.** Nothing is owed here. Stage A claim 4 stands on the composition recorded in that stage instead, and the one leg it cannot reach is named there |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
-| A decision to broker `Core.SendEmail` | Stage G | Unblocks 2 ports whose whole body is the send, and the email action of a third — `generatePatientHandout`, whose document half is ported (D81). The runtime already implements it |
-| Dispositions for 7 capabilities on retiring domains | Stage G | Training records, paused comms logs, real-time metrics |
+| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. What the yes still costs is named in `services/pennsync-api/account-email.mjs`: broker `SendEmail`, carry the field checks and the renderer that the pause makes unreachable, and delete the two refusals |
+| ~~Dispositions for 7 capabilities on retiring domains~~ | Stage G | **Settled by D84 (2026-09-23), and the description of them was wrong.** Measured, the 7 split 3 and 4. Three belong to a retiring domain and change destination: `analyzeNurseDeficits` and `analyzeRealTimePerformance` to the hub, `getCommsDashboard` to preserved-paused. The other four — `distributePolicyAcknowledgment`, `generateAIReport`, `offboardUser`, `sendExpirationNotifications` — are carried capabilities that touch one uncarried entity in passing, so they stay `port` with that leg settled by name and reason in `tools-transition-disposition.json`'s `uncarried_legs`, which the tool re-checks against the tree rather than trusts. None of the four leaves the queue: each moves on to its next real blocker. `fetchMedicareGuideline` and `scheduledGuidelineSync` also stop being carried, but that is D83 and they were never in this bucket |
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
 | Base44 owner-signed export permits | Stage I | Production and legacy apps |

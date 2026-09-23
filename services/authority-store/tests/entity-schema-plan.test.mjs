@@ -57,10 +57,15 @@ test('every table forces row level security and carries exactly the policies its
   // operation is what denies it:
   //
   // - `global`, a platform reference table every agency reads and no tenant
-  //   surface writes, and `roster`, which is `User` — D23 serves the roster
-  //   from the authority store's membership and deliberately leaves the
-  //   profile-write path undecided, so a write policy would decide it by
-  //   accident. One policy each.
+  //   surface writes. One policy, and D83 is why it stays one: a `global` row
+  //   is written by migration, never at runtime.
+  // - `roster`, which is `User`. Two: the read D23 decided, and the self-update
+  //   D82 decided. NOT four — there is no insert and no delete, because a
+  //   profile row is enrolment's to create and nobody's to remove, and no
+  //   cross-user write, because the update policy names `caller_user_id()`
+  //   rather than the roster. The column half of D82 is a trigger and is
+  //   checked in `record-tenant-isolation.test.mjs`, since a policy cannot see
+  //   `old`.
   // - An entity whose own schema calls the ROW immutable or append-only gets a
   //   read and an insert and NO update or delete, so a rewrite is refused from
   //   everyone including the record owner. Two policies.
@@ -69,9 +74,9 @@ test('every table forces row level security and carries exactly the policies its
   // A count outside that set is a table silently denying or silently
   // permitting.
   const byTable = new Map(rows.map(row => [row.relname, row.policies]));
-  const readOnly = new Set(['global', 'roster']);
-  const expected = entity => (readOnly.has(entity.tenant_decision) ? 1
-    : entity.append_only ? 2 : 4);
+  const expected = entity => (entity.tenant_decision === 'global' ? 1
+    : entity.tenant_decision === 'roster' ? 2
+      : entity.append_only ? 2 : 4);
   for (const entity of plan.entities) {
     assert.equal(byTable.get(entity.table), expected(entity),
       `${entity.entity} (${entity.tenant_decision ?? 'derived'}) has the wrong number of policies`);
@@ -92,19 +97,33 @@ test('every table forces row level security and carries exactly the policies its
     'an append-only table carries select and insert policies and nothing else');
   const roster = plan.entities.filter(entity => entity.tenant_decision === 'roster');
   assert.deepEqual(roster.map(entity => entity.entity), ['User'], 'User is the one roster table');
-  // And its one policy reads the authority store rather than the row: the
-  // column the subject can rewrite is not narrowed here, it is not consulted.
+  // And neither of its policies reads the row's own tenant columns: the ones
+  // the subject can rewrite are not narrowed here, they are not consulted. The
+  // read asks the authority store who the caller shares an agency with (D23);
+  // the update asks who the caller IS (D82). Nothing else is emitted — no
+  // insert and no delete — so a person can neither create nor remove a profile
+  // row, and no policy admits a write to somebody else's.
   const { rows: predicate } = await db.query(`
-    select pg_catalog.pg_get_expr(p.polqual, p.polrelid) as using_expr, p.polcmd
+    select pg_catalog.pg_get_expr(p.polqual, p.polrelid) as using_expr,
+           pg_catalog.pg_get_expr(p.polwithcheck, p.polrelid) as check_expr, p.polcmd
     from pg_policy p join pg_class c on c.oid = p.polrelid
     join pg_namespace n on n.oid = c.relnamespace
-    where n.nspname = $1 and c.relname = 'user'`, [SCHEMA]);
-  assert.equal(predicate.length, 1);
-  assert.equal(predicate[0].polcmd, 'r', 'select only');
-  assert.match(predicate[0].using_expr, /caller_roster_ids/);
+    where n.nspname = $1 and c.relname = 'user' order by p.polcmd`, [SCHEMA]);
+  assert.deepEqual(predicate.map(row => row.polcmd), ['r', 'w'], 'select and update, nothing else');
+  const [read, update] = predicate;
+  assert.match(read.using_expr, /caller_roster_ids/);
+  assert.equal(read.check_expr, null);
+  // `with check` as well as `using`, so a row cannot be updated OUT of the
+  // caller's ownership any more than into it.
+  assert.match(update.using_expr, /caller_user_id/);
+  assert.match(update.check_expr, /caller_user_id/);
+  assert.ok(!update.using_expr.includes('caller_roster_ids'),
+    'the update must name the caller, not the roster: sharing an agency is not owning the row');
   for (const column of ['agency_id', 'agency_name', 'account_type', 'role']) {
-    assert.ok(!predicate[0].using_expr.includes(column),
-      `the roster predicate must not read ${column}, which the subject can rewrite`);
+    for (const expression of [read.using_expr, update.using_expr, update.check_expr]) {
+      assert.ok(!expression.includes(column),
+        `no user policy may read ${column}, which the subject can rewrite`);
+    }
   }
 });
 

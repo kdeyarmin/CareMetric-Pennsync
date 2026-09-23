@@ -5932,6 +5932,29 @@ create policy "transcription_learning_delete" on "pennsync_records"."transcripti
 
 create policy "user_read" on "pennsync_records"."user" for select using ("user"."source_app_id" = "pennsync_records".deployment_app() and "user"."id" in (select "pennsync_records".caller_roster_ids()));
 
+create function "pennsync_records"."user_self_write_guard"() returns trigger
+  language plpgsql set search_path = '' as $guard$
+declare v_changed text;
+begin
+  select string_agg(f.key, ', ' order by f.key) into v_changed
+  from jsonb_each(to_jsonb(new)) as f(key, value)
+  where f.key <> all (array['updated_date', 'favorited_pages', 'favorited_patients', 'preferred_language', 'notification_settings', 'fax_notification_preferences', 'two_factor_enabled', 'phone', 'phone_number', 'personal_cell_e164', 'duty_status', 'duty_on_since', 'off_duty_message', 'scheduled_off_duty_start', 'scheduled_off_duty_end', 'scheduled_off_duty_recurring', 'saved_signature'])
+    and f.value is distinct from (to_jsonb(old) -> f.key);
+  if v_changed is not null then
+    raise exception using errcode = '42501',
+      message = 'PENNSYNC_PROFILE_FIELD_NOT_SELF_WRITABLE: ' || v_changed;
+  end if;
+  return new;
+end $guard$;
+
+revoke all on function "pennsync_records"."user_self_write_guard"() from public;
+
+create trigger "user_self_write_guard" before update on "pennsync_records"."user" for each row execute function "pennsync_records"."user_self_write_guard"();
+
+create policy "user_update" on "pennsync_records"."user" for update using ("user"."source_app_id" = "pennsync_records".deployment_app() and "user"."id" = "pennsync_records".caller_user_id()) with check ("user"."source_app_id" = "pennsync_records".deployment_app() and "user"."id" = "pennsync_records".caller_user_id());
+
+-- user: no insert or delete policy; a profile row is enrolment's to create and nobody's to remove. Cross-user writes are D82's open half.
+
 create policy "user_favorite_read" on "pennsync_records"."user_favorite" for select using ("user_favorite"."source_app_id" = "pennsync_records".deployment_app() and "user_favorite"."user_email" = "pennsync_records".caller_email());
 
 create policy "user_favorite_insert" on "pennsync_records"."user_favorite" for insert with check ("user_favorite"."source_app_id" = "pennsync_records".deployment_app() and "user_favorite"."user_email" = "pennsync_records".caller_email());

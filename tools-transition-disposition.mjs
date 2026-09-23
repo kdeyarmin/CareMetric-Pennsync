@@ -31,7 +31,7 @@ import { fileURLToPath } from 'node:url';
 import { OPERATIONS } from './services/integration-runtime/contracts.mjs';
 
 export const FORMAT = 'pennsync-transition-disposition';
-export const FORMAT_VERSION = 2;
+export const FORMAT_VERSION = 3;
 export const MANIFEST_FILE = 'tools-transition-disposition.json';
 export const FAMILIES = Object.freeze(['functions', 'entities', 'workflows', 'integrations']);
 export const DISPOSITIONS = Object.freeze(['port', 'broker', 'hub', 'retire', 'preserved_paused', 'undecided']);
@@ -290,13 +290,79 @@ export function entitiesTouched(source, known = null) {
   // unwritable at the same time. A reference to the entity followed by a
   // mutating call is the same shape in all three access forms above, so one
   // pass over the names finds it.
+  const columns = {};
   for (const name of names) {
     const escaped = name.replace(/[$]/g, '\\$&');
-    if (new RegExp(`\\b${escaped}\\s*\\.\\s*(?:${MUTATING.join('|')})\\s*\\(`).test(source)) writes.add(name);
+    const call = new RegExp(`\\b${escaped}\\s*\\.\\s*(?:${MUTATING.join('|')})\\s*\\(`, 'g');
+    if (!call.test(source)) continue;
+    writes.add(name);
+    // WHICH columns, not just that it writes. A store can permit a NARROWED
+    // write — D82 lets a person change their own duty status and refuses every
+    // other column of the same row — and "writes this entity" cannot tell a
+    // capability the narrowing covers from one it does not.
+    //
+    // `null` means the payload could not be read, and it is not the same as
+    // "no columns": `userManagement` passes an `updates` object assembled
+    // earlier, so nothing here can say what it sets. Unknown is treated as
+    // outside the narrowing, which is what keeps a payload nobody can see from
+    // reading as a payload that writes nothing.
+    columns[name] = writtenColumns(source, escaped);
   }
   const keep = name => !known || known.has(name);
   const list = [...names].filter(keep).sort();
-  return { names: list, dynamic, writes: [...writes].filter(keep).sort() };
+  const written = [...writes].filter(keep).sort();
+  return {
+    names: list,
+    dynamic,
+    writes: written,
+    writeColumns: Object.fromEntries(written.map(name => [name, columns[name]])),
+  };
+}
+
+/**
+ * The column names a module passes to a mutating call on one entity, or `null`
+ * when any of those calls hands over something this cannot read.
+ *
+ * Deliberately shallow: it takes the top-level keys of an object literal and
+ * refuses anything else — a spread, an identifier, a call. A nested object is
+ * a column holding JSON, so its own keys are not columns and are not walked.
+ */
+export function writtenColumns(source, escaped) {
+  const found = new Set();
+  const call = new RegExp(`\\b${escaped}\\s*\\.\\s*(?:${MUTATING.join('|')})\\s*\\(`, 'g');
+  for (const match of source.matchAll(call)) {
+    const open = source.indexOf('{', match.index + match[0].length - 1);
+    const stop = source.indexOf(')', match.index + match[0].length - 1);
+    // A mutating call with no object literal before its closing paren is
+    // passing a variable, a spread or nothing readable.
+    if (open < 0 || (stop >= 0 && stop < open)) return null;
+    let depth = 0; let end = -1;
+    for (let i = open; i < source.length; i += 1) {
+      if (source[i] === '{') depth += 1;
+      else if (source[i] === '}') { depth -= 1; if (depth === 0) { end = i; break; } }
+    }
+    if (end < 0) return null;
+    const body = source.slice(open + 1, end);
+    // Top level only: strip nested braces, brackets and parentheses so a JSON
+    // column's own keys and a helper call's arguments are not mistaken for
+    // columns of this table.
+    let level = 0; let flat = '';
+    for (const character of body) {
+      if ('{[('.includes(character)) level += 1;
+      else if (')]}'.includes(character)) level -= 1;
+      else if (level === 0) flat += character;
+      if (level === 0 && ')]}'.includes(character)) flat += ' ';
+    }
+    for (const part of flat.split(',')) {
+      const key = part.split(':')[0].trim();
+      if (!key) continue;
+      // A spread, a shorthand or a computed key: the payload is not fully
+      // readable, so the whole call is unknown rather than partly known.
+      if (!/^[A-Za-z_$][\w$]*$/.test(key) && !/^'[a-z_][a-z0-9_]*'$/.test(key)) return null;
+      found.add(key.replace(/'/g, ''));
+    }
+  }
+  return [...found].sort();
 }
 
 export function discoverEntityReach(repository, known = null) {
@@ -689,6 +755,8 @@ export function discoverEvidence(repository) {
     activityTrail: discoverActivityTrail(repository),
     chartScope: discoverChartScope(repository),
     claimsOnlyFunctions: discoverClaimsOnlyFunctions(repository),
+    columnNarrowing: discoverColumnNarrowing(repository),
+    schedulerAuthFunctions: discoverSchedulerAuthFunctions(repository),
   };
 }
 
@@ -756,6 +824,66 @@ export function discoverPolicylessEntities(repository) {
   return Object.keys(policies).filter(entity => !policies[entity].read).sort();
 }
 
+/**
+ * Where the store permits only PART of a write, per entity, read from the
+ * column guard it emits rather than from the decision that asked for it.
+ *
+ * D82 is the first narrowing of this kind: `user` gains an update policy and a
+ * trigger that admits a named set of columns and raises on everything else. A
+ * classifier that asked only "may this table be written" would report all eight
+ * of its writers unblocked the moment that policy appeared, which is the same
+ * mistake in the other direction as the one D23 caught — there the question was
+ * reading versus writing, here it is writing versus writing SOME OF IT.
+ *
+ * The allowlist is parsed out of the generated SQL for the same reason the
+ * policies are: a second copy kept by hand is a copy that drifts, and this one
+ * would drift silently, because a column added to the guard and not added here
+ * fails nothing.
+ */
+export function discoverColumnNarrowing(repository) {
+  let sql; let plan;
+  try {
+    sql = readFileSync(join(repository,
+      'services/authority-store/supabase/record-migrations/20260919170000_record_store.sql'), 'utf8');
+    plan = JSON.parse(readFileSync(join(repository, 'tools-entity-schema-plan-expectations.json'), 'utf8')).entities;
+  } catch { return {}; }
+  const byTable = new Map((Array.isArray(plan) ? plan : []).map(entry => [entry.table, entry.entity]));
+  const narrowing = {};
+  for (const [, table, allowed] of sql.matchAll(
+    /create function "pennsync_records"\."([a-z0-9_]+)_self_write_guard"\(\)[\s\S]*?array\[([^\]]*)\]/g)) {
+    const entity = byTable.get(table);
+    if (!entity) continue;
+    narrowing[entity] = [...allowed.matchAll(/'([a-z_][a-z0-9_]*)'/g)].map(match => match[1]).sort();
+  }
+  return narrowing;
+}
+
+/**
+ * Functions whose only caller is the scheduler, and why that decides a write.
+ *
+ * `schedulerAuth` admits a shared secret in place of a person. A narrowing
+ * written as "the caller's own row" — which is what D82's update policy says,
+ * naming `caller_user_id()` — admits nothing at all to such a caller, because
+ * there is no caller to be. So a scheduled sweep is blocked by a self-scoped
+ * write however harmless the columns it touches look: `autoEndDutyDay` writes
+ * `duty_status` and `duty_on_since`, both of them inside D82's allowlist, on
+ * every on-duty person in the deployment.
+ *
+ * Read from the shared-helper fence the generator stamps, so the signal is the
+ * helper the module actually carries rather than a guess from its name.
+ */
+export const SCHEDULER_AUTH_FENCE = '<<<BEGIN SHARED HELPER: schedulerAuth';
+export function discoverSchedulerAuthFunctions(repository) {
+  const root = join(repository, 'base44/functions');
+  const scheduled = [];
+  for (const name of listDirectories(root)) {
+    let source;
+    try { source = readFileSync(join(root, name, 'entry.ts'), 'utf8'); } catch { continue; }
+    if (source.includes(SCHEDULER_AUTH_FENCE)) scheduled.push(name);
+  }
+  return scheduled.sort();
+}
+
 export function discoverCapabilities(repository) {
   return {
     functions: listDirectories(join(repository, 'base44/functions')),
@@ -771,7 +899,8 @@ export function parseManifest(raw) {
   if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) throw new Error('MANIFEST_INVALID_SHAPE');
   if (manifest.format !== FORMAT || manifest.version !== FORMAT_VERSION) throw new Error('MANIFEST_UNSUPPORTED_FORMAT');
   if (!REVIEW_STATES.includes(manifest.review_state)) throw new Error('MANIFEST_INVALID_REVIEW_STATE');
-  const allowed = new Set([...FAMILIES, 'format', 'version', 'review_state', 'retention', 'broker_ceiling']);
+  const allowed = new Set([...FAMILIES, 'format', 'version', 'review_state', 'retention', 'broker_ceiling',
+    'uncarried_legs']);
   if (Object.keys(manifest).some(key => !allowed.has(key))) throw new Error('MANIFEST_UNKNOWN_FIELD');
   // Per-field exemptions from D2's ceiling on `broker`, checked in full by
   // `tools-tenant-decision.mjs`, which can read the schemas. Only the shape is
@@ -786,6 +915,41 @@ export function parseManifest(raw) {
     }
     if (typeof entry.because !== 'string' || entry.because.trim().length < 20) {
       throw new Error('MANIFEST_INVALID_BROKER_CEILING');
+    }
+  }
+  /*
+   * D84. Which uncarried entity a carried capability may keep reaching, and
+   * what serves that leg instead.
+   *
+   * `entity_not_carried` had come to mean "touches a table that will not exist
+   * here", and for four of its seven members that was true of one leg of a
+   * capability whose other eight were carried — `generateAIReport` waits on the
+   * whole record store for two figures in one PDF block. Reading the bucket as
+   * "blocked" sent people away from work that can start; reading it as "fine"
+   * would drop an audit path in a regulated product without anybody noticing,
+   * which is the loss D25 describes.
+   *
+   * So the leg is settled per capability and written down where it fails: the
+   * entities, what serves them instead, and why. `because` is required and has
+   * a floor, exactly as `broker_ceiling` requires one, because a reason nobody
+   * had to write is a reason nobody wrote. `checkCoverage` then refuses an
+   * entry that names a capability which does not reach those entities, so an
+   * entry cannot outlive the leg it settles — the failure this repository has
+   * now recorded nine times.
+   */
+  const legs = manifest.uncarried_legs ?? {};
+  if (typeof legs !== 'object' || Array.isArray(legs)) throw new Error('MANIFEST_INVALID_UNCARRIED_LEGS');
+  for (const entry of Object.values(legs)) {
+    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) throw new Error('MANIFEST_INVALID_UNCARRIED_LEGS');
+    if (!Array.isArray(entry.entities) || !entry.entities.length
+      || entry.entities.some(entity => typeof entity !== 'string' || !entity)) {
+      throw new Error('MANIFEST_INVALID_UNCARRIED_LEGS');
+    }
+    if (typeof entry.served_by !== 'string' || !entry.served_by.trim()) {
+      throw new Error('MANIFEST_INVALID_UNCARRIED_LEGS');
+    }
+    if (typeof entry.because !== 'string' || entry.because.trim().length < 20) {
+      throw new Error('MANIFEST_INVALID_UNCARRIED_LEGS');
     }
   }
   const retention = manifest.retention;
@@ -821,6 +985,8 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
   const policyless = new Set(Array.isArray(evidence.policylessEntities) ? evidence.policylessEntities : []);
   // What the store permits per entity, so a module that only reads a
   // read-only table is not held by the fact that it cannot write one.
+  const settledLegs = Object.fromEntries(Object.entries(manifest.uncarried_legs || {})
+    .map(([name, entry]) => [name, entry.entities]));
   const permits = evidence.entityPolicies && typeof evidence.entityPolicies === 'object'
     ? evidence.entityPolicies : {};
   const careTeam = new Set(Array.isArray(evidence.careTeamDependents) ? evidence.careTeamDependents : []);
@@ -872,6 +1038,14 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
         // paused` one names none, so neither is answered by this table
         // existing even for an entity that shares a name with one of the three.
         if (disposition === 'retire' && audited.has(entity)) continue;
+        // D84: a leg this capability's own manifest entry settles, naming what
+        // serves it instead. Four of the seven this bucket held were a carried
+        // capability with one uncarried leg — two figures in a PDF, a
+        // fire-and-forget summary row — and reporting the whole of each as
+        // blocked on a schema sent people away from work that could start. The
+        // entry is checked against the reach below, so it cannot outlive the
+        // leg; what it cannot do is settle a leg nobody wrote down.
+        if ((settledLegs[name] || []).includes(entity)) continue;
         if (UNCARRIED_DISPOSITIONS.includes(disposition)) return 'entity_not_carried';
       }
       // Every entity it touches is a retired log table the trail already
@@ -916,6 +1090,39 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
         return 'entity_authorization';
       }
       /*
+       * Writable, but only in part. D82 gives `user` an update policy naming
+       * `caller_user_id()` and a trigger admitting a named column set, which
+       * makes "the store permits a write to this table" true and useless: it is
+       * true of a person correcting their own telephone number and true of a
+       * sweep rewriting everyone's approval flag.
+       *
+       * So a narrowed entity is admitted only where the narrowing demonstrably
+       * covers the module, and both halves have to hold:
+       *
+       * - every column it writes is in the emitted allowlist, and the payload
+       *   could be READ. An opaque payload is not an empty one — `userManagement`
+       *   assembles `updates` and hands it over — so unknown counts as outside.
+       * - the module has a caller. A self-scoped policy admits nothing to a
+       *   scheduler secret, whatever columns it touches.
+       *
+       * What this leaves blocked is an administrative write path: changing
+       * somebody else's row, or changing a column the subject may not assert
+       * about themselves. That is the half D82 deliberately did not settle.
+       */
+      const narrowed = evidence.columnNarrowing && typeof evidence.columnNarrowing === 'object'
+        ? evidence.columnNarrowing : {};
+      const scheduled = new Set(evidence.schedulerAuthFunctions || []);
+      const columns = (touched.writeColumns && typeof touched.writeColumns === 'object')
+        ? touched.writeColumns : {};
+      const outsideNarrowing = entity => {
+        const allowed = narrowed[entity];
+        if (!allowed) return false;
+        if (scheduled.has(name)) return true;
+        const uses = columns[entity];
+        return !Array.isArray(uses) || uses.some(column => !allowed.includes(column));
+      };
+      if (written.some(outsideNarrowing)) return 'entity_authorization';
+      /*
        * D65. `classifyWithoutEntities` says in its own comment that the order
        * is right because "a capability that reads a chart AND uploads a file
        * waits on the chart first". That was true while the record store was
@@ -954,6 +1161,7 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
   const retention = manifest.retention || {};
   const retentionUnspecified = [];
   const retentionUnused = [];
+  const legsUnused = [];
   for (const family of FAMILIES) {
     const declared = manifest[family];
     const present = new Set(capabilities[family]);
@@ -1022,10 +1230,27 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
       }
     }
     families[family] = { capabilities: capabilities[family].length, declared: Object.keys(declared).length, counts };
+    // D84. A settled leg that no longer exists is the defect this repository
+    // has recorded nine times, written down once more: an entry that outlives
+    // the reach it describes goes on excusing a capability from a check
+    // nothing fails. So an entry is refused unless its capability is still a
+    // `port` here and still touches every entity it names. Repointing the leg,
+    // porting it or retiring the capability each fail this until the entry
+    // goes with it.
+    if (family === 'functions') {
+      for (const [name, entry] of Object.entries(manifest.uncarried_legs || {})) {
+        const touched = (evidence.entityReach || {})[name];
+        const stale = declared[name] !== 'port' || !touched || touched.dynamic
+          || entry.entities.some(entity => !touched.names.includes(entity)
+            || !UNCARRIED_DISPOSITIONS.includes((manifest.entities || {})[entity]));
+        if (stale) legsUnused.push(`${family}:${name}`);
+      }
+    }
   }
   const complete = missing.length === 0 && unknown.length === 0;
   const consistent = contradicted.length === 0;
   const retentionSettled = retentionUnspecified.length === 0 && retentionUnused.length === 0;
+  const legsSettled = legsUnused.length === 0;
   return {
     format: FORMAT,
     schema_version: FORMAT_VERSION,
@@ -1042,12 +1267,13 @@ export function checkCoverage(capabilities, manifest, evidence = {}) {
     retention_unspecified: retentionUnspecified.sort(),
     retention_unused: retentionUnused.sort(),
     retention_settled: retentionSettled,
+    uncarried_legs_unused: legsUnused.sort(),
     // What stands between each carried function and being written, so the queue
     // reads as work that can start rather than work awaiting review.
     port_blockers: Object.fromEntries(PORT_BLOCKERS.map(blocker => [blocker, portQueue[blocker].sort()])),
     // Every capability classified AND consistent with its source AND every
     // retirement's rows accounted for AND none left undecided AND owners accepted.
-    census_ready: complete && consistent && retentionSettled
+    census_ready: complete && consistent && retentionSettled && legsSettled
       && undecided.length === 0 && manifest.review_state === 'accepted',
     owner_review_complete: manifest.review_state === 'accepted',
     // This tool inventories the repository only.
