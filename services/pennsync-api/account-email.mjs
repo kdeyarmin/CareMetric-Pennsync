@@ -25,11 +25,22 @@
 // `full_name` and `temporary_password` for the second — and then render a
 // branded HTML message. None of that runs while the pause holds, so none of it
 // is carried: an unreachable validation nobody can exercise is not a port, it
-// is a claim. Releasing therefore means three things and the last is the
-// smallest: broker `SendEmail` in the integration runtime
-// (`BROKERED_OPERATIONS`, `integrations.mjs`), carry the field checks and the
-// renderer, and delete the two `fail` lines below. The flag flip is the owner's;
-// the other two are a morning's work that would be waste if the answer is no.
+// is a claim. Releasing therefore means three things, and a fourth that a gate
+// rather than a person asks for. The three: broker `SendEmail` in the
+// integration runtime (`BROKERED_OPERATIONS`, `integrations.mjs`), carry the
+// field checks and the renderer, and delete the two `fail` lines below. The
+// flag flip is the owner's; the other two are a morning's work that would be
+// waste if the answer is no.
+//
+// The fourth is the release ladder (`tools-pennsync-release-ladder.mjs`, the
+// `check:release-ladder` gate), which reads `needsIntegration` off the
+// registry. While the pause holds it places these two in the READ-ONLY wave,
+// which is what the shipped code honestly is: they touch no store and reach no
+// runtime. Releasing the send makes that placement wrong, so the release sets
+// `needsIntegration: true` on both registry entries in the same change and they
+// move to the integration wave. Otherwise the ladder would hand a deployment
+// two outbound senders in the wave whose whole promise is that nothing in it
+// writes or sends.
 import { exactObject, fail } from './contracts.mjs';
 
 /**

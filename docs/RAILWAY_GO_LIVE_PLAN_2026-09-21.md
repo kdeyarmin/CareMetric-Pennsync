@@ -1057,15 +1057,19 @@ first pass here looked for each capability as a quoted string and reported 18
 outstanding, because `handlers.mjs` registers them as bare object keys. The
 answer was 0. That is D47's lesson once more — read the shape from the tree.
 
-Each bucket needs a different thing, and only one of them is code:
+Re-measured after D82 to D87 (2026-09-23), which settled every decision this
+table was waiting on. It used to say that only one bucket was code; the
+reverse is now true. What is left is one decision that belongs to another
+service, and ports that are simply not written yet.
 
 | Blocker | Count | What it needs |
 | --- | ---: | --- |
-| `files` | 12 | Stage H. The mapping, resolver and planner are built (D77); the bytes are not copied |
-| `entity_authorization` | 8 | A decision, twice. Six UPDATE a profile, which D23 left open deliberately; two write `MedicareGuideline`, a `global` table no tenant surface may write — they need a platform ingestion path, not a caller-facing handler |
-| `entity_not_carried` | 7 | A disposition conversation. These read training records, paused comms logs and real-time metrics from domains that are going away |
-| `core_integration` | 2 | An owner's decision to broker `Core.SendEmail`, which the runtime already implements. Both are capabilities whose whole body is the send; this is a release gate, not a build |
-| `external_secret` | 2 | A new brokered operation for audio transcription, with the reservation, quota, encrypted result and audit the other seven have — over a PHI payload. A capability to design |
+| `files` | 12 | Stage H, and one decision that is not this repository's. D85 re-measured D77 and it holds: the integration runtime serves a stored object only to its uploader, and a migrated object has no uploader. The mapping, resolver and planner are built; the bytes are not copied. Four different things in one bucket — 2 wait only on the reader model, 5 need the copy and the reader model, 5 have a write leg that needs neither, and 1 has two further blockers |
+| `entity_authorization` | 7 | Ports to write, not decisions. D82 settled D23's open profile-write path at the caller's own row, and these are the seven admin and scheduled paths it deliberately does NOT reach: `autoApproveInvitedUser`, `autoEndDutyDay`, `enforceStaffRoleIntegrity`, `offboardUser`, `setNurseDutyStatus`, `userManagement`, `userManagementV2`. D83 took the two `MedicareGuideline` writers out of this bucket by retiring them: a `global` table is written by migration |
+| `records_schema` | 3 | Ports to write. Three of the four capabilities D84 kept as `port` with an uncarried leg moved here (the fourth, `offboardUser`, moved to `entity_authorization`), which is the queue working: "blocked on a schema" became "its port is not written yet", against a store that exists |
+| `external_secret` | 2 | A new brokered operation for audio transcription, with the reservation, quota, encrypted result and audit the other seven have — over a PHI payload. Designed in D87; the key stays unwired, and `generateNoteFromRecording` has two further blockers that no key clears (the owned bucket's MIME set admits no audio, and it pins a model the broker does not accept) |
+| ~~`entity_not_carried`~~ | 0 | Settled by D84. Three changed destination, four stayed `port` with the leg recorded in `uncarried_legs` |
+| ~~`core_integration`~~ | 0 | Emptied by D86, which ported both capabilities as the caller gate and the D56 pause. Releasing `Core.SendEmail` is now a flag flip rather than a build, and it stays the owner's |
 
 ### Stage H — Files (size M, can start once the production bucket exists)
 
