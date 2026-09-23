@@ -75,13 +75,21 @@ import { INVENTORY, KEYED_PARTS, TABLE_KINDS, inventoryFaults } from './store-in
  * the inventory below is deliberately structural rather than a set of counts:
  * a count cannot see an `alter policy … using (true)`, a dropped unique index,
  * a rewritten contract body or a revoked grant, and each of those leaves the
- * names and totals exactly as they were. So the comparison carries every
- * policy's command, roles, permissiveness, `qual` and `with_check`; every
- * index and constraint definition; every function's owner, security mode,
- * settings, volatility, grants and body digest; every trigger definition; and
- * every column's type and nullability. A policy nobody obeys, a policy nobody
+ * names and totals exactly as they were. A policy nobody obeys, a policy nobody
  * reaches and a policy quietly widened to `true` all fail the same way:
  * silently, and only in production.
+ *
+ * WHAT EXACTLY IT CARRIES IS `store-inventory.mjs`'S, and that page rather
+ * than this one is where a reader should look, because the answer is a list of
+ * REPRESENTATIONS and each one is a choice. Being structural is not enough on
+ * its own: a definition and a catalog flag are two different readings of one
+ * object, and D95 found eight places where this suite held the first and the
+ * store's behaviour was in the second — a trigger's definition is unchanged by
+ * disabling it, a column's type and nullability say nothing about its default,
+ * and `relkind = 'r'` left a whole class of relation out. Add a dimension by
+ * planting it in `store-inventory.test.mjs` and watching this comparison stay
+ * quiet, never by reading the SQL: reading the SQL is how all eight came to be
+ * missing.
  *
  * BOTH SCHEMAS, because `pennsync_private` is where the authority answers come
  * from. Measuring only `pennsync_records` would leave a dropped membership
@@ -98,8 +106,12 @@ import { INVENTORY, KEYED_PARTS, TABLE_KINDS, inventoryFaults } from './store-in
  *
  * ONE VERSION DIFFERENCE IS HANDLED EXPLICITLY. Hosted is PostgreSQL 17.6 and
  * PGlite 0.5.8 is 18.3. Everything above compares byte for byte across that gap
- * — deparsed `qual`, `indexdef`, `pg_get_constraintdef`, `pg_get_triggerdef`
- * and `proconfig` all agree — with one exception: PostgreSQL 18 gives NOT NULL
+ * — deparsed `qual`, `indexdef`, `pg_get_constraintdef`, `pg_get_triggerdef`,
+ * `proconfig`, and D95's two additions that also deparse, `pg_get_expr` for a
+ * column default and `pg_get_function_arguments`, all agree; the whole
+ * inventory was built on a real PostgreSQL 16 cluster and compared field for
+ * field against the PGlite build with zero differences, and 17 sits between
+ * them — with one exception: PostgreSQL 18 gives NOT NULL
  * its own `pg_constraint` row and 17 does not, which is 584 rows on one side
  * and none on the other. Constraints therefore exclude `contype = 'n'`, and
  * nullability is compared through `pg_attribute.attnotnull` instead, which both
