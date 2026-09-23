@@ -797,8 +797,33 @@ anywhere. The app binding is deferred to stage C as above.
   what changed is that stage A's fourth claim no longer waits on all ten.
 - Verify each identity out of band, then run `tools-pennsync-enroll.mjs` with the
   digest-addressed plan. Every run lands in `enrollment_receipt`.
-- Retire the four pinned actor IDs in `services/authority-client/client.mjs` in
-  favour of verified identity-map rows.
+- ~~Retire the four pinned actor IDs in `services/authority-client/client.mjs` in
+  favour of verified identity-map rows.~~ **Withdrawn 2026-09-23, on two counts,
+  and it needed no enrollee — this was the last item in stage C that did not.**
+
+  Read what `ACTORS` actually does before acting on this bullet. It is not a
+  lookup that a derived one could replace: its live use is
+  `!ACTORS.has(config.email)` → `INVALID_STAGING_TARGET`, at
+  `services/authority-client/client.mjs:166`, so the KEYS are an allowlist of
+  which addresses may be configured as the staging caller and the check runs
+  **before any request is made**. Deriving that fence from `identity_map` is
+  circular: it would read the store to decide whether it may talk to the store.
+  The pin two lines below it is the same discipline and its own comment says why
+  — "Both values must match exactly; URL shape and caller approval flags confer
+  no authority" — so pinning here is the design rather than an omission.
+
+  And the four identities it names are the staging accounts the owner withdrew
+  at 2026-09-22 22:26Z. A refactor to serve them more faithfully is work spent
+  on accounts that are not to be used.
+
+  What the bullet was really guarding — that the pins could drift from the store
+  without anybody noticing — is closed instead by a check.
+  `hosted-store.test.mjs` compares `ACTORS` against `identity_map` in both
+  directions and is vacuous on an empty project, so deleting those accounts
+  leaves it green rather than red. Measured against hosted 2026-09-23: the pins
+  and the store's identities agree, and that assertion passed on main in the
+  same run that caught the D82 policy gap. That is the cheaper half of this
+  bullet and it is already done.
 - **Carried from stage B: prove `PENNSYNC_API_APP_ID` on the deployed service.**
   It must be the staging app `6a9881683dc68a0bd54f1ef7`, because the store's
   D11 pin on `xxtyweswohkvgkprimwa` resolved to staging. No probe can see it,
@@ -847,6 +872,27 @@ anywhere. The app binding is deferred to stage C as above.
 **Exit:** the two-agency positive and negative matrix from
 `docs/PENNSYNC_EXTERNAL_CUTOVER_EVIDENCE.md` passes hosted with real Auth;
 `identities`, `isolation` and `revocation` rehearsal receipts producible.
+
+**Nothing buildable remains in this stage** — measured item by item 2026-09-23,
+and recorded because "everything waits on the owner" is the kind of claim this
+project has had to re-measure before. Every remaining bullet needs an enrollee
+or an owner decision:
+
+| Item | Waits on |
+| --- | --- |
+| The six invitations | The owner; an enrollee accepts their own |
+| Stage A's hosted half (`record-tenant-isolation`, `activity-audit`, the 42 `contract-*` suites) | A hosted caller, which is an `auth.users` row only an accepted invitation creates. Structurally, not merely queued: the sign-in that would drive it is withdrawn |
+| `tools-pennsync-enroll.mjs` against real identities | Enrollees. The tool and its suite are built |
+| `PENNSYNC_API_APP_ID` on the deployed service | The redeploy, which is the owner's. Readiness reports it as of #247; the running revision predates the fields |
+| The four context-only roles' roster behaviour, hosted | Memberships in those roles, so identities. Done in the store and proved locally by #247 |
+| The synthetic-name question | The owner. A compliance decision about whether this store ever holds real names, not a refactor |
+| The pinned actor IDs | Nothing — withdrawn above as obsolete rather than owed |
+
+The machinery under the exit criteria is already built and does not wait: the
+matrix's own cells (`admin_a:A1` … `clinician_a_empty:B1`) are consumed by
+`tools-pennsync-cutover.mjs` with a suite over them, and the policy semantics
+they assert are proved on PGlite by `record-tenant-isolation.test.mjs`. What is
+owed is the hosted EXERCISE, which is a caller away and not a build away.
 
 ### Stage D — Release handlers end to end, one at a time (size M)
 
