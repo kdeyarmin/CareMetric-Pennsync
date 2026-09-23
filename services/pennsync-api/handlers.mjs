@@ -15,6 +15,7 @@ import { analyzeVisitSupplyUsage } from './visit-supply-usage.mjs';
 import { MAX_CSV_BYTES, importProviders } from './provider-import.mjs';
 import { expandClinicalPhrase as runClinicalPhrase } from './clinical-phrase.mjs';
 import { exportPatientChart } from './chart-export.mjs';
+import { AI_REPORT_PARAMS, generateAiReport } from './ai-report.mjs';
 import { searchIndexedPdfs } from './pdf-search.mjs';
 import { sendAccountReadyEmail, sendWelcomeEmail } from './account-email.mjs';
 import {
@@ -1069,6 +1070,26 @@ export const HANDLERS = Object.freeze({
       exactObject(params, ['patient_id', 'include_visits', 'include_incidents'],
         'INVALID_PARAMS');
       return exportPatientChart({ params, contract, integration, audit });
+    },
+  }),
+  generateAIReport: Object.freeze({
+    binary: true,
+    needsIntegration: true,
+    // The NINTH partial port. The document is served; `recipients` gets the
+    // original's own 503, on the branch the original already refuses itself.
+    //
+    // The gate is the contract's, and it is D40's sixth widening. Worth reading
+    // what the original's scope filter really was before assuming this one
+    // loosened anything: its own comment promises that "an agency_admin cannot
+    // pull every tenant's PHI into a PDF/email", and no `agency_admin` can
+    // reach the code — `isAdminLike` is `role === 'admin'`, and
+    // `withTrustedClaims` hands a built-in admin's profile back untouched. So
+    // the scope was selected by the caller it was meant to constrain, out of
+    // their own self-editable `account_type` and `agency_name`. It is a real
+    // boundary here for the first time.
+    handle({ params, contract, integration }) {
+      exactObject(params, AI_REPORT_PARAMS, 'INVALID_PARAMS');
+      return generateAiReport({ params, contract, integration });
     },
   }),
   generateUserRosterPDF: Object.freeze({

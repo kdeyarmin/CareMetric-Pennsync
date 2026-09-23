@@ -20,6 +20,8 @@ import {
   AUDIT_CODES, AUDIT_LIST_CODES, SUBJECT_KINDS,
 } from '../../services/pennsync-api/audit.mjs';
 import { RECORD_CONTRACTS } from '../../services/pennsync-api/record-contracts.mjs';
+import { insightPrompt } from '../../services/pennsync-api/ai-report.mjs';
+import { reportMetrics, reportTrend } from '../../services/pennsync-api/report-metrics.mjs';
 import {
   FOLLOW_UP_SCHEMA, buildFollowUpPrompt,
 } from '../../services/pennsync-api/follow-up-tasks.mjs';
@@ -820,4 +822,280 @@ test('the state-reportable report text is the original s template', async () => 
   assert.match(original, /integrations\.Core\.SendEmail\(/);
   assert.equal(/Core\.SendEmail|createAuthorizedDocument/.test(sql), false,
     'neither is reached from the contract');
+});
+
+/**
+ * D91. The AI report's arithmetic, against the original's own functions.
+ *
+ * The proof is in two halves that meet at the aggregates. THIS half shows that
+ * the ported path, fed the counts the contract returns, produces the same
+ * report object the original produces from the rows those counts were counted
+ * from. The other half — that the SQL really counts those rows that way — is
+ * `services/authority-store/tests/contract-report-metrics.test.mjs`, against
+ * the real migration, with every predicate sabotaged.
+ *
+ * Neither half proves the port alone, which is D45's rule: this one would pass
+ * with a contract that counted the wrong rows, and that one would pass with a
+ * bridge that added them up wrongly.
+ */
+const AI_REPORT_ORIGINAL = 'base44/functions/generateAIReport/entry.ts';
+
+async function aiReportOriginal() {
+  const source = readFileSync(resolve(repository, AI_REPORT_ORIGINAL), 'utf8');
+  const start = source.indexOf('function calculateMetrics(data) {');
+  const trend = source.indexOf('function calculateDailyTrend(');
+  const end = source.indexOf('function generatePDFReport(');
+  assert.ok(start > 0 && trend > start && end > trend,
+    'the original still carries the arithmetic between calculateMetrics and generatePDFReport');
+  const block = source.slice(start, source.indexOf('async function generateAIInsights('))
+    + source.slice(trend, end);
+  const file = join(tmpdir(), `aireport_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+  await writeFile(file, transpileTs(
+    `${block}\nexport { calculateMetrics, calculateDailyTrend };`).outputText);
+  try { return await import(pathToFileURL(file).href); }
+  finally { await unlink(file).catch(() => {}); }
+}
+
+/** A corpus with the properties the report's arithmetic depends on: a zero
+ *  denominator, a null score that still counts, fractional scores, a nurse with
+ *  no visits, a visit with no author, and two nurses who tie. */
+function aiReportCorpus() {
+  const day = n => `2026-09-${String(n).padStart(2, '0')}T08:00:00.000Z`;
+  const nurse = 'nurse-a@example.invalid';
+  const other = 'nurse-b@example.invalid';
+  return {
+    visits: [
+      { created_by: nurse, status: 'completed' },
+      { created_by: nurse, status: 'completed' },
+      { created_by: nurse, status: 'scheduled' },
+      { created_by: other, status: 'completed' },
+      { created_by: other, status: 'completed' },
+      { created_by: '', status: 'cancelled' },
+    ],
+    patients: [
+      { status: 'active' }, { status: 'active' }, { status: 'discharged' },
+    ],
+    incidents: [
+      { incident_type: 'fall' }, { incident_type: 'fall' },
+      { incident_type: 'hospitalized' }, { incident_type: 'medication_error' },
+      { incident_type: 'infection_suspected' },
+    ],
+    audits: [
+      { status: 'passed', compliance_score: 88.5 },
+      { status: 'flagged', compliance_score: 61.25 },
+      { status: 'critical', compliance_score: 40 },
+      { status: 'pending_review', compliance_score: null },
+    ],
+    trainings: [],
+    noteConversions: [
+      { nurse_email: nurse, quality_score: 70.5, compliance_improvement: 12.25,
+        created_date: day(1) },
+      { nurse_email: nurse, quality_score: 80, compliance_improvement: 7.5,
+        created_date: day(1) },
+      { nurse_email: other, quality_score: 65, compliance_improvement: 3,
+        created_date: day(2) },
+      { nurse_email: '', quality_score: null, compliance_improvement: null,
+        created_date: day(3) },
+    ],
+    alerts: [
+      { severity: 'critical', status: 'active' },
+      { severity: 'critical', status: 'resolved' },
+      { severity: 'high', status: 'active' },
+    ],
+    tasks: [
+      { status: 'completed' }, { status: 'completed' }, { status: 'pending' },
+    ],
+    users: [
+      { role: 'user', email: nurse },
+      { role: 'user', email: other },
+      { role: 'user', email: 'nurse-idle@example.invalid' },
+    ],
+  };
+}
+
+/** The aggregates `contract_report_metrics` returns, counted off the corpus
+ *  with plain reductions. The SQL that has to agree with these is proved
+ *  separately, against the real migration. */
+function aiReportAggregates(corpus) {
+  const group = (rows, key) => {
+    const out = new Map();
+    for (const row of rows) {
+      const k = (row[key] ?? '').toString().trim().toLowerCase();
+      if (!out.has(k)) out.set(k, []);
+      out.get(k).push(row);
+    }
+    return [...out.entries()].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  };
+  const count = (rows, test) => rows.filter(test).length;
+  const sum = (rows, field) => rows.reduce((n, row) => n + (row[field] || 0), 0);
+  const days = new Map();
+  for (const note of corpus.noteConversions) {
+    const key = note.created_date.slice(0, 10);
+    days.set(key, (days.get(key) ?? 0) + 1);
+  }
+  return {
+    visits_total: corpus.visits.length,
+    visits_completed: count(corpus.visits, v => v.status === 'completed'),
+    patients_total: corpus.patients.length,
+    patients_active: count(corpus.patients, p => p.status === 'active'),
+    falls: count(corpus.incidents, i => i.incident_type === 'fall'),
+    hospitalizations: count(corpus.incidents, i => i.incident_type === 'hospitalized'),
+    medication_errors: count(corpus.incidents, i => i.incident_type === 'medication_error'),
+    audits_total: corpus.audits.length,
+    audit_score_sum: sum(corpus.audits, 'compliance_score'),
+    audits_passed: count(corpus.audits, a => a.status === 'passed'),
+    audits_flagged: count(corpus.audits, a => a.status === 'flagged'),
+    audits_critical: count(corpus.audits, a => a.status === 'critical'),
+    notes_total: corpus.noteConversions.length,
+    note_quality_sum: sum(corpus.noteConversions, 'quality_score'),
+    note_improvement_sum: sum(corpus.noteConversions, 'compliance_improvement'),
+    critical_alerts: count(corpus.alerts, a => a.severity === 'critical' && a.status === 'active'),
+    tasks_total: corpus.tasks.length,
+    tasks_completed: count(corpus.tasks, t => t.status === 'completed'),
+    roster: corpus.users.map(u => u.email).sort(),
+    roster_size: corpus.users.length,
+    daily_notes: [...days.entries()].sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([dayKey, n]) => ({ day: dayKey, count: n })),
+    nurse_visits: group(corpus.visits, 'created_by').map(([email, rows]) => ({
+      email, total: rows.length, completed: count(rows, v => v.status === 'completed'),
+    })),
+    nurse_notes: group(corpus.noteConversions, 'nurse_email').map(([email, rows]) => ({
+      email, count: rows.length,
+      quality_sum: sum(rows, 'quality_score'),
+      improvement_sum: sum(rows, 'compliance_improvement'),
+    })),
+    training_completed: 'served_by_hub',
+    training_score: 'served_by_hub',
+  };
+}
+
+test('the AI report is the original s arithmetic over the contract s counts', async () => {
+  const theirs = await aiReportOriginal();
+  const corpus = aiReportCorpus();
+  const startDate = new Date('2026-08-31T00:00:00.000Z');
+  const endDate = new Date('2026-09-05T00:00:00.000Z');
+
+  const expected = theirs.calculateMetrics({
+    ...corpus,
+    dailyEnhancementTrend: theirs.calculateDailyTrend(
+      corpus.noteConversions, startDate, endDate),
+  });
+  const actual = reportMetrics(aiReportAggregates(corpus), startDate, endDate);
+
+  // The two training figures are the only fields that may differ, and they
+  // differ on purpose: D84 settles that leg on the Support Hub, so the port
+  // reports its absence where the original would print a zero.
+  assert.equal(expected.staff_performance.training_completed, 0);
+  assert.equal(expected.staff_performance.avg_training_score, 0);
+  assert.equal(actual.staff_performance.training_completed, null);
+  assert.equal(actual.staff_performance.avg_training_score, null);
+  const strip = report => ({
+    ...report,
+    staff_performance: Object.fromEntries(Object.entries(report.staff_performance)
+      .filter(([key]) => key !== 'training_completed' && key !== 'avg_training_score')),
+  });
+  assert.deepEqual(strip(actual), strip(expected));
+
+  // Spelled out, so a reader can see the fields this is actually about rather
+  // than trusting one deepEqual: the averages, the rates and the staff table.
+  assert.equal(expected.overview.completion_rate, '66.7');
+  assert.equal(expected.compliance.avg_score, '47.4');
+  assert.equal(expected.patient_outcomes.fall_rate, '333.33');
+  assert.equal(expected.ai_documentation.avg_quality_score, '53.9');
+  assert.equal(expected.staff_performance.nurse_stats.length, 2);
+  assert.equal(expected.staff_performance.nurse_stats[0].visits_completed, 2);
+});
+
+test('nothing a colleague could be identified by reaches the model', async () => {
+  // D64. The original sends the whole metrics object to `InvokeLLM`, and
+  // `nurse_stats` carries each top performer's name and address. The prompt
+  // asks for trends and benchmarks; it has no use for who anybody is.
+  const corpus = aiReportCorpus();
+  const metrics = reportMetrics(aiReportAggregates(corpus),
+    new Date('2026-08-31T00:00:00.000Z'), new Date('2026-09-05T00:00:00.000Z'));
+  const prompt = insightPrompt(metrics, 'monthly_operations');
+  for (const user of corpus.users) {
+    assert.equal(prompt.includes(user.email), false,
+      `${user.email} reached the prompt`);
+  }
+  // And the shape a model can actually use is still there.
+  assert.ok(prompt.includes('"visits_completed"'));
+  assert.ok(prompt.includes('"total_nurses": 3'));
+  // The staff table itself is unchanged for the PDF, which goes to the
+  // administrator whose own roster it is.
+  assert.equal(metrics.staff_performance.nurse_stats[0].email, 'nurse-a@example.invalid');
+});
+
+test('the daily trend keeps its day in a zone west of UTC', async () => {
+  // `calculateDailyTrend` buckets with `setHours(0, 0, 0, 0)`, which is LOCAL
+  // time, while the contract counts by UTC day. In a UTC process the two agree
+  // whatever instant the bridge picks, so a midnight stub passes every other
+  // test in this file and shifts every bar a day back in any western zone —
+  // which is where this service would actually run. Noon is what makes the two
+  // frames agree, and this is the only test that can tell.
+  const previous = process.env.TZ;
+  process.env.TZ = 'America/New_York';
+  try {
+    const trend = reportTrend(
+      { daily_notes: [{ day: '2026-09-01', count: 2 }, { day: '2026-09-03', count: 1 }] },
+      new Date('2026-08-31T00:00:00.000Z'), new Date('2026-09-04T00:00:00.000Z'));
+    const counted = Object.fromEntries(trend.map(d => [d.fullDate, d.count]));
+    assert.equal(counted['2026-09-01'], 2, 'a note counted on the 1st belongs to the 1st');
+    assert.equal(counted['2026-09-03'], 1);
+    assert.equal(counted['2026-08-31'], 0, 'nothing may fall back a day');
+    assert.equal(trend.reduce((n, d) => n + d.count, 0), 3, 'and nothing may fall out entirely');
+  } finally {
+    if (previous === undefined) delete process.env.TZ; else process.env.TZ = previous;
+  }
+});
+
+test('the carried report blocks are the original s text, with four named changes', async () => {
+  // D81's rule for the handout templates, applied to arithmetic: the numbers in
+  // `calculateMetrics` are figures an administrator acts on, so they are copied
+  // rather than retyped, and this is what makes "copied" checkable. Every
+  // adaptation is reconstructed here from the original, so a fifth one — or a
+  // quietly edited average — fails rather than passing as a copy.
+  const original = readFileSync(resolve(repository, AI_REPORT_ORIGINAL), 'utf8');
+  const ported = readFileSync(resolve(repository,
+    'services/pennsync-api/report-metrics-source.mjs'), 'utf8');
+
+  const slice = (from, to) => {
+    const start = original.indexOf(from);
+    const end = original.indexOf(to);
+    assert.ok(start > 0 && end > start, `the original still carries ${from}`);
+    return original.slice(start, end);
+  };
+  const metrics = slice('function calculateMetrics(data) {', 'async function generateAIInsights(');
+  const trend = slice('function calculateDailyTrend(', 'function generatePDFReport(');
+  let pdf = original.slice(original.indexOf('function generatePDFReport('));
+
+  // 1. The builder takes a jsPDF-shaped object instead of constructing one.
+  pdf = pdf.replace(
+    '  const { report_type, date_range_days, startDate, endDate, metricsData, aiInsights, user } = config;\n  \n  const doc = new jsPDF();\n',
+    '  const { report_type, date_range_days, startDate, endDate, metricsData, aiInsights, user, generatedAt } = config;\n');
+  // 3. Renamed and exported.
+  pdf = pdf.replace('function generatePDFReport(config) {', 'export function buildAiReport(doc, config) {');
+  // 2. The clock is supplied.
+  pdf = pdf.replace("doc.text(`Generated: ${new Date().toLocaleString()}`, 105, 57, { align: 'center' });",
+    'doc.text(`Generated: ${generatedAt}`, 105, 57, { align: \'center\' });');
+  // 4. The two training lines render only when their figures are present (D84).
+  pdf = pdf.replace(
+    '  addText(`Training Completed: ${metricsData.staff_performance.training_completed}`, 9);\n'
+    + '  addText(`Avg Training Score: ${metricsData.staff_performance.avg_training_score}/100`, 9);',
+    '  if (metricsData.staff_performance.training_completed !== null) {\n'
+    + '    addText(`Training Completed: ${metricsData.staff_performance.training_completed}`, 9);\n'
+    + '  }\n'
+    + '  if (metricsData.staff_performance.avg_training_score !== null) {\n'
+    + '    addText(`Avg Training Score: ${metricsData.staff_performance.avg_training_score}/100`, 9);\n'
+    + '  }');
+  assert.equal(pdf.includes('new jsPDF'), false, 'adaptation 1 no longer applies to the original');
+  assert.equal(pdf.includes('new Date().toLocaleString()'), false,
+    'adaptation 2 no longer applies to the original');
+  assert.ok(pdf.includes('training_completed !== null'), 'adaptation 4 no longer applies');
+
+  const expected = `export ${metrics}\nexport ${trend}\n${pdf}`;
+  const body = ported.slice(ported.indexOf('export function calculateMetrics(data) {'));
+  assert.equal(body, expected,
+    'services/pennsync-api/report-metrics-source.mjs has drifted from its original.\n'
+    + 'Change the original and the carried copy together, or neither.');
 });

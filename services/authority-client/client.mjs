@@ -67,6 +67,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   appendPatientNoteHistory: 'json',
   analyzeReferralIntake: 'json',
   analyzeReferralPriority: 'json',
+  generateAIReport: 'binary',
   generateBagTechniquePDF: 'binary',
   generatePatientHandout: 'json',
   generatePatientChartPDF: 'json',
