@@ -199,7 +199,7 @@ test('a module whose only entity is the retired trail is re-classified by what e
   }
 });
 
-test('AGENTS.md carries the port queue the tool measures, and names what is startable', () => {
+test('the pages carrying the port queue carry what the tool measures', () => {
   // D79 fixed two stale bucket descriptions with assertions rather than better
   // prose, and the prose about the buckets then went stale the same way: the
   // page said "the `none` bucket has nothing startable left: it is 73" while
@@ -214,11 +214,21 @@ test('AGENTS.md carries the port queue the tool measures, and names what is star
     discoverEvidence(repository),
   );
   const line = portQueueLine(report);
+
+  // The go-live plan restates this queue for a reader deciding where the
+  // finish line is, and #250 pinned AGENTS.md while leaving that page
+  // unguarded: on 2026-09-23 it still read `records_schema=3 ... none=75`
+  // against a measured `none=78` with `records_schema` empty, so it told a
+  // reader three ports were waiting that had all been written. Both pages are
+  // held to the one line now.
+  for (const path of ['AGENTS.md', 'docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md']) {
+    const page = readFileSync(resolve(repository, path), 'utf8');
+    assert.ok(page.includes(line),
+      `${path} does not carry the measured port queue.\n  measured: ${line}\n`
+      + '  Update the port-queue line there, and the decisions doc\'s ledger line,\n'
+      + '  in the SAME change as whatever moved the queue.');
+  }
   const page = readFileSync(resolve(repository, 'AGENTS.md'), 'utf8');
-  assert.ok(page.includes(line),
-    `AGENTS.md does not carry the measured port queue.\n  measured: ${line}\n`
-    + '  Update the port-queue sentence in AGENTS.md, and the decisions doc\'s ledger line,\n'
-    + '  in the SAME change as whatever moved the queue.');
 
   // The counts alone would pass a swap — one capability into a bucket and one
   // out leaves every number where it was — so the startable set is pinned by

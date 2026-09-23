@@ -608,3 +608,30 @@ test('a prerequisite is printed in the form the ledger actually holds', () => {
     assert.equal(ledgerVersion(migration), migration.replace(/\.sql$/, ''));
   }
 });
+
+test('the go-live plan carries the wave table the ladder measures', () => {
+  // Stage D of `docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md` restates the six
+  // waves with a handler and a migration count each, and it is the page an
+  // operator reads before pasting a `PENNSYNC_API_FUNCTIONS` value. Nothing
+  // compared the two, and every port since #245 lands in a DERIVED wave while
+  // the three declared ones hold — so the table drifts on its own. On
+  // 2026-09-23 it read `read-only 21/16`, `mutating 30/28`, `integration
+  // 16/13` against a measured 23/16, 32/30 and 17/14.
+  //
+  // The rows are matched by NAME rather than by position, because a table
+  // whose rows were reordered would otherwise pass while saying something
+  // else, and every declared wave must appear so a wave added to the tool
+  // cannot be silently absent from the page.
+  const page = readFileSync(resolve(REPOSITORY, 'docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md'), 'utf8');
+  const ladder = checkLadder(REPOSITORY);
+  for (const wave of ladder.waves) {
+    const row = new RegExp(
+      `\\|\\s*\`${wave.name}\`\\s*\\((?:declared|derived)\\)\\s*\\|\\s*(\\d+)\\s*\\|\\s*(\\d+)\\s*\\|`,
+    ).exec(page);
+    assert.ok(row, `the plan's stage D has no row for the \`${wave.name}\` wave`);
+    assert.equal(Number(row[1]), wave.handlers.length,
+      `the plan says the \`${wave.name}\` wave holds ${row[1]} handlers; it holds ${wave.handlers.length}`);
+    assert.equal(Number(row[2]), wave.migrations.length,
+      `the plan says the \`${wave.name}\` wave needs ${row[2]} migrations; it needs ${wave.migrations.length}`);
+  }
+});
