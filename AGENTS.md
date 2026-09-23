@@ -99,6 +99,8 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 | File-reference census (gate) | `pnpm run check:file-references` |
 | Entity schema plan (gate) | `pnpm run check:entity-schema-plan` |
 | Tenant paths (gate) | `pnpm run check:tenant-paths` |
+| Tenant revalidation seam (gate) | `pnpm run check:tenant-revalidation` |
+| Per-name release ladder (gate) | `pnpm run check:release-ladder` |
 | Tenant decisions (gate) | `pnpm run check:tenant-decisions` |
 | Record brokers (gate) | `pnpm run check:record-brokers` |
 | Read purpose policies (gate) | `pnpm run check:read-purpose-policy` |
@@ -109,6 +111,7 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 | Ported business API | `pnpm run test:pennsync-api` |
 | Plan a deployment's pending migrations | `PENNSYNC_MIGRATE_DATABASE_URL=… node tools-pennsync-migrate.mjs` (a postgres URL, or `supabase://<project-ref>` plus `SUPABASE_ACCESS_TOKEN` where only HTTPS is reachable) |
 | Apply them | `… node tools-pennsync-migrate.mjs --apply` |
+| Emit one release wave's operator settings | `node tools-pennsync-release-ladder.mjs --wave patient-read` |
 
 ## Environment config
 
