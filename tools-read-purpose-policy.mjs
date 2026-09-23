@@ -36,7 +36,7 @@
  */
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { transpileTs } from './tools-transpile-ts.mjs';
 import { RECORD_MIGRATION_FILE, SCHEMA, literal, quote } from './tools-entity-schema-plan.mjs';
 
@@ -978,6 +978,9 @@ export function main(args = process.argv.slice(2), {
   return 1;
 }
 
-if (process.argv[1] && import.meta.url === `file://${process.argv[1]}`) {
+// Direct-invocation check through pathToFileURL: a hand-built `file://`
+// string never matches a Windows backslash path or a percent-encoded one,
+// and the CLI then exits 0 having silently done nothing.
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   process.exit(main());
 }
