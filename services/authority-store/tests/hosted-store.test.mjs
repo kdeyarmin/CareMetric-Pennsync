@@ -56,7 +56,18 @@ import { isManagementUrl, openManagementClient } from '../../../tools-pennsync-s
  * the other way round and drew a conclusion the measurement does not support.
  *
  * What those four cannot say is what a policy RETURNS to someone through the
- * gate; that is still stage C's.
+ * gate. That is not waiting on anything here any more: the owner declined on
+ * 2026-09-22 to use the staging accounts, so no hosted caller will ever hold a
+ * session and the `auth.sessions` leg stays unreachable from this suite. What
+ * answers it instead is composition, and it is the reason the comparison below
+ * is worth its length: `http-authority.test.mjs` drives the whole gate and the
+ * tenant rules over a real local Auth stack, and the parts list here proves
+ * hosted's policy `qual`/`with_check` and every function body — `actor()`'s
+ * included, by `md5(prosrc)` — are the same artifacts those suites ran
+ * against. Do not close that loop by writing an `auth.sessions` row from a
+ * test: that is the fabrication the local-only guard below exists to refuse,
+ * and a session this repository wrote satisfying a check this repository wrote
+ * would be evidence of nothing.
  *
  * That half is not small. It is every claim the row assertions REST on, and
  * the inventory below is deliberately structural rather than a set of counts:
@@ -802,8 +813,9 @@ test('a subject with no identity row is refused as an inactive identity', { skip
   // The users lookup, not the map: `actor()` asks `auth.users` first, so a
   // subject that is nobody fails there and never reaches `auth.sessions` or
   // `identity_map`. Nothing here proves the map is consulted at all: that needs
-  // a caller with a live session, which is stage C's, and until then the map is
-  // measured by `CALLERS` rather than exercised.
+  // a caller with a live session, which the hosted project is not going to get
+  // (see the header), so the map is measured by `CALLERS` rather than
+  // exercised, here and from now on.
   assert.match(gates.unknown, /PENNSYNC_IDENTITY_INACTIVE/,
     'the hosted gate admitted a subject that is not an auth user');
 });
@@ -852,7 +864,8 @@ test('the row-behaviour prerequisites are counted rather than assumed', { skip }
   // and fabricated rows in a real Supabase Auth schema.
   assert.equal(callers.local_test_double, 0,
     'auth.pennsync_local_test_double() exists on the hosted project; fixtures.sql would load');
-  // Not assertions about how many there should be — stage C decides that — but
+  // Not assertions about how many there should be — enrolment is the owner's
+  // and this suite must stay green whether these rows exist or not — but
   // a reading of what is there, so the plan's account of what is missing can be
   // checked against the project rather than against a memory of it.
   for (const key of ['auth_users', 'mapped', 'memberships', 'assignments',
