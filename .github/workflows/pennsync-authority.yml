@@ -172,6 +172,46 @@ jobs:
         if: always()
         run: node services/authority-store/tests/http-local-stack.mjs stop
 
+  apply-signal:
+    name: Say what merging this asks an operator to apply
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # The whole history, because this measurement is a comparison with a
+      # COMMIT rather than with a worktree: a shallow checkout holds neither the
+      # base of a pull request nor what was on main before a push.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: '.nvmrc'
+      # No install and no credential. A merged migration is not an applied one,
+      # and this answers the half of that which is a fact about the DIFF: does
+      # this change add a migration an existing deployment has not run. What a
+      # deployment actually holds is the hosted-store job's half, which needs a
+      # credential and therefore runs on main -- structurally after the merge,
+      # which is why the consequence of merging used to arrive as a red main.
+      #
+      # It never fails on an owed apply: the apply is an operator action on a
+      # machine CI cannot reach, so nothing here could satisfy a gate and one
+      # would stall every merge on one person. A non-zero exit means the signal
+      # could not be MEASURED -- a stale pin, or a base ref that cannot be read.
+      - name: Report what merging this asks an operator to apply
+        run: |
+          set -euo pipefail
+          # On a pull request the checkout is the MERGE commit, so the tree is
+          # the merged result and its first parent is the base branch: comparing
+          # them is literally "what would merging do". On a push the payload's
+          # `before` is exact where `HEAD^` would miss all but the last of
+          # several commits; it is absent on a manual run and all-zeros on a
+          # first push, and `HEAD^` is the right reading of both.
+          base=$(node -e 'const e=require(process.env.GITHUB_EVENT_PATH);
+            const before = process.env.GITHUB_EVENT_NAME === "push" ? e.before : "";
+            process.stdout.write(/^0*$/.test(before ?? "") ? "HEAD^" : before);')
+          echo "Comparing the merged tree against ${base}."
+          node tools-pennsync-apply-signal.mjs --base "$base" --summary "$GITHUB_STEP_SUMMARY"
+
   hosted-gap:
     name: Report the hosted staging migration gap
     runs-on: ubuntu-latest
