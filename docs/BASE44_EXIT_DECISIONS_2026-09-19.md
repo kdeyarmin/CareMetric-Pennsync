@@ -7103,6 +7103,87 @@ hold and this one are independent on purpose — the emitter refuses to produce
 the value, and the deployment refuses to report itself ready for it — because a
 hold kept only by what nobody pasted is one slip from gone.
 
+## D99 — A person who never held a Base44 account, admitted the same careful way
+
+D6 says identity moves by re-enrollment and never by credential copy: a person
+is verified out of band, **accepts a Supabase Auth invitation themselves**, and
+only then does an operator bind the two together with
+`tools-pennsync-enroll.mjs`, which D6 calls "the only path an identity takes into
+the owned store". That is the acceptance flow, and it works.
+
+What it could not do is onboard anybody. `identity_map.base44_user_id` is
+`not null` and shaped `^[a-f0-9]{24}$`, so every row needed an id issued by the
+platform being left. The table was built to migrate ten known accounts, which is
+a deliberate shape rather than an omission — and a dead end the first time
+somebody joins who was never on Base44. The owner took that decision on
+2026-09-25: build it, switched off, invite nobody.
+
+This entry supersedes D6 in one respect only — **who may be admitted** — and in
+no other. The invitation still comes from Supabase Auth and the person still
+accepts it. The verification is still out of band. The operator step is still
+the only way in, and no endpoint in the application creates an account.
+
+### What changed, and the four things that did not
+
+A second provenance kind: `base44_migrated`, which is every row the migration
+writes, and `locally_verified`, which is a person admitted on evidence alone.
+
+- **The column is not renamed and not made nullable.**
+  `membership.base44_user_id` is `not null`, `membership_key` is GENERATED from
+  it, `caller_identity`, `caller_roster` and `caller_roster_ids` join on it,
+  `contract_roster_get` checks its parameter against the 24-hex shape, and 589
+  record policies reach it through `caller_user_id()`. A nullable identity would
+  have to be handled again at every one of those. So the column keeps its shape
+  and every consumer keeps working; what widens is what it may hold — which is
+  already what the consumers call it, since `caller_roster` returns it as
+  `user_id`.
+- **The two id spaces are disjoint by construction.** A locally verified id is
+  minted rather than issued and must begin `ffffffff`; a migrated one must not.
+  A Base44 id is an ObjectId whose leading four bytes are a unix timestamp, so
+  that prefix is a date in 2106 — but that is why the prefix was CHOSEN, not what
+  the rule rests on. What it rests on is the CHECK: if a real Base44 id ever
+  arrived with that prefix, enrolling that person would be refused rather than
+  conflated with a minted identity. It fails closed either way, so somebody
+  else's id format is not load-bearing here.
+- **The default is load-bearing, the reason D33's `granted_at` carries one.** It
+  fills the rows that already exist, and it makes a writer that forgets the
+  column fail closed: a minted id inserted without naming its kind is
+  `base44_migrated`, which the id-space constraint refuses. The omission is an
+  error rather than a row recorded as the wrong kind.
+- **The kind is in the receipt's projection**, because the receipt is what a
+  later audit reads to say what a run wrote, and how somebody was admitted is
+  the part of that this decision added.
+
+### The defect this migration would have introduced, which is the house shape
+
+`protect_identity()` enumerates the columns it protects. Adding a column left it
+**mutable**: the only update the trigger permits is a revocation, and a
+revocation could have carried a `provenance` rewrite through with it. That is a
+check deciding from an enumeration and being silently wrong about what the
+enumeration does not name — D47, D75 and D79's shape, arriving in a trigger. The
+function is replaced in the same migration, and the test plants that exact
+update: a legitimate revocation with the column smuggled into it, refused, and
+the same revocation without it permitted as the control.
+
+### Switched off, and what that means concretely
+
+The new kind is refused unless `PENNSYNC_ENROLL_NEW_STAFF` reads exactly
+`enabled-v1`, untrimmed and case-sensitive, the discipline
+`PENNSYNC_API_RELEASE` and D97's `PENNSYNC_API_DELIVERY` follow. It is asked
+during PARSING, so a plan carrying a locally verified enrollment is refused
+before a connection is opened, and a migration plan never asks it at all.
+
+Nothing here sends anything. A test reads the tool's own source and fails if
+`inviteUserByEmail`, `generateLink`, `signInWithOtp`, `resetPasswordForEmail`,
+`signUp`, `admin.createUser` or a mail provider ever appears in it, and if
+anything ever inserts into `auth.`. D99 is the decision that would have been the
+moment to break that property, so it is a check now rather than a sentence.
+
+**Merging this does not apply it.** The migration is a new file, so the hosted
+ledger check will fail by one row until an operator applies it, which is D93's
+expected red and is reported on the pull request by the apply-signal job. The
+fingerprint pin moves in the same change.
+
 ## D100 — The owner hold is lifted, and an empty hold is not the absence of one
 
 The owner released the two account emails on 2026-09-25. In the release thread

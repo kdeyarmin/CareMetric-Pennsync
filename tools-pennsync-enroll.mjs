@@ -25,6 +25,15 @@
  *   trigger, so a row that exists must match the plan exactly or the run fails.
  *   Re-running a plan that is already applied fails on the receipt.
  *
+ * D99 adds a second kind of enrollment and takes none of that away. A person
+ * who never held a Base44 account can now be admitted as `locally_verified`
+ * rather than `base44_migrated`, with a minted id whose space the store keeps
+ * disjoint from Base44's. Everything above still holds for them: the account is
+ * not created here, the invitation is accepted by the person, and the evidence is
+ * read and hashed rather than declared. The new kind is also SWITCHED OFF —
+ * `PENNSYNC_ENROLL_NEW_STAFF` must read exactly `enabled-v1` — because the
+ * decision to build it was explicitly a decision to invite nobody yet.
+ *
  * It does not duplicate the store's own constraints, deliberately. Names, role
  * and status vocabularies, key shapes and the synthetic-shape rules are enforced
  * by the database, which is where they stay true when this file is out of date.
@@ -51,6 +60,33 @@ export const MAX_EVIDENCE_BYTES = 256 * 1024;
 export const LIMITS = Object.freeze({ agencies: 50, identities: 200, memberships: 400 });
 /** The write lock every authority mutation takes, so enrollment serialises with them. */
 export const APP_LOCK = Object.freeze([168344, 20260918]);
+
+/**
+ * D99. A second provenance kind, so a person who never held a Base44 account can
+ * be admitted. `base44_migrated` is every row the ten-account migration writes
+ * and stays the default for a plan that says nothing, so an existing plan parses
+ * and projects as a migration exactly as before.
+ *
+ * The two id spaces are DISJOINT and the store enforces it: a locally verified
+ * person's id is minted rather than issued, so it must begin `MINTED_PREFIX`,
+ * and a migrated person's must not. Minting here and checking there is the same
+ * division D30 follows for a declared uniqueness — the tool cannot be the only
+ * thing standing between a minted id and a Base44 one.
+ */
+export const PROVENANCE_KINDS = Object.freeze(['base44_migrated', 'locally_verified']);
+export const DEFAULT_PROVENANCE = 'base44_migrated';
+export const MINTED_PREFIX = 'ffffffff';
+/**
+ * The new kind ships SWITCHED OFF. Kevin's decision was to build it and invite
+ * nobody, so admitting a person who never held a Base44 account takes a
+ * deliberate act by the operator running this tool, read exactly and untrimmed
+ * as `PENNSYNC_API_RELEASE` and `PENNSYNC_API_DELIVERY` are. A migration plan is
+ * unaffected: this gate is asked only for a `locally_verified` enrollment.
+ */
+export const NEW_STAFF_RELEASE_ENV = 'PENNSYNC_ENROLL_NEW_STAFF';
+export const NEW_STAFF_RELEASE_VALUE = 'enabled-v1';
+export const newStaffReleased = (env = process.env) =>
+  env[NEW_STAFF_RELEASE_ENV] === NEW_STAFF_RELEASE_VALUE;
 
 const HASH = /^[a-f0-9]{64}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
@@ -87,12 +123,29 @@ function parseMembership(raw, agencyIds) {
   return Object.freeze({ id: raw.id, agency_id: raw.agency_id, tenant_role: raw.tenant_role });
 }
 
-function parseEnrollment(raw, agencyIds) {
-  check(exactKeys(raw, ['auth_user_id', 'base44_user_id', 'expected_email',
-    'evidence_path', 'evidence_sha256', 'memberships']));
+function parseEnrollment(raw, agencyIds, env) {
+  const BASE = ['auth_user_id', 'base44_user_id', 'expected_email',
+    'evidence_path', 'evidence_sha256', 'memberships'];
+  // Either shape is a complete plan entry: the migration's six keys, or those
+  // six plus `provenance`. Kept as two exact shapes rather than one with an
+  // optional key, because `exactKeys` refusing an unknown key is what keeps a
+  // misspelled field from being silently dropped.
+  check(exactKeys(raw, BASE) || exactKeys(raw, [...BASE, 'provenance']));
+  const provenance = Object.hasOwn(raw, 'provenance') ? raw.provenance : DEFAULT_PROVENANCE;
+  check(PROVENANCE_KINDS.includes(provenance), 'ENROLL_PROVENANCE_INVALID');
   check(typeof raw.auth_user_id === 'string' && UUID.test(raw.auth_user_id));
   check(typeof raw.base44_user_id === 'string' && BASE44.test(raw.base44_user_id));
   check(raw.base44_user_id !== PLATFORM_OWNER, 'ENROLL_PLATFORM_OWNER_REFUSED');
+  // The id space check, which the store also enforces. A plan that names the
+  // wrong kind for its id is refused here rather than at the insert, so the
+  // operator is told which field is wrong.
+  const minted = raw.base44_user_id.startsWith(MINTED_PREFIX);
+  check(minted === (provenance === 'locally_verified'), 'ENROLL_PROVENANCE_ID_SPACE');
+  // Switched off by default. Asked only for the new kind, and asked during
+  // PARSING so a plan carrying one is refused before any connection is opened.
+  if (provenance === 'locally_verified') {
+    check(newStaffReleased(env), 'ENROLL_NEW_STAFF_RELEASE_PAUSED');
+  }
   check(typeof raw.expected_email === 'string' && raw.expected_email.length >= 3
     && raw.expected_email.length <= 254 && EMAIL.test(raw.expected_email)
     && raw.expected_email === raw.expected_email.trim().toLowerCase(), 'ENROLL_EMAIL_NOT_NORMALIZED');
@@ -105,6 +158,7 @@ function parseEnrollment(raw, agencyIds) {
   return Object.freeze({
     auth_user_id: raw.auth_user_id,
     base44_user_id: raw.base44_user_id,
+    provenance,
     expected_email: raw.expected_email,
     evidence_path: raw.evidence_path,
     evidence_sha256: raw.evidence_sha256,
@@ -113,7 +167,7 @@ function parseEnrollment(raw, agencyIds) {
 }
 
 /** Parse and fully validate a plan addressed by its own digest. Offline. */
-export function parseEnrollmentPlan(rawPlan, expectedPlanSha256) {
+export function parseEnrollmentPlan(rawPlan, expectedPlanSha256, env = process.env) {
   check(typeof rawPlan === 'string' && rawPlan.length > 0, 'ENROLL_PLAN_REQUIRED');
   check(Buffer.byteLength(rawPlan) <= MAX_PLAN_BYTES, 'ENROLL_PLAN_TOO_LARGE');
   check(typeof expectedPlanSha256 === 'string' && HASH.test(expectedPlanSha256), 'ENROLL_PLAN_SHA_REQUIRED');
@@ -129,7 +183,7 @@ export function parseEnrollmentPlan(rawPlan, expectedPlanSha256) {
   const agencies = raw.agencies.map(parseAgency);
   check(unique(agencies.map(row => row.id)), 'ENROLL_AGENCY_AMBIGUOUS');
   const agencyIds = new Set(agencies.map(row => row.id));
-  const enrollments = raw.enrollments.map(row => parseEnrollment(row, agencyIds));
+  const enrollments = raw.enrollments.map(row => parseEnrollment(row, agencyIds, env));
   check(unique(enrollments.map(row => row.auth_user_id)), 'ENROLL_IDENTITY_AMBIGUOUS');
   check(unique(enrollments.map(row => row.base44_user_id)), 'ENROLL_IDENTITY_AMBIGUOUS');
   check(unique(enrollments.map(row => row.expected_email)), 'ENROLL_IDENTITY_AMBIGUOUS');
@@ -154,6 +208,10 @@ export function enrollmentProjectionSha256(plan) {
     identities: [...plan.enrollments].sort(byText('base44_user_id')).map(row => ({
       auth_user_id: row.auth_user_id,
       base44_user_id: row.base44_user_id,
+      // D99. In the projection because the receipt is what a later audit reads
+      // to say what a run wrote, and which kind of identity was admitted is the
+      // part of that this decision added.
+      provenance: row.provenance,
       expected_email: row.expected_email,
       source_evidence_sha256: row.evidence_sha256,
       memberships: [...row.memberships].sort(byText('id')),
@@ -244,13 +302,18 @@ async function writeIdentity(db, plan, enrollment) {
   [enrollment.auth_user_id])).rows;
   check(native.length === 1, 'ENROLL_NATIVE_IDENTITY_UNAVAILABLE');
   check(native[0].email === enrollment.expected_email, 'ENROLL_NATIVE_EMAIL_MISMATCH');
-  const existing = (await db.query(`select base44_user_id, expected_email, source_evidence_sha256, enabled, revoked_at
+  const existing = (await db.query(`select base44_user_id, provenance, expected_email,
+      source_evidence_sha256, enabled, revoked_at
     from pennsync_private.identity_map where app_id=$1 and auth_user_id=$2 for share`,
   [plan.app_id, enrollment.auth_user_id])).rows;
   if (existing.length === 1) {
     // Provenance is immutable by trigger, so a differing row is not something
-    // this run can reconcile; it is a plan that contradicts the record.
+    // this run can reconcile; it is a plan that contradicts the record. The kind
+    // is compared too: it is part of what the row records about the person, and
+    // a plan that reclassified an enrolled identity would be exactly the change
+    // the trigger refuses.
     check(existing[0].base44_user_id === enrollment.base44_user_id
+      && existing[0].provenance === enrollment.provenance
       && existing[0].expected_email === enrollment.expected_email
       && existing[0].source_evidence_sha256 === enrollment.evidence_sha256
       && existing[0].enabled === true && existing[0].revoked_at === null, 'ENROLL_IDENTITY_CONFLICT');
@@ -260,10 +323,14 @@ async function writeIdentity(db, plan, enrollment) {
     where app_id=$1 and (base44_user_id=$2 or expected_email=$3) for share`,
   [plan.app_id, enrollment.base44_user_id, enrollment.expected_email])).rows;
   check(claimed.length === 0, 'ENROLL_IDENTITY_CLAIMED');
+  // The kind is named rather than left to the column default. The default exists
+  // so the rows that predate D99 are `base44_migrated` and so a writer that
+  // forgets fails closed against the id-space constraint; a writer that knows
+  // which kind it is writing says so.
   await db.query(`insert into pennsync_private.identity_map
-    (app_id, auth_user_id, base44_user_id, expected_email, source_evidence_sha256, verified_at)
-    values ($1,$2,$3,$4,$5,clock_timestamp())`,
-  [plan.app_id, enrollment.auth_user_id, enrollment.base44_user_id,
+    (app_id, auth_user_id, base44_user_id, provenance, expected_email, source_evidence_sha256, verified_at)
+    values ($1,$2,$3,$4,$5,$6,clock_timestamp())`,
+  [plan.app_id, enrollment.auth_user_id, enrollment.base44_user_id, enrollment.provenance,
     enrollment.expected_email, enrollment.evidence_sha256]);
   return 1;
 }
@@ -289,9 +356,9 @@ async function writeMembership(db, plan, enrollment, membership) {
  * Apply a verified plan to an open connection, in one transaction, under the
  * same advisory lock the authority RPCs take for writes.
  */
-export async function applyEnrollmentPlan({ db, rawPlan, expectedPlanSha256, readEvidence }) {
+export async function applyEnrollmentPlan({ db, rawPlan, expectedPlanSha256, readEvidence, env = process.env }) {
   check(!!db && typeof db.query === 'function', 'ENROLL_TARGET_REQUIRED');
-  const plan = parseEnrollmentPlan(rawPlan, expectedPlanSha256);
+  const plan = parseEnrollmentPlan(rawPlan, expectedPlanSha256, env);
   await verifyEnrollmentEvidence(plan, readEvidence);
   const target = await preflight(db, plan);
   const projectionSha256 = enrollmentProjectionSha256(plan);
@@ -400,6 +467,9 @@ export async function runEnrollCli({ env = process.env, write = console.log, err
       rawPlan,
       expectedPlanSha256: env.PENNSYNC_ENROLL_PLAN_SHA256,
       readEvidence: directoryEvidenceReader(env.PENNSYNC_ENROLL_EVIDENCE_DIR),
+      // The CLI's own environment, so `PENNSYNC_ENROLL_NEW_STAFF` is read from
+      // the run the operator actually started rather than from the process.
+      env,
     });
     write(JSON.stringify(receipt, null, 2));
     return 0;

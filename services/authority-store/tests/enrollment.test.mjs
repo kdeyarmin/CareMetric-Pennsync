@@ -238,3 +238,92 @@ test('an untrusted database role cannot enroll anyone', async () => {
   await refuses(staging, makePlan({ agencies: [AGENCY_A], enrollments: [person(40)] }), 'ENROLL_ROLE_UNTRUSTED');
   await staging.exec('reset role');
 });
+
+
+/**
+ * D99's new kind, against the real migration.
+ *
+ * The offline suite holds the plan boundary and the switch; these are the three
+ * things only the database answers: that a minted identity is admitted and
+ * recorded as such, that the two id spaces cannot be crossed however a writer
+ * tries, and that a revocation cannot rewrite the kind on its way through.
+ */
+const MINTED = '99';
+const minted = n => `ffffffff${'1'.repeat(16 - String(n).length)}${n}`;
+const OPEN = { PENNSYNC_ENROLL_NEW_STAFF: 'enabled-v1' };
+
+test('a person who never held a Base44 account is admitted and recorded as such', async () => {
+  await native(staging, 40);
+  const proof = evidence(40);
+  const plan = makePlan({
+    agencies: [AGENCY_A],
+    enrollments: [{
+      auth_user_id: uuid(40), base44_user_id: minted(MINTED), provenance: 'locally_verified',
+      expected_email: email(40), evidence_path: proof.path, evidence_sha256: proof.sha256,
+      memberships: [{ id: 'membership-40', agency_id: 'agency-a', tenant_role: 'clinician' }],
+    }],
+  });
+  const receipt = await applyEnrollmentPlan({ db: staging, ...plan, env: OPEN });
+  assert.equal(receipt.created.identities, 1);
+  const rows = (await staging.query(`select provenance, base44_user_id, enabled
+    from pennsync_private.identity_map where auth_user_id = $1`, [uuid(40)])).rows;
+  assert.deepEqual(rows, [{ provenance: 'locally_verified', base44_user_id: minted(MINTED), enabled: true }]);
+  // And the membership that followed keys to the same minted id, so every
+  // downstream reader — caller_roster, caller_user_id, the record policies —
+  // sees an ordinary 24-character user id.
+  const member = (await staging.query(`select base44_user_id, membership_key, status
+    from pennsync_private.membership where auth_user_id = $1`, [uuid(40)])).rows;
+  assert.deepEqual(member, [{ base44_user_id: minted(MINTED),
+    membership_key: `agency-a:${minted(MINTED)}`, status: 'active' }]);
+  // The switch is the tool's, so with it closed the same plan never reaches here.
+  await refuses(staging, { ...plan, env: {} }, 'ENROLL_NEW_STAFF_RELEASE_PAUSED');
+});
+
+test('the store keeps the two id spaces disjoint, whatever a writer says', async () => {
+  // Planted directly, not through the tool: this is the constraint's own half,
+  // and the reason the tool's matching check is not the only thing standing here.
+  await native(staging, 41);
+  const insert = (id, provenance) => staging.query(`insert into pennsync_private.identity_map
+    (app_id, auth_user_id, base44_user_id, provenance, expected_email, source_evidence_sha256, verified_at)
+    values ($1,$2,$3,$4,$5,$6,clock_timestamp())`,
+  [STAGING_APP, uuid(41), id, provenance, email(41), sha('x')]);
+  await assert.rejects(insert(minted('41'), 'base44_migrated'), /identity_map_provenance_id_space/);
+  await assert.rejects(insert(base44(41), 'locally_verified'), /identity_map_provenance_id_space/);
+  await assert.rejects(insert(minted('41'), 'imported'), /provenance_check|violates check/);
+  // And the DEFAULT is what makes a forgetful writer fail closed rather than
+  // recording a minted identity as a migrated one.
+  await assert.rejects(staging.query(`insert into pennsync_private.identity_map
+    (app_id, auth_user_id, base44_user_id, expected_email, source_evidence_sha256, verified_at)
+    values ($1,$2,$3,$4,$5,clock_timestamp())`,
+  [STAGING_APP, uuid(41), minted('41'), email(41), sha('x')]), /identity_map_provenance_id_space/);
+});
+
+test('a revocation cannot rewrite how somebody was admitted', async () => {
+  // The trigger enumerates the columns it protects, so adding one left it
+  // mutable inside the ONE update the trigger permits. Planted as that exact
+  // update: a legitimate revocation carrying a provenance change with it.
+  await native(staging, 42);
+  const proof = evidence(42);
+  await applyEnrollmentPlan({
+    db: staging,
+    ...makePlan({
+      agencies: [AGENCY_A],
+      enrollments: [{
+        auth_user_id: uuid(42), base44_user_id: minted('42'), provenance: 'locally_verified',
+        expected_email: email(42), evidence_path: proof.path, evidence_sha256: proof.sha256,
+        memberships: [{ id: 'membership-42', agency_id: 'agency-a', tenant_role: 'clinician' }],
+      }],
+    }),
+    env: OPEN,
+  });
+  const revoke = extra => staging.query(`update pennsync_private.identity_map
+    set enabled = false, revoked_at = clock_timestamp(), version = version + 1${extra}
+    where app_id = $1 and auth_user_id = $2`, [STAGING_APP, uuid(42)]);
+  await assert.rejects(revoke(`, provenance = 'base44_migrated'`), /PENNSYNC_IMMUTABLE_IDENTITY/);
+  // The control: the same revocation without the smuggled column is permitted,
+  // so the refusal above is about `provenance` and not about revoking at all.
+  await revoke('');
+  const rows = (await staging.query(`select provenance, enabled from pennsync_private.identity_map
+    where auth_user_id = $1`, [uuid(42)])).rows;
+  assert.deepEqual(rows, [{ provenance: 'locally_verified', enabled: false }]);
+});

@@ -14,6 +14,7 @@
   "migrations/20260920040000_chart_assignment.sql": "c07075b3e63a5e73b68782d546cb2dcc168c82e19eb78be0f62138ed5faf24bc",
   "migrations/20260920180000_chart_assignment_lifecycle.sql": "8a720a023d9c92aea04c8704bc1d88ace84222d4cf06fc172f497e578af14908",
   "migrations/20260920200000_membership_lifecycle.sql": "58f39e139908345ef5fc7ec259f7ea2be7c871c668a9aacdf6e39a96ae44833c",
+  "migrations/20260920600000_locally_verified_identity.sql": "7be382861a25997a66fe2ef5948a9bb3eecac31eed8d504051ec164f958d32b8",
   "record-migrations/20260919170000_record_store.sql": "aa381137ffef9092155085612d80b5426cbd39698eef3846780e5bed6c5ea829",
   "record-migrations/20260919180000_record_brokers.sql": "553c24c42b32deeec637c3c26adf448ed6884c81d03d298860a3eea01c5a489e",
   "record-migrations/20260920000000_contract_policy_library.sql": "b5ed76066b6e62793d35bc0c678ef2a740acf14f1208714e0153e1b0e221091b",
