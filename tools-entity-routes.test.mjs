@@ -7,6 +7,8 @@ import { HANDLER_NAMES } from './services/pennsync-api/handlers.mjs';
 import { PORTED_FUNCTIONS } from './services/authority-client/client.mjs';
 import { ENTITY_ROUTES, ROUTED_OPERATIONS, routeFor } from './src/lib/independentEntityRoutes.js';
 import { measureRoutes } from './tools-entity-routes.mjs';
+import { auditBrokerCeiling, brokerReadable, locatorPaths } from './tools-tenant-decision.mjs';
+import { buildPaths, readEntity } from './tools-tenant-path.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 
@@ -87,6 +89,39 @@ test('routeFor answers only for a declared operation', () => {
  * bug, so the test states which halves are real and which are merely
  * consistent.
  */
+/**
+ * The number this reports was wrong twice before it was right, both times
+ * upward, and both times because the audit was asked less than the whole
+ * question. First it applied only the read predicate (31 sites). Then it was
+ * hand-run with an empty `locators` list, so the file-layer check could not
+ * fire (25). The answer is 23, and `LibraryDocument` is the proof the gate now
+ * asks the whole question: its schema plainly permits a read, so the predicate
+ * alone admits it, and the ceiling refuses it for holding a file.
+ *
+ * The general rule is worth more than the number: a check run with one of its
+ * inputs empty reports CLEAR for a reason that has nothing to do with the
+ * thing being clear. So the gate builds its own inputs and nothing hand-runs
+ * the audit.
+ */
+test('the ceiling is the whole audit, not the half of it that answers first', () => {
+  const repository = resolve(dirname(fileURLToPath(import.meta.url)));
+  const paths = new Map(buildPaths(repository).entities.map(path => [path.entity, path]));
+  const schema = readEntity(repository, 'LibraryDocument');
+  assert.equal(brokerReadable(schema), true, 'the read predicate alone would admit it');
+  const problems = auditBrokerCeiling({
+    entity: 'LibraryDocument',
+    schema,
+    path: paths.get('LibraryDocument'),
+    locators: locatorPaths(repository, 'LibraryDocument'),
+  });
+  assert.ok(problems.some(problem => problem.includes('can hold a file')), problems);
+  // And with the locators left out — the way it was hand-run — it comes back
+  // clear, which is exactly why no caller supplies them any more.
+  assert.deepEqual(auditBrokerCeiling({
+    entity: 'LibraryDocument', schema, path: paths.get('LibraryDocument'), locators: [],
+  }), []);
+});
+
 test('what a wider generic family could reach is reported and adds up', () => {
   const report = measureRoutes(repository);
   assert.ok(report.unrouted_entities > 0);
@@ -99,4 +134,7 @@ test('what a wider generic family could reach is reported and adds up', () => {
   // would report every site as needing a named capability.
   assert.ok(report.generic_family_reads > 0,
     'no read cleared the ceiling, which would mean the schemas were not read at all');
+  assert.ok(report.generic_family_entities > 0
+    && report.generic_family_entities < report.unrouted_entities,
+  'the ceiling admits some entities and refuses others; all or none means it did not run');
 });

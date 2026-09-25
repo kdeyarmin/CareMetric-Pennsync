@@ -33,8 +33,8 @@ import { HANDLER_NAMES } from './services/pennsync-api/handlers.mjs';
 import { PORTED_FUNCTIONS } from './services/authority-client/client.mjs';
 import { ENTITY_ROUTES } from './src/lib/independentEntityRoutes.js';
 import { READ_OPERATIONS, SERVED, measureDestinations } from './tools-frontend-destination.mjs';
-import { brokerReadable, brokerWritable } from './tools-tenant-decision.mjs';
-import { readEntity } from './tools-tenant-path.mjs';
+import { auditBrokerCeiling, brokerWritable, locatorPaths } from './tools-tenant-decision.mjs';
+import { buildPaths, readEntity } from './tools-tenant-path.mjs';
 
 export const FORMAT = 'pennsync-entity-routes';
 export const FORMAT_VERSION = 1;
@@ -53,29 +53,53 @@ export const MINIMUM_REASON = 20;
  * a condition is an authority decision the family cannot evaluate.
  *
  * So this applies that same test, reusing `tools-tenant-decision.mjs`'s own
- * predicates rather than a second reading of the block, and reports how many
- * of the unrouted call sites are above it. It gates nothing: it is the input
- * to a decision about what the remainder costs, and a number that moves as
- * schemas change should not fail a build.
+ * audit rather than a second reading of the block, and reports how many of the
+ * unrouted call sites are above it. It gates nothing: it is the input to a
+ * decision about what the remainder costs, and a number that moves as schemas
+ * change should not fail a build.
+ *
+ * It runs the WHOLE of `auditBrokerCeiling`, not the read predicate alone, and
+ * the difference is not academic. A first version asked only whether the
+ * schema permits a read, reported 31 reads, and that number went out as the
+ * size of a buildable slice. The ceiling also refuses an entity that names a
+ * clinical subject, carries a credential, can hold a file, or reaches tenancy
+ * through a clinical entity — and two of the twelve entities behind those 31
+ * fail exactly there: `PDFTemplate` names a `document_id`, `AgencySettings`
+ * carries a credential digest. The real slice is 25 across 10 entities. A
+ * bound reported as an answer is how a plan gets sized against work that
+ * cannot be done, so this reports what the ceiling reports.
  */
 function genericFamilyReach(repository, unrouted) {
   let reads = 0;
   let writes = 0;
+  // Built once: the tenant path is one of the ceiling's inputs, and rebuilding
+  // it per entity would read every schema in the tree for each of forty.
+  const byEntity = new Map(buildPaths(repository).entities.map(path => [path.entity, path]));
+  const clears = new Map();
   const schemas = new Map();
   for (const site of unrouted) {
-    if (!schemas.has(site.entity)) {
+    if (!clears.has(site.entity)) {
       let schema = null;
       try { schema = readEntity(repository, site.entity); } catch { schema = null; }
       schemas.set(site.entity, schema);
+      // No exemption is passed. `broker_ceiling` exemptions are per entity in
+      // the manifest and only exist for entities already dispositioned
+      // `broker`; granting one to an entity nobody has decided about would be
+      // this tool inventing the decision it is trying to measure.
+      clears.set(site.entity, schema !== null && auditBrokerCeiling({
+        entity: site.entity,
+        schema,
+        path: byEntity.get(site.entity),
+        locators: locatorPaths(repository, site.entity),
+      }).length === 0);
     }
-    const schema = schemas.get(site.entity);
-    if (!schema) continue;
-    if (READ_OPERATIONS.includes(site.operation)) {
-      if (brokerReadable(schema)) reads += 1;
-    } else if (brokerReadable(schema) && brokerWritable(schema)) writes += 1;
+    if (!clears.get(site.entity)) continue;
+    if (READ_OPERATIONS.includes(site.operation)) reads += 1;
+    else if (brokerWritable(schemas.get(site.entity))) writes += 1;
   }
   return {
     unrouted_entities: schemas.size,
+    generic_family_entities: [...clears.values()].filter(Boolean).length,
     generic_family_reads: reads,
     generic_family_writes: writes,
     needs_named_capability: unrouted.length - reads - writes,

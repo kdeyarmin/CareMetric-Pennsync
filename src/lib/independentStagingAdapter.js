@@ -80,7 +80,10 @@ const routedEntities = (serve, configured) => refusingLevel(entity => refusingLe
   // that gets a throw where every sibling rejects has to handle two shapes.
   let input;
   try { input = route.request(...args); } catch (error) { return Promise.reject(error); }
-  return serve(route.function, input).then(route.response);
+  // The call's own arguments reach `response` as well, because a route that
+  // re-orders or narrows the answer has to know what was asked for to say
+  // whether the page it got was the whole set.
+  return serve(route.function, input).then(answer => route.response(answer, ...args));
 }));
 const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value)
   && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
