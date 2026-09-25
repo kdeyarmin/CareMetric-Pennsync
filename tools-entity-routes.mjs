@@ -32,12 +32,55 @@ import { fileURLToPath } from 'node:url';
 import { HANDLER_NAMES } from './services/pennsync-api/handlers.mjs';
 import { PORTED_FUNCTIONS } from './services/authority-client/client.mjs';
 import { ENTITY_ROUTES } from './src/lib/independentEntityRoutes.js';
-import { SERVED, measureDestinations } from './tools-frontend-destination.mjs';
+import { READ_OPERATIONS, SERVED, measureDestinations } from './tools-frontend-destination.mjs';
+import { brokerReadable, brokerWritable } from './tools-tenant-decision.mjs';
+import { readEntity } from './tools-tenant-path.mjs';
 
 export const FORMAT = 'pennsync-entity-routes';
 export const FORMAT_VERSION = 1;
 /** A route's `reason` has to say something; a placeholder is not a reason. */
 export const MINIMUM_REASON = 20;
+
+
+/**
+ * What a WIDER generic family could reach, for the call sites no route serves.
+ *
+ * The obvious plan for the unrouted remainder is "widen the broker family
+ * rather than write a named capability per entity", and it is worth knowing
+ * before anybody starts whether that plan has a ceiling. D16's is the schema's
+ * own `rls` block: a generic family may serve a read only where the schema
+ * plainly permits one, and a write only where it plainly permits every write —
+ * a condition is an authority decision the family cannot evaluate.
+ *
+ * So this applies that same test, reusing `tools-tenant-decision.mjs`'s own
+ * predicates rather than a second reading of the block, and reports how many
+ * of the unrouted call sites are above it. It gates nothing: it is the input
+ * to a decision about what the remainder costs, and a number that moves as
+ * schemas change should not fail a build.
+ */
+function genericFamilyReach(repository, unrouted) {
+  let reads = 0;
+  let writes = 0;
+  const schemas = new Map();
+  for (const site of unrouted) {
+    if (!schemas.has(site.entity)) {
+      let schema = null;
+      try { schema = readEntity(repository, site.entity); } catch { schema = null; }
+      schemas.set(site.entity, schema);
+    }
+    const schema = schemas.get(site.entity);
+    if (!schema) continue;
+    if (READ_OPERATIONS.includes(site.operation)) {
+      if (brokerReadable(schema)) reads += 1;
+    } else if (brokerReadable(schema) && brokerWritable(schema)) writes += 1;
+  }
+  return {
+    unrouted_entities: schemas.size,
+    generic_family_reads: reads,
+    generic_family_writes: writes,
+    needs_named_capability: unrouted.length - reads - writes,
+  };
+}
 
 /**
  * `routes` is a parameter so a test can PLANT a wrong declaration and watch
@@ -75,6 +118,8 @@ export function measureRoutes(repository, routes = ENTITY_ROUTES) {
     site => Object.hasOwn(routes, `${site.entity}.${site.operation}`)).length;
 
   return {
+    ...genericFamilyReach(repository,
+      landable.filter(site => !Object.hasOwn(routes, `${site.entity}.${site.operation}`))),
     format: FORMAT,
     schema_version: FORMAT_VERSION,
     routes: Object.keys(routes).length,
@@ -99,6 +144,10 @@ function main(argv, log = console.log, error = console.error) {
     log(`entity routes: ${report.routes} declared, `
       + `${report.routed_sites}/${report.landable_sites} landable call sites routed, `
       + `${report.unrouted_sites} still to adopt`);
+    log(`  of those ${report.unrouted_sites}, across ${report.unrouted_entities} entities: `
+      + `a wider generic family could serve ${report.generic_family_reads} reads and `
+      + `${report.generic_family_writes} writes above D16's ceiling; `
+      + `${report.needs_named_capability} need a named capability`);
   }
   if (!report.ok) for (const problem of report.problems) error(problem);
   return report.ok ? 0 : 1;

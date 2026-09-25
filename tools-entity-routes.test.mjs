@@ -77,3 +77,26 @@ test('routeFor answers only for a declared operation', () => {
   // resolve: `Object.hasOwn` is what keeps `constructor` from being a route.
   assert.equal(routeFor('Object', 'constructor'), null);
 });
+
+/**
+ * The remainder's cost, measured rather than assumed.
+ *
+ * "Widen the generic family instead of writing a capability per entity" is the
+ * obvious plan for the 206 call sites no route serves, and D16's ceiling
+ * decides whether it can work. An answer of zero writes is a RESULT and not a
+ * bug, so the test states which halves are real and which are merely
+ * consistent.
+ */
+test('what a wider generic family could reach is reported and adds up', () => {
+  const report = measureRoutes(repository);
+  assert.ok(report.unrouted_entities > 0);
+  assert.equal(
+    report.generic_family_reads + report.generic_family_writes + report.needs_named_capability,
+    report.unrouted_sites,
+    'every unrouted call site is in exactly one of the three');
+  // Nothing here asserts a number that moves with the schemas. What it does
+  // assert is that the measurement ran: a silent failure to read a schema
+  // would report every site as needing a named capability.
+  assert.ok(report.generic_family_reads > 0,
+    'no read cleared the ceiling, which would mean the schemas were not read at all');
+});
