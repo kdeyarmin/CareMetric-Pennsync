@@ -354,3 +354,49 @@ test('the helpers are the record owner\'s alone', async () => {
     assert.equal(rows[0].granted, false, `${helper} is not a capability`);
   }
 });
+
+/**
+ * The assertion the shared fixtures cannot make, and why it had to be added.
+ *
+ * Every identity in `fixtures.sql` holds exactly ONE membership, so the
+ * policies alone refuse every cross-agency row and a tenancy assertion built on
+ * those fixtures passes with the contract's own predicate deleted. The tests
+ * above are in that state: `physician_list(A)` returns agency A's three rows
+ * whether or not the contract says `agency_id = p_agency`, because
+ * `caller_agencies()` holds only A. That is a test which cannot fail, which is
+ * worse than no test — found by batch C in its own suite and true of this one.
+ *
+ * So this grants `ADMIN_A` a second membership, in agency B, which is the only
+ * state where the contract's predicate is load-bearing: the policies now admit
+ * both agencies' rows and nothing but the predicate keeps B's physicians out of
+ * a request about A. Proved by sabotage — removing either predicate from the
+ * migration fails this test and no other.
+ *
+ * `document_template` is the deliberate counter-case. It has no predicate of
+ * its own because `document_template_read` admits an agency's own rows OR any
+ * `is_system_template` row, so a caller holding both agencies SHOULD see B's
+ * private template. Asserting otherwise would be restating tenancy in the test
+ * instead of the contract, which is the bug in the other direction.
+ */
+test('a caller holding two agencies still gets one agency per request', async () => {
+  await db.exec(`insert into pennsync_private.membership
+    (app_id,id,agency_id,auth_user_id,base44_user_id,tenant_role,status) values
+    ('${APP}','membership-1b','${B}','${uid(ADMIN_A)}','6aac00000000${String(uid(ADMIN_A)).slice(-12)}',
+     'agency_admin','active')`);
+  try {
+    // Both agencies are now readable, so the policies refuse nothing here.
+    assert.deepEqual(ids(await call(ADMIN_A, 'physician_list', [B, 100, 'name', null])), ['doc-z']);
+    assert.deepEqual(ids(await call(ADMIN_A, 'physician_list', [A, 100, 'name', null])),
+      ['doc-a', 'doc-b', 'doc-c'], 'the contract predicate, not the policy, keeps B out');
+    assert.deepEqual(ids(await call(ADMIN_A, 'library_document_list', [A, 100])), ['lib-2', 'lib-1']);
+    assert.deepEqual(ids(await call(ADMIN_A, 'on_call_shift_list', [A, 100, null, null])),
+      ['shift-early', 'shift-mid', 'shift-late']);
+    assert.deepEqual(ids(await call(ADMIN_A, 'visit_point_config_list', [A, 100])), ['cfg-new', 'cfg-old']);
+    // And the counter-case: the template read has no predicate by design, so
+    // holding B really does widen it.
+    assert.deepEqual(ids(await call(ADMIN_A, 'document_template_list', [A, 100])),
+      ['tpl-theirs', 'tpl-system', 'tpl-own']);
+  } finally {
+    await db.exec(`delete from pennsync_private.membership where id = 'membership-1b'`);
+  }
+});
