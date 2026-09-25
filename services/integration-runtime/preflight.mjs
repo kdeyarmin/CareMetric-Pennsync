@@ -62,11 +62,18 @@ export function singleSenderVerified(data, fromEmail) {
  * API sending at all — so the recommended production configuration is exactly
  * the one a sender-list check ALONE would report as unverified.
  *
- * The domain match is EXACT and never a suffix: an authenticated `example.com`
- * supports no claim about `mail.example.com`, and answering VERIFIED too
- * readily is the expensive direction to be wrong in. A from-domain matching
- * nothing is reported with the valid domains beside it, so a subdomain setup is
- * visible to whoever reads the report instead of being silently judged.
+ * The match is EXACT, never a suffix, and reads `domain` ALONE. SendGrid states
+ * both halves of that. On the suffix: "You can only send email messages from
+ * this domain specified. Subdomains don't inherit authentication permissions
+ * from their parent domain." And on the neighbouring `subdomain` field, which
+ * is return-path infrastructure rather than a sending identity: SendGrid
+ * "creates a subdomain for your domain to handle bounce and unsubscribe
+ * notices". So building `subdomain + '.' + domain` and matching on that would
+ * answer VERIFIED on the strength of a record authorizing no such sender, and
+ * answering VERIFIED too readily is the expensive direction to be wrong in. A
+ * from-domain matching nothing is reported with the valid domains beside it, so
+ * a subdomain setup is visible to whoever reads the report instead of being
+ * silently judged.
  */
 export function domainAuthenticated(data, fromEmail) {
   if (!Array.isArray(data)) return null;
