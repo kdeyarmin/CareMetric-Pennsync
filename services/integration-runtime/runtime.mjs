@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { BROWSER_CONTRACT, bindingFromContext } from './caller-binding.mjs';
-import { AUTHORITY_MODES, independentAuthorize, validAuthorityKey, validAuthorityTarget } from './authority.mjs';
+import { AUTHORITY_APP_PINS, AUTHORITY_MODES, independentAuthorize, validAuthorityKey, validAuthorityTarget } from './authority.mjs';
 import { IntegrationError, fail, ID, UUID, OPERATIONS, hash, readJson, seal, stable, unseal } from './safety.mjs';
 
 const DEFAULT_APP = '694ec16e72e01b60d22f7cbf';
@@ -43,11 +43,21 @@ export function loadConfig(env = process.env) {
   // ready and is refused by every authorization call. Make the operator say which
   // app this runtime serves rather than inherit a default from the other path.
   if (authorityMode === 'independent' && !explicitApp) throw new Error('IMPLICIT_APP_BINDING');
+  // Stating a binding is not the same as stating the RIGHT one, and the wrong
+  // one fails exactly as invisibly as the defaulted one did. A target with no
+  // declared pin refuses rather than defaulting, so adding one to
+  // AUTHORITY_TARGETS forces the decision instead of inheriting silence.
+  if (authorityMode === 'independent') {
+    if (!Object.hasOwn(AUTHORITY_APP_PINS, authorityUrl)) throw new Error('UNPINNED_AUTHORITY_TARGET');
+    const pin = AUTHORITY_APP_PINS[authorityUrl];
+    if (pin !== null && appId !== pin) throw new Error('APP_BINDING_MISMATCH');
+  }
   const configured = !!supabaseUrl && !!env.SUPABASE_SERVICE_ROLE_KEY
     && /^[a-f0-9]{64}$/.test(encryptionKey) && /^[a-f0-9]{64}$/.test(hashKey) && encryptionKey !== hashKey
     && (authorityMode !== 'independent' || authorityConfigured);
   return {
-    appId, operations, browserOperations, browserReleased: env.INTEGRATIONS_BROWSER_RELEASE === 'enabled-v2',
+    appId, appStated: !!explicitApp,
+    operations, browserOperations, browserReleased: env.INTEGRATIONS_BROWSER_RELEASE === 'enabled-v2',
     origins, supabaseUrl, encryptionKey, hashKey, configured,
     authorityMode, authorityUrl, authorityKey, authorityConfigured,
     released: env.INTEGRATIONS_RELEASE === 'enabled-v1', dailyLimit: 100,
@@ -77,6 +87,12 @@ export function publicReadiness(config) {
     // that production traffic moved.
     authorityMode: independent ? 'independent' : 'base44',
     base44ExecutionDependency: !independent, trafficCutoverVerified: false, revision: config.revision,
+    // Which app this deployment keys into the owned store with, and whether the
+    // operator chose it. `pennsync-api` publishes the same pair for the same
+    // reason: every other field here is a shape question, so a binding that is
+    // merely WRONG passes all of them. Neither id is a secret; both are
+    // literals in this file.
+    appId: config.appId, appStated: config.appStated === true,
     browserContract: BROWSER_CONTRACT, browserRevisionBound: /^[a-f0-9]{40}$/.test(config.revision || ''),
     browserReleased: config.browserReleased === true, browserOperations: config.browserOperations || [],
     browserReady: config.configured && config.released && config.browserReleased === true
