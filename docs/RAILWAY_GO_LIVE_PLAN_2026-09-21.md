@@ -65,7 +65,7 @@ plan's status table reads as progress without saying where the progress lives.
 | --- | ---: | ---: |
 | Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
 | Record store migrations (store, brokers, 83 contracts, purpose policies, file map) | ~~54~~ **59** | ~~0~~ **59** — 54 on 2026-09-21 and the rest since; the hosted ledger holds 73 of the 74 committed migrations with nothing pending, read from the `hosted-gap` job on `b8e4e021` 2026-09-23 |
-| Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ ~~74 deployed~~ **80 deployed; 0 released as at 2026-09-25 05:16Z** (release state moves without a commit — read `/readyz`) — the six-name gap closed by the 2026-09-25 redeploy. It did not close by itself and will not stay closed by itself: the service's source is **pinned to a commit**, so every future merge reopens it until somebody repoints the pin — **or until the next variable change, which rebuilds from `main` regardless of the pin** (measured 2026-09-25 05:41Z). See stage B |
+| Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ ~~74 deployed~~ **80 deployed; waves 1 to 3 released 2026-09-25, 8 operations serving as at 05:43Z** (release state moves without a commit — read `/readyz`) — the six-name gap closed by the 2026-09-25 redeploy. It did not close by itself and will not stay closed by itself: the service's source is **pinned to a commit**, so every future merge reopens it until somebody repoints the pin — **or until the next variable change, which rebuilds from `main` regardless of the pin** (measured 2026-09-25 05:41Z). See stage B |
 | Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ **2 deployed, paused** — 2026-09-22 |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
 
@@ -210,12 +210,21 @@ written.
 
    **The redeploy makes waves 1 to 3 releasable; it does not release them.**
    `PENNSYNC_API_RELEASE` and `PENNSYNC_API_FUNCTIONS` are the flip and they
-   are the owner's. **Measured 2026-09-25 05:16Z, no wave had been released**
-   and the service read `release: paused`. That is a dated reading and not a
-   standing fact: release state is the one thing on this page that can change
-   without any commit, so **read it off `/readyz` rather than off this page** —
-   `released` and `operations` say what is actually being served, and the page
-   cannot.
+   are the owner's, and the owner gave that line on 2026-09-25.
+
+   **Waves 1 to 3 are live. Measured by the redeploy thread at 2026-09-25
+   05:43Z**, in its words: the service reports `release: enabled` with eight
+   operations serving — patient list and read, patient create and update, and
+   the four visit ones — still bound to the staging app id, and the same commit
+   ran through all three waves, so nothing shifted underneath them. Waves 4, 5
+   and 6 are untouched, and **wave 4 stays out of every value**, because it
+   carries the two account-email names and releasing those is a separate owner
+   decision (§4).
+
+   That is a dated reading and not a standing fact: release state is the one
+   thing on this page that can change without any commit, so **read it off
+   `/readyz` rather than off this page** — `released` and `operations` say what
+   is actually being served, and the page cannot.
 4. **Enroll real people.** Ten Supabase Auth invitations accepted and verified
    out of band. Nothing downstream of authority can be proved with four
    synthetic actors.
@@ -911,6 +920,24 @@ Two consequences, and the second is the one that bites:
   one: **do not move `main` while a release is in progress**, and treat a green
   `main` at the moment of each variable change as a prerequisite of that wave.
 
+**A visible consequence, and how to read it.** The service's RECORDED commit
+and the commit it is actually RUNNING now disagree, because the wave-1 variable
+write rebuilt from the tip of `main`. It was harmless on 2026-09-25 — the two
+commits are identical in the part that gets built, and the redeploy thread
+re-read the service to confirm it — but it means the pin field no longer
+answers "what is this service running". Read `/readyz`'s `revision` for that,
+and expect it to differ from the source pin after any variable change.
+
+**One consequence is an INFERENCE and is recorded as one, not as a
+measurement.** Undoing a wave means removing both release variables, which is
+itself a variable change. If a variable change rebuilds from `main`'s tip —
+which is what was measured — then a rollback would presumably do the same, and
+could ship whatever has merged since. **Nobody has tested a rollback**, so this
+is reasoning from the measured behaviour rather than an observation of it.
+Either way the standing step is the same and holds for any variable write,
+including a rollback: **check what `main`'s tip builds before touching a
+variable**, because the tip is what you will get.
+
 **How to tell which model a service is on.** Read the service's source: in the
 same Railway project, `PennTrain`'s carries **no** `commitSha` and follows
 `main`; `pennsync-api`'s carries one. Two services in one project, two
@@ -1371,10 +1398,11 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   so **it comes first, before any wave**, and the name gap is the second reason
   rather than the first. That ordering held on 2026-09-25 and holds again after
   every future repoint; it is a rule about the sequence, not a note about one
-  stale revision. **Measured 2026-09-25 05:16Z: the service was redeployed,
-  current, and still `release: paused`, with no wave released and both release
-  variables unset.** Date any successor to this sentence the same way and read
-  the current state off `/readyz`. Pasting a refused wave's value is
+  stale revision, and it was followed: the redeploy came first, then the waves.
+  **Measured by the redeploy thread 2026-09-25 05:43Z, after all three waves:
+  `release: enabled`, eight operations serving, still bound to the staging app
+  id, and one commit through all three waves.** Date any successor to this
+  sentence the same way and read the current state off `/readyz`. Pasting a refused wave's value is
   `INVALID_FUNCTION_RELEASE` at startup, which is a crash loop rather than a
   refusal an operator can read. So `--wave <name> --deployment https://<host>`
   reads `/readyz` and refuses three things before an operator sets anything: a
