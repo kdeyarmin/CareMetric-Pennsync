@@ -94,6 +94,56 @@ export const DERIVED_WAVES = Object.freeze([
   Object.freeze({ name: 'integration', reason: 'reaches the integration runtime, which is deployed and paused.' }),
 ]);
 
+/**
+ * Names the OWNER has withheld from every release, whatever wave the
+ * derivation puts them in.
+ *
+ * This is NOT a readiness question and is deliberately not expressed through
+ * `needsIntegration`. Both of these are refusal-only today — they touch no
+ * store and reach no runtime — so the derivation is right to put them in the
+ * read-only wave, and D92's guard would refuse the flag that moved them
+ * anywhere else. What holds them back is a decision about who may be sent
+ * mail, which no property of the tree can answer.
+ *
+ * It exists because the exclusion used to live nowhere the tool could see. The
+ * read-only wave was released on 2026-09-25 as this tool's output with these
+ * two struck out by hand, and re-running `--wave read-only` would have emitted
+ * them again. A rule kept in a document is not a check; a value an operator
+ * pastes has to come out of the emitter already correct.
+ *
+ * Releasing one means deleting its entry here, with the owner's word, in the
+ * same change as the code that makes the send real.
+ */
+export const OWNER_HELD = Object.freeze({
+  sendAccountReadyEmail: 'Outbound mail to real people is the owner\'s decision (D56):'
+    + ' releasing it hands invitee names to an outside provider.',
+  sendWelcomeEmail: 'The same decision, and the sharper half of it: this message\'s body'
+    + ' carries a working temporary password.',
+});
+
+/** The held names, sorted, for reporting. */
+export const heldNames = Object.freeze(Object.keys(OWNER_HELD).sort());
+
+/**
+ * Every emitted value passes through this. Applied per wave AND to the
+ * cumulative list, because a held name reaching an operator by either path is
+ * the same mistake.
+ */
+export const releasable = names => names.filter(name => !Object.hasOwn(OWNER_HELD, name));
+
+/**
+ * Held names found in emitted values, by wave. Split out from `checkLadder` so
+ * it can be driven with a wave the emitter would never build: the guard exists
+ * for a SECOND emitter added later that forgets `releasable`, and a guard that
+ * cannot be made to fire has not been shown to work.
+ */
+export const heldLeaks = waves => waves
+  .map(entry => ({
+    wave: entry.name,
+    handlers: String(entry.functions).split(',').filter(name => Object.hasOwn(OWNER_HELD, name)),
+  }))
+  .filter(entry => entry.handlers.length);
+
 export class LadderError extends Error {
   constructor(code, detail) { super(code); this.code = code; this.detail = detail; }
 }
@@ -570,11 +620,17 @@ function wave(declaration, members) {
     name: declaration.name,
     reason: declaration.reason,
     declared: Object.hasOwn(declaration, 'handlers'),
+    // The wave's true membership, held names included: this says where the
+    // derivation puts each handler, which stays true while a hold is on.
     handlers: Object.freeze(names),
+    // What the derivation placed here and `OWNER_HELD` keeps out of the value.
+    // Reported rather than silently dropped, so a shorter value than the
+    // membership is explained where it is read.
+    withheld: Object.freeze(names.filter(name => Object.hasOwn(OWNER_HELD, name))),
     // What an operator sets. Emitted rather than typed: a name that is not in
     // the registry is `INVALID_FUNCTION_RELEASE` at startup, and a name that
     // is in it but wrong is served.
-    functions: names.join(','),
+    functions: releasable(names).join(','),
     writes: members.some(fact => fact.mutates),
     needsIntegration: members.some(fact => fact.needsIntegration),
     // Every migration this wave's contracts live in. The target deployment has
@@ -591,7 +647,39 @@ function wave(declaration, members) {
 export function checkLadder(root) {
   const ladder = releaseLadder(root);
   if (ladder.unresolved.length) refuse('LADDER_REACH_UNRESOLVED', { handlers: ladder.unresolved });
+  // A hold over a name the registry no longer has protects nothing while
+  // reading as protection, so it is checked — but NOT here. `checkLadder` runs
+  // over any tree, and a synthetic fixture legitimately has neither name; a
+  // refusal here would fire on every fixture and say nothing about the real
+  // registry. The staleness check belongs where the real tree is known, and
+  // lives in this tool's test file against `HANDLER_NAMES` itself.
+  //
+  // The invariant that makes this a gate rather than a convention: whatever
+  // builds a value, no emitted value carries a held name. A second emitter
+  // added later that forgot `releasable` fails here instead of shipping.
+  const leaks = heldLeaks(ladder.waves);
+  if (leaks.length) refuse('LADDER_HELD_IN_EMITTED_VALUE', { leaks });
   return ladder;
+}
+
+/**
+ * What an operator pastes for a wave: every name up to and including it, less
+ * the ones `OWNER_HELD` withholds.
+ *
+ * Exported and separate from `main` so the CUMULATIVE path is testable. The
+ * per-wave `functions` field and this are two emitters over the same rule, and
+ * the one that matters more is this one — `mutating` is pasted as read-only's
+ * names plus its own, so a hold applied only to a wave's own slice would leak
+ * the moment the operator moved to the next wave. A first version left this
+ * inline in `main`, where deleting the withholding failed no test.
+ */
+export function cumulativeValue(ladder, wave) {
+  const through = ladder.waves.slice(0, ladder.waves.indexOf(wave) + 1);
+  return Object.freeze({
+    names: Object.freeze(releasable(through.flatMap(entry => entry.handlers))),
+    withheld: Object.freeze(through.flatMap(entry => entry.withheld)),
+    migrations: Object.freeze([...new Set(through.flatMap(entry => entry.migrations))].sort()),
+  });
 }
 
 /**
@@ -722,11 +810,19 @@ export function reportDelta(names, readiness, wave, write) {
       + ' which the deployment is serving now. The waves are cumulative;'
       + ' this value is behind the deployment.');
   }
+  // The repository's half of the hold is the value it emits; this is the other
+  // half, and the only place the two can be compared. A held name serving on
+  // the deployment got there by a value this tool did not produce.
+  const serving = readiness.operations.filter(name => Object.hasOwn(OWNER_HELD, name));
+  if (serving.length) {
+    write(`# WITHHELD NAME IS LIVE: this deployment is serving ${serving.join(', ')},`
+      + ' which no value from this tool contains. Someone set a hand-edited value.');
+  }
   for (const blocker of delta.blockers) write(`# REFUSED: ${blocker} — a release would throw this at startup.`);
   if (!delta.missing.length && !delta.revokes.length && !delta.blockers.length) {
     write(`# this revision implements every name above; the release adds ${delta.adds.length}.`);
   }
-  return delta.missing.length || delta.revokes.length || delta.blockers.length ? 1 : 0;
+  return delta.missing.length || delta.revokes.length || delta.blockers.length || serving.length ? 1 : 0;
 }
 
 async function main(argv, root, write) {
@@ -739,13 +835,15 @@ async function main(argv, root, write) {
       write(`unknown wave: ${asked}. one of: ${ladder.waves.map(entry => entry.name).join(', ')}`);
       return 1;
     }
-    const cumulative = ladder.waves.slice(0, ladder.waves.indexOf(found) + 1);
-    const names = cumulative.flatMap(entry => entry.handlers);
+    const { names, withheld } = cumulativeValue(ladder, found);
     write(`# wave ${found.name}: ${found.reason}`);
     write(`PENNSYNC_API_FUNCTIONS=${names.join(',')}`);
+    // Said out loud where the value is read. A value shorter than the wave's
+    // membership with no explanation invites somebody to "fix" it back.
+    for (const name of withheld) write(`# WITHHELD ${name}: ${OWNER_HELD[name]}`);
     write('# migrations this deployment must have applied'
       + ' (the ledger version is what `supabase_migrations.schema_migrations` holds):');
-    for (const migration of [...new Set(cumulative.flatMap(entry => entry.migrations))].sort()) {
+    for (const migration of cumulativeValue(ladder, found).migrations) {
       write(`#   ${migration}  ->  version '${ledgerVersion(migration)}'`);
     }
     if (found.needsIntegration) write('# needs the integration runtime, which is deployed and paused.');
@@ -758,11 +856,13 @@ async function main(argv, root, write) {
   if (argv.includes('--summary')) {
     const ladder = checkLadder(root);
     write(`release ladder: handlers=${ladder.handlers} contracts=${ladder.contracts_reached}`
-      + ` waves=${ladder.waves.length} unresolved=${ladder.unresolved.length}`);
+      + ` waves=${ladder.waves.length} unresolved=${ladder.unresolved.length}`
+      + ` withheld=${heldNames.length}`);
     for (const entry of ladder.waves) {
       write(`  ${entry.name.padEnd(13)} ${String(entry.handlers.length).padStart(2)} handlers`
         + ` ${String(entry.migrations.length).padStart(2)} migrations`
         + `${entry.writes ? ' writes' : ''}${entry.needsIntegration ? ' integration' : ''}`
+        + `${entry.withheld.length ? ` -${entry.withheld.length} withheld` : ''}`
         + `${entry.declared ? ' (declared)' : ''}`);
     }
     return 0;
