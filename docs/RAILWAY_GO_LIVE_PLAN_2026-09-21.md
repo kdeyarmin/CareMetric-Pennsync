@@ -1749,6 +1749,31 @@ answers the mail question without touching the owner's hold and without
 releasing anything. It is still a variable write on a service this thread does
 not own, so it waits on the owner's words like every other write — but it is a
 READING that can be taken, not a fact that is out of reach.
+
+**Read `checks.sendgrid`, and do not read `passed`.** The rollup is
+`every(check => check.required === false || check.valid === true)`, and
+`required` is `needsEmail`, which is false while `SendEmail` is off the list.
+So `passed: true` is compatible with a dead mail key and says nothing about
+mail at all — this page's own defect standing in the field somebody would use
+to settle it. Inside that one object, three fields and not one:
+
+- `status` present means the probe really called SendGrid. Its absence, with
+  `configured: false`, means the key was **empty** — and note that in that case
+  `valid` is reported **`true`**, because the list does not require it. A bare
+  `valid: true` therefore does not mean the key works.
+- `valid` is scopes carrying `mail.send` **and** `NOTIFICATION_FROM_EMAIL`
+  parsing, so a bare `false` does not say which failed.
+- `senderConfigured` separates them: `valid: false` with
+  `senderConfigured: true` is the key, and `senderConfigured: false` is the
+  address.
+
+The same shape applies to `checks.anthropic`, whose `valid` also requires the
+configured model to appear in `/v1/models`.
+
+**And it is a deploy-log read, not an endpoint** (`server.mjs:36-38`): the
+report is written once to stdout at startup. Whoever asks for the probe has to
+ask for the log after the boot as well, or the report is produced and nobody
+reads it.
 Railway is no longer out of reach of a session (see §4), but this service is
 owned by the release thread and its writes wait on the owner's words.
 
