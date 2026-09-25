@@ -753,6 +753,17 @@ begin
   -- The agency is named in this contract's own predicate as well as in the
   -- policy, because `caller_agencies()` returns every agency the caller holds
   -- and the row itself carries none. D51's trap, in the table next door.
+  --
+  -- The write half of this contract had exactly this missing until a review
+  -- found it, and the reason it survived is worth more than the fix: the
+  -- shared fixtures give each identity ONE membership, and with one
+  -- membership the policies refuse a cross-agency call whatever the contract
+  -- does. So an assertion that the contract binds the tenant passed with the
+  -- binding deleted. Sabotage proves an assertion bites; it does not prove
+  -- the FIXTURE can express the violation. The suite now builds a caller
+  -- holding two agencies, and neutralises each binding on its own as well as
+  -- together, because all-at-once trips on the first and says nothing about
+  -- the rest.
   select coalesce(pg_catalog.jsonb_agg(pg_catalog.to_jsonb(t) - 'source_app_id'
     order by t."assigned_date" desc nulls last, t."id" desc), '[]'::jsonb) into v_rows
   from (select a.* from "pennsync_records"."patient_education_assignment" a
