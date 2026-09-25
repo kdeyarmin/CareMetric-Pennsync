@@ -94,8 +94,8 @@ test('uncertain provider execution is never mislabeled as failed before executio
 test('provider preflight requirements match operations and validate sender syntax',async()=>{
  const metadata=async url=>{
   if(url.includes('/scopes'))return Response.json({scopes:['mail.send']});
-  if(url.endsWith('/verified_senders'))return Response.json({results:[{from_email:'test@example.test',verified:true}]});
-  if(url.endsWith('/whitelabel/domains'))return Response.json([]);
+  if(url.includes('/verified_senders'))return Response.json({results:[{from_email:'test@example.test',verified:true}]});
+  if(url.includes('/whitelabel/domains'))return Response.json([]);
   if(url.includes('/models'))return Response.json({data:[{id:'claude-sonnet-4-6'}]});
   if(url.includes('/bucket/'))return Response.json({id:'pennsync-external-integrations',public:false,file_size_limit:8388608});
   return Response.json(null);

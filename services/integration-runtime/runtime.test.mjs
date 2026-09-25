@@ -162,8 +162,8 @@ test('preflight uses only metadata and a nonexistent exact lookup, never paid op
     if(url.endsWith('/v3/scopes'))return Response.json({scopes:['mail.send']});
     // Asking the provider whether the sender may send is metadata too: two GETs
     // of our own account's sender identities, neither of which sends anything.
-    if(url.endsWith('/v3/verified_senders'))return Response.json({results:[{from_email:'test@example.test',verified:true}]});
-    if(url.endsWith('/v3/whitelabel/domains'))return Response.json([]);
+    if(url.includes('/v3/verified_senders'))return Response.json({results:[{from_email:'test@example.test',verified:true}]});
+    if(url.includes('/v3/whitelabel/domains'))return Response.json([]);
     if(url.includes('/bucket/'))return Response.json({id:'pennsync-external-integrations',public:false,file_size_limit:8388608});
     assert.ok(url.endsWith('/rpc/cm_integration_file_get'));assert.equal(JSON.parse(options.body).p_id,'00000000-0000-0000-0000-000000000000');return Response.json(null);
   });

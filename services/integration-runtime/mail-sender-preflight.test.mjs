@@ -23,8 +23,10 @@ for (const fromEmail of ['', undefined, null, 'not-an-email', 'a'.repeat(321), '
 // asked one. Before this existed the report carried `senderConfigured`, a local
 // regular expression over our own configuration, sitting where a reader would
 // take it for verification.
+import { readFileSync } from 'node:fs';
 import { runPreflight, singleSenderVerified, domainAuthenticated,
-  VERIFIED_SENDERS_URL, AUTHENTICATED_DOMAINS_URL } from './preflight.mjs';
+  VERIFIED_SENDERS_URL, AUTHENTICATED_DOMAINS_URL,
+  LIST_PAGE_SIZE, LIST_PAGE_BUDGET } from './preflight.mjs';
 
 const mailConfig = (overrides = {}) => ({ ...loadConfig({
   SUPABASE_URL: 'https://xsqobvvreaovwibxwyvv.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'synthetic',
@@ -37,8 +39,9 @@ const mailConfig = (overrides = {}) => ({ ...loadConfig({
 // Every other endpoint answers plausibly so a failure can only be the sender's.
 const routed = ({ senders, domains, seen = [] } = {}) => async (url) => {
   seen.push(url);
-  if (url === VERIFIED_SENDERS_URL) return typeof senders === 'function' ? senders() : Response.json(senders ?? { results: [] });
-  if (url === AUTHENTICATED_DOMAINS_URL) return typeof domains === 'function' ? domains() : Response.json(domains ?? []);
+  const { pathname, searchParams } = new URL(url);
+  if (pathname === new URL(VERIFIED_SENDERS_URL).pathname) return typeof senders === 'function' ? senders(searchParams) : Response.json(senders ?? { results: [] });
+  if (pathname === new URL(AUTHENTICATED_DOMAINS_URL).pathname) return typeof domains === 'function' ? domains(searchParams) : Response.json(domains ?? []);
   if (url.endsWith('/v3/scopes')) return Response.json({ scopes: ['mail.send'] });
   if (url.includes('/v1/models')) return Response.json({ data: [{ id: 'claude-sonnet-4-6' }] });
   if (url.includes('/bucket/')) return Response.json({ id: 'pennsync-external-integrations', public: false, file_size_limit: 8388608 });
@@ -128,7 +131,7 @@ test('the sender check reads only, and never reports the local regex as a sender
   const seen = [];
   const report = await runPreflight(mailConfig(), routed({ seen,
     senders: { results: [{ from_email: 'sender@example.test', verified: true }] } }));
-  assert.ok(seen.includes(VERIFIED_SENDERS_URL));
+  assert.ok(seen.some(url => url.startsWith(VERIFIED_SENDERS_URL)));
   assert.ok(seen.every(url => !url.endsWith('/mail/send')), 'the preflight must never reach a send endpoint');
   assert.equal(report.paidCalls, 0);
   assert.equal(report.writes, 0);
@@ -149,5 +152,115 @@ test('a malformed address is not measured, and SendEmail not served is not appli
   assert.equal(noMail.checks.sendgridSender.verdict, 'NOT_APPLICABLE');
   assert.equal(noMail.checks.sendgridSender.required, false);
   assert.equal(noMail.checks.sendgridSender.valid, true);
-  assert.ok(seen.every(url => url !== VERIFIED_SENDERS_URL), 'no sender read when mail is not served');
+  assert.ok(seen.every(url => !url.startsWith(VERIFIED_SENDERS_URL)), 'no sender read when mail is not served');
+});
+
+// Three findings from the Codex review of this file's first version, all P2 and
+// all one root cause: the check could answer "no" from a read that had not
+// really looked. A negative verdict is now reachable only from a list we could
+// read AND could prove was the last one.
+
+test('a list we cannot read is NOT_MEASURED, never a negative verdict', async () => {
+  // The container was recognised and the ENTRIES were not, and both helpers
+  // answered false — a verdict nobody issued, out of a read that understood
+  // nothing. If SendGrid ever renames a field, this is the shape it arrives in.
+  assert.equal(singleSenderVerified({ results: [{}] }, 'sender@example.test'), null);
+  assert.equal(singleSenderVerified({ results: [{ from_email: 'sender@example.test', verified: 'yes' }] },
+    'sender@example.test'), null);
+  assert.equal(domainAuthenticated([{}], 'sender@example.test'), null);
+  assert.equal(domainAuthenticated([{ domain: 'example.test', valid: 'true' }], 'sender@example.test'), null);
+
+  // An EMPTY list stays a real answer, which is what keeps NOT_VERIFIED
+  // reachable at all — the fix must not swallow the verdict it exists to guard.
+  assert.equal(singleSenderVerified({ results: [] }, 'sender@example.test'), false);
+  assert.equal(domainAuthenticated([], 'sender@example.test'), false);
+  // and one readable entry is enough to read the list, so a stray extra is not fatal
+  assert.equal(domainAuthenticated([{}, { domain: 'example.test', valid: true }], 'sender@example.test'), true);
+
+  const onSenders = await senderCheck({ senders: { results: [{}] } });
+  assert.equal(onSenders.verdict, 'NOT_MEASURED');
+  assert.equal(onSenders.reason, 'UNRECOGNISED_RESPONSE');
+  const onDomains = await senderCheck({ senders: { results: [] }, domains: [{ unexpected: true }] });
+  assert.equal(onDomains.verdict, 'NOT_MEASURED');
+  assert.equal(onDomains.reason, 'UNRECOGNISED_RESPONSE');
+});
+
+test('a page that may have a successor cannot answer no', async () => {
+  // SendGrid's cursor for the sender list is a token whose field name we have
+  // not confirmed, so a full page is read as "the configured address could be
+  // on the next one" rather than as an absence.
+  const senders = size => ({ results: Array.from({ length: size },
+    (unused, n) => ({ from_email: `other-${n}@example.test`, verified: true })) });
+  const truncated = await senderCheck({ senders: senders(LIST_PAGE_SIZE), domains: [] });
+  assert.equal(truncated.verdict, 'NOT_MEASURED');
+  assert.equal(truncated.reason, 'SENDER_LIST_TRUNCATED');
+
+  // One short of full is the last page, and then no IS an answer.
+  const complete = await senderCheck({ senders: senders(LIST_PAGE_SIZE - 1), domains: [] });
+  assert.equal(complete.verdict, 'NOT_VERIFIED');
+});
+
+test('the domain list is walked to its end, and the walk is bounded', async () => {
+  const filler = page => Array.from({ length: LIST_PAGE_SIZE },
+    (unused, n) => ({ domain: `p${page}-${n}.example.test`, valid: true }));
+
+  // Ours is on the SECOND page. A one-shot read would have called it unverified.
+  const offsets = [];
+  const answer = await senderCheck({ senders: { results: [] }, domains: query => {
+    const offset = Number(query.get('offset'));
+    offsets.push(offset);
+    return Response.json(offset === 0 ? filler(0) : [{ domain: 'example.test', valid: true }]);
+  } });
+  assert.equal(answer.verdict, 'VERIFIED');
+  assert.equal(answer.route, 'authenticated_domain');
+  assert.deepEqual(offsets, [0, LIST_PAGE_SIZE]);
+
+  // An account that never stops giving full pages is NOT_MEASURED rather than
+  // walked forever, because this runs on every boot of a live service.
+  let reads = 0;
+  const endless = await senderCheck({ senders: { results: [] },
+    domains: () => { reads += 1; return Response.json(filler(reads)); } });
+  assert.equal(endless.verdict, 'NOT_MEASURED');
+  assert.equal(endless.reason, 'DOMAIN_LIST_TRUNCATED');
+  assert.equal(reads, LIST_PAGE_BUDGET);
+});
+
+test('the domain read excludes subusers, whose domains this account cannot send from', async () => {
+  // The expensive direction. With a parent key the list otherwise carries
+  // subusers' domains, and the send sets no On-Behalf-Of header, so it runs as
+  // the key's own account: an unfiltered match would answer VERIFIED for an
+  // address that account cannot use.
+  const seen = [];
+  await senderCheck({ seen, senders: { results: [] }, domains: [] });
+  const domainReads = seen.filter(url => url.startsWith(AUTHENTICATED_DOMAINS_URL));
+  assert.ok(domainReads.length, 'the domain route must actually be read');
+  for (const url of domainReads) {
+    assert.equal(new URL(url).searchParams.get('exclude_subusers'), 'true');
+  }
+
+  // The send is the reason, so pin the send. providers.mjs sits in this same
+  // directory, which is the whole build context, so reading it is safe here.
+  const send = readFileSync(new URL('./providers.mjs', import.meta.url), 'utf8');
+  assert.equal(/on-behalf-of/i.test(send), false,
+    'if the send ever acts as a subuser, this read has to follow it there');
+});
+
+test('a provider that rejects our paging parameters still answers, and claims no less', async () => {
+  // A parameter is a belief about somebody else's service. A refused one must
+  // not turn a working check into an unmeasurable one — and must not then let
+  // an unbounded page be mistaken for the last one either.
+  const queries = [];
+  const refusesParams = body => query => {
+    queries.push(query.toString());
+    return query.has('limit') ? new Response('{}', { status: 400 }) : Response.json(body);
+  };
+  const answer = await senderCheck({
+    senders: refusesParams({ results: [{ from_email: 'sender@example.test', verified: true }] }) });
+  assert.equal(answer.verdict, 'VERIFIED');
+  assert.deepEqual(queries, [`limit=${LIST_PAGE_SIZE}`, '']);
+
+  const noMatch = await senderCheck({ domains: [],
+    senders: refusesParams({ results: [{ from_email: 'other@example.test', verified: true }] }) });
+  assert.equal(noMatch.verdict, 'NOT_MEASURED');
+  assert.equal(noMatch.reason, 'SENDER_LIST_TRUNCATED');
 });
