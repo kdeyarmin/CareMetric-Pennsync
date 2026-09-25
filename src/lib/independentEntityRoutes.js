@@ -202,6 +202,9 @@ function brokeredRead({ entity, sortable, filterable = [], filtered }) {
   return {
     function: 'listBrokeredRecords',
     projection: 'broker_family_row',
+    // Declared rather than derived: `request` takes a rest parameter, so its
+    // `length` is 0 and says nothing about how many arguments this can express.
+    arity: filtered ? 3 : 2,
     request: (...args) => {
       const [query, sort, limit] = filtered ? args : [undefined, args[0], args[1]];
       // Parsed for its refusals here, so a query this cannot express never
@@ -249,6 +252,8 @@ function libraryRead({ capability, sortable, filterable = [], filtered = false, 
   return {
     function: capability,
     projection: 'library_row',
+    // Declared for `brokeredRead`'s reason: a rest parameter hides the count.
+    arity: filtered ? 3 : 2,
     request: (...args) => {
       const [query, sort, limit] = argumentsOf(args);
       predicate(query, filterable);
@@ -402,7 +407,7 @@ function shiftWindow(query) {
  * apart into the shape the entity method’s callers already expect: an ARRAY
  * for `list`, the ROW for `get`.
  */
-export const ENTITY_ROUTES = Object.freeze({
+const DECLARED_ROUTES = Object.freeze({
   /**
    * The staff directory: 36 of the frontend’s call sites, the largest single
    * group that can land, and the one D23 built `listAgencyRoster` for.
@@ -735,6 +740,46 @@ export const ENTITY_ROUTES = Object.freeze({
     reason: 'User settings reads the caller\'s own preferences, which the empty filter meant all along.',
   }),
 });
+
+/**
+ * Every declared route, with an argument it has no parameter for REFUSED.
+ *
+ * The adapter calls `route.request(...args)`, and JavaScript discards an
+ * argument past the last parameter without a word. So the module's own first
+ * rule — a route that cannot honour the call's own arguments refuses — held for
+ * every argument a route READ and failed for every argument it did not have a
+ * parameter for, which is the same disclosure bug arriving from the direction
+ * nothing was watching. `User.list` takes `(sort, limit)`, and
+ * `src/lib/agencyRoster.js` pages it with a third argument: a request for the
+ * second fifty was answered with the first fifty, and a screen paging a roster
+ * would read that as the whole of it. It was refused in practice only because
+ * of its sort, which is an accident and not a guard.
+ *
+ * The count is the route's own `request.length` wherever that is readable, so a
+ * route cannot declare an arity that disagrees with its parameters. A route
+ * whose `request` takes a rest parameter has a `length` of 0 and must say what
+ * it accepts; one that neither declares nor reveals an arity throws HERE, at
+ * module load, rather than silently admitting everything — a guard that fails
+ * open on the case it cannot read is the house defect.
+ */
+function guardingArity(routes) {
+  return Object.freeze(Object.fromEntries(Object.entries(routes).map(([key, route]) => {
+    const arity = route.request.length || route.arity;
+    if (!Number.isSafeInteger(arity) || arity < 1) {
+      throw new Error(`ENTITY_ROUTE_ARITY_UNDECLARED: ${key}`);
+    }
+    return [key, Object.freeze({
+      ...route,
+      arity,
+      request: (...args) => {
+        if (args.length > arity) unsupported('argument_count');
+        return route.request(...args);
+      },
+    })];
+  })));
+}
+
+export const ENTITY_ROUTES = guardingArity(DECLARED_ROUTES);
 
 export const ROUTED_OPERATIONS = Object.freeze(Object.keys(ENTITY_ROUTES).sort());
 

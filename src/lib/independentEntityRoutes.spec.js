@@ -103,6 +103,49 @@ describe('the declared entity routes', () => {
     }
   });
 
+  /**
+   * An argument the route has no parameter for is the same failure as an order
+   * it cannot produce, arriving from a direction nothing was watching.
+   * `routedEntities` calls `route.request(...args)`, and every route declares at
+   * most three positional parameters, so a fourth — or a third on a
+   * two-parameter route — is dropped in silence.
+   *
+   * `src/lib/agencyRoster.js` is the live caller: it pages with
+   * `User.list('-created_date', ROSTER_PAGE_SIZE, page * ROSTER_PAGE_SIZE)` and
+   * its own header explains that a truncated roster leaks records across
+   * tenants. It is refused today only because of its sort, which is an accident
+   * rather than a guard — ask for the second page in an order the route DOES
+   * accept and the answer is the first page, which is what a screen paging
+   * through a roster would then treat as the whole of it.
+   */
+  it('refuses an offset it has no parameter for rather than answering page one', async () => {
+    const { fixture, adapter } = await signedIn();
+    fixture.apiResponse = rosterAnswer(Array.from({ length: 25 }, (unused, index) => ({ id: `u-${index}` })));
+    await expect(adapter.raw.entities.User.list(undefined, 25, 25))
+      .rejects.toMatchObject({ code: ARGUMENTS_UNSUPPORTED, detail: 'argument_count' });
+    // Refused before I/O, as every other unexpressible argument is.
+    expect(fixture.apiCalls).toHaveLength(0);
+    // And the same call without the offset is still served, so this refuses the
+    // argument rather than the route.
+    await expect(adapter.raw.entities.User.list(undefined, 25)).resolves.toHaveLength(25);
+  });
+
+  it('refuses an extra argument on a brokered read, whose parameters are a rest', async () => {
+    // `brokeredRead` destructures `[query, sort, limit]` out of a rest
+    // parameter, so `request.length` is 0 and its arity cannot be derived —
+    // which is why a route like this declares one. A filtered read takes three
+    // arguments and an unfiltered one takes two, and each refuses a further one.
+    const { fixture, adapter } = await signedIn();
+    fixture.apiResponse = () => new Response(JSON.stringify({ success: true, result: [],
+      execution: 'pennsync-api', base44ExecutionDependency: false }),
+    { headers: { 'content-type': 'application/json' } });
+    await expect(adapter.raw.entities.Announcement.list('-created_date', 10, 10))
+      .rejects.toMatchObject({ code: ARGUMENTS_UNSUPPORTED, detail: 'argument_count' });
+    await expect(adapter.raw.entities.Announcement.filter({ is_active: true }, '-created_date', 10, 10))
+      .rejects.toMatchObject({ code: ARGUMENTS_UNSUPPORTED, detail: 'argument_count' });
+    expect(fixture.apiCalls).toHaveLength(0);
+  });
+
   it('refuses an argument shape and a missing route with different codes', async () => {
     const { fixture, adapter } = await signedIn();
     // "Your query cannot be served" and "no route exists" are different
