@@ -1700,6 +1700,26 @@ as though it is, because nothing here can check.
 Railway is no longer out of reach of a session (see §4), but this service is
 owned by the release thread and its writes wait on the owner's words.
 
+**Why "set together" is mechanical rather than tidy: `loadConfig` THROWS.**
+It does not report itself unready — five distinct errors between
+`runtime.mjs:31` and `:45` (`INVALID_AUTHORITY_MODE`,
+`INVALID_AUTHORITY_TARGET`, `INVALID_AUTHORITY_KEY`,
+`INCOMPLETE_AUTHORITY_CONFIGURATION`, `IMPLICIT_APP_BINDING`) each stop the
+service booting. Written one at a time, the service is **down** between the
+writes, not merely unready. `INTEGRATIONS_RELEASE` is a plain string equality
+(`runtime.mjs:53`) and cannot throw. So the call that can take the service down
+is the config call, and it is the one made while nothing is released — which is
+the order to keep.
+
+**And know what `ready: true` will mean afterwards: configured and released.**
+It does not mean one AI call has succeeded. `missingProviders` filters
+`config.operations` (`runtime.mjs:67`), so once the operation list is populated
+the Anthropic check becomes real and reduces to `!config.anthropicKey` —
+`config.model` defaults to `claude-sonnet-4-6` at `runtime.mjs:55` and is never
+empty — but a present key can still be a revoked one, and proving the authority
+round trip needs a login, which is out of reach (§4). Expect a first real call
+to be the proof, and do not let a green readiness line stand in for it.
+
 **Exit:** readiness says `independent` on the hosted runtime with the browser
 transport still unreleased — `/readyz` reporting `authorityMode: "independent"`
 and `base44ExecutionDependency: false`. Read it from the probe, not from the
