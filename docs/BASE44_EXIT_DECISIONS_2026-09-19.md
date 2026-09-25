@@ -7254,3 +7254,44 @@ D98's paragraph saying `OWNER_HELD` still keeps both names out of every emitted
 value was true when D98 was written and is left exactly as it stands. A dated
 entry is a record of what was decided and known at its date; this entry
 supersedes that sentence rather than editing it.
+
+## D102 — An agency-wide setting keyed on an absent owner, against a schema that requires one (OPEN)
+
+**This entry records a contradiction rather than settling it.** Nothing depends
+on it today and closing it is a product decision, not a porting one.
+
+`AIConfiguration` is one table doing two jobs. `UserSettings.jsx` writes a
+person's own preferences and sends `user_email`; `AIConfigurationManager.jsx`
+writes the agency's settings and sends none, so an agency-wide row is
+identified by `user_email` being null — which is what
+`contract_ai_configuration_read`'s `agency` scope filters on, and what the
+admin screen has always created. The entity's own schema declares `user_email`
+**required**.
+
+Both cannot be right. Either the agency's settings are a row of the same table
+distinguished by an absent owner, in which case the schema's requirement has
+never described that screen's rows, or they are something else and the screen
+has been writing invalid rows since it was written. Base44's own enforcement of
+`required` is not measurable from this repository, which is why this is not
+settled here: the only evidence in the tree is that one live screen satisfies
+the requirement and another does not.
+
+What the port does in the meantime is state the divergence where it happens.
+`contract_ai_configuration_save` applies the requirement on the personal scope
+and not on the agency one, `library_required` takes its list per call site
+precisely so that this is visible at the call rather than hidden in a table,
+and `contract-clinical-library.test.mjs` asserts the agency row is created with
+a null `user_email`. So the behaviour is pinned and a later change to it fails
+a test rather than passing silently.
+
+**Whoever next opens that screen owns this.** The question is what an
+agency-wide setting is keyed on. A separate `setting_scope` column, a separate
+table, or a decision that the schema's `required` was always wrong for this
+entity are all answers; guessing one inside a contract is not.
+
+Note also the general finding this came out of, which is not about this entity:
+the generated record store makes **every** entity column nullable and emits
+**no column defaults at all**, so every capability's create path accepts rows
+the Base44 schema would have rejected and writes null where the schema declared
+a default. That is one generator decision with two consequences, and it reaches
+every batch rather than this one.
