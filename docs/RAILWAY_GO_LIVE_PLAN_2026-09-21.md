@@ -2774,8 +2774,9 @@ D83's five global-reference writes stopped being counted as landable, so the
 reading above is a record of #294 and this is the current one. 30 of the
 remaining 208 are sites a declared route REFUSES: the route exists and the
 *screen* has to change, which is per-screen work rather than per-entity work,
-and that is the more useful number for planning than the 208. Sites whose arguments the tool cannot read count as unserved, because a
-gate that guessed would be back to counting declarations.
+and that is the more useful number for planning than the 208. Sites whose
+arguments the tool cannot read count as unserved, because a gate that guessed
+would be back to counting declarations.
 
 **The gate has three states, and the third one is why the batches can work at
 all.** Proved, refused, and declared-but-unproved. A call site that passes a
@@ -2839,12 +2840,17 @@ about 33 hollowed-out pages — comes from a filename scan rather than that tool
 with 2 of 49 components having no importer found, so treat the first pair as
 measured and the second as indicative.
 
-**208 of 445 — 47% — reach a domain the migration has decided not to carry**
-(203 when that paragraph was written; the five D83 writes above joined them).
-119 of them are the training domain, whose destination is the Hub; 75 are
-`preserved_paused`. Each needs a product answer about what the feature becomes,
-not an edit somebody has not got to yet, so a plan that sizes this stage by the
-call-site count is sizing the wrong thing.
+**208 of 445 — 47% — have no destination in the owned store, and 203 of those
+reach a domain the migration has decided not to carry.** The other five are the
+D83 writes above, whose tables ARE carried, for reads: what has no destination
+there is the operation rather than the domain, and conflating the two is how
+this page would start overstating the product work. 119 of the 203 are the
+training domain, whose destination is the Hub; 75 are `preserved_paused`. **That
+75 is not an off-by-one against the table's 74**, which counts `preserved_paused`
+inside `no_table` only — the 75th is the `no_realtime_seam` site, whose entity is
+also `preserved_paused`. Each needs a product answer about what the feature
+becomes, not an edit somebody has not got to yet, so a plan that sizes this
+stage by the call-site count is sizing the wrong thing.
 
 The nine `broker_is_read_only` are the ones a per-ENTITY reading would have
 called fine: the family serves `Announcement`, `FacilityDocumentationRule` and
