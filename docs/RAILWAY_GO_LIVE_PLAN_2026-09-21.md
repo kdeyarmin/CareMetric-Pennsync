@@ -2219,6 +2219,15 @@ and is that true of the live variables today?"** Read a diff in this order:
    `validAuthorityKey`, or the storage binding literal (`runtime.mjs:24`)?**
    All four read live values.
 
+**And note what "touches its directory" includes.** The watch pattern is
+`/services/integration-runtime/**`, not a source glob, so a change to a file
+in that directory that is never executed — this service's own README, for
+instance — still builds and deploys it. The pull request adding the paragraph
+above did exactly that. The new container serves identical code and the effect
+is a restart rather than a change, but it is a real deploy of a live service
+from a documentation edit, so say so in the pull request rather than letting a
+reviewer assume documentation is inert here.
+
 **The ordering rule the whole thing reduces to:** on this service the variable
 write comes **before** the merge when the code tightens what the environment
 must satisfy, and **after** the merge when it widens it. `pennsync-api` is the
