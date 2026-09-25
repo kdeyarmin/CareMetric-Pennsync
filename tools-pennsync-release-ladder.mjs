@@ -586,14 +586,9 @@ export function releaseFacts(root) {
 }
 
 /**
- * The handlers the registry marks as reaching the integration runtime, read
- * from the registry's own flag rather than re-derived: `runtime.mjs` decides
- * readiness from `HANDLERS[name].needsIntegration`, so a second answer here
- * could disagree with the thing that actually gates the deployment.
- *
- * That is still the answer the ladder places a handler by. What
- * `integrationReach` adds is not a second answer but a CROSS-CHECK of this
- * one, for the reason `account-email.mjs` writes down in its own header.
+ * The handlers whose registry entry declares `flag: true`. One reader for both
+ * flags below, so a second one cannot acquire its own parsing and drift from
+ * this one — which is the failure the rest of this change is about.
  */
 function registryFlagged(root, flag) {
   const source = read(resolve(root, SERVICE, 'handlers.mjs'));
@@ -609,6 +604,16 @@ function registryFlagged(root, flag) {
   return names;
 }
 
+/**
+ * The handlers the registry marks as reaching the integration runtime, read
+ * from the registry's own flag rather than re-derived: `runtime.mjs` decides
+ * readiness from `HANDLERS[name].needsIntegration`, so a second answer here
+ * could disagree with the thing that actually gates the deployment.
+ *
+ * That is still the answer the ladder places a handler by. What
+ * `integrationReach` adds is not a second answer but a CROSS-CHECK of this
+ * one, for the reason `account-email.mjs` writes down in its own header.
+ */
 export const integrationDependents = root => registryFlagged(root, 'needsIntegration');
 
 /**
