@@ -5,18 +5,34 @@ destination named in
 [the exit decisions](../../docs/BASE44_EXIT_DECISIONS_2026-09-19.md) (D1) and
 classified per capability in `tools-transition-disposition.json`.
 
-This service is **deployed and paused** as of 2026-09-22 (stage B of
-[the go-live plan](../../docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md)). It runs in
+This service is **deployed and released** as of 2026-09-25 (stages B and D of
+[the go-live plan](../../docs/RAILWAY_GO_LIVE_PLAN_2026-09-21.md)); it was
+deployed and paused from 2026-09-22. It runs in
 the CareMetric Train Railway project at
 `pennsync-api-production.up.railway.app`, root `/services/pennsync-api`, its
 committed `Dockerfile`, healthcheck `/healthz`, configuration in service
 settings rather than a `railway.toml`.
 
-**No handler is released and no traffic reaches it.** `PENNSYNC_API_RELEASE`
-is unset and `PENNSYNC_API_FUNCTIONS` is empty, so `/readyz` answers 503 with
-`released:false` and every name is refused `PENNSYNC_API_NOT_RELEASED`.
-Releasing one is stage D and needs the real identities stage C creates.
-Nothing here migrates data or changes an existing release control.
+**78 of the 80 implemented names are released**, in six waves between
+2026-09-24 and 2026-09-25, each on the owner's own words naming that wave.
+`/readyz` answers 200 with `released: true`, and the two names absent from
+`operations` are exactly `sendAccountReadyEmail` and `sendWelcomeEmail` —
+`OWNER_HELD` in `tools-pennsync-release-ladder.mjs` keeps them out of every
+value the tool emits, and sending to real people is the owner's decision.
+
+**Outbound delivery is a separate switch and it is off.** `PENNSYNC_API_DELIVERY`
+is unset, so `/readyz` reports `deliveryReleased: false` and every sender
+answers `OUTBOUND_DELIVERY_RELEASE_PAUSED`. It is read exactly and untrimmed
+against `enabled-v1`, and setting it without a valid
+`PENNSYNC_API_INTEGRATIONS_URL` throws `INCOMPLETE_DELIVERY_CONFIGURATION` at
+startup and takes the service **down**.
+
+**Do not read the release state from this file.** A variable change here is a
+deploy that rebuilds from `main`'s tip, so both the running code and the
+served surface move without this paragraph changing. `curl
+pennsync-api-production.up.railway.app/readyz` is the answer; check `appId`
+and `appStated` with it, since the production app id boots, reports ready and
+is refused by every authorization call.
 
 ## What it is
 

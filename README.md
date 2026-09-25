@@ -12,10 +12,15 @@ the frontend selects one at build time with `VITE_PENNSYNC_BACKEND`.
 | unset or `base44` | Hosted Base44 platform: auth, entities, and the Deno functions under `base44/functions/` | The production path |
 | `independent-staging` | Supabase Auth and the owned authority store in `services/authority-store`, reached through `services/authority-client` | Synthetic staging only, four fixed test accounts |
 
-Two Railway services support the independent path.
-`services/integration-runtime` runs the external AI, email and private-file
-adapters and is deployed but paused. `services/pennsync-api` is the home for
-backend handlers ported out of Base44 and is source only, not deployed.
+Two Railway services support the independent path, and both are deployed and
+released as of 2026-09-25. `services/integration-runtime` runs the external
+AI, email and private-file adapters; it serves the two AI operations only,
+with its browser route off and no email operation enabled.
+`services/pennsync-api` is the home for backend handlers ported out of Base44
+and serves 78 of its 80 names, the two account-email senders being withheld.
+Outbound delivery is off on both. Read `/readyz` on either rather than this
+paragraph: a variable change redeploys from `main`'s tip, so what runs moves
+without anything here changing.
 
 Start here to work on the migration:
 
