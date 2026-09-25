@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 import {
   DECLARED_WAVES, LADDER_CONTRACT, LadderError, checkLadder, closureOf, dollarQuotedBody,
   functionBodies, handlerReach, importedNames, integrationDependents, integrationReach,
-  probeDeployment, readinessOf, releaseDelta, releaseLadder, reportDelta,
+  OWNER_HELD, cumulativeValue, heldLeaks, heldNames, probeDeployment, readinessOf,
+  releasable, releaseDelta, releaseLadder, reportDelta,
 } from './tools-pennsync-release-ladder.mjs';
 import { loadConfig, publicReadiness } from './services/pennsync-api/runtime.mjs';
 import { ledgerVersion } from './tools-pennsync-migrate.mjs';
@@ -634,4 +635,110 @@ test('the go-live plan carries the wave table the ladder measures', () => {
     assert.equal(Number(row[2]), wave.migrations.length,
       `the plan says the \`${wave.name}\` wave needs ${row[2]} migrations; it needs ${wave.migrations.length}`);
   }
+});
+
+/**
+ * The owner's mail hold, as a property of the emitter rather than of whoever
+ * is pasting.
+ *
+ * The read-only wave went live on 2026-09-25 as this tool's own output with
+ * `sendAccountReadyEmail` and `sendWelcomeEmail` struck out BY HAND, and
+ * nothing in the repository recorded the subtraction — so re-running
+ * `--wave read-only`, or building the writes wave on top of it, would have
+ * emitted both again and no check would have fired. D92's guard cannot help:
+ * it reads `needsIntegration`, which is false for both because the shipped
+ * code really is refusal-only, and it cannot see a Railway variable at all.
+ */
+test('the held names are real handlers, so the hold protects something', () => {
+  // The staleness check, kept here rather than in `checkLadder` because that
+  // runs over synthetic fixtures too, where neither name legitimately exists.
+  // A rename upstream fails this instead of leaving a hold over nothing.
+  const placed = new Set(checkLadder(REPOSITORY).waves.flatMap(wave => wave.handlers));
+  for (const name of heldNames) {
+    assert.ok(placed.has(name), `${name} is held but is not a handler; the hold guards nothing`);
+  }
+  assert.deepEqual(heldNames, ['sendAccountReadyEmail', 'sendWelcomeEmail']);
+  for (const name of heldNames) {
+    assert.ok(OWNER_HELD[name].length >= 40, `${name} owes a reason, not a label`);
+  }
+});
+
+test('no wave emits a held name, and the read-only wave is where they sit', () => {
+  const ladder = checkLadder(REPOSITORY);
+  for (const wave of ladder.waves) {
+    for (const name of heldNames) {
+      assert.ok(!wave.functions.split(',').includes(name),
+        `wave ${wave.name} emits ${name}`);
+    }
+  }
+  // Membership is unchanged: the derivation is right that they are read-only
+  // today, and the hold is orthogonal to where the tree puts them.
+  const readOnly = ladder.waves.find(wave => wave.name === 'read-only');
+  assert.deepEqual([...readOnly.withheld].sort(), heldNames);
+  assert.equal(readOnly.functions.split(',').length, readOnly.handlers.length - heldNames.length);
+  for (const name of heldNames) assert.ok(readOnly.handlers.includes(name));
+});
+
+test('every cumulative value excludes the held names, not just their own wave', () => {
+  // The real failure mode is the NEXT wave: `mutating` is pasted as
+  // read-only's names plus its own, so a hold that only applied to one wave's
+  // slice would leak the moment the operator moved on. Driven through
+  // `cumulativeValue`, which is what the CLI prints — an earlier version of
+  // this test called `releasable` itself and passed with the CLI's own
+  // withholding deleted.
+  const ladder = checkLadder(REPOSITORY);
+  for (const wave of ladder.waves) {
+    const { names, withheld } = cumulativeValue(ladder, wave);
+    const membership = ladder.waves.slice(0, ladder.waves.indexOf(wave) + 1)
+      .flatMap(entry => entry.handlers);
+    for (const name of heldNames) {
+      assert.ok(!names.includes(name), `the value through ${wave.name} carries ${name}`);
+    }
+    assert.equal(names.length, membership.length - membership.filter(n => heldNames.includes(n)).length);
+    // And once a held name has been passed, every later wave keeps reporting
+    // it, so the operator is told at the wave they are actually setting.
+    const expected = membership.filter(name => heldNames.includes(name));
+    assert.deepEqual([...withheld].sort(), expected.sort());
+  }
+  // The last wave carries both, which is the case that matters: whoever
+  // releases the full surface must still be told these two are not in it.
+  const last = cumulativeValue(ladder, ladder.waves.at(-1));
+  assert.deepEqual([...last.withheld].sort(), heldNames);
+  assert.equal(last.names.length, ladder.handlers - heldNames.length);
+});
+
+test('the emitted-value guard bites when an emitter forgets to withhold', () => {
+  // Driven with a wave the emitter would never build, because that is the case
+  // it exists for. Asserting only that the real ladder is clean would pass
+  // with the guard deleted.
+  assert.deepEqual(heldLeaks([{ name: 'read-only', functions: 'getDashboardData,searchPDFs' }]), []);
+  assert.deepEqual(
+    heldLeaks([{ name: 'read-only', functions: `getDashboardData,${heldNames[0]}` }]),
+    [{ wave: 'read-only', handlers: [heldNames[0]] }],
+  );
+  // And a substring of a held name is not a held name: `sendWelcomeEmailer`
+  // would be a different capability, and matching it would refuse a value that
+  // is fine.
+  assert.deepEqual(heldLeaks([{ name: 'x', functions: `${heldNames[1]}er` }]), []);
+});
+
+test('a held name already serving on a deployment is reported, not passed over', () => {
+  // The repository's half of the hold is the value it emits. This is the only
+  // place the emitted value and the running one can be compared, so a
+  // hand-edited value that put a held name live is visible here or nowhere.
+  const lines = [];
+  const readiness = readinessOf({
+    ready: true, released: true, authorityConfigured: true, integrationsRequired: false,
+    integrationsConfigured: true, appId: 'a', appStated: true, revision: 'r',
+    implemented: ['getDashboardData', ...heldNames],
+    operations: ['getDashboardData', heldNames[0]],
+  }, 'test');
+  const code = reportDelta(
+    ['getDashboardData'], readiness,
+    { name: 'read-only', needsIntegration: false }, line => lines.push(line),
+  );
+  const said = lines.join('\n');
+  assert.match(said, /WITHHELD NAME IS LIVE/);
+  assert.match(said, new RegExp(heldNames[0]));
+  assert.equal(code, 1, 'a live held name is a non-zero exit, not a note');
 });
