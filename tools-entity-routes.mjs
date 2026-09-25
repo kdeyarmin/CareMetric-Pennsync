@@ -12,6 +12,15 @@
  * implements; a route has to be in both, and checking one is how a name that
  * exists in the registry but is unreachable from the browser passes.
  *
+ * A route can be counted as serving a call it cannot serve. That was this
+ * tool's own defect: it checked that `Entity.operation` was declared and
+ * reported 36 adopted call sites where running the arguments serves none. So
+ * every site is run. What running cannot decide is a call whose argument is a
+ * variable, and that is a THIRD state rather than a failure — declared,
+ * permitted, not counted — because a payload's fields are refused by the
+ * contract against the real migration, which is a better check than this one
+ * and not this one's to pre-empt.
+ *
  * A route can name an entity operation the frontend never performs. That reads
  * as coverage and is not: it moves no call site, and it would keep reading as
  * coverage after the screen it was written for was deleted. So each route is
@@ -186,10 +195,29 @@ export function measureRoutes(repository, routes = ENTITY_ROUTES) {
   // about: it reads as adoption on the page, moves no screen, and would go on
   // reading as adoption forever. `NO_CALL_SITE` says the call is not made;
   // this says it is made and cannot be served.
+  //
+  // There are THREE states here and the first version of this loop had two,
+  // which is a worse defect than the one it fixed. "Proved" and "refused" are
+  // not the whole space: a call site whose argument is a variable —
+  // `AgencySettings.create(payload)` — cannot be run through a route at all, and
+  // treating that as "cannot be served" fails the build for 84 of the
+  // frontend's writes, every one of which a contract is perfectly able to serve.
+  // Refusing to COUNT an unproven route is the correction and stands. Refusing
+  // to PERMIT one is a static check deciding a question that belongs to the
+  // contract's own refusals, tested against the real migration at runtime.
+  //
+  // So a key fails only when a readable call site exists and none of them
+  // survives, and a key whose every call site is unreadable is declared,
+  // permitted, and reported as UNPROVED. It is never counted as adopted, and the
+  // summary prints it, because an unproven route that nobody can see is how a
+  // declaration comes to read as coverage again.
+  const unproved = [];
   for (const key of Object.keys(routes).sort()) {
-    if (performed.has(key) && !calls.served.some(call => call.key === key)) {
-      problems.push(`ENTITY_ROUTE_SERVES_NO_CALL:${key}`);
-    }
+    if (!performed.has(key)) continue;
+    const served = calls.served.some(call => call.key === key);
+    const readable = served || calls.refused.some(call => call.key === key);
+    if (readable && !served) problems.push(`ENTITY_ROUTE_SERVES_NO_CALL:${key}`);
+    if (!readable) unproved.push(key);
   }
   const servedKeys = new Set(calls.served.map(call => `${call.file}\u0000${call.key}`));
   const routedSites = calls.served.length;
@@ -206,6 +234,9 @@ export function measureRoutes(repository, routes = ENTITY_ROUTES) {
     routed_sites: routedSites,
     declared_but_refused: calls.refused.length,
     declared_but_unreadable: calls.unreadable.length,
+    // Declared and permitted, with no call site whose arguments this can run.
+    // Not adoption: these sites stay in `unrouted_sites`.
+    unproved_routes: Object.freeze([...unproved]),
     refusals: Object.freeze(calls.refused
       .map(call => `${call.key}:${call.because}`)
       .filter((value, index, all) => all.indexOf(value) === index).sort()),
@@ -235,6 +266,10 @@ function main(argv, log = console.log, error = console.error) {
     log(`  ${report.declared_but_refused} of those are sites a declared route REFUSES`
       + `${report.refusals.length ? ` (${report.refusals.join(', ')})` : ''}`
       + `, and ${report.declared_but_unreadable} pass arguments this cannot read`);
+    if (report.unproved_routes.length) {
+      log(`  ${report.unproved_routes.length} route(s) are declared but UNPROVED — every call site passes a `
+        + `variable, so the contract's own refusals are what checks them: ${report.unproved_routes.join(', ')}`);
+    }
     log(`  of those ${report.unrouted_sites}, across ${report.unrouted_entities} entities: `
       + `a wider generic family could serve ${report.generic_family_reads} reads and `
       + `${report.generic_family_writes} writes above D16's ceiling; `

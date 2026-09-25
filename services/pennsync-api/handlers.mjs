@@ -246,6 +246,62 @@ export const HANDLERS = Object.freeze({
       return contract('getAgencyRosterMember', params);
     },
   }),
+  // The seven reference and configuration reads (D101).
+  //
+  // Each is one line over its contract, and that is the whole point: the
+  // frontend called these seven entities straight through Base44's SDK, so what
+  // had to be decided was who may read them, and that decision is in SQL where
+  // the policies it sits beside are. A gate here would be the second copy D41
+  // and D43 keep deleting.
+  //
+  // Note what is NOT in these params. No sort string, no filter object, no
+  // offset. The orders these screens ask for are done in SQL by the contract,
+  // the one predicate any of them needs is a date WINDOW, and `order` is a word
+  // from a fixed set rather than a column a caller names. A capability that
+  // took a caller's sort expression would be the generic entity route this
+  // service does not have.
+  listMedicareComplianceRules: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit'], 'INVALID_PARAMS');
+      return contract('listMedicareComplianceRules', params);
+    },
+  }),
+  listMedicareGuidelines: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit', 'active'], 'INVALID_PARAMS');
+      return contract('listMedicareGuidelines', params);
+    },
+  }),
+  listPhysicians: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit', 'order', 'active'], 'INVALID_PARAMS');
+      return contract('listPhysicians', params);
+    },
+  }),
+  listDocumentTemplates: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit'], 'INVALID_PARAMS');
+      return contract('listDocumentTemplates', params);
+    },
+  }),
+  listLibraryDocuments: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit'], 'INVALID_PARAMS');
+      return contract('listLibraryDocuments', params);
+    },
+  }),
+  listOnCallShifts: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit', 'from', 'to'], 'INVALID_PARAMS');
+      return contract('listOnCallShifts', params);
+    },
+  }),
+  listVisitPointConfigs: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit'], 'INVALID_PARAMS');
+      return contract('listVisitPointConfigs', params);
+    },
+  }),
   listBrokeredRecords: Object.freeze({
     // D16's ceiling, given a caller at last.
     //

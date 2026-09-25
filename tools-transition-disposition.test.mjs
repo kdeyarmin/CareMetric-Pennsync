@@ -1318,12 +1318,22 @@ test('nothing in the queue is startable and unwritten', async () => {
     'a capability the queue calls portable today has no handler');
   // The handlers over and above the queue are facilities rather than Base44
   // capabilities — they are not in `base44/functions`, so the queue never
-  // counted them. Two are the roster contract's (D22). The third is the broker
-  // family's only caller: the family serves the entities whose own schema
-  // plainly permits a read, which is a disposition rather than a capability,
-  // so there is no Base44 function for it to be the port of.
+  // counted them, and the list only grows as the frontend's own reads are
+  // served. Two are the roster contract's (D22). One is the broker family's
+  // only caller: the family serves the entities whose own schema plainly
+  // permits a read, which is a disposition rather than a capability.
+  //
+  // The seven reference reads (D101) are the same kind of thing for the same
+  // reason, and they are why this list needs stating rather than deriving. The
+  // SPA called `base44.entities.Physician.list(...)` and six like it straight
+  // through the platform SDK, so there is no Base44 function to be the port of
+  // — what was ported is the CALL. A capability the queue cannot see is exactly
+  // what this assertion exists to keep visible.
   assert.deepEqual([...shipped].filter(name => !report.port_blockers.none.includes(name)).sort(),
-    ['getAgencyRosterMember', 'listAgencyRoster', 'listBrokeredRecords']);
+    ['getAgencyRosterMember', 'listAgencyRoster', 'listBrokeredRecords',
+      'listDocumentTemplates', 'listLibraryDocuments', 'listMedicareComplianceRules',
+      'listMedicareGuidelines', 'listOnCallShifts', 'listPhysicians',
+      'listVisitPointConfigs']);
 });
 
 test('a function call is only a reason to wait while the callee is unported', () => {

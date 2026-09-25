@@ -78,6 +78,33 @@ test('a route no real call survives is refused, not counted', () => {
   assert.equal(report.routed_sites, 0);
 });
 
+/**
+ * The third state, and the reason it exists.
+ *
+ * The version of this gate that had two states failed the build for any route
+ * whose call sites all pass a variable — `AgencySettings.create(payload)`,
+ * `NoteConversion.create(fields)` — which is 84 of the frontend's writes and
+ * every one of them servable by a contract. Not COUNTING an unproven route is
+ * the correction and is asserted above; not PERMITTING one was a static check
+ * deciding what the contract's own refusals decide against the real migration.
+ *
+ * `DocumentTemplate.create` is the real shape: a landable write whose only call
+ * site passes a variable. Declared, it must pass and appear as unproved, and it
+ * must not move the adopted count by one.
+ */
+test('a route whose every call site passes a variable is permitted, not counted', () => {
+  const baseline = measureRoutes(repository);
+  const routes = { ...ENTITY_ROUTES, 'DocumentTemplate.create': sound() };
+  const report = measureRoutes(repository, routes);
+  assert.deepEqual(report.problems, [], 'an unreadable call site is not a failure');
+  assert.ok(report.unproved_routes.includes('DocumentTemplate.create'), report.unproved_routes);
+  assert.equal(report.routed_sites, baseline.routed_sites,
+    'an unproved route is not adoption');
+  // And the distinction really is about READABILITY, not about writes: the
+  // roster route has readable call sites, so it is proved rather than unproved.
+  assert.ok(!report.unproved_routes.includes('User.list'));
+});
+
 test('every declared route names a handler reachable from the browser', () => {
   for (const key of ROUTED_OPERATIONS) {
     const route = ENTITY_ROUTES[key];

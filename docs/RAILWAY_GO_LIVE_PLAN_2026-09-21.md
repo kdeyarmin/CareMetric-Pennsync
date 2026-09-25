@@ -1508,7 +1508,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 22 | 17 |
+  | `read-only` (derived) | 29 | 19 |
   | `mutating` (derived) | 32 | 30 |
   | `integration` (derived) | 19 | 15 |
 
