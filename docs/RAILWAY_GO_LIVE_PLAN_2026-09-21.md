@@ -2119,6 +2119,28 @@ build, no privileged key, and the send that follows it stays behind its own
 switch and his words. #268's whole-service Auth-send ratchet is what will hold
 that flow to it.
 
+**Confirmed on a decision card at 08:10:56Z, and the shape of the answer is
+the part to keep.** The card asked whether new staff who never had a Base44
+account may join by invitation, and the option he chose read: *"New staff get
+verified and added the same careful way as today's staff. It's built switched
+off, and nobody is invited until you say so."* That is the card's wording of
+the option, chosen by tapping it, not something he typed — which matters
+because it authorizes **building** and authorizes nothing to be sent. Three
+things follow, and the build thread owns all three:
+
+- it is built **switched off**, on the pattern `PENNSYNC_API_DELIVERY` already
+  sets;
+- **nobody is invited until he names that switch in his own words**, which a
+  tap on a card is not;
+- **he applies its migration.** So the change that carries it puts `main` red
+  on the ledger check until he does — D93's expected red, which the
+  `apply-signal` job will say on the pull request rather than leaving it to be
+  discovered.
+
+This does **not** settle Stage C's six remaining enrolments, which are a
+different population and still sit where that stage leaves them. The decisions
+doc entry for it is the build thread's to write and number.
+
 | Needed | For | Note |
 | --- | --- | --- |
 | ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open. It moved to stage C for identities, and on 2026-09-22 the identities turned out to be largely there already. ~~What it waits on is a sign-in, a seed transport and one `chart_assignment` row.~~ The owner withdrew the sign-in the same day, which retires the other two with it; claim 4 now rests on the composition recorded in stage A |
