@@ -1603,12 +1603,13 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
 
   Two things about that, so it is not read for more than it says. It is
   evidence about a TEST, not about the service: the browser route was shut
-  throughout by both halves of `app.mjs:44`, the gap was latent and two
-  configuration writes away, and nothing was ever exposed — a first account of
-  it reported a live browser send and was corrected, because the 200 came from
-  a fixture that opens the route. And it is this page's own defect arriving
-  inside a test rather than a check, which is the second place this week the
-  thing written to catch a class of mistake was the thing that hid one.
+  throughout by both halves of `app.mjs:44`, the gap was latent — two settings
+  away for `SendEmail`, which was already on the service list, and three for a
+  name that is not — and nothing was ever exposed, a first account of it having
+  reported a live browser send and been corrected, because the 200 came from a
+  fixture that opens the route. And it is another instance of this page's own
+  defect, arriving inside a test rather than a check: the thing written to catch
+  a class of mistake was the thing that hid one.
 
   And the general form, which is not about `SendEmail`: the service list is the
   browser ceiling for **every** operation, so any widening of
