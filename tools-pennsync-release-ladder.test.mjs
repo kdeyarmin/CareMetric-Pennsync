@@ -10,6 +10,7 @@ import {
   OWNER_HELD, cumulativeValue, heldLeaks, heldNames, probeDeployment, readinessOf,
   releasable, releaseDelta, releaseLadder, reportDelta,
   AUTH_SEND_CALLS, AUTH_SEND_DECLARED, authSendHolds, authSendReach,
+  brokeredOperationsRequired, integrationRuntimeHolds, runtimeReadinessOf,
 } from './tools-pennsync-release-ladder.mjs';
 import { loadConfig, publicReadiness } from './services/pennsync-api/runtime.mjs';
 import { ledgerVersion } from './tools-pennsync-migrate.mjs';
@@ -559,7 +560,7 @@ test('a value behind the deployment is refused for what it would revoke', () => 
   assert.ok(lines.some(line => line.includes('stop serving getAuthorizedPatient')), lines.join('\n'));
 });
 
-test('a wave needing the paused runtime is blocked where it is not configured', () => {
+test('a wave needing the runtime is blocked where this service is not configured', () => {
   const readiness = readinessOf(readinessFor(RELEASED_ENV), 'unit');
   assert.equal(readiness.integrationsConfigured, false);
   assert.deepEqual(releaseDelta([], readiness, { needsIntegration: true }).blockers, ['INTEGRATIONS_NOT_CONFIGURED']);
@@ -833,4 +834,87 @@ test('the value an operator sets only ever grows, wave by wave', () => {
   // And the per-wave slice is NOT that value, which is the whole point.
   const mutating = ladder.waves.find(wave => wave.name === 'mutating');
   assert.notEqual(mutating.adds, cumulativeValue(ladder, mutating).names.join(','));
+});
+
+/**
+ * The integration wave's prerequisite is the OTHER service's state, and this
+ * tool used to state it from a constant: "deployed and paused" appeared in four
+ * places, was true when written, and went silently false the moment the runtime
+ * was released. These hold the replacement to being a measurement.
+ */
+
+const RUNTIME_BODY = Object.freeze({
+  ready: true, released: true, configured: true,
+  operations: ['InvokeLLM', 'ExtractDataFromUploadedFile'], missingProviders: [],
+  authorityMode: 'independent', base44ExecutionDependency: false,
+  trafficCutoverVerified: false, revision: 'a'.repeat(40),
+  browserContract: 'cm.integrations.v2', browserRevisionBound: true,
+  browserReleased: false, browserOperations: [], browserReady: false,
+});
+
+test('the wave requirement is read from the allowlist, not typed here', () => {
+  // Derived for the same reason the wave's membership is: a second copy of the
+  // brokered set would let this gate pass a runtime serving something else.
+  const required = brokeredOperationsRequired(REPOSITORY);
+  assert.deepEqual([...required], ['InvokeLLM', 'ExtractDataFromUploadedFile']);
+  // And NOT the delivery half: mail has a switch of its own, so requiring
+  // `SendEmail` would refuse every integration release until an unrelated
+  // decision was taken. #269 put `SendEmail` in `DELIVERY_OPERATIONS`, which
+  // this extraction must not reach.
+  assert.ok(!required.includes('SendEmail'));
+  const source = readFileSync(join(REPOSITORY, 'services/pennsync-api/integrations.mjs'), 'utf8');
+  assert.match(source, /DELIVERY_OPERATIONS/, 'the delivery set is what this must not pick up');
+});
+
+test('a body the runtime does not publish is refused, and so is the other service\'s', () => {
+  assert.deepEqual(runtimeReadinessOf(RUNTIME_BODY, 'x').operations,
+    ['InvokeLLM', 'ExtractDataFromUploadedFile']);
+  // The business API answers `operations`, `released`, `ready` and `revision`
+  // too, so a first draft accepted its body and printed 61 handler names as
+  // what "the runtime is serving". Refused BY NAME on `implemented`.
+  const businessApi = { ...RUNTIME_BODY, implemented: ['listAuthorizedPatients'], operations: ['listAuthorizedPatients'] };
+  assert.throws(() => runtimeReadinessOf(businessApi, 'https://api.example/readyz'),
+    error => error instanceof LadderError && error.code === 'LADDER_RUNTIME_IS_THE_BUSINESS_API');
+  // And it fails closed on a shape it does not recognise rather than reading
+  // absent fields as satisfied.
+  for (const key of ['operations', 'browserOperations', 'missingProviders', 'configured', 'released', 'ready', 'revision']) {
+    const body = { ...RUNTIME_BODY };
+    delete body[key];
+    assert.throws(() => runtimeReadinessOf(body, 'x'),
+      error => error instanceof LadderError && error.code === 'LADDER_RUNTIME_UNREADABLE',
+      `a body without ${key} was accepted`);
+  }
+});
+
+test('the gate names every reason a wave does not hold against the runtime', () => {
+  const required = brokeredOperationsRequired(REPOSITORY);
+  assert.deepEqual([...integrationRuntimeHolds(required, runtimeReadinessOf(RUNTIME_BODY, 'x'))], []);
+  const paused = runtimeReadinessOf({ ...RUNTIME_BODY, ready: false, released: false, operations: [] }, 'x');
+  const reasons = integrationRuntimeHolds(required, paused);
+  assert.ok(reasons.some(reason => reason.includes('not released')));
+  assert.ok(reasons.some(reason => reason.includes('not serving InvokeLLM')));
+  // A provider gap is named on its own rather than folded into "not ready",
+  // which would send an operator to the release flag for an empty key.
+  const keyless = runtimeReadinessOf({ ...RUNTIME_BODY, ready: false, missingProviders: ['InvokeLLM'] }, 'x');
+  assert.ok(integrationRuntimeHolds(required, keyless)
+    .some(reason => reason.includes('provider config is incomplete for InvokeLLM')));
+  // An unready runtime that this check cannot explain still fails, rather than
+  // holding because none of the named reasons matched.
+  const unexplained = runtimeReadinessOf({ ...RUNTIME_BODY, ready: false }, 'x');
+  assert.equal(integrationRuntimeHolds(required, unexplained).length, 1);
+});
+
+test('the tool no longer states the runtime\'s condition from a constant', () => {
+  // Comments are stripped first and that distinction is the point: the header
+  // explains this history and necessarily contains the old phrase, so a scan of
+  // the page would fail on the very note recording the fix. This means absent
+  // from the CODE.
+  const source = readFileSync(join(REPOSITORY, 'tools-pennsync-release-ladder.mjs'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.ok(!/deployed and paused/.test(source),
+    'a wave reason asserts the other service\'s state again');
+  assert.ok(!/paused runtime/.test(source), 'a wave reason calls the runtime paused again');
+  // The replacement says what the wave REQUIRES.
+  const integration = checkLadder(REPOSITORY).waves.find(wave => wave.name === 'integration');
+  assert.match(integration.reason, /must therefore be released and serving/);
 });
