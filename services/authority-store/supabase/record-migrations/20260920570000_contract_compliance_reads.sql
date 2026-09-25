@@ -76,8 +76,8 @@
 --    legitimately asked for more than exists, while a route that clamped would
 --    let a screen render a short page as the whole agency.
 --
--- TWO THINGS THAT ARE RECORDED RATHER THAN FIXED, because the store's policies
--- are generated (D88) and not this contract's to change:
+-- THREE THINGS THAT ARE RECORDED RATHER THAN FIXED, because the store's
+-- policies are generated (D88) and not this contract's to change:
 --
 -- * `incident_read` reaches tenancy through `incident.patient_id`, and
 --   `compliance_audit_read` through `compliance_audit.visit_id`. Both columns
@@ -87,6 +87,32 @@
 --   same predicate, so this store cannot hold a chartless incident or a
 --   visitless audit in the first place. A test asserts that rather than
 --   asserting the comment.
+--
+-- * A ROW'S TENANCY AND THE TENANCY OF THE CHART IT NAMES ARE TWO DIFFERENT
+--   THINGS, and nothing here asks the second. D24's helpers ask whether the
+--   caller opens every chart IN AN AGENCY, or is assigned this chart IN THAT
+--   AGENCY; the policies ask the same two questions of the row's own
+--   `agency_id`. So a case tenanted to agency A that names agency B's chart
+--   satisfies every check on the way through, and measured on this migration
+--   it returned that patient's NAME and MEDICARE NUMBER to an administrator
+--   who cannot open their chart.
+--
+--   A guard was written for it and then DELETED, which is the part worth
+--   keeping. `not exists (chart proved to be elsewhere)` reads correctly and
+--   protects nobody: the subquery runs inside a definer under FORCE ROW LEVEL
+--   SECURITY with the caller's own claims, so the foreign chart that would
+--   prove the row is foreign is itself invisible to exactly the caller who
+--   needs protecting. Measured, not reasoned about — the crossed case stayed
+--   visible to a caller holding one agency and became hidden for a caller
+--   holding both, which is the guard working precisely backwards.
+--
+--   Closing it needs the chart's agency resolved by something that can see it
+--   past the policies: a helper in `pennsync_private` granted to the record
+--   owner, as `caller_assigned_patients` is. That is a change to the store's
+--   own authorization surface rather than to one capability, so it is named
+--   here and not taken. It is not reachable through these reads alone — a
+--   crossed row has to be WRITTEN first — and no writer in this store creates
+--   one today.
 --
 -- * `adr_audit_case.medicare_number` IS projected and is the widest field in
 --   this file. It is the point of the screen the capability serves — an ADR is
