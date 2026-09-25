@@ -73,7 +73,7 @@ Base44 platform with two providers, following the design already in the repo:
 | Authentication and sessions | Supabase Auth in a dedicated project | `services/authority-client`, `services/authority-store` | Staging only, synthetic |
 | Entity storage and RLS (253 schemas) | PostgreSQL with forced RLS and RPC brokers | `services/authority-store/supabase/migrations` (10 files) | Five thin slices |
 | Uploaded files | Supabase Storage private bucket, `cmfile:` handles | Integration runtime `UploadPrivateFile` / `CreateFileSignedUrl` | Adapter only |
-| AI, email | Anthropic and SendGrid through the Railway runtime | Integration runtime `InvokeLLM`, `ExtractDataFromUploadedFile`, `SendEmail` | Deployed and released 2026-09-25; all three brokered. **Mail still cannot be sent** — the second switch, `PENNSYNC_API_DELIVERY` on `services/pennsync-api`, is unset |
+| AI, email | Anthropic and SendGrid through the Railway runtime | Integration runtime `InvokeLLM`, `ExtractDataFromUploadedFile`, `SendEmail` | Deployed and released 2026-09-25; all three brokered. **Mail can now be sent** — the second switch, `PENNSYNC_API_DELIVERY` on `services/pennsync-api`, was written at `16:19Z` that day. The runtime's browser route stays shut, and `SendEmail` is refused on the browser list at boot and at dispatch |
 | Static site hosting | Not started (Base44 site hosting remains) | `.github/workflows/publish-production-frontend.yml` | Not started |
 | Scheduled workflows (7) | Not started | `base44/workflows` | All inactive in production |
 | Learning, help, central admin | Support Hub, already on Railway (`kdeyarmin/caremetric-support-hub`) | `centralAdminRead`, `centralLearningGrade`, `centralHelp` | Adapters exist, flags off |
