@@ -11,6 +11,7 @@ import {
   releasable, releaseDelta, releaseLadder, reportDelta,
   AUTH_SEND_CALLS, AUTH_SEND_DECLARED, authSendHolds, authSendReach,
   brokeredOperationsRequired, integrationRuntimeHolds, runtimeReadinessOf,
+  appBindingLine,
 } from './tools-pennsync-release-ladder.mjs';
 import { loadConfig, publicReadiness } from './services/pennsync-api/runtime.mjs';
 import { ledgerVersion } from './tools-pennsync-migrate.mjs';
@@ -886,6 +887,54 @@ test('a body the runtime does not publish is refused, and so is the other servic
   }
 });
 
+test('the app binding is read when that service publishes it, and absent when it does not', () => {
+  // OPTIONAL on purpose. The runtime began publishing this pair after the
+  // reader was written and a merge does not deploy it, so a body without it is
+  // a current deployment: refusing one would make this gate unusable against
+  // the very service it measures, which is the opposite of the failure it was
+  // built for.
+  const unpublished = runtimeReadinessOf(RUNTIME_BODY, 'x');
+  assert.equal(unpublished.appId, null);
+  assert.equal(unpublished.appStated, null);
+
+  const published = runtimeReadinessOf({ ...RUNTIME_BODY, appId: '6a9881683dc68a0bd54f1ef7', appStated: true }, 'x');
+  assert.equal(published.appId, '6a9881683dc68a0bd54f1ef7');
+  assert.equal(published.appStated, true);
+  // Read, not judged: which id is right for a target is that service's own
+  // startup check, and a second copy of its pin here is the defect this whole
+  // file exists to remove.
+  const other = runtimeReadinessOf({ ...RUNTIME_BODY, appId: '694ec16e72e01b60d22f7cbf', appStated: false }, 'x');
+  assert.equal(other.appId, '694ec16e72e01b60d22f7cbf');
+  assert.equal(other.appStated, false);
+
+  // What IS refused: a half-published pair, and either field of the wrong
+  // type. `undefined` printed beside a real id has the shape of a measurement
+  // with nothing behind it.
+  // Both branches of the operator's line are proved by RUNNING them. The live
+  // runtime publishes no binding yet, so the populated branch cannot be driven
+  // end to end against it, and scanning the tool for the template literal
+  // would prove the text exists rather than that it renders.
+  assert.equal(appBindingLine(published),
+    '# app binding 6a9881683dc68a0bd54f1ef7, stated by the operator true');
+  assert.equal(appBindingLine(other),
+    '# app binding 694ec16e72e01b60d22f7cbf, stated by the operator false');
+  assert.match(appBindingLine(unpublished), /publishes no app binding/);
+  assert.ok(!/6a9881683dc68a0bd54f1ef7|undefined|null/.test(appBindingLine(unpublished)),
+    'the absent branch names an id or renders an empty read');
+
+  for (const body of [
+    { ...RUNTIME_BODY, appId: '6a9881683dc68a0bd54f1ef7' },
+    { ...RUNTIME_BODY, appStated: true },
+    { ...RUNTIME_BODY, appId: 694, appStated: true },
+    { ...RUNTIME_BODY, appId: '6a9881683dc68a0bd54f1ef7', appStated: 'yes' },
+    { ...RUNTIME_BODY, appId: null, appStated: null },
+  ]) {
+    assert.throws(() => runtimeReadinessOf(body, 'x'),
+      error => error instanceof LadderError && error.code === 'LADDER_RUNTIME_APP_BINDING_UNREADABLE',
+      `accepted ${JSON.stringify({ appId: body.appId, appStated: body.appStated })}`);
+  }
+});
+
 test('the gate names every reason a wave does not hold against the runtime', () => {
   const required = brokeredOperationsRequired(REPOSITORY);
   assert.deepEqual([...integrationRuntimeHolds(required, runtimeReadinessOf(RUNTIME_BODY, 'x'))], []);
@@ -919,17 +968,29 @@ test('the tool no longer states the runtime\'s condition from a constant', () =>
   assert.match(integration.reason, /must therefore be released and serving/);
 });
 
-test('the gate says what it does not prove', () => {
+test('the gate says what it does not prove, without listing the other service\'s defects', () => {
   // A gate that read "the runtime serves what this wave needs" and stopped
-  // there would be the literal it replaced, one level up: the runtime's own
-  // readiness is a shape check over its configuration, and it publishes no app
-  // id, so a production binding in independent mode and a revoked authority key
-  // both read ready and refuse every call. Comments are stripped, so this is
-  // about what an operator READS.
+  // there would be the literal it replaced, one level up. The first version
+  // said so by ENUMERATING two states of that service — a production app
+  // binding and a revoked authority key — and asserting it published no app id
+  // so neither could be seen. Within a day the runtime refused a mismatched
+  // binding at startup, its preflight learned to tell a revoked key apart, and
+  // it began publishing the binding: three claims of mine going stale at once,
+  // in the output of the tool written to stop that. So the bound is stated as
+  // a property of THIS check and the binding is reported as a reading.
+  // Comments are stripped, so this is about what an operator READS.
   const source = readFileSync(join(REPOSITORY, 'tools-pennsync-release-ladder.mjs'), 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
   assert.match(source, /NOT proof it can answer/);
-  assert.match(source, /publishes no app id/);
-  // And the way to close it is named rather than left to the reader.
+  assert.match(source, /asks the SHAPE of its/);
+  // The binding is printed from what was read, and its absence is said plainly
+  // rather than asserted as a property of that service.
+  assert.match(source, /app binding \$\{runtime\.appId\}/);
+  assert.match(source, /publishes no app binding/);
+  assert.ok(!/publishes no app id/.test(source), 'the gate asserts the missing pair again');
+  assert.ok(!/revoked/.test(source), 'the gate enumerates that service\'s failure modes again');
+  // The preflight is named as what probes further; how it decides is its own
+  // and changed once already, so this no longer describes its pass condition.
   assert.match(source, /INTEGRATIONS_PREFLIGHT=read-only/);
+  assert.ok(!/401\/403/.test(source), 'the gate states the preflight\'s pass condition again');
 });

@@ -135,11 +135,17 @@ export const DERIVED_WAVES = Object.freeze([
  * derivation puts them in.
  *
  * This is NOT a readiness question and is deliberately not expressed through
- * `needsIntegration`. Both of these are refusal-only today — they touch no
+ * `needsIntegration`. The hold is ORTHOGONAL to the derivation: wherever the
+ * tree puts these two, `releasable` strips them, and every wave reports what
+ * it withheld. What holds them back is a decision about who may be sent mail,
+ * which no property of the tree can answer.
+ *
+ * This paragraph used to say they were "refusal-only today — they touch no
  * store and reach no runtime — so the derivation is right to put them in the
- * read-only wave, and D92's guard would refuse the flag that moved them
- * anywhere else. What holds them back is a decision about who may be sent
- * mail, which no property of the tree can answer.
+ * read-only wave". #269 gave both `needsIntegration: true` and they have been
+ * in the INTEGRATION wave since, so the note describing the hold had gone
+ * false about the thing it was describing. It now names no wave, because a
+ * comment that names one goes stale the next time the derivation moves.
  *
  * It exists because the exclusion used to live nowhere the tool could see. The
  * read-only wave was released on 2026-09-25 as this tool's output with these
@@ -956,6 +962,20 @@ export function runtimeReadinessOf(payload, source) {
     || typeof payload.revision !== 'string') {
     refuse('LADDER_RUNTIME_UNREADABLE', { source, keys });
   }
+  // The app binding is OPTIONAL here and READ rather than required. That
+  // service began publishing `appId`/`appStated` after this reader was
+  // written, and a merge does not deploy it, so a body without the pair is a
+  // current deployment rather than a malformed one. What is refused is a pair
+  // that is HALF published or the wrong type: a field this tool prints as a
+  // reading has to mean what it says, and `undefined` rendered beside a real
+  // id is the shape of a measurement with nothing behind it.
+  const hasApp = Object.prototype.hasOwnProperty.call(payload, 'appId');
+  const hasStated = Object.prototype.hasOwnProperty.call(payload, 'appStated');
+  if (hasApp !== hasStated
+    || (hasApp && typeof payload.appId !== 'string')
+    || (hasStated && typeof payload.appStated !== 'boolean')) {
+    refuse('LADDER_RUNTIME_APP_BINDING_UNREADABLE', { source, keys });
+  }
   return Object.freeze({
     revision: payload.revision,
     operations: Object.freeze([...payload.operations]),
@@ -963,12 +983,32 @@ export function runtimeReadinessOf(payload, source) {
     configured: payload.configured,
     released: payload.released,
     ready: payload.ready,
+    appId: hasApp ? payload.appId : null,
+    appStated: hasApp ? payload.appStated : null,
   });
 }
 
 export async function probeIntegrationRuntime(target, fetchImpl = fetch) {
   const { payload, url } = await fetchReadyz(target, fetchImpl);
   return runtimeReadinessOf(payload, url);
+}
+
+/**
+ * The app binding as one line, or the plain statement that this build does not
+ * publish one.
+ *
+ * Its own function so that BOTH branches are proved by running them. The live
+ * service publishes no binding yet, so the populated branch cannot be driven
+ * end to end here — and a test that scans this file for the template literal
+ * proves the text exists, not that it renders. That is the distinction this
+ * repository keeps paying for.
+ */
+export function appBindingLine(runtime) {
+  if (runtime.appId === null) {
+    return '# this build publishes no app binding, so it predates the build that'
+      + ' does: which app it keys into the store cannot be read from here.';
+  }
+  return `# app binding ${runtime.appId}, stated by the operator ${runtime.appStated}`;
 }
 
 /**
@@ -1090,21 +1130,26 @@ async function main(argv, root, write) {
         write('# releasing these names would advertise capability that service cannot answer.');
         return 1;
       }
-      // What this gate proves is bounded, and saying so is the point: the
-      // runtime's readiness is a SHAPE check over its configuration
-      // (`configured && released && operations.length && !missingProviders`),
-      // so two states read ready and refuse every authorization call — an
-      // explicitly PRODUCTION `INTEGRATIONS_APP_ID` in independent mode, which
-      // `ALLOWED_APPS` admits and the owned store's staging pin then refuses,
-      // and an authority publishable key that is shape-valid but revoked. That
-      // service publishes no app id, so nothing here can read either one, and a
-      // gate implying otherwise would be the literal it replaced.
+      // What this gate proves is bounded, and the bound is now MEASURED rather
+      // than enumerated. The first version listed the two states that read
+      // ready and refuse every call — an explicitly production
+      // `INTEGRATIONS_APP_ID` and a shape-valid but revoked authority key —
+      // and said that service publishes no app id, so neither could be read
+      // from here. Both halves of that moved within a day: the runtime now
+      // refuses a mismatched binding at startup, its preflight reads the body
+      // that tells a revoked key from a live one, and its readiness publishes
+      // the binding. A tool that lists another component's defects dates
+      // itself exactly as "deployed and paused" did, and re-listing them from
+      // here would be that literal a third time. So report the binding when it
+      // is published, say plainly when it is not, and name the preflight as
+      // the thing that measures reachability without claiming what it covers.
+      write(appBindingLine(runtime));
       write('# the runtime is released and serving what this wave needs.'
-        + ' That is NOT proof it can answer: its readiness asks the shape of its'
-        + ' configuration, and it publishes no app id, so a production binding or'
-        + ' a revoked authority key reads ready here and refuses every call.');
+        + ' That is NOT proof it can answer: its readiness asks the SHAPE of its'
+        + ' configuration, so nothing here measures whether its provider keys, its'
+        + ' bucket or its authority key actually work.');
       write('# to close that, read its boot log with INTEGRATIONS_PREFLIGHT=read-only,'
-        + ' whose authority probe is a POST that must be REFUSED (401/403 is the pass).');
+        + ' which probes what this cannot.');
     }
     const target = argv[argv.indexOf('--deployment') + 1];
     if (argv.includes('--deployment')) {
