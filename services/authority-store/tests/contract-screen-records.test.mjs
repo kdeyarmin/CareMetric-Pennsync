@@ -23,6 +23,11 @@ const D = 'services/authority-store/supabase/record-migrations/';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const ADMIN_A = 1; const CLINICIAN_A = 2; const UNASSIGNED_A = 3; const ADMIN_B = 4;
+// A caller who holds BOTH agencies, seeded here because the shared fixtures
+// give every identity exactly one membership -- under which the policies
+// refuse a cross-agency row on their own and a test of the contract's own
+// binding passes with that binding deleted.
+const DUAL = 5;
 const A = 'agency-a'; const B = 'agency-b';
 let db;
 
@@ -100,6 +105,37 @@ before(async () => {
       (source_app_id, id, created_by, user_email, digest_mode)
     values ('6a9881683dc68a0bd54f1ef7','pref-foreign','admin-a@example.invalid',
             'clinician-empty@example.invalid','daily');
+    -- One row per bound capability in the OTHER agency, so each binding can be
+    -- neutralised on its own and the failure names the entity.
+    insert into pennsync_records.clinical_event
+      (source_app_id, id, patient_id, event_type, event_date, event_title, event_description)
+    values ('6a9881683dc68a0bd54f1ef7','event-b1','patient-b1','fall','2026-09-22',
+            'Their chart','not ours');
+    insert into pennsync_records.patient_recommendation
+      (source_app_id, id, patient_id, created_date, status, title, description)
+    values ('6a9881683dc68a0bd54f1ef7','rec-b1','patient-b1','2026-09-22','pending','TB','DB');
+    insert into pennsync_records.sent_education_material
+      (source_app_id, id, patient_id, material_title, patient_name, sent_by, sent_date,
+       delivery_method, personalized_content)
+    values ('6a9881683dc68a0bd54f1ef7','sent-b1','patient-b1','Theirs','Katherine Johnson',
+            'dual@example.invalid','2026-09-22','email','their body');
+    insert into auth.users(id,email,email_confirmed_at)
+      values ('10000000-0000-4000-8000-000000000005','dual@example.invalid',clock_timestamp());
+    insert into auth.sessions(id,user_id,not_after)
+      values ('20000000-0000-4000-8000-000000000005',
+              '10000000-0000-4000-8000-000000000005',clock_timestamp()+interval '1 hour');
+    insert into pennsync_private.identity_map
+      (app_id,auth_user_id,base44_user_id,expected_email,source_evidence_sha256,verified_at)
+      values ('6a9881683dc68a0bd54f1ef7','10000000-0000-4000-8000-000000000005',
+              '6aac00000000000000000005','dual@example.invalid',repeat('a',64),clock_timestamp());
+    insert into pennsync_private.membership
+      (app_id,id,agency_id,auth_user_id,base44_user_id,tenant_role,status)
+    values ('6a9881683dc68a0bd54f1ef7','membership-5a','agency-a',
+            '10000000-0000-4000-8000-000000000005','6aac00000000000000000005',
+            'agency_admin','active'),
+           ('6a9881683dc68a0bd54f1ef7','membership-5b','agency-b',
+            '10000000-0000-4000-8000-000000000005','6aac00000000000000000005',
+            'agency_admin','active');
     insert into pennsync_records.compliance_rule
       (source_app_id, id, rule_name, rule_code, rule_category, description, severity, is_active)
     values ('6a9881683dc68a0bd54f1ef7','rule-1','Timely filing','CMS-TF-1','medicare_cop',
@@ -268,7 +304,9 @@ test('recording a send takes its subject, its sender and its clock from the stor
   assert.equal(rows[0].sent_by, 'clinician-a@example.invalid');
   assert.equal(rows[0].created_by, 'clinician-a@example.invalid');
   assert.equal(rows[0].patient_id, 'patient-a1');
-  assert.equal(rows[0].patient_acknowledged, null, 'the patient answers this, not the sender');
+  // The entity's declared default, stamped here because the store emits none.
+  // Still not the sender's to set: it is absent from the writable field list.
+  assert.equal(rows[0].patient_acknowledged, false);
   assert.ok(rows[0].sent_date, 'the server clock stamps it');
   await db.query('delete from pennsync_records.sent_education_material where id = $1', [answer.id]);
 });
@@ -286,7 +324,7 @@ test('a send refuses a field the caller does not own, by name rather than by dro
     'PENNSYNC_SCREEN_PAYLOAD_INVALID');
 });
 
-test('a pushed recommendation keeps the reviewer\'s fields out, and its status stays null', async () => {
+test('a pushed recommendation keeps the reviewer\'s fields out and gets its defaults', async () => {
   const answer = await write(ADMIN_A, PUSH, [A, 'patient-a1', JSON.stringify({
     source_type: 'oasis_analysis', source_id: 'up-1', recommendation_type: 'compliance',
     title: 'T', description: 'D', priority: 'high', ai_rationale: 'R',
@@ -296,9 +334,10 @@ test('a pushed recommendation keeps the reviewer\'s fields out, and its status s
   const { rows } = await db.query(
     `select "status","reviewed_by","patient_id","created_by","implementation_steps"
      from pennsync_records.patient_recommendation where id = $1`, [answer.id]);
-  // The recorded defect: the original writes no status, so the analyser's
-  // `pending` count is zero for everything this creates. Reproduced on purpose.
-  assert.equal(rows[0].status, null);
+  // Not null: the entity declares `default: "pending"` and the generated store
+  // emits no defaults, so a null here would be this store's defect rather than
+  // the product's -- and the analyser counts `status === 'pending'`.
+  assert.equal(rows[0].status, 'pending');
   assert.equal(rows[0].reviewed_by, null);
   assert.equal(rows[0].patient_id, 'patient-a1');
   assert.equal(rows[0].created_by, 'admin-a@example.invalid');
@@ -367,6 +406,171 @@ test('a preference row somebody else wrote is refused, not silently left alone',
     'select digest_mode from pennsync_records.notification_preference where id = $1',
     ['pref-foreign']);
   assert.equal(rows[0].digest_mode, 'daily');
+});
+
+test('a caller holding two agencies gets only the agency they named', async () => {
+  // THE FIXTURE, NOT THE ASSERTION, IS WHAT THIS PROVES. With one membership
+  // each -- which is what the shared fixtures give every identity -- the
+  // policies refuse the other agency's rows on their own, and every case below
+  // passes with the contract's binding DELETED. `DUAL` holds both agencies as
+  // an administrator, so the policies admit both and only each contract's own
+  // binding stands between a request naming agency A and agency B's rows.
+  //
+  // Each capability is checked on its own, so a failure names the entity: the
+  // two chart reads and the two writes bind through `screen_chart`, the OCR
+  // pair through their own `agency_id` term, and the education panel through a
+  // join it has to write out because it takes no subject.
+  const held = await db.query(
+    "select count(*)::int as n from pennsync_private.membership " +
+    "where auth_user_id = '10000000-0000-4000-8000-000000000005' and status = 'active'");
+  assert.equal(held.rows[0].n, 2, 'every case here is vacuous unless this caller holds both');
+
+  // The timeline answers under `events` and the rest under `entries`; both are
+  // read rather than assumed, so a renamed key fails here rather than turning
+  // every case below into a vacuous "saw nothing".
+  const ids = answer => {
+    const list = answer.events ?? answer.entries;
+    assert.ok(Array.isArray(list), `no list in ${JSON.stringify(answer)}`);
+    return list.map(entry => entry.id);
+  };
+  const bound = [
+    // [what it is, the call, its agency-A arguments, its agency-B arguments,
+    //  the row that is only in agency B]
+    ['clinical events', EVENTS, [A, 'patient-b1', 50], [B, 'patient-b1', 50], 'event-b1'],
+    ['recommendations', RECS, [A, 'patient-b1', 50], [B, 'patient-b1', 50], 'rec-b1'],
+    ['OCR corrections', OCR, [A, null, 50], [B, null, 50], 'ocr-3'],
+    ['OCR training runs', RUNS, [A, 50], [B, 50], 'run-2'],
+    ['the education panel', SENT, [A, 50], [B, 50], 'sent-b1'],
+  ];
+  for (const [what, call, inA, inB, only] of bound) {
+    // Naming agency B, this caller really does reach the row -- so a refusal or
+    // an absence under agency A is the binding and not a chart they could never
+    // open. A case whose positive half does not hold proves nothing.
+    assert.ok(ids(await as(DUAL, call, inB)).includes(only),
+      `${what}: the caller cannot reach ${only} even when they name its agency`);
+    if (call === EVENTS || call === RECS) {
+      await refusal(as(DUAL, call, inA), 'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE');
+    } else {
+      assert.ok(!ids(await as(DUAL, call, inA)).includes(only),
+        `${what}: a request naming agency A answered with agency B's ${only}`);
+    }
+  }
+
+  // The two writes, whose binding is the same `screen_chart` the chart reads
+  // use and, for the send, a second lookup of the subject's own name.
+  const reached = await write(DUAL, SEND, [B, 'patient-b1', JSON.stringify({
+    material_id: 'm', personalized_content: 'c' })]);
+  assert.equal(reached.success, true, 'the caller can write this chart when they name its agency');
+  await db.query('delete from pennsync_records.sent_education_material where id = $1',
+    [reached.id]);
+  await refusal(write(DUAL, SEND, [A, 'patient-b1', JSON.stringify({
+    material_id: 'm', personalized_content: 'c' })]), 'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE');
+  await refusal(write(DUAL, PUSH, [A, 'patient-b1', JSON.stringify({
+    source_type: 's', recommendation_type: 'r', title: 'T', description: 'D' })]),
+    'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE');
+
+  // AND THE COUNTER-CASE, because restating tenancy where there is none is the
+  // same defect from the other side: `compliance_rule` is D83's global
+  // reference table with one read policy and no tenant column, so this caller
+  // SHOULD see the same catalogue whichever agency they name.
+  const catalogue = ids(await as(DUAL, RULE, [A, 'CMS-TF-1', 50]));
+  assert.ok(catalogue.length > 0, 'two empty lists are equal and prove nothing');
+  assert.deepEqual(catalogue, ids(await as(DUAL, RULE, [B, 'CMS-TF-1', 50])));
+});
+
+test('an entity default the generated store does not emit is stamped by the contract', async () => {
+  // The store's own header says columns are nullable so a legacy row can
+  // migrate. It says nothing about defaults, and emits none -- so a create
+  // path that did not stamp them would write null where Base44 wrote a value.
+  // The expected values are the ENTITY's, read here rather than typed.
+  const schemas = new Map(readSchemas(repository));
+  const declared = (entity, field) => {
+    const property = (schemas.get(entity).properties ?? {})[field];
+    assert.ok(property && 'default' in property,
+      `${entity}.${field} no longer declares a default; this case is stale`);
+    return property.default;
+  };
+
+  const sent = await write(CLINICIAN_A, SEND, [A, 'patient-a1', JSON.stringify({
+    material_id: 'mat-d', personalized_content: 'body' })]);
+  const push = await write(ADMIN_A, PUSH, [A, 'patient-a1', JSON.stringify({
+    source_type: 'oasis_analysis', recommendation_type: 'compliance',
+    title: 'T', description: 'D' })]);
+  const sentRow = (await db.query(
+    'select "patient_acknowledged" from pennsync_records.sent_education_material where id = $1',
+    [sent.id])).rows[0];
+  const pushRow = (await db.query(
+    'select "status","priority" from pennsync_records.patient_recommendation where id = $1',
+    [push.id])).rows[0];
+  assert.equal(sentRow.patient_acknowledged,
+    declared('SentEducationMaterial', 'patient_acknowledged'));
+  assert.equal(pushRow.status, declared('PatientRecommendation', 'status'));
+  assert.equal(pushRow.priority, declared('PatientRecommendation', 'priority'));
+  await db.query('delete from pennsync_records.sent_education_material where id = $1', [sent.id]);
+  await db.query('delete from pennsync_records.patient_recommendation where id = $1', [push.id]);
+
+  // A value the caller DID send is theirs, so the default fills a gap rather
+  // than overwriting an answer.
+  const chosen = await write(ADMIN_A, PUSH, [A, 'patient-a1', JSON.stringify({
+    source_type: 'oasis_analysis', recommendation_type: 'compliance',
+    title: 'T', description: 'D', priority: 'high' })]);
+  assert.equal((await db.query(
+    'select "priority" from pennsync_records.patient_recommendation where id = $1',
+    [chosen.id])).rows[0].priority, 'high');
+  await db.query('delete from pennsync_records.patient_recommendation where id = $1', [chosen.id]);
+
+  // And the preference save, whose five defaults are all the caller's fields.
+  await write(CLINICIAN_A, PREF_SAVE, [A, null, JSON.stringify({})]);
+  const pref = await as(CLINICIAN_A, PREF_GET, [A, null]);
+  for (const field of ['email_notifications_enabled', 'in_app_notifications_enabled',
+    'push_notifications_enabled', 'digest_mode', 'sound_enabled']) {
+    assert.equal(pref.preference[field], declared('NotificationPreference', field), field);
+  }
+  await db.query(
+    "delete from pennsync_records.notification_preference where user_email = $1",
+    ['clinician-a@example.invalid']);
+});
+
+test('a caller\'s bad value is a named refusal, not a record-store outage', async () => {
+  // Enum values DO become CHECK constraints, and an uncaught one reaches the
+  // HTTP boundary undeclared as a 503 CONTRACT_REFUSED -- a typo reported as an
+  // outage. Each of these raises inside the insert rather than before it.
+  await refusal(write(CLINICIAN_A, SEND, [A, 'patient-a1', JSON.stringify({
+    material_id: 'm', personalized_content: 'c', delivery_method: 'carrier pigeon' })]),
+    'PENNSYNC_SCREEN_FIELD_VALUE_INVALID');
+  await refusal(write(ADMIN_A, PUSH, [A, 'patient-a1', JSON.stringify({
+    source_type: 'oasis_analysis', recommendation_type: 'compliance', title: 'T',
+    description: 'D', priority: 'VERY HIGH' })]), 'PENNSYNC_SCREEN_FIELD_VALUE_INVALID');
+  await refusal(write(ADMIN_A, PUSH, [A, 'patient-a1', JSON.stringify({
+    source_type: 'oasis_analysis', recommendation_type: 'compliance', title: 'T',
+    description: 'D', expires_at: 'the day after tomorrow' })]),
+    'PENNSYNC_SCREEN_FIELD_VALUE_INVALID');
+  await refusal(write(CLINICIAN_A, PREF_SAVE, [A, null, JSON.stringify({
+    digest_mode: 'whenever' })]), 'PENNSYNC_SCREEN_FIELD_VALUE_INVALID');
+  // And the refused write left nothing behind.
+  assert.equal((await db.query(
+    "select count(*)::int as n from pennsync_records.notification_preference " +
+    "where user_email = 'clinician-a@example.invalid'")).rows[0].n, 0);
+});
+
+test('a recommendation cannot be attributed to a colleague', async () => {
+  // `suggested_by_user` names a person, and the only call site sends the
+  // literal `AI Assistant`. An address that is not the caller's own is a
+  // provenance claim nobody reading the row could check.
+  await refusal(write(ADMIN_A, PUSH, [A, 'patient-a1', JSON.stringify({
+    source_type: 'oasis_analysis', recommendation_type: 'compliance', title: 'T',
+    description: 'D', suggested_by_user: 'clinician-a@example.invalid' })]),
+    'PENNSYNC_SCREEN_FIELD_VALUE_INVALID');
+  for (const value of ['AI Assistant', 'admin-a@example.invalid']) {
+    const answer = await write(ADMIN_A, PUSH, [A, 'patient-a1', JSON.stringify({
+      source_type: 'oasis_analysis', recommendation_type: 'compliance', title: 'T',
+      description: 'D', suggested_by_user: value })]);
+    assert.equal((await db.query(
+      'select "suggested_by_user" from pennsync_records.patient_recommendation where id = $1',
+      [answer.id])).rows[0].suggested_by_user, value);
+    await db.query('delete from pennsync_records.patient_recommendation where id = $1',
+      [answer.id]);
+  }
 });
 
 test('a required field the caller supplies is refused when it is absent', async () => {

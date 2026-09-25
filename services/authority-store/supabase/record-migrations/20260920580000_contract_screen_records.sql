@@ -108,6 +108,26 @@
 -- `required` array, so a field added upstream fails the suite rather than
 -- becoming silently optional.
 --
+-- **The generated store is deliberately permissive, and that costs a write
+-- contract two things rather than one.** Its own header says columns are
+-- nullable even where the entity marks them required, so a legacy row can
+-- migrate and be reconciled rather than rejected -- a decision about IMPORT
+-- that a create path must not inherit. It also emits NO column default
+-- anywhere: 646 properties across 208 entities declare one and none of them
+-- reaches the SQL, which the header does not mention and is not the same
+-- trade, because a default fires only where a column is omitted and so costs
+-- an import nothing. Five of these seven entities declare defaults. Both
+-- writes therefore refuse an absent required field AND stamp the entity's
+-- declared default, and the test reads both lists out of the entity rather
+-- than out of this file.
+--
+-- **A caller's bad value is refused by name, not by the store.** Enum values
+-- DO become CHECK constraints -- 578 of them -- so a typo in a delivery method
+-- raises `check_violation`, which is undeclared at the HTTP boundary and
+-- reaches the screen as a 503 `CONTRACT_REFUSED`: a record-store outage where
+-- a caller made a typo. Both writes catch it, and the casts beside it, and
+-- answer `PENNSYNC_SCREEN_FIELD_VALUE_INVALID`.
+--
 -- **One pass this file owes the reader, because the absence of a predicate
 -- reads as a missing check.** Every one of the seven store policies was read
 -- for a shared or cross-agency disjunct, and NONE has one: `clinical_event`,
@@ -439,7 +459,18 @@ begin
       'sent_by', m."sent_by", 'sent_date', m."sent_date",
       'delivery_method', m."delivery_method")
     order by m."sent_date" desc nulls last, m."id"), '[]'::jsonb) into v_rows
+  -- THE AGENCY BINDING IS THIS JOIN, and it is the only read here that needs
+  -- one written out: the two chart reads take a patient and `screen_chart`
+  -- binds it, while this panel takes no subject at all. The table has no
+  -- `agency_id`, so its tenancy is the chart -- and the POLICIES admit every
+  -- agency the caller holds, which for somebody holding two is both. Without
+  -- this join a request naming agency A answers with agency B's sends. A row
+  -- whose chart is missing is in no tenant and belongs to nobody, so an inner
+  -- join is the right shape rather than an oversight.
   from (select s.* from "pennsync_records"."sent_education_material" s
+    join "pennsync_records"."patient" p
+      on p."source_app_id" = s."source_app_id" and p."id" = s."patient_id"
+      and p."agency_id" = p_agency
     where s."source_app_id" = "pennsync_records".deployment_app()
       and (v_admin or s."sent_by" = "pennsync_records".caller_email())
     order by s."sent_date" desc nulls last, s."id"
@@ -556,18 +587,27 @@ begin
   where p."source_app_id" = "pennsync_records".deployment_app()
     and p."id" = p_patient_id and p."agency_id" = p_agency;
   v_id := pg_catalog.substr(pg_catalog.md5(pg_catalog.gen_random_uuid()::text), 1, 24);
-  insert into "pennsync_records"."sent_education_material" (
-    "source_app_id", "id", "created_date", "created_by", "material_id", "material_title",
-    "patient_id", "patient_name", "personalized_content", "sent_by", "sent_date",
-    "delivery_method", "notes")
-  values (
-    "pennsync_records".deployment_app(), v_id, clock_timestamp(),
-    "pennsync_records".caller_email(),
-    p_material->>'material_id', p_material->>'material_title',
-    p_patient_id, v_name, p_material->>'personalized_content',
-    "pennsync_records".caller_email(), clock_timestamp(),
-    p_material->>'delivery_method', p_material->>'notes')
-  returning * into v_row;
+  begin
+    insert into "pennsync_records"."sent_education_material" (
+      "source_app_id", "id", "created_date", "created_by", "material_id", "material_title",
+      "patient_id", "patient_name", "personalized_content", "sent_by", "sent_date",
+      "delivery_method", "notes", "patient_acknowledged")
+    values (
+      "pennsync_records".deployment_app(), v_id, clock_timestamp(),
+      "pennsync_records".caller_email(),
+      p_material->>'material_id', p_material->>'material_title',
+      p_patient_id, v_name, p_material->>'personalized_content',
+      "pennsync_records".caller_email(), clock_timestamp(),
+      p_material->>'delivery_method', p_material->>'notes',
+      -- The entity's declared default. The generated store emits none, so
+      -- without this the row is null where Base44 wrote false.
+      false)
+    returning * into v_row;
+  exception
+    when check_violation or invalid_text_representation or invalid_datetime_format
+      or datetime_field_overflow then
+      raise exception using errcode='22023', message='PENNSYNC_SCREEN_FIELD_VALUE_INVALID';
+  end;
   return jsonb_build_object('success', true, 'id', v_row."id",
     'patient_name', v_row."patient_name", 'sent_date', v_row."sent_date");
 end $contract$;
@@ -575,14 +615,15 @@ end $contract$;
 /*
  * Pushing an OASIS analysis's recommendations onto a chart.
  *
- * **A defect reproduced rather than fixed, and recorded here because it is
- * live in the product today (D72's rule).** The original writes no `status`,
- * so every recommendation it creates has a null one -- and
- * `PredictiveOutcomesAnalyzer.jsx` counts `status === 'pending'` to tell a
- * model how many are outstanding. That count is therefore always zero for
- * anything this capability created. Defaulting it to `'pending'` here would be
- * a product change dressed as a port, so the column is left as the original
- * leaves it and the behaviour is written down instead.
+ * **A defect this port nearly INTRODUCED, and the reading that caught it.**
+ * The original writes no `status`, and a first draft of this contract left the
+ * column null and recorded that as a defect live in the product, because
+ * `PredictiveOutcomesAnalyzer.jsx` counts `status === 'pending'`. That reading
+ * was wrong: the ENTITY declares `default: "pending"`, so Base44 fills it and
+ * the count works. The null would have been this store's, not the product's --
+ * the generated record store emits no column default anywhere, for any entity.
+ * So `status` is stamped with the entity's own default and `priority` takes
+ * its declared `medium`. Read the entity before calling a null a defect.
  *
  * `status`, `reviewed_by`, `reviewed_at`, `implemented_at` and
  * `implementation_notes` are the REVIEWER's fields and are refused by name.
@@ -603,21 +644,41 @@ begin
   -- `patient_id` is the fifth required field and is the contract's parameter.
   perform "pennsync_records".screen_required_keys(p_recommendation, array[
     'source_type', 'recommendation_type', 'title', 'description']);
+  -- `suggested_by_user` NAMES A PERSON, and a column naming a person that a
+  -- caller may set is an attribution a reader cannot check. The only call site
+  -- sends the literal `AI Assistant`, so the value is refused exactly where
+  -- forgery lives and nowhere else: an address that is not the caller's own.
+  -- Anything that is not an address passes through as the screen sends it.
+  if pg_catalog.strpos(coalesce(p_recommendation->>'suggested_by_user', ''), '@') > 0
+    and p_recommendation->>'suggested_by_user'
+      is distinct from "pennsync_records".caller_email() then
+    raise exception using errcode='22023', message='PENNSYNC_SCREEN_FIELD_VALUE_INVALID';
+  end if;
   v_id := pg_catalog.substr(pg_catalog.md5(pg_catalog.gen_random_uuid()::text), 1, 24);
-  insert into "pennsync_records"."patient_recommendation" (
-    "source_app_id", "id", "created_date", "created_by", "patient_id",
-    "source_type", "source_id", "recommendation_type", "title", "description",
-    "priority", "ai_rationale", "expected_impact", "implementation_steps",
-    "suggested_by_user", "expires_at")
-  values (
-    "pennsync_records".deployment_app(), v_id, clock_timestamp(),
-    "pennsync_records".caller_email(), p_patient_id,
-    p_recommendation->>'source_type', p_recommendation->>'source_id',
-    p_recommendation->>'recommendation_type', p_recommendation->>'title',
-    p_recommendation->>'description', p_recommendation->>'priority',
-    p_recommendation->>'ai_rationale', p_recommendation->>'expected_impact',
-    p_recommendation->'implementation_steps', p_recommendation->>'suggested_by_user',
-    (p_recommendation->>'expires_at')::timestamptz);
+  begin
+    insert into "pennsync_records"."patient_recommendation" (
+      "source_app_id", "id", "created_date", "created_by", "patient_id",
+      "source_type", "source_id", "recommendation_type", "title", "description",
+      "priority", "ai_rationale", "expected_impact", "implementation_steps",
+      "suggested_by_user", "expires_at", "status")
+    values (
+      "pennsync_records".deployment_app(), v_id, clock_timestamp(),
+      "pennsync_records".caller_email(), p_patient_id,
+      p_recommendation->>'source_type', p_recommendation->>'source_id',
+      p_recommendation->>'recommendation_type', p_recommendation->>'title',
+      p_recommendation->>'description',
+      -- The entity's two declared defaults, which the generated store does not
+      -- emit. `status` decides whether the analyser's screen can count this
+      -- row at all, so a null here is a row the product cannot see.
+      coalesce(p_recommendation->>'priority', 'medium'),
+      p_recommendation->>'ai_rationale', p_recommendation->>'expected_impact',
+      p_recommendation->'implementation_steps', p_recommendation->>'suggested_by_user',
+      (p_recommendation->>'expires_at')::timestamptz, 'pending');
+  exception
+    when check_violation or invalid_text_representation or invalid_datetime_format
+      or datetime_field_overflow then
+      raise exception using errcode='22023', message='PENNSYNC_SCREEN_FIELD_VALUE_INVALID';
+  end;
   return jsonb_build_object('success', true, 'id', v_id);
 end $contract$;
 
@@ -739,12 +800,15 @@ begin
       "pennsync_records".deployment_app(),
       pg_catalog.substr(pg_catalog.md5(pg_catalog.gen_random_uuid()::text), 1, 24),
       clock_timestamp(), clock_timestamp(), v_email, v_email,
-      (p_preference->>'email_notifications_enabled')::boolean,
-      (p_preference->>'in_app_notifications_enabled')::boolean,
-      (p_preference->>'push_notifications_enabled')::boolean,
+      -- Five of these seven declare a default on the entity and the generated
+      -- store emits none, so an omitted key wrote null where Base44 wrote a
+      -- value. `preferences` and `quiet_hours` declare none and stay null.
+      coalesce((p_preference->>'email_notifications_enabled')::boolean, true),
+      coalesce((p_preference->>'in_app_notifications_enabled')::boolean, true),
+      coalesce((p_preference->>'push_notifications_enabled')::boolean, false),
       p_preference->'preferences', p_preference->'quiet_hours',
-      p_preference->>'digest_mode',
-      (p_preference->>'sound_enabled')::boolean)
+      coalesce(p_preference->>'digest_mode', 'instant'),
+      coalesce((p_preference->>'sound_enabled')::boolean, true))
     -- Inferred rather than named: a PARTIAL unique index is an index and not a
     -- constraint, so `on conflict on constraint` cannot see it. The predicate
     -- has to be repeated here for the inference to match it.
@@ -765,8 +829,15 @@ begin
     -- the owner and writing the row.
     where "notification_preference"."created_by" = v_email
     returning "id" into v_id;
-  exception when unique_violation then
-    raise exception using errcode='23505', message='PENNSYNC_SCREEN_PREFERENCE_CONFLICT';
+  exception
+    when unique_violation then
+      raise exception using errcode='23505', message='PENNSYNC_SCREEN_PREFERENCE_CONFLICT';
+    -- A caller's bad value is the caller's, not the store's. Left undeclared it
+    -- reaches the HTTP boundary as a 503 CONTRACT_REFUSED, so a typo in a
+    -- digest mode reads as a record-store outage.
+    when check_violation or invalid_text_representation or invalid_datetime_format
+      or datetime_field_overflow then
+      raise exception using errcode='22023', message='PENNSYNC_SCREEN_FIELD_VALUE_INVALID';
   end;
   -- A `do update` whose WHERE fails returns nothing and changes nothing, which
   -- would answer a refused save with `success: true`. Refused by name instead.

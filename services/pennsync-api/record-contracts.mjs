@@ -84,7 +84,11 @@ const SCREEN_WRITE_CODES = Object.freeze([
   // first is a field the caller may not write, the second a field the entity
   // says it must. Collapsing them would tell a screen "not writable" about a
   // column it owns.
-  'PENNSYNC_SCREEN_FIELD_REQUIRED']);
+  'PENNSYNC_SCREEN_FIELD_REQUIRED',
+  // A value the column's own CHECK constraint refuses, or a cast that fails.
+  // Undeclared it reaches the boundary as a 503 CONTRACT_REFUSED, which reads
+  // as a record-store outage rather than a caller's typo.
+  'PENNSYNC_SCREEN_FIELD_VALUE_INVALID']);
 
 /**
  * One entry per ported capability. `params` is the exact argument set the
@@ -1987,6 +1991,7 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_SCREEN_PREFERENCE_NOT_OWNED',
       'PENNSYNC_SCREEN_PREFERENCE_CONFLICT',
       'PENNSYNC_SCREEN_CALLER_UNKNOWN',
+      'PENNSYNC_SCREEN_FIELD_VALUE_INVALID',
     ]),
   }),
 });

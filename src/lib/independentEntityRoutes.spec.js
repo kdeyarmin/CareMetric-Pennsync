@@ -412,7 +412,7 @@ describe("what batch E's routes take on trust", () => {
       // A required field the store's own columns do not enforce: nullable
       // everywhere, so nothing but this refusal stands between an incomplete
       // write and a junk row that answered `success: true`.
-      'PENNSYNC_SCREEN_FIELD_REQUIRED']) {
+      'PENNSYNC_SCREEN_FIELD_REQUIRED', 'PENNSYNC_SCREEN_FIELD_VALUE_INVALID']) {
       expect(suite, `${code} must be exercised by the contract suite`).toContain(code);
     }
   });
