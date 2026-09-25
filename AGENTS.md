@@ -116,6 +116,7 @@ Standard scripts are in `package.json` and `README.md`. Notable points:
 | Apply them | `… node tools-pennsync-migrate.mjs --apply` |
 | Emit one release wave's operator settings | `node tools-pennsync-release-ladder.mjs --wave patient-read` |
 | Check a wave against the running deployment | `node tools-pennsync-release-ladder.mjs --wave patient-read --deployment https://<service-host>` |
+| Check a wave's integration runtime instead of asserting it | `node tools-pennsync-release-ladder.mjs --wave integration --integration-deployment https://<runtime-host>` |
 
 ## Environment config
 
