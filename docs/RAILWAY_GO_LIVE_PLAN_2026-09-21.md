@@ -1770,9 +1770,14 @@ to settle it. Inside that one object, three fields and not one:
 
 **`checks.anthropic` has the same trap and the same remedy.** Its `required` is
 `needsAI`, derived from the same operation list, so with the list empty
-`passed: true` is equally compatible with a dead Anthropic key. Read
-`checks.anthropic.valid`, which requires the key to work **and** the configured
-model to appear in `/v1/models`. Once the operation list is written both
+`passed: true` is equally compatible with a dead Anthropic key. Its absent-key
+branch is `{ valid: !needsAI, configured: false }` (`preflight.mjs:19`), the
+mirror of SendGrid's at `:24`, so **`valid: true` alone is compatible with no
+key at all here too.** The read that holds, for either key, is **`status`
+present AND `valid === true`** — did it run, then what did it say. `status` is
+set only when a fetch completed (`preflight.mjs:10-11`); a thrown check has
+none either (`:12`). For Anthropic, `valid` then requires the key to work
+**and** the configured model to appear in `/v1/models`. Once the operation list is written both
 `required` flags become true and `passed` starts to mean something — but by
 then the config is already in, which is after the moment the probe was worth
 running. **So a sentence anywhere saying "run the preflight and check it
