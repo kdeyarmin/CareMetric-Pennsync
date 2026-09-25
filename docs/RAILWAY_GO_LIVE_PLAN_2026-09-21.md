@@ -65,7 +65,7 @@ plan's status table reads as progress without saying where the progress lives.
 | --- | ---: | ---: |
 | Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
 | Record store migrations (store, brokers, 83 contracts, purpose policies, file map) | ~~54~~ **59** | ~~0~~ **59** — 54 on 2026-09-21 and the rest since; the hosted ledger holds 73 of the 74 committed migrations with nothing pending, read from the `hosted-gap` job on `b8e4e021` 2026-09-23 |
-| Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ ~~74 deployed~~ **80 deployed, 0 released** — the six-name gap closed by the 2026-09-25 redeploy. It did not close by itself and will not stay closed by itself: the service's source is **pinned to a commit**, so every future merge reopens it until somebody repoints the pin. See stage B |
+| Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ ~~74 deployed~~ **80 deployed; 0 released as at 2026-09-25 05:16Z** (release state moves without a commit — read `/readyz`) — the six-name gap closed by the 2026-09-25 redeploy. It did not close by itself and will not stay closed by itself: the service's source is **pinned to a commit**, so every future merge reopens it until somebody repoints the pin. See stage B |
 | Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ **2 deployed, paused** — 2026-09-22 |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
 
@@ -201,10 +201,14 @@ written.
    waves' names happen to be present** — that is the reading this item exists to
    refuse, and the reason it refuses it is the binding, not the count.
 
-   **No wave has been released.** The redeploy makes waves 1 to 3 releasable; it
-   does not release them. `PENNSYNC_API_RELEASE` and `PENNSYNC_API_FUNCTIONS`
-   are the flip, they are the owner's, and nothing on this page should be read
-   as saying they have been set.
+   **The redeploy makes waves 1 to 3 releasable; it does not release them.**
+   `PENNSYNC_API_RELEASE` and `PENNSYNC_API_FUNCTIONS` are the flip and they
+   are the owner's. **Measured 2026-09-25 05:16Z, no wave had been released**
+   and the service read `release: paused`. That is a dated reading and not a
+   standing fact: release state is the one thing on this page that can change
+   without any commit, so **read it off `/readyz` rather than off this page** —
+   `released` and `operations` say what is actually being served, and the page
+   cannot.
 4. **Enroll real people.** Ten Supabase Auth invitations accepted and verified
    out of band. Nothing downstream of authority can be proved with four
    synthetic actors.
@@ -1337,9 +1341,10 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   so **it comes first, before any wave**, and the name gap is the second reason
   rather than the first. That ordering held on 2026-09-25 and holds again after
   every future repoint; it is a rule about the sequence, not a note about one
-  stale revision. **As of 2026-09-25 no wave has been released**: the service is
-  redeployed, current and still `release: paused`, and both release variables
-  are the owner's to set. Pasting a refused wave's value is
+  stale revision. **Measured 2026-09-25 05:16Z: the service was redeployed,
+  current, and still `release: paused`, with no wave released and both release
+  variables unset.** Date any successor to this sentence the same way and read
+  the current state off `/readyz`. Pasting a refused wave's value is
   `INVALID_FUNCTION_RELEASE` at startup, which is a crash loop rather than a
   refusal an operator can read. So `--wave <name> --deployment https://<host>`
   reads `/readyz` and refuses three things before an operator sets anything: a
@@ -1348,6 +1353,12 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   is being served), and a startup throw the payload already predicts —
   `INCOMPLETE_AUTHORITY_CONFIGURATION`, `INTEGRATIONS_NOT_CONFIGURED` for a
   wave that needs the paused runtime, and `IMPLICIT_APP_BINDING`.
+
+  **On release state, believe the service and not this page.** Every statement
+  here about what is released is a reading with a date on it, because the two
+  release variables change what is served without changing a commit — so a page
+  merged hours later can be accurate about the code and wrong about the
+  service. `/readyz`'s `released` and `operations` are the answer.
 
   That last one needed the service to say something it did not: readiness now
   reports `appId` and `appStated`, so the binding this stage calls out as
