@@ -229,9 +229,30 @@ written.
    re-read after each** — which is the shape to repeat, because it is what
    makes a bad wave attributable to the wave that caused it. `appStated: true`
    beside the staging id is the binding check this document spent two stages
-   asking for, answered at last from outside. Waves 4, 5 and 6 are untouched,
-   and **wave 4 stays out of every value**, because it carries the two
-   account-email names and releasing those is a separate owner decision (§4).
+   asking for, answered at last from outside.
+
+   **Wave 4 followed at 2026-09-25 06:16Z**, on the owner's line at 06:14Z, and
+   it went out as the ladder's `read-only` value **with the two account-email
+   names cut out of it by hand**. Read from outside at 06:18Z, independently of
+   the thread that made the write:
+
+   ```
+   /readyz   released: true   operations: 29   implemented: 80
+             appId: 6a9881683dc68a0bd54f1ef7   appStated: true
+             sendAccountReadyEmail: NOT in operations
+             sendWelcomeEmail:      NOT in operations
+   ```
+
+   29 where the tool emits 31, and the two missing names are the two that
+   matter. Waves 5 and 6 are untouched. **The tool itself was not changed and
+   still emits both send names in `--wave read-only`**, so the exclusion lives
+   only in what the operator pastes — see stage D before building any later
+   wave's value.
+
+   That write deployed `cd48dc1`, `main`'s head at the time, which is the third
+   time a variable change has rebuilt from the tip. Harmless again, and checked
+   rather than assumed: `services/pennsync-api` is byte-identical between
+   `20c15d8` and `cd48dc1`, so the 80-name surface is still the measured one.
 
    That is a dated reading and not a standing fact: release state is the one
    thing on this page that can change without any commit, so **read it off
@@ -1430,9 +1451,21 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   running revision**, which they were not before. They are refusal-only — they
   authorize the caller and then answer `OUTBOUND_DELIVERY_RELEASE_PAUSED` — so
   their presence changes nothing about what the service sends. It does mean the
-  name check no longer keeps them out of a release value, so **the thing that
-  keeps wave 4 out is the operator not pasting it**, and §4's `Core.SendEmail`
-  row is the decision that governs it.
+  name check no longer keeps them out of a release value, so the only thing
+  keeping them unreleased is what the operator pastes, and §4's
+  `Core.SendEmail` row is the decision that governs it.
+
+  **Wave 4 was released on 2026-09-25 at 06:16Z with both names cut out of the
+  value by hand**, which is why `/readyz` reports 29 operations where
+  `--wave read-only` emits 31. The exclusion is therefore **not in the
+  repository**: the ladder still emits both names, and D92's guard is a
+  build-time check on `needsIntegration`, which cannot see what an operator
+  pastes. So a later operator re-deriving wave 4, or building wave 5 on top of
+  it from the tool's output, releases them without anything failing. Until the
+  ladder can express the exclusion, the value for any wave from `read-only`
+  onward is the tool's output **minus** `sendAccountReadyEmail` and
+  `sendWelcomeEmail`, and the check after the write is that `operations` on
+  `/readyz` contains neither.
 
   Driven against the live service rather than reasoned about: `--wave visit
   --deployment https://pennsync-api-production.up.railway.app` answers "this
