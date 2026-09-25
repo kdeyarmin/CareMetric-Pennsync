@@ -5,7 +5,8 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { SCHEMA, readSchemas, snakeCase } from '../../../tools-entity-schema-plan.mjs';
+import { RECORD_CONTRACTS } from '../../pennsync-api/record-contracts.mjs';
 
 /**
  * The clinical library, patient education and per-agency configuration:
@@ -278,7 +279,51 @@ test('the chart a row names may be chosen and never moved', async () => {
   // level security policy` (D33's rule about the raw duplicate-key error).
   await refusal(call(CLINICIAN_A, 'pennsync_contract_clinical_library_template_write',
     [A, 'create', null, JSON.stringify({ phrase: 'other chart', category: 'assessment', template_type: 'generic', patient_id: 'patient-a2' })]),
-  'PENNSYNC_LIBRARY_TEMPLATE_FORBIDDEN');
+  'PENNSYNC_LIBRARY_TEMPLATE_NOT_FOUND');
+});
+
+test('the chart a write names is resolved in the agency the request names', async () => {
+  // The hole this closes: D24 asks whether the caller opens every chart in an
+  // agency, or is assigned this one in that agency. NEITHER half asks which
+  // agency the chart is actually in, and the insert policy asks the first
+  // question of the ROW's `agency_id`. So a template could be filed in agency
+  // A naming agency B's chart — landing in A, tenanted to A, carrying a
+  // `patient_id` that is a fact about B.
+  const crossed = fields => JSON.stringify({
+    phrase: 'crossed', category: 'assessment', patient_id: fields,
+  });
+  // ADMIN_A holds BOTH agencies; ADMIN_B holds only B. Both are refused, and
+  // both cases matter: a guard written the other way round — `not exists`, so
+  // the foreign chart has to be VISIBLE to prove the row foreign — passes the
+  // one-agency case and refuses nothing, because the record owner holds no
+  // BYPASSRLS and the chart it would need to see is exactly the one the
+  // caller cannot. This check asks the opposite question, so an invisible
+  // chart is an absent chart and the write fails CLOSED either way.
+  await refusal(call(ADMIN_A, 'pennsync_contract_clinical_library_template_write',
+    [A, 'create', null, crossed('patient-b1')]), 'PENNSYNC_LIBRARY_TEMPLATE_NOT_FOUND');
+  await refusal(call(ADMIN_B, 'pennsync_contract_clinical_library_template_write',
+    [B, 'create', null, crossed('patient-a1')]), 'PENNSYNC_LIBRARY_TEMPLATE_NOT_FOUND');
+
+  // And the measurement that says the guard is what refuses them. With the
+  // check replaced by a no-op the SAME two creates succeed, so the policies
+  // catch neither — which is the thing a reading of the predicate cannot
+  // tell you and the reason this is a contract's job rather than a policy's.
+  const real = (await db.query(`select pg_catalog.pg_get_functiondef(
+    to_regprocedure('${SCHEMA}.library_chart(text,text,text)')) as def`)).rows[0].def;
+  await db.exec(`create or replace function ${SCHEMA}.library_chart(
+    p_agency text, p_patient_id text, p_code text)
+    returns void language plpgsql security definer set search_path = '' as $noop$
+    begin return; end $noop$;`);
+  try {
+    for (const [who, agency, chart] of [[ADMIN_A, A, 'patient-b1'], [ADMIN_B, B, 'patient-a1']]) {
+      const landed = await call(who, 'pennsync_contract_clinical_library_template_write',
+        [agency, 'create', null, crossed(chart)]);
+      assert.equal(landed.row.agency_id, agency);
+      assert.equal(landed.row.patient_id, chart);
+      await db.query(`delete from ${SCHEMA}."clinical_library_template" where id = $1`,
+        [landed.row.id]);
+    }
+  } finally { await db.exec(real); }
 });
 
 test('a folder follows the template rule, and its own display order', async () => {
@@ -519,6 +564,177 @@ test('one AI configuration table, two jobs, and neither save reaches the other\'
   await refusal(call(ADMIN_A, 'pennsync_contract_ai_configuration_save',
     [A, 'agency', null, JSON.stringify({ user_email: EMAIL[ADMIN_A] })]),
   'PENNSYNC_AI_CONFIG_OWNER_FORBIDDEN');
+});
+
+/*
+ * The seven entities, by the name each one's table carries. Used by the
+ * defaults check below, which re-derives what the contracts stamp from the
+ * schemas rather than reading the migration's own list back to itself.
+ */
+const ENTITY_TABLE = Object.freeze({
+  ClinicalPathway: 'clinical_pathway',
+  ClinicalLibraryTemplate: 'clinical_library_template',
+  ClinicalLibraryFolder: 'clinical_library_folder',
+  EducationMaterial: 'education_material',
+  PatientEducationAssignment: 'patient_education_assignment',
+  CustomValidationRule: 'custom_validation_rule',
+  AIConfiguration: 'ai_configuration',
+});
+
+test('a create is given what the entity schema defaults, field for field', async () => {
+  // D30's generator emits every column nullable and NO column default, which
+  // is deliberate: a legacy row predating a requirement has to be able to
+  // migrate. A default fires only where a column is OMITTED, so that costs
+  // the import path nothing — and costs a CREATE everything. Base44 wrote
+  // `is_active: true` and this store wrote null, so the row existed and every
+  // screen filtering on it could not see it.
+  //
+  // Derived from the entity schemas, not typed here: the migration's own list
+  // is checked against them below, and these cases check the contracts pass
+  // it to the write.
+  const declared = table => {
+    const [, schema] = readSchemas(repository)
+      .find(([name]) => ENTITY_TABLE[name] === table);
+    return Object.fromEntries(Object.entries(schema.properties || {})
+      .filter(([, definition]) => definition && Object.hasOwn(definition, 'default'))
+      .map(([property, definition]) => [snakeCase(property), definition.default]));
+  };
+
+  const pathway = await call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
+    [A, 'create', null, JSON.stringify({ pathway_name: 'Defaulted', condition: 'copd' })]);
+  for (const [column, value] of Object.entries(declared('clinical_pathway'))) {
+    assert.equal(pathway.row[column], value, column);
+  }
+  // A value the caller SENT is not replaced, and a json `null` is a value:
+  // clearing a field is a thing a caller may mean, and Base44's default fires
+  // on an absent key only.
+  const chosen = await call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
+    [A, 'create', null, JSON.stringify({
+      pathway_name: 'Chosen', condition: 'copd', is_active: false, usage_count: null })]);
+  assert.equal(chosen.row.is_active, false);
+  assert.equal(chosen.row.usage_count, null);
+
+  // `template_type` is the case that makes the ORDER load-bearing: it is in
+  // `ClinicalLibraryTemplate`'s `required` array AND carries a default. Base44
+  // accepts a create that omits it, so the required check that shipped with
+  // these contracts was a NARROWING for that one field until the defaults
+  // were applied BEFORE it rather than after.
+  const template = await call(CLINICIAN_A, 'pennsync_contract_clinical_library_template_write',
+    [A, 'create', null, JSON.stringify({ phrase: 'no type', category: 'assessment' })]);
+  assert.equal(template.row.template_type, 'generic');
+  for (const [column, value] of Object.entries(declared('clinical_library_template'))) {
+    assert.equal(template.row[column], value, column);
+  }
+
+  const material = await call(ADMIN_A, 'pennsync_contract_education_material_write',
+    [A, 'create', null, JSON.stringify({
+      title: 'Defaulted', category: 'medication_management', content: 'text' })]);
+  for (const [column, value] of Object.entries(declared('education_material'))) {
+    assert.equal(material.row[column], value, column);
+  }
+  const rule = await call(ADMIN_A, 'pennsync_contract_validation_rule_write',
+    [A, 'create', null, JSON.stringify({
+      rule_name: 'Defaulted', entity_type: 'patient',
+      field_name: 'first_name', validation_type: 'required' })]);
+  for (const [column, value] of Object.entries(declared('custom_validation_rule'))) {
+    assert.equal(rule.row[column], value, column);
+  }
+  const folder = await call(CLINICIAN_A, 'pennsync_contract_clinical_library_folder_write',
+    [A, 'create', null, JSON.stringify({ name: 'Defaulted' })]);
+  for (const [column, value] of Object.entries(declared('clinical_library_folder'))) {
+    assert.equal(folder.row[column], value, column);
+  }
+  const taught = await call(CLINICIAN_A, 'pennsync_contract_patient_education_write',
+    [A, 'create', null, JSON.stringify({ patient_id: 'patient-a1' })]);
+  for (const [column, value] of Object.entries(declared('patient_education_assignment'))) {
+    assert.equal(taught.row[column], value, column);
+  }
+  const config = await call(CLINICIAN_NO_CHART, 'pennsync_contract_ai_configuration_save',
+    [A, 'mine', null, JSON.stringify({})]);
+  for (const [column, value] of Object.entries(declared('ai_configuration'))) {
+    assert.equal(config.row[column], value, column);
+  }
+});
+
+test('the defaults the migration stamps are the ones the entity schemas declare', async () => {
+  // The list in `library_default_values` is hand-written, because there is
+  // nothing in SQL to generate it from. So it gets a standing check rather
+  // than a comment: every table, every field, both directions, read out of
+  // the schemas. A property gaining a default upstream fails HERE, which is
+  // the only place that can notice.
+  for (const [entity, table] of Object.entries(ENTITY_TABLE)) {
+    const [, schema] = readSchemas(repository).find(([name]) => name === entity);
+    const expected = Object.fromEntries(Object.entries(schema.properties || {})
+      .filter(([, definition]) => definition && Object.hasOwn(definition, 'default'))
+      .map(([property, definition]) => [snakeCase(property), definition.default]));
+    const { rows } = await db.query(
+      `select ${SCHEMA}.library_default_values($1) as declared`, [table]);
+    assert.deepEqual(rows[0].declared, expected, table);
+  }
+  // A table nobody declared is a refusal rather than a row of nulls, so a
+  // contract added over an eighth entity cannot quietly stamp nothing.
+  await assert.rejects(db.query(
+    `select ${SCHEMA}.library_defaults('create', '{}'::jsonb, 'visit') as filled`),
+  /PENNSYNC_LIBRARY_DEFAULTS_UNDECLARED/);
+});
+
+test('every refusal these contracts can raise is a code the service declares', async () => {
+  // An undeclared message reaches the HTTP boundary as a 503 CONTRACT_REFUSED
+  // — a caller's typo reported as a record-store outage — which is the whole
+  // reason `library_write` translates a check violation in the first place.
+  // The declaration drifted from the SQL twice while nothing measured it:
+  // `_FIELD_VALUE_INVALID` reached no capability at all, `_FIELD_REQUIRED`
+  // missed the AI configuration save, and `_ASSIGNED_BY_FORBIDDEN` missed the
+  // one capability that can raise it. So this reads the refusals out of the
+  // migrations and follows the calls, rather than pinning a list beside a
+  // list.
+  const sql = (await Promise.all([
+    '20260920570000_contract_clinical_library.sql',
+    '20260920580000_contract_library_chart_defaults.sql',
+  ].map(file => readFile(new URL(`../supabase/record-migrations/${file}`,
+    import.meta.url), 'utf8')))).join('\n');
+  // Each function's body, last definition winning, so a `create or replace`
+  // in the later migration is the one measured.
+  const bodies = new Map();
+  for (const match of sql.matchAll(
+    /create (?:or replace )?function "pennsync_records"\.(\w+)\([\s\S]*?\$(\w+)\$([\s\S]*?)\$\2\$;/g)) {
+    bodies.set(match[1], match[3]);
+  }
+  assert.ok(bodies.has('library_write') && bodies.size > 20);
+
+  const reach = (name, prefix, seen = new Set()) => {
+    if (seen.has(name)) return new Set();
+    seen.add(name);
+    const body = bodies.get(name) ?? '';
+    const codes = new Set([
+      ...[...body.matchAll(/p_code \|\| '(_[A-Z_]+)'/g)].map(m => `${prefix}${m[1]}`),
+      ...[...body.matchAll(/message\s*=\s*'(PENNSYNC_[A-Z_]+)'/g)].map(m => m[1]),
+    ]);
+    for (const called of body.matchAll(/"pennsync_records"\.(\w+)\(/g)) {
+      for (const code of reach(called[1], prefix, seen)) codes.add(code);
+    }
+    return codes;
+  };
+
+  // Every capability at once, so a failure names all of them rather than
+  // whichever the loop reached first.
+  const undeclared = {};
+  let measured = 0;
+  for (const [capability, contract] of Object.entries(RECORD_CONTRACTS)) {
+    const fn = contract.rpc?.replace(/^pennsync_contract_/, 'contract_');
+    if (!fn || !bodies.has(fn)) continue;
+    measured += 1;
+    // The prefix is the capability's own, taken from what it already declares
+    // rather than guessed from the table name.
+    const prefix = contract.codes[0].replace(/_(NOT_HELD|FORBIDDEN|INVALID)$/, '')
+      .replace(/_AGENCY$/, '').replace(/_SCOPE$/, '');
+    const declared = new Set(contract.codes);
+    const missing = [...reach(fn, prefix)]
+      .filter(code => code.startsWith(prefix) && !declared.has(code)).sort();
+    if (missing.length) undeclared[capability] = missing;
+  }
+  assert.equal(measured, 14);
+  assert.deepEqual(undeclared, {});
 });
 
 test('a page says whether it is the whole set, which is what lets ALL_ROWS be served', async () => {
