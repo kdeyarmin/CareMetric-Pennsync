@@ -14,16 +14,18 @@ the frontend selects one at build time with `VITE_PENNSYNC_BACKEND`.
 
 Two Railway services support the independent path, and both are deployed and
 released as of 2026-09-25. `services/integration-runtime` runs the external
-AI, email and private-file adapters; it serves the two AI operations only,
-with its browser route off and no email operation enabled.
+AI, email and private-file adapters; it serves the two AI operations and,
+since 2026-09-25, `SendEmail`, with its browser route off and its browser
+operation list empty.
 `services/pennsync-api` is the home for backend handlers ported out of Base44
 and serves 78 of its 80 names, the two account-email senders being withheld.
-Outbound delivery is off on both. Read `/readyz` on either rather than this
-paragraph, and note that the two deploy by different mechanisms: a variable
-change redeploys `pennsync-api` from `main`'s tip, while
-`services/integration-runtime` deploys on every merge touching its directory
-and does not wait for CI. Either way what runs moves without anything here
-changing.
+Outbound delivery is still off, so no mail can be sent: the switch permitting
+it lives on `services/pennsync-api` and is unset. Read `/readyz` on either
+rather than this paragraph, and note that the two deploy by different
+mechanisms: a variable change redeploys either service from `main`'s tip, and
+`services/integration-runtime` additionally deploys on every merge touching
+its directory, without waiting for CI. Either way what runs moves without
+anything here changing.
 
 Start here to work on the migration:
 
