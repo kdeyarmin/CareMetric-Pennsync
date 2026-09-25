@@ -7,7 +7,7 @@ import { HANDLER_NAMES } from './services/pennsync-api/handlers.mjs';
 import { PORTED_FUNCTIONS } from './services/authority-client/client.mjs';
 import { ARGUMENTS_UNSUPPORTED, ENTITY_ROUTES, ROUTED_OPERATIONS, routeFor }
   from './src/lib/independentEntityRoutes.js';
-import { entityRouteLine, main, measureRoutes, servedSites } from './tools-entity-routes.mjs';
+import { main, measureRoutes, servedSites, summaryLines } from './tools-entity-routes.mjs';
 import { measureDestinations } from './tools-frontend-destination.mjs';
 import { auditBrokerCeiling, brokerReadable, locatorPaths } from './tools-tenant-decision.mjs';
 import { buildPaths, readEntity } from './tools-tenant-path.mjs';
@@ -249,16 +249,34 @@ test('a served site is removed from the remainder once, not per key', () => {
   assert.ok(report.routed_sites > baseline.routed_sites);
 });
 
-test('the exported line is the one the tool prints, not a second copy', () => {
-  // The whole point of exporting it is that a page quoting the reading can be
-  // compared against the tool. That comparison is worthless if `main` prints
-  // its own copy, so this asserts the one property the export depends on:
-  // there is one string, and both callers get it.
+test('the exported summary is what the tool prints, not a second copy', () => {
+  // The export exists so a page carrying this reading can be compared against
+  // the tool. That comparison is worth nothing if `main` formats its own copy,
+  // so this asserts the one property the pin rests on: there is a single
+  // wording, and both callers get it.
   const printed = [];
   const code = main(['node', 'tools-entity-routes.mjs'], line => printed.push(line), () => {});
   assert.equal(code, 0);
-  assert.equal(printed[0], entityRouteLine(measureRoutes(repository)));
-  // And it carries the figures, so a version that returned a constant — which
-  // would satisfy the equality above — fails here.
-  assert.match(printed[0], /^entity routes: \d+ declared, \d+\/\d+ landable call sites SERVED, \d+ still to adopt$/);
+  assert.equal(printed.join('\n'), summaryLines(measureRoutes(repository)).join('\n'));
+  // And it still carries the figures, so a version returning a constant —
+  // which satisfies the equality above — fails here.
+  assert.match(printed.join('\n'),
+    /^entity routes: \d+ declared, \d+\/\d+ landable call sites SERVED, \d+ still to adopt\n/);
+  assert.match(printed.join('\n'), /\d+ need a named capability$/);
+});
+
+test('the unproved line is there exactly when there is an unproved route', () => {
+  // A page pinning this output carries the line when the tool prints it and
+  // not otherwise, so the condition is part of the contract rather than a
+  // formatting detail. Driven from a synthetic report because the committed
+  // tree's own state would only ever exercise one of the two branches.
+  const report = {
+    routes: 3, routed_sites: 4, landable_sites: 5, unrouted_sites: 1,
+    declared_but_refused: 0, declared_but_unreadable: 0, refusals: [],
+    unrouted_entities: 1, generic_family_reads: 0, generic_family_writes: 0,
+    needs_named_capability: 1, unproved_routes: [],
+  };
+  assert.equal(summaryLines(report).length, 3);
+  assert.equal(summaryLines({ ...report, unproved_routes: ['Visit.list'] }).length, 4);
+  assert.match(summaryLines({ ...report, unproved_routes: ['Visit.list'] })[2], /UNPROVED.*Visit\.list/);
 });
