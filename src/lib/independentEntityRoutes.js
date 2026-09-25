@@ -260,12 +260,28 @@ function libraryRead({ capability, sortable, filterable = [], filtered = false, 
     response: (answer, ...args) => {
       const [query, sort, limit] = argumentsOf(args);
       if (!answer || !Array.isArray(answer.entries)) unsupported('answer');
-      // The contract measured this, so a page that is not the whole set is a
-      // real refusal rather than a guess from its length.
-      if (answer.complete !== true) incomplete(capability);
       const key = sortKey(sort, sortable);
       const kept = answer.entries.filter(predicate(query, filterable));
       const rows = key ? ordered(kept, key.field, key.descending) : kept;
+      // The contract measured completeness, so a short page is a fact rather
+      // than a guess from its length — but an incomplete page is only a
+      // REFUSAL when the caller asked for the whole set. A screen asking for
+      // the newest 50 published materials is asking for a bounded page, and
+      // Base44 answered it with 50 of however many exist; refusing that would
+      // break the screen the moment an agency had 51.
+      //
+      // Two conditions make a bounded page the caller's page rather than an
+      // arbitrary slice of it. The contract has to have done the ordering,
+      // which `sortable` is the list of — a sort it does not implement has
+      // already refused above. And nothing may have been dropped here: where
+      // the contract's own filter is coarser than the query (`is_published:
+      // false` is a question `published_only` cannot ask), the rows removed
+      // locally came out of a page that was cut in SQL first, so the answer
+      // would be short for a reason the caller cannot see. Either of those
+      // and completeness is required again.
+      const bounded = Number.isInteger(limit) && limit > 0 && limit < LIBRARY_MAXIMUM;
+      if (answer.complete !== true
+        && !(bounded && kept.length === answer.entries.length)) incomplete(capability);
       return limit === undefined || limit === null ? rows : rows.slice(0, limit);
     },
   };

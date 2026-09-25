@@ -171,6 +171,29 @@ begin
 end $own$;
 
 /** One page of a catalog, and whether the page is the whole of it. */
+/*
+ * `assigned_by`, accepted only as self-assertion, exactly as `created_by` is.
+ *
+ * The contract stamps the caller's address regardless; this refuses a payload
+ * naming somebody ELSE rather than silently overwriting it, so a screen that
+ * believed it was assigning on a colleague's behalf hears about it.
+ */
+create function "pennsync_records".library_own_assigned_by(p_payload jsonb, p_code text)
+  returns jsonb language plpgsql stable set search_path = '' as $own$
+declare v_claim text;
+begin
+  if p_payload is null or pg_catalog.jsonb_typeof(p_payload) <> 'object'
+    or not (p_payload ? 'assigned_by') then
+    return coalesce(p_payload, '{}'::jsonb);
+  end if;
+  v_claim := pg_catalog.lower(pg_catalog.btrim(coalesce(p_payload->>'assigned_by', '')));
+  if v_claim = ''
+    or v_claim is distinct from pg_catalog.lower(coalesce("pennsync_records".caller_email(), '')) then
+    raise exception using errcode='42501', message=p_code || '_ASSIGNED_BY_FORBIDDEN';
+  end if;
+  return p_payload - 'assigned_by';
+end $own$;
+
 create function "pennsync_records".library_page_size(p_limit integer) returns integer
   language sql immutable set search_path = '' as $page$
   select least(greatest(coalesce(p_limit, 1000), 1), 1000)
@@ -335,9 +358,18 @@ begin
     raise exception using errcode='42501', message=p_code || '_NOT_FOUND';
   end if;
   return jsonb_build_object('updated', true, 'row', v_answer);
-  exception when insufficient_privilege then
-    if pg_catalog.substr(coalesce(sqlerrm, ''), 1, 8) = 'PENNSYNC' then raise; end if;
-    raise exception using errcode='42501', message=p_code || '_FORBIDDEN';
+  exception
+    when insufficient_privilege then
+      if pg_catalog.substr(coalesce(sqlerrm, ''), 1, 8) = 'PENNSYNC' then raise; end if;
+      raise exception using errcode='42501', message=p_code || '_FORBIDDEN';
+    -- A value the column's own CHECK refuses is an ordinary bad request. Left
+    -- raw it reaches the HTTP boundary as an undeclared message, which
+    -- `contractCapability` reports as a 503 CONTRACT_REFUSED — a caller's
+    -- typo read as a record-store outage. The column is carried in the detail
+    -- so the answer says which field, and the value never is.
+    when check_violation or invalid_text_representation or datetime_field_overflow then
+      raise exception using errcode='22023', message=p_code || '_FIELD_VALUE_INVALID',
+        detail=coalesce(pg_catalog.substr(coalesce(sqlerrm, ''), 1, 200), '');
   end;
 end $write$;
 
@@ -353,10 +385,20 @@ create function "pennsync_records".library_row_id(p_id text) returns boolean
   select p_id is not null and p_id ~ '^[A-Za-z0-9_-]{1,200}$'
 $rid$;
 
-/** create, update or delete, and nothing else. */
+/*
+ * create, update or delete, and nothing else.
+ *
+ * `coalesce(..., false)` is load-bearing rather than tidy. The HTTP boundary
+ * permits an omitted key, so `p_action` arrives null; `null in (...)` is NULL,
+ * `not NULL` is NULL, and `if NULL then raise` does not fire. The guard read
+ * as a refusal and was not one: every later branch tested `p_action = 'create'`
+ * and `= 'delete'`, both NULL, so a request naming only an id and some fields
+ * fell through to the UPDATE and silently mutated the row. A three-valued
+ * guard that answers NULL is not a guard.
+ */
 create function "pennsync_records".library_action(p_action text) returns boolean
   language sql immutable set search_path = '' as $act$
-  select p_action in ('create', 'update', 'delete')
+  select coalesce(p_action in ('create', 'update', 'delete'), false)
 $act$;
 
 /* ------------------------------------------------------------------ *
@@ -655,6 +697,48 @@ end $contract$;
  * a screen removes. If that changes it is a product decision with a record,
  * which is D31's rule for an action a port does not serve.
  * ------------------------------------------------------------------ */
+/*
+ * The chart named by a patient-education row is in the agency the request
+ * names, and the row an id points at is too.
+ *
+ * `patient_education_assignment` carries no `agency_id` — its tenancy is the
+ * chart — so `library_write` has no tenancy column to compare and its
+ * predicate degenerates to "a tenant was supplied". The POLICIES then admit
+ * every agency the caller holds, which is D51's trap: `caller_agencies()` is
+ * plural, and a caller who works for two agencies could file a row against
+ * agency B's chart on a request whose envelope names A. The list read already
+ * joins the chart for exactly this reason; the write half did not, and the
+ * business API's invariant is that every request is scoped to the tenant it
+ * names. Raised as NOT FOUND rather than forbidden, so an id is not testable
+ * for existence across a tenant boundary (`library_owned_row`'s rule).
+ */
+create function "pennsync_records".patient_education_chart(
+  p_agency text, p_patient_id text, p_code text)
+  returns void language plpgsql security definer set search_path = '' as $chart$
+declare v_held boolean;
+begin
+  select true into v_held from "pennsync_records"."patient" p
+  where p."source_app_id" = "pennsync_records".deployment_app()
+    and p."id" = p_patient_id and p."agency_id" = p_agency;
+  if not coalesce(v_held, false) then
+    raise exception using errcode='42501', message=p_code || '_NOT_FOUND';
+  end if;
+end $chart$;
+
+create function "pennsync_records".patient_education_row(
+  p_agency text, p_id text, p_code text)
+  returns void language plpgsql security definer set search_path = '' as $row$
+declare v_patient text;
+begin
+  select a."patient_id" into v_patient
+  from "pennsync_records"."patient_education_assignment" a
+  where a."source_app_id" = "pennsync_records".deployment_app() and a."id" = p_id;
+  if v_patient is null then
+    raise exception using errcode='42501', message=p_code || '_NOT_FOUND';
+  end if;
+  perform "pennsync_records".patient_education_chart(p_agency, v_patient, p_code);
+end $row$;
+
 create function "pennsync_records".contract_patient_education_list(
   p_agency text, p_patient_id text, p_limit integer)
   returns jsonb language plpgsql security definer set search_path = '' as $contract$
@@ -688,7 +772,9 @@ begin
   if "pennsync_records".caller_tenant_role(p_agency) is null then
     raise exception using errcode='42501', message='PENNSYNC_PATIENT_EDUCATION_AGENCY_NOT_HELD';
   end if;
-  if p_action not in ('create', 'update') then
+  -- `coalesce`, for `library_action`'s reason: a null action is not a
+  -- refusal in three-valued logic, and everything below it tests equality.
+  if not coalesce(p_action in ('create', 'update'), false) then
     raise exception using errcode='22023', message='PENNSYNC_PATIENT_EDUCATION_ACTION_INVALID';
   end if;
   if p_action = 'create' then
@@ -698,15 +784,31 @@ begin
       or not "pennsync_records".library_row_id(p_fields->>'patient_id') then
       raise exception using errcode='22023', message='PENNSYNC_PATIENT_EDUCATION_SUBJECT_INVALID';
     end if;
+    perform "pennsync_records".patient_education_chart(
+      p_agency, p_fields->>'patient_id', 'PENNSYNC_PATIENT_EDUCATION');
+    -- `assigned_by` says who assigned the education, so it is the caller's
+    -- identity and not a field. `created_by`'s self-assertion rule applies
+    -- for the same reason it applies there, and the contract stamps it: the
+    -- sole call site already sends the current user's own address, and
+    -- without this any member who opens the chart could attribute a teaching
+    -- record to a colleague.
     return "pennsync_records".library_write('patient_education_assignment', null, p_action,
-      p_id, p_fields, p_agency, 'PENNSYNC_PATIENT_EDUCATION', v_reserved,
+      p_id,
+      "pennsync_records".library_own_assigned_by(p_fields, 'PENNSYNC_PATIENT_EDUCATION')
+        || jsonb_build_object('assigned_by', "pennsync_records".caller_email()),
+      p_agency, 'PENNSYNC_PATIENT_EDUCATION', v_reserved,
       array['patient_id', 'assigned_by']);
   end if;
   if not "pennsync_records".library_row_id(p_id) then
     raise exception using errcode='22023', message='PENNSYNC_PATIENT_EDUCATION_ID_INVALID';
   end if;
+  perform "pennsync_records".patient_education_row(
+    p_agency, p_id, 'PENNSYNC_PATIENT_EDUCATION');
   return "pennsync_records".library_write('patient_education_assignment', null, p_action,
-    p_id, p_fields, p_agency, 'PENNSYNC_PATIENT_EDUCATION', v_reserved || array['patient_id'],
+    p_id, p_fields, p_agency, 'PENNSYNC_PATIENT_EDUCATION',
+    -- Reserved on update for `created_by`'s reason: who assigned the
+    -- education is settled when it is assigned.
+    v_reserved || array['patient_id', 'assigned_by'],
     array['patient_id', 'assigned_by']);
 end $contract$;
 
@@ -903,6 +1005,9 @@ reset role;
 revoke all on function
   "pennsync_records".library_fields(text,jsonb,text[],text),
   "pennsync_records".library_own_created_by(jsonb,text),
+  "pennsync_records".library_own_assigned_by(jsonb,text),
+  "pennsync_records".patient_education_chart(text,text,text),
+  "pennsync_records".patient_education_row(text,text,text),
   "pennsync_records".library_page_size(integer),
   "pennsync_records".library_answer(jsonb,integer),
   "pennsync_records".library_write(text,text,text,text,jsonb,text,text,text[],text[]),

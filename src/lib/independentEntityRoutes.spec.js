@@ -288,12 +288,45 @@ describe('the declared entity routes', () => {
       fixture.apiResponse = libraryAnswer([{ id: 'p-1' }], false);
       await expect(adapter.raw.entities.ClinicalPathway.list())
         .rejects.toMatchObject({ code: PAGE_INCOMPLETE, detail: 'listClinicalPathways' });
+      // A limit at or above the ceiling is the `ALL_ROWS` shape — still a
+      // request for everything, so still a refusal.
+      await expect(adapter.raw.entities.ClinicalPathway.list(undefined, 5000))
+        .rejects.toMatchObject({ code: PAGE_INCOMPLETE, detail: 'listClinicalPathways' });
       // And an answer with no `complete` at all is refused rather than read as
       // whole, because the flag is the only thing that settles it.
       fixture.apiResponse = () => new Response(
         JSON.stringify({ success: true, result: { entries: [] }, execution: 'pennsync-api', base44ExecutionDependency: false }),
         { headers: { 'content-type': 'application/json' } });
       await expect(adapter.raw.entities.ClinicalPathway.list()).rejects.toBeTruthy();
+    });
+
+    it('serves a bounded page the contract ordered, and refuses one it cut twice', async () => {
+      const { fixture, adapter } = await signedIn();
+      // `AICarePlanSuggestionEngine` asks for the newest 50 published
+      // materials, which is exactly the order the contract applies in SQL. An
+      // agency with 51 gets 50 and `complete: false`, and that IS the answer
+      // — Base44's own limit semantics. Refusing it broke the screen the
+      // moment an agency's library outgrew the page.
+      fixture.apiResponse = libraryAnswer(
+        Array.from({ length: 50 }, (unused, index) => ({ id: `m-${index}`, is_published: true })),
+        false);
+      await expect(adapter.raw.entities.EducationMaterial
+        .filter({ is_published: true }, '-last_used_date', 50)).resolves.toHaveLength(50);
+
+      // But where the contract's filter is coarser than the query, the page
+      // was cut in SQL BEFORE these rows were dropped here, so a short answer
+      // is short for a reason the caller cannot see. Completeness is required
+      // again, and a drop is what tells the two cases apart.
+      fixture.apiResponse = libraryAnswer([
+        { id: 'm-1', is_published: true }, { id: 'm-2', is_published: false }], false);
+      await expect(adapter.raw.entities.EducationMaterial
+        .filter({ is_published: false }, '-last_used_date', 50))
+        .rejects.toMatchObject({ code: PAGE_INCOMPLETE });
+      // The same rows with nothing dropped are served.
+      fixture.apiResponse = libraryAnswer([
+        { id: 'm-2', is_published: false }], false);
+      await expect(adapter.raw.entities.EducationMaterial
+        .filter({ is_published: false }, '-last_used_date', 50)).resolves.toHaveLength(1);
     });
 
     it('clamps a limit to the contract ceiling and refuses one it cannot mean', async () => {

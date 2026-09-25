@@ -36,6 +36,77 @@ const EMAIL = Object.freeze({
 });
 let db;
 
+/*
+ * Every column these contracts hand back, pinned.
+ *
+ * The house rule is that a contract projects NAMED columns rather than
+ * returning a row, and these return the row: `to_jsonb(t) - 'source_app_id'`.
+ * That is deliberate and it is what the originals did — a raw
+ * `EducationMaterial.filter(...)` through the platform SDK returned every
+ * column, so naming a subset here would be a NARROWING, hiding fields the
+ * screens are entitled to and showing nothing when one goes missing.
+ *
+ * What the rule is protecting against is still real: a column added to one of
+ * these seven tables later would be disclosed by all fourteen capabilities
+ * with nobody reviewing it. So the set is pinned instead of the projection
+ * narrowed, and a schema addition fails HERE — where the failure says which
+ * table and which column, and asks whoever added it whether these callers may
+ * see it. Regenerating the store is not enough to widen a disclosure.
+ */
+const PROJECTED = Object.freeze({
+  clinical_pathway: [
+    'id', 'created_date', 'updated_date', 'created_by',
+    'pathway_name', 'condition', 'icd10_codes', 'description',
+    'phases', 'typical_los', 'evidence_level', 'references',
+    'is_active', 'usage_count', 'success_rate', 'trigger_conditions',
+    'pdgm_clinical_group', 'priority_level', 'documentation_prompts', 'rescore_opportunities',
+    'recommended_tasks', 'comorbidity_checklist', 'functional_focus_areas', 'agency_id',
+  ],
+  clinical_library_template: [
+    'id', 'created_date', 'updated_date', 'created_by',
+    'phrase', 'folder_id', 'category', 'template_type',
+    'patient_id', 'patient_name', 'expanded_text', 'ai_prompt_instructions',
+    'requires_patient_data', 'patient_data_fields', 'is_active', 'usage_count',
+    'is_agency_wide', 'agency_id',
+  ],
+  clinical_library_folder: [
+    'id', 'created_date', 'updated_date', 'created_by',
+    'name', 'parent_folder_id', 'color', 'order',
+    'is_agency_wide', 'agency_id',
+  ],
+  education_material: [
+    'id', 'created_date', 'updated_date', 'created_by',
+    'title', 'category', 'content', 'variables',
+    'reading_level', 'language', 'keywords', 'is_template',
+    'last_used_date', 'usage_count', 'is_published', 'version',
+    'agency_id',
+  ],
+  patient_education_assignment: [
+    'id', 'created_date', 'updated_date', 'created_by',
+    'patient_id', 'material_id', 'assigned_by', 'assigned_by_name',
+    'status', 'due_date', 'completion_date', 'notes',
+    'priority', 'topic', 'content', 'format',
+    'assigned_date', 'materials_provided', 'care_plan_id', 'comprehension_verified',
+    'teach_back_notes', 'completed_date',
+  ],
+  custom_validation_rule: [
+    'id', 'created_date', 'updated_date', 'created_by',
+    'rule_name', 'entity_type', 'field_name', 'validation_type',
+    'validation_value', 'error_message', 'severity', 'is_active',
+    'agency_id',
+  ],
+  ai_configuration: [
+    'id', 'created_date', 'updated_date', 'created_by',
+    'user_email', 'user_name', 'compliance_priority', 'suggestion_aggressiveness',
+    'custom_compliance_rules', 'custom_prompts', 'is_active', 'ai_verbosity',
+    'clinical_terminology', 'enable_oasis_analysis', 'enable_auto_summarization', 'enable_compliance_checking',
+    'enable_care_plan_suggestions', 'enable_task_generation', 'enable_proactive_suggestions', 'auto_enhance_on_completion',
+    'preferred_note_style', 'include_assessment_details', 'include_teaching_points', 'show_confidence_scores',
+    'setting_name', 'setting_category', 'value', 'description',
+    'agency_id',
+  ],
+});
+
 before(async () => {
   db = new PGlite();
   await db.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
@@ -55,6 +126,19 @@ before(async () => {
   await db.query(`insert into ${SCHEMA}."patient"
     ("source_app_id","id","agency_id","first_name") values ($1,'patient-a1',$2,'Ann'),
     ($1,'patient-a2',$2,'Bea')`, [APP, A]);
+  // A chart in agency B, and an administrator who holds BOTH agencies. The
+  // shared fixtures give every identity one membership, and one membership is
+  // the case where a request naming the wrong tenant is refused by the
+  // policies whatever the contract does — so a tenant-binding assertion built
+  // on it passes with the binding deleted. This caller is the one that can
+  // tell the two apart, and it is added here rather than in `fixtures.sql`
+  // because that file is shared with every other contract suite.
+  await db.query(`insert into ${SCHEMA}."patient"
+    ("source_app_id","id","agency_id","first_name") values ($1,'patient-b1',$2,'Cal')`, [APP, B]);
+  await db.query(`insert into pennsync_private.membership
+    (app_id,id,agency_id,auth_user_id,base44_user_id,tenant_role,status)
+    select app_id,'membership-1b',$1,auth_user_id,base44_user_id,'agency_admin','active'
+    from pennsync_private.membership where id = 'membership-1'`, [B]);
 });
 after(async () => db?.close());
 
@@ -248,9 +332,14 @@ test('a create supplies what the entity schema requires, or it is refused by nam
     await refusal(call(ADMIN_A, fn, [A, 'create', null, JSON.stringify(fields)]),
       `${code}_FIELD_REQUIRED`);
   }
+  // `patient_education_assignment` declares `assigned_by` required and the
+  // contract STAMPS it, so the requirement can never fail from outside —
+  // which is the point of checking the merged payload rather than the
+  // caller's. The refusal that does exist there is the attribution one.
   await refusal(call(CLINICIAN_A, 'pennsync_contract_patient_education_write',
-    [A, 'create', null, JSON.stringify({ patient_id: 'patient-a1', status: 'assigned' })]),
-  'PENNSYNC_PATIENT_EDUCATION_FIELD_REQUIRED');
+    [A, 'create', null, JSON.stringify({
+      patient_id: 'patient-a1', assigned_by: EMAIL[ADMIN_A], status: 'assigned' })]),
+  'PENNSYNC_PATIENT_EDUCATION_ASSIGNED_BY_FORBIDDEN');
   // A json null is the same empty column as an omitted key, so it is refused
   // the same way rather than inserted.
   await refusal(call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
@@ -310,9 +399,30 @@ test('a patient education assignment is the chart\'s, and the chart alone decide
   // does not need to name them.
   assert.deepEqual(ids(await call(CLINICIAN_NO_CHART,
     'pennsync_contract_patient_education_list', [A, 'patient-a1', null])), []);
+  // NOT_FOUND rather than FORBIDDEN, and deliberately: under D24 a chart this
+  // caller does not open is invisible to them, so an answer distinguishing
+  // "exists but is not yours" would make a patient id testable by anybody in
+  // the agency. `library_owned_row` takes the same line.
   await refusal(call(CLINICIAN_NO_CHART, 'pennsync_contract_patient_education_write',
-    [A, 'create', null, JSON.stringify({ patient_id: 'patient-a1', assigned_by: EMAIL[CLINICIAN_A], status: 'assigned' })]),
-  'PENNSYNC_PATIENT_EDUCATION_FORBIDDEN');
+    [A, 'create', null, JSON.stringify({ patient_id: 'patient-a1', status: 'assigned' })]),
+  'PENNSYNC_PATIENT_EDUCATION_NOT_FOUND');
+  // **The envelope's agency binds the write, not just the policies.** This
+  // row carries no `agency_id` — its tenancy is the chart — so `library_write`
+  // has no tenancy column to compare and the policies then admit every agency
+  // the caller holds. ADMIN_A holds agency B as well, so a request whose
+  // envelope names B would reach this agency-A row with nothing refusing it.
+  // Both directions, because each is a separate predicate in the contract.
+  await refusal(call(ADMIN_A, 'pennsync_contract_patient_education_write',
+    [B, 'update', filed.row.id, JSON.stringify({ status: 'completed' })]),
+  'PENNSYNC_PATIENT_EDUCATION_NOT_FOUND');
+  await refusal(call(ADMIN_A, 'pennsync_contract_patient_education_write',
+    [B, 'create', null, JSON.stringify({ patient_id: 'patient-a1', status: 'assigned' })]),
+  'PENNSYNC_PATIENT_EDUCATION_NOT_FOUND');
+  // And the same caller naming the agency the chart really is in is served,
+  // so the refusal above is the tenant binding and not a broken path.
+  const crossed = await call(ADMIN_A, 'pennsync_contract_patient_education_write',
+    [A, 'update', filed.row.id, JSON.stringify({ status: 'completed' })]);
+  assert.equal(crossed.row.status, 'completed');
   // An assignment is dismissed by moving its status, which is what the enum's
   // `dismissed` is for. `delete` is refused by name: no call site performs one
   // and a record of what a patient was taught is not a row a screen removes.
@@ -347,10 +457,13 @@ test('a validation rule is the agency administrator\'s to read as well as to wri
   await refusal(call(CLINICIAN_A, 'pennsync_contract_validation_rule_write',
     [A, 'create', null, JSON.stringify({ rule_name: 'x', entity_type: 'referral', field_name: 'f', validation_type: 'required' })]),
   'PENNSYNC_VALIDATION_RULE_FORBIDDEN');
-  // The table's own enum still decides what a value may be.
+  // The table's own enum still decides what a value may be, and the refusal
+  // is the contract's own code rather than the raw constraint name. Left raw
+  // it reaches the HTTP boundary undeclared, which reports a caller's typo as
+  // a 503 record-store outage.
   await refusal(call(ADMIN_A, 'pennsync_contract_validation_rule_write',
     [A, 'create', null, JSON.stringify({ rule_name: 'x', entity_type: 'referral', field_name: 'f', validation_type: 'required' })]),
-  'custom_validation_rule_entity_type_allowed');
+  'PENNSYNC_VALIDATION_RULE_FIELD_VALUE_INVALID');
 });
 
 test('one AI configuration table, two jobs, and neither save reaches the other\'s row', async () => {
@@ -464,4 +577,23 @@ test('the shared mechanics hold no authorization and no caller can reach them', 
     assert.ok(named.length > 0, `${fn} names no table`);
     assert.deepEqual([...new Set(named)], [table], `${fn} reaches another entity's table`);
   }
+});
+
+test('a column added to one of these tables is a disclosure decision, not a migration', async () => {
+  for (const [table, expected] of Object.entries(PROJECTED)) {
+    const { rows } = await db.query(
+      `select column_name from information_schema.columns
+       where table_schema = $1 and table_name = $2 and column_name <> 'source_app_id'
+       order by ordinal_position`, [SCHEMA.replace(/"/g, ''), table]);
+    assert.deepEqual(rows.map(row => row.column_name), expected,
+      `${table}'s columns moved: these contracts return the whole row, so this is a change `
+      + 'to what fourteen capabilities disclose. Review it, then update PROJECTED.');
+  }
+  // And the pin is over what the contracts actually hand back, not a list
+  // beside them: every read subtracts `source_app_id` and nothing else.
+  const source = readFileSync(resolve(repository, MIGRATION), 'utf8');
+  const projections = [...source.matchAll(/pg_catalog\.to_jsonb\(t\)\s*-\s*'([a-z_]+)'/g)]
+    .map(match => match[1]);
+  assert.ok(projections.length >= 7, 'the reads no longer project through to_jsonb');
+  assert.deepEqual([...new Set(projections)], ['source_app_id']);
 });
