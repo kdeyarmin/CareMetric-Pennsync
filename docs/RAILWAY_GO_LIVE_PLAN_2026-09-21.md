@@ -1508,8 +1508,8 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | PENDING | PENDING |
-  | `mutating` (derived) | PENDING | PENDING |
+  | `read-only` (derived) | 36 | 20 |
+  | `mutating` (derived) | 39 | 31 |
   | `integration` (derived) | 19 | 15 |
 
   The `integration` row's migrations went 14 → 15 with D98, and the reason is

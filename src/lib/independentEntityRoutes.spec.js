@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createIndependentStagingAdapter, readIndependentStagingConfig } from './independentStagingAdapter';
-import { ARGUMENTS_UNSUPPORTED, BROKER_MAXIMUM, PAGE_INCOMPLETE, ROSTER_MAXIMUM } from './independentEntityRoutes';
+import { ARGUMENTS_UNSUPPORTED, BROKER_MAXIMUM, LIBRARY_MAXIMUM, PAGE_INCOMPLETE, ROSTER_MAXIMUM } from './independentEntityRoutes';
 import { bindTrustedTenantContext, clearTrustedTenantContext, getActiveTrustedTenantContext } from '@/lib/roles';
 import { stagingApiUrl, stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
 
@@ -11,6 +11,15 @@ const boundContext = Object.freeze({
   tenant_role: 'agency_admin', membership_status: 'active', is_platform_owner: false,
   agency: { id: 'agency-a', name: 'Synthetic Agency A', status: 'active' },
 });
+
+/**
+ * A named library contract's answer: entries, plus the completeness the
+ * contract measured. `complete` is the part that differs from every brokered
+ * read — nothing here infers it from the page's length.
+ */
+const libraryAnswer = (entries, complete = true) => () => new Response(
+  JSON.stringify({ success: true, result: { entries, complete }, execution: 'pennsync-api', base44ExecutionDependency: false }),
+  { headers: { 'content-type': 'application/json' } });
 
 /** The roster contract's own answer shape: entries, plus a keyset cursor. */
 const rosterAnswer = (entries, next = null) => () => new Response(
@@ -249,6 +258,120 @@ describe('the declared entity routes', () => {
       const { fixture, adapter } = await signedIn();
       for (const operation of ['create', 'update', 'delete']) {
         await expect(adapter.raw.entities.Announcement[operation]({}))
+          .rejects.toMatchObject({ code: 'STAGING_OPERATION_UNAVAILABLE' });
+      }
+      expect(fixture.apiCalls).toHaveLength(0);
+    });
+  });
+
+  describe('the reads the named library contracts serve', () => {
+    it('asks the contract for the whole set and hands back rows, not the envelope', async () => {
+      const { fixture, adapter } = await signedIn();
+      const entries = [{ id: 'p-1', pathway_name: 'CHF' }];
+      fixture.apiResponse = libraryAnswer(entries);
+
+      expect(await adapter.raw.entities.ClinicalPathway.list()).toEqual(entries);
+      const [call] = fixture.apiCalls;
+      expect(call.url).toBe(`${stagingApiUrl}/v1/functions/listClinicalPathways`);
+      expect(call.body.agency_id).toBe('agency-a');
+      // No probe row: the contract says whether the page is whole, so there is
+      // nothing to infer from its length.
+      expect(call.body.params).toEqual({ limit: LIBRARY_MAXIMUM });
+    });
+
+    it('refuses a page the contract did not call whole', async () => {
+      const { fixture, adapter } = await signedIn();
+      // The screen asked for everything and the contract answered
+      // `complete: false`, so the rows on hand are not the answer to the
+      // question asked and a route returning them would show a partial
+      // library as though it were the whole one.
+      fixture.apiResponse = libraryAnswer([{ id: 'p-1' }], false);
+      await expect(adapter.raw.entities.ClinicalPathway.list())
+        .rejects.toMatchObject({ code: PAGE_INCOMPLETE, detail: 'listClinicalPathways' });
+      // And an answer with no `complete` at all is refused rather than read as
+      // whole, because the flag is the only thing that settles it.
+      fixture.apiResponse = () => new Response(
+        JSON.stringify({ success: true, result: { entries: [] }, execution: 'pennsync-api', base44ExecutionDependency: false }),
+        { headers: { 'content-type': 'application/json' } });
+      await expect(adapter.raw.entities.ClinicalPathway.list()).rejects.toBeTruthy();
+    });
+
+    it('clamps a limit to the contract ceiling and refuses one it cannot mean', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = libraryAnswer([]);
+      await adapter.raw.entities.ClinicalPathway.list(undefined, 5000);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ limit: LIBRARY_MAXIMUM });
+      await adapter.raw.entities.ClinicalPathway.list(undefined, 25);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ limit: 25 });
+      for (const limit of [0, -1, 1.5, '10']) {
+        await expect(adapter.raw.entities.ClinicalPathway.list(undefined, limit))
+          .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+      }
+    });
+
+    it('turns the flag a screen filters on into the contract argument that means it', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = libraryAnswer([{ id: 'm-1', is_published: true }]);
+      await adapter.raw.entities.EducationMaterial.filter({ is_published: true });
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ published_only: true, limit: LIBRARY_MAXIMUM });
+
+      // `is_published: false` is a DIFFERENT question, and the contract's
+      // `published_only` cannot ask it — so the narrowing is applied here
+      // rather than lost. The drafts the contract returned to an administrator
+      // are what a screen asking for them gets.
+      fixture.apiResponse = libraryAnswer([
+        { id: 'm-1', is_published: true }, { id: 'm-2', is_published: false }]);
+      expect(await adapter.raw.entities.EducationMaterial.filter({ is_published: false }))
+        .toEqual([{ id: 'm-2', is_published: false }]);
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ published_only: false, limit: LIBRARY_MAXIMUM });
+
+      // The same shape on the pathway read, whose flag is `is_active`.
+      fixture.apiResponse = libraryAnswer([]);
+      await adapter.raw.entities.ClinicalPathway.filter({ is_active: true });
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ active_only: true, limit: LIBRARY_MAXIMUM });
+      // A key outside the contract's parameters refuses rather than being
+      // dropped, because a narrowing a screen asked for and did not get is
+      // invisible on the screen.
+      await expect(adapter.raw.entities.ClinicalPathway.filter({ condition: 'CHF' }))
+        .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+    });
+
+    it('sends one entity to two scopes, because the two screens mean different rows', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = libraryAnswer([]);
+      // The admin manager's `list` is the agency's settings.
+      await adapter.raw.entities.AIConfiguration.list();
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ scope: 'agency', limit: LIBRARY_MAXIMUM });
+      // `UserSettings` sends an empty filter, which meant "my own row" all
+      // along — the comment in that file saying the entity has no `user_email`
+      // is wrong, and its own payload sends one.
+      await adapter.raw.entities.AIConfiguration.filter({});
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ scope: 'mine', limit: LIBRARY_MAXIMUM });
+    });
+
+    it('offers only the orders its contract implements', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = libraryAnswer([
+        { id: 'f-2', order: 2 }, { id: 'f-1', order: 1 }]);
+      expect((await adapter.raw.entities.ClinicalLibraryFolder.list('order'))
+        .map(row => row.id)).toEqual(['f-1', 'f-2']);
+      // A sort the contract does not implement refuses instead of being
+      // approximated, and so does the same field the other way round.
+      for (const sort of ['name', '-name']) {
+        await expect(adapter.raw.entities.ClinicalLibraryFolder.list(sort))
+          .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+      }
+    });
+
+    it('declares no write, so none is served', async () => {
+      const { fixture, adapter } = await signedIn();
+      for (const operation of ['create', 'update', 'delete']) {
+        await expect(adapter.raw.entities.ClinicalPathway[operation]({}))
           .rejects.toMatchObject({ code: 'STAGING_OPERATION_UNAVAILABLE' });
       }
       expect(fixture.apiCalls).toHaveLength(0);

@@ -27,7 +27,7 @@
 --   agency-WIDE. A port that trusted them would let anybody in the agency
 --   edit anybody else's phrases and read anybody else's preferences.
 --
--- Two rules the batch follows throughout, and one finding it records.
+-- Three rules the batch follows throughout, and one finding it records.
 --
 -- **The writable set is the table's own columns less the reserved ones**, read
 -- out of the catalog rather than kept as a list here. These are entity CRUD
@@ -53,6 +53,19 @@
 -- from `caller_email()` regardless, and a payload naming a DIFFERENT address
 -- is refused by name rather than ignored — the shape D2's broker family uses
 -- for tenancy, relaxed exactly as far as "you may say you are yourself".
+--
+-- **A create supplies what the entity's schema declares REQUIRED.** The
+-- generated store makes every entity column nullable — that is D30's
+-- generator and not this contract's to change — so without a check here a
+-- create with no `pathway_name` inserts cleanly and the row is one the Base44
+-- schema would not have accepted. `library_required` takes the list per call
+-- site rather than reading a table, because the one divergence has to be
+-- visible where it happens: `AIConfiguration` requires `user_email`, and an
+-- agency-wide row is DEFINED by that column being null, which is what
+-- `AIConfigurationManager.jsx` has always created. So the requirement holds on
+-- the personal scope and not the agency one, and that row diverges from its
+-- own schema — recorded rather than fixed, because closing it is a product
+-- decision about what an agency-wide setting is keyed on.
 --
 -- The finding: `src/pages/UserSettings.jsx` says in a comment that
 -- `AIConfiguration` "is RLS-scoped to the current user's own records
@@ -201,9 +214,47 @@ $answer$;
  * a second copy of the table, and a column added to the store would validate
  * and then silently not be written.
  */
+/*
+ * The fields each entity's own schema declares REQUIRED, checked on a create.
+ *
+ * The generated store makes every entity column nullable — that is D30's
+ * generator, not this contract's to change — so a create with no
+ * `pathway_name` inserts cleanly and the row is one the Base44 schema would
+ * not have accepted. The list is passed in per capability rather than read
+ * from a table here, because two of the seven diverge and the divergence has
+ * to be visible at the call site:
+ *
+ *   - `ai_configuration` requires `user_email`, which is the OWNERSHIP column
+ *     the contract decides. On the personal scope it is stamped and the check
+ *     holds; on the agency scope an agency-wide row is DEFINED by that column
+ *     being null, which is what `AIConfigurationManager.jsx` has always
+ *     created, so nothing is required there and the row diverges from its own
+ *     schema. Recorded rather than fixed: closing it is a product decision
+ *     about what an agency-wide setting is keyed on.
+ *   - Everything the CONTRACT supplies — `id`, `created_by`, the tenancy
+ *     column — is checked against the MERGED payload, so a required field the
+ *     contract stamps counts as supplied.
+ *
+ * A json null counts as absent, because `{"condition": null}` is the same
+ * empty column as omitting it.
+ */
+create function "pennsync_records".library_required(
+  p_payload jsonb, p_required text[], p_code text)
+  returns void language plpgsql immutable set search_path = '' as $required$
+declare v_key text;
+begin
+  foreach v_key in array coalesce(p_required, array[]::text[]) loop
+    if not (p_payload ? v_key)
+      or pg_catalog.jsonb_typeof(p_payload -> v_key) = 'null' then
+      raise exception using errcode='22023',
+        message=p_code || '_FIELD_REQUIRED', detail=v_key;
+    end if;
+  end loop;
+end $required$;
+
 create function "pennsync_records".library_write(
   p_table text, p_tenant text, p_action text, p_id text, p_fields jsonb,
-  p_agency text, p_code text, p_reserved text[])
+  p_agency text, p_code text, p_reserved text[], p_required text[])
   returns jsonb language plpgsql security definer set search_path = '' as $write$
 declare
   v_fields jsonb; v_merged jsonb; v_now timestamptz := clock_timestamp();
@@ -249,6 +300,8 @@ begin
     if p_tenant is not null then
       v_merged := v_merged || jsonb_build_object(p_tenant, p_agency);
     end if;
+    -- After the merge, so a required field the contract stamps counts.
+    perform "pennsync_records".library_required(v_merged, p_required, p_code);
     execute pg_catalog.format(
       'insert into "pennsync_records".%I as t select * from'
       || ' pg_catalog.jsonb_populate_record(null::"pennsync_records".%I, $1)'
@@ -357,7 +410,8 @@ begin
     raise exception using errcode='22023', message='PENNSYNC_PATHWAY_ID_INVALID';
   end if;
   return "pennsync_records".library_write('clinical_pathway', 'agency_id', p_action,
-    p_id, p_fields, p_agency, 'PENNSYNC_PATHWAY', "pennsync_records".library_reserved());
+    p_id, p_fields, p_agency, 'PENNSYNC_PATHWAY', "pennsync_records".library_reserved(),
+    array['pathway_name', 'condition']);
 end $contract$;
 
 /* ------------------------------------------------------------------ *
@@ -486,7 +540,8 @@ begin
   end if;
   if p_action = 'create' then
     return "pennsync_records".library_write('clinical_library_template', 'agency_id',
-      p_action, p_id, p_fields, p_agency, 'PENNSYNC_LIBRARY_TEMPLATE', v_reserved);
+      p_action, p_id, p_fields, p_agency, 'PENNSYNC_LIBRARY_TEMPLATE', v_reserved,
+      array['phrase', 'category', 'template_type']);
   end if;
   if not "pennsync_records".library_row_id(p_id) then
     raise exception using errcode='22023', message='PENNSYNC_LIBRARY_TEMPLATE_ID_INVALID';
@@ -498,7 +553,7 @@ begin
   -- decides who may see the row.
   return "pennsync_records".library_write('clinical_library_template', 'agency_id',
     p_action, p_id, p_fields, p_agency, 'PENNSYNC_LIBRARY_TEMPLATE',
-    v_reserved || array['patient_id']);
+    v_reserved || array['patient_id'], array['phrase', 'category', 'template_type']);
 end $contract$;
 
 create function "pennsync_records".contract_clinical_library_folder_write(
@@ -519,7 +574,8 @@ begin
       'PENNSYNC_LIBRARY_FOLDER');
   end if;
   return "pennsync_records".library_write('clinical_library_folder', 'agency_id', p_action,
-    p_id, p_fields, p_agency, 'PENNSYNC_LIBRARY_FOLDER', "pennsync_records".library_reserved());
+    p_id, p_fields, p_agency, 'PENNSYNC_LIBRARY_FOLDER', "pennsync_records".library_reserved(),
+    array['name']);
 end $contract$;
 
 /* ------------------------------------------------------------------ *
@@ -573,7 +629,7 @@ begin
   end if;
   return "pennsync_records".library_write('education_material', 'agency_id', p_action,
     p_id, p_fields, p_agency, 'PENNSYNC_EDUCATION_MATERIAL',
-    "pennsync_records".library_reserved());
+    "pennsync_records".library_reserved(), array['title', 'category', 'content']);
 end $contract$;
 
 /* ------------------------------------------------------------------ *
@@ -643,13 +699,15 @@ begin
       raise exception using errcode='22023', message='PENNSYNC_PATIENT_EDUCATION_SUBJECT_INVALID';
     end if;
     return "pennsync_records".library_write('patient_education_assignment', null, p_action,
-      p_id, p_fields, p_agency, 'PENNSYNC_PATIENT_EDUCATION', v_reserved);
+      p_id, p_fields, p_agency, 'PENNSYNC_PATIENT_EDUCATION', v_reserved,
+      array['patient_id', 'assigned_by']);
   end if;
   if not "pennsync_records".library_row_id(p_id) then
     raise exception using errcode='22023', message='PENNSYNC_PATIENT_EDUCATION_ID_INVALID';
   end if;
   return "pennsync_records".library_write('patient_education_assignment', null, p_action,
-    p_id, p_fields, p_agency, 'PENNSYNC_PATIENT_EDUCATION', v_reserved || array['patient_id']);
+    p_id, p_fields, p_agency, 'PENNSYNC_PATIENT_EDUCATION', v_reserved || array['patient_id'],
+    array['patient_id', 'assigned_by']);
 end $contract$;
 
 /* ------------------------------------------------------------------ *
@@ -691,7 +749,8 @@ begin
   end if;
   return "pennsync_records".library_write('custom_validation_rule', 'agency_id', p_action,
     p_id, p_fields, p_agency, 'PENNSYNC_VALIDATION_RULE',
-    "pennsync_records".library_reserved());
+    "pennsync_records".library_reserved(),
+    array['rule_name', 'entity_type', 'field_name', 'validation_type']);
 end $contract$;
 
 /* ------------------------------------------------------------------ *
@@ -809,7 +868,11 @@ begin
       p_agency, 'PENNSYNC_AI_CONFIG',
       -- The create stamps `user_email` through the merged payload, so it is
       -- not reserved against itself on this one path.
-      case when p_scope = 'mine' then "pennsync_records".library_reserved() else v_reserved end);
+      case when p_scope = 'mine' then "pennsync_records".library_reserved() else v_reserved end,
+      -- An agency-wide row is DEFINED by `user_email` being null, which is
+      -- what the admin manager has always created, so the schema's own
+      -- requirement holds on the personal scope only. See `library_required`.
+      case when p_scope = 'mine' then array['user_email'] else array[]::text[] end);
   end if;
   if not "pennsync_records".library_row_id(p_id) then
     raise exception using errcode='22023', message='PENNSYNC_AI_CONFIG_ID_INVALID';
@@ -832,7 +895,7 @@ begin
     raise exception using errcode='42501', message='PENNSYNC_AI_CONFIG_OWNER_FORBIDDEN';
   end if;
   return "pennsync_records".library_write('ai_configuration', 'agency_id', 'update',
-    p_id, p_fields, p_agency, 'PENNSYNC_AI_CONFIG', v_reserved);
+    p_id, p_fields, p_agency, 'PENNSYNC_AI_CONFIG', v_reserved, array[]::text[]);
 end $contract$;
 
 reset role;
@@ -842,7 +905,8 @@ revoke all on function
   "pennsync_records".library_own_created_by(jsonb,text),
   "pennsync_records".library_page_size(integer),
   "pennsync_records".library_answer(jsonb,integer),
-  "pennsync_records".library_write(text,text,text,text,jsonb,text,text,text[]),
+  "pennsync_records".library_write(text,text,text,text,jsonb,text,text,text[],text[]),
+  "pennsync_records".library_required(jsonb,text[],text),
   "pennsync_records".library_reserved(),
   "pennsync_records".library_row_id(text),
   "pennsync_records".library_action(text),

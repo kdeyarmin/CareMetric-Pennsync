@@ -81,7 +81,7 @@ const ids = answer => answer.entries.map(row => row.id);
 
 test('a pathway is read by any member and written by the agency administrator alone', async () => {
   const made = await call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
-    [A, 'create', null, JSON.stringify({ pathway_name: 'CHF', is_active: true })]);
+    [A, 'create', null, JSON.stringify({ pathway_name: 'CHF', condition: 'heart failure', is_active: true })]);
   assert.equal(made.created, true);
   assert.equal(made.row.agency_id, A);
   // The contract stamps the author; the caller never chooses it.
@@ -94,12 +94,12 @@ test('a pathway is read by any member and written by the agency administrator al
   // The WRITE is not. The original gave a client neither, so this is the
   // narrow half of one decision rather than a rule ported from anywhere.
   await refusal(call(CLINICIAN_A, 'pennsync_contract_clinical_pathway_write',
-    [A, 'create', null, JSON.stringify({ pathway_name: 'X' })]), 'PENNSYNC_PATHWAY_FORBIDDEN');
+    [A, 'create', null, JSON.stringify({ pathway_name: 'X', condition: 'c' })]), 'PENNSYNC_PATHWAY_FORBIDDEN');
   // Another agency's administrator is not one of ours.
   await refusal(call(ADMIN_B, 'pennsync_contract_clinical_pathway_list', [A, true, null]),
     'PENNSYNC_PATHWAY_AGENCY_NOT_HELD');
   await refusal(call(ADMIN_B, 'pennsync_contract_clinical_pathway_write',
-    [A, 'create', null, JSON.stringify({ pathway_name: 'X' })]), 'PENNSYNC_PATHWAY_FORBIDDEN');
+    [A, 'create', null, JSON.stringify({ pathway_name: 'X', condition: 'c' })]), 'PENNSYNC_PATHWAY_FORBIDDEN');
 
   const gone = await call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
     [A, 'delete', made.row.id, null]);
@@ -113,7 +113,7 @@ test('a field outside the table is refused rather than filtered, and so is a res
   // being noticed, and the reserved set is what stops a payload choosing its
   // own tenant, id or author.
   await refusal(call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
-    [A, 'create', null, JSON.stringify({ pathway_nmae: 'typo' })]),
+    [A, 'create', null, JSON.stringify({ pathway_nmae: 'typo', condition: 'c' })]),
   'PENNSYNC_PATHWAY_FIELD_UNKNOWN');
   for (const reserved of ['agency_id', 'id', 'source_app_id', 'created_date', 'updated_date']) {
     await refusal(call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
@@ -123,10 +123,10 @@ test('a field outside the table is refused rather than filtered, and so is a res
   // `created_by` is the one reserved column a payload may name, and only as
   // self-assertion: four call sites send the caller's own address.
   await refusal(call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
-    [A, 'create', null, JSON.stringify({ pathway_name: 'Y', created_by: EMAIL[ADMIN_B] })]),
+    [A, 'create', null, JSON.stringify({ pathway_name: 'Y', condition: 'c', created_by: EMAIL[ADMIN_B] })]),
   'PENNSYNC_PATHWAY_CREATED_BY_FORBIDDEN');
   const own = await call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
-    [A, 'create', null, JSON.stringify({ pathway_name: 'Y', created_by: EMAIL[ADMIN_A] })]);
+    [A, 'create', null, JSON.stringify({ pathway_name: 'Y', condition: 'c', created_by: EMAIL[ADMIN_A] })]);
   assert.equal(own.row.created_by, EMAIL[ADMIN_A]);
   await refusal(call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
     [A, 'update', own.row.id, JSON.stringify({})]), 'PENNSYNC_PATHWAY_FIELDS_EMPTY');
@@ -147,7 +147,7 @@ test('a library template belongs to its author, because the policies are agency-
   // {{user.email}}`. Trusting the policies would let anybody in the agency
   // rewrite anybody else's phrases.
   const mine = await call(CLINICIAN_A, 'pennsync_contract_clinical_library_template_write',
-    [A, 'create', null, JSON.stringify({ phrase: 'wound care', is_active: true })]);
+    [A, 'create', null, JSON.stringify({ phrase: 'wound care', category: 'assessment', template_type: 'generic', is_active: true })]);
   assert.equal(mine.row.created_by, EMAIL[CLINICIAN_A]);
   assert.deepEqual(ids(await call(CLINICIAN_A,
     'pennsync_contract_clinical_library_template_list', [A, null, null])), [mine.row.id]);
@@ -165,7 +165,7 @@ test('a library template belongs to its author, because the policies are agency-
     'pennsync_contract_clinical_library_template_list', [A, null, null])), [mine.row.id]);
   // An agency-wide template is everybody's to read and still not theirs to edit.
   const shared = await call(CLINICIAN_A, 'pennsync_contract_clinical_library_template_write',
-    [A, 'create', null, JSON.stringify({ phrase: 'shared', is_agency_wide: true })]);
+    [A, 'create', null, JSON.stringify({ phrase: 'shared', category: 'assessment', template_type: 'generic', is_agency_wide: true })]);
   assert.ok(ids(await call(CLINICIAN_NO_CHART,
     'pennsync_contract_clinical_library_template_list', [A, null, null]))
     .includes(shared.row.id));
@@ -183,7 +183,7 @@ test('the chart a row names may be chosen and never moved', async () => {
   // the row, so an update that moved it would hand a row to a different care
   // team with nothing else about it changed.
   const bound = await call(CLINICIAN_A, 'pennsync_contract_clinical_library_template_write',
-    [A, 'create', null, JSON.stringify({ phrase: 'chart bound', patient_id: 'patient-a1' })]);
+    [A, 'create', null, JSON.stringify({ phrase: 'chart bound', category: 'assessment', template_type: 'generic', patient_id: 'patient-a1' })]);
   assert.equal(bound.row.patient_id, 'patient-a1');
   await refusal(call(CLINICIAN_A, 'pennsync_contract_clinical_library_template_write',
     [A, 'update', bound.row.id, JSON.stringify({ patient_id: 'patient-a2' })]),
@@ -193,7 +193,7 @@ test('the chart a row names may be chosen and never moved', async () => {
   // code the HTTP boundary can classify rather than as `new row violates row
   // level security policy` (D33's rule about the raw duplicate-key error).
   await refusal(call(CLINICIAN_A, 'pennsync_contract_clinical_library_template_write',
-    [A, 'create', null, JSON.stringify({ phrase: 'other chart', patient_id: 'patient-a2' })]),
+    [A, 'create', null, JSON.stringify({ phrase: 'other chart', category: 'assessment', template_type: 'generic', patient_id: 'patient-a2' })]),
   'PENNSYNC_LIBRARY_TEMPLATE_FORBIDDEN');
 });
 
@@ -210,15 +210,72 @@ test('a folder follows the template rule, and its own display order', async () =
   await refusal(call(CLINICIAN_NO_CHART, 'pennsync_contract_clinical_library_folder_write',
     [A, 'update', first.row.id, JSON.stringify({ name: 'x' })]),
   'PENNSYNC_LIBRARY_FOLDER_FORBIDDEN');
+  // A colleague's PRIVATE folder is not on the list, which is the half a
+  // reading of the tenancy alone would miss: `clinical_library_folder_read`
+  // is agency-wide, so without the contract's own predicate the folder's name
+  // and structure would reach everybody in the agency. Asserted here rather
+  // than inferred from the template test, because the two contracts carry
+  // that predicate separately and either could lose it alone.
+  const mine = await call(CLINICIAN_A, 'pennsync_contract_clinical_library_folder_write',
+    [A, 'create', null, JSON.stringify({ name: 'Private', order: 3 })]);
+  assert.equal(ids(await call(CLINICIAN_NO_CHART,
+    'pennsync_contract_clinical_library_folder_list', [A, null])).includes(mine.row.id), false);
+  // The author sees it, and so does the agency's administrator.
+  assert.equal(ids(await call(CLINICIAN_A,
+    'pennsync_contract_clinical_library_folder_list', [A, null])).includes(mine.row.id), true);
+  assert.equal(ids(await call(ADMIN_A,
+    'pennsync_contract_clinical_library_folder_list', [A, null])).includes(mine.row.id), true);
+});
+
+test('a create supplies what the entity schema requires, or it is refused by name', async () => {
+  // The generated store leaves every entity column nullable, so nothing below
+  // this contract refuses a row the Base44 schema would not have accepted.
+  // One case per entity that declares required fields, because the list is
+  // passed in per call site and a wrong one is invisible from any other test.
+  const missing = [
+    ['pennsync_contract_clinical_pathway_write', 'PENNSYNC_PATHWAY',
+      { condition: 'heart failure' }],
+    ['pennsync_contract_clinical_library_template_write', 'PENNSYNC_LIBRARY_TEMPLATE',
+      { phrase: 'no category', template_type: 'generic' }],
+    ['pennsync_contract_clinical_library_folder_write', 'PENNSYNC_LIBRARY_FOLDER',
+      { order: 1 }],
+    ['pennsync_contract_education_material_write', 'PENNSYNC_EDUCATION_MATERIAL',
+      { title: 'No content', category: 'wound_care' }],
+    ['pennsync_contract_validation_rule_write', 'PENNSYNC_VALIDATION_RULE',
+      { rule_name: 'x', entity_type: 'patient', validation_type: 'required' }],
+  ];
+  for (const [fn, code, fields] of missing) {
+    await refusal(call(ADMIN_A, fn, [A, 'create', null, JSON.stringify(fields)]),
+      `${code}_FIELD_REQUIRED`);
+  }
+  await refusal(call(CLINICIAN_A, 'pennsync_contract_patient_education_write',
+    [A, 'create', null, JSON.stringify({ patient_id: 'patient-a1', status: 'assigned' })]),
+  'PENNSYNC_PATIENT_EDUCATION_FIELD_REQUIRED');
+  // A json null is the same empty column as an omitted key, so it is refused
+  // the same way rather than inserted.
+  await refusal(call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
+    [A, 'create', null, JSON.stringify({ pathway_name: null, condition: 'c' })]),
+  'PENNSYNC_PATHWAY_FIELD_REQUIRED');
+  // An UPDATE names only what it changes, so the requirement is a create's.
+  const row = await call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
+    [A, 'create', null, JSON.stringify({ pathway_name: 'CHF', condition: 'heart failure' })]);
+  const edited = await call(ADMIN_A, 'pennsync_contract_clinical_pathway_write',
+    [A, 'update', row.row.id, JSON.stringify({ description: 'revised' })]);
+  assert.equal(edited.row.description, 'revised');
+  // `ai_configuration` is the one divergence and it is asserted where its own
+  // row is accounted for: the agency save below creates a row with no
+  // `user_email`, which is what an agency-wide setting IS, so the schema's own
+  // requirement holds on the personal scope only. Creating a second one here
+  // would change what that test lists.
 });
 
 test('an unpublished education material is the administrator\'s alone', async () => {
   // `rls.read` is `is_published OR role admin`, so the read splits and every
   // write is D40's `agency_admin`.
   const published = await call(ADMIN_A, 'pennsync_contract_education_material_write',
-    [A, 'create', null, JSON.stringify({ title: 'Wound care', is_published: true })]);
+    [A, 'create', null, JSON.stringify({ title: 'Wound care', category: 'wound_care', content: 'c', is_published: true })]);
   const draft = await call(ADMIN_A, 'pennsync_contract_education_material_write',
-    [A, 'create', null, JSON.stringify({ title: 'Draft', is_published: false })]);
+    [A, 'create', null, JSON.stringify({ title: 'Draft', category: 'wound_care', content: 'c', is_published: false })]);
   assert.deepEqual(ids(await call(CLINICIAN_A,
     'pennsync_contract_education_material_list', [A, false, null])), [published.row.id]);
   const seen = ids(await call(ADMIN_A, 'pennsync_contract_education_material_list', [A, false, null]));
@@ -242,7 +299,8 @@ test('a patient education assignment is the chart\'s, and the chart alone decide
   // naming no patient is invisible to everyone, this contract included.
   const filed = await call(CLINICIAN_A, 'pennsync_contract_patient_education_write',
     [A, 'create', null, JSON.stringify({
-      patient_id: 'patient-a1', status: 'assigned', assigned_date: '2026-09-25',
+      patient_id: 'patient-a1', assigned_by: EMAIL[CLINICIAN_A],
+      status: 'assigned', assigned_date: '2026-09-25',
     })]);
   assert.equal(filed.row.patient_id, 'patient-a1');
   assert.deepEqual(ids(await call(CLINICIAN_A,
@@ -253,7 +311,7 @@ test('a patient education assignment is the chart\'s, and the chart alone decide
   assert.deepEqual(ids(await call(CLINICIAN_NO_CHART,
     'pennsync_contract_patient_education_list', [A, 'patient-a1', null])), []);
   await refusal(call(CLINICIAN_NO_CHART, 'pennsync_contract_patient_education_write',
-    [A, 'create', null, JSON.stringify({ patient_id: 'patient-a1', status: 'assigned' })]),
+    [A, 'create', null, JSON.stringify({ patient_id: 'patient-a1', assigned_by: EMAIL[CLINICIAN_A], status: 'assigned' })]),
   'PENNSYNC_PATIENT_EDUCATION_FORBIDDEN');
   // An assignment is dismissed by moving its status, which is what the enum's
   // `dismissed` is for. `delete` is refused by name: no call site performs one
@@ -265,7 +323,7 @@ test('a patient education assignment is the chart\'s, and the chart alone decide
     [A, 'delete', filed.row.id, null]), 'PENNSYNC_PATIENT_EDUCATION_ACTION_INVALID');
   // The chart must be named on a create and cannot move afterwards.
   await refusal(call(CLINICIAN_A, 'pennsync_contract_patient_education_write',
-    [A, 'create', null, JSON.stringify({ status: 'assigned' })]),
+    [A, 'create', null, JSON.stringify({ status: 'assigned', assigned_by: EMAIL[CLINICIAN_A] })]),
   'PENNSYNC_PATIENT_EDUCATION_SUBJECT_INVALID');
   await refusal(call(CLINICIAN_A, 'pennsync_contract_patient_education_write',
     [A, 'update', filed.row.id, JSON.stringify({ patient_id: 'patient-a2' })]),
@@ -279,18 +337,19 @@ test('a validation rule is the agency administrator\'s to read as well as to wri
   // so D40 answers the whole of it — including the read.
   const rule = await call(ADMIN_A, 'pennsync_contract_validation_rule_write',
     [A, 'create', null, JSON.stringify({
-      rule_name: 'MRN required', entity_type: 'patient', validation_type: 'required',
+      rule_name: 'MRN required', entity_type: 'patient', field_name: 'medical_record_number',
+      validation_type: 'required',
     })]);
   assert.deepEqual(ids(await call(ADMIN_A, 'pennsync_contract_validation_rule_list', [A, null])),
     [rule.row.id]);
   await refusal(call(CLINICIAN_A, 'pennsync_contract_validation_rule_list', [A, null]),
     'PENNSYNC_VALIDATION_RULE_FORBIDDEN');
   await refusal(call(CLINICIAN_A, 'pennsync_contract_validation_rule_write',
-    [A, 'create', null, JSON.stringify({ rule_name: 'x' })]),
+    [A, 'create', null, JSON.stringify({ rule_name: 'x', entity_type: 'referral', field_name: 'f', validation_type: 'required' })]),
   'PENNSYNC_VALIDATION_RULE_FORBIDDEN');
   // The table's own enum still decides what a value may be.
   await refusal(call(ADMIN_A, 'pennsync_contract_validation_rule_write',
-    [A, 'create', null, JSON.stringify({ rule_name: 'x', entity_type: 'referral' })]),
+    [A, 'create', null, JSON.stringify({ rule_name: 'x', entity_type: 'referral', field_name: 'f', validation_type: 'required' })]),
   'custom_validation_rule_entity_type_allowed');
 });
 
