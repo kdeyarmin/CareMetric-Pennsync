@@ -4,11 +4,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, posix, win32 } from 'node:path';
 import {
   ENROLLMENT_CONTRACT, LIMITS, PLATFORM_OWNER, TENANT_ROLES,
-  directoryEvidenceReader, enrollmentProjectionSha256, parseEnrollmentPlan,
-  runEnrollCli, verifyEnrollmentEvidence,
+  directoryEvidenceReader, enrollmentProjectionSha256, evidencePathAllowed,
+  parseEnrollmentPlan, runEnrollCli, verifyEnrollmentEvidence,
 } from './tools-pennsync-enroll.mjs';
 
 /**
@@ -186,14 +186,47 @@ test('the directory reader refuses a path that escapes its root', async t => {
   await mkdir(join(root, 'evidence'), { recursive: true });
   await writeFile(join(root, 'evidence', 'person-one.txt'), EVIDENCE);
   const read = directoryEvidenceReader(root);
-  // A plan spells its evidence path with forward slashes, and that has to read
-  // on every platform. `relative` answers in the platform's separator, which
-  // made this reader forbid every legitimate path on Windows.
   assert.doesNotThrow(() => read('evidence/person-one.txt').destroy());
   await verifyEnrollmentEvidence(parse(plan()), read);
   for (const path of ['../outside.txt', '/etc/passwd', 'evidence/../../outside.txt']) {
     assert.throws(() => read(path), error => error.code === 'ENROLL_EVIDENCE_PATH_FORBIDDEN', path);
   }
+});
+
+/**
+ * The case above cannot fail on this runner and the one below can, which is
+ * the whole reason it exists.
+ *
+ * `directoryEvidenceReader` refused every legitimate evidence path on Windows,
+ * because `relative` answers in the platform's separator and the reader
+ * compared its answer against the plan's forward-slash spelling. On Linux
+ * `sep` is `/`, so the normalisation that fixes it is a no-op and a test
+ * driving the real reader passes with the fix removed — which the first
+ * version of this suite did, and nothing said so. Driving the decision with
+ * `path.win32` puts the broken platform's behaviour in front of a Linux CI.
+ *
+ * Both tables run under both modules: a rule that held on only one of them
+ * would be a rule about the separator rather than about containment.
+ */
+test('the containment decision holds under both platforms\' path rules', () => {
+  for (const [name, pathModule, root] of [
+    ['posix', posix, '/srv/enroll'],
+    ['win32', win32, 'C:\\srv\\enroll'],
+  ]) {
+    assert.equal(evidencePathAllowed(pathModule, root, 'evidence/person-one.txt'), true,
+      `${name} refused a plan's own forward-slash path`);
+    assert.equal(evidencePathAllowed(pathModule, root, 'evidence/nested/person-two.txt'), true,
+      `${name} refused a nested forward-slash path`);
+    for (const requested of ['../outside.txt', '/etc/passwd', 'evidence/../../outside.txt']) {
+      assert.equal(evidencePathAllowed(pathModule, root, requested), false,
+        `${name} admitted ${requested}`);
+    }
+  }
+  // A caller may not name the path in the platform's own spelling either: the
+  // plan's spelling is the only one, so `evidence\person-one.txt` is not an
+  // alias for it and does not become one on Windows.
+  assert.equal(evidencePathAllowed(win32, 'C:\\srv\\enroll', 'evidence\\person-one.txt'), false,
+    'win32 admitted a backslash spelling the plan cannot contain');
 });
 
 test('the CLI reports a code and never echoes plan content', async t => {

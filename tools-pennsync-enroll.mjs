@@ -37,7 +37,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { isAbsolute, join, relative, resolve, sep } from 'node:path';
+import nodePath, { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ENROLLMENT_CONTRACT = 'cm.pennsync.enrollment.v1';
@@ -347,19 +347,35 @@ export async function applyEnrollmentPlan({ db, rawPlan, expectedPlanSha256, rea
   }
 }
 
+/**
+ * The containment decision, with its path module as an argument.
+ *
+ * It takes the module rather than reaching for `node:path` because the bug
+ * this refuses to repeat is only reachable on Windows: `relative` answers in
+ * the platform's separator, so a plan's `evidence/person-one.txt` came back
+ * `evidence\person-one.txt` and an equality against the caller's spelling
+ * refused every legitimate path. CI runs on Linux, where `sep` is `/` and the
+ * normalisation below is a no-op, so a test that only drove the real reader
+ * would pass whether or not the fix were present — which is what the first
+ * version of its test did. Pass `path.win32` to exercise the case that broke.
+ *
+ * A plan spells its paths with forward slashes on every platform, so the
+ * comparison is made in that spelling. The traversal refusals read `inside`
+ * unchanged and are unaffected by the normalisation either way.
+ */
+export function evidencePathAllowed(pathModule, root, requested) {
+  const full = pathModule.resolve(pathModule.join(root, requested));
+  const inside = pathModule.relative(root, full);
+  const asGiven = inside.split(pathModule.sep).join('/');
+  return asGiven === requested && !inside.startsWith('..') && !pathModule.isAbsolute(inside);
+}
+
 /** Reads evidence from one directory and refuses to leave it. */
 export function directoryEvidenceReader(evidenceDir) {
   const root = resolve(evidenceDir);
-  return path => {
-    const full = resolve(join(root, path));
-    const inside = relative(root, full);
-    // `relative` answers in the platform's separator, so on Windows a plan's
-    // `evidence/person-one.txt` came back `evidence\person-one.txt` and this
-    // equality refused every legitimate path. Compare in the plan's own
-    // spelling; the traversal refusals below are unaffected either way.
-    const asGiven = inside.split(sep).join('/');
-    check(asGiven === path && !inside.startsWith('..') && !isAbsolute(inside), 'ENROLL_EVIDENCE_PATH_FORBIDDEN');
-    return createReadStream(full);
+  return requested => {
+    check(evidencePathAllowed(nodePath, root, requested), 'ENROLL_EVIDENCE_PATH_FORBIDDEN');
+    return createReadStream(resolve(nodePath.join(root, requested)));
   };
 }
 
