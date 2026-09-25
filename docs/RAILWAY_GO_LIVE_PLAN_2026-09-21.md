@@ -1690,6 +1690,15 @@ by every authorization call**, because the store's pin is staging. It is the
 same shape Stage B carried for `PENNSYNC_API_APP_ID`: an absent binding is loud
 and a stated-but-wrong one is silent.
 
+**The shape is shared; the GATE is not, and the error name is the same in both
+services.** Here `IMPLICIT_APP_BINDING` fires on `authorityMode ===
+'independent'` (`integration-runtime/runtime.mjs:45`), so a runtime left in
+`base44` mode with no app id boots whatever the release flag says. On
+`pennsync-api` it fires on being **released** (`pennsync-api/runtime.mjs:65`),
+which is why Stage B's passage says "the moment `PENNSYNC_API_RELEASE` is set".
+Both passages are correct as written; do not carry either condition across to
+the other service when editing one.
+
 Safe to do now: the runtime is released to nobody (`INTEGRATIONS_RELEASE` unset),
 so the change alters readiness and nothing else, and removing
 `INTEGRATIONS_AUTHORITY_MODE` reverts to the Base44 default. **That safety is
