@@ -1869,6 +1869,272 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_ROSTER_SUBJECT_INVALID',
     ]),
   }),
+  // The clinical library, patient education and per-agency configuration:
+  // fourteen capabilities over seven entities the frontend reached DIRECTLY,
+  // with no Base44 backend function behind any of them. What stands in for an
+  // original is each entity's own `rls` block, quoted per contract in
+  // `20260920570000_contract_clinical_library.sql`, and the authorization is
+  // the contract's — not restated here.
+  //
+  // Each read answers `{ entries, complete }`. `complete` is not decoration: a
+  // screen passing `ALL_ROWS` against a catalogue of forty rows is naming a
+  // bound it does not expect to reach, and the contract saying it did not is
+  // what lets a route serve that call site instead of refusing it.
+  listClinicalPathways: Object.freeze({
+    rpc: 'pennsync_contract_clinical_pathway_list',
+    params: Object.freeze(['active_only', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_active_only: args.active_only === undefined ? false : args.active_only,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_PATHWAY_AGENCY_NOT_HELD',
+    ]),
+  }),
+  manageClinicalPathway: Object.freeze({
+    rpc: 'pennsync_contract_clinical_pathway_write',
+    params: Object.freeze(['action', 'id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_action: args.action ?? null,
+      p_id: args.id === undefined ? null : args.id,
+      p_fields: args.fields === undefined ? null : args.fields,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_PATHWAY_AGENCY_NOT_HELD',
+      'PENNSYNC_PATHWAY_FORBIDDEN',
+      'PENNSYNC_PATHWAY_ACTION_INVALID',
+      'PENNSYNC_PATHWAY_ID_INVALID',
+      'PENNSYNC_PATHWAY_NOT_FOUND',
+      'PENNSYNC_PATHWAY_FIELDS_INVALID',
+      'PENNSYNC_PATHWAY_FIELDS_EMPTY',
+      'PENNSYNC_PATHWAY_FIELD_UNKNOWN',
+      'PENNSYNC_PATHWAY_FIELD_REQUIRED',
+      'PENNSYNC_PATHWAY_FIELD_RESERVED',
+      'PENNSYNC_PATHWAY_CREATED_BY_FORBIDDEN',
+    ]),
+  }),
+  listClinicalLibraryTemplates: Object.freeze({
+    rpc: 'pennsync_contract_clinical_library_template_list',
+    params: Object.freeze(['limit', 'offset']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_limit: args.limit === undefined ? null : args.limit,
+      p_offset: args.offset === undefined ? null : args.offset,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_LIBRARY_TEMPLATE_AGENCY_NOT_HELD',
+      'PENNSYNC_LIBRARY_TEMPLATE_OFFSET_INVALID',
+    ]),
+  }),
+  manageClinicalLibraryTemplate: Object.freeze({
+    rpc: 'pennsync_contract_clinical_library_template_write',
+    params: Object.freeze(['action', 'id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_action: args.action ?? null,
+      p_id: args.id === undefined ? null : args.id,
+      p_fields: args.fields === undefined ? null : args.fields,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_LIBRARY_TEMPLATE_AGENCY_NOT_HELD',
+      'PENNSYNC_LIBRARY_TEMPLATE_FORBIDDEN',
+      'PENNSYNC_LIBRARY_TEMPLATE_ACTION_INVALID',
+      'PENNSYNC_LIBRARY_TEMPLATE_ID_INVALID',
+      'PENNSYNC_LIBRARY_TEMPLATE_NOT_FOUND',
+      'PENNSYNC_LIBRARY_TEMPLATE_FIELDS_INVALID',
+      'PENNSYNC_LIBRARY_TEMPLATE_FIELDS_EMPTY',
+      'PENNSYNC_LIBRARY_TEMPLATE_FIELD_UNKNOWN',
+      'PENNSYNC_LIBRARY_TEMPLATE_FIELD_REQUIRED',
+      'PENNSYNC_LIBRARY_TEMPLATE_FIELD_RESERVED',
+      'PENNSYNC_LIBRARY_TEMPLATE_CREATED_BY_FORBIDDEN',
+    ]),
+  }),
+  listClinicalLibraryFolders: Object.freeze({
+    rpc: 'pennsync_contract_clinical_library_folder_list',
+    params: Object.freeze(['limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_LIBRARY_FOLDER_AGENCY_NOT_HELD',
+    ]),
+  }),
+  manageClinicalLibraryFolder: Object.freeze({
+    rpc: 'pennsync_contract_clinical_library_folder_write',
+    params: Object.freeze(['action', 'id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_action: args.action ?? null,
+      p_id: args.id === undefined ? null : args.id,
+      p_fields: args.fields === undefined ? null : args.fields,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_LIBRARY_FOLDER_AGENCY_NOT_HELD',
+      'PENNSYNC_LIBRARY_FOLDER_FORBIDDEN',
+      'PENNSYNC_LIBRARY_FOLDER_ACTION_INVALID',
+      'PENNSYNC_LIBRARY_FOLDER_ID_INVALID',
+      'PENNSYNC_LIBRARY_FOLDER_NOT_FOUND',
+      'PENNSYNC_LIBRARY_FOLDER_FIELDS_INVALID',
+      'PENNSYNC_LIBRARY_FOLDER_FIELDS_EMPTY',
+      'PENNSYNC_LIBRARY_FOLDER_FIELD_UNKNOWN',
+      'PENNSYNC_LIBRARY_FOLDER_FIELD_REQUIRED',
+      'PENNSYNC_LIBRARY_FOLDER_FIELD_RESERVED',
+      'PENNSYNC_LIBRARY_FOLDER_CREATED_BY_FORBIDDEN',
+    ]),
+  }),
+  listEducationMaterials: Object.freeze({
+    rpc: 'pennsync_contract_education_material_list',
+    params: Object.freeze(['published_only', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_published_only: args.published_only === undefined ? false : args.published_only,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_EDUCATION_MATERIAL_AGENCY_NOT_HELD',
+    ]),
+  }),
+  manageEducationMaterial: Object.freeze({
+    rpc: 'pennsync_contract_education_material_write',
+    params: Object.freeze(['action', 'id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_action: args.action ?? null,
+      p_id: args.id === undefined ? null : args.id,
+      p_fields: args.fields === undefined ? null : args.fields,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_EDUCATION_MATERIAL_AGENCY_NOT_HELD',
+      'PENNSYNC_EDUCATION_MATERIAL_FORBIDDEN',
+      'PENNSYNC_EDUCATION_MATERIAL_ACTION_INVALID',
+      'PENNSYNC_EDUCATION_MATERIAL_ID_INVALID',
+      'PENNSYNC_EDUCATION_MATERIAL_NOT_FOUND',
+      'PENNSYNC_EDUCATION_MATERIAL_FIELDS_INVALID',
+      'PENNSYNC_EDUCATION_MATERIAL_FIELDS_EMPTY',
+      'PENNSYNC_EDUCATION_MATERIAL_FIELD_UNKNOWN',
+      'PENNSYNC_EDUCATION_MATERIAL_FIELD_REQUIRED',
+      'PENNSYNC_EDUCATION_MATERIAL_FIELD_RESERVED',
+      'PENNSYNC_EDUCATION_MATERIAL_CREATED_BY_FORBIDDEN',
+    ]),
+  }),
+  // The one capability whose tenancy is the CHART rather than the agency:
+  // `patient_education_assignment` has no `agency_id` and every one of its
+  // policies reaches the `patient` row it names, so `patient_id` is required
+  // and there is no way to file against no chart.
+  listPatientEducationAssignments: Object.freeze({
+    rpc: 'pennsync_contract_patient_education_list',
+    params: Object.freeze(['patient_id', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_PATIENT_EDUCATION_AGENCY_NOT_HELD',
+      'PENNSYNC_PATIENT_EDUCATION_SUBJECT_INVALID',
+    ]),
+  }),
+  managePatientEducationAssignment: Object.freeze({
+    rpc: 'pennsync_contract_patient_education_write',
+    params: Object.freeze(['action', 'id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_action: args.action ?? null,
+      p_id: args.id === undefined ? null : args.id,
+      p_fields: args.fields === undefined ? null : args.fields,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_PATIENT_EDUCATION_AGENCY_NOT_HELD',
+      'PENNSYNC_PATIENT_EDUCATION_FORBIDDEN',
+      'PENNSYNC_PATIENT_EDUCATION_ACTION_INVALID',
+      'PENNSYNC_PATIENT_EDUCATION_ID_INVALID',
+      'PENNSYNC_PATIENT_EDUCATION_SUBJECT_INVALID',
+      'PENNSYNC_PATIENT_EDUCATION_NOT_FOUND',
+      'PENNSYNC_PATIENT_EDUCATION_FIELDS_INVALID',
+      'PENNSYNC_PATIENT_EDUCATION_FIELDS_EMPTY',
+      'PENNSYNC_PATIENT_EDUCATION_FIELD_UNKNOWN',
+      'PENNSYNC_PATIENT_EDUCATION_FIELD_REQUIRED',
+      'PENNSYNC_PATIENT_EDUCATION_FIELD_RESERVED',
+      'PENNSYNC_PATIENT_EDUCATION_CREATED_BY_FORBIDDEN',
+    ]),
+  }),
+  listCustomValidationRules: Object.freeze({
+    rpc: 'pennsync_contract_validation_rule_list',
+    params: Object.freeze(['limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_VALIDATION_RULE_FORBIDDEN',
+    ]),
+  }),
+  manageCustomValidationRule: Object.freeze({
+    rpc: 'pennsync_contract_validation_rule_write',
+    params: Object.freeze(['action', 'id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_action: args.action ?? null,
+      p_id: args.id === undefined ? null : args.id,
+      p_fields: args.fields === undefined ? null : args.fields,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_VALIDATION_RULE_FORBIDDEN',
+      'PENNSYNC_VALIDATION_RULE_ACTION_INVALID',
+      'PENNSYNC_VALIDATION_RULE_ID_INVALID',
+      'PENNSYNC_VALIDATION_RULE_NOT_FOUND',
+      'PENNSYNC_VALIDATION_RULE_FIELDS_INVALID',
+      'PENNSYNC_VALIDATION_RULE_FIELDS_EMPTY',
+      'PENNSYNC_VALIDATION_RULE_FIELD_UNKNOWN',
+      'PENNSYNC_VALIDATION_RULE_FIELD_REQUIRED',
+      'PENNSYNC_VALIDATION_RULE_FIELD_RESERVED',
+      'PENNSYNC_VALIDATION_RULE_CREATED_BY_FORBIDDEN',
+    ]),
+  }),
+  // One table doing two unrelated jobs, so `scope` is not a convenience: a
+  // personal preference row and an agency setting row differ only by whether
+  // `user_email` is set, and a capability that did not say which it meant
+  // would let one screen's save land on the other screen's row.
+  readAiConfiguration: Object.freeze({
+    rpc: 'pennsync_contract_ai_configuration_read',
+    params: Object.freeze(['scope', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_scope: args.scope ?? null,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_AI_CONFIG_AGENCY_NOT_HELD',
+      'PENNSYNC_AI_CONFIG_SCOPE_INVALID',
+      'PENNSYNC_AI_CONFIG_FORBIDDEN',
+    ]),
+  }),
+  saveAiConfiguration: Object.freeze({
+    rpc: 'pennsync_contract_ai_configuration_save',
+    params: Object.freeze(['scope', 'id', 'fields']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_scope: args.scope ?? null,
+      p_id: args.id === undefined ? null : args.id,
+      p_fields: args.fields === undefined ? null : args.fields,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_AI_CONFIG_AGENCY_NOT_HELD',
+      'PENNSYNC_AI_CONFIG_SCOPE_INVALID',
+      'PENNSYNC_AI_CONFIG_FORBIDDEN',
+      'PENNSYNC_AI_CONFIG_OWNER_FORBIDDEN',
+      'PENNSYNC_AI_CONFIG_ID_INVALID',
+      'PENNSYNC_AI_CONFIG_NOT_FOUND',
+      'PENNSYNC_AI_CONFIG_FIELDS_INVALID',
+      'PENNSYNC_AI_CONFIG_FIELDS_EMPTY',
+      'PENNSYNC_AI_CONFIG_FIELD_UNKNOWN',
+      'PENNSYNC_AI_CONFIG_FIELD_RESERVED',
+      'PENNSYNC_AI_CONFIG_CREATED_BY_FORBIDDEN',
+    ]),
+  }),
 
   // Batch E: seven screens whose records the browser read RAW, with no Base44
   // function between them and the entity. So these are not ported names either

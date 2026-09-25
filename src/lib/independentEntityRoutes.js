@@ -225,6 +225,68 @@ function brokeredRead({ entity, sortable, filterable = [], filtered }) {
   };
 }
 
+/** Every contract in `20260920570000_contract_clinical_library.sql` clamps here. */
+export const LIBRARY_MAXIMUM = 1000;
+
+/**
+ * A read served by a named contract that answers `{ entries, complete }`.
+ *
+ * `request` is the per-route part — which of the contract's own arguments the
+ * call site's query means — and it runs AFTER the query and sort have been
+ * parsed for their refusals, so a predicate this file cannot express never
+ * reaches the service. The predicate is then applied here as well, because a
+ * contract's own filter is coarser than Base44's: `EducationMaterial.filter`
+ * asks for published materials and the contract's `published_only` answers
+ * that, but a screen asking for `is_published: false` would be answered by
+ * neither and has to refuse.
+ *
+ * The limit is passed through rather than probed. `complete` comes from the
+ * contract, so there is nothing to infer from the page's length, and a limit
+ * above the ceiling is not a refusal for the reason `probeFor` gives above.
+ */
+function libraryRead({ capability, sortable, filterable = [], filtered = false, request }) {
+  const argumentsOf = (args) => (filtered ? args : [undefined, ...args]);
+  return {
+    function: capability,
+    projection: 'library_row',
+    request: (...args) => {
+      const [query, sort, limit] = argumentsOf(args);
+      predicate(query, filterable);
+      sortKey(sort, sortable);
+      const size = limit === undefined || limit === null
+        ? LIBRARY_MAXIMUM : Math.min(pageSize(limit), LIBRARY_MAXIMUM);
+      return { ...(request ? request(query) : {}), limit: size };
+    },
+    response: (answer, ...args) => {
+      const [query, sort, limit] = argumentsOf(args);
+      if (!answer || !Array.isArray(answer.entries)) unsupported('answer');
+      const key = sortKey(sort, sortable);
+      const kept = answer.entries.filter(predicate(query, filterable));
+      const rows = key ? ordered(kept, key.field, key.descending) : kept;
+      // The contract measured completeness, so a short page is a fact rather
+      // than a guess from its length — but an incomplete page is only a
+      // REFUSAL when the caller asked for the whole set. A screen asking for
+      // the newest 50 published materials is asking for a bounded page, and
+      // Base44 answered it with 50 of however many exist; refusing that would
+      // break the screen the moment an agency had 51.
+      //
+      // Two conditions make a bounded page the caller's page rather than an
+      // arbitrary slice of it. The contract has to have done the ordering,
+      // which `sortable` is the list of — a sort it does not implement has
+      // already refused above. And nothing may have been dropped here: where
+      // the contract's own filter is coarser than the query (`is_published:
+      // false` is a question `published_only` cannot ask), the rows removed
+      // locally came out of a page that was cut in SQL first, so the answer
+      // would be short for a reason the caller cannot see. Either of those
+      // and completeness is required again.
+      const bounded = Number.isInteger(limit) && limit > 0 && limit < LIBRARY_MAXIMUM;
+      if (answer.complete !== true
+        && !(bounded && kept.length === answer.entries.length)) incomplete(capability);
+      return limit === undefined || limit === null ? rows : rows.slice(0, limit);
+    },
+  };
+}
+
 /** The roster contract's own ceiling (`least(greatest(limit, 1), 500)`). */
 export const ROSTER_MAXIMUM = 500;
 
@@ -896,6 +958,77 @@ export const ENTITY_ROUTES = Object.freeze({
       const page = servedPage(result.entries, limit, REFERENCE_MAXIMUM.VisitPointConfig, 'VisitPointConfig');
       return page.filter(predicate(query, ['agency_name']));
     },
+  }),
+
+  /**
+   * The clinical library, patient education and per-agency configuration:
+   * seven entities served by named contracts rather than by the generic
+   * family, so each route names its own capability.
+   *
+   * These differ from the brokered reads above in one way that matters. A
+   * broker returns rows and this file supplies the order and the predicate,
+   * which is why `probeFor` has to infer completeness from a short page. These
+   * contracts do the ordering and the filtering in SQL and ANSWER
+   * `{ entries, complete }`, so completeness is measured by the thing that
+   * holds the rows rather than reconstructed here. `complete` is what lets a
+   * screen passing `ALL_ROWS` be served: it is naming a bound it does not
+   * expect to reach, and the contract saying it did not reach it is proof.
+   *
+   * Only the operations whose call sites pass arguments this file can READ are
+   * declared. `ClinicalLibraryTemplate.list`'s pager passes a computed skip and
+   * `PatientEducationAssignment.filter` passes `patient?.id`, so neither can be
+   * proved here and neither is claimed — the contract and handler exist either
+   * way, which is the half that has to be built whatever the browser seam
+   * turns out to be.
+   */
+  'ClinicalPathway.list': Object.freeze({
+    ...libraryRead({ capability: 'listClinicalPathways', sortable: ['created_date'] }),
+    reason: 'The pathway manager reads every pathway, newest first.',
+  }),
+  'ClinicalPathway.filter': Object.freeze({
+    ...libraryRead({
+      capability: 'listClinicalPathways',
+      sortable: ['created_date'],
+      filterable: ['is_active'],
+      filtered: true,
+      request: (query) => ({ active_only: query?.is_active === true }),
+    }),
+    reason: 'The OASIS recommender and the trigger both read the active pathways.',
+  }),
+  'ClinicalLibraryFolder.list': Object.freeze({
+    ...libraryRead({ capability: 'listClinicalLibraryFolders', sortable: ['order'] }),
+    reason: 'The library manager reads the agency-wide folders and the caller\'s own, in display order.',
+  }),
+  'EducationMaterial.filter': Object.freeze({
+    ...libraryRead({
+      capability: 'listEducationMaterials',
+      sortable: ['last_used_date'],
+      filterable: ['is_published'],
+      filtered: true,
+      request: (query) => ({ published_only: query?.is_published === true }),
+    }),
+    reason: 'The education library and the care-plan engine both read the published materials.',
+  }),
+  'CustomValidationRule.list': Object.freeze({
+    ...libraryRead({ capability: 'listCustomValidationRules', sortable: ['created_date'] }),
+    reason: 'The validation rule manager is the only screen, and only an agency_admin reaches it.',
+  }),
+  'AIConfiguration.list': Object.freeze({
+    ...libraryRead({
+      capability: 'readAiConfiguration',
+      sortable: [],
+      request: () => ({ scope: 'agency' }),
+    }),
+    reason: 'The admin manager reads the agency settings, which are the rows with no user_email.',
+  }),
+  'AIConfiguration.filter': Object.freeze({
+    ...libraryRead({
+      capability: 'readAiConfiguration',
+      sortable: [],
+      filtered: true,
+      request: () => ({ scope: 'mine' }),
+    }),
+    reason: 'User settings reads the caller\'s own preferences, which the empty filter meant all along.',
   }),
 });
 

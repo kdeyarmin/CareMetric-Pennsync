@@ -1329,6 +1329,105 @@ export const HANDLERS = Object.freeze({
         : { valid: true, message: 'Patient data is valid' };
     },
   }),
+  // The clinical library, patient education and per-agency configuration.
+  //
+  // Fourteen capabilities over seven entities the frontend reached DIRECTLY,
+  // so there is no Base44 original behind any of them and nothing here to
+  // reproduce. The authorization is the contract's, in the database, and is
+  // deliberately not restated in any of these handlers: what each entity's
+  // `rls` block said, which branch of it D40 succeeds and which per-row
+  // ownership rule survives is written down once, in
+  // `20260920570000_contract_clinical_library.sql`.
+  //
+  // The reads and the writes are SEPARATE handlers rather than one `manage*`
+  // per entity, and that is about release rather than tidiness: the ladder
+  // derives a wave per handler from whether its contracts write, so a read
+  // folded into a write handler would be held back to the mutating wave with
+  // it. A catalogue read has no reason to wait on that.
+  listClinicalPathways: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['active_only', 'limit'], 'INVALID_PARAMS');
+      return contract('listClinicalPathways', params);
+    },
+  }),
+  manageClinicalPathway: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['action', 'id', 'fields'], 'INVALID_PARAMS');
+      return contract('manageClinicalPathway', params);
+    },
+  }),
+  listClinicalLibraryTemplates: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit', 'offset'], 'INVALID_PARAMS');
+      return contract('listClinicalLibraryTemplates', params);
+    },
+  }),
+  manageClinicalLibraryTemplate: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['action', 'id', 'fields'], 'INVALID_PARAMS');
+      return contract('manageClinicalLibraryTemplate', params);
+    },
+  }),
+  listClinicalLibraryFolders: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit'], 'INVALID_PARAMS');
+      return contract('listClinicalLibraryFolders', params);
+    },
+  }),
+  manageClinicalLibraryFolder: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['action', 'id', 'fields'], 'INVALID_PARAMS');
+      return contract('manageClinicalLibraryFolder', params);
+    },
+  }),
+  listEducationMaterials: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['published_only', 'limit'], 'INVALID_PARAMS');
+      return contract('listEducationMaterials', params);
+    },
+  }),
+  manageEducationMaterial: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['action', 'id', 'fields'], 'INVALID_PARAMS');
+      return contract('manageEducationMaterial', params);
+    },
+  }),
+  listPatientEducationAssignments: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['patient_id', 'limit'], 'INVALID_PARAMS');
+      return contract('listPatientEducationAssignments', params);
+    },
+  }),
+  managePatientEducationAssignment: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['action', 'id', 'fields'], 'INVALID_PARAMS');
+      return contract('managePatientEducationAssignment', params);
+    },
+  }),
+  listCustomValidationRules: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['limit'], 'INVALID_PARAMS');
+      return contract('listCustomValidationRules', params);
+    },
+  }),
+  manageCustomValidationRule: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['action', 'id', 'fields'], 'INVALID_PARAMS');
+      return contract('manageCustomValidationRule', params);
+    },
+  }),
+  readAiConfiguration: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['scope', 'limit'], 'INVALID_PARAMS');
+      return contract('readAiConfiguration', params);
+    },
+  }),
+  saveAiConfiguration: Object.freeze({
+    handle({ params, contract }) {
+      exactObject(params, ['scope', 'id', 'fields'], 'INVALID_PARAMS');
+      return contract('saveAiConfiguration', params);
+    },
+  }),
 
   // Batch E. Ten capabilities over seven entities the browser read RAW, with
   // no Base44 function in between — so none of these is a ported name, and

@@ -1508,17 +1508,22 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 36 | 20 |
-  | `mutating` (derived) | 35 | 31 |
+  | `read-only` (derived) | 43 | 21 |
+  | `mutating` (derived) | 42 | 32 |
   | `integration` (derived) | 19 | 15 |
 
-  `read-only` went 29 → 36 and `mutating` 32 → 35 with batch E, which added ten
+  `read-only` went 36 → 43 and `mutating` 39 → 42 with batch E, which added ten
   capabilities over the seven entities whose screens read them RAW — seven
   reads and three writes — and both migration counts rose by the one migration
   those ten share. Nothing moved between waves; every one of the ten is new.
-  The counts here are global, so they are re-derived on each rebase rather than
-  added to: batch A's seven reference reads are already in the 29 this started
-  from.
+  **These counts are GLOBAL, so this row belongs to whichever batch merges
+  next rather than to the plan.** Re-derive it from
+  `node tools-pennsync-release-ladder.mjs --summary` on the rebased tree and
+  never add to the number already printed here: a batch that branched before a
+  sibling merged and then added its own delta reds `main` on its own merge,
+  with its own CI green throughout. The figures above already carry batch A's
+  seven reference reads and batch C's fourteen library and configuration
+  capabilities.
 
   The `integration` row's migrations went 14 → 15 with D98, and the reason is
   worth reading rather than the number: those two senders resolve their recipient
