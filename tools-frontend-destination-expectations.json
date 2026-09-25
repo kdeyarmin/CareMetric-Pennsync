@@ -1,5 +1,6 @@
 {
   "format": "pennsync-frontend-destination",
   "version": 1,
-  "maximum_unserved": 203
+  "maximum_unserved": 208,
+  "note": "Raised from 203 to 208 on 2026-09-25 because the MEASUREMENT widened, not the coupling: D83's five global-reference write sites (ComplianceRule, MedicareComplianceRule, MedicareGuideline) were counted as landable while no caller can write those tables. A rise here is otherwise a build failure; this one is the tool telling the truth about call sites that were always refused."
 }

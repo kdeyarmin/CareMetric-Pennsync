@@ -267,6 +267,57 @@ export function measureRoutes(repository, routes = ENTITY_ROUTES) {
   };
 }
 
+/**
+ * Everything the tool PRINTS, as the lines it prints, in order.
+ *
+ * Exported for the reason `portQueueLine` is: a page quoting this reading goes
+ * stale silently and the only thing that can notice is a test comparing the
+ * page against the tool. But `portQueueLine`'s shape does not transfer, and
+ * finding out why is what this is. AGENTS.md carries that one line verbatim,
+ * while the plan's Stage J paragraph carries a REFLOWED paraphrase of this
+ * output — rewrapped, blockquoted, backticked, em-dashes where the tool has
+ * line breaks. So a check asking whether the page contains the line would fail
+ * on a page that is perfectly correct, and the obvious fix for that, comparing
+ * the two with the prose normalised, is a SECOND representation of the reading:
+ * the house defect, arriving inside the pin written to catch it.
+ *
+ * So the export is the printer rather than a sentence. A page that wants to be
+ * checkable carries this output verbatim and reflows only the prose around it,
+ * and there is exactly one place the wording lives. `main` logs these lines and
+ * formats nothing itself, because a second copy here would be the same defect
+ * one layer down.
+ *
+ * Every line carries figures, which is why they are all here and not just the
+ * first: the three below it are the ones a reader would draw the first
+ * version of this tool's wrong conclusion from.
+ */
+export function summaryLines(report) {
+  const lines = [
+    `entity routes: ${report.routes} declared, `
+      + `${report.routed_sites}/${report.landable_sites} landable call sites SERVED, `
+      + `${report.unrouted_sites} still to adopt`,
+    // Printed rather than left in the JSON: these are call sites a route was
+    // written for and cannot serve, which is the number the tool used to
+    // report as adoption. A reader who sees only the first line would draw the
+    // same wrong conclusion the first version of this tool did.
+    `  ${report.declared_but_refused} of those are sites a declared route REFUSES`
+      + `${report.refusals.length ? ` (${report.refusals.join(', ')})` : ''}`
+      + `, and ${report.declared_but_unreadable} pass arguments this cannot read`,
+  ];
+  // Conditional, as the printed output has always had it: a build with no
+  // unproved route says nothing rather than saying zero, and a page pinning
+  // this output carries the line exactly when the tool does.
+  if (report.unproved_routes.length) {
+    lines.push(`  ${report.unproved_routes.length} route(s) are declared but UNPROVED — every call site passes a `
+      + `variable, so the contract's own refusals are what checks them: ${report.unproved_routes.join(', ')}`);
+  }
+  lines.push(`  of those ${report.unrouted_sites}, across ${report.unrouted_entities} entities: `
+    + `a wider generic family could serve ${report.generic_family_reads} reads and `
+    + `${report.generic_family_writes} writes above D16's ceiling; `
+    + `${report.needs_named_capability} need a named capability`);
+  return lines;
+}
+
 function main(argv, log = console.log, error = console.error) {
   const args = argv.slice(2);
   if (args.some(argument => !['--json', '--summary'].includes(argument))) {
@@ -276,26 +327,7 @@ function main(argv, log = console.log, error = console.error) {
   const repository = resolve(dirname(fileURLToPath(import.meta.url)));
   const report = measureRoutes(repository);
   if (args.includes('--json')) log(JSON.stringify(report, null, 2));
-  else {
-    log(`entity routes: ${report.routes} declared, `
-      + `${report.routed_sites}/${report.landable_sites} landable call sites SERVED, `
-      + `${report.unrouted_sites} still to adopt`);
-    // Printed rather than left in the JSON: these are call sites a route was
-    // written for and cannot serve, which is the number the tool used to
-    // report as adoption. A reader who sees only the first line would draw the
-    // same wrong conclusion the first version of this tool did.
-    log(`  ${report.declared_but_refused} of those are sites a declared route REFUSES`
-      + `${report.refusals.length ? ` (${report.refusals.join(', ')})` : ''}`
-      + `, and ${report.declared_but_unreadable} pass arguments this cannot read`);
-    if (report.unproved_routes.length) {
-      log(`  ${report.unproved_routes.length} route(s) are declared but UNPROVED — every call site passes a `
-        + `variable, so the contract's own refusals are what checks them: ${report.unproved_routes.join(', ')}`);
-    }
-    log(`  of those ${report.unrouted_sites}, across ${report.unrouted_entities} entities: `
-      + `a wider generic family could serve ${report.generic_family_reads} reads and `
-      + `${report.generic_family_writes} writes above D16's ceiling; `
-      + `${report.needs_named_capability} need a named capability`);
-  }
+  else log(summaryLines(report).join('\n'));
   if (!report.ok) for (const problem of report.problems) error(problem);
   return report.ok ? 0 : 1;
 }
