@@ -263,7 +263,37 @@ written.
    ```
 
    61 is exactly what `--wave mutating` emits, so the two now agree at the
-   wave as well as at the name. Wave 6, the AI wave, is untouched.
+   wave as well as at the name.
+
+   **Wave 6, the AI wave, went out at `08:39Z` on his own words at
+   `08:31:40Z`.** Measured here by an unauthenticated GET of `/readyz`, not
+   relayed:
+
+   ```
+   /healthz  release: enabled   revision: 1a93f5b
+   /readyz   released: true     operations: 78   implemented: 80
+             integrationsRequired: true   integrationsConfigured: true
+             deliveryReleased: false
+             appId: 6a9881683dc68a0bd54f1ef7   appStated: true
+             authorityMode: independent   base44ExecutionDependency: false
+   ```
+
+   **The two names missing from `operations` are exactly
+   `sendAccountReadyEmail` and `sendWelcomeEmail`** — the set difference
+   against `implemented` is those two and nothing else, so `OWNER_HELD` held
+   through a hand-checked value. That is the control that makes this a
+   measurement rather than a count: 78 of 80 would be satisfied by any two
+   names going missing.
+
+   **`deliveryReleased: false` is the other half, and the field's EXISTENCE is
+   the news.** It is published by `#269`'s code, which this write is the first
+   to ship. So the service now carries the ability to send and cannot send:
+   read the field, not the absence of the field, because before this write
+   there was no field to read.
+
+   `integrationsRequired` flipped `false → true` with the AI names, and
+   `integrationsConfigured: true` pairs it with the runtime released an hour
+   earlier — the combination `publicReadiness` exists to make visible.
 
    **Both writes deployed `main`'s head** — `cd48dc1` for wave 4 and `75d465a`
    for the writes wave — the third and fourth times a variable change has
@@ -273,6 +303,15 @@ written.
    assumed (`services/pennsync-api` is byte-identical across `20c15d8`,
    `cd48dc1` and `75d465a`), but the standing step above is why it was harmless
    and not why it is safe.
+
+   **Wave 6 is the fifth, and it did both things at once.** `1a93f5b` is again
+   a change to this document — and it is also the first write to carry a real
+   service change, `#269`'s delivery gate, merged ninety minutes earlier at
+   `38cb0be`. So the same deploy shipped a doc commit nobody chose and a code
+   change somebody did, and only one of them was part of the decision being
+   made. Check the diff between the tip and the commit the surface was last
+   measured on **before** the write, every time; this is the wave where not
+   doing so would finally have cost something.
 
    That is a dated reading and not a standing fact: release state is the one
    thing on this page that can change without any commit, so **read it off
@@ -2273,6 +2312,15 @@ the line beside the change it authorized.
 > Patient and clinical text may go to an outside provider
 
 That is the AI hold answered, and it is the one this page had carried longest.
+
+**And the line that set the variable came later and separately**, at
+`08:31:40Z`:
+
+> Turn on AI features
+
+Wave 6 went out at `08:39Z` on that line. It is the working practice above
+demonstrating itself: the general yes at `06:40:12Z` removed the question and
+did not set anything, and the switch waited eight hours for words naming it.
 What it leaves is engineering, not a decision: the release thread's reading
 below shows the runtime is not built to serve those operations yet.
 
