@@ -246,8 +246,11 @@ written.
    29 where the tool emitted 31, and the two missing names were the two that
    matter — the value was the tool's output with both cut out **by hand**. That
    gap is closed: `#267` made the withholding a property of the emitter, so
-   `--wave read-only` now emits 29 and prints a `# WITHHELD` line naming each
-   held name and why. The tool and the service agree.
+   `--wave` now emits 29 for this wave and prints a `# WITHHELD` line naming
+   each held name and why. The tool and the service agree. **Which wave those
+   two names sit in can move** — building their send moves them to
+   `integration` — so read the `# WITHHELD` lines wherever they appear rather
+   than expecting them under one wave.
 
    **The writes wave followed at 06:38Z.** Read from outside at 07:00:44Z:
 
