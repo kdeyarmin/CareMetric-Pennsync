@@ -20,7 +20,10 @@ const cfg = (patch = {}) => ({ ...loadConfig({
   SUPABASE_URL: 'https://xsqobvvreaovwibxwyvv.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'synthetic-only',
   INTEGRATIONS_ENCRYPTION_KEY: '1'.repeat(64), INTEGRATIONS_HASH_KEY: '2'.repeat(64),
   INTEGRATIONS_RELEASE: 'enabled-v1', INTEGRATIONS_ALLOWED_OPERATIONS: 'InvokeLLM,SendEmail',
-  INTEGRATIONS_BROWSER_RELEASE: 'enabled-v2', INTEGRATIONS_BROWSER_OPERATIONS: 'InvokeLLM,SendEmail',
+  // SendEmail stays on the SERVICE list and off the browser one: a browser
+  // send is refused outright (BROWSER_FORBIDDEN_OPERATIONS), so a fixture
+  // naming it here would no longer load.
+  INTEGRATIONS_BROWSER_RELEASE: 'enabled-v2', INTEGRATIONS_BROWSER_OPERATIONS: 'InvokeLLM',
   ANTHROPIC_API_KEY: 'synthetic-only', SENDGRID_API_KEY: 'synthetic-only', NOTIFICATION_FROM_EMAIL: 'synthetic@example.test',
   RAILWAY_GIT_COMMIT_SHA: revision,
 }), ...patch });
@@ -186,7 +189,11 @@ test('v2 cannot execute a legacy-approved operation absent from the browser allo
   assert.deepEqual(h.counts(), { reads: 0, calls: 0, reservations: 0 });
 });
 test('browser operations are explicit, duplicate-free subsets of the general operation list', () => {
-  for (const selected of ['InvokeLLM,InvokeLLM', 'GenerateImage', 'SendEmail']) {
+  // Deliberately NOT `SendEmail`: it is refused by its own rule below, so using
+  // it here would let this subset test pass for the wrong reason — which is
+  // exactly what happened while `SendEmail` was off the service list, where a
+  // reader took this line as proof that mail could never be a browser operation.
+  for (const selected of ['InvokeLLM,InvokeLLM', 'GenerateImage', 'UploadFile']) {
     assert.throws(() => loadConfig({ INTEGRATIONS_ALLOWED_OPERATIONS: 'InvokeLLM', INTEGRATIONS_BROWSER_OPERATIONS: selected }));
   }
   const plain = loadConfig({ INTEGRATIONS_RELEASE: 'enabled-v1', INTEGRATIONS_ALLOWED_OPERATIONS: 'InvokeLLM' });
@@ -226,4 +233,61 @@ test('v1 and v2 receipts with the same request UUID cannot be confused', async (
     assert.equal((await h.handler(requests[0])).status, 200);
     assert.equal((await h.handler(requests[1])).status, 409); assert.equal(h.counts().calls, 1); assert.equal(rows.size, 1);
   }
+});
+
+// An outbound send is refused to the browser route by a rule of its own, not by
+// the subset ceiling. While `SendEmail` was off `INTEGRATIONS_ALLOWED_OPERATIONS`
+// the ceiling refused it for free; putting it on the service list to release the
+// account emails turned that structural refusal into two settings being unset.
+// A browser send would also reach the provider WITHOUT the recipient binding the
+// business API applies, so it is refused here rather than configured away.
+const forbiddenEnv = (patch = {}) => ({
+  SUPABASE_URL: 'https://xsqobvvreaovwibxwyvv.supabase.co', SUPABASE_SERVICE_ROLE_KEY: 'synthetic-only',
+  INTEGRATIONS_ENCRYPTION_KEY: '1'.repeat(64), INTEGRATIONS_HASH_KEY: '2'.repeat(64),
+  INTEGRATIONS_RELEASE: 'enabled-v1', INTEGRATIONS_ALLOWED_OPERATIONS: 'InvokeLLM,SendEmail',
+  INTEGRATIONS_BROWSER_RELEASE: 'enabled-v2', INTEGRATIONS_BROWSER_OPERATIONS: 'InvokeLLM',
+  ANTHROPIC_API_KEY: 'synthetic-only', SENDGRID_API_KEY: 'synthetic-only',
+  NOTIFICATION_FROM_EMAIL: 'synthetic@example.test', RAILWAY_GIT_COMMIT_SHA: revision, ...patch });
+
+test('a released service operation can still be forbidden to the browser, and SendEmail is', () => {
+  // The service list carries SendEmail, so the subset ceiling admits it: any
+  // refusal here is the forbidden rule and nothing else.
+  assert.throws(() => loadConfig(forbiddenEnv({ INTEGRATIONS_BROWSER_OPERATIONS: 'InvokeLLM,SendEmail' })),
+    error => error.message === 'BROWSER_FORBIDDEN_OPERATION');
+  assert.throws(() => loadConfig(forbiddenEnv({ INTEGRATIONS_BROWSER_OPERATIONS: 'SendEmail' })),
+    error => error.message === 'BROWSER_FORBIDDEN_OPERATION');
+  // The contrast: another operation on both lists is not refused, so the rule is
+  // about this operation rather than about a browser list having two names.
+  const fine = loadConfig(forbiddenEnv({ INTEGRATIONS_ALLOWED_OPERATIONS: 'InvokeLLM,UploadFile',
+    INTEGRATIONS_BROWSER_OPERATIONS: 'InvokeLLM,UploadFile' }));
+  assert.deepEqual(fine.browserOperations, ['InvokeLLM', 'UploadFile']);
+  // And the released service side is untouched: mail still serves /v1.
+  assert.deepEqual(loadConfig(forbiddenEnv()).operations, ['InvokeLLM', 'SendEmail']);
+});
+
+const mailParams = { to: 'recipient@example.test', subject: 'Synthetic', body: 'Synthetic test' };
+const mailInput = (binding = member()) => ({ ...input(binding), operation: 'SendEmail', params: mailParams });
+
+test('a browser SendEmail is refused at dispatch even if a config was built without loadConfig', async () => {
+  // loadConfig can no longer produce this config, so the request-level check is
+  // what makes the refusal a property of the REQUEST rather than of the
+  // environment. A hand-built config is the only way to reach it.
+  const h = harness({ live: { ...member(), tenant_role: 'agency_admin' },
+    config: cfg({ operations: ['InvokeLLM', 'SendEmail'], browserOperations: ['InvokeLLM', 'SendEmail'] }) });
+  const response = await h.handler(req(mailInput({ ...member(), tenant_role: 'agency_admin' })));
+  assert.equal(response.status, 409);
+  assert.equal((await response.json()).error, 'BROWSER_FORBIDDEN_OPERATION');
+  assert.deepEqual(h.counts(), { reads: 0, calls: 0, reservations: 0 });
+});
+
+test('the same SendEmail request still serves on the legacy server route', async () => {
+  // The exclusion must not have switched off the mail release it was written
+  // beside: a refusal on both routes would pass the test above for free.
+  const h = harness({ live: { ...member(), tenant_role: 'agency_admin' },
+    config: cfg({ operations: ['InvokeLLM', 'SendEmail'], browserOperations: ['InvokeLLM'] }) });
+  const legacy = mailInput({ ...member(), tenant_role: 'agency_admin' });
+  delete legacy.contract; delete legacy.binding; delete legacy.revision;
+  const response = await h.handler(req(legacy, '/v1/integrations'));
+  assert.equal(response.status, 200);
+  assert.equal(h.counts().calls, 1);
 });
