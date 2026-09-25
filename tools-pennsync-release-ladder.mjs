@@ -999,8 +999,8 @@ export async function probeIntegrationRuntime(target, fetchImpl = fetch) {
  */
 export function appBindingLine(runtime) {
   if (runtime.appId === null) {
-    return '# this build publishes no app binding, so which app it keys into the'
-      + ' store cannot be read from here.';
+    return '# this build publishes no app binding, so it predates the build that'
+      + ' does: which app it keys into the store cannot be read from here.';
   }
   return `# app binding ${runtime.appId}, stated by the operator ${runtime.appStated}`;
 }
