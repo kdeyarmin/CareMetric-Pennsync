@@ -1,15 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   AUDITED_ENTITIES, DESTINATIONS, FORMAT, FORMAT_VERSION, MANIFEST_FILE, READ_OPERATIONS, REALTIME_OPERATIONS, SERVED,
-  WRITE_OPERATIONS, classifyOperation, compare, destinationFor, main, measureDestinations, parseBaseline,
-  refineRetired, summarise,
+  TENANT_DECISION_FILE, WRITE_OPERATIONS, classifyOperation, compare, destinationFor, main,
+  measureDestinations, parseBaseline, refineGlobalReference, refineRetired, summarise,
 } from './tools-frontend-destination.mjs';
 import { measureSurface } from './tools-base44-surface.mjs';
+import { snakeCase } from './tools-entity-schema-plan.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 const baseline = (maximum_unserved) => JSON.stringify({ format: FORMAT, version: FORMAT_VERSION, maximum_unserved });
@@ -86,18 +87,19 @@ test('the activity trail succeeds a retired LOG table and nothing else', () => {
 });
 
 test('the measured frontend is two populations, and the smaller one is the surprise', () => {
-  const report = compare(measureDestinations(repository), JSON.parse(baseline(203)));
+  const report = compare(measureDestinations(repository), JSON.parse(baseline(208)));
   assert.equal(report.total, 445);
-  assert.equal(report.served, 242);
-  // 203 of 445. Stage J reads as "replace call sites tier by tier", which is a
-  // refactor whose size is the count; 46% of them reach a domain the migration
+  assert.equal(report.served, 237);
+  // 208 of 445. Stage J reads as "replace call sites tier by tier", which is a
+  // refactor whose size is the count; 47% of them reach a domain the migration
   // has DECIDED not to carry, and each one needs a product answer rather than
   // an edit.
-  assert.equal(report.unserved, 203);
+  assert.equal(report.unserved, 208);
   assert.equal(report.served + report.unserved, report.total);
   assert.deepEqual(report.by_destination, {
-    record_store: 232, broker_family: 7, activity_trail: 3,
-    no_table: 193, broker_is_read_only: 9, no_realtime_seam: 1, export_archive_only: 0, undeclared: 0,
+    record_store: 227, broker_family: 7, activity_trail: 3,
+    no_table: 193, broker_is_read_only: 9, global_reference_is_read_only: 5,
+    no_realtime_seam: 1, export_archive_only: 0, undeclared: 0,
   });
   // The training domain alone is more call sites than the broker family serves
   // in total, and it is `hub` — a different destination entirely.
@@ -107,7 +109,7 @@ test('the measured frontend is two populations, and the smaller one is the surpr
 });
 
 test('every unserved entity names why, so the decision has a subject', () => {
-  const report = compare(measureDestinations(repository), JSON.parse(baseline(203)));
+  const report = compare(measureDestinations(repository), JSON.parse(baseline(208)));
   const entries = Object.entries(report.unserved_entities);
   assert.equal(entries.reduce((total, [, entry]) => total + entry.sites, 0), report.unserved);
   for (const [name, entry] of entries) {
@@ -122,9 +124,9 @@ test('every unserved entity names why, so the decision has a subject', () => {
 
 test('the baseline ratchets one way and refuses a malformed one', () => {
   const measured = measureDestinations(repository);
-  assert.equal(compare(measured, JSON.parse(baseline(203))).regressed, false);
-  assert.equal(compare(measured, JSON.parse(baseline(204))).regressed, false, 'below the ceiling passes');
-  const tightened = compare(measured, JSON.parse(baseline(202)));
+  assert.equal(compare(measured, JSON.parse(baseline(208))).regressed, false);
+  assert.equal(compare(measured, JSON.parse(baseline(209))).regressed, false, 'below the ceiling passes');
+  const tightened = compare(measured, JSON.parse(baseline(207)));
   assert.equal(tightened.regressed, true, 'a call site above the ceiling fails');
   assert.equal(tightened.within_baseline, false);
   assert.throws(() => parseBaseline('{'), /BASELINE_INVALID_JSON/);
@@ -155,6 +157,7 @@ test('an undeclared call site is still counted, so a failing run reports every s
     writeFileSync(join(root, 'src', 'screen.jsx'),
       'base44.entities.Invented.list();\nbase44.entities.Known.create({});\n');
     writeFileSync(join(root, MANIFEST_FILE), JSON.stringify({ entities: { Known: 'port' } }));
+    writeFileSync(join(root, TENANT_DECISION_FILE), JSON.stringify({ entities: {} }));
     const measured = measureDestinations(root);
     assert.equal(measured.sites.length, 2, 'both call sites are rows');
     assert.deepEqual(measured.undeclared, ['Invented']);
@@ -200,8 +203,81 @@ test('the command line refuses an unknown argument and an unavailable baseline',
 test('the summary names what cannot land and stays quiet about what can', () => {
   const lines = [];
   assert.equal(main(['--summary'], { repository, log: (line) => lines.push(line) }), 0);
-  assert.match(lines[0], /445 call sites, 242 can land, 203\/203 cannot/);
+  assert.match(lines[0], /445 call sites, 237 can land, 208\/208 cannot/);
   assert.ok(lines.some(line => /no_table: 193/.test(line)));
   assert.ok(lines.some(line => /broker_is_read_only: 9/.test(line)));
   assert.ok(!lines.some(line => /record_store/.test(line)), 'the served destinations are not the finding');
+});
+
+const RECORD_STORE_SQL = join('services', 'authority-store', 'supabase', 'record-migrations',
+  '20260919170000_record_store.sql');
+
+/** The eight entities the tenant decisions call D83 reference data. */
+const globalEntities = () => Object.entries(
+  JSON.parse(readFileSync(join(repository, TENANT_DECISION_FILE), 'utf8')).entities)
+  .filter(([, decision]) => decision?.kind === 'global').map(([entity]) => entity);
+
+/**
+ * The generator's OWN name for the table, never a second spelling of the rule.
+ * A hand-rolled `AIModelConfiguration` came out `aimodel_configuration` and the
+ * assertion failed for the wrong reason, which is how a test reads as a finding.
+ */
+const tableName = (entity) => snakeCase(entity);
+
+test('a write to a D83 global reference table has nowhere to land', () => {
+  // The entity is `port` and the table exists, so the disposition alone says
+  // `record_store` and is wrong — the same shape as the broker split.
+  assert.equal(destinationFor('port', 'update'), 'record_store');
+  assert.equal(refineGlobalReference('record_store', 'update', true), 'global_reference_is_read_only');
+  assert.equal(refineGlobalReference('record_store', 'delete', true), 'global_reference_is_read_only');
+  // Reads are unaffected: these tables exist to be read.
+  assert.equal(refineGlobalReference('record_store', 'list', true), 'record_store');
+  assert.equal(refineGlobalReference('record_store', 'get', true), 'record_store');
+  // It refines nothing else, and invents no destination for an already-placed
+  // site: a `hub` write stays `no_table` whatever the tenant decision says.
+  assert.equal(refineGlobalReference('no_table', 'update', true), 'no_table');
+  assert.equal(refineGlobalReference('record_store', 'update', false), 'record_store');
+  assert.ok(!SERVED.includes('global_reference_is_read_only'));
+});
+
+/**
+ * The refinement is only sound while the store really refuses these writes, so
+ * it is read out of the emitted SQL rather than taken from D83's word. **The
+ * refusal is the GRANT**: these tables grant no caller role anything, so
+ * `authenticated` never reaches a policy and the error is `permission denied
+ * for table` — which is why a definer contract owned by the record owner could
+ * still write them if D83 were revisited.
+ *
+ * Whichever way that goes, this test fails first: a grant or a write policy
+ * appearing on one of these tables makes the destination wrong.
+ */
+test('the store refuses those writes, and by the grant rather than the policy', () => {
+  const sql = readFileSync(join(repository, RECORD_STORE_SQL), 'utf8');
+  const entities = globalEntities();
+  assert.equal(entities.length, 8, 'the decision file moved; re-read which tables this covers');
+  for (const entity of entities) {
+    const table = `"pennsync_records"."${tableName(entity)}"`;
+    assert.ok(sql.includes(`revoke all on ${table} from public;`), `${entity} is not revoked`);
+    const policies = [...sql.matchAll(
+      new RegExp(`create policy "([^"]+)" on ${table.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} for (\\w+)`, 'g'))];
+    assert.deepEqual(policies.map(match => match[2]), ['select'],
+      `${entity} has a policy other than its read: ${policies.map(match => match[1]).join(', ')}`);
+    assert.equal(sql.includes(`grant select on ${table}`), false, `${entity} grants a caller a read`);
+    assert.equal(sql.includes(`grant insert on ${table}`), false, `${entity} grants a caller a write`);
+    assert.equal(new RegExp(`grant [a-z, ]+ on ${table.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`)
+      .test(sql), false, `${entity} grants a caller role something`);
+  }
+});
+
+test('the five sites this moves are named, so the correction has a subject', () => {
+  const measured = measureDestinations(repository);
+  const moved = measured.sites.filter(site => site.destination === 'global_reference_is_read_only');
+  assert.deepEqual(moved.map(site => `${site.entity}.${site.operation}`).sort(), [
+    'ComplianceRule.create', 'ComplianceRule.update',
+    'MedicareComplianceRule.create', 'MedicareComplianceRule.update',
+    'MedicareGuideline.update',
+  ]);
+  // Every one is `port`, which is the finding: the disposition is right and the
+  // call still cannot land.
+  for (const site of moved) assert.equal(site.disposition, 'port', site.file);
 });

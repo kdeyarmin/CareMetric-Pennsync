@@ -2713,14 +2713,29 @@ their entity dispositions — `pnpm run check:frontend-destination`, added
 
 | | Call sites | |
 | --- | ---: | --- |
-| `record_store` | 232 | a table exists |
+| `record_store` | 227 | a table exists |
 | `broker_family` | 7 | the generic family serves that read |
 | `activity_trail` | 3 | D25's successor |
-| **has somewhere to land** | **242** | |
+| **has somewhere to land** | **237** | |
 | `no_table` | 193 | `hub` (119) and `preserved_paused` (74) — no table here at all |
 | `broker_is_read_only` | 9 | a write to an entity the family serves readonly |
+| `global_reference_is_read_only` | 5 | a write to a D83 reference table nothing may write |
 | `no_realtime_seam` | 1 | `subscribe`, which the owned store has nowhere to put |
-| **cannot land** | **203** | |
+| **cannot land** | **208** | |
+
+The last row arrived on 2026-09-25 and is the same shape as the broker split one
+line above it, found from the other end while porting those very entities. Five
+sites — `ComplianceRule.create`/`.update`, `MedicareComplianceRule.create`/
+`.update` and `MedicareGuideline.update` — are `port` over tables that exist and
+still cannot land, because D83 says a `global` reference table is written by
+migration and never at run time, and the store implements it. **The refusal is
+the GRANT, not the policy**: all eight of those tables grant no caller role
+anything, so `authenticated` never reaches a policy and the error is `permission
+denied for table`. Which matters, because a definer contract owned by the record
+owner *could* write them — "no write path" is a decision D83 takes, not a wall
+the schema builds, so if that decision is revisited these five become servable
+with no schema change. The tool reads those grants out of the emitted SQL rather
+than trusting D83's word, and fails if one appears.
 
 **"Has somewhere to land" is NOT "is ready to move", and reading it as the
 second sizes this stage at a fraction of itself.** The checker says so in its
@@ -2742,9 +2757,12 @@ routed when its `Entity.operation` pair was DECLARED in the route table, and
 reported 36. Run properly — each site's own arguments put through the route's
 `request` — **none of those 36 succeeded**: 31 ask the staff list to sort by
 `created_date` or `full_name`, which the roster contract projects neither of
-(the carried `user` table has no name column at all, D69), and the other 5
-asked for more rows than its ceiling. A declaration is not a success, and the
-only way to tell them apart is to run the call.
+(the carried `user` table has no name column at all, D69). The other 5 were
+refused for asking more rows than the contract's ceiling, which is no longer a
+refusal: a screen naming `ALL_ROWS` is naming a bound it does not have, so the
+complete-set proof answers that risk where the ceiling only approximated it,
+and those 5 are served today. A declaration is not a success, and the only way
+to tell them apart is to run the call.
 
 Measured on `main` after #294:
 
@@ -2754,16 +2772,39 @@ Measured on `main` after #294:
 > wider generic family could serve 1 reads and 0 writes above D16's ceiling;
 > 212 need a named capability
 
-**As of #294 on `main`: 29 of the 242 call sites that have somewhere to land
-are served, out of 445 entity call sites in the app.** Both denominators are
-real and they are different populations — 445 is every entity call the frontend
-makes, 242 is the subset with a table behind it — so a served figure quoted
-without saying which one it is over is the same label error this page warns
-about above. 30 of the remaining 213 are sites a declared route REFUSES: the
+And after #295 and #300, which is the current reading:
+
+> entity routes: 21 declared, 38/237 landable call sites SERVED, 199 still to
+> adopt — 30 of those are sites a declared route REFUSES (`User.list:sort`),
+> and 2 pass arguments this cannot read — of those 199, across 38 entities: a
+> wider generic family could serve 1 reads and 0 writes above D16's ceiling;
+> 198 need a named capability
+
+**As of #300 on `main`: 38 of the 237 call sites that have somewhere to land
+are served, out of 445 entity call sites in the app.** The numerator moved on
+#295 (batch C's nine reference and configuration sites) and not on #300, which
+changed the denominator only. Both denominators are real and they are different
+populations — 445 is every entity call the frontend makes, 237 is the subset
+with a table behind it — so a served figure quoted without saying which one it
+is over is the same label error this page warns about above. **The smaller
+denominator moved on its own**: 242 became 237 when D83's five global-reference
+writes stopped being counted as landable, so the first reading above is a
+record of #294 and the second is the current one. Re-derive them rather than
+quoting them: every merge that points a screen moves the numerator and every
+migration that carries an entity moves the denominator.
+
+**And this page carries two remainders that are not the same population, which
+is worth saying because they were briefly the same number.** The route gate's
+remainder — call sites with nowhere to land *yet* — is **199**. The destination
+gate's is **208**: call sites with nowhere to land *at all*. On the
+head where this paragraph was first written the two were both 208, so either
+number read as correct there, and the rebase over #295 moved the first to 199
+and left the second alone. A sentence that had been right became wrong with
+nothing changing in it. 30 of the 199 are sites a declared route REFUSES: the
 route exists and the *screen* has to change, which is per-screen work rather
 than per-entity work, and that is the more useful number for planning than the
-213. Sites whose arguments the tool cannot read count as unserved, because a
-gate that guessed would be back to counting declarations.
+199 itself. Sites whose arguments the tool cannot read count as unserved,
+because a gate that guessed would be back to counting declarations.
 
 **The gate has three states, and the third one is why the batches can work at
 all.** Proved, refused, and declared-but-unproved. A call site that passes a
@@ -2777,6 +2818,19 @@ call site is unreadable is declared, permitted, and reported in
 `unproved_routes` — never counted as adopted, and printed, because an unproven
 route nobody can see is how a declaration comes to read as coverage again.
 Landed in #294.
+
+**Two smaller properties of the same gate, both of them corrections.** A served
+site is removed from the remainder as a MULTISET rather than once per file and
+operation, because one file can call the same operation twice with only one of
+them served — the per-key answer standing in for a per-call one, one layer out
+in the arithmetic, which made the buckets sum short and failed the gate's own
+test (#297; latent until a route existed over such a key). And a row id passed
+as a variable is READABLE while a sort or a limit is not: `update(recordId,
+fields)` was wholly unmeasurable on account of its first argument, which hid the
+payload beside it, and the id's value decides nothing a route can be wrong
+about. Keyed on the operation and the position — `get`, `update`, `delete` at 0
+and nothing else — because a read's top-level arguments really are shape. That
+is why the readable write surface is **31 sites rather than 7** (#300).
 
 **The ceiling on avoiding the remaining work is measured, and the write half is
 zero.** The obvious alternative to writing a capability per entity is to widen
@@ -2814,11 +2868,17 @@ about 33 hollowed-out pages — comes from a filename scan rather than that tool
 with 2 of 49 components having no importer found, so treat the first pair as
 measured and the second as indicative.
 
-**203 of 445 — 46% — reach a domain the migration has decided not to carry.**
-119 of them are the training domain, whose destination is the Hub; 75 are
-`preserved_paused`. Each needs a product answer about what the feature becomes,
-not an edit somebody has not got to yet, so a plan that sizes this stage by the
-call-site count is sizing the wrong thing.
+**208 of 445 — 47% — have no destination in the owned store, and 203 of those
+reach a domain the migration has decided not to carry.** The other five are the
+D83 writes above, whose tables ARE carried, for reads: what has no destination
+there is the operation rather than the domain, and conflating the two is how
+this page would start overstating the product work. 119 of the 203 are the
+training domain, whose destination is the Hub; 75 are `preserved_paused`. **That
+75 is not an off-by-one against the table's 74**, which counts `preserved_paused`
+inside `no_table` only — the 75th is the `no_realtime_seam` site, whose entity is
+also `preserved_paused`. Each needs a product answer about what the feature
+becomes, not an edit somebody has not got to yet, so a plan that sizes this
+stage by the call-site count is sizing the wrong thing.
 
 The nine `broker_is_read_only` are the ones a per-ENTITY reading would have
 called fine: the family serves `Announcement`, `FacilityDocumentationRule` and

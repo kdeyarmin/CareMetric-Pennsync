@@ -145,6 +145,33 @@ export function evaluateArgument(text, constants, nested = false) {
 }
 
 /**
+ * The argument positions that hold a ROW IDENTIFIER, by operation.
+ *
+ * An opaque id is the one top-level argument whose VALUE decides nothing a
+ * route can be wrong about. The rule above — an unknown inside an object
+ * stands in for itself, an unknown as a whole argument does not — is right
+ * because the top-level arguments of a read are a sort and a limit, and those
+ * ARE shape. `Entity.update(recordId, fields)` is the other case entirely: the
+ * route reads `fields`, and `recordId` is a value the store resolves. Treating
+ * it as unreadable made the whole site unreadable and hid the payload beside
+ * it, which is a measurement problem dressed as caution.
+ *
+ * Narrow on purpose, by operation AND position. A placeholder id put through a
+ * route that checks an id's shape is REFUSED rather than served, which is the
+ * fail-closed direction, and no read's sort or limit is in this table.
+ */
+export const IDENTIFIER_POSITIONS = Object.freeze({
+  get: Object.freeze([0]),
+  update: Object.freeze([0]),
+  delete: Object.freeze([0]),
+});
+
+/** Whether this argument is an id whose value the route cannot depend on. */
+export function isIdentifierPosition(operation, index) {
+  return (IDENTIFIER_POSITIONS[operation] ?? []).includes(index);
+}
+
+/**
  * Every entity call site with the arguments it passes.
  *
  * Re-scanned here with the ratchet's own walker and matcher rather than taken
@@ -163,7 +190,10 @@ export function callArguments(repository) {
       const operation = tail ? tail[1] : '';
       const raw = tail ? argumentText(text, after + tail[0].length) : null;
       const parts = raw === null ? null : splitArguments(raw);
-      const values = parts === null ? null : parts.map(part => evaluateArgument(part, constants));
+      const values = parts === null ? null : parts.map((part, index) => {
+        const value = evaluateArgument(part, constants);
+        return value.known || !isIdentifierPosition(operation, index) ? value : known(UNKNOWN_VALUE);
+      });
       sites.push(Object.freeze({
         file: relative(repository, file),
         entity: match[1],
