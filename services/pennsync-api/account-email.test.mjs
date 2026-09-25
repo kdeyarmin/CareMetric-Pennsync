@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readdirSync, readFileSync } from 'node:fs';
 import { AUTHORITY_CONTRACT } from './authority.mjs';
 import { createHandler } from './app.mjs';
 import { HANDLERS, HANDLER_NAMES } from './handlers.mjs';
@@ -164,8 +165,15 @@ test('an unknown parameter is refused before the caller is even considered', asy
  * own success envelope for the integration URL, and records every request, so a
  * test can say not only what came back but whether the network was reached.
  */
-const releasedServe = (tenantRole = 'agency_admin', { broker = true } = {}) => {
+const ROSTER_RPC = `${TARGET}/rest/v1/rpc/pennsync_contract_roster_list`;
+/** One roster page, in `contract_roster_list`'s own envelope. */
+const rosterPage = (emails, next = null) => ({
+  entries: emails.map((email, index) => ({ id: `${index}`.padStart(24, '0'), email, is_active: true })),
+  next,
+});
+const releasedServe = (tenantRole = 'agency_admin', { broker = true, roster = [() => rosterPage(['colleague@example.test'])] } = {}) => {
   const sent = [];
+  const asked = [];
   const config = loadConfig(env({
     PENNSYNC_API_INTEGRATIONS_URL: RUNTIME,
     ...(broker ? { [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE } : {}),
@@ -176,11 +184,20 @@ const releasedServe = (tenantRole = 'agency_admin', { broker = true } = {}) => {
         sent.push({ url: String(url), body: JSON.parse(init.body) });
         return Response.json({ success: true, result: { accepted: true, delivered: false, provider: 'sendgrid' } });
       }
+      // The roster read goes through the REAL contract capability, for the
+      // reason the send goes through the real integration one: a stub would
+      // pass with the binding deleted.
+      if (String(url) === ROSTER_RPC) {
+        const body = JSON.parse(init.body);
+        asked.push(body);
+        const page = roster[Math.min(asked.length - 1, roster.length - 1)];
+        return Response.json(page(body));
+      }
       return Response.json(context(tenantRole));
     },
-    records: untouchable('records'), contract: untouchable('contract'), audit: untouchable('audit'),
+    records: untouchable('records'), audit: untouchable('audit'),
   });
-  return { handler, sent };
+  return { handler, sent, asked };
 };
 
 test('a released deployment sends each message, and the runtime sees one call per request', async () => {
@@ -202,6 +219,154 @@ test('a released deployment sends each message, and the runtime sees one call pe
     assert.equal(sent[0].body.params.content_type, 'text/html', name);
     assert.equal(sent[0].body.params.to, body[name].email, name);
   }
+});
+
+test('the recipient is resolved against the caller own agency, and the roster is asked for it', async () => {
+  for (const name of NAMES) {
+    const { handler, sent, asked } = releasedServe();
+    const response = await handler(post(name, body[name]));
+    assert.equal(response.status, 200, name);
+    // The read happened, against the agency the request names and no other.
+    assert.equal(asked.length, 1, `${name} asked the roster once`);
+    assert.equal(asked[0].p_agency, 'agency-a', name);
+    assert.equal(sent[0].body.params.to, 'colleague@example.test', name);
+  }
+});
+
+test('an address nobody in the agency holds is refused, and nothing is sent', async () => {
+  // D98. The finding this closes: `requireSender` asks who the caller is, and
+  // with an unbound `email` these two are a branded relay to any address — the
+  // welcome notice with a working temporary password in it.
+  for (const name of NAMES) {
+    for (const roster of [
+      [() => rosterPage([])],
+      [() => rosterPage(['someone.else@example.test'])],
+      [() => rosterPage(['colleague@example.test.attacker.example'])],
+      [() => rosterPage(['not-outsider@example.test'])],
+    ]) {
+      const { handler, sent } = releasedServe('agency_admin', { roster });
+      const response = await handler(post(name, { ...body[name], email: 'outsider@example.test' }));
+      assert.equal(response.status, 403, name);
+      assert.equal((await response.json()).error, 'RECIPIENT_NOT_IN_AGENCY', name);
+      assert.equal(sent.length, 0, `${name} put a message on the wire for an outsider`);
+    }
+  }
+});
+
+test('a match that is merely contained in a roster address is not a match', async () => {
+  // Oriented deliberately, and the first draft of the test above was NOT: it
+  // asked for `outsider@…` against a roster holding `colleague@…`, which no
+  // comparison would accept, so swapping the equality for `includes` passed it.
+  // Here the roster holds a LONGER address that contains the requested one, so a
+  // substring comparison answers yes and mails somebody who was never asked for.
+  for (const name of NAMES) {
+    const { handler, sent } = releasedServe('agency_admin',
+      { roster: [() => rosterPage(['xcolleague@example.test'])] });
+    const response = await handler(post(name, { ...body[name], email: 'colleague@example.test' }));
+    assert.equal(response.status, 403, name);
+    assert.equal((await response.json()).error, 'RECIPIENT_NOT_IN_AGENCY', name);
+    assert.equal(sent.length, 0, `${name} mailed a different roster member`);
+  }
+});
+
+test('the roster copy of the address is what reaches the provider and the message', async () => {
+  // Not the caller's string. They differ only in case, and taking the store's
+  // copy means the provider sees an address this store vouches for.
+  for (const name of NAMES) {
+    const { handler, sent } = releasedServe('agency_admin',
+      { roster: [() => rosterPage(['Colleague@Example.test'])] });
+    const response = await handler(post(name, { ...body[name], email: 'colleague@EXAMPLE.test' }));
+    assert.equal(response.status, 200, name);
+    assert.equal(sent[0].body.params.to, 'Colleague@Example.test', name);
+    assert.ok(sent[0].body.params.body.includes('Colleague@Example.test'), `${name} body`);
+    assert.ok(!sent[0].body.params.body.includes('colleague@EXAMPLE.test'), `${name} body keeps the caller string`);
+  }
+});
+
+test('a recipient on a later roster page is found, and the walk cannot spin', async () => {
+  // Bounded the way `generateUserRosterPDF`'s walk is. The third page repeats
+  // its own cursor, which is the shape that would spin if `next === after` did
+  // not break.
+  const { handler, sent, asked } = releasedServe('agency_admin', {
+    roster: [
+      () => rosterPage(['a@example.test'], 'cursor-1'),
+      () => rosterPage(['colleague@example.test'], 'cursor-2'),
+    ],
+  });
+  const response = await handler(post('sendWelcomeEmail', body.sendWelcomeEmail));
+  assert.equal(response.status, 200);
+  assert.equal(asked.length, 2, 'the second page was asked for with the first cursor');
+  assert.equal(asked[1].p_after, 'cursor-1');
+  assert.equal(sent.length, 1);
+
+  const spin = releasedServe('agency_admin', {
+    roster: [() => rosterPage(['a@example.test'], 'cursor-1'), body => rosterPage(['b@example.test'], body.p_after)],
+  });
+  const refused = await spin.handler(post('sendWelcomeEmail', body.sendWelcomeEmail));
+  assert.equal(refused.status, 403);
+  assert.equal((await refused.json()).error, 'RECIPIENT_NOT_IN_AGENCY');
+  assert.equal(spin.asked.length, 2, 'a cursor equal to its own input stopped the walk');
+  assert.equal(spin.sent.length, 0);
+});
+
+test('a paused deployment resolves no recipient, so it cannot be asked who is in an agency', async () => {
+  // `serve` hands the handler a `contract` that throws if it is reached, so this
+  // is asserted by the harness rather than by reading the order. A 503 that had
+  // read the roster first would be an oracle: an admin of one agency could ask
+  // whether an address belongs to it without any channel being open.
+  for (const name of NAMES) {
+    const response = await serve('agency_admin')(post(name, body[name]));
+    assert.equal(response.status, 503, name);
+    assert.equal((await response.json()).error, 'OUTBOUND_DELIVERY_RELEASE_PAUSED', name);
+  }
+});
+
+test('readiness refuses a released sender while delivery is unset, and says which', async () => {
+  // D98's second half. Without this a rollout probe passes while every send
+  // answers 503 — the shape `integrationsRequired` already guards one layer down.
+  const paused = publicReadiness(loadConfig(env({ PENNSYNC_API_INTEGRATIONS_URL: RUNTIME })));
+  assert.equal(paused.deliveryRequired, true, 'a released sender needs delivery');
+  assert.equal(paused.deliveryReleased, false);
+  assert.equal(paused.ready, false, 'a service that refuses every send is not ready');
+
+  const released = publicReadiness(loadConfig(env({
+    PENNSYNC_API_INTEGRATIONS_URL: RUNTIME, [DELIVERY_RELEASE_ENV]: DELIVERY_RELEASE_VALUE,
+  })));
+  assert.equal(released.deliveryRequired, true);
+  assert.equal(released.ready, true, 'with both switches on it serves');
+
+  // And a release that contains no sender is unaffected, which is what keeps
+  // this from reading as a service-wide requirement.
+  const other = publicReadiness(loadConfig(env({ PENNSYNC_API_FUNCTIONS: 'validatePatientData' })));
+  assert.equal(other.deliveryRequired, false);
+  assert.equal(other.deliveryReleased, false);
+  assert.equal(other.ready, true);
+});
+
+test('the registry flag and the module that gates agree, in both directions', () => {
+  // D92's cross-check for the other switch. A handler that gates without the
+  // flag is a deployment that reports ready and sends nothing; a handler with
+  // the flag and no gate is a name in a wave whose promise it breaks.
+  const dir = new URL('.', import.meta.url);
+  const gating = new Set();
+  for (const file of readdirSync(dir)) {
+    if (!file.endsWith('.mjs') || file.endsWith('.test.mjs')) continue;
+    const source = readFileSync(new URL(file, dir), 'utf8');
+    if (!/requireDeliveryReleased\s*\(/.test(source) || file === 'outbound-delivery.mjs') continue;
+    for (const match of source.matchAll(/export async function ([A-Za-z][A-Za-z0-9]*)/g)) gating.add(match[1]);
+  }
+  assert.deepEqual([...gating].sort(), [...NAMES].sort(), 'the gating senders are the two known ones');
+
+  const registry = readFileSync(new URL('handlers.mjs', dir), 'utf8');
+  const start = registry.indexOf('export const HANDLERS');
+  const blocks = [...registry.slice(start).matchAll(/\n {2}([A-Za-z][A-Za-z0-9]*): Object\.freeze\(\{/g)];
+  const body = registry.slice(start);
+  blocks.forEach((entry, index) => {
+    const block = body.slice(entry.index, blocks[index + 1]?.index ?? body.length);
+    const flagged = /needsDelivery:\s*true/.test(block);
+    const gates = [...gating].some(name => block.includes(`${name}(`));
+    assert.equal(flagged, gates, `${entry[1]}: needsDelivery must match whether it gates delivery`);
+  });
 });
 
 test('a released deployment still refuses a caller who may not send, and sends nothing', async () => {

@@ -1496,12 +1496,19 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
 
   Note also what the six names were, because it bears on wave 4:
   `sendAccountReadyEmail` and `sendWelcomeEmail` are now **present on the
-  running revision**, which they were not before. They are refusal-only — they
-  authorize the caller and then answer `OUTBOUND_DELIVERY_RELEASE_PAUSED` — so
-  their presence changes nothing about what the service sends. It does mean the
-  name check no longer keeps them out of a release value, so the only thing
-  keeping them unreleased is what the operator pastes, and §4's
-  `Core.SendEmail` row is the decision that governs it.
+  running revision**, which they were not before. **What they do there changed
+  with D97 and this paragraph is read together with it**: the send is built, and
+  it is gated on `PENNSYNC_API_DELIVERY` reading exactly `enabled-v1`. So on a
+  deployment where that variable is unset — which is every one of them at the
+  time of writing — both still authorize the caller and then answer
+  `OUTBOUND_DELIVERY_RELEASE_PAUSED`, and their presence changes nothing about
+  what the service sends; on one where it is set, they send. Their presence in a
+  release value is therefore no longer the only question about them, and there
+  are now three independent things keeping them unreleased rather than one: the
+  ladder's `OWNER_HELD` refuses to emit either name (`#267`), that variable is
+  unset, and since D98 the service refuses to report itself `ready` if a
+  released set contains one while it stays unset. §4's `Core.SendEmail` row is
+  still the decision that governs the flip.
 
   **Wave 4 was released on 2026-09-25 at 06:16Z with both names cut out of the
   value by hand**, so for a few hours the exclusion protecting that hold lived

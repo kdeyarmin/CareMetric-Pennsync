@@ -19,6 +19,12 @@
 // request was wrong. The originals validate the body AFTER the pause, so a
 // paused deployment cannot be used to probe which fields a sender wants.
 //
+// **D98 then bound the recipient.** A release review found that `requireSender`
+// asks who the caller is and nothing asked who the message may go to, so an
+// `agency_admin` could have sent either of these to any address on the
+// internet. `agencyRecipient` below resolves the address against the caller's
+// own agency roster; the reasoning is on that function and in D98.
+//
 // **What reaches the provider, stated plainly because it is the whole of the
 // owner's decision.** `sendAccountReadyEmail` puts an address and a display
 // name on the wire. `sendWelcomeEmail` puts a working temporary password in the
@@ -73,6 +79,53 @@ function requireSender(actor, params, allowed) {
 }
 
 /**
+ * The recipient, resolved against the caller's own agency roster.
+ *
+ * **D98, and the reason it is not the caller's string that reaches the
+ * provider.** D40's widening replaces a platform `admin` with an
+ * `agency_admin`, and its standing instruction is to re-read what the platform
+ * tier was STRUCTURALLY preventing rather than what it permitted. Here that is
+ * the whole finding: one trusted operator sending branded mail is not the same
+ * capability as every tenant administrator sending it, and `requireSender`
+ * asks only who the caller is. With an unbound `email` these two endpoints are
+ * a PennSync-branded relay to any address on the internet — and
+ * `sendWelcomeEmail` puts a working temporary password in the body, so the
+ * relayed message is a credential notice carrying the product's own branding.
+ * That is D44's shape exactly: the check the role gate makes necessary.
+ *
+ * `caller_roster(p_agency)` is the population, through `listAgencyRoster`,
+ * because it is already the answer to "who is in the agency I am acting in" —
+ * active memberships in that agency, with the verified address the carried
+ * `user` table has no column for (D41). So there is no scope to build here and
+ * nothing to derive: the contract's own gate and the policies decide, and a
+ * caller who does not hold the agency never gets past them.
+ *
+ * Two properties are deliberate. The page walk is BOUNDED, the way
+ * `generateUserRosterPDF`'s is, so a contract answering a cursor equal to its
+ * own input cannot spin. And what reaches `to` is the ROSTER's address, not the
+ * request's: the two differ only in case, and taking the store's copy means the
+ * address the provider sees is one this store vouches for rather than one a
+ * caller typed.
+ */
+async function agencyRecipient(contract, requested) {
+  const wanted = requested.trim().toLowerCase();
+  let after;
+  for (let page = 0; page < 200; page += 1) {
+    const answer = await contract('listAgencyRoster', after === undefined ? {} : { after });
+    const entries = Array.isArray(answer?.entries) ? answer.entries : [];
+    const match = entries.find(entry =>
+      typeof entry?.email === 'string' && entry.email.trim().toLowerCase() === wanted);
+    if (match) return match.email;
+    if (!answer?.next || answer.next === after) break;
+    after = answer.next;
+  }
+  // Refused rather than answered, and named for what is wrong: an address
+  // nobody in this agency holds is not a field error, it is the one thing this
+  // capability may not do.
+  fail(403, 'RECIPIENT_NOT_IN_AGENCY');
+}
+
+/**
  * The account-ready notice: an address and a display name reach the provider.
  *
  * The original requires `email` and interpolates `full_name` without checking
@@ -80,14 +133,20 @@ function requireSender(actor, params, allowed) {
  * undefined!". Requiring it is a narrowing and is the port's, not the
  * original's.
  */
-export async function sendAccountReadyEmail({ actor, params, config, integration }) {
+export async function sendAccountReadyEmail({ actor, params, config, integration, contract }) {
   requireSender(actor, params, ['email', 'full_name']);
   requireDeliveryReleased(config);
   if (!address(params.email)) fail(400, 'EMAIL_REQUIRED');
   if (!shortText(params.full_name)) fail(400, 'FULL_NAME_REQUIRED');
+  // After the pause, deliberately: a paused deployment answers 503 without
+  // reading the roster, so it cannot be used to ask whether an address belongs
+  // to an agency. The order is the originals' — authorization, pause, body —
+  // with the recipient resolved last because it is the first step that reads
+  // anything.
+  const to = await agencyRecipient(contract, params.email);
 
   await integration('SendEmail', {
-    to: params.email,
+    to,
     from_name: 'PennSync by CareMetric',
     subject: 'Your PennSync by CareMetric account is ready — you can now sign in',
     content_type: 'text/html',
@@ -98,7 +157,7 @@ export async function sendAccountReadyEmail({ actor, params, config, integration
       intro: 'Great news — your PennSync by CareMetric account has been fully verified and activated. You can now sign in any time.',
       sections: [
         {
-          rows: [['Your login email', params.email]],
+          rows: [['Your login email', to]],
         },
         {
           paragraphs: [
@@ -121,13 +180,14 @@ export async function sendAccountReadyEmail({ actor, params, config, integration
   });
 
   // The original's own answer, including the address in the message. It is the
-  // caller's own input coming back, so it discloses nothing the request did not
-  // already carry.
-  return { success: true, message: `Account-ready email sent to ${params.email}` };
+  // caller's own input coming back — normalised to the roster's copy, which the
+  // caller had to name to get this far — so it discloses nothing the request did
+  // not already carry.
+  return { success: true, message: `Account-ready email sent to ${to}` };
 }
 
 /** The welcome notice, which also puts a temporary password in the message body. */
-export async function sendWelcomeEmail({ actor, params, config, integration }) {
+export async function sendWelcomeEmail({ actor, params, config, integration, contract }) {
   requireSender(actor, params, ['email', 'full_name', 'temporary_password']);
   requireDeliveryReleased(config);
   // The original refuses all three absences with one message; this names the
@@ -135,9 +195,12 @@ export async function sendWelcomeEmail({ actor, params, config, integration }) {
   if (!address(params.email)) fail(400, 'EMAIL_REQUIRED');
   if (!shortText(params.full_name)) fail(400, 'FULL_NAME_REQUIRED');
   if (!shortText(params.temporary_password)) fail(400, 'TEMPORARY_PASSWORD_REQUIRED');
+  // The credential half of D98, and the reason the binding is not optional: an
+  // unbound recipient here is a branded message carrying a working password.
+  const to = await agencyRecipient(contract, params.email);
 
   await integration('SendEmail', {
-    to: params.email,
+    to,
     from_name: 'PennSync by CareMetric',
     subject: 'Welcome to PennSync by CareMetric — your account is ready',
     content_type: 'text/html',
@@ -150,7 +213,7 @@ export async function sendWelcomeEmail({ actor, params, config, integration }) {
         {
           heading: 'Your login credentials',
           rows: [
-            ['Email', params.email],
+            ['Email', to],
             ['Temporary password', params.temporary_password],
           ],
         },

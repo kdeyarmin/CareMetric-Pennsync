@@ -935,15 +935,25 @@ export const HANDLERS = Object.freeze({
     // ladder must place these in the integration wave rather than in the
     // read-only one whose whole promise is that nothing in it writes or sends.
     needsIntegration: true,
-    handle({ actor, params, config, integration }) {
-      return sendAccountReadyEmail({ actor, params, config, integration });
+    // Reaches an outbound channel, so `publicReadiness` refuses to report a
+    // released deployment ready while `PENNSYNC_API_DELIVERY` is unset. Without
+    // it a rollout probe passes while every send answers 503 — the same shape
+    // `needsIntegration` exists to prevent one layer down.
+    needsDelivery: true,
+    handle({ actor, params, config, integration, contract }) {
+      return sendAccountReadyEmail({ actor, params, config, integration, contract });
     },
   }),
   sendWelcomeEmail: Object.freeze({
     // The same, and the one whose body carries a temporary password.
     needsIntegration: true,
-    handle({ actor, params, config, integration }) {
-      return sendWelcomeEmail({ actor, params, config, integration });
+    // Reaches an outbound channel, so `publicReadiness` refuses to report a
+    // released deployment ready while `PENNSYNC_API_DELIVERY` is unset. Without
+    // it a rollout probe passes while every send answers 503 — the same shape
+    // `needsIntegration` exists to prevent one layer down.
+    needsDelivery: true,
+    handle({ actor, params, config, integration, contract }) {
+      return sendWelcomeEmail({ actor, params, config, integration, contract });
     },
   }),
   generateUserGuidePDF: Object.freeze({
