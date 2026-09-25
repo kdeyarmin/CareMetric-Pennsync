@@ -37,7 +37,7 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const ENROLLMENT_CONTRACT = 'cm.pennsync.enrollment.v1';
@@ -353,7 +353,12 @@ export function directoryEvidenceReader(evidenceDir) {
   return path => {
     const full = resolve(join(root, path));
     const inside = relative(root, full);
-    check(inside === path && !inside.startsWith('..') && !isAbsolute(inside), 'ENROLL_EVIDENCE_PATH_FORBIDDEN');
+    // `relative` answers in the platform's separator, so on Windows a plan's
+    // `evidence/person-one.txt` came back `evidence\person-one.txt` and this
+    // equality refused every legitimate path. Compare in the plan's own
+    // spelling; the traversal refusals below are unaffected either way.
+    const asGiven = inside.split(sep).join('/');
+    check(asGiven === path && !inside.startsWith('..') && !isAbsolute(inside), 'ENROLL_EVIDENCE_PATH_FORBIDDEN');
     return createReadStream(full);
   };
 }

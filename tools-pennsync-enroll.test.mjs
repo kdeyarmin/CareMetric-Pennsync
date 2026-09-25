@@ -186,6 +186,10 @@ test('the directory reader refuses a path that escapes its root', async t => {
   await mkdir(join(root, 'evidence'), { recursive: true });
   await writeFile(join(root, 'evidence', 'person-one.txt'), EVIDENCE);
   const read = directoryEvidenceReader(root);
+  // A plan spells its evidence path with forward slashes, and that has to read
+  // on every platform. `relative` answers in the platform's separator, which
+  // made this reader forbid every legitimate path on Windows.
+  assert.doesNotThrow(() => read('evidence/person-one.txt').destroy());
   await verifyEnrollmentEvidence(parse(plan()), read);
   for (const path of ['../outside.txt', '/etc/passwd', 'evidence/../../outside.txt']) {
     assert.throws(() => read(path), error => error.code === 'ENROLL_EVIDENCE_PATH_FORBIDDEN', path);
