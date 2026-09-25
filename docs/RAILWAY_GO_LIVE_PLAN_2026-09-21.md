@@ -2721,58 +2721,64 @@ bucket comes to claim more than it measured." So the 242 is a statement about
 TABLES. Whether anything serves the call is a second question, and this tool is
 built not to answer it.
 
-**That second question now has its own instrument — and its headline count was
-retracted within hours of shipping, which is worth recording as carefully as a
-number would have been.** `check:entity-routes` (#290, merged 2026-09-25)
-reports how many of the 242 are "routed", and `routed_sites` counts a site as
-routed when its `Entity.operation` pair is DECLARED in the route table
-(`Object.hasOwn(routes, key)`). It never asks whether that site's own arguments
-survive the route's request. The thread that wrote the tool withdrew the figure
-the same evening for exactly that reason and is rebuilding the gate to run the
-calls and fail closed. **So this page carries no routed or unrouted count at
-all**: how many of the 242 would actually work today is unknown, and a
-declaration count standing in for it is the same error as reading "can land" as
-"ready to move", one layer further in.
+**That second question now has its own instrument, and the first version of it
+got the answer wrong in a way worth keeping on the page.**
+`pnpm run check:entity-routes` (#290, then rebuilt in #291) reports how many of
+the 242 a route can actually serve. Its first version counted a call site as
+routed when its `Entity.operation` pair was DECLARED in the route table, and
+reported 36. Run properly — each site's own arguments put through the route's
+`request` — **none of those 36 succeeded**: 31 ask the staff list to sort by
+`created_date` or `full_name`, which the roster contract projects neither of
+(the carried `user` table has no name column at all, D69), and the other 5
+asked for more rows than its ceiling. A declaration is not a success, and the
+only way to tell them apart is to run the call.
 
-What can be said without that partition, because it does not depend on it:
-**no handler destructures `records`**, so even the 7 `broker_family` sites have
-no route, and the remaining shape is roughly forty entities' worth of named
-contracts and handlers — the same shape as the 80 already built — rather than
-one design decision.
+Measured on `main` after #291:
 
-**The ceiling on avoiding that work is measured, and it is low.** The obvious
-alternative is to widen the generic broker family instead of writing a
-capability per entity, and D16 bounds how far that can go. Running the full
-`auditBrokerCeiling` over **every landable call site**, rather than over any
-routed/unrouted split, so that the retraction above cannot touch it:
+> entity routes: 5 declared, 12/242 landable call sites SERVED, 230 still to
+> adopt — 30 of those are sites a declared route REFUSES (`User.list:sort`),
+> and 1 pass arguments this cannot read — of those 230, across 40 entities: a
+> wider generic family could serve 16 reads and 0 writes above D16's ceiling;
+> 214 need a named capability
 
-- **23 read sites, across 8 entities** — `Announcement`, `DocumentTemplate`,
-  `FacilityDocumentationRule`, `MedicareComplianceRule`, `OnCallShift`,
-  `Physician`, `RegulatoryUpdate`, `VisitPointConfig`.
-- **0 write sites. None at all**, under `brokerReadable && brokerWritable`.
+**So 12 of 445 call sites reach the owned store today.** The 30 refused ones
+are the more useful number for planning than the 230: they are screens where
+the route exists and the *screen* has to change, which is per-screen work
+rather than per-entity work. The single site whose arguments the tool cannot
+read counts as unserved, because a gate that guessed would be back to counting
+declarations.
 
-Both figures are identical whether computed over all landable sites or over any
-routed/unrouted split, which is what makes them safe to quote here. **The zero
-is the one that decides anything**: widening the generic family avoids the
-named-capability work for not a single write, so the per-entity contracts are
-not an expensive approach chosen over a cheap one that was available.
+**The ceiling on avoiding the remaining work is measured, and the write half is
+zero.** The obvious alternative to writing a capability per entity is to widen
+the generic broker family, and D16 bounds how far that can go. #291 made the
+tool run the WHOLE of `auditBrokerCeiling` rather than its read predicate
+alone — the earlier 31 was that narrower reading, and the ceiling also refuses
+an entity that names a clinical subject, carries a credential, can hold a file
+or reaches tenancy through a clinical entity. It passes no manifest exemption,
+deliberately: those exist only for entities already dispositioned `broker`, and
+granting one here would be the tool inventing the decision it is measuring.
 
-**The read figure is not settled, and does not need to be.**
-`check:entity-routes` prints its own as 31, computed from
-`brokerReadable`/`brokerWritable` — the schema's `rls` predicates alone — while
-`auditBrokerCeiling` also refuses a table that reaches tenancy through a
-clinical entity, names a clinical subject, carries a credential or can hold a
-file. The tool's comment says it applies "that same test"; it applies a
-narrower one, so 31 is certainly too generous. Two full runs of the wider test
-then disagreed by two entities, 23 against 25, and that difference is recorded
-rather than resolved: every entity in either reading is getting a named
-contract, so nothing that gets built turns on which is right.
+- **16 read sites, across 5 entities** — `MedicareComplianceRule` (8),
+  `Physician` (3), `DocumentTemplate` (2), `VisitPointConfig` (2),
+  `OnCallShift` (1).
+- **0 write sites. None at all.**
+
+**The zero is the figure that decides anything**: no entity behind the
+remaining call sites plainly permits every write, so widening the generic
+family avoids the named-capability work for not one write. The per-entity
+contracts are not an expensive approach chosen over a cheap one that was
+available. What is left is roughly forty entities' worth of named contracts and
+handlers — the same shape as the 80 already built — rather than one design
+decision.
 
 **What the dropped domains cost, and by which instrument.** `node
-tools-frontend-retired-inventory.mjs --summary` on `5172f30a`: **203 call sites
-across 84 files and 29 entities; 59 files lose everything they read** (reads
-123, writes 79, subscriptions 1), leaving 25 partially affected. Those are
-exact. The shape a person would notice — roughly 9 top-level destinations and
+tools-frontend-retired-inventory.mjs --summary`, re-measured on `main` after
+#291: **203 call sites across 84 files and 29 entities; 59 files lose
+everything they read** (reads 123, writes 79, subscriptions 1), leaving 25
+partially affected. Those are exact, and #291 writes them out per file and per
+entity as `docs/FRONTEND_RETIRED_DOMAIN_INVENTORY.md` — a file is the unit
+somebody edits and an entity is the unit somebody decided about, so that is the
+page to open when this work starts, rather than this count. The shape a person would notice — roughly 9 top-level destinations and
 about 33 hollowed-out pages — comes from a filename scan rather than that tool,
 with 2 of 49 components having no importer found, so treat the first pair as
 measured and the second as indicative.
