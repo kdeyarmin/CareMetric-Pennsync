@@ -31,9 +31,17 @@ const READS = 'services/authority-store/supabase/record-migrations/'
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
-const email = n => ['', 'admin-a', 'clinician-a', 'clinician-empty', 'admin-b'][n]
+const email = n => ['', 'admin-a', 'clinician-a', 'clinician-empty', 'admin-b', 'admin-both'][n]
   + '@example.invalid';
 const ADMIN_A = 1; const CLINICIAN_A = 2; const CLINICIAN_EMPTY = 3; const ADMIN_B = 4;
+// The shared fixtures give every identity exactly ONE membership, which is the
+// one state in which a contract's own agency binding cannot be observed: the
+// policies refuse the other agency's rows by themselves, so an assertion built
+// on those callers alone passes with the binding deleted. Proved by deleting
+// it — all fourteen tests stayed green. This fifth caller holds BOTH agencies
+// as an `agency_admin`, so `caller_agencies()` admits agency B's rows to a
+// request naming agency A and only the contract can keep them out.
+const ADMIN_BOTH = 5;
 const A = 'agency-a'; const B = 'agency-b';
 
 const INCIDENTS = 'select "public"."pennsync_contract_incident_list"($1,$2,$3,$4,$5) as result';
@@ -55,6 +63,21 @@ before(async () => {
     await db.exec(readFileSync(resolve(repository, file), 'utf8'));
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
+
+  await db.exec(`insert into auth.users(id,email,email_confirmed_at)
+      values ('${uid(ADMIN_BOTH)}','${email(ADMIN_BOTH)}',clock_timestamp());
+    insert into auth.sessions(id,user_id,not_after)
+      values ('${sid(ADMIN_BOTH)}','${uid(ADMIN_BOTH)}',clock_timestamp()+interval '1 hour');
+    insert into pennsync_private.identity_map(app_id,auth_user_id,base44_user_id,
+        expected_email,source_evidence_sha256,verified_at)
+      values ('${APP}','${uid(ADMIN_BOTH)}','6aac00000000${uid(ADMIN_BOTH).slice(-12)}',
+        '${email(ADMIN_BOTH)}',repeat('a',64),clock_timestamp());
+    insert into pennsync_private.membership(app_id,id,agency_id,auth_user_id,
+        base44_user_id,tenant_role,status)
+      values ('${APP}','membership-5a','agency-a','${uid(ADMIN_BOTH)}',
+          '6aac00000000${uid(ADMIN_BOTH).slice(-12)}','agency_admin','active'),
+        ('${APP}','membership-5b','agency-b','${uid(ADMIN_BOTH)}',
+          '6aac00000000${uid(ADMIN_BOTH).slice(-12)}','agency_admin','active')`);
 
   for (const [id, agency, first, last] of [
     ['patient-a1', A, 'Ada', 'Lovelace'],
@@ -197,6 +220,41 @@ test('another agency\'s rows are absent from an administrator\'s whole-agency li
   assert.ok(!ids(await adrCases(CLINICIAN_A)).includes('adr-elsewhere'));
   assert.ok(!ids(await credentials(CLINICIAN_A)).includes('cred-elsewhere'));
   assert.ok(!ids(await acks(CLINICIAN_A)).includes('ack-elsewhere'));
+});
+
+test('a caller holding two agencies gets the one they named, not both', async () => {
+  // The test above cannot fail while every caller holds one membership: the
+  // policies hide the other agency's rows on their own, so it would pass with
+  // every agency binding deleted — which was measured, not assumed. This is
+  // the same assertion under a caller for whom the policies admit BOTH
+  // agencies, so each contract's own `p_agency` predicate is the only thing
+  // left. Delete any of the five and this fails.
+  //
+  // `ADMIN_BOTH` is an `agency_admin` in each, so `caller_opens_every_chart`
+  // is true for both and D24 narrows nothing here. The two chart-tenanted
+  // tables are the sharp case: `incident` and `compliance_audit` have no
+  // `agency_id` of their own, so their binding is an EXISTS through the chart
+  // rather than a column comparison, and a reader checking for a tenant
+  // predicate by eye would not find one.
+  const answers = [
+    ['inc-elsewhere', ids(await incidents(ADMIN_BOTH, { limit: 5000 }))],
+    ['aud-elsewhere', ids(await audits(ADMIN_BOTH, { limit: 5000 }))],
+    ['adr-elsewhere', ids(await adrCases(ADMIN_BOTH, { limit: 1000 }))],
+    ['cred-elsewhere', ids(await credentials(ADMIN_BOTH, { limit: 5000 }))],
+    ['ack-elsewhere', ids(await acks(ADMIN_BOTH, { limit: 2000 }))],
+  ];
+  for (const [elsewhere, answer] of answers) {
+    assert.ok(!answer.includes(elsewhere), `${elsewhere} leaked into agency A's list`);
+  }
+  // A positive control, because an assertion that something is absent passes
+  // when the list is empty for an unrelated reason. This caller opens every
+  // chart in agency A, so agency A's rows are all there.
+  assert.ok(answers[0][1].includes('inc-mine') && answers[0][1].includes('inc-theirs'));
+  assert.ok(answers[2][1].includes('adr-mine') && answers[2][1].includes('adr-theirs'));
+  // And naming agency B gets agency B's row rather than nothing, so the
+  // contract is binding to the argument rather than to agency A.
+  assert.deepEqual(ids(await adrCases(ADMIN_BOTH, { agency: B, limit: 1000 })),
+    ['adr-elsewhere']);
 });
 
 /* ------------------------------------------- D45: tenancy is not ownership */
