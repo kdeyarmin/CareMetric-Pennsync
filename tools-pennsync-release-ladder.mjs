@@ -119,21 +119,6 @@ export const OWNER_HELD = Object.freeze({
     + ' releasing it hands invitee names to an outside provider.',
   sendWelcomeEmail: 'The same decision, and the sharper half of it: this message\'s body'
     + ' carries a working temporary password.',
-  // These two are held for a DIFFERENT and worse reason than the pair above,
-  // and the difference is the point. D42 records that their send had no
-  // successor at all: the original calls `base44.users.inviteUser`, which
-  // mints the account AND delivers the link, so the port records intent and
-  // reports `delivery_paused`. The plausible successor is therefore a
-  // SUPABASE AUTH invite rather than a brokered `SendEmail` — and D92's gate
-  // decides from whether `handle` destructures `integration`, which an
-  // `auth.admin` call does not. So for the pair above the gate at least fires
-  // and moves them to another wave; for these two nothing in the build would
-  // fire at all, while the name sat in a live variable. Held until the gate
-  // can see that route, or the owner releases invitations.
-  resendInvitation: 'Sending an invitation to a real person is the owner\'s decision,'
-    + ' and its successor would be a Supabase Auth invite, which D92 cannot see.',
-  resendInvitationV2: 'The production replacement for the same capability (D42),'
-    + ' byte-identical to it, so it is held for the same reason.',
 });
 
 /** The held names, sorted, for reporting. */
@@ -155,7 +140,7 @@ export const releasable = names => names.filter(name => !Object.hasOwn(OWNER_HEL
 export const heldLeaks = waves => waves
   .map(entry => ({
     wave: entry.name,
-    handlers: String(entry.functions).split(',').filter(name => Object.hasOwn(OWNER_HELD, name)),
+    handlers: String(entry.adds).split(',').filter(name => Object.hasOwn(OWNER_HELD, name)),
   }))
   .filter(entry => entry.handlers.length);
 
@@ -557,6 +542,85 @@ export function integrationReach(root) {
 }
 
 /**
+ * The outbound routes a release gate has to be able to SEE.
+ *
+ * D92's gate decides from whether a handler destructures `integration`, which
+ * is the brokered route through the integration runtime. That is not the only
+ * way this service could come to send something to a real person. The
+ * invitation capabilities record intent and report `delivery_paused` because
+ * D42 found their original send had no successor at all — Base44's own
+ * `inviteUser` minted the account AND delivered the link — so the plausible
+ * successor is a SUPABASE AUTH call, which never touches `integration` and
+ * which D92 therefore cannot see. A handler that gained one could ship under a
+ * name already sitting in a live `PENNSYNC_API_FUNCTIONS` value with nothing
+ * in the build firing.
+ *
+ * So this is the same check over the other route: the five Auth calls that
+ * cause Supabase to send mail to an address. It is a RATCHET over the whole
+ * service rather than an attribution to one handler, because unlike
+ * `integration` an Auth client is not handed to `handle` — it could be reached
+ * through any module at any depth, and a scan that tried to attribute it would
+ * fail open on the import chain it did not follow. Conservative on purpose:
+ * the cost of a false positive is one line in `AUTH_SEND_DECLARED`, and the
+ * cost of a false negative is an unannounced email to a real person.
+ */
+export const AUTH_SEND_CALLS = Object.freeze([
+  'inviteUserByEmail',      // invitation
+  'generateLink',           // any link Supabase mails, invite or recovery
+  'signInWithOtp',          // magic link
+  'resetPasswordForEmail',  // password reset
+  'signUp',                 // sign-up confirmation
+]);
+
+/**
+ * Files permitted to carry one of those calls, each with a reason.
+ *
+ * EMPTY today, and that is the measurement rather than a placeholder: nothing
+ * in the service or the authority client reaches Supabase Auth to send. When
+ * invitation delivery is built, its file goes here in the same change, which
+ * is what makes the addition visible in a diff instead of silent.
+ */
+export const AUTH_SEND_DECLARED = Object.freeze({});
+
+/**
+ * Which service files reach an Auth send call, derived from the tree.
+ *
+ * Comments are stripped FIRST, which is D73's lesson: a scan that reads a file
+ * for a name has to say whether it means absent from the CODE or absent from
+ * the page, and two scans there failed on a header that named what it removed.
+ * `account-email.mjs` is exactly that shape — its every `SendEmail` is prose —
+ * so a scan that counted comments would report a sender that does not exist.
+ * The call must also be CALLED: a bare mention is not a send.
+ */
+export function authSendReach(root) {
+  const found = new Map();
+  for (const file of serviceFiles(root)) {
+    const text = read(resolve(root, SERVICE, file))
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+    const hits = AUTH_SEND_CALLS.filter(call => new RegExp(`\\b${call}\\s*\\(`).test(text));
+    if (hits.length) found.set(file, hits);
+  }
+  return found;
+}
+
+/**
+ * Both directions, for `integrationFlagHolds`' reasons. A file that reaches an
+ * Auth send without a declaration is the dangerous one. A declaration without
+ * the reach is the stale-hold shape D47 keeps finding: it outlives its reason
+ * where nothing can notice, so it is refused too.
+ */
+export function authSendHolds(reached, declared = AUTH_SEND_DECLARED) {
+  const undeclared = [...reached.keys()].filter(file => !Object.hasOwn(declared, file)).sort();
+  const staleDeclaration = Object.keys(declared).filter(file => !reached.has(file)).sort();
+  if (undeclared.length || staleDeclaration.length) {
+    refuse('LADDER_AUTH_SEND_UNDECLARED', {
+      undeclared: undeclared.map(file => ({ file, calls: reached.get(file) })),
+      declared_without_reach: staleDeclaration,
+    });
+  }
+}
+
+/**
  * The registry's flag and the tree's reach must name the same handlers.
  *
  * Both directions are refused and they are different mistakes. A handler that
@@ -642,10 +706,20 @@ function wave(declaration, members) {
     // Reported rather than silently dropped, so a shorter value than the
     // membership is explained where it is read.
     withheld: Object.freeze(names.filter(name => Object.hasOwn(OWNER_HELD, name))),
-    // What an operator sets. Emitted rather than typed: a name that is not in
-    // the registry is `INVALID_FUNCTION_RELEASE` at startup, and a name that
-    // is in it but wrong is served.
-    functions: releasable(names).join(','),
+    // THIS WAVE'S OWN NAMES, and deliberately NOT called `functions` any more.
+    //
+    // It was, and its comment said "what an operator sets", which was false and
+    // pointing the wrong way: the CLI's `--wave` prints the CUMULATIVE value
+    // while this field is one wave's slice, and consecutive waves share not one
+    // name. Composing a release from this field would have set 32 names and
+    // silently REVOKED the 29 already serving, patients and visits included.
+    // Two representations of one answer with the reader steered to the wrong
+    // one — this repository's house defect, in the tool everybody reads.
+    //
+    // The value an operator sets comes from `cumulativeValue`, which is what
+    // the CLI prints. A test asserts no wave carries a `functions` key, so the
+    // trap cannot come back under its old name.
+    adds: releasable(names).join(','),
     writes: members.some(fact => fact.mutates),
     needsIntegration: members.some(fact => fact.needsIntegration),
     // Every migration this wave's contracts live in. The target deployment has
@@ -674,6 +748,11 @@ export function checkLadder(root) {
   // added later that forgot `releasable` fails here instead of shipping.
   const leaks = heldLeaks(ladder.waves);
   if (leaks.length) refuse('LADDER_HELD_IN_EMITTED_VALUE', { leaks });
+  // The other outbound route. D92's gate reads `integration` and cannot see a
+  // Supabase Auth send, so a handler gaining one could ship under a name that
+  // is already in a live value. Checked over the whole service for the reason
+  // `authSendReach` gives: an Auth client is not handed to `handle`.
+  authSendHolds(authSendReach(root));
   return ladder;
 }
 
