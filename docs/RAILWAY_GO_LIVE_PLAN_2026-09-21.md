@@ -2733,20 +2733,37 @@ reported 36. Run properly — each site's own arguments put through the route's
 asked for more rows than its ceiling. A declaration is not a success, and the
 only way to tell them apart is to run the call.
 
-Measured on `main` after #291:
+Measured on `main` after #294:
 
-> entity routes: 5 declared, 12/242 landable call sites SERVED, 230 still to
+> entity routes: 14 declared, 29/242 landable call sites SERVED, 213 still to
 > adopt — 30 of those are sites a declared route REFUSES (`User.list:sort`),
-> and 1 pass arguments this cannot read — of those 230, across 40 entities: a
-> wider generic family could serve 16 reads and 0 writes above D16's ceiling;
-> 214 need a named capability
+> and 2 pass arguments this cannot read — of those 213, across 39 entities: a
+> wider generic family could serve 1 reads and 0 writes above D16's ceiling;
+> 212 need a named capability
 
-**So 12 of 445 call sites reach the owned store today.** The 30 refused ones
-are the more useful number for planning than the 230: they are screens where
-the route exists and the *screen* has to change, which is per-screen work
-rather than per-entity work. The single site whose arguments the tool cannot
-read counts as unserved, because a gate that guessed would be back to counting
-declarations.
+**As of #294 on `main`: 29 of the 242 call sites that have somewhere to land
+are served, out of 445 entity call sites in the app.** Both denominators are
+real and they are different populations — 445 is every entity call the frontend
+makes, 242 is the subset with a table behind it — so a served figure quoted
+without saying which one it is over is the same label error this page warns
+about above. 30 of the remaining 213 are sites a declared route REFUSES: the
+route exists and the *screen* has to change, which is per-screen work rather
+than per-entity work, and that is the more useful number for planning than the
+213. Sites whose arguments the tool cannot read count as unserved, because a
+gate that guessed would be back to counting declarations.
+
+**The gate has three states, and the third one is why the batches can work at
+all.** Proved, refused, and declared-but-unproved. A call site that passes a
+variable — `AgencySettings.create(payload)` — cannot be run through a route at
+all, and the first correction treated that as *cannot be served*, which failed
+the build for **84 of the frontend's writes** and blocked four contract batches
+from wiring anything. So refusing to COUNT an unproven route stands, and
+refusing to PERMIT one does not: that question belongs to the contract's own
+refusals against the real migration, not to a static check. A route whose every
+call site is unreadable is declared, permitted, and reported in
+`unproved_routes` — never counted as adopted, and printed, because an unproven
+route nobody can see is how a declaration comes to read as coverage again.
+Landed in #294.
 
 **The ceiling on avoiding the remaining work is measured, and the write half is
 zero.** The obvious alternative to writing a capability per entity is to widen
@@ -2758,9 +2775,10 @@ or reaches tenancy through a clinical entity. It passes no manifest exemption,
 deliberately: those exist only for entities already dispositioned `broker`, and
 granting one here would be the tool inventing the decision it is measuring.
 
-- **16 read sites, across 5 entities** — `MedicareComplianceRule` (8),
-  `Physician` (3), `DocumentTemplate` (2), `VisitPointConfig` (2),
-  `OnCallShift` (1).
+- **1 read site**, on `MedicareComplianceRule`. Four entities still clear the
+  ceiling — that one plus `DocumentTemplate`, `OnCallShift` and `Physician` —
+  but only this one has an unserved READ left; the rest of their remaining
+  sites are writes.
 - **0 write sites. None at all.**
 
 **The zero is the figure that decides anything**: no entity behind the
