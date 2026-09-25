@@ -11,9 +11,17 @@ import {
   releasable, releaseDelta, releaseLadder, reportDelta,
   AUTH_SEND_CALLS, AUTH_SEND_DECLARED, authSendHolds, authSendReach,
   brokeredOperationsRequired, integrationRuntimeHolds, runtimeReadinessOf,
-  appBindingLine,
+  appBindingLine, deliveryDependents, deliveryOperationsRequired,
+  deliveryReleaseSetting, requiredRuntimeOperations,
 } from './tools-pennsync-release-ladder.mjs';
+import { execFileSync } from 'node:child_process';
 import { loadConfig, publicReadiness } from './services/pennsync-api/runtime.mjs';
+import {
+  BROKERED_OPERATIONS,
+} from './services/pennsync-api/integrations.mjs';
+import {
+  DELIVERY_OPERATIONS, DELIVERY_RELEASE_ENV, DELIVERY_RELEASE_VALUE,
+} from './services/pennsync-api/outbound-delivery.mjs';
 import { ledgerVersion } from './tools-pennsync-migrate.mjs';
 
 /**
@@ -926,13 +934,104 @@ test('the wave requirement is read from the allowlist, not typed here', () => {
   // brokered set would let this gate pass a runtime serving something else.
   const required = brokeredOperationsRequired(REPOSITORY);
   assert.deepEqual([...required], ['InvokeLLM', 'ExtractDataFromUploadedFile']);
-  // And NOT the delivery half: mail has a switch of its own, so requiring
-  // `SendEmail` would refuse every integration release until an unrelated
-  // decision was taken. #269 put `SendEmail` in `DELIVERY_OPERATIONS`, which
-  // this extraction must not reach.
+  // And NOT the delivery half. That is a DIFFERENT question — whether the value
+  // being written releases mail — and `requiredRuntimeOperations` answers it
+  // below. This one stays the unconditional set, so a reader of it still sees
+  // exactly what any deployment may ask the runtime for.
   assert.ok(!required.includes('SendEmail'));
   const source = readFileSync(join(REPOSITORY, 'services/pennsync-api/integrations.mjs'), 'utf8');
   assert.match(source, /DELIVERY_OPERATIONS/, 'the delivery set is what this must not pick up');
+});
+
+test('every allowlist this tool parses equals the service\'s own declaration', () => {
+  // Parsed rather than typed, so the comparison is against the exported value
+  // the service actually uses. A literal here would pass while the service
+  // moved underneath it, which is the drift this whole change is about.
+  assert.deepEqual([...brokeredOperationsRequired(REPOSITORY)], [...BROKERED_OPERATIONS]);
+  assert.deepEqual([...deliveryOperationsRequired(REPOSITORY)], [...DELIVERY_OPERATIONS]);
+  assert.deepEqual(deliveryReleaseSetting(REPOSITORY),
+    { variable: DELIVERY_RELEASE_ENV, value: DELIVERY_RELEASE_VALUE });
+  // The two sets stay disjoint: `DELIVERY_OPERATIONS` exists so the ratchet
+  // cannot quietly acquire a sender, and a merge of the two lists would erase
+  // the distinction this tool now depends on.
+  const brokered = new Set(brokeredOperationsRequired(REPOSITORY));
+  assert.ok([...deliveryOperationsRequired(REPOSITORY)].every(name => !brokered.has(name)));
+});
+
+test('the requirement follows the VALUE, and the delivery half arrives with the senders', () => {
+  // The defect this replaces: the requirement was the unconditional set always,
+  // so a value carrying both senders asked a runtime for two operations and
+  // the api would ask it for three. Driven from the real ladder rather than a
+  // fixture, because the whole point is that the value decides.
+  const ladder = checkLadder(REPOSITORY);
+  const waveNamed = name => cumulativeValue(ladder, ladder.waves.find(wave => wave.name === name)).names;
+  const senders = [...deliveryDependents(REPOSITORY)];
+  assert.ok(senders.length, 'the registry declares at least one outbound sender');
+
+  const integration = requiredRuntimeOperations(REPOSITORY, waveNamed('integration'));
+  assert.deepEqual([...integration.senders], senders.filter(name => waveNamed('integration').includes(name)));
+  assert.ok(integration.required.includes('SendEmail'));
+  // Every unconditional name is still there: the delivery half ADDS.
+  for (const name of brokeredOperationsRequired(REPOSITORY)) assert.ok(integration.required.includes(name));
+
+  const readOnly = requiredRuntimeOperations(REPOSITORY, waveNamed('read-only'));
+  assert.deepEqual([...readOnly.senders], []);
+  assert.deepEqual([...readOnly.required], [...brokeredOperationsRequired(REPOSITORY)]);
+  assert.ok(!readOnly.required.includes('SendEmail'),
+    'a value naming no sender must not make an unrelated wave wait on mail');
+
+  // And it is a property of the NAMES, not of the wave: hand it the senders
+  // alone and the delivery half still arrives.
+  assert.ok(requiredRuntimeOperations(REPOSITORY, senders).required.includes('SendEmail'));
+  assert.ok(!requiredRuntimeOperations(REPOSITORY, []).required.includes('SendEmail'));
+});
+
+test('a runtime not serving the delivery operation no longer passes a value that releases mail', () => {
+  // The bite. With the old requirement this runtime passed, because nothing
+  // asked it for `SendEmail`; the assertion below is written so that reverting
+  // `requiredRuntimeOperations` to the unconditional set fails it.
+  const ladder = checkLadder(REPOSITORY);
+  const names = cumulativeValue(ladder, ladder.waves.find(wave => wave.name === 'integration')).names;
+  const required = requiredRuntimeOperations(REPOSITORY, names).required;
+  const withoutMail = {
+    configured: true, released: true, ready: true,
+    operations: [...brokeredOperationsRequired(REPOSITORY)], missingProviders: [],
+  };
+  const problems = integrationRuntimeHolds(required, withoutMail);
+  assert.ok(problems.some(problem => problem.includes('not serving SendEmail')), problems.join('; '));
+  assert.deepEqual(integrationRuntimeHolds(brokeredOperationsRequired(REPOSITORY), withoutMail), [],
+    'the unconditional set is what used to let this through — kept as the contrast');
+
+  // `missingProviders` had the same reach and therefore the same hole: a
+  // runtime serving SendEmail with no provider key configured is the likelier
+  // failure of the two.
+  const keyless = { ...withoutMail, operations: [...required], missingProviders: ['SendEmail'] };
+  assert.ok(integrationRuntimeHolds(required, keyless)
+    .some(problem => problem.includes('provider config is incomplete for SendEmail')));
+  assert.deepEqual(integrationRuntimeHolds(brokeredOperationsRequired(REPOSITORY), keyless), []);
+});
+
+test('the emitted wave says what the same write owes, and says nothing where no sender is named', () => {
+  // Driven through the CLI an operator actually runs, because the requirement
+  // and the notice are what reach them; asserting the function alone would pass
+  // with neither line printed.
+  const emit = wave => execFileSync(process.execPath,
+    ['tools-pennsync-release-ladder.mjs', '--wave', wave], { cwd: REPOSITORY, encoding: 'utf8' });
+
+  const integration = emit('integration');
+  assert.match(integration, /needs the integration runtime, serving [^\n]*SendEmail/);
+  assert.match(integration, new RegExp(`${DELIVERY_RELEASE_ENV}=${DELIVERY_RELEASE_VALUE}`));
+  // Named as what THIS write owes rather than checked against a deployment: a
+  // value that releases mail is written against one where mail is not yet
+  // released, so a refusal on the current reading would refuse the correct
+  // write. That is not a theory — the live api read `deliveryReleased: false`
+  // at 16:16Z on 2026-09-25 while the value about to be written turned it on.
+  assert.match(integration, /the same write must set/);
+  for (const sender of deliveryDependents(REPOSITORY)) assert.match(integration, new RegExp(sender));
+
+  const readOnly = emit('read-only');
+  assert.ok(!readOnly.includes('SendEmail'), readOnly);
+  assert.ok(!readOnly.includes(DELIVERY_RELEASE_ENV), readOnly);
 });
 
 test('a body the runtime does not publish is refused, and so is the other service\'s', () => {
