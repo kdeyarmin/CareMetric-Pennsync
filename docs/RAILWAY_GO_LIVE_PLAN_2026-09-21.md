@@ -2130,12 +2130,40 @@ merge**; `#272`, `#273`, `#274` and `#275` all read `SKIPPED`. On
 `pennsync-api` the latest deployment is still the `08:34` variable write, and
 `#273` touched **its** directory without deploying it.
 
-**And `checkSuites: false` is the sharpest part: it does not wait for CI.**
-`main`'s run for that merge started at `09:09:42` and was still going minutes
-later, so the code was serving before any of it finished. There is no gate
-after the merge on that service at all, not even a late one.
+**And `checkSuites: false`: the deploy does not wait for CI.** `main`'s run
+for that merge started at `09:09:42` and was still going minutes later, so the
+code was serving before any of it finished.
 
-Two consequences, and they are now measured rather than contingent:
+That does **not** mean nothing gates this service, which is how a first draft
+of this paragraph put it. There are two gates; they sit either side of the
+merge rather than before the deploy, and both were read from the tree at
+`17c9cdc`:
+
+- **CI gates the MERGE.** `ci.yml`, `pennsync-app.yml`, `pennsync-authority.yml`
+  and `pennsync-browser.yml` carry no `paths:` filter, so lint,
+  `typecheck:signal`, `pnpm test` and all eight gates run on a runtime-only
+  pull request; `external-integrations.yml` adds the runtime's own suites on
+  top. `checkSuites: false` only means the deploy does not consult any of it.
+  So **the merge decision is the last gate that exists.**
+- **The Docker build re-runs the runtime's suites.** The builder is the
+  Dockerfile, whose `RUN node --test *.test.mjs` runs inside the container as
+  `node`, with no `node_modules` (that package declares no dependencies), no
+  network and no environment. A failing top-level suite fails the BUILD, so
+  there is no image and no deploy, and the previous container keeps serving.
+
+Two things follow from the second. It is a real second gate, independent of
+CI. And it constrains what a **top-level** `*.test.mjs` there may do: no
+dependency, no network, no file outside the directory — D60's rule arriving as
+a build context rather than as a guard. `tests/` is outside that glob and has
+its own lockfile, which is where a suite needing any of those belongs.
+
+**The healthcheck is `/healthz`, which is liveness only** (`app.mjs`): it
+answers `{status:'alive', release, revision}` with 200 for any process that
+listens, and never consults `publicReadiness`. `/readyz` does answer 503 when
+not ready, and Railway is deliberately not pointed at it — a paused release
+must still be able to deploy.
+
+Two consequences, now measured rather than contingent:
 
 - **The screening moves to the pull request** for `services/integration-runtime`.
   The pre-write diff in this stage exists because a variable change ships
@@ -2143,6 +2171,67 @@ Two consequences, and they are now measured rather than contingent:
   happens after the code is already serving.
 - **A merge-hold during an in-flight variable write protects nothing there**,
   because the merge *is* the deploy.
+
+#### What a runtime pull request has to answer
+
+Neither gate can see the thing that actually breaks this service.
+`server.mjs:7` calls `loadConfig()` at module top level, so its thirteen
+startup refusals (`runtime.mjs:15-53`, plus `INVALID_PORT` at `server.mjs:10`)
+are evaluated against the **live variables** — which no test and no CI job
+ever sees, because every one of them supplies a fixture. The live values are
+not in the diff. That splits two ways:
+
+- **A throw at startup is loud and safe.** Nothing listens, the healthcheck
+  never passes, the deploy does not go active, and the merge simply does not
+  reach the service.
+- **A boot that SUCCEEDS while the configuration is wrong** in a way
+  `loadConfig` does not check is the dangerous class: `/healthz` says alive,
+  the deploy goes active, and every call is refused. That is the only way a
+  merge replaces a working service with a broken one, and it is the class
+  `#276` closed two members of.
+
+So the question is not "do the tests pass" — the build answers that twice —
+but **"does this change what the running container's environment must contain,
+and is that true of the live variables today?"** Read a diff in this order:
+
+1. **Does it touch `loadConfig` or anything it reads (`runtime.mjs:9-57`)?**
+   Adding a throw, tightening a regex, or requiring a previously optional
+   variable is each a claim about the live environment. `#276` added
+   `UNPINNED_AUTHORITY_TARGET` and `APP_BINDING_MISMATCH`, both reading live
+   values; that was checked before merge, and nothing would have caught it
+   after.
+2. **Does it change `OPERATIONS` (`contracts.mjs:10`)?** `runtime.mjs:17`
+   refuses a live `INTEGRATIONS_ALLOWED_OPERATIONS` naming an operation the
+   code does not list, so **removing** a name from the code while the variable
+   still carries it refuses the boot. `:19` additionally requires the browser
+   list to be a subset of the service list — which enforces the ceiling's
+   direction but **not** the exclusion, so nothing in code stops the browser
+   list gaining a name it should not have (§ the mail switch).
+3. **Does it move work across `server.listen` (`server.mjs:33`), or change
+   what `/healthz` answers?** Work moved above the listen widens the safe
+   class; a check moved below it converts a failed deploy into a live broken
+   service. Pointing the healthcheck at readiness would make a paused release
+   fail its own deploy.
+4. **Does it add a top-level `*.test.mjs` needing a dependency, the network,
+   or a file outside the directory?** In Railway that reads as "the merge did
+   not deploy", not as a test failure.
+5. **Does it touch `AUTHORITY_APP_PINS`, `validAuthorityTarget`,
+   `validAuthorityKey`, or the storage binding literal (`runtime.mjs:24`)?**
+   All four read live values.
+
+**The ordering rule the whole thing reduces to:** on this service the variable
+write comes **before** the merge when the code tightens what the environment
+must satisfy, and **after** the merge when it widens it. `pennsync-api` is the
+exact opposite — a variable write is what rebuilds it, so there the merge is
+free and the write carries whatever `main` holds at that moment.
+
+Two things beside this are **not** measured and are written as such. That a
+deploy failing its healthcheck leaves the previous container serving is
+Railway's documented behaviour, not something observed on this service —
+observing it means breaking the service. And `preDeployCommand` is empty: it
+could run `loadConfig` against the live environment in the new image, but the
+healthcheck path already refuses that case, so the gain is a legible
+deploy-log error instead of a 120-second timeout rather than extra safety.
 
 **Keep the two mechanisms apart, and note that the pin does not hold.**
 `pennsync-api`'s config names `commitSha: "20c15d8f"` while the service runs
