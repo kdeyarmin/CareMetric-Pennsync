@@ -1586,6 +1586,30 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   REQUEST rather than of how the config was made, with a test that drives it
   from a hand-built config to prove it is not decorative.
 
+  **And read what the suite said during the window in between**, because the
+  finding is the reason the refusal is worth having rather than a footnote to
+  it. Recorded by the thread that owns `services/integration-runtime`, in its
+  own words:
+
+  > A test at `caller-binding.test.mjs:188` asserted that `SendEmail` on the
+  > browser operation list throws. Its fixture set the service list to
+  > `InvokeLLM` alone, so what it actually exercised was the SUBSET rule
+  > wearing a `SendEmail` costume. It passed before `SendEmail` joined the
+  > service list on 2026-09-25 and passed after, while the property it appears
+  > to prove went false in between. Anyone auditing the browser mail ceiling
+  > would have found that assertion and stopped there. The general form: a test
+  > whose fixture makes it pass for an older, broader reason reads exactly like
+  > one that covers the case, and only sabotage tells them apart.
+
+  Two things about that, so it is not read for more than it says. It is
+  evidence about a TEST, not about the service: the browser route was shut
+  throughout by both halves of `app.mjs:44`, the gap was latent and two
+  configuration writes away, and nothing was ever exposed — a first account of
+  it reported a live browser send and was corrected, because the 200 came from
+  a fixture that opens the route. And it is this page's own defect arriving
+  inside a test rather than a check, which is the second place this week the
+  thing written to catch a class of mistake was the thing that hid one.
+
   And the general form, which is not about `SendEmail`: the service list is the
   browser ceiling for **every** operation, so any widening of
   `INTEGRATIONS_ALLOWED_OPERATIONS` widens the browser ceiling for the name it
