@@ -75,5 +75,5 @@
   "record-migrations/20260920550000_contract_expiration_notices.sql": "08d1dc0bd2a783c9db96847de74c557d5faf15e2a1b80f978a9d503f6a9a17db",
   "record-migrations/20260920560000_contract_report_metrics.sql": "ea4a72c96af49e4e73586bf7b36b6e8939784d27060cf457daa0bff525367c7e",
   "record-migrations/20260920570000_contract_reference_reads.sql": "07230f90b94693fe8c6f8d23c0289256c861004f7a0c0be3a9243a23769b961c",
-  "record-migrations/20260920580000_contract_screen_records.sql": "46d057d4ce15cd641aa04beb22ec6b23c4e223a5d01e480fee5209e14c0cd29c"
+  "record-migrations/20260920580000_contract_screen_records.sql": "8e89062d402a46b930a87391f41438c1c34da01fff80c13b3593000ea3cdeb5b"
 }
