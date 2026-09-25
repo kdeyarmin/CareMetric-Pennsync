@@ -1090,7 +1090,21 @@ async function main(argv, root, write) {
         write('# releasing these names would advertise capability that service cannot answer.');
         return 1;
       }
-      write('# the runtime serves what this wave needs.');
+      // What this gate proves is bounded, and saying so is the point: the
+      // runtime's readiness is a SHAPE check over its configuration
+      // (`configured && released && operations.length && !missingProviders`),
+      // so two states read ready and refuse every authorization call — an
+      // explicitly PRODUCTION `INTEGRATIONS_APP_ID` in independent mode, which
+      // `ALLOWED_APPS` admits and the owned store's staging pin then refuses,
+      // and an authority publishable key that is shape-valid but revoked. That
+      // service publishes no app id, so nothing here can read either one, and a
+      // gate implying otherwise would be the literal it replaced.
+      write('# the runtime is released and serving what this wave needs.'
+        + ' That is NOT proof it can answer: its readiness asks the shape of its'
+        + ' configuration, and it publishes no app id, so a production binding or'
+        + ' a revoked authority key reads ready here and refuses every call.');
+      write('# to close that, read its boot log with INTEGRATIONS_PREFLIGHT=read-only,'
+        + ' whose authority probe is a POST that must be REFUSED (401/403 is the pass).');
     }
     const target = argv[argv.indexOf('--deployment') + 1];
     if (argv.includes('--deployment')) {

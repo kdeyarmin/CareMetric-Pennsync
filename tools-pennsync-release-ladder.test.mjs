@@ -918,3 +918,18 @@ test('the tool no longer states the runtime\'s condition from a constant', () =>
   const integration = checkLadder(REPOSITORY).waves.find(wave => wave.name === 'integration');
   assert.match(integration.reason, /must therefore be released and serving/);
 });
+
+test('the gate says what it does not prove', () => {
+  // A gate that read "the runtime serves what this wave needs" and stopped
+  // there would be the literal it replaced, one level up: the runtime's own
+  // readiness is a shape check over its configuration, and it publishes no app
+  // id, so a production binding in independent mode and a revoked authority key
+  // both read ready and refuse every call. Comments are stripped, so this is
+  // about what an operator READS.
+  const source = readFileSync(join(REPOSITORY, 'tools-pennsync-release-ladder.mjs'), 'utf8')
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  assert.match(source, /NOT proof it can answer/);
+  assert.match(source, /publishes no app id/);
+  // And the way to close it is named rather than left to the reader.
+  assert.match(source, /INTEGRATIONS_PREFLIGHT=read-only/);
+});
