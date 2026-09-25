@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createIndependentStagingAdapter, readIndependentStagingConfig } from './independentStagingAdapter';
-import { ARGUMENTS_UNSUPPORTED, BROKER_MAXIMUM, PAGE_INCOMPLETE, ROSTER_MAXIMUM } from './independentEntityRoutes';
+import { ARGUMENTS_UNSUPPORTED, BROKER_MAXIMUM, ENTITY_ROUTES, PAGE_INCOMPLETE, ROSTER_MAXIMUM, SCREEN_CEILINGS } from './independentEntityRoutes';
 import { bindTrustedTenantContext, clearTrustedTenantContext, getActiveTrustedTenantContext } from '@/lib/roles';
 import { stagingApiUrl, stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
 
@@ -260,5 +260,156 @@ describe('the declared entity routes', () => {
     expect(adapter.raw.entities.then).toBeUndefined();
     expect(adapter.raw.entities.User.then).toBeUndefined();
     await expect(Promise.resolve(adapter.raw.entities)).resolves.toBe(adapter.raw.entities);
+  });
+});
+
+describe("batch E's screen contracts", () => {
+  const ported = { ...stagingEnv, VITE_PENNSYNC_API_URL: stagingApiUrl };
+  const signedIn = async () => {
+    const fixture = stagingFixture();
+    const adapter = createIndependentStagingAdapter(readIndependentStagingConfig(ported),
+      { fetchImpl: fixture.fetch, boundTenant: getActiveTrustedTenantContext });
+    await adapter.auth.signIn(stagingEmails[0], 'Synthetic-accepted-password');
+    return { fixture, adapter };
+  };
+  const entries = (rows) => () => new Response(
+    JSON.stringify({ success: true, result: { success: true, entries: rows }, execution: 'pennsync-api', base44ExecutionDependency: false }),
+    { headers: { 'content-type': 'application/json' } });
+
+  beforeEach(() => bindTrustedTenantContext(boundUser, boundContext));
+  afterEach(() => clearTrustedTenantContext());
+
+  it('sends each screen its own contract, with the arguments the contract takes', async () => {
+    const { fixture, adapter } = await signedIn();
+    fixture.apiResponse = entries([{ id: 'event-1' }]);
+    await adapter.raw.entities.ClinicalEvent.filter({ patient_id: 'p1' }, '-event_date', 200);
+    expect(fixture.apiCalls.at(-1).url).toBe(`${stagingApiUrl}/v1/functions/listChartClinicalEvents`);
+    expect(fixture.apiCalls.at(-1).body.params).toEqual({ patient_id: 'p1', limit: 200 });
+
+    await adapter.raw.entities.OCRFeedback.filter({ applied_to_training: false }, undefined, 5000);
+    expect(fixture.apiCalls.at(-1).url).toBe(`${stagingApiUrl}/v1/functions/listOcrCorrections`);
+    expect(fixture.apiCalls.at(-1).body.params).toEqual({ applied_to_training: false, limit: 500 });
+
+    await adapter.raw.entities.ComplianceRule.filter({ rule_code: 'CMS-TF-1' }, '-created_date', 2);
+    expect(fixture.apiCalls.at(-1).body.params).toEqual({ rule_code: 'CMS-TF-1', limit: 2 });
+  });
+
+  it('refuses an order it cannot produce rather than quietly swapping one in', async () => {
+    const { fixture, adapter } = await signedIn();
+    fixture.apiResponse = entries([]);
+    const refused = [
+      () => adapter.raw.entities.ClinicalEvent.filter({ patient_id: 'p1' }, '-created_date', 10),
+      () => adapter.raw.entities.SentEducationMaterial.list('-created_date', 50),
+      () => adapter.raw.entities.OCRTrainingSession.list('created_date', 50),
+      () => adapter.raw.entities.ClinicalEvent.filter({ event_type: 'fall' }, '-event_date', 10),
+      () => adapter.raw.entities.NotificationPreference.filter({ created_by: 'x' }),
+    ];
+    for (const call of refused) await expect(call()).rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+    expect(fixture.apiCalls).toHaveLength(0);
+  });
+
+  it('will not render a truncated page as the whole set', async () => {
+    const { fixture, adapter } = await signedIn();
+    // 500 rows back from a contract whose ceiling is 500, for a screen that
+    // asked for 5,000: there may be more, and the monitor counts them.
+    fixture.apiResponse = entries(Array.from({ length: 500 }, (_, index) => ({ id: `ocr-${index}` })));
+    await expect(adapter.raw.entities.OCRFeedback.filter({ applied_to_training: false }, undefined, 5000))
+      .rejects.toThrow(PAGE_INCOMPLETE);
+    // One row short is the proof that there are no more.
+    fixture.apiResponse = entries(Array.from({ length: 499 }, (_, index) => ({ id: `ocr-${index}` })));
+    await expect(adapter.raw.entities.OCRFeedback.filter({ applied_to_training: false }, undefined, 5000))
+      .resolves.toHaveLength(499);
+  });
+
+  it('drops only what the contract derives, and forwards everything the caller owns', async () => {
+    const { fixture, adapter } = await signedIn();
+    fixture.apiResponse = () => new Response(
+      JSON.stringify({ success: true, result: { success: true, id: 'sent-9' }, execution: 'pennsync-api', base44ExecutionDependency: false }),
+      { headers: { 'content-type': 'application/json' } });
+    await adapter.raw.entities.SentEducationMaterial.create({
+      material_id: 'm1', material_title: 'Falls', patient_id: 'p1', patient_name: 'Ada Lovelace',
+      sent_by: 'somebody@example.invalid', sent_date: '2020-01-01', delivery_method: 'printed',
+      personalized_content: 'body', notes: 'n',
+    });
+    // The subject's name, the sender and the clock come from the store, so the
+    // screen's copies are not forwarded and cannot disagree with it.
+    expect(fixture.apiCalls.at(-1).body.params).toEqual({
+      patient_id: 'p1',
+      material: {
+        material_id: 'm1', material_title: 'Falls', delivery_method: 'printed',
+        personalized_content: 'body', notes: 'n',
+      },
+    });
+  });
+
+  it('answers the preference screen the shape it reads, and forwards the address', async () => {
+    const { fixture, adapter } = await signedIn();
+    fixture.apiResponse = () => new Response(
+      JSON.stringify({ success: true, result: { success: true, found: false, preference: null }, execution: 'pennsync-api', base44ExecutionDependency: false }),
+      { headers: { 'content-type': 'application/json' } });
+    // The screen reads `prefs[0]` and falls back to its defaults, so "no row"
+    // has to be an empty ARRAY rather than a null.
+    await expect(adapter.raw.entities.NotificationPreference.filter({ user_email: stagingEmails[0] }))
+      .resolves.toEqual([]);
+    // Forwarded, never dropped: the contract refuses an address that is not
+    // the caller's, and it cannot do that if the route does not send it.
+    expect(fixture.apiCalls.at(-1).body.params).toEqual({ user_email: stagingEmails[0] });
+  });
+});
+
+/**
+ * The two things above that a HAND reading resolved, made into checks.
+ *
+ * Both are the same shape: an answer that was right when it was written, in a
+ * place nothing would notice it going stale.
+ */
+describe("what batch E's routes take on trust", () => {
+  it('takes every page ceiling from the contract that enforces it', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { RECORD_CONTRACTS } = await import('../../services/pennsync-api/record-contracts.mjs');
+    const sql = readFileSync(
+      'services/authority-store/supabase/record-migrations/20260920580000_contract_screen_records.sql',
+      'utf8');
+    for (const [handler, ceiling] of Object.entries(SCREEN_CEILINGS)) {
+      const rpc = RECORD_CONTRACTS[handler].rpc.replace(/^pennsync_/, '');
+      // The contract's body, from its own `create function` to the next one.
+      const start = sql.indexOf(`create function "pennsync_records".${rpc}(`);
+      expect(start, `${rpc} is not in the migration`).toBeGreaterThan(-1);
+      const next = sql.indexOf('create function', start + 20);
+      const body = sql.slice(start, next === -1 ? sql.length : next);
+      const enforced = [...body.matchAll(/screen_limit\(p_limit,\s*(\d+)\)/g)].map(m => Number(m[1]));
+      expect(enforced, `${rpc} passes no ceiling to screen_limit`).toHaveLength(1);
+      expect(enforced[0], `${handler}'s route and its contract disagree`).toBe(ceiling);
+    }
+  });
+
+  it('leaves the three unproved writes to the refusals their contract raises', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { cwd } = await import('node:process');
+    const { measureRoutes } = await import('../../tools-entity-routes.mjs');
+    const { HANDLER_NAMES } = await import('../../services/pennsync-api/handlers.mjs');
+
+    // Declared, and reported UNPROVED rather than adopted: every call site
+    // passes a whole variable, so the gate cannot run the real arguments
+    // through `request`. "Cannot prove this serves" is not "does not serve".
+    const report = measureRoutes(cwd());
+    expect([...report.unproved_routes].sort()).toEqual([
+      'NotificationPreference.create', 'NotificationPreference.update',
+      'PatientRecommendation.create',
+    ]);
+    for (const key of report.unproved_routes) {
+      expect(ENTITY_ROUTES[key], `${key} must be declared`).toBeDefined();
+      expect(HANDLER_NAMES).toContain(ENTITY_ROUTES[key].function);
+    }
+
+    // And this is what stands in for the proof. Each refusal those three rely
+    // on has to be RAISED by the contract suite against the real migration,
+    // not merely named in the migration's own prose — so the suite is read,
+    // and the migration is not.
+    const suite = readFileSync('services/authority-store/tests/contract-screen-records.test.mjs', 'utf8');
+    for (const code of ['PENNSYNC_SCREEN_FIELD_NOT_WRITABLE', 'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE',
+      'PENNSYNC_SCREEN_NOT_YOUR_ROWS', 'PENNSYNC_SCREEN_PREFERENCE_NOT_OWNED']) {
+      expect(suite, `${code} must be exercised by the contract suite`).toContain(code);
+    }
   });
 });

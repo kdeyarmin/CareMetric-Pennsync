@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -1328,12 +1328,26 @@ test('nothing in the queue is startable and unwritten', async () => {
   // SPA called `base44.entities.Physician.list(...)` and six like it straight
   // through the platform SDK, so there is no Base44 function to be the port of
   // — what was ported is the CALL. A capability the queue cannot see is exactly
-  // what this assertion exists to keep visible.
-  assert.deepEqual([...shipped].filter(name => !report.port_blockers.none.includes(name)).sort(),
-    ['getAgencyRosterMember', 'listAgencyRoster', 'listBrokeredRecords',
-      'listDocumentTemplates', 'listLibraryDocuments', 'listMedicareComplianceRules',
-      'listMedicareGuidelines', 'listOnCallShifts', 'listPhysicians',
-      'listVisitPointConfigs']);
+  // what this assertion exists to keep visible. Batch E's ten are the same
+  // shape over seven more entities.
+  const facilities = [...shipped].filter(name => !report.port_blockers.none.includes(name)).sort();
+  // The list is STATED, for the reason above. This only adds the half that is
+  // checkable: a name with a Base44 function of its own is a port and belongs
+  // in the queue, so it cannot reach this list by somebody forgetting which
+  // kind it was.
+  for (const name of facilities) {
+    assert.ok(!existsSync(resolve(repository, 'base44/functions', name)),
+      `${name} has a Base44 function, so it is a port and belongs in the queue`);
+  }
+  assert.deepEqual(facilities, [
+    'getAgencyRosterMember', 'getMyNotificationPreferences', 'listAgencyRoster',
+    'listBrokeredRecords', 'listChartClinicalEvents', 'listChartRecommendations',
+    'listDocumentTemplates', 'listLibraryDocuments', 'listMedicareComplianceRules',
+    'listMedicareGuidelines', 'listOcrCorrections', 'listOcrTrainingRuns',
+    'listOnCallShifts', 'listPhysicians', 'listSentEducationMaterials',
+    'listVisitPointConfigs', 'lookupComplianceRule', 'recordChartRecommendation',
+    'recordSentEducationMaterial', 'saveMyNotificationPreferences',
+  ]);
 });
 
 test('a function call is only a reason to wait while the callee is unported', () => {
