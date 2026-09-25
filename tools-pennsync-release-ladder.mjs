@@ -135,11 +135,17 @@ export const DERIVED_WAVES = Object.freeze([
  * derivation puts them in.
  *
  * This is NOT a readiness question and is deliberately not expressed through
- * `needsIntegration`. Both of these are refusal-only today — they touch no
+ * `needsIntegration`. The hold is ORTHOGONAL to the derivation: wherever the
+ * tree puts these two, `releasable` strips them, and every wave reports what
+ * it withheld. What holds them back is a decision about who may be sent mail,
+ * which no property of the tree can answer.
+ *
+ * This paragraph used to say they were "refusal-only today — they touch no
  * store and reach no runtime — so the derivation is right to put them in the
- * read-only wave, and D92's guard would refuse the flag that moved them
- * anywhere else. What holds them back is a decision about who may be sent
- * mail, which no property of the tree can answer.
+ * read-only wave". #269 gave both `needsIntegration: true` and they have been
+ * in the INTEGRATION wave since, so the note describing the hold had gone
+ * false about the thing it was describing. It now names no wave, because a
+ * comment that names one goes stale the next time the derivation moves.
  *
  * It exists because the exclusion used to live nowhere the tool could see. The
  * read-only wave was released on 2026-09-25 as this tool's output with these
