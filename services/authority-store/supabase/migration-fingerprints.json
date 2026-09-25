@@ -76,7 +76,7 @@
   "record-migrations/20260920550000_contract_expiration_notices.sql": "08d1dc0bd2a783c9db96847de74c557d5faf15e2a1b80f978a9d503f6a9a17db",
   "record-migrations/20260920560000_contract_report_metrics.sql": "ea4a72c96af49e4e73586bf7b36b6e8939784d27060cf457daa0bff525367c7e",
   "record-migrations/20260920570000_contract_clinical_library.sql": "a7b5c24c574e84360b899bd8a72344f70df75e0c9820439cd105c62b31b71661",
-  "record-migrations/20260920570000_contract_compliance_reads.sql": "f772287b1eacc1dba089982f667cf128d0e947fe960613b44d238174bb1f7c41",
+  "record-migrations/20260920570000_contract_compliance_reads.sql": "eec21dddb44b91976aeab3ba9364aa860f975a2743713536e89143ec07e48bb9",
   "record-migrations/20260920570000_contract_reference_reads.sql": "07230f90b94693fe8c6f8d23c0289256c861004f7a0c0be3a9243a23769b961c",
   "record-migrations/20260920580000_contract_library_chart_defaults.sql": "548eebbf741066ef818bab1b5ffadd389f3f31e1e1a70b2b323537f9200f97fc",
   "record-migrations/20260920580000_contract_operational_tables.sql": "f61fd4581a53dc3260bb6ed3263909808b86be4016a4d507890793e067f452f5",
