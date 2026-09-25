@@ -1915,7 +1915,9 @@ Two things about it are load-bearing:
   parse of the sender address. Note that `valid` already ANDs in
   `validSender`, so `senderConfigured: true` beside it is implied and adds
   nothing here — that field only carries information when `valid` is **false**,
-  where it splits the key from the address. And `required: false` is
+  where it splits the key from the address. (#288 renamed it
+  `fromAddressWellFormed` on 2026-09-25 without changing what it computes. The
+  readings quoted on this page are left as the log printed them.) And `required: false` is
   `needsEmail`, i.e. `SendEmail` is off the operation list, which is exactly
   the state in which the report's `passed` is vacuous; the reading was taken
   from `checks.sendgrid` and not from `passed`, which is the correct way round.
@@ -1949,7 +1951,16 @@ Two things about it are load-bearing:
     measured on 2026-09-25 at `10:27Z`. The field beside it that reads like a
     sender answer, `senderConfigured`, is `validSender(config.fromEmail)`
     (`preflight.mjs:23`) — the same local regex, no network call. `verified_senders`
-    appears nowhere in this repository.
+    appeared nowhere in this repository.
+
+    **Both of those sentences are now history, and the field has a different
+    name: #288 (`720d1401`, merged 2026-09-25 `19:29Z`) built the probe.** The
+    local regex is still there and still local, renamed
+    `fromAddressWellFormed` at `preflight.mjs:218` — the same expression on
+    either side of the change, so a reader comparing an older boot log to a
+    newer one is looking at a rename and not at a behaviour change. What is
+    new is a SIBLING of `checks.sendgrid` rather than a field inside it,
+    `checks.sendgridSender`, and it really asks the provider.
 
     **And there is nothing to switch on: the preflight is already running on
     every boot of the live runtime, and its current boot said exactly this.**
@@ -1963,19 +1974,66 @@ Two things about it are load-bearing:
     `required` has flipped to `true` since the first reading because `SendEmail`
     joined the operation list, which is the one thing that changed.
 
-    Read what that costs somebody who asks for the probe expecting it to settle
-    the sender: they get `valid: true` and `senderConfigured: true`, which look
-    like confirmation that the from-address is approved when nothing has asked
+    Read what that cost somebody who asked for the probe expecting it to settle
+    the sender: they got `valid: true` and `senderConfigured: true`, which look
+    like confirmation that the from-address is approved when nothing had asked
     the provider. This page's house shape, in the field somebody would use to
     settle it, twice over. Note also that the `10:27Z` mail-key reading carried in
-    project notes is this same field, so whatever else it settles it says
-    nothing about the sender. Closing the question needs a probe added to
-    `preflight.mjs` that really asks SendGrid; the release thread is writing one
-    (#288), over two reads rather than one, because an authenticated sender
-    domain is used without a single sender and a check consulting only the
-    verified-senders list would report the recommended production setup as
-    unverified. So treat the check as **being built** rather than as available,
-    and do not ask anybody to turn on a variable that is already on.
+    project notes is that same field, so whatever else it settles it says
+    nothing about the sender.
+
+    **How to read `checks.sendgridSender`, which is where the answer lives
+    now.** It carries a `verdict`, and the values are deliberately four rather
+    than a boolean:
+
+    - `VERIFIED` — SendGrid said the address may send, by one of two routes,
+      named in `route`: `single_sender` (the address is on the verified-senders
+      list) or `authenticated_domain` (its domain is authenticated). Two routes
+      and not one, because an authenticated sender domain is used WITHOUT a
+      single sender, so a check consulting only the first list would report the
+      recommended production setup as unverified. **That is not a hypothetical
+      here.** The single-sender list is read FIRST and returns immediately when
+      it answers yes, so `route: authenticated_domain` on the live reading below
+      means that route did not answer yes for this address — a one-list check
+      would have said `NOT_VERIFIED` or `NOT_MEASURED` on this account today,
+      never `VERIFIED`, while the provider does authenticate the sending domain.
+      What the log cannot say is WHICH: a positive short-circuits and the
+      verdict object carries no sender detail, so `false` and "the read was
+      inconclusive" are indistinguishable from outside, and neither is a claim
+      about any other address on the account.
+    - `NOT_VERIFIED` — SendGrid answered, on BOTH routes, that it may not. Both
+      is the condition, not either.
+    - `NOT_MEASURED` — the absence of a verdict rather than a soft no, with the
+      cause in `reason`. A key without the scope to read a list, a response
+      shape the code will not guess at, or a page it cannot prove was the last
+      one each land here, because recording any of them as `NOT_VERIFIED` would
+      be a verdict nobody issued. **`NOT_MEASURED` with `passed: false` is a
+      finding about the KEY, not about the sender, and not a failure of the
+      probe** — read `reason` before concluding anything about the address.
+    - `NOT_APPLICABLE` — `SendEmail` is off the operation list, so the question
+      was not asked at all. It is `valid: true`, which is the same absent-key
+      trap `checks.sendgrid` has: not an answer.
+
+    **And it has been read. The sender is verified.** The runtime rebuilds on
+    any merge touching its directory, so #288 was live within seconds, and the
+    first boot after it — `2026-09-25T19:30:14Z`, on the revision built from
+    `720d1401` — reports `checks.sendgridSender` with `verdict: VERIFIED`,
+    `route: authenticated_domain`, `fromDomain: cmcarebase.com`, and the report's
+    own `passed: true`. `checks.sendgrid` is `valid: true` on that same boot,
+    which is the key carrying `mail.send`. The probe re-runs on every restart, so
+    this is a standing reading rather than a one-off. Taken from the deploy log
+    by the release thread, which holds the Railway connector.
+
+    **Two things that reading is not, and both matter more than the good news.**
+    `senderConfigured` never measured the provider — it is a local regex under a
+    misleading name, and nothing on this page should be read as it having
+    verified anything, which is the whole reason #288 exists. And **`VERIFIED`
+    is not `delivered`**: SendGrid saying the domain may send is not a message
+    arriving, only a real send answers that, and no login exists to make one. So
+    the end-to-end proof is still the first real user call, exactly as it was
+    before this probe existed. What the probe removes is one specific way a
+    first send was expected to fail; the account's plan and limits it does not
+    reach at all.
   - **The plan and the limits are unmeasured.** A key can carry `mail.send` on
     an account that is at its cap, throttled, or suspended. Nothing read so far
     distinguishes those from a healthy account.
@@ -2167,10 +2225,12 @@ to settle it. Inside that one object, three fields and not one:
   parsing, so a bare `false` does not say which failed.
 - `senderConfigured` separates them: `valid: false` with
   `senderConfigured: true` is the key, and `senderConfigured: false` is the
-  address. **It separates them locally.** `senderConfigured` is
-  `validSender(config.fromEmail)` (`preflight.mjs:23`) — whether the string
-  parses as an address, not whether SendGrid has approved it. Nothing in this
-  object, and nothing else in the report, asks the provider that.
+  address. **It separates them locally**, and since #288 it is called
+  `fromAddressWellFormed` (`preflight.mjs:218`) — the same expression, whether
+  the string parses as an address, not whether SendGrid has approved it. A boot
+  log from before that merge carries the old name and means the same thing.
+  Nothing in this object asks the provider anything about the sender; the
+  sibling `checks.sendgridSender` does, and stage E says how to read it.
 
 **`checks.anthropic` has the same trap and the same remedy.** Its `required` is
 `needsAI`, derived from the same operation list, so with the list empty
@@ -2299,7 +2359,8 @@ while a revoked one never gets that far and the gateway answers without a
 SQLSTATE. `#276` adds `keyAccepted`, which reads the body for that code, and
 keeps it **beside** `anonymousDenied` rather than replacing it — an anonymous
 SUCCESS is still the real defect and is still caught, and a failure has to say
-which half failed. That is the same reason `senderConfigured` sits beside
+which half failed. That is the same reason `senderConfigured` (now
+`fromAddressWellFormed`, #288) sits beside
 SendGrid's `valid`.
 
 **So read the reading above for what it is.** It was taken at `08:19:25Z`,
@@ -2877,7 +2938,7 @@ account, and nobody can be admitted as one.**
 | ~~The publishable (anon) key and a sign-in credential for the four accepted accounts~~ | ~~Stage A claim 4, Stage C~~ | **Withdrawn 2026-09-22 — the owner declined to use the staging accounts.** Nothing is owed here. Stage A claim 4 stands on the composition recorded in that stage instead, and the one leg it cannot reach is named there |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
 | **Whether new staff may join the store at all — `PENNSYNC_ENROLL_NEW_STAFF`** | Stage C | **D6, and only his.** Built and applied 2026-09-25 (D99, #279): `identity_map` can now hold a person who never had a Base44 account, and the path is refused until the variable reads exactly `enabled-v1`. He authorized BUILDING it, on a card, and a card authorizes nothing to be sent — the switch needs his own words, and the invitation that would follow it is a separate hold again. Nothing in the change can send: a ratchet fails the build if an Auth-send or mail call ever appears in the tool |
-| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. **#269 (D97, merged 2026-09-25) then BUILT the send**, so the code cost is spent: both capabilities really call `integration('SendEmail', …)` behind `PENNSYNC_API_DELIVERY`, an exact untrimmed `enabled-v1` that is unset, and `BROKERED_OPERATIONS` is untouched — `DELIVERY_OPERATIONS` is added per call only while that gate is open, so an unreleased deployment's surface is what it was before the senders existed. Both moved out of `read-only` into `integration` in that same change, which D92's cross-check is what made unskippable. What a yes costs is a variable on each side — `PENNSYNC_API_DELIVERY` here, and `SendEmail` joining `INTEGRATIONS_ALLOWED_OPERATIONS` on the runtime — plus lifting `OWNER_HELD`, which withholds both names from every emitted value. **The owner said yes on 2026-09-25 at 09:40:32Z** ("Turn on the account-ready and welcome emails"), and **all three are now spent.** `SendEmail` joined the runtime's `operations` within the minute, read from its own `/readyz`, with `browserOperations` still empty. `OWNER_HELD` was emptied by the owner's later word and shipped in #283, so the ladder emits all 80 names. `PENNSYNC_API_DELIVERY` was written at `16:19Z`, and `/readyz` on `pennsync-api` now reports `ready: true`, `deliveryReleased: true`, and 80 `operations` carrying both senders. **The capability is on**: a call to either name now attempts a real send through SendGrid. What remains unmeasured is what always was — the sender identity, and the account's plan and limits — and **the preflight cannot close either**, since its SendGrid check measures the key and `senderConfigured` is a local regex, and it is already running at every boot rather than waiting to be turned on (stage E). A probe that really asks SendGrid is being built for it (#288), over two reads rather than one, because an authenticated sender domain is used without a single sender and a check consulting only the verified-senders list would report the recommended production setup as unverified. No login exists for a round trip, so the first real user call is still the end-to-end proof. The decision and the capability took seven hours and three separate writes to become the same thing; that gap is the lesson, not the delay |
+| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. **#269 (D97, merged 2026-09-25) then BUILT the send**, so the code cost is spent: both capabilities really call `integration('SendEmail', …)` behind `PENNSYNC_API_DELIVERY`, an exact untrimmed `enabled-v1` that is unset, and `BROKERED_OPERATIONS` is untouched — `DELIVERY_OPERATIONS` is added per call only while that gate is open, so an unreleased deployment's surface is what it was before the senders existed. Both moved out of `read-only` into `integration` in that same change, which D92's cross-check is what made unskippable. What a yes costs is a variable on each side — `PENNSYNC_API_DELIVERY` here, and `SendEmail` joining `INTEGRATIONS_ALLOWED_OPERATIONS` on the runtime — plus lifting `OWNER_HELD`, which withholds both names from every emitted value. **The owner said yes on 2026-09-25 at 09:40:32Z** ("Turn on the account-ready and welcome emails"), and **all three are now spent.** `SendEmail` joined the runtime's `operations` within the minute, read from its own `/readyz`, with `browserOperations` still empty. `OWNER_HELD` was emptied by the owner's later word and shipped in #283, so the ladder emits all 80 names. `PENNSYNC_API_DELIVERY` was written at `16:19Z`, and `/readyz` on `pennsync-api` now reports `ready: true`, `deliveryReleased: true`, and 80 `operations` carrying both senders. **The capability is on**: a call to either name now attempts a real send through SendGrid. What remains unmeasured is what always was — the sender identity, and the account's plan and limits — and **the preflight could close neither**, since its SendGrid check measures the key and the field beside it is a local regex, and it has been running at every boot rather than waiting to be turned on (stage E). **#288 (merged 2026-09-25 `19:29Z`) built the probe that asks**: `checks.sendgridSender` puts the question to SendGrid over both routes — the verified-senders list and the authenticated domains, since a domain is used without a single sender — and answers `VERIFIED`, `NOT_VERIFIED` or `NOT_MEASURED`, the last being the absence of a verdict rather than a soft no. **And it answered `VERIFIED`** on the first boot after the merge (`19:30:14Z`), by `route: authenticated_domain` for `cmcarebase.com`, with the report's own `passed: true` — read from the deploy log, and re-run on every restart. Two bounds go with it: `senderConfigured` never measured the provider and must not be cited as though it had, and `VERIFIED` is not `delivered` — only a real send proves a message arrives, and no login exists to make one, so the first real user call is still the end-to-end proof. The account's plan and limits stay unmeasured; this probe does not reach them. The decision and the capability took seven hours and three separate writes to become the same thing; that gap is the lesson, not the delay |
 | ~~Dispositions for 7 capabilities on retiring domains~~ | Stage G | **Settled by D84 (2026-09-23), and the description of them was wrong.** Measured, the 7 split 3 and 4. Three belong to a retiring domain and change destination: `analyzeNurseDeficits` and `analyzeRealTimePerformance` to the hub, `getCommsDashboard` to preserved-paused. The other four — `distributePolicyAcknowledgment`, `generateAIReport`, `offboardUser`, `sendExpirationNotifications` — are carried capabilities that touch one uncarried entity in passing, so they stay `port` with that leg settled by name and reason in `tools-transition-disposition.json`'s `uncarried_legs`, which the tool re-checks against the tree rather than trusts. None of the four leaves the queue: each moves on to its next real blocker. `fetchMedicareGuideline` and `scheduledGuidelineSync` also stop being carried, but that is D83 and they were never in this bucket |
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
