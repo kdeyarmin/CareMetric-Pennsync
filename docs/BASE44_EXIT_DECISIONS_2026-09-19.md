@@ -7515,3 +7515,70 @@ would reproduce this entry's defect at the next merge that adds a migration.
 **Scope left open.** Other derivations on that page may be stated as results the
 same way. Not surveyed here on purpose: a hunt run mid-batch would be a reading
 of a tree that is moving. It is worth one pass when the contract batches are in.
+
+## D104 — A write may not name a chart this store does not hold
+
+*2026-09-25.*
+
+`contract_clinical_library_template_write` refuses a create whose `patient_id`
+names no `patient` row in the agency the request names. That is a **narrowing**
+of the capability #295 shipped, taken deliberately, and it is recorded here
+rather than left to be found in a diff.
+
+The defect it closes is the one worth carrying. D24 asks two questions —
+whether the caller opens every chart in an agency, or is assigned this one in
+that agency — and **neither half asks which agency the chart is actually in**.
+`clinical_library_template_insert` asks the first question of the ROW's own
+`agency_id`, so a caller holding two agencies satisfied it with the other
+agency's chart id: the row landed in agency A, tenanted to A, carrying a
+`patient_id` that is a fact about B, having passed every chart check and every
+tenancy assertion. `patient_education_assignment` already resolved the chart's
+own agency, because that table carries no `agency_id` at all and the missing
+term was visible. **The table that HAS a tenancy column is where the predicate
+looks complete**, which is why this one shipped and its sibling did not.
+
+The shape of the check is load-bearing and is not the obvious one. A guard
+written as `not exists (a chart proving this row foreign)` does nothing: inside
+a SECURITY DEFINER under forced RLS, with the record owner holding no
+`BYPASSRLS`, the foreign chart is invisible to exactly the caller who needs
+protecting. `library_chart` asks the opposite, positive question — the chart
+must be PRESENT in the named agency — so an invisible chart is an absent chart
+and the write fails closed. Proved rather than argued: with the check replaced
+by a no-op, the same crossed create succeeds for a caller holding one agency
+and for a caller holding both, and the suite runs that measurement.
+
+The narrowing itself is the second-order effect. Only the
+`caller_assigned_patients` half of that policy ever looks an id up; the
+`caller_opens_every_chart` half does not. So before this, an `agency_admin`
+could file a template against an id naming nothing at all, and the row read as
+chart-bound while pointing at no chart. A store that cannot tell a dangling
+reference from a chart is a store that cannot answer who may see the row, so
+the refusal is kept. Rows already carrying such an id are unaffected: this
+decides what may be written, not what may be read.
+
+One case is deliberately NOT a narrowing and is recorded so nobody reads it as
+one. A chart in the caller's own agency that they are not assigned to was
+already refused, by the policy, as `_FORBIDDEN`; it now arrives as
+`_NOT_FOUND`. The refusal is not new — its name is — and `_NOT_FOUND` is what
+D24 asks for, because an id must not be testable for existence by somebody who
+does not open the chart.
+
+Two notes that belong with this rather than with a number of their own.
+
+**A field may be in `required` AND carry a default.** `ClinicalLibraryTemplate`
+declares `template_type` in both, and Base44 accepts a create that omits it. So
+a contract's defaults are applied BEFORE its required check, never after, or
+the check is itself a narrowing — which #295's was, for that one field. The
+mirror rule matters as much: defaults are applied on a create ONLY. A field a
+caller omits from an UPDATE is one they are leaving alone, and a fill placed in
+a shared write helper without the action test would reset every defaulted
+column on every partial update, with the required check seeing a complete
+payload and saying nothing.
+
+**D102's closing paragraph is superseded in its framing.** It called the
+generated store's universal nullability a consequence to fix. It is not: the
+generator's own header records nullability as deliberate, so a legacy row
+predating a requirement can migrate rather than be refused at load. The missing
+column DEFAULTS are the real gap, and they are separate — a default fires only
+where a column is omitted, so it costs the import path nothing and costs every
+create everything. That entry is left as written, being a dated record.
