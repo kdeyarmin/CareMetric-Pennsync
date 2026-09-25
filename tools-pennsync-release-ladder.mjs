@@ -119,6 +119,21 @@ export const OWNER_HELD = Object.freeze({
     + ' releasing it hands invitee names to an outside provider.',
   sendWelcomeEmail: 'The same decision, and the sharper half of it: this message\'s body'
     + ' carries a working temporary password.',
+  // These two are held for a DIFFERENT and worse reason than the pair above,
+  // and the difference is the point. D42 records that their send had no
+  // successor at all: the original calls `base44.users.inviteUser`, which
+  // mints the account AND delivers the link, so the port records intent and
+  // reports `delivery_paused`. The plausible successor is therefore a
+  // SUPABASE AUTH invite rather than a brokered `SendEmail` — and D92's gate
+  // decides from whether `handle` destructures `integration`, which an
+  // `auth.admin` call does not. So for the pair above the gate at least fires
+  // and moves them to another wave; for these two nothing in the build would
+  // fire at all, while the name sat in a live variable. Held until the gate
+  // can see that route, or the owner releases invitations.
+  resendInvitation: 'Sending an invitation to a real person is the owner\'s decision,'
+    + ' and its successor would be a Supabase Auth invite, which D92 cannot see.',
+  resendInvitationV2: 'The production replacement for the same capability (D42),'
+    + ' byte-identical to it, so it is held for the same reason.',
 });
 
 /** The held names, sorted, for reporting. */
@@ -815,8 +830,15 @@ export function reportDelta(names, readiness, wave, write) {
   // the deployment got there by a value this tool did not produce.
   const serving = readiness.operations.filter(name => Object.hasOwn(OWNER_HELD, name));
   if (serving.length) {
+    // Say what was OBSERVED and not what it implies about a person. A first
+    // version read "Someone set a hand-edited value", which is one cause of
+    // this and not the only one: widening the hold list AFTER a release puts
+    // a deployment in exactly this state with nobody having edited anything.
+    // Naming the wrong cause sends a reader to look for an incident that did
+    // not happen, so the two cases are both stated and neither is asserted.
     write(`# WITHHELD NAME IS LIVE: this deployment is serving ${serving.join(', ')},`
-      + ' which no value from this tool contains. Someone set a hand-edited value.');
+      + ' which no value from this tool contains. Either the value was edited by'
+      + ' hand, or the hold was added after the release. Check which before acting.');
   }
   for (const blocker of delta.blockers) write(`# REFUSED: ${blocker} — a release would throw this at startup.`);
   if (!delta.missing.length && !delta.revokes.length && !delta.blockers.length) {

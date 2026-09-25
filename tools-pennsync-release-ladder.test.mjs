@@ -657,13 +657,14 @@ test('the held names are real handlers, so the hold protects something', () => {
   for (const name of heldNames) {
     assert.ok(placed.has(name), `${name} is held but is not a handler; the hold guards nothing`);
   }
-  assert.deepEqual(heldNames, ['sendAccountReadyEmail', 'sendWelcomeEmail']);
+  assert.deepEqual(heldNames, ['resendInvitation', 'resendInvitationV2',
+    'sendAccountReadyEmail', 'sendWelcomeEmail']);
   for (const name of heldNames) {
     assert.ok(OWNER_HELD[name].length >= 40, `${name} owes a reason, not a label`);
   }
 });
 
-test('no wave emits a held name, and the read-only wave is where they sit', () => {
+test('no wave emits a held name, and every held name still belongs to one', () => {
   const ladder = checkLadder(REPOSITORY);
   for (const wave of ladder.waves) {
     for (const name of heldNames) {
@@ -671,12 +672,24 @@ test('no wave emits a held name, and the read-only wave is where they sit', () =
         `wave ${wave.name} emits ${name}`);
     }
   }
-  // Membership is unchanged: the derivation is right that they are read-only
-  // today, and the hold is orthogonal to where the tree puts them.
-  const readOnly = ladder.waves.find(wave => wave.name === 'read-only');
-  assert.deepEqual([...readOnly.withheld].sort(), heldNames);
-  assert.equal(readOnly.functions.split(',').length, readOnly.handlers.length - heldNames.length);
-  for (const name of heldNames) assert.ok(readOnly.handlers.includes(name));
+  // Membership is unchanged by a hold: the derivation is right about where the
+  // tree puts each one, and the hold is orthogonal to it. Asserted per WAVE
+  // rather than against one named wave, because the held set now spans two —
+  // a version of this pinned `read-only` and broke the moment it did, which is
+  // the assertion describing today's set rather than the property.
+  for (const wave of ladder.waves) {
+    const held = wave.handlers.filter(name => heldNames.includes(name)).sort();
+    assert.deepEqual([...wave.withheld].sort(), held,
+      `wave ${wave.name} does not report what it withheld`);
+    assert.equal(wave.functions.split(',').filter(Boolean).length,
+      wave.handlers.length - held.length,
+      `wave ${wave.name} emits a different count than its membership less its holds`);
+  }
+  // And every held name is somewhere, or the hold guards a name no wave has.
+  for (const name of heldNames) {
+    assert.ok(ladder.waves.some(wave => wave.handlers.includes(name)),
+      `${name} is held but belongs to no wave`);
+  }
 });
 
 test('every cumulative value excludes the held names, not just their own wave', () => {
