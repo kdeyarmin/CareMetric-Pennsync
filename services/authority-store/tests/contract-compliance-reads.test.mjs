@@ -1,7 +1,7 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
@@ -255,6 +255,69 @@ test('a caller holding two agencies gets the one they named, not both', async ()
   // contract is binding to the argument rather than to agency A.
   assert.deepEqual(ids(await adrCases(ADMIN_BOTH, { agency: B, limit: 1000 })),
     ['adr-elsewhere']);
+});
+
+/* ------------------------------------------ a subset is a narrowing too */
+
+test('every column of the five tables is projected, or exempt for a stated reason', async () => {
+  // These five contracts succeed a raw `Entity.filter`, which returned the
+  // whole row. So a projection that names a subset HIDES fields the screens
+  // are entitled to, and it fails silently: a screen reading a column that
+  // stopped arriving renders blank rather than erroring. The exemptions are
+  // therefore enumerated with a reason each, read out of the store rather
+  // than typed, so a column added to any of these tables fails this test
+  // instead of quietly never reaching the app.
+  const EXEMPT = {
+    // D56 and D77: a carried `file_url` string points at Base44's storage and
+    // the owned resolver fails closed on it, so projecting one would hand a
+    // caller a URL it would then fetch. Reconnecting these is the file layer's
+    // work. `uploaded_file_name` IS projected, so a screen can still say which
+    // document was filed.
+    incident: ['photo_urls', 'state_reportable_pdf_url'],
+    adr_audit_case: ['final_packet_url', 'letter_file_url', 'packet_file_url'],
+    personnel_credential: ['uploaded_file_url',
+      // D50's sweep bookkeeping: the three reminder tiers' claim markers exist
+      // so that one cron cannot consume another's tier. No screen reads them —
+      // asserted below rather than assumed — and a claim marker in a list
+      // answer is an invitation to drive the sweep from a client.
+      'expiration_note_claimed_by', 'expiration_note_offsets_sent',
+      'reminder_claimed_at', 'reminder_claimed_by', 'reminder_offsets_sent',
+      'renewal_email_claimed_at', 'renewal_email_claimed_by',
+      'renewal_email_offsets_sent'],
+    policy_acknowledgment: ['doc_url'],
+    compliance_audit: [],
+  };
+  const first = {
+    incident: (await incidents(ADMIN_A)).entries,
+    compliance_audit: (await audits(ADMIN_A)).entries,
+    adr_audit_case: (await adrCases(ADMIN_A)).entries,
+    personnel_credential: (await credentials(ADMIN_A)).entries,
+    policy_acknowledgment: (await acks(ADMIN_A)).entries,
+  };
+  for (const [table, exempt] of Object.entries(EXEMPT)) {
+    assert.ok(first[table].length > 0, `${table} seeded no row to read the projection off`);
+    // The projection is taken from an ANSWER rather than from the migration's
+    // text, so this measures what a caller receives.
+    const projected = new Set(Object.keys(first[table][0]));
+    const { rows } = await db.query(
+      `select column_name from information_schema.columns
+        where table_schema = $1 and table_name = $2 and column_name <> 'source_app_id'`,
+      [SCHEMA.replace(/"/g, ''), table]);
+    const missing = rows.map(row => row.column_name)
+      .filter(column => !projected.has(column)).sort();
+    assert.deepEqual(missing, [...exempt].sort(),
+      `${table}: unprojected columns do not match the stated exemptions`);
+  }
+  // The sweep markers are exempt because nothing in the app reads them. That
+  // is a claim about `src/`, so it is measured over the whole tree rather than
+  // asserted in prose — naming one page would answer about that page only.
+  const sources = readdirSync(resolve(repository, 'src'), { recursive: true })
+    .filter(name => /\.(js|jsx)$/.test(String(name)))
+    .map(name => readFileSync(resolve(repository, 'src', String(name)), 'utf8'))
+    .join('\n');
+  for (const marker of EXEMPT.personnel_credential.filter(name => name !== 'uploaded_file_url')) {
+    assert.ok(!sources.includes(marker), `${marker} is read by a screen and cannot be exempt`);
+  }
 });
 
 /* ------------------------------------------- D45: tenancy is not ownership */
