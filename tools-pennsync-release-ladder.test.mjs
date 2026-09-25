@@ -8,7 +8,7 @@ import {
   DECLARED_WAVES, LADDER_CONTRACT, LadderError, checkLadder, closureOf, dollarQuotedBody,
   functionBodies, handlerReach, importedNames, integrationDependents, integrationReach,
   OWNER_HELD, cumulativeValue, heldLeaks, heldNames, probeDeployment, readinessOf,
-  releasable, releaseDelta, releaseLadder, reportDelta,
+  releasable, releaseDelta, releaseLadder, releaseFacts, reportDelta,
   AUTH_SEND_CALLS, AUTH_SEND_DECLARED, authSendHolds, authSendReach,
   brokeredOperationsRequired, integrationRuntimeHolds, runtimeReadinessOf,
   appBindingLine, deliveryDependents, deliveryOperationsRequired,
@@ -286,6 +286,56 @@ test('the fixture the other refusals are measured against passes', (t) => {
   assert.equal(ladder.handlers, 8);
   assert.equal(ladder.waves[0].writes, false);
   assert.equal(ladder.waves[1].writes, true);
+});
+
+/**
+ * The broker family is the second way a handler reaches a record, and it is
+ * invisible to the contract call graph — `contractOrigins` starts from
+ * `record-contracts.mjs` and the family is not in it. Planted here rather than
+ * waited for: today every `records(` call in the tree is a `list`, so a
+ * classifier that ignored the family entirely would look exactly like this one.
+ */
+test('a write through the broker family is a write, and a page through it is not', (t) => {
+  const tree = intactTree(t);
+  fixture(tree, {
+    extraHandler: [
+      "  pageThem: Object.freeze({",
+      "    handle({ params, records }) { return records('list', params.entity, {}); },",
+      "  }),",
+      "  writeOne: Object.freeze({",
+      "    handle({ params, records }) { return records('insert', params.entity, { record: params.record }); },",
+      "  }),",
+    ].join('\n'),
+  });
+  const facts = releaseFacts(tree.root);
+  const page = facts.find(fact => fact.handler === 'pageThem');
+  const write = facts.find(fact => fact.handler === 'writeOne');
+  assert.deepEqual(page.records, ['list']);
+  assert.equal(page.mutates, false);
+  assert.deepEqual(write.records, ['insert']);
+  assert.equal(write.mutates, true, 'an insert through the family is a write');
+  // Both need the family's own migration, which no contract of theirs names.
+  for (const fact of [page, write]) {
+    assert.ok(fact.migrations.includes('20260919180000_record_brokers.sql'), fact.handler);
+  }
+});
+
+test('an operation the family is asked for by variable claims nothing', (t) => {
+  const tree = intactTree(t);
+  fixture(tree, {
+    extraHandler: [
+      "  whichever: Object.freeze({",
+      "    handle({ params, records }) { return records(params.operation, params.entity, {}); },",
+      "  }),",
+    ].join('\n'),
+  });
+  // The gate refuses an unresolved reach outright rather than reporting it, so
+  // this is the refusal and not a field on a report somebody has to read.
+  let failure = null;
+  try { checkLadder(tree.root); } catch (error) { failure = error; }
+  assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
+  assert.equal(failure.code, 'LADDER_REACH_UNRESOLVED');
+  assert.deepEqual(failure.detail.handlers, ['whichever']);
 });
 
 test('a declared read wave that has gained a write is refused', (t) => {

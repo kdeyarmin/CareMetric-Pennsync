@@ -5,8 +5,12 @@ import { fileURLToPath } from 'node:url';
 
 import { HANDLER_NAMES } from './services/pennsync-api/handlers.mjs';
 import { PORTED_FUNCTIONS } from './services/authority-client/client.mjs';
-import { ENTITY_ROUTES, ROUTED_OPERATIONS, routeFor } from './src/lib/independentEntityRoutes.js';
-import { measureRoutes } from './tools-entity-routes.mjs';
+import { ARGUMENTS_UNSUPPORTED, ENTITY_ROUTES, ROUTED_OPERATIONS, routeFor }
+  from './src/lib/independentEntityRoutes.js';
+import { measureRoutes, servedSites } from './tools-entity-routes.mjs';
+import { measureDestinations } from './tools-frontend-destination.mjs';
+import { auditBrokerCeiling, brokerReadable, locatorPaths } from './tools-tenant-decision.mjs';
+import { buildPaths, readEntity } from './tools-tenant-path.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
 
@@ -27,6 +31,51 @@ test('the committed declarations pass', () => {
   // The point of the report: how much of the landable surface is adopted.
   assert.ok(report.routed_sites > 0, 'a route that serves no call site is not progress');
   assert.equal(report.routed_sites + report.unrouted_sites, report.landable_sites);
+});
+
+/**
+ * The correction this tool most needed, kept as a test so it cannot come back.
+ *
+ * `routed_sites` used to count a call site as adopted when its
+ * `Entity.operation` was DECLARED. It reported 36 for the staff roster, and
+ * running those 36 calls' own arguments through the route refuses every one —
+ * 31 ask for an order over a field the roster does not project, and the rest
+ * asked for more rows than its ceiling. A number that can be produced without
+ * running the thing is not a measurement of the thing.
+ */
+test('a site is adopted only when its own arguments survive the route', () => {
+  const report = measureRoutes(repository);
+  const calls = servedSites(repository, ENTITY_ROUTES, measureDestinations(repository).sites.length);
+  assert.equal(report.routed_sites, calls.served.length);
+  for (const call of calls.served) {
+    // Re-run, because the count is only worth what the call proves.
+    assert.doesNotThrow(() => ENTITY_ROUTES[call.key].request(...call.arguments), call.file);
+  }
+  // And the refused ones really do refuse, with the route's own code.
+  for (const call of calls.refused) {
+    assert.throws(() => ENTITY_ROUTES[call.key].request(...call.arguments),
+      error => error.code === ARGUMENTS_UNSUPPORTED, call.file);
+  }
+  assert.ok(calls.refused.length > 0,
+    'with nothing refused this test would pass without the distinction existing');
+});
+
+/**
+ * A declaration nothing can use reads as adoption on the page and moves no
+ * screen, which is what the roster route did for a day. `NO_CALL_SITE` says
+ * the call is never made; this says it is made and cannot be served.
+ */
+test('a route no real call survives is refused, not counted', () => {
+  const refusing = {
+    'User.list': Object.freeze({
+      ...ENTITY_ROUTES['User.list'],
+      request: () => { const error = new Error(ARGUMENTS_UNSUPPORTED); error.code = ARGUMENTS_UNSUPPORTED; throw error; },
+    }),
+  };
+  const report = measureRoutes(repository, refusing);
+  assert.equal(report.ok, false);
+  assert.ok(report.problems.includes('ENTITY_ROUTE_SERVES_NO_CALL:User.list'), report.problems);
+  assert.equal(report.routed_sites, 0);
 });
 
 test('every declared route names a handler reachable from the browser', () => {
@@ -87,6 +136,39 @@ test('routeFor answers only for a declared operation', () => {
  * bug, so the test states which halves are real and which are merely
  * consistent.
  */
+/**
+ * The number this reports was wrong twice before it was right, both times
+ * upward, and both times because the audit was asked less than the whole
+ * question. First it applied only the read predicate (31 sites). Then it was
+ * hand-run with an empty `locators` list, so the file-layer check could not
+ * fire (25). The answer is 23, and `LibraryDocument` is the proof the gate now
+ * asks the whole question: its schema plainly permits a read, so the predicate
+ * alone admits it, and the ceiling refuses it for holding a file.
+ *
+ * The general rule is worth more than the number: a check run with one of its
+ * inputs empty reports CLEAR for a reason that has nothing to do with the
+ * thing being clear. So the gate builds its own inputs and nothing hand-runs
+ * the audit.
+ */
+test('the ceiling is the whole audit, not the half of it that answers first', () => {
+  const repository = resolve(dirname(fileURLToPath(import.meta.url)));
+  const paths = new Map(buildPaths(repository).entities.map(path => [path.entity, path]));
+  const schema = readEntity(repository, 'LibraryDocument');
+  assert.equal(brokerReadable(schema), true, 'the read predicate alone would admit it');
+  const problems = auditBrokerCeiling({
+    entity: 'LibraryDocument',
+    schema,
+    path: paths.get('LibraryDocument'),
+    locators: locatorPaths(repository, 'LibraryDocument'),
+  });
+  assert.ok(problems.some(problem => problem.includes('can hold a file')), problems);
+  // And with the locators left out — the way it was hand-run — it comes back
+  // clear, which is exactly why no caller supplies them any more.
+  assert.deepEqual(auditBrokerCeiling({
+    entity: 'LibraryDocument', schema, path: paths.get('LibraryDocument'), locators: [],
+  }), []);
+});
+
 test('what a wider generic family could reach is reported and adds up', () => {
   const report = measureRoutes(repository);
   assert.ok(report.unrouted_entities > 0);
@@ -99,4 +181,7 @@ test('what a wider generic family could reach is reported and adds up', () => {
   // would report every site as needing a named capability.
   assert.ok(report.generic_family_reads > 0,
     'no read cleared the ceiling, which would mean the schemas were not read at all');
+  assert.ok(report.generic_family_entities > 0
+    && report.generic_family_entities < report.unrouted_entities,
+  'the ceiling admits some entities and refuses others; all or none means it did not run');
 });

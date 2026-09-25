@@ -1316,11 +1316,14 @@ test('nothing in the queue is startable and unwritten', async () => {
   const shipped = new Set(HANDLER_NAMES);
   assert.deepEqual(report.port_blockers.none.filter(name => !shipped.has(name)), [],
     'a capability the queue calls portable today has no handler');
-  // The two handlers over and above the queue are the roster contract's, which
-  // D22 serves as a facility rather than as a Base44 capability — so they are
-  // not in `base44/functions` and the queue never counted them.
+  // The handlers over and above the queue are facilities rather than Base44
+  // capabilities — they are not in `base44/functions`, so the queue never
+  // counted them. Two are the roster contract's (D22). The third is the broker
+  // family's only caller: the family serves the entities whose own schema
+  // plainly permits a read, which is a disposition rather than a capability,
+  // so there is no Base44 function for it to be the port of.
   assert.deepEqual([...shipped].filter(name => !report.port_blockers.none.includes(name)).sort(),
-    ['getAgencyRosterMember', 'listAgencyRoster']);
+    ['getAgencyRosterMember', 'listAgencyRoster', 'listBrokeredRecords']);
 });
 
 test('a function call is only a reason to wait while the callee is unported', () => {
