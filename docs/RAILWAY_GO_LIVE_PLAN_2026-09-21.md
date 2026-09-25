@@ -2023,25 +2023,85 @@ reassurance:
  "identityHashing":{"valid":true}}
 ```
 
-**The `401` IS the pass**, and it is worth saying plainly because a status of
-401 in a log reads like a failure: the check requires 401 or 403, because a
-successful anonymous call would mean the caller's own token is not what
-authorizes. So it proves the RPC exists and that anonymous is refused. It does
-**not** prove a real session succeeds — no login exists for that round trip
-(§4), so **the first real call is the proof**, exactly as the readiness note
-above says.
+**The `401` is the pass, and a few hours after this was written `#276` showed
+that the pass was not enough.** A status of 401 in a log reads like a failure,
+so it needs saying plainly that the check requires 401 or 403: a successful
+anonymous call would mean the caller's own token is not what authorizes. What
+the status could not say is **which** 401 it is. The gateway refuses a
+**revoked** publishable key with the same 401 the database uses to refuse an
+anonymous caller — so the check passed in exactly the state it exists to
+catch, which is this document's own recurring defect arriving inside the probe
+written to measure things.
 
-**One thing cannot be read back on this service, and the asymmetry is worth
-knowing.** This stage says the app id is the value that fails silently: the
-production id is in `ALLOWED_APPS`, so stating it boots and reports ready and
-is then refused by every authorization call. `pennsync-api` publishes `appId`
-and `appStated` on its own `/readyz` for exactly that reason, and its comment
-says so. **The integration runtime's `publicReadiness` publishes neither**
-(`runtime.mjs:66-84`) — so on this service the binding is unobservable from
-outside, and the staging id was written deliberately rather than confirmed
-afterwards. If this ever needs checking rather than trusting, publishing the
-pair here is the change to make; until then, treat the value as written-not-
-verified and do not report it as measured.
+Only the body separates them, measured against the real cluster on 2026-09-25:
+a live key reaches PostgREST and PostgreSQL answers
+`{"code":"42501", … "permission denied for function pennsync_staging_context"}`,
+while a revoked one never gets that far and the gateway answers without a
+SQLSTATE. `#276` adds `keyAccepted`, which reads the body for that code, and
+keeps it **beside** `anonymousDenied` rather than replacing it — an anonymous
+SUCCESS is still the real defect and is still caught, and a failure has to say
+which half failed. That is the same reason `senderConfigured` sits beside
+SendGrid's `valid`.
+
+**So read the reading above for what it is.** It was taken at `08:19:25Z`,
+before that change, so it carries `anonymousDenied` and no `keyAccepted`: it
+proves the RPC exists and that an anonymous caller is refused, and it does
+**not** distinguish a live authority key from a revoked one. Nothing about the
+deployment changed — the next boot's report will carry the field. And neither
+version proves a real session succeeds: no login exists for that round trip
+(§4), so **the first real call is still the proof**.
+
+**One thing could not be read back on this service, and `#276` closed it the
+same day — but not yet on the running service.** This stage says the app id is
+the value that fails silently: the production id is in `ALLOWED_APPS`, so
+stating it boots, reports ready, and is then refused by every authorization
+call. `pennsync-api` publishes `appId` and `appStated` on its own `/readyz` for
+exactly that reason. The integration runtime's `publicReadiness` published
+neither, so its binding was written-not-verified — correct, and unconfirmable.
+
+It now publishes the pair (`runtime.mjs:95`), and `#276` goes further than
+reporting: `AUTHORITY_APP_PINS` declares which app each reviewed target's store
+carries, a mismatch throws `APP_BINDING_MISMATCH` at startup (`:53`), and a
+target with no declared pin throws rather than defaulting — so adding a target
+forces the decision instead of inheriting silence. Note why that is pinned per
+target rather than as "the production id is always wrong": that stops being
+true the day a production project joins the target list, and a pin does not.
+
+**And checking whether the tree's state had reached the service turned up
+something bigger, which is recorded in full at the end of this stage: it
+already had.** The live runtime answers with `appId
+6a9881683dc68a0bd54f1ef7` and `appStated true` — so the binding is confirmed,
+by the service itself, and is no longer written-not-verified. Confirm it from
+`/readyz` rather than from this paragraph.
+
+**A merge reaches these two services DIFFERENTLY, and this page had one rule
+for both.** Measured 2026-09-25 shortly after `#276` merged, by an
+unauthenticated GET of each `/healthz`, with `main` at `17c9cdc`:
+
+| Service | Running revision | Where that is |
+| --- | --- | --- |
+| `pennsync-integrations` | `17c9cdc` | **`main`'s tip** — three merges past its last variable write |
+| `pennsync-api` | `1a93f5b` | the commit its last variable write (wave 6) built |
+
+So the rule this document repeats — a variable change is a deploy that
+rebuilds from the tip, therefore a merge reaches a service at its next
+variable change — describes `pennsync-api` and **does not describe
+`pennsync-integrations`**, which is carrying code merged minutes earlier with
+no variable write in between. `#276`'s own commit message says "this reaches
+the service at its next variable change"; it had already arrived.
+
+**What is measured here is the two revisions, not the mechanism.** From
+outside, a service sitting on the tip cannot be told apart from a service
+somebody redeployed a moment ago; the settings that decide it are readable
+only by the thread holding the Railway connector, and confirming them is that
+thread's to do. Until it does, plan on the conservative reading: **a merge may
+be live on the integration runtime as soon as it lands**, with no screening
+step between the merge and the running service.
+
+That matters most where this stage is careful: the pre-write diff exists
+because a variable change ships whatever is at the tip. If one of these
+services deploys on merge instead, that check happens **after** the code is
+already serving, and the thing it protects has to move to the pull request.
 
 ### Stage F — Production Supabase project (size S to provision; owner approves cost)
 
