@@ -986,6 +986,33 @@ test('the requirement follows the VALUE, and the delivery half arrives with the 
   assert.ok(!requiredRuntimeOperations(REPOSITORY, []).required.includes('SendEmail'));
 });
 
+test('every sender also reaches the runtime, which is what the deployment gate leans on', () => {
+  // `--integration-deployment` returns early on `wave.needsIntegration`, so a
+  // value whose requirement carries `SendEmail` would have that requirement
+  // computed and then discarded, with the operator told the wave "needs no
+  // runtime" about a value that asks the runtime for mail.
+  //
+  // It cannot happen while every `needsDelivery` handler is also
+  // `needsIntegration` — true by construction, since a sender reaches the
+  // runtime in order to send. That fact was load-bearing and unasserted, which
+  // is the exact shape this change exists to fix, so it is asserted rather than
+  // worked around: a handler declared `needsDelivery` without `needsIntegration`
+  // fails here instead of quietly skipping the gate.
+  const senders = deliveryDependents(REPOSITORY);
+  const reaches = integrationDependents(REPOSITORY);
+  assert.ok(senders.size, 'the registry declares at least one outbound sender');
+  const orphans = [...senders].filter(name => !reaches.has(name));
+  assert.deepEqual(orphans, [],
+    'a sender that does not declare needsIntegration would skip the runtime gate entirely');
+  // And the waves follow from it: every wave whose value names a sender is a
+  // wave the gate will actually probe.
+  const ladder = checkLadder(REPOSITORY);
+  for (const wave of ladder.waves) {
+    const { senders: named } = requiredRuntimeOperations(REPOSITORY, cumulativeValue(ladder, wave).names);
+    if (named.length) assert.ok(wave.needsIntegration, `${wave.name} names a sender and skips the runtime gate`);
+  }
+});
+
 test('a runtime not serving the delivery operation no longer passes a value that releases mail', () => {
   // The bite. With the old requirement this runtime passed, because nothing
   // asked it for `SendEmail`; the assertion below is written so that reverting

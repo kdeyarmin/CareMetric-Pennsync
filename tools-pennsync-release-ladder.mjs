@@ -182,12 +182,11 @@ export function requiredRuntimeOperations(root, names) {
   const senders = deliveryDependents(root);
   const named = Object.freeze(names.filter(name => senders.has(name)));
   const brokered = brokeredOperationsRequired(root);
+  const delivery = named.length ? deliveryOperationsRequired(root) : Object.freeze([]);
   return Object.freeze({
     senders: named,
-    delivery: named.length ? deliveryOperationsRequired(root) : Object.freeze([]),
-    required: named.length
-      ? Object.freeze([...brokered, ...deliveryOperationsRequired(root)])
-      : brokered,
+    delivery,
+    required: named.length ? Object.freeze([...brokered, ...delivery]) : brokered,
   });
 }
 
@@ -595,7 +594,9 @@ function registryFlagged(root, flag) {
   const start = source.indexOf('export const HANDLERS');
   const registry = source.slice(start < 0 ? 0 : start);
   const entries = [...registry.matchAll(/\n {2}([A-Za-z][A-Za-z0-9]*): Object\.freeze\(\{/g)];
-  const declared = new RegExp(`${flag}:\\s*true`);
+  // Anchored on the left so a future flag ending in an existing one
+  // (`needsDelivery` inside `alsoNeedsDelivery`) cannot cross-match.
+  const declared = new RegExp(`(?<![A-Za-z])${flag}:\\s*true`);
   const names = new Set();
   entries.forEach((entry, index) => {
     const block = registry.slice(entry.index, entries[index + 1]?.index ?? registry.length);
