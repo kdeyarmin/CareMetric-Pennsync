@@ -77,6 +77,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
   generateUserManual: 'binary',
   generateUserRosterPDF: 'binary',
   getAgencyRosterMember: 'json',
+  listBrokeredRecords: 'json',
   checkAdrDeadlines: 'json',
   checkExpiredInvitations: 'json',
   createAuthorizedPatient: 'json',

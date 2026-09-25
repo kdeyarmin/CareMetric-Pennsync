@@ -246,6 +246,36 @@ export const HANDLERS = Object.freeze({
       return contract('getAgencyRosterMember', params);
     },
   }),
+  listBrokeredRecords: Object.freeze({
+    // D16's ceiling, given a caller at last.
+    //
+    // The tenant-scoped broker family has been generated, migrated and applied
+    // for a long time — three entities, all read-only, each admitted only
+    // because its own schema plainly permits the read — and nothing could
+    // reach it: no
+    // handler destructured `records`, so it served no request the browser
+    // could make. This is that handler, and it is the whole of it.
+    //
+    // It takes an entity NAME from the caller, which looks like the generic
+    // entity route this service deliberately does not have and is not one. The
+    // set of names that can succeed is `BROKERED_ENTITIES`, generated beside
+    // the family's SQL from the dispositions, and it is enforced three times
+    // over: here by nothing at all, in `records.mjs` against that generated
+    // list, and in the database by a family that resolves no other relation.
+    // Adding a name means changing an entity's disposition and regenerating —
+    // which re-runs D16's audit — not editing anything here.
+    //
+    // The ORDER and the PREDICATE the screens ask for are deliberately absent.
+    // The family pages by id and offers neither, and answering a sort by
+    // ignoring it is the silent-reorder bug; the caller proves it holds the
+    // whole set and orders it itself.
+    handle({ params, records }) {
+      exactObject(params, ['entity', 'limit', 'after'], 'INVALID_PARAMS');
+      if (typeof params.entity !== 'string' || !params.entity) fail(400, 'INVALID_PARAMS');
+      const { entity, ...page } = params;
+      return records('list', entity, page);
+    },
+  }),
   listAuthorizedPatients: Object.freeze({
     // The first ported capability that reads clinical rows.
     //

@@ -298,6 +298,22 @@ const DML = /\b(?:insert\s+into|update\s+(?:only\s+)?"?pennsync|delete\s+from)/i
  */
 const CALL = /"?\b(pennsync_records|pennsync_private)\b"?\s*\.\s*"?([a-z0-9_]+)"?\s*\(/gi;
 
+/**
+ * The broker family's operations, and the migration that defines it.
+ *
+ * A handler reaches a record two ways: through a reviewed contract, which the
+ * call graph above resolves, or through `records(operation, entity, …)`, which
+ * it does not — `contractOrigins` starts from `record-contracts.mjs` and the
+ * family is not in it. Until `listBrokeredRecords` no handler used the second,
+ * so the omission cost nothing and would have gone on costing nothing right up
+ * to the first `records('insert', …)`, which would have been classified
+ * read-only by having no contract in it and released into the read wave. That
+ * is the `\b` bug's exact shape in the other half of the tool, so it is
+ * closed before there is a write to close it for rather than after.
+ */
+const RECORD_WRITING_OPERATIONS = Object.freeze(['insert', 'update', 'delete']);
+const RECORD_FAMILY_MIGRATION = '20260919180000_record_brokers.sql';
+
 /** Where a qualified name is a relation rather than a function. */
 const TABLE_POSITION = /\b(?:insert\s+into|into|from|join|update(?:\s+only)?|table|truncate)\s+"?$/i;
 
@@ -527,6 +543,11 @@ export function handlerReach(root) {
     .map(name => [name, read(resolve(root, SERVICE, name))]));
   const contractsIn = text => [...text.matchAll(/\bcontract\(\s*'([A-Za-z0-9]+)'/g)].map(match => match[1]);
   const dynamicIn = text => /\bcontract\(\s*(?!')/.test(text);
+  // The same shape for the broker family, and the same failure mode: an
+  // operation that is not a literal claims nothing, so it makes the reach
+  // dynamic rather than being read as "no write here".
+  const recordsIn = text => [...text.matchAll(/\brecords\(\s*'([a-z]+)'/g)].map(match => match[1]);
+  const dynamicRecordsIn = text => /\brecords\(\s*(?!')/.test(text);
 
   const start = source.indexOf('export const HANDLERS');
   if (start < 0) refuse('LADDER_HANDLERS_MISSING', { file: 'handlers.mjs' });
@@ -538,21 +559,25 @@ export function handlerReach(root) {
   entries.forEach((entry, index) => {
     const block = registry.slice(entry.index, entries[index + 1]?.index ?? registry.length);
     const direct = contractsIn(block);
-    let dynamic = dynamicIn(block);
+    const directRecords = recordsIn(block);
+    let dynamic = dynamicIn(block) || dynamicRecordsIn(block);
     const delegates = [...new Set([...block.matchAll(/\b([A-Za-z][A-Za-z0-9]*)\s*\(/g)]
       .map(match => match[1]).filter(name => imports.has(name)).map(name => imports.get(name)))];
     const indirect = [];
+    const indirectRecords = [];
     for (const file of delegates) {
       const text = modules.get(file);
       // An imported callee whose module is not in the service directory cannot
       // be read, so the reach is unknown rather than empty.
       if (text === undefined) { dynamic = true; continue; }
       indirect.push(...contractsIn(text));
-      if (dynamicIn(text)) dynamic = true;
+      indirectRecords.push(...recordsIn(text));
+      if (dynamicIn(text) || dynamicRecordsIn(text)) dynamic = true;
     }
     reach.set(entry[1], Object.freeze({
       handler: entry[1],
       contracts: Object.freeze([...new Set([...direct, ...indirect])].sort()),
+      records: Object.freeze([...new Set([...directRecords, ...indirectRecords])].sort()),
       modules: Object.freeze(delegates.sort()),
       resolution: dynamic ? 'dynamic' : direct.length ? 'inline' : indirect.length ? 'module' : 'none',
     }));
@@ -572,12 +597,17 @@ export function releaseFacts(root) {
     const unknown = entry.contracts.filter(name => !origins.has(name));
     if (unknown.length) refuse('LADDER_CONTRACT_UNKNOWN', { handler: entry.handler, contracts: unknown });
     const reached = entry.contracts.map(name => origins.get(name));
+    // A handler that reaches the broker family needs the family's own
+    // migration, and writes through it exactly as it would through a contract.
+    const family = entry.records.length ? [RECORD_FAMILY_MIGRATION] : [];
     facts.push(Object.freeze({
       handler: entry.handler,
       resolution: entry.resolution,
       contracts: entry.contracts,
-      migrations: Object.freeze([...new Set(reached.flatMap(origin => origin.migrations))].sort()),
-      mutates: reached.some(origin => origin.mutates),
+      records: entry.records,
+      migrations: Object.freeze([...new Set([...reached.flatMap(origin => origin.migrations), ...family])].sort()),
+      mutates: reached.some(origin => origin.mutates)
+        || entry.records.some(operation => RECORD_WRITING_OPERATIONS.includes(operation)),
       needsIntegration: integration.has(entry.handler),
     }));
   }

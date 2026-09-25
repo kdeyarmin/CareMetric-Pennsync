@@ -95,7 +95,7 @@ export function everyField(schema, prefix = '', depth = 0) {
 }
 
 /** Every field the file census says can hold an address, nested ones included. */
-function locatorPaths(repository, entity) {
+export function locatorPaths(repository, entity) {
   for (const extension of ['.jsonc', '.json']) {
     const path = join(repository, ENTITY_DIRECTORY, `${entity}${extension}`);
     if (!existsSync(path)) continue;
