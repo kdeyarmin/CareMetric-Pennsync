@@ -1991,7 +1991,16 @@ Two things about it are load-bearing:
       list) or `authenticated_domain` (its domain is authenticated). Two routes
       and not one, because an authenticated sender domain is used WITHOUT a
       single sender, so a check consulting only the first list would report the
-      recommended production setup as unverified.
+      recommended production setup as unverified. **That is not a hypothetical
+      here.** The single-sender list is read FIRST and returns immediately when
+      it answers yes, so `route: authenticated_domain` on the live reading below
+      means that route did not answer yes for this address — a one-list check
+      would have said `NOT_VERIFIED` or `NOT_MEASURED` on this account today,
+      never `VERIFIED`, while the provider does authenticate the sending domain.
+      What the log cannot say is WHICH: a positive short-circuits and the
+      verdict object carries no sender detail, so `false` and "the read was
+      inconclusive" are indistinguishable from outside, and neither is a claim
+      about any other address on the account.
     - `NOT_VERIFIED` — SendGrid answered, on BOTH routes, that it may not. Both
       is the condition, not either.
     - `NOT_MEASURED` — the absence of a verdict rather than a soft no, with the
