@@ -9,6 +9,7 @@ import {
   functionBodies, handlerReach, importedNames, integrationDependents, integrationReach,
   OWNER_HELD, cumulativeValue, heldLeaks, heldNames, probeDeployment, readinessOf,
   releasable, releaseDelta, releaseLadder, reportDelta,
+  AUTH_SEND_CALLS, AUTH_SEND_DECLARED, authSendHolds, authSendReach,
 } from './tools-pennsync-release-ladder.mjs';
 import { loadConfig, publicReadiness } from './services/pennsync-api/runtime.mjs';
 import { ledgerVersion } from './tools-pennsync-migrate.mjs';
@@ -75,8 +76,8 @@ test('the handlers that reach the paused integration runtime are the last wave',
 
 test('the emitted release value is cumulative, so a wave never revokes an earlier one', () => {
   const ladder = releaseLadder(REPOSITORY);
-  const first = ladder.waves[0].functions.split(',');
-  const second = ladder.waves[1].functions.split(',');
+  const first = ladder.waves[0].adds.split(',');
+  const second = ladder.waves[1].adds.split(',');
   assert.deepEqual(first, ['listAuthorizedPatients', 'getAuthorizedPatient']);
   assert.deepEqual(second, ['createAuthorizedPatient', 'updateAuthorizedPatient']);
   // `functions` is per wave; the command line concatenates the waves up to the
@@ -674,27 +675,32 @@ test('the held names are real handlers, so the hold protects something', () => {
   }
 });
 
-test('no wave emits a held name, and the hold follows them between waves', () => {
+test('no wave emits a held name, and every held name still belongs to one', () => {
   const ladder = checkLadder(REPOSITORY);
   for (const wave of ladder.waves) {
     for (const name of heldNames) {
-      assert.ok(!wave.functions.split(',').includes(name),
+      assert.ok(!wave.adds.split(',').includes(name),
         `wave ${wave.name} emits ${name}`);
     }
   }
-  // The hold is orthogonal to where the tree puts them, and D97 proved it by
-  // moving them: both were read-only while the send was paused and are in the
-  // integration wave now that it is served. So this finds the wave that HOLDS
-  // them rather than naming one — a test that named `read-only` would have gone
-  // red on the move and read as a hold failing, which is the wrong alarm.
-  const holder = ladder.waves.find(wave => wave.withheld.length);
-  assert.ok(holder, 'no wave holds the held names at all');
-  assert.deepEqual([...holder.withheld].sort(), heldNames);
-  assert.equal(holder.functions.split(',').length, holder.handlers.length - heldNames.length);
-  for (const name of heldNames) assert.ok(holder.handlers.includes(name));
-  // And exactly one wave holds them, so a name cannot be withheld twice or the
-  // cumulative subtraction would be counted against the wrong slice.
-  assert.equal(ladder.waves.filter(wave => wave.withheld.length).length, 1);
+  // Membership is unchanged by a hold: the derivation is right about where the
+  // tree puts each one, and the hold is orthogonal to it. Asserted per WAVE
+  // rather than against one named wave, because the held set now spans two —
+  // a version of this pinned `read-only` and broke the moment it did, which is
+  // the assertion describing today's set rather than the property.
+  for (const wave of ladder.waves) {
+    const held = wave.handlers.filter(name => heldNames.includes(name)).sort();
+    assert.deepEqual([...wave.withheld].sort(), held,
+      `wave ${wave.name} does not report what it withheld`);
+    assert.equal(wave.adds.split(',').filter(Boolean).length,
+      wave.handlers.length - held.length,
+      `wave ${wave.name} emits a different count than its membership less its holds`);
+  }
+  // And every held name is somewhere, or the hold guards a name no wave has.
+  for (const name of heldNames) {
+    assert.ok(ladder.waves.some(wave => wave.handlers.includes(name)),
+      `${name} is held but belongs to no wave`);
+  }
 });
 
 test('every cumulative value excludes the held names, not just their own wave', () => {
@@ -729,15 +735,15 @@ test('the emitted-value guard bites when an emitter forgets to withhold', () => 
   // Driven with a wave the emitter would never build, because that is the case
   // it exists for. Asserting only that the real ladder is clean would pass
   // with the guard deleted.
-  assert.deepEqual(heldLeaks([{ name: 'read-only', functions: 'getDashboardData,searchPDFs' }]), []);
+  assert.deepEqual(heldLeaks([{ name: 'read-only', adds: 'getDashboardData,searchPDFs' }]), []);
   assert.deepEqual(
-    heldLeaks([{ name: 'read-only', functions: `getDashboardData,${heldNames[0]}` }]),
+    heldLeaks([{ name: 'read-only', adds: `getDashboardData,${heldNames[0]}` }]),
     [{ wave: 'read-only', handlers: [heldNames[0]] }],
   );
   // And a substring of a held name is not a held name: `sendWelcomeEmailer`
   // would be a different capability, and matching it would refuse a value that
   // is fine.
-  assert.deepEqual(heldLeaks([{ name: 'x', functions: `${heldNames[1]}er` }]), []);
+  assert.deepEqual(heldLeaks([{ name: 'x', adds: `${heldNames[1]}er` }]), []);
 });
 
 test('a held name already serving on a deployment is reported, not passed over', () => {
@@ -759,4 +765,72 @@ test('a held name already serving on a deployment is reported, not passed over',
   assert.match(said, /WITHHELD NAME IS LIVE/);
   assert.match(said, new RegExp(heldNames[0]));
   assert.equal(code, 1, 'a live held name is a non-zero exit, not a note');
+});
+
+test('the Auth-send gate fires on a real call and stays quiet on a comment', () => {
+  // D92 reads `integration` and is blind to the route Supabase Auth takes, so
+  // this is the same check over the other one. Proved by driving it, never by
+  // reading it: a gate nobody has seen fire has not been shown to work.
+  assert.equal(authSendReach(REPOSITORY).size, 0,
+    'nothing in the service reaches an Auth send today; if that changed, declare it');
+  assert.deepEqual(AUTH_SEND_DECLARED, {},
+    'the declaration list is empty because the reach is; they move together');
+
+  // A real call is refused, and the refusal names the file AND the call, since
+  // "something somewhere sends mail" is not actionable.
+  const reached = new Map([['account-email.mjs', ['inviteUserByEmail']]]);
+  assert.throws(() => authSendHolds(reached, {}), error => {
+    assert.equal(error.code, 'LADDER_AUTH_SEND_UNDECLARED');
+    assert.deepEqual(error.detail.undeclared, [
+      { file: 'account-email.mjs', calls: ['inviteUserByEmail'] }]);
+    return true;
+  });
+  // Declared, it passes — that is how invitation delivery ships.
+  authSendHolds(reached, { 'account-email.mjs': 'invitation delivery, released' });
+
+  // And a declaration whose reach has gone is refused too. That is D47's shape:
+  // a hold outlives its reason exactly where nothing can notice.
+  assert.throws(() => authSendHolds(new Map(), { 'gone.mjs': 'why' }),
+    error => error.code === 'LADDER_AUTH_SEND_UNDECLARED'
+      && error.detail.declared_without_reach[0] === 'gone.mjs');
+
+  // Every call this watches must be one Supabase actually mails on.
+  assert.deepEqual([...AUTH_SEND_CALLS].sort(), ['generateLink', 'inviteUserByEmail',
+    'resetPasswordForEmail', 'signInWithOtp', 'signUp']);
+});
+
+test('no wave exposes a field that could be mistaken for the operator value', () => {
+  // The field was called `functions` and its comment said "what an operator
+  // sets". Both were wrong: it is one wave's slice, and consecutive waves share
+  // no names, so composing from it sets the new wave and REVOKES everything
+  // already serving. Renamed to `adds`; this fails if the trap returns.
+  const ladder = checkLadder(REPOSITORY);
+  for (const wave of ladder.waves) {
+    assert.ok(!Object.hasOwn(wave, 'functions'),
+      `wave ${wave.name} carries a \`functions\` key again`);
+    assert.ok(Object.hasOwn(wave, 'adds'), `wave ${wave.name} lost its \`adds\``);
+  }
+});
+
+test('the value an operator sets only ever grows, wave by wave', () => {
+  // The property the two representations violated. Asserted over the CUMULATIVE
+  // value, because that is the one a release is composed from: each wave must
+  // be a strict superset of the one before it, or setting it revokes a name the
+  // deployment is serving. Wave 5 going out as its own 32 names would have
+  // dropped the 29 live ones, patients and visits included.
+  const ladder = checkLadder(REPOSITORY);
+  let previous = [];
+  for (const wave of ladder.waves) {
+    const value = cumulativeValue(ladder, wave).names;
+    for (const name of previous) {
+      assert.ok(value.includes(name),
+        `wave ${wave.name} drops ${name}, which an earlier wave released`);
+    }
+    assert.ok(value.length >= previous.length, `wave ${wave.name} shrinks the value`);
+    assert.equal(value.length, new Set(value).size, `wave ${wave.name} repeats a name`);
+    previous = value;
+  }
+  // And the per-wave slice is NOT that value, which is the whole point.
+  const mutating = ladder.waves.find(wave => wave.name === 'mutating');
+  assert.notEqual(mutating.adds, cumulativeValue(ladder, mutating).names.join(','));
 });
