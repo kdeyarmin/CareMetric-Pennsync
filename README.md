@@ -19,8 +19,11 @@ with its browser route off and no email operation enabled.
 `services/pennsync-api` is the home for backend handlers ported out of Base44
 and serves 78 of its 80 names, the two account-email senders being withheld.
 Outbound delivery is off on both. Read `/readyz` on either rather than this
-paragraph: a variable change redeploys from `main`'s tip, so what runs moves
-without anything here changing.
+paragraph, and note that the two deploy by different mechanisms: a variable
+change redeploys `pennsync-api` from `main`'s tip, while
+`services/integration-runtime` deploys on every merge touching its directory
+and does not wait for CI. Either way what runs moves without anything here
+changing.
 
 Start here to work on the migration:
 
