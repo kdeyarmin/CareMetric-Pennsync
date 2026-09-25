@@ -73,7 +73,7 @@ plan's status table reads as progress without saying where the progress lives.
 | Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
 | Record store migrations (store, brokers, 83 contracts, purpose policies, file map) | ~~54~~ **59** | ~~0~~ **59** — 54 on 2026-09-21 and the rest since; the hosted ledger holds 73 of the 74 committed migrations with nothing pending, read from the `hosted-gap` job on `b8e4e021` 2026-09-23 |
 | Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ ~~74 deployed~~ **80 deployed; waves 1 to 3 released 2026-09-25, 8 operations serving as at 05:43Z** (release state moves without a commit — read `/readyz`) — the six-name gap closed by the 2026-09-25 redeploy. It did not close by itself and will not stay closed by itself: the service's source is **pinned to a commit**, so every future merge reopens it until somebody repoints the pin — **or until the next variable change, which rebuilds from `main` regardless of the pin** (measured 2026-09-25 05:41Z). See stage B |
-| Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ ~~2 deployed, paused — 2026-09-22~~ **2 deployed and RELEASED — 2026-09-25**: `pennsync-api` serving 78 of 80 names, `pennsync-integrations` serving the two AI operations. Outbound delivery off on both |
+| Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ ~~2 deployed, paused — 2026-09-22~~ **2 deployed and RELEASED — 2026-09-25**: `pennsync-api` serving all 80 names, `pennsync-integrations` serving the two AI operations and `SendEmail`. Outbound delivery ON since `16:19Z`; the runtime's browser route still off |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
 
 Everything merged in PRs #227, #228 and #229 — the record store, the care-team
@@ -139,11 +139,12 @@ below have emptied, one of them twice, and the fourth has shrunk by one:
   what serves each leg instead.
 - `core_integration` **2 → 0** (D86). Both are ported, as the caller gate plus
   the original's own paused answer. That does **not** mean the send was
-  released. On 2026-09-25 the owner lifted D56 for these two names and
-  `SendEmail` joined the runtime's operation list — but `PENNSYNC_API_DELIVERY`
-  is still unset, so both capabilities still answer
-  `OUTBOUND_DELIVERY_RELEASE_PAUSED` and no mail can be sent. Two switches, one
-  on; see §4's `Core.SendEmail` row.
+  released. On 2026-09-25 the owner lifted D56 for these two names,
+  `SendEmail` joined the runtime's operation list at `09:42Z`, and
+  `PENNSYNC_API_DELIVERY` was written at `16:19Z`. Both switches are now on and
+  mail can be sent; see §4's `Core.SendEmail` row. What a release of these two
+  is NOT is a release of invitations, which have no send at all — their
+  `delivery_paused: true` is a literal on an audit entry (D42).
 - `entity_authorization` **8 → 7**. D83 took two out by retiring them — a
   `global` reference table is written by migration, never at runtime — and D84
   put `offboardUser` in, where the measurement always said it belonged. D82
@@ -1503,21 +1504,28 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   released the sends while leaving them in the wave whose whole promise is that
   nothing in it sends now fails the build.
 
-  **What still keeps them out of every value is the emitter, not the wave.**
-  `OWNER_HELD` withholds both names from the per-wave and the cumulative value,
-  prints why beside it, and refuses a value carrying one, so the move between
-  waves changes nothing an operator can paste. And the send has a switch of its
-  own, separate from `PENNSYNC_API_RELEASE`: `PENNSYNC_API_DELIVERY=enabled-v1`,
-  read exactly and untrimmed, without which `SendEmail` is not in the brokered
-  set at all and both senders answer 503 as before.
+  **What kept them out of every value was the emitter, not the wave — and that
+  is spent.** `OWNER_HELD` withheld both names from the per-wave and the
+  cumulative value, printed why beside it, and refused a value carrying one, so
+  the move between waves changed nothing an operator could paste. **The owner
+  emptied it on 2026-09-25 at `13:35:01Z` and #283 shipped that**, so the ladder
+  emits all 80 names and prints no `# WITHHELD` line. D100 records the decision
+  and the rule worth carrying: an empty hold is not the absence of one. The
+  facility stays and is still the place a future hold goes; because an empty
+  list fires none of its six guards, each is driven from a synthetic hold in its
+  tests rather than left vacuous.
+  The send's own switch, separate from `PENNSYNC_API_RELEASE`, is
+  `PENNSYNC_API_DELIVERY=enabled-v1`, read exactly and untrimmed; it was written
+  at `16:19Z` the same day, and `/readyz` reports `deliveryReleased: true`.
 
   Mail also needs the integration runtime's side, and **that side is now
   done**. The runtime was released 2026-09-25 `08:19:25Z` with the two AI
   operations and nothing else; on the owner's 09:40:32Z line, `SendEmail`
   joined `INTEGRATIONS_ALLOWED_OPERATIONS` and its `/readyz` lists three
   operations. That was the cheap half — one name on a list that already
-  existed. The expensive half is still the api's `PENNSYNC_API_DELIVERY`, which
-  is unset, and the `OWNER_HELD` lift the value has to be derived through.
+  existed. The expensive half was the api's `PENNSYNC_API_DELIVERY` and the
+  `OWNER_HELD` lift the value had to be derived through; both were spent on
+  2026-09-25, the lift in #283 and the variable at `16:19Z`.
 
   Whether the runtime's SendGrid key is usable was **never** answerable from
   `/readyz`:
@@ -1544,25 +1552,64 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   `browserReleased` is false, so the browser route is shut — and it must stay
   that way.
 
-  **Count what actually changed, because the first version of this paragraph
-  got it wrong and the error pointed the wrong way.** It said the route was
-  "one variable away". It is two. `app.mjs:44` refuses a browser request if
-  **either** `browserReleased` is not exactly `enabled-v2` **or**
-  `browserOperations` is empty, and `app.mjs:64` checks the operation against
-  that list again at dispatch. So opening a browser send needs both
-  `INTEGRATIONS_BROWSER_RELEASE` and `INTEGRATIONS_BROWSER_OPERATIONS` changed,
-  and two independent settings still stand. What went from three conditions to
-  two is the COUNT. What changed in KIND is the thing to carry: **a structural
-  refusal became a configuration setting.** One of the three used to make
-  another unsettable, and now none does. Do not write this as a lock count — a
-  reader who sees "one lock left" goes looking for a second to add, and there
-  are already two.
+  **Count what actually changed, because two versions of this paragraph got it
+  wrong in opposite directions.** The first said the route was "one variable
+  away"; the second said two and stopped there. **Since #281 there is no number
+  for `SendEmail` at all** — `BROWSER_FORBIDDEN_OPERATIONS` (`contracts.mjs:19`)
+  names it, `runtime.mjs:24` refuses to BOOT a container whose browser list
+  carries a forbidden name, and `app.mjs:69` refuses such a request again at
+  dispatch. No pair of Railway variables opens a browser send of mail; setting
+  them takes the service down instead. Read the three cases apart, because one
+  number describes none of them:
 
-  The structural refusal is restorable in code, as an exclusion beside
-  `runtime.mjs:19` keeping `SendEmail` off the browser list whatever the
-  service list holds. That is a narrowing and safe by disposition. As of
-  2026-09-25 it is **restorable and unrestored** — not planned, not scheduled —
-  and the file belongs to the thread that owns that service.
+  - **Mail: never.** Two refusals, one at boot and one at dispatch, and neither
+    is a setting.
+  - **An operation already on the service list** (today the two AI names): two
+    settings, `INTEGRATIONS_BROWSER_RELEASE` set to exactly `enabled-v2` — note
+    the **v2**, so copying the service flag's `enabled-v1` does not turn it on —
+    and a non-empty `INTEGRATIONS_BROWSER_OPERATIONS`. `app.mjs:44` refuses if
+    either is unmet and `app.mjs:64` re-checks the operation at dispatch.
+  - **Any other name:** three, because the service list is the browser list's
+    ceiling (`runtime.mjs:19-20`), so the name must join
+    `INTEGRATIONS_ALLOWED_OPERATIONS` first or the container will not boot.
+
+  What changed in KIND is still the thing to carry, and it now runs the other
+  way: **a configuration setting became a structural refusal again.** Do not
+  write any of this as a lock count — a reader who sees "one lock left" goes
+  looking for a second to add.
+
+  **This is the worked example of a hold kept by hand becoming a hold kept by
+  the code.** The exclusion was described here as restorable and unrestored,
+  which is a promise; #281 made it a refusal, which is a check. Its own comment
+  at `app.mjs:66-68` says why the dispatch half exists although `loadConfig`
+  already refuses to build such a config: so the refusal is a property of the
+  REQUEST rather than of how the config was made, with a test that drives it
+  from a hand-built config to prove it is not decorative.
+
+  **And read what the suite said during the window in between**, because the
+  finding is the reason the refusal is worth having rather than a footnote to
+  it. Recorded by the thread that owns `services/integration-runtime`, in its
+  own words:
+
+  > A test at `caller-binding.test.mjs:188` asserted that `SendEmail` on the
+  > browser operation list throws. Its fixture set the service list to
+  > `InvokeLLM` alone, so what it actually exercised was the SUBSET rule
+  > wearing a `SendEmail` costume. It passed before `SendEmail` joined the
+  > service list on 2026-09-25 and passed after, while the property it appears
+  > to prove went false in between. Anyone auditing the browser mail ceiling
+  > would have found that assertion and stopped there. The general form: a test
+  > whose fixture makes it pass for an older, broader reason reads exactly like
+  > one that covers the case, and only sabotage tells them apart.
+
+  Two things about that, so it is not read for more than it says. It is
+  evidence about a TEST, not about the service: the browser route was shut
+  throughout by both halves of `app.mjs:44`, the gap was latent — two settings
+  away for `SendEmail`, which was already on the service list, and three for a
+  name that is not — and nothing was ever exposed, a first account of it having
+  reported a live browser send and been corrected, because the 200 came from a
+  fixture that opens the route. And it is another instance of this page's own
+  defect, arriving inside a test rather than a check: the thing written to catch
+  a class of mistake was the thing that hid one.
 
   And the general form, which is not about `SendEmail`: the service list is the
   browser ceiling for **every** operation, so any widening of
@@ -1613,17 +1660,20 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   time of writing — both still authorize the caller and then answer
   `OUTBOUND_DELIVERY_RELEASE_PAUSED`, and their presence changes nothing about
   what the service sends; on one where it is set, they send. Their presence in a
-  release value is therefore no longer the only question about them. Exactly one
-  thing keeps the two names **unreleased**: the ladder's `OWNER_HELD` refuses to
-  emit either of them (`#267`). Two further things stand between a released name
-  and a message leaving the system, and they are safeguards against an effective
-  release rather than second copies of that hold — `PENNSYNC_API_DELIVERY` is
-  unset, so a released sender answers `OUTBOUND_DELIVERY_RELEASE_PAUSED`; and
-  since D98 the service refuses to report itself `ready` at all if a released
-  set contains a sender while that variable stays unset, so a release that
-  reached the value by accident is visible from outside rather than silent. Read
-  the three together: one keeps the name out, two keep a send from happening.
-  §4's `Core.SendEmail` row is still the decision that governs the flip.
+  release value is therefore no longer the only question about them. **All three
+  things that stood here are now spent, and the paragraph is kept because the
+  SHAPE is the reusable part.** One kept the name out of the value — the
+  ladder's `OWNER_HELD` (`#267`), emptied on the owner's word and shipped in
+  #283. Two more stood between a released name and a message leaving the
+  system, and they were safeguards against an effective release rather than
+  second copies of that hold: `PENNSYNC_API_DELIVERY`, written at `16:19Z` on
+  2026-09-25, and D98's refusal to report `ready` at all while a released set
+  contains a sender and that variable stays unset — which is now the thing
+  CONFIRMING the switch from outside rather than guarding against it, since
+  `/readyz` answers `ready: true` with `deliveryReleased: true`. Read the three
+  together anyway: one kept the name out, two kept a send from happening, and a
+  future hold over a future name wants all three again rather than one.
+  §4's `Core.SendEmail` row records the decision that governed the flip.
 
   **Wave 4 was released on 2026-09-25 at 06:16Z with both names cut out of the
   value by hand**, so for a few hours the exclusion protecting that hold lived
@@ -1872,12 +1922,42 @@ Two things about it are load-bearing:
     `PENNSYNC_API_DELIVERY` is unset, and `sendAccountReadyEmail` and
     `sendWelcomeEmail` are in `implemented` and **absent from `operations`**.
 
-  So **no mail can be sent**. Both are required and only one is on: the
-  runtime brokering `SendEmail` and the API being permitted to send are two
-  independent switches on two services, and the second cannot even be derived
-  until `OWNER_HELD` is emptied, which withholds both names from every value
-  the ladder emits. A measurement removed a *question*; the owner removed a
-  *hold*; neither removed the second switch.
+  At that reading **no mail could be sent**. Both are required and only one was
+  on: the runtime brokering `SendEmail` and the API being permitted to send are
+  two independent switches on two services, and the second could not even be
+  derived until `OWNER_HELD` was emptied. A measurement removed a *question*;
+  the owner removed a *hold*; neither removed the second switch.
+
+  **The second switch was written later the same day, and here is that
+  reading.** `OWNER_HELD` was emptied in #283, and `PENNSYNC_API_DELIVERY` was
+  written at `16:19Z`. Measured afterwards by an unauthenticated `GET /readyz`
+  on each service, from a session with no Railway access:
+
+  ```
+  pennsync-api            ready: true   released: true
+                          deliveryRequired: true   deliveryReleased: true
+                          operations: 80   (sendAccountReadyEmail, sendWelcomeEmail both present)
+                          appId: 6a9881683dc68a0bd54f1ef7   appStated: true
+                          authorityMode: independent   base44ExecutionDependency: false
+  pennsync-integrations   operations: 3   (InvokeLLM, ExtractDataFromUploadedFile, SendEmail)
+                          browserReleased: false   browserOperations: []   browserReady: false
+  ```
+
+  So **mail can now be sent**, and the browser route is still shut by both
+  halves of `app.mjs:44` — and, for `SendEmail` alone, by two refusals that are
+  not settings at all (§4's browser paragraph). The paragraph above is kept as
+  the 09:40Z record rather than rewritten: the gap between the owner's yes and
+  the capability being on was about seven hours and three separate writes, and
+  a page that edited the first reading away would lose exactly that.
+
+  **Read D100's "what this does not do" against its own clock.** It was written
+  about the state at the `13:35Z` lift and says `PENNSYNC_API_DELIVERY` is unset
+  and no mail can be sent, which was true then and was overtaken at `16:19Z`,
+  before the entry merged. A dated entry is a record and is not rewritten, so
+  this page carries the later reading and D100 keeps its own. Its other two
+  halves did not expire and still hold: D98's recipient binding still refuses an
+  address nobody in the caller's agency roster holds, and the runtime's release
+  is still a separate switch on a separate service.
 
   **The counter-example was on this same service.**
   `INTEGRATIONS_ALLOWED_OPERATIONS` was itself present as a name with an
@@ -1900,9 +1980,13 @@ Two things about it are load-bearing:
   and `INTEGRATIONS_BROWSER_OPERATIONS` is non-empty, and `app.mjs:64` refuses
   any operation outside that list. `runtime.mjs:19-20` then requires the
   browser list to be a **subset** of this one or startup throws
-  `INVALID_BROWSER_OPERATION_CONFIGURATION`. So capping this variable at the
-  two AI operations caps the browser at those two as well, even if somebody
-  later sets both browser variables.
+  `INVALID_BROWSER_OPERATION_CONFIGURATION`. So capping this variable caps the
+  browser at the same names, even if somebody later sets both browser
+  variables. It now carries three, `SendEmail` among them — and that is exactly
+  why the ceiling stopped being enough on its own: since #281,
+  `BROWSER_FORBIDDEN_OPERATIONS` (`contracts.mjs:19`) refuses `SendEmail` on the
+  browser list at boot (`runtime.mjs:24`) and again at dispatch (`app.mjs:69`),
+  whatever this variable holds.
 
 **What was left was five variables on the Railway runtime, set together — all
 five written at `08:17Z` on 2026-09-25, in one call, with the release flag
@@ -2071,9 +2155,13 @@ reassurance:
 - **The browser route is shut, and by both conditions.** `browserReleased:
   false` and `browserOperations: []` mean neither half of `app.mjs:44` is
   satisfied. Because `runtime.mjs:19-20` makes `operations` a ceiling on
-  `browserOperations`, the two AI names now cap the browser at those two even
-  if somebody later sets both browser variables — which is the ceiling this
-  stage described, now with a non-empty list under it.
+  `browserOperations`, the list caps the browser at the same names even if
+  somebody later sets both browser variables — which is the ceiling this stage
+  described, now with a non-empty list under it. That list has since grown to
+  three with `SendEmail`, and the ceiling alone would therefore have admitted a
+  browser send of mail; #281 closed that with a refusal rather than a
+  convention. Both browser readings above are unchanged at the latest
+  measurement.
 - **`missingProviders: []` is a real answer here for the first time.** It
   filters `config.operations`, so it was vacuous while that list was empty;
   with two AI operations on it, the empty result means the Anthropic key and
@@ -2375,7 +2463,7 @@ administrative write paths, and a vendor key.
 | ~~`records_schema`~~ | 0 | **Emptied by D89, D90 and D91.** The three capabilities D84 kept as `port` with an uncarried leg — `distributePolicyAcknowledgment`, `sendExpirationNotifications`, `generateAIReport` — are all written. D75 had taken this bucket to zero on a correction; this is the first time every capability that was in it has been built. Note that `portQueueLine` omits an empty bucket, so it no longer appears in the measured line at all |
 | `external_secret` | 2 | A new brokered operation for audio transcription, with the reservation, quota, encrypted result and audit the other seven have — over a PHI payload. Designed in D87; the key stays unwired, and `generateNoteFromRecording` has two further blockers that no key clears (the owned bucket's MIME set admits no audio, and it pins a model the broker does not accept) |
 | ~~`entity_not_carried`~~ | 0 | Settled by D84. Three changed destination, four stayed `port` with the leg recorded in `uncarried_legs` |
-| ~~`core_integration`~~ | 0 | Emptied by D86, which ported both capabilities as the caller gate and the D56 pause. Releasing `Core.SendEmail` is a flag flip rather than a build, and it stayed the owner's until he flipped it on 2026-09-25 — the runtime half only; the api's `PENNSYNC_API_DELIVERY` is still unset and both capabilities still refuse |
+| ~~`core_integration`~~ | 0 | Emptied by D86, which ported both capabilities as the caller gate and the D56 pause. Releasing `Core.SendEmail` is a flag flip rather than a build, and it stayed the owner's until he flipped it on 2026-09-25 — the runtime half at `09:42Z`, the `OWNER_HELD` lift in #283, and the api's `PENNSYNC_API_DELIVERY` at `16:19Z`. All three are spent and both capabilities now send |
 
 ### Stage H — Files (size M, can start once the production bucket exists)
 
@@ -2672,7 +2760,7 @@ doc entry for it is the build thread's to write and number.
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this. **Four are already accepted, mapped and verified as of 2026-09-22**; six remain |
 | ~~The publishable (anon) key and a sign-in credential for the four accepted accounts~~ | ~~Stage A claim 4, Stage C~~ | **Withdrawn 2026-09-22 — the owner declined to use the staging accounts.** Nothing is owed here. Stage A claim 4 stands on the composition recorded in that stage instead, and the one leg it cannot reach is named there |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
-| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. **#269 (D97, merged 2026-09-25) then BUILT the send**, so the code cost is spent: both capabilities really call `integration('SendEmail', …)` behind `PENNSYNC_API_DELIVERY`, an exact untrimmed `enabled-v1` that is unset, and `BROKERED_OPERATIONS` is untouched — `DELIVERY_OPERATIONS` is added per call only while that gate is open, so an unreleased deployment's surface is what it was before the senders existed. Both moved out of `read-only` into `integration` in that same change, which D92's cross-check is what made unskippable. What a yes costs is a variable on each side — `PENNSYNC_API_DELIVERY` here, and `SendEmail` joining `INTEGRATIONS_ALLOWED_OPERATIONS` on the runtime — plus lifting `OWNER_HELD`, which withholds both names from every emitted value. **The owner said yes on 2026-09-25 at 09:40:32Z** ("Turn on the account-ready and welcome emails"), and **one of the three is spent**: `SendEmail` is on the runtime's `operations` within the minute, read from its own `/readyz`, with `browserOperations` still empty. The other two are not. `PENNSYNC_API_DELIVERY` is unset and `/readyz` on `pennsync-api` reports `deliveryReleased: false`, with both senders `implemented` and absent from `operations`; `OWNER_HELD` still holds both names, and the api value cannot be derived until it is emptied. The decision is granted and the capability is still off — do not read the first as the second |
+| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. **#269 (D97, merged 2026-09-25) then BUILT the send**, so the code cost is spent: both capabilities really call `integration('SendEmail', …)` behind `PENNSYNC_API_DELIVERY`, an exact untrimmed `enabled-v1` that is unset, and `BROKERED_OPERATIONS` is untouched — `DELIVERY_OPERATIONS` is added per call only while that gate is open, so an unreleased deployment's surface is what it was before the senders existed. Both moved out of `read-only` into `integration` in that same change, which D92's cross-check is what made unskippable. What a yes costs is a variable on each side — `PENNSYNC_API_DELIVERY` here, and `SendEmail` joining `INTEGRATIONS_ALLOWED_OPERATIONS` on the runtime — plus lifting `OWNER_HELD`, which withholds both names from every emitted value. **The owner said yes on 2026-09-25 at 09:40:32Z** ("Turn on the account-ready and welcome emails"), and **all three are now spent.** `SendEmail` joined the runtime's `operations` within the minute, read from its own `/readyz`, with `browserOperations` still empty. `OWNER_HELD` was emptied by the owner's later word and shipped in #283, so the ladder emits all 80 names. `PENNSYNC_API_DELIVERY` was written at `16:19Z`, and `/readyz` on `pennsync-api` now reports `ready: true`, `deliveryReleased: true`, and 80 `operations` carrying both senders. **The capability is on**: a call to either name now attempts a real send through SendGrid. What remains unmeasured is what always was — the sender identity, and the account's plan and limits — and no login exists for a round trip, so the first real user call is the end-to-end proof. The decision and the capability took seven hours and three separate writes to become the same thing; that gap is the lesson, not the delay |
 | ~~Dispositions for 7 capabilities on retiring domains~~ | Stage G | **Settled by D84 (2026-09-23), and the description of them was wrong.** Measured, the 7 split 3 and 4. Three belong to a retiring domain and change destination: `analyzeNurseDeficits` and `analyzeRealTimePerformance` to the hub, `getCommsDashboard` to preserved-paused. The other four — `distributePolicyAcknowledgment`, `generateAIReport`, `offboardUser`, `sendExpirationNotifications` — are carried capabilities that touch one uncarried entity in passing, so they stay `port` with that leg settled by name and reason in `tools-transition-disposition.json`'s `uncarried_legs`, which the tool re-checks against the tree rather than trusts. None of the four leaves the queue: each moves on to its next real blocker. `fetchMedicareGuideline` and `scheduledGuidelineSync` also stop being carried, but that is D83 and they were never in this bucket |
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |

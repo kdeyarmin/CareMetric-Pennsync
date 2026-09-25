@@ -18,9 +18,9 @@ AI, email and private-file adapters; it serves the two AI operations and,
 since 2026-09-25, `SendEmail`, with its browser route off and its browser
 operation list empty.
 `services/pennsync-api` is the home for backend handlers ported out of Base44
-and serves 78 of its 80 names, the two account-email senders being withheld.
-Outbound delivery is still off, so no mail can be sent: the switch permitting
-it lives on `services/pennsync-api` and is unset. Read `/readyz` on either
+and serves all 80 of its names, including the two account-email senders.
+Outbound delivery was switched on on 2026-09-25, so those two can now send
+real mail; the switch permitting it lives on `services/pennsync-api`. Read `/readyz` on either
 rather than this paragraph, and note that the two deploy by different
 mechanisms: a variable change redeploys either service from `main`'s tip, and
 `services/integration-runtime` additionally deploys on every merge touching

@@ -95,31 +95,99 @@ export const DECLARED_WAVES = Object.freeze([
 ]);
 
 const INTEGRATIONS_MODULE = 'integrations.mjs';
+const DELIVERY_MODULE = 'outbound-delivery.mjs';
+
+/** "a and b", "a, b and c" — a list an operator reads, not a join. */
+const listed = items => (items.length < 3
+  ? items.join(' and ')
+  : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`);
 
 /**
- * What an integration wave requires that runtime to be SERVING, read out of the
- * business API's own allowlist rather than typed here — the same reason the
- * wave's membership is derived from the registry instead of listed.
- *
- * `BROKERED_OPERATIONS` is D56's ratchet and is the UNCONDITIONAL set.
- * `DELIVERY_OPERATIONS` is deliberately not included: mail has a switch of its
- * own (`PENNSYNC_API_DELIVERY`), so requiring it would make every integration
- * release wait on a decision about something else, and the two held send names
- * are out of every value anyway.
+ * One of the business API's own operation allowlists, read out of its source
+ * rather than typed here — the same reason the wave's membership is derived
+ * from the registry instead of listed.
  *
  * Refuses rather than defaulting to an empty set, because an empty requirement
  * makes `integrationRuntimeHolds` vacuously true — a gate that reports a wave
  * safe against a runtime it did not actually ask about.
  */
-export function brokeredOperationsRequired(root) {
-  const file = `${SERVICE}/${INTEGRATIONS_MODULE}`;
-  const source = read(resolve(root, SERVICE, INTEGRATIONS_MODULE))
+function operationsAllowlist(root, module, declaration, code) {
+  const file = `${SERVICE}/${module}`;
+  const source = read(resolve(root, SERVICE, module))
     .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
-  const found = /export const BROKERED_OPERATIONS\s*=\s*Object\.freeze\(\[([^\]]*)\]\)/.exec(source);
-  if (!found) refuse('LADDER_BROKERED_OPERATIONS_UNREADABLE', { file });
+  const declared = new RegExp(`export const ${declaration}\\s*=\\s*Object\\.freeze\\(\\[([^\\]]*)\\]\\)`);
+  const found = declared.exec(source);
+  if (!found) refuse(`LADDER_${code}_UNREADABLE`, { file });
   const names = [...found[1].matchAll(/'([^']+)'|"([^"]+)"/g)].map(match => match[1] ?? match[2]);
-  if (!names.length) refuse('LADDER_BROKERED_OPERATIONS_EMPTY', { file });
+  if (!names.length) refuse(`LADDER_${code}_EMPTY`, { file });
   return Object.freeze(names);
+}
+
+/**
+ * What ANY deployment may ask that runtime for: `BROKERED_OPERATIONS`, which is
+ * D56's ratchet and is the unconditional set.
+ */
+export const brokeredOperationsRequired = root =>
+  operationsAllowlist(root, INTEGRATIONS_MODULE, 'BROKERED_OPERATIONS', 'BROKERED_OPERATIONS');
+
+/**
+ * What it may ask for ADDITIONALLY once mail is released. Held in its own
+ * module and read separately here for the reason that module gives: a reader of
+ * the ratchet still sees exactly what an unreleased deployment may ask for.
+ */
+export const deliveryOperationsRequired = root =>
+  operationsAllowlist(root, DELIVERY_MODULE, 'DELIVERY_OPERATIONS', 'DELIVERY_OPERATIONS');
+
+/**
+ * The variable and the EXACT value that release mail, read out of the service
+ * rather than typed here. The service compares it untrimmed, so a stray space
+ * reads as paused and answers 503 to every send — which is precisely the kind
+ * of constant a second copy gets subtly wrong, and the reason this is parsed.
+ */
+export function deliveryReleaseSetting(root) {
+  const file = `${SERVICE}/${DELIVERY_MODULE}`;
+  const source = read(resolve(root, SERVICE, DELIVERY_MODULE))
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const read1 = name => {
+    const found = new RegExp(`export const ${name}\\s*=\\s*'([^']+)'`).exec(source);
+    if (!found) refuse('LADDER_DELIVERY_RELEASE_UNREADABLE', { file, declaration: name });
+    return found[1];
+  };
+  return Object.freeze({ variable: read1('DELIVERY_RELEASE_ENV'), value: read1('DELIVERY_RELEASE_VALUE') });
+}
+
+/**
+ * What a PROPOSED value requires that runtime to be serving.
+ *
+ * The requirement comes from the value being WRITTEN, never from the state
+ * being left behind, and that is the point of this function rather than a
+ * stylistic choice. The check exists to validate a value before it is written,
+ * and a value that releases mail is by definition written against a deployment
+ * where mail is not yet released: at 16:16Z on 2026-09-25 the live business API
+ * read `deliveryReleased: false` while the value about to be written turned it
+ * on, so a requirement sourced from the deployment would have dropped
+ * `SendEmail` from the one check whose job was to catch it missing.
+ *
+ * An earlier version left `DELIVERY_OPERATIONS` out altogether, reasoning that
+ * mail has a switch of its own "and the two held send names are out of every
+ * value anyway". That second clause was load-bearing, and it expired when the
+ * owner emptied `OWNER_HELD` on 2026-09-25 (D100): both senders are in every
+ * value now, so the exclusion kept its shape after its reason had gone — this
+ * repository's most repeated failure, and one the redeploy thread caught from
+ * outside rather than any test here. The condition is the value's own
+ * `needsDelivery` handlers now, which cannot go stale while the value decides
+ * it.
+ */
+export function requiredRuntimeOperations(root, names) {
+  const senders = deliveryDependents(root);
+  const named = Object.freeze(names.filter(name => senders.has(name)));
+  const brokered = brokeredOperationsRequired(root);
+  const delivery = named.length ? deliveryOperationsRequired(root) : Object.freeze([]);
+  return Object.freeze({
+    senders: named,
+    delivery,
+    required: named.length ? Object.freeze([...brokered, ...delivery]) : brokered,
+  });
 }
 
 /** The derived tail of the ladder, in the order "by blast radius" resolves to. */
@@ -517,6 +585,27 @@ export function releaseFacts(root) {
 }
 
 /**
+ * The handlers whose registry entry declares `flag: true`. One reader for both
+ * flags below, so a second one cannot acquire its own parsing and drift from
+ * this one — which is the failure the rest of this change is about.
+ */
+function registryFlagged(root, flag) {
+  const source = read(resolve(root, SERVICE, 'handlers.mjs'));
+  const start = source.indexOf('export const HANDLERS');
+  const registry = source.slice(start < 0 ? 0 : start);
+  const entries = [...registry.matchAll(/\n {2}([A-Za-z][A-Za-z0-9]*): Object\.freeze\(\{/g)];
+  // Anchored on the left so a future flag ending in an existing one
+  // (`needsDelivery` inside `alsoNeedsDelivery`) cannot cross-match.
+  const declared = new RegExp(`(?<![A-Za-z])${flag}:\\s*true`);
+  const names = new Set();
+  entries.forEach((entry, index) => {
+    const block = registry.slice(entry.index, entries[index + 1]?.index ?? registry.length);
+    if (declared.test(block)) names.add(entry[1]);
+  });
+  return names;
+}
+
+/**
  * The handlers the registry marks as reaching the integration runtime, read
  * from the registry's own flag rather than re-derived: `runtime.mjs` decides
  * readiness from `HANDLERS[name].needsIntegration`, so a second answer here
@@ -526,18 +615,19 @@ export function releaseFacts(root) {
  * `integrationReach` adds is not a second answer but a CROSS-CHECK of this
  * one, for the reason `account-email.mjs` writes down in its own header.
  */
-export function integrationDependents(root) {
-  const source = read(resolve(root, SERVICE, 'handlers.mjs'));
-  const start = source.indexOf('export const HANDLERS');
-  const registry = source.slice(start < 0 ? 0 : start);
-  const entries = [...registry.matchAll(/\n {2}([A-Za-z][A-Za-z0-9]*): Object\.freeze\(\{/g)];
-  const names = new Set();
-  entries.forEach((entry, index) => {
-    const block = registry.slice(entry.index, entries[index + 1]?.index ?? registry.length);
-    if (/needsIntegration:\s*true/.test(block)) names.add(entry[1]);
-  });
-  return names;
-}
+export const integrationDependents = root => registryFlagged(root, 'needsIntegration');
+
+/**
+ * The handlers the registry marks as reaching an outbound channel, read from
+ * the registry's own flag for `integrationDependents`' reason: `runtime.mjs`
+ * refuses to report a released deployment ready while `PENNSYNC_API_DELIVERY`
+ * is unset and any of these is in the value, so a second answer here could
+ * disagree with the thing that actually gates the deployment.
+ *
+ * This is what makes `requiredRuntimeOperations` a property of the value rather
+ * than of the deployment it is about to change.
+ */
+export const deliveryDependents = root => registryFlagged(root, 'needsDelivery');
 
 /**
  * Which handlers can REACH the integration runtime, derived from the tree.
@@ -1117,10 +1207,24 @@ async function main(argv, root, write) {
     for (const migration of cumulativeValue(ladder, found).migrations) {
       write(`#   ${migration}  ->  version '${ledgerVersion(migration)}'`);
     }
-    const required = brokeredOperationsRequired(root);
+    // Derived from the value being written rather than from anything read off
+    // a deployment, for the reason `requiredRuntimeOperations` records.
+    const runtimeNeeds = requiredRuntimeOperations(root, names);
+    const required = runtimeNeeds.required;
     if (found.needsIntegration) {
-      write(`# needs the integration runtime, serving ${required.join(' and ')}`
-        + ` (read from ${SERVICE}/${INTEGRATIONS_MODULE}).`);
+      write(`# needs the integration runtime, serving ${listed(required)}`
+        + ` (read from ${SERVICE}/${INTEGRATIONS_MODULE}`
+        + `${runtimeNeeds.senders.length ? ` and ${SERVICE}/${DELIVERY_MODULE}` : ''}).`);
+    }
+    if (runtimeNeeds.senders.length) {
+      // Stated as what THIS write owes rather than checked against the
+      // deployment: a value that releases mail is written against a deployment
+      // where mail is not yet released, so refusing on the current reading
+      // would refuse the correct write. Both go in one call.
+      const setting = deliveryReleaseSetting(root);
+      write(`# this value names ${listed(runtimeNeeds.senders)}, so the same write must set`
+        + ` ${setting.variable}=${setting.value} (exact, untrimmed). Without it this deployment`
+        + ' reports not ready and every send answers OUTBOUND_DELIVERY_RELEASE_PAUSED.');
     }
     const runtimeFlag = argv.indexOf('--integration-deployment');
     if (runtimeFlag >= 0) {
