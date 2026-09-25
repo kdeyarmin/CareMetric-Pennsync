@@ -29,6 +29,18 @@
 --    keeping a second copy. NOT FOUND rather than FORBIDDEN, so an id
 --    stays untestable across a tenant boundary.
 --
+--    It NARROWS the capability in one way, deliberately and recorded
+--    here rather than left as a side effect: a template naming a chart
+--    that does not exist at all is now refused, where the insert policy
+--    admitted it for anybody who opens every chart. Only the
+--    `caller_assigned_patients` half of that policy ever looks an id
+--    up; the `caller_opens_every_chart` half does not, so an
+--    administrator could file a row that reads as chart-bound while
+--    pointing at no chart. The other case a reader will ask about is
+--    NOT a narrowing: a chart in the caller's own agency that they are
+--    not assigned to was already refused by the policy, and what
+--    changed is the code it arrives as.
+--
 -- 2. A CREATE THAT OMITS A DEFAULTED FIELD WROTE NULL. D30's generator
 --    emits every column nullable with no DEFAULT — deliberately, so a
 --    legacy row predating a requirement can migrate rather than be

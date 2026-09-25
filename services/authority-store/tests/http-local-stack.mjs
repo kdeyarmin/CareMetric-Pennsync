@@ -41,6 +41,10 @@ export const MIGRATION_CODES = Object.freeze([
   // D35's, for the same reason: a contract that would create functions failing
   // on their first call refuses to apply instead.
   'PENNSYNC_MEMBERSHIP_LIFECYCLE_REQUIRED',
+  // A correction to a shipped contract refuses to apply where the contract it
+  // corrects is absent: `create or replace` would otherwise CREATE it, leaving
+  // a store whose library writes have no chart check and no complaint.
+  'PENNSYNC_CLINICAL_LIBRARY_REQUIRED',
   // D37's: the first contract to depend on D25's trail refuses to apply to a
   // store that has none.
   'PENNSYNC_ACTIVITY_TRAIL_REQUIRED',

@@ -304,6 +304,26 @@ test('the chart a write names is resolved in the agency the request names', asyn
   await refusal(call(ADMIN_B, 'pennsync_contract_clinical_library_template_write',
     [B, 'create', null, crossed('patient-a1')]), 'PENNSYNC_LIBRARY_TEMPLATE_NOT_FOUND');
 
+  // The other direction, because a guard that refuses too much is the same
+  // class of defect read from the other side. Two cases, both RECORDED
+  // narrowings rather than side effects.
+  //
+  // A chart this store does not hold. The insert policy admits it today for
+  // anybody who opens every chart — `patient_id in caller_assigned_patients`
+  // is the only half that looks the id up, and the `caller_opens_every_chart`
+  // half never does — so an administrator could file a template against an id
+  // naming nothing, and the row would read as chart-bound while pointing at
+  // no chart. That is now refused.
+  await refusal(call(ADMIN_A, 'pennsync_contract_clinical_library_template_write',
+    [A, 'create', null, crossed('no-such-chart')]), 'PENNSYNC_LIBRARY_TEMPLATE_NOT_FOUND');
+  // A chart in the caller's OWN agency that they are not assigned to was
+  // already refused, by the policy, as `_FORBIDDEN`. It is still refused, and
+  // what changed is only the code: `_NOT_FOUND`, which is the answer D24 asks
+  // for, since an id must not be testable for existence by somebody who does
+  // not open the chart. The refusal is not new; its name is.
+  await refusal(call(CLINICIAN_A, 'pennsync_contract_clinical_library_template_write',
+    [A, 'create', null, crossed('patient-a2')]), 'PENNSYNC_LIBRARY_TEMPLATE_NOT_FOUND');
+
   // And the measurement that says the guard is what refuses them. With the
   // check replaced by a no-op the SAME two creates succeed, so the policies
   // catch neither — which is the thing a reading of the predicate cannot
