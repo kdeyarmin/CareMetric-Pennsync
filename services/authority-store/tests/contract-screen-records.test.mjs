@@ -820,3 +820,45 @@ test('the chart guard subtracts no row the table policies would have granted', a
   await refusal(as(DUAL, EVENTS, [A, 'patient-b1', 50]), 'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE');
   await refusal(as(DUAL, RECS, [A, 'patient-b1', 50]), 'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE');
 });
+
+test('a partial save changes what it sent and resets nothing it did not', async () => {
+  // THE SHAPE A REQUIRED-FIELD CHECK CANNOT SEE. The values list stamps the
+  // entity's declared defaults, which is right for a row that does not exist;
+  // carrying that fill into the conflict branch would reset every column the
+  // caller left out, and by then the merged payload looks complete, so nothing
+  // downstream can tell a deliberate value from a re-stamped default.
+  //
+  // The settings screen spreads its whole row and sends all seven, so this is
+  // invisible from the call site today -- which is exactly why it is measured
+  // here rather than trusted to stay that way.
+  const first = await write(CLINICIAN_A, PREF_SAVE, [A, null, JSON.stringify({
+    digest_mode: 'daily', sound_enabled: false, push_notifications_enabled: true,
+    preferences: { info: { email: false } },
+  })]);
+  assert.equal(first.success, true);
+  const stored = () => db.query(
+    'select digest_mode, sound_enabled, push_notifications_enabled, '
+    + 'email_notifications_enabled, preferences from pennsync_records.notification_preference '
+    + 'where id = $1', [first.id]).then(r => r.rows[0]);
+  const before = await stored();
+  assert.equal(before.digest_mode, 'daily');
+  assert.equal(before.sound_enabled, false);
+  // The defaults DID apply on the create, for a key the caller omitted.
+  assert.equal(before.email_notifications_enabled, true);
+
+  // Now save one field. Everything else must survive untouched, including the
+  // two whose stored values differ from the entity's default -- without that
+  // contrast a reset and a no-op look identical.
+  const again = await write(CLINICIAN_A, PREF_SAVE,
+    [A, first.id, JSON.stringify({ digest_mode: 'weekly' })]);
+  assert.equal(again.id, first.id, 'a partial save must not mint a second row');
+  const after = await stored();
+  assert.equal(after.digest_mode, 'weekly');
+  assert.equal(after.sound_enabled, false, 'sound_enabled was reset to the entity default');
+  assert.equal(after.push_notifications_enabled, true,
+    'push_notifications_enabled was reset to the entity default');
+  assert.deepEqual(after.preferences, { info: { email: false } },
+    'preferences was reset to null');
+  assert.equal(after.email_notifications_enabled, true);
+  await db.query('delete from pennsync_records.notification_preference where id = $1', [first.id]);
+});

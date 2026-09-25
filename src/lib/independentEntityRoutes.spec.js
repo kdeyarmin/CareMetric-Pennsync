@@ -572,4 +572,53 @@ describe("what batch E's routes take on trust", () => {
       expect(suite, `${code} must be exercised by the contract suite`).toContain(code);
     }
   });
+
+  it('closes the preference round trip the settings screen actually makes', async () => {
+    // The screen spreads the row it is holding and changes one field
+    // (`{ ...preferences, digest_mode: value }`), so what the save receives is
+    // whatever the READ projected. That makes the two routes one path, and a
+    // path is not proved by either end alone: widen the read's projection by a
+    // column the write does not allow and the screen starts answering
+    // `PENNSYNC_SCREEN_FIELD_NOT_WRITABLE` on every save, with both contracts'
+    // own suites green. This is the seam, driven rather than described.
+    const row = ENTITY_ROUTES['NotificationPreference.filter'].response({
+      success: true,
+      found: true,
+      preference: {
+        id: 'pref-1',
+        user_email: 'clinician-a@example.invalid',
+        email_notifications_enabled: true,
+        in_app_notifications_enabled: true,
+        push_notifications_enabled: false,
+        preferences: { info: { email: false, in_app: true, push: false } },
+        quiet_hours: { enabled: false, start_time: '22:00', end_time: '08:00' },
+        digest_mode: 'instant',
+        sound_enabled: true,
+      },
+    })[0];
+    const edited = { ...row, digest_mode: 'daily' };
+    const sent = ENTITY_ROUTES['NotificationPreference.update'].request(row.id, edited);
+    expect(sent.expected_id).toBe('pref-1');
+    // Exactly the seven the contract's `screen_exact_keys` allows: an eighth
+    // is a refusal and a missing one is a field the screen cannot change.
+    expect(Object.keys(sent.preference).sort()).toEqual([
+      'digest_mode', 'email_notifications_enabled', 'in_app_notifications_enabled',
+      'preferences', 'push_notifications_enabled', 'quiet_hours', 'sound_enabled',
+    ]);
+    expect(sent.preference.digest_mode).toBe('daily');
+    // The create branch is the screen's OTHER shape: no row yet, so it spreads
+    // its own literal default object, which carries the address and no id.
+    const fresh = ENTITY_ROUTES['NotificationPreference.create'].request({
+      user_email: 'clinician-a@example.invalid',
+      email_notifications_enabled: true,
+      in_app_notifications_enabled: true,
+      push_notifications_enabled: false,
+      preferences: {},
+      quiet_hours: { enabled: false },
+      digest_mode: 'instant',
+      sound_enabled: true,
+    });
+    expect(fresh.expected_id).toBeNull();
+    expect(Object.keys(fresh.preference)).not.toContain('user_email');
+  });
 });

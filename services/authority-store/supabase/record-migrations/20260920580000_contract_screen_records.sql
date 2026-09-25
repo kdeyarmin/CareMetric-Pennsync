@@ -888,15 +888,34 @@ begin
     -- constraint, so `on conflict on constraint` cannot see it. The predicate
     -- has to be repeated here for the inference to match it.
     on conflict ("source_app_id", "user_email") where "user_email" is not null
+    -- A DEFAULT BELONGS ON A CREATE AND NEVER ON AN UPDATE. The values list
+    -- above stamps the entity's declared defaults, which is right for a row
+    -- that does not exist yet; re-stamping them here would turn "save the
+    -- fields I sent" into "reset the fields I did not", and the required check
+    -- cannot see it, because by then the payload looks complete. So each
+    -- column moves only when the caller's payload CARRIES its key. The screen
+    -- spreads its whole row and sends all seven, so this changes nothing for
+    -- it today -- the round trip is driven in `independentEntityRoutes.spec.js`
+    -- -- and it is what keeps a partial save from being a silent reset.
     do update set
       "updated_date" = clock_timestamp(),
-      "email_notifications_enabled" = excluded."email_notifications_enabled",
-      "in_app_notifications_enabled" = excluded."in_app_notifications_enabled",
-      "push_notifications_enabled" = excluded."push_notifications_enabled",
-      "preferences" = excluded."preferences",
-      "quiet_hours" = excluded."quiet_hours",
-      "digest_mode" = excluded."digest_mode",
-      "sound_enabled" = excluded."sound_enabled"
+      "email_notifications_enabled" = case when p_preference ? 'email_notifications_enabled'
+        then excluded."email_notifications_enabled"
+        else "notification_preference"."email_notifications_enabled" end,
+      "in_app_notifications_enabled" = case when p_preference ? 'in_app_notifications_enabled'
+        then excluded."in_app_notifications_enabled"
+        else "notification_preference"."in_app_notifications_enabled" end,
+      "push_notifications_enabled" = case when p_preference ? 'push_notifications_enabled'
+        then excluded."push_notifications_enabled"
+        else "notification_preference"."push_notifications_enabled" end,
+      "preferences" = case when p_preference ? 'preferences'
+        then excluded."preferences" else "notification_preference"."preferences" end,
+      "quiet_hours" = case when p_preference ? 'quiet_hours'
+        then excluded."quiet_hours" else "notification_preference"."quiet_hours" end,
+      "digest_mode" = case when p_preference ? 'digest_mode'
+        then excluded."digest_mode" else "notification_preference"."digest_mode" end,
+      "sound_enabled" = case when p_preference ? 'sound_enabled'
+        then excluded."sound_enabled" else "notification_preference"."sound_enabled" end
     -- The entity's UPDATE rule is `created_by` AND `user_email`, both the
     -- caller's; only its CREATE rule is the address alone. A row addressed to
     -- me that somebody else wrote is therefore not mine to change, and the

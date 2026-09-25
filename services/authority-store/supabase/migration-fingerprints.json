@@ -76,5 +76,5 @@
   "record-migrations/20260920560000_contract_report_metrics.sql": "ea4a72c96af49e4e73586bf7b36b6e8939784d27060cf457daa0bff525367c7e",
   "record-migrations/20260920570000_contract_clinical_library.sql": "a7b5c24c574e84360b899bd8a72344f70df75e0c9820439cd105c62b31b71661",
   "record-migrations/20260920570000_contract_reference_reads.sql": "07230f90b94693fe8c6f8d23c0289256c861004f7a0c0be3a9243a23769b961c",
-  "record-migrations/20260920580000_contract_screen_records.sql": "95e71b810d4034848124999fca01e5e33aacb9742a72c7f82d52daebd84f5437"
+  "record-migrations/20260920580000_contract_screen_records.sql": "4f32f97dad7963060634b07b12aea9939f7d5bc7108263938d254a7e9b0b3031"
 }
