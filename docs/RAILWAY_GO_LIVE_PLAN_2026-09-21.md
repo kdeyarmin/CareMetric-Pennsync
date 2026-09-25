@@ -48,7 +48,7 @@ Probed 2026-09-21:
 | `app.caremetricai.com/` | HTTP 200 | Base44 |
 | `caremetricai.base44.app/` | HTTP 200 | Base44 |
 | Supabase account project list | `CM Train`, `caremetric-pennsync-staging`, `PennPaps`, `CareMetric Support Hub`, `bolt-native-database-62871816` | **No production project** |
-| `caremetric-pennsync-staging` migration list | 9 versions, newest `20260918204105` | Five authority migrations behind; **no record store at all**. **Closed later the same day: 59 applied, 68 recorded — see stage A. Re-read 2026-09-23 from the `hosted-gap` job on `b8e4e021`: `already_applied: 73`, `pending: []`, one skipped by name** |
+| `caremetric-pennsync-staging` migration list | 9 versions, newest `20260918204105` | Five authority migrations behind; **no record store at all**. **Closed later the same day: 59 applied, 68 recorded — see stage A. Re-read 2026-09-23 from the `hosted-gap` job on `b8e4e021`: `already_applied: 73`, `pending: []`, one skipped by name.** **And read again on 2026-09-25 after the owner applied #279's migration from his own machine at about `18:18Z`: 74 rows, the new `20260920600000_locally_verified_identity` newest, nothing pending, the same one still skipped by name.** That last reading is the applying session's, taken from the database rather than from CI, and the arithmetic agrees from here: 75 migrations are pinned (16 authority, 59 record) and `LOCAL_ONLY_MIGRATIONS` holds exactly one back |
 | `node tools-pennsync-cutover.mjs --check` | `status: blocked`, `PINNED_INPUTS_REQUIRED`, `release_authorized:false` | None of the 15 gates has a receipt |
 | `pnpm run check:base44-surface` | `client_importers=366/366 entity_call_sites=445/445 core_integration_sites=41/41 function_wrappers=83/83` | The frontend has not moved one call site |
 
@@ -70,8 +70,8 @@ plan's status table reads as progress without saying where the progress lives.
 
 | Artifact | Built | Applied or deployed anywhere hosted |
 | --- | ---: | ---: |
-| Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
-| Record store migrations (store, brokers, 83 contracts, purpose policies, file map) | ~~54~~ **59** | ~~0~~ **59** — 54 on 2026-09-21 and the rest since; the hosted ledger holds 73 of the 74 committed migrations with nothing pending, read from the `hosted-gap` job on `b8e4e021` 2026-09-23 |
+| Authority store migrations | ~~15~~ **16** | ~~9~~ ~~14~~ **15** (one is deliberately never hosted) — 14 applied 2026-09-21, and D99's `20260920600000_locally_verified_identity` applied by the owner 2026-09-25 |
+| Record store migrations (store, brokers, 83 contracts, purpose policies, file map) | ~~54~~ **59** | ~~0~~ **59** — 54 on 2026-09-21 and the rest since; the hosted ledger holds ~~73 of the 74~~ **74 of the 75** committed migrations with nothing pending — 73 read from the `hosted-gap` job on `b8e4e021` 2026-09-23, and the 74th after the owner applied D99's migration 2026-09-25. The count that moved is authority, not record: this row is unchanged at 59 |
 | Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ ~~74 deployed~~ **80 deployed; waves 1 to 3 released 2026-09-25, 8 operations serving as at 05:43Z** (release state moves without a commit — read `/readyz`) — the six-name gap closed by the 2026-09-25 redeploy. It did not close by itself and will not stay closed by itself: the service's source is **pinned to a commit**, so every future merge reopens it until somebody repoints the pin — **or until the next variable change, which rebuilds from `main` regardless of the pin** (measured 2026-09-25 05:41Z). See stage B |
 | Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ ~~2 deployed, paused — 2026-09-22~~ **2 deployed and RELEASED — 2026-09-25**: `pennsync-api` serving all 80 names, `pennsync-integrations` serving the two AI operations and `SendEmail`. Outbound delivery ON since `16:19Z`; the runtime's browser route still off |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
@@ -392,6 +392,15 @@ critical path that needs nothing from anybody.
   checkout had been writing `\r\n` into eight Postgres function bodies, which
   the hosted comparison reads through `md5(prosrc)` and correctly failed on.
 
+  **That half is now closed by measurement rather than by reasoning, 2026-09-25.**
+  Until then the fix was believed on the strength of the diff: no session here
+  runs on Windows, so the thing the `.gitattributes` line exists to change had
+  never been observed changed. The owner ran the apply from his own Windows
+  machine at about `18:18Z` and read a Postgres function body back out of the
+  database with **no carriage returns in it**. So CRLF is no longer an open risk
+  on this page, and a `md5(prosrc)` failure from here on is drift to diagnose
+  rather than a line-ending artefact to suspect first.
+
   Two things it encodes that were previously prose only. Migrations are
   matched on NAME, because the hosted project's versions were stamped by the
   CLI at push time and do not match the repository's file prefixes — matching
@@ -422,6 +431,17 @@ critical path that needs nothing from anybody.
   arrive, that the ledger check will be short by that many rows until the
   apply, and the command. It is a signal and not a gate, because nothing inside
   a pull request can satisfy it.
+
+  **The red that appears at the moment of the merge is STALE, not new drift,
+  and it does not clear itself.** That run's store job executes before the
+  operator applies anything, so it reports the ledger short by the arriving
+  migrations and can report nothing else — it is measuring a store the apply
+  has not reached yet. What clears it is a RE-RUN of the workflow after the
+  apply, and the re-run is the reading to diagnose. Worked instance,
+  2026-09-25: #279 merged at about `18:12Z` and its `main` run failed the
+  ledger check by one row; the owner applied the migration at about `18:18Z`;
+  the re-run came back green, 22 of 22, `skipped 0`. Anyone reading the first
+  run as a schema problem is debugging the clock.
 - **A second transport had to exist before that plan could be run at all, and
   that is a finding rather than a convenience.** From this container — and from
   any runner allowed outbound HTTPS and nothing else, which includes CI here —
@@ -1056,8 +1076,12 @@ write deploys `main` — so a wave set while an unapplied migration sits on
 
 **The check for it already exists and needs no building.** D93 keeps `main` RED
 until an operator applies a merged migration, and applying is the owner's
-(`tools-pennsync-migrate.mjs --apply`, §4). So the standing step before ANY
-variable write is two readings, not one:
+(`tools-pennsync-migrate.mjs --apply`, §4). Read the RIGHT run, though: the run
+that fires at the merge itself is stale by construction, because its store job
+runs before the apply (§3, stage A). After an apply, re-run the workflow and
+read the re-run. A red that has not been re-run since the apply says nothing
+either way. So the standing step before ANY variable write is two readings, not
+one:
 
 1. **`hosted-store` green on `main`, with the "Measure the hosted staging
    store" step EXECUTED** and `skipped 0`. A run where that step is skipped and
@@ -1180,6 +1204,17 @@ undischargeable claim into a readable field.
 
 - Send Supabase Auth invitations; each enrollee accepts their own. The tool
   cannot create a native account and must not be given a way to.
+
+  **A second kind of enrollment now exists in the store and changes nothing in
+  this stage (D99, #279, applied 2026-09-25).** This stage's population is the
+  ten people who HELD Base44 accounts; D99 admits a person who never held one,
+  as `locally_verified` rather than `base44_migrated`. Everything above still
+  governs them — the account is not created by the tool, the invitation is
+  accepted by the person, the evidence is read and hashed rather than declared
+  — and the new kind is additionally **switched off**: a plan naming it is
+  refused at parse time unless `PENNSYNC_ENROLL_NEW_STAFF` reads exactly
+  `enabled-v1`. Setting it is D6, the owner's. A migration plan never asks the
+  gate at all, so the six enrolments below are unaffected in either direction.
 - **This stage now also carries stage A's unfinished half.** The hosted proof of
   tenant isolation — `record-tenant-isolation`, `activity-audit` and the 45
   `contract-*` suites run against the hosted project rather than PGlite — needs
@@ -1303,12 +1338,19 @@ undischargeable claim into a readable field.
 `docs/PENNSYNC_EXTERNAL_CUTOVER_EVIDENCE.md` passes hosted with real Auth;
 `identities`, `isolation` and `revocation` rehearsal receipts producible.
 
-**Nothing buildable remains in this stage** — measured item by item 2026-09-23,
-and recorded because "everything waits on the owner" is the kind of claim this
-project has had to re-measure before. Every remaining bullet needs an enrollee
-or an owner decision. Re-read against the tree on `b8e4e021` later the same day
-and unchanged, which is worth one line because this table is the reason not to
-go hunting for work here:
+~~**Nothing buildable remains in this stage**~~ — measured item by item
+2026-09-23, and recorded because "everything waits on the owner" is the kind of
+claim this project has had to re-measure before. Every remaining bullet needs an
+enrollee or an owner decision. Re-read against the tree on `b8e4e021` later the
+same day and unchanged.
+
+**And then something buildable arrived, 2026-09-25, which is the more useful
+lesson.** D99 is enrollment work squarely in this stage's territory, it was
+built and applied inside two days of that measurement, and nothing failed when
+the sentence above went stale — the claim was a fact about the DECISIONS taken
+by 2026-09-23, not a property of the stage. It became false when the owner took
+a new one. So read the table below as what waits today, and re-measure it rather
+than quoting this paragraph:
 
 | Item | Waits on |
 | --- | --- |
@@ -1896,9 +1938,44 @@ Two things about it are load-bearing:
 
   - **The sender identity is unverified as far as anything here knows.**
     `validSender` is a regular expression in this repository
-    (`runtime.mjs:60-62`), and whether SendGrid has approved the specific
+    (`runtime.mjs:74-76`), and whether SendGrid has approved the specific
     address we would send *as* is a separate setting on their side that
     nothing in this codebase reads. It is a normal reason a first send bounces.
+
+    **And the existing preflight cannot close it — a correction made
+    2026-09-25 after this page's own advice was read back wrong.** The
+    preflight's SendGrid check is a `GET /v3/scopes`
+    (`preflight.mjs:21`), which measures the KEY, and the key was already
+    measured on 2026-09-25 at `10:27Z`. The field beside it that reads like a
+    sender answer, `senderConfigured`, is `validSender(config.fromEmail)`
+    (`preflight.mjs:23`) — the same local regex, no network call. `verified_senders`
+    appears nowhere in this repository.
+
+    **And there is nothing to switch on: the preflight is already running on
+    every boot of the live runtime, and its current boot said exactly this.**
+    `runPreflight` is called only when `INTEGRATIONS_PREFLIGHT` reads
+    `read-only` (`server.mjs:36`), so a report in the deploy log IS the
+    variable being set — which the `08:19:25.039Z` boot quoted above already
+    demonstrated, and which the release thread confirmed again from the
+    revision running now, `e159c189`, booted `2026-09-25T11:26:41.906Z`:
+    `"sendgrid":{"status":200,"valid":true,"senderConfigured":true,"required":true}`.
+    So the answer is not "would be"; it is on the page, from production, twice.
+    `required` has flipped to `true` since the first reading because `SendEmail`
+    joined the operation list, which is the one thing that changed.
+
+    Read what that costs somebody who asks for the probe expecting it to settle
+    the sender: they get `valid: true` and `senderConfigured: true`, which look
+    like confirmation that the from-address is approved when nothing has asked
+    the provider. This page's house shape, in the field somebody would use to
+    settle it, twice over. Note also that the `10:27Z` mail-key reading carried in
+    project notes is this same field, so whatever else it settles it says
+    nothing about the sender. Closing the question needs a probe added to
+    `preflight.mjs` that really asks SendGrid; the release thread is writing one
+    (#288), over two reads rather than one, because an authenticated sender
+    domain is used without a single sender and a check consulting only the
+    verified-senders list would report the recommended production setup as
+    unverified. So treat the check as **being built** rather than as available,
+    and do not ask anybody to turn on a variable that is already on.
   - **The plan and the limits are unmeasured.** A key can carry `mail.send` on
     an account that is at its cap, throttled, or suspended. Nothing read so far
     distinguishes those from a healthy account.
@@ -2045,6 +2122,17 @@ zero id, and the authority RPC — and **sends no message at all**, so it answer
 the mail question without touching the owner's hold and without releasing
 anything.
 
+**Be exact about WHICH mail question, because this page was not, on
+2026-09-25.** The question the preflight answers is the KEY's: does it exist,
+and does it carry `mail.send`. It is not "can a message leave". `/v3/scopes`
+asks the provider about the key and about nothing else, and the sender half is
+a local regex — see the bullet above for the whole reading and for what closing
+it would take. Both were answered long ago, and the probe is not something
+waiting to be switched on: `INTEGRATIONS_PREFLIGHT` already reads `read-only`
+on the live runtime, so the report is printed at every boot and the current
+revision's is quoted in that bullet. Asking for it again adds no measurement
+and produces a report that is easy to read as more than it is.
+
 **It ran on 2026-09-25 at `08:19:25.039Z`, and the SendGrid answer is in the
 bullet above.** The paragraph that used to stand here called this a reading
 that *could* be taken. What is worth keeping from that is not the answer but
@@ -2079,7 +2167,10 @@ to settle it. Inside that one object, three fields and not one:
   parsing, so a bare `false` does not say which failed.
 - `senderConfigured` separates them: `valid: false` with
   `senderConfigured: true` is the key, and `senderConfigured: false` is the
-  address.
+  address. **It separates them locally.** `senderConfigured` is
+  `validSender(config.fromEmail)` (`preflight.mjs:23`) — whether the string
+  parses as an address, not whether SendGrid has approved it. Nothing in this
+  object, and nothing else in the report, asks the provider that.
 
 **`checks.anthropic` has the same trap and the same remedy.** Its `required` is
 `needsAI`, derived from the same operation list, so with the list empty
@@ -2748,6 +2839,31 @@ This does **not** settle Stage C's six remaining enrolments, which are a
 different population and still sit where that stage leaves them. The decisions
 doc entry for it is the build thread's to write and number.
 
+**The first and third are now discharged, 2026-09-25; the second is not, and it
+is the one this page has to keep saying.** The build is D99, merged as #279 at
+about `18:12Z`, and the owner applied its migration from his own machine at
+about `18:18Z` on his own words. What the store gained is one column:
+`pennsync_private.identity_map.provenance`, `text not null default
+'base44_migrated'`, constrained to that value or `locally_verified`, with a
+second CHECK keeping the two id spaces disjoint — a minted identity's id must
+begin `ffffffff` and a migrated one's must not — and `protect_identity()`
+replaced so the new column is immutable like the rest of the row rather than
+rewritable on the way through a revocation.
+
+**And the sentence this page must not let itself write is "new staff can now
+sign up".** They cannot. The capability is in the store; the path stays
+REFUSED while `PENNSYNC_ENROLL_NEW_STAFF` is unset, read exactly and untrimmed
+as `enabled-v1` (`tools-pennsync-enroll.mjs:86-90`) and asked during PARSING,
+so a plan carrying a locally verified enrollment is refused before a connection
+is opened. Turning it on is not a flip anybody here may make: it is **D6, the
+owner's own decision about who may join the store**, and it has not been taken.
+Nothing in #279 sends anything either — a test reads the tool's own source and
+fails if `inviteUserByEmail`, `generateLink`, `signInWithOtp`,
+`resetPasswordForEmail`, `signUp`, `admin.createUser` or a mail provider ever
+appears in it, or if anything inserts into `auth.`. So the honest reading has
+two halves and needs both: **the store can hold a person who never had a Base44
+account, and nobody can be admitted as one.**
+
 | Needed | For | Note |
 | --- | --- | --- |
 | ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open. It moved to stage C for identities, and on 2026-09-22 the identities turned out to be largely there already. ~~What it waits on is a sign-in, a seed transport and one `chart_assignment` row.~~ The owner withdrew the sign-in the same day, which retires the other two with it; claim 4 now rests on the composition recorded in stage A |
@@ -2760,7 +2876,8 @@ doc entry for it is the build thread's to write and number.
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this. **Four are already accepted, mapped and verified as of 2026-09-22**; six remain |
 | ~~The publishable (anon) key and a sign-in credential for the four accepted accounts~~ | ~~Stage A claim 4, Stage C~~ | **Withdrawn 2026-09-22 — the owner declined to use the staging accounts.** Nothing is owed here. Stage A claim 4 stands on the composition recorded in that stage instead, and the one leg it cannot reach is named there |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
-| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. **#269 (D97, merged 2026-09-25) then BUILT the send**, so the code cost is spent: both capabilities really call `integration('SendEmail', …)` behind `PENNSYNC_API_DELIVERY`, an exact untrimmed `enabled-v1` that is unset, and `BROKERED_OPERATIONS` is untouched — `DELIVERY_OPERATIONS` is added per call only while that gate is open, so an unreleased deployment's surface is what it was before the senders existed. Both moved out of `read-only` into `integration` in that same change, which D92's cross-check is what made unskippable. What a yes costs is a variable on each side — `PENNSYNC_API_DELIVERY` here, and `SendEmail` joining `INTEGRATIONS_ALLOWED_OPERATIONS` on the runtime — plus lifting `OWNER_HELD`, which withholds both names from every emitted value. **The owner said yes on 2026-09-25 at 09:40:32Z** ("Turn on the account-ready and welcome emails"), and **all three are now spent.** `SendEmail` joined the runtime's `operations` within the minute, read from its own `/readyz`, with `browserOperations` still empty. `OWNER_HELD` was emptied by the owner's later word and shipped in #283, so the ladder emits all 80 names. `PENNSYNC_API_DELIVERY` was written at `16:19Z`, and `/readyz` on `pennsync-api` now reports `ready: true`, `deliveryReleased: true`, and 80 `operations` carrying both senders. **The capability is on**: a call to either name now attempts a real send through SendGrid. What remains unmeasured is what always was — the sender identity, and the account's plan and limits — and no login exists for a round trip, so the first real user call is the end-to-end proof. The decision and the capability took seven hours and three separate writes to become the same thing; that gap is the lesson, not the delay |
+| **Whether new staff may join the store at all — `PENNSYNC_ENROLL_NEW_STAFF`** | Stage C | **D6, and only his.** Built and applied 2026-09-25 (D99, #279): `identity_map` can now hold a person who never had a Base44 account, and the path is refused until the variable reads exactly `enabled-v1`. He authorized BUILDING it, on a card, and a card authorizes nothing to be sent — the switch needs his own words, and the invitation that would follow it is a separate hold again. Nothing in the change can send: a ratchet fails the build if an Auth-send or mail call ever appears in the tool |
+| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. **#269 (D97, merged 2026-09-25) then BUILT the send**, so the code cost is spent: both capabilities really call `integration('SendEmail', …)` behind `PENNSYNC_API_DELIVERY`, an exact untrimmed `enabled-v1` that is unset, and `BROKERED_OPERATIONS` is untouched — `DELIVERY_OPERATIONS` is added per call only while that gate is open, so an unreleased deployment's surface is what it was before the senders existed. Both moved out of `read-only` into `integration` in that same change, which D92's cross-check is what made unskippable. What a yes costs is a variable on each side — `PENNSYNC_API_DELIVERY` here, and `SendEmail` joining `INTEGRATIONS_ALLOWED_OPERATIONS` on the runtime — plus lifting `OWNER_HELD`, which withholds both names from every emitted value. **The owner said yes on 2026-09-25 at 09:40:32Z** ("Turn on the account-ready and welcome emails"), and **all three are now spent.** `SendEmail` joined the runtime's `operations` within the minute, read from its own `/readyz`, with `browserOperations` still empty. `OWNER_HELD` was emptied by the owner's later word and shipped in #283, so the ladder emits all 80 names. `PENNSYNC_API_DELIVERY` was written at `16:19Z`, and `/readyz` on `pennsync-api` now reports `ready: true`, `deliveryReleased: true`, and 80 `operations` carrying both senders. **The capability is on**: a call to either name now attempts a real send through SendGrid. What remains unmeasured is what always was — the sender identity, and the account's plan and limits — and **the preflight cannot close either**, since its SendGrid check measures the key and `senderConfigured` is a local regex, and it is already running at every boot rather than waiting to be turned on (stage E). A probe that really asks SendGrid is being built for it (#288), over two reads rather than one, because an authenticated sender domain is used without a single sender and a check consulting only the verified-senders list would report the recommended production setup as unverified. No login exists for a round trip, so the first real user call is still the end-to-end proof. The decision and the capability took seven hours and three separate writes to become the same thing; that gap is the lesson, not the delay |
 | ~~Dispositions for 7 capabilities on retiring domains~~ | Stage G | **Settled by D84 (2026-09-23), and the description of them was wrong.** Measured, the 7 split 3 and 4. Three belong to a retiring domain and change destination: `analyzeNurseDeficits` and `analyzeRealTimePerformance` to the hub, `getCommsDashboard` to preserved-paused. The other four — `distributePolicyAcknowledgment`, `generateAIReport`, `offboardUser`, `sendExpirationNotifications` — are carried capabilities that touch one uncarried entity in passing, so they stay `port` with that leg settled by name and reason in `tools-transition-disposition.json`'s `uncarried_legs`, which the tool re-checks against the tree rather than trusts. None of the four leaves the queue: each moves on to its next real blocker. `fetchMedicareGuideline` and `scheduledGuidelineSync` also stop being carried, but that is D83 and they were never in this bucket |
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
