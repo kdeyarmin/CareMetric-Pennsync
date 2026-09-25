@@ -2570,15 +2570,37 @@ than from the pinned commit. One project, two behaviours, and only the
 per-service config distinguishes them — which is why neither can be inferred
 from the other.
 
-### Stage F — Production Supabase project (size S to provision; owner approves cost)
+### Stage F — Production Supabase project (size S to provision; the owner creates the project and approves the cost, a connected session provisions it)
 
+- **The owner creates the project**, for the same two reasons Stage B gives for
+  the Railway service: it lives in his Supabase account rather than ours, and it
+  is paid infrastructure, which is one of his standing holds. Nobody here
+  provisions it on his behalf. What a connected session does is the step after —
+  run the provisioner against the database URL he supplies.
 - New dedicated project, us-east-1, per D4. Do not reuse `CM Train`: it carries
   Hub Auth triggers and a different access boundary.
 - `tools-pennsync-provision.mjs` against it — app pin set to production, read back
   from a new session, both migration directories applied in order, records last.
-  This is the path the tool was built and tested for.
+  This is the path the tool was built and tested for. **It creates no project**:
+  it reads `PENNSYNC_PROVISION_DATABASE_URL` and expects a database that already
+  exists, so provisioning is never the thing that brings one into being.
 - Blocked by Stage C's synthetic-name decision: until that is settled the store
   serves no RPC in a production-pinned database, by construction.
+- **A provisioned production store is not a store that can hold a patient, and
+  the gap between those two readings is the whole of Stage C.** The name
+  constraints are not a staging-only guard: `pennsync_private.agency.name` and
+  `patient.display_name` carry `like 'Synthetic %'` and `patient.synthetic`
+  carries `check (synthetic)` with no escape, and `20260919090000_deployment_app_pin.sql`
+  says in its own header that these "are untouched and still refuse real names in
+  every deployment. Relaxing those is a separate, separately reviewed migration."
+  That migration does not exist in the tree. The same header says the pin opens
+  enrollment — `identity_map`, `agency`, `membership`, `assignment` — to a
+  production deployment; that half is the header's statement and is not
+  independently verified here, while the refusal above was read from the
+  constraints themselves. So **nobody should read "production database created"
+  as "production ready for a real patient"**: the store can take staff and cannot
+  take a chart until that migration is written, merged AND applied, and applying
+  it is the owner's, as relaxing a real-name refusal is one of his standing holds.
 
 **Exit:** production store provisioned; the pin proved chosen rather than
 defaulted; `deployment` row dated.
@@ -2636,6 +2658,31 @@ immutable manifest, and a rehearsal into a disposable project before anything
 touches the real one. 8,672 legacy rows and 3,190 production rows, zero id
 overlap.
 
+**Those counts are a record, not a measurement, and their COMPOSITION matters
+more than their size.** They come from an ID-only read-only inventory taken on
+2026-09-03 and nothing in this repository can re-count them. Read them broken
+down, from that inventory: the old PennSync app is 8,672 rows, 387 patients and
+8 users; CareMetric production is 3,190 rows, **1 patient and 2 users**. So
+nearly all the real patient data sits in the app that `known_app` deliberately
+omits so that no deployment can ever be pinned to it, and the live production
+app holds one chart. Anyone planning this as moving a working practice's records
+across is planning for the wrong shape — which changes what the cutover IS
+rather than how long it takes.
+
+**There is also no import path for real rows today, and that is by construction
+rather than by configuration.** Every tool in the family says so in its own
+header: `tools-pennsync-archive-import.mjs` is a "Local synthetic Patient
+import", requires `first_name === 'Synthetic'` and writes `synthetic: true`
+itself, into `pennsync_private.patient` — the staging table, not the chart of
+record; `tools-pennsync-acquire.mjs` is "Explicit synthetic staging records
+only"; `tools-pennsync-archive.mjs` has "no SDK, network, import, or deletion
+path"; and `tools-pennsync-cutover.mjs` implements no database operation at all.
+So the importer above is a thing to build, and **nothing it needs is sized by
+the row counts** — the manifest, the mapping and the rehearsal are there for
+correctness and reversibility, which one chart needs as much as four hundred do.
+Whether the retired app's 387 patients come across at all is an unanswered
+product question, and it is the one that decides whether this stage is large.
+
 **Exit:** `archive_restore`, `sessions` and `rollback` receipts; zero unexplained
 conflicts.
 
@@ -2656,11 +2703,64 @@ their entity dispositions — `pnpm run check:frontend-destination`, added
 | `record_store` | 232 | a table exists |
 | `broker_family` | 7 | the generic family serves that read |
 | `activity_trail` | 3 | D25's successor |
-| **can land** | **242** | |
+| **has somewhere to land** | **242** | |
 | `no_table` | 193 | `hub` (119) and `preserved_paused` (74) — no table here at all |
 | `broker_is_read_only` | 9 | a write to an entity the family serves readonly |
 | `no_realtime_seam` | 1 | `subscribe`, which the owned store has nowhere to put |
 | **cannot land** | **203** | |
+
+**"Has somewhere to land" is NOT "is ready to move", and reading it as the
+second sizes this stage at a fraction of itself.** The checker says so in its
+own header, in capitals, and the sentence is worth carrying here because the
+whole of Stage J gets estimated off that one word: "WHAT `store_can_hold` DOES
+NOT MEAN. It means the record store has a table for that entity, or the generic
+broker family serves that read, or D25's trail is the successor. It does NOT
+mean a ported capability covers the operation — that is a narrower question this
+tool deliberately does not answer, because answering it by inference is how a
+bucket comes to claim more than it measured." So the 242 is a statement about
+TABLES. Whether anything serves the call is a second question, and this tool is
+built not to answer it.
+
+**That second question now has its own instrument, and the answer is much
+smaller than 242.** `pnpm run check:entity-routes` (#290, merged 2026-09-25),
+measured here on `5172f30a`:
+
+> entity routes: 1 declared, 36/242 landable call sites routed, 206 still to
+> adopt — of those 206, across 43 entities: a wider generic family could serve
+> 31 reads and 0 writes above D16's ceiling; 175 need a named capability
+
+So **36 of the 242 have a route today** and no handler destructures `records`,
+which is why even the 7 `broker_family` sites have none. The remaining shape is
+roughly forty entities' worth of named contracts and handlers — the same shape
+as the 80 already built — plus the edits, rather than one design decision.
+
+**Do not quote that `31` as the ceiling.** The tool computes it from
+`brokerReadable`/`brokerWritable`, the schema's `rls` predicates alone, while
+D16's actual ceiling also refuses a table that reaches tenancy through a
+clinical entity, names a clinical subject, carries a credential or can hold a
+file. Running the full `auditBrokerCeiling` over the same 206 sites — the
+in-repo caller's own argument shape, manifest exemptions included — gives **23
+read sites across 8 entities** (`Announcement`, `DocumentTemplate`,
+`FacilityDocumentationRule`, `MedicareComplianceRule`, `OnCallShift`,
+`Physician`, `RegulatoryUpdate`, `VisitPointConfig`), refusing `PDFTemplate`
+for naming a clinical subject in `carry_forward_fields[].document_id` and
+`AgencySettings` for carrying a credential, among others. The thread that built
+the tool reports 25 across 10 from its own run. **Two independent computations
+of the same quantity disagree by two entities, so the ceiling figure is not
+settled and none of 31, 25 or 23 should be quoted as final** — the 31 is the
+one that is certainly too generous, because its own comment claims it applies
+D16's test and it applies a narrower one. The write half is 0 either way, and
+that is the number that matters most: **no unrouted write clears the ceiling at
+all.**
+
+**What the dropped domains cost, and by which instrument.** `node
+tools-frontend-retired-inventory.mjs --summary` on the same commit: **203 call
+sites across 84 files and 29 entities; 59 files lose everything they read**
+(reads 123, writes 79, subscriptions 1), leaving 25 partially affected. Those
+are exact. The shape a person would notice — roughly 9 top-level destinations
+and about 33 hollowed-out pages — comes from a filename scan rather than that
+tool, with 2 of 49 components having no importer found, so treat the first pair
+as measured and the second as indicative.
 
 **203 of 445 — 46% — reach a domain the migration has decided not to carry.**
 119 of them are the training domain, whose destination is the Hub; 75 are
@@ -2714,8 +2814,13 @@ admits them — or record that none does.* The largest single lead is the 37
 `User.read` sites, whose real successor is the roster pair
 (`listAgencyRoster`, `getAgencyRosterMember`). Even that is not mechanical: the
 roster deliberately projects no `role`, `account_type`, `agency_id` or
-`agency_name` (D23), so a screen that reads a user to decide what to show a user
-needs its authorization moved to the tenant context, not a new data source.
+`agency_name` **from the carried profile row** (D23) — it does return
+`agency_id` and `agency_name`, sourced from the membership in the authority
+store, and the contract's own header says why the distinction is the point. What
+is refused is the self-editable label, not the field. So a screen that reads a
+user to decide what to show a user needs its authorization moved to the tenant
+context, not a new data source; a screen that merely needs to know which agency
+a colleague is in is already served.
 
 - Replace `src/api/base44Client.js` with a backend-neutral client; the
   independent adapter becomes the default under `VITE_PENNSYNC_BACKEND=independent`.
