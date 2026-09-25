@@ -1,4 +1,4 @@
-import { AUTHORITY_RPC } from './authority.mjs';
+import { AUTHORITY_RPC, authorityKeyAccepted } from './authority.mjs';
 import { BUCKET, createStore, validSender } from './runtime.mjs';
 import { readJson } from './safety.mjs';
 
@@ -44,7 +44,18 @@ export async function runPreflight(config, fetcher = fetch) {
         body: JSON.stringify({ p_app_id: config.appId, p_agency_id: 'preflight-anonymous-denial-probe' }),
         redirect: 'error', signal: AbortSignal.timeout(15000),
       });
-      checks.authority = { status: response.status, valid: [401, 403].includes(response.status), anonymousDenied: [401, 403].includes(response.status) };
+      // A refusal is necessary and not sufficient: a REVOKED publishable key is
+      // refused identically to a live one, so the status alone passes the check
+      // in exactly the state it exists to catch. `authorityKeyAccepted` reads
+      // the body for the SQLSTATE that only a request reaching the database
+      // carries. Kept as its own field beside the refusal, as `senderConfigured`
+      // is kept beside SendGrid's `valid`, so a failure says which half failed.
+      const anonymousDenied = [401, 403].includes(response.status);
+      let keyAccepted = false;
+      if (anonymousDenied) {
+        try { keyAccepted = authorityKeyAccepted(await readJson(response, 65536)); } catch { keyAccepted = false; }
+      }
+      checks.authority = { status: response.status, valid: anonymousDenied && keyAccepted, anonymousDenied, keyAccepted };
     } catch { checks.authority = { valid: false, error: 'AUTHORITY_CHECK_UNAVAILABLE' }; }
   } else {
     checks.authority = { valid: true, notApplicable: true, mode: config.authorityMode || 'base44' };

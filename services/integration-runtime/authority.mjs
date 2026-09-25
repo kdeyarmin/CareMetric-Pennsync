@@ -20,6 +20,51 @@ export const AUTHORITY_TARGETS = Object.freeze([
   'https://xxtyweswohkvgkprimwa.supabase.co',
   'http://127.0.0.1:54321',
 ]);
+/**
+ * Which app id each reviewed target's store is pinned to.
+ *
+ * In independent mode the app id is the request's key into the owned store:
+ * `actor()` admits exactly the app its deployment was pinned to. So a STATED
+ * but wrong id is refused by every authorization call while readiness — a set
+ * of shape questions — still reads true. `IMPLICIT_APP_BINDING` already refuses
+ * a DEFAULTED id; this is the half where an operator states the other reviewed
+ * app instead.
+ *
+ * Declared per target and re-checked against AUTHORITY_TARGETS, never inferred.
+ * "The production app id is always wrong" would stop being true the day a
+ * production project joins the target list; what is actually true is that a
+ * given store carries a given pin. `null` means the pin is not knowable here
+ * and owes the reason beside it.
+ */
+export const AUTHORITY_APP_PINS = Object.freeze({
+  // The owned staging store. One PennSync database exists and its pin is staging.
+  'https://xxtyweswohkvgkprimwa.supabase.co': '6a9881683dc68a0bd54f1ef7',
+  // A local stack is built from whichever migrations the developer applied, so
+  // its pin is not a property of this file. Unconstrained, deliberately.
+  'http://127.0.0.1:54321': null,
+});
+
+/**
+ * Did the request reach the DATABASE, or did the gateway refuse the key?
+ *
+ * Both answer 401 and only the body separates them, measured against the real
+ * cluster on 2026-09-25. A live key reaches PostgREST and PostgreSQL refuses
+ * the anonymous caller:
+ *   {"code":"42501","details":null,"hint":null,
+ *    "message":"permission denied for function pennsync_staging_context"}
+ * A revoked or malformed key never gets that far:
+ *   {"message":"Invalid API key","hint":"Double check your API key."}
+ *
+ * So a SQLSTATE in the body is the evidence that the KEY was accepted, which
+ * the status alone cannot carry. Read it alongside the refusal, never instead
+ * of it: an anonymous SUCCESS would be the real defect and is still caught by
+ * requiring the refusal too.
+ */
+export function authorityKeyAccepted(body) {
+  return !!body && typeof body === 'object' && !Array.isArray(body)
+    && typeof body.code === 'string' && /^[0-9A-Z]{5}$/.test(body.code);
+}
+
 const ROLES = Object.freeze(['agency_admin', 'manager', 'clinician', 'office_staff', 'social_worker', 'spiritual_care']);
 const EMAIL_ROLES = Object.freeze(['agency_admin', 'manager']);
 const CONTEXT_KEYS = Object.freeze(['contract', 'app_id', 'auth_user_id', 'staging', 'synthetic',
