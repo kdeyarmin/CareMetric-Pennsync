@@ -1458,9 +1458,11 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   list yields an empty answer whatever keys exist, and reading that as "the
   provider is configured" is this page's own recurring defect — an empty answer
   over an empty input. `preflight.mjs` really does call
-  `api.sendgrid.com/v3/scopes` and check for `mail.send`, but only when
-  `SendEmail` is on the list. So the provider question is settled by a variable
-  read or a preflight run, and not before.
+  `api.sendgrid.com/v3/scopes` and check for `mail.send`. **Its gate is the KEY
+  being non-empty, not the operation list** (`preflight.mjs:21`): the list only
+  decides whether the result counts as `required` and what the not-configured
+  fallback says. So a preflight run answers the provider question **today**,
+  with the operation list still empty and nothing released — see Stage E.
 
   One thing that must be deliberate when `SendEmail` does join that list: it
   must NOT join the browser list. `INTEGRATIONS_ALLOWED_OPERATIONS` is the
@@ -1681,13 +1683,31 @@ write.
 page did not name it.** It belongs in the table below and is listed there now.
 Two things about it are load-bearing:
 
-- **It is the entire guard on outbound mail.** `runtime.mjs:69` counts
-  `SendEmail` a missing provider only when the SendGrid key or the sender
-  address is absent, and the release thread reports **both are already set on
-  the service** (read by name; values are redacted to an API caller). So there
-  is no second lock to hold back: the moment `SendEmail` appears in this
-  variable, a configured mail channel can send. Set it to exactly the
-  operations the wave needs and nothing else.
+- **It is the only guard on outbound mail anyone here can confirm.**
+  `runtime.mjs:69` counts `SendEmail` a missing provider only when the SendGrid
+  key or the sender address is absent, and `SENDGRID_API_KEY` and
+  `NOTIFICATION_FROM_EMAIL` are both **present on the service as names**. That
+  is all that has been read: `list-variables` answers with names and
+  `valuesRedacted: true`, so **nobody here has seen either value.** An empty or
+  revoked key would be a second lock — but an unchosen one that nothing
+  observes, so it is not a control and must not be planned around. Treat this
+  variable as the whole guard, set it to exactly the operations the wave needs
+  and nothing else, and do not tell anyone either that a working mail account
+  is in place or that one needs buying until somebody has a reading behind it.
+
+  **The counter-example is on this same service.**
+  `INTEGRATIONS_ALLOWED_OPERATIONS` is itself present as a name with an
+  **empty** value — which is exactly why the AI wave is a build rather than a
+  switch. So here, on this service, "the name is set" has already been proved
+  not to mean "the value is usable". This page said the mail credentials were
+  set and drew a conclusion that only their values could support; that is the
+  same one-representation mistake, two paragraphs apart.
+
+  **Two readings that look like evidence about provider keys and are not.**
+  `missingProviders` filters `config.operations` (`runtime.mjs:67`), so it is
+  empty whenever that list is empty, whatever the keys hold. And `configured`
+  (`runtime.mjs:46-48`) wants the Supabase URL, the service-role key and two
+  distinct 64-hex keys, and names no provider key at all.
 - **It is a CEILING on the browser surface, not a parallel list.** Releasing
   the service does not expose it to the browser app: `app.mjs:44` refuses a
   browser request unless `INTEGRATIONS_BROWSER_RELEASE` is `enabled-v2` — note
@@ -1719,14 +1739,100 @@ by every authorization call**, because the store's pin is staging. It is the
 same shape Stage B carried for `PENNSYNC_API_APP_ID`: an absent binding is loud
 and a stated-but-wrong one is silent.
 
+**The shape is shared; the GATE is not, and the error name is the same in both
+services.** Here `IMPLICIT_APP_BINDING` fires on `authorityMode ===
+'independent'` (`integration-runtime/runtime.mjs:45`), so a runtime left in
+`base44` mode with no app id boots whatever the release flag says. On
+`pennsync-api` it fires on being **released** (`pennsync-api/runtime.mjs:65`),
+which is why Stage B's passage says "the moment `PENNSYNC_API_RELEASE` is set".
+Both passages are correct as written; do not carry either condition across to
+the other service when editing one.
+
 Safe to do now: the runtime is released to nobody (`INTEGRATIONS_RELEASE` unset),
 so the change alters readiness and nothing else, and removing
 `INTEGRATIONS_AUTHORITY_MODE` reverts to the Base44 default. **That safety is
 about the four authority variables, not about the operation list** — adding an
 operation to `INTEGRATIONS_ALLOWED_OPERATIONS` is what makes the service able to
-do the thing, and for `SendEmail` the provider behind it is already configured.
+do the thing, and for `SendEmail` the provider behind it may well be live.
+
+**That last question is answerable, and this page said it was not.**
+`INTEGRATIONS_PREFLIGHT=read-only` makes the service run `runPreflight` at
+startup and print the report (`server.mjs:36-38`). It calls
+`api.sendgrid.com/v3/scopes` whenever `config.sendgridKey` is non-empty —
+**the operation list does not gate it** (`preflight.mjs:21`) — and reports
+whether the key carries `mail.send` and whether `NOTIFICATION_FROM_EMAIL`
+parses. It does the same for the Anthropic key against `/v1/models`, including
+whether the configured model exists (`preflight.mjs:17-19`). The report carries
+the calls it makes are a GET of `/v3/scopes` and a GET of
+`/v1/models`, and **no message is sent**, so this
+answers the mail question without touching the owner's hold and without
+releasing anything. It is still a variable write on a service this thread does
+not own, so it waits on the owner's words like every other write — but it is a
+READING that can be taken, not a fact that is out of reach.
+
+**Read `checks.sendgrid`, and do not read `passed`.** The rollup is
+`every(check => check.required === false || check.valid === true)`, and
+`required` is `needsEmail`, which is false while `SendEmail` is off the list.
+So `passed: true` is compatible with a dead mail key and says nothing about
+mail at all — this page's own defect standing in the field somebody would use
+to settle it. Inside that one object, three fields and not one:
+
+- `status` present means the probe really called SendGrid. Its absence, with
+  `configured: false`, means the key was **empty** — and note that in that case
+  `valid` is reported **`true`**, because the list does not require it. A bare
+  `valid: true` therefore does not mean the key works.
+- `valid` is scopes carrying `mail.send` **and** `NOTIFICATION_FROM_EMAIL`
+  parsing, so a bare `false` does not say which failed.
+- `senderConfigured` separates them: `valid: false` with
+  `senderConfigured: true` is the key, and `senderConfigured: false` is the
+  address.
+
+**`checks.anthropic` has the same trap and the same remedy.** Its `required` is
+`needsAI`, derived from the same operation list, so with the list empty
+`passed: true` is equally compatible with a dead Anthropic key. Its absent-key
+branch is `{ valid: !needsAI, configured: false }` (`preflight.mjs:19`), the
+mirror of SendGrid's at `:24`, so **`valid: true` alone is compatible with no
+key at all here too.** The read that holds, for either key, is **`status`
+present AND `valid === true`** — did it run, then what did it say. `status` is
+set only when a fetch completed (`preflight.mjs:10-11`); a thrown check has
+none either (`:12`). For Anthropic, `valid` then requires the key to work
+**and** the configured model to appear in `/v1/models`. Once the operation list is written both
+`required` flags become true and `passed` starts to mean something — but by
+then the config is already in, which is after the moment the probe was worth
+running. **So a sentence anywhere saying "run the preflight and check it
+passes" is wrong in the one state it will be run in.**
+
+**Do not cite the report's `paidCalls`, `writes` or `base44FunctionCalls`**:
+all three are hardcoded literals on the return (`preflight.mjs:55`), the same
+kind of field as `trafficCutoverVerified` in §0. They happen to be true here,
+and what makes them true is the calls themselves, which is what to check.
+
+**And it is a deploy-log read, not an endpoint** (`server.mjs:36-38`): the
+report is written once to stdout at startup. Whoever asks for the probe has to
+ask for the log after the boot as well, or the report is produced and nobody
+reads it.
 Railway is no longer out of reach of a session (see §4), but this service is
 owned by the release thread and its writes wait on the owner's words.
+
+**Why "set together" is mechanical rather than tidy: `loadConfig` THROWS.**
+It does not report itself unready — five distinct errors between
+`runtime.mjs:31` and `:45` (`INVALID_AUTHORITY_MODE`,
+`INVALID_AUTHORITY_TARGET`, `INVALID_AUTHORITY_KEY`,
+`INCOMPLETE_AUTHORITY_CONFIGURATION`, `IMPLICIT_APP_BINDING`) each stop the
+service booting. Written one at a time, the service is **down** between the
+writes, not merely unready. `INTEGRATIONS_RELEASE` is a plain string equality
+(`runtime.mjs:53`) and cannot throw. So the call that can take the service down
+is the config call, and it is the one made while nothing is released — which is
+the order to keep.
+
+**And know what `ready: true` will mean afterwards: configured and released.**
+It does not mean one AI call has succeeded. `missingProviders` filters
+`config.operations` (`runtime.mjs:67`), so once the operation list is populated
+the Anthropic check becomes real and reduces to `!config.anthropicKey` —
+`config.model` defaults to `claude-sonnet-4-6` at `runtime.mjs:55` and is never
+empty — but a present key can still be a revoked one, and proving the authority
+round trip needs a login, which is out of reach (§4). Expect a first real call
+to be the proof, and do not let a green readiness line stand in for it.
 
 **Exit:** readiness says `independent` on the hosted runtime with the browser
 transport still unreleased — `/readyz` reporting `authorityMode: "independent"`
@@ -2032,6 +2138,28 @@ build, no privileged key, and the send that follows it stays behind its own
 switch and his words. #268's whole-service Auth-send ratchet is what will hold
 that flow to it.
 
+**Confirmed on a decision card at 08:10:56Z, and the shape of the answer is
+the part to keep.** The card asked whether new staff who never had a Base44
+account may join by invitation, and the option he chose read: *"New staff get
+verified and added the same careful way as today's staff. It's built switched
+off, and nobody is invited until you say so."* That is the card's wording of
+the option, chosen by tapping it, not something he typed — which matters
+because it authorizes **building** and authorizes nothing to be sent. Three
+things follow, and the build thread owns all three:
+
+- it is built **switched off**, on the pattern `PENNSYNC_API_DELIVERY` already
+  sets;
+- **nobody is invited until he names that switch in his own words**, which a
+  tap on a card is not;
+- **he applies its migration.** So the change that carries it puts `main` red
+  on the ledger check until he does — D93's expected red, which the
+  `apply-signal` job will say on the pull request rather than leaving it to be
+  discovered.
+
+This does **not** settle Stage C's six remaining enrolments, which are a
+different population and still sit where that stage leaves them. The decisions
+doc entry for it is the build thread's to write and number.
+
 | Needed | For | Note |
 | --- | --- | --- |
 | ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open. It moved to stage C for identities, and on 2026-09-22 the identities turned out to be largely there already. ~~What it waits on is a sign-in, a seed transport and one `chart_assignment` row.~~ The owner withdrew the sign-in the same day, which retires the other two with it; claim 4 now rests on the composition recorded in stage A |
@@ -2044,7 +2172,7 @@ that flow to it.
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this. **Four are already accepted, mapped and verified as of 2026-09-22**; six remain |
 | ~~The publishable (anon) key and a sign-in credential for the four accepted accounts~~ | ~~Stage A claim 4, Stage C~~ | **Withdrawn 2026-09-22 — the owner declined to use the staging accounts.** Nothing is owed here. Stage A claim 4 stands on the composition recorded in that stage instead, and the one leg it cannot reach is named there |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
-| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. What the yes still costs is named in `services/pennsync-api/account-email.mjs`: broker `SendEmail`, carry the field checks and the renderer that the pause makes unreachable, and delete the two refusals — **plus, since D92, move both capabilities out of the `read-only` release wave in the same change, which the ladder now refuses to let a change skip** |
+| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. **#269 (D97, merged 2026-09-25) then BUILT the send**, so the code cost is spent: both capabilities really call `integration('SendEmail', …)` behind `PENNSYNC_API_DELIVERY`, an exact untrimmed `enabled-v1` that is unset, and `BROKERED_OPERATIONS` is untouched — `DELIVERY_OPERATIONS` is added per call only while that gate is open, so an unreleased deployment's surface is what it was before the senders existed. Both moved out of `read-only` into `integration` in that same change, which D92's cross-check is what made unskippable. What a yes costs now is a variable on each side — `PENNSYNC_API_DELIVERY` here, and `SendEmail` joining `INTEGRATIONS_ALLOWED_OPERATIONS` on the runtime — plus lifting `OWNER_HELD`, which withholds both names from every emitted value |
 | ~~Dispositions for 7 capabilities on retiring domains~~ | Stage G | **Settled by D84 (2026-09-23), and the description of them was wrong.** Measured, the 7 split 3 and 4. Three belong to a retiring domain and change destination: `analyzeNurseDeficits` and `analyzeRealTimePerformance` to the hub, `getCommsDashboard` to preserved-paused. The other four — `distributePolicyAcknowledgment`, `generateAIReport`, `offboardUser`, `sendExpirationNotifications` — are carried capabilities that touch one uncarried entity in passing, so they stay `port` with that leg settled by name and reason in `tools-transition-disposition.json`'s `uncarried_legs`, which the tool re-checks against the tree rather than trusts. None of the four leaves the queue: each moves on to its next real blocker. `fetchMedicareGuideline` and `scheduledGuidelineSync` also stop being carried, but that is D83 and they were never in this bucket |
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
