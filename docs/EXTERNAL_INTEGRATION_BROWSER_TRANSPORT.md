@@ -58,6 +58,16 @@ INTEGRATIONS_BROWSER_OPERATIONS subset of INTEGRATIONS_ALLOWED_OPERATIONS.
 Enabling v1 alone does not release v2. Browser controls default off. The legacy
 v1 endpoint continues to require an explicit agency, including for an owner.
 
+Subset is a ceiling, not the whole rule. SendEmail is refused to the browser
+route outright (BROWSER_FORBIDDEN_OPERATIONS in contracts.mjs): the service
+refuses to start if the browser list names it, and a request naming it is
+refused at dispatch. Until SendEmail joined the service list on 2026-09-25 the
+subset ceiling happened to refuse a browser send for free, and releasing the
+account emails would otherwise have turned that into two unset variables. A
+browser send also reaches the provider without the recipient binding the
+business API applies to its own senders, so the only bound on the recipient
+would be what the caller typed.
+
 The v2 durable payload hash binds contract, deployed revision, current caller
 expectation and parameters. A repeated UUID after a membership version, role,
 service revision or v1/v2 transition conflicts instead of rebranding old output.

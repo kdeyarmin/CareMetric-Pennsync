@@ -59,7 +59,7 @@ permissions.
 
 - InvokeLLM supports text and constrained structured results. Unsupported explicit models and internet search fail rather than silently substituting another behavior.
 - ExtractDataFromUploadedFile accepts only owner-bound private handles created by this runtime, with validated PDF/image/text sizes and types. It never fetches arbitrary legacy URLs.
-- SendEmail uses a fixed sender, bounded recipients and current privileged agency authority. Provider acceptance is not delivery. Existing HTML templates require explicit compatibility migration.
+- SendEmail uses a fixed sender, bounded recipients and current privileged agency authority. Provider acceptance is not delivery. Existing HTML templates require explicit compatibility migration. "Bounded recipients" bounds the COUNT (one to ten) and the address shape, never who they are, which is why it is refused to the browser route entirely: `BROWSER_FORBIDDEN_OPERATIONS` keeps it out of `INTEGRATIONS_BROWSER_OPERATIONS` whatever the service list carries, at startup and again at dispatch.
 - UploadFile and UploadPrivateFile both return durable private cmfile handles, not permanent public file_url values. Existing clients must support that contract before switching.
 - CreateFileSignedUrl validates the actual Supabase relative storage path and exact object/host/token. Its 60-second link lifetime also limits replay; expired links require a new signing request, never another paid upload.
 

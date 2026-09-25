@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { BROWSER_CONTRACT, bindingFromContext } from './caller-binding.mjs';
 import { AUTHORITY_APP_PINS, AUTHORITY_MODES, independentAuthorize, validAuthorityKey, validAuthorityTarget } from './authority.mjs';
-import { IntegrationError, fail, ID, UUID, OPERATIONS, hash, readJson, seal, stable, unseal } from './safety.mjs';
+import { BROWSER_FORBIDDEN_OPERATIONS, IntegrationError, fail, ID, UUID, OPERATIONS, hash, readJson, seal, stable, unseal } from './safety.mjs';
 
 const DEFAULT_APP = '694ec16e72e01b60d22f7cbf';
 const ALLOWED_APPS = new Set([DEFAULT_APP, '6a9881683dc68a0bd54f1ef7']);
@@ -18,6 +18,10 @@ export function loadConfig(env = process.env) {
   const browserOperations = (env.INTEGRATIONS_BROWSER_OPERATIONS || '').split(',').filter(Boolean);
   if (browserOperations.some(operation => !operations.includes(operation))
     || new Set(browserOperations).size !== browserOperations.length) throw new Error('INVALID_BROWSER_OPERATION_CONFIGURATION');
+  // Its own code, not the subset one: the subset check passes for a forbidden
+  // operation the moment the service list carries it, which is how this became
+  // reachable at all. A distinct name says which rule refused the boot.
+  if (browserOperations.some(operation => BROWSER_FORBIDDEN_OPERATIONS.includes(operation))) throw new Error('BROWSER_FORBIDDEN_OPERATION');
   const origins = (env.INTEGRATIONS_ALLOWED_ORIGINS || 'https://caremetricai.base44.app,https://app.caremetricai.com').split(',');
   if (origins.some(origin => { try { const u = new URL(origin); return u.protocol !== 'https:' || u.origin !== origin; } catch { return true; } })) throw new Error('INVALID_CORS_ORIGIN');
   const supabaseUrl = env.SUPABASE_URL || '';
