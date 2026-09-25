@@ -225,6 +225,33 @@ end $admin$;
  * not exist are the same answer on purpose -- distinguishing them would tell a
  * caller which patient ids are real.
  */
+/*
+ * The chart, bound to the agency the request named.
+ *
+ * **This is a POSITIVE REQUIREMENT and that is the load-bearing part.** The
+ * row must be VISIBLE to the caller and must carry `p_agency`; an invisible
+ * row leaves `v_id` null and null RAISES. The tempting alternative -- refuse
+ * when the chart is provably somewhere else -- fails OPEN here, because the
+ * subquery proving it runs inside a SECURITY DEFINER under forced RLS with the
+ * caller's own claims and the record owner holds no `BYPASSRLS`. The foreign
+ * chart is then invisible to exactly the caller who needs protecting, so such
+ * a guard hides the row from somebody holding both agencies and leaves it
+ * visible to somebody holding one: it protects the person already safe.
+ *
+ * Both halves are measured in `contract-screen-records.test.mjs` rather than
+ * argued, and the two refusals come from different layers:
+ *
+ *   * A caller holding ONE agency is refused by the POLICIES -- the other
+ *     agency's chart is not a row they can read at all -- and deleting the
+ *     `agency_id` term below does not change that.
+ *   * A caller holding BOTH is refused by THIS TERM, and deleting it leaks:
+ *     the chart is readable, so without the term a request naming agency A
+ *     files a row against agency B's chart.
+ *
+ * So the two layers are complementary rather than redundant, and a suite that
+ * seeds only single-membership callers cannot tell a working term from an
+ * absent one.
+ */
 create function "pennsync_records".screen_chart(p_agency text, p_patient_id text) returns text
   language plpgsql security definer set search_path = '' as $chart$
 declare v_id text;

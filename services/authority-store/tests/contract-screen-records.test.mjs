@@ -478,6 +478,71 @@ test('a caller holding two agencies gets only the agency they named', async () =
   assert.deepEqual(catalogue, ids(await as(DUAL, RULE, [B, 'CMS-TF-1', 50])));
 });
 
+test('a caller holding ONE agency is refused the other agency\'s chart, and the refusal is the contract\'s', async () => {
+  // THE OTHER HALF, and the one that distinguishes a guard that works from one
+  // that protects only the person already safe. A negative existence check --
+  // "refuse if the chart is provably elsewhere" -- fails OPEN here: the
+  // subquery runs inside a SECURITY DEFINER under forced RLS with the caller's
+  // own claims and the record owner holds no BYPASSRLS, so the foreign chart
+  // that would prove the row foreign is invisible to exactly the caller who
+  // needs protecting, and the guard hides the row for a dual-agency caller
+  // while leaving it visible to a single-agency one.
+  //
+  // `screen_chart` is the opposite shape: a POSITIVE requirement that the
+  // patient row be visible AND carry the named agency. An invisible row makes
+  // it null, and null RAISES. That is a claim about a failure mode, so it is
+  // measured here rather than reasoned about.
+  const single = await db.query(
+    "select count(*)::int as n from pennsync_private.membership " +
+    "where auth_user_id = $1 and status = 'active'",
+    ['10000000-0000-4000-8000-000000000001']);
+  assert.equal(single.rows[0].n, 1, 'this case needs a caller who holds exactly one agency');
+  // And the chart really is in the other agency, which is what makes it the
+  // crossed case rather than a missing row.
+  const chart = await db.query(
+    "select agency_id from pennsync_records.patient where id = 'patient-b1'");
+  assert.equal(chart.rows[0].agency_id, B);
+
+  for (const [what, call, args] of [
+    ['the timeline', EVENTS, [A, 'patient-b1', 50]],
+    ['the recommendations read', RECS, [A, 'patient-b1', 50]],
+  ]) {
+    await refusal(as(ADMIN_A, call, args), 'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE');
+    assert.ok(what);
+  }
+  await refusal(write(ADMIN_A, SEND, [A, 'patient-b1', JSON.stringify({
+    material_id: 'm', personalized_content: 'c' })]), 'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE');
+  await refusal(write(ADMIN_A, PUSH, [A, 'patient-b1', JSON.stringify({
+    source_type: 's', recommendation_type: 'r', title: 'T', description: 'D' })]),
+    'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE');
+
+  // Naming the agency the chart IS in does not rescue it either: this caller
+  // does not hold agency B, so the refusal moves one step earlier rather than
+  // disappearing. Both refusals matter -- a contract that answered the second
+  // with the first's code would be reporting a chart problem for a tenancy one.
+  await refusal(as(ADMIN_A, EVENTS, [B, 'patient-b1', 50]), 'PENNSYNC_SCREEN_AGENCY_NOT_HELD');
+
+  // AND THE FAIL-CLOSED CLAIM ON ITS OWN, with the agency term SATISFIED so it
+  // cannot be what answers. `UNASSIGNED_A` holds agency A and `patient-a1` is
+  // in agency A, so `p."agency_id" = p_agency` is true -- and the row is still
+  // invisible, because D24 narrows a chart to its care team and this clinician
+  // holds no assignment. An invisible row leaves `v_id` null and null RAISES,
+  // which is the whole difference from a negative existence check.
+  await refusal(as(UNASSIGNED_A, EVENTS, [A, 'patient-a1', 50]),
+    'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE');
+  await refusal(write(UNASSIGNED_A, PUSH, [A, 'patient-a1', JSON.stringify({
+    source_type: 's', recommendation_type: 'r', title: 'T', description: 'D' })]),
+    'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE');
+
+  // Nothing was written by the two refused writes.
+  assert.equal((await db.query(
+    "select count(*)::int as n from pennsync_records.sent_education_material " +
+    "where patient_id = 'patient-b1' and sent_by = 'admin-a@example.invalid'")).rows[0].n, 0);
+  assert.equal((await db.query(
+    "select count(*)::int as n from pennsync_records.patient_recommendation " +
+    "where patient_id = 'patient-b1' and created_by = 'admin-a@example.invalid'")).rows[0].n, 0);
+});
+
 test('an entity default the generated store does not emit is stamped by the contract', async () => {
   // The store's own header says columns are nullable so a legacy row can
   // migrate. It says nothing about defaults, and emits none -- so a create
