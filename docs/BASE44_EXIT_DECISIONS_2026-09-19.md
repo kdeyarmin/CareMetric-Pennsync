@@ -6956,3 +6956,149 @@ Nothing about what is deliberately not compared. Rows, column ordinal position,
 collation, default privileges, storage parameters, replica identity and
 anything cluster-scoped stay out, each with its reason in D95. A longer list of
 comparisons was never the goal.
+
+## D97 — The mail channel, released separately from the service that carries it
+
+D86 ported `sendAccountReadyEmail` and `sendWelcomeEmail` as the refusal and
+nothing else, and wrote down in `account-email.mjs`'s own header what releasing
+them would take: broker `SendEmail`, carry the field checks and the renderer,
+delete the two `fail` lines, and move `needsIntegration` in the same change.
+It left the work unbuilt because the answer might have been no. This entry is
+all four of those, and it is recorded here because the code cites it in seven
+places and a decision the code names has to exist.
+
+### The one difference from D86's plan, and why it is the whole of the entry
+
+The brokering is **not unconditional**. `PENNSYNC_API_DELIVERY` is a second
+switch, read exactly and untrimmed as `PENNSYNC_API_RELEASE` is, and
+`SendEmail` joins the brokered set only while it reads `enabled-v1`. Unset —
+which is every deployment at the time of writing — this service reaches no mail
+provider at all and both senders answer exactly what they answered before:
+403 to a non-admin, 503 `OUTBOUND_DELIVERY_RELEASE_PAUSED` to an admin.
+
+The switch exists because releasing a capability that writes a record and
+releasing one that sends a person a message are different decisions with
+different owners. D56 says the second is the owner's, so the flip has to be an
+act rather than a consequence of the next deploy. Two properties follow from
+that and are load-bearing:
+
+- **`BROKERED_OPERATIONS` is untouched.** It stays D56's ratchet, so a reader
+  still sees exactly what an unreleased deployment may ask for, and
+  `DELIVERY_OPERATIONS` is the separate set an operator adds. Widening the
+  ratchet would have made the two answers one.
+- **The gate is a property of the config, not of the transport.** A brokered
+  send is not the only way a message could leave, so `requireDeliveryReleased`
+  asks the config and any future delivery path has to ask it too.
+
+`branded-email.mjs` is a **copy** of the generated `brandedEmail` block as it is
+emitted into the original, not a reimplementation: D81 set that rule for the
+patient handout's templates and the reason is the same one, that the output is a
+message a person reads. The parity suite loads the block out of the original,
+renders both over fixtures exercising every branch, and extracts each sender's
+own `renderBrandedEmail({...})` argument out of its `Deno.serve` body by
+matching parentheses, checking that the match reconstructs the original text
+exactly — D94's rule for a split.
+
+Releasing delivery without `PENNSYNC_API_INTEGRATIONS_URL` throws at startup,
+as every other incomplete release in `loadConfig` does: a channel that cannot
+carry anything should not report itself open.
+
+### What is deliberately not here
+
+**Invitation delivery, which cannot be built as a send.**
+`pennsync_records.user_invitation` carries no token column, and the original's
+delivery is `base44.users.inviteUser`, which mints the account and delivers the
+link in one platform call. A message from the owned stack would carry nothing an
+invitee could sign in with. Giving it one means either a Supabase Auth admin
+invite — a service-role key, which `validAuthorityKey` refuses by design — or
+an acceptance path, and D6 already says what an acceptance path is here. Both
+are decisions rather than ports, so `contract_invitation_resend` still freezes
+`last_sent_at` and `resend_count` and the audit entry still carries
+`delivery_paused: true`.
+
+**Anything on `pennsync-integrations`.** Mail needs both services to permit it:
+this switch, plus `INTEGRATIONS_RELEASE`, `SendEmail` in
+`INTEGRATIONS_ALLOWED_OPERATIONS`, and a configured provider. That service's
+configuration is not this decision's to change.
+
+## D98 — A role gate is not a recipient, and a ready service that serves nothing
+
+Two review findings on D97, taken rather than argued with, and they are the same
+mistake at two levels: something was checked, and the thing it implied was not.
+
+### The recipient was never bound to the agency
+
+D97's `requireSender` asks the caller's `tenantRole` and nothing else, and
+`params.email` reached the provider as the caller typed it. So once both
+switches were on, any `agency_admin` could send a PennSync-branded message to
+any address on the internet — and `sendWelcomeEmail` puts a working temporary
+password in the body, so the relayed message is a credential notice carrying the
+product's own branding.
+
+**D40's standing instruction is the whole diagnosis.** Where a capability's only
+gate was the built-in `role === 'admin'`, the successor is an `agency_admin`
+scoped to their own agency, and when that widening hands you a capability you
+re-read what the platform tier was **structurally** preventing rather than what
+it permitted. One trusted operator sending branded mail is not the same
+capability as every tenant administrator sending it. `sendWelcomeEmail`'s
+original admitted the platform tier **alone**, which is exactly the signal D44
+acted on when it added a self-approval refusal to a credential review: the role
+gate is what makes the second check necessary.
+
+So the recipient is resolved against `caller_roster(p_agency)` through
+`listAgencyRoster`, and an address nobody in the agency holds is refused
+`RECIPIENT_NOT_IN_AGENCY`. Four properties of that:
+
+- **Nothing is derived.** The roster is already the answer to "who is in the
+  agency I am acting in" — active memberships, with the verified address the
+  carried `user` table has no column for (D41) — so there is no scope to
+  rebuild, and the contract's own gate plus the policies decide.
+- **What reaches `to` is the roster's address, not the request's.** They differ
+  only in case, and taking the store's copy means the provider sees an address
+  this store vouches for.
+- **The resolution happens AFTER the pause.** A paused deployment answers 503
+  without reading the roster, so it cannot be used to ask whether an address
+  belongs to an agency. The order stays the originals' — authorization, pause,
+  body — with the read last because it is the first step that reads anything.
+- **The page walk is bounded**, the way `generateUserRosterPDF`'s is, so a
+  contract answering a cursor equal to its own input cannot spin.
+- **The two ends of that bound are different answers**, which is review's own
+  finding and worth carrying as a rule. `RECIPIENT_NOT_IN_AGENCY` asserts a fact
+  about the agency, so it is raised only where the walk saw the whole roster —
+  the pages ran out, or the contract answered its own cursor back. A walk that
+  stopped because the page budget ran out with `next` still set established
+  nothing about the agency, and says so: 503 `RECIPIENT_LOOKUP_INCOMPLETE`. The
+  ceiling is 200 pages of `contract_roster_list`'s own default page, so 40,000
+  active memberships in one agency, which no agency reaches — the distinction is
+  kept anyway, because **a bound that reports the wrong reason is how a real
+  member's refusal gets read as policy.** The exact lookup that would remove the
+  bound is not available without a migration: `contract_roster_get` resolves by
+  user id and refuses anything that is not 24 hex, and these two capabilities
+  are handed an address, so a by-address roster read belongs beside it in the
+  contract rather than as a wider walk in the handler.
+
+The narrowing is real and is the point: an administrator can no longer mail
+somebody who is not in their agency. Anybody who can sign in has a membership,
+so anybody these two messages are *about* is on that roster.
+
+### Readiness reported a deployment that could serve no send
+
+`publicReadiness` published `deliveryReleased` and ignored it. A deployment that
+released either sender without `PENNSYNC_API_DELIVERY` answered `ready: true`
+and then refused every send, so a rollout probe passed while the released
+capability served no work. That is the defect the same expression already guards
+one layer down for the integration runtime, in a comment that says so:
+"a service reporting healthy and serving nothing, which is the failure readiness
+exists to prevent."
+
+`needsDelivery` on the registry entry and `requiresDelivery` over the released
+set close it, mirroring `needsIntegration`/`requiresIntegration` exactly, and
+`deliveryRequired` is published beside the flag so an operator can tell a
+deployment that needs delivery and has it from one that needs it and does not.
+Reading the registry's own flag rather than a second list of names here is
+deliberate: two answers to one question is how they come to disagree.
+
+`OWNER_HELD` still keeps both names out of every value the ladder emits. That
+hold and this one are independent on purpose — the emitter refuses to produce
+the value, and the deployment refuses to report itself ready for it — because a
+hold kept only by what nobody pasted is one slip from gone.

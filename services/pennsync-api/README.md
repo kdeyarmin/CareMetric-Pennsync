@@ -103,6 +103,19 @@ and the senders among the released names send. It is refused at startup without
 should not report itself open, and `/readyz` publishes `deliveryReleased` so the
 state is readable from outside the service rather than inferred from a plan.
 
+Since D98 readiness also HONOURS it: a released set containing a sender while
+this switch is unset reports `ready: false`, because such a deployment refuses
+every send and a probe that passed would say the opposite. `deliveryRequired` is
+published beside the flag, so a deployment that needs delivery and has it can be
+told from one that needs it and does not.
+
+A sender's recipient is resolved against the caller's own agency roster, so
+these endpoints can reach the people in the agency the request names and nobody
+else. An address outside it is refused `RECIPIENT_NOT_IN_AGENCY`, and that
+refusal is raised only where the whole roster was read: a walk that hit its page
+budget with pages still to go answers 503 `RECIPIENT_LOOKUP_INCOMPLETE`, because
+it established nothing about the agency.
+
 Mail also needs the integration runtime's own side: `INTEGRATIONS_RELEASE`,
 `SendEmail` in `INTEGRATIONS_ALLOWED_OPERATIONS`, and a configured provider
 (`SENDGRID_API_KEY`, `NOTIFICATION_FROM_EMAIL`). Two services must both permit
@@ -129,8 +142,8 @@ call. The operator says which app this deployment serves, or it does not start.
 | `generateSmartNoteGuide` | `base44/functions/generateSmartNoteGuide/entry.ts` | Clinician guide. Answers with base64 in the envelope, as the original did |
 | `generateUserManual` | `base44/functions/generateUserManual/entry.ts` | Product manual. Answers with the PDF itself, as the original did |
 | `generatePatientHandout` | `base44/functions/generatePatientHandout/entry.ts` | Patient education guide (D81), a PARTIAL port: the document is served, and `action: 'email'` gets the original's own paused answer, 503 `OUTBOUND_DELIVERY_RELEASE_PAUSED`. Its twenty templates are copied from the original and compared as source text; its page is proved call-for-call across every condition and style. Answers with base64 inside the envelope, as the original did. Reads and writes no entity row |
-| `sendAccountReadyEmail` | `base44/functions/sendAccountReadyEmail/entry.ts` | The account-ready notice (D86). A PARTIAL port with nothing in the served half: the whole capability is one `Core.SendEmail`, so what ships is the caller gate and the original's own paused answer, 503 `OUTBOUND_DELIVERY_RELEASE_PAUSED`. Authorization runs first, so a non-admin is refused 403 whether or not the channel is released. Reads and writes no entity row |
-| `sendWelcomeEmail` | `base44/functions/sendWelcomeEmail/entry.ts` | The welcome notice (D86), refused the same way and for a stronger reason: its message body carries a working temporary password. Reads and writes no entity row |
+| `sendAccountReadyEmail` | `base44/functions/sendAccountReadyEmail/entry.ts` | The account-ready notice, whole since D97: one brokered `Core.SendEmail`, released separately on `PENNSYNC_API_DELIVERY`. With that unset it answers exactly what D86 shipped — 403 to a non-admin, then 503 `OUTBOUND_DELIVERY_RELEASE_PAUSED` — because authorization runs before the pause and the pause before the body. With it set, the message goes. The recipient is resolved against the caller's own agency roster (D98), so an address nobody in that agency holds is refused `RECIPIENT_NOT_IN_AGENCY`; that read is the only one, and it happens after the pause |
+| `sendWelcomeEmail` | `base44/functions/sendWelcomeEmail/entry.ts` | The welcome notice, the same shape and the same two gates, with a stronger reason for both: its message body carries a working temporary password, which is why D56 singled it out and why D98's recipient binding is not optional here |
 | `analyzeReferralPriority` | `base44/functions/analyzeReferralPriority/entry.ts` | The first port that reaches outside the service: one brokered `InvokeLLM`. Reads and writes no entity row |
 | `analyzeReferralIntake` | `base44/functions/analyzeReferralIntake/entry.ts` | One brokered `InvokeLLM`, and a guard that answers an empty payload without calling the model at all — the original's comment says the call otherwise times out at the 120s proxy limit |
 | `generateReferralTasks` | `base44/functions/generateReferralTasks/entry.ts` | One brokered `InvokeLLM`, with `response_json_schema` rather than the tolerant parser: its schema carries `required` at every level, so the provider takes it |

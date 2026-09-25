@@ -1445,7 +1445,14 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 21 | 16 |
   | `mutating` (derived) | 32 | 30 |
-  | `integration` (derived) | 19 | 14 |
+  | `integration` (derived) | 19 | 15 |
+
+  The `integration` row's migrations went 14 → 15 with D98, and the reason is
+  worth reading rather than the number: those two senders resolve their recipient
+  against the caller's agency roster now, so the wave that carries them needs
+  `contract_roster`'s migration applied — a capability's prerequisites follow
+  from the contracts it calls, and D98 gave two handlers their first contract
+  call. The test is what said so; nobody counted it.
 
   Those six rows are pinned to `checkLadder` by a test, for the reason the port
   queue in section 1 now is: every port since #245 has landed in a DERIVED wave
@@ -1543,12 +1550,24 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
 
   Note also what the six names were, because it bears on wave 4:
   `sendAccountReadyEmail` and `sendWelcomeEmail` are now **present on the
-  running revision**, which they were not before. They are refusal-only — they
-  authorize the caller and then answer `OUTBOUND_DELIVERY_RELEASE_PAUSED` — so
-  their presence changes nothing about what the service sends. It does mean the
-  name check no longer keeps them out of a release value, so the only thing
-  keeping them unreleased is what the operator pastes, and §4's
-  `Core.SendEmail` row is the decision that governs it.
+  running revision**, which they were not before. **What they do there changed
+  with D97 and this paragraph is read together with it**: the send is built, and
+  it is gated on `PENNSYNC_API_DELIVERY` reading exactly `enabled-v1`. So on a
+  deployment where that variable is unset — which is every one of them at the
+  time of writing — both still authorize the caller and then answer
+  `OUTBOUND_DELIVERY_RELEASE_PAUSED`, and their presence changes nothing about
+  what the service sends; on one where it is set, they send. Their presence in a
+  release value is therefore no longer the only question about them. Exactly one
+  thing keeps the two names **unreleased**: the ladder's `OWNER_HELD` refuses to
+  emit either of them (`#267`). Two further things stand between a released name
+  and a message leaving the system, and they are safeguards against an effective
+  release rather than second copies of that hold — `PENNSYNC_API_DELIVERY` is
+  unset, so a released sender answers `OUTBOUND_DELIVERY_RELEASE_PAUSED`; and
+  since D98 the service refuses to report itself `ready` at all if a released
+  set contains a sender while that variable stays unset, so a release that
+  reached the value by accident is visible from outside rather than silent. Read
+  the three together: one keeps the name out, two keep a send from happening.
+  §4's `Core.SendEmail` row is still the decision that governs the flip.
 
   **Wave 4 was released on 2026-09-25 at 06:16Z with both names cut out of the
   value by hand**, so for a few hours the exclusion protecting that hold lived

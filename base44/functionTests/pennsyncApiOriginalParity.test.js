@@ -1175,6 +1175,11 @@ async function sentMail(send, params) {
     actor: { tenantRole: 'agency_admin' },
     params,
     config: { deliveryReleased: true },
+    // D98 resolves the recipient against the caller's agency roster before
+    // rendering. It is upstream of the message and returns the roster's own copy
+    // of the address, so a roster answering exactly what was asked for leaves
+    // this comparison measuring the message and nothing else.
+    contract: async () => ({ entries: [{ id: '0'.repeat(24), email: params.email }], next: null }),
     integration: async (operation, payload) => { calls.push({ operation, payload }); return { accepted: true }; },
   });
   assert.equal(calls.length, 1, 'exactly one brokered call per send');
