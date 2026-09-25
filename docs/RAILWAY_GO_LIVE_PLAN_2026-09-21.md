@@ -1,8 +1,11 @@
 # Railway go-live: measured state and the remaining plan
 
 Date: 2026-09-21
-Last re-measured: **2026-09-23 against `b8e4e021`**, the tree, the CI job logs
-on `main`, and both running Railway services.
+Last re-measured: **2026-09-25 against `13821b7`** for the tree and the
+Railway services; **2026-09-23 against `b8e4e021`** for the CI job logs on
+`main` and the hosted store. The Railway readings on 2026-09-25 were taken by
+a session holding the Railway connector and are attributed as such below — this
+page's author cannot re-derive them from the repository, and neither can you.
 Status: a live-probe assessment and the plan that follows from it. Like
 [the transition plan](BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md) it
 authorizes nothing: every hosted change below still needs its own review, cost
@@ -34,7 +37,7 @@ Probed 2026-09-21:
 | --- | --- | --- |
 | `pennsync-integrations-production.up.railway.app/healthz` | `{"status":"alive","release":"paused","revision":"cffe376…"}` | Deployed and healthy, released to nobody |
 | same host `/readyz` | HTTP 503; `released:false`, `operations:[]`, `authorityMode:"base44"`, `base44ExecutionDependency:true`, `trafficCutoverVerified:false`, `browserReleased:false` | Zero of seven brokered operations enabled; still asks Base44 who the caller is |
-| `pennsync-api-production.up.railway.app/healthz` | HTTP 404, `Application not found` | The service does not exist. **Created 2026-09-22: now HTTP 200, `release:"paused"`, revision `f18b053` — see stage B** |
+| `pennsync-api-production.up.railway.app/healthz` | HTTP 404, `Application not found` | The service does not exist. **Created 2026-09-22: HTTP 200, `release:"paused"`, revision `f18b053`. Redeployed 2026-09-25 onto `20c15d8`: still `release:"paused"`, 80 capability names, and an `appId`/`appStated` pair the old revision did not carry — see stage B** |
 | `app.caremetricai.com/` | HTTP 200 | Base44 |
 | `caremetricai.base44.app/` | HTTP 200 | Base44 |
 | Supabase account project list | `CM Train`, `caremetric-pennsync-staging`, `PennPaps`, `CareMetric Support Hub`, `bolt-native-database-62871816` | **No production project** |
@@ -62,7 +65,7 @@ plan's status table reads as progress without saying where the progress lives.
 | --- | ---: | ---: |
 | Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
 | Record store migrations (store, brokers, 83 contracts, purpose policies, file map) | ~~54~~ **59** | ~~0~~ **59** — 54 on 2026-09-21 and the rest since; the hosted ledger holds 73 of the 74 committed migrations with nothing pending, read from the `hosted-gap` job on `b8e4e021` 2026-09-23 |
-| Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ **74 deployed, 0 released** — deployed 2026-09-22 and unmoved since, so the deployment is now **six** names behind rather than one. They are named in stage D |
+| Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ ~~74 deployed~~ **80 deployed, 0 released** — the six-name gap closed by the 2026-09-25 redeploy. It did not close by itself and will not stay closed by itself: the service's source is **pinned to a commit**, so every future merge reopens it until somebody repoints the pin. See stage B |
 | Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ **2 deployed, paused** — 2026-09-22 |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
 
@@ -79,9 +82,21 @@ gate is shut and there is no real identity to authorize. That needs stages C
 and D, not more schema.
 
 **The store half of that table is no longer the moving part; the deployment
-is.** Re-measured 2026-09-23 on `b8e4e021`: the hosted ledger is caught up and
-the running `pennsync-api` revision is eight commits behind its own directory.
-The schema and the service have swapped which one is stale.
+is.** Re-measured 2026-09-23 on `b8e4e021`: the hosted ledger was caught up and
+the running `pennsync-api` revision was eight commits behind its own directory.
+The schema and the service had swapped which one is stale.
+
+**Updated 2026-09-25, and the update is about the mechanism rather than the
+number.** The service was redeployed and is current for its own directory. But
+the reason it had drifted eight commits was not neglect: **`pennsync-api`'s
+Railway source is pinned to a commit and does not follow `main`.** It was
+pinned to `f18b0531` from 2026-09-22, with exactly one deployment ever across
+94 changed files, which is why nothing merged in between reached it. It is now
+pinned to `20c15d8`, and it is kept pinned deliberately so that a merge cannot
+deploy the service in the middle of a release. So the drift is structural, not
+accidental, and the way to close it is a standing step rather than a one-off —
+written down in stage B, because the next person to read "just merge it" here
+would be wrong.
 
 The port queue, measured on this tree rather than quoted. The line below is the
 tool's own `portQueueLine` and is now pinned by a test, so a change that moves
@@ -150,26 +165,46 @@ written.
    `authorityConfigured` and `integrationsConfigured` both true. Recorded again
    because this line was read as open work twice on 2026-09-23 and a decision
    card asking the owner to authorize creating it was raised and withdrawn:
-   nothing about this service is an ask. **Its staleness has grown and is the one
-   number here that moves on its own**: it was two commits behind main for its
-   own directory when that was written and is **eight** on `b8e4e021`
-   (2026-09-23), which is six handler names it does not implement. Stage D's
+   nothing about this service is an ask. ~~**Its staleness has grown and is the one
+   number here that moves on its own**~~: it was two commits behind main for its
+   own directory when that was written and was **eight** on `b8e4e021`
+   (2026-09-23), which was six handler names it did not implement. Stage D's
    deployment probe measures that rather than assuming it.
-3. **Redeploy `pennsync-api` from current `main`, before releasing any wave —
-   because the running revision cannot report its own app binding.** That is
-   the reason, and it is not the same as the more obvious one. The obvious
-   reason is names: `f18b053` implements 74 of 80, so waves 4, 5 and 6 are
-   refused against it outright. The binding reason applies to **every** wave,
-   the early ones included. This revision predates #247, so `/readyz` carries
-   no `appId` and no `appStated` — probed 2026-09-23, the fields are absent and
-   the ladder answers "app binding: not reported by this revision, so it cannot
-   be checked here". Release onto that and `PENNSYNC_API_APP_ID` is unverified,
-   which is the one silent failure this document names: stated but wrong, the
-   service boots, reports ready, and every authorization call is refused. The
-   redeploy is what makes it checkable. **Do not drop this step because the
-   early waves' names happen to be present** — that is the reading this item
-   exists to refuse. It creates nothing, costs nothing new, and a failed build
-   leaves the current revision serving.
+   **Closed 2026-09-25, and the phrase "moves on its own" was the error.** It
+   moved because the service's Railway source is **pinned to a commit** and had
+   been deployed exactly once; nothing about a merge reaches it. It was
+   repointed to `20c15d8` and redeployed, and that pin is byte-current for
+   `services/pennsync-api` against `13821b7`. It will go stale again at the next
+   merge that touches the directory, by the same mechanism and not by drift —
+   see stage B for the standing repoint.
+3. ~~**Redeploy `pennsync-api` from current `main`, before releasing any wave —
+   because the running revision cannot report its own app binding.**~~ **Done
+   2026-09-25**, and the wording above was wrong in a way worth keeping, because
+   it is the wording anybody would write. There is no "from current `main`":
+   **the service's Railway source is pinned to a commit**, so a redeploy rebuilds
+   whatever commit the pin names. Bringing it up to date is a *repoint* of that
+   pin **and then** a redeploy, and it is a **standing step** — it has to be
+   done again for every merge you want served. Stage B carries the procedure,
+   the outside-observable tell and the rollback.
+
+   The reason the step comes before any wave is unchanged and still the one to
+   carry: the OBVIOUS reason was names (`f18b053` implemented 74 of 80, so waves
+   4, 5 and 6 were refused against it outright), but the BINDING reason applied
+   to **every** wave, the early ones included. `f18b053` predated #247, so
+   `/readyz` carried no `appId` and no `appStated`, and the ladder answered "app
+   binding: not reported by this revision, so it cannot be checked here" — which
+   would have made any release a release against a `PENNSYNC_API_APP_ID` nobody
+   could verify, this document's one silent failure. The redeploy is what makes
+   it checkable, and it did: the running revision now reports
+   `appId: 6a9881683dc68a0bd54f1ef7`, the staging app, which is the value the
+   store's own pin requires. **Do not drop this step next time because the early
+   waves' names happen to be present** — that is the reading this item exists to
+   refuse, and the reason it refuses it is the binding, not the count.
+
+   **No wave has been released.** The redeploy makes waves 1 to 3 releasable; it
+   does not release them. `PENNSYNC_API_RELEASE` and `PENNSYNC_API_FUNCTIONS`
+   are the flip, they are the owner's, and nothing on this page should be read
+   as saying they have been set.
 4. **Enroll real people.** Ten Supabase Auth invitations accepted and verified
    out of band. Nothing downstream of authority can be proved with four
    synthetic actors.
@@ -731,7 +766,7 @@ reach on hosted by construction. Three of the four claims are done, the gate
 itself is measured hosted, and the drift on the hosted project is watched on
 every push to main, which is the condition stage B needed.
 
-### Stage B — Deploy `services/pennsync-api`, paused (size S; owner creates the service)
+### Stage B — Deploy `services/pennsync-api`, paused (size S; owner creates the service, a connected session can redeploy it)
 
 - New Railway service in the CareMetric Train project, root
   `/services/pennsync-api`, its committed `Dockerfile`, healthcheck `/healthz`,
@@ -805,6 +840,71 @@ is the visible sign that this revision predates #247 and therefore cannot have
 its app binding checked from outside. Which six names are missing, and which
 waves they block, is in stage D.
 
+#### Redeployed 2026-09-25 — and the deploy model is a pinned commit
+
+The service was redeployed and its acceptance check passed: **80 capability
+names** on `/readyz`, up from 74, and the `appId`/`appStated` pair the old
+revision did not carry at all, with `appId` reading
+`6a9881683dc68a0bd54f1ef7` — the staging app, which is what the store's D11 pin
+on `xxtyweswohkvgkprimwa` requires. That value was **read and never written**.
+The service is still `release: paused` and still serving nobody.
+
+Everything in this subsection about Railway itself was measured by a session
+holding the Railway connector, through that connector's own read tools. It is
+**attributed, not re-derivable from this repository** — nothing in the tree
+records what a Railway service's source is pinned to, which is precisely why
+the drift below went unnoticed for three days.
+
+**The finding that matters is not the redeploy; it is why one was needed.**
+`pennsync-api`'s Railway source is **pinned to a commit**. It does not track
+`main`. It was pinned to `f18b0531` from 2026-09-22, and had **exactly one
+deployment ever**, across 94 changed files — so every merge to `main` between
+those dates built nothing and reached nothing. A plain redeploy would have
+rebuilt `f18b0531` again. The pin was repointed to `20c15d8` first, and only
+then redeployed.
+
+It is **kept pinned on purpose**: an auto-deploying service would rebuild
+itself in the middle of a release wave, on whatever happened to merge. The cost
+of that choice is that bringing the service up to date is a **manual repoint
+plus a redeploy, every time** — a standing step in this plan, not a one-off
+that stage B discharged. Concretely, on any future change you want served:
+
+1. Merge to `main` as usual. **This deploys nothing.**
+2. Repoint the service's source commit to the `main` commit you want served —
+   which should be one that `hosted-store` has measured green on `main`, since
+   a green run is evidence about the repository and the service is what serves.
+3. Redeploy, and re-read `/readyz` yourself: the `revision`, the implemented
+   name count, and the `appId`/`appStated` pair. Do not take the deploying
+   agent's report for it; this stage has been wrong that way once already.
+
+**How to tell which model a service is on.** Read the service's source: in the
+same Railway project, `PennTrain`'s carries **no** `commitSha` and follows
+`main`; `pennsync-api`'s carries one. Two services in one project, two
+different deploy models — so "the project auto-deploys" is true of that project
+and false of this service, and reasoning from the project rather than from the
+service is how this was missed. Note what this costs: reading it needs the
+Railway connector or the dashboard, so **nothing outside Railway can tell you
+which model a service is on**, and no probe of `/healthz` or `/readyz` can
+either — the `revision` field tells you what is RUNNING, never what a redeploy
+would build next.
+
+**Rollback for the 2026-09-25 change.** Reconnect the source to `f18b0531` (the
+prior deployment `f1e39948-c67e-4a31-bdb7-3abcb9c23a6a` is REMOVED, with
+`canRollback: true`; the new one is `ee1848a8-0e1e-43cd-9289-84af0e9622f2`),
+**and** remove both release variables if they have been set by then. Both
+halves: `PENNSYNC_API_FUNCTIONS` and `PENNSYNC_API_RELEASE` are validated at
+startup whether or not the release flag is open, so clearing the flag alone
+leaves a name the rolled-back revision does not implement and the service does
+not start.
+
+**Who can do this.** The Railway connector is reachable from a session — a
+thread started after 2026-09-25 05:02Z has it, and the redeploy above was
+carried out that way. A session picks connectors up when it STARTS, so a thread
+already running does not gain one. What a connected session may do is read the
+service and redeploy it; **creating or deleting anything, and setting the
+release variables, stay the owner's**, and the release variables need the
+owner's own words naming that operation rather than a relayed summary of them.
+
 **The gate was checked at the request path, not only in the readiness report**,
 because a service can report itself paused and still serve. `POST
 /v1/functions/{listAgencyRoster,createAuthorizedPatient,analyzeReferral}` each
@@ -813,16 +913,27 @@ NOT_FOUND` rather than a stack trace.
 
 The integration runtime is byte-identical to its pre-stage state — revision
 `cffe376`, `release: paused`, `authorityMode: "base44"`, `configured: true`,
-`operations: []`. Not redeployed, per the withdrawn bullet above.
+`operations: []`. Not redeployed, per the withdrawn bullet above. **One thing
+about it is unmeasured and should not be assumed either way**: whether
+`pennsync-integrations`' Railway source is pinned like `pennsync-api`'s or
+follows `main` like `PennTrain`'s has not been read. It has not mattered yet
+because nothing under that directory has changed since `cffe376`. It will
+matter the first time something does, so read the service's own source before
+concluding a merge reached it.
 **Re-measured 2026-09-23 and the withdrawal still holds**: 26 commits have
 landed on main since `cffe376` and `git diff --stat cffe376 HEAD --
 services/integration-runtime` is still EMPTY. The two services have diverged on
 exactly this point — one is current because nothing has changed under it, the
 other is stale because a great deal has.
 
-**One thing this stage cannot prove.** Nothing on `/healthz` or `/readyz`
-exposes `PENNSYNC_API_APP_ID`, so the payload above is identical whatever it is
-set to. What the probe cannot see splits into TWO cases with opposite failure
+**One thing this stage could not prove, and no longer is.** On the 2026-09-22
+revision nothing on `/healthz` or `/readyz` exposed `PENNSYNC_API_APP_ID`, so
+the payload was identical whatever it was set to. Since #247 readiness reports
+`appId` and `appStated`, and since the 2026-09-25 redeploy the running revision
+is one that does: it reads `6a9881683dc68a0bd54f1ef7`, the staging app. The two
+cases below are still the two cases — keep them, because they are what a future
+redeploy onto a wrong value would produce, and because the second is still the
+only silent one. What the probe cannot see splits into TWO cases with opposite failure
 modes, and they need different responses:
 
 | At release time | What happens |
@@ -835,12 +946,15 @@ call has to catch. The first announces itself the moment
 `PENNSYNC_API_RELEASE` is set, so a service that will not start after a release
 is the *good* outcome here, not a regression to debug.
 
-While the deployment is paused neither case is distinguishable from a correct
-one, which is why stage C carries the binding rather than this stage.
+While the deployment was paused neither case was distinguishable from a
+correct one, which is why stage C carried the binding rather than this stage.
+That deferral is now discharged: the binding is reported and reads staging.
 
 **Exit — met 2026-09-22 for both hosted claims:** `/healthz` alive on both
 services; `/readyz` 503 on both with an empty operation set; no traffic change
-anywhere. The app binding is deferred to stage C as above.
+anywhere. ~~The app binding is deferred to stage C as above.~~ **Closed
+2026-09-25 by the redeploy**, which is also what turned this stage's one
+undischargeable claim into a readable field.
 
 ### Stage C — Real identities (size M; ten people plus an operator)
 
@@ -928,9 +1042,13 @@ anywhere. The app binding is deferred to stage C as above.
   **"No probe can see it" stopped being true on 2026-09-23**: readiness now
   reports `appId` and `appStated`, and
   `tools-pennsync-release-ladder.mjs --wave <name> --deployment <host>` reads
-  them and refuses a release whose binding is defaulted. The running revision
-  predates the fields, so it still answers "not reported" — a redeploy is what
-  makes this checkable, and until then the paragraph above is how to tell.
+  them and refuses a release whose binding is defaulted.
+  **Discharged 2026-09-25.** The redeploy put a revision that reports those
+  fields onto the service, and its acceptance check read
+  `appId: 6a9881683dc68a0bd54f1ef7` — the staging app this bullet requires, read
+  and never written. The paragraph above stops being the way to tell and becomes
+  the way to tell **after the next repoint**, since a redeploy onto a revision
+  predating #247 would silence the fields again.
 - ~~Give the four tenant roles that can hold context but cannot use it their roster
   behaviour.~~ **Done in the record store 2026-09-23, and it needed no
   enrollee.** The four are `manager`, `office_staff`, `social_worker` and
@@ -977,7 +1095,7 @@ go hunting for work here:
 | The six invitations | The owner; an enrollee accepts their own |
 | Stage A's hosted half (`record-tenant-isolation`, `activity-audit`, the 45 `contract-*` suites) | A hosted caller, which is an `auth.users` row only an accepted invitation creates. Structurally, not merely queued: the sign-in that would drive it is withdrawn |
 | `tools-pennsync-enroll.mjs` against real identities | Enrollees. The tool and its suite are built |
-| `PENNSYNC_API_APP_ID` on the deployed service | The redeploy, which is the owner's and which comes before any release wave for this reason: readiness reports the binding as of #247 and the running revision predates the fields, so until it is redeployed no wave can be released against a checked binding |
+| ~~`PENNSYNC_API_APP_ID` on the deployed service~~ | ~~The redeploy~~ **Nothing — closed 2026-09-25.** The service was repointed and redeployed, and its readiness now reports `appId: 6a9881683dc68a0bd54f1ef7`, the staging app. What replaces it is not a wait but a standing step: the source is pinned, so the next merge you want served needs its own repoint (stage B) |
 | The four context-only roles' roster behaviour, hosted | Memberships in those roles, so identities. Done in the store and proved locally by #247 |
 | The synthetic-name question | The owner. A compliance decision about whether this store ever holds real names, not a refactor |
 | The pinned actor IDs | Nothing — withdrawn above as obsolete rather than owed |
@@ -1173,14 +1291,31 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   answers from the revision it was built at. Re-probed 2026-09-23 on
   `b8e4e021`: revision `f18b053`, release `paused`, **74 handlers implemented
   against the ladder's 80**. That gap was one name when this paragraph was
-  written and is six now, which is the part to act on — it widens with every
-  port and closes only with a redeploy:
+  written and had become six, which was the part to act on:
 
-  | Missing from the running revision | First wave it blocks |
+  | Missing from the 2026-09-22 revision | First wave it blocked |
   | --- | --- |
   | `generatePatientHandout`, `sendAccountReadyEmail`, `sendWelcomeEmail` | `read-only` |
   | `distributePolicyAcknowledgment`, `sendExpirationNotifications` | `mutating` |
   | `generateAIReport` | `integration` |
+
+  **Closed 2026-09-25**: the service was repointed to `20c15d8` and redeployed,
+  and `/readyz` now reports 80 names. But read the mechanism rather than the
+  number, because the number will be wrong again. **The gap did not widen with
+  every port — it widened with every port after the one the source pin names**,
+  and the pin only moves by hand (stage B). The table above is therefore a
+  worked example of a recurring condition, not a closed item: before releasing
+  any wave, drive `--wave <name> --deployment https://<host>` against the live
+  service and read what it answers, rather than reading this table.
+
+  Note also what the six names were, because it bears on wave 4:
+  `sendAccountReadyEmail` and `sendWelcomeEmail` are now **present on the
+  running revision**, which they were not before. They are refusal-only — they
+  authorize the caller and then answer `OUTBOUND_DELIVERY_RELEASE_PAUSED` — so
+  their presence changes nothing about what the service sends. It does mean the
+  name check no longer keeps them out of a release value, so **the thing that
+  keeps wave 4 out is the operator not pasting it**, and §4's `Core.SendEmail`
+  row is the decision that governs it.
 
   Driven against the live service rather than reasoned about: `--wave visit
   --deployment https://pennsync-api-production.up.railway.app` answers "this
@@ -1188,19 +1323,23 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   "REFUSED: this revision does not implement generatePatientHandout,
   sendAccountReadyEmail, sendWelcomeEmail".
 
-  **Read that answer for what it checks, which is names.** It is tempting to
-  conclude that waves 1 to 3 can therefore be released against the running
-  revision and only the later ones need a redeploy. **They should not be, and
-  the reason is the binding rather than the names.** This revision predates
-  #247, so its readiness reports no `appId` and no `appStated` and the probe
-  says so in as many words: "app binding: not reported by this revision, so it
-  cannot be checked here". A release onto it is therefore a release against a
-  `PENNSYNC_API_APP_ID` nobody can verify from outside — and a stated-but-wrong
-  binding is the one failure this whole document singles out as silent: the
-  service boots, reports ready, and is refused by every authorization call.
-  The redeploy is what makes the binding checkable at all, so **it comes
-  first, before any wave**, and the name gap is the second reason rather than
-  the first. Pasting a refused wave's value is
+  **Read that answer for what it checks, which is names.** It was tempting to
+  conclude that waves 1 to 3 could therefore be released against the 2026-09-22
+  revision and only the later ones needed a redeploy. **They should not have
+  been, and the reason was the binding rather than the names.** That revision
+  predated #247, so its readiness reported no `appId` and no `appStated` and the
+  probe said so in as many words: "app binding: not reported by this revision,
+  so it cannot be checked here". A release onto it would have been a release
+  against a `PENNSYNC_API_APP_ID` nobody could verify from outside — and a
+  stated-but-wrong binding is the one failure this whole document singles out as
+  silent: the service boots, reports ready, and is refused by every
+  authorization call. The redeploy is what makes the binding checkable at all,
+  so **it comes first, before any wave**, and the name gap is the second reason
+  rather than the first. That ordering held on 2026-09-25 and holds again after
+  every future repoint; it is a rule about the sequence, not a note about one
+  stale revision. **As of 2026-09-25 no wave has been released**: the service is
+  redeployed, current and still `release: paused`, and both release variables
+  are the owner's to set. Pasting a refused wave's value is
   `INVALID_FUNCTION_RELEASE` at startup, which is a crash loop rather than a
   refusal an operator can read. So `--wave <name> --deployment https://<host>`
   reads `/readyz` and refuses three things before an operator sets anything: a
@@ -1225,8 +1364,13 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   migrations, and all ten are in `caremetric-pennsync-staging`'s ledger — as is
   everything the later waves need, because the ledger has nothing pending at
   all (`already_applied: 73`, read from the `hosted-gap` job on `b8e4e021`,
-  2026-09-23). **The store is no longer what holds any wave back; the running
-  revision is.** The check took one correction to be
+  2026-09-23). ~~**The store is no longer what holds any wave back; the running
+  revision is.**~~ **Neither does, as of 2026-09-25**: the ledger has nothing
+  pending and the running revision implements every name. What holds the waves
+  back is the owner's word on the two release variables, and — for every wave
+  after a future merge — the source repoint in stage B.
+
+  The check took one correction to be
   usable: the ladder printed FILE names while
   `supabase_migrations.schema_migrations` keys on the file's whole STEM, so an
   operator comparing the two matched nothing. It now prints both, taking the
@@ -1568,14 +1712,20 @@ with the Phase 0 baseline.
 
 Nothing in Stages C, F or L can be done from the repository, and stage D now
 has one Railway action of its own (Stage B's creation row is settled — see
-below). Listed plainly so none of it sits waiting on a misunderstanding:
+below). One correction to the premise of this whole section, 2026-09-25:
+**Railway itself is no longer out of reach of a session.** A thread started
+after 2026-09-25 05:02Z holds the Railway connector and can read the services
+and redeploy them, and the redeploy in stage B was carried out that way — so a
+row here is owed to the owner because of what it COSTS or COMMITS (money, a
+release, a message to a real person), not because nobody else can press the
+button. Listed plainly so none of it sits waiting on a misunderstanding:
 
 | Needed | For | Note |
 | --- | --- | --- |
 | ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open. It moved to stage C for identities, and on 2026-09-22 the identities turned out to be largely there already. ~~What it waits on is a sign-in, a seed transport and one `chart_assignment` row.~~ The owner withdrew the sign-in the same day, which retires the other two with it; claim 4 now rests on the composition recorded in stage A |
 | ~~Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change~~ | Stage A | **Done 2026-09-22 (#237).** Both secrets are configured and the flag is `'true'`. The job log shows both masked and then 15 tests, 15 passed, 0 skipped against the real project — read from the log rather than from the green tick, which is what this gate exists to distrust. The committed store's drift is now watched on every push to main |
-| ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C |
-| **Redeploy `pennsync-api` from current `main`** | Stages C and D | **The live blocker, and it comes before any release wave.** Two reasons, and the second is the one that binds. Its revision `f18b053` implements 74 of the 80 committed handlers, so waves 4, 5 and 6 are refused against it by name. And it predates the readiness fields that report the app binding, so **every** wave pasted onto it — the early ones included — would release names against a `PENNSYNC_API_APP_ID` no probe can check, which is this document's one silent failure mode. A redeploy creates nothing and costs nothing new, and a failed build leaves the current revision serving |
+| ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. ~~One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C~~ **That setting is now reported and reads the staging app**, since the 2026-09-25 repoint and redeploy put a post-#247 revision on the service |
+| ~~**Redeploy `pennsync-api` from current `main`**~~ **Repoint the pinned source commit, then redeploy — every time** | Stages B and D | **Done once, 2026-09-25, and it is a standing step rather than a discharged one.** It was the live blocker for two reasons, the second binding: `f18b053` implemented 74 of 80 names, and it predated the readiness fields that report the app binding, so **every** wave pasted onto it would have released against a `PENNSYNC_API_APP_ID` no probe could check. Both closed — `20c15d8`, 80 names, `appId` reading the staging app. **It is no longer the owner's alone**: a session holding the Railway connector can repoint and redeploy, and one did. What stays the owner's is creating or deleting anything, and setting `PENNSYNC_API_FUNCTIONS` and `PENNSYNC_API_RELEASE`. What recurs is the repoint: the source is pinned on purpose, so a merge deploys nothing |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
 | Set the four `INTEGRATIONS_AUTHORITY_*` / `INTEGRATIONS_APP_ID` variables on the Railway runtime | Stage E | The code is done and tested (111/111); this is the whole of Stage E now. `INTEGRATIONS_APP_ID` must be the **staging** id `6a9881683dc68a0bd54f1ef7` — the production id boots and then refuses every call. Reversible, and the runtime serves nobody |
 | **Correct the Google Play Data Safety declaration** | **Today** — independent of every stage | Live listing says "No data collected" and "No data shared with third parties" for an app handling clinical data. A policy violation that can draw enforcement against the listing. A Play Console form — needs no key and no binary, so nothing else here blocks it |
