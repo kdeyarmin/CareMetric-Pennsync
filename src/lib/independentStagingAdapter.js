@@ -1,4 +1,5 @@
 import { createStagingAuthorityClient, PORTED_FUNCTIONS, STAGING_APP_ID } from '../../services/authority-client/client.mjs';
+import { routeFor } from './independentEntityRoutes.js';
 
 const EMAILS = Object.freeze(['admin-a', 'clinician-a', 'clinician-empty', 'admin-b']
   .map(name => `info+pennsync-${name}@caremetricai.com`));
@@ -21,10 +22,15 @@ const fail = (code, status = 403) => { const error = new Error(code); error.code
  * than two. `operation` names the call for a staging report; it is a method
  * name, never an argument.
  *
- * There is deliberately no route to the record store behind this. pennsync-api
- * has no generic entity route by design — an entity reaches the owned store
- * only through a ported handler, which `invoke` already routes — so a route
- * added here would be one that service refuses to have.
+ * There is deliberately no GENERIC route to the record store behind this.
+ * pennsync-api has no generic entity route by design — an entity reaches the
+ * owned store only through a ported handler — so a generic route added here
+ * would be one that service refuses to have. What `routedEntities` adds is the
+ * opposite of generic: a DECLARED map from one entity operation to one named
+ * ported handler (`independentEntityRoutes.js`), which is the seam Stage J
+ * adopts a call site at a time. Everything undeclared refuses exactly as it
+ * did, so the refusal above is still what the overwhelming majority of the
+ * frontend's entity call sites get.
  */
 // `then` must read as absent: a function there would make the namespace, or an
 // entity, a thenable, and `await base44.entities` would call it.
@@ -43,12 +49,38 @@ const refusingLevel = (resolve) => {
     },
   });
 };
-const refusingNamespace = (root) => refusingLevel(group => refusingLevel(operation => () => {
+const refusal = (root, group, operation) => {
   const error = new Error('STAGING_OPERATION_UNAVAILABLE');
   error.code = 'STAGING_OPERATION_UNAVAILABLE';
   error.status = 403;
   error.operation = `${root}.${group}.${operation}`;
-  return Promise.reject(error);
+  return error;
+};
+const refusingNamespace = (root) => refusingLevel(group => refusingLevel(operation => () =>
+  Promise.reject(refusal(root, group, operation))));
+/**
+ * The entity namespace, which refuses exactly as before except where a route
+ * is DECLARED.
+ *
+ * `serve` is the adapter's own `portedCall`, so a routed entity call carries
+ * the same tenant fence, session lease and service contract as the function
+ * call it becomes — this level adds no authorization and can remove none.
+ * Everything without a declaration keeps the refusal above, unchanged, which
+ * is what lets Stage J adopt one call site at a time.
+ */
+const routedEntities = (serve, configured) => refusingLevel(entity => refusingLevel(operation => (...args) => {
+  // `configured` is the same condition `routesPorted` applies to a function
+  // call: with no service to ask, a declared route is not a route. Refusing
+  // here rather than inside `serve` keeps a misconfigured build answering
+  // "unavailable" instead of a transport error.
+  const route = configured() ? routeFor(entity, operation) : null;
+  if (!route) return Promise.reject(refusal('entities', entity, operation));
+  // `request` refuses an argument it cannot express, synchronously. Keep the
+  // whole path promise-shaped: these stand in for SDK methods, and a caller
+  // that gets a throw where every sibling rejects has to handle two shapes.
+  let input;
+  try { input = route.request(...args); } catch (error) { return Promise.reject(error); }
+  return serve(route.function, input).then(route.response);
 }));
 const exact = (value, keys) => value && typeof value === 'object' && !Array.isArray(value)
   && Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
@@ -345,7 +377,7 @@ export function createIndependentStagingAdapter(config,
   return Object.freeze({ auth,
     raw: Object.freeze({ auth: Object.freeze({ me, logout: signOut, redirectToLogin: unavailable, setToken: unavailable }),
       functions: Object.freeze({ invoke, fetch: fetchFunction }),
-      entities: refusingNamespace('entities'), integrations: refusingNamespace('integrations'),
+      entities: routedEntities(portedCall, () => !!config.target.apiUrl), integrations: refusingNamespace('integrations'),
       cleanup: () => { generation++; signedIn = false; for (const value of clients.values()) value.invalidate(); } }),
     authority: Object.freeze({ me, getMyTenantContext: getContext, listMyTenantMemberships: memberships }),
   });
