@@ -1397,16 +1397,16 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   document is where such a judgement belongs; each is then re-checked against
   the tree, so a declared name that stops being a handler, or a read wave that
   gains a write, fails the build. "The rest by blast radius" is derived:
-  read-only, then mutating, then the sixteen that reach the paused runtime.
+  read-only, then mutating, then the nineteen that reach the paused runtime.
 
   | Wave | Handlers | Migrations |
   | --- | ---: | ---: |
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 23 | 16 |
+  | `read-only` (derived) | 21 | 16 |
   | `mutating` (derived) | 32 | 30 |
-  | `integration` (derived) | 17 | 14 |
+  | `integration` (derived) | 19 | 14 |
 
   Those six rows are pinned to `checkLadder` by a test, for the reason the port
   queue in section 1 now is: every port since #245 has landed in a DERIVED wave
@@ -1420,17 +1420,45 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   deployment must already have applied, so the operator copies a value the
   repository has checked rather than typing one.
 
-  **`read-only` holds the two account-email capabilities, and releasing their
-  send is refused rather than remembered now (D92).** `sendAccountReadyEmail`
-  and `sendWelcomeEmail` sit in that wave because each refuses
-  `OUTBOUND_DELIVERY_RELEASE_PAUSED` before reaching an integration, and
-  `account-email.mjs`'s own header had been promising for two ports that a
-  release deleting those refusals must set `needsIntegration: true` in the same
-  change. Nothing asked. The ladder now crosses that flag against whether each
-  handler's `handle` destructures `integration` at all, in BOTH directions, so
-  a change releasing the sends while leaving them in the wave whose whole
-  promise is that nothing in it sends fails the build. Wave 4 is one flag flip
-  from being an outbound-mail change, and that flip is the owner's.
+  **The two account-email capabilities have MOVED out of `read-only`, and D92
+  is why the move could not be forgotten (D97).** `sendAccountReadyEmail` and
+  `sendWelcomeEmail` sat in that wave while each refused
+  `OUTBOUND_DELIVERY_RELEASE_PAUSED` before reaching an integration — honestly,
+  because the shipped code really did send nothing. They now send, so both take
+  `integration`, both carry `needsIntegration: true`, and the ladder places them
+  in `integration`: read-only 23 → 21 and integration 17 → 19 in the table
+  above. That is the cross-check working as designed rather than a renumbering.
+  `account-email.mjs`'s header had been promising for two ports that a release
+  deleting those refusals must move the flag in the same change, and nothing
+  asked until the ladder crossed the flag against whether each handler's
+  `handle` destructures `integration` at all, in BOTH directions. A change that
+  released the sends while leaving them in the wave whose whole promise is that
+  nothing in it sends now fails the build.
+
+  **What still keeps them out of every value is the emitter, not the wave.**
+  `OWNER_HELD` withholds both names from the per-wave and the cumulative value,
+  prints why beside it, and refuses a value carrying one, so the move between
+  waves changes nothing an operator can paste. And the send has a switch of its
+  own, separate from `PENNSYNC_API_RELEASE`: `PENNSYNC_API_DELIVERY=enabled-v1`,
+  read exactly and untrimmed, without which `SendEmail` is not in the brokered
+  set at all and both senders answer 503 as before.
+
+  Mail also needs the integration runtime's side, and that is a build rather
+  than a switch: the runtime is unreleased and its operation list is EMPTY, so
+  `SendEmail` has to join `INTEGRATIONS_ALLOWED_OPERATIONS` as well. Whether its
+  SendGrid key is already usable is **not** answerable from `/readyz`:
+  `missingProviders` is `config.operations.filter(...)`, so an empty operation
+  list yields an empty answer whatever keys exist, and reading that as "the
+  provider is configured" is this page's own recurring defect — an empty answer
+  over an empty input. `preflight.mjs` really does call
+  `api.sendgrid.com/v3/scopes` and check for `mail.send`, but only when
+  `SendEmail` is on the list. So the provider question is settled by a variable
+  read or a preflight run, and not before.
+
+  One thing that must be deliberate when `SendEmail` does join that list: it
+  must NOT join the browser list. `INTEGRATIONS_ALLOWED_OPERATIONS` is the
+  ceiling for `INTEGRATIONS_BROWSER_OPERATIONS`, which is why an empty service
+  list makes the browser route impossible today rather than merely closed.
 
   **What the release gate cannot refuse is the reason this exists.**
   `loadConfig` already rejects a name that is not in the registry, a duplicate,

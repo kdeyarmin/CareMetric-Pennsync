@@ -5,6 +5,7 @@
 import { HANDLERS, HANDLER_NAMES } from './handlers.mjs';
 import { validAuthorityKey, validAuthorityTarget } from './authority.mjs';
 import { validIntegrationTarget } from './integrations.mjs';
+import { deliveryReleased as readDeliveryRelease } from './outbound-delivery.mjs';
 
 const DEFAULT_APP = '694ec16e72e01b60d22f7cbf';
 const ALLOWED_APPS = new Set([DEFAULT_APP, '6a9881683dc68a0bd54f1ef7']);
@@ -53,6 +54,13 @@ export function loadConfig(env = process.env) {
   if (integrationsUrl && !validIntegrationTarget(integrationsUrl)) throw new Error('INVALID_INTEGRATION_TARGET');
   const integrationsConfigured = validIntegrationTarget(integrationsUrl);
 
+  // Outbound delivery is released separately from the service, because a
+  // released capability that writes a record and a released capability that
+  // sends a person a message are different decisions with different owners.
+  // Unset means every sender answers `OUTBOUND_DELIVERY_RELEASE_PAUSED`, which
+  // is what a deployment does today.
+  const delivery = readDeliveryRelease(env);
+
   const released = env.PENNSYNC_API_RELEASE === 'enabled-v1';
   // Releasing without a usable authority would mean serving unauthorized work.
   if (released && !authorityConfigured) throw new Error('INCOMPLETE_AUTHORITY_CONFIGURATION');
@@ -63,6 +71,11 @@ export function loadConfig(env = process.env) {
   // reports ready and is refused by every authorization call. A released service
   // must say which app it serves.
   if (released && !explicitApp) throw new Error('IMPLICIT_APP_BINDING');
+  // Delivery reaches a person through the integration runtime, so releasing it
+  // without one configured would report a channel that cannot carry anything.
+  // Refused at startup rather than per send, as every other incomplete release
+  // in this function is.
+  if (delivery && !integrationsConfigured) throw new Error('INCOMPLETE_DELIVERY_CONFIGURATION');
 
   return Object.freeze({
     appId,
@@ -74,6 +87,7 @@ export function loadConfig(env = process.env) {
     functions: Object.freeze(functions), origins: Object.freeze(origins),
     authorityUrl, authorityKey, authorityConfigured, released, documentLogoDataUrl,
     integrationsUrl, integrationsConfigured,
+    deliveryReleased: delivery,
     revision: /^[0-9a-f]{40}$/.test(env.RAILWAY_GIT_COMMIT_SHA || '') ? env.RAILWAY_GIT_COMMIT_SHA : 'unbound',
   });
 }
@@ -96,6 +110,11 @@ export function publicReadiness(config) {
     // Stated either way, so an operator can see which dependency is missing.
     integrationsRequired: requiresIntegration(config.functions),
     integrationsConfigured: config.integrationsConfigured,
+    // Published so the one thing that decides whether a message can leave this
+    // service is readable from outside it. Every other release state in this
+    // project is checked by probing the running deployment rather than by
+    // reading a plan, and this is the state where that matters most.
+    deliveryReleased: config.deliveryReleased === true,
     authorityMode: 'independent',
     // Which app this deployment keys into the owned store with, and whether
     // that was chosen. The id is not a secret — both reviewed ids are literals

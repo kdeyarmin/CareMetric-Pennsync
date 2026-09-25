@@ -923,20 +923,27 @@ export const HANDLERS = Object.freeze({
     },
   }),
   sendAccountReadyEmail: Object.freeze({
-    // D86, and a PARTIAL port with nothing in the served half: the whole of
-    // this capability is one `Core.SendEmail`, so what ships is the caller gate
-    // and the pause. No `needsIntegration`, for the reason
-    // `generatePatientHandout` gives — the one integration it has is the half
-    // that is paused, so a deployment releasing it does not need the runtime to
-    // report ready.
-    handle({ actor, params }) {
-      return sendAccountReadyEmail({ actor, params });
+    // D86 shipped this as a PARTIAL port with nothing in the served half — the
+    // whole capability is one `Core.SendEmail` — and D97 serves the send behind
+    // `PENNSYNC_API_DELIVERY`. `needsIntegration` moves in the same change and
+    // has to: D92's gate reads it off whether `handle` destructures
+    // `integration`, both directions, so taking the capability here without the
+    // flag fails the build. The comment it replaces cited
+    // `generatePatientHandout`'s reason — the one integration it has is the half
+    // that is paused — and that reason expired with the pause: a released
+    // deployment's send really does need the runtime to report ready, and the
+    // ladder must place these in the integration wave rather than in the
+    // read-only one whose whole promise is that nothing in it writes or sends.
+    needsIntegration: true,
+    handle({ actor, params, config, integration }) {
+      return sendAccountReadyEmail({ actor, params, config, integration });
     },
   }),
   sendWelcomeEmail: Object.freeze({
     // The same, and the one whose body carries a temporary password.
-    handle({ actor, params }) {
-      return sendWelcomeEmail({ actor, params });
+    needsIntegration: true,
+    handle({ actor, params, config, integration }) {
+      return sendWelcomeEmail({ actor, params, config, integration });
     },
   }),
   generateUserGuidePDF: Object.freeze({
