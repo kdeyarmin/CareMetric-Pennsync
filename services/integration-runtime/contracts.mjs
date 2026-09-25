@@ -8,6 +8,15 @@ export const ID = /^[A-Za-z0-9_-]{1,128}$/;
 export const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export const MAX_FILE = 8 * 1024 * 1024;
 export const OPERATIONS = Object.freeze(['InvokeLLM', 'ExtractDataFromUploadedFile', 'SendEmail', 'UploadFile', 'UploadPrivateFile', 'CreateFileSignedUrl']);
+// Operations a browser caller may never be granted, whatever the service list
+// says. `runtime.mjs` only requires the browser list to be a SUBSET of the
+// service list, so before `SendEmail` was released the ceiling refused a browser
+// send for free; releasing the account emails turned that structural refusal
+// into two unset variables. A browser send would also reach the provider
+// WITHOUT the recipient binding the business API applies to its two senders,
+// so the only thing bounding the recipient would be the caller's own typing.
+// This is a refusal rather than a default: nothing may configure it back on.
+export const BROWSER_FORBIDDEN_OPERATIONS = Object.freeze(['SendEmail']);
 export const MIME = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text/plain', 'text/csv']);
 export function exactObject(value, allowed, code = 'INVALID_INPUT') {
   if (!value || typeof value !== 'object' || Array.isArray(value)

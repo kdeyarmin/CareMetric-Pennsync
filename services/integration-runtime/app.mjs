@@ -1,5 +1,5 @@
 import { BROWSER_CONTRACT, requireExpectedCaller, validateCallerBinding } from './caller-binding.mjs';
-import { IntegrationError, ID, OPERATIONS, UUID, exactObject, fail } from './safety.mjs';
+import { BROWSER_FORBIDDEN_OPERATIONS, IntegrationError, ID, OPERATIONS, UUID, exactObject, fail } from './safety.mjs';
 import { authorize, createStore, hasBase44ExecutionDependency, performDurable, publicReadiness } from './runtime.mjs';
 import { createProviders, validateParams } from './providers.mjs';
 import { bearerFingerprint, createAdmission, readRequestBody } from './admission.mjs';
@@ -62,6 +62,11 @@ export function createHandler(config, dependencies = {}) {
       if (browserRequest && (typeof input.request_id !== 'string' || !UUID.test(input.request_id))) fail(400, 'INVALID_BROWSER_REQUEST_ID');
       if (!OPERATIONS.includes(input.operation) || !config.operations.includes(input.operation)) fail(409, 'OPERATION_NOT_RELEASED');
       if (browserRequest && !config.browserOperations.includes(input.operation)) fail(409, 'BROWSER_OPERATION_NOT_RELEASED');
+      // `loadConfig` already refuses to build such a config, so in this service
+      // this line is unreachable from the environment. It is here so the refusal
+      // is a property of the REQUEST rather than of how the config was made, and
+      // a test drives it with a hand-built config to prove it is not decorative.
+      if (browserRequest && BROWSER_FORBIDDEN_OPERATIONS.includes(input.operation)) fail(409, 'BROWSER_FORBIDDEN_OPERATION');
       validateParams(input.operation, input.params, config);
       const result = await performDurable({ config, req, agencyId: input.agency_id, operation: input.operation,
         params: input.params, requestId: input.request_id, provider, store,

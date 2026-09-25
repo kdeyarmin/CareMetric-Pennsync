@@ -3,9 +3,16 @@
 Date: 2026-09-21
 Last re-measured: **2026-09-25 against `13821b7`** for the tree and the
 Railway services; **2026-09-23 against `b8e4e021`** for the CI job logs on
-`main` and the hosted store. The Railway readings on 2026-09-25 were taken by
-a session holding the Railway connector and are attributed as such below — this
-page's author cannot re-derive them from the repository, and neither can you.
+`main` and the hosted store. Most Railway readings on 2026-09-25 were taken by
+a session holding the Railway connector and are attributed as such below — a
+variable's value, a deploy's trigger and a service's settings cannot be
+re-derived from this repository, by this page's author or by you. **The
+readings after the 09:40Z mail switch are the exception and are weaker
+evidence of a different kind**: they are unauthenticated `GET /readyz` calls
+on each service, made by this page's author, so they report what the service
+publishes about itself rather than what its settings say. That is the right
+tool for "is the capability on" and the wrong one for "which variable turned
+it on".
 Status: a live-probe assessment and the plan that follows from it. Like
 [the transition plan](BASE44_TO_RAILWAY_TRANSITION_PLAN_2026-09-19.md) it
 authorizes nothing: every hosted change below still needs its own review, cost
@@ -36,7 +43,7 @@ Probed 2026-09-21:
 | Probe | Result | Reading |
 | --- | --- | --- |
 | `pennsync-integrations-production.up.railway.app/healthz` | `{"status":"alive","release":"paused","revision":"cffe376…"}` | Deployed and healthy, released to nobody. **Now `release:"enabled"` on `38cb0be` — released 2026-09-25 `08:19:25Z`** |
-| same host `/readyz` | HTTP 503; `released:false`, `operations:[]`, `authorityMode:"base44"`, `base44ExecutionDependency:true`, `trafficCutoverVerified:false`, `browserReleased:false` | Zero of seven brokered operations enabled; still asks Base44 who the caller is. **Re-read 2026-09-25 at `08:23Z`, and this line is now history: HTTP 200, `released:true`, `operations:["InvokeLLM","ExtractDataFromUploadedFile"]`, `authorityMode:"independent"`, `base44ExecutionDependency:false`, browser route still shut — see stage E for the whole body.** Do not watch `trafficCutoverVerified` for a `true` — it is a literal `false` at `integration-runtime/runtime.mjs:79` and `pennsync-api/runtime.mjs:134`, assigned nothing else anywhere, so it is not a signal |
+| same host `/readyz` | HTTP 503; `released:false`, `operations:[]`, `authorityMode:"base44"`, `base44ExecutionDependency:true`, `trafficCutoverVerified:false`, `browserReleased:false` | Zero of seven brokered operations enabled; still asks Base44 who the caller is. **Re-read 2026-09-25 at `08:23Z`, and this line is now history: HTTP 200, `released:true`, `operations:["InvokeLLM","ExtractDataFromUploadedFile"]`, `authorityMode:"independent"`, `base44ExecutionDependency:false`, browser route still shut — see stage E for the whole body.** **And that reading is history too: after the owner's 09:40:32Z mail line, `operations` is those two plus `SendEmail`, with `browserOperations:[]` and `browserReleased:false` unchanged. Two re-reads in ninety minutes is the rate this field actually moves at** Do not watch `trafficCutoverVerified` for a `true` — it is a literal `false` at `integration-runtime/runtime.mjs:79` and `pennsync-api/runtime.mjs:134`, assigned nothing else anywhere, so it is not a signal |
 | `pennsync-api-production.up.railway.app/healthz` | HTTP 404, `Application not found` | The service does not exist. **Created 2026-09-22: HTTP 200, `release:"paused"`, revision `f18b053`. Redeployed 2026-09-25 onto `20c15d8`: still `release:"paused"`, 80 capability names, and an `appId`/`appStated` pair the old revision did not carry — see stage B** |
 | `app.caremetricai.com/` | HTTP 200 | Base44 |
 | `caremetricai.base44.app/` | HTTP 200 | Base44 |
@@ -105,6 +112,11 @@ next variable change, each release wave is a variable change, and the pin
 prevents exactly the case it was kept for only while nobody touches a variable.
 Do not move `main` during a release.
 
+**That sentence is about `pennsync-api` and does NOT describe
+`pennsync-integrations`**, which deploys on merge and waits for no CI — read
+the per-service config in stage E before applying either behaviour to the
+other.
+
 The port queue, measured on this tree rather than quoted. The line below is the
 tool's own `portQueueLine` and is now pinned by a test, so a change that moves
 the queue and leaves this page alone fails the build — the guard AGENTS.md got
@@ -127,7 +139,11 @@ below have emptied, one of them twice, and the fourth has shrunk by one:
   what serves each leg instead.
 - `core_integration` **2 → 0** (D86). Both are ported, as the caller gate plus
   the original's own paused answer. That does **not** mean the send was
-  released: D56 is untouched, and `SendEmail` is still not a brokered operation.
+  released. On 2026-09-25 the owner lifted D56 for these two names and
+  `SendEmail` joined the runtime's operation list — but `PENNSYNC_API_DELIVERY`
+  is still unset, so both capabilities still answer
+  `OUTBOUND_DELIVERY_RELEASE_PAUSED` and no mail can be sent. Two switches, one
+  on; see §4's `Core.SendEmail` row.
 - `entity_authorization` **8 → 7**. D83 took two out by retiring them — a
   `global` reference table is written by migration, never at runtime — and D84
   put `offboardUser` in, where the measurement always said it belonged. D82
@@ -1021,6 +1037,12 @@ Two consequences, and the second is the one that bites:
   one: **do not move `main` while a release is in progress**, and treat a green
   `main` at the moment of each variable change as a prerequisite of that wave.
 
+**This whole finding is `pennsync-api`'s and generalises to nothing.** The
+other service's config was read on 2026-09-25 and it deploys on every merge
+that touches its directory, without waiting for CI; stage E carries the
+measurement and the config lines. Two services, two mechanisms, and the
+per-service config is the only thing that says which is which.
+
 **The worst thing a variable write can ship is a migration that has not been
 applied**, and the ladder thread named it from outside on 2026-09-25 05:48Z: "a
 variable change is also a deploy, so before the next wave I'll check what's
@@ -1489,12 +1511,16 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   read exactly and untrimmed, without which `SendEmail` is not in the brokered
   set at all and both senders answer 503 as before.
 
-  Mail also needs the integration runtime's side. That runtime is now released
-  (2026-09-25 `08:19:25Z`) and its operation list carries the two AI operations
-  and nothing else, so `SendEmail` still has to join
-  `INTEGRATIONS_ALLOWED_OPERATIONS` — it is one name on a list that exists now
-  rather than a list that has to be built. Whether its SendGrid key is usable
-  was **never** answerable from `/readyz`:
+  Mail also needs the integration runtime's side, and **that side is now
+  done**. The runtime was released 2026-09-25 `08:19:25Z` with the two AI
+  operations and nothing else; on the owner's 09:40:32Z line, `SendEmail`
+  joined `INTEGRATIONS_ALLOWED_OPERATIONS` and its `/readyz` lists three
+  operations. That was the cheap half — one name on a list that already
+  existed. The expensive half is still the api's `PENNSYNC_API_DELIVERY`, which
+  is unset, and the `OWNER_HELD` lift the value has to be derived through.
+
+  Whether the runtime's SendGrid key is usable was **never** answerable from
+  `/readyz`:
   `missingProviders` is `config.operations.filter(...)`, so an empty operation
   list yields an empty answer whatever keys exist, and reading that as "the
   provider is configured" is this page's own recurring defect — an empty answer
@@ -1507,12 +1533,42 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   that does **not** settle — the sender identity, and the account's plan and
   limits — is recorded there too.
 
-  One thing that must be deliberate when `SendEmail` does join that list: it
-  must NOT join the browser list. `INTEGRATIONS_ALLOWED_OPERATIONS` is the
-  ceiling for `INTEGRATIONS_BROWSER_OPERATIONS`. The service list is no longer
-  empty, so the browser route is now **closed rather than impossible** — but
-  `SendEmail` is not on it, so for mail specifically the ceiling still makes a
-  browser send impossible, and it must stay that way.
+  One thing had to be deliberate when `SendEmail` joined that list, and it was:
+  it must NOT join the browser list. `INTEGRATIONS_ALLOWED_OPERATIONS` is the
+  ceiling for `INTEGRATIONS_BROWSER_OPERATIONS` (`runtime.mjs:19-20`), and what
+  that ceiling did while `SendEmail` was off the service list is sharper than
+  "refuse the request": putting the name on the browser list would have thrown
+  `INVALID_BROWSER_OPERATION_CONFIGURATION` at module load, so **the container
+  would not have booted at all**. A write aimed entirely at the service side
+  removed that. Measured after it, `browserOperations` is `[]` and
+  `browserReleased` is false, so the browser route is shut — and it must stay
+  that way.
+
+  **Count what actually changed, because the first version of this paragraph
+  got it wrong and the error pointed the wrong way.** It said the route was
+  "one variable away". It is two. `app.mjs:44` refuses a browser request if
+  **either** `browserReleased` is not exactly `enabled-v2` **or**
+  `browserOperations` is empty, and `app.mjs:64` checks the operation against
+  that list again at dispatch. So opening a browser send needs both
+  `INTEGRATIONS_BROWSER_RELEASE` and `INTEGRATIONS_BROWSER_OPERATIONS` changed,
+  and two independent settings still stand. What went from three conditions to
+  two is the COUNT. What changed in KIND is the thing to carry: **a structural
+  refusal became a configuration setting.** One of the three used to make
+  another unsettable, and now none does. Do not write this as a lock count — a
+  reader who sees "one lock left" goes looking for a second to add, and there
+  are already two.
+
+  The structural refusal is restorable in code, as an exclusion beside
+  `runtime.mjs:19` keeping `SendEmail` off the browser list whatever the
+  service list holds. That is a narrowing and safe by disposition. As of
+  2026-09-25 it is **restorable and unrestored** — not planned, not scheduled —
+  and the file belongs to the thread that owns that service.
+
+  And the general form, which is not about `SendEmail`: the service list is the
+  browser ceiling for **every** operation, so any widening of
+  `INTEGRATIONS_ALLOWED_OPERATIONS` widens the browser ceiling for the name it
+  adds. That has always been true here; this is the first time it cost
+  something.
 
   **What the release gate cannot refuse is the reason this exists.**
   `loadConfig` already rejects a name that is not in the registry, a duplicate,
@@ -1771,6 +1827,11 @@ Two things about it are load-bearing:
   `needsEmail`, i.e. `SendEmail` is off the operation list, which is exactly
   the state in which the report's `passed` is vacuous; the reading was taken
   from `checks.sendgrid` and not from `passed`, which is the correct way round.
+  **That condition has since flipped**: `SendEmail` joined the list on
+  2026-09-25, so `required` is now true and `passed` is no longer vacuous about
+  mail. Read `checks.sendgrid` anyway — a rollup that is meaningful today
+  became meaningful without anyone changing it, and it can stop being
+  meaningful the same way.
 
   **This page used to end that first bullet by saying nobody should be told
   either that a working mail account was in place or that one needed buying
@@ -1794,11 +1855,29 @@ Two things about it are load-bearing:
 
   Neither is a reason to delay anything, and neither is settled by the probe;
   they are what to check first when a send is actually attempted. And the good
-  news moves nothing on its own: `SendEmail` is still
-  off `INTEGRATIONS_ALLOWED_OPERATIONS`, `PENNSYNC_API_DELIVERY` is still
-  unset, `OWNER_HELD` still keeps both account-email names out of every value
-  the ladder emits, and sending to real people is still the owner's to say.
-  A measurement removed a *question*, not a *hold*.
+  news moved nothing on its own. The hold moved later, and separately: **the
+  owner lifted it on 2026-09-25 at 09:40:32Z — "Turn on the account-ready and
+  welcome emails."**
+
+  **That bought one of the two switches, and this is the paragraph to read
+  before assuming it bought both.** Measured afterwards by an unauthenticated
+  `GET /readyz` on each service:
+
+  - `pennsync-integrations` now lists `SendEmail` in `operations` beside the
+    two AI operations, so the runtime brokers a send. `browserOperations` is
+    still `[]` and `browserReleased` still false — the service list is the
+    browser list's ceiling (`app.mjs:44`, `app.mjs:64`), and `SendEmail` must
+    never join the browser list.
+  - `pennsync-api` still reports `deliveryReleased: false`.
+    `PENNSYNC_API_DELIVERY` is unset, and `sendAccountReadyEmail` and
+    `sendWelcomeEmail` are in `implemented` and **absent from `operations`**.
+
+  So **no mail can be sent**. Both are required and only one is on: the
+  runtime brokering `SendEmail` and the API being permitted to send are two
+  independent switches on two services, and the second cannot even be derived
+  until `OWNER_HELD` is emptied, which withholds both names from every value
+  the ladder emits. A measurement removed a *question*; the owner removed a
+  *hold*; neither removed the second switch.
 
   **The counter-example was on this same service.**
   `INTEGRATIONS_ALLOWED_OPERATIONS` was itself present as a name with an
@@ -1998,8 +2077,9 @@ reassurance:
 - **`missingProviders: []` is a real answer here for the first time.** It
   filters `config.operations`, so it was vacuous while that list was empty;
   with two AI operations on it, the empty result means the Anthropic key and
-  model are present. It still says nothing about `SendEmail`, which is not on
-  the list.
+  model are present. At that reading it still said nothing about `SendEmail`,
+  which was not on the list; `SendEmail` joined it later the same day, so a
+  fresh `missingProviders: []` now covers the SendGrid key too.
 - **`trafficCutoverVerified: false` is not a measurement** and must not be
   cited either way. It is a hardcoded literal in both services
   (`integration-runtime/runtime.mjs:79`, `pennsync-api/runtime.mjs:134`), like
@@ -2023,25 +2103,232 @@ reassurance:
  "identityHashing":{"valid":true}}
 ```
 
-**The `401` IS the pass**, and it is worth saying plainly because a status of
-401 in a log reads like a failure: the check requires 401 or 403, because a
-successful anonymous call would mean the caller's own token is not what
-authorizes. So it proves the RPC exists and that anonymous is refused. It does
-**not** prove a real session succeeds — no login exists for that round trip
-(§4), so **the first real call is the proof**, exactly as the readiness note
-above says.
+**The `401` is the pass, and a few hours after this was written `#276` showed
+that the pass was not enough.** A status of 401 in a log reads like a failure,
+so it needs saying plainly that the check requires 401 or 403: a successful
+anonymous call would mean the caller's own token is not what authorizes. What
+the status could not say is **which** 401 it is. The gateway refuses a
+**revoked** publishable key with the same 401 the database uses to refuse an
+anonymous caller — so the check passed in exactly the state it exists to
+catch, which is this document's own recurring defect arriving inside the probe
+written to measure things.
 
-**One thing cannot be read back on this service, and the asymmetry is worth
-knowing.** This stage says the app id is the value that fails silently: the
-production id is in `ALLOWED_APPS`, so stating it boots and reports ready and
-is then refused by every authorization call. `pennsync-api` publishes `appId`
-and `appStated` on its own `/readyz` for exactly that reason, and its comment
-says so. **The integration runtime's `publicReadiness` publishes neither**
-(`runtime.mjs:66-84`) — so on this service the binding is unobservable from
-outside, and the staging id was written deliberately rather than confirmed
-afterwards. If this ever needs checking rather than trusting, publishing the
-pair here is the change to make; until then, treat the value as written-not-
-verified and do not report it as measured.
+Only the body separates them, measured against the real cluster on 2026-09-25:
+a live key reaches PostgREST and PostgreSQL answers
+`{"code":"42501", … "permission denied for function pennsync_staging_context"}`,
+while a revoked one never gets that far and the gateway answers without a
+SQLSTATE. `#276` adds `keyAccepted`, which reads the body for that code, and
+keeps it **beside** `anonymousDenied` rather than replacing it — an anonymous
+SUCCESS is still the real defect and is still caught, and a failure has to say
+which half failed. That is the same reason `senderConfigured` sits beside
+SendGrid's `valid`.
+
+**So read the reading above for what it is.** It was taken at `08:19:25Z`,
+before that change, so it carries `anonymousDenied` and no `keyAccepted`: it
+proves the RPC exists and that an anonymous caller is refused, and it does
+**not** distinguish a live authority key from a revoked one.
+
+**The next boot carried the field, and it answered.** The runtime rebuilt on
+`17c9cdc` and its preflight at `09:10:04Z` read `authority {status:401,
+valid:true, anonymousDenied:true, keyAccepted:true}` — the first time anybody
+has measured that the live publishable key **reaches the database** rather
+than being turned away at the gateway. Both halves now hold: anonymous is
+refused, and the refusal came from PostgreSQL. Neither version proves a real
+SESSION succeeds — no login exists for that round trip (§4), so **the first
+real call is still the proof**.
+
+**One thing could not be read back on this service, and `#276` closed it the
+same day — but not yet on the running service.** This stage says the app id is
+the value that fails silently: the production id is in `ALLOWED_APPS`, so
+stating it boots, reports ready, and is then refused by every authorization
+call. `pennsync-api` publishes `appId` and `appStated` on its own `/readyz` for
+exactly that reason. The integration runtime's `publicReadiness` published
+neither, so its binding was written-not-verified — correct, and unconfirmable.
+
+It now publishes the pair (`runtime.mjs:95`), and `#276` goes further than
+reporting: `AUTHORITY_APP_PINS` declares which app each reviewed target's store
+carries, a mismatch throws `APP_BINDING_MISMATCH` at startup (`:53`), and a
+target with no declared pin throws rather than defaulting — so adding a target
+forces the decision instead of inheriting silence. Note why that is pinned per
+target rather than as "the production id is always wrong": that stops being
+true the day a production project joins the target list, and a pin does not.
+
+**And checking whether the tree's state had reached the service turned up
+something bigger, which is recorded in full at the end of this stage: it
+already had.** The live runtime answers with `appId
+6a9881683dc68a0bd54f1ef7` and `appStated true` — so the binding is confirmed,
+by the service itself, and is no longer written-not-verified. Confirm it from
+`/readyz` rather than from this paragraph.
+
+**A merge reaches these two services DIFFERENTLY, and this page had one rule
+for both.** First measured 2026-09-25 shortly after `#276` merged, by an
+unauthenticated GET of each `/healthz`, with `main` at `17c9cdc`:
+
+| Service | Running revision | Where that is |
+| --- | --- | --- |
+| `pennsync-integrations` | `17c9cdc` | **`main`'s tip** — four merges past its last variable write |
+| `pennsync-api` | `1a93f5b` | what `main`'s tip was when its last variable write ran |
+
+So the rule this document repeated — a variable change is a deploy that
+rebuilds from the tip, therefore a merge reaches a service at its next
+variable change — is only **half** the picture on `pennsync-integrations`,
+which was carrying code merged minutes earlier with no variable write in
+between. `#276`'s own commit message says "this reaches the service at its
+next variable change"; it had already arrived.
+
+**Both triggers are live on that service, and the second reading proved it.**
+An hour later the runtime was on `55496b5` — `#277`'s merge commit — and
+`#277` touches only the release-ladder tool, nothing under
+`/services/integration-runtime/**`, so that deploy cannot have come from a
+merge. It came from the mail-switch variable write. So a release-variable
+write rebuilds **either** service from `main`'s tip, and the runtime
+**additionally** deploys on merges touching its directory. The first draft of
+this section said only "deploys on merge", which is incomplete rather than
+wrong — and the correction came from re-reading the revision, not from
+re-reading the config, which is the reason to read `/healthz` again after any
+change rather than trusting a mechanism already written down.
+
+**Two revisions are not a mechanism, so the mechanism was read.** From
+outside, a service sitting on the tip cannot be told apart from one somebody
+redeployed a moment ago. The thread holding the Railway connector read the
+per-service config, which is the only place this is readable, and confirmed it
+made no variable write on the runtime after `08:20Z`:
+
+```
+pennsync-integrations  source: {branch: "main", rootDirectory: "/services/integration-runtime",
+                                checkSuites: false}
+                       build.watchPatterns: ["/services/integration-runtime/**"]
+
+pennsync-api           source: {branch: "main", commitSha: "20c15d8f",
+                                rootDirectory: "/services/pennsync-api"}   ← no watchPatterns
+```
+
+**So the conservative reading above is the measured one: the runtime deploys
+on merge.** Every push to `main` creates a deployment row on it, and the watch
+pattern decides whether that row builds or reads `SKIPPED`. `#276` touched
+that directory and read **SUCCESS at `09:09:44`, two seconds after the
+merge**; `#272`, `#273`, `#274` and `#275` all read `SKIPPED`. On
+`pennsync-api` the latest deployment is still the `08:34` variable write, and
+`#273` touched **its** directory without deploying it.
+
+**And `checkSuites: false`: the deploy does not wait for CI.** `main`'s run
+for that merge started at `09:09:42` and was still going minutes later, so the
+code was serving before any of it finished.
+
+That does **not** mean nothing gates this service, which is how a first draft
+of this paragraph put it. There are two gates; they sit either side of the
+merge rather than before the deploy, and both were read from the tree at
+`17c9cdc`:
+
+- **CI gates the MERGE.** `ci.yml`, `pennsync-app.yml`, `pennsync-authority.yml`
+  and `pennsync-browser.yml` carry no `paths:` filter, so lint,
+  `typecheck:signal`, `pnpm test` and all eight gates run on a runtime-only
+  pull request; `external-integrations.yml` adds the runtime's own suites on
+  top. `checkSuites: false` only means the deploy does not consult any of it.
+  So **the merge decision is the last gate that exists.**
+- **The Docker build re-runs the runtime's suites.** The builder is the
+  Dockerfile, whose `RUN node --test *.test.mjs` runs inside the container as
+  `node`, with no `node_modules` (that package declares no dependencies), no
+  network and no environment. A failing top-level suite fails the BUILD, so
+  there is no image and no deploy, and the previous container keeps serving.
+
+Two things follow from the second. It is a real second gate, independent of
+CI. And it constrains what a **top-level** `*.test.mjs` there may do: no
+dependency, no network, no file outside the directory — D60's rule arriving as
+a build context rather than as a guard. `tests/` is outside that glob and has
+its own lockfile, which is where a suite needing any of those belongs.
+
+**The healthcheck is `/healthz`, which is liveness only** (`app.mjs`): it
+answers `{status:'alive', release, revision}` with 200 for any process that
+listens, and never consults `publicReadiness`. `/readyz` does answer 503 when
+not ready, and Railway is deliberately not pointed at it — a paused release
+must still be able to deploy.
+
+Two consequences, now measured rather than contingent:
+
+- **The screening moves to the pull request** for `services/integration-runtime`.
+  The pre-write diff in this stage exists because a variable change ships
+  whatever is at the tip; on a service that deploys on merge, that check
+  happens after the code is already serving.
+- **A merge-hold during an in-flight variable write protects nothing there**,
+  because the merge *is* the deploy.
+
+#### What a runtime pull request has to answer
+
+Neither gate can see the thing that actually breaks this service.
+`server.mjs:7` calls `loadConfig()` at module top level, so its thirteen
+startup refusals (`runtime.mjs:15-53`, plus `INVALID_PORT` at `server.mjs:10`)
+are evaluated against the **live variables** — which no test and no CI job
+ever sees, because every one of them supplies a fixture. The live values are
+not in the diff. That splits two ways:
+
+- **A throw at startup is loud and safe.** Nothing listens, the healthcheck
+  never passes, the deploy does not go active, and the merge simply does not
+  reach the service.
+- **A boot that SUCCEEDS while the configuration is wrong** in a way
+  `loadConfig` does not check is the dangerous class: `/healthz` says alive,
+  the deploy goes active, and every call is refused. That is the only way a
+  merge replaces a working service with a broken one, and it is the class
+  `#276` closed two members of.
+
+So the question is not "do the tests pass" — the build answers that twice —
+but **"does this change what the running container's environment must contain,
+and is that true of the live variables today?"** Read a diff in this order:
+
+1. **Does it touch `loadConfig` or anything it reads (`runtime.mjs:9-57`)?**
+   Adding a throw, tightening a regex, or requiring a previously optional
+   variable is each a claim about the live environment. `#276` added
+   `UNPINNED_AUTHORITY_TARGET` and `APP_BINDING_MISMATCH`, both reading live
+   values; that was checked before merge, and nothing would have caught it
+   after.
+2. **Does it change `OPERATIONS` (`contracts.mjs:10`)?** `runtime.mjs:17`
+   refuses a live `INTEGRATIONS_ALLOWED_OPERATIONS` naming an operation the
+   code does not list, so **removing** a name from the code while the variable
+   still carries it refuses the boot. `:19` additionally requires the browser
+   list to be a subset of the service list — which enforces the ceiling's
+   direction but **not** the exclusion, so nothing in code stops the browser
+   list gaining a name it should not have (§ the mail switch).
+3. **Does it move work across `server.listen` (`server.mjs:33`), or change
+   what `/healthz` answers?** Work moved above the listen widens the safe
+   class; a check moved below it converts a failed deploy into a live broken
+   service. Pointing the healthcheck at readiness would make a paused release
+   fail its own deploy.
+4. **Does it add a top-level `*.test.mjs` needing a dependency, the network,
+   or a file outside the directory?** In Railway that reads as "the merge did
+   not deploy", not as a test failure.
+5. **Does it touch `AUTHORITY_APP_PINS`, `validAuthorityTarget`,
+   `validAuthorityKey`, or the storage binding literal (`runtime.mjs:24`)?**
+   All four read live values.
+
+**And note what "touches its directory" includes.** The watch pattern is
+`/services/integration-runtime/**`, not a source glob, so a change to a file
+in that directory that is never executed — this service's own README, for
+instance — still builds and deploys it. The pull request adding the paragraph
+above did exactly that. The new container serves identical code and the effect
+is a restart rather than a change, but it is a real deploy of a live service
+from a documentation edit, so say so in the pull request rather than letting a
+reviewer assume documentation is inert here.
+
+**The ordering rule the whole thing reduces to:** on this service the variable
+write comes **before** the merge when the code tightens what the environment
+must satisfy, and **after** the merge when it widens it. `pennsync-api` is the
+exact opposite — a variable write is what rebuilds it, so there the merge is
+free and the write carries whatever `main` holds at that moment.
+
+Two things beside this are **not** measured and are written as such. That a
+deploy failing its healthcheck leaves the previous container serving is
+Railway's documented behaviour, not something observed on this service —
+observing it means breaking the service. And `preDeployCommand` is empty: it
+could run `loadConfig` against the live environment in the new image, but the
+healthcheck path already refuses that case, so the gain is a legible
+deploy-log error instead of a 120-second timeout rather than extra safety.
+
+**Keep the two mechanisms apart, and note that the pin does not hold.**
+`pennsync-api`'s config names `commitSha: "20c15d8f"` while the service runs
+`1a93f5b`, so a variable write on it still rebuilds from `main`'s tip rather
+than from the pinned commit. One project, two behaviours, and only the
+per-service config distinguishes them — which is why neither can be inferred
+from the other.
 
 ### Stage F — Production Supabase project (size S to provision; owner approves cost)
 
@@ -2088,7 +2375,7 @@ administrative write paths, and a vendor key.
 | ~~`records_schema`~~ | 0 | **Emptied by D89, D90 and D91.** The three capabilities D84 kept as `port` with an uncarried leg — `distributePolicyAcknowledgment`, `sendExpirationNotifications`, `generateAIReport` — are all written. D75 had taken this bucket to zero on a correction; this is the first time every capability that was in it has been built. Note that `portQueueLine` omits an empty bucket, so it no longer appears in the measured line at all |
 | `external_secret` | 2 | A new brokered operation for audio transcription, with the reservation, quota, encrypted result and audit the other seven have — over a PHI payload. Designed in D87; the key stays unwired, and `generateNoteFromRecording` has two further blockers that no key clears (the owned bucket's MIME set admits no audio, and it pins a model the broker does not accept) |
 | ~~`entity_not_carried`~~ | 0 | Settled by D84. Three changed destination, four stayed `port` with the leg recorded in `uncarried_legs` |
-| ~~`core_integration`~~ | 0 | Emptied by D86, which ported both capabilities as the caller gate and the D56 pause. Releasing `Core.SendEmail` is now a flag flip rather than a build, and it stays the owner's |
+| ~~`core_integration`~~ | 0 | Emptied by D86, which ported both capabilities as the caller gate and the D56 pause. Releasing `Core.SendEmail` is a flag flip rather than a build, and it stayed the owner's until he flipped it on 2026-09-25 — the runtime half only; the api's `PENNSYNC_API_DELIVERY` is still unset and both capabilities still refuse |
 
 ### Stage H — Files (size M, can start once the production bucket exists)
 
@@ -2385,7 +2672,7 @@ doc entry for it is the build thread's to write and number.
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this. **Four are already accepted, mapped and verified as of 2026-09-22**; six remain |
 | ~~The publishable (anon) key and a sign-in credential for the four accepted accounts~~ | ~~Stage A claim 4, Stage C~~ | **Withdrawn 2026-09-22 — the owner declined to use the staging accounts.** Nothing is owed here. Stage A claim 4 stands on the composition recorded in that stage instead, and the one leg it cannot reach is named there |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
-| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. **#269 (D97, merged 2026-09-25) then BUILT the send**, so the code cost is spent: both capabilities really call `integration('SendEmail', …)` behind `PENNSYNC_API_DELIVERY`, an exact untrimmed `enabled-v1` that is unset, and `BROKERED_OPERATIONS` is untouched — `DELIVERY_OPERATIONS` is added per call only while that gate is open, so an unreleased deployment's surface is what it was before the senders existed. Both moved out of `read-only` into `integration` in that same change, which D92's cross-check is what made unskippable. What a yes costs now is a variable on each side — `PENNSYNC_API_DELIVERY` here, and `SendEmail` joining `INTEGRATIONS_ALLOWED_OPERATIONS` on the runtime — plus lifting `OWNER_HELD`, which withholds both names from every emitted value |
+| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. **#269 (D97, merged 2026-09-25) then BUILT the send**, so the code cost is spent: both capabilities really call `integration('SendEmail', …)` behind `PENNSYNC_API_DELIVERY`, an exact untrimmed `enabled-v1` that is unset, and `BROKERED_OPERATIONS` is untouched — `DELIVERY_OPERATIONS` is added per call only while that gate is open, so an unreleased deployment's surface is what it was before the senders existed. Both moved out of `read-only` into `integration` in that same change, which D92's cross-check is what made unskippable. What a yes costs is a variable on each side — `PENNSYNC_API_DELIVERY` here, and `SendEmail` joining `INTEGRATIONS_ALLOWED_OPERATIONS` on the runtime — plus lifting `OWNER_HELD`, which withholds both names from every emitted value. **The owner said yes on 2026-09-25 at 09:40:32Z** ("Turn on the account-ready and welcome emails"), and **one of the three is spent**: `SendEmail` is on the runtime's `operations` within the minute, read from its own `/readyz`, with `browserOperations` still empty. The other two are not. `PENNSYNC_API_DELIVERY` is unset and `/readyz` on `pennsync-api` reports `deliveryReleased: false`, with both senders `implemented` and absent from `operations`; `OWNER_HELD` still holds both names, and the api value cannot be derived until it is emptied. The decision is granted and the capability is still off — do not read the first as the second |
 | ~~Dispositions for 7 capabilities on retiring domains~~ | Stage G | **Settled by D84 (2026-09-23), and the description of them was wrong.** Measured, the 7 split 3 and 4. Three belong to a retiring domain and change destination: `analyzeNurseDeficits` and `analyzeRealTimePerformance` to the hub, `getCommsDashboard` to preserved-paused. The other four — `distributePolicyAcknowledgment`, `generateAIReport`, `offboardUser`, `sendExpirationNotifications` — are carried capabilities that touch one uncarried entity in passing, so they stay `port` with that leg settled by name and reason in `tools-transition-disposition.json`'s `uncarried_legs`, which the tool re-checks against the tree rather than trusts. None of the four leaves the queue: each moves on to its next real blocker. `fetchMedicareGuideline` and `scheduledGuidelineSync` also stop being carried, but that is D83 and they were never in this bucket |
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
