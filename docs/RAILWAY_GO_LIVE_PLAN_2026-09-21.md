@@ -1451,9 +1451,11 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   list yields an empty answer whatever keys exist, and reading that as "the
   provider is configured" is this page's own recurring defect — an empty answer
   over an empty input. `preflight.mjs` really does call
-  `api.sendgrid.com/v3/scopes` and check for `mail.send`, but only when
-  `SendEmail` is on the list. So the provider question is settled by a variable
-  read or a preflight run, and not before.
+  `api.sendgrid.com/v3/scopes` and check for `mail.send`. **Its gate is the KEY
+  being non-empty, not the operation list** (`preflight.mjs:21`): the list only
+  decides whether the result counts as `required` and what the not-configured
+  fallback says. So a preflight run answers the provider question **today**,
+  with the operation list still empty and nothing released — see Stage E.
 
   One thing that must be deliberate when `SendEmail` does join that list: it
   must NOT join the browser list. `INTEGRATIONS_ALLOWED_OPERATIONS` is the
@@ -1732,8 +1734,21 @@ so the change alters readiness and nothing else, and removing
 `INTEGRATIONS_AUTHORITY_MODE` reverts to the Base44 default. **That safety is
 about the four authority variables, not about the operation list** — adding an
 operation to `INTEGRATIONS_ALLOWED_OPERATIONS` is what makes the service able to
-do the thing, and for `SendEmail` the provider behind it may well be live; plan
-as though it is, because nothing here can check.
+do the thing, and for `SendEmail` the provider behind it may well be live.
+
+**That last question is answerable, and this page said it was not.**
+`INTEGRATIONS_PREFLIGHT=read-only` makes the service run `runPreflight` at
+startup and print the report (`server.mjs:36-38`). It calls
+`api.sendgrid.com/v3/scopes` whenever `config.sendgridKey` is non-empty —
+**the operation list does not gate it** (`preflight.mjs:21`) — and reports
+whether the key carries `mail.send` and whether `NOTIFICATION_FROM_EMAIL`
+parses. It does the same for the Anthropic key against `/v1/models`, including
+whether the configured model exists (`preflight.mjs:17-19`). The report carries
+`paidCalls: 0`, `/v3/scopes` is a GET, and **no message is sent**, so this
+answers the mail question without touching the owner's hold and without
+releasing anything. It is still a variable write on a service this thread does
+not own, so it waits on the owner's words like every other write — but it is a
+READING that can be taken, not a fact that is out of reach.
 Railway is no longer out of reach of a session (see §4), but this service is
 owned by the release thread and its writes wait on the owner's words.
 
@@ -2073,7 +2088,7 @@ that flow to it.
 | Ten Supabase Auth invitations accepted, each verified out of band | Stage C | The enrollment tool cannot and must not do this. **Four are already accepted, mapped and verified as of 2026-09-22**; six remain |
 | ~~The publishable (anon) key and a sign-in credential for the four accepted accounts~~ | ~~Stage A claim 4, Stage C~~ | **Withdrawn 2026-09-22 — the owner declined to use the staging accounts.** Nothing is owed here. Stage A claim 4 stands on the composition recorded in that stage instead, and the one leg it cannot reach is named there |
 | A decision on whether the owned store ever holds real names | Stage C, F | Today every deployment refuses a real agency or patient name, and production serves no RPC |
-| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. What the yes still costs is named in `services/pennsync-api/account-email.mjs`: broker `SendEmail`, carry the field checks and the renderer that the pause makes unreachable, and delete the two refusals — **plus, since D92, move both capabilities out of the `read-only` release wave in the same change, which the ladder now refuses to let a change skip** |
+| A decision to broker `Core.SendEmail` | Stage G | **Releases** rather than unblocks, since D86 (2026-09-23). The 2 capabilities whose whole body is the send are written and gated — `sendAccountReadyEmail` and `sendWelcomeEmail` authorize the caller and then refuse `OUTBOUND_DELIVERY_RELEASE_PAUSED`, as the email action of a third does (`generatePatientHandout`, whose document half is ported, D81). The runtime already implements it. **#269 (D97, merged 2026-09-25) then BUILT the send**, so the code cost is spent: both capabilities really call `integration('SendEmail', …)` behind `PENNSYNC_API_DELIVERY`, an exact untrimmed `enabled-v1` that is unset, and `BROKERED_OPERATIONS` is untouched — `DELIVERY_OPERATIONS` is added per call only while that gate is open, so an unreleased deployment's surface is what it was before the senders existed. Both moved out of `read-only` into `integration` in that same change, which D92's cross-check is what made unskippable. What a yes costs now is a variable on each side — `PENNSYNC_API_DELIVERY` here, and `SendEmail` joining `INTEGRATIONS_ALLOWED_OPERATIONS` on the runtime — plus lifting `OWNER_HELD`, which withholds both names from every emitted value |
 | ~~Dispositions for 7 capabilities on retiring domains~~ | Stage G | **Settled by D84 (2026-09-23), and the description of them was wrong.** Measured, the 7 split 3 and 4. Three belong to a retiring domain and change destination: `analyzeNurseDeficits` and `analyzeRealTimePerformance` to the hub, `getCommsDashboard` to preserved-paused. The other four — `distributePolicyAcknowledgment`, `generateAIReport`, `offboardUser`, `sendExpirationNotifications` — are carried capabilities that touch one uncarried entity in passing, so they stay `port` with that leg settled by name and reason in `tools-transition-disposition.json`'s `uncarried_legs`, which the tool re-checks against the tree rather than trusts. None of the four leaves the queue: each moves on to its next real blocker. `fetchMedicareGuideline` and `scheduledGuidelineSync` also stop being carried, but that is D83 and they were never in this bucket |
 | Who runs an unattended per-tenant sweep | Stage K | D49; governs 4 capabilities |
 | Named owners for Product, Security, QA, Release, Hosting | Stage L | LR-01/LR-02 still TBD |
