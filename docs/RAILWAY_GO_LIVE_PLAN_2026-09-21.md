@@ -1744,7 +1744,8 @@ startup and print the report (`server.mjs:36-38`). It calls
 whether the key carries `mail.send` and whether `NOTIFICATION_FROM_EMAIL`
 parses. It does the same for the Anthropic key against `/v1/models`, including
 whether the configured model exists (`preflight.mjs:17-19`). The report carries
-`paidCalls: 0`, `/v3/scopes` is a GET, and **no message is sent**, so this
+the calls it makes are a GET of `/v3/scopes` and a GET of
+`/v1/models`, and **no message is sent**, so this
 answers the mail question without touching the owner's hold and without
 releasing anything. It is still a variable write on a service this thread does
 not own, so it waits on the owner's words like every other write — but it is a
@@ -1767,8 +1768,20 @@ to settle it. Inside that one object, three fields and not one:
   `senderConfigured: true` is the key, and `senderConfigured: false` is the
   address.
 
-The same shape applies to `checks.anthropic`, whose `valid` also requires the
-configured model to appear in `/v1/models`.
+**`checks.anthropic` has the same trap and the same remedy.** Its `required` is
+`needsAI`, derived from the same operation list, so with the list empty
+`passed: true` is equally compatible with a dead Anthropic key. Read
+`checks.anthropic.valid`, which requires the key to work **and** the configured
+model to appear in `/v1/models`. Once the operation list is written both
+`required` flags become true and `passed` starts to mean something — but by
+then the config is already in, which is after the moment the probe was worth
+running. **So a sentence anywhere saying "run the preflight and check it
+passes" is wrong in the one state it will be run in.**
+
+**Do not cite the report's `paidCalls`, `writes` or `base44FunctionCalls`**:
+all three are hardcoded literals on the return (`preflight.mjs:55`), the same
+kind of field as `trafficCutoverVerified` in §0. They happen to be true here,
+and what makes them true is the calls themselves, which is what to check.
 
 **And it is a deploy-log read, not an endpoint** (`server.mjs:36-38`): the
 report is written once to stdout at startup. Whoever asks for the probe has to
