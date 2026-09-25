@@ -119,9 +119,10 @@ export function publicReadiness(config) {
     ready: config.released && config.authorityConfigured && config.functions.length > 0
       && (config.integrationsConfigured || !requiresIntegration(config.functions))
       // A released sender with delivery unset serves nothing, so this service
-      // does not report itself ready for it. `OWNER_HELD` keeps those names out
-      // of every value the ladder emits, and a hold kept only by what nobody
-      // pasted is one slip from gone: this is the deployment's own half of it.
+      // does not report itself ready for it. `OWNER_HELD` kept those names out
+      // of every value the ladder emits until the owner emptied it on
+      // 2026-09-25, so this is no longer the second of two holds — it is the
+      // one that is left, and it is the deployment's own.
       && (config.deliveryReleased === true || !requiresDelivery(config.functions)),
     released: config.released,
     authorityConfigured: config.authorityConfigured,

@@ -30,6 +30,32 @@ import { ledgerVersion } from './tools-pennsync-migrate.mjs';
  */
 const REPOSITORY = resolve(fileURLToPath(new URL('.', import.meta.url)));
 
+/**
+ * A hold the emitter would never build, and the only way the withholding
+ * guards can still be shown to work.
+ *
+ * `OWNER_HELD` was emptied on the owner's word on 2026-09-25, which left six
+ * guards that no longer fire from the real list — and a guard that cannot be
+ * made to fire has not been shown to work, whatever a green suite says. Every
+ * function over the hold therefore takes it as a parameter, and every test
+ * below drives one of them from this.
+ *
+ * The two names are DERIVED from the real ladder rather than typed, for the
+ * reason the staleness check exists: a hardcoded pair goes stale on a rename
+ * and starts asserting over names no wave has. One comes from a wave near the
+ * start and one from the last, so the cumulative path — where a hold applied
+ * to a single wave's slice would leak — is really crossed.
+ */
+function syntheticHold(ladder) {
+  const first = ladder.waves.find(wave => wave.handlers.length).handlers[0];
+  const last = [...ladder.waves].reverse().find(wave => wave.handlers.length).handlers.at(-1);
+  assert.notEqual(first, last, 'the synthetic hold needs two distinct handlers');
+  return Object.freeze({
+    [first]: 'A synthetic hold standing in for a real one, with a reason long enough to pass.',
+    [last]: 'The second, in a later wave, so the cumulative value is exercised and not just a slice.',
+  });
+}
+
 test('the committed tree builds a ladder every handler is placed in', () => {
   const ladder = checkLadder(REPOSITORY);
   assert.equal(ladder.contract, LADDER_CONTRACT);
@@ -342,9 +368,16 @@ test('the two email capabilities moved to the integration wave when they gained 
     assert.equal(reach.has(name), true, name);
     assert.equal(readOnly.handlers.includes(name), false, `${name} left the read-only wave`);
     assert.ok(integration.handlers.includes(name), `${name} is in the integration wave`);
-    // And the move changes nothing an operator can paste: what keeps these two
-    // out of a released value is the emitter, which is a separate guarantee.
-    assert.ok(integration.withheld.includes(name), `${name} is still withheld`);
+    // The wave is where the DERIVATION puts them, and that is unchanged by the
+    // hold being lifted: both still need the integration runtime, so a value
+    // naming them is only valid once that runtime serves `SendEmail`. What DID
+    // change is the emitter — they are no longer withheld from it — so the two
+    // halves are asserted apart, which is the confusion this test was written
+    // over in the first place.
+    assert.equal(integration.withheld.includes(name), false,
+      `${name} is no longer withheld; the owner lifted the hold`);
+    assert.ok(integration.adds.split(',').includes(name),
+      `${name} is emitted in its wave's own slice`);
   }
 });
 
@@ -663,22 +696,51 @@ test('the go-live plan carries the wave table the ladder measures', () => {
  * it reads `needsIntegration`, which is false for both because the shipped
  * code really is refusal-only, and it cannot see a Railway variable at all.
  */
-test('the held names are real handlers, so the hold protects something', () => {
-  // The staleness check, kept here rather than in `checkLadder` because that
-  // runs over synthetic fixtures too, where neither name legitimately exists.
-  // A rename upstream fails this instead of leaving a hold over nothing.
+test('the hold is empty, and the two account emails are in the emitted value', () => {
+  // The owner emptied it on 2026-09-25. This is the assertion that would catch
+  // it being quietly put back: the positive one. Every test below drives the
+  // guards from a synthetic hold, so all of them pass with the real list
+  // holding anything at all — only this one says what the real list IS.
+  assert.deepEqual(heldNames, [], 'the owner hold is empty');
+  assert.deepEqual(Object.keys(OWNER_HELD), []);
+  const ladder = checkLadder(REPOSITORY);
+  const full = cumulativeValue(ladder, ladder.waves.at(-1));
+  for (const name of ['sendAccountReadyEmail', 'sendWelcomeEmail']) {
+    assert.ok(full.names.includes(name), `${name} is missing from the full value`);
+  }
+  assert.deepEqual([...full.withheld], [], 'nothing is withheld from the full value');
+  assert.equal(full.names.length, ladder.handlers,
+    'the full value is every handler, with nothing held back');
+});
+
+test('a hold that comes back owes a real handler and a real reason', () => {
+  // The two rules that outlive the lift. Vacuous over today's empty list, so
+  // they are driven over a synthetic one as well — a rule only ever checked
+  // against an empty set is a rule nobody has seen work.
   const placed = new Set(checkLadder(REPOSITORY).waves.flatMap(wave => wave.handlers));
-  for (const name of heldNames) {
-    assert.ok(placed.has(name), `${name} is held but is not a handler; the hold guards nothing`);
-  }
-  assert.deepEqual(heldNames, ['sendAccountReadyEmail', 'sendWelcomeEmail']);
-  for (const name of heldNames) {
-    assert.ok(OWNER_HELD[name].length >= 40, `${name} owes a reason, not a label`);
-  }
+  const check = held => {
+    for (const [name, reason] of Object.entries(held)) {
+      assert.ok(placed.has(name), `${name} is held but is not a handler; the hold guards nothing`);
+      assert.ok(reason.length >= 40, `${name} owes a reason, not a label`);
+    }
+  };
+  check(OWNER_HELD);
+  check(syntheticHold(checkLadder(REPOSITORY)));
+  // And the staleness rule really refuses: a hold over a name no wave has.
+  assert.throws(() => check({ notAHandler: 'a'.repeat(40) }), /notAHandler/);
+  // As does the reason rule, which is why the length is checked and not the
+  // presence: a label passes a truthiness test and says nothing.
+  const [real] = [...placed];
+  assert.throws(() => check({ [real]: 'too short' }), /reason/);
 });
 
 test('no wave emits a held name, and every held name still belongs to one', () => {
-  const ladder = checkLadder(REPOSITORY);
+  // Driven from a SYNTHETIC hold. With the real list empty this assertion is
+  // true of any tree whatsoever, including one whose withholding was deleted,
+  // so the real list would prove nothing here.
+  const hold = syntheticHold(checkLadder(REPOSITORY));
+  const heldNames = Object.keys(hold).sort();
+  const ladder = checkLadder(REPOSITORY, hold);
   for (const wave of ladder.waves) {
     for (const name of heldNames) {
       assert.ok(!wave.adds.split(',').includes(name),
@@ -712,9 +774,11 @@ test('every cumulative value excludes the held names, not just their own wave', 
   // `cumulativeValue`, which is what the CLI prints — an earlier version of
   // this test called `releasable` itself and passed with the CLI's own
   // withholding deleted.
-  const ladder = checkLadder(REPOSITORY);
+  const hold = syntheticHold(checkLadder(REPOSITORY));
+  const heldNames = Object.keys(hold).sort();
+  const ladder = checkLadder(REPOSITORY, hold);
   for (const wave of ladder.waves) {
-    const { names, withheld } = cumulativeValue(ladder, wave);
+    const { names, withheld } = cumulativeValue(ladder, wave, hold);
     const membership = ladder.waves.slice(0, ladder.waves.indexOf(wave) + 1)
       .flatMap(entry => entry.handlers);
     for (const name of heldNames) {
@@ -728,7 +792,7 @@ test('every cumulative value excludes the held names, not just their own wave', 
   }
   // The last wave carries both, which is the case that matters: whoever
   // releases the full surface must still be told these two are not in it.
-  const last = cumulativeValue(ladder, ladder.waves.at(-1));
+  const last = cumulativeValue(ladder, ladder.waves.at(-1), hold);
   assert.deepEqual([...last.withheld].sort(), heldNames);
   assert.equal(last.names.length, ladder.handlers - heldNames.length);
 });
@@ -737,21 +801,25 @@ test('the emitted-value guard bites when an emitter forgets to withhold', () => 
   // Driven with a wave the emitter would never build, because that is the case
   // it exists for. Asserting only that the real ladder is clean would pass
   // with the guard deleted.
-  assert.deepEqual(heldLeaks([{ name: 'read-only', adds: 'getDashboardData,searchPDFs' }]), []);
+  const hold = syntheticHold(checkLadder(REPOSITORY));
+  const heldNames = Object.keys(hold).sort();
+  assert.deepEqual(heldLeaks([{ name: 'read-only', adds: 'getDashboardData,searchPDFs' }], hold), []);
   assert.deepEqual(
-    heldLeaks([{ name: 'read-only', adds: `getDashboardData,${heldNames[0]}` }]),
+    heldLeaks([{ name: 'read-only', adds: `getDashboardData,${heldNames[0]}` }], hold),
     [{ wave: 'read-only', handlers: [heldNames[0]] }],
   );
   // And a substring of a held name is not a held name: `sendWelcomeEmailer`
   // would be a different capability, and matching it would refuse a value that
   // is fine.
-  assert.deepEqual(heldLeaks([{ name: 'x', adds: `${heldNames[1]}er` }]), []);
+  assert.deepEqual(heldLeaks([{ name: 'x', adds: `${heldNames[1]}er` }], hold), []);
 });
 
 test('a held name already serving on a deployment is reported, not passed over', () => {
   // The repository's half of the hold is the value it emits. This is the only
   // place the emitted value and the running one can be compared, so a
   // hand-edited value that put a held name live is visible here or nowhere.
+  const hold = syntheticHold(checkLadder(REPOSITORY));
+  const heldNames = Object.keys(hold).sort();
   const lines = [];
   const readiness = readinessOf({
     ready: true, released: true, authorityConfigured: true, integrationsRequired: false,
@@ -761,7 +829,7 @@ test('a held name already serving on a deployment is reported, not passed over',
   }, 'test');
   const code = reportDelta(
     ['getDashboardData'], readiness,
-    { name: 'read-only', needsIntegration: false }, line => lines.push(line),
+    { name: 'read-only', needsIntegration: false }, line => lines.push(line), hold,
   );
   const said = lines.join('\n');
   assert.match(said, /WITHHELD NAME IS LIVE/);
