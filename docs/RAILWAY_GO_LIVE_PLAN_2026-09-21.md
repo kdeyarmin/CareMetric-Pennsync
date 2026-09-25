@@ -1441,9 +1441,24 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   waves changes nothing an operator can paste. And the send has a switch of its
   own, separate from `PENNSYNC_API_RELEASE`: `PENNSYNC_API_DELIVERY=enabled-v1`,
   read exactly and untrimmed, without which `SendEmail` is not in the brokered
-  set at all and both senders answer 503 as before. Mail also needs the
-  integration runtime's own release and a configured provider, so no single
-  switch starts it flowing. Three of those four are the owner's.
+  set at all and both senders answer 503 as before.
+
+  Mail also needs the integration runtime's side, and that is a build rather
+  than a switch: the runtime is unreleased and its operation list is EMPTY, so
+  `SendEmail` has to join `INTEGRATIONS_ALLOWED_OPERATIONS` as well. Whether its
+  SendGrid key is already usable is **not** answerable from `/readyz`:
+  `missingProviders` is `config.operations.filter(...)`, so an empty operation
+  list yields an empty answer whatever keys exist, and reading that as "the
+  provider is configured" is this page's own recurring defect — an empty answer
+  over an empty input. `preflight.mjs` really does call
+  `api.sendgrid.com/v3/scopes` and check for `mail.send`, but only when
+  `SendEmail` is on the list. So the provider question is settled by a variable
+  read or a preflight run, and not before.
+
+  One thing that must be deliberate when `SendEmail` does join that list: it
+  must NOT join the browser list. `INTEGRATIONS_ALLOWED_OPERATIONS` is the
+  ceiling for `INTEGRATIONS_BROWSER_OPERATIONS`, which is why an empty service
+  list makes the browser route impossible today rather than merely closed.
 
   **What the release gate cannot refuse is the reason this exists.**
   `loadConfig` already rejects a name that is not in the registry, a duplicate,
