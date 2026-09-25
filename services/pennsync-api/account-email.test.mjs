@@ -309,6 +309,26 @@ test('a recipient on a later roster page is found, and the walk cannot spin', as
   assert.equal(spin.sent.length, 0);
 });
 
+test('a walk that ran out of budget says so, and does not call the address an outsider', async () => {
+  // The distinction review asked for. A bound has two ends and they are not the
+  // same answer: `RECIPIENT_NOT_IN_AGENCY` asserts a fact about the agency, and
+  // a walk that stopped with `next` still set never established it. Every page
+  // here answers a cursor it has not answered before, so nothing but the budget
+  // can end this walk.
+  const { handler, sent, asked } = releasedServe('agency_admin', {
+    roster: [body => rosterPage(['someone.else@example.test'], `${body.p_after ?? ''}.`)],
+  });
+  const response = await handler(post('sendWelcomeEmail', body.sendWelcomeEmail));
+  assert.equal(response.status, 503);
+  assert.equal((await response.json()).error, 'RECIPIENT_LOOKUP_INCOMPLETE');
+  assert.equal(sent.length, 0, 'an unresolved recipient reached the runtime');
+  // The budget is what ended it, and it is the number the module declares
+  // rather than a number this test chose. 200 pages of the contract's own
+  // default page is 40,000 active memberships in one agency.
+  assert.equal(asked.length, 200, 'the walk stopped somewhere other than the budget');
+  assert.equal(asked.at(-1).p_after, '.'.repeat(199));
+});
+
 test('a paused deployment resolves no recipient, so it cannot be asked who is in an agency', async () => {
   // `serve` hands the handler a `contract` that throws if it is reached, so this
   // is asserted by the harness rather than by reading the order. A 503 that had

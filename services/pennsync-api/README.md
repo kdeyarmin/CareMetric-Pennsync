@@ -95,7 +95,10 @@ told from one that needs it and does not.
 
 A sender's recipient is resolved against the caller's own agency roster, so
 these endpoints can reach the people in the agency the request names and nobody
-else. An address outside it is refused `RECIPIENT_NOT_IN_AGENCY`.
+else. An address outside it is refused `RECIPIENT_NOT_IN_AGENCY`, and that
+refusal is raised only where the whole roster was read: a walk that hit its page
+budget with pages still to go answers 503 `RECIPIENT_LOOKUP_INCOMPLETE`, because
+it established nothing about the agency.
 
 Mail also needs the integration runtime's own side: `INTEGRATIONS_RELEASE`,
 `SendEmail` in `INTEGRATIONS_ALLOWED_OPERATIONS`, and a configured provider

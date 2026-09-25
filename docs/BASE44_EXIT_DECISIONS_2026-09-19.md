@@ -7062,6 +7062,20 @@ So the recipient is resolved against `caller_roster(p_agency)` through
   body — with the read last because it is the first step that reads anything.
 - **The page walk is bounded**, the way `generateUserRosterPDF`'s is, so a
   contract answering a cursor equal to its own input cannot spin.
+- **The two ends of that bound are different answers**, which is review's own
+  finding and worth carrying as a rule. `RECIPIENT_NOT_IN_AGENCY` asserts a fact
+  about the agency, so it is raised only where the walk saw the whole roster —
+  the pages ran out, or the contract answered its own cursor back. A walk that
+  stopped because the page budget ran out with `next` still set established
+  nothing about the agency, and says so: 503 `RECIPIENT_LOOKUP_INCOMPLETE`. The
+  ceiling is 200 pages of `contract_roster_list`'s own default page, so 40,000
+  active memberships in one agency, which no agency reaches — the distinction is
+  kept anyway, because **a bound that reports the wrong reason is how a real
+  member's refusal gets read as policy.** The exact lookup that would remove the
+  bound is not available without a migration: `contract_roster_get` resolves by
+  user id and refuses anything that is not 24 hex, and these two capabilities
+  are handed an address, so a by-address roster read belongs beside it in the
+  contract rather than as a wider walk in the handler.
 
 The narrowing is real and is the point: an administrator can no longer mail
 somebody who is not in their agency. Anybody who can sign in has a membership,

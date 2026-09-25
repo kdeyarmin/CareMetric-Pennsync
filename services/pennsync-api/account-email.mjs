@@ -100,29 +100,55 @@ function requireSender(actor, params, allowed) {
  * nothing to derive: the contract's own gate and the policies decide, and a
  * caller who does not hold the agency never gets past them.
  *
- * Two properties are deliberate. The page walk is BOUNDED, the way
+ * Three properties are deliberate. The page walk is BOUNDED, the way
  * `generateUserRosterPDF`'s is, so a contract answering a cursor equal to its
  * own input cannot spin. And what reaches `to` is the ROSTER's address, not the
  * request's: the two differ only in case, and taking the store's copy means the
  * address the provider sees is one this store vouches for rather than one a
  * caller typed.
+ *
+ * The third came from review and is about what a refusal MEANS. A bound has two
+ * ways to end and they are not the same answer: the roster ran out, or the
+ * budget did. `RECIPIENT_NOT_IN_AGENCY` asserts a fact about the agency, so it
+ * may only be raised on the first — a walk that stopped with `next` still set
+ * did not finish looking, and saying "not in your agency" there would state
+ * something this code never established. That case is the service's own
+ * incapacity and answers 503 `RECIPIENT_LOOKUP_INCOMPLETE`. The ceiling is
+ * `PAGE_BUDGET` times `contract_roster_list`'s own default page (200), so
+ * 40,000 active memberships in one agency; the distinction costs nothing and
+ * is worth having anyway, because a bound that reports the wrong reason is how
+ * a real member's refusal gets read as policy.
+ *
+ * The exact lookup that would remove the bound is not available without a new
+ * contract: `contract_roster_get` resolves by user id and refuses anything that
+ * is not 24 hex, and these two capabilities are handed an address. A
+ * by-address roster read belongs beside it, in a migration, not in a wider
+ * walk here.
  */
+const PAGE_BUDGET = 200;
 async function agencyRecipient(contract, requested) {
   const wanted = requested.trim().toLowerCase();
   let after;
-  for (let page = 0; page < 200; page += 1) {
+  for (let page = 0; page < PAGE_BUDGET; page += 1) {
     const answer = await contract('listAgencyRoster', after === undefined ? {} : { after });
     const entries = Array.isArray(answer?.entries) ? answer.entries : [];
     const match = entries.find(entry =>
       typeof entry?.email === 'string' && entry.email.trim().toLowerCase() === wanted);
     if (match) return match.email;
-    if (!answer?.next || answer.next === after) break;
+    // The roster ended, or the contract answered its own cursor back. Either
+    // way the walk saw the whole of what there is to see, so the refusal below
+    // is a fact rather than a guess.
+    if (!answer?.next || answer.next === after) {
+      // Refused rather than answered, and named for what is wrong: an address
+      // nobody in this agency holds is not a field error, it is the one thing
+      // this capability may not do.
+      fail(403, 'RECIPIENT_NOT_IN_AGENCY');
+    }
     after = answer.next;
   }
-  // Refused rather than answered, and named for what is wrong: an address
-  // nobody in this agency holds is not a field error, it is the one thing this
-  // capability may not do.
-  fail(403, 'RECIPIENT_NOT_IN_AGENCY');
+  // The budget ran out with pages left. Nothing about the agency was
+  // established, so nothing about the agency is asserted.
+  fail(503, 'RECIPIENT_LOOKUP_INCOMPLETE');
 }
 
 /**
