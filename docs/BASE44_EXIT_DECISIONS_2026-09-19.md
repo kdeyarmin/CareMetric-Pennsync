@@ -7183,3 +7183,74 @@ moment to break that property, so it is a check now rather than a sentence.
 ledger check will fail by one row until an operator applies it, which is D93's
 expected red and is reported on the pull request by the apply-signal job. The
 fingerprint pin moves in the same change.
+
+## D100 — The owner hold is lifted, and an empty hold is not the absence of one
+
+The owner released the two account emails on 2026-09-25. In the release thread
+at 13:35:01Z, in his own words:
+
+> Empty the owner-hold list so the account-ready and welcome emails can be
+> released.
+
+That answers D56, which is the decision `OWNER_HELD` carried. D56 held
+`sendAccountReadyEmail` and `sendWelcomeEmail` out of every value the release
+ladder emits for two reasons the entries stated: releasing them hands invitee
+names to an outside provider, and `sendWelcomeEmail` puts a working temporary
+password in the body of the message. Both were the owner's to weigh and he has
+weighed them. `OWNER_HELD` is empty as of `d01359a`, and the ladder emits all
+80 of the service's handler names.
+
+### What this does not do
+
+**It releases nothing by itself.** Lifting the hold lets a value be DERIVED
+that names the two senders. Three things still stand between that and a message
+leaving, and none of them is this decision's to move:
+
+- **`PENNSYNC_API_DELIVERY` on `pennsync-api`**, which is unset. Until it holds
+  the exact untrimmed `enabled-v1`, `SendEmail` is not in the brokered set and
+  both senders answer 503 `OUTBOUND_DELIVERY_RELEASE_PAUSED`.
+- **D98's recipient binding.** The address is resolved against the caller's own
+  agency roster and an address nobody in that agency holds is refused. Lifting a
+  release hold does not widen who may be written to.
+- **The integration runtime's own release**, which is a separate service with a
+  separate switch. The runtime brokering `SendEmail` and the API being permitted
+  to send have always been two independent things, and they still are.
+
+So the correct sentence about the product today has two halves and needs both:
+the hold on the NAMES is gone, and no mail can be sent. Stating either alone is
+how a posture change goes unnoticed in one direction and how a release gets
+announced early in the other.
+
+### An empty hold is not the absence of a hold
+
+Six places withheld a held name: `releasable`, `heldLeaks`, `releaseLadder`,
+`wave`, `cumulativeValue` and `reportDelta`. With the list empty none of them
+can fire from the real tree, so deleting any one of them would have failed no
+test — the guards would have kept their shape and lost the property that makes
+them guards, silently, on the day the hold was lifted.
+
+They are therefore parameterised: each takes the held set, defaulting to
+`OWNER_HELD`, and the tests drive them from a SYNTHETIC hold built out of two
+real handler names taken from the live ladder rather than typed, so a rename
+upstream moves it instead of staling it. Each of the six was broken in turn and
+each failure was observed before the change was believed.
+
+The facility stays for the next name somebody must keep out of a value, and its
+two rules stay with it: a held name must be a real handler, and its entry must
+carry a reason rather than a label. Both are vacuous over an empty list, so both
+are also driven over the synthetic one — a rule only ever checked against an
+empty set is a rule nobody has seen work.
+
+**And the assertion that matters most now runs the other way.** The tests assert
+that both account emails ARE in the full cumulative value, and that the value's
+length equals the handler count. A hold quietly restored, or any name dropping
+out of the value, fails the build — because a value SHORTER than the deployment
+is serving revokes the difference when it is written, which is the expensive
+failure, not the noisy one.
+
+### On the record
+
+D98's paragraph saying `OWNER_HELD` still keeps both names out of every emitted
+value was true when D98 was written and is left exactly as it stands. A dated
+entry is a record of what was decided and known at its date; this entry
+supersedes that sentence rather than editing it.

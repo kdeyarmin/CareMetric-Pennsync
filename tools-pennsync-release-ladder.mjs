@@ -134,11 +134,29 @@ export const DERIVED_WAVES = Object.freeze([
  * Names the OWNER has withheld from every release, whatever wave the
  * derivation puts them in.
  *
+ * **EMPTY since 2026-09-25**, on the owner's own words: "Empty the owner-hold
+ * list so the account-ready and welcome emails can be released." It held
+ * `sendAccountReadyEmail` and `sendWelcomeEmail` for D56's reasons — releasing
+ * them hands invitee names to an outside provider, and the second's body
+ * carries a working temporary password. Both are emitted like any other name
+ * now. Emptying it releases NOTHING by itself: it lets a value be derived that
+ * names them, and `PENNSYNC_API_DELIVERY` still decides whether a message can
+ * leave.
+ *
+ * An empty hold and no hold are NOT the same thing, which is why every guard
+ * below survives the lift: the next name somebody must keep out of a value
+ * goes here and needs no other change. But an empty hold fires none of them,
+ * so each is driven from a SYNTHETIC hold in the tests — the `held` parameter
+ * threaded through `releasable`, `heldLeaks`, `releaseLadder`, `checkLadder`,
+ * `cumulativeValue` and `reportDelta` exists for that and for nothing else.
+ * Without it the lift would have turned six guards into code that cannot be
+ * shown to work, and deleting any `releasable` call would fail no test.
+ *
  * This is NOT a readiness question and is deliberately not expressed through
  * `needsIntegration`. The hold is ORTHOGONAL to the derivation: wherever the
- * tree puts these two, `releasable` strips them, and every wave reports what
- * it withheld. What holds them back is a decision about who may be sent mail,
- * which no property of the tree can answer.
+ * tree puts a held name, `releasable` strips it, and every wave reports what
+ * it withheld. What holds a name back is a decision about who may be sent
+ * mail, which no property of the tree can answer.
  *
  * This paragraph used to say they were "refusal-only today — they touch no
  * store and reach no runtime — so the derivation is right to put them in the
@@ -153,15 +171,12 @@ export const DERIVED_WAVES = Object.freeze([
  * them again. A rule kept in a document is not a check; a value an operator
  * pastes has to come out of the emitter already correct.
  *
- * Releasing one means deleting its entry here, with the owner's word, in the
- * same change as the code that makes the send real.
+ * Adding one means an entry here whose value is the REASON, at least forty
+ * characters of it, checked by a test. Releasing one means deleting its entry,
+ * with the owner's word, in the same change as the code that makes the send
+ * real.
  */
-export const OWNER_HELD = Object.freeze({
-  sendAccountReadyEmail: 'Outbound mail to real people is the owner\'s decision (D56):'
-    + ' releasing it hands invitee names to an outside provider.',
-  sendWelcomeEmail: 'The same decision, and the sharper half of it: this message\'s body'
-    + ' carries a working temporary password.',
-});
+export const OWNER_HELD = Object.freeze({});
 
 /** The held names, sorted, for reporting. */
 export const heldNames = Object.freeze(Object.keys(OWNER_HELD).sort());
@@ -171,7 +186,8 @@ export const heldNames = Object.freeze(Object.keys(OWNER_HELD).sort());
  * cumulative list, because a held name reaching an operator by either path is
  * the same mistake.
  */
-export const releasable = names => names.filter(name => !Object.hasOwn(OWNER_HELD, name));
+export const releasable = (names, held = OWNER_HELD) =>
+  names.filter(name => !Object.hasOwn(held, name));
 
 /**
  * Held names found in emitted values, by wave. Split out from `checkLadder` so
@@ -179,10 +195,10 @@ export const releasable = names => names.filter(name => !Object.hasOwn(OWNER_HEL
  * for a SECOND emitter added later that forgets `releasable`, and a guard that
  * cannot be made to fire has not been shown to work.
  */
-export const heldLeaks = waves => waves
+export const heldLeaks = (waves, held = OWNER_HELD) => waves
   .map(entry => ({
     wave: entry.name,
-    handlers: String(entry.adds).split(',').filter(name => Object.hasOwn(OWNER_HELD, name)),
+    handlers: String(entry.adds).split(',').filter(name => Object.hasOwn(held, name)),
   }))
   .filter(entry => entry.handlers.length);
 
@@ -684,7 +700,7 @@ export function integrationFlagHolds(flagged, reached) {
 }
 
 /** The ladder: the declared waves re-checked, then the rest by blast radius. */
-export function releaseLadder(root) {
+export function releaseLadder(root, held = OWNER_HELD) {
   const facts = releaseFacts(root);
   const byName = new Map(facts.map(fact => [fact.handler, fact]));
   const placed = new Map();
@@ -708,7 +724,7 @@ export function releaseLadder(root) {
       }
       placed.set(handler, declared.name);
     }
-    waves.push(wave(declared, declared.handlers.map(handler => byName.get(handler))));
+    waves.push(wave(declared, declared.handlers.map(handler => byName.get(handler)), held));
   }
 
   const rest = facts.filter(fact => !placed.has(fact.handler));
@@ -721,7 +737,7 @@ export function releaseLadder(root) {
     const members = buckets[derived.name].slice()
       .sort((left, right) => left.handler.localeCompare(right.handler));
     for (const fact of members) placed.set(fact.handler, derived.name);
-    waves.push(wave(derived, members));
+    waves.push(wave(derived, members, held));
   }
 
   const unplaced = facts.filter(fact => !placed.has(fact.handler)).map(fact => fact.handler);
@@ -735,7 +751,7 @@ export function releaseLadder(root) {
   });
 }
 
-function wave(declaration, members) {
+function wave(declaration, members, held) {
   const names = members.map(fact => fact.handler);
   return Object.freeze({
     name: declaration.name,
@@ -747,7 +763,7 @@ function wave(declaration, members) {
     // What the derivation placed here and `OWNER_HELD` keeps out of the value.
     // Reported rather than silently dropped, so a shorter value than the
     // membership is explained where it is read.
-    withheld: Object.freeze(names.filter(name => Object.hasOwn(OWNER_HELD, name))),
+    withheld: Object.freeze(names.filter(name => Object.hasOwn(held, name))),
     // THIS WAVE'S OWN NAMES, and deliberately NOT called `functions` any more.
     //
     // It was, and its comment said "what an operator sets", which was false and
@@ -761,7 +777,7 @@ function wave(declaration, members) {
     // The value an operator sets comes from `cumulativeValue`, which is what
     // the CLI prints. A test asserts no wave carries a `functions` key, so the
     // trap cannot come back under its old name.
-    adds: releasable(names).join(','),
+    adds: releasable(names, held).join(','),
     writes: members.some(fact => fact.mutates),
     needsIntegration: members.some(fact => fact.needsIntegration),
     // Every migration this wave's contracts live in. The target deployment has
@@ -775,8 +791,8 @@ function wave(declaration, members) {
  * reach is readable from source, and the declared waves agree with what the
  * tree says about the handlers they name.
  */
-export function checkLadder(root) {
-  const ladder = releaseLadder(root);
+export function checkLadder(root, held = OWNER_HELD) {
+  const ladder = releaseLadder(root, held);
   if (ladder.unresolved.length) refuse('LADDER_REACH_UNRESOLVED', { handlers: ladder.unresolved });
   // A hold over a name the registry no longer has protects nothing while
   // reading as protection, so it is checked — but NOT here. `checkLadder` runs
@@ -788,7 +804,7 @@ export function checkLadder(root) {
   // The invariant that makes this a gate rather than a convention: whatever
   // builds a value, no emitted value carries a held name. A second emitter
   // added later that forgot `releasable` fails here instead of shipping.
-  const leaks = heldLeaks(ladder.waves);
+  const leaks = heldLeaks(ladder.waves, held);
   if (leaks.length) refuse('LADDER_HELD_IN_EMITTED_VALUE', { leaks });
   // The other outbound route. D92's gate reads `integration` and cannot see a
   // Supabase Auth send, so a handler gaining one could ship under a name that
@@ -809,10 +825,10 @@ export function checkLadder(root) {
  * the moment the operator moved to the next wave. A first version left this
  * inline in `main`, where deleting the withholding failed no test.
  */
-export function cumulativeValue(ladder, wave) {
+export function cumulativeValue(ladder, wave, held = OWNER_HELD) {
   const through = ladder.waves.slice(0, ladder.waves.indexOf(wave) + 1);
   return Object.freeze({
-    names: Object.freeze(releasable(through.flatMap(entry => entry.handlers))),
+    names: Object.freeze(releasable(through.flatMap(entry => entry.handlers), held)),
     withheld: Object.freeze(through.flatMap(entry => entry.withheld)),
     migrations: Object.freeze([...new Set(through.flatMap(entry => entry.migrations))].sort()),
   });
@@ -1040,7 +1056,7 @@ export function integrationRuntimeHolds(required, runtime) {
  * one function over a readiness payload, and so the gate never reaches the
  * network: `--summary` reads committed source and nothing else.
  */
-export function reportDelta(names, readiness, wave, write) {
+export function reportDelta(names, readiness, wave, write, held = OWNER_HELD) {
   const delta = releaseDelta(names, readiness, wave);
   write(`# deployment revision ${delta.revision}`
     + `, release ${delta.released ? 'open' : 'paused'}`
@@ -1061,7 +1077,7 @@ export function reportDelta(names, readiness, wave, write) {
   // The repository's half of the hold is the value it emits; this is the other
   // half, and the only place the two can be compared. A held name serving on
   // the deployment got there by a value this tool did not produce.
-  const serving = readiness.operations.filter(name => Object.hasOwn(OWNER_HELD, name));
+  const serving = readiness.operations.filter(name => Object.hasOwn(held, name));
   if (serving.length) {
     // Say what was OBSERVED and not what it implies about a person. A first
     // version read "Someone set a hand-edited value", which is one cause of

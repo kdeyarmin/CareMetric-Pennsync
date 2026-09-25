@@ -1,7 +1,7 @@
 // Local-only CLI boundary. CLI status/start output contains credentials: never forward it.
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { readFile, writeFile, mkdir, unlink, access } from 'node:fs/promises';
+import { readFile, writeFile, mkdir, unlink, access, readdir, readlink } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -147,17 +147,82 @@ const bindOnce = port => new Promise((done, reject) => {
   server.once('error', reject);
   server.listen(port, '127.0.0.1', () => server.close(done));
 });
+const TCP_STATES = Object.freeze({
+  '01': 'ESTABLISHED', '02': 'SYN_SENT', '03': 'SYN_RECV', '04': 'FIN_WAIT1',
+  '05': 'FIN_WAIT2', '06': 'TIME_WAIT', '07': 'CLOSE', '08': 'CLOSE_WAIT',
+  '09': 'LAST_ACK', '0A': 'LISTEN', '0B': 'CLOSING',
+});
+/**
+ * Name the process holding a socket, WITHOUT reading `/proc/<pid>/cmdline`.
+ * An argument vector can carry a database URL or an access token, and this
+ * module's whole emit discipline is that nothing a subprocess printed is
+ * forwarded. `comm` is the executable name and cannot carry either.
+ */
+const holderName = async inode => {
+  if (inode === '0') return null;
+  let pids;
+  try { pids = (await readdir('/proc')).filter(entry => /^\d+$/.test(entry)); } catch { return null; }
+  for (const pid of pids) {
+    let fds;
+    try { fds = await readdir(`/proc/${pid}/fd`); } catch { continue; } // another user's process
+    for (const fd of fds) {
+      let link;
+      try { link = await readlink(`/proc/${pid}/fd/${fd}`); } catch { continue; }
+      if (link !== `socket:[${inode}]`) continue;
+      try { return `${(await readFile(`/proc/${pid}/comm`, 'utf8')).trim()}(${pid})`; }
+      catch { return `pid ${pid}`; }
+    }
+  }
+  return null;
+};
+/**
+ * Describe what is sitting on a local port, for the refusal below.
+ *
+ * Linux only, by reading `/proc/net/tcp{,6}` rather than shelling out: neither
+ * `ss` nor `lsof` is guaranteed on a runner, and both of them print argument
+ * vectors. It NEVER throws and NEVER reports a failure to look: a diagnostic
+ * that can itself fail the pre-flight would be worse than no diagnostic, and a
+ * developer running this on Windows or macOS gets the port and nothing else.
+ */
+export async function describePortHolder(port) {
+  const wanted = `:${port.toString(16).toUpperCase().padStart(4, '0')}`;
+  const found = [];
+  for (const table of ['/proc/net/tcp', '/proc/net/tcp6']) {
+    let rows;
+    try { rows = (await readFile(table, 'utf8')).split('\n').slice(1); } catch { continue; }
+    for (const row of rows) {
+      const field = row.trim().split(/\s+/);
+      if (!field[1]?.endsWith(wanted)) continue;
+      const who = await holderName(field[9]);
+      found.push(`${TCP_STATES[field[3]] || `state ${field[3]}`}${who ? ` held by ${who}` : ''}`);
+    }
+  }
+  return found.length ? found.join('; ') : 'holder not visible from here';
+}
 /**
  * Refuse to start when one of the stack's ports is taken, so a collision is a
  * named refusal instead of a confusing CLI failure several minutes later.
  *
  * It RETRIES, and the reason is evidence rather than caution: this check failed
  * twice on otherwise idle CI runners and passed on the immediate re-run both
- * times, which is the signature of a port in TIME_WAIT or one a previous step
- * has not finished releasing. A port something actually HOLDS stays held for
- * all PORT_ATTEMPTS and still refuses, so the guarantee is unchanged -- only
- * the window it is measured over. Do not replace this with a single bind: the
- * two re-runs it cost are the argument for it.
+ * times, and it has since failed a third time, on `fe8dabb` on 2026-09-25.
+ *
+ * What the retry is NOT for: the comment here used to read that pattern as "a
+ * port in TIME_WAIT", and TIME_WAIT cannot produce it. Measured on Node
+ * 24.18.0, the version CI runs: plant a real TIME_WAIT socket on a port,
+ * confirm it in `/proc/net/tcp`, and `server.listen()` on that port still
+ * SUCCEEDS, because Node sets `SO_REUSEADDR`. Only a live socket raises
+ * `EADDRINUSE`. So the window this retry buys covers one thing -- a process
+ * that is still closing -- and the third failure spent all PORT_ATTEMPTS,
+ * which that cannot explain.
+ *
+ * The cause it might be is unproved and deliberately not fixed here: 54320,
+ * 54321, 54322 and 54324 all sit inside Linux's default ephemeral range
+ * (32768-60999), so any OS-assigned port in the same job can land on one of
+ * them. Do not reserve the ports until an occurrence NAMES one -- which is why
+ * the refusal now carries the port and prints what held it. A port something
+ * actually HOLDS stays held for all PORT_ATTEMPTS and still refuses, so the
+ * guarantee is unchanged. Do not replace this with a single bind.
  */
 export async function unusedPort(port) {
   for (let attempt = 1; ; attempt += 1) {
@@ -165,7 +230,15 @@ export async function unusedPort(port) {
       await bindOnce(port);
       return;
     } catch {
-      if (attempt >= PORT_ATTEMPTS) throw new Error('LOCAL_PORT_ALREADY_IN_USE');
+      if (attempt >= PORT_ATTEMPTS) {
+        // Guarded although `describePortHolder` is written not to throw: a
+        // diagnostic that replaced the refusal with the redacted verdict would
+        // lose the port as well as the holder, which is the whole point of it.
+        let holder = 'holder not described';
+        try { holder = await describePortHolder(port); } catch { /* keep the refusal */ }
+        process.stderr.write(`Port ${port}: ${holder}\n`);
+        throw new Error(`LOCAL_PORT_ALREADY_IN_USE ${port}`);
+      }
       await delay(PORT_RETRY_MS);
     }
   }
@@ -200,10 +273,24 @@ async function main(action) {
     process.stdout.write('Owned local stack stopped; its disposable data volumes removed.\n');
   } else fail('EXPECTED_START_OR_STOP');
 }
+/**
+ * What may be printed when `main` throws. Everything else becomes the redacted
+ * verdict, because the CLI's own output carries credentials.
+ *
+ * It is EXPORTED so it can be tested, and it is tested because it is where a
+ * diagnostic goes to die: `unusedPort` now throws
+ * `LOCAL_PORT_ALREADY_IN_USE 54321`, and against the original
+ * `^LOCAL_[A-Z_]+$` that message did not match, so the port this change exists
+ * to surface would have been redacted away on the only path that prints it.
+ * The trailing group is at most five digits and cannot carry a credential;
+ * nothing else is widened.
+ */
+export const emittable = message =>
+  /^(LOCAL_[A-Z_]+( [0-9]{1,5})?|LINKED_PROJECT_FORBIDDEN|EXPECTED_START_OR_STOP)$/.test(message);
 if (process.argv[1] && pathToFileURL(resolve(process.argv[1])).href === import.meta.url) {
   try { await main(process.argv[2]); }
   catch (error) {
-    const safe = /^(LOCAL_[A-Z_]+|LINKED_PROJECT_FORBIDDEN|EXPECTED_START_OR_STOP)$/.test(error.message) ? error.message : 'LOCAL_STACK_FAILED_DETAILS_REDACTED';
+    const safe = emittable(error.message) ? error.message : 'LOCAL_STACK_FAILED_DETAILS_REDACTED';
     process.stderr.write(`${safe}\n`); process.exitCode = 1;
   }
 }

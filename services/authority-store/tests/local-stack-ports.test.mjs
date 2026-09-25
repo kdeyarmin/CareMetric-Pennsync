@@ -1,8 +1,8 @@
 // The stack harness's port pre-flight, on its own.
 //
-// It is here because the check cost two CI re-runs: `Start fresh owned local
+// It is here because the check cost three CI re-runs: `Start fresh owned local
 // Auth and API` failed `LOCAL_PORT_ALREADY_IN_USE` on otherwise idle runners
-// and passed on the immediate re-run both times. A single bind collapses two
+// and passed on the immediate re-run every time. A single bind collapses two
 // different situations into one refusal: a port another process is holding,
 // and a port that is simply not released yet. Only the second clears on its
 // own, and only the first should stop the stack.
@@ -10,6 +10,15 @@
 // The third test is the one that matters: it fails against the single-bind
 // implementation this replaced. The second is what stops the fix from becoming
 // a way to ignore a real collision.
+//
+// The fourth is the measurement the retry was originally justified by and
+// which turns out to point the other way: a port in TIME_WAIT does NOT refuse
+// a bind here, because Node sets `SO_REUSEADDR`. It is a test rather than a
+// sentence in the harness precisely because the sentence was wrong for months
+// and nothing could notice.
+//
+// The fifth is where the diagnostic would have died: the refusal now carries
+// the port, and the module's emit filter is the only thing that prints it.
 //
 // EVERY PORT HERE IS OS-ASSIGNED, never a literal. A suite about port
 // collisions that pinned three numbers would be one unrelated local service --
@@ -21,8 +30,16 @@
 // installs just `services/authority-store` and does no root install.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createServer } from 'node:net';
-import { unusedPort, PORT_ATTEMPTS, PORT_RETRY_MS } from './http-local-stack.mjs';
+import { createServer, connect } from 'node:net';
+import { readFile } from 'node:fs/promises';
+import { setTimeout as delay } from 'node:timers/promises';
+import {
+  unusedPort, describePortHolder, emittable, PORT_ATTEMPTS, PORT_RETRY_MS,
+} from './http-local-stack.mjs';
+
+/** `/proc/net/tcp` is Linux's, and two tests here read the kernel directly. */
+const procNetTcp = await readFile('/proc/net/tcp', 'utf8').then(() => true, () => false);
+const linuxOnly = { skip: procNetTcp ? false : 'needs /proc/net/tcp' };
 
 /** Bind an OS-assigned loopback port and keep it. */
 const hold = () => new Promise((ready, fail) => {
@@ -58,7 +75,11 @@ test('a held port is still refused, after exhausting every attempt', async () =>
         return true;
       });
     });
-    assert.equal(refusal, 'LOCAL_PORT_ALREADY_IN_USE');
+    // A PREFIX, because the refusal now names the port it could not bind. It
+    // named none of the three for as long as this check has existed, which is
+    // why every occurrence so far has been argued about rather than measured.
+    assert.match(refusal, /^LOCAL_PORT_ALREADY_IN_USE \d+$/);
+    assert.equal(refusal, `LOCAL_PORT_ALREADY_IN_USE ${port}`);
     // It must actually have retried rather than returned the old instant no.
     assert.ok(took >= (PORT_ATTEMPTS - 1) * PORT_RETRY_MS,
       `expected ${PORT_ATTEMPTS} attempts, gave up after ${took}ms`);
@@ -71,4 +92,65 @@ test('a port released after the first attempt is accepted', async () => {
   const { server, port } = await hold();
   setTimeout(() => server.close(), PORT_RETRY_MS + 500).unref();
   await unusedPort(port); // rejects against a single-bind implementation
+});
+
+test('a port in TIME_WAIT does not refuse a bind at all', linuxOnly, async () => {
+  // The measurement behind the harness comment. Plant a real TIME_WAIT socket
+  // -- the server closes first, so the TIME_WAIT is on the LISTENING side's
+  // port -- confirm the kernel agrees it is there, then bind that port again.
+  const port = await new Promise((ready, no) => {
+    const server = createServer(socket => socket.end());
+    server.once('error', no);
+    server.listen(0, '127.0.0.1', async () => {
+      const p = server.address().port;
+      await new Promise(done => {
+        const client = connect(p, '127.0.0.1');
+        client.on('close', done);
+        client.on('error', done);
+      });
+      server.close(() => ready(p));
+    });
+  });
+  await delay(300);
+  const wanted = `:${port.toString(16).toUpperCase().padStart(4, '0')}`;
+  const timeWait = (await readFile('/proc/net/tcp', 'utf8')).split('\n').slice(1)
+    .map(row => row.trim().split(/\s+/))
+    .filter(field => field[1]?.endsWith(wanted) && field[3] === '06');
+  assert.ok(timeWait.length, 'no TIME_WAIT socket was planted, so this proves nothing');
+  await unusedPort(port); // SO_REUSEADDR: TIME_WAIT never raises EADDRINUSE
+});
+
+test('the refusal survives the filter that decides what may be printed', () => {
+  // The port is the whole point of the change, and this is the only path that
+  // prints it. Against the original `^LOCAL_[A-Z_]+$` the first assertion
+  // fails and the operator sees LOCAL_STACK_FAILED_DETAILS_REDACTED instead.
+  assert.ok(emittable('LOCAL_PORT_ALREADY_IN_USE 54321'));
+  assert.ok(emittable('LOCAL_PORT_ALREADY_IN_USE'));
+  assert.ok(emittable('EXPECTED_START_OR_STOP'));
+  // And the widening is five digits and nothing else: the redaction exists
+  // because the CLI prints credentials, so it stays shut on everything a
+  // subprocess could have said.
+  assert.ok(!emittable('LOCAL_PORT_ALREADY_IN_USE 54321 postgresql://postgres:secret@127.0.0.1'));
+  assert.ok(!emittable('LOCAL_PORT_ALREADY_IN_USE sb_secret_abcdefghij'));
+  assert.ok(!emittable('LOCAL_PORT_ALREADY_IN_USE 123456'));
+  assert.ok(!emittable('failed to start: sb_secret_abcdefghij'));
+});
+
+test('the holder description answers for a free port without throwing', async () => {
+  const port = await freePort();
+  const said = await describePortHolder(port);
+  assert.equal(typeof said, 'string');
+  assert.ok(said.length, 'a diagnostic that says nothing is worse than none');
+});
+
+test('the holder description names a live listener', linuxOnly, async () => {
+  const { server, port } = await hold();
+  try {
+    const said = await describePortHolder(port);
+    assert.match(said, /LISTEN/);
+    // `comm` and pid, never `cmdline`: an argument vector can carry a token.
+    assert.match(said, /held by \S+\(\d+\)/);
+  } finally {
+    server.close();
+  }
 });
