@@ -243,16 +243,36 @@ written.
              sendWelcomeEmail:      NOT in operations
    ```
 
-   29 where the tool emits 31, and the two missing names are the two that
-   matter. Waves 5 and 6 are untouched. **The tool itself was not changed and
-   still emits both send names in `--wave read-only`**, so the exclusion lives
-   only in what the operator pastes — see stage D before building any later
-   wave's value.
+   29 where the tool emitted 31, and the two missing names were the two that
+   matter — the value was the tool's output with both cut out **by hand**. That
+   gap is closed: `#267` made the withholding a property of the emitter, so
+   `--wave` now emits 29 for this wave and prints a `# WITHHELD` line naming
+   each held name and why. The tool and the service agree. **Which wave those
+   two names sit in can move** — building their send moves them to
+   `integration` — so read the `# WITHHELD` lines wherever they appear rather
+   than expecting them under one wave.
 
-   That write deployed `cd48dc1`, `main`'s head at the time, which is the third
-   time a variable change has rebuilt from the tip. Harmless again, and checked
-   rather than assumed: `services/pennsync-api` is byte-identical between
-   `20c15d8` and `cd48dc1`, so the 80-name surface is still the measured one.
+   **The writes wave followed at 06:38Z.** Read from outside at 07:00:44Z:
+
+   ```
+   /readyz   released: true   operations: 61   implemented: 80
+             appId: 6a9881683dc68a0bd54f1ef7   appStated: true
+             revision: 75d465a
+             sendAccountReadyEmail / sendWelcomeEmail: NOT in operations
+             resendInvitation / resendInvitationV2:    in operations
+   ```
+
+   61 is exactly what `--wave mutating` emits, so the two now agree at the
+   wave as well as at the name. Wave 6, the AI wave, is untouched.
+
+   **Both writes deployed `main`'s head** — `cd48dc1` for wave 4 and `75d465a`
+   for the writes wave — the third and fourth times a variable change has
+   rebuilt from the tip. The fourth is the sharpest illustration this page has:
+   `75d465a` is a change to THIS DOCUMENT, merged twenty minutes earlier, and a
+   release wave shipped it. Harmless both times, and checked rather than
+   assumed (`services/pennsync-api` is byte-identical across `20c15d8`,
+   `cd48dc1` and `75d465a`), but the standing step above is why it was harmless
+   and not why it is safe.
 
    That is a dated reading and not a standing fact: release state is the one
    thing on this page that can change without any commit, so **read it off
@@ -1456,16 +1476,35 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   `Core.SendEmail` row is the decision that governs it.
 
   **Wave 4 was released on 2026-09-25 at 06:16Z with both names cut out of the
-  value by hand**, which is why `/readyz` reports 29 operations where
-  `--wave read-only` emits 31. The exclusion is therefore **not in the
-  repository**: the ladder still emits both names, and D92's guard is a
-  build-time check on `needsIntegration`, which cannot see what an operator
-  pastes. So a later operator re-deriving wave 4, or building wave 5 on top of
-  it from the tool's output, releases them without anything failing. Until the
-  ladder can express the exclusion, the value for any wave from `read-only`
-  onward is the tool's output **minus** `sendAccountReadyEmail` and
-  `sendWelcomeEmail`, and the check after the write is that `operations` on
-  `/readyz` contains neither.
+  value by hand**, so for a few hours the exclusion protecting that hold lived
+  nowhere but in what an operator typed: the ladder still emitted both names,
+  and D92's guard is a build-time check on `needsIntegration` that cannot see a
+  pasted value.
+
+  **`#267` moved it into the emitter.** `--wave` now withholds both names from
+  every value it emits and prints a `# WITHHELD` line carrying the reason, so
+  the tool's output is the value — do not edit it. Re-deriving a wave, or
+  composing a later one, can no longer release them by accident.
+
+  **`#268` then closed the route that gate could not see.** D92 asks whether a
+  handler destructures `integration`, which is the brokered route; D42 records
+  that the invitation capabilities' original send had no successor at all,
+  because Base44's `inviteUser` minted the account and delivered the link. The
+  plausible successor is a **Supabase Auth call**, which never touches
+  `integration` — so a handler that gained one could have shipped under a name
+  already sitting in a live value with nothing in the build firing.
+  `authSendReach` now scans the whole service for the five Auth calls Supabase
+  mails on, and `authSendHolds` refuses in both directions: an undeclared
+  reach, and a declaration whose reach has gone. `AUTH_SEND_DECLARED` is empty
+  today, and that is a measurement rather than a placeholder.
+
+  **The check after a write is that `operations` GREW**, not merely that it is
+  non-empty. `#268` also renamed the per-wave `functions` field to `adds`,
+  because it held that wave's own names while `--wave` prints the cumulative
+  value and consecutive waves share none: composing a release from the field
+  would have set the new wave's names and **silently revoked every name already
+  serving**. That is the wave-4 finding from the other side — the operator's
+  paste is the control — so read the count back, not just the state.
 
   Driven against the live service rather than reasoned about: `--wave visit
   --deployment https://pennsync-api-production.up.railway.app` answers "this
@@ -1877,6 +1916,21 @@ and redeploy them, and the redeploy in stage B was carried out that way — so a
 row here is owed to the owner because of what it COSTS or COMMITS (money, a
 release, a message to a real person), not because nobody else can press the
 button. Listed plainly so none of it sits waiting on a misunderstanding:
+
+**The owner gave a direction on both remaining decisions on 2026-09-25.** At
+06:35:37Z he was told, in these words, that "only two decisions are left, and
+both are yours: turning on the AI features, which send data to an outside AI
+provider, and sending email or invitations to real people." At 06:40:12Z he
+answered:
+
+> turn on everything
+
+**Read that as the direction it is, not as a switch.** The working practice in
+this project is that each switch takes his words naming THAT switch — which is
+why the writes wave, which he named, went out at 06:38Z, and the AI wave, which
+he has not, has not. A general yes is what removes the question; it is not the
+line that sets a variable. Keep bringing each one as a single line, and record
+the line beside the change it authorized.
 
 | Needed | For | Note |
 | --- | --- | --- |
