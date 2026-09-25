@@ -27,6 +27,29 @@ gate in `REPOSITORY_CONSOLIDATION_2026-09-02.md`,
 Any of these can be reversed by changing the record and the manifest; nothing
 below is encoded in a way that makes reversal expensive.
 
+## How an entry is corrected
+
+**Append, never rewrite.** Every dated entry below is a record of what was
+believed on its date, and that is the whole of its value: a reader has to be
+able to trust that it says what it said. So no entry is edited after its date —
+including one marked OPEN, because OPEN describes the question and not the
+text, and a doc where some entries are editable with nothing marking which is a
+doc where none of them can be trusted.
+
+Leaving a claim that later turned out wrong with nothing beside it is the other
+failure, and it is the one that actually bites: a reader lands on the old
+paragraph, has no idea the correction exists, and carries the mistake out with
+them. So a superseded entry gains one dated line at its END, naming what
+superseded it and where — for example `2026-09-25: the nullability framing in
+this entry is superseded by D104.` — with every word of the original left
+untouched. The record stays contemporaneous and the correction is findable from
+the place where the mistake is.
+
+The same rule holds for a MEASUREMENT quoted in an entry. A count, a ratio or a
+reading is true of the tree it was taken from and goes stale by the next merge;
+re-measure before quoting one, and record the new reading somewhere it can be
+dated rather than editing the old one to match.
+
 ## D1 — Ported business logic runs in a new Railway service
 
 `services/pennsync-api`, Node 24, deployed from this repository with the same
@@ -7295,6 +7318,13 @@ the generated record store makes **every** entity column nullable and emits
 the Base44 schema would have rejected and writes null where the schema declared
 a default. That is one generator decision with two consequences, and it reaches
 every batch rather than this one.
+
+*2026-09-25: the nullability framing in the paragraph above is superseded by
+D104. The generator's universal nullability is deliberate and documented in its
+own header — a legacy row predating a requirement has to be able to migrate
+rather than be refused at load — so it is not a defect. The missing column
+DEFAULTS are the real and separate gap. Every other word of this entry stands
+as written.*
 
 ## D103 — Two screens decide what a caller sees from a label its subject can edit (OPEN)
 
