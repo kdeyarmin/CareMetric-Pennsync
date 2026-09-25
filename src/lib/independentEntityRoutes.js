@@ -229,6 +229,110 @@ function brokeredRead({ entity, sortable, filterable = [], filtered }) {
 export const ROSTER_MAXIMUM = 500;
 
 /**
+ * The reference reads' ceilings, as each contract clamps them.
+ *
+ * Unlike the broker family's, these differ per capability, and unlike the
+ * roster's they sit BELOW what several call sites ask for — `ALL_ROWS` is 5,000
+ * and the Medicare rule read stops at 2,000. That gap is the reason
+ * `servedPage` exists rather than a reason to widen a contract.
+ */
+export const REFERENCE_MAXIMUM = Object.freeze({
+  MedicareComplianceRule: 2000,
+  MedicareGuideline: 2000,
+  Physician: 2000,
+  DocumentTemplate: 500,
+  LibraryDocument: 500,
+  OnCallShift: 2000,
+  VisitPointConfig: 100,
+});
+
+/**
+ * The exact sort strings a contract implements, and nothing adjacent.
+ *
+ * `sortKey` above is right for the broker family, where this file does the
+ * ordering and either direction is arithmetic it can perform. These contracts
+ * order in SQL, so the direction is fixed too: a screen asking `created_date`
+ * ascending of a contract that returns newest-first must refuse, not receive
+ * the reverse of what it asked for. An absent order is spelled `''`, and a
+ * contract that chose its own order (the Medicare rules, read by reference)
+ * accepts only that.
+ */
+function exactSort(sort, allowed) {
+  const asked = sort === undefined || sort === null ? '' : sort;
+  if (typeof asked !== 'string' || !allowed.includes(asked)) unsupported('sort');
+  return asked;
+}
+
+/**
+ * A page from a contract that ordered it in SQL, proved complete where it has
+ * to be.
+ *
+ * The broker family's rule is that a page cannot be re-ordered. This is the
+ * other half of the same argument: a page a contract ordered IS a true top-N,
+ * so trimming it to the caller's own smaller bound loses nothing and needs no
+ * proof. What does need proof is a caller whose bound is ABOVE the contract's
+ * ceiling, because there "everything" and "the first 2,000 of it" are different
+ * answers and the screen cannot tell them apart. So the proof is required in
+ * exactly that case and skipped in the other, rather than applied everywhere
+ * and turning every `ALL_ROWS` call site into a refusal.
+ */
+function servedPage(entries, limit, maximum, entity) {
+  if (!Array.isArray(entries)) unsupported('answer');
+  const probe = probeFor(limit, maximum);
+  if (probe <= limit && entries.length >= probe) incomplete(entity);
+  return entries.slice(0, limit);
+}
+
+/** A caller's row bound, required: a page has no completeness without one. */
+function boundedSize(limit) {
+  const size = pageSize(limit);
+  if (size === undefined) unsupported('limit_required');
+  return size;
+}
+
+/** The three orders `contract_physician_list` implements, by the sort that means each. */
+const PHYSICIAN_ORDERS = Object.freeze({
+  '-created_date': 'recent',
+  'full_name': 'name',
+  '-referral_count': 'referrals',
+});
+
+/**
+ * A filter object holding exactly one equality, on the one field the contract
+ * takes a parameter for. Anything else refuses: a second key would be a
+ * narrowing this cannot pass on, and a key the contract does not model would be
+ * one it silently ignored.
+ */
+function onlyKey(query, field, entity) {
+  if (query === undefined || query === null) return null;
+  if (typeof query !== 'object' || Array.isArray(query)) unsupported('filter');
+  const keys = Object.keys(query);
+  if (keys.length !== 1 || keys[0] !== field) unsupported('filter_field');
+  const value = query[field];
+  if (typeof value !== 'boolean') unsupported(`filter_${entity}`);
+  return value;
+}
+
+/**
+ * The rota's window, taken apart into the contract's two text dates.
+ *
+ * Only `$gte` and `$lte` on `shift_date`, both or neither: a half-open window
+ * is expressible and the call site never asks for one, and admitting a shape no
+ * screen uses would be a route claiming more than it was checked against.
+ */
+function shiftWindow(query) {
+  if (query === undefined || query === null) return { from: null, to: null };
+  if (typeof query !== 'object' || Array.isArray(query)) unsupported('filter');
+  const keys = Object.keys(query);
+  if (keys.length !== 1 || keys[0] !== 'shift_date') unsupported('filter_field');
+  const condition = query.shift_date;
+  if (condition === null || typeof condition !== 'object' || Array.isArray(condition)) unsupported('filter_operator');
+  const bounds = Object.keys(condition).sort();
+  if (bounds.length !== 2 || bounds[0] !== '$gte' || bounds[1] !== '$lte') unsupported('filter_operator');
+  return { from: condition.$gte, to: condition.$lte };
+}
+
+/**
  * The declared routes.
  *
  * `request` builds the handler’s input from the entity call’s own arguments —
@@ -331,6 +435,171 @@ export const ENTITY_ROUTES = Object.freeze({
       filtered: true,
     }),
     reason: 'The monitor reads every update and the nurse alert reads the approved and implemented ones.',
+  }),
+
+  /**
+   * The seven reference and configuration reads (D101), across nine routes and
+   * seventeen call sites.
+   *
+   * These differ from every route above in where the work happens. The broker
+   * family offers no order and no predicate, so this file supplies both over a
+   * set it proved complete. Each of these has a contract that orders and filters
+   * IN SQL — which is why the on-call rota's date WINDOW is servable at all, and
+   * why a screen asking for a month of shifts gets the month rather than a page
+   * of it. What this file does here is translate: an entity call's sort string
+   * into the word the contract takes, its filter object into the contract's own
+   * parameters, and its row bound into a page it will either prove or refuse.
+   *
+   * Two things are deliberately NOT translated. A sort the contract does not
+   * implement refuses instead of being approximated — including the same field
+   * in the other direction, which `exactSort` is for — and a filter key outside
+   * the contract's parameters refuses instead of being dropped, because a
+   * narrowing a screen asked for and did not get is invisible on the screen.
+   */
+  'MedicareComplianceRule.list': Object.freeze({
+    function: 'listMedicareComplianceRules',
+    projection: 'medicare_compliance_rule_row',
+    // The largest single group in this batch, and the plainest: all seven ask
+    // for everything in no particular order, which the contract answers by
+    // Conditions-of-Participation reference — the order a reader looks a rule
+    // up in, and a total one, so the page is stable.
+    reason: 'Seven screens read the published Medicare rules the same way: every rule, no order asked.',
+    request: (sort, limit) => {
+      exactSort(sort, ['']);
+      return { limit: probeFor(boundedSize(limit), REFERENCE_MAXIMUM.MedicareComplianceRule) };
+    },
+    response: (result, sort, limit) =>
+      servedPage(result.entries, limit, REFERENCE_MAXIMUM.MedicareComplianceRule, 'MedicareComplianceRule'),
+  }),
+  'MedicareGuideline.filter': Object.freeze({
+    function: 'listMedicareGuidelines',
+    projection: 'medicare_guideline_row',
+    reason: 'The guidelines library reads the active CMS guidance, most recently fetched first.',
+    request: (query, sort, limit) => {
+      exactSort(sort, ['-last_fetched_date']);
+      const active = onlyKey(query, 'is_active', 'MedicareGuideline');
+      return {
+        limit: probeFor(boundedSize(limit), REFERENCE_MAXIMUM.MedicareGuideline),
+        active,
+      };
+    },
+    response: (result, query, sort, limit) =>
+      servedPage(result.entries, limit, REFERENCE_MAXIMUM.MedicareGuideline, 'MedicareGuideline'),
+  }),
+  /**
+   * The physician directory, whose three call sites want three different
+   * orders — newest, by name, and by referral count. The contract takes the
+   * order as a WORD from a fixed set rather than a column, so this is where the
+   * three sort strings become those three words, and a fourth refuses.
+   */
+  'Physician.list': Object.freeze({
+    function: 'listPhysicians',
+    projection: 'physician_row',
+    reason: 'The fax recipient picker and the follow-up queue both read the referral-source directory.',
+    request: (sort, limit) => ({
+      limit: probeFor(boundedSize(limit), REFERENCE_MAXIMUM.Physician),
+      order: PHYSICIAN_ORDERS[exactSort(sort, Object.keys(PHYSICIAN_ORDERS))],
+      active: null,
+    }),
+    response: (result, sort, limit) =>
+      servedPage(result.entries, limit, REFERENCE_MAXIMUM.Physician, 'Physician'),
+  }),
+  'Physician.filter': Object.freeze({
+    function: 'listPhysicians',
+    projection: 'physician_row',
+    reason: 'The directory screen reads the active physicians, busiest referrers first.',
+    request: (query, sort, limit) => ({
+      limit: probeFor(boundedSize(limit), REFERENCE_MAXIMUM.Physician),
+      order: PHYSICIAN_ORDERS[exactSort(sort, Object.keys(PHYSICIAN_ORDERS))],
+      active: onlyKey(query, 'is_active', 'Physician'),
+    }),
+    response: (result, query, sort, limit) =>
+      servedPage(result.entries, limit, REFERENCE_MAXIMUM.Physician, 'Physician'),
+  }),
+  'DocumentTemplate.list': Object.freeze({
+    function: 'listDocumentTemplates',
+    projection: 'document_template_row',
+    // The contract deliberately does not restate the tenant predicate: the
+    // policy admits an agency's own templates OR any row flagged
+    // `is_system_template`, whoever owns it, and those are most of what these
+    // screens show.
+    reason: 'Template management and the onboarding strip both read the newest templates first.',
+    request: (sort, limit) => {
+      exactSort(sort, ['-created_date']);
+      return { limit: probeFor(boundedSize(limit), REFERENCE_MAXIMUM.DocumentTemplate) };
+    },
+    response: (result, sort, limit) =>
+      servedPage(result.entries, limit, REFERENCE_MAXIMUM.DocumentTemplate, 'DocumentTemplate'),
+  }),
+  /**
+   * The clinical library. `file_url` comes back through D77's locator map, so
+   * until the file copy has run it is null rather than the Base44 URL it holds
+   * today — the screen shows a document it cannot open yet instead of one that
+   * quietly still comes from the platform we are leaving.
+   */
+  'LibraryDocument.list': Object.freeze({
+    function: 'listLibraryDocuments',
+    projection: 'library_document_row',
+    reason: 'The template library reads the agency\'s own library documents, newest first.',
+    request: (sort, limit) => {
+      exactSort(sort, ['-created_date']);
+      return { limit: probeFor(boundedSize(limit), REFERENCE_MAXIMUM.LibraryDocument) };
+    },
+    response: (result, sort, limit) =>
+      servedPage(result.entries, limit, REFERENCE_MAXIMUM.LibraryDocument, 'LibraryDocument'),
+  }),
+  /**
+   * The on-call rota, and the one call in this batch whose predicate is not an
+   * equality: a month is `{shift_date: {$gte, $lte}}`. The contract takes the
+   * window as two text dates and refuses an impossible day itself, which is why
+   * this passes the strings through rather than parsing them here — a browser
+   * that parsed them would be deciding what the store then has to agree with.
+   */
+  'OnCallShift.filter': Object.freeze({
+    function: 'listOnCallShifts',
+    projection: 'on_call_shift_row',
+    reason: 'The schedule screen reads one month of shifts, which needs a range the family has not got.',
+    request: (query, sort, limit) => {
+      exactSort(sort, ['']);
+      const window = shiftWindow(query);
+      return { limit: probeFor(boundedSize(limit), REFERENCE_MAXIMUM.OnCallShift), ...window };
+    },
+    response: (result, query, sort, limit) =>
+      servedPage(result.entries, limit, REFERENCE_MAXIMUM.OnCallShift, 'OnCallShift'),
+  }),
+  /**
+   * The visit point schedule. Both call sites live in one `queryFn`, and the
+   * filtered one is D43's derived scope in miniature: it asks for the rows whose
+   * `agency_name` string matches the caller's own profile field. The contract
+   * scopes by the envelope's `agency_id` instead, so that filter is already
+   * satisfied before it is applied — and it is still applied here, over a set
+   * this proved complete, because a route that dropped a narrowing the screen
+   * asked for would be answering a different question.
+   */
+  'VisitPointConfig.list': Object.freeze({
+    function: 'listVisitPointConfigs',
+    projection: 'visit_point_config_row',
+    reason: 'The timesheet form reads the agency point schedule, most recently updated first.',
+    request: (sort, limit) => {
+      exactSort(sort, ['-updated_date']);
+      return { limit: probeFor(boundedSize(limit), REFERENCE_MAXIMUM.VisitPointConfig) };
+    },
+    response: (result, sort, limit) =>
+      servedPage(result.entries, limit, REFERENCE_MAXIMUM.VisitPointConfig, 'VisitPointConfig'),
+  }),
+  'VisitPointConfig.filter': Object.freeze({
+    function: 'listVisitPointConfigs',
+    projection: 'visit_point_config_row',
+    reason: 'The same read, narrowed by the agency name the screen already holds on the profile.',
+    request: (query, sort, limit) => {
+      exactSort(sort, ['-updated_date']);
+      predicate(query, ['agency_name']);
+      return { limit: probeFor(boundedSize(limit), REFERENCE_MAXIMUM.VisitPointConfig) };
+    },
+    response: (result, query, sort, limit) => {
+      const page = servedPage(result.entries, limit, REFERENCE_MAXIMUM.VisitPointConfig, 'VisitPointConfig');
+      return page.filter(predicate(query, ['agency_name']));
+    },
   }),
 });
 

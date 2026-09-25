@@ -54,6 +54,16 @@ const REFERRAL_CODES = Object.freeze([
 ]);
 
 /**
+ * The reference reads' one shared refusal.
+ *
+ * Every contract in that group opens with `reference_read_role`, which raises
+ * this and nothing else, so a code one of them can raise every one of them can
+ * raise. That is the exception the house rule allows: the seven are one
+ * authorization asked seven times, not seven authorizations sharing a list.
+ */
+const REFERENCE_READ_CODES = Object.freeze(['PENNSYNC_CONTRACT_AGENCY_NOT_HELD']);
+
+/**
  * One entry per ported capability. `params` is the exact argument set the
  * capability accepts — anything else is refused rather than dropped — and
  * `body` maps it to the contract's parameters, which are never caller-chosen.
@@ -1742,6 +1752,85 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_ROSTER_CURSOR_INVALID',
       'PENNSYNC_ROSTER_CURSOR_UNKNOWN',
     ]),
+  }),
+  // The seven reference and configuration reads (D101). These are the first
+  // contracts that replace no Base44 FUNCTION: the SPA called
+  // `base44.entities.Physician.list(...)` and six like it straight through the
+  // platform SDK, so what is ported is the CALL and what is decided is the
+  // authorization Base44 was doing on our behalf. There is no original handler
+  // to compare against, which is why each one's filter, order and row bound
+  // come from the call site and are recorded in the migration's header.
+  //
+  // Their refusal vocabulary is SHARED, and for once that is right rather than
+  // the shortcut the referral codes had to argue for: the seven are one
+  // authorization — `reference_read_role`, membership and nothing else — so
+  // `AGENCY_NOT_HELD` is a code every one of them raises from the same line.
+  // The three that are not shared are declared only by the contract that can
+  // raise them.
+  listMedicareComplianceRules: Object.freeze({
+    rpc: 'pennsync_contract_medicare_compliance_rule_list',
+    params: Object.freeze(['limit']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_limit: args.limit === undefined ? null : args.limit }),
+    codes: REFERENCE_READ_CODES,
+  }),
+  listMedicareGuidelines: Object.freeze({
+    rpc: 'pennsync_contract_medicare_guideline_list',
+    params: Object.freeze(['limit', 'active']),
+    // Absent is "no preference" and reaches the contract as null, which is the
+    // absent filter rather than a third state. The one call site always asks
+    // for the active rows, and asks for them explicitly.
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_limit: args.limit === undefined ? null : args.limit,
+      p_active: args.active === undefined ? null : args.active,
+    }),
+    codes: REFERENCE_READ_CODES,
+  }),
+  listPhysicians: Object.freeze({
+    rpc: 'pennsync_contract_physician_list',
+    params: Object.freeze(['limit', 'order', 'active']),
+    // `order` is a WORD from a fixed set, never a sort expression: three call
+    // sites want three different orders and an order built from caller text is
+    // not something a `stable` body can validate.
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_limit: args.limit === undefined ? null : args.limit,
+      p_order: args.order ?? null,
+      p_active: args.active === undefined ? null : args.active,
+    }),
+    codes: Object.freeze([...REFERENCE_READ_CODES, 'PENNSYNC_CONTRACT_ORDER_INVALID']),
+  }),
+  listDocumentTemplates: Object.freeze({
+    rpc: 'pennsync_contract_document_template_list',
+    params: Object.freeze(['limit']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_limit: args.limit === undefined ? null : args.limit }),
+    codes: REFERENCE_READ_CODES,
+  }),
+  listLibraryDocuments: Object.freeze({
+    rpc: 'pennsync_contract_library_document_list',
+    params: Object.freeze(['limit']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_limit: args.limit === undefined ? null : args.limit }),
+    codes: REFERENCE_READ_CODES,
+  }),
+  listOnCallShifts: Object.freeze({
+    rpc: 'pennsync_contract_on_call_shift_list',
+    params: Object.freeze(['limit', 'from', 'to']),
+    // The window is TEXT both ways, so an impossible day is the contract's own
+    // refusal rather than a cast error the HTTP boundary cannot classify.
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_limit: args.limit === undefined ? null : args.limit,
+      p_from: args.from === undefined ? null : args.from,
+      p_to: args.to === undefined ? null : args.to,
+    }),
+    codes: Object.freeze([...REFERENCE_READ_CODES,
+      'PENNSYNC_CONTRACT_DATE_INVALID', 'PENNSYNC_CONTRACT_RANGE_INVALID']),
+  }),
+  listVisitPointConfigs: Object.freeze({
+    rpc: 'pennsync_contract_visit_point_config_list',
+    params: Object.freeze(['limit']),
+    body: (agencyId, args) => ({ p_agency: agencyId, p_limit: args.limit === undefined ? null : args.limit }),
+    codes: REFERENCE_READ_CODES,
   }),
   getAgencyRosterMember: Object.freeze({
     rpc: 'pennsync_contract_roster_get',
