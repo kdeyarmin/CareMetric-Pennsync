@@ -36,7 +36,7 @@ Probed 2026-09-21:
 | Probe | Result | Reading |
 | --- | --- | --- |
 | `pennsync-integrations-production.up.railway.app/healthz` | `{"status":"alive","release":"paused","revision":"cffe376…"}` | Deployed and healthy, released to nobody |
-| same host `/readyz` | HTTP 503; `released:false`, `operations:[]`, `authorityMode:"base44"`, `base44ExecutionDependency:true`, `trafficCutoverVerified:false`, `browserReleased:false` | Zero of seven brokered operations enabled; still asks Base44 who the caller is |
+| same host `/readyz` | HTTP 503; `released:false`, `operations:[]`, `authorityMode:"base44"`, `base44ExecutionDependency:true`, `trafficCutoverVerified:false`, `browserReleased:false` | Zero of seven brokered operations enabled; still asks Base44 who the caller is. **Re-read 2026-09-25 by the release thread: `operations: []` and `authorityMode: "base44"` still.** Do not watch `trafficCutoverVerified` for a `true` — it is a literal `false` at `integration-runtime/runtime.mjs:79` and `pennsync-api/runtime.mjs:115`, assigned nothing else anywhere, so it is not a signal |
 | `pennsync-api-production.up.railway.app/healthz` | HTTP 404, `Application not found` | The service does not exist. **Created 2026-09-22: HTTP 200, `release:"paused"`, revision `f18b053`. Redeployed 2026-09-25 onto `20c15d8`: still `release:"paused"`, 80 capability names, and an `appId`/`appStated` pair the old revision did not carry — see stage B** |
 | `app.caremetricai.com/` | HTTP 200 | Base44 |
 | `caremetricai.base44.app/` | HTTP 200 | Base44 |
@@ -1621,10 +1621,42 @@ said needed updating pass unchanged, alongside the one that covers the mode:
 The suite sits at the service root, not under `tests/`, which is how a search of
 `tests/` alone reports the mode untested.
 
-**What is left is four variables on the Railway runtime, set together:**
+**Corrected 2026-09-25: this is a BUILD, not a switch, and the table below was
+missing the variable that matters most.** The release thread read the deployed
+runtime rather than its health line and found `operations: []` with
+`authorityMode: "base44"` — so releasing it would release nothing, and flipping
+the `pennsync-api` side alone would advertise 78 capabilities while the 17 that
+reach this runtime fail on every call. That is this document's own
+healthy-looking-but-false shape, and it is why the AI wave is not one variable
+write.
+
+**`INTEGRATIONS_ALLOWED_OPERATIONS` decides what this service serves, and this
+page did not name it.** It belongs in the table below and is listed there now.
+Two things about it are load-bearing:
+
+- **It is the entire guard on outbound mail.** `runtime.mjs:69` counts
+  `SendEmail` a missing provider only when the SendGrid key or the sender
+  address is absent, and the release thread reports **both are already set on
+  the service** (read by name; values are redacted to an API caller). So there
+  is no second lock to hold back: the moment `SendEmail` appears in this
+  variable, a configured mail channel can send. Set it to exactly the
+  operations the wave needs and nothing else.
+- **It is a CEILING on the browser surface, not a parallel list.** Releasing
+  the service does not expose it to the browser app: `app.mjs:44` refuses a
+  browser request unless `INTEGRATIONS_BROWSER_RELEASE` is `enabled-v2` — note
+  the **v2**, so copying the service flag's `enabled-v1` does not turn it on —
+  and `INTEGRATIONS_BROWSER_OPERATIONS` is non-empty, and `app.mjs:64` refuses
+  any operation outside that list. `runtime.mjs:19-20` then requires the
+  browser list to be a **subset** of this one or startup throws
+  `INVALID_BROWSER_OPERATION_CONFIGURATION`. So capping this variable at the
+  two AI operations caps the browser at those two as well, even if somebody
+  later sets both browser variables.
+
+**What is left is five variables on the Railway runtime, set together:**
 
 | Variable | Value | Where it comes from |
 | --- | --- | --- |
+| `INTEGRATIONS_ALLOWED_OPERATIONS` | exactly the operations that wave needs | see above — this is the mail guard and the browser ceiling |
 | `INTEGRATIONS_AUTHORITY_MODE` | `independent` | literal |
 | `INTEGRATIONS_AUTHORITY_URL` | `https://xxtyweswohkvgkprimwa.supabase.co` | the only hosted target `AUTHORITY_TARGETS` admits — the staging store Stage A migrated |
 | `INTEGRATIONS_AUTHORITY_PUBLISHABLE_KEY` | an `sb_publishable_…` key for that project | the same key already set on `pennsync-api` as `PENNSYNC_API_AUTHORITY_PUBLISHABLE_KEY` |
@@ -1642,8 +1674,12 @@ and a stated-but-wrong one is silent.
 
 Safe to do now: the runtime is released to nobody (`INTEGRATIONS_RELEASE` unset),
 so the change alters readiness and nothing else, and removing
-`INTEGRATIONS_AUTHORITY_MODE` reverts to the Base44 default. It needs Railway
-access, which this repository does not have.
+`INTEGRATIONS_AUTHORITY_MODE` reverts to the Base44 default. **That safety is
+about the four authority variables, not about the operation list** — adding an
+operation to `INTEGRATIONS_ALLOWED_OPERATIONS` is what makes the service able to
+do the thing, and for `SendEmail` the provider behind it is already configured.
+Railway is no longer out of reach of a session (see §4), but this service is
+owned by the release thread and its writes wait on the owner's words.
 
 **Exit:** readiness says `independent` on the hosted runtime with the browser
 transport still unreleased — `/readyz` reporting `authorityMode: "independent"`
@@ -1931,6 +1967,23 @@ why the writes wave, which he named, went out at 06:38Z, and the AI wave, which
 he has not, has not. A general yes is what removes the question; it is not the
 line that sets a variable. Keep bringing each one as a single line, and record
 the line beside the change it authorized.
+
+**He then answered the outside-provider question on its substance**, at
+07:07:29Z:
+
+> Patient and clinical text may go to an outside provider
+
+That is the AI hold answered, and it is the one this page had carried longest.
+What it leaves is engineering, not a decision: the release thread's reading
+below shows the runtime is not built to serve those operations yet.
+
+**Invitations took a different shape rather than a yes.** Delivering one as a
+plain message would have meant putting a privileged Supabase key in the
+integration runtime, which D49 refuses by design. The decision taken instead,
+2026-09-25, is to **build an acceptance flow** for invited people — ours to
+build, no privileged key, and the send that follows it stays behind its own
+switch and his words. #268's whole-service Auth-send ratchet is what will hold
+that flow to it.
 
 | Needed | For | Note |
 | --- | --- | --- |
