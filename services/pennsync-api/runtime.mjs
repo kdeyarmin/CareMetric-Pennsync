@@ -96,6 +96,19 @@ export function loadConfig(env = process.env) {
 export const requiresIntegration = released =>
   released.some(name => HANDLERS[name]?.needsIntegration === true);
 
+/**
+ * Whether any RELEASED handler can put a message on an outbound channel.
+ *
+ * The same question `requiresIntegration` asks one layer down, and asked for
+ * the same reason: a deployment that releases a sender without
+ * `PENNSYNC_API_DELIVERY` answers `ready: true` and then refuses every send
+ * with `OUTBOUND_DELIVERY_RELEASE_PAUSED`, so a rollout probe passes while the
+ * released capability serves no work. Read from the registry's own flag rather
+ * than from a list of names here, so there is one answer rather than two.
+ */
+export const requiresDelivery = released =>
+  released.some(name => HANDLERS[name]?.needsDelivery === true);
+
 export function publicReadiness(config) {
   return {
     // A released handler that reaches the integration runtime needs one
@@ -104,12 +117,21 @@ export function publicReadiness(config) {
     // `INTEGRATIONS_NOT_CONFIGURED` — a service reporting healthy and serving
     // nothing, which is the failure readiness exists to prevent.
     ready: config.released && config.authorityConfigured && config.functions.length > 0
-      && (config.integrationsConfigured || !requiresIntegration(config.functions)),
+      && (config.integrationsConfigured || !requiresIntegration(config.functions))
+      // A released sender with delivery unset serves nothing, so this service
+      // does not report itself ready for it. `OWNER_HELD` keeps those names out
+      // of every value the ladder emits, and a hold kept only by what nobody
+      // pasted is one slip from gone: this is the deployment's own half of it.
+      && (config.deliveryReleased === true || !requiresDelivery(config.functions)),
     released: config.released,
     authorityConfigured: config.authorityConfigured,
     // Stated either way, so an operator can see which dependency is missing.
     integrationsRequired: requiresIntegration(config.functions),
     integrationsConfigured: config.integrationsConfigured,
+    // Stated either way beside the flag itself, so an operator reading this can
+    // tell a deployment that needs delivery and has it from one that needs it
+    // and does not — the distinction `ready` alone collapses into a bare false.
+    deliveryRequired: requiresDelivery(config.functions),
     // Published so the one thing that decides whether a message can leave this
     // service is readable from outside it. Every other release state in this
     // project is checked by probing the running deployment rather than by
