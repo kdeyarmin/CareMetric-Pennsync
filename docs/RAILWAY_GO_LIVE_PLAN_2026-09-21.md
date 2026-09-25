@@ -1510,12 +1510,17 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   time of writing — both still authorize the caller and then answer
   `OUTBOUND_DELIVERY_RELEASE_PAUSED`, and their presence changes nothing about
   what the service sends; on one where it is set, they send. Their presence in a
-  release value is therefore no longer the only question about them, and there
-  are now three independent things keeping them unreleased rather than one: the
-  ladder's `OWNER_HELD` refuses to emit either name (`#267`), that variable is
-  unset, and since D98 the service refuses to report itself `ready` if a
-  released set contains one while it stays unset. §4's `Core.SendEmail` row is
-  still the decision that governs the flip.
+  release value is therefore no longer the only question about them. Exactly one
+  thing keeps the two names **unreleased**: the ladder's `OWNER_HELD` refuses to
+  emit either of them (`#267`). Two further things stand between a released name
+  and a message leaving the system, and they are safeguards against an effective
+  release rather than second copies of that hold — `PENNSYNC_API_DELIVERY` is
+  unset, so a released sender answers `OUTBOUND_DELIVERY_RELEASE_PAUSED`; and
+  since D98 the service refuses to report itself `ready` at all if a released
+  set contains a sender while that variable stays unset, so a release that
+  reached the value by accident is visible from outside rather than silent. Read
+  the three together: one keeps the name out, two keep a send from happening.
+  §4's `Core.SendEmail` row is still the decision that governs the flip.
 
   **Wave 4 was released on 2026-09-25 at 06:16Z with both names cut out of the
   value by hand**, so for a few hours the exclusion protecting that hold lived
