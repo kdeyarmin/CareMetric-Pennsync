@@ -66,7 +66,7 @@ plan's status table reads as progress without saying where the progress lives.
 | Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
 | Record store migrations (store, brokers, 83 contracts, purpose policies, file map) | ~~54~~ **59** | ~~0~~ **59** — 54 on 2026-09-21 and the rest since; the hosted ledger holds 73 of the 74 committed migrations with nothing pending, read from the `hosted-gap` job on `b8e4e021` 2026-09-23 |
 | Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ ~~74 deployed~~ **80 deployed; waves 1 to 3 released 2026-09-25, 8 operations serving as at 05:43Z** (release state moves without a commit — read `/readyz`) — the six-name gap closed by the 2026-09-25 redeploy. It did not close by itself and will not stay closed by itself: the service's source is **pinned to a commit**, so every future merge reopens it until somebody repoints the pin — **or until the next variable change, which rebuilds from `main` regardless of the pin** (measured 2026-09-25 05:41Z). See stage B |
-| Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ **2 deployed, paused** — 2026-09-22 |
+| Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ ~~2 deployed, paused — 2026-09-22~~ **2 deployed and RELEASED — 2026-09-25**: `pennsync-api` serving 78 of 80 names, `pennsync-integrations` serving the two AI operations. Outbound delivery off on both |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
 
 Everything merged in PRs #227, #228 and #229 — the record store, the care-team
