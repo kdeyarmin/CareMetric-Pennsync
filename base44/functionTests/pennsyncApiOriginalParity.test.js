@@ -34,6 +34,12 @@ import {
 } from '../../services/pennsync-api/pdf-search.mjs';
 import { buildReportText } from '../../services/pennsync-api/state-incident.mjs';
 import {
+  sendAccountReadyEmail, sendWelcomeEmail,
+} from '../../services/pennsync-api/account-email.mjs';
+import {
+  escapeEmailHtml, renderBrandedEmail,
+} from '../../services/pennsync-api/branded-email.mjs';
+import {
   buildEventReviewPrompt, buildTrendPrompt,
 } from '../../services/pennsync-api/clinical-analysis.mjs';
 import {
@@ -1098,4 +1104,142 @@ test('the carried report blocks are the original s text, with four named changes
   assert.equal(body, expected,
     'services/pennsync-api/report-metrics-source.mjs has drifted from its original.\n'
     + 'Change the original and the carried copy together, or neither.');
+});
+
+/**
+ * D97. The two account emails, whose whole work is the message a person reads.
+ *
+ * Both halves are compared against the original rather than against a reading
+ * of it. `renderBrandedEmail` is a COPY of the generated shared-helper block,
+ * so the first test loads the block out of the original and renders both over
+ * the same fixtures; the second extracts each sender's own
+ * `renderBrandedEmail({...})` argument out of its `Deno.serve` body and compares
+ * the finished HTML, which is the thing that would silently drift.
+ *
+ * `body:` is extracted by matching parentheses rather than by a pattern, and the
+ * match is checked to reconstruct the original text exactly — D94's rule for a
+ * split: a split that lost a byte is a refusal, not a comparison that passes.
+ */
+const ACCOUNT_READY_ORIGINAL = 'base44/functions/sendAccountReadyEmail/entry.ts';
+const WELCOME_ORIGINAL = 'base44/functions/sendWelcomeEmail/entry.ts';
+const MAIL_FIXTURE = {
+  email: 'colleague@example.test',
+  full_name: 'Ada <b>Lovelace</b> & Co "quoted" \'single\'',
+  temporary_password: 'Temp#2026!<script>',
+};
+
+function helperBlock(source, name) {
+  const begin = source.indexOf(`// <<<BEGIN SHARED HELPER: ${name}`);
+  const end = source.indexOf(`// <<<END SHARED HELPER: ${name}>>>`);
+  assert.ok(begin >= 0 && end > begin, `${name} is no longer emitted into the original`);
+  return source.slice(source.indexOf('\n', begin) + 1, end);
+}
+
+/** The argument of the one `body: renderBrandedEmail(...)` in a sender's send call. */
+function messageArgument(source) {
+  const open = source.indexOf('body: renderBrandedEmail(');
+  assert.ok(open > 0, 'the original no longer renders its body through the shared helper');
+  const start = source.indexOf('(', open);
+  let depth = 0;
+  let index = start;
+  for (; index < source.length; index += 1) {
+    if (source[index] === '(') depth += 1;
+    else if (source[index] === ')') {
+      depth -= 1;
+      if (depth === 0) break;
+    }
+  }
+  assert.equal(depth, 0, 'the render call does not close');
+  const argument = source.slice(start + 1, index);
+  assert.equal(source.slice(start, index + 1), `(${argument})`, 'the split lost a byte');
+  return argument;
+}
+
+async function originalMailRenderer(relative) {
+  const source = await readFile(resolve(repository, relative), 'utf8');
+  const module = `${helperBlock(source, 'brandedEmail')}
+export { renderBrandedEmail, escapeEmailHtml };
+export const messageBody = ({ email, full_name, temporary_password }) =>
+  renderBrandedEmail(${messageArgument(source)});
+`;
+  const file = join(tmpdir(), `mail_${Date.now()}_${Math.random().toString(36).slice(2)}.mjs`);
+  await writeFile(file, transpileTs(module).outputText);
+  try { return await import(pathToFileURL(file).href); }
+  finally { await unlink(file).catch(() => {}); }
+}
+
+/** What a sender actually hands the runtime, captured through its own code path. */
+async function sentMail(send, params) {
+  const calls = [];
+  const answer = await send({
+    actor: { tenantRole: 'agency_admin' },
+    params,
+    config: { deliveryReleased: true },
+    integration: async (operation, payload) => { calls.push({ operation, payload }); return { accepted: true }; },
+  });
+  assert.equal(calls.length, 1, 'exactly one brokered call per send');
+  return { answer, ...calls[0] };
+}
+
+test('the branded renderer is the original s, over structures that exercise every branch', async () => {
+  const original = await originalMailRenderer(ACCOUNT_READY_ORIGINAL);
+  const cases = [
+    { title: 'Plain' },
+    {
+      preheader: 'Pre & <header>', eyebrow: 'Eyebrow', tone: 'urgent', title: 'Titled "x"',
+      intro: ['One', 'Two <b>'], signoffName: null, footerNote: 'Footer & note',
+      sections: [
+        { heading: 'H', paragraphs: ['P1', 'P2'], pre: 'a\n<b>', rows: [['k & 1', 'v < 2']] },
+        { bullets: ['b1', 'b2 &'], callout: { tone: 'warn', text: 'careful' }, note: 'n' },
+        { button: { href: 'https://example.test/a?b=1&c=2', label: 'Open <it>' } },
+        { button: { href: 'javascript:alert(1)', label: 'Rejected' } },
+        { button: { href: '//example.test', label: 'Also rejected' } },
+        { callout: { tone: 'nonesuch', text: 'falls back to info' } },
+      ],
+    },
+    { title: 'Signed', intro: 'x', signoffName: 'A Team', sections: [{ button: { href: 'mailto:a@b.co' } }] },
+  ];
+  for (const value of cases) {
+    assert.equal(renderBrandedEmail(value), original.renderBrandedEmail(value),
+      'services/pennsync-api/branded-email.mjs has drifted from the generated block.\n'
+      + 'Change base44/_shared/backendHelpers.mjs and the carried copy together, or neither.');
+  }
+  // The escaping is the security property, so it is compared on its own too: a
+  // renderer that agreed on these structures and disagreed on a raw value would
+  // be a disclosure rather than a formatting difference.
+  for (const value of ['<script>', '"', "'", '&amp;', 'aéb', undefined, null, 0]) {
+    assert.equal(escapeEmailHtml(value), original.escapeEmailHtml(value));
+  }
+});
+
+test('each account email s message is the original s, byte for byte', async () => {
+  for (const [relative, send, params] of [
+    [ACCOUNT_READY_ORIGINAL, sendAccountReadyEmail, { email: MAIL_FIXTURE.email, full_name: MAIL_FIXTURE.full_name }],
+    [WELCOME_ORIGINAL, sendWelcomeEmail, MAIL_FIXTURE],
+  ]) {
+    const original = await originalMailRenderer(relative);
+    const { operation, payload, answer } = await sentMail(send, params);
+    assert.equal(operation, 'SendEmail', relative);
+    assert.equal(payload.body, original.messageBody(MAIL_FIXTURE), `${relative} message body`);
+    // The envelope is the original's too. `content_type` is the one addition:
+    // the runtime's contract defaults to `text/plain` and these bodies are HTML,
+    // so the original's Base44 call and this one describe the same message.
+    assert.equal(payload.from_name, 'PennSync by CareMetric', relative);
+    assert.equal(payload.to, MAIL_FIXTURE.email, relative);
+    assert.equal(payload.content_type, 'text/html', relative);
+    const source = await readFile(resolve(repository, relative), 'utf8');
+    const subject = source.match(/\n\s*subject: '([^']+)',/);
+    assert.ok(subject, `${relative} no longer names a subject`);
+    assert.equal(payload.subject, subject[1], `${relative} subject`);
+    // The receipt is the original's own words, with its one interpolation
+    // substituted rather than evaluated: `${email}` is the only expression either
+    // original's message carries, and a second one would fail the assertion that
+    // none is left.
+    const message = source.match(/message: [`']([^`']*)[`']/);
+    assert.ok(message, `${relative} no longer answers with a message`);
+    const expected = message[1].replaceAll('${email}', MAIL_FIXTURE.email);
+    assert.equal(/\$\{/.test(expected), false, `${relative} message carries an unhandled expression`);
+    assert.equal(answer.success, true, relative);
+    assert.equal(answer.message, expected, relative);
+  }
 });

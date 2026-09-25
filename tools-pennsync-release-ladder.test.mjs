@@ -324,14 +324,25 @@ test("the registry's integration flag and the tree's reach name the same handler
     [...integrationDependents(REPOSITORY)].sort());
 });
 
-test('the two paused email capabilities are honestly read-only today', () => {
-  // Not an aspiration: they destructure no `integration`, so they cannot call
-  // the runtime, and the assertion above is what will make a release say so.
+test('the two email capabilities moved to the integration wave when they gained a send', () => {
+  // This assertion is the INVERSE of the one it replaces, and the inversion is
+  // the point of the cross-check above. While the send was paused both were
+  // honestly read-only: they destructured no `integration` and could not call
+  // the runtime. D97 serves the send, so both take it and both carry the flag,
+  // and the ladder must place them where a sender belongs — otherwise a wave
+  // whose whole promise is that nothing in it sends would hand an operator two
+  // outbound senders. The pause did not move them; taking the capability did.
   const reach = integrationReach(REPOSITORY);
-  const wave = checkLadder(REPOSITORY).waves.find(entry => entry.name === 'read-only');
+  const waves = checkLadder(REPOSITORY).waves;
+  const readOnly = waves.find(entry => entry.name === 'read-only');
+  const integration = waves.find(entry => entry.name === 'integration');
   for (const name of ['sendAccountReadyEmail', 'sendWelcomeEmail']) {
-    assert.equal(reach.has(name), false, name);
-    assert.ok(wave.handlers.includes(name), `${name} is in the read-only wave`);
+    assert.equal(reach.has(name), true, name);
+    assert.equal(readOnly.handlers.includes(name), false, `${name} left the read-only wave`);
+    assert.ok(integration.handlers.includes(name), `${name} is in the integration wave`);
+    // And the move changes nothing an operator can paste: what keeps these two
+    // out of a released value is the emitter, which is a separate guarantee.
+    assert.ok(integration.withheld.includes(name), `${name} is still withheld`);
   }
 });
 

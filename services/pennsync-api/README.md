@@ -70,6 +70,27 @@ only.
 | `PENNSYNC_API_ALLOWED_ORIGINS` | Optional HTTPS origin allowlist; defaults to the two production origins |
 | `PENNSYNC_API_APP_ID` | Required once released; production or the staging app id, and it must name the app the target store was pinned to |
 | `PENNSYNC_API_DOCUMENT_LOGO` | Optional inline `data:image/png;base64,…` logo for ported documents. A remote address is refused |
+| `PENNSYNC_API_DELIVERY` | Exactly `enabled-v1` to let a capability send a message to a person. Anything else, including `" enabled-v1"`, stays paused |
+
+## Outbound delivery is released separately
+
+`PENNSYNC_API_DELIVERY` is a second switch and not a detail of the first. A
+released capability that writes a record and a released capability that sends a
+person a message are different decisions with different owners, so the second
+needs its own act.
+
+Unset — which is every deployment today — every sender answers 503
+`OUTBOUND_DELIVERY_RELEASE_PAUSED`, `SendEmail` is not in the brokered set at
+all, and the service reaches no mail provider. Set, `SendEmail` becomes askable
+and the senders among the released names send. It is refused at startup without
+`PENNSYNC_API_INTEGRATIONS_URL`, because a channel that cannot carry anything
+should not report itself open, and `/readyz` publishes `deliveryReleased` so the
+state is readable from outside the service rather than inferred from a plan.
+
+Mail also needs the integration runtime's own side: `INTEGRATIONS_RELEASE`,
+`SendEmail` in `INTEGRATIONS_ALLOWED_OPERATIONS`, and a configured provider
+(`SENDGRID_API_KEY`, `NOTIFICATION_FROM_EMAIL`). Two services must both permit
+it, which is deliberate: no single switch starts mail flowing.
 
 Releasing without a usable authority throws at startup rather than serving
 unauthorized work. A released name that is not in the registry also throws, so

@@ -19,6 +19,7 @@
 //    a fixed code here. A provider message, an upstream URL or a stack would
 //    otherwise cross a trust boundary on the way back.
 import { MAX_UPSTREAM_BYTES, UUID, fail, isObject, readJson } from './contracts.mjs';
+import { DELIVERY_OPERATIONS } from './outbound-delivery.mjs';
 
 /** The runtime's server-to-server route. `/v2` is the browser transport and is revision-bound. */
 export const INTEGRATION_PATH = '/v1/integrations';
@@ -36,6 +37,20 @@ export const INTEGRATION_TARGETS = Object.freeze([
  * cannot widen the surface by accident.
  */
 export const BROKERED_OPERATIONS = Object.freeze(['InvokeLLM', 'ExtractDataFromUploadedFile']);
+/**
+ * What THIS deployment may ask for. `BROKERED_OPERATIONS` is the unconditional
+ * set and stays the ratchet D56 made it; `DELIVERY_OPERATIONS` is added only
+ * while the operator has released outbound delivery, so an unreleased
+ * deployment's surface is byte-for-byte what it was before the senders existed.
+ *
+ * Derived per call rather than at startup on purpose: the gate is asked at the
+ * moment of the call, so there is no cached answer for a restart to disagree
+ * with.
+ */
+export const brokeredOperations = config =>
+  config?.deliveryReleased === true
+    ? [...BROKERED_OPERATIONS, ...DELIVERY_OPERATIONS]
+    : BROKERED_OPERATIONS;
 const REQUEST_TIMEOUT_MS = 30000;
 
 export const validIntegrationTarget = value =>
@@ -50,7 +65,7 @@ export const validIntegrationTarget = value =>
 export function integrationCapability({ config, req, agencyId }, fetcher = fetch) {
   const bearer = req?.headers?.get('authorization') || '';
   return async function integration(operation, params) {
-    if (!BROKERED_OPERATIONS.includes(operation)) fail(409, 'INTEGRATION_OPERATION_NOT_BROKERED');
+    if (!brokeredOperations(config).includes(operation)) fail(409, 'INTEGRATION_OPERATION_NOT_BROKERED');
     if (!config.integrationsConfigured) fail(503, 'INTEGRATIONS_NOT_CONFIGURED');
     if (!isObject(params)) fail(400, 'INTEGRATION_PARAMS_REQUIRED');
     // Authority was resolved from this same header before any handler ran, so
