@@ -219,12 +219,33 @@ export function measureRoutes(repository, routes = ENTITY_ROUTES) {
     if (readable && !served) problems.push(`ENTITY_ROUTE_SERVES_NO_CALL:${key}`);
     if (!readable) unproved.push(key);
   }
-  const servedKeys = new Set(calls.served.map(call => `${call.file}\u0000${call.key}`));
+  // Removing the served sites from the remainder is a MULTISET operation, and
+  // a Set here was a per-key answer standing in for a per-call one — the same
+  // defect this gate was rebuilt to fix, arriving one layer out in the
+  // arithmetic. `src/pages/ReferralTriage.jsx` calls `Task.create` twice, one
+  // readable and one not, so a route over that key serves 1 and a Set dropped
+  // 2: the three generic-family buckets then summed one short of
+  // `unrouted_sites` and the gate failed its own test. Counting SERVED per
+  // call and REMOVING per key cannot both be right.
+  //
+  // Which of a file's interchangeable sites is removed does not matter — the
+  // remainder is read for its entity and operation only — but how MANY does.
+  const servedPerKey = new Map();
+  for (const call of calls.served) {
+    const key = `${call.file}\u0000${call.key}`;
+    servedPerKey.set(key, (servedPerKey.get(key) ?? 0) + 1);
+  }
+  const remaining = landable.filter(site => {
+    const key = `${site.file}\u0000${site.entity}.${site.operation}`;
+    const left = servedPerKey.get(key) ?? 0;
+    if (left === 0) return true;
+    servedPerKey.set(key, left - 1);
+    return false;
+  });
   const routedSites = calls.served.length;
 
   return {
-    ...genericFamilyReach(repository,
-      landable.filter(site => !servedKeys.has(`${site.file}\u0000${site.entity}.${site.operation}`))),
+    ...genericFamilyReach(repository, remaining),
     format: FORMAT,
     schema_version: FORMAT_VERSION,
     routes: Object.keys(routes).length,

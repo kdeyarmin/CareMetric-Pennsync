@@ -212,3 +212,39 @@ test('what a wider generic family could reach is reported and adds up', () => {
     && report.generic_family_entities < report.unrouted_entities,
   'the ceiling admits some entities and refuses others; all or none means it did not run');
 });
+
+/**
+ * The counting bug batch D measured, kept as its own case.
+ *
+ * Served sites were counted one per CALL and removed from the remainder one
+ * per FILE-AND-OPERATION, so a file calling the same operation twice with only
+ * one served lost both from the remainder while one was counted — the three
+ * generic-family buckets then summed one short of `unrouted_sites`. Latent
+ * since the gate was rebuilt, and only reachable once a route existed over a
+ * key one file calls twice.
+ *
+ * `src/pages/ReferralTriage.jsx` is that file: two `Task.create` calls, one
+ * whose argument is readable and one whose is not. A route accepting anything
+ * therefore serves exactly one of the two.
+ */
+test('a served site is removed from the remainder once, not per key', () => {
+  const baseline = measureRoutes(repository);
+  const routes = { ...ENTITY_ROUTES, 'Task.create': sound({ request: () => ({}) }) };
+  const report = measureRoutes(repository, routes);
+  assert.deepEqual(report.problems, []);
+
+  const calls = servedSites(repository, routes, measureDestinations(repository).sites.length);
+  const triage = calls.served.filter(call =>
+    call.file === 'src/pages/ReferralTriage.jsx' && call.key === 'Task.create');
+  assert.equal(triage.length, 1,
+    'the case only exists while that file has one served call and one unreadable one');
+
+  // The arithmetic the Set broke. Both halves, because either alone passes
+  // with the other wrong.
+  assert.equal(report.routed_sites + report.unrouted_sites, report.landable_sites);
+  assert.equal(
+    report.generic_family_reads + report.generic_family_writes + report.needs_named_capability,
+    report.unrouted_sites,
+    'the buckets sum short when a key is removed once for two served calls');
+  assert.ok(report.routed_sites > baseline.routed_sites);
+});
