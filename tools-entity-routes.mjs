@@ -35,6 +35,7 @@ import { ENTITY_ROUTES } from './src/lib/independentEntityRoutes.js';
 import { READ_OPERATIONS, SERVED, measureDestinations } from './tools-frontend-destination.mjs';
 import { auditBrokerCeiling, brokerWritable, locatorPaths } from './tools-tenant-decision.mjs';
 import { buildPaths, readEntity } from './tools-tenant-path.mjs';
+import { callArguments } from './tools-entity-call-arguments.mjs';
 
 export const FORMAT = 'pennsync-entity-routes';
 export const FORMAT_VERSION = 1;
@@ -107,6 +108,48 @@ function genericFamilyReach(repository, unrouted) {
 }
 
 /**
+ * Whether each call site's OWN ARGUMENTS survive its route, one call at a time.
+ *
+ * This is the correction the tool most needed. It used to count a site as
+ * routed when `Entity.operation` was DECLARED, and reported 36 adopted call
+ * sites for the roster — of which, run, **zero** succeeded: 31 ask the staff
+ * list to sort by `created_date` or `full_name`, which the roster contract
+ * projects neither of, and the other 5 asked for more rows than its ceiling.
+ * The rule this file states is "a route is a claim about a call site that
+ * exists", and checking only that the site exists is the shallower half of it:
+ * a route has to be able to SERVE the call, and the only way to know is to run
+ * the call's arguments through it.
+ *
+ * Fails CLOSED in both directions. An argument the reader cannot resolve makes
+ * the site unserved rather than assumed fine, and a `request` that throws
+ * anything at all — not only the route's own refusal — is a site this cannot
+ * claim.
+ */
+export function servedSites(repository, routes, expected) {
+  const calls = callArguments(repository);
+  // The two scans share the ratchet's walker and matcher, so a difference in
+  // the totals means one of them has started reading a different population —
+  // refused rather than reconciled, because whichever is right the number
+  // would be describing something nobody chose.
+  if (calls.length !== expected) {
+    throw new Error(`ENTITY_ROUTE_CALL_SCAN_DISAGREES:${calls.length}:${expected}`);
+  }
+  const served = [];
+  const refused = [];
+  const unreadable = [];
+  for (const call of calls) {
+    const key = `${call.entity}.${call.operation}`;
+    if (!Object.hasOwn(routes, key)) continue;
+    if (call.arguments === null) { unreadable.push({ ...call, key }); continue; }
+    try {
+      routes[key].request(...call.arguments);
+      served.push({ ...call, key });
+    } catch (error) { refused.push({ ...call, key, because: error.detail ?? error.code ?? 'threw' }); }
+  }
+  return { served, refused, unreadable };
+}
+
+/**
  * `routes` is a parameter so a test can PLANT a wrong declaration and watch
  * this refuse it. A guard that has only ever been run against a correct input
  * has not been shown to bite.
@@ -138,17 +181,34 @@ export function measureRoutes(repository, routes = ENTITY_ROUTES) {
     if (performed.has(key) && sites.length === 0) problems.push(`ENTITY_ROUTE_UNSERVABLE:${key}`);
   }
 
-  const routedSites = landable.filter(
-    site => Object.hasOwn(routes, `${site.entity}.${site.operation}`)).length;
+  const calls = servedSites(repository, routes, measured.sites.length);
+  // A route nobody's arguments survive is the failure this whole correction is
+  // about: it reads as adoption on the page, moves no screen, and would go on
+  // reading as adoption forever. `NO_CALL_SITE` says the call is not made;
+  // this says it is made and cannot be served.
+  for (const key of Object.keys(routes).sort()) {
+    if (performed.has(key) && !calls.served.some(call => call.key === key)) {
+      problems.push(`ENTITY_ROUTE_SERVES_NO_CALL:${key}`);
+    }
+  }
+  const servedKeys = new Set(calls.served.map(call => `${call.file}\u0000${call.key}`));
+  const routedSites = calls.served.length;
 
   return {
     ...genericFamilyReach(repository,
-      landable.filter(site => !Object.hasOwn(routes, `${site.entity}.${site.operation}`))),
+      landable.filter(site => !servedKeys.has(`${site.file}\u0000${site.entity}.${site.operation}`))),
     format: FORMAT,
     schema_version: FORMAT_VERSION,
     routes: Object.keys(routes).length,
     landable_sites: landable.length,
+    // Sites whose OWN arguments the declared route accepts. Never the number
+    // of declarations, and never the number of sites a declaration covers.
     routed_sites: routedSites,
+    declared_but_refused: calls.refused.length,
+    declared_but_unreadable: calls.unreadable.length,
+    refusals: Object.freeze(calls.refused
+      .map(call => `${call.key}:${call.because}`)
+      .filter((value, index, all) => all.indexOf(value) === index).sort()),
     unrouted_sites: landable.length - routedSites,
     problems: problems.sort(),
     ok: problems.length === 0,
@@ -166,8 +226,15 @@ function main(argv, log = console.log, error = console.error) {
   if (args.includes('--json')) log(JSON.stringify(report, null, 2));
   else {
     log(`entity routes: ${report.routes} declared, `
-      + `${report.routed_sites}/${report.landable_sites} landable call sites routed, `
+      + `${report.routed_sites}/${report.landable_sites} landable call sites SERVED, `
       + `${report.unrouted_sites} still to adopt`);
+    // Printed rather than left in the JSON: these are call sites a route was
+    // written for and cannot serve, which is the number the tool used to
+    // report as adoption. A reader who sees only the first line would draw the
+    // same wrong conclusion the first version of this tool did.
+    log(`  ${report.declared_but_refused} of those are sites a declared route REFUSES`
+      + `${report.refusals.length ? ` (${report.refusals.join(', ')})` : ''}`
+      + `, and ${report.declared_but_unreadable} pass arguments this cannot read`);
     log(`  of those ${report.unrouted_sites}, across ${report.unrouted_entities} entities: `
       + `a wider generic family could serve ${report.generic_family_reads} reads and `
       + `${report.generic_family_writes} writes above D16's ceiling; `

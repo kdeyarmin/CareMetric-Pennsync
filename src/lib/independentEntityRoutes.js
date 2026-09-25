@@ -72,13 +72,17 @@ const unsupported = (detail) => {
  */
 const EMAIL_ASCENDING_SORTS = Object.freeze(['', 'email', '+email']);
 
-function pageSize(limit, ceiling) {
+/**
+ * The caller's row bound, checked for shape and nothing else.
+ *
+ * It deliberately does NOT refuse a limit above the contract's ceiling any
+ * more. What made that refusal look right was the real risk behind it — a
+ * screen rendering a truncated list as the whole agency — and the complete-set
+ * proof answers that risk directly, where the ceiling only approximated it.
+ */
+function pageSize(limit) {
   if (limit === undefined || limit === null) return undefined;
   if (!Number.isSafeInteger(limit) || limit < 1) unsupported('limit');
-  // The contract clamps silently. Refusing here instead keeps a screen that
-  // asked for more rows than the roster will ever return from quietly
-  // rendering a short list as the whole agency.
-  if (limit > ceiling) unsupported('limit_above_ceiling');
   return limit;
 }
 
@@ -106,12 +110,19 @@ const incomplete = (entity) => {
 export const BROKER_MAXIMUM = 5000;
 
 /**
- * One row more than the caller asked for, capped at what the family will
+ * One row more than the caller asked for, capped at what the contract will
  * return. `answer.length < probe` is then exactly "there are no more rows",
  * for both cases: a caller under the ceiling learns it from the extra row that
- * did not arrive, and a caller AT the ceiling learns it from a short page.
+ * did not arrive, and a caller at or above it learns it from a short page.
+ *
+ * This is also why a limit ABOVE a contract's ceiling is not a refusal. It
+ * reads like one — the screen asked for 5,000 rows and the contract will
+ * return 500 — but a screen passing `ALL_ROWS` is naming a bound it does not
+ * expect to reach, and a short answer proves it did not. Refusing it outright
+ * was the first version of this file and it turned every roster call site into
+ * a refusal.
  */
-const probeFor = (limit) => Math.min(limit + 1, BROKER_MAXIMUM);
+const probeFor = (limit, maximum) => Math.min(limit + 1, maximum);
 
 /**
  * Base44 compares the raw column, so this does too: strings lexicographically
@@ -201,12 +212,12 @@ function brokeredRead({ entity, sortable, filterable = [], filtered }) {
       // and the family's own default of 50 is not what a screen asking for
       // everything meant.
       if (limit === undefined || limit === null) unsupported('limit_required');
-      return { entity, limit: probeFor(pageSize(limit, BROKER_MAXIMUM)) };
+      return { entity, limit: probeFor(pageSize(limit), BROKER_MAXIMUM) };
     },
     response: (rows, ...args) => {
       const [query, sort, limit] = filtered ? args : [undefined, args[0], args[1]];
       if (!Array.isArray(rows)) unsupported('answer');
-      if (rows.length >= probeFor(limit)) incomplete(entity);
+      if (rows.length >= probeFor(limit, BROKER_MAXIMUM)) incomplete(entity);
       const key = sortKey(sort, sortable);
       const kept = rows.filter(predicate(query, filterable));
       return (key ? ordered(kept, key.field, key.descending) : kept).slice(0, limit);
@@ -240,6 +251,12 @@ export const ENTITY_ROUTES = Object.freeze({
    * `ai_content_agreement_accepted`, null rather than absent for everybody
    * else.
    *
+   * It also supplies no `created_date` and no `full_name` — the carried `user`
+   * table has no name column at all (D69) — which is why 31 of the 36 call
+   * sites here still refuse: they ask the staff list to sort by a field the
+   * store does not hold. Those are per-screen work, not a route this file can
+   * write, and the gate now counts them as unserved rather than adopted.
+   *
    * It supplies NO `role` and no `account_type`, because those are the
    * self-editable labels D23 forbids authorizing on. A screen reading either
    * to decide what to show gets `undefined` here, and its answer is the tenant
@@ -253,10 +270,19 @@ export const ENTITY_ROUTES = Object.freeze({
     reason: 'D23 replaced 35 copies of a User read with this one reviewed roster contract.',
     request: (sort, limit) => {
       emailAscending(sort);
-      const size = pageSize(limit, ROSTER_MAXIMUM);
-      return size === undefined ? {} : { limit: size };
+      const size = pageSize(limit);
+      return size === undefined ? {} : { limit: probeFor(size, ROSTER_MAXIMUM) };
     },
-    response: (result) => result.entries,
+    response: (result, sort, limit) => {
+      const entries = result.entries;
+      if (!Array.isArray(entries)) unsupported('answer');
+      if (limit === undefined || limit === null) return entries;
+      // The same proof the brokered reads use. Five call sites ask for
+      // `ALL_ROWS` and no order, which is "everybody" rather than a page, and
+      // they are served exactly when the answer shows there is no more.
+      if (entries.length >= probeFor(limit, ROSTER_MAXIMUM)) incomplete('User');
+      return entries.slice(0, limit);
+    },
   }),
 
   /**

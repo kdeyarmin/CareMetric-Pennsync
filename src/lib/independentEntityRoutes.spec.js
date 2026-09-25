@@ -48,21 +48,32 @@ describe('the declared entity routes', () => {
     expect(call.body.params).toEqual({});
   });
 
-  it('passes a limit through and refuses one above the contract ceiling', async () => {
+  it('asks for one row more than the screen wanted, and proves the answer whole', async () => {
     const { fixture, adapter } = await signedIn();
     fixture.apiResponse = rosterAnswer([]);
     await adapter.raw.entities.User.list(undefined, 25);
-    expect(fixture.apiCalls.at(-1).body.params).toEqual({ limit: 25 });
+    // 26, not 25: the extra row is what settles whether a 26th member exists.
+    expect(fixture.apiCalls.at(-1).body.params).toEqual({ limit: 26 });
 
-    // The contract clamps silently. Refusing keeps a screen that asked for
-    // more rows than the roster will ever return from rendering a short list
-    // as the whole agency.
-    await expect(adapter.raw.entities.User.list(undefined, ROSTER_MAXIMUM + 1))
-      .rejects.toThrow(ARGUMENTS_UNSUPPORTED);
+    // `ALL_ROWS` is the shape five real call sites use, and it is above the
+    // contract's own ceiling. That is NOT a refusal: a screen passing it is
+    // naming a bound it does not expect to reach, and a short answer proves it
+    // did not. Refusing it outright was the first version of this route, and
+    // it turned every roster call site into a refusal while the gate counted
+    // all 36 as adopted.
+    fixture.apiResponse = rosterAnswer([{ id: 'u-1', email: 'a@example.test' }]);
+    await expect(adapter.raw.entities.User.list(undefined, 5000)).resolves.toHaveLength(1);
+    expect(fixture.apiCalls.at(-1).body.params).toEqual({ limit: ROSTER_MAXIMUM });
+
+    // A full page at the ceiling could have more behind it, so it refuses.
+    fixture.apiResponse = rosterAnswer(
+      Array.from({ length: ROSTER_MAXIMUM }, (unused, index) => ({ id: `u-${index}` })));
+    await expect(adapter.raw.entities.User.list(undefined, 5000))
+      .rejects.toMatchObject({ code: PAGE_INCOMPLETE, detail: 'User' });
+
     for (const limit of [0, -1, 1.5, '10']) {
       await expect(adapter.raw.entities.User.list(undefined, limit)).rejects.toThrow(ARGUMENTS_UNSUPPORTED);
     }
-    expect(fixture.apiCalls).toHaveLength(1);
   });
 
   /**
@@ -220,13 +231,18 @@ describe('the declared entity routes', () => {
       const refused = [
         () => adapter.raw.entities.Announcement.list('-title', 200),
         () => adapter.raw.entities.Announcement.list('-created_date'),
-        () => adapter.raw.entities.Announcement.list('-created_date', BROKER_MAXIMUM + 1),
         () => adapter.raw.entities.Announcement.filter({ title: 'x' }, '', 200),
         () => adapter.raw.entities.Announcement.filter({ is_active: { $gt: 1 } }, '', 200),
         () => adapter.raw.entities.RegulatoryUpdate.filter([], '', 200),
       ];
       for (const call of refused) await expect(call()).rejects.toThrow(ARGUMENTS_UNSUPPORTED);
       expect(fixture.apiCalls).toHaveLength(0);
+
+      // A limit ABOVE the family's ceiling is not among them: the screens pass
+      // `ALL_ROWS` meaning "everything", and a short answer proves they got it.
+      await expect(adapter.raw.entities.Announcement.list('-created_date', BROKER_MAXIMUM + 1))
+        .resolves.toEqual([]);
+      expect(fixture.apiCalls.at(-1).body.params.limit).toBe(BROKER_MAXIMUM);
     });
 
     it('leaves the family read-only: no write is declared and none is served', async () => {
