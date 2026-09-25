@@ -138,6 +138,54 @@
 -- one read policy, `caller_identified()`, and no write policy at all. So no
 -- contract here carries a tenant predicate the policies already enforce, and
 -- none of them is hiding a row the policy would have granted.
+--
+-- **WHAT THE CHART GUARD DOES NOT DO, AND WHOSE NARROWING IT IS.** A refusal is
+-- easy to test and easy to misread: every case in the suite proves the contract
+-- said no, and none of them proves the caller was not ENTITLED to the row it
+-- refused. Batch D's ADR port found the other half -- a chart guard there hides
+-- a row naming a chart that was never carried into the store, from everybody --
+-- so the question is answered here per entity rather than inherited.
+--
+--   * `ClinicalEvent` and `PatientRecommendation` grant a client NOTHING: read,
+--     create, update and delete are all `false`. No guard can hide a row from
+--     somebody entitled to it when the access block entitles nobody. D24's
+--     narrowing is the scoped broker the owner's 2026-09-10 decision was
+--     waiting for, and this guard is its precondition rather than a subtraction
+--     from it.
+--   * `SentEducationMaterial` grants `sent_by = me OR admin` with no chart check
+--     at all, so the care-team floor IS narrower than the original -- recorded
+--     above, under D71. What matters for THIS guard is that the narrowing is
+--     the POLICY's and not the contract's: `sent_education_material_read` is
+--     already `exists (select 1 from patient where id = <row>.patient_id and
+--     agency_id in caller_agencies() and (caller_opens_every_chart or id in
+--     caller_assigned_patients))`.
+--
+-- The structural reason it lands differently here than in the ADR port: none of
+-- these three tables has an `agency_id` column. Their tenancy IS the chart, so
+-- the generated policy already REQUIRES the patient row to exist, to sit in an
+-- agency the caller holds, and to be open to them -- which is `screen_chart`'s
+-- own predicate, asked of the same caller under the same forced RLS.
+-- `adr_audit_case` carries its own `agency_id` and its policy tolerates a
+-- subject that is null or uncarried (`patient_id is null or ...`), which is what
+-- leaves room there for a guard to subtract. The one term this guard adds is
+-- the one no policy can ask: `p."agency_id" = p_agency`, because a policy knows
+-- which agencies the CALLER holds and not which agency the REQUEST named.
+--
+-- Measured rather than argued. The suite asks what the policies grant each
+-- caller, in the context a contract body runs in, for every case the guard
+-- refuses -- an unassigned chart in the caller's own agency, another agency's
+-- chart, and a chart never carried into this store -- and across all three
+-- tables the answer is no rows. The same instrument reads non-zero three times
+-- over, so it is not a query that always answers nothing. And the one case
+-- where the guard really does subtract is the crossed request it exists for: a
+-- caller holding BOTH agencies is granted agency B's rows by the policies, and
+-- the contract refuses them.
+--
+-- It does not repair a row already written to the wrong chart, and here nothing
+-- needs to: with no `agency_id` on these tables a row's tenancy is whatever
+-- chart it names, so a row tenanted to one agency while naming another's chart
+-- cannot exist. That is a property of the schema rather than of this file, and
+-- it is the half batch D has to live with.
 begin;
 
 do $$

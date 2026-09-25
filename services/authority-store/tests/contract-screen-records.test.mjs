@@ -140,6 +140,53 @@ before(async () => {
       (source_app_id, id, rule_name, rule_code, rule_category, description, severity, is_active)
     values ('6a9881683dc68a0bd54f1ef7','rule-1','Timely filing','CMS-TF-1','medicare_cop',
             'File within 5 days','high',true);
+    -- A row on a chart that was never carried into this store: the entity kept
+    -- its patient id and no patient row answers to it. D61's failure mode,
+    -- and the case a chart guard is accused of hiding from everybody. Seeded
+    -- so the accusation can be measured against the POLICY rather than argued.
+    insert into pennsync_records.clinical_event
+      (source_app_id, id, patient_id, event_type, event_date, event_title, event_description)
+    values ('6a9881683dc68a0bd54f1ef7','event-gone','patient-gone','fall','2026-09-23',
+            'An uncarried chart','no patient row answers to this id');
+    insert into pennsync_records.patient_recommendation
+      (source_app_id, id, patient_id, created_date, status, title, description)
+    values ('6a9881683dc68a0bd54f1ef7','rec-gone','patient-gone','2026-09-23','pending','TG','DG');
+    insert into pennsync_records.sent_education_material
+      (source_app_id, id, patient_id, material_title, patient_name, sent_by, sent_date,
+       delivery_method, personalized_content)
+    values ('6a9881683dc68a0bd54f1ef7','sent-gone','patient-gone','Gone','Nobody',
+            'admin-a@example.invalid','2026-09-23','email','orphan body');
+  `);
+  // A TEST DOUBLE, and the only way to ask what the POLICIES grant. The caller
+  // helpers refuse unless `current_setting('role')` is `authenticated`
+  // (`pennsync_private.actor`), and `authenticated` is granted nothing on a
+  // record table -- deliberately, because an RLS policy runs with the querying
+  // role's privileges. So a bare read answers `permission denied` for a reason
+  // that has nothing to do with the question. This reproduces a contract's own
+  // execution context and asks for NOTHING else: definer, owned by the record
+  // owner, which holds no BYPASSRLS while every record table is FORCE RLS.
+  await db.exec(`
+    grant create on schema public to pennsync_records_owner;
+    set role pennsync_records_owner;
+    create function public.zz_policy_visible(p_entity text, p_patient text) returns integer
+      language plpgsql stable security definer set search_path = '' as $zz$
+      declare v_n integer;
+      begin
+        if p_entity = 'clinical_event' then
+          select count(*) into v_n from "pennsync_records"."clinical_event"
+            where "patient_id" = p_patient;
+        elsif p_entity = 'patient_recommendation' then
+          select count(*) into v_n from "pennsync_records"."patient_recommendation"
+            where "patient_id" = p_patient;
+        elsif p_entity = 'sent_education_material' then
+          select count(*) into v_n from "pennsync_records"."sent_education_material"
+            where "patient_id" = p_patient;
+        else raise exception 'no such entity %', p_entity;
+        end if;
+        return v_n;
+      end $zz$;
+    reset role;
+    grant execute on function public.zz_policy_visible(text,text) to authenticated;
   `);
 });
 after(async () => db?.close());
@@ -694,4 +741,65 @@ test('the helpers are the record owner\'s, and no caller role may ask them', asy
       `select has_function_privilege('authenticated', 'pennsync_records.${fn}', 'execute') as ok`);
     assert.equal(rows[0].ok, false, `${fn} must not be callable by a caller role`);
   }
+});
+
+/**
+ * What the POLICIES grant this caller, past the contract entirely -- asked in
+ * the context a contract body runs in, through the definer seeded above.
+ */
+const visible = (n, entity, patient) =>
+  as(n, 'select public.zz_policy_visible($1,$2) as result', [entity, patient]);
+
+test('the chart guard subtracts no row the table policies would have granted', async () => {
+  // THE QUESTION A REFUSAL CANNOT ANSWER ON ITS OWN. Every case above asserts
+  // that `screen_chart` refuses; none of them asks whether the row it refused
+  // was one the caller was ENTITLED to. A guard that hides rows the access
+  // block granted is a narrowing, and a narrowing fails blank rather than
+  // loud -- so it is measured here against the policies themselves, per table,
+  // rather than reasoned about from the refusal.
+  //
+  // These three tables carry NO `agency_id`: their tenancy IS the chart, and
+  // the generated policy is `exists (select 1 from patient where id =
+  // <row>.patient_id and agency_id in caller_agencies() and
+  // (caller_opens_every_chart or id in caller_assigned_patients))`. That is
+  // `screen_chart`'s own predicate, asked of the same caller under the same
+  // forced RLS. So the guard can only ever re-ask what the policy already
+  // decided -- except for the one term the policy CANNOT ask, because a policy
+  // does not know which agency the request named.
+  const TABLES = ['clinical_event', 'patient_recommendation', 'sent_education_material'];
+  // The three cases the guard refuses, and what the policy says about each.
+  for (const [who, subject, why] of [
+    [UNASSIGNED_A, 'patient-a1', 'own agency, a chart D24 does not open for them'],
+    [ADMIN_A, 'patient-b1', 'another agency\'s chart'],
+    [ADMIN_A, 'patient-gone', 'a chart never carried into this store'],
+    [CLINICIAN_A, 'patient-gone', 'the same, for a caller who opens charts by assignment'],
+  ]) {
+    for (const table of TABLES) {
+      assert.equal(await visible(who, table, subject), 0,
+        `${table}: the policy grants this caller rows on ${subject} (${why}), ` +
+        'so the contract\'s refusal is hiding a row rather than naming one');
+    }
+  }
+  // AND THE COUNTER-CASE, without which every line above passes on a query
+  // that returns nothing for a reason of its own. The rows exist and are
+  // visible to somebody.
+  for (const table of TABLES) {
+    assert.ok(await visible(ADMIN_A, table, 'patient-a1') > 0, `${table}: nothing seeded`);
+    assert.ok(await visible(ADMIN_B, table, 'patient-b1') > 0, `${table}: nothing seeded in B`);
+    // The uncarried row IS in the table and invisible to everyone above, which
+    // is the policies' answer and not the contract's. Counted past RLS.
+    assert.ok((await db.query(
+      `select count(*)::int as n from pennsync_records.${table} where patient_id = 'patient-gone'`
+    )).rows[0].n > 0, `${table}: no orphan seeded`);
+  }
+  // THE ONE CASE WHERE THE GUARD REALLY SUBTRACTS, and the reason it exists:
+  // a caller holding BOTH agencies is granted agency B's rows by the policy,
+  // because the policy asks `in caller_agencies()` and cannot know that this
+  // request named agency A. The agency term is the only thing that refuses it.
+  for (const table of TABLES) {
+    assert.ok(await visible(DUAL, table, 'patient-b1') > 0,
+      `${table}: the crossed-request leak is not reproduced, so the term below proves nothing`);
+  }
+  await refusal(as(DUAL, EVENTS, [A, 'patient-b1', 50]), 'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE');
+  await refusal(as(DUAL, RECS, [A, 'patient-b1', 50]), 'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE');
 });
