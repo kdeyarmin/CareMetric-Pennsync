@@ -65,7 +65,7 @@ plan's status table reads as progress without saying where the progress lives.
 | --- | ---: | ---: |
 | Authority store migrations | 15 | ~~9~~ **14** (one is deliberately never hosted) — applied 2026-09-21 |
 | Record store migrations (store, brokers, 83 contracts, purpose policies, file map) | ~~54~~ **59** | ~~0~~ **59** — 54 on 2026-09-21 and the rest since; the hosted ledger holds 73 of the 74 committed migrations with nothing pending, read from the `hosted-gap` job on `b8e4e021` 2026-09-23 |
-| Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ ~~74 deployed~~ **80 deployed; 0 released as at 2026-09-25 05:16Z** (release state moves without a commit — read `/readyz`) — the six-name gap closed by the 2026-09-25 redeploy. It did not close by itself and will not stay closed by itself: the service's source is **pinned to a commit**, so every future merge reopens it until somebody repoints the pin. See stage B |
+| Ported handlers registered in `services/pennsync-api/handlers.mjs` | ~~77~~ **80** | ~~0~~ ~~74 deployed~~ **80 deployed; 0 released as at 2026-09-25 05:16Z** (release state moves without a commit — read `/readyz`) — the six-name gap closed by the 2026-09-25 redeploy. It did not close by itself and will not stay closed by itself: the service's source is **pinned to a commit**, so every future merge reopens it until somebody repoints the pin — **or until the next variable change, which rebuilds from `main` regardless of the pin** (measured 2026-09-25 05:41Z). See stage B |
 | Railway services | 2 defined | ~~1 deployed, paused; 1 never created~~ **2 deployed, paused** — 2026-09-22 |
 | Frontend call sites moved off Base44 | 0 of 445 | 0 |
 
@@ -92,11 +92,18 @@ the reason it had drifted eight commits was not neglect: **`pennsync-api`'s
 Railway source is pinned to a commit and does not follow `main`.** It was
 pinned to `f18b0531` from 2026-09-22, with exactly one deployment ever across
 94 changed files, which is why nothing merged in between reached it. It is now
-pinned to `20c15d8`, and it is kept pinned deliberately so that a merge cannot
-deploy the service in the middle of a release. So the drift is structural, not
+pinned to `20c15d8`, kept pinned with the intent that a merge cannot deploy
+the service in the middle of a release. So the drift is structural, not
 accidental, and the way to close it is a standing step rather than a one-off —
 written down in stage B, because the next person to read "just merge it" here
 would be wrong.
+
+**That intent does not hold, measured 2026-09-25 05:41Z**, and stage B carries
+it: a variable change makes Railway rebuild, and the rebuild takes `main`'s
+latest commit rather than the pinned one. So a merge reaches the service at its
+next variable change, each release wave is a variable change, and the pin
+prevents exactly the case it was kept for only while nobody touches a variable.
+Do not move `main` during a release.
 
 The port queue, measured on this tree rather than quoted. The line below is the
 tool's own `portQueueLine` and is now pinned by a test, so a change that moves
@@ -867,19 +874,42 @@ those dates built nothing and reached nothing. A plain redeploy would have
 rebuilt `f18b0531` again. The pin was repointed to `20c15d8` first, and only
 then redeployed.
 
-It is **kept pinned on purpose**: an auto-deploying service would rebuild
-itself in the middle of a release wave, on whatever happened to merge. The cost
-of that choice is that bringing the service up to date is a **manual repoint
-plus a redeploy, every time** — a standing step in this plan, not a one-off
-that stage B discharged. Concretely, on any future change you want served:
+It is **kept pinned on purpose**, with the intent that an auto-deploying
+service cannot rebuild itself in the middle of a release wave on whatever
+happened to merge. The cost of that choice is that bringing the service up to
+date is a **manual repoint plus a redeploy** — a standing step in this plan,
+not a one-off that stage B discharged. Concretely, on any future change you
+want served:
 
-1. Merge to `main` as usual. **This deploys nothing.**
+1. Merge to `main` as usual. This does not deploy **by itself**, and see the
+   next paragraph for why that is not the same as "cannot reach the service".
 2. Repoint the service's source commit to the `main` commit you want served —
    which should be one that `hosted-store` has measured green on `main`, since
    a green run is evidence about the repository and the service is what serves.
 3. Redeploy, and re-read `/readyz` yourself: the `revision`, the implemented
    name count, and the `appId`/`appStated` pair. Do not take the deploying
    agent's report for it; this stage has been wrong that way once already.
+
+**The pin does NOT hold across a variable change, and that is the correction
+this subsection most needs.** Measured by the redeploy thread at 2026-09-25
+05:41Z, immediately after setting wave 1's variables: setting a variable makes
+Railway rebuild, and that rebuild took **`main`'s latest commit rather than the
+commit the service is pinned to** — it picked up the lockfile fix that had
+merged minutes earlier. The service was re-read afterwards and nothing
+unintended shipped (80 names, the staging binding, the build context
+byte-identical), so this is a finding about the mechanism and not an incident.
+
+Two consequences, and the second is the one that bites:
+
+- A merge **does** reach `pennsync-api` — at the service's next variable change
+  or rebuild, whenever that happens, not at merge time. "A merge deploys
+  nothing" is true only until somebody touches a variable.
+- So the pin does not do the job it was kept for. Each release wave is a
+  variable change, so **each wave rebuilds the service from whatever `main` is
+  at that moment**. That is precisely the mid-release rebuild the pin was
+  supposed to prevent. Until that is solved, the operational rule is the crude
+  one: **do not move `main` while a release is in progress**, and treat a green
+  `main` at the moment of each variable change as a prerequisite of that wave.
 
 **How to tell which model a service is on.** Read the service's source: in the
 same Railway project, `PennTrain`'s carries **no** `commitSha` and follows
@@ -1736,7 +1766,7 @@ button. Listed plainly so none of it sits waiting on a misunderstanding:
 | ~~Approval to run the migrate tool's write path against hosted staging~~ | Stage A | **Granted and run 2026-09-21.** 59 migrations applied, 68 recorded, pin on staging with `source 'default'`. The hosted-target CI job is added and its structural suite is green against the real project. When this row was written the stage's exit still lacked TWO things: the job actually measuring in CI, and the row-behaviour half. The first was closed on 2026-09-22 by the row below; only the second is open. It moved to stage C for identities, and on 2026-09-22 the identities turned out to be largely there already. ~~What it waits on is a sign-in, a seed transport and one `chart_assignment` row.~~ The owner withdrew the sign-in the same day, which retires the other two with it; claim 4 now rests on the composition recorded in stage A |
 | ~~Add `PENNSYNC_STAGING_DATABASE_URL` and `SUPABASE_ACCESS_TOKEN` as repository secrets, and set `HOSTED_MEASUREMENT_REQUIRED` to `true` in the same change~~ | Stage A | **Done 2026-09-22 (#237).** Both secrets are configured and the flag is `'true'`. The job log shows both masked and then 15 tests, 15 passed, 0 skipped against the real project — read from the log rather than from the green tick, which is what this gate exists to distrust. The committed store's drift is now watched on every push to main |
 | ~~Create the `pennsync-api` Railway service~~ | Stage B | **Created 2026-09-22.** Live at `pennsync-api-production.up.railway.app`, paused, revision `f18b053`, 74 handlers implemented and every one refusing `PENNSYNC_API_NOT_RELEASED`. The integration runtime was correctly left alone. ~~One setting no probe can confirm — `PENNSYNC_API_APP_ID` — is carried to Stage C~~ **That setting is now reported and reads the staging app**, since the 2026-09-25 repoint and redeploy put a post-#247 revision on the service |
-| ~~**Redeploy `pennsync-api` from current `main`**~~ **Repoint the pinned source commit, then redeploy — every time** | Stages B and D | **Done once, 2026-09-25, and it is a standing step rather than a discharged one.** It was the live blocker for two reasons, the second binding: `f18b053` implemented 74 of 80 names, and it predated the readiness fields that report the app binding, so **every** wave pasted onto it would have released against a `PENNSYNC_API_APP_ID` no probe could check. Both closed — `20c15d8`, 80 names, `appId` reading the staging app. **It is no longer the owner's alone**: a session holding the Railway connector can repoint and redeploy, and one did. What stays the owner's is creating or deleting anything, and setting `PENNSYNC_API_FUNCTIONS` and `PENNSYNC_API_RELEASE`. What recurs is the repoint: the source is pinned on purpose, so a merge deploys nothing |
+| ~~**Redeploy `pennsync-api` from current `main`**~~ **Repoint the pinned source commit, then redeploy — every time** | Stages B and D | **Done once, 2026-09-25, and it is a standing step rather than a discharged one.** It was the live blocker for two reasons, the second binding: `f18b053` implemented 74 of 80 names, and it predated the readiness fields that report the app binding, so **every** wave pasted onto it would have released against a `PENNSYNC_API_APP_ID` no probe could check. Both closed — `20c15d8`, 80 names, `appId` reading the staging app. **It is no longer the owner's alone**: a session holding the Railway connector can repoint and redeploy, and one did. What stays the owner's is creating or deleting anything, and setting `PENNSYNC_API_FUNCTIONS` and `PENNSYNC_API_RELEASE`. What recurs is the repoint: the source is pinned on purpose, so a merge does not deploy by itself — but measured 2026-09-25 05:41Z, **the pin does not survive a variable change**, which rebuilds from `main`'s latest commit, so each release wave redeploys the service from whatever `main` is at that moment. See stage B |
 | Cost approval and creation of the production Supabase project | Stage F | D4: dedicated, us-east-1, not `CM Train` |
 | Set the four `INTEGRATIONS_AUTHORITY_*` / `INTEGRATIONS_APP_ID` variables on the Railway runtime | Stage E | The code is done and tested (111/111); this is the whole of Stage E now. `INTEGRATIONS_APP_ID` must be the **staging** id `6a9881683dc68a0bd54f1ef7` — the production id boots and then refuses every call. Reversible, and the runtime serves nobody |
 | **Correct the Google Play Data Safety declaration** | **Today** — independent of every stage | Live listing says "No data collected" and "No data shared with third parties" for an app handling clinical data. A policy violation that can draw enforcement against the listing. A Play Console form — needs no key and no binary, so nothing else here blocks it |
