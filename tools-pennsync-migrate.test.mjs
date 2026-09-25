@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { cpSync, mkdtempSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   LOCAL_ONLY_MIGRATIONS, MIGRATE_CONTRACT, MigrateError, PIN_MIGRATION,
   applyMigrations, ledgerName, ledgerVersion, migrationWithLedgerRow, planMigration,
@@ -25,7 +26,7 @@ import {
  * that cannot be matched, a sequence with a hole in it, a deliberate omission
  * quietly becoming an accident.
  */
-const REPOSITORY = new URL('.', import.meta.url).pathname;
+const REPOSITORY = fileURLToPath(new URL('.', import.meta.url));
 
 const migration = (name, from) => ({ name, from, sql: `-- ${name}\n` });
 const authority = name => migration(name, MIGRATION_DIRECTORY);

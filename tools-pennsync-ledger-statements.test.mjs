@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { fileURLToPath } from 'node:url';
 import {
   LEDGER_STATEMENTS_MARKER, LEDGER_STATEMENT_BUDGET, LedgerStatementsError,
   compareLedgerStatements, recordedStatements, recordedText, splitStatements,
@@ -16,7 +17,7 @@ import { readMigrations } from './tools-pennsync-provision.mjs';
  * comparison — because a writer and a reader that only ever meet in one
  * process are two halves nothing has proved agree (D45).
  */
-const REPOSITORY = new URL('.', import.meta.url).pathname;
+const REPOSITORY = fileURLToPath(new URL('.', import.meta.url));
 
 const refusal = (run, code) => {
   let failure = null;
