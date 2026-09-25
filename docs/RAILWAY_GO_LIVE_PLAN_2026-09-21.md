@@ -2770,20 +2770,28 @@ And after #295 and #300, which is the current reading:
 **As of #300 on `main`: 38 of the 237 call sites that have somewhere to land
 are served, out of 445 entity call sites in the app.** The numerator moved on
 #295 (batch C's nine reference and configuration sites) and not on #300, which
-changed the denominator only.** Both denominators are
-real and they are different populations — 445 is every entity call the frontend
-makes, 237 is the subset with a table behind it — so a served figure quoted
-without saying which one it is over is the same label error this page warns
-about above. **The smaller denominator moved on its own**: 242 became 237 when
-D83's five global-reference writes stopped being counted as landable, so the
-reading above is a record of #294 and this is the current one. Re-derive it
-rather than quoting it: every merge that points a screen moves the numerator
-and every migration that carries an entity moves the denominator. 30 of the
-remaining 208 are sites a declared route REFUSES: the route exists and the
-*screen* has to change, which is per-screen work rather than per-entity work,
-and that is the more useful number for planning than the 208. Sites whose
-arguments the tool cannot read count as unserved, because a gate that guessed
-would be back to counting declarations.
+changed the denominator only. Both denominators are real and they are different
+populations — 445 is every entity call the frontend makes, 237 is the subset
+with a table behind it — so a served figure quoted without saying which one it
+is over is the same label error this page warns about above. **The smaller
+denominator moved on its own**: 242 became 237 when D83's five global-reference
+writes stopped being counted as landable, so the first reading above is a
+record of #294 and the second is the current one. Re-derive them rather than
+quoting them: every merge that points a screen moves the numerator and every
+migration that carries an entity moves the denominator.
+
+**And this page carries two remainders that are not the same population, which
+is worth saying because they were briefly the same number.** The route gate's
+remainder — call sites with nowhere to land *yet* — is **199**. The destination
+gate's is **208**: call sites with nowhere to land *at all*. On the
+head where this paragraph was first written the two were both 208, so either
+number read as correct there, and the rebase over #295 moved the first to 199
+and left the second alone. A sentence that had been right became wrong with
+nothing changing in it. 30 of the 199 are sites a declared route REFUSES: the
+route exists and the *screen* has to change, which is per-screen work rather
+than per-entity work, and that is the more useful number for planning than the
+199 itself. Sites whose arguments the tool cannot read count as unserved,
+because a gate that guessed would be back to counting declarations.
 
 **The gate has three states, and the third one is why the batches can work at
 all.** Proved, refused, and declared-but-unproved. A call site that passes a
