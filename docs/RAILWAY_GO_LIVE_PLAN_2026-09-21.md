@@ -105,6 +105,11 @@ next variable change, each release wave is a variable change, and the pin
 prevents exactly the case it was kept for only while nobody touches a variable.
 Do not move `main` during a release.
 
+**That sentence is about `pennsync-api` and does NOT describe
+`pennsync-integrations`**, which deploys on merge and waits for no CI — read
+the per-service config in stage E before applying either behaviour to the
+other.
+
 The port queue, measured on this tree rather than quoted. The line below is the
 tool's own `portQueueLine` and is now pinned by a test, so a change that moves
 the queue and leaves this page alone fails the build — the guard AGENTS.md got
@@ -1020,6 +1025,12 @@ Two consequences, and the second is the one that bites:
   supposed to prevent. Until that is solved, the operational rule is the crude
   one: **do not move `main` while a release is in progress**, and treat a green
   `main` at the moment of each variable change as a prerequisite of that wave.
+
+**This whole finding is `pennsync-api`'s and generalises to nothing.** The
+other service's config was read on 2026-09-25 and it deploys on every merge
+that touches its directory, without waiting for CI; stage E carries the
+measurement and the config lines. Two services, two mechanisms, and the
+per-service config is the only thing that says which is which.
 
 **The worst thing a variable write can ship is a migration that has not been
 applied**, and the ladder thread named it from outside on 2026-09-25 05:48Z: "a
@@ -2046,10 +2057,16 @@ SendGrid's `valid`.
 **So read the reading above for what it is.** It was taken at `08:19:25Z`,
 before that change, so it carries `anonymousDenied` and no `keyAccepted`: it
 proves the RPC exists and that an anonymous caller is refused, and it does
-**not** distinguish a live authority key from a revoked one. Nothing about the
-deployment changed — the next boot's report will carry the field. And neither
-version proves a real session succeeds: no login exists for that round trip
-(§4), so **the first real call is still the proof**.
+**not** distinguish a live authority key from a revoked one.
+
+**The next boot carried the field, and it answered.** The runtime rebuilt on
+`17c9cdc` and its preflight at `09:10:04Z` read `authority {status:401,
+valid:true, anonymousDenied:true, keyAccepted:true}` — the first time anybody
+has measured that the live publishable key **reaches the database** rather
+than being turned away at the gateway. Both halves now hold: anonymous is
+refused, and the refusal came from PostgreSQL. Neither version proves a real
+SESSION succeeds — no login exists for that round trip (§4), so **the first
+real call is still the proof**.
 
 **One thing could not be read back on this service, and `#276` closed it the
 same day — but not yet on the running service.** This stage says the app id is
@@ -2075,33 +2092,64 @@ by the service itself, and is no longer written-not-verified. Confirm it from
 `/readyz` rather than from this paragraph.
 
 **A merge reaches these two services DIFFERENTLY, and this page had one rule
-for both.** Measured 2026-09-25 shortly after `#276` merged, by an
+for both.** First measured 2026-09-25 shortly after `#276` merged, by an
 unauthenticated GET of each `/healthz`, with `main` at `17c9cdc`:
 
 | Service | Running revision | Where that is |
 | --- | --- | --- |
-| `pennsync-integrations` | `17c9cdc` | **`main`'s tip** — three merges past its last variable write |
-| `pennsync-api` | `1a93f5b` | the commit its last variable write (wave 6) built |
+| `pennsync-integrations` | `17c9cdc` | **`main`'s tip** — four merges past its last variable write |
+| `pennsync-api` | `1a93f5b` | what `main`'s tip was when its last variable write ran |
 
-So the rule this document repeats — a variable change is a deploy that
+So the rule this document repeated — a variable change is a deploy that
 rebuilds from the tip, therefore a merge reaches a service at its next
 variable change — describes `pennsync-api` and **does not describe
-`pennsync-integrations`**, which is carrying code merged minutes earlier with
+`pennsync-integrations`**, which was carrying code merged minutes earlier with
 no variable write in between. `#276`'s own commit message says "this reaches
 the service at its next variable change"; it had already arrived.
 
-**What is measured here is the two revisions, not the mechanism.** From
-outside, a service sitting on the tip cannot be told apart from a service
-somebody redeployed a moment ago; the settings that decide it are readable
-only by the thread holding the Railway connector, and confirming them is that
-thread's to do. Until it does, plan on the conservative reading: **a merge may
-be live on the integration runtime as soon as it lands**, with no screening
-step between the merge and the running service.
+**Two revisions are not a mechanism, so the mechanism was read.** From
+outside, a service sitting on the tip cannot be told apart from one somebody
+redeployed a moment ago. The thread holding the Railway connector read the
+per-service config, which is the only place this is readable, and confirmed it
+made no variable write on the runtime after `08:20Z`:
 
-That matters most where this stage is careful: the pre-write diff exists
-because a variable change ships whatever is at the tip. If one of these
-services deploys on merge instead, that check happens **after** the code is
-already serving, and the thing it protects has to move to the pull request.
+```
+pennsync-integrations  source: {branch: "main", rootDirectory: "/services/integration-runtime",
+                                checkSuites: false}
+                       build.watchPatterns: ["/services/integration-runtime/**"]
+
+pennsync-api           source: {branch: "main", commitSha: "20c15d8f",
+                                rootDirectory: "/services/pennsync-api"}   ← no watchPatterns
+```
+
+**So the conservative reading above is the measured one: the runtime deploys
+on merge.** Every push to `main` creates a deployment row on it, and the watch
+pattern decides whether that row builds or reads `SKIPPED`. `#276` touched
+that directory and read **SUCCESS at `09:09:44`, two seconds after the
+merge**; `#272`, `#273`, `#274` and `#275` all read `SKIPPED`. On
+`pennsync-api` the latest deployment is still the `08:34` variable write, and
+`#273` touched **its** directory without deploying it.
+
+**And `checkSuites: false` is the sharpest part: it does not wait for CI.**
+`main`'s run for that merge started at `09:09:42` and was still going minutes
+later, so the code was serving before any of it finished. There is no gate
+after the merge on that service at all, not even a late one.
+
+Two consequences, and they are now measured rather than contingent:
+
+- **The screening moves to the pull request** for `services/integration-runtime`.
+  The pre-write diff in this stage exists because a variable change ships
+  whatever is at the tip; on a service that deploys on merge, that check
+  happens after the code is already serving.
+- **A merge-hold during an in-flight variable write protects nothing there**,
+  because the merge *is* the deploy.
+
+**Keep the two mechanisms apart, and note that the pin does not hold.**
+`pennsync-api`'s config names `commitSha: "20c15d8f"` while the service runs
+`1a93f5b`, so a variable write on it still rebuilds from `main`'s tip rather
+than from the pinned commit. One project, two behaviours, and only the
+per-service config distinguishes them — which is why neither can be inferred
+from the other.
 
 ### Stage F — Production Supabase project (size S to provision; owner approves cost)
 
