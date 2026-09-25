@@ -1634,13 +1634,31 @@ write.
 page did not name it.** It belongs in the table below and is listed there now.
 Two things about it are load-bearing:
 
-- **It is the entire guard on outbound mail.** `runtime.mjs:69` counts
-  `SendEmail` a missing provider only when the SendGrid key or the sender
-  address is absent, and the release thread reports **both are already set on
-  the service** (read by name; values are redacted to an API caller). So there
-  is no second lock to hold back: the moment `SendEmail` appears in this
-  variable, a configured mail channel can send. Set it to exactly the
-  operations the wave needs and nothing else.
+- **It is the only guard on outbound mail anyone here can confirm.**
+  `runtime.mjs:69` counts `SendEmail` a missing provider only when the SendGrid
+  key or the sender address is absent, and `SENDGRID_API_KEY` and
+  `NOTIFICATION_FROM_EMAIL` are both **present on the service as names**. That
+  is all that has been read: `list-variables` answers with names and
+  `valuesRedacted: true`, so **nobody here has seen either value.** An empty or
+  revoked key would be a second lock — but an unchosen one that nothing
+  observes, so it is not a control and must not be planned around. Treat this
+  variable as the whole guard, set it to exactly the operations the wave needs
+  and nothing else, and do not tell anyone either that a working mail account
+  is in place or that one needs buying until somebody has a reading behind it.
+
+  **The counter-example is on this same service.**
+  `INTEGRATIONS_ALLOWED_OPERATIONS` is itself present as a name with an
+  **empty** value — which is exactly why the AI wave is a build rather than a
+  switch. So here, on this service, "the name is set" has already been proved
+  not to mean "the value is usable". This page said the mail credentials were
+  set and drew a conclusion that only their values could support; that is the
+  same one-representation mistake, two paragraphs apart.
+
+  **Two readings that look like evidence about provider keys and are not.**
+  `missingProviders` filters `config.operations` (`runtime.mjs:67`), so it is
+  empty whenever that list is empty, whatever the keys hold. And `configured`
+  (`runtime.mjs:46-48`) wants the Supabase URL, the service-role key and two
+  distinct 64-hex keys, and names no provider key at all.
 - **It is a CEILING on the browser surface, not a parallel list.** Releasing
   the service does not expose it to the browser app: `app.mjs:44` refuses a
   browser request unless `INTEGRATIONS_BROWSER_RELEASE` is `enabled-v2` — note
@@ -1677,7 +1695,8 @@ so the change alters readiness and nothing else, and removing
 `INTEGRATIONS_AUTHORITY_MODE` reverts to the Base44 default. **That safety is
 about the four authority variables, not about the operation list** — adding an
 operation to `INTEGRATIONS_ALLOWED_OPERATIONS` is what makes the service able to
-do the thing, and for `SendEmail` the provider behind it is already configured.
+do the thing, and for `SendEmail` the provider behind it may well be live; plan
+as though it is, because nothing here can check.
 Railway is no longer out of reach of a session (see §4), but this service is
 owned by the release thread and its writes wait on the owner's words.
 
