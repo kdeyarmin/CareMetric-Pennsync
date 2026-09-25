@@ -2721,46 +2721,61 @@ bucket comes to claim more than it measured." So the 242 is a statement about
 TABLES. Whether anything serves the call is a second question, and this tool is
 built not to answer it.
 
-**That second question now has its own instrument, and the answer is much
-smaller than 242.** `pnpm run check:entity-routes` (#290, merged 2026-09-25),
-measured here on `5172f30a`:
+**That second question now has its own instrument — and its headline count was
+retracted within hours of shipping, which is worth recording as carefully as a
+number would have been.** `check:entity-routes` (#290, merged 2026-09-25)
+reports how many of the 242 are "routed", and `routed_sites` counts a site as
+routed when its `Entity.operation` pair is DECLARED in the route table
+(`Object.hasOwn(routes, key)`). It never asks whether that site's own arguments
+survive the route's request. The thread that wrote the tool withdrew the figure
+the same evening for exactly that reason and is rebuilding the gate to run the
+calls and fail closed. **So this page carries no routed or unrouted count at
+all**: how many of the 242 would actually work today is unknown, and a
+declaration count standing in for it is the same error as reading "can land" as
+"ready to move", one layer further in.
 
-> entity routes: 1 declared, 36/242 landable call sites routed, 206 still to
-> adopt — of those 206, across 43 entities: a wider generic family could serve
-> 31 reads and 0 writes above D16's ceiling; 175 need a named capability
+What can be said without that partition, because it does not depend on it:
+**no handler destructures `records`**, so even the 7 `broker_family` sites have
+no route, and the remaining shape is roughly forty entities' worth of named
+contracts and handlers — the same shape as the 80 already built — rather than
+one design decision.
 
-So **36 of the 242 have a route today** and no handler destructures `records`,
-which is why even the 7 `broker_family` sites have none. The remaining shape is
-roughly forty entities' worth of named contracts and handlers — the same shape
-as the 80 already built — plus the edits, rather than one design decision.
+**The ceiling on avoiding that work is measured, and it is low.** The obvious
+alternative is to widen the generic broker family instead of writing a
+capability per entity, and D16 bounds how far that can go. Running the full
+`auditBrokerCeiling` over **every landable call site**, rather than over any
+routed/unrouted split, so that the retraction above cannot touch it:
 
-**Do not quote that `31` as the ceiling.** The tool computes it from
-`brokerReadable`/`brokerWritable`, the schema's `rls` predicates alone, while
-D16's actual ceiling also refuses a table that reaches tenancy through a
+- **23 read sites, across 8 entities** — `Announcement`, `DocumentTemplate`,
+  `FacilityDocumentationRule`, `MedicareComplianceRule`, `OnCallShift`,
+  `Physician`, `RegulatoryUpdate`, `VisitPointConfig`.
+- **0 write sites. None at all**, under `brokerReadable && brokerWritable`.
+
+Both figures are identical whether computed over all landable sites or over any
+routed/unrouted split, which is what makes them safe to quote here. **The zero
+is the one that decides anything**: widening the generic family avoids the
+named-capability work for not a single write, so the per-entity contracts are
+not an expensive approach chosen over a cheap one that was available.
+
+**The read figure is not settled, and does not need to be.**
+`check:entity-routes` prints its own as 31, computed from
+`brokerReadable`/`brokerWritable` — the schema's `rls` predicates alone — while
+`auditBrokerCeiling` also refuses a table that reaches tenancy through a
 clinical entity, names a clinical subject, carries a credential or can hold a
-file. Running the full `auditBrokerCeiling` over the same 206 sites — the
-in-repo caller's own argument shape, manifest exemptions included — gives **23
-read sites across 8 entities** (`Announcement`, `DocumentTemplate`,
-`FacilityDocumentationRule`, `MedicareComplianceRule`, `OnCallShift`,
-`Physician`, `RegulatoryUpdate`, `VisitPointConfig`), refusing `PDFTemplate`
-for naming a clinical subject in `carry_forward_fields[].document_id` and
-`AgencySettings` for carrying a credential, among others. The thread that built
-the tool reports 25 across 10 from its own run. **Two independent computations
-of the same quantity disagree by two entities, so the ceiling figure is not
-settled and none of 31, 25 or 23 should be quoted as final** — the 31 is the
-one that is certainly too generous, because its own comment claims it applies
-D16's test and it applies a narrower one. The write half is 0 either way, and
-that is the number that matters most: **no unrouted write clears the ceiling at
-all.**
+file. The tool's comment says it applies "that same test"; it applies a
+narrower one, so 31 is certainly too generous. Two full runs of the wider test
+then disagreed by two entities, 23 against 25, and that difference is recorded
+rather than resolved: every entity in either reading is getting a named
+contract, so nothing that gets built turns on which is right.
 
 **What the dropped domains cost, and by which instrument.** `node
-tools-frontend-retired-inventory.mjs --summary` on the same commit: **203 call
-sites across 84 files and 29 entities; 59 files lose everything they read**
-(reads 123, writes 79, subscriptions 1), leaving 25 partially affected. Those
-are exact. The shape a person would notice — roughly 9 top-level destinations
-and about 33 hollowed-out pages — comes from a filename scan rather than that
-tool, with 2 of 49 components having no importer found, so treat the first pair
-as measured and the second as indicative.
+tools-frontend-retired-inventory.mjs --summary` on `5172f30a`: **203 call sites
+across 84 files and 29 entities; 59 files lose everything they read** (reads
+123, writes 79, subscriptions 1), leaving 25 partially affected. Those are
+exact. The shape a person would notice — roughly 9 top-level destinations and
+about 33 hollowed-out pages — comes from a filename scan rather than that tool,
+with 2 of 49 components having no importer found, so treat the first pair as
+measured and the second as indicative.
 
 **203 of 445 — 46% — reach a domain the migration has decided not to carry.**
 119 of them are the training domain, whose destination is the Hub; 75 are
