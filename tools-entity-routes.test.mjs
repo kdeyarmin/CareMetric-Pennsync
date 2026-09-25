@@ -7,7 +7,7 @@ import { HANDLER_NAMES } from './services/pennsync-api/handlers.mjs';
 import { PORTED_FUNCTIONS } from './services/authority-client/client.mjs';
 import { ARGUMENTS_UNSUPPORTED, ENTITY_ROUTES, ROUTED_OPERATIONS, routeFor }
   from './src/lib/independentEntityRoutes.js';
-import { measureRoutes, servedSites } from './tools-entity-routes.mjs';
+import { entityRouteLine, main, measureRoutes, servedSites } from './tools-entity-routes.mjs';
 import { measureDestinations } from './tools-frontend-destination.mjs';
 import { auditBrokerCeiling, brokerReadable, locatorPaths } from './tools-tenant-decision.mjs';
 import { buildPaths, readEntity } from './tools-tenant-path.mjs';
@@ -247,4 +247,18 @@ test('a served site is removed from the remainder once, not per key', () => {
     report.unrouted_sites,
     'the buckets sum short when a key is removed once for two served calls');
   assert.ok(report.routed_sites > baseline.routed_sites);
+});
+
+test('the exported line is the one the tool prints, not a second copy', () => {
+  // The whole point of exporting it is that a page quoting the reading can be
+  // compared against the tool. That comparison is worthless if `main` prints
+  // its own copy, so this asserts the one property the export depends on:
+  // there is one string, and both callers get it.
+  const printed = [];
+  const code = main(['node', 'tools-entity-routes.mjs'], line => printed.push(line), () => {});
+  assert.equal(code, 0);
+  assert.equal(printed[0], entityRouteLine(measureRoutes(repository)));
+  // And it carries the figures, so a version that returned a constant — which
+  // would satisfy the equality above — fails here.
+  assert.match(printed[0], /^entity routes: \d+ declared, \d+\/\d+ landable call sites SERVED, \d+ still to adopt$/);
 });

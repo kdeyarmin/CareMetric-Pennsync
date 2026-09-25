@@ -2744,9 +2744,12 @@ routed when its `Entity.operation` pair was DECLARED in the route table, and
 reported 36. Run properly — each site's own arguments put through the route's
 `request` — **none of those 36 succeeded**: 31 ask the staff list to sort by
 `created_date` or `full_name`, which the roster contract projects neither of
-(the carried `user` table has no name column at all, D69), and the other 5
-asked for more rows than its ceiling. A declaration is not a success, and the
-only way to tell them apart is to run the call.
+(the carried `user` table has no name column at all, D69). The other 5 were
+refused for asking more rows than the contract's ceiling, which is no longer a
+refusal: a screen naming `ALL_ROWS` is naming a bound it does not have, so the
+complete-set proof answers that risk where the ceiling only approximated it,
+and those 5 are served today. A declaration is not a success, and the only way
+to tell them apart is to run the call.
 
 Measured on `main` after #294:
 
@@ -2756,22 +2759,26 @@ Measured on `main` after #294:
 > wider generic family could serve 1 reads and 0 writes above D16's ceiling;
 > 212 need a named capability
 
-And after #300, which is the current reading:
+And after #295 and #300, which is the current reading:
 
-> entity routes: 14 declared, 29/237 landable call sites SERVED, 208 still to
+> entity routes: 21 declared, 38/237 landable call sites SERVED, 199 still to
 > adopt — 30 of those are sites a declared route REFUSES (`User.list:sort`),
-> and 2 pass arguments this cannot read — of those 208, across 38 entities: a
+> and 2 pass arguments this cannot read — of those 199, across 38 entities: a
 > wider generic family could serve 1 reads and 0 writes above D16's ceiling;
-> 207 need a named capability
+> 198 need a named capability
 
-**As of #300 on `main`: 29 of the 237 call sites that have somewhere to land
-are served, out of 445 entity call sites in the app.** Both denominators are
+**As of #300 on `main`: 38 of the 237 call sites that have somewhere to land
+are served, out of 445 entity call sites in the app.** The numerator moved on
+#295 (batch C's nine reference and configuration sites) and not on #300, which
+changed the denominator only.** Both denominators are
 real and they are different populations — 445 is every entity call the frontend
 makes, 237 is the subset with a table behind it — so a served figure quoted
 without saying which one it is over is the same label error this page warns
 about above. **The smaller denominator moved on its own**: 242 became 237 when
 D83's five global-reference writes stopped being counted as landable, so the
-reading above is a record of #294 and this is the current one. 30 of the
+reading above is a record of #294 and this is the current one. Re-derive it
+rather than quoting it: every merge that points a screen moves the numerator
+and every migration that carries an entity moves the denominator. 30 of the
 remaining 208 are sites a declared route REFUSES: the route exists and the
 *screen* has to change, which is per-screen work rather than per-entity work,
 and that is the more useful number for planning than the 208. Sites whose

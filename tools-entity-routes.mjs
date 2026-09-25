@@ -267,6 +267,26 @@ export function measureRoutes(repository, routes = ENTITY_ROUTES) {
   };
 }
 
+/**
+ * The gate's figure-bearing line, as one string.
+ *
+ * Exported for the same reason `portQueueLine` is: a page that quotes this
+ * reading goes stale silently, and the only thing that can notice is a test
+ * comparing the page against the tool. `main` prints THIS rather than its own
+ * copy, so the exported line and the printed one cannot drift — a second copy
+ * is the defect the pin exists to catch, arriving in the pin.
+ *
+ * It is the first line only. The three that follow it carry real figures too
+ * and are not pinned by this: a page quoting them owes its own comparison. And
+ * a pin needs the line unwrapped where it is quoted, since this makes no claim
+ * about how a page wraps it.
+ */
+export function entityRouteLine(report) {
+  return `entity routes: ${report.routes} declared, `
+    + `${report.routed_sites}/${report.landable_sites} landable call sites SERVED, `
+    + `${report.unrouted_sites} still to adopt`;
+}
+
 function main(argv, log = console.log, error = console.error) {
   const args = argv.slice(2);
   if (args.some(argument => !['--json', '--summary'].includes(argument))) {
@@ -277,9 +297,7 @@ function main(argv, log = console.log, error = console.error) {
   const report = measureRoutes(repository);
   if (args.includes('--json')) log(JSON.stringify(report, null, 2));
   else {
-    log(`entity routes: ${report.routes} declared, `
-      + `${report.routed_sites}/${report.landable_sites} landable call sites SERVED, `
-      + `${report.unrouted_sites} still to adopt`);
+    log(entityRouteLine(report));
     // Printed rather than left in the JSON: these are call sites a route was
     // written for and cannot serve, which is the number the tool used to
     // report as adoption. A reader who sees only the first line would draw the
