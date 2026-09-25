@@ -1406,7 +1406,14 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `visit` (declared) | 4 | 5 |
   | `read-only` (derived) | 21 | 16 |
   | `mutating` (derived) | 32 | 30 |
-  | `integration` (derived) | 19 | 14 |
+  | `integration` (derived) | 19 | 15 |
+
+  The `integration` row's migrations went 14 → 15 with D98, and the reason is
+  worth reading rather than the number: those two senders resolve their recipient
+  against the caller's agency roster now, so the wave that carries them needs
+  `contract_roster`'s migration applied — a capability's prerequisites follow
+  from the contracts it calls, and D98 gave two handlers their first contract
+  call. The test is what said so; nobody counted it.
 
   Those six rows are pinned to `checkLadder` by a test, for the reason the port
   queue in section 1 now is: every port since #245 has landed in a DERIVED wave
