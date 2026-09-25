@@ -2752,6 +2752,19 @@ than per-entity work, and that is the more useful number for planning than the
 213. Sites whose arguments the tool cannot read count as unserved, because a
 gate that guessed would be back to counting declarations.
 
+**The gate has three states, and the third one is why the batches can work at
+all.** Proved, refused, and declared-but-unproved. A call site that passes a
+variable — `AgencySettings.create(payload)` — cannot be run through a route at
+all, and the first correction treated that as *cannot be served*, which failed
+the build for **84 of the frontend's writes** and blocked four contract batches
+from wiring anything. So refusing to COUNT an unproven route stands, and
+refusing to PERMIT one does not: that question belongs to the contract's own
+refusals against the real migration, not to a static check. A route whose every
+call site is unreadable is declared, permitted, and reported in
+`unproved_routes` — never counted as adopted, and printed, because an unproven
+route nobody can see is how a declaration comes to read as coverage again.
+Landed in #294.
+
 **The ceiling on avoiding the remaining work is measured, and the write half is
 zero.** The obvious alternative to writing a capability per entity is to widen
 the generic broker family, and D16 bounds how far that can go. #291 made the
