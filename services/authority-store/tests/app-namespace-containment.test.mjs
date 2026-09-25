@@ -322,7 +322,10 @@ test('an enrolled identity must carry its evidence hash and a coherent revocatio
     where table_schema = 'pennsync_private' and table_name = 'identity_map' order by column_name`);
   const required = Object.fromEntries(columns.rows.map(r => [r.column_name, r.is_nullable]));
   for (const name of ['app_id', 'auth_user_id', 'base44_user_id', 'expected_email',
-    'source_evidence_sha256', 'verified_at', 'enabled', 'version']) {
+    'source_evidence_sha256', 'verified_at', 'enabled', 'version',
+    // D99's second provenance kind. Required rather than nullable, because an
+    // identity with no kind is one nothing can say how it was admitted.
+    'provenance']) {
     assert.equal(required[name], 'NO', `${name} must stay required`);
   }
   assert.equal(required.revoked_at, 'YES');

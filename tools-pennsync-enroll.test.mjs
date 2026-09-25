@@ -1,14 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash, randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, rm, writeFile, mkdir } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import { tmpdir } from 'node:os';
 import { join, posix, win32 } from 'node:path';
 import {
-  ENROLLMENT_CONTRACT, LIMITS, PLATFORM_OWNER, TENANT_ROLES,
-  directoryEvidenceReader, enrollmentProjectionSha256, evidencePathAllowed,
-  parseEnrollmentPlan, runEnrollCli, verifyEnrollmentEvidence,
+  DEFAULT_PROVENANCE, ENROLLMENT_CONTRACT, LIMITS, MINTED_PREFIX,
+  NEW_STAFF_RELEASE_ENV, NEW_STAFF_RELEASE_VALUE, PLATFORM_OWNER, PROVENANCE_KINDS,
+  TENANT_ROLES, directoryEvidenceReader, enrollmentProjectionSha256, evidencePathAllowed,
+  newStaffReleased, parseEnrollmentPlan, runEnrollCli, verifyEnrollmentEvidence,
 } from './tools-pennsync-enroll.mjs';
 
 /**
@@ -40,8 +42,16 @@ function plan(overrides = {}) {
   };
   return JSON.stringify({ ...base, ...overrides });
 }
-const parse = raw => parseEnrollmentPlan(raw, sha(raw));
-const refuses = (raw, code) => assert.throws(() => parse(raw), error => error.code === code, code);
+const parse = (raw, env = {}) => parseEnrollmentPlan(raw, sha(raw), env);
+const refuses = (raw, code, env = {}) =>
+  assert.throws(() => parse(raw, env), error => error.code === code, code);
+/** The operator's environment with D99's new-staff switch on. */
+const OPEN = Object.freeze({ [NEW_STAFF_RELEASE_ENV]: NEW_STAFF_RELEASE_VALUE });
+/** A minted id: the space the store keeps disjoint from Base44's. */
+const MINTED = `${MINTED_PREFIX}${'1'.repeat(24 - MINTED_PREFIX.length)}`;
+const newStaff = patch => withEnrollment({
+  provenance: 'locally_verified', base44_user_id: MINTED, ...patch,
+});
 /** Swap one field of the single enrollment, keeping the rest of the plan intact. */
 const withEnrollment = patch => {
   const base = JSON.parse(plan());
@@ -260,4 +270,97 @@ test('the CLI reports a code and never echoes plan content', async t => {
   for (const line of lines) {
     assert.doesNotMatch(line, /example\.test|Synthetic Agency|membership-1/, 'a diagnostic leaked plan content');
   }
+});
+
+
+/**
+ * D99's new kind, which ships switched off.
+ *
+ * Kevin's decision was to build the path and invite nobody, so the switch is
+ * part of the capability rather than a deployment detail, and it is asked during
+ * PARSING — before any connection is opened.
+ */
+test('a migration plan is unchanged by D99, and defaults to the migrated kind', () => {
+  // The whole point of the default: every plan written before this decision
+  // parses identically, and with no `provenance` key at all.
+  const migrated = parse(plan());
+  assert.equal(migrated.enrollments[0].provenance, DEFAULT_PROVENANCE);
+  assert.equal(DEFAULT_PROVENANCE, 'base44_migrated');
+  // And naming it explicitly is the same plan.
+  assert.equal(enrollmentProjectionSha256(parse(withEnrollment({ provenance: 'base44_migrated' }))),
+    enrollmentProjectionSha256(migrated));
+  // With the switch OFF, which is where a migration plan has to keep working.
+  assert.equal(newStaffReleased({}), false);
+});
+
+test('the new kind is refused until the operator turns it on, exactly and untrimmed', () => {
+  refuses(newStaff(), 'ENROLL_NEW_STAFF_RELEASE_PAUSED');
+  for (const value of ['', 'enabled', 'enabled-v2', 'ENABLED-V1', 'enabled-V1',
+    ` ${NEW_STAFF_RELEASE_VALUE}`, `${NEW_STAFF_RELEASE_VALUE} `, 'true', '1']) {
+    refuses(newStaff(), 'ENROLL_NEW_STAFF_RELEASE_PAUSED', { [NEW_STAFF_RELEASE_ENV]: value });
+    assert.equal(newStaffReleased({ [NEW_STAFF_RELEASE_ENV]: value }), false, value);
+  }
+  // And with it on, the same plan is accepted.
+  const admitted = parse(newStaff(), OPEN);
+  assert.equal(admitted.enrollments[0].provenance, 'locally_verified');
+  assert.equal(admitted.enrollments[0].base44_user_id, MINTED);
+});
+
+test('the two id spaces are disjoint, and a plan naming the wrong kind is refused', () => {
+  // A minted id declared as a migration, and an issued id declared as new staff.
+  // Both are refused here and both are refused by the store's own constraint;
+  // this is the half that tells the operator which field is wrong.
+  refuses(withEnrollment({ base44_user_id: MINTED }), 'ENROLL_PROVENANCE_ID_SPACE', OPEN);
+  refuses(newStaff({ base44_user_id: 'a'.repeat(24) }), 'ENROLL_PROVENANCE_ID_SPACE', OPEN);
+  // The prefix is the whole test: one hex digit short of it is still an issued id.
+  refuses(newStaff({ base44_user_id: `fffffff0${'1'.repeat(16)}` }), 'ENROLL_PROVENANCE_ID_SPACE', OPEN);
+  assert.equal(parse(newStaff({ base44_user_id: `${MINTED_PREFIX}${'0'.repeat(16)}` }), OPEN)
+    .enrollments[0].provenance, 'locally_verified');
+});
+
+test('a minted id still has to be an id, and an unknown kind is not a kind', () => {
+  assert.deepEqual([...PROVENANCE_KINDS], ['base44_migrated', 'locally_verified']);
+  for (const kind of ['', 'migrated', 'locally-verified', 'LOCALLY_VERIFIED', null, 1, {}]) {
+    refuses(withEnrollment({ provenance: kind }), 'ENROLL_PROVENANCE_INVALID', OPEN);
+  }
+  // The shape checks the migration kind passes are the ones this kind passes:
+  // still 24 lowercase hex, and still not the platform owner.
+  refuses(newStaff({ base44_user_id: `${MINTED_PREFIX}${'1'.repeat(15)}` }), 'ENROLL_PLAN_INVALID', OPEN);
+  refuses(newStaff({ base44_user_id: `${MINTED_PREFIX.toUpperCase()}${'1'.repeat(16)}` }),
+    'ENROLL_PLAN_INVALID', OPEN);
+});
+
+test('the kind reaches the receipt, so an audit can tell how somebody was admitted', () => {
+  // D99's own addition to the projection, and the assertion has to be made on the
+  // PROJECTION rather than on two parsed plans: a first draft compared a migrated
+  // plan with a minted one, whose ids differ too, so dropping the field from the
+  // projection left that draft passing. The id-space rule is why no pair of plans
+  // can differ in the kind alone — which is exactly what makes the field worth
+  // stating in the receipt, since otherwise a reader has to know the prefix rule
+  // to recover it.
+  const admitted = parse(newStaff(), OPEN);
+  const relabelled = {
+    ...admitted,
+    enrollments: [{ ...admitted.enrollments[0], provenance: 'base44_migrated' }],
+  };
+  assert.notEqual(enrollmentProjectionSha256(admitted), enrollmentProjectionSha256(relabelled));
+  // And the digest is stable for the same kind, so the difference above is the
+  // field and not the object having been rebuilt.
+  assert.equal(enrollmentProjectionSha256(admitted),
+    enrollmentProjectionSha256({ ...admitted, enrollments: [{ ...admitted.enrollments[0] }] }));
+});
+
+test('this tool sends nothing to anybody, which is what the switch is protecting', () => {
+  // D6's property, restated as a check because D99 is the decision that would
+  // have been the moment to break it: admitting new staff is the first reason
+  // this tool would ever have had to invite somebody itself.
+  const source = readFileSync(new URL('./tools-pennsync-enroll.mjs', import.meta.url), 'utf8')
+    .split('\n').filter(line => !line.trimStart().startsWith('*') && !line.trimStart().startsWith('//'))
+    .join('\n');
+  for (const send of ['inviteUserByEmail', 'generateLink', 'signInWithOtp',
+    'resetPasswordForEmail', 'signUp', 'admin.createUser', 'SendEmail', 'sendgrid']) {
+    assert.ok(!source.includes(send), `${send} must not appear in the enrollment tool`);
+  }
+  // And it creates no account: `auth.users` is only ever read.
+  assert.ok(!/insert\s+into\s+auth\./i.test(source), 'the tool must not write auth.users');
 });
