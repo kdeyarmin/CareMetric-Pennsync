@@ -357,9 +357,20 @@ $defaults$;
 -- guard refuses because an uncarried chart is invisible. That is a NARROWING
 -- and it is deliberate — the row it would create is one nobody can ever read,
 -- tenanted here and pointing outside — and it is a create, so the caller is
--- told rather than shown a shorter list. The clinician half is not a narrowing
--- at all: `task_insert` and its siblings already carry D24, so removing this
--- check changes the message and not the outcome.
+-- told rather than shown a shorter list.
+--
+-- THE CARE-TEAM HALF BELOW IS NOT EXERCISED BY ANYTHING IN THIS REPOSITORY,
+-- and that is measured rather than suspected: delete the second `if` outright
+-- and all 28 tests in `contract-operational-tables.test.mjs` still pass. It is
+-- not a narrowing either — `task_insert` and its siblings already carry D24 —
+-- and the reason no test can tell it apart is upstream of the check: a
+-- clinician handed a chart they are not assigned to is refused by the FIRST
+-- `if`, because `patient_read` makes that row invisible to them, so control
+-- never reaches the second. It is kept because the first `if`'s refusal is an
+-- accident of which policy resolves the row rather than a statement about the
+-- care team, and a later widening of `patient_read` would leave the rule
+-- unstated. Do not read its presence as coverage: it is a claim this file
+-- makes, not one this file proves.
 --
 -- WHAT IT DOES NOT DO: it stops a crossed row being CREATED and does not hide
 -- one that already exists. A row carried from Base44 tenanted to agency A and
@@ -380,6 +391,8 @@ begin
   then
     raise exception using errcode='42501', message=p_prefix || '_CHART_FORBIDDEN';
   end if;
+  -- Unreachable today: the check above already refuses every caller who
+  -- cannot see the row. Stated here anyway — see the header.
   if not "pennsync_records".caller_opens_every_chart(p_agency)
     and p_patient_id not in (
       select "pennsync_records".caller_assigned_patients(p_agency))
