@@ -703,6 +703,23 @@ test('a required field the caller supplies is refused when it is absent', async 
         title: 'T', description: 'D' }],
   ];
   for (const [entity, call, table, payload] of cases) {
+    // A FIELD CAN BE REQUIRED AND DECLARE A DEFAULT, which makes the ORDER of
+    // the two checks load-bearing: refuse-then-default would reject an omission
+    // the entity itself fills, which is narrower than the original. Batch C
+    // carries that case (`template_type`); neither entity written here does,
+    // so the ordering is not exercised and asserting it would be theatre. What
+    // is asserted is that the case does not exist, so the day it arrives this
+    // fails rather than the contract quietly refusing a legitimate omission.
+    // Two of batch E's seven entities DO have it -- `ComplianceRule.severity`
+    // and `OCRTrainingSession.status` -- and neither is written by any contract
+    // in this file, which is why it does not bite here.
+    const properties = schemas.get(entity).properties ?? {};
+    const defaulted = (schemas.get(entity).required ?? [])
+      .filter(field => properties[field]?.default !== undefined);
+    assert.deepEqual(defaulted, [],
+      `${entity} now has a required field that declares a default (${defaulted.join(', ')}); `
+      + 'the contract must stamp the default BEFORE screen_required_keys, or it refuses '
+      + 'an omission the entity would have filled');
     // `patient_id` is required by both and is the contract's own parameter,
     // already answered by `screen_chart`, so it is covered structurally.
     const required = (schemas.get(entity).required ?? []).filter(f => f !== 'patient_id');
