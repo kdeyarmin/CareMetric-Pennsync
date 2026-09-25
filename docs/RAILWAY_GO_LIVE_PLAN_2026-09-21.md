@@ -35,8 +35,8 @@ Probed 2026-09-21:
 
 | Probe | Result | Reading |
 | --- | --- | --- |
-| `pennsync-integrations-production.up.railway.app/healthz` | `{"status":"alive","release":"paused","revision":"cffe376…"}` | Deployed and healthy, released to nobody |
-| same host `/readyz` | HTTP 503; `released:false`, `operations:[]`, `authorityMode:"base44"`, `base44ExecutionDependency:true`, `trafficCutoverVerified:false`, `browserReleased:false` | Zero of seven brokered operations enabled; still asks Base44 who the caller is. **Re-read 2026-09-25 by the release thread: `operations: []` and `authorityMode: "base44"` still.** Do not watch `trafficCutoverVerified` for a `true` — it is a literal `false` at `integration-runtime/runtime.mjs:79` and `pennsync-api/runtime.mjs:115`, assigned nothing else anywhere, so it is not a signal |
+| `pennsync-integrations-production.up.railway.app/healthz` | `{"status":"alive","release":"paused","revision":"cffe376…"}` | Deployed and healthy, released to nobody. **Now `release:"enabled"` on `38cb0be` — released 2026-09-25 `08:19:25Z`** |
+| same host `/readyz` | HTTP 503; `released:false`, `operations:[]`, `authorityMode:"base44"`, `base44ExecutionDependency:true`, `trafficCutoverVerified:false`, `browserReleased:false` | Zero of seven brokered operations enabled; still asks Base44 who the caller is. **Re-read 2026-09-25 at `08:23Z`, and this line is now history: HTTP 200, `released:true`, `operations:["InvokeLLM","ExtractDataFromUploadedFile"]`, `authorityMode:"independent"`, `base44ExecutionDependency:false`, browser route still shut — see stage E for the whole body.** Do not watch `trafficCutoverVerified` for a `true` — it is a literal `false` at `integration-runtime/runtime.mjs:79` and `pennsync-api/runtime.mjs:134`, assigned nothing else anywhere, so it is not a signal |
 | `pennsync-api-production.up.railway.app/healthz` | HTTP 404, `Application not found` | The service does not exist. **Created 2026-09-22: HTTP 200, `release:"paused"`, revision `f18b053`. Redeployed 2026-09-25 onto `20c15d8`: still `release:"paused"`, 80 capability names, and an `appId`/`appStated` pair the old revision did not carry — see stage B** |
 | `app.caremetricai.com/` | HTTP 200 | Base44 |
 | `caremetricai.base44.app/` | HTTP 200 | Base44 |
@@ -1443,10 +1443,12 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   read exactly and untrimmed, without which `SendEmail` is not in the brokered
   set at all and both senders answer 503 as before.
 
-  Mail also needs the integration runtime's side, and that is a build rather
-  than a switch: the runtime is unreleased and its operation list is EMPTY, so
-  `SendEmail` has to join `INTEGRATIONS_ALLOWED_OPERATIONS` as well. Whether its
-  SendGrid key is already usable is **not** answerable from `/readyz`:
+  Mail also needs the integration runtime's side. That runtime is now released
+  (2026-09-25 `08:19:25Z`) and its operation list carries the two AI operations
+  and nothing else, so `SendEmail` still has to join
+  `INTEGRATIONS_ALLOWED_OPERATIONS` — it is one name on a list that exists now
+  rather than a list that has to be built. Whether its SendGrid key is usable
+  was **never** answerable from `/readyz`:
   `missingProviders` is `config.operations.filter(...)`, so an empty operation
   list yields an empty answer whatever keys exist, and reading that as "the
   provider is configured" is this page's own recurring defect — an empty answer
@@ -1454,13 +1456,17 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   `api.sendgrid.com/v3/scopes` and check for `mail.send`. **Its gate is the KEY
   being non-empty, not the operation list** (`preflight.mjs:21`): the list only
   decides whether the result counts as `required` and what the not-configured
-  fallback says. So a preflight run answers the provider question **today**,
-  with the operation list still empty and nothing released — see Stage E.
+  fallback says. A preflight run answered the provider question on 2026-09-25
+  and the answer is in Stage E: the key is real and carries `mail.send`. What
+  that does **not** settle — the sender identity, and the account's plan and
+  limits — is recorded there too.
 
   One thing that must be deliberate when `SendEmail` does join that list: it
   must NOT join the browser list. `INTEGRATIONS_ALLOWED_OPERATIONS` is the
-  ceiling for `INTEGRATIONS_BROWSER_OPERATIONS`, which is why an empty service
-  list makes the browser route impossible today rather than merely closed.
+  ceiling for `INTEGRATIONS_BROWSER_OPERATIONS`. The service list is no longer
+  empty, so the browser route is now **closed rather than impossible** — but
+  `SendEmail` is not on it, so for mail specifically the ceiling still makes a
+  browser send impossible, and it must stay that way.
 
   **What the release gate cannot refuse is the reason this exists.**
   `loadConfig` already rejects a name that is not in the registry, a duplicate,
@@ -1651,14 +1657,21 @@ said needed updating pass unchanged, alongside the one that covers the mode:
 The suite sits at the service root, not under `tests/`, which is how a search of
 `tests/` alone reports the mode untested.
 
-**Corrected 2026-09-25: this is a BUILD, not a switch, and the table below was
+**Corrected 2026-09-25: this was a BUILD, not a switch, and the table below was
 missing the variable that matters most.** The release thread read the deployed
 runtime rather than its health line and found `operations: []` with
-`authorityMode: "base44"` — so releasing it would release nothing, and flipping
-the `pennsync-api` side alone would advertise 78 capabilities while the 17 that
-reach this runtime fail on every call. That is this document's own
-healthy-looking-but-false shape, and it is why the AI wave is not one variable
-write.
+`authorityMode: "base44"` — so releasing it would have released nothing, and
+flipping the `pennsync-api` side alone would have advertised 78 capabilities
+while the 17 that reach this runtime failed on every call. That is this
+document's own healthy-looking-but-false shape, and it is why the AI wave was
+not one variable write.
+
+**That build was done the same day and the runtime is live.** On the owner's
+word at `08:14:51Z` the release thread wrote six values in **two calls** and
+released the service at `08:19:25Z`. Everything below this line that reads as
+work still to do is kept as the record of what was decided and why, because the
+reasoning is what a later wave needs; **what it says is left has been done.**
+The readings are at the end of this stage.
 
 **`INTEGRATIONS_ALLOWED_OPERATIONS` decides what this service serves, and this
 page did not name it.** It belongs in the table below and is listed there now.
@@ -1667,22 +1680,76 @@ Two things about it are load-bearing:
 - **It is the only guard on outbound mail anyone here can confirm.**
   `runtime.mjs:69` counts `SendEmail` a missing provider only when the SendGrid
   key or the sender address is absent, and `SENDGRID_API_KEY` and
-  `NOTIFICATION_FROM_EMAIL` are both **present on the service as names**. That
-  is all that has been read: `list-variables` answers with names and
-  `valuesRedacted: true`, so **nobody here has seen either value.** An empty or
-  revoked key would be a second lock — but an unchosen one that nothing
-  observes, so it is not a control and must not be planned around. Treat this
-  variable as the whole guard, set it to exactly the operations the wave needs
-  and nothing else, and do not tell anyone either that a working mail account
-  is in place or that one needs buying until somebody has a reading behind it.
+  `NOTIFICATION_FROM_EMAIL` are both **present on the service as names**. For
+  most of this migration that was all anybody had: `list-variables` answers
+  with names and `valuesRedacted: true`, so **nobody had seen either value**,
+  and an empty or revoked key would have been a second lock — an unchosen one
+  that nothing observes, which is not a control and must not be planned
+  around. Treat this variable as the whole guard and set it to exactly the
+  operations the wave needs and nothing else. That part is unchanged.
 
-  **The counter-example is on this same service.**
-  `INTEGRATIONS_ALLOWED_OPERATIONS` is itself present as a name with an
-  **empty** value — which is exactly why the AI wave is a build rather than a
-  switch. So here, on this service, "the name is set" has already been proved
+  **The value has since been read, and this is what it said.** The release
+  thread took the reading described further down this stage, from the
+  `pennsync-integrations` deploy log on deployment `9ee4913b`, released boot
+  `2026-09-25T08:19:25.039Z`, with the boot before it at `08:18:27.503Z`
+  identical:
+
+  ```
+  "sendgrid":{"status":200,"valid":true,"senderConfigured":true,"required":false}
+  ```
+
+  Read against the code rather than as a rollup, here is exactly what that
+  line establishes. `status` is set nowhere but inside `check()` (`preflight.mjs:10-11`)
+  — the absent-key branch (`:24`) and the thrown-fetch branch (`:12`) both omit
+  it — so a `status` of 200 means the GET of `api.sendgrid.com/v3/scopes`
+  really completed, with a 2xx. On that branch `valid` is
+  `Array.isArray(data.scopes) && data.scopes.includes('mail.send') &&
+  validSender(config.fromEmail)` (`:23`), so `valid: true` is SendGrid's own
+  answer that **the credential is real and carries `mail.send`**, plus a local
+  parse of the sender address. Note that `valid` already ANDs in
+  `validSender`, so `senderConfigured: true` beside it is implied and adds
+  nothing here — that field only carries information when `valid` is **false**,
+  where it splits the key from the address. And `required: false` is
+  `needsEmail`, i.e. `SendEmail` is off the operation list, which is exactly
+  the state in which the report's `passed` is vacuous; the reading was taken
+  from `checks.sendgrid` and not from `passed`, which is the correct way round.
+
+  **This page used to end that first bullet by saying nobody should be told
+  either that a working mail account was in place or that one needed buying
+  until somebody had a reading behind it. That instruction is now discharged,
+  and narrowly.** Somebody does have a reading. It says a real credential
+  exists and is permitted to send, so **nothing needs buying in order to
+  attempt a first send** — but read what `/v3/scopes` actually returns before
+  taking it further than that. It returns **the API key's scopes**. It does not
+  report the account's plan, its monthly sending allowance, or its standing, so
+  "we do not need to buy mail" is an inference and not the measurement. Two
+  loose ends sit beside the good news, and neither is exotic:
+
+  - **The sender identity is unverified as far as anything here knows.**
+    `validSender` is a regular expression in this repository
+    (`runtime.mjs:60-62`), and whether SendGrid has approved the specific
+    address we would send *as* is a separate setting on their side that
+    nothing in this codebase reads. It is a normal reason a first send bounces.
+  - **The plan and the limits are unmeasured.** A key can carry `mail.send` on
+    an account that is at its cap, throttled, or suspended. Nothing read so far
+    distinguishes those from a healthy account.
+
+  Neither is a reason to delay anything, and neither is settled by the probe;
+  they are what to check first when a send is actually attempted. And the good
+  news moves nothing on its own: `SendEmail` is still
+  off `INTEGRATIONS_ALLOWED_OPERATIONS`, `PENNSYNC_API_DELIVERY` is still
+  unset, `OWNER_HELD` still keeps both account-email names out of every value
+  the ladder emits, and sending to real people is still the owner's to say.
+  A measurement removed a *question*, not a *hold*.
+
+  **The counter-example was on this same service.**
+  `INTEGRATIONS_ALLOWED_OPERATIONS` was itself present as a name with an
+  **empty** value — which is exactly why the AI wave was a build rather than a
+  switch. So here, on this service, "the name is set" had already been proved
   not to mean "the value is usable". This page said the mail credentials were
   set and drew a conclusion that only their values could support; that is the
-  same one-representation mistake, two paragraphs apart.
+  same one-representation mistake, two paragraphs apart. (That variable now
+  carries the two AI operations; `SendEmail` is still not among them.)
 
   **Two readings that look like evidence about provider keys and are not.**
   `missingProviders` filters `config.operations` (`runtime.mjs:67`), so it is
@@ -1700,7 +1767,9 @@ Two things about it are load-bearing:
   two AI operations caps the browser at those two as well, even if somebody
   later sets both browser variables.
 
-**What is left is five variables on the Railway runtime, set together:**
+**What was left was five variables on the Railway runtime, set together — all
+five written at `08:17Z` on 2026-09-25, in one call, with the release flag
+following as a second:**
 
 | Variable | Value | Where it comes from |
 | --- | --- | --- |
@@ -1729,27 +1798,50 @@ which is why Stage B's passage says "the moment `PENNSYNC_API_RELEASE` is set".
 Both passages are correct as written; do not carry either condition across to
 the other service when editing one.
 
-Safe to do now: the runtime is released to nobody (`INTEGRATIONS_RELEASE` unset),
-so the change alters readiness and nothing else, and removing
-`INTEGRATIONS_AUTHORITY_MODE` reverts to the Base44 default. **That safety is
-about the four authority variables, not about the operation list** — adding an
-operation to `INTEGRATIONS_ALLOWED_OPERATIONS` is what makes the service able to
-do the thing, and for `SendEmail` the provider behind it may well be live.
+Why that was safe to do, and why the split into two calls was not tidiness:
+the runtime was released to nobody (`INTEGRATIONS_RELEASE` unset), so the
+config write altered readiness and nothing else, and removing
+`INTEGRATIONS_AUTHORITY_MODE` reverts to the Base44 default. `loadConfig`
+**throws** on a partial set rather than reporting itself unready, so the call
+that can take the service down ran while nothing was released, and the release
+flag — a plain string equality that cannot throw — went second. Keep that
+ordering for any future config change here. **The safety was about the four
+authority variables, not about the operation list** — adding an operation to
+`INTEGRATIONS_ALLOWED_OPERATIONS` is what makes the service able to do the
+thing, and for `SendEmail` the provider behind it is in fact live, as the
+reading above now shows.
 
-**That last question is answerable, and this page said it was not.**
-`INTEGRATIONS_PREFLIGHT=read-only` makes the service run `runPreflight` at
-startup and print the report (`server.mjs:36-38`). It calls
+**That last question was answerable, this page said it was not, and it has
+now been answered.** `INTEGRATIONS_PREFLIGHT=read-only` makes the service run
+`runPreflight` at startup and print the report (`server.mjs:36-38`). It calls
 `api.sendgrid.com/v3/scopes` whenever `config.sendgridKey` is non-empty —
 **the operation list does not gate it** (`preflight.mjs:21`) — and reports
 whether the key carries `mail.send` and whether `NOTIFICATION_FROM_EMAIL`
 parses. It does the same for the Anthropic key against `/v1/models`, including
-whether the configured model exists (`preflight.mjs:17-19`). The report carries
-the calls it makes are a GET of `/v3/scopes` and a GET of
-`/v1/models`, and **no message is sent**, so this
-answers the mail question without touching the owner's hold and without
-releasing anything. It is still a variable write on a service this thread does
-not own, so it waits on the owner's words like every other write — but it is a
-READING that can be taken, not a fact that is out of reach.
+whether the configured model exists (`preflight.mjs:17-19`). Besides those two
+GETs it probes our own project — the storage bucket, one `fileGet` RPC with a
+zero id, and the authority RPC — and **sends no message at all**, so it answers
+the mail question without touching the owner's hold and without releasing
+anything.
+
+**It ran on 2026-09-25 at `08:19:25.039Z`, and the SendGrid answer is in the
+bullet above.** The paragraph that used to stand here called this a reading
+that *could* be taken. What is worth keeping from that is not the answer but
+the shape of the mistake: this page had called the question unreachable while
+the code that answers it was already deployed and printing to a log every time
+the service booted. Not a wrong reading — never looking for one.
+
+**One check here is a real control and not just a report**, and it is the
+reading behind any claim that anonymous access to the owned store is refused.
+With `authorityMode: independent` the preflight POSTs the fixed authority RPC
+carrying the **publishable key alone**, and `valid` is
+`[401, 403].includes(response.status)` — so a *successful* anonymous call
+fails the preflight. The code says why in its own comment: a call that
+succeeded on the publishable key would mean the caller's own token is not what
+authorizes. Note that `checks.authority.required` is `needsAuthority`, so
+unlike the two provider checks this one **does** count toward `passed` in
+independent mode — `passed` is vacuous about the providers while the operation
+list is empty, not vacuous about everything.
 
 **Read `checks.sendgrid`, and do not read `passed`.** The rollup is
 `every(check => check.required === false || check.valid === true)`, and
@@ -1819,6 +1911,79 @@ to be the proof, and do not let a green readiness line stand in for it.
 transport still unreleased — `/readyz` reporting `authorityMode: "independent"`
 and `base44ExecutionDependency: false`. Read it from the probe, not from the
 deploy's own report.
+
+**Met on 2026-09-25 at `08:19:25Z`. These are the readings.** Taken by the
+release thread as an unauthenticated HTTPS GET, with no Railway tool involved,
+and read independently by the ladder thread at `08:23Z` field for field.
+`/readyz`, whole body:
+
+```json
+{"ready":true,"released":true,"configured":true,
+ "operations":["InvokeLLM","ExtractDataFromUploadedFile"],
+ "missingProviders":[],"authorityMode":"independent",
+ "base44ExecutionDependency":false,"trafficCutoverVerified":false,
+ "revision":"38cb0bea4637a0339a19c75a1c15a450181c3165",
+ "browserContract":"cm.integrations.v2","browserRevisionBound":true,
+ "browserReleased":false,"browserOperations":[],"browserReady":false}
+```
+
+The exit condition is the `authorityMode` and `base44ExecutionDependency` pair,
+and it is met. Four further notes, each of which is a reading and not a
+reassurance:
+
+- **The browser route is shut, and by both conditions.** `browserReleased:
+  false` and `browserOperations: []` mean neither half of `app.mjs:44` is
+  satisfied. Because `runtime.mjs:19-20` makes `operations` a ceiling on
+  `browserOperations`, the two AI names now cap the browser at those two even
+  if somebody later sets both browser variables — which is the ceiling this
+  stage described, now with a non-empty list under it.
+- **`missingProviders: []` is a real answer here for the first time.** It
+  filters `config.operations`, so it was vacuous while that list was empty;
+  with two AI operations on it, the empty result means the Anthropic key and
+  model are present. It still says nothing about `SendEmail`, which is not on
+  the list.
+- **`trafficCutoverVerified: false` is not a measurement** and must not be
+  cited either way. It is a hardcoded literal in both services
+  (`integration-runtime/runtime.mjs:79`, `pennsync-api/runtime.mjs:134`), like
+  the preflight's `paidCalls`, `writes` and `base44FunctionCalls`.
+- **`revision` is `38cb0be`, which was `main`'s tip when the write happened,
+  not a commit anybody chose.** That is the coupling this document records
+  elsewhere: a variable change is a deploy and it rebuilds from the tip. It
+  cost nothing here because that commit changed no service code, but check the
+  diff before the next write rather than after it.
+
+**The startup preflight from the same boot** — deployment
+`9ee4913b-4aac-4860-8f44-a19eedae0b0c`, read out of the Railway deploy log:
+
+```json
+{"anthropic":{"status":200,"valid":true,"model":"claude-sonnet-4-6","hasMore":false,"required":true},
+ "sendgrid":{"status":200,"valid":true,"senderConfigured":true,"required":false},
+ "storage":{"status":200,"valid":true},
+ "stateRpc":{"valid":true},
+ "authority":{"status":401,"valid":true,"anonymousDenied":true,"required":true},
+ "resultEncryption":{"valid":true},
+ "identityHashing":{"valid":true}}
+```
+
+**The `401` IS the pass**, and it is worth saying plainly because a status of
+401 in a log reads like a failure: the check requires 401 or 403, because a
+successful anonymous call would mean the caller's own token is not what
+authorizes. So it proves the RPC exists and that anonymous is refused. It does
+**not** prove a real session succeeds — no login exists for that round trip
+(§4), so **the first real call is the proof**, exactly as the readiness note
+above says.
+
+**One thing cannot be read back on this service, and the asymmetry is worth
+knowing.** This stage says the app id is the value that fails silently: the
+production id is in `ALLOWED_APPS`, so stating it boots and reports ready and
+is then refused by every authorization call. `pennsync-api` publishes `appId`
+and `appStated` on its own `/readyz` for exactly that reason, and its comment
+says so. **The integration runtime's `publicReadiness` publishes neither**
+(`runtime.mjs:66-84`) — so on this service the binding is unobservable from
+outside, and the staging id was written deliberately rather than confirmed
+afterwards. If this ever needs checking rather than trusting, publishing the
+pair here is the change to make; until then, treat the value as written-not-
+verified and do not report it as measured.
 
 ### Stage F — Production Supabase project (size S to provision; owner approves cost)
 
