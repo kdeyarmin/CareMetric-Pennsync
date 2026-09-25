@@ -79,7 +79,12 @@ const SCREEN_ADMIN_CODES = Object.freeze([
 const SCREEN_CHART_CODES = Object.freeze([
   ...SCREEN_COMMON, 'PENNSYNC_SCREEN_SUBJECT_INVALID', 'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE']);
 const SCREEN_WRITE_CODES = Object.freeze([
-  ...SCREEN_CHART_CODES, 'PENNSYNC_SCREEN_PAYLOAD_INVALID', 'PENNSYNC_SCREEN_FIELD_NOT_WRITABLE']);
+  ...SCREEN_CHART_CODES, 'PENNSYNC_SCREEN_PAYLOAD_INVALID', 'PENNSYNC_SCREEN_FIELD_NOT_WRITABLE',
+  // An unknown key and a missing required one are two different refusals: the
+  // first is a field the caller may not write, the second a field the entity
+  // says it must. Collapsing them would tell a screen "not writable" about a
+  // column it owns.
+  'PENNSYNC_SCREEN_FIELD_REQUIRED']);
 
 /**
  * One entry per ported capability. `params` is the exact argument set the

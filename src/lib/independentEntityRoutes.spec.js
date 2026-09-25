@@ -408,7 +408,11 @@ describe("what batch E's routes take on trust", () => {
     // and the migration is not.
     const suite = readFileSync('services/authority-store/tests/contract-screen-records.test.mjs', 'utf8');
     for (const code of ['PENNSYNC_SCREEN_FIELD_NOT_WRITABLE', 'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE',
-      'PENNSYNC_SCREEN_NOT_YOUR_ROWS', 'PENNSYNC_SCREEN_PREFERENCE_NOT_OWNED']) {
+      'PENNSYNC_SCREEN_NOT_YOUR_ROWS', 'PENNSYNC_SCREEN_PREFERENCE_NOT_OWNED',
+      // A required field the store's own columns do not enforce: nullable
+      // everywhere, so nothing but this refusal stands between an incomplete
+      // write and a junk row that answered `success: true`.
+      'PENNSYNC_SCREEN_FIELD_REQUIRED']) {
       expect(suite, `${code} must be exercised by the contract suite`).toContain(code);
     }
   });

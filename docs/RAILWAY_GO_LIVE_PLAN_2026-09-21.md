@@ -2741,29 +2741,20 @@ reported 36. Run properly — each site's own arguments put through the route's
 asked for more rows than its ceiling. A declaration is not a success, and the
 only way to tell them apart is to run the call.
 
-Measured after batch E, on `main` at #294 plus this change:
+Measured on `main` after #291:
 
-> entity routes: 26 declared, 38/242 landable call sites SERVED, 204 still to
+> entity routes: 5 declared, 12/242 landable call sites SERVED, 230 still to
 > adopt — 30 of those are sites a declared route REFUSES (`User.list:sort`),
-> and 5 pass arguments this cannot read — 3 route(s) are declared but UNPROVED
-> — of those 204, across 35 entities: a wider generic family could serve 1
-> reads and 0 writes above D16's ceiling; 203 need a named capability
+> and 1 pass arguments this cannot read — of those 230, across 40 entities: a
+> wider generic family could serve 16 reads and 0 writes above D16's ceiling;
+> 214 need a named capability
 
-**So 38 of 445 call sites reach the owned store today**, up from 12 after #291:
-batch A's seven reference reads and batch E's nine screen reads. The 30 refused
-ones are still the more useful number for planning than the 204: they are
-screens where the route exists and the *screen* has to change, which is
-per-screen work rather than per-entity work.
-
-**Three of the 26 declarations are UNPROVED, which is a third state and not a
-softer "served".** Batch A's third disposition reports a route whose call sites
-all pass a whole variable rather than failing the build over it, because
-"cannot prove this serves" and "does not serve" are different states and
-collapsing them turned a fixed count into blocked wiring. Batch E's three
-writes are the first users of it. They are never counted as adopted, and what
-checks them instead is the contract's own refusal suite against the real
-migration — `independentEntityRoutes.spec.js` asserts the three are reported
-unproved AND that each refusal they lean on is exercised there.
+**So 12 of 445 call sites reach the owned store today.** The 30 refused ones
+are the more useful number for planning than the 230: they are screens where
+the route exists and the *screen* has to change, which is per-screen work
+rather than per-entity work. The single site whose arguments the tool cannot
+read counts as unserved, because a gate that guessed would be back to counting
+declarations.
 
 **The ceiling on avoiding the remaining work is measured, and the write half is
 zero.** The obvious alternative to writing a capability per entity is to widen
@@ -2775,19 +2766,14 @@ or reaches tenancy through a clinical entity. It passes no manifest exemption,
 deliberately: those exist only for entities already dispositioned `broker`, and
 granting one here would be the tool inventing the decision it is measuring.
 
-- **1 read site, across 1 entity.** This was 16 across 5 before batch A served
-  those entities; it is the one of these figures that MOVES, and it is measured
-  over whatever is left rather than being a property of the product.
+- **16 read sites, across 5 entities** — `MedicareComplianceRule` (8),
+  `Physician` (3), `DocumentTemplate` (2), `VisitPointConfig` (2),
+  `OnCallShift` (1).
 - **0 write sites. None at all.**
 
-**The zero is the figure that decides anything, and it is structural rather
-than measured.** Re-derived 2026-09-25 over the whole tree rather than over the
-remainder: `brokerWritable` is true for **none of the 253 entity schemas**, and
-**none** of the entities the frontend calls at all clears D16's ceiling and is
-writable. So it is not "the writable ones happen to be routed already" and it
-cannot move as the remainder shrinks — no generic family can serve a write in
-this product, because no entity schema plainly permits every write. Widening
-the generic family avoids the named-capability work for not one write. The per-entity
+**The zero is the figure that decides anything**: no entity behind the
+remaining call sites plainly permits every write, so widening the generic
+family avoids the named-capability work for not one write. The per-entity
 contracts are not an expensive approach chosen over a cheap one that was
 available. What is left is roughly forty entities' worth of named contracts and
 handlers — the same shape as the 80 already built — rather than one design

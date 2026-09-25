@@ -5,7 +5,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE } from '../../../tools-entity-schema-plan.mjs';
+import { RECORD_MIGRATION_FILE, readSchemas } from '../../../tools-entity-schema-plan.mjs';
 import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
 import { POLICY_SQL_FILES } from '../../../tools-read-purpose-policy.mjs';
 
@@ -369,10 +369,58 @@ test('a preference row somebody else wrote is refused, not silently left alone',
   assert.equal(rows[0].digest_mode, 'daily');
 });
 
+test('a required field the caller supplies is refused when it is absent', async () => {
+  // The generated record store leaves every column NULLABLE, so a missing
+  // required field does not fail the insert -- it writes a junk row and answers
+  // `success: true`. Base44 enforced these at the platform, so the refusal is
+  // what keeps the port from being WIDER than the original.
+  //
+  // The list is read out of each entity's own `required` array rather than
+  // typed here, so a field added upstream fails this suite instead of becoming
+  // silently optional.
+  const schemas = new Map(readSchemas(repository));
+  const cases = [
+    ['SentEducationMaterial', SEND, 'sent_education_material',
+      { material_id: 'mat-x', material_title: 'T', personalized_content: 'body' }],
+    ['PatientRecommendation', PUSH, 'patient_recommendation',
+      { source_type: 'oasis_analysis', recommendation_type: 'compliance',
+        title: 'T', description: 'D' }],
+  ];
+  for (const [entity, call, table, payload] of cases) {
+    // `patient_id` is required by both and is the contract's own parameter,
+    // already answered by `screen_chart`, so it is covered structurally.
+    const required = (schemas.get(entity).required ?? []).filter(f => f !== 'patient_id');
+    assert.ok(required.length > 0, `${entity} declares no required field to check`);
+    for (const field of required) {
+      assert.ok(field in payload,
+        `${entity} requires ${field}; this case does not send it, so nothing proves it`);
+      const without = { ...payload };
+      delete without[field];
+      await refusal(write(CLINICIAN_A, call, [A, 'patient-a1', JSON.stringify(without)]),
+        'PENNSYNC_SCREEN_FIELD_REQUIRED');
+      await refusal(write(CLINICIAN_A, call,
+        [A, 'patient-a1', JSON.stringify({ ...payload, [field]: null })]),
+        'PENNSYNC_SCREEN_FIELD_REQUIRED');
+    }
+    // The same payload complete is accepted, so the refusals above are the
+    // missing field rather than anything else about the request.
+    const answer = await write(CLINICIAN_A, call, [A, 'patient-a1', JSON.stringify(payload)]);
+    assert.equal(answer.success, true, `${entity} refuses a complete payload`);
+    await db.query(`delete from pennsync_records.${table} where id = $1`, [answer.id]);
+  }
+  // And the place it is deliberately NOT stricter: JSON Schema's `required` is
+  // satisfied by an empty string, so refusing one here would be a narrowing
+  // invented in the contract rather than the original's behaviour.
+  const blank = await write(CLINICIAN_A, SEND, [A, 'patient-a1', JSON.stringify({
+    material_id: 'mat-x', personalized_content: '' })]);
+  assert.equal(blank.success, true, 'an empty string is present, which is what required means');
+  await db.query('delete from pennsync_records.sent_education_material where id = $1', [blank.id]);
+});
+
 test('the helpers are the record owner\'s, and no caller role may ask them', async () => {
   for (const fn of ['screen_agency_held(text)', 'screen_chart(text,text)',
     'screen_agency_admin(text)', 'screen_agency_admin_required(text)',
-    'screen_exact_keys(jsonb,text[])']) {
+    'screen_exact_keys(jsonb,text[])', 'screen_required_keys(jsonb,text[])']) {
     const { rows } = await db.query(
       `select has_function_privilege('authenticated', 'pennsync_records.${fn}', 'execute') as ok`);
     assert.equal(rows[0].ok, false, `${fn} must not be callable by a caller role`);

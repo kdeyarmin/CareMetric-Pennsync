@@ -96,6 +96,28 @@
 -- sends one, and a caller-supplied subject name in a row the chart already
 -- identifies is a second copy that can disagree with the chart. It is derived
 -- from the chart the contract just authorized.
+--
+-- **They also refuse a required field that is ABSENT, which is a second check
+-- and not the same one.** `screen_exact_keys` refuses an unknown key and does
+-- not require a known one, and the generated record store leaves every entity
+-- column NULLABLE -- so without this a send with no content or a
+-- recommendation with no title INSERTS, answers `success: true`, and is junk
+-- nobody is told about. Base44 enforced these at the platform, so omitting the
+-- check would have WIDENED both capabilities. The lists live in
+-- `screen_required_keys` calls and the test derives them from each entity's own
+-- `required` array, so a field added upstream fails the suite rather than
+-- becoming silently optional.
+--
+-- **One pass this file owes the reader, because the absence of a predicate
+-- reads as a missing check.** Every one of the seven store policies was read
+-- for a shared or cross-agency disjunct, and NONE has one: `clinical_event`,
+-- `patient_recommendation` and `sent_education_material` are chart-scoped
+-- through `patient_id`; `ocr_feedback` and `ocr_training_session` are
+-- `agency_id in caller_agencies()`; `notification_preference` is
+-- `user_email = caller_email()` on all four commands; and `compliance_rule` has
+-- one read policy, `caller_identified()`, and no write policy at all. So no
+-- contract here carries a tenant predicate the policies already enforce, and
+-- none of them is hiding a row the policy would have granted.
 begin;
 
 do $$
@@ -237,6 +259,38 @@ begin
     end if;
   end loop;
 end $keys$;
+/*
+ * A REQUIRED key is refused when it is absent, and that is a different check
+ * from the one above.
+ *
+ * `screen_exact_keys` refuses an unknown key and does not require a known one
+ * -- D76's own lesson about `exactObject`, arriving here in SQL. The generated
+ * record store leaves every entity column NULLABLE, so an insert missing a
+ * field the Base44 entity declares `required` SUCCEEDS and writes a junk row:
+ * an education send with no content, a recommendation with no title. Nothing
+ * in an authorization suite can see that, because nothing was refused.
+ *
+ * So the two write contracts below name the required fields their caller
+ * supplies, and `contract-screen-records.test.mjs` reads that list out of each
+ * entity's own `required` array rather than trusting this one.
+ *
+ * Present and NOT NULL is the whole rule, deliberately: JSON Schema's
+ * `required` is satisfied by an empty string, so refusing one here would be a
+ * narrowing invented in this file rather than the original's behaviour. A
+ * required field the CONTRACT supplies -- `patient_id` from its own parameter,
+ * `user_email` from `caller_email()` -- is covered structurally and is not in
+ * any list here.
+ */
+create function "pennsync_records".screen_required_keys(p_payload jsonb, p_required text[])
+  returns void language plpgsql immutable parallel safe set search_path = '' as $required$
+declare v_key text;
+begin
+  foreach v_key in array p_required loop
+    if p_payload->v_key is null or jsonb_typeof(p_payload->v_key) = 'null' then
+      raise exception using errcode='22023', message='PENNSYNC_SCREEN_FIELD_REQUIRED';
+    end if;
+  end loop;
+end $required$;
 
 /*
  * A chart's clinical events, for the timeline a nurse reads.
@@ -492,6 +546,10 @@ begin
   perform "pennsync_records".screen_chart(p_agency, p_patient_id);
   perform "pennsync_records".screen_exact_keys(p_material, array[
     'material_id', 'material_title', 'personalized_content', 'delivery_method', 'notes']);
+  -- `patient_id` is the third of the entity's required fields and arrives as a
+  -- parameter, already checked by `screen_chart`.
+  perform "pennsync_records".screen_required_keys(p_material, array[
+    'material_id', 'personalized_content']);
   select nullif(pg_catalog.btrim(pg_catalog.concat_ws(' ',
     p."first_name", p."last_name")), '') into v_name
   from "pennsync_records"."patient" p
@@ -542,6 +600,9 @@ begin
     'source_type', 'source_id', 'recommendation_type', 'title', 'description',
     'priority', 'ai_rationale', 'expected_impact', 'implementation_steps',
     'suggested_by_user', 'expires_at']);
+  -- `patient_id` is the fifth required field and is the contract's parameter.
+  perform "pennsync_records".screen_required_keys(p_recommendation, array[
+    'source_type', 'recommendation_type', 'title', 'description']);
   v_id := pg_catalog.substr(pg_catalog.md5(pg_catalog.gen_random_uuid()::text), 1, 24);
   insert into "pennsync_records"."patient_recommendation" (
     "source_app_id", "id", "created_date", "created_by", "patient_id",
@@ -725,7 +786,8 @@ revoke all on function "pennsync_records".screen_agency_held(text),
   "pennsync_records".screen_agency_admin_required(text),
   "pennsync_records".screen_chart(text,text),
   "pennsync_records".screen_limit(integer,integer),
-  "pennsync_records".screen_exact_keys(jsonb,text[])
+  "pennsync_records".screen_exact_keys(jsonb,text[]),
+  "pennsync_records".screen_required_keys(jsonb,text[])
   from public, anon, authenticated, service_role;
 
 revoke all on function
