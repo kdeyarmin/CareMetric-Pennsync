@@ -323,14 +323,25 @@ test("the registry's integration flag and the tree's reach name the same handler
     [...integrationDependents(REPOSITORY)].sort());
 });
 
-test('the two paused email capabilities are honestly read-only today', () => {
-  // Not an aspiration: they destructure no `integration`, so they cannot call
-  // the runtime, and the assertion above is what will make a release say so.
+test('the two email capabilities moved to the integration wave when they gained a send', () => {
+  // This assertion is the INVERSE of the one it replaces, and the inversion is
+  // the point of the cross-check above. While the send was paused both were
+  // honestly read-only: they destructured no `integration` and could not call
+  // the runtime. D97 serves the send, so both take it and both carry the flag,
+  // and the ladder must place them where a sender belongs — otherwise a wave
+  // whose whole promise is that nothing in it sends would hand an operator two
+  // outbound senders. The pause did not move them; taking the capability did.
   const reach = integrationReach(REPOSITORY);
-  const wave = checkLadder(REPOSITORY).waves.find(entry => entry.name === 'read-only');
+  const waves = checkLadder(REPOSITORY).waves;
+  const readOnly = waves.find(entry => entry.name === 'read-only');
+  const integration = waves.find(entry => entry.name === 'integration');
   for (const name of ['sendAccountReadyEmail', 'sendWelcomeEmail']) {
-    assert.equal(reach.has(name), false, name);
-    assert.ok(wave.handlers.includes(name), `${name} is in the read-only wave`);
+    assert.equal(reach.has(name), true, name);
+    assert.equal(readOnly.handlers.includes(name), false, `${name} left the read-only wave`);
+    assert.ok(integration.handlers.includes(name), `${name} is in the integration wave`);
+    // And the move changes nothing an operator can paste: what keeps these two
+    // out of a released value is the emitter, which is a separate guarantee.
+    assert.ok(integration.withheld.includes(name), `${name} is still withheld`);
   }
 });
 
@@ -663,7 +674,7 @@ test('the held names are real handlers, so the hold protects something', () => {
   }
 });
 
-test('no wave emits a held name, and the read-only wave is where they sit', () => {
+test('no wave emits a held name, and the hold follows them between waves', () => {
   const ladder = checkLadder(REPOSITORY);
   for (const wave of ladder.waves) {
     for (const name of heldNames) {
@@ -671,12 +682,19 @@ test('no wave emits a held name, and the read-only wave is where they sit', () =
         `wave ${wave.name} emits ${name}`);
     }
   }
-  // Membership is unchanged: the derivation is right that they are read-only
-  // today, and the hold is orthogonal to where the tree puts them.
-  const readOnly = ladder.waves.find(wave => wave.name === 'read-only');
-  assert.deepEqual([...readOnly.withheld].sort(), heldNames);
-  assert.equal(readOnly.functions.split(',').length, readOnly.handlers.length - heldNames.length);
-  for (const name of heldNames) assert.ok(readOnly.handlers.includes(name));
+  // The hold is orthogonal to where the tree puts them, and D97 proved it by
+  // moving them: both were read-only while the send was paused and are in the
+  // integration wave now that it is served. So this finds the wave that HOLDS
+  // them rather than naming one — a test that named `read-only` would have gone
+  // red on the move and read as a hold failing, which is the wrong alarm.
+  const holder = ladder.waves.find(wave => wave.withheld.length);
+  assert.ok(holder, 'no wave holds the held names at all');
+  assert.deepEqual([...holder.withheld].sort(), heldNames);
+  assert.equal(holder.functions.split(',').length, holder.handlers.length - heldNames.length);
+  for (const name of heldNames) assert.ok(holder.handlers.includes(name));
+  // And exactly one wave holds them, so a name cannot be withheld twice or the
+  // cumulative subtraction would be counted against the wrong slice.
+  assert.equal(ladder.waves.filter(wave => wave.withheld.length).length, 1);
 });
 
 test('every cumulative value excludes the held names, not just their own wave', () => {
