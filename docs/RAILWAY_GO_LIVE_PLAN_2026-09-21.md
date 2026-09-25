@@ -212,14 +212,26 @@ written.
    `PENNSYNC_API_RELEASE` and `PENNSYNC_API_FUNCTIONS` are the flip and they
    are the owner's, and the owner gave that line on 2026-09-25.
 
-   **Waves 1 to 3 are live. Measured by the redeploy thread at 2026-09-25
-   05:43Z**, in its words: the service reports `release: enabled` with eight
-   operations serving — patient list and read, patient create and update, and
-   the four visit ones — still bound to the staging app id, and the same commit
-   ran through all three waves, so nothing shifted underneath them. Waves 4, 5
-   and 6 are untouched, and **wave 4 stays out of every value**, because it
-   carries the two account-email names and releasing those is a separate owner
-   decision (§4).
+   **Waves 1 to 3 are live. Measured by the redeploy thread, 2026-09-25**, and
+   these are its readings rather than a summary of them:
+
+   ```
+   /healthz  release: enabled
+   /readyz   ready: true   released: true   implemented: 80
+             appId: 6a9881683dc68a0bd54f1ef7   appStated: true
+             operations: listAuthorizedPatients, getAuthorizedPatient,
+                         createAuthorizedPatient, updateAuthorizedPatient,
+                         listAuthorizedVisits, getAuthorizedVisit,
+                         createAuthorizedVisit, updateAuthorizedVisit
+   ```
+
+   The waves went **2 → 4 → 8 operations, one at a time, with the service
+   re-read after each** — which is the shape to repeat, because it is what
+   makes a bad wave attributable to the wave that caused it. `appStated: true`
+   beside the staging id is the binding check this document spent two stages
+   asking for, answered at last from outside. Waves 4, 5 and 6 are untouched,
+   and **wave 4 stays out of every value**, because it carries the two
+   account-email names and releasing those is a separate owner decision (§4).
 
    That is a dated reading and not a standing fact: release state is the one
    thing on this page that can change without any commit, so **read it off
@@ -892,12 +904,21 @@ want served:
 
 1. Merge to `main` as usual. This does not deploy **by itself**, and see the
    next paragraph for why that is not the same as "cannot reach the service".
-2. Repoint the service's source commit to the `main` commit you want served —
-   which should be one that `hosted-store` has measured green on `main`, since
-   a green run is evidence about the repository and the service is what serves.
-3. Redeploy, and re-read `/readyz` yourself: the `revision`, the implemented
-   name count, and the `appId`/`appStated` pair. Do not take the deploying
-   agent's report for it; this stage has been wrong that way once already.
+2. **Repoint the source with `connect-service-source`, naming the commit.**
+   This is the step that builds. Pick a `main` commit that `hosted-store` has
+   measured green on `main`, since a green run is evidence about the repository
+   and the service is what serves.
+3. Re-read `/readyz` yourself: the `revision`, the implemented name count, and
+   the `appId`/`appStated` pair. Do not take the deploying agent's report for
+   it; this stage has been wrong that way once already.
+
+**`redeploy` is not the step that updates it, and that trap cost a run.**
+Measured by the redeploy thread: `redeploy` **reuses the existing build**, so
+against a pinned source it rebuilds the pinned commit and changes nothing. In
+its words, "pushes to main were never going to deploy it and `redeploy` reuses
+the existing build, so the briefed operation would not have done the job.
+`connect-service-source` with a commitSha is what builds a new one." Brief the
+repoint, not the redeploy.
 
 **The pin does NOT hold across a variable change, and that is the correction
 this subsection most needs.** Measured by the redeploy thread at 2026-09-25
@@ -920,23 +941,58 @@ Two consequences, and the second is the one that bites:
   one: **do not move `main` while a release is in progress**, and treat a green
   `main` at the moment of each variable change as a prerequisite of that wave.
 
-**A visible consequence, and how to read it.** The service's RECORDED commit
-and the commit it is actually RUNNING now disagree, because the wave-1 variable
-write rebuilt from the tip of `main`. It was harmless on 2026-09-25 — the two
-commits are identical in the part that gets built, and the redeploy thread
-re-read the service to confirm it — but it means the pin field no longer
-answers "what is this service running". Read `/readyz`'s `revision` for that,
-and expect it to differ from the source pin after any variable change.
+**The worst thing a variable write can ship is a migration that has not been
+applied**, and the ladder thread named it from outside on 2026-09-25 05:48Z: "a
+variable change is also a deploy, so before the next wave I'll check what's
+sitting on main first, because a migration merged but not yet applied to the
+database would get shipped into a service that expects it." That is the
+combination this document has spent two decisions on arriving at once — D93
+says merging a migration does not apply it, and the pin finding says a variable
+write deploys `main` — so a wave set while an unapplied migration sits on
+`main` puts code in front of a store that does not carry its schema.
 
-**One consequence is an INFERENCE and is recorded as one, not as a
-measurement.** Undoing a wave means removing both release variables, which is
-itself a variable change. If a variable change rebuilds from `main`'s tip —
-which is what was measured — then a rollback would presumably do the same, and
-could ship whatever has merged since. **Nobody has tested a rollback**, so this
-is reasoning from the measured behaviour rather than an observation of it.
-Either way the standing step is the same and holds for any variable write,
-including a rollback: **check what `main`'s tip builds before touching a
-variable**, because the tip is what you will get.
+**The check for it already exists and needs no building.** D93 keeps `main` RED
+until an operator applies a merged migration, and applying is the owner's
+(`tools-pennsync-migrate.mjs --apply`, §4). So the standing step before ANY
+variable write is two readings, not one:
+
+1. **`hosted-store` green on `main`, with the "Measure the hosted staging
+   store" step EXECUTED** and `skipped 0`. A run where that step is skipped and
+   "Exercise the suite without a hosted target" ran instead is the PR-run
+   stand-down: it is green and it says nothing about the store.
+2. **The `services/pennsync-api` diff** between the running revision and
+   `main`'s tip, since the tip is what the write will build.
+
+**A visible consequence, and how to read it.** The service's RECORDED commit
+and the commit it is actually RUNNING disagree: the config still reads
+`commitSha: 20c15d8f` while the running revision is `0e262b34`, `main`'s head,
+because `set-variables` redeploys and that redeploy re-resolved the branch. It
+was harmless here — the redeploy thread checked that `services/pennsync-api`,
+the whole build context, is **byte-identical across `20c15d8f`, `13821b7a` and
+`0e262b34`** — but the rule it leaves behind is general and worth quoting: "the
+config's commitSha is not what runs; `/readyz`'s `revision` is, and a merge
+reaches this service on the next variable change whoever makes it." So read the
+running revision off `/readyz`, and expect it to differ from the source pin
+after any variable write.
+
+**Rollback, and two INFERENCES recorded as inferences rather than as
+measurements.** The measured part is the procedure: a rollback is **both
+release variables removed, plus a source reconnect to `f18b0531` if the commit
+matters.**
+
+What is inferred, because **nobody has tested a rollback**:
+
+- Removing both variables is itself a variable change, so it would presumably
+  rebuild from `main`'s tip and could ship whatever has merged since.
+- Therefore **do the reconnect AFTER removing the variables**, not before: a
+  variable change made after a reconnect would re-resolve to `main`'s tip and
+  undo it.
+
+Both follow from the measured behaviour rather than from an observation of a
+rollback, and they are the order to follow until somebody tests one. Either way
+the standing step is the same and holds for any variable write, a rollback
+included: **check what `main`'s tip builds before touching a variable**,
+because the tip is what you will get.
 
 **How to tell which model a service is on.** Read the service's source: in the
 same Railway project, `PennTrain`'s carries **no** `commitSha` and follows
