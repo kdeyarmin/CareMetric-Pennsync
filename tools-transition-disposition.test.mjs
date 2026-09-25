@@ -1323,27 +1323,32 @@ test('nothing in the queue is startable and unwritten', async () => {
   // only caller: the family serves the entities whose own schema plainly
   // permits a read, which is a disposition rather than a capability.
   //
-  // The seven reference reads (D101) and the fourteen clinical library,
-  // patient education and per-agency configuration capabilities after them are
-  // the same kind of thing for the same reason, and they are why this list
-  // needs stating rather than deriving. The SPA called
-  // `base44.entities.Physician.list(...)` and the rest straight through the
-  // platform SDK, so there is no Base44 function to be the port of — what was
-  // ported is the CALL, and what it succeeds is each entity's own `rls` block
-  // rather than a module. The queue measures `base44/functions`, so it can
-  // never count them and their absence from it is not a gap — which is exactly
-  // why they are enumerated here, where a name arriving without a reviewed
-  // contract has to come past this list.
+  // The seven reference reads (D101), the fourteen clinical library, patient
+  // education and per-agency configuration capabilities after them, and the
+  // fourteen over the operational tables after those are the same kind of
+  // thing for the same reason, and they are why this list needs stating rather
+  // than deriving. The SPA called `base44.entities.Physician.list(...)` and the
+  // rest straight through the platform SDK, so there is no Base44 function to
+  // be the port of — what was ported is the CALL, and what it succeeds is each
+  // entity's own `rls` block rather than a module. The queue measures
+  // `base44/functions`, so it can never count them and their absence from it is
+  // not a gap — which is exactly why they are enumerated here, where a name
+  // arriving without a reviewed contract has to come past this list.
   assert.deepEqual([...shipped].filter(name => !report.port_blockers.none.includes(name)).sort(),
-    ['getAgencyRosterMember', 'listAgencyRoster', 'listBrokeredRecords',
-      'listClinicalLibraryFolders', 'listClinicalLibraryTemplates', 'listClinicalPathways',
-      'listCustomValidationRules', 'listDocumentTemplates', 'listEducationMaterials',
-      'listLibraryDocuments', 'listMedicareComplianceRules', 'listMedicareGuidelines',
-      'listOnCallShifts', 'listPatientEducationAssignments', 'listPhysicians',
-      'listVisitPointConfigs', 'manageClinicalLibraryFolder',
-      'manageClinicalLibraryTemplate', 'manageClinicalPathway',
-      'manageCustomValidationRule', 'manageEducationMaterial',
-      'managePatientEducationAssignment', 'readAiConfiguration', 'saveAiConfiguration']);
+    ['createAgencyTask', 'createNoteConversion', 'deletePdfTemplate',
+      'getAgencyRosterMember', 'getAgencySettings', 'listAgencyRoster',
+      'listAgencyTasks', 'listBrokeredRecords', 'listCarePlans',
+      'listClinicalLibraryFolders', 'listClinicalLibraryTemplates',
+      'listClinicalPathways', 'listCustomValidationRules', 'listDocumentTemplates',
+      'listEducationMaterials', 'listFaceToFaceEncounters', 'listLibraryDocuments',
+      'listMedicareComplianceRules', 'listMedicareGuidelines', 'listNoteConversions',
+      'listOnCallShifts', 'listPatientDocumentRecords', 'listPatientEducationAssignments',
+      'listPdfTemplates', 'listPhysicians', 'listVisitPointConfigs',
+      'manageClinicalLibraryFolder', 'manageClinicalLibraryTemplate',
+      'manageClinicalPathway', 'manageCustomValidationRule', 'manageEducationMaterial',
+      'managePatientEducationAssignment', 'readAiConfiguration', 'saveAgencySettings',
+      'saveAiConfiguration', 'saveCarePlan', 'saveFaceToFaceEncounter',
+      'savePdfTemplate']);
 });
 
 test('a function call is only a reason to wait while the callee is unported', () => {
