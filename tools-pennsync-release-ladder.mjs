@@ -20,7 +20,7 @@
  *
  * So this derives, per handler name: the contracts it reaches, the migrations
  * that define them, whether any of them WRITES, and whether the handler needs
- * the integration runtime (which is deployed and paused). From that it builds
+ * the integration runtime. From that it builds
  * the ladder and emits each wave's `PENNSYNC_API_FUNCTIONS` value, so the
  * operator copies a value the repository has checked rather than typing one.
  *
@@ -30,7 +30,14 @@
  * `tools-entity-schema-plan.mjs`: a declared name that is not a handler, or
  * that is declared twice, or a mutating handler declared into a read wave,
  * fails the run. "The rest by blast radius" is DERIVED rather than typed —
- * read-only first, then mutating, then the ones that need the paused runtime.
+ * read-only first, then mutating, then the ones that need that runtime.
+ *
+ * What it does NOT do is state the runtime's condition from a constant. It was
+ * "deployed and paused" here in four places until 2026-09-25, when the service
+ * was released and began serving both AI operations and every one of them went
+ * silently false — a literal that reads like a measurement, which is the defect
+ * this repository keeps finding. A wave now says what it REQUIRES, and
+ * `--integration-deployment <https://host>` measures whether that holds.
  *
  * Whether a handler needs the runtime is the REGISTRY's answer, because
  * `/readyz` is decided from the same flag — but it is crossed against what the
@@ -87,11 +94,40 @@ export const DECLARED_WAVES = Object.freeze([
   }),
 ]);
 
+const INTEGRATIONS_MODULE = 'integrations.mjs';
+
+/**
+ * What an integration wave requires that runtime to be SERVING, read out of the
+ * business API's own allowlist rather than typed here — the same reason the
+ * wave's membership is derived from the registry instead of listed.
+ *
+ * `BROKERED_OPERATIONS` is D56's ratchet and is the UNCONDITIONAL set.
+ * `DELIVERY_OPERATIONS` is deliberately not included: mail has a switch of its
+ * own (`PENNSYNC_API_DELIVERY`), so requiring it would make every integration
+ * release wait on a decision about something else, and the two held send names
+ * are out of every value anyway.
+ *
+ * Refuses rather than defaulting to an empty set, because an empty requirement
+ * makes `integrationRuntimeHolds` vacuously true — a gate that reports a wave
+ * safe against a runtime it did not actually ask about.
+ */
+export function brokeredOperationsRequired(root) {
+  const file = `${SERVICE}/${INTEGRATIONS_MODULE}`;
+  const source = read(resolve(root, SERVICE, INTEGRATIONS_MODULE))
+    .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '');
+  const found = /export const BROKERED_OPERATIONS\s*=\s*Object\.freeze\(\[([^\]]*)\]\)/.exec(source);
+  if (!found) refuse('LADDER_BROKERED_OPERATIONS_UNREADABLE', { file });
+  const names = [...found[1].matchAll(/'([^']+)'|"([^"]+)"/g)].map(match => match[1] ?? match[2]);
+  if (!names.length) refuse('LADDER_BROKERED_OPERATIONS_EMPTY', { file });
+  return Object.freeze(names);
+}
+
 /** The derived tail of the ladder, in the order "by blast radius" resolves to. */
 export const DERIVED_WAVES = Object.freeze([
-  Object.freeze({ name: 'read-only', reason: 'reaches no contract that writes, and no paused runtime.' }),
+  Object.freeze({ name: 'read-only', reason: 'reaches no contract that writes, and no separate runtime.' }),
   Object.freeze({ name: 'mutating', reason: 'writes through a contract. No dependency beyond the store.' }),
-  Object.freeze({ name: 'integration', reason: 'reaches the integration runtime, which is deployed and paused.' }),
+  Object.freeze({ name: 'integration', reason: 'reaches the integration runtime, which must therefore be'
+    + ' released and serving the brokered operations.' }),
 ]);
 
 /**
@@ -857,7 +893,7 @@ export function releaseDelta(names, readiness, wave) {
  * error — a first draft that accepted 200 alone refused every service this is
  * for.
  */
-export async function probeDeployment(target, fetchImpl = fetch) {
+async function fetchReadyz(target, fetchImpl) {
   let base;
   try { base = new URL(target); } catch { base = null; }
   // A path is refused rather than normalised away: `new URL('/readyz', base)`
@@ -873,12 +909,90 @@ export async function probeDeployment(target, fetchImpl = fetch) {
   } catch (failure) {
     refuse('LADDER_DEPLOYMENT_UNREACHABLE', { url, reason: failure?.message ?? 'fetch failed' });
   }
+  // A 503 body is read, not discarded: a paused or unready service answers 503
+  // and its body is exactly what the caller needs.
   if (response.status !== 200 && response.status !== 503) {
     refuse('LADDER_DEPLOYMENT_UNREACHABLE', { url, status: response.status });
   }
   let payload;
   try { payload = await response.json(); } catch { refuse('LADDER_DEPLOYMENT_UNREADABLE', { source: url, keys: null }); }
+  return { payload, url };
+}
+
+export async function probeDeployment(target, fetchImpl = fetch) {
+  const { payload, url } = await fetchReadyz(target, fetchImpl);
   return readinessOf(payload, url);
+}
+
+/**
+ * The integration runtime's readiness, which is a DIFFERENT contract from the
+ * business API's. It publishes no `implemented`, no `authorityConfigured` and
+ * no `integrationsConfigured`, so `readinessOf` refuses its body outright —
+ * and that is the right outcome rather than something to relax: reading one
+ * service's answer under the other's contract is how a reading gets attributed
+ * to the wrong service. Fails CLOSED on anything it does not recognise.
+ */
+export function runtimeReadinessOf(payload, source) {
+  const strings = value => Array.isArray(value) && value.every(entry => typeof entry === 'string');
+  const keys = payload && typeof payload === 'object' ? Object.keys(payload) : null;
+  // The business API's body satisfies `operations`, `released`, `ready` and
+  // `revision` too, so a first draft of this accepted it and reported 61
+  // handler names as "the runtime is serving" — the wrong service's answer
+  // under this label, which is the defect the comment above claims to avoid,
+  // in the check written to avoid it. Found by pointing the flag at the other
+  // host rather than by reading. So the runtime is identified POSITIVELY by
+  // fields only `publicReadiness` emits, and the other service's marker is
+  // refused BY NAME with a code that says which host was probed.
+  if (keys && Object.prototype.hasOwnProperty.call(payload, 'implemented')) {
+    refuse('LADDER_RUNTIME_IS_THE_BUSINESS_API', { source });
+  }
+  if (!payload || typeof payload !== 'object'
+    || !strings(payload.operations)
+    || !strings(payload.browserOperations)
+    || !strings(payload.missingProviders)
+    || typeof payload.configured !== 'boolean'
+    || typeof payload.released !== 'boolean'
+    || typeof payload.ready !== 'boolean'
+    || typeof payload.revision !== 'string') {
+    refuse('LADDER_RUNTIME_UNREADABLE', { source, keys });
+  }
+  return Object.freeze({
+    revision: payload.revision,
+    operations: Object.freeze([...payload.operations]),
+    missingProviders: Object.freeze([...payload.missingProviders]),
+    configured: payload.configured,
+    released: payload.released,
+    ready: payload.ready,
+  });
+}
+
+export async function probeIntegrationRuntime(target, fetchImpl = fetch) {
+  const { payload, url } = await fetchReadyz(target, fetchImpl);
+  return runtimeReadinessOf(payload, url);
+}
+
+/**
+ * Why an integration wave does not hold against that runtime, as a list of
+ * reasons — empty means it holds. `ready` is asked as well as `released`
+ * because the runtime's own readiness additionally wants a non-empty
+ * operations list, so a release flag alone leaves it released and serving
+ * nothing, which from outside looks like a broken deployment.
+ */
+export function integrationRuntimeHolds(required, runtime) {
+  const problems = [];
+  if (!runtime.configured) problems.push('it is not configured');
+  if (!runtime.released) problems.push('it is not released');
+  const missing = required.filter(operation => !runtime.operations.includes(operation));
+  if (missing.length) problems.push(`it is not serving ${missing.join(', ')}`);
+  // Named separately from `ready`, which is the AND of all of these: a bare
+  // "not ready" sends an operator looking at the release flag when the real
+  // answer is an empty provider key. `missingProviders` answers only for the
+  // operations IN that service's list, so it is reported for the ones this
+  // wave requires and nothing is inferred about any other.
+  const unserviceable = required.filter(operation => runtime.missingProviders.includes(operation));
+  if (unserviceable.length) problems.push(`its provider config is incomplete for ${unserviceable.join(', ')}`);
+  if (!runtime.ready && !problems.length) problems.push('it reports not ready for a reason this check does not name');
+  return Object.freeze(problems);
 }
 
 /**
@@ -947,7 +1061,51 @@ async function main(argv, root, write) {
     for (const migration of cumulativeValue(ladder, found).migrations) {
       write(`#   ${migration}  ->  version '${ledgerVersion(migration)}'`);
     }
-    if (found.needsIntegration) write('# needs the integration runtime, which is deployed and paused.');
+    const required = brokeredOperationsRequired(root);
+    if (found.needsIntegration) {
+      write(`# needs the integration runtime, serving ${required.join(' and ')}`
+        + ` (read from ${SERVICE}/${INTEGRATIONS_MODULE}).`);
+    }
+    const runtimeFlag = argv.indexOf('--integration-deployment');
+    if (runtimeFlag >= 0) {
+      // Refused rather than ignored on a wave that needs nothing from it: a
+      // check that cannot apply must not print as though it passed.
+      if (!found.needsIntegration) {
+        write(`# --integration-deployment does not apply to wave ${found.name}: it needs no runtime.`);
+        return 1;
+      }
+      const runtime = await probeIntegrationRuntime(argv[runtimeFlag + 1]);
+      const problems = integrationRuntimeHolds(required, runtime);
+      write(`# integration runtime revision ${runtime.revision},`
+        + ` configured ${runtime.configured}, release ${runtime.released ? 'open' : 'paused'},`
+        + ` ready ${runtime.ready},`
+        + ` serving ${runtime.operations.length ? runtime.operations.join(', ') : 'nothing'}`);
+      // Printed with its reach said out loud, because an empty answer over an
+      // empty list means nothing and the same field over a populated one means
+      // the provider config is present for those operations.
+      write(`# missingProviders ${runtime.missingProviders.length ? runtime.missingProviders.join(', ') : '[]'}`
+        + `, which answers only for the ${runtime.operations.length} operation(s) it serves`);
+      if (problems.length) {
+        write(`# DO NOT SET THIS VALUE YET: ${problems.join(', and ')}.`);
+        write('# releasing these names would advertise capability that service cannot answer.');
+        return 1;
+      }
+      // What this gate proves is bounded, and saying so is the point: the
+      // runtime's readiness is a SHAPE check over its configuration
+      // (`configured && released && operations.length && !missingProviders`),
+      // so two states read ready and refuse every authorization call — an
+      // explicitly PRODUCTION `INTEGRATIONS_APP_ID` in independent mode, which
+      // `ALLOWED_APPS` admits and the owned store's staging pin then refuses,
+      // and an authority publishable key that is shape-valid but revoked. That
+      // service publishes no app id, so nothing here can read either one, and a
+      // gate implying otherwise would be the literal it replaced.
+      write('# the runtime is released and serving what this wave needs.'
+        + ' That is NOT proof it can answer: its readiness asks the shape of its'
+        + ' configuration, and it publishes no app id, so a production binding or'
+        + ' a revoked authority key reads ready here and refuses every call.');
+      write('# to close that, read its boot log with INTEGRATIONS_PREFLIGHT=read-only,'
+        + ' whose authority probe is a POST that must be REFUSED (401/403 is the pass).');
+    }
     const target = argv[argv.indexOf('--deployment') + 1];
     if (argv.includes('--deployment')) {
       return reportDelta(names, await probeDeployment(target), found, write);
