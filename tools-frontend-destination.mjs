@@ -62,8 +62,11 @@ export const AUDITED_ENTITIES = Object.freeze(['SecurityLog', 'SystemLog', 'User
  */
 export const DESTINATIONS = Object.freeze([
   'record_store', 'broker_family', 'activity_trail',
-  'no_table', 'broker_is_read_only', 'no_realtime_seam', 'export_archive_only', 'undeclared',
+  'no_table', 'broker_is_read_only', 'global_reference_is_read_only',
+  'no_realtime_seam', 'export_archive_only', 'undeclared',
 ]);
+/** Where the tenant decisions say which entities are D83 reference data. */
+export const TENANT_DECISION_FILE = 'tools-tenant-decision.json';
 /** The destinations that mean a call site has somewhere to go. */
 export const SERVED = Object.freeze(['record_store', 'broker_family', 'activity_trail']);
 
@@ -101,6 +104,30 @@ export function destinationFor(disposition, operation) {
   }
 }
 
+/**
+ * A write to a D83 GLOBAL reference table has no destination either, and this
+ * is the second reading of the same kind as the broker split above: the entity
+ * is `port`, the table exists, and the call still cannot land.
+ *
+ * D83 says a `global` reference table is written by migration and never at run
+ * time, and the store implements that — all eight have one read policy and
+ * grant no caller role anything, which the suite reads out of the emitted SQL
+ * rather than taking on trust. **The refusal is the GRANT, not the policy**:
+ * `authenticated` never reaches a policy on these tables, so the error is
+ * `permission denied for table`. That distinction is not cosmetic, because a
+ * definer contract owned by the record owner COULD write them — "no write
+ * path" is a decision D83 takes, not a wall the schema builds, so if D83 is
+ * ever revisited these five sites become servable without a schema change.
+ *
+ * Until then, counting them as landable says the store can take a write it
+ * refuses, which is exactly the overstatement this tool exists to prevent.
+ */
+export function refineGlobalReference(destination, operation, isGlobalReference) {
+  return destination === 'record_store' && isGlobalReference
+    && classifyOperation(operation) === 'write'
+    ? 'global_reference_is_read_only' : destination;
+}
+
 /** The trail is a successor for a RETIRED LOG table and for nothing else. */
 export function refineRetired(destination, entity) {
   return destination === 'export_archive_only' && AUDITED_ENTITIES.includes(entity)
@@ -110,6 +137,10 @@ export function refineRetired(destination, entity) {
 export function measureDestinations(repository) {
   const manifest = JSON.parse(readFileSync(join(repository, MANIFEST_FILE), 'utf8'));
   const entities = manifest.entities || {};
+  const decisions = JSON.parse(readFileSync(join(repository, TENANT_DECISION_FILE), 'utf8'));
+  const globalReference = new Set(Object.entries(decisions.entities || {})
+    .filter(([, decision]) => (decision && decision.kind) === 'global')
+    .map(([entity]) => entity));
   const sites = [];
   const undeclared = new Set();
   for (const file of sourceFiles(join(repository, 'src'))) {
@@ -133,7 +164,10 @@ export function measureDestinations(repository) {
         operation,
         disposition,
         destination: disposition
-          ? refineRetired(destinationFor(disposition, operation), entity) : 'undeclared',
+          ? refineGlobalReference(
+            refineRetired(destinationFor(disposition, operation), entity),
+            operation, globalReference.has(entity))
+          : 'undeclared',
       });
     }
   }

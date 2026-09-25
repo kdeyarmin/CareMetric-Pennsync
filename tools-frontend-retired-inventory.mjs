@@ -47,6 +47,9 @@ export const PAGE_FILE = 'docs/FRONTEND_RETIRED_DOMAIN_INVENTORY.md';
 export const OUTCOMES = Object.freeze({
   no_table: 'no table in the owned store — the domain moves to the Hub (D8) or stays paused (D7)',
   broker_is_read_only: 'the broker family serves this entity read-only, so the write has no destination',
+  global_reference_is_read_only:
+    'D83 reference data: the table is written by migration and grants no caller role anything, '
+    + 'so the write is refused by the GRANT rather than by a policy',
   no_realtime_seam: 'the owned store has no realtime seam, so a subscription has nowhere to attach',
   export_archive_only: 'retired to the export archive, which no screen reads',
   undeclared: 'no disposition at all — this is a gap, not a decision',

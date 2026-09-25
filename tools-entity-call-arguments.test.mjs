@@ -4,7 +4,8 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
-  UNKNOWN_VALUE, argumentText, callArguments, evaluateArgument, limitConstants, splitArguments,
+  IDENTIFIER_POSITIONS, UNKNOWN_VALUE, argumentText, callArguments, evaluateArgument,
+  isIdentifierPosition, limitConstants, splitArguments,
 } from './tools-entity-call-arguments.mjs';
 
 const repository = resolve(dirname(fileURLToPath(import.meta.url)));
@@ -88,4 +89,42 @@ test('every call site the ratchet counts is read here too', async () => {
   // failure: most writes pass a whole object built at run time.
   assert.ok(calls.some(call => call.arguments !== null));
   assert.ok(calls.some(call => call.arguments === null));
+});
+
+/**
+ * The narrow exception to the rule above, and the reason it is narrow.
+ *
+ * `Entity.update(recordId, fields)` was wholly unreadable because of its first
+ * argument, which hid the payload beside it — the route reads `fields`, and the
+ * id is a value the store resolves. But the top-level arguments of a READ are a
+ * sort and a limit, which are shape, so the exception is keyed on the operation
+ * AND the position rather than on "a scalar".
+ */
+test('a row id stands in for itself; a sort or a limit still does not', () => {
+  assert.equal(isIdentifierPosition('update', 0), true);
+  assert.equal(isIdentifierPosition('update', 1), false, 'the payload is read, never assumed');
+  assert.equal(isIdentifierPosition('delete', 0), true);
+  assert.equal(isIdentifierPosition('get', 0), true);
+  // The counter-case: nothing about a read is in the table, so `list(sortVar)`
+  // and `filter(query, sortVar, limitVar)` stay unreadable.
+  for (const operation of ['list', 'filter', 'create', 'bulkCreate']) {
+    assert.deepEqual(IDENTIFIER_POSITIONS[operation], undefined, operation);
+    assert.equal(isIdentifierPosition(operation, 0), false, operation);
+  }
+});
+
+test('the id exception really is what makes those sites readable', () => {
+  const calls = callArguments(repository);
+  const updates = calls.filter(call => call.operation === 'update' && call.arguments !== null);
+  assert.ok(updates.length > 0, 'no update is readable, so the exception did not fire');
+  // Every readable update passes the placeholder as its id, which is the only
+  // shape this change admits: a literal id at a call site would be a surprise.
+  for (const call of updates) {
+    assert.equal(call.arguments[0], UNKNOWN_VALUE, `${call.file} ${call.entity}.update`);
+  }
+  // And a read whose sort is computed is still unreadable, measured rather than
+  // asserted from the table: `Timesheets.jsx` passes literals, so find a real
+  // one instead of claiming none exists.
+  assert.ok(calls.some(call => call.operation === 'filter' && call.arguments === null),
+    'every filter is readable, which would mean the exception leaked into reads');
 });

@@ -2700,14 +2700,29 @@ their entity dispositions — `pnpm run check:frontend-destination`, added
 
 | | Call sites | |
 | --- | ---: | --- |
-| `record_store` | 232 | a table exists |
+| `record_store` | 227 | a table exists |
 | `broker_family` | 7 | the generic family serves that read |
 | `activity_trail` | 3 | D25's successor |
-| **has somewhere to land** | **242** | |
+| **has somewhere to land** | **237** | |
 | `no_table` | 193 | `hub` (119) and `preserved_paused` (74) — no table here at all |
 | `broker_is_read_only` | 9 | a write to an entity the family serves readonly |
+| `global_reference_is_read_only` | 5 | a write to a D83 reference table nothing may write |
 | `no_realtime_seam` | 1 | `subscribe`, which the owned store has nowhere to put |
-| **cannot land** | **203** | |
+| **cannot land** | **208** | |
+
+The last row arrived on 2026-09-25 and is the same shape as the broker split one
+line above it, found from the other end while porting those very entities. Five
+sites — `ComplianceRule.create`/`.update`, `MedicareComplianceRule.create`/
+`.update` and `MedicareGuideline.update` — are `port` over tables that exist and
+still cannot land, because D83 says a `global` reference table is written by
+migration and never at run time, and the store implements it. **The refusal is
+the GRANT, not the policy**: all eight of those tables grant no caller role
+anything, so `authenticated` never reaches a policy and the error is `permission
+denied for table`. Which matters, because a definer contract owned by the record
+owner *could* write them — "no write path" is a decision D83 takes, not a wall
+the schema builds, so if that decision is revisited these five become servable
+with no schema change. The tool reads those grants out of the emitted SQL rather
+than trusting D83's word, and fails if one appears.
 
 **"Has somewhere to land" is NOT "is ready to move", and reading it as the
 second sizes this stage at a fraction of itself.** The checker says so in its
@@ -2741,15 +2756,25 @@ Measured on `main` after #294:
 > wider generic family could serve 1 reads and 0 writes above D16's ceiling;
 > 212 need a named capability
 
-**As of #294 on `main`: 29 of the 242 call sites that have somewhere to land
+And after #300, which is the current reading:
+
+> entity routes: 14 declared, 29/237 landable call sites SERVED, 208 still to
+> adopt — 30 of those are sites a declared route REFUSES (`User.list:sort`),
+> and 2 pass arguments this cannot read — of those 208, across 38 entities: a
+> wider generic family could serve 1 reads and 0 writes above D16's ceiling;
+> 207 need a named capability
+
+**As of #300 on `main`: 29 of the 237 call sites that have somewhere to land
 are served, out of 445 entity call sites in the app.** Both denominators are
 real and they are different populations — 445 is every entity call the frontend
-makes, 242 is the subset with a table behind it — so a served figure quoted
+makes, 237 is the subset with a table behind it — so a served figure quoted
 without saying which one it is over is the same label error this page warns
-about above. 30 of the remaining 213 are sites a declared route REFUSES: the
-route exists and the *screen* has to change, which is per-screen work rather
-than per-entity work, and that is the more useful number for planning than the
-213. Sites whose arguments the tool cannot read count as unserved, because a
+about above. **The smaller denominator moved on its own**: 242 became 237 when
+D83's five global-reference writes stopped being counted as landable, so the
+reading above is a record of #294 and this is the current one. 30 of the
+remaining 208 are sites a declared route REFUSES: the route exists and the
+*screen* has to change, which is per-screen work rather than per-entity work,
+and that is the more useful number for planning than the 208. Sites whose arguments the tool cannot read count as unserved, because a
 gate that guessed would be back to counting declarations.
 
 **The gate has three states, and the third one is why the batches can work at
@@ -2764,6 +2789,19 @@ call site is unreadable is declared, permitted, and reported in
 `unproved_routes` — never counted as adopted, and printed, because an unproven
 route nobody can see is how a declaration comes to read as coverage again.
 Landed in #294.
+
+**Two smaller properties of the same gate, both of them corrections.** A served
+site is removed from the remainder as a MULTISET rather than once per file and
+operation, because one file can call the same operation twice with only one of
+them served — the per-key answer standing in for a per-call one, one layer out
+in the arithmetic, which made the buckets sum short and failed the gate's own
+test (#297; latent until a route existed over such a key). And a row id passed
+as a variable is READABLE while a sort or a limit is not: `update(recordId,
+fields)` was wholly unmeasurable on account of its first argument, which hid the
+payload beside it, and the id's value decides nothing a route can be wrong
+about. Keyed on the operation and the position — `get`, `update`, `delete` at 0
+and nothing else — because a read's top-level arguments really are shape. That
+is why the readable write surface is **31 sites rather than 7** (#300).
 
 **The ceiling on avoiding the remaining work is measured, and the write half is
 zero.** The obvious alternative to writing a capability per entity is to widen
@@ -2801,7 +2839,8 @@ about 33 hollowed-out pages — comes from a filename scan rather than that tool
 with 2 of 49 components having no importer found, so treat the first pair as
 measured and the second as indicative.
 
-**203 of 445 — 46% — reach a domain the migration has decided not to carry.**
+**208 of 445 — 47% — reach a domain the migration has decided not to carry**
+(203 when that paragraph was written; the five D83 writes above joined them).
 119 of them are the training domain, whose destination is the Hub; 75 are
 `preserved_paused`. Each needs a product answer about what the feature becomes,
 not an edit somebody has not got to yet, so a plan that sizes this stage by the
