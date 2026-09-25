@@ -1535,13 +1535,40 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
 
   One thing had to be deliberate when `SendEmail` joined that list, and it was:
   it must NOT join the browser list. `INTEGRATIONS_ALLOWED_OPERATIONS` is the
-  ceiling for `INTEGRATIONS_BROWSER_OPERATIONS`, and once `SendEmail` is on the
-  service list the ceiling no longer makes a browser send impossible — it only
-  makes it *unreleased*. Measured after the write, `browserOperations` is `[]`
-  and `browserReleased` is false, so the browser route is closed by both
-  variables and not by the ceiling. It must stay that way, and the protection
-  is now weaker than it was, because what used to be structurally impossible is
-  now one variable away.
+  ceiling for `INTEGRATIONS_BROWSER_OPERATIONS` (`runtime.mjs:19-20`), and what
+  that ceiling did while `SendEmail` was off the service list is sharper than
+  "refuse the request": putting the name on the browser list would have thrown
+  `INVALID_BROWSER_OPERATION_CONFIGURATION` at module load, so **the container
+  would not have booted at all**. A write aimed entirely at the service side
+  removed that. Measured after it, `browserOperations` is `[]` and
+  `browserReleased` is false, so the browser route is shut — and it must stay
+  that way.
+
+  **Count what actually changed, because the first version of this paragraph
+  got it wrong and the error pointed the wrong way.** It said the route was
+  "one variable away". It is two. `app.mjs:44` refuses a browser request if
+  **either** `browserReleased` is not exactly `enabled-v2` **or**
+  `browserOperations` is empty, and `app.mjs:64` checks the operation against
+  that list again at dispatch. So opening a browser send needs both
+  `INTEGRATIONS_BROWSER_RELEASE` and `INTEGRATIONS_BROWSER_OPERATIONS` changed,
+  and two independent settings still stand. What went from three conditions to
+  two is the COUNT. What changed in KIND is the thing to carry: **a structural
+  refusal became a configuration setting.** One of the three used to make
+  another unsettable, and now none does. Do not write this as a lock count — a
+  reader who sees "one lock left" goes looking for a second to add, and there
+  are already two.
+
+  The structural refusal is restorable in code, as an exclusion beside
+  `runtime.mjs:19` keeping `SendEmail` off the browser list whatever the
+  service list holds. That is a narrowing and safe by disposition. As of
+  2026-09-25 it is **restorable and unrestored** — not planned, not scheduled —
+  and the file belongs to the thread that owns that service.
+
+  And the general form, which is not about `SendEmail`: the service list is the
+  browser ceiling for **every** operation, so any widening of
+  `INTEGRATIONS_ALLOWED_OPERATIONS` widens the browser ceiling for the name it
+  adds. That has always been true here; this is the first time it cost
+  something.
 
   **What the release gate cannot refuse is the reason this exists.**
   `loadConfig` already rejects a name that is not in the registry, a duplicate,
