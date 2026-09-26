@@ -8020,3 +8020,93 @@ was not re-read as the new rule was being applied twenty lines away. A rule
 adopted at one site and skipped at its sibling is the normal failure, not a
 careless one, and the remedy is mechanical: list the siblings, state the
 disposition of each, and put the list in the change rather than in your head.
+
+## D128 — A conflict's location tells you which hunks two sides both touched, never what is in the base
+
+*2026-09-26.*
+
+**The rule.** A merge conflict reports that two branches changed overlapping
+lines. It reports nothing about what a third change put in the base. So
+"my entry did not conflict, therefore it is not in `main` yet" and its mirror
+"their entry conflicted, therefore mine has not landed" are both invalid,
+whatever answer they happen to give. The base is read, not inferred, and
+`git show origin/main:<path>` reads it in one command with no branch checked
+out and nothing merged.
+
+**The instance.** Two pull requests were in flight over
+`docs/BASE44_EXIT_DECISIONS_2026-09-19.md` on the night of 2026-09-26: this
+thread's, carrying D113, D120 and D121, and another carrying D115. A third,
+#316, had already merged and put its own D115 into `main`. The second thread
+then hit a conflict on D115 and none on D120 or D121, and that was read as
+evidence that the first thread's change had not merged yet.
+
+It had not. The conclusion was true.
+
+It was also unsupported by the thing offered for it. D115 conflicted because
+that branch's D115 met #316's D115 in the base, which happens whether or not
+D113, D120 and D121 are in the file; D120 and D121 append at a different point
+and merge cleanly either way. The same reasoning, applied the next time that
+hunk conflicts, returns the same answer and is wrong.
+
+**Why it is worth a number rather than a note.** An invalid inference that
+produces the wrong answer corrects itself: something downstream fails and
+somebody goes looking. An invalid inference that produces the RIGHT answer is
+never revisited — it is filed as a thing that worked, and the reasoning is
+reused. That is the combination that survives, and it is why a right answer is
+not evidence about the instrument that produced it (D119, from the other
+direction: there, an instrument that read nothing still printed the right
+figure). Judge the derivation, and judge it hardest when the answer is the one
+you expected.
+
+**How to apply.** Ask what is in the base by reading the base. Where a resolution
+needs to prove it kept both sides, prove it by what it did NOT lose — a removed
+line count of zero, or the other side's entry compared byte for byte against
+`git show origin/main:<path>` — rather than by reading over what it kept, which
+is the same measurement the union readings settled on tonight.
+
+## D129 — A behavioural sweep's argument values are part of its population
+
+*2026-09-26.*
+
+**The rule.** A sweep that calls every capability to see which ones work is
+only as complete as the arguments it calls them with. A capability that refuses
+early — on a missing order, an absent subject, an unrecognised scope — never
+reaches the rest of its body, and from outside that is indistinguishable from
+one that ran to the end. So the values are not test scaffolding. They are half
+of what the sweep measures, and a sweep that does not say which capabilities it
+actually drove to completion is reporting on a population it has not described.
+
+**Why this is not just "execute it and see".** Executing beats reading, and
+that much was already settled: `services/authority-store/tests/service-rpc-signatures.test.mjs`
+resolves all 152 public wrappers against `pg_proc` by name and by parameter
+name, and `pennsync_records.operational_limit` still shipped calling
+`pg_catalog.least`, which is not a function in any PostgreSQL because `LEAST`
+is an SQL construct that cannot be schema-qualified. A plpgsql body does not
+resolve names at creation, so it applied cleanly and seven capabilities refused
+every non-null limit with every suite green.
+
+But an executing sweep fails the SAME silent way when its values stop short.
+
+**The evidence.** Thirty-seven public wrappers take `p_limit`. Swept as an
+`agency_admin` who holds the agency, with `p_limit = 25` and null elsewhere,
+**five** came back `42883 undefined_function`. Seven reach `operational_limit`.
+The two missing were `contract_task_list` and `contract_care_plan_list`, which
+refuse first with `PENNSYNC_TASK_ORDER_INVALID` and
+`PENNSYNC_CARE_PLAN_ORDER_INVALID` under a null order — so a 29% under-report,
+announced as nothing, in a sweep whose whole purpose was to find these. Supply
+`p_order = 'created_date'` for both, derived from the migration that declares
+the accepted values, and all seven appear.
+
+Four of the thirty-seven still do not reach their body and are not argument
+debt: `pennsync_records_list` needs a brokered entity the sweep does not name,
+and the three `pennsync_staging_*` reads are bound to an app id this store does
+not admit. That is the difference between 37 and the 33 measured elsewhere, and
+naming it keeps two predicates from reading as a disagreement.
+
+**How to apply.** Declare each capability as one that ANSWERS under stated
+arguments, or as one PINNED to the refusal it stops at, and make the two sets
+equal the real surface. Then a pin is a visible debt instead of silent
+coverage, paying one down fails as loudly as one changing, and the sweep's
+reach is a number somebody can read rather than an assumption. And keep a
+positive control: a sweep whose finding count is zero and whose detector has
+never fired are the same reading (D119).
