@@ -354,6 +354,11 @@ function contractRead({ handler, sortable, filterable = [], filtered }) {
   return {
     function: handler,
     projection: 'compliance_read',
+    // A rest parameter reveals no length, so the arity is declared: a filtered
+    // call is `(query, sort, limit)` and a list call is `(sort, limit)`, which
+    // is what `parse` above reads and nothing wider. Without this the module
+    // throws at load for every suite that imports it, not just this one.
+    arity: filtered ? 3 : 2,
     request: (...args) => {
       const { query, order, limit } = parse(args);
       const request = { limit: Math.min(limit, ceiling) };
