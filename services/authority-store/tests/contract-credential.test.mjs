@@ -1,12 +1,9 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations } from './record-migrations.mjs';
 
 /**
  * Submitting a staff credential (`contract_credential_submit`).
@@ -19,17 +16,30 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * an `agency_admin` is a member of staff with credentials of their own, so
  * self-approval became possible for the first time — and is refused.
  */
-const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const TIME_OFF = 'services/authority-store/supabase/record-migrations/'
-  + '20260920230000_contract_time_off.sql';
-const CREDENTIAL = 'services/authority-store/supabase/record-migrations/'
-  + '20260920240000_contract_credential.sql';
-const REVIEW_SQL = 'services/authority-store/supabase/record-migrations/'
-  + '20260920250000_contract_credential_review.sql';
-const ASSIGNMENT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920180000_contract_assignment.sql';
-const SWEEP_SQL = 'services/authority-store/supabase/record-migrations/'
-  + '20260920340000_contract_credential_sweep.sql';
+
+/**
+ * The record migrations whose behaviour this suite measures.
+ *
+ * It does NOT decide what is applied — `applyRecordMigrations` reads the
+ * directory — and that separation is the point of the conversion (#316). The
+ * hand-kept list this replaces named five files, and a forward migration over
+ * any of them would have been applied only if somebody remembered to add it,
+ * on the only legal path for changing an applied store (D88).
+ *
+ * The names are kept so the suite can still SAY what it is about, and asserted
+ * to be present in what was applied rather than used to apply anything: a name
+ * that stops being a file is then a failure here instead of a silent omission.
+ */
+const MEASURED = Object.freeze([
+  // Carries `time_off_date`, which the credential contracts reuse rather than
+  // declaring a second date parser that could drift from it.
+  '20260920230000_contract_time_off.sql',
+  // Carries `bounded_reason`, which the review reuses.
+  '20260920180000_contract_assignment.sql',
+  '20260920240000_contract_credential.sql',
+  '20260920250000_contract_credential_review.sql',
+  '20260920340000_contract_credential_sweep.sql',
+]);
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const email = n => ['', 'admin-a', 'clinician-a', 'clinician-empty', 'admin-b'][n]
@@ -45,7 +55,7 @@ const GOOD = Object.freeze({
   credential_number: 'RN-12345', issued_date: '2024-01-15',
   expiration_date: '2028-01-14', notes: 'renews every four years',
 });
-let db;
+let db; let applied;
 
 before(async () => {
   db = new PGlite();
@@ -54,13 +64,7 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  // The time-off migration carries `time_off_date`, which this one reuses
-  // rather than declaring a second date parser that could drift from it.
-  // The assignment migration carries `bounded_reason`, which the review reuses.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, ASSIGNMENT,
-    TIME_OFF, CREDENTIAL, REVIEW_SQL, SWEEP_SQL]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
-  }
+  applied = await applyRecordMigrations(db);
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 });
 after(async () => db?.close());
@@ -366,4 +370,113 @@ test('only the agency administrator sweeps, and only their own agency', async ()
   await refusal(expirySweep(CLINICIAN_A), 'PENNSYNC_CREDENTIAL_FORBIDDEN');
   await refusal(renewalSweep(CLINICIAN_A), 'PENNSYNC_CREDENTIAL_FORBIDDEN');
   await refusal(expirySweep(ADMIN_A, B), 'PENNSYNC_CREDENTIAL_FORBIDDEN');
+});
+
+test('the migrations this suite measures are ones the directory actually applied', async () => {
+  // The conversion moved the apply list from this file to the directory, so
+  // the names above no longer make anything happen. That is the improvement
+  // and also the new way to be wrong: a file renamed or removed would leave
+  // the comments here describing a build nobody performs. Asserting presence
+  // in what was APPLIED is what keeps the two attached.
+  for (const name of MEASURED) {
+    assert.ok(applied.includes(name), `${name} was not applied`);
+  }
+  // And the direction that matters more: the build is the whole directory, so
+  // a forward migration over any of these is picked up by existing rather than
+  // by being remembered (D88). Pinned as a relation, not a count, because a
+  // count moves for reasons that have nothing to do with this suite.
+  assert.ok(applied.length > MEASURED.length,
+    'the directory build must apply more than the five files this suite is about');
+  assert.deepEqual([...applied].sort(), applied,
+    'apply order is the deployment order, which is sorted by file name');
+});
+
+test('every credential capability authorizes, and no helper beside them is callable', async () => {
+  const { rows } = await db.query(`
+    select p.proname as name, pg_catalog.oidvectortypes(p.proargtypes) as args, n.nspname as schema
+    from pg_catalog.pg_proc p join pg_catalog.pg_namespace n on n.oid = p.pronamespace
+    where p.proname like '%credential%' and n.nspname = any(array['pennsync_records','public'])
+    order by n.nspname, p.proname`);
+  const reachable = [];
+  for (const row of rows) {
+    const { rows: allowed } = await db.query(
+      'select has_function_privilege($1, $2, \'execute\') as allowed',
+      ['authenticated', `${row.schema}.${row.name}(${row.args})`]);
+    if (allowed[0].allowed) reachable.push(`${row.schema}.${row.name}`);
+  }
+  // Re-DERIVED against the converted build rather than carried over from the
+  // hand-kept one, because the roster conversion found a third roster contract
+  // the old build had made invisible and carrying its assertion forward would
+  // have preserved exactly that blindness. Here nothing new appeared: the same
+  // four capabilities, in both spellings, and no fifth.
+  //
+  // The `public` wrapper exists so a caller reaches the contract without a
+  // Supabase project setting naming another schema; both spellings are the
+  // same SECURITY DEFINER doing its own authorization.
+  assert.deepEqual(reachable.sort(), [
+    'pennsync_records.contract_credential_expiration_sweep',
+    'pennsync_records.contract_credential_renewal_sweep',
+    'pennsync_records.contract_credential_review',
+    'pennsync_records.contract_credential_submit',
+    'public.pennsync_contract_credential_expiration_sweep',
+    'public.pennsync_contract_credential_renewal_sweep',
+    'public.pennsync_contract_credential_review',
+    'public.pennsync_contract_credential_submit',
+  ]);
+  // The exact set is the assertion rather than membership of it, because
+  // `includes` is satisfied by a wrong answer as well as the right one: a
+  // build that exposed every helper would pass a membership check and fail
+  // this. The six helpers beside them do no authorization and are named here
+  // so their absence is the claim rather than a side effect.
+  //
+  // Their absence is asserted through `has_function_privilege` rather than by
+  // calling them and matching an error string. A first version did call them,
+  // and it was measuring the wrong thing: PostgreSQL resolves and coerces the
+  // arguments before the privilege check, so `credential_row`, which takes a
+  // composite, raised `malformed record literal` — an error that would arrive
+  // whether or not the caller may execute it. Matching "rejects" there would
+  // have passed on a helper that was fully reachable.
+  const named = rows.map(row => row.name);
+  for (const helper of ['credential_due_offsets', 'credential_file_url',
+    'credential_notice_message', 'credential_notice_title', 'credential_row',
+    'credential_sweep']) {
+    assert.ok(named.includes(helper), `${helper} is not in the store any more`);
+    assert.ok(!reachable.includes(`${SCHEMA}.${helper}`),
+      `${helper} performs no authorization and must not be callable`);
+  }
+});
+
+test('bounded_reason is reachable, which it should not be — a pin on a known gap', async () => {
+  // `20260920180000_contract_assignment.sql` creates two pure helpers after its
+  // `set local role`: `bounded_reason` at line 284 and `care_team_row` at 301.
+  // Its revoke block names `care_team_row` and the two contracts and NOT
+  // `bounded_reason`, and PostgreSQL grants execute to PUBLIC by default, so
+  // the omission leaves it callable. The revoked sibling beside it is what
+  // makes this an omission rather than a decision.
+  //
+  // It is DISCIPLINE and not disclosure, measured in both directions. The
+  // function is `language sql immutable`, text in and text out, reads no table
+  // and calls nothing, so a caller learns nothing they did not send. And all
+  // four of its callers — the assignment and membership transitions, the
+  // credential review, the clinical phrase lookup — recompute it inside their
+  // own definer from the caller's own parameter and use it only to refuse, so
+  // nothing anywhere consumes its result where the caller's privilege matters.
+  // No policy calls it either.
+  //
+  // What it breaks is the rule the test above enforces: nothing that does no
+  // authorization may be reachable. The fix is a forward `revoke` — the file
+  // is merged, so it may never be edited in place (D88) — and it is not taken
+  // here because a migration deepens the batch already waiting on an operator
+  // for no disclosure control. It should ride the next forward migration over
+  // that contract.
+  //
+  // THIS ASSERTION IS INVERTED ON PURPOSE. It pins the defect so the state is
+  // recorded rather than merely described, and so the fix cannot land quietly:
+  // whoever writes that revoke will see this fail and must turn it into the
+  // refusal the helpers above get. Do not "fix" it by deleting it.
+  const { rows } = await db.query(
+    'select has_function_privilege($1, $2, \'execute\') as allowed',
+    ['authenticated', `${SCHEMA}.bounded_reason(text)`]);
+  assert.equal(rows[0].allowed, true,
+    'if this fails the revoke has landed — replace this test with the refusal');
 });
