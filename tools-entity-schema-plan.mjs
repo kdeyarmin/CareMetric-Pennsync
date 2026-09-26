@@ -353,6 +353,34 @@ export function snakeCase(value) {
 export const quote = value => `"${String(value).replace(/"/g, '""')}"`;
 export const literal = value => `'${String(value).replace(/'/g, "''")}'`;
 
+/**
+ * A schema `default` rendered as that column's own SQL default.
+ *
+ * It REFUSES a value whose JSON type disagrees with the column type rather
+ * than casting one. A cast would put a plausible wrong value into every row a
+ * caller omits the column from, which is the silent half of the defect this
+ * closes -- and the loud half is a build that stops. No carried default
+ * disagrees today, so this refusal has NO instance in the tree and its test
+ * plants one; a guard whose only evidence is that nothing triggers it has not
+ * been shown to work.
+ *
+ * `date` and `timestamptz` fall through to the refusal on purpose. A literal
+ * instant as a column default is a decision about what an absent date MEANS,
+ * and no carried schema asks for one.
+ */
+export function defaultLiteral(value, type) {
+  if (type === 'text' && typeof value === 'string') return literal(value);
+  if (type === 'boolean' && typeof value === 'boolean') return value ? 'true' : 'false';
+  if (type === 'bigint' && Number.isInteger(value)) return String(value);
+  if (type === 'double precision' && typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
+  if (type === 'jsonb' && typeof value === 'object' && value !== null) {
+    return `${literal(JSON.stringify(value))}::jsonb`;
+  }
+  return null;
+}
+
 export function columnType(property) {
   const type = Array.isArray(property?.type) ? property.type[0] : property?.type;
   if (type === 'string') {
@@ -438,7 +466,18 @@ export function planEntity(name, raw, disposition, decision = null, claims = [],
       continue;
     }
     if (columns.some(existing => existing.name === column)) { skipped.push({ property, reason: 'DUPLICATE_AFTER_NORMALIZATION' }); continue; }
-    columns.push({ name: column, property, type });
+    // The schema's own default, emitted as the COLUMN's default rather than
+    // applied anywhere else. A column default fires only when an INSERT omits
+    // the column, so "on creates, and never on an update" comes free -- which
+    // no shared helper can manage, because a helper does not know which action
+    // it is in. NOT NULL is deliberately NOT added: nullability here is a
+    // decision about legacy rows, and a required field is refused by name.
+    const fallback = Object.hasOwn(definition, 'default')
+      ? defaultLiteral(definition.default, type) : null;
+    if (Object.hasOwn(definition, 'default') && fallback === null) {
+      throw new Error(`DEFAULT_TYPE_DISAGREES:${name}.${property}:${type}`);
+    }
+    columns.push({ name: column, property, type, ...(fallback ? { fallback } : {}) });
     const values = type === 'text' ? enumValues(definition) : null;
     if (values) checks.push({ column, values });
   }
@@ -557,7 +596,9 @@ export function renderEntity(plan) {
     ? SYSTEM_COLUMNS.filter(column => column.name !== 'created_by') : SYSTEM_COLUMNS;
   const lines = [
     ...systemColumns.map(column => `  ${quote(column.name)} ${column.type}${column.notNull ? ' not null' : ''}`),
-    ...plan.definition.columns.map(column => `  ${quote(column.name)} ${column.type}${column.notNull ? ' not null' : ''}`),
+    ...plan.definition.columns.map(column => `  ${quote(column.name)} ${column.type}`
+      + `${column.fallback ? ` default ${column.fallback}` : ''}`
+      + `${column.notNull ? ' not null' : ''}`),
     `  constraint ${quote(`${plan.table}_pkey`)} primary key (${quote('source_app_id')}, ${quote('id')})`,
     ...plan.definition.checks.map(check =>
       `  constraint ${quote(constraintName(plan.table, check.column))} `

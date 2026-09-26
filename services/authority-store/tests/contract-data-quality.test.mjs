@@ -86,8 +86,15 @@ before(async () => {
   await db.query(`insert into ${SCHEMA}."user"
     ("source_app_id","id","phone","care_scope","credential_type")
     values ($1,$2,'555-0200','skilled_nursing','RN')`, [APP, b44(CLINICIAN_A)]);
-  await db.query(`insert into ${SCHEMA}."user" ("source_app_id","id","phone")
-    values ($1,$2,'555-0201')`, [APP, b44(ADMIN_A)]);
+  // The admin's two gaps are NAMED as nulls rather than left out of the insert.
+  // `credential_type` carries a schema default of 'RN', so omitting the column
+  // would store that value and the completeness rule below would be asserting
+  // against a field that is present -- passing or failing for a reason with
+  // nothing to do with the rule. D107: arrange the precondition, do not rely on
+  // it holding.
+  await db.query(`insert into ${SCHEMA}."user"
+    ("source_app_id","id","phone","care_scope","credential_type")
+    values ($1,$2,'555-0201',null,null)`, [APP, b44(ADMIN_A)]);
   // One credential, for the clinician only.
   await db.query(`insert into ${SCHEMA}."personnel_credential"
     ("source_app_id","id","agency_id","user_id","title","status")
