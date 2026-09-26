@@ -1064,6 +1064,19 @@ end $contract$;
 -- FaceToFaceEncounter
 -- ---------------------------------------------------------------------------
 
+-- `patient_id` IS writable here and is refused on `care_plan`'s update, which
+-- looks inconsistent and is not. `care_plan` has no `agency_id`: its tenancy
+-- IS the chart, so moving the chart moves the row between agencies. This table
+-- carries `agency_id not null`, so the chart is the row's SUBJECT and not its
+-- tenancy, and an encounter may legitimately be filed before anyone knows
+-- whose it is — the schema requires nothing at all, `patient_id` included —
+-- and attached afterwards. The original permits the move and so does this.
+-- What it adds is `operational_chart` on BOTH halves, so the chart a row is
+-- moved to has to be one in this agency that the caller opens.
+--
+-- Read the tenancy before copying either decision. The question is not whether
+-- a field looks like a subject; it is whether the row's tenancy is derived
+-- from it.
 create function "pennsync_records".f2f_writable() returns text[]
   language sql immutable set search_path = '' as $writable$
   select array['referral_id', 'patient_id', 'encounter_date', 'practitioner_name',

@@ -916,3 +916,55 @@ test('the page ceiling is one number, not three copies of one', () => {
   assert.equal(ALL_ROWS, OPERATIONAL_MAXIMUM,
     'the ceiling was chosen to be what a screen asking for everything passes');
 });
+
+/**
+ * Every column a writable or reserved set names is a real column of its table.
+ *
+ * These sets are the only thing standing between a caller's payload and the
+ * row, and both halves fail QUIETLY when a name is wrong: a writable column
+ * that does not exist can never be sent, and a reserved one that does not
+ * exist refuses a field nobody has. Neither shows up in a refusal suite, which
+ * only ever sends names somebody chose on purpose.
+ *
+ * It also pins the property the `patient_id` asymmetry rests on: `care_plan`
+ * reserves it on update because that table has no `agency_id` and the chart IS
+ * its tenancy, while `face_to_face_encounter` permits the move because it
+ * carries one. Read out of the generated store, so a regeneration that drops
+ * either column says so here.
+ */
+test('every writable and reserved column is one the generated table has', () => {
+  const store = readFileSync(resolve(repository, RECORD_MIGRATION_FILE), 'utf8');
+  const sql = readFileSync(resolve(repository, OPERATIONAL), 'utf8');
+  const tables = { settings: 'agency_settings', task: 'task', template: 'pdf_template',
+    care_plan: 'care_plan', f2f: 'face_to_face_encounter',
+    note_conversion: 'note_conversion', document_record: 'document_record' };
+  let checked = 0;
+  for (const [prefix, table] of Object.entries(tables)) {
+    const created = store.match(new RegExp(
+      `create table "pennsync_records"\\."${table}" \\(([\\s\\S]*?)\\n\\);`));
+    assert.ok(created, `${table} is not a table in the generated store`);
+    const columns = new Set([...created[1].matchAll(/^\s{2}"([a-z0-9_]+)"/gm)]
+      .map(match => match[1]));
+    for (const kind of ['writable', 'reserved']) {
+      const declared = sql.match(new RegExp(
+        `${prefix}_${kind}\\(\\) returns text\\[\\][\\s\\S]*?\\$${kind}\\$;`));
+      if (!declared) continue;
+      const named = [...declared[0].matchAll(/'([a-z0-9_]+)'/g)].map(match => match[1]);
+      checked += named.length;
+      assert.deepEqual(named.filter(column => !columns.has(column)), [],
+        `${prefix}_${kind} names a column ${table} does not have`);
+    }
+  }
+  assert.ok(checked > 100, `only ${checked} columns checked — the sets were not read`);
+
+  // The asymmetry itself, so it cannot be tidied into agreement by a reader
+  // who has not looked at the two tables.
+  const chartTenanted = store.match(
+    /create table "pennsync_records"\."care_plan" \(([\s\S]*?)\n\);/)[1];
+  const columnTenanted = store.match(
+    /create table "pennsync_records"\."face_to_face_encounter" \(([\s\S]*?)\n\);/)[1];
+  assert.ok(!/^\s{2}"agency_id"/m.test(chartTenanted),
+    'care_plan has an agency_id now — its patient_id need not be reserved');
+  assert.ok(/^\s{2}"agency_id" text not null/m.test(columnTenanted),
+    'face_to_face_encounter lost its agency_id — its patient_id is now tenancy');
+});
