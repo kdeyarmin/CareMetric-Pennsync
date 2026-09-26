@@ -39,6 +39,8 @@ const GOOD = Object.freeze({
   message: 'The visit note is ready for your signature.', type: 'task_assigned',
 });
 let db;
+/** The record migrations this suite's store was built from; the last test reads it. */
+let applied;
 
 before(async () => {
   db = new PGlite();
@@ -47,7 +49,7 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  const applied = await applyRecordMigrations(db);
+  applied = await applyRecordMigrations(db);
   for (const name of MEASURED) {
     assert.ok(applied.includes(name),
       `${name} must be applied: this suite measures its behaviour`);
@@ -244,7 +246,13 @@ test('the envelope lives in the facility and nowhere else', async () => {
   // Widening it changed no verdict: exactly one file inserts such a row today,
   // and the four it used to scan happened to include it.
   const names = await recordMigrationNames();
-  assert.ok(names.length > 4, 'the population is the directory, not a short list');
+  // The RELATION, not a count. `names.length > 4` said only that the directory
+  // holds more than the four files this test used to name; it did not say the
+  // store was built from them, so the comment above it claimed something no
+  // assertion carried, and a build omitting a file nobody lists here would have
+  // passed. That is the shape Copilot found on #327.
+  assert.deepEqual(applied, names,
+    'the store IS the directory: the file list and the build cannot disagree');
   const inserts = [];
   for (const name of names) {
     const source = await readFile(new URL(name, RECORD_MIGRATION_DIRECTORY), 'utf8');
