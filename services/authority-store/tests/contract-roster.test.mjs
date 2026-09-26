@@ -359,3 +359,71 @@ test('a manager is privileged and the three context-only roles are not', async (
   }
   assert.equal((await as(MANAGER_C, GET, [C, rid(OFFICE_C)]))[0].result.phone, `555-100${OFFICE_C}`);
 });
+
+/**
+ * What a screen may send BACK, which is a different question from what the
+ * roster may show.
+ *
+ * Batch E found that a read contract's projection is an INPUT and not only an
+ * output: `contract_notification_preference_get` projects exactly the fields
+ * its matching write accepts, and that is the only reason the settings screen's
+ * `{ ...preferences, digest_mode: value }` is not refused as
+ * `FIELD_NOT_WRITABLE`. Widen such a read by one column and every save starts
+ * failing, with both contracts' own suites green and neither one wrong alone.
+ *
+ * Batch D then found the same coupling in a shape a grep for a spread does not
+ * catch: four `AgencySettings` panels mirror a row into a form field by field
+ * and post the form back. So the question is not "does a screen spread the
+ * row", it is "which columns can come back", and that is answerable here once
+ * rather than per screen.
+ *
+ * The roster is safe from that shape today for a structural reason rather than
+ * a census of call sites: 17 of its projected columns are NOT self-writable, so
+ * a payload that is the projection is already refused unconditionally, and the
+ * batch E shape needs the projection to be a SUBSET of the writable set. The
+ * seven below are the real exposure — the only columns where a mirroring screen
+ * round-trips successfully — so this test pins that set rather than the
+ * projection, and fails when it GROWS.
+ *
+ * Adding a projected column that is also self-writable is the change that
+ * should stop here and be thought about; adding one that is not (a
+ * `created_date`, say) is free and this test says so by passing.
+ */
+const SELF_WRITE = 'services/authority-store/supabase/record-migrations/20260920530000_profile_self_write.sql';
+/** The seven columns the roster projects that a caller may also write to their own row. */
+const ROUND_TRIPPABLE = [
+  'duty_on_since', 'duty_status', 'off_duty_message', 'phone',
+  'scheduled_off_duty_end', 'scheduled_off_duty_recurring', 'scheduled_off_duty_start',
+];
+
+test('the roster projects only seven columns a screen could send back', async () => {
+  const contract = await readFile(resolve(repository, CONTRACT), 'utf8');
+  const guard = await readFile(resolve(repository, SELF_WRITE), 'utf8');
+
+  // The projection, read out of the contract's own `jsonb_build_object`.
+  const projection = contract.slice(contract.indexOf('select jsonb_build_object('));
+  const projected = [...projection.slice(0, projection.indexOf('$projection$'))
+    .matchAll(/^\s*'([a-z_]+)',/gm)].map(match => match[1]);
+  // The allowlist, read out of the guard's own array literal.
+  const writable = [...guard.slice(guard.indexOf("where f.key <> all (array["))
+    .matchAll(/'([a-z_]+)'/g)].map(match => match[1]);
+
+  // Neither list may come back empty or short: an overlap computed from a
+  // failed parse is empty, which would pass this test while measuring nothing.
+  assert.ok(projected.length >= 20, `read ${projected.length} projected columns, expected the full projection`);
+  assert.ok(writable.length >= 15, `read ${writable.length} self-writable columns, expected the full allowlist`);
+  assert.ok(projected.includes('tenant_role') && projected.includes('email'),
+    'the projection parse must find the authority columns');
+  assert.ok(writable.includes('saved_signature') && writable.includes('preferred_language'),
+    'the allowlist parse must find columns the roster does NOT project');
+
+  const overlap = projected.filter(column => writable.includes(column)).sort();
+  assert.deepEqual(overlap, ROUND_TRIPPABLE,
+    'a projected column that is also self-writable can be sent back by a screen that '
+    + 'mirrors the row: widen this set only with the write side read in the same change');
+  // And state the other half as a number, so a projection that grew is visible
+  // here even when the round-trippable set did not move.
+  assert.equal(projected.length - overlap.length, 17,
+    'projected columns that a caller can never write; a change here is fine, '
+    + 'but it should be a change somebody meant');
+});
