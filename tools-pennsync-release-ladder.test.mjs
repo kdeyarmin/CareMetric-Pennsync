@@ -145,14 +145,35 @@ test('an undelimited body is refused rather than read as empty', () => {
   assert.equal(failure.code, 'LADDER_FUNCTION_BODY_UNDELIMITED');
 });
 
+/**
+ * One entry in the shape `functionBodies` produces. Every hand-built map below
+ * goes through it, and the test right after pins it against the real tree.
+ *
+ * Adding `files` broke five of these at once, which is the signal worth
+ * keeping: a hand-built fixture is a second copy of the producer's shape, so
+ * it drifts in the one direction nothing measures. It lives in one place now,
+ * and the pin fails on the NEXT field rather than five assertions doing so.
+ */
+const RECORD_DIRECTORY = 'services/authority-store/supabase/record-migrations';
+const AUTHORITY_DIRECTORY = 'services/authority-store/supabase/migrations';
+const bodyEntry = (file, body, directory = RECORD_DIRECTORY) =>
+  ({ file, files: [file], body, directory });
+
+test('the hand-built body fixtures carry the shape the producer emits', () => {
+  const [real] = functionBodies(REPOSITORY).values();
+  assert.deepEqual(Object.keys(bodyEntry('x.sql', 'select 1')).sort(),
+    Object.keys(real).sort(),
+    'a field `functionBodies` emits that the fixtures do not means every closure '
+    + 'test below is measuring a shape nothing produces');
+});
+
 test('an update whose target is a quoted qualified name counts as a write', () => {
   // The first draft anchored this with a trailing `\b` and never matched,
   // because `_` continues the word. It reported `contract_alert_update`, whose
   // body is four update statements, as read-only.
-  const bodies = new Map([['pennsync_records.writer', {
-    file: 'w.sql', directory: 'services/authority-store/supabase/record-migrations',
-    body: 'update "pennsync_records"."patient_alert" a set "status" = \'x\'',
-  }]]);
+  const bodies = new Map([['pennsync_records.writer',
+    bodyEntry('w.sql', 'update "pennsync_records"."patient_alert" a set "status" = \'x\''),
+  ]]);
   assert.equal(closureOf(bodies, 'pennsync_records.writer', 'c').mutates, true);
 });
 
@@ -160,12 +181,11 @@ test('a set-returning write helper called in a from clause is still a call', () 
   // `select * into v_row from pennsync_private.transition_membership(...)` is
   // how both of the store write helpers are reached. A draft that decided
   // call-or-relation by POSITION dropped it and called the contract read-only.
-  const directory = 'services/authority-store/supabase/record-migrations';
   const bodies = new Map([
-    ['pennsync_records.contract_x', { file: 'c.sql', directory,
-      body: 'select * into v_row from pennsync_private.transition_membership(p_agency)' }],
-    ['pennsync_private.transition_membership', { file: 'h.sql', directory,
-      body: 'update "pennsync_private"."membership" set "status" = p_status' }],
+    ['pennsync_records.contract_x',
+      bodyEntry('c.sql', 'select * into v_row from pennsync_private.transition_membership(p_agency)')],
+    ['pennsync_private.transition_membership',
+      bodyEntry('h.sql', 'update "pennsync_private"."membership" set "status" = p_status')],
   ]);
   const closure = closureOf(bodies, 'pennsync_records.contract_x', 'x');
   assert.equal(closure.mutates, true);
@@ -173,17 +193,15 @@ test('a set-returning write helper called in a from clause is still a call', () 
 });
 
 test('a table name followed by a column list is not a call', () => {
-  const directory = 'services/authority-store/supabase/record-migrations';
-  const bodies = new Map([['pennsync_records.contract_x', { file: 'c.sql', directory,
-    body: 'insert into pennsync_private.chart_assignment ("id") values (p_id)' }]]);
+  const bodies = new Map([['pennsync_records.contract_x',
+    bodyEntry('c.sql', 'insert into pennsync_private.chart_assignment ("id") values (p_id)')]]);
   // It writes, and the relation it writes to is not looked up as a function.
   assert.equal(closureOf(bodies, 'pennsync_records.contract_x', 'x').mutates, true);
 });
 
 test('a call into a function the migrations do not define is refused', () => {
-  const directory = 'services/authority-store/supabase/record-migrations';
-  const bodies = new Map([['pennsync_records.contract_x', { file: 'c.sql', directory,
-    body: 'select pennsync_records.helper_that_moved(p_agency)' }]]);
+  const bodies = new Map([['pennsync_records.contract_x',
+    bodyEntry('c.sql', 'select pennsync_records.helper_that_moved(p_agency)')]]);
   let failure = null;
   try { closureOf(bodies, 'pennsync_records.contract_x', 'x'); } catch (error) { failure = error; }
   assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
@@ -193,12 +211,9 @@ test('a call into a function the migrations do not define is refused', () => {
 
 test('only the record migrations are reported as prerequisites', () => {
   const bodies = new Map([
-    ['pennsync_records.contract_x', {
-      file: 'c.sql', directory: 'services/authority-store/supabase/record-migrations',
-      body: 'select pennsync_private.deployment_app_id()' }],
-    ['pennsync_private.deployment_app_id', {
-      file: 'pin.sql', directory: 'services/authority-store/supabase/migrations',
-      body: 'select current_setting(\'x\')' }],
+    ['pennsync_records.contract_x', bodyEntry('c.sql', 'select pennsync_private.deployment_app_id()')],
+    ['pennsync_private.deployment_app_id',
+      bodyEntry('pin.sql', "select current_setting('x')", AUTHORITY_DIRECTORY)],
   ]);
   const closure = closureOf(bodies, 'pennsync_records.contract_x', 'x');
   assert.deepEqual(closure.files, ['c.sql'], 'the authority pin applies before the record store');
@@ -543,21 +558,87 @@ test('a D88 catch-up repeating a definition verbatim is not a second definition'
   assert.doesNotThrow(() => checkLadder(tree.root));
 });
 
-test('an or-replace whose body differs is still refused, which is the real ambiguity', (t) => {
-  // The case the exemption must not swallow. Two definitions that disagree
-  // make "which one is this contract" a guess in exactly the way the original
-  // refusal exists to prevent — and `or replace` is what makes it apply
-  // silently rather than failing on the target.
+test('an or-replace whose body differs is classified on the LATER body', (t) => {
+  // This used to be refused, and the refusal was the wrong answer rather than
+  // a strict one. `main` cannot hold a corrected contract at all under it: a
+  // merged migration is never edited in place, so a fix to a function the
+  // store is already running arrives as a second file saying `or replace`.
+  //
+  // What replaces the refusal is not "the refusal stops". The ladder's whole
+  // output is derived from the BODY, so the later body has to be the one that
+  // gets classified — the first would emit a value for SQL that is not what
+  // the store runs.
   const tree = intactTree(t);
   fixture(tree);
   const drifted = contractSql('contract_read', 'select 2')
     .replaceAll('create function', 'create or replace function');
   writeFileSync(join(tree.records, '0200_catchup.sql'), drifted);
+  const entry = functionBodies(tree.root).get('pennsync_records.contract_read');
+  // The first file still NAMES the contract: it is where the capability is
+  // reviewed and what the wave is reported against.
+  assert.equal(entry.file, '0100_contracts.sql');
+  // And the later text is what anything downstream reads.
+  assert.match(entry.body, /select 2/);
+  assert.doesNotMatch(entry.body, /select 1/);
+  // Both files are prerequisites. Told to apply only the first, an operator
+  // would have a store running the OLD body under the new wave's value.
+  assert.deepEqual(entry.files, ['0100_contracts.sql', '0200_catchup.sql']);
+  assert.doesNotThrow(() => checkLadder(tree.root));
+});
+
+test('a correction that adds a write is classified, and the read wave refuses it', (t) => {
+  // The rule the widening is FOR, and why the BODY rather than the refusal is
+  // the thing under test. `contract_read` is what the first declared wave
+  // reaches, and that wave is DECLARED to write nothing. Give the running
+  // function an `insert` in a correction and the ladder has to see it.
+  //
+  // It surfaces here as `LADDER_DECLARED_WRITE_IN_READ_WAVE` rather than as a
+  // wave moving, because a declared wave's shape is asserted rather than
+  // derived — and that makes this the sharper test of the two. Keep the FIRST
+  // body and `checkLadder` passes in silence and emits a read-only release
+  // value for SQL that writes. The refusal exists only because the later body
+  // is the one classified.
+  const tree = intactTree(t);
+  fixture(tree);
+  assert.doesNotThrow(() => checkLadder(tree.root), 'vacuous unless the tree starts clean');
+
+  const corrected = contractSql('contract_read',
+    'insert into "pennsync_records"."thing" ("id") values (1); select 1')
+    .replaceAll('create function', 'create or replace function');
+  writeFileSync(join(tree.records, '0200_fix.sql'), corrected);
+
   let failure = null;
-  try { functionBodies(tree.root); } catch (error) { failure = error; }
+  try { checkLadder(tree.root); } catch (error) { failure = error; }
   assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
-  assert.equal(failure.code, 'LADDER_FUNCTION_DEFINED_TWICE');
-  assert.deepEqual(failure.detail.files, ['0100_contracts.sql', '0200_catchup.sql']);
+  assert.equal(failure.code, 'LADDER_DECLARED_WRITE_IN_READ_WAVE');
+});
+
+test('a correction that REMOVES a write is classified too, and clears the refusal', (t) => {
+  // The other direction, because a rule proved one way has been shown to fire
+  // and not to classify. Here the first body writes and the correction does
+  // not: keeping the first body would leave a refusal standing over SQL that
+  // no longer writes, which is the safer error and still the wrong answer --
+  // it would make a corrected tree unmergeable with nothing wrong in it.
+  const tree = intactTree(t);
+  fixture(tree, { readBody: 'insert into "pennsync_records"."thing" ("id") values (1); select 1' });
+  let failure = null;
+  try { checkLadder(tree.root); } catch (error) { failure = error; }
+  assert.equal(failure?.code, 'LADDER_DECLARED_WRITE_IN_READ_WAVE',
+    'vacuous unless the first body really is refused');
+
+  const corrected = contractSql('contract_read', 'select 1')
+    .replaceAll('create function', 'create or replace function');
+  writeFileSync(join(tree.records, '0200_fix.sql'), corrected);
+
+  const wave = checkLadder(tree.root).waves[0];
+  assert.equal(wave.writes, false, 'the later body writes nothing, so neither does the wave');
+  // Both files are prerequisites of the wave, not just the defining one. Told
+  // to apply only `0100`, an operator would have a store running the body the
+  // ladder just decided was not the one it was classifying.
+  assert.ok(wave.migrations.includes('0200_fix.sql'),
+    `the correction is a prerequisite, got ${JSON.stringify(wave.migrations)}`);
+  assert.ok(wave.migrations.includes('0100_contracts.sql'),
+    'and so is the file that defines it');
 });
 
 test('a handler reaching a contract the registry does not carry is refused', (t) => {
