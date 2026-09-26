@@ -1,12 +1,9 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import { applyRecordMigrations, recordMigrationNames } from './record-migrations.mjs';
 
 /**
  * Submitting a timesheet, and reviewing one.
@@ -21,17 +18,12 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * And `timesheet_read`/`timesheet_update` are agency-WIDE, so every ownership
  * rule here is the contract's (D45).
  */
-const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const NOTE_HISTORY = 'services/authority-store/supabase/record-migrations/'
-  + '20260920170000_contract_note_history.sql';
-const TIME_OFF = 'services/authority-store/supabase/record-migrations/'
-  + '20260920230000_contract_time_off.sql';
-const MINT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920285000_notification_mint.sql';
-const READER = 'services/authority-store/supabase/record-migrations/'
-  + '20260920300000_contract_notification.sql';
-const TIMESHEET = 'services/authority-store/supabase/record-migrations/'
-  + '20260920360000_contract_timesheet.sql';
+// The file whose BEHAVIOUR this suite measures; it no longer decides what is
+// applied. The store is the whole record directory now, so a forward migration
+// over this contract is in the build the moment it is committed — there is none
+// today, measured rather than assumed, which makes this the case where the swap
+// should change nothing at all.
+const MEASURED = ['20260920360000_contract_timesheet.sql'];
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -46,6 +38,8 @@ const A = 'agency-a'; const B = 'agency-b';
 const PERIOD = Object.freeze({ pay_period_start: '2026-09-06', pay_period_end: '2026-09-19' });
 const GOOD = Object.freeze({ ...PERIOD, regular_hours: 72, overtime_hours: 4, miles: 210 });
 let db;
+/** The record migrations this suite's store was built from; the last test reads it. */
+let applied;
 
 before(async () => {
   db = new PGlite();
@@ -54,9 +48,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE,
-    NOTE_HISTORY, TIME_OFF, MINT, READER, TIMESHEET]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
+  applied = await applyRecordMigrations(db);
+  for (const name of MEASURED) {
+    assert.ok(applied.includes(name),
+      `${name} must be applied: this suite measures its behaviour`);
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
 });
@@ -359,4 +354,51 @@ test('another agency reaches none of this one s timesheets', async () => {
     'PENNSYNC_TIMESHEET_NOT_FOUND');
   await refusal(review(ADMIN_B, sheet.id, 'approved'),
     'PENNSYNC_TIMESHEET_AGENCY_NOT_HELD');
+});
+
+test('the swap widened the store and left this contract reachable unchanged', async () => {
+  // The STRONG form of the post-swap check, and it is available here because no
+  // forward migration touches this contract — measured, not assumed: one file in
+  // the record directory mentions `contract_timesheet` or the `timesheet` table,
+  // and nothing after it redefines a timesheet function. So the derived build
+  // must leave this capability's reachable surface exactly as the hand-kept
+  // six-file build did, while the store around it grows.
+  //
+  // Proved by building BOTH and comparing, rather than by asserting that nothing
+  // moved. A test that only checked the current set would pass whether or not the
+  // widening had changed it (D127's lesson: an assertion that cannot distinguish
+  // the two answers is not evidence).
+  assert.deepEqual(applied, await recordMigrationNames());
+  const names = await recordMigrationNames();
+  assert.ok(names.length > 6, 'the store is the directory, not the old six files');
+
+  const timesheetSurface = async client => (await client.query(
+    `select p.proname, pg_get_function_identity_arguments(p.oid) as args
+       from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+      where p.proname like '%timesheet%'
+      order by 1, 2`)).rows;
+  const derived = await timesheetSurface(db);
+  assert.ok(derived.length > 0, 'the contract must be reachable at all');
+
+  // The hand-kept build this file used to carry, rebuilt here as the control.
+  const control = new PGlite();
+  try {
+    await control.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
+    const dir = new URL('../supabase/migrations/', import.meta.url);
+    for (const name of (await readdir(dir)).filter(f => f.endsWith('.sql')).sort()) {
+      await control.exec(await readFile(new URL(name, dir), 'utf8'));
+    }
+    await applyRecordMigrations(control, {
+      omit: names.filter(name => ![
+        '20260919170000_record_store.sql', '20260919180000_record_brokers.sql',
+        '20260920170000_contract_note_history.sql', '20260920230000_contract_time_off.sql',
+        '20260920285000_notification_mint.sql', '20260920300000_contract_notification.sql',
+        '20260920360000_contract_timesheet.sql',
+      ].includes(name)),
+    });
+    assert.deepEqual(derived, await timesheetSurface(control),
+      'widening the store must not change what this contract exposes');
+  } finally {
+    await control.close();
+  }
 });
