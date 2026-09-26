@@ -31,6 +31,32 @@ const LOCATORS = 'services/authority-store/supabase/record-migrations/'
   + '20260920520000_file_locator_map.sql';
 const OPERATIONAL = 'services/authority-store/supabase/record-migrations/'
   + '20260920580000_contract_operational_tables.sql';
+/**
+ * The forward migration over the four reads below, applied because a suite
+ * that omits it builds bodies the store does not run.
+ *
+ * It was measured rather than assumed, in both directions. Adding it left all
+ * 29 tests here green, and so did neutralising its term to one that answers
+ * true — so this file had, and has, no coverage of the term itself. A change
+ * that makes a suite faithful while leaving it green either way is the repair
+ * that restores green and records nothing, so the last test in this file is
+ * the assertion that reds when the term is gone.
+ */
+const CHART_AGENCY = 'services/authority-store/supabase/record-migrations/'
+  + '20260920590000_chart_agency.sql';
+/**
+ * The forward migration that makes `operational_limit` executable.
+ *
+ * Applied here because the test below is the one that found it: nothing in
+ * this file had ever passed a limit the helper accepts, so the single line
+ * every frontend call reaches was the one line no test ran.
+ *
+ * Both of these are still hand-kept names, which is the defect #316 removed
+ * for a converted suite. Converting THIS one is its own change; until then a
+ * forward migration over anything in this file has to be added here by hand.
+ */
+const OPERATIONAL_LIMIT = 'services/authority-store/supabase/record-migrations/'
+  + '20260920640000_operational_limit.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -79,7 +105,8 @@ before(async () => {
   // The broker family's migration is where `grant usage on schema
   // pennsync_records to authenticated` lives, so the public wrappers are
   // unreachable without it.
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, LOCATORS, OPERATIONAL]) {
+  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, LOCATORS,
+    OPERATIONAL, CHART_AGENCY, OPERATIONAL_LIMIT]) {
     await db.exec(readFileSync(resolve(repository, file), 'utf8'));
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
@@ -967,4 +994,83 @@ test('every writable and reserved column is one the generated table has', () => 
     'care_plan has an agency_id now — its patient_id need not be reserved');
   assert.ok(/^\s{2}"agency_id" text not null/m.test(columnTenanted),
     'face_to_face_encounter lost its agency_id — its patient_id is now tenancy');
+});
+
+test('every paged read answers a limit it accepts, not only the ones it refuses', async () => {
+  // D124. This file already tested `limit: 0` and `limit: null` on every one of
+  // these, and they were the wrong values to have chosen: 0 refuses at the
+  // guard and null returns the default, and BOTH return before the line that
+  // computes the page size. So `operational_limit`'s last statement — the one
+  // line every real caller reaches, because the route seam refuses a call that
+  // names no limit and always passes one — was never executed by anything.
+  //
+  // It was `return pg_catalog.least(p_limit, 5000);`, and LEAST is a parser
+  // construct rather than a function in `pg_catalog`, so all seven of these
+  // raised 42883 on every caller-supplied limit while twenty-nine tests stayed
+  // green. Testing only the values that refuse never reaches the code that
+  // accepts.
+  //
+  // So each capability is driven with a limit it ACCEPTS and the answer is
+  // read, which is what makes this a path test rather than another refusal.
+  for (const [name, list] of [['settings', settingsRead], ['task', taskList],
+    ['template', templateList], ['care plan', planList], ['face to face', f2fList],
+    ['document record', documentList], ['note conversion', conversionList]]) {
+    const answer = await list(ADMIN_A, { limit: 25 });
+    assert.ok(Array.isArray(answer.entries), `${name} did not answer a page`);
+  }
+  // The ceiling is above the cap and still answers, which is the other branch
+  // of the same statement: a limit over 5000 is clamped rather than refused,
+  // because a bound a caller could raise is not a bound and a refusal there
+  // would be a narrowing the original never had.
+  assert.ok(Array.isArray((await taskList(ADMIN_A, { limit: 10000 })).entries));
+  // And the refusal below it still refuses, so the fix did not widen anything.
+  await refusal(taskList(ADMIN_A, { limit: 0 }), 'PENNSYNC_TASK_LIMIT_INVALID');
+});
+
+test('the forward migration this file applies is the one that hides a crossed chart', async () => {
+  // Faithfulness alone is not a test: this file passed with the forward
+  // migration absent and passes with its term neutralised, so applying the
+  // file changes nothing anybody can see. This is the assertion that makes it
+  // visible, and it is deliberately the narrowest one — the term's three
+  // branches and the other three reads are `contract-chart-agency.test.mjs`,
+  // whose whole subject they are. What is proved HERE is only that the store
+  // this suite builds is the store that ships.
+  //
+  // The row is written by the administrator, because that is what a carried
+  // row is: `contract_task_create` refuses a foreign chart now, and Base44
+  // never asked the question, so the only way such a row exists is to have
+  // arrived already made.
+  const crossed = 'task-crossed-chart';
+  await db.query(`insert into ${SCHEMA}."task"
+    ("source_app_id","id","agency_id","patient_id","title") values ($1,$2,$3,$4,$5)`,
+  [APP, crossed, A, 'patient-b1', 'Filed against another agency\'s chart']);
+
+  // D107: the precondition first. With the term removed the row IS returned to
+  // this caller — so the refusal below is the term working, not the fixture
+  // being unreachable. An absent row and a hidden row are the same empty
+  // result and no code tells them apart.
+  await db.exec(`create or replace function ${SCHEMA}.chart_not_elsewhere(
+    p_patient_id text, p_agency text) returns boolean
+    language sql stable set search_path = '' as $sabotage$ select true $sabotage$;`);
+  const reachable = (await taskList(ADMIN_A, { limit: 100 })).entries.map(e => e.id);
+  assert.ok(reachable.includes(crossed),
+    'the crossed row must be returned with the term removed, or this proves nothing');
+
+  // Restored from the migration's own text rather than retyped, so a drift
+  // between the two cannot make the half below pass against a definition this
+  // repository does not ship.
+  const shipped = readFileSync(resolve(repository, CHART_AGENCY), 'utf8');
+  const term = shipped.slice(shipped.indexOf(
+    `create function "pennsync_records".chart_not_elsewhere(`));
+  await db.exec(term.slice(0, term.indexOf('$chart$;') + 8)
+    .replace('create function ', 'create or replace function '));
+
+  const guarded = (await taskList(ADMIN_A, { limit: 100 })).entries.map(e => e.id);
+  assert.ok(!guarded.includes(crossed), 'the term must hide the crossed row');
+  // And nothing else went with it: the rows this caller legitimately holds are
+  // still there, so a term that hid everything would fail here too.
+  assert.deepEqual(guarded, reachable.filter(id => id !== crossed),
+    'the term must remove the crossed row and nothing else');
+
+  await db.query(`delete from ${SCHEMA}."task" where "id" = $1`, [crossed]);
 });
