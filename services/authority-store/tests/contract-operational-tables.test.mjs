@@ -712,21 +712,29 @@ test('the guard narrows one create the insert policy would admit, on purpose', a
 test('the required sets are the entity schemas` own, field for field', async () => {
   // Same rule as the defaults below, from the other side: the required lists
   // are transcribed, so they are read back from the source. What a CALLER owes
-  // is the schema's `required` minus the fields this contract decides for
-  // them — one it stamps (so no payload can be missing it), one it takes as a
-  // parameter of its own, and one the schema also DEFAULTS. That last
-  // subtraction is the one that matters: requiring a defaulted field of the
-  // caller refuses a create Base44 accepted, which is a narrowing.
+  // is the schema's `required` minus two things — the fields this contract
+  // decides rather than the caller (one it stamps, one it takes as a parameter
+  // of its own), and the fields the schema also DEFAULTS.
+  //
+  // THE SECOND SUBTRACTION IS DERIVED AND NOT LISTED, deliberately. A FIELD CAN
+  // BE BOTH REQUIRED AND DEFAULTED — `Task.priority` is, and batch C hit the
+  // same shape on `ClinicalLibraryTemplate.template_type` — and demanding one
+  // of the caller refuses a create Base44 accepted, because there the default
+  // is applied first and the required check never sees an absence. A hand-kept
+  // list of those fields would be right today and wrong the first time a
+  // schema gains one, silently and in the narrowing direction, so it is read
+  // out of `properties` instead.
   const sql = readFileSync(resolve(repository, OPERATIONAL), 'utf8');
   const owed = {
     // entity: [prefix, fields the contract decides rather than the caller]
     AgencySettings: ['PENNSYNC_SETTINGS', []],
-    Task: ['PENNSYNC_TASK', ['priority']],
+    Task: ['PENNSYNC_TASK', []],
     PDFTemplate: ['PENNSYNC_TEMPLATE', []],
     CarePlan: ['PENNSYNC_CARE_PLAN', ['patient_id']],
     FaceToFaceEncounter: ['PENNSYNC_F2F', []],
     NoteConversion: ['PENNSYNC_NOTE_CONVERSION', ['nurse_email']],
   };
+  let defaulted = 0;
   for (const [entity, [prefix, decided]] of Object.entries(owed)) {
     const schema = JSON.parse(readFileSync(
       resolve(repository, `base44/entities/${entity}.jsonc`), 'utf8')
@@ -735,7 +743,11 @@ test('the required sets are the entity schemas` own, field for field', async () 
       const property = schema.properties[field];
       assert.ok(property, `${entity}.${field} is a field at all`);
     }
-    const expected = (schema.required ?? []).filter(field => !decided.includes(field)).sort();
+    const carriesDefault = field =>
+      Object.hasOwn(schema.properties[field] ?? {}, 'default');
+    const expected = (schema.required ?? [])
+      .filter(field => !decided.includes(field) && !carriesDefault(field)).sort();
+    defaulted += (schema.required ?? []).filter(carriesDefault).length;
 
     const call = sql.match(new RegExp(
       `operational_check_required\\(p_fields,\\s*array\\[([^\\]]*)\\],[^;]*?'${prefix}'`));
@@ -745,6 +757,11 @@ test('the required sets are the entity schemas` own, field for field', async () 
     assert.deepEqual(actual, expected,
       `${entity}: the caller is owed a different set than its schema requires`);
   }
+  // Without one of these seven declaring a field both required and defaulted,
+  // the derivation above is inert and would pass with it deleted. `Task` is the
+  // case, and if it ever stops being one this says so rather than going quiet.
+  assert.ok(defaulted > 0,
+    'no required field carries a default, so the subtraction proves nothing');
 });
 
 test('the defaults are the entity schemas` own, field for field', async () => {

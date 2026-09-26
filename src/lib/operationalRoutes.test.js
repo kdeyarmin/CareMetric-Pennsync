@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -83,4 +85,51 @@ test('NoteConversion.filter is held on what its contract cannot express', async 
   }
   assert.ok(params.includes('recovery_request_id'),
     'the one predicate it does take has gone — re-read this hold');
+});
+
+/**
+ * The seam between a read's projection and the write beside it.
+ *
+ * Batch E measured this on its own pair: a screen that saves
+ * `{ ...row, one_field: value }` sends exactly the read's projection, so
+ * WIDENING THE READ BY ONE COLUMN MAKES EVERY SAVE FAIL, with both contracts'
+ * suites green and neither wrong on its own. The four `AgencySettings` panels
+ * are the same shape from the other side: each mirrors the fetched row into a
+ * form, field by field, and posts the form back. They do not spread the row —
+ * checked, and the reason the whole-row projection does not reach
+ * `FIELD_RESERVED` here — but every column they mirror is a column the save
+ * must accept, and nothing else in the tree compares those two lists.
+ *
+ * So the pin is the mirrored columns, read out of the panels rather than
+ * typed: add one to a screen, or drop one from `settings_writable()`, and this
+ * says so at build time instead of the save failing in front of an
+ * administrator.
+ */
+test('every AgencySettings column the admin panels mirror is one the save accepts', () => {
+  const migration = readFileSync(resolve(REPOSITORY,
+    'services/authority-store/supabase/record-migrations/'
+    + '20260920580000_contract_operational_tables.sql'), 'utf8');
+  const declaration = migration.match(
+    /settings_writable\(\) returns text\[\][\s\S]*?\$writable\$;/);
+  assert.ok(declaration, 'the writable set has moved or been renamed');
+  const writable = new Set([...declaration[0].matchAll(/'([a-z0-9_]+)'/g)]
+    .map(match => match[1]));
+
+  const panels = ['A2PCompliancePanel', 'CallingHoursPanel', 'PhoneProvisioningPanel',
+    'FaxReceivingToggle'].map(name => `src/components/admin/${name}.jsx`);
+  let mirrored = 0;
+  for (const panel of panels) {
+    const source = readFileSync(resolve(REPOSITORY, panel), 'utf8');
+    const columns = new Set([...source.matchAll(/\bsettings\??\.([a-z][a-z0-9_]+)/g)]
+      .map(match => match[1]));
+    // `id` is the row's own and is what tells a save from a create.
+    columns.delete('id');
+    mirrored += columns.size;
+    const refused = [...columns].filter(column => !writable.has(column)).sort();
+    assert.deepEqual(refused, [],
+      `${panel} mirrors columns the save would refuse: ${refused.join(', ')}`);
+  }
+  // Without this the loop passes on a tree where the panels were renamed away
+  // and every column set came back empty.
+  assert.ok(mirrored > 20, `only ${mirrored} columns mirrored — the panels were not read`);
 });
