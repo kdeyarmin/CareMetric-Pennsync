@@ -72,8 +72,71 @@ jobs:
       - name: Lint
         run: pnpm run lint
 
-      - name: Run tests
-        run: pnpm test
+      # The eleven scripts `pnpm test` chains, invoked one per step instead of
+      # through the chain. `pnpm test` is `a && b && ... && k`, so a non-zero exit
+      # anywhere stops it: the job still reds, but every later script's findings
+      # are hidden behind one failure. Five of these — pennsync-transfer,
+      # authority-store, pennsync-api, central-admin and dedupe — run nowhere else
+      # in CI, so a failure early in the chain used to leave them unreported for
+      # that run entirely. Four others (utils, contracts, security, components) are
+      # re-run by name in workflow-quality.yml, but that workflow is path-filtered
+      # and does not run on every change, so it is not a substitute.
+      #
+      # This is the argument the exit-gate step below already makes, applied one
+      # level out: a regression should be legible rather than surfacing as one
+      # failed assertion among thousands. Here it also has to be VISIBLE at all.
+      #
+      # `if: ${{ !cancelled() }}` from the second step on is what buys that: a
+      # failing script no longer suppresses its siblings, and because the steps
+      # after this block keep the default `success()`, the build and the gates
+      # still skip and the job still fails. The first step keeps the default too,
+      # so a lint failure above still stops everything.
+      #
+      # Keep `pnpm test` itself as the single local command. If a script is added
+      # to the chain, add a step for it here — src/testRegistryContract.test.js
+      # checks that every suite runs somewhere, not that this list is complete.
+      - name: Run PennSync transfer tool tests
+        run: pnpm run test:pennsync-transfer
+
+      - name: Run authority store tests
+        if: ${{ !cancelled() }}
+        run: pnpm run test:authority-store
+
+      - name: Run external integration tests
+        if: ${{ !cancelled() }}
+        run: pnpm run test:external-integrations
+
+      - name: Run ported business API tests
+        if: ${{ !cancelled() }}
+        run: pnpm run test:pennsync-api
+
+      - name: Run central admin contract tests
+        if: ${{ !cancelled() }}
+        run: pnpm run test:central-admin
+
+      - name: Run utility unit tests
+        if: ${{ !cancelled() }}
+        run: pnpm run test:utils
+
+      - name: Run schema-contract tests
+        if: ${{ !cancelled() }}
+        run: pnpm run test:contracts
+
+      - name: Run security guardrail tests
+        if: ${{ !cancelled() }}
+        run: pnpm run test:security
+
+      - name: Run deduplication tests
+        if: ${{ !cancelled() }}
+        run: pnpm run test:dedupe
+
+      - name: Run HHGS adapter tests
+        if: ${{ !cancelled() }}
+        run: pnpm run test:hhgs
+
+      - name: Run component tests
+        if: ${{ !cancelled() }}
+        run: pnpm run test:components
 
       # BLOCKING gate. The worksheet is the artifact a clinical reviewer signs,
       # so a drifted copy means the review on file describes item definitions the
@@ -87,9 +150,10 @@ jobs:
       - name: Check Base44 function syntax
         run: pnpm run check:backend-transpile
 
-      # BLOCKING gates for the Base44 exit. These also run inside `pnpm test`;
-      # naming them separately makes a migration regression legible instead of
-      # surfacing as one failed assertion among thousands.
+      # BLOCKING gates for the Base44 exit. These also run inside the utility
+      # suite above (tools-transition-disposition.test.mjs and its siblings in
+      # test:utils); naming them separately makes a migration regression legible
+      # instead of surfacing as one failed assertion among thousands.
       - name: Check Base44 exit gates
         run: |
           pnpm run check:transition-disposition
