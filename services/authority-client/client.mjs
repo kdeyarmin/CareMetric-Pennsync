@@ -199,7 +199,7 @@ export const PORTED_FUNCTIONS = Object.freeze({
  * is NOT ample for a page of a few thousand. The five compliance list
  * capabilities are the first handlers here whose own SQL ceiling is larger than
  * that default can carry: measured from their projections in
- * `20260920640000_contract_compliance_reads.sql`, a page at each ceiling
+ * `20260920650000_contract_compliance_reads.sql`, a page at each ceiling
  * serializes to 3.07 MiB for incidents, 1.94 for credentials and 1.74 for
  * audits with every value NULL — before a single report, finding or note. Left
  * at the default, a compliance screen asking for the page its Base44 original

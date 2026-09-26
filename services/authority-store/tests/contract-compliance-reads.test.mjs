@@ -27,7 +27,7 @@ import { applyRecordMigrations } from './record-migrations.mjs';
  */
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const RECORDS = 'services/authority-store/supabase/record-migrations/';
-const READS_NAME = '20260920640000_contract_compliance_reads.sql';
+const READS_NAME = '20260920650000_contract_compliance_reads.sql';
 // `chart_not_elsewhere`'s own file, read only for its text: the sabotage below
 // restores the term from the migration that ships it rather than from a retyped
 // copy. It is APPLIED by the directory walk, not by name.
