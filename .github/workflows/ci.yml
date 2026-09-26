@@ -75,16 +75,23 @@ jobs:
       # The eleven scripts `pnpm test` chains, invoked one per step instead of
       # through the chain. `pnpm test` is `a && b && ... && k`, so a non-zero exit
       # anywhere stops it: the job still reds, but every later script's findings
-      # are hidden behind one failure. Five of these — pennsync-transfer,
-      # authority-store, pennsync-api, central-admin and dedupe — run nowhere else
-      # in CI, so a failure early in the chain used to leave them unreported for
-      # that run entirely. Four others (utils, contracts, security, components) are
-      # re-run by name in workflow-quality.yml, but that workflow is path-filtered
-      # and does not run on every change, so it is not a substitute.
+      # are hidden behind one failure.
+      #
+      # That affects ELEVEN scripts, not five. Five — pennsync-transfer,
+      # authority-store, pennsync-api, central-admin and dedupe — have no second
+      # runner anywhere, and that is the floor. The other four (utils, contracts,
+      # security, components) are re-run by name in workflow-quality.yml, but that
+      # workflow is path-filtered on both pull_request and push, and its list names
+      # no services/** path and no tools-*.mjs path. So for a change touching only
+      # services/ or only the tooling it does not run at all, and all eleven ride
+      # the chain. This file is itself outside that list. A path-filtered runner is
+      # not a substitute.
       #
       # This is the argument the exit-gate step below already makes, applied one
       # level out: a regression should be legible rather than surfacing as one
       # failed assertion among thousands. Here it also has to be VISIBLE at all.
+      # It also removes the reason to move that step: a gate failure is legible in
+      # the utility step directly, instead of depending on a later step having run.
       #
       # `if: ${{ !cancelled() }}` from the second step on is what buys that: a
       # failing script no longer suppresses its siblings, and because the steps
