@@ -7855,6 +7855,15 @@ one, and moving it by two "to account for `file_object`" would have failed the
 suite on a tree where `file_object` was still invisible. **A coverage gap is not a containment escape, and
 it is never closed by inflating a number the guard already gets right.**
 
+D121 asks for the siblings to be enumerated rather than left to a reviewer, so
+here they are for the "pin the SET, never membership" rule this change applies.
+`authority.test.mjs`'s private-table list: converted, a `deepEqual` over the
+two directory halves. `app-namespace-containment.test.mjs`'s app-scoped
+columns: converted, every `(table, column)` pair named and deep-compared —
+though not in the first draft, which is D121's worked example.
+`restore-schema-fixture.mjs`: already compliant, since it compares the whole
+relation-and-column map rather than a count. There is no fourth.
+
 Each widening ships with a sabotage, and each sabotage has two halves, because
 only the second is the finding. A migration in the record tier is planted — for
 one guard a `pennsync_private` table with row security enabled but not FORCED,
@@ -7890,3 +7899,56 @@ against before pushing it, and "push it and see what CI says" on a credentialed
 postgres suite is the speculative push the drive-to-green rules forbid. So the
 commission needs a session with 17 tooling of its own, not a change to CI. It
 is recorded as open rather than half-done.
+
+## D120 — A sabotage raises the production assertion, not a re-implementation of it
+
+*2026-09-26.*
+
+A sabotage exists to show that a guard bites. A sabotage that recomputes the
+guard's predicate for itself shows only that its own arithmetic is right, and
+the pair then reads as proof while establishing nothing.
+
+The worked example is D113's own first draft, caught in review rather than by
+us. `authority.test.mjs` asserts that every `pennsync_private` table has row
+security enabled AND forced. The sabotage planted a table with it enabled and
+not forced, and checked
+`rows.every(x => x.relrowsecurity && x.relforcerowsecurity) === false` — its own
+copy of the predicate. So if the real guard were weakened to ask only
+`relrowsecurity`, the normal tree would pass, **and the sabotage would pass
+too**, and the regression the sabotage exists to catch would ship under two
+green tests.
+
+The rule: the scenario and the sabotage call ONE function, and the sabotage
+varies only the planted input. `assertPrivateTablesSecured(rows, expected)`
+carries both halves; the sabotage names the planted table in its expected set,
+so the set half passes and the forced half is the only thing left to fail on,
+and it asserts the throw. Weaken the helper now and the sabotage goes red,
+which is the property that was missing.
+
+Proving it is the same discipline D113's sabotages already owe: run the exact
+change the sabotage is supposed to catch and watch it fail. "It passes" is not
+evidence about a test whose job is to fail.
+
+## D121 — Taking a rule for one site is not adopting it
+
+*2026-09-26.*
+
+When a change applies a rule to one guard, it enumerates that guard's siblings
+in the same change and says which were converted and which were left, with the
+reason. Otherwise the rule is recorded as taken while the instance a reviewer
+will actually find is still there.
+
+The example is D113 again, and it is uncomfortable precisely because the rule
+was fresh: "pin the SET, never membership" was applied to the private-table
+guard, and the app-scoped-column guard in the SAME pull request, on the same
+day, kept a count plus a hand-picked subset of table names. That shape is
+satisfied by a change that drops one unlisted column and adds another — the
+total holds, the one-per-table check holds, the `loose` query stays empty, and
+a column that left the containment is never reported.
+
+Why it survived is the general part. Nobody re-reads the part of a change that
+was already correct before the change. The column guard was not new work, so it
+was not re-read as the new rule was being applied twenty lines away. A rule
+adopted at one site and skipped at its sibling is the normal failure, not a
+careless one, and the remedy is mechanical: list the siblings, state the
+disposition of each, and put the list in the change rather than in your head.
