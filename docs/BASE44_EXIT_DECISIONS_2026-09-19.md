@@ -8677,3 +8677,52 @@ over the source text where one exists — `pg_proc.prosrc` has no trailing grant
 block and no `create or replace` ambiguity. And where two instruments disagree
 by one, do not average them or prefer the larger: the difference has a cause,
 and it is usually in the cheaper instrument's boundaries.
+
+## D147 — An entry can survive a merge intact and stop being an entry
+
+*2026-09-26.*
+
+**The rule.** D125 says a union is verified by what it REMOVED, because reading
+"both sides are present" asks for attention on a file you have already stopped
+attending to, and because a removed-line count of zero is blind to dropping your
+own entry — the diff merely gets shorter. One level below that there is a second
+blind spot, and it is blind to the count AND to the reading: an entry can come
+through with **every byte present** and still stop being an entry, because what
+makes it one is not its bytes but its POSITION. A heading is a heading because it
+starts a line. Lose the newline in front of it and the text is all there, the
+count is zero, the diff reads correctly, and every instrument keyed on
+`^## D<nn>` has silently lost an entry.
+
+**The worked example.** Resolving #323 against `main`, both sides of the
+decisions-doc conflict were pure additions — `main` contributed D125 and D131,
+the branch D128, D129 and D132 — and the resolution interleaved them in numeric
+order. `main`'s side ended without a trailing newline, so the concatenation
+produced `…summarised.## D132 — An instrument can silently cover MORE…`. Nothing
+was lost. Nothing was invented. The removed-line count was zero and the diff
+showed both entries in full. D132 had simply ceased to exist as far as any
+heading-keyed reader was concerned, including the next merge's resolver, which
+would have carried it as part of D131's body and been right by its own lights.
+
+**What caught it, which is the reusable half.** Not the reading and not the
+count. Two checks, and they catch different things:
+
+1. Compare the result's ENTRY SET against the union of both parents **in both
+   directions** — nothing in the union missing from the result, nothing in the
+   result present in neither parent. This is what fired: the union held 126 and
+   the result parsed 125, naming D132.
+2. Require every entry the result carries to be **byte-identical to the parent
+   it came from**. This is what confirmed the repair rather than the repair
+   merely looking right, and it is the check that would catch the opposite
+   failure — a heading surviving while a paragraph is lost to a hunk boundary.
+
+Run the first to find it and the second to believe the fix. Neither is a reading.
+
+**The root cause is more general than this file.** A missing trailing newline
+broke two unrelated instruments in one evening, in two shapes that share nothing
+on the surface: here it glued a heading onto a paragraph, and elsewhere it made
+`wc -l` report a set file one element short. Text joined at a boundary is where
+an instrument's notion of a UNIT and the file's bytes come apart, and the
+symptom is always local to whatever the instrument keys on — so it never looks
+like the same bug twice. When concatenating text that anything downstream
+parses positionally, normalise the boundary rather than trusting the parts, and
+assert the unit count on the result rather than on the inputs.
