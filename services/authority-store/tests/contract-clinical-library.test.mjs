@@ -757,6 +757,51 @@ test('every refusal these contracts can raise is a code the service declares', a
   assert.deepEqual(undeclared, {});
 });
 
+test('a write names its own writable fields, and does not inherit the read\'s', async () => {
+  // A read's projection can become an INPUT to the write beside it: where a
+  // write checks the payload against an exact key set taken from the read,
+  // widening the read by one column fails every save, with both suites green
+  // and neither contract wrong on its own. Asserted here because these
+  // fourteen pair reads with writes over the same rows, and the answer is
+  // that they are NOT coupled that way — `library_fields` checks each key
+  // against the table's own columns and a fixed reserved list, so a column
+  // added to a table reaches the read (where `PROJECTED` makes it a
+  // disclosure decision) and is accepted by the write without either one
+  // consulting the other.
+  //
+  // What IS true, and is the shape a screen hits: these reads project the
+  // WHOLE row, so a screen that spreads a read row into a save sends the
+  // reserved columns back and is refused by name. That is screen work, and
+  // the refusal is deliberate — `created_by` and `agency_id` are the
+  // contract's to decide, not a caller's to echo.
+  const made = await call(CLINICIAN_A, 'pennsync_contract_clinical_library_template_write',
+    [A, 'create', null, JSON.stringify({ phrase: 'round trip', category: 'assessment' })]);
+  const read = (await call(CLINICIAN_A, 'pennsync_contract_clinical_library_template_list',
+    [A, null, null])).entries.find(row => row.id === made.row.id);
+  assert.ok(read, 'the row the write created is not on the read');
+  await refusal(call(CLINICIAN_A, 'pennsync_contract_clinical_library_template_write',
+    [A, 'update', made.row.id, JSON.stringify({ ...read, phrase: 'edited' })]),
+  'PENNSYNC_LIBRARY_TEMPLATE_FIELD_RESERVED');
+
+  // The same payload with the contract's own columns dropped is served, so
+  // the refusal above is about those columns and not about the round trip.
+  // `patient_id` goes with them, and that is the detail a screen author will
+  // trip on: this contract's reserved set is WIDER on an update than on a
+  // create, because the chart a template names is chosen when it is written
+  // and never moved. So the set a save may send is not the set a create may
+  // send, and neither is the set the read projects.
+  const CONTRACT_OWNED = ['id', 'created_date', 'updated_date', 'created_by',
+    'agency_id', 'patient_id'];
+  const writable = Object.fromEntries(Object.entries(read)
+    .filter(([column]) => !CONTRACT_OWNED.includes(column)));
+  const saved = await call(CLINICIAN_A, 'pennsync_contract_clinical_library_template_write',
+    [A, 'update', made.row.id, JSON.stringify({ ...writable, phrase: 'edited' })]);
+  assert.equal(saved.row.phrase, 'edited');
+  // And the column the read gained is not one the write had to be told about:
+  // every key above reached `library_fields` and was accepted on its own.
+  assert.equal(saved.row.created_by, EMAIL[CLINICIAN_A]);
+});
+
 test('a page says whether it is the whole set, which is what lets ALL_ROWS be served', async () => {
   // Every screen here passes `ALL_ROWS` (5,000) or a page size, and every
   // contract clamps at 1,000. A route can serve those call sites only because

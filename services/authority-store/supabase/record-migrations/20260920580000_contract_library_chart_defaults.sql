@@ -65,6 +65,22 @@
 --    because the defaults are applied BEFORE the check rather than
 --    after it. A default and a requirement on the same field is not a
 --    contradiction in the schema; reading them in the wrong order is.
+--
+-- One thing about these fourteen that a reader should not have to
+-- derive, since it is what decides whether a screen's save works.
+-- A read's projection can be an INPUT to the write beside it: where a
+-- write checks the payload against an exact key set taken from the
+-- read, widening the read by one column fails every save, with both
+-- suites green and neither contract wrong on its own. These are NOT
+-- coupled that way. `library_fields` checks each key against the
+-- table's own columns and a fixed reserved list, so a column added to
+-- a table reaches the read — where `PROJECTED` makes it a disclosure
+-- decision — and is accepted by the write without either consulting
+-- the other. What a screen does hit is the other half: these reads
+-- project the WHOLE row, so spreading a read row into a save sends the
+-- reserved columns back and is refused by name, and this contract's
+-- reserved set is WIDER on an update than on a create. The round trip
+-- is driven in the suite rather than described here.
 -- ------------------------------------------------------------------
 
 begin;
