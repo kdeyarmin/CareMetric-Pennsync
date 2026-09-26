@@ -497,6 +497,13 @@ describe('the declared entity routes', () => {
       expect(fixture.apiCalls.at(-1).body.params)
         .toEqual({ order: 'incident_date', limit: 100, patient_id: 'p-1' });
 
+      // A control for the `-incident_date` refusal below: that case is named
+      // "a column this capability does not order by", and without a sort this
+      // route DOES take, the same refusal would fire for a route that orders by
+      // nothing at all — which is a different defect wearing the same detail.
+      await adapter.raw.entities.ComplianceAudit.list('-audit_date', 200);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ order: 'audit_date', limit: 200 });
+
       await adapter.raw.entities.PersonnelCredential.filter({ status: 'pending_approval' },
         undefined, 1000);
       // No order asked for is no order sent: the contract defaults it, and a
@@ -816,8 +823,9 @@ describe("what batch E's routes take on trust", () => {
       .filter(key => key.endsWith('.list') || key.endsWith('.filter'));
     // Not an allowlist: every route keyed for a read is covered, and a new one
     // joins this set by existing — which is why the number GREW rather than
-    // being relaxed when batch D's nine paged operational reads arrived.
-    expect(paged.length).toBe(38);
+    // being relaxed when batch D's nine paged operational reads arrived, and
+    // again here: 38 became 45 with the five compliance reads' seven.
+    expect(paged.length).toBe(45);
 
     for (const key of paged) {
       const signature = key.endsWith('.filter') ? 3 : 2;
