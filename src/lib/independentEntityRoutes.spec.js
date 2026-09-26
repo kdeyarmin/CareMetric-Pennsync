@@ -664,4 +664,46 @@ describe("what batch E's routes take on trust", () => {
     expect(fresh.expected_id).toBeNull();
     expect(Object.keys(fresh.preference)).not.toContain('user_email');
   });
+  /**
+   * The arity guard only refuses arguments PAST the declared count, so a
+   * declaration that is too GENEROUS fails open on exactly the case the guard
+   * exists to catch: a fourth argument at a three-argument route is discarded
+   * in silence and the module still loads clean. A clean load therefore proves
+   * nothing about the number, and every arity in this file is DECLARED rather
+   * than derived — `guardingArity` reads `request.length`, and all but one of
+   * these routes take a rest parameter, whose length is 0.
+   *
+   * So the number is pinned from OUTSIDE the route: `Entity.list(sort, limit)`
+   * and `Entity.filter(query, sort, limit)` are the entity methods' own
+   * signatures, which `src/lib/queryLimits.js` and `src/lib/entityReadLimits`
+   * both act on. A route that accepts a third argument on a `.list` or a
+   * fourth on a `.filter` is accepting an argument no caller can express and
+   * no parameter can receive.
+   *
+   * The count check runs in the wrapper, before the route's own body, so this
+   * reaches every route regardless of whether its other arguments are valid —
+   * which is why `detail` is asserted rather than the message. Every refusal
+   * in this module carries the same message, so a route refusing the extra
+   * argument for a reason of its own (a sort it cannot honour, a filter field
+   * it does not take) would pass a message-only assertion vacuously.
+   */
+  it('accepts no more arguments than the entity method it serves has', () => {
+    const paged = Object.keys(ENTITY_ROUTES)
+      .filter(key => key.endsWith('.list') || key.endsWith('.filter'));
+    // Not an allowlist: every route keyed for a read is covered, and a new one
+    // joins this set by existing.
+    expect(paged.length).toBe(29);
+
+    for (const key of paged) {
+      const signature = key.endsWith('.filter') ? 3 : 2;
+      let thrown;
+      try {
+        ENTITY_ROUTES[key].request(...Array.from({ length: signature + 1 }));
+      } catch (error) { thrown = error; }
+      expect(thrown, `${key} accepted ${signature + 1} arguments`).toBeDefined();
+      expect(thrown.code).toBe(ARGUMENTS_UNSUPPORTED);
+      expect(thrown.detail, `${key} refused for its own reason, not the count`)
+        .toBe('argument_count');
+    }
+  });
 });
