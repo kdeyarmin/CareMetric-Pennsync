@@ -109,31 +109,31 @@
 --   asserting the comment.
 --
 -- * A ROW'S TENANCY AND THE TENANCY OF THE CHART IT NAMES ARE TWO DIFFERENT
---   THINGS, and nothing here asks the second. D24's helpers ask whether the
---   caller opens every chart IN AN AGENCY, or is assigned this chart IN THAT
---   AGENCY; the policies ask the same two questions of the row's own
---   `agency_id`. So a case tenanted to agency A that names agency B's chart
---   satisfies every check on the way through, and measured on this migration
---   it returned that patient's NAME and MEDICARE NUMBER to an administrator
---   who cannot open their chart.
+--   THINGS, and this file asks the second where it has to. D24's helpers ask
+--   whether the caller opens every chart IN AN AGENCY, or is assigned this
+--   chart IN THAT AGENCY; the policies ask the same two questions of the row's
+--   own `agency_id`. So a case tenanted to agency A that names agency B's
+--   chart satisfied every check on the way through, and measured on an earlier
+--   revision of this migration it returned that patient's NAME and MEDICARE
+--   NUMBER to an administrator who cannot open their chart.
 --
---   A guard was written for it and then DELETED, which is the part worth
---   keeping. `not exists (chart proved to be elsewhere)` reads correctly and
---   protects nobody: the subquery runs inside a definer under FORCE ROW LEVEL
---   SECURITY with the caller's own claims, so the foreign chart that would
---   prove the row is foreign is itself invisible to exactly the caller who
---   needs protecting. Measured, not reasoned about — the crossed case stayed
---   visible to a caller holding one agency and became hidden for a caller
---   holding both, which is the guard working precisely backwards.
---
---   Closing it needs the chart's agency resolved by something that can see it
---   past the policies: a helper in `pennsync_private` granted to the record
---   owner, as `caller_assigned_patients` is. That is a change to the store's
---   own authorization surface rather than to one capability, so it is named
---   here and not taken. It is not reachable through these reads alone — a
---   crossed row has to be WRITTEN first — and no writer in this store creates
---   one today.
---
+--   It is CLOSED now rather than recorded, by `chart_not_elsewhere` from
+--   `20260920590000_chart_agency.sql`, which is the helper the deleted version
+--   of this note asked for: the chart's agency resolved by a definer in
+--   `pennsync_private` owned by the migration administrator, the only thing
+--   here that can see past the chart policies. A guard written INSIDE this
+--   definer reads correctly and protects nobody — the foreign chart that would
+--   prove the row foreign is itself invisible to exactly the caller who needs
+--   protecting, and measured, the crossed case stayed visible to a caller
+--   holding one agency and became hidden for a caller holding both, which is
+--   the guard working precisely backwards. That asymmetry is why only
+--   `contract_adr_case_list` calls the helper. `incident` and
+--   `compliance_audit` reach tenancy through a POSITIVE existence check on the
+--   chart and the visit, and a positive check fails CLOSED under the same
+--   blindness: the foreign row is invisible, the `exists` is false, and the
+--   crossed row is hidden already. Adding the helper there would WIDEN them,
+--   since it keeps a row whose subject is null. A test proves both halves
+--   rather than asserting this paragraph.
 -- * `adr_audit_case.medicare_number` IS projected and is the widest field in
 --   this file. It is the point of the screen the capability serves — an ADR is
 --   a payer's demand for records naming a claim — and the contract has already
@@ -150,7 +150,13 @@ begin
     or to_regclass('pennsync_records.personnel_credential') is null
     or to_regclass('pennsync_records.policy_acknowledgment') is null
     or to_regprocedure('pennsync_records.caller_tenant_role(text)') is null
-    or to_regprocedure('pennsync_records.caller_email()') is null then
+    or to_regprocedure('pennsync_records.caller_email()') is null
+    -- `20260920590000_chart_agency.sql`, named because the ADR read below calls
+    -- it. A plain SQL body is parsed at creation, so a store without it would
+    -- refuse anyway — with a bare "function does not exist" naming neither the
+    -- file that ships it nor the reason. This says both.
+    or to_regprocedure(
+      'pennsync_records.chart_not_elsewhere(text,text)') is null then
     raise exception using errcode='42501',message='PENNSYNC_RECORD_STORE_REQUIRED';
   end if;
 end $$;
@@ -372,6 +378,17 @@ begin
     select c.* from "pennsync_records"."adr_audit_case" c
     where c."source_app_id" = "pennsync_records".deployment_app()
       and c."agency_id" = p_agency
+      -- The crossed chart, closed by #313's helper rather than recorded. This
+      -- table is tenanted on its OWN `agency_id` and projects a patient's name
+      -- and medicare number, so a case filed here that names another agency's
+      -- chart passed every check on the way through. `chart_not_elsewhere`
+      -- resolves the chart's agency through a `pennsync_private` definer owned
+      -- by the migration administrator, which is the only thing here that can
+      -- see past the chart policies — the reason the guard written inside this
+      -- definer had to be deleted. It keeps a row whose `patient_id` is null,
+      -- because a case filed before a chart is named is legitimately this
+      -- agency's.
+      and "pennsync_records".chart_not_elsewhere(c."patient_id", p_agency)
       and (v_admin or c."created_by" = v_email)
     order by c."created_date" desc nulls last, c."id"
     limit v_limit) r;

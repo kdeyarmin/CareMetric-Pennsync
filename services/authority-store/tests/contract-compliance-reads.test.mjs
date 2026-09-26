@@ -28,6 +28,26 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
 const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
 const READS = 'services/authority-store/supabase/record-migrations/'
   + '20260920640000_contract_compliance_reads.sql';
+// The crossed-chart guard lives in #313's file, not this one, so a suite that
+// applied only the store and this migration would fail to create the contract
+// at all. It is named rather than globbed for the reason the others are: this
+// suite applies record files BY CONSTANT, and a glob would silently pull in
+// whatever a sibling branch lands next.
+//
+// Naming it drags in its own two preconditions, and they are not decoration:
+// `20260920590000_chart_agency.sql` refuses to apply unless
+// `contract_task_list` exists, and `20260920580000_contract_operational_tables.sql`
+// in turn refuses without `pennsync_private.resolve_file_locator`. So the chain
+// is four files rather than one, measured by applying each alone and reading
+// the refusal it raised rather than by reading the headers. A shorter list
+// fails in `before`, which is the good direction: the suite cannot come to run
+// against a database where `chart_not_elsewhere` silently does not exist.
+const LOCATORS = 'services/authority-store/supabase/record-migrations/'
+  + '20260920520000_file_locator_map.sql';
+const OPERATIONAL = 'services/authority-store/supabase/record-migrations/'
+  + '20260920580000_contract_operational_tables.sql';
+const CHART_AGENCY = 'services/authority-store/supabase/record-migrations/'
+  + '20260920590000_chart_agency.sql';
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -59,7 +79,8 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, READS]) {
+  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE, LOCATORS,
+    OPERATIONAL, CHART_AGENCY, READS]) {
     await db.exec(readFileSync(resolve(repository, file), 'utf8'));
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
@@ -125,18 +146,32 @@ before(async () => {
     [APP, id, visit, patient, nurse, `${created} 00:00:00+00`, `${auditDate} 00:00:00+00`]);
   }
 
-  for (const [id, agency, creator, created] of [
+  for (const [id, agency, creator, created, chart = null] of [
     ['adr-mine', A, email(CLINICIAN_A), '2026-09-01'],
     ['adr-theirs', A, email(ADMIN_A), '2026-09-02'],
     ['adr-elsewhere', B, email(CLINICIAN_A), '2026-09-03'],
+    // The CROSSED case: filed in agency A, by a caller who holds agency A,
+    // naming a chart that lives in agency B. Every check on the way through
+    // admits it — the row's own tenancy is agency A's and its creator matches —
+    // so before `chart_not_elsewhere` this row handed agency B's patient name
+    // and medicare number to agency A's administrator.
+    ['adr-crossed', A, email(CLINICIAN_A), '2026-09-04', 'patient-b1'],
+    // The control beside it: same shape, this agency's own chart.
+    ['adr-own-chart', A, email(CLINICIAN_A), '2026-09-05', 'patient-a1'],
+    // The term's third branch: a chart this store does not carry at all. It is
+    // UNRESOLVABLE rather than proved crossed, so it stays — and it is seeded
+    // here so a tightening that hid it would fail rather than read as tidy.
+    ['adr-uncarried', A, email(CLINICIAN_A), '2026-09-06', 'patient-not-in-this-store'],
   ]) {
     await db.query(`insert into ${SCHEMA}."adr_audit_case"
       ("source_app_id","id","agency_id","created_by","created_date","case_name",
+       "patient_id","patient_name",
        "medicare_number","letter_file_url","packet_file_url","final_packet_url",
        "packet_page_count")
-      values ($1,$2,$3,$4,$5,$6,'1EG4TE5MK73','https://base44.app/l.pdf',
+      values ($1,$2,$3,$4,$5,$6,$7,$8,'1EG4TE5MK73','https://base44.app/l.pdf',
         'https://base44.app/p.pdf','https://base44.app/f.pdf',12)`,
-    [APP, id, agency, creator, `${created} 00:00:00+00`, `Case ${id}`]);
+    [APP, id, agency, creator, `${created} 00:00:00+00`, `Case ${id}`,
+      chart, chart ? `Subject of ${chart}` : null]);
   }
 
   for (const [id, agency, user, created, expiration, status] of [
@@ -325,7 +360,15 @@ test('every column of the five tables is projected, or exempt for a stated reaso
 test('an agency colleague reads their own rows and not a colleague\'s', async () => {
   // Every `-mine`/`-theirs` pair is in ONE agency, so the policies admit both
   // rows to both callers. Only the contract's predicate separates them.
-  assert.deepEqual(ids(await adrCases(CLINICIAN_A)), ['adr-mine']);
+  // The SET, not membership: the clinician filed four of agency A's ADR cases
+  // and two come back. An `includes`-style assertion here would survive a term
+  // that hid all four. The two that are gone are gone for DIFFERENT reasons,
+  // which is why the set is pinned rather than the count: `adr-crossed` by
+  // `chart_not_elsewhere`, and `adr-uncarried` by D24 — its chart is not in
+  // `caller_assigned_patients(agency)` because it is in no agency's chart list
+  // at all, and a clinician opens only the charts they are assigned to. The
+  // administrator below sees that one, which is what separates the two causes.
+  assert.deepEqual(ids(await adrCases(CLINICIAN_A)), ['adr-own-chart', 'adr-mine']);
   assert.deepEqual(ids(await credentials(CLINICIAN_A)), ['cred-mine']);
   assert.deepEqual(ids(await acks(CLINICIAN_A)), ['ack-mine']);
   const audit = ids(await audits(CLINICIAN_A));
@@ -535,3 +578,89 @@ test('the two shared internals are the record owner\'s alone', async () => {
   assert.ok(Array.isArray((await as(ADMIN_A,
     `select ${SCHEMA}.contract_incident_list($1,null,null,null,null) as result`, [A])).entries));
 });
+
+/* ------------------------------- the crossed chart, closed by #313's helper */
+
+/** The term's own definition, out of the migration that ships it. */
+function termDefinition() {
+  const sql = readFileSync(resolve(repository, CHART_AGENCY), 'utf8');
+  const open = sql.indexOf('create function "pennsync_records".chart_not_elsewhere(');
+  assert.ok(open >= 0, 'chart_agency no longer declares chart_not_elsewhere');
+  const close = sql.indexOf('$chart$;\n', open);
+  assert.ok(close >= 0, 'unterminated chart_not_elsewhere');
+  return `set role "pennsync_records_owner"; create or replace `
+    + sql.slice(open + 'create '.length, close + '$chart$;\n'.length) + ' reset role;';
+}
+
+/**
+ * Run `body` with the term answering true for every row, then put it back.
+ *
+ * The restore is the migration's own text rather than a retyped copy, so a
+ * drift between this suite and the file it depends on cannot make the "after"
+ * half pass against a definition this repository does not ship.
+ */
+async function withoutTheTerm(body) {
+  await db.exec(`set role "pennsync_records_owner";
+    create or replace function ${SCHEMA}.chart_not_elsewhere(
+      p_patient_id text, p_agency text) returns boolean
+      language sql stable set search_path = '' as $sabotage$ select true $sabotage$;
+    reset role;`);
+  try { return await body(); } finally { await db.exec(termDefinition()); }
+}
+
+test('an ADR case naming another agency\'s chart is reachable, then hidden', async () => {
+  // THE PRECONDITION (D107). Without it the assertion below passes against a
+  // fixture that never had the row, a caller who could not reach it, or a page
+  // the limit had already cut — three ways to measure nothing. `adr-crossed`
+  // is tenanted to agency A and filed by a caller who holds agency A, so
+  // everything else on the way through admits it: this is the leak the term
+  // closes, and before the term an agency-A administrator read agency B's
+  // patient name and medicare number off it.
+  const reachable = await withoutTheTerm(() => adrCases(ADMIN_A, { limit: 1000 }));
+  assert.ok(ids(reachable).includes('adr-crossed'),
+    'the crossed row must be returned with the term removed');
+
+  // The EXACT surviving set rather than `!includes('adr-crossed')`: a weaker
+  // assertion is satisfied by a second, different regression — a term that hid
+  // every chart-naming row would pass it — and a refusal test a wrong answer
+  // can satisfy is the vacuous case one assertion away.
+  assert.deepEqual(ids(await adrCases(ADMIN_A, { limit: 1000 })),
+    ['adr-uncarried', 'adr-own-chart', 'adr-theirs', 'adr-mine'],
+    'the term must remove the crossed row and nothing else');
+});
+
+test('the other two branches keep their rows', async () => {
+  // Decisions rather than fallbacks. `adr-uncarried` names a chart this store
+  // does not hold, which is UNRESOLVABLE rather than proved crossed — hiding
+  // it would lose a row from its own agency for a reason nobody can see (D61)
+  // — and `adr-theirs` names no chart at all, which is agency-scoped and not
+  // yet anybody's chart. Without both cases a tightening that deleted the two
+  // `is null` branches would pass every other test here.
+  const page = ids(await adrCases(ADMIN_BOTH, { limit: 1000 }));
+  assert.ok(page.includes('adr-uncarried') && page.includes('adr-theirs'));
+  assert.ok(page.includes('adr-own-chart'), 'this agency\'s own chart must stay');
+});
+
+test('the two chart-tenanted reads need no term, and adding one would widen them',
+  async () => {
+    // `incident` and `compliance_audit` carry no `agency_id`, so their tenancy
+    // is an `exists` through the chart — a POSITIVE check, which under the same
+    // definer blindness fails CLOSED: a chart the definer cannot resolve
+    // produces no row and the incident is dropped. So they are already safe
+    // from the crossed case, and `chart_not_elsewhere` would make them LESS so,
+    // because its first branch keeps a row whose `patient_id` is null.
+    //
+    // Proved by sabotaging the term, which these two do not call: their answers
+    // must not move at all. If either ever adopts it this test fails, which is
+    // the reminder to read the direction before copying the guard across.
+    const before = [ids(await incidents(ADMIN_A, { limit: 5000 })),
+      ids(await audits(ADMIN_A, { limit: 5000 }))];
+    const during = await withoutTheTerm(async () => [
+      ids(await incidents(ADMIN_A, { limit: 5000 })),
+      ids(await audits(ADMIN_A, { limit: 5000 }))]);
+    assert.deepEqual(during, before,
+      'one of these reads calls chart_not_elsewhere; check whether it widens it');
+    // And the positive control: the crossed-chart case for these two is
+    // `inc-elsewhere`, whose chart is agency B's, and it is absent either way.
+    assert.ok(before[0].includes('inc-mine') && !before[0].includes('inc-elsewhere'));
+  });
