@@ -118,7 +118,13 @@ export function classifyToolFailure(binary, args, error) {
   // is attached to the error as `observed` at pre-flight time, which cannot
   // fire for a port that was free when it looked. Docker reports it from the
   // daemon, so it arrives HERE, and it read as unrecognised until now.
-  else if (/port is already allocated|address already in use|bind: /i.test(output)) reason = 'PORT_TAKEN_DURING_START';
+  // A bare `bind: ` alternative was here and is REMOVED, on Copilot's finding:
+  // it matches `bind: permission denied` and `bind: cannot assign requested
+  // address`, neither of which is a taken port, and naming a wrong cause
+  // confidently is worse than falling through to the redacted verdict. That is
+  // this branch's own asymmetry biting the branch that wrote it down — too wide
+  // fails loudly, and this one failed loudly to a reviewer rather than in CI.
+  else if (/port is already allocated|address already in use/i.test(output)) reason = 'PORT_TAKEN_DURING_START';
   // An image the runner could not obtain is not this repository's fault and is
   // worth separating from one it obtained and could not run: a registry rate
   // limit is the common shape on a shared runner and resolves itself, where a
@@ -128,7 +134,13 @@ export function classifyToolFailure(binary, args, error) {
   // shape a start takes when it gets far enough to wait on a service. It sits
   // after the two above because an unobtainable image also leaves a service
   // unstarted, and the earlier cause is the one to report.
-  else if (/is not healthy|service not healthy|unhealthy|health check failed|container .* (?:exited|is not running)/i.test(output)) reason = 'SERVICE_UNHEALTHY';
+  // Same narrowing here, for the same reason. A bare `unhealthy` alternative
+  // matched the word anywhere in any diagnostic; `is unhealthy` is the shape
+  // docker actually prints (`dependency failed to start: container X is
+  // unhealthy`), and the container alternative takes one token rather than a
+  // greedy `.*` that could span an unrelated clause on the same line.
+  else if (/is not healthy|is unhealthy|service not healthy|health check failed|container [^\s]+ (?:exited|is not running)/i
+    .test(output)) reason = 'SERVICE_UNHEALTHY';
   // A migration that raised one of our own codes says so by name. Nothing but a
   // literal above is emitted, so this stays inside the no-forwarding rule while
   // turning an unreadable start failure into the one fact worth knowing.

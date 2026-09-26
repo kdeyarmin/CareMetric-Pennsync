@@ -134,6 +134,20 @@ test('a start that fails applying a migration is named, and nothing else is forw
     + 'manifest unknown'), 'LOCAL_CLI_START_IMAGE_UNAVAILABLE');
   assert.equal(start('service supabase_db_pennsync is not healthy'),
     'LOCAL_CLI_START_SERVICE_UNHEALTHY');
+  // Docker's own compose wording, which a bare `unhealthy` alternative used to
+  // catch by accident and a narrowed one must still catch on purpose.
+  assert.equal(start('dependency failed to start: container supabase_db_pennsync is unhealthy'),
+    'LOCAL_CLI_START_SERVICE_UNHEALTHY');
+  // AND THE NARROWING ITSELF, on Copilot's finding against this change. A bind
+  // failure that is NOT an occupied port must fall through to the redacted
+  // verdict rather than be named a taken port: naming a wrong cause confidently
+  // is worse than naming none, and it is the too-wide half of the asymmetry this
+  // branch's own comment describes. With the bare `bind: ` alternative restored
+  // these two answer `PORT_TAKEN_DURING_START` and fail.
+  assert.equal(start('listen tcp 0.0.0.0:54321: bind: permission denied'),
+    'LOCAL_CLI_START_FAILED_OUTPUT_REDACTED');
+  assert.equal(start('bind: cannot assign requested address'),
+    'LOCAL_CLI_START_FAILED_OUTPUT_REDACTED');
   // The order between them is load-bearing, not incidental: an image the runner
   // could not obtain ALSO leaves the service unstarted, so a message carrying
   // both must report the cause and not the consequence. Swap the two branches
