@@ -17,7 +17,7 @@
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -112,4 +112,32 @@ test('omit drops exactly what it names, which is what makes a suite sabotageable
   const second = await applyRecordMigrations({ exec: async () => {} },
     { directory, omit: ['nope.sql'] });
   assert.deepEqual(second, ['10000000000000_a.sql', '20000000000000_b.sql']);
+});
+
+test('the order is the deployment tool\'s, pinned against its source', async () => {
+  // The helper sorts WITHIN the record directory and leaves the authority half
+  // to its caller, because that is what the provisioner does. Pinning it here
+  // rather than restating it in a comment, since a suite that applied contracts
+  // in a different order from the deployment would prove the wrong store.
+  //
+  // This reads the provisioner as TEXT and does not import it, deliberately.
+  // `test:authority-store` runs in the isolated job, which installs only
+  // `services/authority-store` — a suite there importing a root tool that pulls
+  // `json5` dies at load, before any assertion, and `testRegistryContract`
+  // fails the build for exactly that. So this is a weaker pin than calling the
+  // function, and it says so: it asserts the two properties the order depends
+  // on are still written where the order comes from, and a behavioural check
+  // belongs in a root-context suite if anyone wants one.
+  const source = await readFile(
+    new URL('../../../tools-pennsync-provision.mjs', import.meta.url), 'utf8');
+  assert.match(source,
+    /readdirSync\(directory\)\.filter\(name => name\.endsWith\('\.sql'\)\)\.sort\(\)/,
+    'the provisioner sorts by file name within a directory; the helper must too');
+  const order = source.indexOf('[...read(MIGRATION_DIRECTORY), ...read(RECORD_MIGRATION_DIRECTORY)]');
+  assert.ok(order > 0, 'the provisioner must still build one list from the two directories');
+  // And the record directory is the SECOND of the two, which is why a caller
+  // applies the authority half before calling this module rather than after.
+  assert.ok(source.indexOf('read(MIGRATION_DIRECTORY)', order)
+    < source.indexOf('read(RECORD_MIGRATION_DIRECTORY)', order),
+    'authority first: a record policy is written in terms of pennsync_private');
 });
