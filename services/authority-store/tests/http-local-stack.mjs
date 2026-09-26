@@ -30,8 +30,8 @@ export const MIGRATION_CODES = Object.freeze([
   'PENNSYNC_RECORD_OWNER_NOT_CREATABLE',
   // Raised by the broker and contract migrations. Omitting them sent exactly
   // the failures these diagnostics were added for back to the generic redacted
-  // verdict; `record-migration-codes.test.mjs` now reads the migrations and
-  // fails if a code they raise is missing here.
+  // verdict; `http-boundary.test.mjs` now reads the migrations and fails if a
+  // code they raise is missing here.
   'PENNSYNC_RECORD_STORE_REQUIRED',
   'PENNSYNC_RECORD_OWNER_REQUIRED',
   // D33's contract refuses to apply to a store whose `chart_assignment` has no
@@ -54,6 +54,12 @@ export const MIGRATION_CODES = Object.freeze([
   // D45's notification contract needs D34's `caller_membership`, because the
   // authority envelope it filters on is THIS store's membership.
   'PENNSYNC_CALLER_MEMBERSHIP_REQUIRED',
+  // D110. Raised by an AUTHORITY migration rather than a record one, which is
+  // why it sat outside this list while the scan above read one directory: the
+  // deployment pin refuses an app id `known_app` does not carry, so an operator
+  // who mistypes `pennsync.deployment_app_id` when pinning a new deployment
+  // gets a named refusal instead of the generic redacted verdict.
+  'PENNSYNC_UNKNOWN_DEPLOYMENT_APP',
 ]);
 let pinnedDaemon;
 const localDaemon = value => typeof value === 'string' &&

@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { mkdtemp, mkdir, copyFile, writeFile, readFile, readdir, rm, access } from 'node:fs/promises';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { resolve, sep } from 'node:path';
 const exec = promisify(execFile);
 const base = fileURLToPath(new URL('../supabase/.temp/', import.meta.url));
@@ -102,6 +102,35 @@ test('a start that fails applying a migration is named, and nothing else is forw
 });
 
 /**
+ * Every directory a migration failure can come out of. D110: this scan read
+ * `record-migrations/` alone, which is the directory the codes it was written
+ * for happened to live in, and the guard's subject is the CODE. The authority
+ * migrations raise three of their own, and one of them —
+ * `PENNSYNC_UNKNOWN_DEPLOYMENT_APP` — was outside the allowlist the whole time,
+ * so an operator pinning a new deployment to a mistyped app id got the generic
+ * redacted verdict. That is the same failure the scan was added to stop, in the
+ * directory it did not read.
+ */
+const MIGRATION_DIRECTORIES = Object.freeze(['../supabase/migrations/', '../supabase/record-migrations/']);
+
+/**
+ * The `do $$ … $$` preconditions of one directory. A code raised inside a
+ * CREATE FUNCTION body is a refusal answered to a caller at runtime, not a
+ * migration failure, and naming one here would be wrong in the other direction
+ * — the planted case below holds that line as well as this one.
+ */
+async function codesRaisedIn(directory) {
+  const raised = new Set();
+  for (const name of (await readdir(directory)).filter(file => file.endsWith('.sql')).sort()) {
+    const sql = await readFile(new URL(name, directory), 'utf8');
+    for (const block of sql.matchAll(/\bdo \$\$([\s\S]*?)\$\$\s*;/g)) {
+      for (const match of block[1].matchAll(/message\s*=\s*'(PENNSYNC_[A-Z_]+)'/g)) raised.add(match[1]);
+    }
+  }
+  return raised;
+}
+
+/**
  * The classifier names a migration failure by its own code so a redacted CI
  * log still says what refused. That only works while the allowlist knows every
  * code the migrations can raise, and it stopped being true the moment the
@@ -110,25 +139,52 @@ test('a start that fails applying a migration is named, and nothing else is forw
  * precisely the diagnosis this was built to avoid. Read from the migrations
  * rather than maintained by hand, so the next one cannot slip either.
  */
-test('every code the record migrations raise is one the classifier can name', async () => {
+test('every code the migrations raise is one the classifier can name', async () => {
   const { MIGRATION_CODES } = await import('./http-local-stack.mjs');
-  const directory = new URL('../supabase/record-migrations/', import.meta.url);
   const raised = new Set();
-  for (const name of (await readdir(directory)).filter(file => file.endsWith('.sql')).sort()) {
-    const sql = await readFile(new URL(name, directory), 'utf8');
-    // Only the `do $$ … $$` preconditions. A code raised inside a CREATE
-    // FUNCTION body is a refusal answered to a caller at runtime, not a
-    // migration failure, and naming one here would be wrong in the other
-    // direction — the assertion below holds that line.
-    for (const block of sql.matchAll(/\bdo \$\$([\s\S]*?)\$\$\s*;/g)) {
-      for (const match of block[1].matchAll(/message\s*=\s*'(PENNSYNC_[A-Z_]+)'/g)) raised.add(match[1]);
-    }
+  for (const relative of MIGRATION_DIRECTORIES) {
+    const found = await codesRaisedIn(new URL(relative, import.meta.url));
+    // Per directory, not over the union: a renamed or moved directory would
+    // otherwise scan nothing and pass on the other one's codes, which is this
+    // guard's own defect arriving a second time.
+    assert.ok(found.size > 0, `expected ${relative} to raise named codes`);
+    for (const code of found) raised.add(code);
   }
-  assert.ok(raised.size > 0, 'expected the record migrations to raise named codes');
   const unnamed = [...raised].filter(code => !MIGRATION_CODES.includes(code)).sort();
   assert.deepEqual(unnamed, [],
     'these codes would fall back to the generic redacted verdict; add them to MIGRATION_CODES');
   // A broker refusal is not a migration failure and must not be named as one:
   // those are answered to a caller at runtime, not printed in a CI log.
   assert.deepEqual(MIGRATION_CODES.filter(code => /BROKER|CONTRACT/.test(code)), []);
+});
+
+/**
+ * The widened half, proved to bite rather than read correctly. A scan that
+ * silently found nothing in the new directory would pass the test above on the
+ * old directory's codes, so plant a code in a file shaped like an authority
+ * migration and check it is both seen and reported unnamed. The second file
+ * holds the other line: a code inside a CREATE FUNCTION body is a runtime
+ * refusal and must stay invisible to this scan.
+ */
+test('a code planted in a migration is seen, and one inside a function body is not', async () => {
+  const { MIGRATION_CODES } = await import('./http-local-stack.mjs');
+  await mkdir(base, { recursive: true });
+  const root = await mkdtemp(resolve(base, 'http-boundary-'));
+  try {
+    await writeFile(resolve(root, '20260926000000_planted_precondition.sql'),
+      "begin;\ndo $$\nbegin\n  if false then\n"
+      + "    raise exception using errcode='42501',message='PENNSYNC_PLANTED_PRECONDITION';\n"
+      + '  end if;\nend $$;\ncommit;\n');
+    await writeFile(resolve(root, '20260926000001_planted_runtime_refusal.sql'),
+      'create function pennsync_private.planted() returns void language plpgsql as $fn$\nbegin\n'
+      + "  raise exception using errcode='42501',message='PENNSYNC_PLANTED_RUNTIME_REFUSAL';\n"
+      + 'end $fn$;\n');
+    const found = await codesRaisedIn(pathToFileURL(root + sep));
+    assert.deepEqual([...found].sort(), ['PENNSYNC_PLANTED_PRECONDITION']);
+    assert.deepEqual([...found].filter(code => !MIGRATION_CODES.includes(code)),
+      ['PENNSYNC_PLANTED_PRECONDITION'],
+      'a planted code must be reported unnamed, or the allowlist check proves nothing');
+  } finally {
+    await removeOwnedFixture(root);
+  }
 });
