@@ -62,15 +62,27 @@ const unsupported = (detail) => {
 };
 
 /**
- * A sort argument the roster page can honour.
+ * The sort arguments the roster page can honour, and the contract order each
+ * one asks for.
  *
- * The roster is ordered by email with the user id as the tiebreaker, and the
- * contract takes no other order. Base44's `list` takes a sort string, so the
- * only honourable answers are "no order asked for" and "ascending email".
- * `-created_date`, which several call sites pass, is a real order this cannot
- * produce, and answering it with email order would silently reorder a screen.
+ * The roster now serves two orders: email with the user id as the tiebreaker,
+ * and `created_date` DESCENDING with nulls last and the same tiebreakers. So
+ * `-created_date` — which 25 `User.list` CALL SITES pass, and which this route
+ * used to refuse — maps to `created_desc`.
+ *
+ * That 25 is over call sites passing that sort string. It is a DIFFERENT
+ * population from the gate's refusal count and from the count of `User` sites
+ * refused on a sort, and the three are allowed to disagree: do not reconcile,
+ * average or sum them. Say which population a figure is over, beside it.
+ *
+ * Bare `created_date` is still refused, and deliberately: the contract has one
+ * direction, ascending is a different page of people, and answering it with
+ * the descending one would silently reorder a screen. That is the same reason
+ * every other sort is refused rather than served in the default order.
  */
-const EMAIL_ASCENDING_SORTS = Object.freeze(['', 'email', '+email']);
+const ROSTER_SORTS = Object.freeze(Object.assign(Object.create(null), {
+  '': undefined, email: undefined, '+email': undefined, '-created_date': 'created_desc',
+}));
 
 /**
  * The caller's row bound, checked for shape and nothing else.
@@ -86,9 +98,14 @@ function pageSize(limit) {
   return limit;
 }
 
-function emailAscending(sort) {
-  if (sort === undefined || sort === null) return;
-  if (typeof sort !== 'string' || !EMAIL_ASCENDING_SORTS.includes(sort)) unsupported('sort');
+function rosterOrder(sort) {
+  if (sort === undefined || sort === null) return undefined;
+  // `Object.create(null)` above rather than a plain literal, so a sort string
+  // of `constructor` or `toString` is an unknown order rather than a hit on a
+  // prototype member — and `hasOwn` rather than a truthiness test, since two of
+  // the four accepted sorts map to `undefined` on purpose.
+  if (typeof sort !== 'string' || !Object.hasOwn(ROSTER_SORTS, sort)) unsupported('sort');
+  return ROSTER_SORTS[sort];
 }
 
 /**
@@ -826,11 +843,18 @@ const DECLARED_ROUTES = Object.freeze({
    * `ai_content_agreement_accepted`, null rather than absent for everybody
    * else.
    *
-   * It also supplies no `created_date` and no `full_name` — the carried `user`
-   * table has no name column at all (D69) — which is why 31 of the 36 call
-   * sites here still refuse: they ask the staff list to sort by a field the
-   * store does not hold. Those are per-screen work, not a route this file can
-   * write, and the gate now counts them as unserved rather than adopted.
+   * It supplies `created_date` and can be read in `created_date` DESCENDING
+   * order, which is what `-created_date` asks for and what 25 of the call sites
+   * here were refused on — 24 of which this releases, the twenty-fifth staying
+   * refused because it also passes an offset the route has no parameter for. It still supplies no `full_name` — the carried `user`
+   * table has no name column at all (D69) — so a site sorting or labelling on a
+   * name is still per-screen work rather than a route this file can write, and
+   * the gate counts those as unserved rather than adopted.
+   *
+   * The two are entangled and the figures should not be read as independent: 16
+   * files read `role` or `account_type` and 15 of those also read `full_name`
+   * off a roster row, so the name is the binding constraint for almost all of
+   * them and this order alone does not release them.
    *
    * It supplies NO `role` and no `account_type`, because those are the
    * self-editable labels D23 forbids authorizing on. A screen reading either
@@ -844,9 +868,12 @@ const DECLARED_ROUTES = Object.freeze({
     projection: 'roster',
     reason: 'D23 replaced 35 copies of a User read with this one reviewed roster contract.',
     request: (sort, limit) => {
-      emailAscending(sort);
+      const order = rosterOrder(sort);
       const size = pageSize(limit);
-      return size === undefined ? {} : { limit: probeFor(size, ROSTER_MAXIMUM) };
+      return {
+        ...(size === undefined ? {} : { limit: probeFor(size, ROSTER_MAXIMUM) }),
+        ...(order === undefined ? {} : { order }),
+      };
     },
     response: (result, sort, limit) => {
       const entries = result.entries;

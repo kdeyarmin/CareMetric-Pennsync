@@ -161,10 +161,18 @@ test('the roster sends what its contract declares and refuses what it does not',
   assert.equal(seen.url, `${TARGET}/rest/v1/rpc/pennsync_contract_roster_list`);
   // Absent means absent, not zero: the contract's own defaults decide the page
   // size, so a service that sent one would be a second answer to keep in step.
-  assert.deepEqual(JSON.parse(seen.init.body), { p_agency: 'agency-a', p_limit: null, p_after: null });
+  assert.deepEqual(JSON.parse(seen.init.body),
+    { p_agency: 'agency-a', p_limit: null, p_after: null, p_order: null });
   await capability({}, fetcher)('listAgencyRoster', { limit: 50, after: 'a'.repeat(24) });
   assert.deepEqual(JSON.parse(seen.init.body),
-    { p_agency: 'agency-a', p_limit: 50, p_after: 'a'.repeat(24) });
+    { p_agency: 'agency-a', p_limit: 50, p_after: 'a'.repeat(24), p_order: null });
+  // The order travels in the contract's own vocabulary, and an unknown word is
+  // the STORE's refusal rather than the service's: translating it here would
+  // put a second copy of the accepted set in a place nothing compares against
+  // the SQL.
+  await capability({}, fetcher)('listAgencyRoster', { order: 'created_desc' });
+  assert.deepEqual(JSON.parse(seen.init.body),
+    { p_agency: 'agency-a', p_limit: null, p_after: null, p_order: 'created_desc' });
 
   await capability({}, fetcher)('getAgencyRosterMember', { user_id: 'b'.repeat(24) });
   assert.equal(seen.url, `${TARGET}/rest/v1/rpc/pennsync_contract_roster_get`);
