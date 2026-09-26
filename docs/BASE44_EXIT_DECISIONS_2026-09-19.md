@@ -7814,6 +7814,100 @@ and deliberately: a code inside a `create function` body is a refusal answered t
 a caller at runtime, not a migration failure, and naming one in this list would
 be wrong in the other direction. The planted case holds that line.
 
+
+
+## D113 — A guard must build the population its assertion names
+
+*2026-09-26.*
+
+Two of the authority store's ratchets assert something about the whole store —
+every `pennsync_private` table has row security enabled and forced, every
+app-scoped column carries the `deployment_app` domain — while building a
+database from `supabase/migrations/` only. The assertion and the population
+disagreed, so both guards passed while measuring a store no deployment runs.
+
+That is D109 arriving from the side that can be fixed. D109 records that a
+`pennsync_private` object created from `record-migrations/` is invisible to the
+authority-directory suites; this entry is what the invisibility cost. One object
+is in that state today — `pennsync_private.file_object`, D77's locator mapping —
+and it is correct in every respect: row security enabled and forced, `app_id`
+typed by the domain. Nothing was wrong. What was wrong is that nothing could
+have told us if something were.
+
+Both guards now build both directories, in the order a deployment applies them,
+and their pins are the true sets. Measured on this branch's merged tree, the
+widened build holds **24** private tables and **22** app-scoped columns; the
+authority-only build holds **23** and **21**. The difference in each case is the
+one object the record directory creates: the table `pennsync_private.file_object`
+and its own `app_id` column. State the pair, because **a pin's value is a
+property of which directories the test BUILDS** and a bare number is what makes
+this a trap: 21 was the right app-scoped count for the build that existed
+before this change and is the wrong one for the build after it, with neither
+reading a mistake. Both figures will move again — D109 landed `staff_name` in the
+authority directory on the same day — so re-derive them rather than quoting
+them. What does not move is the derivation, and it is worth writing down
+because a grep that gets it wrong reads as a disagreement rather than a
+mistake: the domain was RENAMED from `staging_app` in
+`20260919090000_deployment_app_pin.sql:140`, so an authority-directory count is
+the columns declared `pennsync_private.staging_app` plus those declared
+`pennsync_private.deployment_app`, and the record directory contributes exactly
+one, `file_object.app_id` in
+`record-migrations/20260920520000_file_locator_map.sql:60`.
+
+**A pin counts what the test BUILDS.** That is the rule this leaves behind, and
+it cuts in the direction nobody expects. Before the widening, the pin was not stale
+and not short — it was exactly right for the population that suite built, and
+`file_object` could not have entered it. D109's `staff_name` is the worked
+example: a table added to the AUTHORITY directory moves that pin by exactly
+one, and moving it by two "to account for `file_object`" would have failed the
+suite on a tree where `file_object` was still invisible. **A coverage gap is not a containment escape, and
+it is never closed by inflating a number the guard already gets right.**
+
+D121 asks for the siblings to be enumerated rather than left to a reviewer, so
+here they are for the "pin the SET, never membership" rule this change applies.
+`authority.test.mjs`'s private-table list: converted, a `deepEqual` over the
+two directory halves. `app-namespace-containment.test.mjs`'s app-scoped
+columns: converted, every `(table, column)` pair named and deep-compared —
+though not in the first draft, which is D121's worked example.
+`restore-schema-fixture.mjs`: already compliant, since it compares the whole
+relation-and-column map rather than a count. There is no fourth.
+
+Each widening ships with a sabotage, and each sabotage has two halves, because
+only the second is the finding. A migration in the record tier is planted — for
+one guard a `pennsync_private` table with row security enabled but not FORCED,
+for the other a table whose `app_id` is plain `text` — and the widened build
+must refuse it. Then the same assertion is raised against a build made from
+`supabase/migrations/` only, where the plant is never applied at all, and it
+must PASS at the count the old scope used to see. Showing the new scope catches
+something says nothing on its own; showing the old scope could not is the whole
+claim. Both plants are written to a directory of their own rather than into
+`record-migrations/`, because fifty-four suites walk that directory and a file
+dropped in it reaches all of them.
+
+**The third ratchet is deliberately not changed, and the reason is not that it
+is hard.** `restore-schema-fixture.mjs` pins the relation inventory of the
+restore rehearsal's lab, which `applyAuthority` builds from the authority
+directory. Its assertion is complete over the database it builds, so unlike the
+other two it is not asserting something its build contradicts — what it is
+missing is a *scope* decision: the rehearsal proves that a backup round-trips
+the authority store and the integration runtime, and proves nothing about the
+record store, where every contract and every clinical row lives. Extending it
+means seeding record rows and proving they survive the dump, not adding thirty
+names to a map — a guard that listed the tables without round-tripping their
+data would read as coverage and be none. It also has a side effect the other
+two do not: `record_store.sql` creates the `pennsync_records_owner` role, and
+that harness is built to contain no role DDL. And it could not be measured
+here: `withRestoreLab` (`restore-rehearsal.mjs:89`) requires PostgreSQL **17**
+tooling and this container has 16, so the suite refuses with
+`LOCAL_POSTGRES_TOOL_VERSION_MISMATCH` before any database work. Note what that
+constraint is and is not, because the obvious reading would misdirect whoever
+takes the commission: the CI runner has PostgreSQL 17.10, so CI can run this
+suite perfectly well. What is missing is a LOCAL 17 cluster to prove a change
+against before pushing it, and "push it and see what CI says" on a credentialed
+postgres suite is the speculative push the drive-to-green rules forbid. So the
+commission needs a session with 17 tooling of its own, not a change to CI. It
+is recorded as open rather than half-done.
+
 ## D115 — A derived population fails closed on empty, or it is the vacuous case with a new cause
 
 2026-09-26. Decided while converting `contract-roster.test.mjs` off its
@@ -7873,3 +7967,56 @@ pull requests were open on these files the night this landed, and a sweep would
 have collided with all of them. The remaining conversions go one suite per
 change, and the one data point says to expect a finding in each rather than a
 green re-run — it says nothing about how many there are.
+
+## D120 — A sabotage raises the production assertion, not a re-implementation of it
+
+*2026-09-26.*
+
+A sabotage exists to show that a guard bites. A sabotage that recomputes the
+guard's predicate for itself shows only that its own arithmetic is right, and
+the pair then reads as proof while establishing nothing.
+
+The worked example is D113's own first draft, caught in review rather than by
+us. `authority.test.mjs` asserts that every `pennsync_private` table has row
+security enabled AND forced. The sabotage planted a table with it enabled and
+not forced, and checked
+`rows.every(x => x.relrowsecurity && x.relforcerowsecurity) === false` — its own
+copy of the predicate. So if the real guard were weakened to ask only
+`relrowsecurity`, the normal tree would pass, **and the sabotage would pass
+too**, and the regression the sabotage exists to catch would ship under two
+green tests.
+
+The rule: the scenario and the sabotage call ONE function, and the sabotage
+varies only the planted input. `assertPrivateTablesSecured(rows, expected)`
+carries both halves; the sabotage names the planted table in its expected set,
+so the set half passes and the forced half is the only thing left to fail on,
+and it asserts the throw. Weaken the helper now and the sabotage goes red,
+which is the property that was missing.
+
+Proving it is the same discipline D113's sabotages already owe: run the exact
+change the sabotage is supposed to catch and watch it fail. "It passes" is not
+evidence about a test whose job is to fail.
+
+## D121 — Taking a rule for one site is not adopting it
+
+*2026-09-26.*
+
+When a change applies a rule to one guard, it enumerates that guard's siblings
+in the same change and says which were converted and which were left, with the
+reason. Otherwise the rule is recorded as taken while the instance a reviewer
+will actually find is still there.
+
+The example is D113 again, and it is uncomfortable precisely because the rule
+was fresh: "pin the SET, never membership" was applied to the private-table
+guard, and the app-scoped-column guard in the SAME pull request, on the same
+day, kept a count plus a hand-picked subset of table names. That shape is
+satisfied by a change that drops one unlisted column and adds another — the
+total holds, the one-per-table check holds, the `loose` query stays empty, and
+a column that left the containment is never reported.
+
+Why it survived is the general part. Nobody re-reads the part of a change that
+was already correct before the change. The column guard was not new work, so it
+was not re-read as the new rule was being applied twenty lines away. A rule
+adopted at one site and skipped at its sibling is the normal failure, not a
+careless one, and the remedy is mechanical: list the siblings, state the
+disposition of each, and put the list in the change rather than in your head.
