@@ -41,7 +41,7 @@ failure, and it is the one that actually bites: a reader lands on the old
 paragraph, has no idea the correction exists, and carries the mistake out with
 them. So a superseded entry gains one dated line at its END, naming what
 superseded it and where — for example `2026-09-25: the nullability framing in
-this entry is superseded by D104.` — with every word of the original left
+this entry is superseded by D108.` — with every word of the original left
 untouched. The record stays contemporaneous and the correction is findable from
 the place where the mistake is.
 
@@ -7320,7 +7320,7 @@ a default. That is one generator decision with two consequences, and it reaches
 every batch rather than this one.
 
 *2026-09-25: the nullability framing in the paragraph above is superseded by
-D104. The generator's universal nullability is deliberate and documented in its
+D108. The generator's universal nullability is deliberate and documented in its
 own header — a legacy row predating a requirement has to be able to migrate
 rather than be refused at load — so it is not a defect. The missing column
 DEFAULTS are the real and separate gap. Every other word of this entry stands
@@ -7546,7 +7546,7 @@ would reproduce this entry's defect at the next merge that adds a migration.
 same way. Not surveyed here on purpose: a hunt run mid-batch would be a reading
 of a tree that is moving. It is worth one pass when the contract batches are in.
 
-## D104 — A write may not name a chart this store does not hold
+## D108 — A write may not name a chart this store does not hold
 
 *2026-09-25.*
 
