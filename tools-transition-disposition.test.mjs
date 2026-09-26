@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -1323,32 +1323,45 @@ test('nothing in the queue is startable and unwritten', async () => {
   // only caller: the family serves the entities whose own schema plainly
   // permits a read, which is a disposition rather than a capability.
   //
-  // The seven reference reads (D101), the fourteen clinical library, patient
-  // education and per-agency configuration capabilities after them, and the
-  // fourteen over the operational tables after those are the same kind of
-  // thing for the same reason, and they are why this list needs stating rather
-  // than deriving. The SPA called `base44.entities.Physician.list(...)` and the
-  // rest straight through the platform SDK, so there is no Base44 function to
-  // be the port of — what was ported is the CALL, and what it succeeds is each
-  // entity's own `rls` block rather than a module. The queue measures
-  // `base44/functions`, so it can never count them and their absence from it is
-  // not a gap — which is exactly why they are enumerated here, where a name
-  // arriving without a reviewed contract has to come past this list.
-  assert.deepEqual([...shipped].filter(name => !report.port_blockers.none.includes(name)).sort(),
-    ['createAgencyTask', 'createNoteConversion', 'deletePdfTemplate',
-      'getAgencyRosterMember', 'getAgencySettings', 'listAgencyRoster',
-      'listAgencyTasks', 'listBrokeredRecords', 'listCarePlans',
-      'listClinicalLibraryFolders', 'listClinicalLibraryTemplates',
-      'listClinicalPathways', 'listCustomValidationRules', 'listDocumentTemplates',
-      'listEducationMaterials', 'listFaceToFaceEncounters', 'listLibraryDocuments',
-      'listMedicareComplianceRules', 'listMedicareGuidelines', 'listNoteConversions',
-      'listOnCallShifts', 'listPatientDocumentRecords', 'listPatientEducationAssignments',
-      'listPdfTemplates', 'listPhysicians', 'listVisitPointConfigs',
-      'manageClinicalLibraryFolder', 'manageClinicalLibraryTemplate',
-      'manageClinicalPathway', 'manageCustomValidationRule', 'manageEducationMaterial',
-      'managePatientEducationAssignment', 'readAiConfiguration', 'saveAgencySettings',
-      'saveAiConfiguration', 'saveCarePlan', 'saveFaceToFaceEncounter',
-      'savePdfTemplate']);
+  // Batch A's seven reference reads (D101), batch C's fourteen clinical
+  // library, patient education and configuration capabilities, batch E's
+  // ten screen records, and batch D's fourteen over the operational tables are
+  // the same kind of thing for the same reason, and
+  // they are why this list needs stating rather than deriving. The SPA called
+  // `base44.entities.Physician.list(...)` and the rest straight through the
+  // platform SDK, so there is no Base44 function to be the port of — what was
+  // ported is the CALL, and what it succeeds is each entity's own `rls` block
+  // rather than a module. The queue measures `base44/functions`, so it can
+  // never count them and their absence from it is not a gap — which is exactly
+  // why they are enumerated here, where a name arriving without a reviewed
+  // contract has to come past this list.
+  const facilities = [...shipped].filter(name => !report.port_blockers.none.includes(name)).sort();
+  // The list is STATED, for the reason above. This only adds the half that is
+  // checkable: a name with a Base44 function of its own is a port and belongs
+  // in the queue, so it cannot reach this list by somebody forgetting which
+  // kind it was.
+  for (const name of facilities) {
+    assert.ok(!existsSync(resolve(repository, 'base44/functions', name)),
+      `${name} has a Base44 function, so it is a port and belongs in the queue`);
+  }
+  assert.deepEqual(facilities, [
+    'createAgencyTask', 'createNoteConversion', 'deletePdfTemplate',
+    'getAgencyRosterMember', 'getAgencySettings', 'getMyNotificationPreferences',
+    'listAgencyRoster', 'listAgencyTasks', 'listBrokeredRecords', 'listCarePlans',
+    'listChartClinicalEvents', 'listChartRecommendations', 'listClinicalLibraryFolders',
+    'listClinicalLibraryTemplates', 'listClinicalPathways', 'listCustomValidationRules',
+    'listDocumentTemplates', 'listEducationMaterials', 'listFaceToFaceEncounters',
+    'listLibraryDocuments', 'listMedicareComplianceRules', 'listMedicareGuidelines',
+    'listNoteConversions', 'listOcrCorrections', 'listOcrTrainingRuns', 'listOnCallShifts',
+    'listPatientDocumentRecords', 'listPatientEducationAssignments', 'listPdfTemplates',
+    'listPhysicians', 'listSentEducationMaterials', 'listVisitPointConfigs',
+    'lookupComplianceRule', 'manageClinicalLibraryFolder', 'manageClinicalLibraryTemplate',
+    'manageClinicalPathway', 'manageCustomValidationRule', 'manageEducationMaterial',
+    'managePatientEducationAssignment', 'readAiConfiguration', 'recordChartRecommendation',
+    'recordSentEducationMaterial', 'saveAgencySettings', 'saveAiConfiguration',
+    'saveCarePlan', 'saveFaceToFaceEncounter', 'saveMyNotificationPreferences',
+    'savePdfTemplate',
+  ]);
 });
 
 test('a function call is only a reason to wait while the callee is unported', () => {

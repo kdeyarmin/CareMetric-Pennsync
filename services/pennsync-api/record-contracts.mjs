@@ -64,6 +64,33 @@ const REFERRAL_CODES = Object.freeze([
 const REFERENCE_READ_CODES = Object.freeze(['PENNSYNC_CONTRACT_AGENCY_NOT_HELD']);
 
 /**
+ * Batch E's shared refusal vocabulary.
+ *
+ * Unlike `REFERRAL_CODES`, which is one capability's whole vocabulary shared by
+ * its six statements, these are the codes the four SHARED HELPERS raise —
+ * every contract in that file calls `screen_agency_held`, six of them call
+ * `screen_chart`, two gate on `screen_agency_admin_required` and three filter
+ * a payload through `screen_exact_keys`. Each entry composes the ones its own
+ * body can actually reach and adds whatever is its own.
+ */
+const SCREEN_COMMON = Object.freeze(['PENNSYNC_SCREEN_AGENCY_NOT_HELD']);
+const SCREEN_ADMIN_CODES = Object.freeze([
+  ...SCREEN_COMMON, 'PENNSYNC_SCREEN_AGENCY_ADMIN_REQUIRED']);
+const SCREEN_CHART_CODES = Object.freeze([
+  ...SCREEN_COMMON, 'PENNSYNC_SCREEN_SUBJECT_INVALID', 'PENNSYNC_SCREEN_PATIENT_NOT_VISIBLE']);
+const SCREEN_WRITE_CODES = Object.freeze([
+  ...SCREEN_CHART_CODES, 'PENNSYNC_SCREEN_PAYLOAD_INVALID', 'PENNSYNC_SCREEN_FIELD_NOT_WRITABLE',
+  // An unknown key and a missing required one are two different refusals: the
+  // first is a field the caller may not write, the second a field the entity
+  // says it must. Collapsing them would tell a screen "not writable" about a
+  // column it owns.
+  'PENNSYNC_SCREEN_FIELD_REQUIRED',
+  // A value the column's own CHECK constraint refuses, or a cast that fails.
+  // Undeclared it reaches the boundary as a 503 CONTRACT_REFUSED, which reads
+  // as a record-store outage rather than a caller's typo.
+  'PENNSYNC_SCREEN_FIELD_VALUE_INVALID']);
+
+/**
  * One entry per ported capability. `params` is the exact argument set the
  * capability accepts — anything else is refused rather than dropped — and
  * `body` maps it to the contract's parameters, which are never caller-chosen.
@@ -2358,6 +2385,131 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_NOTE_CONVERSION_FIELD_RESERVED',
       'PENNSYNC_NOTE_CONVERSION_FIELD_INVALID',
       'PENNSYNC_NOTE_CONVERSION_CHART_FORBIDDEN',
+    ]),
+  }),
+
+  // Batch E: seven screens whose records the browser read RAW, with no Base44
+  // function between them and the entity. So these are not ported names either
+  // — what governed each call was the entity's own access block, and
+  // `20260920580000_contract_screen_records.sql` carries it. Five of the seven
+  // needed a gate the store's policies do not have; the contract has it, and
+  // as everywhere else, none of it is restated here.
+  //
+  // `SCREEN_COMMON` is the shape the four helpers can raise from any of the
+  // ten, and each entry adds only what its own body can raise — so a code one
+  // contract cannot raise never crosses back from another.
+  listChartClinicalEvents: Object.freeze({
+    rpc: 'pennsync_contract_clinical_event_list',
+    params: Object.freeze(['patient_id', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: SCREEN_CHART_CODES,
+  }),
+  listOcrCorrections: Object.freeze({
+    rpc: 'pennsync_contract_ocr_feedback_list',
+    // Three-valued: absent is "either", which is the dashboard's call, and a
+    // boolean is the training monitor's. An explicit null is the same as
+    // absent because the screens express "either" by not asking.
+    params: Object.freeze(['applied_to_training', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_applied_to_training: args.applied_to_training === undefined ? null : args.applied_to_training,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: SCREEN_COMMON,
+  }),
+  listOcrTrainingRuns: Object.freeze({
+    rpc: 'pennsync_contract_ocr_training_list',
+    params: Object.freeze(['limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: SCREEN_ADMIN_CODES,
+  }),
+  listSentEducationMaterials: Object.freeze({
+    rpc: 'pennsync_contract_sent_education_list',
+    params: Object.freeze(['limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: SCREEN_COMMON,
+  }),
+  recordSentEducationMaterial: Object.freeze({
+    rpc: 'pennsync_contract_sent_education_record',
+    params: Object.freeze(['patient_id', 'material']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_material: args.material ?? null,
+    }),
+    codes: SCREEN_WRITE_CODES,
+  }),
+  listChartRecommendations: Object.freeze({
+    rpc: 'pennsync_contract_patient_recommendation_list',
+    params: Object.freeze(['patient_id', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: SCREEN_CHART_CODES,
+  }),
+  recordChartRecommendation: Object.freeze({
+    rpc: 'pennsync_contract_patient_recommendation_record',
+    params: Object.freeze(['patient_id', 'recommendation']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_recommendation: args.recommendation ?? null,
+    }),
+    codes: SCREEN_WRITE_CODES,
+  }),
+  lookupComplianceRule: Object.freeze({
+    rpc: 'pennsync_contract_compliance_rule_lookup',
+    params: Object.freeze(['rule_code', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_rule_code: args.rule_code ?? null,
+      p_limit: args.limit === undefined ? null : args.limit,
+    }),
+    codes: Object.freeze([...SCREEN_ADMIN_CODES, 'PENNSYNC_SCREEN_RULE_CODE_INVALID']),
+  }),
+  // The read takes an address and the save takes an id, and both REFUSE one
+  // that is not the caller's rather than answering with the caller's own. The
+  // screens send both, so dropping either would turn "this person's
+  // preferences" into "whosever these are", which is right every time and
+  // unverifiable.
+  getMyNotificationPreferences: Object.freeze({
+    rpc: 'pennsync_contract_notification_preference_get',
+    params: Object.freeze(['user_email']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_user_email: args.user_email === undefined ? null : args.user_email,
+    }),
+    codes: Object.freeze([...SCREEN_COMMON, 'PENNSYNC_SCREEN_NOT_YOUR_ROWS']),
+  }),
+  saveMyNotificationPreferences: Object.freeze({
+    rpc: 'pennsync_contract_notification_preference_save',
+    params: Object.freeze(['expected_id', 'preference']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_expected_id: args.expected_id === undefined ? null : args.expected_id,
+      p_preference: args.preference ?? null,
+    }),
+    codes: Object.freeze([
+      ...SCREEN_COMMON,
+      'PENNSYNC_SCREEN_PAYLOAD_INVALID',
+      'PENNSYNC_SCREEN_FIELD_NOT_WRITABLE',
+      'PENNSYNC_SCREEN_NOT_YOUR_ROWS',
+      'PENNSYNC_SCREEN_PREFERENCE_NOT_OWNED',
+      'PENNSYNC_SCREEN_PREFERENCE_CONFLICT',
+      'PENNSYNC_SCREEN_CALLER_UNKNOWN',
+      'PENNSYNC_SCREEN_FIELD_VALUE_INVALID',
     ]),
   }),
 });
