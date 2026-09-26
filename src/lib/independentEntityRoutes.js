@@ -474,6 +474,9 @@ function operationalRead({ entity, fn, orderable, filterable = [], negatable = [
   return {
     function: fn,
     projection: 'operational_row',
+    // Declared for `brokeredRead`'s reason: a rest parameter's `length` is 0,
+    // so nothing can be derived from it and #302's guard throws at load.
+    arity: filtered ? 3 : 2,
     request: (...args) => {
       const [query, sort, limit] = filtered ? args : [undefined, args[0], args[1]];
       const order = orderKey(sort, orderable);
@@ -520,6 +523,9 @@ function operationalSave({ fn, key, reason, withId }) {
     function: fn,
     projection: 'operational_row',
     reason,
+    // An update takes the row's id and the payload; a create takes the payload
+    // alone. Declared because the rest parameter hides both counts.
+    arity: withId ? 2 : 1,
     request: (...args) => {
       const [id, fields] = withId ? args : [undefined, args[0]];
       if (withId && (typeof id !== 'string' || id === '')) unsupported('id');

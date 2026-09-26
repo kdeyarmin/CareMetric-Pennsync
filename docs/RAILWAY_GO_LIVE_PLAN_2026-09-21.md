@@ -2769,46 +2769,42 @@ After #295 and #300:
 
 And after #296, which is the current reading:
 
-> entity routes: 40 declared, 62/237 landable call sites SERVED, 175 still to
-> adopt
->   30 of those are sites a declared route REFUSES (User.list:sort), and 17
->   pass arguments this cannot read
->   5 route(s) are declared but UNPROVED — every call site passes a variable,
->   so the contract's own refusals are what checks them: AgencySettings.create,
->   AgencySettings.update, FaceToFaceEncounter.create,
->   FaceToFaceEncounter.update, NoteConversion.create
->   of those 175, across 36 entities: a wider generic family could serve 1
->   reads and 0 writes above D16's ceiling; 174 need a named capability
+> entity routes: 40 declared, 62/237 landable call sites SERVED, 175 still to adopt
+>   30 of those are sites a declared route REFUSES (User.list:sort), and 17 pass arguments this cannot read
+>   5 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create
+>   of those 175, across 36 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 174 need a named capability
 
-**As of #296 on `main`: 62 of the 237 call sites that have somewhere to land
-are served, out of 445 entity call sites in the app.** The numerator moved on
-#295 (batch C's nine reference and configuration sites), not on #300, which
-changed the denominator only, and again on #296 (the seven operational tables,
-24 sites). **The unreadable count moved with it, from 2 to 17**, and that is
-not a regression: those are sites over entities that now HAVE a route and pass
-a variable, so they became countable rather than becoming worse — before #296
-they were part of the undifferentiated remainder. Both denominators are real and they are different
-populations — 445 is every entity call the frontend makes, 237 is the subset
-with a table behind it — so a served figure quoted without saying which one it
-is over is the same label error this page warns about above. **The smaller
-denominator moved on its own**: 242 became 237 when D83's five global-reference
-writes stopped being counted as landable, so the first reading above is a
-record of #294 and the second is the current one. Re-derive them rather than
+**The served figure and both denominators are in the block above and are not
+restated here.** The numerator moved on #295 (batch C's reference and
+configuration sites), not on #300, which changed the denominator only, and
+again on #296 (the seven operational tables). **The unreadable count moved with
+it, and that is not a regression**: those are sites over entities that now HAVE
+a route and pass a variable, so they became countable rather than becoming
+worse — before #296 they were part of the undifferentiated remainder. Said
+without a figure on purpose, because "the unreadable count tripled" would be
+accurate and misleading at once. Both denominators are real and they are
+different populations — the larger is every entity call the frontend makes, the
+smaller the subset with a table behind it — so a served figure quoted without
+saying which one it is over is the same label error this page warns about
+above. **The smaller denominator moved on its own** when D83's five
+global-reference writes stopped being counted as landable, so the first reading
+above is a record of #294 and the second is the current one. Re-derive them rather than
 quoting them: every merge that points a screen moves the numerator and every
 migration that carries an entity moves the denominator.
 
 **And this page carries two remainders that are not the same population, which
 is worth saying because they were briefly the same number.** The route gate's
-remainder — call sites with nowhere to land *yet* — is **175**. The destination
-gate's is **208**: call sites with nowhere to land *at all*. On the
+remainder — call sites with nowhere to land *yet* — is the block's own
+"still to adopt". The destination gate's is **208**: call sites with nowhere to
+land *at all*. On the
 head where this paragraph was first written the two were both 208, so either
-number read as correct there, and the rebase over #295 moved the first to 199,
-then #296 moved it to 175, and the second has not moved at all. A sentence that
-had been right became wrong with nothing changing in it. 30 of the 175 are
-sites a declared route REFUSES: the
+number read as correct there, and the rebase over #295 moved the first,
+then #296 moved it again, and the second has not moved at all. A sentence that
+had been right became wrong with nothing changing in it. The block's refusal
+count is the more useful number for planning than the remainder itself: the
 route exists and the *screen* has to change, which is per-screen work rather
-than per-entity work, and that is the more useful number for planning than the
-175 itself. Sites whose arguments the tool cannot read count as unserved,
+than per-entity work. Sites whose arguments the tool cannot read count as
+unserved,
 because a gate that guessed would be back to counting declarations.
 
 **The gate has three states, and the third one is why the batches can work at
