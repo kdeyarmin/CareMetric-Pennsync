@@ -92,7 +92,13 @@ describe('the declared entity routes', () => {
   it('refuses a sort it cannot produce rather than reordering the screen', async () => {
     const { fixture, adapter } = await signedIn();
     fixture.apiResponse = rosterAnswer([]);
-    for (const sort of ['-created_date', 'created_date', '-email', 'full_name', 42]) {
+    // `created_date` ASCENDING stays refused although the descending order is
+    // now served: one direction is not the other, and answering the wrong one
+    // would silently reorder a screen — the same reason every sort below is
+    // refused rather than served in the default order. `constructor` and
+    // `toString` are here because the accepted set is a lookup object, and a
+    // prototype member reached through it would read as an accepted order.
+    for (const sort of ['created_date', '-email', 'full_name', 'constructor', 'toString', 42]) {
       await expect(adapter.raw.entities.User.list(sort)).rejects.toThrow(ARGUMENTS_UNSUPPORTED);
     }
     // Nothing reached the service: a refused argument is refused before I/O.
@@ -101,6 +107,23 @@ describe('the declared entity routes', () => {
     for (const sort of ['', 'email', '+email']) {
       await expect(adapter.raw.entities.User.list(sort)).resolves.toEqual([]);
     }
+
+    // And `-created_date`, which 25 `User.list` CALL SITES pass (a different
+    // population from the gate's refusal count — see the route's own header)
+    // and this route used to
+    // refuse, now reaches the contract as its own word for that order. Asserted
+    // on the REQUEST BODY rather than on the call succeeding: a route that
+    // accepted the sort and dropped it would answer alphabetically and pass a
+    // test that only checked it resolved.
+    fixture.apiCalls.length = 0;
+    await expect(adapter.raw.entities.User.list('-created_date')).resolves.toEqual([]);
+    expect(fixture.apiCalls).toHaveLength(1);
+    expect(fixture.apiCalls[0].body.params).toMatchObject({ order: 'created_desc' });
+    // The default is still no order at all, not an explicit alphabetical one:
+    // the contract's own default decides, so there is one answer and not two.
+    fixture.apiCalls.length = 0;
+    await expect(adapter.raw.entities.User.list('email')).resolves.toEqual([]);
+    expect(fixture.apiCalls[0].body.params).not.toHaveProperty('order');
   });
 
   /**
@@ -150,7 +173,7 @@ describe('the declared entity routes', () => {
     const { fixture, adapter } = await signedIn();
     // "Your query cannot be served" and "no route exists" are different
     // answers, and a screen's author has to be able to tell them apart.
-    await expect(adapter.raw.entities.User.list('-created_date'))
+    await expect(adapter.raw.entities.User.list('full_name'))
       .rejects.toMatchObject({ code: ARGUMENTS_UNSUPPORTED });
     await expect(adapter.raw.entities.User.create({}))
       .rejects.toMatchObject({ code: 'STAGING_OPERATION_UNAVAILABLE', operation: 'entities.User.create' });

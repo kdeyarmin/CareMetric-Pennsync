@@ -116,8 +116,13 @@ const DAMAGE = [
   `alter table pennsync_private.chart_assignment disable trigger provenance_immutable`,
   `update pg_index set indisvalid = false
      where indexrelid = 'pennsync_private.chart_assignment_request_key'::regclass`,
+  // Named by its EXACT signature, so it moves when the contract's does — this
+  // literal and its expectation below broke together when
+  // `20260920620000_roster_created_date.sql` added `p_order`, and nothing
+  // outside this file points here. Any function with argument defaults serves;
+  // what the case needs is that the defaults exist to be removed.
   `update pg_proc set pronargdefaults = 0, proargdefaults = null
-     where oid = 'public.pennsync_contract_roster_list(text,integer,text)'::regprocedure`,
+     where oid = 'public.pennsync_contract_roster_list(text,integer,text,text)'::regprocedure`,
   `alter function pennsync_private.s3_hash(jsonb) called on null input`,
   `alter function pennsync_private.s4_utf16_length(text) leakproof`,
   `grant create on schema pennsync_records to authenticated`,
@@ -156,7 +161,8 @@ const EXPECTED = [
   ['a unique index left invalid',
     'indexes: pennsync_private.chart_assignment.chart_assignment_request_key.valid: committed true'],
   ['an argument default removed',
-    'functions: public.pennsync_contract_roster_list(p_agency text, p_limit integer, p_after text).args:'],
+    'functions: public.pennsync_contract_roster_list(p_agency text, p_limit integer, p_after text, '
+    + 'p_order text).args:'],
   ['STRICT dropped from a helper',
     'functions: pennsync_private.s3_hash(p_value jsonb).strict: committed true hosted false'],
   ['LEAKPROOF added to a helper',

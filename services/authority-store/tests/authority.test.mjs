@@ -15,7 +15,7 @@ const app = '6a9881683dc68a0bd54f1ef7';
  * list is what makes this a population: an `includes` of the planted name would
  * pass green while a second table went missing in the same change.
  */
-const AUTHORITY_PRIVATE_TABLES = ['identity_map','agency','membership','patient','assignment','chart_assignment','mutation_receipt','archive_patient_import_receipt','visit_disclosure_audit','patient_context','patient_disclosure_audit','visit_list_disclosure_audit','s4_visit','s4_note_history','s4_note_conversion','s4_compliance_audit','s4_create_receipt','s3_referral','s3_receipt','known_app','deployment','enrollment_receipt'];
+const AUTHORITY_PRIVATE_TABLES = ['identity_map','agency','membership','patient','assignment','chart_assignment','mutation_receipt','archive_patient_import_receipt','visit_disclosure_audit','patient_context','patient_disclosure_audit','visit_list_disclosure_audit','s4_visit','s4_note_history','s4_note_conversion','s4_compliance_audit','s4_create_receipt','s3_referral','s3_receipt','known_app','deployment','enrollment_receipt','staff_name'];
 /** D77's locator mapping, created from `record-migrations/` (D109). */
 const RECORD_PRIVATE_TABLES = ['file_object'];
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -202,6 +202,13 @@ scenario('public wrappers are invoker-only; private grants and RLS are complete'
   // directories. `file_object` is D77's locator mapping and is created from
   // `record-migrations/`: it was absent from this list because it could not be
   // in the database this suite built, not because anyone left it out.
+  //
+  // `staff_name` joins the list because the table moved into this directory: it
+  // is where every other `pennsync_private` table is created, and this pin and
+  // the restore fixture are what the move buys. The row-security assertion
+  // below is the one that matters for it — force-RLS with no policy is what
+  // keeps "who may set a staff name" an open decision rather than one taken by
+  // omission.
   assert.deepEqual(tables.rows.map(x=>x.relname).sort(),[...AUTHORITY_PRIVATE_TABLES,...RECORD_PRIVATE_TABLES].sort());
   assert.equal(tables.rows.every(x=>x.relrowsecurity&&x.relforcerowsecurity),true);
   const paths=await privileged("select proname,proconfig from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='pennsync_private'");

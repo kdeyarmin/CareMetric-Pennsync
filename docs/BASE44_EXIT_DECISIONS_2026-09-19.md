@@ -7612,6 +7612,129 @@ predating a requirement can migrate rather than be refused at load. The missing
 column DEFAULTS are the real gap, and they are separate — a default fires only
 where a column is omitted, so it costs the import path nothing and costs every
 create everything. That entry is left as written, being a dated record.
+## D109 — A `pennsync_private` table created from the record directory is outside three ratchets
+
+2026-09-26. The rule: **a `pennsync_private` TABLE belongs in
+`services/authority-store/supabase/migrations/` unless it depends on something
+in `pennsync_records`. The test is not tidiness. It is whether the three checks
+that measure that schema can see the table at all**, because each of them builds
+from that directory and from nothing else:
+
+- `tests/restore-schema-fixture.mjs` pins every table and column the store is
+  proved to survive a `pg_dump` and `pg_restore` with.
+- `tests/authority.test.mjs` pins the `pennsync_private` table list, and with it
+  asserts that EVERY table there has row security both enabled and forced.
+- `tests/app-namespace-containment.test.mjs` pins that every app-scoped column
+  carries the `deployment_app` domain, with the count pinned so adding one is a
+  deliberate act.
+
+`20260920110000_claim_new_chart.sql` is the exception on the other side and
+states its own reason: it asks `pennsync_records.caller_tenant_role`, so it
+cannot apply before the record store exists. It creates a FUNCTION, not a table.
+
+**The instance.** `pennsync_private.staff_name` — the staff display name the
+owner chose over showing a work email — was created by
+`record-migrations/20260920630000_roster_display_name.sql`, beside the
+`caller_roster` bridge and the two roster contracts that read it. Nothing was
+wrong with the table. It was simply invisible to all three checks, and it stayed
+invisible until the fixture was edited to name it, at which point the backup
+rehearsal failed because the table did not exist in its lab.
+
+**What makes it worth a number is the one-line fix that was not taken.**
+Deleting that fixture entry would also have gone green, and would have left the
+table permanently outside the backup rehearsal with three ratchets reporting
+nothing — a guard that reads correctly and does nothing, which is the worst
+outcome this project keeps rediscovering. Moving the table instead made all
+three fire, which is the coverage argument as a measurement rather than as a
+claim: the RLS assertion in particular is one the table passes on the substance
+and was simply never being asked.
+
+**The ordering is by construction, not by timestamp.**
+`tools-pennsync-migrate.mjs` walks `[MIGRATION_DIRECTORY,
+RECORD_MIGRATION_DIRECTORY]` in that order, and every harness does the same, so
+an authority migration always applies before any record migration whatever the
+two file names say. That is what makes splitting one change across the two
+directories safe, and it is worth stating because the timestamps invite the
+opposite conclusion.
+
+**How it was found.** On CI, and not by either red that had been predicted for
+that pull request. The failing job was `restore-postgres`, which needs
+PostgreSQL 17 with real `pg_dump` and `pg_restore` and therefore runs in neither
+`pnpm test` nor a local PostgreSQL 16 cluster. Its proximate fault was smaller
+and separate: that fixture compares the catalogue POSITIONALLY against an
+object's insertion order, and the new entry was placed where a reading of the
+names suggested rather than where the collation sorts it. The position is
+verified against a real cluster now. Both halves are the same lesson from
+different ends — a check is only as good as what it is given to look at.
+
+**There is a second instance, and the pin does not report it.**
+`pennsync_private.file_object`, created by
+`record-migrations/20260920520000_file_locator_map.sql` for D77's locator map,
+carries `app_id pennsync_private.deployment_app` and is absent from all three
+checks — measured, not inferred: it appears in neither
+`restore-schema-fixture.mjs` nor `authority.test.mjs`, and
+`app-namespace-containment.test.mjs` builds from `../supabase/migrations/` at
+its line 60 and nowhere else.
+
+Read carefully what that does to the domain count, because the obvious reading
+is wrong in a way worth stating. The pin is not merely stale by one: it is
+CORRECT for the tree it measures and silent about the store. Raising it to 22
+for a table the build cannot create would fail the assertion, so a reader who
+"fixes" the number breaks the check, and a reader who leaves it is pinning a
+count that omits a real app-scoped table. That is the pin's SCOPE rather than
+its value, which is the same substitution as the ruling above — a figure read
+off a build and believed of a deployment. This change leaves the count at 21,
+which is what this build holds, and names the gap here rather than moving a
+number it cannot measure.
+
+Moving `file_object` is not taken here. It is D77's table, its move changes
+what a fresh store gets and therefore owes the same forward reasoning D88
+requires, and the survey below is already under way in another thread; a second
+hand editing those three pins concurrently is how one of them ends up describing
+neither tree. What this entry fixes is the belief that the instance was
+singular.
+
+**A caveat for whoever runs the survey, measured rather than reasoned.** A
+fourth check looks at these files and is scoped differently from the three
+above: `services/authority-store/tests/http-boundary.test.mjs:115` reads
+`record-migrations/` and nothing else, cross-checking every code those
+migrations raise against the classifier's allowlist so a redacted CI log still
+names what refused. It is run by CI at
+`.github/workflows/pennsync-authority.yml:158`; what it sits outside is
+`pnpm test`.
+
+Its scope is narrower than the directory, and the narrowing is the whole of the
+caveat: it consumes only `do $$ … $$` blocks, because its own comment draws the
+line at a `CREATE FUNCTION` body — a code raised there is a refusal answered to
+a caller, not a migration failure, and the suite asserts that in the other
+direction too. So relocating a FILE moves its `do $$` precondition out of the
+scan, while relocating an OBJECT and leaving the precondition where it is
+costs nothing.
+
+That distinction is not hypothetical for the survey, and the first reading of it
+was wrong in both directions before it was measured. This change is the safe
+shape: `migrations/20260920605000_staff_name.sql` carries no `do $$` block and
+raises no code at all, its only `PENNSYNC_` string being a comment naming
+another function's refusal, and the two halves that do raise codes stayed in
+`record-migrations/` and are still scanned. But
+`record-migrations/20260920520000_file_locator_map.sql` — the file holding the
+other instance — DOES carry a precondition raising
+`PENNSYNC_RECORD_STORE_REQUIRED`, so moving that file whole would lose
+coverage of it, while `PENNSYNC_FILE_OBJECT_IMMUTABLE` beside it is outside the
+scan either way, being raised in a trigger body. Move the table and leave the
+precondition. Anyone applying this paragraph should re-measure the file in front
+of them: every claim in it was read out of the two files and the test, and an
+earlier reading of the same question taken from the shape of the rule reached
+the opposite conclusion twice.
+
+**Scope left open.** The full survey of `pennsync_private` is not run here and
+belongs to one hand rather than several, since its output is edits to the same
+three pins. What is settled is that the instance is not singular — `file_object`
+is named above — and that the three checks above cannot be the instrument for
+the survey, because an object they are blind to is exactly what is being looked
+for. The survey reads the two migration directories against each other on a
+FIXED head.
+
 
 ## D113 — A guard must build the population its assertion names
 
@@ -7632,21 +7755,27 @@ typed by the domain. Nothing was wrong. What was wrong is that nothing could
 have told us if something were.
 
 Both guards now build both directories, in the order a deployment applies them,
-and their pins are the true sets: **23** private tables and **21** app-scoped
-columns, each one more than before and the extra one `file_object` in both
-cases. The derivation of the old 20 is worth writing down, because a grep that
-gets it wrong reads as a disagreement rather than a mistake: the domain was
-renamed from `staging_app` in `20260919090000_deployment_app_pin.sql:140`, so
-the authority directory's 20 is 18 columns declared `pennsync_private.staging_app`
-plus 2 declared `pennsync_private.deployment_app`, and the record directory's
-one is `file_object.app_id`.
+and their pins are the true sets: **24** private tables and **22** app-scoped
+columns, each one more than the authority directory alone produces and the
+extra one `file_object` in both cases. Those two figures are measured on this
+branch's merged tree and will move again — D109 landed `staff_name` in the
+authority directory on the same day — so re-derive them rather than quoting
+them. What does not move is the derivation, and it is worth writing down
+because a grep that gets it wrong reads as a disagreement rather than a
+mistake: the domain was RENAMED from `staging_app` in
+`20260919090000_deployment_app_pin.sql:140`, so an authority-directory count is
+the columns declared `pennsync_private.staging_app` plus those declared
+`pennsync_private.deployment_app`, and the record directory contributes exactly
+one, `file_object.app_id` in
+`record-migrations/20260920520000_file_locator_map.sql:60`.
 
 **A pin counts what the test BUILDS.** That is the rule this leaves behind, and
-it cuts in the direction nobody expects. Before the widening, 20 was not stale
+it cuts in the direction nobody expects. Before the widening, the pin was not stale
 and not short — it was exactly right for the population that suite built, and
-`file_object` could not have entered it. A table added to the authority
-directory would have made 21 correct; adding two "to account for `file_object`"
-would have failed the suite. **A coverage gap is not a containment escape, and
+`file_object` could not have entered it. D109's `staff_name` is the worked
+example: a table added to the AUTHORITY directory moves that pin by exactly
+one, and moving it by two "to account for `file_object`" would have failed the
+suite on a tree where `file_object` was still invisible. **A coverage gap is not a containment escape, and
 it is never closed by inflating a number the guard already gets right.**
 
 Each widening ships with a sabotage, and each sabotage has two halves, because
