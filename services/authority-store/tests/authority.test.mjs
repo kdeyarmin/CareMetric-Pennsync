@@ -1,9 +1,23 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PGlite } from '@electric-sql/pglite';
 
 const app = '6a9881683dc68a0bd54f1ef7';
+/**
+ * Every table `pennsync_private` holds, split by the directory that creates it.
+ *
+ * Split rather than listed flat so D113's sabotage can assert the exact set a
+ * narrow build produces as well as the exact set a wide one does. An expected
+ * list is what makes this a population: an `includes` of the planted name would
+ * pass green while a second table went missing in the same change.
+ */
+const AUTHORITY_PRIVATE_TABLES = ['identity_map','agency','membership','patient','assignment','chart_assignment','mutation_receipt','archive_patient_import_receipt','visit_disclosure_audit','patient_context','patient_disclosure_audit','visit_list_disclosure_audit','s4_visit','s4_note_history','s4_note_conversion','s4_compliance_audit','s4_create_receipt','s3_referral','s3_receipt','known_app','deployment','enrollment_receipt'];
+/** D77's locator mapping, created from `record-migrations/` (D109). */
+const RECORD_PRIVATE_TABLES = ['file_object'];
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
 const request = n => `30000000-0000-4000-8000-${String(n).padStart(12,'0')}`;
@@ -11,9 +25,11 @@ let db; let fixtures;
 before(async () => {
   db = new PGlite();
   await db.exec(await readFile(new URL('./bootstrap.sql',import.meta.url),'utf8'));
-  const migrationDir = new URL('../supabase/migrations/',import.meta.url);
-  for (const name of (await readdir(migrationDir)).filter(n=>n.endsWith('.sql')).sort()) {
-    await db.exec(await readFile(new URL(name,migrationDir),'utf8'));
+  for (const directory of ['../supabase/migrations/','../supabase/record-migrations/']) {
+    const migrationDir = new URL(directory,import.meta.url);
+    for (const name of (await readdir(migrationDir)).filter(n=>n.endsWith('.sql')).sort()) {
+      await db.exec(await readFile(new URL(name,migrationDir),'utf8'));
+    }
   }
   fixtures=await readFile(new URL('./fixtures.sql',import.meta.url),'utf8');
 });
@@ -182,7 +198,11 @@ scenario('public wrappers are invoker-only; private grants and RLS are complete'
   assert.deepEqual(rows.rows.map(x=>x.proname).sort(),['context','memberships','patients','patient','assignment','revoke_membership','s4_create','s4_read','s3_create','s3_confirm','s3_read','s3_list','visit_documentation','patient_context','visits_schedule','referral_patient','referral_patients'].map(x=>`pennsync_staging_${x}`).sort());
   assert.equal(rows.rows.some(x=>x.prosecdef),false);
   const tables=await privileged("select relname,relrowsecurity,relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='pennsync_private' and relkind='r'");
-  assert.deepEqual(tables.rows.map(x=>x.relname).sort(),['identity_map','agency','membership','patient','assignment','chart_assignment','mutation_receipt','archive_patient_import_receipt','visit_disclosure_audit','patient_context','patient_disclosure_audit','visit_list_disclosure_audit','s4_visit','s4_note_history','s4_note_conversion','s4_compliance_audit','s4_create_receipt','s3_referral','s3_receipt','known_app','deployment','enrollment_receipt'].sort());
+  // Every table in the schema, which since D113 means both migration
+  // directories. `file_object` is D77's locator mapping and is created from
+  // `record-migrations/`: it was absent from this list because it could not be
+  // in the database this suite built, not because anyone left it out.
+  assert.deepEqual(tables.rows.map(x=>x.relname).sort(),[...AUTHORITY_PRIVATE_TABLES,...RECORD_PRIVATE_TABLES].sort());
   assert.equal(tables.rows.every(x=>x.relrowsecurity&&x.relforcerowsecurity),true);
   const paths=await privileged("select proname,proconfig from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname='pennsync_private'");
   assert.equal(paths.rows.every(x=>x.proconfig?.includes('search_path=""')),true);
@@ -221,4 +241,66 @@ scenario('all six stored roles are finite but this roster slice grants only its 
   }
   await db.exec('reset role');
   await denied(()=>db.exec("update pennsync_private.membership set tenant_role='platform_owner' where id='membership-2'"),'check constraint');
+});
+
+/** The same build the suite makes, over whatever directories it is handed. */
+async function build(directories) {
+  const fresh = new PGlite();
+  await fresh.exec(await readFile(new URL('./bootstrap.sql',import.meta.url),'utf8'));
+  for (const directory of directories) {
+    const dir = /^file:/.test(directory) ? new URL(directory) : new URL(directory,import.meta.url);
+    for (const name of (await readdir(dir)).filter(n=>n.endsWith('.sql')).sort()) {
+      await fresh.exec(await readFile(new URL(name,dir),'utf8'));
+    }
+  }
+  return fresh;
+}
+const privateTables = async database => (await database.query(
+  "select relname,relrowsecurity,relforcerowsecurity from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname='pennsync_private' and relkind='r' order by relname")).rows;
+
+/**
+ * D113's sabotage for the list above.
+ *
+ * The plant is a `pennsync_private` table with row security enabled but not
+ * FORCED, created from a migration in the record tier. Not forcing it is the
+ * quiet version of the defect: `relrowsecurity` alone looks right in a catalog
+ * listing while the table's owner — which is what every definer in this store
+ * runs as — reads past every policy on it.
+ *
+ * The control is the whole finding. Built from the authority directory only,
+ * the plant is never applied, the list is exactly the twenty-two names that
+ * directory creates, and the forced check passes: the scope this guard had
+ * before D113 could not have caught this, whatever the assertion said.
+ */
+test('a private table left unforced in the record tier is caught by the widened build and missed by the narrow one',async()=>{
+  const root=await mkdtemp(join(tmpdir(),'pennsync-d113-authority-'));
+  let wide; let narrow;
+  try {
+    await writeFile(join(root,'20260920990000_planted_unforced.sql'),`
+      create table pennsync_private.planted_unforced (
+        app_id pennsync_private.deployment_app not null,
+        id text primary key
+      );
+      alter table pennsync_private.planted_unforced enable row level security;
+    `);
+    const planted=pathToFileURL(root+'/').href;
+    wide=await build(['../supabase/migrations/','../supabase/record-migrations/',planted]);
+    const wideRows=await privateTables(wide);
+    // The exact set, not membership of the planted name: an `includes` here
+    // would stay green while a second table vanished in the same change.
+    assert.deepEqual(wideRows.map(x=>x.relname).sort(),
+      [...AUTHORITY_PRIVATE_TABLES,...RECORD_PRIVATE_TABLES,'planted_unforced'].sort(),
+      'the plant must reach the widened build');
+    assert.equal(wideRows.every(x=>x.relrowsecurity&&x.relforcerowsecurity),false,'the forced check must refuse it');
+    assert.deepEqual(wideRows.filter(x=>!(x.relrowsecurity&&x.relforcerowsecurity)).map(x=>x.relname),['planted_unforced']);
+
+    narrow=await build(['../supabase/migrations/']);
+    const narrowRows=await privateTables(narrow);
+    assert.deepEqual(narrowRows.map(x=>x.relname).sort(),[...AUTHORITY_PRIVATE_TABLES].sort(),
+      'a record migration is not applied by the narrow build, and nothing else moved either');
+    assert.equal(narrowRows.every(x=>x.relrowsecurity&&x.relforcerowsecurity),true,'the narrow scope passes with the plant in place');
+  } finally {
+    await wide?.close(); await narrow?.close();
+    await rm(root,{recursive:true,force:true});
+  }
 });

@@ -7612,3 +7612,69 @@ predating a requirement can migrate rather than be refused at load. The missing
 column DEFAULTS are the real gap, and they are separate — a default fires only
 where a column is omitted, so it costs the import path nothing and costs every
 create everything. That entry is left as written, being a dated record.
+
+## D113 — A guard must build the population its assertion names
+
+*2026-09-26.*
+
+Two of the authority store's ratchets assert something about the whole store —
+every `pennsync_private` table has row security enabled and forced, every
+app-scoped column carries the `deployment_app` domain — while building a
+database from `supabase/migrations/` only. The assertion and the population
+disagreed, so both guards passed while measuring a store no deployment runs.
+
+That is D109 arriving from the side that can be fixed. D109 records that a
+`pennsync_private` object created from `record-migrations/` is invisible to the
+authority-directory suites; this entry is what the invisibility cost. One object
+is in that state today — `pennsync_private.file_object`, D77's locator mapping —
+and it is correct in every respect: row security enabled and forced, `app_id`
+typed by the domain. Nothing was wrong. What was wrong is that nothing could
+have told us if something were.
+
+Both guards now build both directories, in the order a deployment applies them,
+and their pins are the true sets: **23** private tables and **21** app-scoped
+columns, each one more than before and the extra one `file_object` in both
+cases. The derivation of the old 20 is worth writing down, because a grep that
+gets it wrong reads as a disagreement rather than a mistake: the domain was
+renamed from `staging_app` in `20260919090000_deployment_app_pin.sql:140`, so
+the authority directory's 20 is 18 columns declared `pennsync_private.staging_app`
+plus 2 declared `pennsync_private.deployment_app`, and the record directory's
+one is `file_object.app_id`.
+
+**A pin counts what the test BUILDS.** That is the rule this leaves behind, and
+it cuts in the direction nobody expects. Before the widening, 20 was not stale
+and not short — it was exactly right for the population that suite built, and
+`file_object` could not have entered it. A table added to the authority
+directory would have made 21 correct; adding two "to account for `file_object`"
+would have failed the suite. **A coverage gap is not a containment escape, and
+it is never closed by inflating a number the guard already gets right.**
+
+Each widening ships with a sabotage, and each sabotage has two halves, because
+only the second is the finding. A migration in the record tier is planted — for
+one guard a `pennsync_private` table with row security enabled but not FORCED,
+for the other a table whose `app_id` is plain `text` — and the widened build
+must refuse it. Then the same assertion is raised against a build made from
+`supabase/migrations/` only, where the plant is never applied at all, and it
+must PASS at the count the old scope used to see. Showing the new scope catches
+something says nothing on its own; showing the old scope could not is the whole
+claim. Both plants are written to a directory of their own rather than into
+`record-migrations/`, because fifty-four suites walk that directory and a file
+dropped in it reaches all of them.
+
+**The third ratchet is deliberately not changed, and the reason is not that it
+is hard.** `restore-schema-fixture.mjs` pins the relation inventory of the
+restore rehearsal's lab, which `applyAuthority` builds from the authority
+directory. Its assertion is complete over the database it builds, so unlike the
+other two it is not asserting something its build contradicts — what it is
+missing is a *scope* decision: the rehearsal proves that a backup round-trips
+the authority store and the integration runtime, and proves nothing about the
+record store, where every contract and every clinical row lives. Extending it
+means seeding record rows and proving they survive the dump, not adding thirty
+names to a map — a guard that listed the tables without round-tripping their
+data would read as coverage and be none. It also has a side effect the other
+two do not: `record_store.sql` creates the `pennsync_records_owner` role, and
+that harness is built to contain no role DDL. And it could not be measured
+here: `withRestoreLab` requires PostgreSQL **17** tooling and this container
+has 16, so the suite does not run at all, which makes an unproved change to a
+CI-gated postgres suite exactly the thing this entry argues against. It is
+recorded as open rather than half-done.

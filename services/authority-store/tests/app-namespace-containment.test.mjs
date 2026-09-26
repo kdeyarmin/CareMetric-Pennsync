@@ -1,4 +1,7 @@
-import { readFile, readdir } from 'node:fs/promises';
+import { readFile, readdir, mkdtemp, writeFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { PGlite } from '@electric-sql/pglite';
@@ -50,19 +53,30 @@ const PLATFORM_OWNER = '6a98816d3dc68a0bd54f1ef8';
 /**
  * Builds a database the way a deployment does: bootstrap, then every migration
  * in order, with the deployment pin supplied (or not) beforehand.
+ *
+ * Both directories, because the assertion below names every app-scoped column
+ * in the schema and a deployment applies both. It built only the authority
+ * directory until D113, which is why the pin below read 20 while a deployment
+ * that had applied everything carried 21: `pennsync_private.file_object` is
+ * created from `record-migrations/` (D109), so it could not enter the
+ * population this guard measures and the count agreed with itself forever.
  */
-async function deploy(requestedApp) {
+async function deploy(requestedApp, { directories = MIGRATION_DIRECTORIES } = {}) {
   const db = new PGlite();
   await db.exec(await readFile(new URL('./bootstrap.sql', import.meta.url), 'utf8'));
   if (requestedApp !== undefined) {
     await db.query('select set_config($1,$2,false)', ['pennsync.deployment_app_id', requestedApp]);
   }
-  const migrationDir = new URL('../supabase/migrations/', import.meta.url);
-  for (const name of (await readdir(migrationDir)).filter(n => n.endsWith('.sql')).sort()) {
-    await db.exec(await readFile(new URL(name, migrationDir), 'utf8'));
+  for (const directory of directories) {
+    const migrationDir = new URL(directory, import.meta.url);
+    for (const name of (await readdir(migrationDir)).filter(n => n.endsWith('.sql')).sort()) {
+      await db.exec(await readFile(new URL(name, migrationDir), 'utf8'));
+    }
   }
   return db;
 }
+/** The order a deployment applies them: authority first, then the record store. */
+const MIGRATION_DIRECTORIES = ['../supabase/migrations/', '../supabase/record-migrations/'];
 
 let staging, production;
 
@@ -156,14 +170,37 @@ test('the dated record of the pin cannot disagree with it, or be edited', async 
   await assert.rejects(staging.query('delete from pennsync_private.known_app where app_id = $1', [STAGING_APP]));
 });
 
-test('every app-scoped column carries the domain rather than plain text', async () => {
+/**
+ * The containment assertion itself, over whatever database it is handed.
+ *
+ * It is a function so the sabotage below can raise it from a build the guard
+ * never makes. `expected` is a parameter for the same reason and for no other:
+ * the narrow control passes the count the authority-only scope used to see, so
+ * that "the old scope would still have passed" is asserted rather than argued.
+ */
+async function assertAppScopedColumns(db, expected) {
   // A new table typing app_id as text would sit outside the containment
   // entirely, so the count is pinned: adding one is a deliberate act.
-  const scoped = await staging.query(`select table_name, column_name from information_schema.columns
+  const scoped = await db.query(`select table_name, column_name from information_schema.columns
     where table_schema = 'pennsync_private' and domain_name = 'deployment_app' order by table_name, column_name`);
-  assert.equal(scoped.rows.length, 20, 'the number of app-scoped columns changed');
+  assert.equal(scoped.rows.length, expected, 'the number of app-scoped columns changed');
   // Exactly one per table: no table carries a second, separately typed app id.
   assert.equal(new Set(scoped.rows.map(r => r.table_name)).size, scoped.rows.length);
+  // Nothing else in the schema names an app id without going through the domain.
+  // The two exceptions are the tables that *define* the namespace: they cannot be
+  // typed by the domain whose admitted value they are.
+  const loose = await db.query(`select table_name, column_name from information_schema.columns
+    where table_schema = 'pennsync_private' and column_name like '%app_id%'
+      and domain_name is distinct from 'deployment_app'
+      and table_name not in ('known_app','deployment')`);
+  assert.deepEqual(loose.rows, [], 'an app id column escaped the domain');
+  return scoped.rows;
+}
+
+test('every app-scoped column carries the domain rather than plain text', async () => {
+  // 21 since D113 widened the build, not since a column was added: 20 of these
+  // come from the authority directory and `file_object` from the record one.
+  const scoped = await assertAppScopedColumns(staging, 21);
   for (const name of ['identity_map', 'agency', 'membership', 'patient', 'assignment',
     // D24's production care team. It is a sibling of `assignment` rather than
     // the same table because `assignment` keys to `pennsync_private.patient`,
@@ -171,17 +208,12 @@ test('every app-scoped column carries the domain rather than plain text', async 
     // archive import's rollback guard, so it could not simply come off.
     'chart_assignment',
     'patient_disclosure_audit', 'visit_disclosure_audit', 'visit_list_disclosure_audit',
+    // D77's locator mapping, created from `record-migrations/`. Named here so
+    // the widened build is what the assertion rests on rather than the count.
+    'file_object',
     'enrollment_receipt']) {
-    assert.ok(scoped.rows.some(r => r.table_name === name), `${name} must stay app-scoped`);
+    assert.ok(scoped.some(r => r.table_name === name), `${name} must stay app-scoped`);
   }
-  // Nothing else in the schema names an app id without going through the domain.
-  // The two exceptions are the tables that *define* the namespace: they cannot be
-  // typed by the domain whose admitted value they are.
-  const loose = await staging.query(`select table_name, column_name from information_schema.columns
-    where table_schema = 'pennsync_private' and column_name like '%app_id%'
-      and domain_name is distinct from 'deployment_app'
-      and table_name not in ('known_app','deployment')`);
-  assert.deepEqual(loose.rows, [], 'an app id column escaped the domain');
   const registry = await staging.query(`select table_name, data_type, domain_name from information_schema.columns
     where table_schema = 'pennsync_private' and column_name = 'app_id'
       and table_name in ('known_app','deployment') order by table_name`);
@@ -346,4 +378,60 @@ test('an enrolled identity must carry its evidence hash and a coherent revocatio
   await assert.rejects(insert({ email: 'Enrolled@Example.test' }), 'a non-normalized email must be refused');
   await assert.rejects(insert({ enabled: false }), 'disabled without a revocation time must be refused');
   await assert.rejects(insert({ revoked: new Date().toISOString() }), 'enabled with a revocation time must be refused');
+});
+
+/**
+ * D113's sabotage: prove the widened build is what catches an escape, and that
+ * the narrow one could not have.
+ *
+ * The plant is a migration in the RECORD tier — an app-scoped column typed
+ * plain `text`, which is exactly the shape `file_object` would have had if
+ * nobody had typed it. It is written to a directory of its own rather than into
+ * `record-migrations/`, because a file dropped in the real directory is read by
+ * the other fifty-three suites that walk it.
+ *
+ * Both halves are the finding. The wide build must REFUSE it; the narrow build
+ * must PASS, at the count the authority-only scope used to see, which is what
+ * says the old scope could never have caught this rather than merely that the
+ * new one does.
+ */
+test('a plain-text app id planted in the record tier is caught by the widened build and missed by the narrow one', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'pennsync-d113-'));
+  let wide; let narrow;
+  try {
+    await writeFile(join(root, '20260920990000_planted_escape.sql'), `
+      create table pennsync_private.planted_escape (
+        app_id text not null,
+        id text primary key
+      );
+      alter table pennsync_private.planted_escape enable row level security;
+      alter table pennsync_private.planted_escape force row level security;
+    `);
+    const planted = pathToFileURL(root + '/').href;
+    wide = await deploy(STAGING_APP, { directories: [...MIGRATION_DIRECTORIES, planted] });
+    // It escapes both ways: the domain count does not move, and the column is
+    // loose. Either assertion alone would be satisfied by the other's absence.
+    await assert.rejects(assertAppScopedColumns(wide, 21), /an app id column escaped the domain/);
+    const loose = await wide.query(`select table_name from information_schema.columns
+      where table_schema = 'pennsync_private' and column_name = 'app_id'
+        and domain_name is distinct from 'deployment_app'
+        and table_name not in ('known_app','deployment')`);
+    assert.deepEqual(loose.rows, [{ table_name: 'planted_escape' }]);
+
+    // The control. Authority directory only: the plant is a record migration,
+    // so it is not applied at all, and the old pin of 20 still passes.
+    narrow = await deploy(STAGING_APP, { directories: ['../supabase/migrations/'] });
+    const narrowRows = await assertAppScopedColumns(narrow, 20);
+    // And the exact set, derived rather than retyped: the twenty are the
+    // twenty-one less the one column the record directory creates. A count
+    // alone would stay green if one column left as another arrived.
+    const wideRows = await deploy(STAGING_APP).then(async database => {
+      try { return await assertAppScopedColumns(database, 21); } finally { await database.close(); }
+    });
+    assert.deepEqual(narrowRows.map(r => `${r.table_name}.${r.column_name}`),
+      wideRows.map(r => `${r.table_name}.${r.column_name}`).filter(name => name !== 'file_object.app_id'));
+  } finally {
+    await wide?.close(); await narrow?.close();
+    await rm(root, { recursive: true, force: true });
+  }
 });
