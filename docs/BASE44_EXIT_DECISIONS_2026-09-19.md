@@ -8233,11 +8233,45 @@ nobody chose. The class now admits digits, and the control **pins those two name
 as scanned** rather than asserting a total, so the blindness fails the suite
 instead of quietly shrinking a number.
 
-And repairing that instrument did not repair what had already been published with
-it. The site count travelled on as 482 — measured with the blind class, and
-still quoted after the class had been fixed for the **names**. At `1e7e0f0` the
-figure is **518** across the two migration directories, and the 36 it was short
-are exactly 31 `md5` and 5 `sha256`, which is what makes the gap a decomposition
-rather than a guess. **Fixing an instrument fixes the readings you re-take with
-it, not the ones already in circulation** — so when a pattern turns out to be
-blind, re-take every figure that came off it, not only the one that exposed it.
+And repairing that instrument did not repair what had already been published
+with it — the site count went on being quoted at a figure the blind class had
+produced. That is D130, which came out of this guard and is written up in its
+own right because it is not about `pg_catalog` at all.
+
+## D130 — Fixing an instrument does not fix the readings already taken with it
+
+D126's scan was found blind: `[a-z_]+` does not truncate a digit-bearing name,
+it skips it entirely, so `pg_catalog.md5(` and `pg_catalog.sha256(` were never
+matched. The class was repaired, and the distinct-name figure was re-taken with
+the repaired class — 45 became 47, and that correction was reported.
+
+**The site count was not re-taken.** It had been published as 482, measured with
+the blind class, and it went on being quoted after the class was fixed, because
+the repair was made where the blindness was *found* and the other reading had
+come off the same instrument in a different invocation. At `1e7e0f0` the figure
+is **518** across the two migration directories, and the 36 it was short are
+exactly 31 `pg_catalog.md5(` and 5 `pg_catalog.sha256(`. That decomposition is
+what makes this a measurement rather than a second guess: the repaired
+instrument and the blind one differ by precisely the population the blindness
+named, and nothing else accounts for the gap.
+
+So: **when a pattern, a class, a filter or a query turns out to be blind,
+re-take every figure that came off it, not only the one that exposed it.** A
+repair is scoped to an instrument; the readings are already elsewhere — in a
+pull request body, a relay, a comment, a page — and nothing carries the repair
+to them. The figure that exposes a blind spot is the one under your eyes, and it
+is therefore the least likely of them to still be wrong afterwards.
+
+This is D118 arriving from the side D118 does not cover. D118 is about the
+moment of reading: an instrument that truncates reports a true reading about a
+population nobody chose. This is about everything read before the instrument was
+understood. It is also why D122's insistence on naming the instrument **and** the
+head beside every figure is load-bearing rather than ceremony — a figure
+carrying its instrument can be re-taken by whoever holds it, while 482 carried
+neither and could only be corrected by the session that produced it happening to
+notice.
+
+Here the correction cost nothing: no count was pinned in the tree, and the
+coordinator holds no counts in project memory by rule, so the stale figure lived
+only in relays and was dropped by construction. That is the lucky case, not the
+rule.
