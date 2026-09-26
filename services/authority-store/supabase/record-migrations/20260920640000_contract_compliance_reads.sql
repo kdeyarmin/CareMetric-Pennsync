@@ -1,5 +1,25 @@
 -- The read half of five compliance domains the frontend already writes.
 --
+-- The filename's suffix is 640000 rather than 570000, and that is a
+-- correctness property rather than a preference. `planMigration` sorts each
+-- directory's filenames and refuses `MIGRATE_OUT_OF_ORDER` the moment an
+-- APPLIED file sorts after a PENDING one, because applying the earlier file
+-- then would run it against a schema the later one has already changed. At
+-- 570000 this file sorted between `contract_clinical_library` and
+-- `contract_reference_reads` on the alphabet alone, so on any store that had
+-- already applied the reference reads — which the hosted project will the
+-- moment its operator works the backlog — the whole plan refused and this
+-- migration could never be applied at all. It sorts after every committed
+-- record migration now, and it has been moved TWICE for that reason: 570000 to
+-- 590000, then to 640000 when #309 landed two roster migrations at 620000 and
+-- 630000. That is the property to re-check on every rebase rather than once —
+-- a suffix is only "after everything applied" relative to a tree, and any merge
+-- that lands a migration ahead of this one restores the hazard the moment an
+-- operator applies the backlog. The same shape is live in the pair sharing 580000,
+-- where `contract_operational_tables` sorts before `contract_screen_records`;
+-- that is not this migration's to move, and nothing in the tree checks the
+-- property yet.
+--
 -- HAND WRITTEN, like every contract. Five list capabilities over five carried
 -- tables — `incident`, `compliance_audit`, `adr_audit_case`,
 -- `personnel_credential` and `policy_acknowledgment` — which between them are

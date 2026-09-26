@@ -2532,7 +2532,7 @@ export const RECORD_CONTRACTS = Object.freeze({
   }),
   /*
    * The read half of five compliance domains the frontend already writes
-   * (`20260920570000_contract_compliance_reads.sql`).
+   * (`20260920640000_contract_compliance_reads.sql`).
    *
    * These are not ported Base44 names. The originals are raw `Entity.list` and
    * `Entity.filter` calls from the SPA, so the authorization that governed them

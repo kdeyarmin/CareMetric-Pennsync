@@ -1475,7 +1475,7 @@ const DECLARED_ROUTES = Object.freeze({
    * The read half of five compliance domains the frontend already writes:
    * 34 call sites across `Incident`, `ComplianceAudit`, `AdrAuditCase`,
    * `PersonnelCredential` and `PolicyAcknowledgment`, served by
-   * `20260920570000_contract_compliance_reads.sql`.
+   * `20260920640000_contract_compliance_reads.sql`.
    *
    * `projection` is doing the same work it does on the roster. Every one of
    * these contracts projects named columns and NO FILE LOCATOR — a screen
