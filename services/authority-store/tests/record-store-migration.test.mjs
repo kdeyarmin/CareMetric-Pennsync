@@ -329,8 +329,17 @@ test('D82: a person may correct their own profile, and the store refuses every o
     create function ${SCHEMA}.broker_profile_delete(p_id text) returns table(id text)
       language sql volatile security definer set search_path = '' as $$
       delete from ${SCHEMA}."user" where "id" = p_id returning "id" $$;
+    create function ${SCHEMA}.broker_profile_get(p_id text, p_column text)
+      returns text language plpgsql stable security definer set search_path = '' as $get$
+      declare v_value text;
+      begin
+        execute format('select %I::text from %I.%I where "id" = $1',
+          p_column, $$${SCHEMA}$$, 'user') into v_value using p_id;
+        return v_value;
+      end $get$;
     reset role;
     grant execute on function ${SCHEMA}.broker_profile_set(text, text, text),
+      ${SCHEMA}.broker_profile_get(text, text),
       ${SCHEMA}.broker_profile_delete(text) to authenticated;`);
   const set = (who, id, column, value) =>
     as(who, `select * from ${SCHEMA}.broker_profile_set($1, $2, $3)`, [id, column, value]);
@@ -352,9 +361,28 @@ test('D82: a person may correct their own profile, and the store refuses every o
     // next field.
     // Authority, an attestation, the agency label and the record of a decision
     // taken about the person — one of each kind the allowlist leaves out.
-    const refused = { role: 'admin', is_approved: 'true', staff_role: 'nurse',
+    //
+    // Each value must DIFFER from the one already stored, and that is asserted
+    // rather than assumed. The guard fires on `is distinct from`, so a write of
+    // the value the row already holds changes nothing and is correctly not
+    // refused. It is not hypothetical: `staff_role` was written as 'nurse' here
+    // until that became the column's emitted default.
+    //
+    // That break was LOUD -- `Missing expected rejection` -- and the assertion
+    // below is not here to make it louder. It is here because the repair is
+    // silent: swapping in another value restores green and records nothing, so
+    // the next coincidence costs the same rediscovery from a red with no
+    // explanation in it. Whether such a break shouts or passes is a property of
+    // the ASSERTION, not of the break: `assert.rejects` names an exact outcome,
+    // and one weaker assertion away is the version that goes vacuously green.
+    const refused = { role: 'admin', is_approved: 'true', staff_role: 'office_staff',
       agency_name: 'Somewhere Else', offboarded_at: '2026-01-01T00:00:00Z' };
     for (const [column, value] of Object.entries(refused)) {
+      const [{ broker_profile_get: stored }] = await as(AGENCY_A,
+        `select * from ${SCHEMA}.broker_profile_get($1, $2)`,
+        ['6aac00000000000000000001', column]);
+      assert.notEqual(stored, value,
+        `${column} already holds ${value}, so this write refuses nothing: pick another value`);
       await assert.rejects(() => set(AGENCY_A, '6aac00000000000000000001', column, value),
         error => error.message.includes(`PENNSYNC_PROFILE_FIELD_NOT_SELF_WRITABLE: ${column}`),
         `${column} must not be self-writable`);
