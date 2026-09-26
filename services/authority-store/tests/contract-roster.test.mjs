@@ -385,9 +385,16 @@ test('a manager is privileged and the three context-only roles are not', async (
  * round-trips successfully — so this test pins that set rather than the
  * projection, and fails when it GROWS.
  *
- * Adding a projected column that is also self-writable is the change that
- * should stop here and be thought about; adding one that is not (a
- * `created_date`, say) is free and this test says so by passing.
+ * Both kinds of widening stop here, and the two assertions say different
+ * things about them. Adding a projected column that is also self-writable
+ * changes the OVERLAP, which is the change that needs the write side read in
+ * the same change. Adding one that is not — a `created_date`, say — leaves the
+ * overlap untouched and trips the projection-size pin below instead. That is
+ * deliberate rather than incidental: such a column is safe, but it is still a
+ * widening of what the contract discloses, and a widening nobody had to
+ * acknowledge is how a projection grows a column at a time. So the pin is a
+ * speed bump and not a refusal, and updating its number IS the
+ * acknowledgement.
  */
 const SELF_WRITE = 'services/authority-store/supabase/record-migrations/20260920530000_profile_self_write.sql';
 /** The seven columns the roster projects that a caller may also write to their own row. */
