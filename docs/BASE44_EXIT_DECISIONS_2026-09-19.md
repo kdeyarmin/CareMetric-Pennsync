@@ -7295,3 +7295,44 @@ the generated record store makes **every** entity column nullable and emits
 the Base44 schema would have rejected and writes null where the schema declared
 a default. That is one generator decision with two consequences, and it reaches
 every batch rather than this one.
+
+## D103 — Two screens decide what a caller sees from a label its subject can edit (OPEN)
+
+**The finding.** `src/pages/AdminTraining.jsx:109` and
+`src/pages/ManagerSkillGapDashboard.jsx:42` both widen the staff list they
+render when `currentUser.account_type === 'super_admin'`, and
+`ManagerSkillGapDashboard.jsx:17` treats `super_admin` or `agency_admin` as a
+manager for the whole screen. D23 names `account_type` in `SELF_EDITABLE`: it is
+a label the profile's own subject writes, which is why the roster contract
+refuses to project it and derives `is_manager` from the authoritative tenant
+role instead.
+
+**The bound, stated here so the next reader does not have to re-derive it.**
+This is a DISPLAY gate over rows the caller already holds, not an access
+control. The list those branches filter was fetched by `User.list` under the
+carried table's read policy, so what a claimed `super_admin` changes is which of
+those rows the page renders and which layout it draws — not what the backend
+hands over. D69 established separately that the backend strips a claimed
+`super_admin` back to `'user'` through the shared `withTrustedClaims` helper
+before anything privileged happens, so no server-side decision follows from it.
+Nothing in `src/` reads these branches to authorize a write.
+
+**Why it is recorded rather than fixed.** It is not a defect a port introduces
+or removes, and fixing it means deciding what each screen should gate on, which
+is the same per-screen work Stage J is made of. Fixing it inside a port would
+change what a screen shows while claiming to change where it reads from.
+
+**What it is evidence for.** It is the argument against projecting
+`account_type` or `role` through the roster contract, which was proposed and
+refused on 2026-09-25: the screens that read those columns are exactly the
+screens that get them wrong, so projecting them for display would put a
+self-asserted label back on the page beside the authoritative one under a
+different name. A superseded column is not a missing one — `tenant_role` is the
+answer to the question these branches are asking, and it is already projected.
+
+**Whoever repoints these two screens owns this.** The substitution is
+`tenant_role` for the `agency_admin` half; the `super_admin` half has no
+successor, because D14 and D22 removed the platform tier and D40 replaced it
+with an `agency_admin` scoped to their own agency. So the branch does not
+translate — it goes, and what the screen shows an administrator changes. That is
+a product-visible difference and belongs to the owner, not to a port.
