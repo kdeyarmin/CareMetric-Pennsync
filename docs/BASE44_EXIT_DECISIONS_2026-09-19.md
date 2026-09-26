@@ -7336,3 +7336,69 @@ successor, because D14 and D22 removed the platform tier and D40 replaced it
 with an `agency_admin` scoped to their own agency. So the branch does not
 translate — it goes, and what the screen shows an administrator changes. That is
 a product-visible difference and belongs to the owner, not to a port.
+
+## D104 — The training assignment wizard targets on five columns no store holds (OPEN)
+
+2026-09-26. `job_title`, `department`, `discipline`, `business_line` and
+`location` are read to decide who a course is assigned to, and **none of the
+five exists in either store.** Read out of the record migration: the carried
+`pennsync_records.user` table has 47 columns, and none of those five is among
+them (nor is `full_name`). The authority store models identities, memberships
+and agencies, and has no such field either.
+
+The count is the point. The first two turned up in a column census and the
+other three only when the same file was read line by line, so a reader who
+stops at the first name will under-report this by three.
+
+**`src/components/training/AssignmentWizard.jsx` offers five filters, and all
+five are broken — in two different ways.**
+
+Three can never narrow anything, because the column behind them is always
+`undefined`. `:17` filters on `user.department` and `:33` builds that Select
+from `unique(users.map((user) => user.department))`; `:18` and `:34` do the same
+for `business_line`; `:19` and `:35` for `location`. Each dropdown can only ever
+offer its "All …" entry.
+
+Two silently degrade to a different field. `:15` and `:31` target on
+`user.job_title || user.credential_type || user.role`, and `:16` and `:32` on
+`user.discipline || user.credential_type` — so both run on `credential_type`,
+and a course aimed at a job title lands on a credential. `:47` prints the same
+degraded chain as the person's role.
+
+**Two more readers outside that file.**
+
+- `src/components/learning/ceTranscript.js:56` builds its matching haystack as
+  `[user?.job_title, user?.credentials, user?.credential_type, user?.role]`,
+  putting a dead field FIRST, and the comment above it says that ordering is
+  deliberate ("job_title first, the ...").
+- `src/pages/ManagerSkillGapDashboard.jsx:70` labels a person `member?.job_title
+  || member?.credential_type || member?.department || "Employee"`. Here
+  `credential_type` is live and sits second, so the label is right by accident:
+  the first and third terms are both dead and the middle one answers.
+
+**Why this was hard to find, which is the part worth carrying.**
+`src/components/learning/ceTranscript.test.js:139-141` seeds fixtures that set
+`job_title` directly — `{ job_title: 'Home Health Aide' }` and two more — so
+that suite passes on data the product cannot produce. The test is not evidence
+here. A field absent from every store is invisible to a suite that supplies it
+itself, and stays invisible for as long as the fixture does.
+
+**Why it is recorded rather than fixed.** This is D72's shape exactly — the
+`patient.risk_level`, `patient.hospitalization_risk` and `visit.note_id` reads
+that exist in neither store — and D72's precedent is to record such a field
+rather than invent around it. Fixing it means deciding whether the product
+should carry a job title, a department, a discipline, a business line and a
+location at all, where each is set and who may set it. That is a product
+decision, and a port that supplied them would be inventing a field set, which
+D12 settled against.
+
+**What it is NOT.** It is not the `full_name` question, although that column is
+missing from the same table. A name is on the owner's card as a decision about
+people's data; these five are structure the training system already assumes
+exists. They may be answered together, but settling the name does not settle
+these.
+
+**Whoever picks this up owns the fixture too.** Leaving `ceTranscript.test.js`'s
+`job_title` fixtures in place after the decision would leave a suite asserting
+behaviour over a field the store still does not hold, which is how this survived
+to be found by a column census rather than by a failing test.
