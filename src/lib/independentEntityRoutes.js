@@ -309,6 +309,98 @@ function libraryRead({ capability, sortable, filterable = [], filtered = false, 
   };
 }
 
+/** The compliance read contracts' own ceilings (`least(greatest(limit, 1), N)`). */
+export const COMPLIANCE_MAXIMUM = Object.freeze({
+  listAgencyIncidents: 5000,
+  listComplianceAudits: 5000,
+  listAdrAuditCases: 1000,
+  listPersonnelCredentials: 5000,
+  listPolicyAcknowledgments: 2000,
+});
+
+/**
+ * A read served by a named compliance contract.
+ *
+ * The contrast with `brokeredRead` above is the whole reason both exist. The
+ * broker family returns a page in id order and this file re-orders it, so it
+ * has to prove it holds every row before it may sort. These contracts do the
+ * order and the predicate IN SQL over the whole table, so a page of `limit`
+ * rows really is the first `limit` in the order asked for — the same thing
+ * Base44's own `list(sort, limit)` returns, and no proof is owed.
+ *
+ * The one case that does owe a proof is a limit ABOVE the contract's ceiling.
+ * There the store truncates at a bound the caller did not name, so a full page
+ * cannot be told from a complete answer and it raises `PAGE_INCOMPLETE`; a
+ * short page proves the ceiling was never reached. Two call sites are in that
+ * position today (`ComplianceAudit.list('-audit_date', 10000)` and its
+ * sibling), and they are served for any agency with fewer than 5,000 audits.
+ *
+ * `order` is a COLUMN. Every one of these call sites sorts descending, which
+ * is all the contracts implement, so an ascending sort is refused rather than
+ * quietly reversed.
+ */
+function contractRead({ handler, sortable, filterable = [], filtered }) {
+  const ceiling = COMPLIANCE_MAXIMUM[handler];
+  const parse = (args) => {
+    const [query, sort, limit] = filtered ? args : [undefined, args[0], args[1]];
+    const key = sortKey(sort, sortable);
+    // The contracts order descending and take no direction. An ascending sort
+    // is a real order they cannot produce, so it refuses for the same reason
+    // `emailAscending` refuses `-created_date` on the roster.
+    if (key && !key.descending) unsupported('sort_direction');
+    if (limit === undefined || limit === null) unsupported('limit_required');
+    return { query, order: key ? key.field : undefined, limit: pageSize(limit) };
+  };
+  return {
+    function: handler,
+    projection: 'compliance_read',
+    // A rest parameter reveals no length, so the arity is declared: a filtered
+    // call is `(query, sort, limit)` and a list call is `(sort, limit)`, which
+    // is what `parse` above reads and nothing wider. Without this the module
+    // throws at load for every suite that imports it, not just this one.
+    arity: filtered ? 3 : 2,
+    request: (...args) => {
+      const { query, order, limit } = parse(args);
+      const request = { limit: Math.min(limit, ceiling) };
+      if (order !== undefined) request.order = order;
+      if (query === undefined || query === null) return request;
+      if (typeof query !== 'object' || Array.isArray(query)) unsupported('filter');
+      for (const [field, condition] of Object.entries(query)) {
+        if (!filterable.includes(field)) unsupported('filter_field');
+        // A field named with NOTHING in it is refused, and this is the one
+        // refusal here that is about widening rather than about shape. Every
+        // contract below reads a null parameter as "no filter", and
+        // `JSON.stringify` drops an `undefined` value outright, so
+        // `filter({ patient_id: patientId })` with an unset `patientId` would
+        // reach the contract as an UNFILTERED read and answer with the whole
+        // agency under a heading naming one patient. Naming a field you have no
+        // value for is a caller's mistake and is told, because the alternative
+        // is the widest possible answer to the narrowest possible question.
+        //
+        // Measured before adding it rather than assumed necessary: all fifteen
+        // sites these routes serve guard the subject themselves today, with
+        // `enabled: !!patientId`, an early return or a throw. That is a
+        // property of each CALLER, though, and a sixteenth site would not
+        // inherit it, so the check belongs on the route.
+        if (condition === undefined || condition === null) unsupported('filter_value');
+        // The contracts take a scalar per filter and no operator; `$in` would
+        // have to be widened here, which is the silent-widening shape rule one
+        // exists for.
+        if (typeof condition === 'object') unsupported('filter_operator');
+        request[field] = condition;
+      }
+      return request;
+    },
+    response: (result, ...args) => {
+      const { limit } = parse(args);
+      const entries = result?.entries;
+      if (!Array.isArray(entries)) unsupported('answer');
+      if (limit > ceiling && entries.length >= ceiling) incomplete(handler);
+      return entries;
+    },
+  };
+}
+
 /** The roster contract's own ceiling (`least(greatest(limit, 1), 500)`). */
 export const ROSTER_MAXIMUM = 500;
 
@@ -1394,6 +1486,94 @@ const DECLARED_ROUTES = Object.freeze({
     reason: 'User settings reads the caller\'s own preferences, which the empty filter meant all along.',
   }),
   ...operationalRoutes,
+
+  /**
+   * The read half of five compliance domains the frontend already writes:
+   * 34 call sites across `Incident`, `ComplianceAudit`, `AdrAuditCase`,
+   * `PersonnelCredential` and `PolicyAcknowledgment`, served by
+   * `20260920650000_contract_compliance_reads.sql`.
+   *
+   * `projection` is doing the same work it does on the roster. Every one of
+   * these contracts projects named columns and NO FILE LOCATOR — a screen
+   * reading `incident.photo_urls`, `adr_audit_case.letter_file_url`,
+   * `personnel_credential.uploaded_file_url` or `policy_acknowledgment.doc_url`
+   * gets `undefined` rather than a Base44 storage URL it would then fetch, and
+   * reconnecting those is the file layer's work (D56, D77) rather than a route
+   * this file can write. That is the per-screen check adopting one of these
+   * costs.
+   */
+  'Incident.list': Object.freeze({
+    ...contractRead({
+      handler: 'listAgencyIncidents',
+      sortable: ['created_date', 'incident_date'],
+      filtered: false,
+    }),
+    reason: 'Eight screens read the agency incident log; the contract narrows it to the reporter or an agency_admin.',
+  }),
+  'Incident.filter': Object.freeze({
+    ...contractRead({
+      handler: 'listAgencyIncidents',
+      sortable: ['created_date', 'incident_date'],
+      filterable: ['patient_id', 'client_request_id'],
+      filtered: true,
+    }),
+    reason: 'Seven chart screens read one patient\'s incidents, which D24 already decides the reach of.',
+  }),
+  'ComplianceAudit.list': Object.freeze({
+    ...contractRead({
+      handler: 'listComplianceAudits',
+      sortable: ['created_date', 'audit_date'],
+      filtered: false,
+    }),
+    reason: 'Four report screens read the agency audit history; the nurse sees their own audits.',
+  }),
+  'ComplianceAudit.filter': Object.freeze({
+    ...contractRead({
+      handler: 'listComplianceAudits',
+      sortable: ['created_date', 'audit_date'],
+      filterable: ['patient_id', 'visit_id'],
+      filtered: true,
+    }),
+    reason: 'The chart analyzer reads one patient\'s audits and the note recovery reads one visit\'s.',
+  }),
+  /*
+   * `AdrAuditCase.list` is deliberately NOT declared, and the reason is worth
+   * writing down because it is not about the contract. `listAdrAuditCases`
+   * exists, is reachable and is tested; its only call site
+   * (`src/pages/ADRCenter.jsx`) passes `ADR_CASE_READ_LIMIT`, imported from
+   * `src/components/adr/adrCaseRead.js`, and `check:entity-routes` cannot
+   * resolve a constant across modules — so it reads the site as unserved and
+   * a declaration here would be a route that moves no screen, which is the
+   * exact thing that gate was rebuilt to refuse. Declaring it when the gate
+   * says zero would be arguing with the instrument. It lands when the reader
+   * can follow that import, or when the screen passes a literal.
+   */
+  'PersonnelCredential.list': Object.freeze({
+    ...contractRead({
+      handler: 'listPersonnelCredentials',
+      sortable: ['created_date', 'expiration_date', 'updated_date'],
+      filtered: false,
+    }),
+    reason: 'Seven screens read the agency credential shelf, which only an agency_admin sees whole.',
+  }),
+  'PersonnelCredential.filter': Object.freeze({
+    ...contractRead({
+      handler: 'listPersonnelCredentials',
+      sortable: ['created_date', 'expiration_date', 'updated_date'],
+      filterable: ['user_id', 'status'],
+      filtered: true,
+    }),
+    reason: 'The approval queue filters by status and the renewal portal by the person whose file it is.',
+  }),
+  'PolicyAcknowledgment.filter': Object.freeze({
+    ...contractRead({
+      handler: 'listPolicyAcknowledgments',
+      sortable: ['created_date'],
+      filterable: ['user_id'],
+      filtered: true,
+    }),
+    reason: 'The learner reads their own policy signatures; asking for a colleague\'s is refused by the contract.',
+  }),
 });
 
 /**

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { createIndependentStagingAdapter, readIndependentStagingConfig } from './independentStagingAdapter';
-import { ARGUMENTS_UNSUPPORTED, BROKER_MAXIMUM, ENTITY_ROUTES, LIBRARY_MAXIMUM, PAGE_INCOMPLETE, ROSTER_MAXIMUM, SCREEN_CEILINGS } from './independentEntityRoutes';
+import { ARGUMENTS_UNSUPPORTED, BROKER_MAXIMUM, COMPLIANCE_MAXIMUM, ENTITY_ROUTES, LIBRARY_MAXIMUM, PAGE_INCOMPLETE, ROSTER_MAXIMUM, SCREEN_CEILINGS } from './independentEntityRoutes';
+import { ADR_CASE_READ_LIMIT } from '@/components/adr/adrCaseRead';
 import { bindTrustedTenantContext, clearTrustedTenantContext, getActiveTrustedTenantContext } from '@/lib/roles';
 import { stagingApiUrl, stagingEmails, stagingEnv, stagingFixture } from '@/test/independentStagingFixture';
 
@@ -183,7 +184,7 @@ describe('the declared entity routes', () => {
   it('leaves every undeclared entity call refusing exactly as before', async () => {
     const { fixture, adapter } = await signedIn();
     for (const [entity, operation] of [['TrainingCourse', 'list'], ['Patient', 'list'],
-      ['Incident', 'filter'], ['User', 'update'], ['User', 'subscribe']]) {
+      ['Incident', 'create'], ['User', 'update'], ['User', 'subscribe']]) {
       await expect(adapter.raw.entities[entity][operation]())
         .rejects.toMatchObject({ code: 'STAGING_OPERATION_UNAVAILABLE', operation: `entities.${entity}.${operation}` });
     }
@@ -477,6 +478,117 @@ describe('the declared entity routes', () => {
     });
   });
 
+  describe('the five compliance reads', () => {
+    /** Their answer shape: `{entries, order, limit}` from a list contract. */
+    const listed = (entries, order = 'created_date', limit = 200) => () => new Response(
+      JSON.stringify({ success: true, result: { entries, order, limit },
+        execution: 'pennsync-api', base44ExecutionDependency: false }),
+      { headers: { 'content-type': 'application/json' } });
+
+    it('sends the order as a COLUMN and the filter as the contract\'s own parameters', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = listed([{ id: 'inc-1' }]);
+
+      expect(await adapter.raw.entities.Incident.list('-created_date', 500))
+        .toEqual([{ id: 'inc-1' }]);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ order: 'created_date', limit: 500 });
+
+      await adapter.raw.entities.Incident.filter({ patient_id: 'p-1' }, '-incident_date', 100);
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ order: 'incident_date', limit: 100, patient_id: 'p-1' });
+
+      // A control for the `-incident_date` refusal below: that case is named
+      // "a column this capability does not order by", and without a sort this
+      // route DOES take, the same refusal would fire for a route that orders by
+      // nothing at all — which is a different defect wearing the same detail.
+      await adapter.raw.entities.ComplianceAudit.list('-audit_date', 200);
+      expect(fixture.apiCalls.at(-1).body.params).toEqual({ order: 'audit_date', limit: 200 });
+
+      // And a control for each `filter_value` refusal below: the SAME two
+      // fields, carrying a value, are served. Without these two the refusal
+      // would pass for a route that rejected those fields outright, which is
+      // the opposite defect.
+      await adapter.raw.entities.ComplianceAudit.filter({ visit_id: 'v-1' }, '-audit_date', 200);
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ order: 'audit_date', limit: 200, visit_id: 'v-1' });
+
+      await adapter.raw.entities.PersonnelCredential.filter({ status: 'pending_approval' },
+        undefined, 1000);
+      // No order asked for is no order sent: the contract defaults it, and a
+      // route inventing one would be answering a question nobody asked.
+      expect(fixture.apiCalls.at(-1).body.params)
+        .toEqual({ limit: 1000, status: 'pending_approval' });
+    });
+
+    it('refuses an ascending sort, an unknown column and an operator it cannot express', async () => {
+      const { fixture, adapter } = await signedIn();
+      fixture.apiResponse = listed([]);
+      // Each case names the `detail` it expects, not just the code. Every one of
+      // this module's refusals throws the same `ARGUMENTS_UNSUPPORTED` as both
+      // message and code, across eleven distinct details, so asserting the
+      // message alone would pass on any refusal at all — including one raised
+      // for a reason that has nothing to do with the case being tested.
+      const refused = [
+        // The contracts order descending only. Quietly reversing a screen is
+        // the silent-reorder bug from the other direction.
+        [() => adapter.raw.entities.Incident.list('created_date', 200), 'sort_direction'],
+        [() => adapter.raw.entities.Incident.list('-severity', 200), 'sort'],
+        [() => adapter.raw.entities.ComplianceAudit.list('-incident_date', 200), 'sort'],
+        [() => adapter.raw.entities.Incident.list('-created_date'), 'limit_required'],
+        [() => adapter.raw.entities.Incident.filter({ severity: 'high' }, '', 200), 'filter_field'],
+        [() => adapter.raw.entities.PolicyAcknowledgment.filter(
+          { user_id: { $in: ['a'] } }, '', 200), 'filter_operator'],
+        // The widening case, and the only refusal here that is about the ANSWER
+        // rather than the request's shape. `JSON.stringify` drops an
+        // `undefined` value, and every contract reads a null parameter as "no
+        // filter", so a field named with nothing in it would reach the store as
+        // an unfiltered read and answer with the whole agency under a heading
+        // naming one patient. Both spellings, because they arrive by different
+        // routes: `undefined` from an unset prop, `null` from a cleared one.
+        [() => adapter.raw.entities.Incident.filter(
+          { patient_id: undefined }, '-created_date', 200), 'filter_value'],
+        [() => adapter.raw.entities.ComplianceAudit.filter(
+          { visit_id: null }, '-created_date', 200), 'filter_value'],
+      ];
+      for (const [call, detail] of refused) {
+        await expect(call()).rejects.toMatchObject({ code: ARGUMENTS_UNSUPPORTED, detail });
+      }
+      expect(fixture.apiCalls).toHaveLength(0);
+    });
+
+    it('a limit above the ceiling is served only when the answer proves it complete', async () => {
+      const { fixture, adapter } = await signedIn();
+      const ceiling = COMPLIANCE_MAXIMUM.listComplianceAudits;
+      // `OASISComplianceReport.jsx` asks for 10,000 audits. The contract will
+      // return at most the ceiling, so a FULL page cannot be told from the
+      // whole set and the route refuses rather than rendering a truncation as
+      // the agency's history.
+      fixture.apiResponse = listed(Array.from({ length: ceiling }, (unused, n) => ({ id: n })));
+      await expect(adapter.raw.entities.ComplianceAudit.list('-created_date', 10000))
+        .rejects.toThrow(PAGE_INCOMPLETE);
+      expect(fixture.apiCalls.at(-1).body.params.limit).toBe(ceiling);
+
+      // A short answer proves there is no more, so the same call is served.
+      fixture.apiResponse = listed([{ id: 'aud-1' }]);
+      await expect(adapter.raw.entities.ComplianceAudit.list('-created_date', 10000))
+        .resolves.toEqual([{ id: 'aud-1' }]);
+
+      // And a limit AT or under the ceiling is an ordinary page: the contract
+      // ordered the whole table, so its first N really are the first N.
+      fixture.apiResponse = listed(Array.from({ length: 200 }, (unused, n) => ({ id: n })));
+      await expect(adapter.raw.entities.Incident.list('-created_date', 200))
+        .resolves.toHaveLength(200);
+    });
+
+    it('ADR_CASE_READ_LIMIT sits inside the contract it will be routed to', async () => {
+      // `check:entity-routes` cannot follow this import, so `AdrAuditCase.list`
+      // is not declared yet. The value is read here instead of by eye, so if
+      // somebody raises it past what `listAdrAuditCases` serves this fails
+      // rather than the screen silently rendering a truncated case list.
+      expect(ADR_CASE_READ_LIMIT).toBeLessThanOrEqual(COMPLIANCE_MAXIMUM.listAdrAuditCases);
+    });
+  });
+
   it('does not make the namespace thenable', async () => {
     const { adapter } = await signedIn();
     expect(adapter.raw.entities.then).toBeUndefined();
@@ -730,8 +842,9 @@ describe("what batch E's routes take on trust", () => {
       .filter(key => key.endsWith('.list') || key.endsWith('.filter'));
     // Not an allowlist: every route keyed for a read is covered, and a new one
     // joins this set by existing — which is why the number GREW rather than
-    // being relaxed when batch D's nine paged operational reads arrived.
-    expect(paged.length).toBe(38);
+    // being relaxed when batch D's nine paged operational reads arrived, and
+    // again here: 38 became 45 with the five compliance reads' seven.
+    expect(paged.length).toBe(45);
 
     for (const key of paged) {
       const signature = key.endsWith('.filter') ? 3 : 2;

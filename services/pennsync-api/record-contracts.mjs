@@ -2530,6 +2530,101 @@ export const RECORD_CONTRACTS = Object.freeze({
       'PENNSYNC_SCREEN_FIELD_VALUE_INVALID',
     ]),
   }),
+  /*
+   * The read half of five compliance domains the frontend already writes
+   * (`20260920650000_contract_compliance_reads.sql`).
+   *
+   * These are not ported Base44 names. The originals are raw `Entity.list` and
+   * `Entity.filter` calls from the SPA, so the authorization that governed them
+   * is each entity's own `rls` block — owner OR the built-in `role === 'admin'`
+   * on all five — and the successor is the row's own person or an
+   * `agency_admin` of that agency (D40, D45). None of it is restated here: the
+   * contract decides, this module carries no authorization.
+   *
+   * `order` is the COLUMN and never a direction, because every one of the 34
+   * call sites asks descending and a contract that took a direction would be
+   * offering an order nothing has asked for and nothing has tested.
+   */
+  listAgencyIncidents: Object.freeze({
+    rpc: 'pennsync_contract_incident_list',
+    params: Object.freeze(['patient_id', 'client_request_id', 'order', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_client_request_id: args.client_request_id ?? null,
+      p_order: args.order ?? null,
+      p_limit: args.limit ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_INCIDENT_READ_AGENCY_NOT_HELD',
+      'PENNSYNC_INCIDENT_READ_SUBJECT_INVALID',
+      'PENNSYNC_INCIDENT_READ_REQUEST_ID_INVALID',
+      'PENNSYNC_INCIDENT_READ_ORDER_INVALID',
+    ]),
+  }),
+  listComplianceAudits: Object.freeze({
+    rpc: 'pennsync_contract_compliance_audit_list',
+    params: Object.freeze(['patient_id', 'visit_id', 'order', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_patient_id: args.patient_id ?? null,
+      p_visit_id: args.visit_id ?? null,
+      p_order: args.order ?? null,
+      p_limit: args.limit ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_AUDIT_READ_AGENCY_NOT_HELD',
+      'PENNSYNC_AUDIT_READ_SUBJECT_INVALID',
+      'PENNSYNC_AUDIT_READ_VISIT_INVALID',
+      'PENNSYNC_AUDIT_READ_ORDER_INVALID',
+    ]),
+  }),
+  listAdrAuditCases: Object.freeze({
+    rpc: 'pennsync_contract_adr_case_list',
+    params: Object.freeze(['order', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_order: args.order ?? null,
+      p_limit: args.limit ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_ADR_READ_AGENCY_NOT_HELD',
+      'PENNSYNC_ADR_READ_ORDER_INVALID',
+    ]),
+  }),
+  listPersonnelCredentials: Object.freeze({
+    rpc: 'pennsync_contract_personnel_credential_list',
+    params: Object.freeze(['user_id', 'status', 'order', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_user_id: args.user_id ?? null,
+      p_status: args.status ?? null,
+      p_order: args.order ?? null,
+      p_limit: args.limit ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_CREDENTIAL_READ_AGENCY_NOT_HELD',
+      'PENNSYNC_CREDENTIAL_READ_ORDER_INVALID',
+      'PENNSYNC_CREDENTIAL_READ_STATUS_INVALID',
+      'PENNSYNC_CREDENTIAL_READ_SUBJECT_FORBIDDEN',
+    ]),
+  }),
+  listPolicyAcknowledgments: Object.freeze({
+    rpc: 'pennsync_contract_policy_acknowledgment_list',
+    params: Object.freeze(['user_id', 'order', 'limit']),
+    body: (agencyId, args) => ({
+      p_agency: agencyId,
+      p_user_id: args.user_id ?? null,
+      p_order: args.order ?? null,
+      p_limit: args.limit ?? null,
+    }),
+    codes: Object.freeze([
+      'PENNSYNC_POLICY_ACK_READ_AGENCY_NOT_HELD',
+      'PENNSYNC_POLICY_ACK_READ_ORDER_INVALID',
+      'PENNSYNC_POLICY_ACK_READ_SUBJECT_FORBIDDEN',
+    ]),
+  }),
+
 });
 export const CONTRACT_NAMES = Object.freeze(Object.keys(RECORD_CONTRACTS));
 

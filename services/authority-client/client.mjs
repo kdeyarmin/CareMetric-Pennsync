@@ -138,6 +138,11 @@ export const PORTED_FUNCTIONS = Object.freeze({
   manageCustomValidationRule: 'json',
   readAiConfiguration: 'json',
   saveAiConfiguration: 'json',
+  listAgencyIncidents: 'json',
+  listComplianceAudits: 'json',
+  listAdrAuditCases: 'json',
+  listPersonnelCredentials: 'json',
+  listPolicyAcknowledgments: 'json',
   listAuthorizedDocuments: 'json',
   listAuthorizedPatients: 'json',
   listAuthorizedVisits: 'json',
@@ -186,6 +191,38 @@ export const PORTED_FUNCTIONS = Object.freeze({
   distributePolicyAcknowledgment: 'json',
   policyAcknowledgment: 'json',
   validatePatientData: 'json',
+});
+/**
+ * A JSON response allowance above the 1 MiB default, by handler name.
+ *
+ * `maxResponseBytes` defaults to 1 MiB, which is ample for a single record and
+ * is NOT ample for a page of a few thousand. The five compliance list
+ * capabilities are the first handlers here whose own SQL ceiling is larger than
+ * that default can carry: measured from their projections in
+ * `20260920650000_contract_compliance_reads.sql`, a page at each ceiling
+ * serializes to 3.07 MiB for incidents, 1.94 for credentials and 1.74 for
+ * audits with every value NULL — before a single report, finding or note. Left
+ * at the default, a compliance screen asking for the page its Base44 original
+ * asked for would get `INVALID_AUTHORITY_RESPONSE` for the WHOLE screen, which
+ * is the shape of failure hardest to read back to a cause.
+ *
+ * Lowering the contract's ceiling instead was the other option and is worse: it
+ * would show a nurse fewer rows than the platform showed, silently, which is
+ * the narrowing these contracts are written not to do.
+ *
+ * The number is not a guess either way. `client-response-bounds.test.mjs` reads
+ * each capability's projected keys and row ceiling out of that migration and
+ * fails if this allowance is below what a null-valued page at the ceiling
+ * needs, so widening a projection or raising a ceiling fails the build rather
+ * than the screen. It is a BOUND rather than an expectation: a page of real
+ * text can still exceed it, and that is a loud refusal, not a truncation.
+ */
+export const BULK_RESPONSE_BYTES = Object.freeze({
+  listAgencyIncidents: 8 * 1024 * 1024,
+  listComplianceAudits: 8 * 1024 * 1024,
+  listAdrAuditCases: 8 * 1024 * 1024,
+  listPersonnelCredentials: 8 * 1024 * 1024,
+  listPolicyAcknowledgments: 8 * 1024 * 1024,
 });
 /** The ported API's one route shape. No caller names a path. */
 const FUNCTION_PATH = name => `/v1/functions/${name}`;
@@ -507,6 +544,8 @@ export function createStagingAuthorityClient(input, { fetchImpl = globalThis.fet
         lease, bearer: token, body: { agency_id: agencyId, params },
         origin: config.apiUrl, apikey: false, deadlineMs: FUNCTION_TIMEOUT_MS,
         ...(binary ? { expect: 'application/pdf', maxResponseBytes: 8 * 1024 * 1024 } : {}),
+        ...(!binary && Object.hasOwn(BULK_RESPONSE_BYTES, name)
+          ? { maxResponseBytes: BULK_RESPONSE_BYTES[name] } : {}),
       });
       current(lease);
       // A document is its bytes. A JSON handler is wrapped by the service in

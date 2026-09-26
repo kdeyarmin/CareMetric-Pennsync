@@ -1508,7 +1508,7 @@ owed is the hosted EXERCISE, which is a caller away and not a build away.
   | `patient-read` (declared) | 2 | 3 |
   | `patient-write` (declared) | 2 | 5 |
   | `visit` (declared) | 4 | 5 |
-  | `read-only` (derived) | 50 | 26 |
+  | `read-only` (derived) | 55 | 27 |
   | `mutating` (derived) | 49 | 37 |
   | `integration` (derived) | 19 | 17 |
 
@@ -2840,10 +2840,8 @@ entity routes: 52 declared, 71/237 landable call sites SERVED, 166 still to adop
   of those 166, across 31 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 165 need a named capability
 ```
 
-And the reading on THIS tree, after the roster gained a creation order. This
-one is `pnpm run check:entity-routes`'s own output and is **pinned**:
-`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
-so paste what the tool prints and never retype, rewrap or re-indent it.
+Measured on `main` after #309, when the roster gained a creation order, and
+kept as a dated record of that head rather than maintained:
 
 ```
 entity routes: 52 declared, 95/237 landable call sites SERVED, 142 still to adopt
@@ -2975,6 +2973,38 @@ contracts are not an expensive approach chosen over a cheap one that was
 available. What is left is roughly forty entities' worth of named contracts and
 handlers — the same shape as the 80 already built — rather than one design
 decision.
+
+And the reading on THIS tree, after the five compliance reads. This one is
+`pnpm run check:entity-routes`'s own output and is **pinned**:
+`tools-entity-routes.test.mjs` fails unless the page carries it byte for byte,
+so paste what the tool prints and never retype, rewrap or re-indent it.
+
+```
+entity routes: 59 declared, 127/237 landable call sites SERVED, 110 still to adopt
+  6 of those are sites a declared route REFUSES (User.list:sort), and 21 pass arguments this cannot read
+  8 route(s) are declared but UNPROVED — every call site passes a variable, so the contract's own refusals are what checks them: AgencySettings.create, AgencySettings.update, FaceToFaceEncounter.create, FaceToFaceEncounter.update, NoteConversion.create, NotificationPreference.create, NotificationPreference.update, PatientRecommendation.create
+  of those 110, across 28 entities: a wider generic family could serve 1 reads and 0 writes above D16's ceiling; 109 need a named capability
+```
+
+**The move is thirty-two sites over seven routes, and it was attributed rather
+than inferred.** The printer was run TWICE ON THIS ONE TREE, once with `main`'s
+`src/lib/independentEntityRoutes.js` swapped in and once with this branch's, and
+the older file reproduced `main`'s own reading exactly. So the whole difference
+belongs to the routes this change declares and to nothing else that landed
+beside it — which is the method to use whenever a base has moved under a
+measurement, because a delta taken between two heads cannot say which of the
+changes in between caused it.
+
+**One site moved INTO the unreadable line, and that is a route arriving rather
+than a screen breaking** — the label this section already says such a figure
+needs. It is `src/components/smartNote/persistVisitNote.js:359`, which passes
+its filter as a variable (`(query) => …ComplianceAudit.filter(query, …)`), so a
+static gate cannot run it through a route and what checks it is the contract's
+own refusals. Before this change that site had no route to be unreadable
+against and sat in the undifferentiated remainder; it was found by opening the
+call sites over the five entities rather than by subtracting the two readings,
+because the difference of two counts names nothing.
+
 
 #### The destination gate, which measures a different population
 
