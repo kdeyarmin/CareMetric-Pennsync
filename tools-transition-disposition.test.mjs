@@ -1324,8 +1324,9 @@ test('nothing in the queue is startable and unwritten', async () => {
   // permits a read, which is a disposition rather than a capability.
   //
   // Batch A's seven reference reads (D101), batch C's fourteen clinical
-  // library, patient education and configuration capabilities, and batch E's
-  // ten screen records are the same kind of thing for the same reason, and
+  // library, patient education and configuration capabilities, batch E's
+  // ten screen records, and batch D's fourteen over the operational tables are
+  // the same kind of thing for the same reason, and
   // they are why this list needs stating rather than deriving. The SPA called
   // `base44.entities.Physician.list(...)` and the rest straight through the
   // platform SDK, so there is no Base44 function to be the port of — what was
@@ -1344,18 +1345,22 @@ test('nothing in the queue is startable and unwritten', async () => {
       `${name} has a Base44 function, so it is a port and belongs in the queue`);
   }
   assert.deepEqual(facilities, [
-    'getAgencyRosterMember', 'getMyNotificationPreferences', 'listAgencyRoster',
-    'listBrokeredRecords', 'listChartClinicalEvents', 'listChartRecommendations',
-    'listClinicalLibraryFolders', 'listClinicalLibraryTemplates', 'listClinicalPathways',
-    'listCustomValidationRules', 'listDocumentTemplates', 'listEducationMaterials',
+    'createAgencyTask', 'createNoteConversion', 'deletePdfTemplate',
+    'getAgencyRosterMember', 'getAgencySettings', 'getMyNotificationPreferences',
+    'listAgencyRoster', 'listAgencyTasks', 'listBrokeredRecords', 'listCarePlans',
+    'listChartClinicalEvents', 'listChartRecommendations', 'listClinicalLibraryFolders',
+    'listClinicalLibraryTemplates', 'listClinicalPathways', 'listCustomValidationRules',
+    'listDocumentTemplates', 'listEducationMaterials', 'listFaceToFaceEncounters',
     'listLibraryDocuments', 'listMedicareComplianceRules', 'listMedicareGuidelines',
-    'listOcrCorrections', 'listOcrTrainingRuns', 'listOnCallShifts',
-    'listPatientEducationAssignments', 'listPhysicians', 'listSentEducationMaterials',
-    'listVisitPointConfigs', 'lookupComplianceRule', 'manageClinicalLibraryFolder',
-    'manageClinicalLibraryTemplate', 'manageClinicalPathway', 'manageCustomValidationRule',
-    'manageEducationMaterial', 'managePatientEducationAssignment', 'readAiConfiguration',
-    'recordChartRecommendation', 'recordSentEducationMaterial', 'saveAiConfiguration',
-    'saveMyNotificationPreferences',
+    'listNoteConversions', 'listOcrCorrections', 'listOcrTrainingRuns', 'listOnCallShifts',
+    'listPatientDocumentRecords', 'listPatientEducationAssignments', 'listPdfTemplates',
+    'listPhysicians', 'listSentEducationMaterials', 'listVisitPointConfigs',
+    'lookupComplianceRule', 'manageClinicalLibraryFolder', 'manageClinicalLibraryTemplate',
+    'manageClinicalPathway', 'manageCustomValidationRule', 'manageEducationMaterial',
+    'managePatientEducationAssignment', 'readAiConfiguration', 'recordChartRecommendation',
+    'recordSentEducationMaterial', 'saveAgencySettings', 'saveAiConfiguration',
+    'saveCarePlan', 'saveFaceToFaceEncounter', 'saveMyNotificationPreferences',
+    'savePdfTemplate',
   ]);
 });
 

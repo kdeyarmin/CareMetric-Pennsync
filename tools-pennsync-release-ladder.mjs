@@ -342,14 +342,28 @@ const serviceFiles = root => readdirSync(resolve(root, SERVICE))
  * migration in this directory defines its functions one after another, and the
  * grants between them carry no DML.
  *
- * One re-declaration is legitimate and is admitted by NAME of its shape rather
- * than by an exception list: a D88 catch-up carries an object from a
- * regenerated migration to a store that already applied it, so it says
- * `create or replace` and its body is byte-identical to the one it repeats.
- * Nothing is a guess there — both definitions are the same definition — and
- * the migration that DEFINES the contract is still the first. Anything else is
- * refused as before, including an `or replace` whose body differs, which is
- * the case that would really make "which one is this" unanswerable.
+ * A re-declaration is legitimate and is admitted by NAME of its shape rather
+ * than by an exception list: it says `create or replace`, which is the SQL
+ * saying that a store already holding this object is expected. Two things come
+ * of that, and the second is the one that matters.
+ *
+ * The migration that DEFINES the contract stays the FIRST file. A D88 catch-up
+ * carries an object from a regenerated migration to a store that already
+ * applied it, and a correction fixes one that was wrong; neither becomes the
+ * place the definition lives, and the wave a capability is emitted under is
+ * named after that file.
+ *
+ * The BODY is the LAST one. This is not "the refusal stops" — it is which text
+ * gets classified, and the ladder's whole output is derived from that text. A
+ * correction that ADDS a write to a function the store is running must move
+ * that capability's wave; if the first body were kept, the ladder would emit a
+ * read-only value for SQL that writes, and an operator would release it on
+ * that value. Keeping the first body is therefore not the conservative choice,
+ * it is the wrong answer stated confidently.
+ *
+ * What is still refused is a plain `create function` twice, which is a
+ * migration that cannot apply to a store that ran the first one — the tree is
+ * broken and the ladder should not paper over it.
  */
 export function functionBodies(root) {
   const pattern = /create\s+(or\s+replace\s+)?function\s+(?:"?([a-z_]+)"?\s*\.\s*)?"?([A-Za-z0-9_]+)"?\s*\(/gi;
@@ -365,17 +379,27 @@ export function functionBodies(root) {
         const replaces = Boolean(match[1]);
         const key = `${(match[2] ?? '').toLowerCase()}.${match[3]}`;
         const body = dollarQuotedBody(sql, match.index, key, file);
-        // Within the record migrations a name defined twice would make "the
-        // migration that defines this contract" a guess, so it is refused
-        // rather than last-one-wins. That invariant is this directory's alone.
+        // Within the record migrations a plain second `create function` is a
+        // tree that cannot apply, so it is refused. An `or replace` is the SQL
+        // declaring the re-declaration, and is admitted.
         const seen = directory === MIGRATIONS && bodies.get(key)?.directory === MIGRATIONS
           ? bodies.get(key) : null;
-        if (seen && !(replaces && seen.body === body)) {
+        if (seen && !replaces) {
           refuse('LADDER_FUNCTION_DEFINED_TWICE', { key, files: [seen.file, file] });
         }
-        // The first file keeps the key: a catch-up repeats a definition, it
-        // does not become the place the definition lives.
-        if (!seen) bodies.set(key, { file, body, directory });
+        // The first file keeps the key and the LAST body is what gets
+        // classified -- see above. A catch-up repeating a definition verbatim
+        // lands here too and changes nothing, which is what it means.
+        //
+        // `files` is every file that defines or redefines this function, and it
+        // is what a wave reports as a prerequisite. `file` alone would name the
+        // migration whose body is NOT the one being classified: an operator
+        // told to apply the first and not the correction would have a store
+        // running the old body under the new wave's value, which is the whole
+        // failure this widening exists to avoid, one step further along.
+        bodies.set(key, seen
+          ? { file: seen.file, files: [...seen.files, file], body, directory }
+          : { file, files: [file], body, directory });
       }
     }
   }
@@ -430,7 +454,7 @@ export function closureOf(bodies, key, contract, seen = new Set()) {
   // Only the record migrations are reported as prerequisites. The authority
   // ones are read for the graph but apply before the record store exists at
   // all, so naming them would be noise rather than a thing to check.
-  const files = entry.directory === MIGRATIONS ? [entry.file] : [];
+  const files = entry.directory === MIGRATIONS ? [...entry.files] : [];
   let mutates = DML.test(entry.body);
   // A qualified name followed by `(` is a call — unless the `(` is a column
   // list and the name is a TABLE: `insert into pennsync_private.chart_assignment (`
@@ -487,7 +511,7 @@ export function contractOrigins(root) {
       rpc,
       // The wrapper's file, which is where the contract is reviewed, first;
       // then everything its closure needs.
-      migrations: Object.freeze([...new Set([wrapper.file, target.file, ...closure.files])].sort()),
+      migrations: Object.freeze([...new Set([...wrapper.files, ...target.files, ...closure.files])].sort()),
       mutates: closure.mutates,
     }));
   });

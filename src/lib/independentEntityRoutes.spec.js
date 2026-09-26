@@ -582,7 +582,7 @@ describe("what batch E's routes take on trust", () => {
     }
   });
 
-  it('leaves the three unproved writes to the refusals their contract raises', async () => {
+  it('leaves each unproved write to the refusals its own contract raises', async () => {
     const { readFileSync } = await import('node:fs');
     const { cwd } = await import('node:process');
     const { measureRoutes } = await import('../../tools-entity-routes.mjs');
@@ -593,6 +593,9 @@ describe("what batch E's routes take on trust", () => {
     // through `request`. "Cannot prove this serves" is not "does not serve".
     const report = measureRoutes(cwd());
     expect([...report.unproved_routes].sort()).toEqual([
+      'AgencySettings.create', 'AgencySettings.update',
+      'FaceToFaceEncounter.create', 'FaceToFaceEncounter.update',
+      'NoteConversion.create',
       'NotificationPreference.create', 'NotificationPreference.update',
       'PatientRecommendation.create',
     ]);
@@ -613,6 +616,18 @@ describe("what batch E's routes take on trust", () => {
       // write and a junk row that answered `success: true`.
       'PENNSYNC_SCREEN_FIELD_REQUIRED', 'PENNSYNC_SCREEN_FIELD_VALUE_INVALID']) {
       expect(suite, `${code} must be exercised by the contract suite`).toContain(code);
+    }
+
+    // Batch D's five, the same standing on their own suite. A second family of
+    // unproved writes arriving is the case this test has to keep covering: the
+    // list above fails when one appears, and this is what it costs to add it —
+    // name the suite that raises the refusals the new routes lean on.
+    const operational = readFileSync(
+      'services/authority-store/tests/contract-operational-tables.test.mjs', 'utf8');
+    for (const code of ['PENNSYNC_SETTINGS_FORBIDDEN', 'PENNSYNC_SETTINGS_FIELD_RESERVED',
+      'PENNSYNC_F2F_FORBIDDEN', 'PENNSYNC_F2F_CHART_FORBIDDEN',
+      'PENNSYNC_NOTE_CONVERSION_CHART_FORBIDDEN', 'PENNSYNC_TEMPLATE_NAME_REQUIRED']) {
+      expect(operational, `${code} must be exercised by the contract suite`).toContain(code);
     }
   });
 
@@ -663,5 +678,48 @@ describe("what batch E's routes take on trust", () => {
     });
     expect(fresh.expected_id).toBeNull();
     expect(Object.keys(fresh.preference)).not.toContain('user_email');
+  });
+  /**
+   * The arity guard only refuses arguments PAST the declared count, so a
+   * declaration that is too GENEROUS fails open on exactly the case the guard
+   * exists to catch: a fourth argument at a three-argument route is discarded
+   * in silence and the module still loads clean. A clean load therefore proves
+   * nothing about the number, and every arity in this file is DECLARED rather
+   * than derived — `guardingArity` reads `request.length`, and all but one of
+   * these routes take a rest parameter, whose length is 0.
+   *
+   * So the number is pinned from OUTSIDE the route: `Entity.list(sort, limit)`
+   * and `Entity.filter(query, sort, limit)` are the entity methods' own
+   * signatures, which `src/lib/queryLimits.js` and `src/lib/entityReadLimits`
+   * both act on. A route that accepts a third argument on a `.list` or a
+   * fourth on a `.filter` is accepting an argument no caller can express and
+   * no parameter can receive.
+   *
+   * The count check runs in the wrapper, before the route's own body, so this
+   * reaches every route regardless of whether its other arguments are valid —
+   * which is why `detail` is asserted rather than the message. Every refusal
+   * in this module carries the same message, so a route refusing the extra
+   * argument for a reason of its own (a sort it cannot honour, a filter field
+   * it does not take) would pass a message-only assertion vacuously.
+   */
+  it('accepts no more arguments than the entity method it serves has', () => {
+    const paged = Object.keys(ENTITY_ROUTES)
+      .filter(key => key.endsWith('.list') || key.endsWith('.filter'));
+    // Not an allowlist: every route keyed for a read is covered, and a new one
+    // joins this set by existing — which is why the number GREW rather than
+    // being relaxed when batch D's nine paged operational reads arrived.
+    expect(paged.length).toBe(38);
+
+    for (const key of paged) {
+      const signature = key.endsWith('.filter') ? 3 : 2;
+      let thrown;
+      try {
+        ENTITY_ROUTES[key].request(...Array.from({ length: signature + 1 }));
+      } catch (error) { thrown = error; }
+      expect(thrown, `${key} accepted ${signature + 1} arguments`).toBeDefined();
+      expect(thrown.code).toBe(ARGUMENTS_UNSUPPORTED);
+      expect(thrown.detail, `${key} refused for its own reason, not the count`)
+        .toBe('argument_count');
+    }
   });
 });

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import {
   BROKERED_ENTITIES, BROKER_CODES, BROKER_REFUSALS, DEFAULT_PAGE, MAX_PAGE,
   RECORD_OPERATIONS, RECORD_RPC, recordCapability,
@@ -198,4 +199,67 @@ test('the capability hands out a function, never the token that authorizes it', 
   assert.deepEqual(Object.keys(records), []);
   assert.ok(!JSON.stringify(Object.getOwnPropertyDescriptors(records)).includes('synthetic.caller.token'));
   assert.ok(!String(records).includes(KEY));
+});
+
+/**
+ * The README's own count of what the family serves, pinned to the generated
+ * file rather than to whoever last edited the page.
+ *
+ * This page said "the 31 entities the broker family serves" for some time
+ * after D22 took the allowlist to three — a figure nothing enforced, wrong by
+ * a factor of ten, and wrong in the direction that reads as write access to
+ * thirty-one tables beside a sentence naming `insert`, `update` and `delete`.
+ * The same instrument-versus-prose problem the Stage J block is pinned for.
+ *
+ * Two assertions rather than one, for the reason that check records: an
+ * absent name and a wrong count are different failures, and a test that
+ * checked the count alone would pass on a page that had stopped naming the
+ * entities at all.
+ *
+ * Reading `./README.md` is inside this directory, so it survives the
+ * Dockerfile copying the directory as its whole build context (D60).
+ */
+const README = new URL('./README.md', import.meta.url);
+const NUMBER_WORDS = ['zero', 'one', 'two', 'three', 'four', 'five', 'six',
+  'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve'];
+
+/** The `### Records` section, up to the next heading of any level. */
+function recordsSection(page) {
+  const lines = page.split('\n');
+  const start = lines.findIndex(line => line.startsWith('### Records'));
+  if (start < 0) return null;
+  const end = lines.findIndex((line, index) => index > start && /^#{1,6} /.test(line));
+  return lines.slice(start, end < 0 ? lines.length : end).join('\n');
+}
+
+test('the README names every entity the generated family serves', async () => {
+  const section = recordsSection(await readFile(README, 'utf8'));
+  assert.ok(section !== null, 'services/pennsync-api/README.md no longer has a `### Records` section');
+  for (const entity of Object.keys(BROKERED_ENTITIES)) {
+    assert.ok(section.includes(`\`${entity}\``),
+      `services/pennsync-api/README.md does not name \`${entity}\`, which the broker family serves.\n`
+      + '  Run `node tools-record-brokers.mjs --summary` and name each entity the\n'
+      + '  generated `brokered-entities.mjs` holds. A page that stops naming one\n'
+      + '  describes a narrower service than the one that ships.');
+  }
+});
+
+test('the README states no count of those entities other than the real one', async () => {
+  const section = recordsSection(await readFile(README, 'utf8'));
+  const served = Object.keys(BROKERED_ENTITIES).length;
+  // Digits and small number words alike, because this page spells small
+  // numbers out and a check that read only one form is the defect it is for.
+  const counted = /(\d+|zero|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+(?:read-only\s+|brokered\s+)?entities\b/gi;
+  for (const [, quantity] of section.matchAll(counted)) {
+    const value = /^\d+$/.test(quantity)
+      ? Number(quantity)
+      : NUMBER_WORDS.indexOf(quantity.toLowerCase());
+    assert.equal(value, served,
+      `services/pennsync-api/README.md says "${quantity} entities"; the family serves ${served}.\n`
+      + '  The count lives in the generated `brokered-entities.mjs`, not on this page.\n'
+      + '  Run `node tools-record-brokers.mjs --summary` and use what it prints.\n'
+      + '  A HISTORICAL figure is fine and is why the allowlist sentence says "was 31"\n'
+      + '  rather than "31 entities": state what a number WAS, never a stale current\n'
+      + '  count, which is how this page came to claim ten times the real reach.');
+  }
 });

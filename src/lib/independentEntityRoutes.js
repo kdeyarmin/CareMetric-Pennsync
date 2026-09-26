@@ -400,6 +400,331 @@ function shiftWindow(query) {
 }
 
 /**
+ * The seven operational tables, and why their routes are thinner than the
+ * brokered ones above.
+ *
+ * `20260920580000_contract_operational_tables.sql` takes the order and the
+ * predicate as PARAMETERS and applies both in SQL, so there is nothing for
+ * this file to re-order and no complete set to prove. What a route does here
+ * is take the entity call's arguments apart and refuse the ones its contract
+ * cannot express — a sort field it does not order by, a filter field it has no
+ * parameter for, an operator other than equality.
+ *
+ * The one place a bound still has to be proved is the ceiling. The contracts
+ * clamp a page at 5,000 rows, and two screens ask for 10,000, so a full page
+ * at the ceiling cannot be told from a truncated one and the route raises
+ * `STAGING_ENTITY_PAGE_INCOMPLETE` rather than rendering 5,000 conversions as
+ * the agency's whole history. Below the ceiling there is nothing to prove: the
+ * store did the ordering, so the newest hundred really are the newest hundred.
+ */
+export const OPERATIONAL_MAXIMUM = 5000;
+
+/** The order parameter for a sort argument, against what the contract orders by. */
+function orderKey(sort, orderable) {
+  if (sort === undefined || sort === null || sort === '') return undefined;
+  if (typeof sort !== 'string' || !sort.startsWith('-')) unsupported('sort');
+  const field = sort.slice(1);
+  if (!orderable.includes(field)) unsupported('sort');
+  return field;
+}
+
+/**
+ * A filter object as the NAMED parameters a contract takes, rather than as a
+ * predicate applied here.
+ *
+ * `$ne` is admitted for exactly the fields whose contract has an
+ * `exclude_status`-shaped parameter, because `patientHistoryAnalyzer` asks for
+ * a patient's tasks that are not completed and a route that dropped the
+ * operator would answer with the completed ones included.
+ */
+function namedFilters(query, filterable, negatable = []) {
+  if (query === undefined || query === null) return {};
+  if (typeof query !== 'object' || Array.isArray(query)) unsupported('filter');
+  const named = {};
+  for (const [field, condition] of Object.entries(query)) {
+    if (condition !== null && typeof condition === 'object') {
+      const keys = Object.keys(condition);
+      if (keys.length !== 1 || keys[0] !== '$ne' || !negatable.includes(field)) {
+        unsupported('filter_operator');
+      }
+      named[`exclude_${field}`] = condition.$ne;
+      continue;
+    }
+    if (!filterable.includes(field)) unsupported('filter_field');
+    named[field] = condition;
+  }
+  return named;
+}
+
+/** A page the contract's ceiling cannot have truncated invisibly. */
+function wholePage(entries, limit, entity) {
+  if (!Array.isArray(entries)) unsupported('answer');
+  if (limit !== undefined && limit !== null
+    && limit > OPERATIONAL_MAXIMUM && entries.length >= OPERATIONAL_MAXIMUM) {
+    incomplete(entity);
+  }
+  return entries;
+}
+
+/**
+ * A read over one operational table: the filter as named parameters, the sort
+ * as the contract's order parameter, the limit passed through.
+ */
+function operationalRead({ entity, fn, orderable, filterable = [], negatable = [], filtered }) {
+  return {
+    function: fn,
+    projection: 'operational_row',
+    // Declared for `brokeredRead`'s reason: a rest parameter's `length` is 0,
+    // so nothing can be derived from it and #302's guard throws at load.
+    arity: filtered ? 3 : 2,
+    request: (...args) => {
+      const [query, sort, limit] = filtered ? args : [undefined, args[0], args[1]];
+      const order = orderKey(sort, orderable);
+      return {
+        ...namedFilters(query, filterable, negatable),
+        ...(order === undefined ? {} : { order }),
+        ...(pageSize(limit) === undefined ? {} : { limit: pageSize(limit) }),
+      };
+    },
+    response: (result, ...args) => {
+      const limit = filtered ? args[2] : args[1];
+      return wholePage(result?.entries, limit, entity);
+    },
+  };
+}
+
+/** `Entity.create(payload)` onto a contract that takes a field object. */
+function operationalCreate({ fn, key, reason }) {
+  return Object.freeze({
+    function: fn,
+    projection: 'operational_row',
+    reason,
+    request: (fields) => {
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return { fields };
+    },
+    response: (result) => result?.[key],
+  });
+}
+
+/**
+ * `Entity.update(id, payload)` onto a contract that takes an id and a field
+ * object, and `Entity.create(payload)` onto the same contract with no id.
+ *
+ * One contract serves both because the screens do: a settings panel and a
+ * template builder each call `create` the first time and `update` after, and
+ * the contract's id parameter is what tells them apart. An absent id is a
+ * create; there is no third case.
+ */
+function operationalSave({ fn, key, reason, withId }) {
+  return Object.freeze({
+    function: fn,
+    projection: 'operational_row',
+    reason,
+    // An update takes the row's id and the payload; a create takes the payload
+    // alone. Declared because the rest parameter hides both counts.
+    arity: withId ? 2 : 1,
+    request: (...args) => {
+      const [id, fields] = withId ? args : [undefined, args[0]];
+      if (withId && (typeof id !== 'string' || id === '')) unsupported('id');
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      return withId ? { id, fields } : { fields };
+    },
+    response: (result) => result?.[key],
+  });
+}
+
+/**
+ * The declared routes for the seven, kept out of the object literal below so
+ * the reason for each stays beside the call sites it serves.
+ *
+ * EIGHT OF THESE ROUTES ARE DECLARED UNPROVED, and that is the gate's third
+ * disposition rather than a gap. `AgencySettings.create` and `.update`,
+ * `CarePlan.update`, `FaceToFaceEncounter.create` and `.update`,
+ * `NoteConversion.create`, and `PDFTemplate.update` and `.delete` each take a
+ * payload the screen builds at run time — `AgencySettings.create(payload)` —
+ * so `tools-entity-call-arguments.mjs` reads every one of their call sites as
+ * indeterminate and `check:entity-routes` can prove nothing about the route.
+ * It reports them rather than refusing them, which means the contract's own
+ * refusal suite against the real migration is the whole of what checks these
+ * eight. Repo-wide the unreadable writes are 84 of 91, so this disposition is
+ * what lets any batch land a write seam at all.
+ *
+ * TWO ENTITY OPERATIONS OF THESE SEVEN STAY ON BASE44 although their
+ * capabilities ship here, and `src/lib/operationalRoutes.test.js` holds each
+ * reason as a check that fails when it lapses, rather than as a note here that
+ * would not. `Task.create` is provable and was held first by the gate's
+ * (file, key) subtraction, which #297 fixed; it is still held because that
+ * fix's own regression test PLANTS `Task.create` as its route and asserts the
+ * measurement rises, so declaring it here makes the baseline already contain
+ * it and the test fails. The hold is now one line in another batch's test
+ * file rather than anything about the route. `NoteConversion.filter` waits on
+ * its own contract, which takes one of the five predicates its call site
+ * narrows on while that caller requires exactly one row; dropping the other
+ * four would turn a duplicate check into a read that can return two.
+ *
+ * Every projection here is `operational_row`, which is the entity's own
+ * columns less `source_app_id` and less whatever its contract withholds. Two
+ * withhold something a screen may notice, and both are why these entities
+ * could not be brokered in the first place. `AgencySettings` returns no
+ * credential-digest claim columns, which nothing in `src/` reads. `PDFTemplate`
+ * and `DocumentRecord` return `template_file_url` and `file_url` RESOLVED
+ * (D77): an owned `cmfile:` handle, or null while the file copy has not run.
+ * A screen that renders a download link gets nothing to link to rather than a
+ * link into Base44's storage, and that is the per-screen work these two
+ * routes hand their adopter.
+ *
+ * One more thing an adopter should expect. Every projection here carries the
+ * row's `id` and its `agency_id`, and every write refuses both by name, so a
+ * screen that duplicates a record by spreading the row it just read back into
+ * a create gets a `FIELD_RESERVED` refusal rather than a copy. That is the
+ * contract saying the tenancy is not the caller's to send; the screen's fix is
+ * to name the fields it means to copy.
+ */
+const operationalRoutes = Object.freeze({
+  'AgencySettings.list': Object.freeze({
+    ...operationalRead({
+      entity: 'AgencySettings', fn: 'getAgencySettings',
+      orderable: ['created_date'], filtered: false,
+    }),
+    reason: 'The settings loader reads the agency configuration newest first.',
+  }),
+  'AgencySettings.filter': Object.freeze({
+    ...operationalRead({
+      entity: 'AgencySettings', fn: 'getAgencySettings',
+      orderable: ['created_date'], filterable: ['agency_code', 'office_name'],
+      filtered: true,
+    }),
+    // The lookup stays and the tenancy behind it goes: the agency is the
+    // envelope's now, so naming another agency's code finds nothing.
+    reason: 'agencySettings.js looks its row up by agency code and then by office name.',
+  }),
+
+  'Task.filter': Object.freeze({
+    ...operationalRead({
+      entity: 'Task', fn: 'listAgencyTasks',
+      orderable: ['created_date', 'due_date'],
+      filterable: ['patient_id', 'related_entity', 'related_entity_id'],
+      negatable: ['status'], filtered: true,
+    }),
+    reason: 'Four screens read an agency task list, three of them for one chart.',
+  }),
+  'PDFTemplate.list': Object.freeze({
+    ...operationalRead({
+      entity: 'PDFTemplate', fn: 'listPdfTemplates',
+      orderable: ['created_date'], filtered: false,
+    }),
+    reason: 'The template manager and the library both read every template, newest first.',
+  }),
+  'PDFTemplate.filter': Object.freeze({
+    ...operationalRead({
+      entity: 'PDFTemplate', fn: 'listPdfTemplates',
+      orderable: ['created_date'], filterable: ['parent_template_id'], filtered: true,
+    }),
+    reason: 'The version history reads the revisions of one parent template.',
+  }),
+  'PDFTemplate.create': operationalCreate({
+    fn: 'savePdfTemplate', key: 'template',
+    reason: 'The builder and the manager both create a template from an uploaded file.',
+  }),
+
+  'CarePlan.filter': Object.freeze({
+    ...operationalRead({
+      entity: 'CarePlan', fn: 'listCarePlans',
+      orderable: ['created_date', 'updated_date'],
+      filterable: ['id', 'patient_id'], filtered: true,
+    }),
+    reason: 'The interactive care plan reads one plan by id and a chart’s plans by patient.',
+  }),
+  'CarePlan.create': Object.freeze({
+    function: 'saveCarePlan',
+    projection: 'operational_row',
+    // `patient_id` is lifted out of the payload because it is the row's whole
+    // tenancy — `care_plan` has no `agency_id` — so the contract takes it as a
+    // parameter of its own and refuses it as a field.
+    reason: 'The analyzer writes the care plan it generated for one chart.',
+    request: (fields) => {
+      if (fields === null || typeof fields !== 'object' || Array.isArray(fields)) {
+        unsupported('fields');
+      }
+      const { patient_id: patientId, ...rest } = fields;
+      if (typeof patientId !== 'string' || patientId === '') unsupported('patient_id');
+      return { patient_id: patientId, fields: rest };
+    },
+    response: (result) => result?.care_plan,
+  }),
+
+  'FaceToFaceEncounter.filter': Object.freeze({
+    ...operationalRead({
+      entity: 'FaceToFaceEncounter', fn: 'listFaceToFaceEncounters',
+      orderable: ['created_date'], filterable: ['referral_id'], filtered: true,
+    }),
+    reason: 'Referral intake reads the encounter already recorded against a referral.',
+  }),
+
+  'DocumentRecord.filter': Object.freeze({
+    ...operationalRead({
+      entity: 'DocumentRecord', fn: 'listPatientDocumentRecords',
+      orderable: ['created_date'], filterable: ['patient_id'], filtered: true,
+    }),
+    // Its contract keeps the original's ownership rule, so this answers with
+    // the caller's own uploads for that chart unless they are an agency_admin.
+    reason: 'Both fax dialogs read the documents already held for one chart.',
+  }),
+
+  'AgencySettings.create': operationalSave({
+    fn: 'saveAgencySettings', key: 'settings', withId: false,
+    reason: 'Three admin panels write the agency\u2019s settings row the first time there is none.',
+  }),
+  'AgencySettings.update': operationalSave({
+    fn: 'saveAgencySettings', key: 'settings', withId: true,
+    reason: 'The same three panels write the agency\u2019s settings row once it exists.',
+  }),
+  'CarePlan.update': operationalSave({
+    fn: 'saveCarePlan', key: 'care_plan', withId: true,
+    reason: 'The interactive care plan saves the plan a clinician edited in place.',
+  }),
+  'FaceToFaceEncounter.create': operationalSave({
+    fn: 'saveFaceToFaceEncounter', key: 'encounter', withId: false,
+    reason: 'The encounter form records a new face-to-face for a chart.',
+  }),
+  'FaceToFaceEncounter.update': operationalSave({
+    fn: 'saveFaceToFaceEncounter', key: 'encounter', withId: true,
+    reason: 'The encounter form amends a face-to-face already recorded.',
+  }),
+  'NoteConversion.create': operationalCreate({
+    fn: 'createNoteConversion', key: 'conversion',
+    reason: 'The note converter records each conversion it performed.',
+  }),
+  'PDFTemplate.update': operationalSave({
+    fn: 'savePdfTemplate', key: 'template', withId: true,
+    reason: 'The builder and the manager both save an existing template.',
+  }),
+  'PDFTemplate.delete': Object.freeze({
+    function: 'deletePdfTemplate',
+    projection: 'operational_row',
+    reason: 'The template manager deletes a template the agency no longer issues.',
+    request: (id) => {
+      if (typeof id !== 'string' || id === '') unsupported('id');
+      return { id };
+    },
+    response: (result) => result?.template,
+  }),
+
+  'NoteConversion.list': Object.freeze({
+    ...operationalRead({
+      entity: 'NoteConversion', fn: 'listNoteConversions',
+      orderable: ['created_date'], filtered: false,
+    }),
+    reason: 'Three reports read the agency’s note conversions newest first.',
+  }),
+});
+
+/**
  * The declared routes.
  *
  * `request` builds the handler’s input from the entity call’s own arguments —
@@ -1041,6 +1366,7 @@ const DECLARED_ROUTES = Object.freeze({
     }),
     reason: 'User settings reads the caller\'s own preferences, which the empty filter meant all along.',
   }),
+  ...operationalRoutes,
 });
 
 /**
