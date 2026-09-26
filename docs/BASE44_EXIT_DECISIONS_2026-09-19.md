@@ -8359,3 +8359,46 @@ Here the correction cost nothing: no count was pinned in the tree, and the
 coordinator holds no counts in project memory by rule, so the stale figure lived
 only in relays and was dropped by construction. That is the lucky case, not the
 rule.
+
+## D133 — A bound with its direction survives being wrong about the mechanism
+
+Where you can bound a figure but not measure it, **publish the bound, say which
+way it is loose, and name who can close it.** Do not publish the number. A bound
+stated that way survives being wrong about *why* it is loose; a number does not
+survive at all.
+
+The worked example is D126's caller count. Reading
+`20260920580000_contract_operational_tables.sql` for the text `operational_limit`
+gives eight functions, and that was sent as an upper bound by reading, with the
+reason it could only be an upper bound — a call can sit on a branch the module
+never takes — and with the close routed to the sessions that can execute.
+
+**The bound held and the reason did not.** It was loose for a mechanism nobody
+had imagined: the eighth mention is not a call on a dead branch, it is the file's
+closing `revoke`/`grant` block, which names every signature in the file, so the
+text sits in no function body at all. An instrument that chunks on
+create-function boundaries puts that block inside the chunk of whichever
+function happens to precede it — here `contract_note_conversion_create`, which
+calls nothing (D132). Seven stands, all list reads and no write among them.
+
+Now compare what each phrasing would have cost. "Eight" would have been
+retracted. "Seven", had it been guessed, would have been right by luck and
+retracted anyway the first time someone asked how it was known. **"At most
+eight, loose in this direction, and here is who can close it" needed no
+retraction, because it claimed exactly what the reading could support** — and
+the framing is what made the closing measurement happen rather than being
+assumed unnecessary.
+
+The corollary is sharper than the rule and is the part to carry. **Two readers
+agreeing is not corroboration when they share a blind spot.** Two instruments
+reached eight independently, which reads like confirmation and was not: both
+were consuming the same `revoke` block. What turns that from a platitude into
+something a reader can act on is *naming the shared input* — once the block is
+named, anyone can check whether a third reader shares it too, and agreement
+between readers that do not is worth something again.
+
+This is D122's companion from the other side. D122 says refuse a composite
+figure when a term is unreadable. This says what to do when you are not refusing
+— when the figure is readable but only approximately — and the answer is the
+same in spirit: publish what the instrument can support and name the instrument,
+never the answer you expect the measurement to give.
