@@ -7667,6 +7667,34 @@ names suggested rather than where the collation sorts it. The position is
 verified against a real cluster now. Both halves are the same lesson from
 different ends — a check is only as good as what it is given to look at.
 
+**A caveat that cuts the other way, and it is the same substitution.** Moving an
+object into the authority directory to satisfy the three checks above moves it
+OUT of a fourth. `services/authority-store/tests/http-boundary.test.mjs:115`
+scans `record-migrations/` and nothing else, cross-checking every code the
+migrations raise against the classifier's allowlist so that a redacted CI log
+still names what refused. It is run by CI at
+`.github/workflows/pennsync-authority.yml:158` — what it sits outside is
+`pnpm test`, not CI, and an earlier index line reading "the guard EXISTS" was
+doing the work of "the guard covers this", which is this ruling's own defect
+arriving in the sentence describing its remedy.
+
+Read the guard's scope narrowly before applying the caveat, because it is
+narrower than the directory: it consumes only `do $$ … $$` preconditions, and
+its own comment says a code raised inside a `CREATE FUNCTION` body is
+deliberately out of scope, being a refusal answered to a caller rather than a
+migration failure. So what a move can silently lose coverage of is exactly a
+migration-level `do $$` precondition. This change loses none —
+`migrations/20260920605000_staff_name.sql` has no `do $$` block and raises no
+code (its only `PENNSYNC_` string is a comment naming another function's
+refusal), while the halves that do raise codes stayed in `record-migrations/`
+and are still scanned. That was confirmed against the files rather than
+reasoned from the shape of the change.
+
+**The open half is D110**, which the plan thread holds: the guard should follow
+the CODE rather than the directory, scanning both and proving the new half bites
+under sabotage. Until it lands, a move of an object carrying a `do $$`
+precondition owes that check by hand.
+
 **Scope left open.** Whether any other object in `pennsync_private` is on the
 wrong side of this line is not surveyed here. A survey run while the contract
 batches are landing would be a reading of a tree that is moving, and the three
