@@ -8270,6 +8270,20 @@ is the only thing the qualification was ever buying. "Qualify it properly" has n
 referent here, and reaching for some other schema name is the wrong repair for
 the right smell.
 
+The guard's other half is that it stays SILENT on the correct form, and that is
+a real population rather than a courtesy. At `4fdcd92` the two migration
+directories hold 26 unqualified `least` and `greatest` calls across 15 files —
+the right way to write them, and exactly what the fix turns the broken call
+into. One of those files is `20260920580000_contract_screen_records.sql`, which
+shares a timestamp prefix with the file holding the defect: the two kinds sit
+side by side, written the same week, and nothing in the source tells them apart.
+A guard that fired on the correct form would be worse than no guard, because it
+would read as a rule against the constructs and the obvious way to quiet it is
+to put the prefix back. Silence proves nothing on its own — a pattern matching
+nothing is just as quiet — so the test plants both forms, asserts the pattern
+separates them, and asserts the store really does hold the correct form, and the
+two halves fail for different reasons.
+
 The decision is the one the guard's name carries: **resolve every instance, never
 generalise from the ones that work.** Forty-six of the forty-seven names this
 store qualifies are real functions, and reading any of them tells you nothing
@@ -8316,6 +8330,12 @@ repair is scoped to an instrument; the readings are already elsewhere — in a
 pull request body, a relay, a comment, a page — and nothing carries the repair
 to them. The figure that exposes a blind spot is the one under your eyes, and it
 is therefore the least likely of them to still be wrong afterwards.
+
+That is also what makes a bare figure different in kind from a wrong one. **A
+wrong figure with its instrument attached is self-correcting — anyone holding it
+can re-take it and will. A bare figure is a debt owed by exactly one session**,
+the one that produced it, and it is discharged only if that session happens to
+notice. 482 was the second kind.
 
 This is D118 arriving from the side D118 does not cover. D118 is about the
 moment of reading: an instrument that truncates reports a true reading about a

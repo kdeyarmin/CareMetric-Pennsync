@@ -144,3 +144,36 @@ test('the resolver reports absence, and the four constructs are absent', async (
     await db.close();
   }
 });
+
+/**
+ * The guard must stay SILENT on the correct form, and that is a real population
+ * rather than a hypothetical one.
+ *
+ * `least` and `greatest` are used unqualified across the committed migrations,
+ * which is the right way to write them and is what this defect's fix turns the
+ * broken call into. A guard that fired on those would be worse than no guard:
+ * it would read as a rule against using the constructs at all, and the obvious
+ * way to quiet it is to put the prefix back.
+ *
+ * Silence is not evidence by itself -- a pattern that matched nothing would be
+ * just as quiet -- so this plants both forms and asserts the pattern separates
+ * them, and then asserts the store really does hold the correct form, so the
+ * silence is about something that is there. The two halves fail for different
+ * reasons: widen the pattern and the first goes; delete the last unqualified
+ * call and the second goes, which is a signal worth having either way.
+ */
+test('the scan sees the qualified form and not the correct one', () => {
+  const planted = 'select pg_catalog.least(a, b), least(c, d), greatest(e, f);';
+  const seen = [...planted.matchAll(QUALIFIED)].map(([, name]) => name);
+  assert.deepEqual(seen, ['least'],
+    'the pattern must match the qualified call and neither bare construct;'
+    + ' a guard that fires on `least(a, b)` invites the prefix back');
+
+  const bare = /(^|[^.a-z0-9_])(least|greatest)\s*\(/;
+  const correct = readMigrations(repository)
+    .filter(migration => bare.test(migration.sql))
+    .map(migration => join(migration.from, migration.name));
+  assert.ok(correct.length > 0,
+    'no committed migration calls least or greatest unqualified any more, so this'
+    + " test's silence proves nothing; find where the correct form went");
+});
