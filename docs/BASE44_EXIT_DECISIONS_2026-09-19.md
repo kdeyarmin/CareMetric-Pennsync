@@ -8316,6 +8316,58 @@ with it — the site count went on being quoted at a figure the blind class had
 produced. That is D130, which came out of this guard and is written up in its
 own right because it is not about `pg_catalog` at all.
 
+
+## D127 — An idempotent catch-up is undetectable by its own effect
+
+**Added 2026-09-26.** A forward migration written so that a fresh build and a
+caught-up build are field-for-field equal **cannot be shown to have run by any
+assertion over the resulting state.** That equality is the property its own suite
+exists to prove — `20260920530000_profile_self_write.sql` is the worked example
+under D88, and `tools-pennsync-record-catchup.mjs` derives such a file from the
+generated migration precisely so the two builds cannot diverge. The consequence
+runs the other way and had not been written down: a test asking "did the walk
+reach this file" by looking at the store is green whether it did or not.
+
+So the only thing that can answer it is the applied **SET** against the
+directory. A conversion that relies on a state assertion for that question
+proves nothing, and reads exactly like one that works.
+
+**The example, and it is this entry's evidence.** Converting
+`contract-notification.test.mjs` off its hand-kept list of eight record files
+onto the directory walk, the new test asserted the six column defaults
+`20260920590000_column_defaults.sql` sets on `pennsync_records.notification` —
+the very table that suite inserts into — reasoning that the old build, which
+never named that file, could not have had them. Omitting the file from the walk
+left the test **green**. The file is derived from the generated store, so a build
+from nothing already carries every default it would add. The assertion is now
+`applied` deep-equalled against `recordMigrationNames()`, which fails under the
+same sabotage; the two migrations that arrived on `main` during the work are
+named in it rather than counted, because a count moves on somebody else's merge.
+
+**The taxonomy this produces, and knowing which case you are in BEFORE the swap
+is the discipline.** Converting a suite from a hand-kept record list to the
+directory has three post-swap shapes, and they are told apart by measuring the
+forward migrations over that suite's contracts first:
+
+- **Strong** — no forward migration over them. The derived list equals the
+  hand-kept one and the reachable set does not move at all. An unmoved set is
+  the pass, and any movement means the derivation is wrong or a forward existed
+  that nobody listed.
+- **Absorbing** — forwards exist over them. The set moves by exactly those
+  files, and the suite proves it absorbed them.
+- **Neither** — the only forwards reaching the store are unrelated to the
+  contracts, or are catch-ups this entry makes invisible. Then the only honest
+  check is over names, and a state assertion will pass for the wrong reason.
+
+Measure the case first, because a forward arriving mid-derivation silently turns
+the strong form into the absorbing one while the reader still believes they are
+in the strong one.
+
+**Both halves of a sabotage go in the record.** The assertion that bites and the
+assertion that did not are both findings, and reporting only the first leaves the
+next reader with a shape that reads as proved. The replaced assertion is quoted
+in the suite's own comment for the same reason.
+
 ## D130 — Fixing an instrument does not fix the readings already taken with it
 
 D126's scan was found blind: `[a-z_]+` does not truncate a digit-bearing name,
@@ -8359,6 +8411,7 @@ Here the correction cost nothing: no count was pinned in the tree, and the
 coordinator holds no counts in project memory by rule, so the stale figure lived
 only in relays and was dropped by construction. That is the lucky case, not the
 rule.
+
 
 ## D133 — A bound with its direction survives being wrong about the mechanism
 

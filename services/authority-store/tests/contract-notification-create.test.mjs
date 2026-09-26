@@ -1,12 +1,11 @@
 import test, { before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { PGlite } from '@electric-sql/pglite';
-import { RECORD_MIGRATION_FILE, SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
+import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
+import {
+  RECORD_MIGRATION_DIRECTORY, applyRecordMigrations, recordMigrationNames,
+} from './record-migrations.mjs';
 
 /**
  * Creating a notification for somebody else.
@@ -18,15 +17,14 @@ import { BROKER_MIGRATION_FILE } from '../../../tools-record-brokers.mjs';
  * honoured by the READER, because `notification_preference_read` is
  * `user_email = caller_email()` and the sender cannot ask.
  */
-const repository = resolve(fileURLToPath(new URL('../../../', import.meta.url)));
-const MINT = 'services/authority-store/supabase/record-migrations/'
-  + '20260920285000_notification_mint.sql';
-const NOTE_HISTORY = 'services/authority-store/supabase/record-migrations/'
-  + '20260920170000_contract_note_history.sql';
-const READER = 'services/authority-store/supabase/record-migrations/'
-  + '20260920300000_contract_notification.sql';
-const CREATE = 'services/authority-store/supabase/record-migrations/'
-  + '20260920320000_contract_notification_create.sql';
+// The files whose BEHAVIOUR this suite measures; it no longer decides what is
+// applied. The facility is named first because the envelope is its and not this
+// contract's, which is the property the whole file exists to hold.
+const MEASURED = [
+  '20260920285000_notification_mint.sql',
+  '20260920300000_contract_notification.sql',
+  '20260920320000_contract_notification_create.sql',
+];
 const APP = '6a9881683dc68a0bd54f1ef7';
 const uid = n => `10000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
 const sid = n => `20000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -49,9 +47,10 @@ before(async () => {
   for (const name of (await readdir(dir)).filter(file => file.endsWith('.sql')).sort()) {
     await db.exec(await readFile(new URL(name, dir), 'utf8'));
   }
-  for (const file of [RECORD_MIGRATION_FILE, BROKER_MIGRATION_FILE,
-    NOTE_HISTORY, MINT, READER, CREATE]) {
-    await db.exec(readFileSync(resolve(repository, file), 'utf8'));
+  const applied = await applyRecordMigrations(db);
+  for (const name of MEASURED) {
+    assert.ok(applied.includes(name),
+      `${name} must be applied: this suite measures its behaviour`);
   }
   await db.exec(await readFile(new URL('./fixtures.sql', import.meta.url), 'utf8'));
   await db.query(`insert into ${SCHEMA}."patient"
@@ -231,15 +230,41 @@ test('the recipient s in-app preference is honoured by the reader', async () => 
 
 test('the envelope lives in the facility and nowhere else', async () => {
   // The D45 lesson made structural: two callers, one place to get it wrong.
+  //
+  // D48 says the facility is the ONLY thing in the store that inserts a
+  // notification row, and this is the test that was said to hold it. It did not:
+  // it scanned FOUR files by name, so it could only ever have reported on the
+  // four somebody had already thought of, and a fifth migration inserting a
+  // notification would have passed it in silence. That is D113's rule — a guard
+  // must BUILD the population its assertion names — arriving in the guard
+  // written to make the rule structural.
+  //
+  // The population is the record directory now, read through the same walk that
+  // builds this suite's store, so the file list and the store cannot disagree.
+  // Widening it changed no verdict: exactly one file inserts such a row today,
+  // and the four it used to scan happened to include it.
+  const names = await recordMigrationNames();
+  assert.ok(names.length > 4, 'the population is the directory, not a short list');
   const inserts = [];
-  for (const file of ['20260920285000_notification_mint.sql',
-    '20260920290000_contract_incident.sql',
-    '20260920300000_contract_notification.sql',
-    '20260920320000_contract_notification_create.sql']) {
-    const source = readFileSync(resolve(repository,
-      `services/authority-store/supabase/record-migrations/${file}`), 'utf8');
-    if (/insert into "pennsync_records"\."notification"/.test(source)) inserts.push(file);
+  for (const name of names) {
+    const source = await readFile(new URL(name, RECORD_MIGRATION_DIRECTORY), 'utf8');
+    if (/insert into "pennsync_records"\."notification"/.test(source)) inserts.push(name);
   }
   assert.deepEqual(inserts, ['20260920285000_notification_mint.sql'],
     'only the facility writes a notification row');
+  // Reading the whole directory means the predicate has to be exact, and this
+  // is the case that proves it rather than assumes it: a migration outside the
+  // old four DOES insert `notification_preference`, so a substring match would
+  // now report a second writer that is not one. The widened population makes a
+  // loose predicate a false finding, where before it was merely unreached.
+  const preference = [];
+  for (const name of names) {
+    const source = await readFile(new URL(name, RECORD_MIGRATION_DIRECTORY), 'utf8');
+    if (/insert into "pennsync_records"\."notification_preference"/.test(source)) {
+      preference.push(name);
+    }
+  }
+  assert.deepEqual(preference, ['20260920580000_contract_screen_records.sql']);
+  assert.equal(inserts.includes(preference[0]), false,
+    'the notification predicate must not claim the preference table');
 });
