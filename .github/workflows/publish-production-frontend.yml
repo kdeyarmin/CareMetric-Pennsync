@@ -32,6 +32,13 @@ jobs:
         uses: actions/checkout@v7
         with:
           persist-credentials: false
+          # The validation step below runs `pnpm test`, whose third script
+          # resolves a fixed historical commit through `git ls-tree`. A
+          # depth-1 checkout does not have that object, so the chain stops at
+          # script three of eleven and this job never reaches the build or the
+          # publish. `ci.yml` and `external-integrations.yml` set the same
+          # depth for the same suite.
+          fetch-depth: 0
 
       - name: Stop before invoking Base44 when persistent publishing access is missing
         env:

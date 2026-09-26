@@ -92,8 +92,15 @@ test('nothing in this directory reaches out of it, because the image is built fr
     }
     for (const [, literal] of code(source).matchAll(LITERAL)) {
       // Either walked up out of the directory, or named from the repository
-      // root the way a `resolve(repository, ...)` call does.
-      const candidates = literal.startsWith('../') ? [resolve(directory, literal)]
+      // root the way a `resolve(repository, ...)` call does. A `./` prefix is
+      // the third case and is DIRECTORY-relative: `new URL('./README.md',
+      // import.meta.url)` names a file the Dockerfile's `COPY . ./` does ship,
+      // and resolving it from the repository root instead found the ROOT
+      // README and failed a correct suite. Two different files, one spelling —
+      // the same one-representation defect this check exists for, arriving in
+      // the check. A `./` literal that names nothing here is still no finding.
+      const candidates = literal.startsWith('../') || literal.startsWith('./')
+        ? [resolve(directory, literal)]
         : literal.includes('/') && !literal.includes(':') ? [resolve(repository, literal)] : [];
       for (const candidate of candidates) {
         if (candidate.startsWith(directory) || !isFile(candidate)) continue;
