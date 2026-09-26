@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile, readdir } from 'node:fs/promises';
 import { PGlite } from '@electric-sql/pglite';
 import { SCHEMA } from '../../../tools-entity-schema-plan.mjs';
-import { applyRecordMigrations } from './record-migrations.mjs';
+import { applyRecordMigrations, recordMigrationNames } from './record-migrations.mjs';
 
 /**
  * Submitting a staff credential (`contract_credential_submit`).
@@ -383,12 +383,18 @@ test('the migrations this suite measures are ones the directory actually applied
   }
   // And the direction that matters more: the build is the whole directory, so
   // a forward migration over any of these is picked up by existing rather than
-  // by being remembered (D88). Pinned as a relation, not a count, because a
-  // count moves for reasons that have nothing to do with this suite.
-  assert.ok(applied.length > MEASURED.length,
-    'the directory build must apply more than the five files this suite is about');
-  assert.deepEqual([...applied].sort(), applied,
-    'apply order is the deployment order, which is sorted by file name');
+  // by being remembered (D88).
+  //
+  // Pinned as the EXACT set, which is what #320 does and what a first draft of
+  // this file did not. That draft asserted `applied.length > MEASURED.length`
+  // under a comment claiming it pinned a relation rather than a count — so the
+  // comment described a test that did not exist, and the assertion was
+  // satisfied by any build applying six or more files, the omission of a
+  // migration this suite does not name among them. An assertion a wrong answer
+  // also satisfies is not one, and `recordMigrationNames` sorts, so this pins
+  // the apply ORDER (the deployment's directory walk) in the same line.
+  assert.deepEqual(applied, await recordMigrationNames(),
+    'the build must be the whole record directory, in its apply order');
 });
 
 test('every credential capability authorizes, and no helper beside them is callable', async () => {
