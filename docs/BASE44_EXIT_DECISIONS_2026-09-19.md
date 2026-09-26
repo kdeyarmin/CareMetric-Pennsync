@@ -732,7 +732,6 @@ RPC family — which brokers the 80 remaining handlers get, and whether a broker
 stamps a caller's agency onto a write or requires it, is the next decision.
 The broker in the test exists to prove the boundary, and is not that family.
 
-
 ## D16 — What may actually be brokered
 
 **Decision.** The `broker` disposition is checked against each entity's schema
@@ -778,7 +777,6 @@ record store is byte-identical — 156 tables, 2,404 columns, 83 tenant-scoped.
 What changes is who may serve a table: fourteen now need a reviewed
 per-contract handler rather than a generic family. That is the trade D2 already
 described, applied to the evidence rather than to the names.
-
 
 ## D17 — The tenant-scoped broker family
 
@@ -864,7 +862,6 @@ reachable through it, and a handler that needs one still needs a reviewed
 contract of its own. It also creates nothing anywhere: like D15's migration,
 applying it needs the production Supabase project.
 
-
 ## D18 — The same ceiling, on the function side
 
 **Decision.** A function dispositioned `broker` is checked against the entities
@@ -948,7 +945,6 @@ out is safe — so the exemption is per block, deliberately.
 appearing — it is work that was already there, counted under a disposition that
 said someone else would handle it generically. A queue that is longer and true
 is worth more than one that is shorter because it was measured by name.
-
 
 ## D19 — What a reviewed per-capability contract is
 
@@ -7814,7 +7810,52 @@ and deliberately: a code inside a `create function` body is a refusal answered t
 a caller at runtime, not a migration failure, and naming one in this list would
 be wrong in the other direction. The planted case holds that line.
 
+## D112 — A diagnostic is captured at the moment of failure, not after recovery
 
+**The rule.** A diagnostic that describes a moment other than the failure is
+worse than no diagnostic. It looks like evidence, it reads as a cause, and it
+makes an unmade decision look ready to make. So capture it at the failure — and
+where a check retries, capture it on every attempt and report the series, so a
+condition that changed across the window reads as a change rather than as its
+last state.
+
+**The instance.** `unusedPort` in
+`services/authority-store/tests/http-local-stack.mjs` refuses to start the local
+stack when one of its ports is taken, retrying `PORT_ATTEMPTS` times a second
+apart. It called `describePortHolder` once, after the last attempt, so the
+refusal printed whatever held the port about five and a half seconds after the
+bind that failed.
+
+That diagnostic was added precisely so an occurrence would name its holder, and
+the first occurrence under it printed `Port 54322: TIME_WAIT` — while this
+suite's own measurement says TIME_WAIT cannot refuse a bind at all, because Node
+sets `SO_REUSEADDR`. Both readings were right about different moments: something
+live held the port through the retries and had closed into TIME_WAIT by the time
+it was described. The plan "when it next fires it will name the holder" had
+failed while looking like it worked.
+
+The holder is now described inside the catch, one line per failed attempt, and
+the series printed on refusal. The bind's own `errno` is carried too, allowlisted
+to `E`-prefixed letters: it was discarded entirely before, so nothing could
+distinguish `EADDRINUSE` from an `EACCES` or `EADDRNOTAVAIL` that would make the
+whole ephemeral-range hypothesis misdirected. Only `error.message` ever reaches
+an operator and it stays the bare code and port, so `emittable` is untouched and
+the redaction discipline is unchanged — the holder is still read from
+`/proc/net/tcp` and `comm`, never `cmdline`, because an argument vector can carry
+a credential.
+
+**Ordering, which is the decision rather than the change.** The reserve-the-ports
+question stays open and unproved. The diagnostic is fixed FIRST, because a
+diagnostic that looks like evidence and is not cannot support that decision.
+
+**Proved by sabotage, in both directions.** With the one-shot diagnostic
+restored, the two new tests fail — one on `1 !== 6`, the other on "the live
+connection was not captured at the failure" — while all seven pre-existing tests
+stay green, so none of them could ever have found this. The second fixture is the
+real occurrence's shape: the port is held throughout by a listener, so every
+attempt refuses, while a client connection live at the first failure is gone by
+the last. It asserts that the fixture CHANGED, so a fixture that silently stopped
+changing fails rather than passing quietly.
 
 ## D113 — A guard must build the population its assertion names
 
@@ -7968,6 +8009,96 @@ have collided with all of them. The remaining conversions go one suite per
 change, and the one data point says to expect a finding in each rather than a
 green re-run — it says nothing about how many there are.
 
+## D116 — A count you cannot reproduce with the instrument's own key is re-read, never predicted or audited
+
+**The rule.** A count is a predicate over a population. Where you cannot
+reproduce it using the same key the instrument uses, re-read it from the
+instrument on each head: never predict it, and never audit it finding by
+finding. Hold the instrument instead to the figures it states in words.
+
+**Two worked instances, both from the hosted store comparison.**
+
+`hosted-store.test.mjs` asserts `faults.slice(0, 10)` and puts the count in the
+assertion message — by design, and its own comment says why: a store that
+diverged wholesale would otherwise print thousands of lines, and the count in
+the message is what stops a capped list reading as the whole of it. So at 166
+differences it prints ten findings, none of them a function. An instruction to
+"check that every printed finding names those files' objects" cannot be
+satisfied, and following it produces false confidence rather than a false alarm.
+
+And the key differs from any a text scan can apply. `store-inventory.mjs` keys a
+function on `schema.name(identity_arguments)`, where a scan of the migrations
+keys on name: `pennsync_records.roster_entry` is declared twice with two
+different signatures and counts twice, while eight other names are
+`create or replace` of one signature and count once. Reaching 162 of 166 from the
+files is therefore structural rather than a matter of effort — identity arguments
+are not recoverable from source text, since defaults are stripped, declarations
+span lines, and `returns table` shapes differ.
+
+**What the instrument can be held to** is the pair it states in words — "the
+ledger holds N rows for M committed migrations" — which with
+`LOCAL_ONLY_MIGRATIONS` derives everything an operator needs.
+
+**A related trap, same shape.** The ledger is not a PREFIX of the migration
+order, so pending migrations may not be named by taking the last N: a file added
+under `supabase/migrations/` sorts before the boundary and shifts the slice.
+Derive the names by set difference.
+
+## D117 — Classify an open enum by naming the values you mean, never by negating the ones you don't
+
+**The rule.** A negative predicate over an open enumeration inherits every value
+the API later adds and every value the author forgot. Name the values you mean.
+Where a direction must be chosen anyway, choose the one that fails loud.
+
+**The instance.** A poll watching a pull request's check runs classified a
+conclusion as bad when it was `not in (None, 'success', 'neutral', 'skipped')`.
+GitHub also returns `cancelled`, `timed_out`, `action_required` and
+`startup_failure`, so a run cancelled because a later push superseded its head
+read as a failure — and "cancelled is not failed" was already a rule this project
+carried. A red was reported that never existed.
+
+**Both halves matter.** That one failed LOUD, which cost four minutes and a
+correction. It did so by luck rather than design: the mirror version, treating
+`in ('success',)` as green, would have failed SILENT and reported a genuinely red
+check as passing. The direction is not a detail to leave to chance, which is the
+same discipline as D107's refusal to accept a repair that restores green and
+records nothing.
+
+## D118 — An instrument that covered less than you assumed reports about itself, not about the thing
+
+An instrument whose coverage is narrower than the question it was pointed at
+still exits in the shape of a result, and that shape is the whole danger: it
+answers about *itself* — about its pattern, its working directory, the branch it
+loaded rather than measured — while reading as an answer about the tree, the
+file, or the store. Nothing fails, so nothing surfaces it.
+
+Three instances arrived in one night, on one watch, and they are unlike enough
+that the shared shape is the useful part rather than any one of them:
+
+- **A grep whose pattern missed a name.** Checking that a sibling thread's two
+  new `MIGRATION_CODES` entries had survived a base merge, a grep matched one and
+  not the other. That is a reading about the PATTERN. The diff is the reading
+  about the FILE, and it showed both entries present. A colleague's change was
+  one report away from being called lost.
+- **A validation step that declined to run.** `pnpm run lint` from a drifted
+  working directory printed `script matched with lint is present in the root of
+  the workspace` and exited zero. A validation that declines to run and a
+  validation that passes are indistinguishable from the exit code alone.
+- **A job that stood down.** `Verify the committed store on hosted staging` is
+  green on a pull request by LOADING rather than measuring; only on `main`, with
+  `skipped 0`, is its green a measurement. A PR-side green says nothing about
+  what is pending.
+
+The rule: before treating an instrument's quiet exit as an answer, establish
+what it actually covered. Where a narrower and a wider reading both exist, the
+wider one is the reading about the thing — prefer it, and where only the
+narrower is available, say which one you have. This is D116's sibling from the
+other side: D116 is about a count whose key you cannot reproduce, and this is
+about an instrument whose population is smaller than the one you meant.
+
+The near-miss is recorded rather than the catch, because going and looking is
+what closed all three and no check did.
+
 ## D120 — A sabotage raises the production assertion, not a re-implementation of it
 
 *2026-09-26.*
@@ -8020,3 +8151,41 @@ was not re-read as the new rule was being applied twenty lines away. A rule
 adopted at one site and skipped at its sibling is the normal failure, not a
 careless one, and the remedy is mechanical: list the siblings, state the
 disposition of each, and put the list in the change rather than in your head.
+
+## D122 — A composite figure is not partially readable
+
+Where a figure is a difference over populations read by different instruments,
+and one term needs a credential this session does not hold, report the terms you
+did read — each named with its instrument and the head it was read on — and
+**refuse the figure itself**. A session that supplies two of three terms and
+lets the reader close the gap has produced an inference wearing a
+measurement's clothes: the arithmetic is the reader's, the authority is the
+measurer's, and nothing in the sentence says so.
+
+The pending-migration count is the worked example. It is
+
+    committed (pinned) − LOCAL_ONLY_MIGRATIONS − what the hosted ledger has run
+
+and the first two terms are two different predicates over the same directory
+while the third is a row count in a hosted database behind a credential. Ladder,
+working from a checkout at `00ae087`, read the first two — the pin holds 85 keys
+and 85 `.sql` files sit in the two migration directories at that same head — and
+**declined the third and therefore the figure**, because it holds no hosted
+credential. That refusal is the decision. The alternative, publishing 85 and 1
+and letting a reader subtract a remembered 74, is how three derivations came to
+disagree on one night while each stayed internally consistent: a carried term is
+not a read term, and a figure assembled across two heads is a figure about
+neither.
+
+Closing it is cheap when the instrument is available, and that is the other half
+of the rule: at `00ae087` the hosted job's own failure message reads "the ledger
+holds 74 rows for 84 committed migrations", which supplies the third term AND an
+independent reading of the first, at that head, from one instrument. Pending is
+10. Prefer that to a subtraction every time, and where it is not available, say
+which term you are missing rather than which number you expect.
+
+This is D106's rule (state the derivation, not the result) sharpened to the case
+where the derivation cannot be completed, and it is the companion of D116: D116
+is about a figure you cannot reproduce with the instrument's own key, and this is
+about a figure one of whose terms you cannot read at all.
+
