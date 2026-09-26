@@ -613,6 +613,92 @@ test('a correction that adds a write is classified, and the read wave refuses it
   assert.equal(failure.code, 'LADDER_DECLARED_WRITE_IN_READ_WAVE');
 });
 
+test('a drop and a bare create in one file is admitted, because it applies', (t) => {
+  // `create or replace` CANNOT change a parameter list -- it makes an overload
+  // or it errors -- so a drop followed by a bare create is the only shape a
+  // MOVED SIGNATURE can take. The old rule refused it on the stated ground
+  // that a second bare create cannot apply to a store that ran the first, and
+  // that ground is simply false once the first has been dropped.
+  const tree = intactTree(t);
+  fixture(tree);
+  assert.doesNotThrow(() => checkLadder(tree.root), 'vacuous unless the tree starts clean');
+
+  // A second parameter, which is exactly what `or replace` cannot express.
+  const moved = [
+    'drop function if exists "pennsync_records".contract_read(p_agency text);',
+    'drop function if exists "public"."pennsync_contract_contract_read"(p_agency text);',
+    contractSql('contract_read', 'select 2')
+      .replace('contract_read(p_agency text)', 'contract_read(p_agency text, p_page int)')
+      .replace('contract_read(p_agency)', 'contract_read(p_agency, 1)'),
+  ].join('\n');
+  writeFileSync(join(tree.records, '0200_signature.sql'), moved);
+
+  assert.doesNotThrow(() => checkLadder(tree.root));
+  const entry = functionBodies(tree.root).get('pennsync_records.contract_read');
+  // The later body is still the one classified and the first file still keeps
+  // the key, exactly as for an `or replace`: dropping first changes whether
+  // the tree applies, not which text the ladder reads.
+  assert.equal(entry.file, '0100_contracts.sql');
+  assert.match(entry.body, /select 2/);
+  assert.deepEqual(entry.files, ['0100_contracts.sql', '0200_signature.sql']);
+});
+
+test('a second bare create with nothing dropping the first is STILL refused', (t) => {
+  // The sabotage that has to ship with the loosening above. A rule that
+  // admitted the drop-and-create and also quietly stopped refusing the bare
+  // duplicate would look identical in every green run -- D107's shape, in a
+  // gate rather than a test.
+  const tree = intactTree(t);
+  fixture(tree);
+  writeFileSync(join(tree.records, '0200_duplicate.sql'), contractSql('contract_read', 'select 2'));
+
+  let failure = null;
+  try { checkLadder(tree.root); } catch (error) { failure = error; }
+  assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
+  assert.equal(failure.code, 'LADDER_FUNCTION_DEFINED_TWICE');
+});
+
+test('a drop in a DIFFERENT file does not admit the duplicate', (t) => {
+  // The rule is same-file and before the create. A drop that lands in another
+  // migration says nothing about whether THIS file applies, and keying on the
+  // name alone without the file would let any unrelated drop open the gate.
+  const tree = intactTree(t);
+  fixture(tree);
+  // BOTH functions, so the refusal below cannot arrive from the public wrapper
+  // instead of from the rule under test. Dropping only the inner one left this
+  // case passing for an unrelated reason, which sabotage found and reading did
+  // not.
+  writeFileSync(join(tree.records, '0150_drop.sql'), [
+    'drop function if exists "pennsync_records".contract_read(p_agency text);',
+    'drop function if exists "public"."pennsync_contract_contract_read"(p_agency text);',
+  ].join('\n'));
+  writeFileSync(join(tree.records, '0200_duplicate.sql'), contractSql('contract_read', 'select 2'));
+
+  let failure = null;
+  try { checkLadder(tree.root); } catch (error) { failure = error; }
+  assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
+  assert.equal(failure.code, 'LADDER_FUNCTION_DEFINED_TWICE');
+});
+
+test('a drop AFTER the create in the same file does not admit it either', (t) => {
+  // Order matters and is asserted: a drop below the create does not stop the
+  // create from colliding, and a rule that scanned the whole file would admit
+  // a tree that really cannot apply.
+  const tree = intactTree(t);
+  fixture(tree);
+  // Both drops, for the reason the previous case states.
+  writeFileSync(join(tree.records, '0200_duplicate.sql'), [
+    contractSql('contract_read', 'select 2'),
+    'drop function if exists "pennsync_records".contract_read(p_agency text);',
+    'drop function if exists "public"."pennsync_contract_contract_read"(p_agency text);',
+  ].join('\n'));
+
+  let failure = null;
+  try { checkLadder(tree.root); } catch (error) { failure = error; }
+  assert.ok(failure instanceof LadderError, `expected a refusal, got ${failure}`);
+  assert.equal(failure.code, 'LADDER_FUNCTION_DEFINED_TWICE');
+});
+
 test('a correction that REMOVES a write is classified too, and clears the refusal', (t) => {
   // The other direction, because a rule proved one way has been shown to fire
   // and not to classify. Here the first body writes and the correction does

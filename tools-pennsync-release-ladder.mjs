@@ -361,10 +361,36 @@ const serviceFiles = root => readdirSync(resolve(root, SERVICE))
  * that value. Keeping the first body is therefore not the conservative choice,
  * it is the wrong answer stated confidently.
  *
- * What is still refused is a plain `create function` twice, which is a
- * migration that cannot apply to a store that ran the first one — the tree is
- * broken and the ladder should not paper over it.
+ * What is still refused is a second BARE `create function` with nothing
+ * dropping the first. That, and only that, is a tree which cannot apply to a
+ * store that ran the first one.
+ *
+ * A `drop function` earlier in the same file admits the create that follows
+ * it, because a dropped function is not there to collide with. That is not a
+ * courtesy: `create or replace` CANNOT change a parameter list — it makes an
+ * overload or it errors — so a drop and a bare create is the only shape a
+ * moved signature can take, and refusing it refused trees that apply. Keyed on
+ * the NAME rather than the dropped signature, because the two necessarily
+ * differ in signature whenever this arises, so a signature key would either
+ * never match or would require modelling the old signature for nothing. Same
+ * file and before the create, so a drop elsewhere in the directory admits
+ * nothing.
  */
+/**
+ * Whether a `drop function` naming `key` appears before `index` in this file.
+ *
+ * `matchAll` yields in source order, so the first match at or past the create
+ * ends the search rather than scanning the rest of the migration.
+ */
+function droppedEarlier(sql, key, index) {
+  const drops = /drop\s+function\s+(?:if\s+exists\s+)?(?:"?([a-z_]+)"?\s*\.\s*)?"?([A-Za-z0-9_]+)"?/gi;
+  for (const drop of sql.matchAll(drops)) {
+    if (drop.index >= index) return false;
+    if (`${(drop[1] ?? '').toLowerCase()}.${drop[2]}` === key) return true;
+  }
+  return false;
+}
+
 export function functionBodies(root) {
   const pattern = /create\s+(or\s+replace\s+)?function\s+(?:"?([a-z_]+)"?\s*\.\s*)?"?([A-Za-z0-9_]+)"?\s*\(/gi;
   const bodies = new Map();
@@ -379,12 +405,14 @@ export function functionBodies(root) {
         const replaces = Boolean(match[1]);
         const key = `${(match[2] ?? '').toLowerCase()}.${match[3]}`;
         const body = dollarQuotedBody(sql, match.index, key, file);
-        // Within the record migrations a plain second `create function` is a
-        // tree that cannot apply, so it is refused. An `or replace` is the SQL
-        // declaring the re-declaration, and is admitted.
+        // Within the record migrations a second BARE `create function` with
+        // nothing dropping the first is a tree that cannot apply, so it is
+        // refused. An `or replace` is the SQL declaring the re-declaration; a
+        // `drop function` earlier in the same file is the SQL removing the one
+        // that would have collided. Both apply, so both are admitted.
         const seen = directory === MIGRATIONS && bodies.get(key)?.directory === MIGRATIONS
           ? bodies.get(key) : null;
-        if (seen && !replaces) {
+        if (seen && !replaces && !droppedEarlier(sql, key, match.index)) {
           refuse('LADDER_FUNCTION_DEFINED_TWICE', { key, files: [seen.file, file] });
         }
         // The first file keeps the key and the LAST body is what gets
